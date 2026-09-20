@@ -69,5 +69,31 @@ const TinySegment: Story = {
   },
 };
 
+const LongReel: Story = {
+  args: {
+    segments: Array.from({ length: 50 }, (_, i) => ({
+      key: `long-${i}`,
+      startMs: i * 30_000,
+      endMs: (i + 1) * 30_000,
+      name: `Commercial ${i + 1}`,
+    })),
+  },
+};
+
+const LongName: Story = {
+  args: {
+    segments: [
+      {
+        key: "long-name",
+        startMs: 0,
+        endMs: 30_000,
+        name: "A very long local commercial title with a station, sponsor, product, campaign, and uncertain recording date",
+        tags: ["commercial", "local", "food & drink"],
+        language: "en",
+      },
+    ],
+  },
+};
+
 export default meta;
-export { EvenlySplit, Focused, OneHugeBlock, TinySegment };
+export { EvenlySplit, Focused, LongName, LongReel, OneHugeBlock, TinySegment };

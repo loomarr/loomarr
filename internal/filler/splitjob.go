@@ -126,6 +126,14 @@ type Splitter struct {
 	log             *slog.Logger
 	storage         *storagegovernor.Governor
 	segmentLanguage *SegmentLanguagePolicy
+	artwork         SplitArtworkWriter
+}
+
+// SplitArtworkWriter adopts one representative JPEG into the shared image service. The splitter
+// owns when and from which exact span the bytes were extracted; the adapter owns image storage,
+// responsive renditions, and proposal-reference lifetime.
+type SplitArtworkWriter interface {
+	IngestSplitArtwork(ctx context.Context, proposalID string, segment SplitSegment, jpeg []byte) (string, error)
 }
 
 // SegmentLanguagePolicy applies the installation language to each detected span before the split
@@ -161,6 +169,85 @@ func (sp *Splitter) WithSegmentLanguage(policy SegmentLanguagePolicy) *Splitter 
 		sp.segmentLanguage = &policy
 	}
 	return sp
+}
+
+// WithSplitArtwork attaches the presentation-only representative-frame sink. Missing artwork is
+// an honest unavailable state and never changes cut or admission authority.
+func (sp *Splitter) WithSplitArtwork(writer SplitArtworkWriter) *Splitter {
+	if sp != nil {
+		sp.artwork = writer
+	}
+	return sp
+}
+
+// splitArtworkPerPass bounds image work independently of reel size. It is implementation policy,
+// not a user-facing knob: a long proposal resumes through the existing split rung.
+const splitArtworkPerPass = 12
+
+func (sp *Splitter) prepareArtwork(ctx context.Context, p SplitProposal) (SplitProposal, int, error) {
+	if p.ArtworkPrepared {
+		return p, 0, nil
+	}
+	// A splitter without an image sink (unit tests and deliberately partial embeddings) degrades
+	// in one step. It must not make presentation support a prerequisite for split progress.
+	if sp.artwork == nil || sp.tools == nil {
+		for i := range p.Segments {
+			p.Segments[i].ArtworkChecked = true
+		}
+		p.ArtworkPrepared = true
+		if err := sp.saveProposal(ctx, p); err != nil {
+			return p, 0, err
+		}
+		return p, 0, nil
+	}
+	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
+	if err != nil {
+		return p, 0, err
+	}
+	if !found {
+		return p, 0, fmt.Errorf("clip %s not found", p.ClipHash)
+	}
+	_, file, err := resolveSplitSource(ctx, sp.dropDir, clip, p.Source)
+	if err != nil {
+		return p, 0, err
+	}
+
+	attempted, unavailable := 0, 0
+	for i := range p.Segments {
+		if p.Segments[i].ArtworkChecked || attempted >= splitArtworkPerPass {
+			continue
+		}
+		attempted++
+		segment := &p.Segments[i]
+		segment.ArtworkChecked = true
+		frames, frameErr := sp.tools.KeyframesIn(ctx, file, segment.StartMs, segment.EndMs, 1)
+		if frameErr != nil || len(frames) == 0 {
+			unavailable++
+			continue
+		}
+		hash, ingestErr := sp.artwork.IngestSplitArtwork(ctx, p.ID, *segment, frames[0])
+		if ingestErr != nil || hash == "" {
+			unavailable++
+			continue
+		}
+		segment.ArtworkImageHash = hash
+	}
+
+	pending := 0
+	for i := range p.Segments {
+		if !p.Segments[i].ArtworkChecked {
+			pending++
+		}
+	}
+	p.ArtworkPrepared = pending == 0
+	if err := sp.saveProposal(ctx, p); err != nil {
+		return p, pending, err
+	}
+	if sp.log != nil && attempted > 0 {
+		sp.log.Info("split: prepared representative frames", "proposal", p.ID,
+			"prepared", attempted-unavailable, "unavailable", unavailable, "pending", pending)
+	}
+	return p, pending, nil
 }
 
 func (sp *Splitter) startSegmentLanguage(p *SplitProposal) bool {
@@ -362,6 +449,16 @@ func (sp *Splitter) Propose(ctx context.Context, clipHash string) (*SplitProposa
 			return nil, err
 		}
 		if done {
+			for p.Ready() && !p.ArtworkPrepared {
+				pValue, pending, artworkErr := sp.prepareArtwork(ctx, *p)
+				if artworkErr != nil {
+					return nil, artworkErr
+				}
+				p = &pValue
+				if pending == 0 {
+					break
+				}
+			}
 			return p, nil
 		}
 	}
@@ -851,6 +948,10 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	// reaches the ordinary post-confirm language rung with no answer.
 	segments = bindSplitLanguageEvidence(segments, p.Segments)
 	hold = bindSplitLanguageEvidence(hold, p.Segments)
+	// Artwork is also server-authored evidence. Preserve it only when an automatically held span
+	// still names the exact interval that produced the frame; an edited interval must return to the
+	// bounded artwork preparation pass rather than displaying a still from different content.
+	hold = bindSplitArtworkEvidence(hold, p.Segments)
 	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
 	if err != nil {
 		return nil, err
@@ -1159,6 +1260,7 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		remaining[i].Index = i
 	}
 	p.Segments = remaining
+	p.ArtworkPrepared = splitArtworkPrepared(remaining)
 	p.Spawned = currentGeneration
 	if err := sp.store.RenewSplitProposalClaim(ctx, proposalID, claimToken, sp.now().UTC().Add(splitProposalClaimLease)); err != nil {
 		return nil, err
@@ -1197,6 +1299,35 @@ func bindSplitLanguageEvidence(submitted, persisted []SplitSegment) []SplitSegme
 		out[i].LanguageNote = original.LanguageNote
 	}
 	return out
+}
+
+func bindSplitArtworkEvidence(submitted, persisted []SplitSegment) []SplitSegment {
+	type span struct{ start, end int64 }
+	bySpan := make(map[span]SplitSegment, len(persisted))
+	for _, segment := range persisted {
+		bySpan[span{segment.StartMs, segment.EndMs}] = segment
+	}
+	out := append([]SplitSegment(nil), submitted...)
+	for i := range out {
+		out[i].ArtworkImageHash = ""
+		out[i].ArtworkChecked = false
+		original, ok := bySpan[span{out[i].StartMs, out[i].EndMs}]
+		if !ok {
+			continue
+		}
+		out[i].ArtworkImageHash = original.ArtworkImageHash
+		out[i].ArtworkChecked = original.ArtworkChecked
+	}
+	return out
+}
+
+func splitArtworkPrepared(segments []SplitSegment) bool {
+	for _, segment := range segments {
+		if !segment.ArtworkChecked {
+			return false
+		}
+	}
+	return true
 }
 
 func appendUniqueStrings(existing []string, values ...string) []string {

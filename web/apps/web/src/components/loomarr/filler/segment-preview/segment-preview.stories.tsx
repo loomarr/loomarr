@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
-import { TINY_MP4 } from "@/test/video-fixture";
+import { TINY_WEBM } from "@/test/video-fixture";
 import { SegmentPreview } from "./segment-preview";
 
 // One proposed cut, previewed in place (§10 V54). The tile's geometry is the v2 mock's
@@ -53,7 +53,7 @@ const Collapsed: Story = {
 const Expanded: Story = {
   args: {
     ...Collapsed.args,
-    clipHash: TINY_MP4,
+    clipHash: TINY_WEBM,
     startMs: 0,
     endMs: 2_000,
     open: true,
@@ -61,5 +61,19 @@ const Expanded: Story = {
   decorators: Collapsed.decorators,
 };
 
+const MediaUnavailable: Story = {
+  args: {
+    ...Collapsed.args,
+    clipHash: "missing-preview-media",
+    startMs: 0,
+    endMs: 30_000,
+    open: true,
+  },
+  decorators: Collapsed.decorators,
+  play: async ({ canvas }) => {
+    await canvas.findByRole("alert");
+  },
+};
+
 export default meta;
-export { Collapsed, Expanded };
+export { Collapsed, Expanded, MediaUnavailable };

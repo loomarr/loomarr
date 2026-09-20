@@ -692,7 +692,7 @@ describe("Filler page", () => {
       });
     });
 
-    expect(await screen.findByRole("heading", { name: /review split/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /review clips/i })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/filler/splits/sp-1");
   });
 

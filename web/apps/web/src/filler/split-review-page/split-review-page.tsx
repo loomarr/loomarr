@@ -62,7 +62,7 @@ const LanguageReceipt = ({
 // doorbell) and hands it to the editor. Confirm commits the operator's edited cut list;
 // Back leaves the proposal persisted for later — there is deliberately no reject endpoint.
 const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
-  useDocumentTitle("Review split");
+  useDocumentTitle("Review clips");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAdmin, isLoading: authLoading } = useAuth();
@@ -149,11 +149,11 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
     // without one renders flush against the sidebar.
     <div className="flex flex-col gap-4 p-6">
       <div>
-        <h1 className="font-semibold text-xl">Review split</h1>
+        <h1 className="font-semibold text-xl">Review clips</h1>
         <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
-          Detection proposed these cuts in <span className="font-medium text-static-200">{parentName}</span>.
-          Confirming creates held segments under the original compilation. Edit, drop, or merge until the list
-          is right; leaving keeps the proposal for later.
+          Loomarr found these clips in <span className="font-medium text-static-200">{parentName}</span>.
+          Preview anything that needs a closer look, then keep the clips you want. The original recording
+          stays available if you need it later.
         </p>
       </div>
       {languageChanged ? (

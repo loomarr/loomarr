@@ -72,6 +72,18 @@ func TestUnmarshalSplitProposal_AcceptsLegacyBareSegmentArray(t *testing.T) {
 	}
 }
 
+func TestUnmarshalSplitProposalRejectsArtworkForAnotherSpan(t *testing.T) {
+	var proposal filler.SplitProposal
+	err := unmarshalSplitProposal(`{
+		"version":11,
+		"segments":[{"index":0,"startMs":0,"endMs":30000,"name":"first"}],
+		"artwork":[{"startMs":1,"endMs":30000,"imageHash":"wrong-frame","checked":true}]
+	}`, &proposal)
+	if err == nil || !strings.Contains(err.Error(), "does not name a proposal segment") {
+		t.Fatalf("span-binding error = %v", err)
+	}
+}
+
 func TestMarshalSplitProposalRejectsRoleEvidenceForAnotherSpan(t *testing.T) {
 	source := filler.SplitSourceAsset{
 		Role: filler.SplitSourceLegacyPlayback, SHA256: strings.Repeat("a", 64), Bytes: 100,

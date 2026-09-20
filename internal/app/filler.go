@@ -159,7 +159,11 @@ func (a fillerRewindAdapter) ListSplitProposals(ctx context.Context) ([]filler.S
 	return a.st.ListSplitProposals(ctx)
 }
 func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
-	return a.st.DeleteSplitProposal(ctx, id)
+	err := a.st.DeleteSplitProposal(ctx, id)
+	if err == nil {
+		deleteSplitProposalArtwork(ctx, a.st, id)
+	}
+	return err
 }
 
 // fillerSweepStoreAdapter bridges the store → filler.SweepStore (§10 V54).
@@ -183,7 +187,11 @@ func (a fillerSweepStoreAdapter) ListSweepableSplitProposals(ctx context.Context
 	return out, nil
 }
 func (a fillerSweepStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
-	return a.st.DeleteSplitProposal(ctx, id)
+	err := a.st.DeleteSplitProposal(ctx, id)
+	if err == nil {
+		deleteSplitProposalArtwork(ctx, a.st, id)
+	}
+	return err
 }
 func (a fillerSweepStoreAdapter) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
 	return a.st.MarkClipReaped(ctx, hash, at)
@@ -639,7 +647,20 @@ func (a fillerSplitStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxon
 	return a.st.ListTaxa(ctx)
 }
 func (a fillerSplitStoreAdapter) UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error {
-	return a.st.UpsertSplitProposal(ctx, p)
+	var replaced string
+	if proposals, err := a.st.ListSplitProposals(ctx); err == nil {
+		for _, existing := range proposals {
+			if existing.ClipHash == p.ClipHash && existing.ID != p.ID {
+				replaced = existing.ID
+				break
+			}
+		}
+	}
+	err := a.st.UpsertSplitProposal(ctx, p)
+	if err == nil && replaced != "" {
+		deleteSplitProposalArtwork(ctx, a.st, replaced)
+	}
+	return err
 }
 func (a fillerSplitStoreAdapter) GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error) {
 	return a.st.GetSplitProposal(ctx, id)
@@ -654,13 +675,21 @@ func (a fillerSplitStoreAdapter) ReleaseSplitProposalClaim(ctx context.Context, 
 	return a.st.ReleaseSplitProposalClaim(ctx, id, token)
 }
 func (a fillerSplitStoreAdapter) DeleteSplitProposal(ctx context.Context, id string) error {
-	return a.st.DeleteSplitProposal(ctx, id)
+	err := a.st.DeleteSplitProposal(ctx, id)
+	if err == nil {
+		deleteSplitProposalArtwork(ctx, a.st, id)
+	}
+	return err
 }
 func (a fillerSplitStoreAdapter) MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error {
 	return a.st.MarkPipelineComplete(ctx, hash, at)
 }
 func (a fillerSplitStoreAdapter) CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error) {
-	return a.st.CompleteSplitConfirmation(ctx, completion)
+	n, err := a.st.CompleteSplitConfirmation(ctx, completion)
+	if err == nil {
+		deleteSplitProposalArtwork(ctx, a.st, completion.ProposalID)
+	}
+	return n, err
 }
 func (a fillerSplitStoreAdapter) CompletePartialSplitConfirmation(ctx context.Context, completion filler.SplitPartialCompletion) error {
 	return a.st.CompletePartialSplitConfirmation(ctx, completion)

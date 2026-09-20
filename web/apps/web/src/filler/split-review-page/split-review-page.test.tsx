@@ -188,7 +188,7 @@ describe("SplitReviewPage", () => {
   it("loads the persisted proposal and renders the cut list", async () => {
     stubSplit();
     renderPage();
-    expect(await screen.findByRole("heading", { name: /review split/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /review clips/i })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: /segment 1: first ad/i })).toBeInTheDocument();
     expect(screen.getByText("Classic Toy Commercial Compilation 1989")).toBeInTheDocument();
     expect(screen.queryByText("comp-hash")).not.toBeInTheDocument();
@@ -222,8 +222,8 @@ describe("SplitReviewPage", () => {
     const router = renderPage();
     const second = await screen.findByRole("region", { name: /segment 2: second ad/i });
     // Answer the open era question, then commit.
-    fireEvent.click(within(second).getByRole("button", { name: /accept 1985/i }));
-    fireEvent.click(screen.getByRole("button", { name: /confirm cuts/i }));
+    fireEvent.click(within(second).getByRole("button", { name: /use 1985/i }));
+    fireEvent.click(screen.getByRole("button", { name: /keep clips/i }));
 
     await screen.findByText("the catalog");
     expect(confirms, "confirm should POST the edited cut list").toHaveLength(1);

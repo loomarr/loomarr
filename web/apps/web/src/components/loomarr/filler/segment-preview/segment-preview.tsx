@@ -1,6 +1,7 @@
 import { clipMediaURL } from "@loomarr/core/clip-thumb";
 import { formatMmSs } from "@loomarr/core/format";
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { Image } from "@/components/ui/image";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { cn } from "@/lib/utils";
 import type { SegmentPreviewProps } from "./segment-preview.type";
@@ -26,6 +27,7 @@ const SegmentPreview = ({
   endMs,
   position,
   labelledBy,
+  artwork,
   open,
   onOpenChange,
   autoPlay,
@@ -33,6 +35,9 @@ const SegmentPreview = ({
 }: SegmentPreviewProps) => {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const sourceKey = `${clipHash}:${startMs}:${endMs}`;
+  const [failedSource, setFailedSource] = useState<string>();
+  const failed = failedSource === sourceKey;
 
   const span = endMs - startMs;
   const panelId = `seg-preview-${position}`;
@@ -70,25 +75,32 @@ const SegmentPreview = ({
         aria-labelledby={`${verbId} ${labelledBy}`}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        onClick={() => onOpenChange(!open)}
+        onClick={() => {
+          if (!open) setFailedSource(undefined);
+          onOpenChange(!open);
+        }}
         className={cn(
-          // The mock's geometry (`:2208-2211`): 84×47, the ▶ centred, a duration badge bottom-right.
-          "relative h-[47px] w-21 shrink-0 cursor-pointer rounded-[4px] border-none p-0",
+          "relative h-16 w-28 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border p-0",
           "flex items-center justify-center",
           // ⚠ A visible focus ring the mock does not have — the same gap the filmstrip's blocks
           // already record fixing. Keyboard users would otherwise have no idea which tile they are on.
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-1",
-          // ⚠ Token-sourced stripes rather than the mock's free-running `hsl({{hue}} 40% 22%)`.
-          // A raw hue puts colours in the product that the contrast generator has never checked;
-          // `channel-ident` made the same call for the same reason. Geometry is the mock's.
-          "bg-[repeating-linear-gradient(135deg,var(--color-static-800)_0_5px,var(--color-static-900)_5px_10px)]",
+          "bg-static-900",
           open && "ring-1 ring-signal",
         )}
       >
         <span id={verbId} className="sr-only">
           Preview segment
         </span>
-        <span aria-hidden className="text-[13px] text-white/72">
+        {artwork ? (
+          <Image image={artwork} alt="" sizes="112px" className="size-full object-cover" />
+        ) : (
+          <span className="px-2 text-center text-[10px] text-muted-foreground">Preview unavailable</span>
+        )}
+        <span
+          aria-hidden
+          className="absolute inset-0 flex items-center justify-center bg-static-950/25 text-sm text-white"
+        >
           ▶
         </span>
         {/* ⚠ `formatMmSs` ("00:30"), NOT `formatClipDuration` ("30s"). The row already renders the
@@ -98,7 +110,7 @@ const SegmentPreview = ({
         {span > 0 && (
           <span
             aria-hidden
-            className="absolute right-1 bottom-[3px] rounded-[2px] bg-static-950/80 px-1 font-mono text-[9px] text-static-100"
+            className="absolute right-1 bottom-1 rounded-[2px] bg-static-950/85 px-1 font-mono text-[9px] text-static-100"
           >
             {formatMmSs(span)}
           </span>
@@ -106,15 +118,29 @@ const SegmentPreview = ({
       </button>
 
       {open && (
-        <div ref={panelRef} id={panelId} className="mt-2 w-full max-w-md">
+        <div
+          ref={panelRef}
+          id={panelId}
+          className="mt-2 w-full max-w-md"
+          onErrorCapture={() => setFailedSource(sourceKey)}
+        >
           {/* No `title`: the row's Name field names this segment eight pixels away, and the player
               does not repeat a heading that already says what it is. */}
-          <VideoPlayer
-            src={clipMediaURL(clipHash)}
-            startAt={startMs / 1000}
-            endAt={endMs / 1000}
-            autoPlay={autoPlay}
-          />
+          {failed ? (
+            <div
+              role="alert"
+              className="flex aspect-video items-center justify-center rounded-md bg-static-900 p-6 text-center text-muted-foreground text-sm"
+            >
+              This preview couldn’t be played. The original recording may be unavailable.
+            </div>
+          ) : (
+            <VideoPlayer
+              src={clipMediaURL(clipHash)}
+              startAt={startMs / 1000}
+              endAt={endMs / 1000}
+              autoPlay={autoPlay}
+            />
+          )}
         </div>
       )}
     </div>

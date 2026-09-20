@@ -1,43 +1,19 @@
-import { formatMmSs } from "@loomarr/core/format";
+import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
+import { useId } from "react";
+import { Image } from "@/components/ui/image";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import type { FilmstripSegment, SegmentFilmstripProps } from "./segment-filmstrip.type";
 
-// SegmentFilmstrip — the reel's detected clips as one time-scaled bar (the v2 mock's `rl.strip`).
-//
-// ⚠ **Block width is PROPORTIONAL TO DURATION, and that is the whole point.** The mock computes
-// `flex: round(seg.duration / total * 1000)`, so a 45-second advert is visibly wider than a
-// 3-second sting. Equal-width blocks would draw the same picture for a well-split reel and a
-// badly-split one — which is precisely the judgement the operator opens this to make. A strip
-// that cannot show a bad split is decoration.
-//
-// ⚠ Rendered from the editor's DRAFT, not from the proposal. Merging two segments has to widen
-// one block and remove another as it happens; reading the server's copy would leave the picture
-// describing a split the operator already changed.
-
-// minBlockPercent keeps a very short segment clickable.
-//
-// ⚠ Without it a 0.5s sting in a 20-minute reel computes to well under a pixel — present in the
-// DOM, impossible to hit, and invisible. The distortion is deliberate and bounded: it is better
-// for the shortest blocks to read slightly wide than for them to be unreachable.
-const minBlockPercent = 0.6;
-
 type TimelineItem =
-  | {
-      kind: "segment";
-      key: string;
-      startMs: number;
-      endMs: number;
-      durationMs: number;
-      name?: string;
-      unsplittable?: boolean;
-    }
+  | ({ kind: "segment"; durationMs: number } & FilmstripSegment)
   | { kind: "gap"; key: string; startMs: number; endMs: number; durationMs: number };
 
 const timelineItems = (spans: Array<FilmstripSegment & { durationMs: number }>): TimelineItem[] => {
   const ordered = [...spans].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
   const items: TimelineItem[] = [];
   let cursor = 0;
-
   for (const span of ordered) {
     if (span.startMs > cursor) {
       items.push({
@@ -51,101 +27,125 @@ const timelineItems = (spans: Array<FilmstripSegment & { durationMs: number }>):
     items.push({ kind: "segment", ...span });
     cursor = Math.max(cursor, span.endMs);
   }
-
   return items;
 };
 
-const SegmentFilmstrip = ({ segments, activeKey, onFocus, className }: SegmentFilmstripProps) => {
-  const spans = segments.map((s) => ({ ...s, durationMs: Math.max(0, s.endMs - s.startMs) }));
-  const positiveSpans = spans.filter((s) => s.durationMs > 0);
-  const reelEnd = Math.max(0, ...positiveSpans.map((s) => s.endMs));
-
-  // ⚠ An empty or zero-length reel renders NOTHING rather than a bar of NaN-width blocks. A
-  // proposal whose segments all collapsed is a real state (every one dropped in the editor), and
-  // dividing by its total is how a timeline becomes a row of invisible artefacts.
+// SegmentFilmstrip is the primary review overview: real stills in time order, with duration still
+// controlling relative width. A minimum column width makes 50+ clips horizontally scannable rather
+// than compressing them into untappable slivers; the reel scrolls instead of turning into a wall.
+const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentFilmstripProps) => {
+  const tooltipIdPrefix = useId();
+  const spans = segments.map((segment) => ({
+    ...segment,
+    durationMs: Math.max(0, segment.endMs - segment.startMs),
+  }));
+  const positiveSpans = spans.filter((segment) => segment.durationMs > 0);
+  const reelEnd = Math.max(0, ...positiveSpans.map((segment) => segment.endMs));
   if (positiveSpans.length === 0 || reelEnd <= 0) return null;
 
   const items = timelineItems(positiveSpans);
+  const columns = items
+    .map(
+      (item) => `minmax(${item.kind === "segment" ? "6rem" : "1.5rem"}, ${Math.max(1, item.durationMs)}fr)`,
+    )
+    .join(" ");
 
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
-      {/* ⚠ `role="group"` is wrong here and `<ul>` is right: this is a LIST of segments, and a
-          screen reader announcing "list, 12 items" tells the operator how many clips the
-          detector found before they touch anything. */}
-      <ul className="flex h-6 list-none gap-0.5" aria-label="Detected clips, in order">
-        {items.map((s) => {
-          const pct = Math.max(s.kind === "segment" ? minBlockPercent : 0, (s.durationMs / reelEnd) * 100);
-          if (s.kind === "gap") {
-            const label = `${formatMmSs(s.startMs)}–${formatMmSs(s.endMs)} unassigned`;
-            return (
-              <li
-                key={s.key}
-                style={{ flex: `${pct} 1 0%` }}
-                className="min-w-[2px] rounded-sm border border-onair-300/70 border-dashed bg-onair-tint-15"
-                aria-label={label}
-                title={label}
-              />
-            );
-          }
-          const label = `${formatMmSs(s.startMs)} · ${s.name || "unnamed"}`;
-          return (
-            <li key={s.key} style={{ flex: `${pct} 1 0%` }} className="min-w-[3px]">
-              <button
-                type="button"
-                title={label}
-                // ⚠ The accessible name carries the TIMECODE as well as the name. Blocks are
-                // visually distinguished by width and position, neither of which survives into
-                // a screen reader — without the timecode every unnamed block reads "unnamed".
-                aria-label={label}
-                aria-current={activeKey === s.key ? "true" : undefined}
-                onClick={() => onFocus?.(s.key)}
-                className={cn(
-                  "h-full w-full rounded-sm border-none p-0 transition-opacity",
-                  // The mock's muted default with a hover to full — the strip is a glance, not
-                  // a focal point, until the operator reaches for it.
-                  "opacity-75 hover:opacity-100",
-                  // ⚠ A visible focus ring. The mock's blocks have none, and keyboard users
-                  // would have no idea which block they were on — the same class of gap as the
-                  // mouse-only palette the a11y sweep caught.
-                  "focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-1",
-                  // ⚠ `static-500`, not `static-600`. The first draft used 600 and the visual
-                  // snapshot showed the result immediately: a 14-minute unsplittable remainder
-                  // rendered so close to the background that the strip appeared to be MISSING
-                  // its largest block — in the very story written to demonstrate that case.
-                  // Eleven passing unit tests could not see it; one screenshot could. Matches
-                  // `guide-detail-card` and `on-air-indicator`, which use 500 for the same
-                  // muted-but-visible job.
-                  s.unsplittable ? "bg-static-500" : "bg-signal",
-                  activeKey === s.key && "opacity-100 ring-1 ring-signal-300",
-                )}
-              />
-            </li>
-          );
-        })}
-      </ul>
-      <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
-        <span>{formatMmSs(0)}</span>
-        {/* ⚠ **"jump to its row", NOT "preview" (V54 A7).** This read "click to preview" for as
-            long as the strip has existed, and clicking has never previewed anything: `onFocus`
-            sets the editor's `focusedKey`, which scrolls that segment's row into view and rings
-            it. Confirmed live — the page contains zero `<video>`, `<canvas>` and `<img>`
-            elements. A caption is a promise about behaviour, and an operator who clicks expecting
-            to see the clip concludes the feature is broken rather than absent.
-
-            ⚠ **The preview has since landed, and this caption still stands** (§10 V54). It lives
-            on the ROW — a ▶ tile per segment that expands into a player — not on the strip, and
-            clicking a BLOCK still only jumps. So the wording is right for what it describes, and
-            restoring "preview" would make it newly false in the other direction: it would
-            advertise the strip as the preview control, which it is not.
-
-            The "does not promise a preview it cannot deliver" test below therefore stays ARMED
-            rather than relaxing. Its escape hatch exists for the day the strip itself grows media
-            (per-block thumbnails, say); rendering a `<video>` here purely to unlock the word
-            would be gaming the guard, not satisfying it. */}
-        <span>every block is one detected clip — click to jump to its row</span>
-        <span>{formatMmSs(reelEnd)}</span>
+    <section className={cn("rounded-lg border border-border bg-muted/15 p-3", className)}>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="font-medium text-sm">Clips Loomarr found</h2>
+          <p className="text-muted-foreground text-xs">Choose a clip to preview it and make changes.</p>
+        </div>
+        <span className="font-mono text-muted-foreground text-xs tabular-nums">
+          {segments.length} clips · {formatMmSs(reelEnd)}
+        </span>
       </div>
-    </div>
+
+      <section className="overflow-x-auto pb-2" aria-label="Detected clip timeline">
+        <ul
+          className="grid h-24 list-none gap-1"
+          style={{
+            gridTemplateColumns: columns,
+            gridTemplateRows: "minmax(0, 1fr)",
+            minWidth: `${Math.max(items.length * 96, 480)}px`,
+          }}
+          aria-label="Detected clips, in order"
+        >
+          {items.map((item, itemIndex) => {
+            if (item.kind === "gap") {
+              const label = `${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)} unassigned`;
+              return (
+                <li
+                  key={item.key}
+                  className="rounded-md border border-onair-300/70 border-dashed bg-onair-tint-15"
+                  aria-label={label}
+                  title={label}
+                />
+              );
+            }
+
+            const name = item.name || "Unnamed clip";
+            const label = `${formatMmSs(item.startMs)} · ${name}`;
+            const tooltipId = `${tooltipIdPrefix}-clip-${itemIndex}`;
+            const tags = (item.tags ?? []).slice(0, 3);
+            return (
+              <li key={item.key} className="min-h-0 min-w-0">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={label}
+                        aria-describedby={tooltipId}
+                        aria-current={activeKey === item.key ? "true" : undefined}
+                        onClick={() => onSelect?.(item.key)}
+                        className={cn(
+                          "group relative size-full overflow-hidden rounded-md border border-border bg-static-900 text-left",
+                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-1",
+                          activeKey === item.key && "ring-2 ring-signal",
+                          item.unsplittable && "border-caution/70",
+                        )}
+                      />
+                    }
+                  >
+                    {item.artwork ? (
+                      <Image image={item.artwork} alt="" sizes="240px" className="size-full object-cover" />
+                    ) : (
+                      <span className="flex size-full items-center justify-center px-2 text-center text-[10px] text-muted-foreground">
+                        Preview unavailable
+                      </span>
+                    )}
+                    <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-static-950 via-static-950/85 to-transparent px-2 pt-5 pb-1.5">
+                      <span className="block truncate font-medium text-[11px] text-static-50">{name}</span>
+                      <span className="font-mono text-[9px] text-static-300 tabular-nums">
+                        {formatClipDuration(item.durationMs)}
+                      </span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent id={tooltipId} className="w-64 p-3" side="bottom" align="start">
+                    <p className="truncate font-medium text-sm">{name}</p>
+                    <p className="mt-0.5 font-mono text-muted-foreground text-xs tabular-nums">
+                      {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
+                      {formatClipDuration(item.durationMs)}
+                    </p>
+                    {tags.length > 0 || item.language ? (
+                      <p className="mt-2 text-muted-foreground">
+                        {[...tags, item.language ? languageName(item.language) : ""]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    ) : null}
+                    {item.attention ? <p className="mt-2 text-caution">{item.attention}</p> : null}
+                    <p className="mt-2 text-static-300">Click to play this exact clip.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    </section>
   );
 };
 

@@ -2,7 +2,7 @@ import type { ClipDTO } from "@loomarr/api";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { Button } from "@/components/ui";
-import { TINY_MP4 } from "@/test/video-fixture";
+import { TINY_WEBM } from "@/test/video-fixture";
 import { ClipPlayer } from "./clip-player";
 
 // ClipPlayer — watch one catalog clip in a modal (V39).
@@ -42,7 +42,7 @@ const clip: ClipDTO = {
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
-  hash: TINY_MP4,
+  hash: TINY_WEBM,
   tunarrProgramId: "story-clip",
 };
 

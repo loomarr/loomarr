@@ -1,6 +1,7 @@
+import type { SplitReviewSegmentDTO } from "@loomarr/api/models/splitReviewSegmentDTO";
 import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
-import { ChevronDown, ChevronRight, Merge, Trash2 } from "lucide-react";
+import { Merge, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,17 +31,19 @@ const MIN_SEGMENT_MS = 3000;
 // along untouched so the confirm body is the operator's list verbatim (renumbered). The
 // `key` is a STABLE identity for React: keying on position or on the edited times would
 // remount the row mid-keystroke and steal focus from the very inputs being edited.
-interface DraftSegment extends SplitSegment {
+interface DraftSegment extends SplitReviewSegmentDTO {
   key: string;
   startText: string;
   endText: string;
+  artwork: SplitReviewSegmentDTO["artwork"];
 }
 
-const toDraft = (seg: SplitSegment): DraftSegment => ({
+const toDraft = (seg: SplitReviewSegmentDTO): DraftSegment => ({
   ...seg,
   key: `seg-${seg.index}-${seg.startMs}`,
   startText: formatMmSs(seg.startMs),
   endText: formatMmSs(seg.endMs),
+  artwork: seg.artwork,
 });
 
 // resolveMs turns one edited time field back into milliseconds WITHOUT quantizing an untouched
@@ -67,7 +70,7 @@ const resolveMs = (text: string, originalMs: number): number => {
 // is indexed by the draft they see, not by the detector's original numbering.
 const toWire = (draft: DraftSegment[]): SplitSegment[] =>
   draft.map((d, i) => {
-    const { key: _k, startText: _s, endText: _e, ...seg } = d;
+    const { key: _k, startText: _s, endText: _e, artwork: _a, ...seg } = d;
     return {
       ...seg,
       index: i,
@@ -102,7 +105,7 @@ const languageNeedsRecheck = {
   languageNote: "Language will be checked again after this edit.",
 } as const;
 
-const unresolvedLanguageMessage = (segment: SplitSegment): string | undefined => {
+const unresolvedLanguageMessage = (segment: SplitReviewSegmentDTO): string | undefined => {
   switch (segment.languageReason) {
     case "unavailable":
       return "Language wasn’t checked because speech recognition isn’t set up. This clip is still included.";
@@ -164,6 +167,7 @@ const SplitReviewEditor = ({
         dupOf: a.dupOf || b.dupOf || undefined,
         unsplittable: a.unsplittable || b.unsplittable || undefined,
         transcript: [a.transcript, b.transcript].filter(Boolean).join("\n") || undefined,
+        artwork: undefined,
         ...languageNeedsRecheck,
       };
       return [...prev.slice(0, i), merged, ...prev.slice(i + 2)];
@@ -186,6 +190,14 @@ const SplitReviewEditor = ({
     endMs: resolveMs(d.endText, d.endMs),
     ...(d.name ? { name: d.name } : {}),
     ...(d.unsplittable ? { unsplittable: d.unsplittable } : {}),
+    ...(d.artwork ? { artwork: d.artwork } : {}),
+    ...(d.tags ? { tags: d.tags } : {}),
+    ...(d.language ? { language: d.language } : {}),
+    ...(d.holdReason
+      ? { attention: `Needs a closer look: ${d.holdReason}` }
+      : d.unsplittable
+        ? { attention: "Loomarr may have missed a cut here." }
+        : {}),
   }));
 
   return (
@@ -195,7 +207,10 @@ const SplitReviewEditor = ({
       <SegmentFilmstrip
         segments={stripSegments}
         {...(focusedKey ? { activeKey: focusedKey } : {})}
-        onFocus={setFocusedKey}
+        onSelect={(key) => {
+          setFocusedKey(key);
+          setPreviewKey(key);
+        }}
       />
 
       {draft.map((seg, i) => (
@@ -220,8 +235,7 @@ const SplitReviewEditor = ({
 
       {draft.length === 0 && (
         <p className="text-muted-foreground text-sm">
-          Every segment has been dropped. Go back to keep the compilation whole. Confirming an empty cut list
-          is not a thing Loomarr will do.
+          You removed every clip. Go back to keep the original recording, or restore a clip before continuing.
         </p>
       )}
 
@@ -234,7 +248,7 @@ const SplitReviewEditor = ({
             {pluralize(draft.length, "clip")}
           </span>
           <Button size="sm" disabled={!confirmable || confirming} onClick={() => onConfirm(toWire(draft))}>
-            {confirming ? "Cutting…" : "Confirm cuts"}
+            {confirming ? "Keeping clips…" : "Keep clips"}
           </Button>
         </div>
       </div>
@@ -270,11 +284,20 @@ const SegmentRow = ({
   onDrop,
   onMergeWithNext,
 }: SegmentRowProps) => {
-  const [showTranscript, setShowTranscript] = useState(false);
   const n = position + 1;
   const span = spanMs(segment);
   const valid = isValid(segment);
   const languageMessage = unresolvedLanguageMessage(segment);
+  const timingNeedsAttention =
+    !valid ||
+    segment.unsplittable ||
+    (span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs);
+  const hasDetails = Boolean(
+    (!segment.language && languageMessage) ||
+      segment.dupOf ||
+      segment.boundaryConfidence ||
+      segment.transcript,
+  );
   const ref = useRef<HTMLDivElement>(null);
 
   // ⚠ Clicking a strip block has to SHOW the row, not merely tint it. A long reel puts most of
@@ -286,191 +309,167 @@ const SegmentRow = ({
 
   return (
     <Card ref={ref} className={cn(focused && "ring-1 ring-signal-300")}>
-      <section aria-label={`Segment ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-3 p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          {/* ⚠ Inserted into the EXISTING flex row rather than converting to the mock's
-              `84px 1fr 208px` grid: that grid's 208px rail carries controls which do not exist
-              yet, so adopting it would reshape every baseline for reasons unrelated to preview. */}
+      <section aria-label={`Segment ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-3 p-3">
+        <div className="flex flex-wrap items-start gap-3">
           <SegmentPreview
             clipHash={clipHash}
-            startMs={segment.startMs}
-            endMs={segment.endMs}
+            // Preview the draft the operator can actually keep. Untouched cuts retain detector
+            // millisecond precision; typed values use the same resolver as the confirm body.
+            startMs={resolveMs(segment.startText, segment.startMs)}
+            endMs={resolveMs(segment.endText, segment.endMs)}
             position={position}
             labelledBy={`seg-num-${position}`}
+            artwork={segment.artwork}
             open={previewOpen}
             onOpenChange={onPreviewChange}
-            // Safe: the click IS the gesture browsers require for autoplay.
             autoPlay
           />
-          {/* ⚠ `id` so the preview tile can borrow it as a VISIBLE label — see SegmentPreview. */}
-          <span id={`seg-num-${position}`} className="font-mono text-muted-foreground text-sm tabular-nums">
-            #{n}
-          </span>
-          <div className="min-w-48 flex-1">
-            <Label htmlFor={`seg-name-${position}`}>Name</Label>
-            <Input
-              id={`seg-name-${position}`}
-              value={segment.name}
-              onChange={(e) => onChange({ name: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label htmlFor={`seg-start-${position}`}>Start (mm:ss)</Label>
-            <Input
-              id={`seg-start-${position}`}
-              className="w-24 font-mono tabular-nums"
-              value={segment.startText}
-              onChange={(e) => onChange({ startText: e.target.value, ...languageNeedsRecheck })}
-            />
-          </div>
-          <div>
-            <Label htmlFor={`seg-end-${position}`}>End (mm:ss)</Label>
-            <Input
-              id={`seg-end-${position}`}
-              className="w-24 font-mono tabular-nums"
-              value={segment.endText}
-              onChange={(e) => onChange({ endText: e.target.value, ...languageNeedsRecheck })}
-            />
-          </div>
-          <span
-            className={cn(
-              "font-mono text-sm tabular-nums",
-              valid ? "text-muted-foreground" : "text-onair-300",
-            )}
-            // An inverted or unparseable span is a certainty to say out loud, not a 422 to
-            // discover after the fact — the operator is editing CUT POINTS, the one thing
-            // this screen exists to get right.
-            title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}
-          >
-            {span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}
-          </span>
-          <div className="ml-auto flex gap-2">
-            {!last && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onMergeWithNext}
-                title="Join this segment and the next into one span"
+          <div className="min-w-44 flex-1 pt-0.5">
+            <div className="flex items-center gap-2">
+              <span
+                id={`seg-num-${position}`}
+                className="font-mono text-muted-foreground text-xs tabular-nums"
               >
+                #{n}
+              </span>
+              <h3 className="truncate font-medium text-sm">{segment.name || "Unnamed clip"}</h3>
+            </div>
+            <p
+              className={cn(
+                "mt-1 font-mono text-xs tabular-nums",
+                valid ? "text-muted-foreground" : "text-onair-300",
+              )}
+              title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}
+            >
+              {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {segment.era ? <Badge variant="neutral">{`${segment.era}s`}</Badge> : null}
+              {segment.audience ? (
+                <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
+              ) : null}
+              {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
+              {segment.languageChecked && segment.language ? (
+                <Badge variant="neutral">
+                  {segment.language === "none" ? "No speech" : languageName(segment.language)}
+                </Badge>
+              ) : null}
+              {(() => {
+                const extra = (segment.tags ?? []).filter((tag) => tag !== segment.category).length;
+                return extra > 0 ? <Badge variant="neutral">+{extra}</Badge> : null;
+              })()}
+            </div>
+          </div>
+          <div className="ml-auto flex flex-wrap justify-end gap-1">
+            {!last && (
+              <Button variant="ghost" size="sm" onClick={onMergeWithNext} title="Join this clip and the next">
                 <Merge aria-hidden />
-                Merge with next
+                Join next
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={onDrop} title="Remove this segment from the cut list">
+            <Button variant="ghost" size="sm" onClick={onDrop} title="Do not keep this clip">
               <Trash2 aria-hidden />
-              Drop
+              Remove
             </Button>
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          {segment.era ? <Badge variant="neutral">{`${segment.era}s`}</Badge> : null}
-          {segment.audience ? (
-            <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
-          ) : null}
-          {/* Tags (§10 V45a), same read-only rendering as ClipCard: the headline badge is the
-              derived primary product leaf (`category`); a "+N" chip signals more taxonomy tags
-              exist without listing the full rollup set. No inline cycle — a segment's tags ride
-              along from detection/grounding, not something this review gate edits directly. */}
-          {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
-          {segment.languageChecked && segment.language ? (
-            <Badge variant="neutral">
-              {segment.language === "none" ? "No speech" : languageName(segment.language)}
-            </Badge>
-          ) : null}
-          {(() => {
-            const extra = (segment.tags ?? []).filter((t) => t !== segment.category).length;
-            return extra > 0 ? (
-              <Badge variant="neutral" title="This segment has more tags">
-                +{extra}
-              </Badge>
-            ) : null;
-          })()}
-
-          {/* An unconfirmed era (§10 grounding): the classifier guessed a year that appears
-              in NO text signal. Accept grounds it as the operator's tag; reject drops the
-              guess. Neither is default — the question stays open until a human answers. */}
-          {segment.suggestedEra ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Badge variant="suggest" title="AI guess. The year isn't in the transcript or source text">
-                {`${segment.suggestedEra}s?`}
-              </Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
-              >
-                {`Accept ${segment.suggestedEra}`}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => onChange({ suggestedEra: undefined })}>
-                Reject
-              </Button>
-            </span>
-          ) : null}
-
-          {/* dHash duplicate (§10 step 5): a FLAG, never a silent drop. The operator decides —
-              usually by dropping this segment. */}
-          {segment.dupOf ? (
-            <Badge variant="caution" title="This looks like a clip already in your catalog">
-              {`Already in the catalog: ${segment.dupOf}`}
-            </Badge>
-          ) : null}
-        </div>
-
-        {!segment.language && languageMessage ? (
-          <p className="text-muted-foreground text-sm" title={segment.languageNote}>
-            {languageMessage}
-          </p>
-        ) : null}
 
         {segment.holdReason ? (
           <p role="status" className="rounded-sm bg-caution-tint-15 px-2 py-1.5 text-caution text-sm">
-            {`Needs review: ${segment.holdReason}.`}
+            {`Take a closer look: ${segment.holdReason}.`}
           </p>
         ) : null}
-
-        {segment.boundaryConfidence ? (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-muted-foreground text-xs">
-            <span>{`Cut confidence ${segment.boundaryConfidence}%`}</span>
-            {segment.startEvidence ? <span>{`Start: ${segment.startEvidence}`}</span> : null}
-            {segment.endEvidence ? <span>{`End: ${segment.endEvidence}`}</span> : null}
-          </div>
-        ) : null}
-
-        {/* Unsplittable: over-long AND the rescue could not see boundaries (no whisper, or
-            none detectable in the text). Said unmistakably, because the alternative is
-            guessing — exactly what the era rule forbids in tag form. */}
         {segment.unsplittable ? (
           <p className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
-            Loomarr couldn't see boundaries in this span, either because there's no transcript or because
-            there are no detectable breaks. Cut it by hand with the times above, or drop it.
+            Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next
+            clip, or remove it.
           </p>
         ) : null}
-
         {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
           <p role="status" className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
-            This cut is {formatClipDuration(span)}, below the {formatClipDuration(minClipDurationMs)} catalog
-            minimum. It can be confirmed, but the ingest gate will reject it unless you widen or merge it.
+            This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer,
+            join it with the next clip, or remove it.
           </p>
         ) : null}
 
-        {segment.transcript ? (
-          <div>
+        {segment.suggestedEra ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span>Loomarr thinks this may be from around {segment.suggestedEra}.</span>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              aria-expanded={showTranscript}
-              onClick={() => setShowTranscript((v) => !v)}
+              onClick={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
             >
-              {showTranscript ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
-              Transcript
+              {`Use ${segment.suggestedEra}`}
             </Button>
-            {showTranscript && (
-              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-sm bg-static-800 p-3 font-mono text-muted-foreground text-xs">
-                {segment.transcript}
-              </pre>
-            )}
+            <Button variant="ghost" size="sm" onClick={() => onChange({ suggestedEra: undefined })}>
+              Not right
+            </Button>
           </div>
+        ) : null}
+
+        <details open={timingNeedsAttention} className="rounded-md border border-border/70 px-3 py-2">
+          <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-sm">
+            <Pencil aria-hidden className="size-3.5" /> Rename or adjust timing
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
+            <div>
+              <Label htmlFor={`seg-name-${position}`}>Name</Label>
+              <Input
+                id={`seg-name-${position}`}
+                value={segment.name}
+                onChange={(event) => onChange({ name: event.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`seg-start-${position}`}>Starts</Label>
+              <Input
+                id={`seg-start-${position}`}
+                aria-label="Start (mm:ss)"
+                className="font-mono tabular-nums"
+                value={segment.startText}
+                onChange={(event) =>
+                  onChange({ startText: event.target.value, artwork: undefined, ...languageNeedsRecheck })
+                }
+              />
+            </div>
+            <div>
+              <Label htmlFor={`seg-end-${position}`}>Ends</Label>
+              <Input
+                id={`seg-end-${position}`}
+                aria-label="End (mm:ss)"
+                className="font-mono tabular-nums"
+                value={segment.endText}
+                onChange={(event) =>
+                  onChange({ endText: event.target.value, artwork: undefined, ...languageNeedsRecheck })
+                }
+              />
+            </div>
+          </div>
+        </details>
+
+        {hasDetails ? (
+          <details className="px-1 text-sm">
+            <summary className="cursor-pointer text-muted-foreground">Details</summary>
+            <div className="mt-2 space-y-2 text-muted-foreground">
+              {!segment.language && languageMessage ? (
+                <p title={segment.languageNote}>{languageMessage}</p>
+              ) : null}
+              {segment.dupOf ? <p>{`Looks like a clip already in your library: ${segment.dupOf}`}</p> : null}
+              {segment.boundaryConfidence ? (
+                <p className="font-mono text-xs">
+                  {`Cut confidence ${segment.boundaryConfidence}%`}
+                  {segment.startEvidence ? ` · start: ${segment.startEvidence}` : ""}
+                  {segment.endEvidence ? ` · end: ${segment.endEvidence}` : ""}
+                </p>
+              ) : null}
+              {segment.transcript ? (
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-sm bg-static-800 p-3 font-mono text-xs">
+                  {segment.transcript}
+                </pre>
+              ) : null}
+            </div>
+          </details>
         ) : null}
       </section>
     </Card>

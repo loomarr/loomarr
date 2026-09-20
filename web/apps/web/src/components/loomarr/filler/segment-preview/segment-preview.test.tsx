@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { SegmentPreview } from "./segment-preview";
@@ -138,5 +138,16 @@ describe("SegmentPreview", () => {
   it("shows no badge for an invalid span", () => {
     renderPreview({ startMs: 30_000, endMs: 10_000 });
     expect(screen.queryByText(/^\d\d:\d\d$/)).toBeNull();
+  });
+
+  it("replaces a failed player with a plain unavailable message", () => {
+    const { container } = renderPreview({ open: true });
+    const video = container.querySelector("video");
+    if (!video) throw new Error("open preview did not render a video");
+
+    fireEvent.error(video);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/preview couldn’t be played/i);
+    expect(container.querySelector("video")).toBeNull();
   });
 });

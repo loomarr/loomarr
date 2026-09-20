@@ -1369,11 +1369,16 @@ func TestSplitFiller_Route(t *testing.T) {
 
 // The proposal read comes straight from the store — the review's reconnect truth.
 func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
+	imageService := newFakeImageService()
+	imageService.records["split-frame"] = images.Image{
+		Hash: "split-frame", Role: images.RoleThumb, Width: 320, Height: 180,
+		MIME: "image/jpeg", DominantHex: "#27384a",
+	}
+	srv, st, _ := newFillerServerWithImages(t, imageService)
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food", ArtworkChecked: true, ArtworkImageHash: "split-frame"},
 			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true, LanguageChecked: true, LanguageReason: filler.SplitLanguageUnavailable, LanguageNote: "model missing"},
 		},
 	}
@@ -1385,7 +1390,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get split → %d", resp.StatusCode)
 	}
-	var got filler.SplitProposal
+	var got api.SplitReviewProposalDTO
 	_ = json.NewDecoder(resp.Body).Decode(&got)
 	if got.ID != "sp_1" || len(got.Segments) != 2 {
 		t.Fatalf("proposal = %+v", got)
@@ -1394,6 +1399,12 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	s1 := got.Segments[1]
 	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || !s1.Unsplittable || !s1.Looked || s1.LanguageReason != filler.SplitLanguageUnavailable {
 		t.Errorf("review fields lost: %+v", s1)
+	}
+	if got.Segments[0].Artwork == nil || got.Segments[0].Artwork.Hash != "split-frame" || got.Segments[0].Artwork.Width != 320 {
+		t.Errorf("representative artwork lost: %+v", got.Segments[0].Artwork)
+	}
+	if got.Segments[1].Artwork != nil {
+		t.Errorf("unavailable artwork should stay absent: %+v", got.Segments[1].Artwork)
 	}
 
 	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/nope", adminToken, "")

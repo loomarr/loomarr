@@ -30,6 +30,8 @@ type splitProposalDocument struct {
 	Language           *filler.SplitLanguageProgress     `json:"language,omitempty"`
 	LanguagePreference string                            `json:"languagePreference,omitempty"`
 	LanguageExclusions []filler.SplitLanguageExclusion   `json:"languageExclusions,omitempty"`
+	ArtworkPrepared    bool                              `json:"artworkPrepared,omitempty"`
+	Artwork            []filler.SplitSegmentArtwork      `json:"artwork,omitempty"`
 	Spawned            []string                          `json:"spawned,omitempty"`
 	Source             filler.SplitSourceAsset           `json:"source,omitempty"`
 	Structure          *filler.SourceStructureAssessment `json:"structure,omitempty"`
@@ -56,10 +58,11 @@ func marshalSplitProposal(p filler.SplitProposal) ([]byte, error) {
 		}
 	}
 	return json.Marshal(splitProposalDocument{
-		Version: 10, Segments: p.Segments, Detection: p.Detection, Language: p.Language,
+		Version: 11, Segments: p.Segments, Detection: p.Detection, Language: p.Language,
 		LanguagePreference: p.LanguagePreference, LanguageExclusions: p.LanguageExclusions, Spawned: p.Spawned,
 		Source: p.Source, Structure: p.Structure, StructureDecision: p.StructureDecision,
-		RoleEvidence: splitProposalRoleEvidence(p),
+		RoleEvidence: splitProposalRoleEvidence(p), ArtworkPrepared: p.ArtworkPrepared,
+		Artwork: splitProposalArtwork(p),
 	})
 }
 
@@ -75,7 +78,11 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 		return err
 	}
 	p.Segments, p.Detection, p.Language, p.LanguagePreference, p.LanguageExclusions, p.Spawned, p.Source, p.Structure = doc.Segments, doc.Detection, doc.Language, doc.LanguagePreference, doc.LanguageExclusions, doc.Spawned, doc.Source, doc.Structure
+	p.ArtworkPrepared = doc.ArtworkPrepared
 	p.StructureDecision = doc.StructureDecision
+	if err := attachSplitProposalArtwork(p, doc.Artwork); err != nil {
+		return err
+	}
 	if err := attachSplitProposalRoleEvidence(p, doc.RoleEvidence); err != nil {
 		return err
 	}
@@ -92,6 +99,37 @@ func unmarshalSplitProposal(raw string, p *filler.SplitProposal) error {
 		if p.Source != p.Structure.Source {
 			return fmt.Errorf("source structure assessment does not bind the proposal source")
 		}
+	}
+	return nil
+}
+
+func splitProposalArtwork(p filler.SplitProposal) []filler.SplitSegmentArtwork {
+	artwork := make([]filler.SplitSegmentArtwork, 0, len(p.Segments))
+	for _, segment := range p.Segments {
+		if !segment.ArtworkChecked && segment.ArtworkImageHash == "" {
+			continue
+		}
+		artwork = append(artwork, filler.SplitSegmentArtwork{
+			StartMs: segment.StartMs, EndMs: segment.EndMs,
+			ImageHash: segment.ArtworkImageHash, Checked: segment.ArtworkChecked,
+		})
+	}
+	return artwork
+}
+
+func attachSplitProposalArtwork(p *filler.SplitProposal, artwork []filler.SplitSegmentArtwork) error {
+	type span struct{ start, end int64 }
+	bySpan := make(map[span]int, len(p.Segments))
+	for index, segment := range p.Segments {
+		bySpan[span{segment.StartMs, segment.EndMs}] = index
+	}
+	for i, binding := range artwork {
+		index, exists := bySpan[span{binding.StartMs, binding.EndMs}]
+		if !exists {
+			return fmt.Errorf("artwork binding %d does not name a proposal segment", i)
+		}
+		p.Segments[index].ArtworkImageHash = binding.ImageHash
+		p.Segments[index].ArtworkChecked = binding.Checked
 	}
 	return nil
 }
@@ -355,10 +393,26 @@ func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time
 // swallowed by the caller for the same reason as the pipeline prune: the clips ARE gone by then,
 // and failing the sync over leftover bookkeeping turns a tidy-up into an outage.
 func (s *sqlStore) pruneOrphanSplitProposals(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("prune orphan split proposals: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Proposal stills are owned by the proposal, not by the source clip. Remove those references
+	// in the same transaction so image GC can reclaim the files after an unreviewed source vanishes.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM image_refs
+		WHERE owner_kind = 'filler_split_proposal' AND owner_id IN (
+			SELECT p.id FROM filler_split_proposals p
+			WHERE NOT EXISTS (SELECT 1 FROM clips c WHERE c.hash = p.clip_hash))`); err != nil {
+		return fmt.Errorf("prune orphan split proposal images: %w", err)
+	}
+	_, err = tx.ExecContext(ctx,
 		`DELETE FROM filler_split_proposals WHERE NOT EXISTS (
 			SELECT 1 FROM clips c WHERE c.hash = filler_split_proposals.clip_hash)`)
 	if err != nil {
+		return fmt.Errorf("prune orphan split proposals: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("prune orphan split proposals: %w", err)
 	}
 	return nil

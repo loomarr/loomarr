@@ -1,4 +1,4 @@
-import type { SplitProposal, SplitSegment } from "@loomarr/api";
+import type { SplitReviewProposalDTO, SplitSegment } from "@loomarr/api";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -14,7 +14,7 @@ const seg = (over: Partial<SplitSegment> = {}): SplitSegment => ({
   ...over,
 });
 
-const proposal: SplitProposal = {
+const proposal: SplitReviewProposalDTO = {
   id: "sp-1",
   clipHash: "comp-hash",
   createdAt: "2026-07-25T20:00:00Z",
@@ -62,7 +62,7 @@ const renderEditor = (onConfirm = vi.fn(), onBack = vi.fn()) => {
 // The payload the editor hands the page — this IS the body the page POSTs to /confirm,
 // so these tests assert on it rather than on pixels.
 const confirmed = (onConfirm: ReturnType<typeof vi.fn>): SplitSegment[] => {
-  fireEvent.click(screen.getByRole("button", { name: /confirm cuts/i }));
+  fireEvent.click(screen.getByRole("button", { name: /keep clips/i }));
   expect(onConfirm).toHaveBeenCalledOnce();
   return onConfirm.mock.calls[0]?.[0] as SplitSegment[];
 };
@@ -74,7 +74,7 @@ describe("SplitReviewEditor", () => {
     expect(within(first).getByLabelText("Name")).toHaveValue("First ad");
     expect(within(first).getByLabelText("Start (mm:ss)")).toHaveValue("00:00");
     expect(within(first).getByLabelText("End (mm:ss)")).toHaveValue("00:30");
-    expect(within(first).getByText("30s")).toBeInTheDocument();
+    expect(within(first).getByText(/00:00–00:30 · 30s/)).toBeInTheDocument();
     expect(within(first).getByText("1990s")).toBeInTheDocument();
     expect(within(first).getByText("Kids")).toBeInTheDocument();
     expect(within(first).getByText("toys")).toBeInTheDocument();
@@ -117,11 +117,9 @@ describe("SplitReviewEditor", () => {
   it("renders the duplicate flag, the unsplittable marker, and the transcript behind a toggle", () => {
     renderEditor();
     const third = screen.getByRole("region", { name: /segment 3: long block/i });
-    expect(within(third).getByText(/already in the catalog: clip-gushers\.mp4/i)).toBeInTheDocument();
-    expect(within(third).getByText(/couldn't see boundaries/i)).toBeInTheDocument();
-    // The transcript stays collapsed until asked for.
-    expect(within(third).queryByText(/word from our sponsor/)).not.toBeInTheDocument();
-    fireEvent.click(within(third).getByRole("button", { name: /transcript/i }));
+    expect(within(third).getByText(/already in your library: clip-gushers\.mp4/i)).toBeInTheDocument();
+    expect(within(third).getByText(/may have missed a cut/i)).toBeInTheDocument();
+    fireEvent.click(within(third).getByText(/^details$/i));
     expect(within(third).getByText(/word from our sponsor/)).toBeInTheDocument();
   });
 
@@ -146,7 +144,9 @@ describe("SplitReviewEditor", () => {
     );
 
     const row = screen.getByRole("region", { name: /segment 1: needs classification/i });
-    expect(within(row).getByText(/needs review: a segment could not be classified/i)).toBeInTheDocument();
+    expect(
+      within(row).getByText(/take a closer look: a segment could not be classified/i),
+    ).toBeInTheDocument();
     expect(within(row).getByText(/cut confidence 90%/i)).toBeInTheDocument();
     expect(within(row).getByText(/start: reel edge/i)).toBeInTheDocument();
     expect(within(row).getByText(/end: black \+ silence/i)).toBeInTheDocument();
@@ -167,7 +167,7 @@ describe("SplitReviewEditor", () => {
   it("dropping a segment removes it from the payload and renumbers the rest", () => {
     const { onConfirm } = renderEditor();
     const first = screen.getByRole("region", { name: /segment 1: first ad/i });
-    fireEvent.click(within(first).getByRole("button", { name: /^drop$/i }));
+    fireEvent.click(within(first).getByRole("button", { name: /^remove$/i }));
 
     const payload = confirmed(onConfirm);
     expect(payload).toHaveLength(2);
@@ -178,7 +178,7 @@ describe("SplitReviewEditor", () => {
   it("merging with next concatenates the spans into one segment", () => {
     const { onConfirm } = renderEditor();
     const first = screen.getByRole("region", { name: /segment 1: first ad/i });
-    fireEvent.click(within(first).getByRole("button", { name: /merge with next/i }));
+    fireEvent.click(within(first).getByRole("button", { name: /join next/i }));
 
     const payload = confirmed(onConfirm);
     expect(payload).toHaveLength(2);
@@ -201,7 +201,7 @@ describe("SplitReviewEditor", () => {
   it("accepting an era suggestion grounds it as the segment's era; rejecting clears it", () => {
     const accept = renderEditor();
     const second = screen.getByRole("region", { name: /segment 2: second ad/i });
-    fireEvent.click(within(second).getByRole("button", { name: /accept 1985/i }));
+    fireEvent.click(within(second).getByRole("button", { name: /use 1985/i }));
 
     const payload = confirmed(accept.onConfirm);
     expect(payload[1]).toMatchObject({ era: 1985, suggestedEra: undefined });
@@ -210,7 +210,7 @@ describe("SplitReviewEditor", () => {
   it("rejecting an era suggestion drops the guess without setting an era", () => {
     const { onConfirm } = renderEditor();
     const second = screen.getByRole("region", { name: /segment 2: second ad/i });
-    fireEvent.click(within(second).getByRole("button", { name: /^reject$/i }));
+    fireEvent.click(within(second).getByRole("button", { name: /not right/i }));
 
     const payload = confirmed(onConfirm);
     expect(payload[1]?.era).toBeUndefined();
@@ -222,7 +222,7 @@ describe("SplitReviewEditor", () => {
     const first = screen.getByRole("region", { name: /segment 1: first ad/i });
     fireEvent.change(within(first).getByLabelText("End (mm:ss)"), { target: { value: "not-a-time" } });
     expect(within(first).getByText(/invalid span/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /confirm cuts/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /keep clips/i })).toBeDisabled();
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
@@ -236,7 +236,7 @@ describe("SplitReviewEditor", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent(/8s.*below the 10s catalog minimum/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/shorter than your 10s minimum/i);
   });
 
   it("Back leaves without confirming", () => {
@@ -254,7 +254,7 @@ describe("SplitReviewEditor", () => {
 // to 999ms the moment a proposal was opened — so merely LOOKING at a reel rewrote its cuts, and
 // confirming committed the damage. These pin that an untouched boundary survives the round trip.
 describe("SplitReviewEditor — sub-second cuts", () => {
-  const subSecond: SplitProposal = {
+  const subSecond: SplitReviewProposalDTO = {
     id: "sp-sub",
     clipHash: "comp-hash",
     createdAt: "2026-07-25T20:00:00Z",
@@ -268,7 +268,7 @@ describe("SplitReviewEditor — sub-second cuts", () => {
     const onConfirm = vi.fn();
     render(<SplitReviewEditor proposal={subSecond} onConfirm={onConfirm} onBack={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /cut into|confirm/i }));
+    fireEvent.click(screen.getByRole("button", { name: /keep clips/i }));
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
     const wire = onConfirm.mock.calls[0]?.[0] as SplitSegment[];
@@ -290,7 +290,7 @@ describe("SplitReviewEditor — sub-second cuts", () => {
     const end = screen.getAllByLabelText(/end/i)[0];
     if (!end) throw new Error("no end-time input rendered");
     fireEvent.change(end, { target: { value: "00:25" } });
-    fireEvent.click(screen.getByRole("button", { name: /cut into|confirm/i }));
+    fireEvent.click(screen.getByRole("button", { name: /keep clips/i }));
 
     const wire = onConfirm.mock.calls[0]?.[0] as SplitSegment[];
     expect(wire[0]?.endMs).toBe(25_000);
@@ -321,15 +321,13 @@ describe("SplitReviewEditor — sub-second cuts", () => {
     );
   });
 
-  // ⚠ `/transcript/i` is the one UNANCHORED matcher the existing tests use, so a preview button
-  // whose name brushed against it would break a green suite for a cosmetic reason.
   it("gives the preview a name that collides with no other control in the row", () => {
     renderEditor();
     const third = screen.getByRole("region", { name: /segment 3: long block/i });
 
     // Each of these must still resolve to exactly one control.
-    expect(within(third).getByRole("button", { name: /transcript/i })).toBeInTheDocument();
-    expect(within(third).getByRole("button", { name: /^drop$/i })).toBeInTheDocument();
+    expect(within(third).getByText(/^details$/i)).toBeInTheDocument();
+    expect(within(third).getByRole("button", { name: /^remove$/i })).toBeInTheDocument();
     expect(within(third).getByRole("button", { name: /preview segment/i })).toBeInTheDocument();
   });
 });
