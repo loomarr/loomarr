@@ -428,8 +428,10 @@ while the build wrapper rejects a relative/wrong-version launcher, a foreign bas
 sloppiness setting. Ccache uses compiler-content identity and checkout-relative paths; the key may
 restore prior compiler objects, but it never includes generated `android/` or `.cxx` trees, bundles,
 signing material, or evidence. Version, configuration, pre/post JSON statistics, and generated Ninja
-launcher coverage are retained with the existing Android profile artifact. A developer build that
-does not supply a ccache launcher follows the unchanged cold path.
+launcher coverage are retained with the existing Android profile artifact. A developer build
+automatically acquires the same pinned macOS or Linux tool into `.artifacts/`, reuses its local
+compiler-result directory across later builds in that worktree, and falls back to the unchanged cold
+path when acquisition is unavailable. Set `LOOMARR_ANDROID_CCACHE=off` to request that cold path.
 
 ## Per-run measurements
 

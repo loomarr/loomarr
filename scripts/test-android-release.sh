@@ -12,6 +12,17 @@ version_name=$(jq -er '.versionName' "$release_identity")
 version_code=$("$script_dir/android-version-code.sh" "$version_name")
 output_dir=${ANDROID_CI_OUTPUT_DIR:-"$repo_root/.artifacts/android-ci"}
 
+if [[ -z "${LOOMARR_ANDROID_CCACHE_LAUNCHER:-}" && "${LOOMARR_ANDROID_CCACHE:-auto}" != "off" ]]; then
+	cache_root=${LOOMARR_ARTIFACT_DIR:-"$repo_root/.artifacts"}
+	if launcher=$("$repo_root/web/scripts/install-android-ccache.sh" "$cache_root/android-ccache-tool"); then
+		export LOOMARR_ANDROID_CCACHE_LAUNCHER=$launcher
+		export CCACHE_DIR=${CCACHE_DIR:-"$cache_root/android-ccache"}
+		export CCACHE_BASEDIR=$repo_root
+	else
+		printf 'android release: pinned ccache unavailable; continuing without compiler cache\n' >&2
+	fi
+fi
+
 password=loomarr-ephemeral-release-test
 keystore="$temp_dir/upload.p12"
 keytool \
