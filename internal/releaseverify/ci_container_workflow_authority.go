@@ -30,6 +30,7 @@ type workflowJobAuthority struct {
 type workflowAuthority struct {
 	name             string
 	pullRequestTypes []string
+	pushBranches     []string
 	environment      map[string]string
 	permissions      map[string]string
 	jobs             map[string]workflowJobAuthority
@@ -126,8 +127,42 @@ done < <(./scripts/apple-compilation-cache.sh retention-plan \
   "$inventory" "$PREFIX" refs/heads/main 1)
 `
 
+const androidCCachePromotionRetentionCommand = `set -euo pipefail
+gh api -X DELETE "repos/$REPO/actions/artifacts/$ARTIFACT_ID"
+inventory="$RUNNER_TEMP/android-ccache-inventory.json"
+gh api "repos/$REPO/actions/caches?per_page=100&ref=refs/heads/main" > "$inventory"
+ids=$(./scripts/android-ccache-promotion.sh retention-plan \
+  "$inventory" refs/heads/main android-tv-ccache-v2-Linux-ccache-4.14- "$KEEP_KEY")
+while read -r id; do
+  [[ -n "$id" ]] || continue
+  gh api -X DELETE "repos/$REPO/actions/caches/$id"
+done <<< "$ids"
+`
+
 func workflowRunAuthorityEntries() map[string]workflowAuthority {
 	return map[string]workflowAuthority{
+		"android-ccache-promotion.yml": {
+			name:         "Android ccache promotion",
+			pushBranches: []string{"main"},
+			permissions:  map[string]string{"actions": "write", "contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"promote": {
+					steps: map[string]workflowStepAuthority{
+						`./scripts/android-ccache-promotion.sh locate >> "$GITHUB_OUTPUT"`: exactWorkflowStep(1, "Locate the exact merge-queue producer", workflowStepAuthority{environment: map[string]string{
+							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
+						}}),
+						"./scripts/android-ccache-promotion.sh restore \"$RUNNER_TEMP/loomarr-android-ccache-transfer\" \"$RUNNER_TEMP/loomarr-android-ccache\" \"$GITHUB_SHA\" \"${{ steps.producer.outputs.run-id }}\" android-tv-ccache-v2-Linux-ccache-4.14- >> \"$GITHUB_OUTPUT\"": exactWorkflowStep(3, "Validate the producer binding and cache contents", workflowStepAuthority{condition: "steps.producer.outputs.found == 'true'"}),
+						androidCCachePromotionRetentionCommand: exactWorkflowStep(5, "Retire the transfer and superseded main cache generations", workflowStepAuthority{
+							condition: "steps.producer.outputs.found == 'true'",
+							environment: map[string]string{
+								"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "REPO": "${{ github.repository }}",
+								"ARTIFACT_ID": "${{ steps.producer.outputs.artifact-id }}", "KEEP_KEY": "${{ steps.cache.outputs.cache-key }}",
+							},
+						}),
+					},
+				},
+			},
+		},
 		"android-beta.yml": {
 			permissions: map[string]string{"actions": "read", "contents": "read"},
 			jobs: map[string]workflowJobAuthority{
@@ -208,6 +243,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"LOOMARR_ANDROID_CCACHE_LAUNCHER": "${{ steps.ccache.outputs.launcher }}",
 					"LOOMARR_ANDROID_GRADLE_WORKERS":  "2",
 				},
+			}),
+			"./scripts/android-ccache-promotion.sh pack \"$RUNNER_TEMP/loomarr-android-ccache\" \"$RUNNER_TEMP/loomarr-android-ccache-transfer\" \"android-tv-ccache-v2-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}\"": exactWorkflowStep(14, "Package the verified merge-queue compiler cache", workflowStepAuthority{
+				condition: "github.event_name == 'merge_group'",
 			}),
 		}),
 		"ci-apple-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
@@ -523,7 +561,7 @@ func verifySourceBoundWorkflowContext(workflowName, jobName string, workflow, jo
 
 func verifySourceBoundWorkflowIdentity(workflowName string, workflow *yaml.Node) error {
 	authority, ok := workflowAuthorityCatalog().runs[workflowName]
-	if !ok || (authority.name == "" && authority.pullRequestTypes == nil) {
+	if !ok || (authority.name == "" && authority.pullRequestTypes == nil && authority.pushBranches == nil) {
 		return nil
 	}
 	name, present := mappingValue(workflow, "name")
@@ -535,20 +573,45 @@ func verifySourceBoundWorkflowIdentity(workflowName string, workflow *yaml.Node)
 		return fmt.Errorf("workflow %s name differs from its source-bound authority", workflowName)
 	}
 	trigger, present := mappingValue(workflow, "on")
-	if !present || trigger.Kind != yaml.MappingNode || len(trigger.Content) != 2 || trigger.Content[0].Value != "pull_request" {
-		return fmt.Errorf("workflow %s trigger must remain exactly pull_request", workflowName)
+	if !present || trigger.Kind != yaml.MappingNode || len(trigger.Content) != 2 {
+		return fmt.Errorf("workflow %s trigger differs from its source-bound authority", workflowName)
 	}
-	pullRequest := trigger.Content[1]
-	if pullRequest.Kind != yaml.MappingNode || len(pullRequest.Content) != 2 || pullRequest.Content[0].Value != "types" {
-		return fmt.Errorf("workflow %s pull_request trigger differs from its source-bound authority", workflowName)
+	if authority.pullRequestTypes != nil && authority.pushBranches != nil {
+		return fmt.Errorf("workflow %s authority declares conflicting triggers", workflowName)
 	}
-	types := pullRequest.Content[1]
-	if types.Kind != yaml.SequenceNode || len(types.Content) != len(authority.pullRequestTypes) {
-		return fmt.Errorf("workflow %s pull_request types differ from its source-bound authority", workflowName)
-	}
-	for index, want := range authority.pullRequestTypes {
-		if types.Content[index].Kind != yaml.ScalarNode || types.Content[index].Value != want {
+	if authority.pullRequestTypes != nil {
+		if trigger.Content[0].Value != "pull_request" {
+			return fmt.Errorf("workflow %s trigger must remain exactly pull_request", workflowName)
+		}
+		pullRequest := trigger.Content[1]
+		if pullRequest.Kind != yaml.MappingNode || len(pullRequest.Content) != 2 || pullRequest.Content[0].Value != "types" {
+			return fmt.Errorf("workflow %s pull_request trigger differs from its source-bound authority", workflowName)
+		}
+		types := pullRequest.Content[1]
+		if types.Kind != yaml.SequenceNode || len(types.Content) != len(authority.pullRequestTypes) {
 			return fmt.Errorf("workflow %s pull_request types differ from its source-bound authority", workflowName)
+		}
+		for index, want := range authority.pullRequestTypes {
+			if types.Content[index].Kind != yaml.ScalarNode || types.Content[index].Value != want {
+				return fmt.Errorf("workflow %s pull_request types differ from its source-bound authority", workflowName)
+			}
+		}
+		return nil
+	}
+	if trigger.Content[0].Value != "push" {
+		return fmt.Errorf("workflow %s trigger must remain exactly push", workflowName)
+	}
+	push := trigger.Content[1]
+	if push.Kind != yaml.MappingNode || len(push.Content) != 2 || push.Content[0].Value != "branches" {
+		return fmt.Errorf("workflow %s push trigger differs from its source-bound authority", workflowName)
+	}
+	branches := push.Content[1]
+	if branches.Kind != yaml.SequenceNode || len(branches.Content) != len(authority.pushBranches) {
+		return fmt.Errorf("workflow %s push branches differ from its source-bound authority", workflowName)
+	}
+	for index, want := range authority.pushBranches {
+		if branches.Content[index].Kind != yaml.ScalarNode || branches.Content[index].Value != want {
+			return fmt.Errorf("workflow %s push branches differ from its source-bound authority", workflowName)
 		}
 	}
 	return nil

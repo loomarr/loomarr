@@ -56,6 +56,7 @@ android-listing	store-listing/android-tv/en-US/short-description.txt	android
 ci-impact-authority	scripts/ci-impact.sh	policy
 android-source-validator	scripts/validate-android-release-source.sh	policy
 android-artifact-downloader	scripts/download-android-ci-artifact.sh	policy
+android-ccache-promotion	scripts/android-ccache-promotion.sh;scripts/android-ccache-promotion-test.sh	android,policy
 android-artifact-signer	scripts/sign-android-ci-artifact.sh	android,policy
 android-emulator-acceptance	scripts/test-android-release-emulator.sh	android
 release-image	Dockerfile	contracts,go,go_full,image,policy

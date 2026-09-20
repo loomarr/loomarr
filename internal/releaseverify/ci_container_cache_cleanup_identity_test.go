@@ -46,3 +46,28 @@ func TestRepositoryCacheCleanupCoversPullRequestAndMergeQueueRefs(t *testing.T) 
 		}
 	}
 }
+
+func TestVerifyCIContainerDownloadsBindsAndroidCachePromotionToMainPush(t *testing.T) {
+	t.Parallel()
+	tests := map[string]func(string) string{
+		"changed workflow name": func(source string) string {
+			return strings.Replace(source, "name: Android ccache promotion", "name: Attacker promotion", 1)
+		},
+		"changed branch": func(source string) string {
+			return strings.Replace(source, "branches: [main]", "branches: [attacker]", 1)
+		},
+		"extra trigger": func(source string) string {
+			return strings.Replace(source, "on:\n  push:", "on:\n  workflow_dispatch:\n  push:", 1)
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			path := filepath.Join(root, ".github", "workflows", "android-ccache-promotion.yml")
+			writeFixtureFile(t, path, mutate(readRepositoryWorkflow(t, "android-ccache-promotion.yml")))
+			if err := VerifyCIContainerDownloads(root); err == nil {
+				t.Fatal("VerifyCIContainerDownloads accepted changed Android cache promotion identity or trigger")
+			}
+		})
+	}
+}
