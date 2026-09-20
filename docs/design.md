@@ -175,6 +175,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
 - **`fillereval`** · 7 importers
   Owns the hermetic certification contract for filler admission.
+- **`fillerrelease`**
+  Evaluates one immutable filler release evidence bundle.
 - **`fillerstructure`** · 8 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
@@ -8511,6 +8513,44 @@ normalised playback derivative when `filler.conditioning.normalize_loudness` is 
 shared `filler.target_lufs` target. It retains the exact source master, records before/after
 measurements and recipe identity in the sidecar, and never mutates an operator's original. The
 former auto-file-named setting is retired because conditioning does not grant publication authority.
+
+#### Beta release readiness is one fail-closed report
+
+The household workspace and the operational `/v1/filler/readiness` projection answer whether an
+installed Loomarr can use filler now. They do not certify a release candidate. A beta candidate is
+releasable only when one local, versioned manifest binds the exact server, Web, and Shield candidate
+identities to the immutable evidence accepted for that candidate. The release process evaluates that
+manifest into one canonical, privacy-safe **GO** or **HOLD** report; issue state and prose comments are
+coordination aids, never release authority.
+
+`internal/fillerrelease` owns that evaluation as one deep module. Its external interface accepts the
+manifest bytes, a caller-supplied filesystem rooted at the evidence bundle, and an explicit report
+time, then returns the complete report. The command adapter owns only flags, file I/O, JSON output,
+and exit status. Tests substitute an in-memory filesystem through the same interface used for the OS
+filesystem; the evaluator has no GitHub, provider, search, download, publication, deployment, or
+runtime-admission authority.
+
+The manifest is strict and closed. It names a schema version, assembly/expiry window, release tag,
+git commit, server image digest, Web build, Shield artifact/version, and configuration-profile
+identity. Its cohort binds intentional source identities and exactly 32 unique content, lineage, and
+playback-derivative hashes. It references the required structure, role, visual, spoken, written,
+suitability, media-playback, enrichment, and terminal-admission evidence by safe relative path and
+SHA-256 digest; every authority also declares its schema, policy, model, profile, and build identities.
+It binds Web and Shield installed journeys that exercise channel selection, pod selection, and range
+playback, plus deployment and rollback evidence and the candidate's SBOM, signature, provenance, and
+notice artifacts. Each result carries its explicit denominator, abstentions, holds, prohibited
+admissions, and residual human or operational decisions. Unknown fields, duplicate identities,
+unsafe paths, missing or changed artifacts, inconsistent denominators, stale candidate bindings,
+incomplete journeys, unverified release artifacts, prohibited admissions, or any residual decision
+fail closed. Artifact contents are not copied into the public report.
+
+The evaluator always returns a report for readable manifest bytes, including malformed manifests.
+Every HOLD uses stable machine-readable reason codes plus bounded public-safe context. A GO report is
+possible only when every closed requirement is present and passing for the same candidate and there
+are zero residual human decisions and zero operational failures. Report fields and reason ordering
+are deterministic; a self-digest is calculated over the canonical report with its digest field
+empty. The command writes the report even on HOLD, exits zero only for GO, uses a distinct non-zero
+status for HOLD, and treats inability to read the manifest or write the report as an execution error.
 
 **A new install has an empty drop-folder, so the first channel has nothing to break to.** The fix is a **starter pack**: `GET /v1/filler/discover?collection=<id>` lists a curated archive.org collection, the operator keeps or excludes rows, and only what survives is fetched through the ordinary ingest path. Three properties are load-bearing:
 

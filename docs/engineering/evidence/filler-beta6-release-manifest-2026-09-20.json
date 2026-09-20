@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "release": "v0.2.0-beta.6",
+  "assembled_at": "2026-09-20T20:00:00Z",
+  "valid_until": "2026-10-20T20:00:00Z",
+  "candidate": {
+    "git_commit": "0236ecec1eab3afb48a13f6a38f47b350f87e4c6",
+    "tag": "v0.2.0-beta.6",
+    "server_image_digest": "",
+    "web_build_identity": "0236ecec1eab3afb48a13f6a38f47b350f87e4c6",
+    "shield_artifact_sha256": "",
+    "shield_version": "",
+    "configuration_profile_sha256": ""
+  },
+  "cohort": {
+    "source_identities": [],
+    "clips": []
+  },
+  "authorities": [],
+  "journeys": [],
+  "release_artifacts": [],
+  "residual_human_decisions": 0,
+  "operational_failures": 0
+}
