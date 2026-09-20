@@ -151,4 +151,19 @@ got=$("${promotion}" retention-plan "${test_root}/caches.json" \
   exit 1
 }
 
+cat >"${test_root}/caches-current-only.json" <<'JSON'
+{"actions_caches":[
+  {"id":11,"ref":"refs/heads/main","key":"android-tv-ccache-v2-Linux-ccache-4.14-current-101"},
+  {"id":12,"ref":"refs/pull/1/merge","key":"android-tv-ccache-v2-Linux-ccache-4.14-old-99"},
+  {"id":13,"ref":"refs/heads/main","key":"unrelated"}
+]}
+JSON
+got=$("${promotion}" retention-plan "${test_root}/caches-current-only.json" \
+  refs/heads/main android-tv-ccache-v2-Linux-ccache-4.14- \
+  android-tv-ccache-v2-Linux-ccache-4.14-current-101)
+[[ -z "${got}" ]] || {
+  printf 'android-ccache-promotion-test: empty retention plan got %s\n' "${got}" >&2
+  exit 1
+}
+
 echo 'android-ccache-promotion-test: ok'

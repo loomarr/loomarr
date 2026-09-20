@@ -196,7 +196,7 @@ retention_plan() {
     printf 'android ccache promotion: unsafe retention input\n' >&2
     exit 2
   fi
-  jq -er --arg ref "${ref}" --arg prefix "${prefix}" --arg keep "${keep_key}" '
+  jq -r --arg ref "${ref}" --arg prefix "${prefix}" --arg keep "${keep_key}" '
     .actions_caches as $caches
     | if ($caches | type) != "array" then error("actions_caches must be an array") else $caches end
     | [
