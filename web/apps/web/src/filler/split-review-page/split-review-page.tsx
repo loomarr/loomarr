@@ -137,6 +137,12 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
   const checkedLanguage = p.languagePreference ?? "";
   const languageChanged =
     checkedLanguage !== "" && currentLanguage !== undefined && currentLanguage !== checkedLanguage;
+  const currentLanguageHeadline = currentLanguage
+    ? `Your commercial language is now ${languageName(currentLanguage)}`
+    : "Commercials can now use any language";
+  const recheckLabel = currentLanguage
+    ? `Recheck with ${languageName(currentLanguage)}`
+    : "Recheck without a language filter";
 
   return (
     // p-6 for the same reason as the catalog page: the shell adds no gutter, so a page
@@ -153,7 +159,7 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
       {languageChanged ? (
         <div className="flex flex-col gap-3 rounded-lg border border-caution/40 bg-caution-tint-15 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-medium">Your commercial language is now {languageName(currentLanguage)}</p>
+            <p className="font-medium">{currentLanguageHeadline}</p>
             <p className="mt-1 text-muted-foreground text-sm">
               This split was checked for {languageName(checkedLanguage)}. Recheck it before you confirm.
             </p>
@@ -164,7 +170,7 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
             disabled={recheck.isPending}
             onClick={() => recheck.mutate({ data: { hash: p.clipHash, from: "split" } })}
           >
-            {recheck.isPending ? "Starting recheck…" : `Recheck with ${languageName(currentLanguage)}`}
+            {recheck.isPending ? "Starting recheck…" : recheckLabel}
           </Button>
         </div>
       ) : null}

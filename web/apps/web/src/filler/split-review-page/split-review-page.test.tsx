@@ -203,6 +203,14 @@ describe("SplitReviewPage", () => {
     expect(rewinds).toEqual([{ hash: "comp-hash", from: "split" }]);
   });
 
+  it("uses plain wording when the household turns the language filter off", async () => {
+    stubSplit(ADMIN, "");
+    renderPage();
+
+    expect(await screen.findByText(/commercials can now use any language/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /recheck without a language filter/i })).toBeInTheDocument();
+  });
+
   it("confirms the edited draft as the POST body and returns to the catalog", async () => {
     const { confirms } = stubSplit();
     const router = renderPage();
