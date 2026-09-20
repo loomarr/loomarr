@@ -105,6 +105,28 @@ const languageNeedsRecheck = {
   languageNote: "Language will be checked again after this edit.",
 } as const;
 
+const nameNowOwnedByOperator = {
+  nameOrigin: "operator-edited",
+  nameEvidence: undefined,
+} as const;
+
+const nameDetail = (segment: SplitReviewSegmentDTO): string | undefined => {
+  switch (segment.nameOrigin) {
+    case "model-proposed":
+      return segment.nameEvidence
+        ? `Name suggested from this clip: “${segment.nameEvidence}”`
+        : "Name suggested from this clip.";
+    case "source-authored":
+      return "Name provided by the source.";
+    case "fallback":
+      return "Temporary name based on the recording.";
+    case "operator-edited":
+      return "Name edited during review.";
+    default:
+      return undefined;
+  }
+};
+
 const unresolvedLanguageMessage = (segment: SplitReviewSegmentDTO): string | undefined => {
   switch (segment.languageReason) {
     case "unavailable":
@@ -169,6 +191,7 @@ const SplitReviewEditor = ({
         transcript: [a.transcript, b.transcript].filter(Boolean).join("\n") || undefined,
         artwork: undefined,
         ...languageNeedsRecheck,
+        ...nameNowOwnedByOperator,
       };
       return [...prev.slice(0, i), merged, ...prev.slice(i + 2)];
     });
@@ -288,6 +311,7 @@ const SegmentRow = ({
   const span = spanMs(segment);
   const valid = isValid(segment);
   const languageMessage = unresolvedLanguageMessage(segment);
+  const namingMessage = nameDetail(segment);
   const timingNeedsAttention =
     !valid ||
     segment.unsplittable ||
@@ -418,8 +442,9 @@ const SegmentRow = ({
               <Input
                 id={`seg-name-${position}`}
                 value={segment.name}
-                onChange={(event) => onChange({ name: event.target.value })}
+                onChange={(event) => onChange({ name: event.target.value, ...nameNowOwnedByOperator })}
               />
+              {namingMessage ? <p className="mt-1.5 text-muted-foreground text-xs">{namingMessage}</p> : null}
             </div>
             <div>
               <Label htmlFor={`seg-start-${position}`}>Starts</Label>
@@ -429,7 +454,12 @@ const SegmentRow = ({
                 className="font-mono tabular-nums"
                 value={segment.startText}
                 onChange={(event) =>
-                  onChange({ startText: event.target.value, artwork: undefined, ...languageNeedsRecheck })
+                  onChange({
+                    startText: event.target.value,
+                    artwork: undefined,
+                    ...languageNeedsRecheck,
+                    ...nameNowOwnedByOperator,
+                  })
                 }
               />
             </div>
@@ -441,7 +471,12 @@ const SegmentRow = ({
                 className="font-mono tabular-nums"
                 value={segment.endText}
                 onChange={(event) =>
-                  onChange({ endText: event.target.value, artwork: undefined, ...languageNeedsRecheck })
+                  onChange({
+                    endText: event.target.value,
+                    artwork: undefined,
+                    ...languageNeedsRecheck,
+                    ...nameNowOwnedByOperator,
+                  })
                 }
               />
             </div>

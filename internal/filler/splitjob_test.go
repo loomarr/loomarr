@@ -1830,6 +1830,15 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	if len(segments) != 3 {
 		t.Fatalf("segments = %+v", segments)
 	}
+	confirmedNames := make(map[string]bool, len(segments))
+	for _, segment := range segments {
+		confirmedNames[segment.Name] = true
+	}
+	for _, want := range []string{"McDonald's", "Lego", "Edited boundary"} {
+		if !confirmedNames[want] {
+			t.Errorf("confirmed child names = %v; missing operator-chosen name %q", confirmedNames, want)
+		}
+	}
 	for _, seg := range segments {
 		wantLanguage := map[string]string{"McDonald's": "en", "Lego": filler.LangNone, "Edited boundary": ""}[seg.Name]
 		if seg.Language != wantLanguage {

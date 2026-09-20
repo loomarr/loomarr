@@ -3,6 +3,7 @@ package filler
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -168,6 +169,109 @@ func TestSegmentVision_GroundsFromFramesSoTheGateCanFire(t *testing.T) {
 		if sg.SuggestedEra != 0 {
 			t.Errorf("segment %d carries SuggestedEra %d — that is an automatic gate refusal",
 				sg.Index, sg.SuggestedEra)
+		}
+	}
+}
+
+func TestSegmentVisionNamesFromTheExistingBoundedCall(t *testing.T) {
+	tools := &spanTools{frames: [][]byte{[]byte("opening"), []byte("closing")}}
+	model := &fixedVision{answer: `{"visibleText":"TOYS R US MEGA SALE","proposedTitle":"Toys R Us commercial","tags":["toys"]}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: tools, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 1 },
+	})
+	segments := twoSegments()[:1]
+	segments[0].Name = fallbackSegmentName("80s-tv-commercials.mp4", 1)
+	segments[0].NameOrigin = SplitNameFallback
+
+	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segments)
+
+	if model.calls != 1 {
+		t.Fatalf("provider calls = %d, want the existing single grounding call", model.calls)
+	}
+	if segments[0].Name != "Toys R Us commercial" || segments[0].NameOrigin != SplitNameModelProposed || segments[0].NameEvidence != "TOYS R US MEGA SALE" {
+		t.Fatalf("grounded name = %q / %q / %q", segments[0].Name, segments[0].NameOrigin, segments[0].NameEvidence)
+	}
+	if segments[0].Category != "toys" {
+		t.Fatalf("naming discarded independently valid grounding: %+v", segments[0])
+	}
+	if len(model.prompts) != 1 || !strings.Contains(model.prompts[0], "proposedTitle") {
+		t.Fatalf("split prompt did not request a title in the existing answer: %q", model.prompts)
+	}
+}
+
+func TestSegmentVisionRejectsUnsupportedNameWithoutDiscardingOtherFields(t *testing.T) {
+	model := &fixedVision{answer: `{"visibleText":"ENJOY THE HOLIDAYS","proposedTitle":"Coca-Cola holiday commercial","tags":["holiday"]}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 1 },
+	})
+	segments := twoSegments()[:1]
+	segments[0].Name = fallbackSegmentName("holiday-reel.mp4", 1)
+	segments[0].NameOrigin = SplitNameFallback
+
+	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segments)
+
+	if segments[0].NameOrigin != SplitNameFallback || segments[0].NameEvidence != "" {
+		t.Fatalf("unsupported identity replaced fallback: %+v", segments[0])
+	}
+	if !slices.Contains(segments[0].Tags, "holiday") {
+		t.Fatalf("bad title discarded independently valid tags: %+v", segments[0].Tags)
+	}
+}
+
+func TestSegmentVisionDropsMalformedTitleWithoutDiscardingOtherFields(t *testing.T) {
+	model := &fixedVision{answer: `{"visibleText":"TOYS R US","proposedTitle":0,"tags":["toys"]}`}
+	s := NewSplitStage(nil, nil).WithSegmentVision(&SegmentVision{
+		Tools: &spanTools{frames: [][]byte{[]byte("frame")}}, Provider: model, Taxa: seedTaxa{}, Budget: func() int { return 1 },
+	})
+	segments := twoSegments()[:1]
+	segments[0].Name = fallbackSegmentName("reel.mp4", 1)
+	segments[0].NameOrigin = SplitNameFallback
+
+	s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segments)
+
+	if segments[0].NameOrigin != SplitNameFallback || segments[0].NameEvidence != "" || segments[0].Category != "toys" {
+		t.Fatalf("malformed title poisoned independent fields: %+v", segments[0])
+	}
+}
+
+func TestMergeGroundingCopiesANameOnlyOntoTheExactFallbackSpan(t *testing.T) {
+	onto := []SplitSegment{
+		{StartMs: 0, EndMs: 30_000, Name: "Clip 1 from reel", NameOrigin: SplitNameFallback},
+		{StartMs: 30_000, EndMs: 60_000, Name: "Chapter title", NameOrigin: SplitNameSourceAuthored},
+	}
+	from := []SplitSegment{
+		{StartMs: 0, EndMs: 30_000, Name: "Acme commercial", NameOrigin: SplitNameModelProposed, NameEvidence: "ACME"},
+		{StartMs: 30_000, EndMs: 60_000, Name: "Wrong overwrite", NameOrigin: SplitNameModelProposed, NameEvidence: "WRONG"},
+		{StartMs: 60_000, EndMs: 90_000, Name: "Wrong span", NameOrigin: SplitNameModelProposed, NameEvidence: "WRONG"},
+	}
+
+	got := mergeGrounding(onto, from)
+	if got[0].Name != "Acme commercial" || got[0].NameOrigin != SplitNameModelProposed || got[0].NameEvidence != "ACME" {
+		t.Fatalf("fallback name was not grounded: %+v", got[0])
+	}
+	if got[1].Name != "Chapter title" || got[1].NameOrigin != SplitNameSourceAuthored {
+		t.Fatalf("source title was overwritten: %+v", got[1])
+	}
+}
+
+func TestBindSplitNameEvidenceMakesTheServerAuthoritative(t *testing.T) {
+	persisted := []SplitSegment{{
+		StartMs: 0, EndMs: 30_000, Name: "Toys R Us commercial",
+		NameOrigin: SplitNameModelProposed, NameEvidence: "TOYS R US",
+	}}
+	submitted := []SplitSegment{
+		{StartMs: 0, EndMs: 30_000, Name: "Toys R Us commercial", NameOrigin: SplitNameSourceAuthored, NameEvidence: "forged"},
+		{StartMs: 0, EndMs: 30_000, Name: "My toy advert", NameOrigin: SplitNameModelProposed, NameEvidence: "forged"},
+		{StartMs: 1_000, EndMs: 30_000, Name: "Toys R Us commercial", NameOrigin: SplitNameModelProposed, NameEvidence: "forged"},
+	}
+
+	got := bindSplitNameEvidence(submitted, persisted)
+	if got[0].NameOrigin != SplitNameModelProposed || got[0].NameEvidence != "TOYS R US" {
+		t.Fatalf("unchanged name did not recover persisted evidence: %+v", got[0])
+	}
+	for _, edited := range got[1:] {
+		if edited.NameOrigin != SplitNameOperatorEdited || edited.NameEvidence != "" {
+			t.Fatalf("edited name/span retained machine evidence: %+v", edited)
 		}
 	}
 }
@@ -388,6 +492,10 @@ func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
 	})
 
 	segs := twoSegments()
+	for i := range segs {
+		segs[i].Name = fallbackSegmentName("reel.mp4", i+1)
+		segs[i].NameOrigin = SplitNameFallback
+	}
 	pass := s.ground(context.Background(), StoreClip{Clip: Clip{Path: "reel.mp4"}}, segs)
 	if pass.Looked != 0 || pass.Pending != 2 {
 		t.Fatalf("provider failure pass = %+v, want no consumed segments", pass)
@@ -395,6 +503,9 @@ func TestSegmentVision_ModelFailureLeavesTheReelInReview(t *testing.T) {
 
 	if got := AutoConfirmable(SplitProposal{Segments: segs}, gatePolicy(), 0).Verdict(); got != RejectUntagged {
 		t.Fatalf("after a model failure = %q, want %q", got, RejectUntagged)
+	}
+	if segs[0].Name != "Clip 1 from reel" || segs[0].NameOrigin != SplitNameFallback || segs[0].NameEvidence != "" {
+		t.Fatalf("provider failure did not preserve fallback: %+v", segs[0])
 	}
 }
 

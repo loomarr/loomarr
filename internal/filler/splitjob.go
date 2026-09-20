@@ -401,6 +401,13 @@ func mergeGrounding(onto, from []SplitSegment) []SplitSegment {
 			roleEvidence := cloneStructureRoleEvidence(*g.RoleEvidence)
 			out[i].RoleEvidence = &roleEvidence
 		}
+		if out[i].NameOrigin == SplitNameFallback && g.NameOrigin == SplitNameModelProposed {
+			if name, evidence, ok := groundSegmentName(g.Name, g.NameEvidence); ok {
+				out[i].Name = name
+				out[i].NameOrigin = g.NameOrigin
+				out[i].NameEvidence = evidence
+			}
+		}
 		// Unlike learned tags, an empty reason is meaningful: a later pass may have supplied the
 		// evidence that clears an earlier hold. Always copy it so stale explanations cannot survive.
 		out[i].HoldReason = g.HoldReason
@@ -580,7 +587,8 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	base := strings.TrimSuffix(clip.Name, filepath.Ext(clip.Name))
 	for i := range segs {
 		if segs[i].Name == "" {
-			segs[i].Name = fmt.Sprintf("%s part %d", base, i+1)
+			segs[i].Name = fallbackSegmentName(base, i+1)
+			segs[i].NameOrigin = SplitNameFallback
 		}
 	}
 
@@ -607,10 +615,11 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	// every spawned segment ran `transcribe` → `tag` and called the same function again, this time
 	// with a real transcript. The pipeline paid twice and kept the second answer.
 	//
-	// **Split CUTS; it does not describe.** Each segment is spawned as its own clip and runs the
-	// whole ladder for itself — one clip at a time, budget-bounded, resumable, and individually
-	// visible in Incoming. The classification still happens; it happens where the scheduler can
-	// hold it.
+	// **Split does not classify.** V69's bounded display-name proposal is the narrow descriptive
+	// exception: it reuses exact-span vision/transcript evidence and carries no admission authority.
+	// Each segment is spawned as its own clip and runs the whole ladder for itself — one clip at a
+	// time, budget-bounded, resumable, and individually visible in Incoming. Classification still
+	// happens where the scheduler can hold it.
 	//
 	// ⚠ The cost: the split-review screen shows cuts without tags. That is the right trade — that
 	// screen asks "are these the right cuts?", which an operator answers from the filmstrip and the
@@ -787,15 +796,24 @@ func (sp *Splitter) rescue(ctx context.Context, file, base string, segs []SplitS
 			// boundary" — and removing a cap is the only legal move a corroboration has in a
 			// ceiling ladder. The segment's own two boundaries keep whatever found them.
 			seg.rescueConfirmedWhole = true
+			if seg.NameOrigin == SplitNameFallback {
+				seg.Name, seg.NameOrigin, seg.NameEvidence = proposedSegmentName(
+					spans[0].Product, seg.Transcript, base, len(out)+1,
+				)
+			}
 			out = append(out, seg)
 			continue
 		}
 		for _, s := range spans {
+			transcriptText := TranscriptText(sliceTranscript(transcript, s.StartMs, s.EndMs))
+			name, nameOrigin, nameEvidence := proposedSegmentName(s.Product, transcriptText, base, len(out)+1)
 			sub := SplitSegment{
-				StartMs:    seg.StartMs + s.StartMs,
-				EndMs:      seg.StartMs + s.EndMs,
-				Name:       subSegmentName(s.Product, base, len(out)+1),
-				Transcript: TranscriptText(sliceTranscript(transcript, s.StartMs, s.EndMs)),
+				StartMs:      seg.StartMs + s.StartMs,
+				EndMs:        seg.StartMs + s.EndMs,
+				Name:         name,
+				NameOrigin:   nameOrigin,
+				NameEvidence: nameEvidence,
+				Transcript:   transcriptText,
 				// ⚠ Both edges are the TRANSCRIPT's, even where a sub-segment happens to abut the
 				// parent's own boundary: the rescue redrew this span, so the parent's evidence no
 				// longer describes it. Measured at ±2–3s, which is why its ceiling is the lowest
@@ -948,6 +966,11 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	// reaches the ordinary post-confirm language rung with no answer.
 	segments = bindSplitLanguageEvidence(segments, p.Segments)
 	hold = bindSplitLanguageEvidence(hold, p.Segments)
+	// Naming provenance is server-authored too. An unchanged exact span recovers the persisted
+	// source/model evidence; any renamed, resized, or merged clip keeps the operator's display name
+	// but cannot claim the machine's evidence for different content.
+	segments = bindSplitNameEvidence(segments, p.Segments)
+	hold = bindSplitNameEvidence(hold, p.Segments)
 	// Artwork is also server-authored evidence. Preserve it only when an automatically held span
 	// still names the exact interval that produced the frame; an edited interval must return to the
 	// bounded artwork preparation pass rather than displaying a still from different content.
@@ -1253,8 +1276,8 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		return nil, err
 	}
 	// Renumber so the review's "#N" runs 1..n rather than showing gaps where the confirmed cuts
-	// used to be. ⚠ NAMES are untouched: "part 7" persists from detection, so a reel confirmed over
-	// two sittings does not rename its own clips underneath the operator.
+	// used to be. Names are untouched: a reel confirmed over two sittings must not rename its
+	// remaining clips underneath the operator.
 	remaining := append([]SplitSegment(nil), hold...)
 	for i := range remaining {
 		remaining[i].Index = i
@@ -1297,6 +1320,26 @@ func bindSplitLanguageEvidence(submitted, persisted []SplitSegment) []SplitSegme
 		out[i].LanguageChecked = original.LanguageChecked
 		out[i].LanguageReason = original.LanguageReason
 		out[i].LanguageNote = original.LanguageNote
+	}
+	return out
+}
+
+func bindSplitNameEvidence(submitted, persisted []SplitSegment) []SplitSegment {
+	type span struct{ start, end int64 }
+	bySpan := make(map[span]SplitSegment, len(persisted))
+	for _, segment := range persisted {
+		bySpan[span{segment.StartMs, segment.EndMs}] = segment
+	}
+	out := append([]SplitSegment(nil), submitted...)
+	for i := range out {
+		original, exactSpan := bySpan[span{out[i].StartMs, out[i].EndMs}]
+		if exactSpan && out[i].Name == original.Name {
+			out[i].NameOrigin = original.NameOrigin
+			out[i].NameEvidence = original.NameEvidence
+			continue
+		}
+		out[i].NameOrigin = SplitNameOperatorEdited
+		out[i].NameEvidence = ""
 	}
 	return out
 }
@@ -1377,15 +1420,6 @@ func validateConfirmedSegments(segs []SplitSegment, durationMs int64, floor segm
 // to break: two cuts that produce the same bytes are the same clip and belong in one row. The
 // segment's name still travels — on the catalog row, where it is read by humans rather than by
 // the filesystem.
-
-// subSegmentName prefers the LLM's product label, falling back to the
-// compilation-part convention when the model said "unknown".
-func subSegmentName(product, base string, n int) string {
-	if product == "" || strings.EqualFold(product, "unknown") {
-		return fmt.Sprintf("%s part %d", base, n)
-	}
-	return product
-}
 
 // sliceTranscript keeps the utterances overlapping [startMs,endMs) — the text a
 // rescued sub-segment is classified from.

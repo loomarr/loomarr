@@ -123,6 +123,32 @@ describe("SplitReviewEditor", () => {
     expect(within(third).getByText(/word from our sponsor/)).toBeInTheDocument();
   });
 
+  it("keeps automatic naming evidence quietly under Details", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Toys R Us commercial",
+              nameOrigin: "model-proposed",
+              nameEvidence: "TOYS R US — THE WORLD'S BIGGEST TOY STORE",
+            }),
+          ],
+        }}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("region", { name: /segment 1: toys r us commercial/i });
+    const detailText = within(row).getByText(/name suggested from this clip/i);
+    expect(detailText.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(within(row).getByText(/rename or adjust timing/i));
+    expect(detailText.closest("details")).toHaveAttribute("open");
+    expect(detailText).toHaveTextContent(/TOYS R US — THE WORLD'S BIGGEST TOY STORE/);
+  });
+
   it("explains the automatic hold and shows the boundary evidence", () => {
     render(
       <SplitReviewEditor
@@ -161,7 +187,39 @@ describe("SplitReviewEditor", () => {
 
     const payload = confirmed(onConfirm);
     expect(payload).toHaveLength(3);
-    expect(payload[0]).toMatchObject({ index: 0, name: "Sunny D", startMs: 2000, endMs: 32000 });
+    expect(payload[0]).toMatchObject({
+      index: 0,
+      name: "Sunny D",
+      nameOrigin: "operator-edited",
+      startMs: 2000,
+      endMs: 32000,
+    });
+    expect(payload[0]?.nameEvidence).toBeUndefined();
+  });
+
+  it("clears machine naming evidence when the exact span changes", () => {
+    const onConfirm = vi.fn();
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Toys R Us commercial",
+              nameOrigin: "model-proposed",
+              nameEvidence: "TOYS R US",
+            }),
+          ],
+        }}
+        onConfirm={onConfirm}
+        onBack={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Start (mm:ss)"), { target: { value: "0:02" } });
+
+    const payload = confirmed(onConfirm);
+    expect(payload[0]).toMatchObject({ name: "Toys R Us commercial", nameOrigin: "operator-edited" });
+    expect(payload[0]?.nameEvidence).toBeUndefined();
   });
 
   it("dropping a segment removes it from the payload and renumbers the rest", () => {
@@ -186,6 +244,8 @@ describe("SplitReviewEditor", () => {
     // the first's name; the second segment is gone from the list.
     expect(payload[0]).toMatchObject({ index: 0, name: "First ad", startMs: 0, endMs: 61000 });
     expect(payload[0]).toMatchObject({ language: "", languageChecked: false });
+    expect(payload[0]).toMatchObject({ nameOrigin: "operator-edited" });
+    expect(payload[0]?.nameEvidence).toBeUndefined();
     expect(payload[1]).toMatchObject({ index: 1, name: "Long block" });
   });
 

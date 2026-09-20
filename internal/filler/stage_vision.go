@@ -193,6 +193,7 @@ func (s *VisionStage) Run(ctx context.Context, c StoreClip) (StageResult, error)
 const VisionKeyframes = 4
 
 const visionPromptVersion = "filler-vision-grounding-v2"
+const splitVisionPromptVersion = "filler-split-vision-grounding-v3"
 
 // VisionPromptVersion is the semantic identity progressive enrichment records for frame catch-up.
 const VisionPromptVersion = visionPromptVersion
@@ -212,9 +213,12 @@ type visionOutput struct {
 	// VisibleText is the on-screen text the model says it can literally SEE — a logo, a product
 	// name, a year burned into the frame. It is BOTH persisted (the auditable record of what
 	// vision read) AND the grounding signal every other field here is checked against.
-	VisibleText string   `json:"visibleText"`
-	Brand       string   `json:"brand"`
-	Tags        []string `json:"tags"`
+	VisibleText string `json:"visibleText"`
+	// ProposedTitle is requested only by split grounding. It remains untrusted until the exact
+	// segment's VisibleText grounds its identifying phrase.
+	ProposedTitle string   `json:"proposedTitle"`
+	Brand         string   `json:"brand"`
+	Tags          []string `json:"tags"`
 	// Category accepts the retired one-value answer shape so an older configured model response
 	// degrades safely during upgrade. New prompts request Tags and all values still resolve through
 	// the live forest.
@@ -240,6 +244,7 @@ func (v *visionOutput) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("vision output must be a JSON object")
 	}
 	v.VisibleText = decodeVisionString(fields["visibleText"])
+	v.ProposedTitle = decodeVisionString(fields["proposedTitle"])
 	v.Brand = decodeVisionString(fields["brand"])
 	v.Tags = decodeVisionStrings(fields["tags"])
 	v.Category = decodeVisionString(fields["category"])
@@ -350,16 +355,30 @@ func groundVisionTags(out visionOutput, forest *taxonomy.Forest) visionTags {
 // a value it did not read is not an error we can prevent at the prompt — it is why groundVisionTags
 // exists — but asking for the honest answer costs nothing and reduces the drop rate.
 func visionPrompt(forest *taxonomy.Forest) string {
+	return visionPromptFor(forest, false)
+}
+
+func splitVisionPrompt(forest *taxonomy.Forest) string {
+	return visionPromptFor(forest, true)
+}
+
+func visionPromptFor(forest *taxonomy.Forest, includeTitle bool) string {
 	vocab := "(no taxonomy vocabulary is configured)"
 	if forest != nil {
 		vocab = forest.Vocab()
 	}
+	titleField := ""
+	titleRule := ""
+	if includeTitle {
+		titleField = `,"proposedTitle":"<short, friendly clip title grounded in visibleText; empty if none>"`
+		titleRule = " Give proposedTitle only when its identifying product, brand, programme, or subject is literally present in visibleText; a generic label such as commercial is not a title."
+	}
 	return fmt.Sprintf(`You are shown a few still frames from one candidate segment in a recording. It may be a commercial, promo, bumper, station ID, PSA, trailer, programme material, other non-filler, ambiguous, or materially unusable.
 First read any TEXT visible in the frames — a logo, a product name, a slogan, a year.
 Return ONLY this JSON, no prose:
-{"visibleText":"<the on-screen text you can read, verbatim; empty if none>","brand":"<advertiser name or empty>","era":<4-digit year visible in a frame, or 0>,"tags":["<zero or more taxonomy slugs>"],"role":"<commercial|promo|bumper|station_id|psa|trailer|programme_fragment|non_filler|ambiguous|unusable>","roleReason":"<brief visual evidence for that role>"}
-Rules: put in visibleText only text you can actually READ in the frames; give brand ONLY when the advertiser's name is among that visible text — never guess it from the imagery or the products; give era ONLY when a 4-digit year is visible in a frame — never infer a decade from the film stock, colour, or style, use 0 otherwise; choose tags only from the live vocabulary below. Vocabulary entries written as "child (under parent)" explain hierarchy; return only the slug, never the annotation. A tag may describe what the imagery shows even when its slug is not printed as text. Return an empty tags array when the frames do not support a choice. Judge role independently from tags and the parent recording. Use commercial for a product/service offer, promo for promotion of a programme or network property, bumper for a brief transition into or out of a break, station_id for station identification, psa for a public-service message, trailer for promotion of a film or release, programme_fragment for material dependent on a larger programme, and non_filler for other independently bounded material that must not air as filler. Use ambiguous rather than guessing. Use unusable only when the frames are materially unassessable. Explain the observed visual evidence; never infer role from the generated filename or duration.
+{"visibleText":"<the on-screen text you can read, verbatim; empty if none>"%s,"brand":"<advertiser name or empty>","era":<4-digit year visible in a frame, or 0>,"tags":["<zero or more taxonomy slugs>"],"role":"<commercial|promo|bumper|station_id|psa|trailer|programme_fragment|non_filler|ambiguous|unusable>","roleReason":"<brief visual evidence for that role>"}
+Rules: put in visibleText only text you can actually READ in the frames; give brand ONLY when the advertiser's name is among that visible text — never guess it from the imagery or the products; give era ONLY when a 4-digit year is visible in a frame — never infer a decade from the film stock, colour, or style, use 0 otherwise;%s choose tags only from the live vocabulary below. Vocabulary entries written as "child (under parent)" explain hierarchy; return only the slug, never the annotation. A tag may describe what the imagery shows even when its slug is not printed as text. Return an empty tags array when the frames do not support a choice. Judge role independently from tags and the parent recording. Use commercial for a product/service offer, promo for promotion of a programme or network property, bumper for a brief transition into or out of a break, station_id for station identification, psa for a public-service message, trailer for promotion of a film or release, programme_fragment for material dependent on a larger programme, and non_filler for other independently bounded material that must not air as filler. Use ambiguous rather than guessing. Use unusable only when the frames are materially unassessable. Explain the observed visual evidence; never infer role from the generated filename or duration.
 
 Live taxonomy vocabulary:
-%s`, vocab)
+%s`, titleField, titleRule, vocab)
 }
