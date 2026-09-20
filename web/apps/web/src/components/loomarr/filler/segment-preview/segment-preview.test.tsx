@@ -44,6 +44,13 @@ describe("SegmentPreview", () => {
     expect(video?.getAttribute("src")).toContain("a3f9");
   });
 
+  it("renders the same bounded player without a second toggle when embedded in a Sheet", () => {
+    const { container } = renderPreview({ open: true, embedded: true });
+
+    expect(screen.queryByRole("button", { name: /preview segment/i })).not.toBeInTheDocument();
+    expect(container.querySelectorAll("video")).toHaveLength(1);
+  });
+
   // ⚠ UNMOUNT, not hide. A hidden element keeps its range request open.
   it("unmounts the player when it collapses", () => {
     const { container, rerender } = renderPreview({ open: true });

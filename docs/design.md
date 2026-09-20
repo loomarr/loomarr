@@ -9177,6 +9177,19 @@ unconfirmed suggestion.
    suitability, boundary-confidence, and admission inputs. Split review performs no web search and
    does not require a model to finish.
 
+   **One selected clip uses the shared inspection sheet (V70).** The split page keeps the
+   proportional filmstrip, one compact ordered clip list, reel-level explanation, and **Keep clips**
+   action stable while a clip is inspected. Activating either a filmstrip item or its compact row
+   opens the existing application Sheet from the right on desktop and full width on a narrow screen.
+   That sheet owns the one exact bounded autoplay preview, name and timing edits, era decision,
+   **Join next**, **Remove**, and progressive naming, language, transcript, recognition, and cut
+   details. Previous/next controls move through a long reel without closing the sheet. Selection is
+   transient local state—not a route or query parameter—and closing restores focus to the exact
+   filmstrip item or row that opened it. Changing selection or closing the sheet unmounts the prior
+   player, so a 50-clip reel still mounts at most one video and editing never expands or reflows the
+   overview. Confirmation remains a reel-level action outside the sheet and sends the same server
+   payload; this changes presentation, not split, language, naming, or admission authority.
+
    ⚠ **The player is clamped to `[startMs, endMs]` and reports the SEGMENT's length, never the reel's.** A 30-second cut of a 22-minute recording reads `0:04 / 0:30`. Handing the readout the reel's own numbers would present the whole recording as if it were the clip, which is precisely what makes a preview useless for judging one cut. One preview is open at a time and collapsing **unmounts** the element — otherwise every row the operator has ever clicked holds a range request open against a 20-minute file.
 
    ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** Boundary
