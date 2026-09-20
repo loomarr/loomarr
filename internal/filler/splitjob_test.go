@@ -1141,6 +1141,45 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 	t.Fatal("split proposal never became reviewable")
 }
 
+func TestSplitStage_ResolvesAnEntirelyMismatchedCompilationWithoutAskingForReview(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/polish-only.mp4", 40_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "First Polish advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Second Polish advert"},
+	}}
+	detector := &spanLanguageDetector{answers: map[[2]int64]string{
+		{1_000, 11_000}:  "pl",
+		{21_000, 31_000}: "pl",
+	}}
+	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 10 },
+	})
+	stage := filler.NewSplitStage(splitter, st)
+	proposal, err := splitter.Propose(context.Background(), hash)
+	if err != nil || len(proposal.Segments) != 0 || len(proposal.LanguageExclusions) != 2 {
+		t.Fatalf("language-only proposal = %+v, %v", proposal, err)
+	}
+
+	result, err := stage.Run(context.Background(), st.clips[hash])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Verdict != filler.VerdictContinue || result.Note != "left out 2 clips spoken in another language" {
+		t.Fatalf("result = %+v, want a quiet language resolution", result)
+	}
+	proposals, err := st.ListSplitProposals(context.Background())
+	if err != nil || len(proposals) != 0 {
+		t.Fatalf("empty review proposal survived: %+v, %v", proposals, err)
+	}
+	parent, found, err := st.GetClip(context.Background(), hash)
+	if err != nil || !found || !parent.IsComposite || parent.Held {
+		t.Fatalf("resolved parent = %+v, found=%v err=%v", parent, found, err)
+	}
+}
+
 // Coarse split: black/silence boundaries cut, slivers dropped, parts named.
 func TestPropose_CoarseSplit(t *testing.T) {
 	st := newSplitMemStore()
