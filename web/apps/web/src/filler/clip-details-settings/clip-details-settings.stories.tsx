@@ -127,10 +127,10 @@ const Degraded: Story = {
   ],
 };
 
-const Advanced: Story = {
+const Sources: Story = {
   ...Ready,
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByText("Advanced"));
+    await userEvent.click(await canvas.findByText("Where Loomarr looks", { exact: true }));
   },
 };
 
@@ -142,4 +142,4 @@ const SetupSheet: Story = {
   },
 };
 
-export { Advanced, Degraded, Ready, SetupSheet, Unconfigured };
+export { Degraded, Ready, SetupSheet, Sources, Unconfigured };

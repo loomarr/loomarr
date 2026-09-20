@@ -256,7 +256,7 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       section: "details",
       group: "filler",
       title: "Clip details",
-      description: "Fill in useful context without making search another job to manage.",
+      description: "Help Loomarr identify when and where a clip was made.",
       keys: ["filler.research.enabled"],
       footer: ({ liveValue, setEdit }) => (
         <ClipDetailsSettings entries={entries} liveValue={liveValue} setEdit={setEdit} />

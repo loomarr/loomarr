@@ -104,12 +104,15 @@ describe("ClipDetailsSettings", () => {
     );
     renderPanel();
 
-    expect(await screen.findByText("Clip details are ready")).toBeInTheDocument();
-    expect(screen.getByText(/Web search is used only when they cannot identify a clip/)).toBeInTheDocument();
+    expect(await screen.findByText("Web search is optional")).toBeInTheDocument();
+    expect(screen.getByText(/search more broadly when these sources come up short/)).toBeInTheDocument();
+    expect(screen.queryByText("Clip details are ready")).not.toBeInTheDocument();
     expect(screen.queryByText("Monthly web searches")).not.toBeInTheDocument();
     expect(screen.getByText("Wikidata")).not.toBeVisible();
 
-    await userEvent.click(screen.getByText("Advanced"));
+    await userEvent.click(screen.getByText("Where Loomarr looks", { exact: true }));
+    expect(screen.getByText("Public sources")).toBeInTheDocument();
+    expect(screen.getByText(/All are on by default/)).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Wikidata" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Wikipedia" })).toBeChecked();
     expect(screen.getByRole("switch", { name: "Archive.org" })).toBeChecked();
@@ -150,13 +153,13 @@ describe("ClipDetailsSettings", () => {
     );
     renderPanel({}, setEdit);
 
-    await userEvent.click(await screen.findByText("Advanced"));
+    await userEvent.click(await screen.findByText("Where Loomarr looks", { exact: true }));
     await userEvent.click(screen.getByRole("switch", { name: "Archive.org" }));
 
     expect(setEdit).toHaveBeenCalledWith("filler.research.archive_enabled", "false");
   });
 
-  it("shows usage and keeps provider controls under Advanced when configured", async () => {
+  it("shows usage and keeps provider controls with the source choices when configured", async () => {
     const tested: unknown[] = [];
     server.use(
       getFillerResearchStatusMockHandler({
@@ -193,7 +196,7 @@ describe("ClipDetailsSettings", () => {
     expect(
       screen.getByRole("spinbutton", { name: "Monthly web searches" }).closest("details"),
     ).not.toHaveAttribute("open");
-    await userEvent.click(screen.getByText("Advanced"));
+    await userEvent.click(screen.getByText("Where Loomarr looks", { exact: true }));
     expect(screen.getByRole("spinbutton", { name: "Monthly web searches" })).toHaveValue(100);
     await userEvent.click(screen.getByRole("button", { name: "Test connection" }));
     expect(tested).toEqual([{ provider: "brave" }]);
@@ -263,7 +266,7 @@ describe("ClipDetailsSettings", () => {
     renderPanel({ "filler.research.monthly_limit": "100" });
 
     expect(await screen.findByText("Web search needs a check")).toBeInTheDocument();
-    await userEvent.click(screen.getByText("Advanced"));
+    await userEvent.click(screen.getByText("Where Loomarr looks", { exact: true }));
     await userEvent.click(screen.getByRole("button", { name: "Remove web search" }));
 
     expect(saved).toEqual([

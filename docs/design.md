@@ -9411,13 +9411,16 @@ ceiling, connection testing and removal stay under Advanced. Removing web search
 credential but leaves existing cited reports intact; turning context research off suppresses future
 lookups without changing Ready media or accepted metadata.
 
-Advanced also names the four structured sources Loomarr searches: Wikidata, Wikipedia,
-Archive.org, and the Library of Congress. Each source is enabled by default and may be disabled
-independently; the ordinary view does not expose adapter ordering, versions, or other retrieval
-knobs. The main **Find missing clip details** switch remains the master control. Exact metadata from
-the Clip's already-selected source is not a search source and cannot be disabled here. Disabling all
-structured sources is valid: configured web search may act as the only lookup, while an installation
-without a web provider performs no external lookup and does not report a background failure.
+The plain-language **Where Loomarr looks** disclosure names the four structured sources Loomarr
+searches: Wikidata, Wikipedia, Archive.org, and the Library of Congress. Its resting summary reports
+how many are selected without repeating pipeline status. Each source is enabled by default and may
+be disabled independently; the ordinary view does not expose adapter ordering, versions, or other
+retrieval knobs. The main **Find missing details automatically** switch remains the master control.
+Exact metadata from the Clip's already-selected source is not a search source and cannot be disabled
+here. Disabling all structured sources is valid: configured web search may act as the only lookup,
+while an installation without a web provider performs no external lookup and does not report a
+background failure. An unconfigured installation shows web search as an optional fallback instead
+of claiming that generic "Clip details are ready" status.
 
 The one pipeline driver first uses exact public source metadata, then fixed-host Wikidata,
 Wikipedia, Archive.org, and Library of Congress structured adapters. Library of Congress is the

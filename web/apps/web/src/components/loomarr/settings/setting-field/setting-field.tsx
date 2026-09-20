@@ -99,6 +99,7 @@ const SettingField = ({
   // the key, and the surface must have supplied a handler.
   const canUnlock = onEnvOverride !== undefined && entry.envPinnable === true;
   const invalid = result?.status === SettingResultStatus.invalid;
+  const inlineSwitch = entry.kind === "bool" && entry.presentation === "switch";
   // Compact mode renders neither explanatory element, so pointing at one would be a dangling
   // reference. Full fields associate both the ordinary help and any unavailable reason.
   const describedBy = compact
@@ -317,7 +318,15 @@ const SettingField = ({
 
   return (
     // `group` so the audit line can reveal on hover/focus of the whole field (below).
-    <div className={cn("group flex flex-col gap-1.5", className)}>
+    <div
+      className={cn(
+        "group",
+        inlineSwitch
+          ? "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5"
+          : "flex flex-col gap-1.5",
+        className,
+      )}
+    >
       <div className="flex items-center gap-2">
         <Label htmlFor={id}>{label}</Label>
         {/* The one-line doc (§5 field anatomy) is present but moved into a hover (i) tooltip
@@ -454,14 +463,18 @@ const SettingField = ({
       )}
 
       {entry.caution && (
-        <p className="flex items-center gap-1 text-onair-300 text-xs">
+        <p className={cn("flex items-center gap-1 text-onair-300 text-xs", inlineSwitch && "col-span-2")}>
           <TriangleAlert className="size-3" aria-hidden />
           The stored value was invalid and has been reset to the default.
         </p>
       )}
 
       {disabledReason && (
-        <p id={`${id}-unavailable`} role="alert" className="flex items-start gap-1 text-onair-300 text-xs">
+        <p
+          id={`${id}-unavailable`}
+          role="alert"
+          className={cn("flex items-start gap-1 text-onair-300 text-xs", inlineSwitch && "col-span-2")}
+        >
           <TriangleAlert className="mt-0.5 size-3 shrink-0" aria-hidden />
           {disabledReason}
         </p>
@@ -474,14 +487,19 @@ const SettingField = ({
           screen readers; the transition is frozen under reduced-motion. Only for a value a
           PERSON set: an env pin or built-in default has no author to name. */}
       {entry.updatedAt && (
-        <p className="pointer-events-none text-muted-foreground text-xs opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
+        <p
+          className={cn(
+            "pointer-events-none text-muted-foreground text-xs opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none",
+            inlineSwitch && "col-span-2",
+          )}
+        >
           {entry.updatedBy ? `Changed by ${entry.updatedBy} · ` : "Changed "}
           {formatRelative(entry.updatedAt)}
         </p>
       )}
 
       {invalid && result?.problem && (
-        <p role="alert" className="text-onair-300 text-xs">
+        <p role="alert" className={cn("text-onair-300 text-xs", inlineSwitch && "col-span-2")}>
           {result.problem}
         </p>
       )}

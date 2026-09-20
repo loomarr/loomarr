@@ -52,6 +52,7 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
     .map((key) => entries.find((entry) => entry.key === key))
     .filter((entry): entry is SettingEntry => entry !== undefined);
   const enabled = liveValue("filler.research.enabled") === "true";
+  const enabledSourceCount = structuredSources.filter((entry) => liveValue(entry.key) === "true").length;
   const configured = status?.configured === true;
   const currentProvider = status?.provider === "searxng" ? "searxng" : "brave";
 
@@ -154,67 +155,65 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
 
   return (
     <div className="space-y-4 border-border border-t pt-4">
-      <div className="rounded-lg bg-muted/40 p-4">
-        <div className="flex items-start gap-3">
-          {configured && status?.state === "ready" ? (
-            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-lock" aria-hidden />
-          ) : status?.state === "degraded" || status?.state === "limit_reached" ? (
-            <TriangleAlert className="mt-0.5 size-5 shrink-0 text-caution" aria-hidden />
-          ) : (
-            <Search className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-sm">
-              {statusQuery.isError
-                ? "Clip-detail status is unavailable"
-                : !enabled
-                  ? "Clip-detail lookups are off"
-                  : configured
-                    ? status?.state === "limit_reached"
+      {statusQuery.isError || !enabled || configured ? (
+        <div className="rounded-lg bg-muted/40 p-4">
+          <div className="flex items-start gap-3">
+            {configured && status?.state === "ready" ? (
+              <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-lock" aria-hidden />
+            ) : status?.state === "degraded" || status?.state === "limit_reached" ? (
+              <TriangleAlert className="mt-0.5 size-5 shrink-0 text-caution" aria-hidden />
+            ) : (
+              <Search className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm">
+                {statusQuery.isError
+                  ? "Web search status is unavailable"
+                  : !enabled
+                    ? "Automatic lookups are off"
+                    : status?.state === "limit_reached"
                       ? "Web search is paused for this month"
                       : status?.state === "degraded"
                         ? "Web search needs a check"
-                        : "Web search ready"
-                    : "Clip details are ready"}
-            </p>
-            <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
-              {statusQuery.isError
-                ? "Loomarr couldn't check web-search status. Trusted sources will keep working in the background."
-                : enabled
-                  ? "Loomarr checks trusted sources automatically. Web search is used only when they cannot identify a clip."
-                  : "Loomarr keeps existing clip details but will not look for missing ones."}
-            </p>
-            {configured && status ? (
-              <p className="mt-2 text-muted-foreground text-xs">
-                {providerLabel(status.provider)} · {status.requestCount} of {status.requestLimit} searches
-                this month
-                {checked ? ` · Last checked ${checked}` : ""}
+                        : "Web search ready"}
               </p>
-            ) : null}
+              <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
+                {statusQuery.isError
+                  ? "Loomarr couldn't check web search. Public-source lookups can still run."
+                  : !enabled
+                    ? "Existing clip details stay in place."
+                    : "Web search is used only when the selected public sources don't find enough information."}
+              </p>
+              {configured && status ? (
+                <p className="mt-2 text-muted-foreground text-xs">
+                  {providerLabel(status.provider)} · {status.requestCount} of {status.requestLimit} searches
+                  this month
+                  {checked ? ` · Last checked ${checked}` : ""}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
-
-      {!configured ? (
-        <Button
-          type="button"
-          onClick={openSetup}
-          disabled={!enabled || statusQuery.isLoading || statusQuery.isError}
-        >
-          Add web search
-        </Button>
       ) : null}
 
       <details className="rounded-lg border border-border p-4">
-        <summary className="cursor-pointer font-medium text-sm">Advanced</summary>
+        <summary className="cursor-pointer font-medium text-sm">
+          <span>Where Loomarr looks</span>
+          <span className="ml-2 font-normal text-muted-foreground">
+            ·{" "}
+            {enabled
+              ? `${enabledSourceCount} of ${structuredSources.length} sources on`
+              : `${enabledSourceCount} selected`}
+          </span>
+        </summary>
         <div className="mt-5 space-y-6">
           <section className="space-y-3" aria-labelledby="clip-detail-sources-heading">
             <div>
               <h3 id="clip-detail-sources-heading" className="font-medium text-sm">
-                Sources to check
+                Public sources
               </h3>
               <p className="mt-1 text-muted-foreground text-xs">
-                Loomarr checks these public sources before optional web search.
+                All are on by default. Turn off any source you don't want Loomarr to use.
               </p>
             </div>
             <div className="divide-y divide-border rounded-lg border border-border">
@@ -234,16 +233,14 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
                       entry={entry}
                       value={liveValue(entry.key)}
                       onChange={(value) => setEdit(entry.key, value)}
-                      disabledReason={!enabled ? "Turn on Find missing clip details first." : undefined}
+                      disabledReason={!enabled ? "Turn on automatic clip details first." : undefined}
                     />
                   </div>
                 );
               })}
             </div>
             {!enabled ? (
-              <p className="text-muted-foreground text-xs">
-                Turn on Find missing clip details to use these sources.
-              </p>
+              <p className="text-muted-foreground text-xs">Turn on automatic lookups to use these sources.</p>
             ) : null}
           </section>
 
@@ -271,6 +268,25 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
           ) : null}
         </div>
       </details>
+
+      {!configured ? (
+        <div className="flex flex-col gap-3 rounded-lg bg-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium text-sm">Web search is optional</p>
+            <p className="mt-1 text-muted-foreground text-sm">
+              Add it if you want Loomarr to search more broadly when these sources come up short.
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="shrink-0 self-start sm:self-auto"
+            onClick={openSetup}
+            disabled={!enabled || statusQuery.isLoading || statusQuery.isError}
+          >
+            Add web search
+          </Button>
+        </div>
+      ) : null}
 
       {message ? (
         <p aria-live="polite" className={success ? "text-lock text-sm" : "text-caution-foreground text-sm"}>

@@ -5,7 +5,7 @@ const expectNoHorizontalOverflow = async (page: Page) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 };
 
-test("clip-detail search stays simple through setup, status, advanced controls, and removal", async ({
+test("clip-detail search stays simple through setup, status, source controls, and removal", async ({
   page,
 }) => {
   const backend = await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
@@ -13,8 +13,9 @@ test("clip-detail search stays simple through setup, status, advanced controls, 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/filler/settings/details");
   await expect(page.getByRole("heading", { name: "Clip details" })).toBeVisible();
-  await expect(page.getByText("Clip details are ready")).toBeVisible();
-  await expect(page.getByText(/Web search is used only when they cannot identify a clip/)).toBeVisible();
+  await expect(page.getByText("Web search is optional")).toBeVisible();
+  await expect(page.getByText(/search more broadly when these sources come up short/)).toBeVisible();
+  await expect(page.getByText("Clip details are ready")).toHaveCount(0);
   await expect(page.getByText("Monthly web searches")).not.toBeVisible();
   await expect(page.getByText("Wikidata")).not.toBeVisible();
   await expectNoHorizontalOverflow(page);
@@ -31,7 +32,7 @@ test("clip-detail search stays simple through setup, status, advanced controls, 
     .poll(() => backend.state.fillerResearchTests)
     .toEqual([{ provider: "brave", apiKey: "browser-secret" }]);
   expect(backend.state.edits["filler.research.brave_api_key"]).toBe("browser-secret");
-  await page.getByText("Advanced", { exact: true }).click();
+  await page.getByText("Where Loomarr looks", { exact: true }).click();
   await expect(page.getByRole("switch", { name: "Wikidata" })).toBeChecked();
   await expect(page.getByRole("switch", { name: "Wikipedia" })).toBeChecked();
   await expect(page.getByRole("switch", { name: "Archive.org" })).toBeChecked();
@@ -43,7 +44,7 @@ test("clip-detail search stays simple through setup, status, advanced controls, 
   await page.getByRole("button", { name: "Test connection" }).click();
   await expect.poll(() => backend.state.fillerResearchTests.at(-1)).toEqual({ provider: "brave" });
   await page.getByRole("button", { name: "Remove web search" }).click();
-  await expect(page.getByText("Clip details are ready")).toBeVisible();
+  await expect(page.getByText("Web search is optional")).toBeVisible();
   expect(backend.state.edits["filler.research.web_provider"]).toBe("none");
   expect(backend.state.edits["filler.research.brave_api_key"]).toBe("");
 
@@ -59,7 +60,7 @@ test("clip-detail search stays simple through setup, status, advanced controls, 
   await page.reload();
   await expect(page.getByText("Web search needs a check")).toBeVisible();
   await expect(page.getByText(/SearXNG · 9 of 25 searches this month/)).toBeVisible();
-  await page.getByText("Advanced", { exact: true }).click();
+  await page.getByText("Where Loomarr looks", { exact: true }).click();
   await page.getByRole("button", { name: "Replace provider" }).click();
   const replacement = page.getByRole("dialog");
   await replacement.getByText("Advanced / self-hosted").click();

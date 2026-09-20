@@ -977,9 +977,9 @@ func declared() []Setting {
 			Doc: "How much space Loomarr may use for filler, in GiB. Leave at 0 to choose a safe allowance automatically. Loomarr always keeps a protected amount of free space for the rest of the system.",
 		},
 		{
-			Key: "filler.research.enabled", Label: "Find missing clip details", EnvVar: "FILLER_RESEARCH_ENABLED", Group: GroupFiller,
+			Key: "filler.research.enabled", Label: "Find missing details automatically", EnvVar: "FILLER_RESEARCH_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Presentation: PresentationSwitch, Default: true,
-			Doc: "Look up likely era and location when a public source did not provide them. Loomarr checks trusted public sources first; this never changes whether a clip is safe or ready to play.",
+			Doc: "Look for a clip's likely time period and location using public sources. This does not affect whether the clip can play.",
 		},
 		{
 			Key: "filler.research.wikidata_enabled", Label: "Wikidata", EnvVar: "FILLER_RESEARCH_WIKIDATA_ENABLED", Group: GroupFiller,
