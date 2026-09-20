@@ -55,6 +55,23 @@ type fakeTools struct {
 	cutFn            func(string, int64, int64, string) error
 }
 
+type spanLanguageDetector struct {
+	answers     map[[2]int64]string
+	errors      map[[2]int64]error
+	unavailable string
+	spans       [][2]int64
+}
+
+func (d *spanLanguageDetector) UnavailableReason() string { return d.unavailable }
+
+func (d *spanLanguageDetector) DetectLanguage(_ context.Context, _ string, startMs, endMs int64) (string, error) {
+	d.spans = append(d.spans, [2]int64{startMs, endMs})
+	if err := d.errors[[2]int64{startMs, endMs}]; err != nil {
+		return "", err
+	}
+	return d.answers[[2]int64{startMs, endMs}], nil
+}
+
 type splitShadowCapture struct {
 	calls    int
 	proposal filler.SplitProposal
@@ -541,6 +558,12 @@ func durableProposalCopy(p filler.SplitProposal) filler.SplitProposal {
 		_ = json.Unmarshal(raw, &detection)
 		copy.Detection = &detection
 	}
+	if p.Language != nil {
+		raw, _ := json.Marshal(p.Language)
+		var language filler.SplitLanguageProgress
+		_ = json.Unmarshal(raw, &language)
+		copy.Language = &language
+	}
 	return copy
 }
 func (m *splitMemStore) GetSplitProposal(_ context.Context, id string) (filler.SplitProposal, error) {
@@ -934,6 +957,235 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 	// The catalog is UNTOUCHED: propose never writes clips.
 	if len(st.clips) != 1 {
 		t.Errorf("propose wrote to the catalog: %+v", st.clips)
+	}
+}
+
+func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/mixed-language.mp4", 60_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "English advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Spanish advert"},
+		{StartMs: 40_000, EndMs: 60_000, Title: "Wordless advert"},
+	}}
+	detector := &spanLanguageDetector{answers: map[[2]int64]string{
+		{1_000, 11_000}:  "en",
+		{21_000, 31_000}: "es",
+		{41_000, 51_000}: filler.LangNone,
+	}}
+	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 10 },
+	})
+
+	proposal, err := sp.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proposal.LanguagePreference != "en" {
+		t.Fatalf("proposal language preference = %q, want en", proposal.LanguagePreference)
+	}
+	if len(proposal.LanguageExclusions) != 1 {
+		t.Fatalf("language exclusions = %+v, want one exact receipt", proposal.LanguageExclusions)
+	}
+	excluded := proposal.LanguageExclusions[0]
+	if excluded.StartMs != 20_000 || excluded.EndMs != 40_000 || excluded.Name != "Spanish advert" || excluded.DetectedLanguage != "es" || excluded.ExpectedLanguage != "en" || excluded.Reason != filler.SplitExclusionLanguageMismatch {
+		t.Fatalf("language exclusion = %+v, want the omitted interval and reason", excluded)
+	}
+	if len(proposal.Segments) != 2 {
+		t.Fatalf("review segments = %+v, want English and wordless only", proposal.Segments)
+	}
+	if proposal.Segments[0].Name != "English advert" || proposal.Segments[0].Language != "en" || !proposal.Segments[0].LanguageChecked {
+		t.Errorf("English segment = %+v", proposal.Segments[0])
+	}
+	if proposal.Segments[1].Name != "Wordless advert" || proposal.Segments[1].Language != filler.LangNone || !proposal.Segments[1].LanguageChecked {
+		t.Errorf("wordless segment = %+v", proposal.Segments[1])
+	}
+	wantSpans := [][2]int64{{1_000, 11_000}, {21_000, 31_000}, {41_000, 51_000}}
+	if !reflect.DeepEqual(detector.spans, wantSpans) {
+		t.Errorf("language spans = %v, want %v", detector.spans, wantSpans)
+	}
+
+	persisted, err := st.GetSplitProposal(context.Background(), proposal.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(persisted.Segments, proposal.Segments) || persisted.LanguagePreference != "en" || !reflect.DeepEqual(persisted.LanguageExclusions, proposal.LanguageExclusions) {
+		t.Fatalf("persisted proposal lost the pre-review language decision: %+v", persisted)
+	}
+}
+
+func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/uncertain-language.mp4", 40_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "Unknown advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Temporarily unavailable advert"},
+	}}
+	detector := &spanLanguageDetector{
+		answers: map[[2]int64]string{{1_000, 11_000}: ""},
+		errors:  map[[2]int64]error{{21_000, 31_000}: errors.New("detector timed out")},
+	}
+	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 10 },
+	})
+
+	proposal, err := sp.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.LanguageExclusions) != 0 || len(proposal.Segments) != 2 {
+		t.Fatalf("uncertain checks removed reviewable clips: %+v", proposal)
+	}
+	if !proposal.Segments[0].LanguageChecked || proposal.Segments[0].Language != "" {
+		t.Errorf("unknown language was not recorded honestly: %+v", proposal.Segments[0])
+	}
+	if proposal.Segments[0].LanguageReason != filler.SplitLanguageInconclusive {
+		t.Errorf("unknown language reason = %q, want inconclusive", proposal.Segments[0].LanguageReason)
+	}
+	if !proposal.Segments[1].LanguageChecked || proposal.Segments[1].LanguageNote != "Language could not be checked" {
+		t.Errorf("failed check was not retained for review: %+v", proposal.Segments[1])
+	}
+	if proposal.Segments[1].LanguageReason != filler.SplitLanguageFailed {
+		t.Errorf("failed language reason = %q, want failed", proposal.Segments[1].LanguageReason)
+	}
+}
+
+func TestPropose_UnavailableLanguageBackendLeavesCandidatesReviewable(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/unavailable-language.mp4", 40_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "First advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Second advert"},
+	}}
+	detector := &spanLanguageDetector{unavailable: "the language model is not installed"}
+	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 10 },
+	})
+
+	proposal, err := sp.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.LanguageExclusions) != 0 || len(proposal.Segments) != 2 {
+		t.Fatalf("unavailable backend removed reviewable clips: %+v", proposal)
+	}
+	if len(detector.spans) != 0 {
+		t.Fatalf("unavailable detector was still called for %v", detector.spans)
+	}
+	for _, segment := range proposal.Segments {
+		if !segment.LanguageChecked || segment.Language != "" || segment.LanguageNote != detector.unavailable {
+			t.Errorf("unavailable outcome was not explained on %+v", segment)
+		}
+		if segment.LanguageReason != filler.SplitLanguageUnavailable {
+			t.Errorf("unavailable language reason = %q, want unavailable", segment.LanguageReason)
+		}
+	}
+}
+
+func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
+	st := newSplitMemStore()
+	st.roundTripProposals = true
+	hash := seedCompilation(st, "comps/resumable-language.mp4", 60_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "English advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Spanish advert"},
+		{StartMs: 40_000, EndMs: 60_000, Title: "Wordless advert"},
+	}}
+	detector := &spanLanguageDetector{answers: map[[2]int64]string{
+		{1_000, 11_000}:  "en",
+		{21_000, 31_000}: "es",
+		{41_000, 51_000}: filler.LangNone,
+	}}
+	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 1 },
+	})
+	stage := filler.NewSplitStage(splitter, st)
+
+	deferred := 0
+	for attempt := 0; attempt < 10; attempt++ {
+		result, err := stage.Run(context.Background(), st.clips[hash])
+		if errors.Is(err, filler.ErrDeferred) {
+			deferred++
+			proposals, listErr := st.ListSplitProposals(context.Background())
+			if listErr != nil || len(proposals) != 1 {
+				t.Fatalf("pending proposal after pass %d = %+v, %v", attempt+1, proposals, listErr)
+			}
+			if proposals[0].Ready() {
+				t.Fatalf("proposal became reviewable after pass %d with language work still pending: %+v", attempt+1, proposals[0])
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Verdict != filler.VerdictReview {
+			t.Fatalf("final result = %+v, want review", result)
+		}
+		proposals, listErr := st.ListSplitProposals(context.Background())
+		if listErr != nil || len(proposals) != 1 {
+			t.Fatalf("final proposal = %+v, %v", proposals, listErr)
+		}
+		proposal := proposals[0]
+		if !proposal.Ready() || len(proposal.LanguageExclusions) != 1 || len(proposal.Segments) != 2 {
+			t.Fatalf("final proposal = %+v", proposal)
+		}
+		for _, segment := range proposal.Segments {
+			if !segment.LanguageChecked {
+				t.Fatalf("unchecked segment reached review: %+v", segment)
+			}
+		}
+		if deferred < 4 {
+			t.Fatalf("only %d passes deferred; one-item budget did not bound three language checks", deferred)
+		}
+		return
+	}
+	t.Fatal("split proposal never became reviewable")
+}
+
+func TestSplitStage_ResolvesAnEntirelyMismatchedCompilationWithoutAskingForReview(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/polish-only.mp4", 40_000)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 20_000, Title: "First Polish advert"},
+		{StartMs: 20_000, EndMs: 40_000, Title: "Second Polish advert"},
+	}}
+	detector := &spanLanguageDetector{answers: map[[2]int64]string{
+		{1_000, 11_000}:  "pl",
+		{21_000, 31_000}: "pl",
+	}}
+	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 10 },
+	})
+	stage := filler.NewSplitStage(splitter, st)
+	proposal, err := splitter.Propose(context.Background(), hash)
+	if err != nil || len(proposal.Segments) != 0 || len(proposal.LanguageExclusions) != 2 {
+		t.Fatalf("language-only proposal = %+v, %v", proposal, err)
+	}
+
+	result, err := stage.Run(context.Background(), st.clips[hash])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Verdict != filler.VerdictContinue || result.Note != "left out 2 clips spoken in another language" {
+		t.Fatalf("result = %+v, want a quiet language resolution", result)
+	}
+	proposals, err := st.ListSplitProposals(context.Background())
+	if err != nil || len(proposals) != 0 {
+		t.Fatalf("empty review proposal survived: %+v, %v", proposals, err)
+	}
+	parent, found, err := st.GetClip(context.Background(), hash)
+	if err != nil || !found || !parent.IsComposite || parent.Held {
+		t.Fatalf("resolved parent = %+v, found=%v err=%v", parent, found, err)
 	}
 }
 
@@ -1439,7 +1691,7 @@ func TestSplitStageRecordsStructureShadowBeforeCompatibilityPublication(t *testi
 // Confirm cuts, catalogs, and consumes — and leaves the compilation behind.
 func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	st := newSplitMemStore()
-	hash := seedCompilation(st, "comps/1987.mp4", 61_000)
+	hash := seedCompilation(st, "comps/1987.mp4", 91_000)
 	drop := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(drop, "comps"), 0o755); err != nil {
 		t.Fatal(err)
@@ -1450,8 +1702,21 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	hash = bindCompilationIdentity(t, st, hash, src)
 	stageParentForSplitReview(st, hash)
-	tools := &fakeTools{}
-	sp := newSplitter(st, tools, nil, drop)
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
+		{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
+		{StartMs: 61_000, EndMs: 91_000, Title: "Boundary edit"},
+	}}
+	detector := &spanLanguageDetector{answers: map[[2]int64]string{
+		{1_000, 11_000}:  "en",
+		{31_000, 41_000}: filler.LangNone,
+		{62_000, 72_000}: "en",
+	}}
+	sp := newSplitter(st, tools, nil, drop).WithSegmentLanguage(filler.SegmentLanguagePolicy{
+		Detector: detector,
+		Want:     func() string { return "en" },
+		Budget:   func() int { return 10 },
+	})
 	// ⚠ Capture the proposal id from Propose's return, NOT by ranging st.proposals — Go randomises map
 	// order, so if the store ever holds >1 proposal the range picked an arbitrary one and Confirm ran
 	// against the wrong id (an intermittent "compilation not marked composite" flake, now fixed
@@ -1462,17 +1727,20 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 	}
 	propID := prop.ID
 
-	// The operator's EDITED list: era suggestion accepted on the second segment,
-	// and a third segment they added by hand.
+	// The operator's EDITED list accepts tags but also forges language evidence. Language is detector
+	// evidence, not an editable tag: Confirm must bind it back to the persisted exact intervals.
 	edited := []filler.SplitSegment{
-		{StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
-		{StartMs: 30000, EndMs: 61000, Name: "Lego", Era: 1987, Audience: filler.Kids, Category: "toys"},
+		{StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food", Language: "pl", LanguageChecked: true},
+		{StartMs: 30000, EndMs: 61000, Name: "Lego", Era: 1987, Audience: filler.Kids, Category: "toys", Language: "pl", LanguageChecked: true},
+		// Moving the start makes this a different audio span, so even a truthful copied answer must
+		// not bypass the child's downstream language check.
+		{StartMs: 62000, EndMs: 91000, Name: "Edited boundary", Era: 1987, Audience: filler.General, Category: "retail", Language: "en", LanguageChecked: true},
 	}
 	if _, err := sp.Confirm(context.Background(), propID, edited); err != nil {
 		t.Fatal(err)
 	}
 
-	if len(tools.cutCalls) != 2 {
+	if len(tools.cutCalls) != 3 {
 		t.Fatalf("cuts = %v", tools.cutCalls)
 	}
 	// ⚠ V45: the compilation is KEPT and marked a composite (NOT deleted — the reversal of V34). Its
@@ -1506,10 +1774,14 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		}
 		segments = append(segments, c)
 	}
-	if len(segments) != 2 {
+	if len(segments) != 3 {
 		t.Fatalf("segments = %+v", segments)
 	}
 	for _, seg := range segments {
+		wantLanguage := map[string]string{"McDonald's": "en", "Lego": filler.LangNone, "Edited boundary": ""}[seg.Name]
+		if seg.Language != wantLanguage {
+			t.Errorf("confirmed segment %q language = %q, want inherited %q", seg.Name, seg.Language, wantLanguage)
+		}
 		if len(seg.AssertedTags) != 1 || seg.AssertedTags[0] != seg.Category {
 			t.Errorf("confirmed segment %q taxonomy = category %q / asserted %v", seg.Name, seg.Category, seg.AssertedTags)
 		}

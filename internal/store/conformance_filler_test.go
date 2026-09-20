@@ -3347,10 +3347,12 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
 		Source: source, Structure: &structure, StructureDecision: &structureDecision,
+		LanguagePreference: "en",
+		LanguageExclusions: []filler.SplitLanguageExclusion{{StartMs: 149_000, EndMs: 179_000, Name: "Polish advert", DetectedLanguage: "pl", ExpectedLanguage: "en", Reason: filler.SplitExclusionLanguageMismatch}},
 		Segments: []filler.SplitSegment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence},
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence, Language: "en", LanguageChecked: true},
 			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true, RoleEvidence: &videoRoleEvidence},
-			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …"},
+			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …", LanguageChecked: true, LanguageReason: filler.SplitLanguageFailed, LanguageNote: "Language could not be checked"},
 		},
 	}
 	if err := s.UpsertSplitProposal(ctx, p); err != nil {
@@ -3360,7 +3362,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ClipHash != p.ClipHash || got.Source != p.Source || !reflect.DeepEqual(got.Structure, p.Structure) || !reflect.DeepEqual(got.StructureDecision, p.StructureDecision) || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
+	if got.ClipHash != p.ClipHash || got.Source != p.Source || !reflect.DeepEqual(got.Structure, p.Structure) || !reflect.DeepEqual(got.StructureDecision, p.StructureDecision) || got.LanguagePreference != "en" || !reflect.DeepEqual(got.LanguageExclusions, p.LanguageExclusions) || len(got.Segments) != 3 || !got.CreatedAt.Equal(now) {
 		t.Fatalf("proposal round-trip = %+v", got)
 	}
 	// Every segment field survives the JSON round-trip — including the V34-specific
@@ -3372,6 +3374,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	if !got.Segments[2].Unsplittable || got.Segments[2].Transcript == "" {
 		t.Errorf("unsplittable marker/transcript lost: %+v", got.Segments[2])
 	}
+	if got.Segments[0].Language != "en" || !got.Segments[0].LanguageChecked || !got.Segments[2].LanguageChecked || got.Segments[2].LanguageReason != filler.SplitLanguageFailed || got.Segments[2].LanguageNote == "" {
+		t.Errorf("pre-review language fields lost: %+v / %+v", got.Segments[0], got.Segments[2])
+	}
 	if !reflect.DeepEqual(got.Segments[0].RoleEvidence, &roleEvidence) {
 		t.Errorf("segment role evidence lost: %+v", got.Segments[0].RoleEvidence)
 	}
@@ -3381,6 +3386,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 
 	draft := filler.SplitProposal{
 		ID: "sp_draft", ClipHash: clipHashFor("comps/long.mp4"), CreatedAt: now.Add(time.Minute),
+		Language: &filler.SplitLanguageProgress{Want: "en", Next: 1},
 		Detection: &filler.SplitDetectionProgress{
 			ScannedThroughMs: 600_000,
 			Black:            []filler.Interval{{StartMs: 29_900, EndMs: 30_100}},
@@ -3392,7 +3398,7 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	gotDraft, err := s.GetSplitProposal(ctx, draft.ID)
-	if err != nil || gotDraft.Ready() || gotDraft.Detection.ScannedThroughMs != 600_000 || len(gotDraft.Detection.Black) != 1 || len(gotDraft.Detection.ChapterEdges) != 4 || len(gotDraft.Detection.Discarded) != 1 {
+	if err != nil || gotDraft.Ready() || gotDraft.Language == nil || gotDraft.Language.Want != "en" || gotDraft.Language.Next != 1 || gotDraft.Detection.ScannedThroughMs != 600_000 || len(gotDraft.Detection.Black) != 1 || len(gotDraft.Detection.ChapterEdges) != 4 || len(gotDraft.Detection.Discarded) != 1 {
 		t.Fatalf("detector checkpoint round-trip = (%+v, %v)", gotDraft, err)
 	}
 	if err := s.DeleteSplitProposal(ctx, draft.ID); err != nil {

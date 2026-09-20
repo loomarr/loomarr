@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
 import { SegmentPreview } from "../segment-preview";
@@ -94,6 +95,31 @@ const AUDIENCE_LABEL: Record<string, string> = {
   late_night: "Late night",
 };
 
+const languageNeedsRecheck = {
+  language: "",
+  languageChecked: false,
+  languageReason: "",
+  languageNote: "Language will be checked again after this edit.",
+} as const;
+
+const unresolvedLanguageMessage = (segment: SplitSegment): string | undefined => {
+  switch (segment.languageReason) {
+    case "unavailable":
+      return "Language wasn’t checked because speech recognition isn’t set up. This clip is still included.";
+    case "failed":
+      return "Language couldn’t be checked because speech recognition had a problem. This clip is still included.";
+    case "inconclusive":
+      return "Loomarr heard speech but couldn’t confidently identify the language. This clip is still included.";
+    case "paused":
+      return "Language checking is paused by the processing limit. This clip is still included.";
+    default:
+      if (segment.languageNote === languageNeedsRecheck.languageNote)
+        return languageNeedsRecheck.languageNote;
+      if (segment.languageNote) return "Language couldn’t be confirmed. This clip is still included.";
+      return undefined;
+  }
+};
+
 const SplitReviewEditor = ({
   proposal,
   minClipDurationMs,
@@ -138,6 +164,7 @@ const SplitReviewEditor = ({
         dupOf: a.dupOf || b.dupOf || undefined,
         unsplittable: a.unsplittable || b.unsplittable || undefined,
         transcript: [a.transcript, b.transcript].filter(Boolean).join("\n") || undefined,
+        ...languageNeedsRecheck,
       };
       return [...prev.slice(0, i), merged, ...prev.slice(i + 2)];
     });
@@ -247,6 +274,7 @@ const SegmentRow = ({
   const n = position + 1;
   const span = spanMs(segment);
   const valid = isValid(segment);
+  const languageMessage = unresolvedLanguageMessage(segment);
   const ref = useRef<HTMLDivElement>(null);
 
   // ⚠ Clicking a strip block has to SHOW the row, not merely tint it. A long reel puts most of
@@ -292,7 +320,7 @@ const SegmentRow = ({
               id={`seg-start-${position}`}
               className="w-24 font-mono tabular-nums"
               value={segment.startText}
-              onChange={(e) => onChange({ startText: e.target.value })}
+              onChange={(e) => onChange({ startText: e.target.value, ...languageNeedsRecheck })}
             />
           </div>
           <div>
@@ -301,7 +329,7 @@ const SegmentRow = ({
               id={`seg-end-${position}`}
               className="w-24 font-mono tabular-nums"
               value={segment.endText}
-              onChange={(e) => onChange({ endText: e.target.value })}
+              onChange={(e) => onChange({ endText: e.target.value, ...languageNeedsRecheck })}
             />
           </div>
           <span
@@ -345,6 +373,11 @@ const SegmentRow = ({
               exist without listing the full rollup set. No inline cycle — a segment's tags ride
               along from detection/grounding, not something this review gate edits directly. */}
           {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
+          {segment.languageChecked && segment.language ? (
+            <Badge variant="neutral">
+              {segment.language === "none" ? "No speech" : languageName(segment.language)}
+            </Badge>
+          ) : null}
           {(() => {
             const extra = (segment.tags ?? []).filter((t) => t !== segment.category).length;
             return extra > 0 ? (
@@ -383,6 +416,12 @@ const SegmentRow = ({
             </Badge>
           ) : null}
         </div>
+
+        {!segment.language && languageMessage ? (
+          <p className="text-muted-foreground text-sm" title={segment.languageNote}>
+            {languageMessage}
+          </p>
+        ) : null}
 
         {segment.holdReason ? (
           <p role="status" className="rounded-sm bg-caution-tint-15 px-2 py-1.5 text-caution text-sm">

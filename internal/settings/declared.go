@@ -59,6 +59,33 @@ func mailboxAddress(value any) error {
 // Generated tokens (API_TOKEN, PLAYOUT_TOKEN) live in secrets.go
 // (minted, not demanded — §4), not the app-managed registry.
 
+// fillerLanguageOptions is the one server-owned capability catalog used by every language picker.
+// Values match the 100-language catalog in the vendored whisper.cpp v1.9.1 detector (whose authority is
+// OpenAI Whisper's tokenizer). The matching labels are deliberately code-shaped fallbacks:
+// clients localize PresentationLanguage values through CLDR.
+func fillerLanguageOptions() []EnumOption {
+	lang := func(code string) EnumOption { return opt(code, code) }
+	return []EnumOption{
+		lang("en"), lang("zh"), lang("de"), lang("es"), lang("ru"), lang("ko"),
+		lang("fr"), lang("ja"), lang("pt"), lang("tr"), lang("pl"), lang("ca"),
+		lang("nl"), lang("ar"), lang("sv"), lang("it"), lang("id"), lang("hi"),
+		lang("fi"), lang("vi"), lang("he"), lang("uk"), lang("el"), lang("ms"),
+		lang("cs"), lang("ro"), lang("da"), lang("hu"), lang("ta"), lang("no"),
+		lang("th"), lang("ur"), lang("hr"), lang("bg"), lang("lt"), lang("la"),
+		lang("mi"), lang("ml"), lang("cy"), lang("sk"), lang("te"), lang("fa"),
+		lang("lv"), lang("bn"), lang("sr"), lang("az"), lang("sl"), lang("kn"),
+		lang("et"), lang("mk"), lang("br"), lang("eu"), lang("is"), lang("hy"),
+		lang("ne"), lang("mn"), lang("bs"), lang("kk"), lang("sq"), lang("sw"),
+		lang("gl"), lang("mr"), lang("pa"), lang("si"), lang("km"), lang("sn"),
+		lang("yo"), lang("so"), lang("af"), lang("oc"), lang("ka"), lang("be"),
+		lang("tg"), lang("sd"), lang("gu"), lang("am"), lang("yi"), lang("lo"),
+		lang("uz"), lang("fo"), lang("ht"), lang("ps"), lang("tk"), lang("nn"),
+		lang("mt"), lang("sa"), lang("lb"), lang("my"), lang("bo"), lang("tl"),
+		lang("mg"), lang("as"), lang("tt"), lang("haw"), lang("ln"), lang("ha"),
+		lang("ba"), lang("jw"), lang("su"), lang("yue"),
+	}
+}
+
 // autoSplitConfidenceRange bounds `filler.autosplit.min_confidence` to 50–95 (§10 V43).
 // The lower bound is load-bearing: an ungrounded era is capped below 50, so no reachable
 // threshold can accept a cut on the strength of an invented era.
@@ -1043,9 +1070,9 @@ func declared() []Setting {
 		{
 			// ⚠ A clip with NO speech is always kept — a wordless visual spot has no language, and
 			// those are often the best filler. Only confident non-target speech rejects (§10 V40).
-			Key: "filler.language", Label: "Expected spoken language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
-			Kind: KindString, Default: "en", Advanced: true,
-			Doc: "The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept. Empty turns the language check off.",
+			Key: "filler.language", Label: "Commercial language", EnvVar: "FILLER_LANGUAGE", Group: GroupFiller,
+			Kind: KindEnum, Enum: fillerLanguageOptions(), Presentation: PresentationLanguage, Default: "en",
+			Doc: "The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept.",
 		},
 		{
 			// Mirrors `llm.provider`'s local-vs-hosted split (§8.1), and for the same reason:

@@ -4,6 +4,7 @@ import {
   getGetFillerSplitMockHandler,
   getListFillerMockHandler,
   getMeMockHandler,
+  getRewindFillerClipMockHandler,
   getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -41,11 +42,62 @@ const PROPOSAL = {
   id: "sp-1",
   clipHash: "comp-hash",
   createdAt: "2026-07-25T20:00:00Z",
+  languagePreference: "en",
+  languageExclusions: [
+    {
+      startMs: 61000,
+      endMs: 91000,
+      name: "Polish supermarket advert",
+      detectedLanguage: "pl",
+      expectedLanguage: "en",
+      reason: "language_mismatch",
+    },
+  ],
   segments: [
-    { index: 0, startMs: 0, endMs: 30000, name: "First ad", era: 1990, audience: "kids", category: "toys" },
-    { index: 1, startMs: 30000, endMs: 61000, name: "Second ad", suggestedEra: 1985 },
+    {
+      index: 0,
+      startMs: 0,
+      endMs: 30000,
+      name: "First ad",
+      era: 1990,
+      audience: "kids",
+      category: "toys",
+      language: "en",
+      languageChecked: true,
+    },
+    {
+      index: 1,
+      startMs: 30000,
+      endMs: 61000,
+      name: "Second ad",
+      suggestedEra: 1985,
+      languageChecked: true,
+      languageNote: "Language could not be checked",
+    },
   ],
 };
+
+const languageSetting = (value: string) => ({
+  key: "filler.language",
+  label: "Commercial language",
+  group: "filler",
+  kind: "enum",
+  owner: "installation_location",
+  presentation: "language",
+  value,
+  provenance: "default" as const,
+  apply: "live" as const,
+  advanced: false,
+  secret: false,
+  set: true,
+  doc: "Commercial language",
+  enum: ["en", "es", "pl"],
+  enumOptions: [
+    { value: "en", label: "en" },
+    { value: "es", label: "es" },
+    { value: "pl", label: "pl" },
+  ],
+});
 
 // ⚠ The stub this replaced dispatched by URL SUBSTRING, in order, with a catch-all `{}` at the
 // end — and the ordering was load-bearing: `/v1/filler/splits/sp-1/confirm` had to be tested
@@ -58,9 +110,10 @@ const PROPOSAL = {
 // recorded url contained that substring", which is only as good as the substring. Now the handler
 // simply never fires — AND, if the member path ever did fetch something unmodelled, the
 // unhandled-request guard fails the test by name rather than letting a catch-all answer it.
-const stubSplit = (me: MeBody = ADMIN) => {
+const stubSplit = (me: MeBody = ADMIN, language = "en") => {
   let fetchedProposal = false;
   const confirms: unknown[] = [];
+  const rewinds: unknown[] = [];
   const composite = {
     hash: PROPOSAL.clipHash,
     name: "Classic Toy Commercial Compilation 1989",
@@ -75,7 +128,7 @@ const stubSplit = (me: MeBody = ADMIN) => {
   };
   server.use(
     getMeMockHandler({ ...me }),
-    getSettingsListMockHandler({ settings: [], features: {} }),
+    getSettingsListMockHandler({ settings: [languageSetting(language)], features: {} }),
     getGetFillerSplitMockHandler(() => {
       fetchedProposal = true;
       return PROPOSAL;
@@ -93,8 +146,11 @@ const stubSplit = (me: MeBody = ADMIN) => {
       confirms.push(await request.json());
       return { clips: 2 };
     }),
+    getRewindFillerClipMockHandler(async ({ request }) => {
+      rewinds.push(await request.json());
+    }),
   );
-  return { wasFetched: () => fetchedProposal, confirms };
+  return { wasFetched: () => fetchedProposal, confirms, rewinds };
 };
 
 const renderPage = () => {
@@ -110,8 +166,13 @@ const renderPage = () => {
     path: "/filler/library",
     component: () => <p>the catalog</p>,
   });
+  const incomingRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/filler/incoming",
+    component: () => <p>incoming clips</p>,
+  });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([reviewRoute, fillerRoute]),
+    routeTree: rootRoute.addChildren([reviewRoute, fillerRoute, incomingRoute]),
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: ["/filler/splits/sp-1"] }),
   });
@@ -131,6 +192,29 @@ describe("SplitReviewPage", () => {
     expect(await screen.findByRole("region", { name: /segment 1: first ad/i })).toBeInTheDocument();
     expect(screen.getByText("Classic Toy Commercial Compilation 1989")).toBeInTheDocument();
     expect(screen.queryByText("comp-hash")).not.toBeInTheDocument();
+    expect(screen.getByText(/left out 1 clip spoken in another language/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/show skipped clip/i));
+    expect(screen.getByText(/polish supermarket advert/i)).toBeInTheDocument();
+    expect(screen.getByText(/polish.*01:01.*01:31/i)).toBeInTheDocument();
+  });
+
+  it("offers to recheck a persisted split when the household language changed", async () => {
+    const { rewinds } = stubSplit(ADMIN, "es");
+    renderPage();
+
+    expect(await screen.findByText(/commercial language is now spanish/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /recheck with spanish/i }));
+
+    await screen.findByText("incoming clips");
+    expect(rewinds).toEqual([{ hash: "comp-hash", from: "split" }]);
+  });
+
+  it("uses plain wording when the household turns the language filter off", async () => {
+    stubSplit(ADMIN, "");
+    renderPage();
+
+    expect(await screen.findByText(/commercials can now use any language/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /recheck without a language filter/i })).toBeInTheDocument();
   });
 
   it("confirms the edited draft as the POST body and returns to the catalog", async () => {

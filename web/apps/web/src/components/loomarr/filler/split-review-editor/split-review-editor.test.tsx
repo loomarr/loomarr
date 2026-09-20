@@ -27,8 +27,18 @@ const proposal: SplitProposal = {
       era: 1990,
       audience: "kids",
       category: "toys",
+      language: "en",
+      languageChecked: true,
     }),
-    seg({ index: 1, startMs: 30000, endMs: 61000, name: "Second ad", suggestedEra: 1985 }),
+    seg({
+      index: 1,
+      startMs: 30000,
+      endMs: 61000,
+      name: "Second ad",
+      suggestedEra: 1985,
+      language: "none",
+      languageChecked: true,
+    }),
     seg({
       index: 2,
       startMs: 61000,
@@ -37,6 +47,9 @@ const proposal: SplitProposal = {
       dupOf: "clip-gushers.mp4",
       unsplittable: true,
       transcript: "[01:01] And now a word from our sponsor.",
+      languageChecked: true,
+      languageReason: "failed",
+      languageNote: "Language could not be checked",
     }),
   ],
 };
@@ -65,6 +78,40 @@ describe("SplitReviewEditor", () => {
     expect(within(first).getByText("1990s")).toBeInTheDocument();
     expect(within(first).getByText("Kids")).toBeInTheDocument();
     expect(within(first).getByText("toys")).toBeInTheDocument();
+    expect(within(first).getByText("English")).toBeInTheDocument();
+    const second = screen.getByRole("region", { name: /segment 2: second ad/i });
+    expect(within(second).getByText("No speech")).toBeInTheDocument();
+    const third = screen.getByRole("region", { name: /segment 3: long block/i });
+    expect(within(third).getByText(/speech recognition had a problem/i)).toBeInTheDocument();
+  });
+
+  it("distinguishes recognition that is not set up from a genuinely inconclusive result", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Not checked",
+              languageChecked: true,
+              languageReason: "unavailable",
+              languageNote: "the local language model is not configured",
+            }),
+            seg({
+              index: 1,
+              name: "Not clear",
+              languageChecked: true,
+              languageReason: "inconclusive",
+            }),
+          ],
+        }}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/speech recognition isn’t set up/i)).toBeInTheDocument();
+    expect(screen.getByText(/couldn’t confidently identify the language/i)).toBeInTheDocument();
   });
 
   it("renders the duplicate flag, the unsplittable marker, and the transcript behind a toggle", () => {
@@ -138,7 +185,17 @@ describe("SplitReviewEditor", () => {
     // The merged span runs from the first segment's start to the SECOND's end, keeping
     // the first's name; the second segment is gone from the list.
     expect(payload[0]).toMatchObject({ index: 0, name: "First ad", startMs: 0, endMs: 61000 });
+    expect(payload[0]).toMatchObject({ language: "", languageChecked: false });
     expect(payload[1]).toMatchObject({ index: 1, name: "Long block" });
+  });
+
+  it("clears the displayed language evidence when a cut boundary changes", () => {
+    renderEditor();
+    const first = screen.getByRole("region", { name: /segment 1: first ad/i });
+    fireEvent.change(within(first).getByLabelText("Start (mm:ss)"), { target: { value: "0:02" } });
+
+    expect(within(first).queryByText("English")).not.toBeInTheDocument();
+    expect(within(first).getByText(/language will be checked again/i)).toBeInTheDocument();
   });
 
   it("accepting an era suggestion grounds it as the segment's era; rejecting clears it", () => {

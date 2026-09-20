@@ -560,7 +560,16 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 		if err := s.splitter.resolveEmpty(ctx, p.ID); err != nil {
 			return StageResult{}, err
 		}
-		note := discardNote(discarded)
+		note := ""
+		if excluded := len(p.LanguageExclusions); excluded > 0 {
+			clipWord := "clips"
+			if excluded == 1 {
+				clipWord = "clip"
+			}
+			note = fmt.Sprintf("left out %d %s spoken in another language", excluded, clipWord)
+		} else {
+			note = discardNote(discarded)
+		}
 		if note == "" {
 			note = "no usable adverts remained"
 		}

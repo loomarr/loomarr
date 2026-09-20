@@ -288,6 +288,15 @@ type SplitSegment struct {
 	// the proposal so the reviewer can SEE why a boundary was proposed; not
 	// persisted to the catalog on confirm.
 	Transcript string `json:"transcript,omitempty"`
+	// Language is the language heard inside this exact proposed span. LanguageChecked keeps a
+	// checked-but-unknown answer distinct from a legacy segment that has never been heard.
+	Language        string `json:"language,omitempty"`
+	LanguageChecked bool   `json:"languageChecked,omitempty"`
+	// LanguageReason is a stable machine-readable explanation when a check produced no language.
+	// LanguageNote retains optional technical detail for diagnostics; clients must not parse it to
+	// decide what happened or expose it as primary copy.
+	LanguageReason string `json:"languageReason,omitempty"`
+	LanguageNote   string `json:"languageNote,omitempty"`
 }
 
 // SplitDetectionProgress is the private durable checkpoint for coarse boundary detection. It is
@@ -311,6 +320,37 @@ type SplitDetectionProgress struct {
 	// CoarseSegments is set once chapter/boundary triage is complete. Persisting it before
 	// transcript rescue means a timeout in the next phase never repeats the timeline scan.
 	CoarseSegments []SplitSegment `json:"coarseSegments,omitempty"`
+}
+
+// SplitLanguageProgress is the private durable cursor between boundary detection and review.
+// The wanted language is snapshotted so a settings edit cannot judge one reel under two policies.
+type SplitLanguageProgress struct {
+	Want string `json:"want"`
+	Next int    `json:"next"`
+}
+
+const SplitExclusionLanguageMismatch = "language_mismatch"
+
+// Stable unresolved-language outcomes carried to review. A code, rather than prose, keeps the
+// interface useful while backend diagnostics change and lets clients explain configuration
+// absence separately from an attempted check that failed or could not reach a confident answer.
+const (
+	SplitLanguageUnavailable  = "unavailable"
+	SplitLanguageFailed       = "failed"
+	SplitLanguageInconclusive = "inconclusive"
+	SplitLanguagePaused       = "paused"
+)
+
+// SplitLanguageExclusion is the durable, user-visible receipt for one detected span that the
+// installation language kept out of review. It retains the exact interval and the evidence behind
+// the decision without putting the excluded span back into the editable candidate list.
+type SplitLanguageExclusion struct {
+	StartMs          int64  `json:"startMs"`
+	EndMs            int64  `json:"endMs"`
+	Name             string `json:"name"`
+	DetectedLanguage string `json:"detectedLanguage"`
+	ExpectedLanguage string `json:"expectedLanguage"`
+	Reason           string `json:"reason"`
 }
 
 // SplitProposal is the persisted, operator-reviewable result of detecting cuts
@@ -343,6 +383,13 @@ type SplitProposal struct {
 	ClipHash  string         `json:"clipHash"`
 	CreatedAt time.Time      `json:"createdAt"`
 	Segments  []SplitSegment `json:"segments"`
+	// LanguagePreference is the installation choice this finished proposal was checked against.
+	// It lets review disclose a later settings change and offer an explicit recheck rather than
+	// silently presenting an old decision as current policy.
+	LanguagePreference string `json:"languagePreference,omitempty"`
+	// LanguageExclusions accounts for confidently mismatched spans omitted before review. It is
+	// receipt data, not an admission signal: unknown and wordless spans remain in Segments.
+	LanguageExclusions []SplitLanguageExclusion `json:"languageExclusions,omitempty"`
 	// Source binds detection and confirmation to one exact derivative. It is internal durable
 	// state rather than review UI; zero is a pre-V66 proposal that resolves through legacy rules.
 	Source SplitSourceAsset `json:"-"`
@@ -359,6 +406,9 @@ type SplitProposal struct {
 	// Detection is persisted inside the store document, not served in OpenAPI. nil means the
 	// proposal is complete and reviewable; non-nil means the pipeline must resume detection.
 	Detection *SplitDetectionProgress `json:"-"`
+	// Language is non-nil while detected spans are still being checked against the installation
+	// language. It is stored with Detection but never exposed through the review API.
+	Language *SplitLanguageProgress `json:"-"`
 }
 
 // SplitProposalCursor continues the stable newest-first Needs-help projection. Both fields are
@@ -368,8 +418,8 @@ type SplitProposalCursor struct {
 	BeforeID        string
 }
 
-// Ready reports whether detection has produced an operator-reviewable cut list.
-func (p SplitProposal) Ready() bool { return p.Detection == nil }
+// Ready reports whether detection and every pre-review language check have finished.
+func (p SplitProposal) Ready() bool { return p.Detection == nil && p.Language == nil }
 
 // segmentsFromBoundaries builds segments by cutting the timeline at every
 // detected gap (a black or silence interval), dropping slivers under

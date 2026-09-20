@@ -45,6 +45,16 @@ const entry = (key: string, value = ""): SettingEntry => ({
   doc: "",
   secret: false,
   set: value !== "",
+  ...(key === "filler.language"
+    ? {
+        kind: "enum",
+        enum: ["en", "es"],
+        enumOptions: [
+          { value: "en", label: "en" },
+          { value: "es", label: "es" },
+        ],
+      }
+    : {}),
 });
 
 const entries = () => [entry("filler.home_country"), entry("filler.home_market")];
@@ -81,6 +91,25 @@ describe("InstallationLocation", () => {
 
     expect(onChange).toHaveBeenNthCalledWith(1, "filler.home_country", "US");
     expect(onChange).toHaveBeenNthCalledWith(2, "filler.home_market", "New York City");
+  });
+
+  it("chooses the installation language by its friendly name beside Location", async () => {
+    const onChange = vi.fn();
+    render(
+      <InstallationLocation
+        entries={[...entries(), entry("filler.language", "en")]}
+        values={{}}
+        onChange={onChange}
+      />,
+    );
+
+    const language = screen.getByRole("combobox", { name: "Commercial language" });
+    await userEvent.clear(language);
+    await userEvent.type(language, "span");
+    await userEvent.click(screen.getByRole("option", { name: "Spanish" }));
+
+    expect(onChange).toHaveBeenCalledWith("filler.language", "es");
+    expect(language).toHaveValue("Spanish");
   });
 
   it("waits for a typing pause before searching", async () => {

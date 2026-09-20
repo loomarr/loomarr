@@ -125,6 +125,15 @@ type Splitter struct {
 	newID           func() string
 	log             *slog.Logger
 	storage         *storagegovernor.Governor
+	segmentLanguage *SegmentLanguagePolicy
+}
+
+// SegmentLanguagePolicy applies the installation language to each detected span before the split
+// becomes reviewable. Budget is the existing per-pass whisper allowance, not another user knob.
+type SegmentLanguagePolicy struct {
+	Detector LanguageDetector
+	Want     func() string
+	Budget   func() int
 }
 
 // NewSplitter builds the splitter. dropDir is the filler drop-folder root. minClipDuration may be
@@ -143,6 +152,105 @@ func (sp *Splitter) WithStorageGovernor(governor *storagegovernor.Governor) *Spl
 		sp.storage = governor
 	}
 	return sp
+}
+
+// WithSegmentLanguage attaches the installation language check to proposal preparation. Keeping
+// it on Splitter makes scheduled and explicitly requested proposals use the same path.
+func (sp *Splitter) WithSegmentLanguage(policy SegmentLanguagePolicy) *Splitter {
+	if sp != nil {
+		sp.segmentLanguage = &policy
+	}
+	return sp
+}
+
+func (sp *Splitter) startSegmentLanguage(p *SplitProposal) bool {
+	policy := sp.segmentLanguage
+	if policy == nil || policy.Detector == nil || policy.Want == nil {
+		return false
+	}
+	want := NormalizeLanguage(policy.Want())
+	if want == "" {
+		return false
+	}
+	p.LanguagePreference = want
+	p.Language = &SplitLanguageProgress{Want: p.LanguagePreference}
+	return true
+}
+
+func (sp *Splitter) advanceSegmentLanguage(ctx context.Context, file string, p *SplitProposal) (bool, error) {
+	policy := sp.segmentLanguage
+	if p.Language == nil {
+		return true, nil
+	}
+	if policy == nil || policy.Detector == nil {
+		p.Language = nil
+		return true, nil
+	}
+	limit := len(p.Segments) - p.Language.Next
+	if policy.Budget != nil {
+		limit = max(0, min(limit, policy.Budget()))
+	}
+	unavailable := policy.Detector.UnavailableReason()
+	if unavailable != "" || limit == 0 {
+		note := unavailable
+		reason := SplitLanguageUnavailable
+		if note == "" {
+			note = "Language checks are paused by the processing limit"
+			reason = SplitLanguagePaused
+		}
+		for i := p.Language.Next; i < len(p.Segments); i++ {
+			p.Segments[i].LanguageChecked = true
+			p.Segments[i].LanguageReason = reason
+			p.Segments[i].LanguageNote = note
+		}
+		p.Language.Next = len(p.Segments)
+	} else {
+		endIndex := min(len(p.Segments), p.Language.Next+limit)
+		for i := p.Language.Next; i < endIndex; i++ {
+			segment := &p.Segments[i]
+			segment.LanguageChecked = true
+			start, end := LanguageSpan(segment.EndMs - segment.StartMs)
+			detected, err := policy.Detector.DetectLanguage(ctx, file, segment.StartMs+start, min(segment.EndMs, segment.StartMs+end))
+			if err != nil {
+				if ctx.Err() != nil {
+					return false, err
+				}
+				segment.LanguageReason = SplitLanguageFailed
+				segment.LanguageNote = "Language could not be checked"
+				continue
+			}
+			segment.Language = NormalizeLanguage(detected)
+			if segment.Language == LangUndetermined {
+				segment.LanguageReason = SplitLanguageInconclusive
+			}
+		}
+		p.Language.Next = endIndex
+	}
+	if p.Language.Next < len(p.Segments) {
+		return false, nil
+	}
+	want := p.Language.Want
+	kept := make([]SplitSegment, 0, len(p.Segments))
+	for _, segment := range p.Segments {
+		if LanguageRejects(segment.Language, want) {
+			p.LanguageExclusions = append(p.LanguageExclusions, SplitLanguageExclusion{
+				StartMs:          segment.StartMs,
+				EndMs:            segment.EndMs,
+				Name:             segment.Name,
+				DetectedLanguage: segment.Language,
+				ExpectedLanguage: want,
+				Reason:           SplitExclusionLanguageMismatch,
+			})
+			continue
+		}
+		kept = append(kept, segment)
+	}
+	for i := range kept {
+		kept[i].Index = i
+	}
+	p.Segments = kept
+	p.Language = nil
+	return true, nil
 }
 
 // Reground writes a grounding pass back onto an existing proposal WITHOUT re-detecting (§10 V54).
@@ -312,6 +420,16 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 				return p, false, err
 			}
 		}
+		if p.Detection == nil && p.Language != nil {
+			done, languageErr := sp.advanceSegmentLanguage(ctx, file, p)
+			if languageErr != nil {
+				return p, false, languageErr
+			}
+			if err := sp.saveProposal(ctx, *p); err != nil {
+				return p, false, err
+			}
+			return p, done, nil
+		}
 		if p.Ready() {
 			return p, true, nil
 		}
@@ -423,6 +541,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	p.Segments = segs
 	p.Structure = &structure
 	p.Detection = nil
+	languagePending := sp.startSegmentLanguage(p)
 	if p.Dropped.Count > 0 && sp.log != nil {
 		// INFO, not WARN: discarding sub-floor fragments is the design working, not a fault. It is
 		// logged because it costs recording time the operator can otherwise only infer from
@@ -434,7 +553,7 @@ func (sp *Splitter) advanceProposal(ctx context.Context, clipHash string, p *Spl
 	if err := sp.store.UpsertSplitProposal(ctx, *p); err != nil {
 		return p, false, err
 	}
-	return p, true, nil
+	return p, !languagePending, nil
 }
 
 // restoreCoarseBoundarySources rebuilds the private scoring inputs after a checkpoint round trip.
@@ -726,6 +845,12 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	if !p.Ready() {
 		return nil, fmt.Errorf("%w: proposal %s is still detecting boundaries", ErrSplitValidation, proposalID)
 	}
+	// Language is detector evidence, not an operator-editable field. The confirm body carries the
+	// whole segment shape for one generated contract, but only an exact persisted interval may
+	// reuse its answer. A hand-edited or merged interval is a different audio span and deliberately
+	// reaches the ordinary post-confirm language rung with no answer.
+	segments = bindSplitLanguageEvidence(segments, p.Segments)
+	hold = bindSplitLanguageEvidence(hold, p.Segments)
 	clip, found, err := sp.store.GetClip(ctx, p.ClipHash)
 	if err != nil {
 		return nil, err
@@ -929,6 +1054,12 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 		// split segment has — a segment with no source description still SAYS its brand — so it
 		// carries onto the clip row instead of being re-derived by the transcribe job later.
 		nc.Transcript = c.segment.Transcript
+		// Reuse a completed per-segment language answer. The child starts again at probe, and the
+		// ordinary language rung treats a non-empty code (including `none`) as already heard.
+		// Checked-but-unknown stays empty so that defense rung may try again on the rendered child.
+		if c.segment.LanguageChecked {
+			nc.Language = c.segment.Language
+		}
 		// Provenance inherits from the compilation: same source, same declared
 		// licence (the segments ARE the source's content), same resolution.
 		nc.Source = clip.Source
@@ -1042,6 +1173,30 @@ func (sp *Splitter) confirm(ctx context.Context, proposalID string, segments, ho
 	}
 	publication.retain()
 	return spawned, nil
+}
+
+func bindSplitLanguageEvidence(submitted, persisted []SplitSegment) []SplitSegment {
+	type span struct{ start, end int64 }
+	bySpan := make(map[span]SplitSegment, len(persisted))
+	for _, segment := range persisted {
+		bySpan[span{segment.StartMs, segment.EndMs}] = segment
+	}
+	out := append([]SplitSegment(nil), submitted...)
+	for i := range out {
+		out[i].Language = ""
+		out[i].LanguageChecked = false
+		out[i].LanguageReason = ""
+		out[i].LanguageNote = ""
+		original, ok := bySpan[span{out[i].StartMs, out[i].EndMs}]
+		if !ok {
+			continue
+		}
+		out[i].Language = original.Language
+		out[i].LanguageChecked = original.LanguageChecked
+		out[i].LanguageReason = original.LanguageReason
+		out[i].LanguageNote = original.LanguageNote
+	}
+	return out
 }
 
 func appendUniqueStrings(existing []string, values ...string) []string {

@@ -9354,6 +9354,31 @@ components:
       required:
         - jobId
       type: object
+    SplitLanguageExclusion:
+      additionalProperties: false
+      properties:
+        detectedLanguage:
+          type: string
+        endMs:
+          format: int64
+          type: integer
+        expectedLanguage:
+          type: string
+        name:
+          type: string
+        reason:
+          type: string
+        startMs:
+          format: int64
+          type: integer
+      required:
+        - startMs
+        - endMs
+        - name
+        - detectedLanguage
+        - expectedLanguage
+        - reason
+      type: object
     SplitOperationDTO:
       additionalProperties: false
       properties:
@@ -9412,6 +9437,12 @@ components:
           type: string
         id:
           type: string
+        languageExclusions:
+          items:
+            $ref: "#/components/schemas/SplitLanguageExclusion"
+          type: array
+        languagePreference:
+          type: string
         segments:
           items:
             $ref: "#/components/schemas/SplitSegment"
@@ -9447,6 +9478,14 @@ components:
         index:
           format: int64
           type: integer
+        language:
+          type: string
+        languageChecked:
+          type: boolean
+        languageNote:
+          type: string
+        languageReason:
+          type: string
         looked:
           type: boolean
         name:

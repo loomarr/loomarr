@@ -1,6 +1,5 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerStorageStatusDTO } from "@loomarr/api/models/fillerStorageStatusDTO";
-import type { SettingEntry } from "@loomarr/api/models/settingEntry";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes } from "@loomarr/core/format";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -9,9 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { type SettingsBlock, SettingsPage } from "@/settings/settings-page";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { type FillerSettingsSection, SETTINGS_SECTIONS } from "../filler-settings-section";
-
-const settingValue = (entries: SettingEntry[], key: string): string =>
-  entries.find((entry) => entry.key === key)?.value ?? "";
 
 const downloadIntervalSeconds = (value: string): number => {
   if (value === "0") return 0;
@@ -42,31 +38,6 @@ const downloadIntervalLabel = (value: string): string => {
     return `Every ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
   }
   return `Every ${value}`;
-};
-
-// The language stage already skips with these same configuration facts. Mirror them at the
-// decision point so `en` cannot look active while every clip is actually passing unchecked.
-const languageUnavailableReason = (entries: SettingEntry[]): string | undefined => {
-  const provider = settingValue(entries, "filler.language_provider") || "whisper";
-  if (provider === "hosted") {
-    if (settingValue(entries, "llm.url") === "") {
-      return "Language filtering is off because the hosted AI service address is missing. Add it in AI settings.";
-    }
-    if (settingValue(entries, "llm.model") === "") {
-      return "Language filtering is off because no hosted language model is selected. Choose one in AI settings.";
-    }
-  } else {
-    if (settingValue(entries, "ingest.whisper_path") === "") {
-      return "Language filtering is off because the local language engine is missing. Add it under Processing tools.";
-    }
-    if (settingValue(entries, "filler.language_model") === "") {
-      return "Language filtering is off because no multilingual model is selected. Choose one in AI settings.";
-    }
-  }
-  if (settingValue(entries, "playout.ffmpeg_path") === "") {
-    return "Language filtering is off because FFmpeg is missing. Add it in Playback settings.";
-  }
-  return undefined;
 };
 
 const storagePauseMessage = (pausedBy?: FillerStorageStatusDTO["pausedBy"]): string | undefined => {
@@ -215,7 +186,6 @@ const FillerSettingsIndex = () => (
 
 const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSection }) => {
   const entries = useSettingsEntries();
-  const languageReason = languageUnavailableReason(entries);
   const sourcesQuery = fillerApi.useListFillerSources({ query: { enabled: section === "downloads" } });
   const readinessQuery = fillerApi.useFillerReadiness({ query: { enabled: section === "storage" } });
   const sources = unwrap(sourcesQuery.data, (body) => body.sources) ?? [];
@@ -315,7 +285,6 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
       group: "filler",
       title: "Clip eligibility and sound",
       initialAdvanced: true,
-      disabledReasons: languageReason ? { "filler.language": languageReason } : undefined,
       keys: [
         "filler.cooldown_seconds",
         "filler.min_quality",
@@ -325,7 +294,6 @@ const FillerSettings = ({ section = "downloads" }: { section?: FillerSettingsSec
         "filler.min_clip_duration",
         "filler.max_clip_duration",
         "filler.target_lufs",
-        "filler.language",
       ],
     },
     {

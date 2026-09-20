@@ -1374,7 +1374,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 		ID: "sp_1", ClipHash: "hash-of-comps/1987.mp4", CreatedAt: time.Now().UTC(),
 		Segments: []filler.SplitSegment{
 			{Index: 0, StartMs: 0, EndMs: 30000, Name: "McDonald's", Era: 1987, Audience: filler.Kids, Category: "fast_food"},
-			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true},
+			{Index: 1, StartMs: 30000, EndMs: 149000, Name: "part 2", SuggestedEra: 1985, DupOf: "old/ad.mp4", Unsplittable: true, Looked: true, LanguageChecked: true, LanguageReason: filler.SplitLanguageUnavailable, LanguageNote: "model missing"},
 		},
 	}
 	if err := st.UpsertSplitProposal(context.Background(), p); err != nil {
@@ -1392,7 +1392,7 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	}
 	// The V34 review fields must cross the wire — the UI renders from exactly these.
 	s1 := got.Segments[1]
-	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || !s1.Unsplittable || !s1.Looked {
+	if s1.SuggestedEra != 1985 || s1.DupOf != "old/ad.mp4" || !s1.Unsplittable || !s1.Looked || s1.LanguageReason != filler.SplitLanguageUnavailable {
 		t.Errorf("review fields lost: %+v", s1)
 	}
 
