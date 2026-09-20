@@ -24,7 +24,7 @@ import type { FillerPageProps } from "./filler-page.type";
 
 // FillerPage is the route-level composition root. It owns only state shared across destinations:
 // navigation counts, installation readiness, the watch/health summary. Destination-specific behavior stays in its own module.
-const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
+const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   useDocumentTitle("Filler");
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -146,7 +146,16 @@ const FillerPage = ({ tab, settingsSection }: FillerPageProps) => {
         ) : tab === "manage" ? (
           <FillerManage />
         ) : tab === "sources" ? (
-          <SourcesTab />
+          <SourcesTab
+            selectedSourceID={sourceID}
+            onSelectSource={(selectedSourceID) =>
+              navigate({
+                to: "/filler/sources/$sourceId",
+                params: { sourceId: selectedSourceID },
+              })
+            }
+            onCloseSource={() => navigate({ to: "/filler/sources", replace: true })}
+          />
         ) : tab === "taxonomy" ? (
           <TaxonomyTab isAdmin={isAdmin} />
         ) : tab === "settings" ? (

@@ -1,8 +1,9 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSourceSuggestionDTO";
+import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,6 +51,9 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
   const copy = COPY[kind];
   const minimumQueryLength = kind === "youtube" ? 3 : 2;
   const listID = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const currentInput = useRef("");
+  const resolveGeneration = useRef(0);
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -77,31 +81,44 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
   );
   const suggestions = unwrap(suggestionsQuery.data, (body) => body.suggestions) ?? [];
 
-  const resolveSource = fillerApi.useResolveFillerSource({
-    mutation: {
-      onSuccess: (response) => {
-        const result = unwrap(response, (body) => body);
-        if (result) {
-          setSelected(result);
-          setVerified(true);
-          setInput(result.title);
-        }
-      },
-      onError: () => {
-        setSelected(undefined);
-        setVerified(false);
-      },
+  const resolveSource = fillerApi.useResolveFillerSource();
+  const resolveInput = useCallback(
+    (value: string) => {
+      const generation = ++resolveGeneration.current;
+      const inputAtRequest = currentInput.current;
+      resolveSource.mutate(
+        { kind, data: { input: value } },
+        {
+          onSuccess: (response) => {
+            if (generation !== resolveGeneration.current || inputAtRequest !== currentInput.current) return;
+            const result = unwrap(response, (body) => body);
+            if (result) {
+              setSelected(result);
+              setVerified(true);
+              currentInput.current = result.title;
+              setInput(result.title);
+            }
+          },
+          onError: () => {
+            if (generation !== resolveGeneration.current) return;
+            setSelected(undefined);
+            setVerified(false);
+          },
+        },
+      );
     },
-  });
+    [kind, resolveSource],
+  );
   useEffect(() => {
     if (!enabled || selected || !exactProviderInput || debounced === lastExactInput) return;
     setLastExactInput(debounced);
-    resolveSource.mutate({ kind, data: { input: debounced } });
-  }, [debounced, enabled, exactProviderInput, kind, lastExactInput, resolveSource, selected]);
+    resolveInput(debounced);
+  }, [debounced, enabled, exactProviderInput, lastExactInput, resolveInput, selected]);
   const addSource = fillerApi.useAddFillerSource({
     mutation: {
       onSuccess: () => {
         toast.success("Source added", { description: "Loomarr will check it automatically." });
+        currentInput.current = "";
         setInput("");
         setDebounced("");
         setSelected(undefined);
@@ -114,9 +131,22 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
   const choose = (suggestion: FillerSourceSuggestionDTO) => {
     setSelected(suggestion);
     setVerified(false);
+    currentInput.current = suggestion.title;
     setInput(suggestion.title);
     setActive(-1);
-    resolveSource.mutate({ kind, data: { input: suggestion.canonicalUrl } });
+    resolveInput(suggestion.canonicalUrl);
+  };
+
+  const cancelSelection = () => {
+    resolveGeneration.current += 1;
+    currentInput.current = "";
+    setInput("");
+    setDebounced("");
+    setSelected(undefined);
+    setVerified(false);
+    setLastExactInput("");
+    setActive(-1);
+    inputRef.current?.focus();
   };
 
   const submit = () => {
@@ -124,7 +154,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
     if (!selected) {
       const value = input.trim();
       if (isExactProviderInput(kind, value)) {
-        resolveSource.mutate({ kind, data: { input: value } });
+        resolveInput(value);
       } else if (debounced === value) {
         void suggestionsQuery.refetch();
       } else {
@@ -143,6 +173,8 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
   };
 
   const showSuggestions = enabled && !selected && !exactInput && input.trim().length >= minimumQueryLength;
+  const failure = suggestionsQuery.error ?? resolveSource.error ?? addSource.error;
+  const problem = failure ? toProblem(failure) : undefined;
 
   const targetLabel = (suggestion: FillerSourceSuggestionDTO) => {
     if (suggestion.itemCount) return `${suggestion.itemCount.toLocaleString()} items`;
@@ -161,6 +193,7 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
         }}
       >
         <Input
+          ref={inputRef}
           role="combobox"
           aria-label={copy.label}
           aria-autocomplete="list"
@@ -173,10 +206,11 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
           value={input}
           disabled={!enabled}
           onChange={(event) => {
+            resolveGeneration.current += 1;
+            currentInput.current = event.target.value;
             setInput(event.target.value);
             setSelected(undefined);
             setVerified(false);
-            setLastExactInput("");
             setActive(-1);
           }}
           onKeyDown={(event) => {
@@ -281,9 +315,14 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
             <div className="min-w-0">
               <p className="truncate font-medium text-sm">{selected.title}</p>
             </div>
-            <span className="shrink-0 text-muted-foreground text-xs">
-              {selected.alreadyAdded ? "Already added" : targetLabel(selected)}
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-muted-foreground text-xs">
+                {selected.alreadyAdded ? "Already added" : targetLabel(selected)}
+              </span>
+              <Button type="button" variant="ghost" size="sm" onClick={cancelSelection}>
+                Cancel
+              </Button>
+            </div>
           </div>
           <SourceContentPreview
             kind={kind}
@@ -301,11 +340,10 @@ const ProviderSourceFinder = ({ kind, enabled }: ProviderSourceFinderProps) => {
         </div>
       )}
 
-      {(suggestionsQuery.error || resolveSource.error || addSource.error) && (
+      {problem && (
         <p className="mt-2 text-onair-300 text-sm">
-          {suggestionsQuery.error?.detail ??
-            resolveSource.error?.detail ??
-            addSource.error?.detail ??
+          {problem.detail ??
+            problem.title ??
             `${kind === "archive" ? "Archive.org" : "YouTube"} is not responding right now. Try again in a moment.`}
         </p>
       )}

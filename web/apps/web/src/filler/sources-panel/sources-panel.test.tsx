@@ -20,7 +20,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
@@ -247,8 +247,26 @@ const source = (over: Partial<FillerSourceDTO> & Pick<FillerSourceDTO, "kind">):
   ...over,
 });
 
-const renderPanel = (sources: FillerSourceDTO[] = [source({ kind: "folder" })]) =>
-  render(<SourcesPanel sources={sources} />, { wrapper: makeWrapper() });
+const PanelHarness = ({
+  sources,
+  initialSourceID,
+}: {
+  sources: FillerSourceDTO[];
+  initialSourceID?: string;
+}) => {
+  const [selectedSourceID, setSelectedSourceID] = useState(initialSourceID);
+  return (
+    <SourcesPanel
+      sources={sources}
+      selectedSourceID={selectedSourceID}
+      onSelectSource={setSelectedSourceID}
+      onCloseSource={() => setSelectedSourceID(undefined)}
+    />
+  );
+};
+
+const renderPanel = (sources: FillerSourceDTO[] = [source({ kind: "folder" })], initialSourceID?: string) =>
+  render(<PanelHarness sources={sources} initialSourceID={initialSourceID} />, { wrapper: makeWrapper() });
 
 beforeEach(() => sessionStorage.clear());
 
@@ -366,6 +384,30 @@ describe("SourcesPanel", () => {
 
     expect(screen.getByText("/data/filler")).toBeInTheDocument();
     expect(screen.getByText("classic_tv_commercials")).toBeInTheDocument();
+  });
+
+  it("opens the source workspace from route-owned selection", async () => {
+    stubSources();
+    renderPanel(
+      [source({ kind: "archive", id: "archive:classic", target: "Classic TV Commercials" })],
+      "archive:classic",
+    );
+
+    expect(await screen.findByRole("heading", { name: "Classic TV Commercials" })).toBeInTheDocument();
+    expect(screen.getByText("Archive.org collection")).toBeInTheDocument();
+  });
+
+  it("returns focus to the selected row when the source workspace closes", async () => {
+    stubSources();
+    renderPanel([source({ kind: "archive", id: "archive:classic", target: "Classic TV" })]);
+    const trigger = screen.getByRole("button", { name: "Manage Classic TV" });
+
+    await userEvent.click(trigger);
+    await screen.findByRole("heading", { name: "Classic TV" });
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByRole("heading", { name: "Classic TV" })).not.toBeInTheDocument();
   });
 
   // ⚠ The kind is EXPLICIT on the wire, not sniffed from the URI. An archive identifier and a

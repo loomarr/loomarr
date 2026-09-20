@@ -6,6 +6,7 @@ type FillerTab = "overview" | "incoming" | "library" | "manage" | "sources" | "t
 type FillerPageProps = {
   tab: FillerTab;
   settingsSection?: FillerSettingsSection;
+  sourceID?: string;
 };
 
 export type { FillerPageProps, FillerTab };

@@ -10,6 +10,12 @@ interface SourcesPanelProps {
   sources: FillerSourceDTO[];
   /** `sourcesQuery.error?.detail`, folded into this panel's own error line alongside it. */
   sourcesError?: string | null;
+  /** Source selected by the current `/filler/sources/$sourceId` path. */
+  selectedSourceID?: string;
+  /** Navigate to a source workspace path. */
+  onSelectSource: (sourceID: string) => void;
+  /** Return to the source index path. */
+  onCloseSource: () => void;
 }
 
 export type { SourcesPanelProps };

@@ -76,6 +76,16 @@ test("Archive source search stays in flow and registers only after confirmation"
     );
     await page.getByRole("button", { name: "Close" }).click();
 
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue("");
+    expect(registrations).toHaveLength(registrationsBeforeSearch);
+    await input.fill("classic tv commercials");
+    await expect(option).toBeVisible();
+    await input.press("ArrowDown");
+    await input.press("Enter");
+    await expect(page.getByRole("button", { name: "Add collection" })).toBeVisible();
+
     const bodyWidth = await page.locator("body").evaluate((body) => ({
       client: body.clientWidth,
       scroll: body.scrollWidth,
@@ -109,6 +119,7 @@ test("a specific clip keeps its parent source and reconnects to the durable down
 
   const sourceName = "Classic television commercials from a deliberately long collection name";
   await page.getByRole("button", { name: `Manage ${sourceName}` }).click();
+  await expect(page).toHaveURL(/\/filler\/sources\/archive(?::|%3A)long$/i);
   let workspace = page.getByRole("dialog", { name: sourceName });
   await workspace.getByRole("button", { name: /finding a specific clip/i }).click();
   await workspace.getByRole("textbox", { name: "Search this source" }).fill("station break");
@@ -130,8 +141,8 @@ test("a specific clip keeps its parent source and reconnects to the durable down
   await expect(workspace.getByText("Added · being checked")).toBeVisible();
 
   await page.reload();
-  await page.getByRole("button", { name: `Manage ${sourceName}` }).click();
   workspace = page.getByRole("dialog", { name: sourceName });
+  await expect(workspace).toBeVisible();
   await workspace.getByRole("button", { name: /finding a specific clip/i }).click();
   await workspace.getByRole("textbox", { name: "Search this source" }).fill("station break");
   await workspace.getByRole("button", { name: "Search", exact: true }).click();
@@ -246,6 +257,50 @@ test("YouTube source search hides yt-dlp behind the same search-or-paste flow", 
       });
     }
   }
+});
+
+test("Archive source setup falls back to an exact URL and recovers from a failed add", async ({ page }) => {
+  await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
+  let addAttempts = 0;
+  await page.route("**/v1/filler/providers/archive/suggestions?*", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("q") === "nothing here") {
+      return route.fulfill({ status: 200, json: { suggestions: [] } });
+    }
+    return route.fallback();
+  });
+  await page.route("**/v1/filler/sources", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    addAttempts += 1;
+    if (addAttempts === 1) {
+      return route.fulfill({
+        status: 503,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          title: "Source wasn't added",
+          detail: "Archive.org stopped responding. Try again.",
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.goto("/filler/sources");
+  const input = page.getByRole("combobox", { name: "Find an Archive.org collection" });
+  await input.fill("nothing here");
+  await expect(page.getByText("No collections found. Paste the exact URL to check it.")).toBeVisible();
+
+  await input.fill("https://archive.org/details/classic_tv_commercials");
+  const add = page.getByRole("button", { name: "Add collection" });
+  await expect(add).toBeVisible();
+  await add.click();
+  await expect(page.getByText("Archive.org stopped responding. Try again.")).toBeVisible();
+  await expect(add).toBeVisible();
+  await expect(page.getByText("Popular videos in this collection")).toBeVisible();
+
+  await add.click();
+  await expect(page.getByText("Source added")).toBeVisible();
+  await expect(input).toHaveValue("");
+  expect(addAttempts).toBe(2);
 });
 
 test("registered sources stay compact and open a scalable source workspace", async ({ page }) => {
@@ -364,7 +419,15 @@ test("registered sources stay compact and open a scalable source workspace", asy
     await expect(page.getByRole("button", { name: "Browse clips" })).toHaveCount(0);
 
     await trigger.click();
+    await expect(page).toHaveURL(/\/filler\/sources\/archive(?::|%3A)1$/i);
     const workspace = page.getByRole("dialog", { name: sourceName });
+    await expect(workspace).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/filler\/sources$/);
+    await expect(workspace).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await page.goForward();
+    await expect(page).toHaveURL(/\/filler\/sources\/archive(?::|%3A)1$/i);
     await expect(workspace).toBeVisible();
     await expect
       .poll(async () => {
@@ -383,6 +446,8 @@ test("registered sources stay compact and open a scalable source workspace", asy
 
     await expect(workspace.getByRole("heading", { name: "From this source" })).toBeVisible();
     await expect(workspace.getByRole("link", { name: "1970s station break" })).toBeVisible();
+    await page.mouse.move(0, 0);
+    await sourceReadinessShot(page, `source-workspace-${viewport.name}`);
     await workspace.getByRole("button", { name: "Preview" }).first().click();
     await expect(page.locator('iframe[title="Preview 1970s station break"]')).toHaveAttribute(
       "src",
@@ -426,6 +491,7 @@ test("registered sources stay compact and open a scalable source workspace", asy
 
     await workspace.getByRole("button", { name: "Close" }).click();
     await expect(workspace).toBeHidden();
+    await expect(page).toHaveURL(/\/filler\/sources$/);
     await expect(trigger).toBeFocused();
 
     await provider.getByRole("searchbox", { name: "Filter Archive.org sources" }).fill("");
@@ -442,6 +508,29 @@ test("registered sources stay compact and open a scalable source workspace", asy
     await expect(provider.getByRole("switch", { name: `Use ${sourceName}` })).toBeChecked();
     await expect(provider.getByRole("switch", { name: "Use Paused collection" })).not.toBeChecked();
   }
+});
+
+test("the source workspace reflows at 200% zoom and honors reduced motion", async ({ page }) => {
+  await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // A 640 CSS-pixel viewport exercises the same reflow as 200% zoom on a 1280-pixel desktop.
+  await page.setViewportSize({ width: 640, height: 360 });
+  await page.goto("/filler/sources");
+  expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
+
+  const sourceName = "Classic television commercials from a deliberately long collection name";
+  await page.getByRole("button", { name: `Manage ${sourceName}` }).click();
+  const workspace = page.getByRole("dialog", { name: sourceName });
+  await expect(workspace).toBeVisible();
+  await expect(workspace.getByRole("heading", { name: "From this source" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(
+    await workspace.evaluate(
+      (element) =>
+        element.getAnimations({ subtree: true }).filter((animation) => animation.playState === "running")
+          .length,
+    ),
+  ).toBe(0);
 });
 
 for (const viewport of [
@@ -607,3 +696,18 @@ for (const viewport of [
     await readySource.getByRole("button", { name: "Close" }).click();
   });
 }
+
+test("members cannot open the source-management workspace", async ({ page }) => {
+  await installMockBackend(page, { authed: true, role: "member", fillerEnabled: true });
+  let sourceReads = 0;
+  await page.route("**/v1/filler/sources", async (route) => {
+    sourceReads += 1;
+    await route.fallback();
+  });
+
+  await page.goto("/filler/sources/archive%3Along");
+
+  await expect(page).toHaveURL(/\/filler\/library$/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(sourceReads).toBe(0);
+});

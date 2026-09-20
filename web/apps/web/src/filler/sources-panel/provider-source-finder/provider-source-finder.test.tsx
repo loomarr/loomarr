@@ -105,6 +105,54 @@ describe("ProviderSourceFinder", () => {
     await waitFor(() => expect(calls).toEqual([{ kind: "archive", uri: "classic_tv", label: "Classic TV" }]));
   });
 
+  it("cancels a checked source without adding it and returns focus to search", async () => {
+    const calls: unknown[] = [];
+    server.use(
+      getResolveFillerSourceMockHandler(archivePreview),
+      getAddFillerSourceMockHandler(async ({ request }) => {
+        calls.push(await request.json());
+        return { id: "archive:classic_tv", label: "Classic TV", uri: "classic_tv", enabled: true };
+      }),
+    );
+
+    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    const input = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
+    await userEvent.type(input, "https://archive.org/details/classic_tv");
+    await screen.findByRole("button", { name: "Add collection" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+    expect(screen.queryByText("Popular videos in this collection")).not.toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("does not replace newer search text with a stale exact-source response", async () => {
+    let releaseResolution: (() => void) | undefined;
+    server.use(
+      getResolveFillerSourceMockHandler(async () => {
+        await new Promise<void>((resolve) => {
+          releaseResolution = resolve;
+        });
+        return archivePreview;
+      }),
+      getSuggestFillerSourcesMockHandler({ suggestions: [] }),
+    );
+
+    render(<ProviderSourceFinder kind="archive" enabled />, { wrapper });
+    const input = screen.getByRole("combobox", { name: "Find an Archive.org collection" });
+    await userEvent.type(input, "https://archive.org/details/classic_tv");
+    await screen.findByRole("button", { name: "Checking…" });
+    await userEvent.clear(input);
+    await userEvent.type(input, "new collection");
+    releaseResolution?.();
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Checking…" })).not.toBeInTheDocument());
+    expect(input).toHaveValue("new collection");
+    expect(screen.queryByRole("button", { name: "Add collection" })).not.toBeInTheDocument();
+  });
+
   it("supports the keyboard and prevents adding a duplicate", async () => {
     server.use(
       getSuggestFillerSourcesMockHandler({
