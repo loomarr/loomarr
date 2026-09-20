@@ -426,6 +426,7 @@ classify() {
         # Release admission and artifact download inspect existing evidence; changing them does
         # not change the bundle. The signer is exercised by the Android build and remains an input.
         scripts/validate-android-release-source*|scripts/download-android-ci-artifact.sh) select_gate policy ;;
+		scripts/android-ccache-promotion*) select_gate android; select_gate policy ;;
         scripts/sign-android-ci-artifact.sh) select_gate android; select_gate policy ;;
         scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/test-android-release-emulator.sh) select_gate android ;;
         scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients; select_gate android ;;

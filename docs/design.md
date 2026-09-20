@@ -3631,7 +3631,13 @@ restored across source identities. Generated Android projects, `.cxx` trees, bun
 promotion evidence are never cached. The profiler retains exact version/configuration, zeroed pre/post
 JSON statistics, and every primary generated Ninja rules file used to prove launcher propagation
 across app and library projects. Nested compiler-capability probes are not application/library rules
-and do not participate in that proof.
+and do not participate in that proof. Pull-request and merge-queue refs restore compiler objects from
+the default-branch cache but cannot publish into that shared scope. After a successful Android
+merge-queue build lands, that producer transfers only its bounded ccache directory plus a
+commit/run/workflow/key/tree-digest manifest. A trusted `push` workflow on the exact admitted main
+commit validates the successful merge-group run, immutable transfer, and manifest before publishing
+one rolling default-branch cache generation. It performs no Gradle, CMake, Expo, Node, or product
+build, deletes the one-day transfer, and retires superseded Android main-cache generations.
 
 On Linux, the observer records its inherited cgroup v2 memory scope, limits, lifetime peak and
 OOM/limit event counters before and after the build, plus sampled current usage and host available

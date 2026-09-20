@@ -437,6 +437,15 @@ path when acquisition is unavailable. Three Gradle workers are intentionally rej
 comparison regressed from 16m15s to 19m07s without adding cache hits. Set
 `LOOMARR_ANDROID_CCACHE=off` to request the cold path.
 
+GitHub scopes pull-request caches to their merge refs and merge-queue caches to disposable queue
+refs, so neither can warm the next queue candidate. After a successful Android queue producer lands,
+it instead hands its bounded ccache tree to `android-ccache-promotion.yml` through a one-day immutable
+artifact. The queue-produced `push` to the exact same main commit is the trusted publisher: it proves
+the source CI run, Android job, artifact name, commit/run/workflow manifest, and cache-tree digest,
+then saves that generation in the default-branch cache scope without running another product build.
+It deletes the transfer and all superseded Android generations. PR revisions may save caches only in
+their own disposable scope; queue jobs restore but never spend time saving an unreachable cache.
+
 ## Per-run measurements
 
 The required `CI` aggregate appends a timing table after it has evaluated every required result.
@@ -696,10 +705,10 @@ Sharding is free on a public repo. Check the bill before copying it into a priva
 - **Default-branch cache writes require a trusted trigger.** GitHub permits a default-branch writer
   from `push` or `workflow_dispatch`, but `merge_group` and `workflow_run` cannot promote their
   outputs into that scope. The Go cache-save conditions therefore remain useful only for a deliberate
-  manual run on `main`; ordinary PR and queue runs are restore-only. Do not add a post-queue artifact
-  promotion workflow: GitHub makes that cache scope read-only, and a `push` warmer that repeats the
-  expensive compiler/linter work would violate the publication-only main lane. Reconsider a warmer
-  only with measured evidence that a bounded preparation step saves more work than it adds.
+  manual run on `main`; ordinary PR and queue runs are restore-only. Android is the bounded exception
+  justified by the measured 25m54s cold queue build: the admitted queue run emits an immutable
+  compiler-cache transfer, and the queue-produced `push` validates and saves it without repeating any
+  compilation. A `workflow_run` writer or a `push` warmer that rebuilds the product remains forbidden.
 
 Apple compilation caching is a validated artifact protocol, not an unchecked DerivedData restore.
 The fingerprint binds the runner OS and architecture, exact Xcode and Swift identities, both
