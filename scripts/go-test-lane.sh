@@ -25,7 +25,7 @@ case "$lane" in
     lane_flags="-p=1"
     lane_label="$lane"
     ;;
-  [1-6]/6)
+  [1-4]/4)
     if [[ -n "${GOFLAGS:-}" ]]; then
       echo "go-test-lane: lane-scoped GOFLAGS are owned by the runner" >&2
       exit 2
@@ -35,7 +35,7 @@ case "$lane" in
     lane_label="$lane"
     ;;
   *)
-    echo "go-test-lane: invalid lane '$lane' (want 1/6..6/6, certification-1/2, certification-2/2, or empty for the full local suite)" >&2
+    echo "go-test-lane: invalid lane '$lane' (want 1/4..4/4, certification-1/2, certification-2/2, or empty for the full local suite)" >&2
     exit 2
     ;;
 esac

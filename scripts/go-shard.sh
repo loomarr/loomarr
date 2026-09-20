@@ -3,11 +3,13 @@
 # `make test` across runners without making media certification compete for a worker.
 #
 #   ./scripts/go-shard.sh          -> "./..."   (the whole tree — the default, always)
-#   ./scripts/go-shard.sh 2/6      -> the 2nd ordinary measured-weight slice
+#   ./scripts/go-shard.sh 2/4      -> the 2nd ordinary measured-weight slice
 #   ./scripts/go-shard.sh --certification 2/2
 #                                  -> the second reviewed media-certification lane
-#   ./scripts/go-shard.sh --plan 6 -> print each ordinary shard's modeled package-seconds
-#   ./scripts/go-shard.sh --verify 6
+#   ./scripts/go-shard.sh --plan 4 -> print each ordinary shard's modeled package-seconds
+#   ./scripts/go-shard.sh --worker-plan 4
+#                                  -> print each shard's bounded two-worker makespan
+#   ./scripts/go-shard.sh --verify 4
 #                                  -> assert exact coverage and every latency/balance budget
 #
 # The partition uses longest-processing-time assignment over a small, reviewed set of measured
@@ -15,7 +17,7 @@
 # future package remains assigned even before it has a hosted timing. This replaces alphabetical
 # placement, which drifted from a balanced 2026-09-01 sample to 1430/657/583 package-seconds in
 # merge-group run 35472062915. Latency-sensitive media packages live in two reviewed serial lanes;
-# the remaining weighted packages are balanced across six ordinary lanes. Separate runners let the
+# the remaining weighted packages are balanced across four ordinary lanes. Separate runners let the
 # two certification groups overlap without allowing package concurrency inside either group.
 #
 # ⚠ THE --verify MODE IS NOT OPTIONAL DECORATION. A sharding bug that DROPS a package does not
@@ -29,8 +31,10 @@ cd "$ROOT"
 
 WEIGHTS="${GO_SHARD_WEIGHTS:-$ROOT/scripts/go-race-weights.tsv}"
 CERTIFICATION="${GO_SHARD_CERTIFICATION:-$ROOT/scripts/go-certification-lanes.tsv}"
+RACE_POLICY="${GO_SHARD_RACE_POLICY:-$ROOT/scripts/go-race-policy.sh}"
 CERTIFICATION_LANES=2
 MAX_WEIGHT_SECONDS=540
+MAX_ORDINARY_AGGREGATE_SECONDS=600
 MAX_IMBALANCE_PERCENT=125
 
 if [[ ! -r "$WEIGHTS" ]]; then
@@ -39,6 +43,10 @@ if [[ ! -r "$WEIGHTS" ]]; then
 fi
 if [[ ! -r "$CERTIFICATION" ]]; then
   echo "go-shard: certification lane file is not readable: $CERTIFICATION" >&2
+  exit 2
+fi
+if [[ ! -x "$RACE_POLICY" ]]; then
+  echo "go-shard: race policy is not executable: $RACE_POLICY" >&2
   exit 2
 fi
 
@@ -178,8 +186,77 @@ plan() {
   partition plan 0 "$1"
 }
 
+# Model the package scheduler used by an ordinary lane. The race and non-race groups execute
+# sequentially, each with GOFLAGS=-p=2, so their independent two-worker LPT makespans must be
+# added. Keeping this distinct from aggregate package-seconds lets the coverage plan reject both
+# excessive total work and a latency regression hidden by the bounded package overlap.
+weighted_two_worker_makespan() {
+  local module
+  module="$(go list -m)"
+  awk -v module="$module" -v weights_file="$WEIGHTS" '
+    BEGIN {
+      while ((getline line < weights_file) > 0) {
+        if (line ~ /^[[:space:]]*(#|$)/) continue
+        split(line, part, /[[:space:]]+/)
+        weight[part[1]] = part[2] + 0
+      }
+      close(weights_file)
+    }
+    {
+      count++
+      package[count] = $0
+      relative = $0
+      prefix = module "/"
+      if (index(relative, prefix) == 1) relative = substr(relative, length(prefix) + 1)
+      cost[count] = (relative in weight) ? weight[relative] : 1
+      order[count] = count
+    }
+    END {
+      for (left = 1; left <= count; left++) {
+        best = left
+        for (candidate = left + 1; candidate <= count; candidate++) {
+          a = order[candidate]
+          b = order[best]
+          if (cost[a] > cost[b] || (cost[a] == cost[b] && package[a] < package[b])) best = candidate
+        }
+        swap = order[left]
+        order[left] = order[best]
+        order[best] = swap
+      }
+      for (rank = 1; rank <= count; rank++) {
+        item = order[rank]
+        worker = (load[2] < load[1]) ? 2 : 1
+        load[worker] += cost[item]
+      }
+      print (load[1] > load[2]) ? load[1] : load[2]
+    }
+  '
+}
+
+ordinary_worker_load() {
+  local lane="$1" total="$2" shard_packages race_packages plain_packages
+  local race_load=0 plain_load=0
+  shard_packages="$(slice "$lane" "$total")"
+  race_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --race)"
+  plain_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --no-race)"
+  if [[ -n "$race_packages" ]]; then
+    race_load="$(printf '%s\n' "$race_packages" | weighted_two_worker_makespan)"
+  fi
+  if [[ -n "$plain_packages" ]]; then
+    plain_load="$(printf '%s\n' "$plain_packages" | weighted_two_worker_makespan)"
+  fi
+  echo $((race_load + plain_load))
+}
+
+worker_plan() {
+  local total="$1" lane
+  for ((lane = 1; lane <= total; lane++)); do
+    printf '%s %s\n' "$lane" "$(ordinary_worker_load "$lane" "$total")"
+  done
+}
+
 usage() {
-  echo "usage: go-shard.sh [i/n | --certification i/2 | --plan n | --verify n]" >&2
+  echo "usage: go-shard.sh [i/n | --certification i/2 | --plan n | --worker-plan n | --verify n]" >&2
   exit 2
 }
 
@@ -208,15 +285,27 @@ if [ "${1:-}" = "--verify" ]; then
   fi
 
   modeled="$(plan "$total")"
-  if ! printf '%s\n' "$modeled" | awk -v max="$MAX_WEIGHT_SECONDS" -v ratio="$MAX_IMBALANCE_PERCENT" '
+  if ! printf '%s\n' "$modeled" | awk -v max="$MAX_ORDINARY_AGGREGATE_SECONDS" -v ratio="$MAX_IMBALANCE_PERCENT" '
     NR == 1 { min = $2; high = $2 }
     { if ($2 < min) min = $2; if ($2 > high) high = $2 }
     END { exit !(high <= max && high * 100 <= min * ratio) }
   '; then
-    echo "go-shard: modeled split exceeds ${MAX_WEIGHT_SECONDS}s or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
+    echo "go-shard: modeled aggregate split exceeds ${MAX_ORDINARY_AGGREGATE_SECONDS}s or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
     while read -r shard seconds; do
       printf '  shard %s: %ss\n' "$shard" "$seconds" >&2
     done <<< "$modeled"
+    exit 1
+  fi
+  worker_modeled="$(worker_plan "$total")"
+  if ! printf '%s\n' "$worker_modeled" | awk -v max="$MAX_WEIGHT_SECONDS" -v ratio="$MAX_IMBALANCE_PERCENT" '
+    NR == 1 { min = $2; high = $2 }
+    { if ($2 < min) min = $2; if ($2 > high) high = $2 }
+    END { exit !(min > 0 && high <= max && high * 100 <= min * ratio) }
+  '; then
+    echo "go-shard: modeled bounded-worker split exceeds ${MAX_WEIGHT_SECONDS}s or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
+    while read -r shard seconds; do
+      printf '  shard %s: %ss\n' "$shard" "$seconds" >&2
+    done <<< "$worker_modeled"
     exit 1
   fi
   certification_modeled="$(for ((i = 1; i <= CERTIFICATION_LANES; i++)); do printf '%s %s\n' "$i" "$(certification_load "$i")"; done)"
@@ -235,6 +324,9 @@ if [ "${1:-}" = "--verify" ]; then
   while read -r shard seconds; do
     printf 'go-shard: modeled shard %s = %ss\n' "$shard" "$seconds"
   done <<< "$modeled"
+  while read -r shard seconds; do
+    printf 'go-shard: modeled shard %s bounded-worker makespan = %ss\n' "$shard" "$seconds"
+  done <<< "$worker_modeled"
   while read -r lane seconds; do
     printf 'go-shard: modeled certification lane %s/%s = %ss\n' "$lane" "$CERTIFICATION_LANES" "$seconds"
   done <<< "$certification_modeled"
@@ -267,6 +359,15 @@ if [ "${1:-}" = "--plan" ]; then
     usage
   fi
   plan "$total"
+  exit 0
+fi
+
+if [ "${1:-}" = "--worker-plan" ]; then
+  total="${2:-}"
+  if ! [[ "$total" =~ ^[0-9]+$ ]] || [ "$total" -lt 1 ]; then
+    usage
+  fi
+  worker_plan "$total"
   exit 0
 fi
 

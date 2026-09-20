@@ -12881,18 +12881,20 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   distribution package. The download archive is cached by its exact digest, verified on every
   use before extraction or execution, and its installed pair must report the declared build.
   Installer, Go workflow, and Dockerfile pin-source changes select the complete Go runtime gate. The
-  Go workflow admits only the eight literal lane identities; `scripts/go-test-lane.sh` owns their
+  Go workflow admits only the six literal lane identities; `scripts/go-test-lane.sh` owns their
   exact `-p=2` ordinary and `-p=1` certification execution policy and rejects lane-scoped `GOFLAGS`
   overrides. Go package shards use
   longest-processing-time assignment over the reviewed material package timings in
   `scripts/go-race-weights.tsv`; unlisted packages receive a conservative one-second planning
-  floor, so additions remain covered before their first hosted measurement. The six ordinary-shard
-  plan reserves at most nine modeled test minutes per worker and rejects a slowest shard more than
-  25% above the lightest. Each certification lane has the same nine-minute modeled ceiling, and the
-  two certification groups may not differ by more than 25%. The
+  floor, so additions remain covered before their first hosted measurement. The four ordinary-shard
+  plan rejects more than 600 aggregate package-seconds per lane and a slowest lane more than 25%
+  above the lightest. A second model mirrors the runner's sequential race/non-race groups and
+  bounded `-p=2` package workers; it reserves at most nine modeled test minutes per lane and applies
+  the same 25% balance bound. Each serial certification lane has that nine-minute modeled ceiling,
+  and the two certification groups may not differ by more than 25%. The
   workflow independently caps every lane job at 15 wall-clock minutes,
   preserving six minutes for setup, compilation, and cache variance while making latency
-  regressions fail loud. `go-shard-verify` proves the six ordinary shards plus both certification
+  regressions fail loud. `go-shard-verify` proves the four ordinary shards plus both certification
   lanes remain an exact partition of `go list ./...` and enforces both modeled budgets; the
   release-verification suite pins the weighted assignment, certification package grouping, lane
   parallelism, workflow lanes and timeout. The release verifier also

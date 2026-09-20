@@ -21,12 +21,13 @@ jobs:
     # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every lane spent
     # runner time and inflated each lane's cache without adding assurance.
     #
-    # SIX measured-weight ordinary lanes plus two serial media-certification lanes. Merge-group run
+    # FOUR measured-weight ordinary lanes plus two serial media-certification lanes. Merge-group run
     # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
     # a 31m10s critical path. The reviewed
     # weights in scripts/go-race-weights.tsv and longest-processing-time assignment model the
-    # current tree at ~385s per ordinary lane. `make go-shard-verify` rejects coverage or balance
-    # drift and proves the eight lanes remain an exact partition.
+    # current tree at ~557 aggregate package-seconds per ordinary lane before bounded `-p=2`
+    # overlap. `make go-shard-verify` rejects coverage, bounded-worker latency, or balance drift
+    # and proves the six lanes remain an exact partition.
     #
     # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of
     # concurrency-free config/table-test packages runs without the detector. `make go-race-verify`
@@ -39,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false # one lane's failures must not hide the others'
       matrix:
-        lane: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6", "certification-1/2", "certification-2/2"]
+        lane: ["1/4", "2/4", "3/4", "4/4", "certification-1/2", "certification-2/2"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7

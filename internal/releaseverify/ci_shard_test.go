@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const goRaceShardCount = 6
+const goRaceShardCount = 4
 
 func TestGoShardUsesMeasuredLongestProcessingTime(t *testing.T) {
 	t.Parallel()
@@ -160,7 +160,7 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 		return nil
 	}
 
-	if err := run("2/6"); err != nil {
+	if err := run("2/4"); err != nil {
 		t.Fatalf("ordinary lane: %v", err)
 	}
 	if err := run("certification-1/2"); err != nil {
@@ -176,8 +176,8 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "2/6|-p=2|race 25m example.invalid/race\n" +
-		"2/6|-p=2|plain 25m example.invalid/plain\n" +
+	want := "2/4|-p=2|race 25m example.invalid/race\n" +
+		"2/4|-p=2|plain 25m example.invalid/plain\n" +
 		"certification-1/2|-p=1|race 25m example.invalid/race\n" +
 		"certification-1/2|-p=1|plain 25m example.invalid/plain\n" +
 		"certification-2/2|-p=1|race 25m example.invalid/race\n" +
@@ -187,9 +187,55 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	if got := string(contents); got != want {
 		t.Fatalf("lane runner log =\n%s\nwant\n%s", got, want)
 	}
-	if err := run("2/6", "GOFLAGS=-p=99"); err == nil {
+	if err := run("2/4", "GOFLAGS=-p=99"); err == nil {
 		t.Fatal("ordinary lane accepted caller-controlled GOFLAGS")
 	}
+	if err := run("2/6"); err == nil {
+		t.Fatal("ordinary lane accepted retired six-lane identity")
+	}
+}
+
+func TestGoShardVerificationRejectsAggregateAndWorkerLatencyDrift(t *testing.T) {
+	t.Parallel()
+
+	bin := t.TempDir()
+	fakeGo := filepath.Join(bin, "go")
+	const packages = `example.invalid/a
+example.invalid/b
+example.invalid/cert-one
+example.invalid/cert-two`
+	if err := os.WriteFile(fakeGo, []byte("#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"$*\" == \"list -m\" ]]; then echo example.invalid; exit; fi\n[[ \"$*\" == \"list ./...\" ]]\nprintf '%s\\n' '"+strings.ReplaceAll(packages, "\n", "' '")+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	weights := filepath.Join(t.TempDir(), "weights.tsv")
+	certification := filepath.Join(t.TempDir(), "certification.tsv")
+	if err := os.WriteFile(certification, []byte("1 cert-one\n2 cert-two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Clean(filepath.Join("..", ".."))
+	run := func(weightRows, want string) {
+		t.Helper()
+		if err := os.WriteFile(weights, []byte(weightRows), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--verify", "1")
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(),
+			"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"GO_SHARD_WEIGHTS="+weights,
+			"GO_SHARD_CERTIFICATION="+certification,
+		)
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("go shard verification accepted %s drift:\n%s", want, output)
+		}
+		if !strings.Contains(string(output), want) {
+			t.Fatalf("go shard verification failure =\n%s\nwant %q", output, want)
+		}
+	}
+
+	run("a 301\nb 300\ncert-one 1\ncert-two 1\n", "modeled aggregate split exceeds")
+	run("a 550\nb 1\ncert-one 1\ncert-two 1\n", "modeled bounded-worker split exceeds")
 }
 
 func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
@@ -270,11 +316,41 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 		minLoad = min(minLoad, load)
 		maxLoad = max(maxLoad, load)
 	}
-	if maxLoad > 540 {
-		t.Fatalf("modeled race shard exceeds nine test minutes: loads=%v", loads)
+	if maxLoad > 600 {
+		t.Fatalf("modeled ordinary shard exceeds aggregate package-work budget: loads=%v", loads)
 	}
 	if maxLoad*100 > minLoad*125 {
 		t.Fatalf("modeled race shards differ by more than 25%%: loads=%v", loads)
+	}
+	cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--worker-plan", strconv.Itoa(goRaceShardCount))
+	cmd.Dir = root
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("model bounded workers: %v", err)
+	}
+	workerLoads := make([]int, goRaceShardCount)
+	workerFields := strings.Fields(string(output))
+	if len(workerFields) != goRaceShardCount*2 {
+		t.Fatalf("bounded-worker plan = %q, want %d lane/load rows", output, goRaceShardCount)
+	}
+	for field := 0; field < len(workerFields); field += 2 {
+		lane, laneErr := strconv.Atoi(workerFields[field])
+		load, loadErr := strconv.Atoi(workerFields[field+1])
+		if laneErr != nil || loadErr != nil || lane < 1 || lane > goRaceShardCount {
+			t.Fatalf("invalid bounded-worker plan row %q %q", workerFields[field], workerFields[field+1])
+		}
+		workerLoads[lane-1] = load
+	}
+	minWorkerLoad, maxWorkerLoad := workerLoads[0], workerLoads[0]
+	for _, load := range workerLoads[1:] {
+		minWorkerLoad = min(minWorkerLoad, load)
+		maxWorkerLoad = max(maxWorkerLoad, load)
+	}
+	if maxWorkerLoad > 540 {
+		t.Fatalf("modeled bounded-worker shard exceeds nine test minutes: loads=%v", workerLoads)
+	}
+	if maxWorkerLoad*100 > minWorkerLoad*125 {
+		t.Fatalf("modeled bounded-worker shards differ by more than 25%%: loads=%v", workerLoads)
 	}
 	if max(certificationLoads[0], certificationLoads[1]) > 540 {
 		t.Fatalf("modeled certification lane exceeds nine test minutes: loads=%v", certificationLoads)
@@ -303,7 +379,7 @@ exit "${FAKE_GO_EXIT:-0}"
 	run := func(exitCode string) error {
 		cmd := exec.Command("bash", filepath.Join("scripts", "go-test-packages.sh"), "race", "25m", "example.invalid/fast", "example.invalid/slow")
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "GO_BIN="+fakeGo, "GO_TEST_LANE=2/6", "GITHUB_STEP_SUMMARY="+summary, "FAKE_GO_EXIT="+exitCode)
+		cmd.Env = append(os.Environ(), "GO_BIN="+fakeGo, "GO_TEST_LANE=2/4", "GITHUB_STEP_SUMMARY="+summary, "FAKE_GO_EXIT="+exitCode)
 		return cmd.Run()
 	}
 	if err := run("0"); err != nil {
@@ -314,7 +390,7 @@ exit "${FAKE_GO_EXIT:-0}"
 		t.Fatal(err)
 	}
 	text := string(body)
-	for _, want := range []string{"Go race package timings (2/6)", "`example.invalid/slow` | 12.500", "`example.invalid/fast` | 1.250", "Reported package total: 13.750s"} {
+	for _, want := range []string{"Go race package timings (2/4)", "`example.invalid/slow` | 12.500", "`example.invalid/fast` | 1.250", "Reported package total: 13.750s"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("summary missing %q:\n%s", want, text)
 		}
