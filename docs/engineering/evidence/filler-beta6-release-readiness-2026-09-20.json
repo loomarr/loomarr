@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "manifest_schema_version": 1,
+  "manifest_sha256": "123782748c964b6ba43fcc1b30c81c4aa100abf0853f27eadfa5c2e4872ce0e8",
+  "release": "v0.2.0-beta.6",
+  "generated_at": "2026-09-20T20:00:00Z",
+  "verdict": "HOLD",
+  "candidate": {
+    "git_commit": "0236ecec1eab3afb48a13f6a38f47b350f87e4c6",
+    "tag": "v0.2.0-beta.6",
+    "server_image_digest": "",
+    "web_build_identity": "0236ecec1eab3afb48a13f6a38f47b350f87e4c6",
+    "shield_artifact_sha256": "",
+    "shield_version": "",
+    "configuration_profile_sha256": ""
+  },
+  "candidate_sha256": "17e5df3bbf19e41e97265e43d74754fc61317b8d01df035af2768432b75519d3",
+  "cohort": {
+    "sha256": "2257b6faab0dfec94bd1419ff93157487713621919117d65bbaa9186864adfc8",
+    "source_count": 0,
+    "clip_count": 0,
+    "lineage_count": 0,
+    "playback_derivative_count": 0
+  },
+  "certificates": [],
+  "journeys": [],
+  "release_artifacts": [],
+  "residual_human_decisions": 0,
+  "operational_failures": 0,
+  "holds": [
+    {
+      "code": "authority_missing",
+      "subject": "authority:enrichment"
+    },
+    {
+      "code": "authority_missing",
+      "subject": "authority:media_playback"
+    },
+    {
+      "code": "authority_missing",
+      "subject": "authority:role"
+    },
+    {
+      "code": "authority_missing",
+      "subject": "authority:spoken"
+    },
+    {
+      "code": "authority_missing",
+      "subject": "authority:structure"
+    },
+    {
+      "code": "authority_missing",
+      "subject": "authority:suitability"
+    },
+    {
+      "code": "authority_missing",
+      "subject": "authority:terminal_admission"
+    },
+    {
+      "code": "authority_missing",
+      "subject": "authority:visual"
+    },
+    {
+      "code": "authority_missing",
+      "subject": "authority:written"
+    },
+    {
+      "code": "candidate_identity_invalid",
+      "subject": "configuration_profile_sha256"
+    },
+    {
+      "code": "candidate_identity_invalid",
+      "subject": "server_image_digest"
+    },
+    {
+      "code": "candidate_identity_invalid",
+      "subject": "shield_artifact_sha256"
+    },
+    {
+      "code": "candidate_identity_invalid",
+      "subject": "shield_version"
+    },
+    {
+      "code": "clip_count_invalid",
+      "subject": "review_set",
+      "expected": "32",
+      "observed": "0"
+    },
+    {
+      "code": "journey_missing",
+      "subject": "journey:shield"
+    },
+    {
+      "code": "journey_missing",
+      "subject": "journey:web"
+    },
+    {
+      "code": "release_artifact_missing",
+      "subject": "release_artifact:deployment"
+    },
+    {
+      "code": "release_artifact_missing",
+      "subject": "release_artifact:notices"
+    },
+    {
+      "code": "release_artifact_missing",
+      "subject": "release_artifact:provenance"
+    },
+    {
+      "code": "release_artifact_missing",
+      "subject": "release_artifact:rollback"
+    },
+    {
+      "code": "release_artifact_missing",
+      "subject": "release_artifact:sbom"
+    },
+    {
+      "code": "release_artifact_missing",
+      "subject": "release_artifact:signature"
+    },
+    {
+      "code": "source_identity_missing",
+      "subject": "review_set"
+    }
+  ],
+  "report_sha256": "1eb269eb3b8e8f7b800ac6c1a7496d2ad30f3cbd7df9bc25a7c8c7f738b2ffad"
+}

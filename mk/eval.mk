@@ -791,6 +791,16 @@ filler-eval-cert: ## score captured filler decisions; never contacts a model or 
 	    --max-spend-nano-usd "$$LOOMARR_FILLER_EVAL_MAX_SPEND_NANO_USD" \
 	    --max-concurrency "$$LOOMARR_FILLER_EVAL_MAX_CONCURRENCY"
 
+filler-release-readiness: ## produce the beta filler release GO/HOLD report without network access
+	@test -n "$$LOOMARR_FILLER_RELEASE_ROOT" || { echo "filler-release-readiness: LOOMARR_FILLER_RELEASE_ROOT is required" >&2; exit 1; }; \
+	  test -n "$$LOOMARR_FILLER_RELEASE_MANIFEST" || { echo "filler-release-readiness: LOOMARR_FILLER_RELEASE_MANIFEST is required" >&2; exit 1; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  report="$${LOOMARR_FILLER_RELEASE_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-release-readiness.json}"; \
+	  mkdir -p "$$(dirname "$$report")"; \
+	  set -- -root "$$LOOMARR_FILLER_RELEASE_ROOT" -manifest "$$LOOMARR_FILLER_RELEASE_MANIFEST" -out "$$report"; \
+	  if test -n "$$LOOMARR_FILLER_RELEASE_GENERATED_AT"; then set -- "$$@" -generated-at "$$LOOMARR_FILLER_RELEASE_GENERATED_AT"; fi; \
+	  $(GO) run ./cmd/filler-release-readiness "$$@"
+
 
 eval-planner-release-contract: ## verify the frozen production-intent release corpus without inference
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -count=1 -tags=eval -run '^TestReleaseGate' ./internal/eval/
