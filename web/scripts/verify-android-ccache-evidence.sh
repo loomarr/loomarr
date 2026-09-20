@@ -11,16 +11,23 @@ if [[ -z "$launcher" || -z "$web_root" ]]; then
   exit 2
 fi
 
-launcher_rules=()
+primary_rules=()
 while IFS= read -r rule; do
-  launcher_rules+=("$rule")
+  primary_rules+=("$rule")
 done < <(
-  find "$web_root" -type f -path '*/.cxx/*/CMakeFiles/rules.ninja' -exec grep -Fl -- "$launcher" {} + 2>/dev/null | sort
+  find "$web_root" -type f -path '*/.cxx/*/CMakeFiles/rules.ninja' \
+    ! -path '*/CMakeFiles/*/CMakeFiles/rules.ninja' -print 2>/dev/null | sort
 )
-if ((${#launcher_rules[@]} == 0)); then
-  echo 'CMake generated no launcher-bearing Ninja rules for ccache proof' >&2
+if ((${#primary_rules[@]} == 0)); then
+  echo 'CMake generated no primary Ninja rules for ccache proof' >&2
   exit 1
 fi
+for rule in "${primary_rules[@]}"; do
+  if ! grep -Fq -- "$launcher" "$rule"; then
+    printf 'primary CMake Ninja rule lacks the reviewed ccache launcher: %s\n' "$rule" >&2
+    exit 1
+  fi
+done
 
 cacheable_calls=$(
   "$launcher" --print-stats --format=json |
@@ -32,7 +39,7 @@ if ((cacheable_calls == 0)); then
 fi
 
 if [[ -n "$output" ]]; then
-  printf '%s\n' "${launcher_rules[@]}" > "$output"
+  printf '%s\n' "${primary_rules[@]}" > "$output"
 else
-  printf '%s\n' "${launcher_rules[@]}"
+  printf '%s\n' "${primary_rules[@]}"
 fi

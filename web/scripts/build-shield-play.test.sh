@@ -26,6 +26,16 @@ if grep -Fq '_CMakeLTOTest' "$temp_dir/launchers.txt"; then
   exit 1
 fi
 
+missing_rule="$temp_dir/web/node_modules/example/android/.cxx/Release/hash/x86/CMakeFiles/rules.ninja"
+mkdir -p "$(dirname "$missing_rule")"
+printf 'command = clang++\n' > "$missing_rule"
+if FAKE_CCACHE_STATS='{"cache_miss":1,"direct_cache_hit":0,"preprocessed_cache_hit":0}' \
+  "$verifier" "$launcher" "$temp_dir/web" >/dev/null 2>&1; then
+  echo 'ccache evidence accepted a primary Ninja rule without the launcher' >&2
+  exit 1
+fi
+printf 'command = %s clang++\n' "$launcher" > "$missing_rule"
+
 if FAKE_CCACHE_STATS='{"cache_miss":0,"direct_cache_hit":0,"preprocessed_cache_hit":0}' \
   "$verifier" "$launcher" "$temp_dir/web" >/dev/null 2>&1; then
   echo 'ccache evidence accepted a build with no cacheable compiler calls' >&2
