@@ -26,7 +26,7 @@ example.invalid/f
 example.invalid/g
 example.invalid/h
 example.invalid/i`
-	if err := os.WriteFile(fakeGo, []byte("#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"$*\" == \"list -m\" ]]; then echo example.invalid; exit; fi\n[[ \"$*\" == \"list ./...\" ]]\nprintf '%s\\n' '"+strings.ReplaceAll(packages, "\n", "' '")+"'\n"), 0o700); err != nil {
+	if err := os.WriteFile(fakeGo, []byte("#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"$*\" == \"list -m\" ]]; then echo example.invalid; exit; fi\n[[ \"$*\" == \"list ./...\" ]]\necho 'go: downloading example.invalid/dependency v1.0.0' >&2\nprintf '%s\\n' '"+strings.ReplaceAll(packages, "\n", "' '")+"'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	weights := filepath.Join(t.TempDir(), "weights.tsv")
@@ -46,9 +46,11 @@ example.invalid/i`
 			cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), shard)
 			cmd.Dir = root
 			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights)
-			output, err := cmd.CombinedOutput()
+			var stderr strings.Builder
+			cmd.Stderr = &stderr
+			output, err := cmd.Output()
 			if err != nil {
-				t.Fatalf("go shard %s: %v\n%s", shard, err, output)
+				t.Fatalf("go shard %s: %v\n%s", shard, err, stderr.String())
 			}
 			if got := strings.TrimSpace(string(output)); got != expected {
 				t.Fatalf("go shard %s =\n%s\nwant measured longest-processing-time assignment\n%s", shard, got, expected)
@@ -68,9 +70,11 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 	for shard := 1; shard <= goRaceShardCount; shard++ {
 		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), strconv.Itoa(shard)+"/"+strconv.Itoa(goRaceShardCount))
 		cmd.Dir = root
-		output, err := cmd.CombinedOutput()
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		output, err := cmd.Output()
 		if err != nil {
-			t.Fatalf("go shard %d/%d: %v\n%s", shard, goRaceShardCount, err, output)
+			t.Fatalf("go shard %d/%d: %v\n%s", shard, goRaceShardCount, err, stderr.String())
 		}
 		for _, pkg := range strings.Fields(string(output)) {
 			relative := strings.TrimPrefix(pkg, "github.com/loomarr/loomarr/")
