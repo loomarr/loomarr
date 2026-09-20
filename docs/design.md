@@ -3615,9 +3615,11 @@ Android build performance (#1050) is measured without changing the artifact cont
 `android-profile` Make target runs the normal four-ABI Android gate, retaining runner identity,
 wall time, actual Gradle settings and local `--profile` reports in a separate diagnostic artifact.
 It never uses an externally uploaded build scan or adds diagnostic files to the unsigned promotion
-artifact. The first baseline keeps one native worker and one Gradle worker. A later concurrency
-experiment changes one variable at a time and requires comparable hosted timing and memory evidence
-before becoming the CI default. Release continues to promote the already verified producer artifact.
+artifact. Local builds default to one native worker and one Gradle worker. CI runs at most two
+Gradle projects in parallel while retaining one native compiler/link slot inside each task; the
+wrapper rejects any Gradle worker count other than one or two. The bounded hosted experiment cut
+the fresh-source build from 30m56s to 19m13s with zero OOM event deltas, all four ABIs, and the same
+verified artifact. Release continues to promote the already verified producer artifact.
 
 The producer may additionally use the §14-pinned ccache executable through the generated Expo/CMake
 plugin. CI requires an absolute verified launcher, content-based compiler identity, a checkout-relative
@@ -3626,8 +3628,9 @@ acquire the same exact macOS or Linux pin into the worktree artifacts by default
 on later builds, and retain an explicit or acquisition-failure cold path. Only compiler results are
 restored across source identities. Generated Android projects, `.cxx` trees, bundles, keys, and
 promotion evidence are never cached. The profiler retains exact version/configuration, zeroed pre/post
-JSON statistics, and every generated Ninja rules file used to prove launcher propagation across app
-and library projects.
+JSON statistics, and every primary generated Ninja rules file used to prove launcher propagation
+across app and library projects. Nested compiler-capability probes are not application/library rules
+and do not participate in that proof.
 
 On Linux, the observer records its inherited cgroup v2 memory scope, limits, lifetime peak and
 OOM/limit event counters before and after the build, plus sampled current usage and host available
