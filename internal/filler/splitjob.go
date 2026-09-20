@@ -165,10 +165,14 @@ func (sp *Splitter) WithSegmentLanguage(policy SegmentLanguagePolicy) *Splitter 
 
 func (sp *Splitter) startSegmentLanguage(p *SplitProposal) bool {
 	policy := sp.segmentLanguage
-	if policy == nil || policy.Detector == nil || policy.Want == nil || NormalizeLanguage(policy.Want()) == "" {
+	if policy == nil || policy.Detector == nil || policy.Want == nil {
 		return false
 	}
-	p.LanguagePreference = NormalizeLanguage(policy.Want())
+	want := NormalizeLanguage(policy.Want())
+	if want == "" {
+		return false
+	}
+	p.LanguagePreference = want
 	p.Language = &SplitLanguageProgress{Want: p.LanguagePreference}
 	return true
 }
