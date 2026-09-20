@@ -9112,7 +9112,8 @@ unconfirmed suggestion.
    later preference change and offer an explicit recheck. Every confident mismatch remains in the
    proposal receipt with its exact interval, detected and
    expected languages, name, and a stable mismatch reason; it is not placed back in the editable
-   candidate list. Confirmed
+   candidate list. When every candidate is a confident mismatch, the split resolves automatically
+   with a plain pipeline receipt instead of creating an empty human-review task. Confirmed
    children inherit known and wordless results so the post-confirm rung does not spend twice, but
    only when the confirmed interval exactly matches the persisted proposal. The server ignores
    language fields supplied by the confirm client; edited or merged intervals and
