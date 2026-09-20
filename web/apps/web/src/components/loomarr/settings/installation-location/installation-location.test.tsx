@@ -45,6 +45,16 @@ const entry = (key: string, value = ""): SettingEntry => ({
   doc: "",
   secret: false,
   set: value !== "",
+  ...(key === "filler.language"
+    ? {
+        kind: "enum",
+        enum: ["en", "es"],
+        enumOptions: [
+          { value: "en", label: "en" },
+          { value: "es", label: "es" },
+        ],
+      }
+    : {}),
 });
 
 const entries = () => [entry("filler.home_country"), entry("filler.home_market")];

@@ -81,7 +81,7 @@ const languageSetting = (value: string) => ({
   key: "filler.language",
   label: "Commercial language",
   group: "filler",
-  kind: "string",
+  kind: "enum",
   owner: "installation_location",
   presentation: "language",
   value,
@@ -91,6 +91,12 @@ const languageSetting = (value: string) => ({
   secret: false,
   set: true,
   doc: "Commercial language",
+  enum: ["en", "es", "pl"],
+  enumOptions: [
+    { value: "en", label: "en" },
+    { value: "es", label: "es" },
+    { value: "pl", label: "pl" },
+  ],
 });
 
 // ⚠ The stub this replaced dispatched by URL SUBSTRING, in order, with a catch-all `{}` at the

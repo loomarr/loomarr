@@ -114,8 +114,15 @@ const stubWizard = (opts: {
         key: "filler.language",
         label: "Expected spoken language",
         group: "filler",
+        kind: "enum",
         presentation: "language",
         value: "en",
+        enum: ["en", "es", "pl"],
+        enumOptions: [
+          { value: "en", label: "en" },
+          { value: "es", label: "es" },
+          { value: "pl", label: "pl" },
+        ],
       }),
       setting({
         key: "setup.completed",

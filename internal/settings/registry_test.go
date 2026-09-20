@@ -44,6 +44,29 @@ func TestRegistry_TMDBHelpNamesEveryEnabledSurface(t *testing.T) {
 	}
 }
 
+func TestRegistry_FillerLanguageOwnsTheClientOptions(t *testing.T) {
+	setting, ok := NewRegistry().Get("filler.language")
+	if !ok {
+		t.Fatal("filler.language is not declared")
+	}
+	if setting.Kind != KindEnum {
+		t.Fatalf("filler.language kind = %q, want enum", setting.Kind)
+	}
+	if len(setting.Enum) != 100 {
+		t.Fatalf("filler.language options = %d, want whisper.cpp v1.9.1's 100", len(setting.Enum))
+	}
+	want := map[string]bool{"en": true, "es": true, "pl": true, "ta": true, "yue": true}
+	for _, option := range setting.Enum {
+		delete(want, option.Value)
+		if option.Label != option.Value {
+			t.Errorf("filler.language option %q has backend-localized label %q", option.Value, option.Label)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("filler.language is missing registry-owned options: %v", want)
+	}
+}
+
 func TestRegistry_RestartKeys(t *testing.T) {
 	reg := NewRegistry()
 	want := []string{"filler.dir", "filler.watch_dir", "filler.structure_window_authority_path", "filler.structure_window_deployment_path", "diagnostics.dir"}

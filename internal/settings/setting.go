@@ -146,9 +146,10 @@ const (
 type ValidateFunc func(any) error
 
 // EnumOption is one choice of a KindEnum setting: the stored VALUE (the closed-set
-// member the BE persists and validates) plus its display LABEL (config-design §5).
-// The label is a fact the registry owns — "openai" → "OpenAI", "emby" → "Emby" — so
-// it lives next to the value rather than being re-derived (and drifting) on the FE.
+// member the BE persists and validates) plus its default display LABEL (config-design §5).
+// The label is normally a fact the registry owns — "openai" → "OpenAI", "emby" → "Emby".
+// PresentationLanguage is the deliberate exception: its value is a BCP 47 code and clients
+// localize that code through CLDR; Label remains the code-shaped fallback for generic clients.
 type EnumOption struct {
 	Value string // the stored/validated value, e.g. "ollama"
 	Label string // the human label shown in the dropdown, e.g. "Ollama"

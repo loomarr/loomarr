@@ -34,6 +34,17 @@ func TestToAPIEntry_ExposesOwnerAndApplyTiming(t *testing.T) {
 	}
 }
 
+func TestToAPIEntry_CarriesLanguageCodesForClientLocalization(t *testing.T) {
+	t.Parallel()
+	entry := toAPIEntry(settings.Entry{Setting: settings.Setting{
+		Key: "filler.language", Owner: settings.OwnerFillerPlayback, Kind: settings.KindEnum,
+		Enum: []settings.EnumOption{{Value: "en", Label: "en"}, {Value: "pl", Label: "pl"}},
+	}})
+	if len(entry.Enum) != 2 || entry.Enum[1] != "pl" || entry.EnumOptions[1].Label != "pl" {
+		t.Fatalf("language options = %#v / %#v, want codes without English labels", entry.Enum, entry.EnumOptions)
+	}
+}
+
 func TestProbeWritableDirectory(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

@@ -1,13 +1,13 @@
 import { Check, Lock } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { commonLanguages, languageName } from "@/lib/languages";
+import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import type { LanguagePickerProps } from "./language-picker.type";
 
 // One friendly installation-language control. Provider and model choices stay in Advanced;
 // this asks only the household question needed by the automatic gate.
-const LanguagePicker = ({ value, onChange, locked = false, lockedLabel }: LanguagePickerProps) => {
+const LanguagePicker = ({ value, options, onChange, locked = false, lockedLabel }: LanguagePickerProps) => {
   const listID = useId();
   const selectedLabel = languageName(value);
   const [query, setQuery] = useState(selectedLabel);
@@ -18,11 +18,12 @@ const LanguagePicker = ({ value, onChange, locked = false, lockedLabel }: Langua
 
   const choices = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    if (!needle || query === selectedLabel) return commonLanguages;
-    return commonLanguages.filter(
-      ([code, label]) => label.toLocaleLowerCase().includes(needle) || code.toLocaleLowerCase() === needle,
+    const localized = options.map((code) => ({ code, label: languageName(code) }));
+    if (!needle || query === selectedLabel) return localized;
+    return localized.filter(
+      ({ code, label }) => label.toLocaleLowerCase().includes(needle) || code.toLocaleLowerCase() === needle,
     );
-  }, [query, selectedLabel]);
+  }, [options, query, selectedLabel]);
 
   const choose = (code: string, label: string) => {
     onChange(code);
@@ -72,7 +73,7 @@ const LanguagePicker = ({ value, onChange, locked = false, lockedLabel }: Langua
               setActive((current) => Math.max(current - 1, 0));
             } else if (event.key === "Enter" && choices[active]) {
               event.preventDefault();
-              choose(choices[active][0], choices[active][1]);
+              choose(choices[active].code, choices[active].label);
             } else if (event.key === "Escape") {
               setOpen(false);
             }
@@ -84,7 +85,7 @@ const LanguagePicker = ({ value, onChange, locked = false, lockedLabel }: Langua
             role="listbox"
             className="relative z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg sm:absolute"
           >
-            {choices.map(([code, label], index) => (
+            {choices.map(({ code, label }, index) => (
               <button
                 type="button"
                 id={`${listID}-${index}`}

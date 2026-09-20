@@ -130,10 +130,10 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
       (body) => body.settings.find((entry) => entry.key === "filler.min_duration")?.value,
     ),
   );
-  const currentLanguage = unwrap(
-    settings.data,
-    (body) => body.settings.find((entry) => entry.key === "filler.language")?.value,
+  const languageEntry = unwrap(settings.data, (body) =>
+    body.settings.find((entry) => entry.key === "filler.language"),
   );
+  const currentLanguage = languageEntry?.value;
   const checkedLanguage = p.languagePreference ?? "";
   const languageChanged =
     checkedLanguage !== "" && currentLanguage !== undefined && currentLanguage !== checkedLanguage;

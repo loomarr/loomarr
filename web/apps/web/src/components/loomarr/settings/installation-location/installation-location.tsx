@@ -60,6 +60,7 @@ const InstallationLocation = ({
       {languageEntry && (
         <LanguagePicker
           value={language}
+          options={languageEntry.enum ?? []}
           onChange={(next) => onChange(LANGUAGE_KEY, next)}
           locked={languageEntry.provenance === "env"}
           lockedLabel="set via environment"

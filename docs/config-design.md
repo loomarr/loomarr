@@ -392,7 +392,11 @@ Two consequences worth stating, because both are easy to "fix" wrongly later:
 still decides what may be stored; presentation decides how the same value is explained and edited.
 This keeps `720h` as the stable wire/storage value while every UI says “30 days”, and keeps a byte
 ceiling from appearing as an unexplained integer. Enum options remain
-`[]EnumOption{Value, Label}` for the same reason. The UI may fall back to humanizing an unknown key
+`[]EnumOption{Value, Label}` for the same reason. **Language presentation is the intentional
+localization exception:** the registry owns the supported BCP 47 codes, while a client renders those
+codes in its active interface locale through CLDR/`Intl.DisplayNames`; the enum label is only a
+code-shaped fallback for clients without localization support. This prevents English language names
+from becoming backend contract or being copied into every client. The UI may fall back to humanizing an unknown key
 only in the raw escape hatch; workflow forms never derive product copy from identifiers.
 
 **Conditional fields (`ShowWhen`).** A setting may declare `ShowWhen map[string][]string` — it is shown only when the *current* value of a named key is one of the listed values (empty = always shown). `llm.api_key` is hosted-only, while `llm.url` applies to both providers: it is the Ollama host for local AI and the OpenAI-compatible base URL for hosted AI. Hiding the local URL would make a non-default Ollama host impossible to configure. The UI evaluates conditions against live edits; a hidden field's value is untouched.
