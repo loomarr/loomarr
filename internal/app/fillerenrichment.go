@@ -40,9 +40,10 @@ func activeFillerTranscriptCapability(set resolved) fillerenrichment.CapabilityS
 	if !set.boolv("filler.transcribe.enabled") {
 		return fillerenrichment.CapabilitySelection{}
 	}
-	if set.str("filler.transcribe.provider") == "hosted" {
+	switch set.str("asr.provider") {
+	case "hosted":
 		selection := resolveSelection(set)
-		model := strings.TrimSpace(set.str("filler.transcribe.model"))
+		model := strings.TrimSpace(set.str("asr.model"))
 		if selection.URL == "" || model == "" || selection.Provider == "" {
 			return fillerenrichment.CapabilitySelection{}
 		}
@@ -50,6 +51,17 @@ func activeFillerTranscriptCapability(set resolved) fillerenrichment.CapabilityS
 			Producer: "transcript:" + selection.Provider,
 			ProducerVersion: capabilityVersion(filler.TranscriptionPassVersion,
 				selection.Provider, selection.URL, model)}
+	case "openai":
+		url := strings.TrimSpace(set.str("asr.url"))
+		model := strings.TrimSpace(set.str("asr.model"))
+		key := strings.TrimSpace(set.str("asr.api_key"))
+		if url == "" || model == "" || key == "" {
+			return fillerenrichment.CapabilitySelection{}
+		}
+		return fillerenrichment.CapabilitySelection{Available: true,
+			Producer: "transcript:openai",
+			ProducerVersion: capabilityVersion(filler.TranscriptionPassVersion,
+				"openai", url, model)}
 	}
 	model := strings.TrimSpace(set.str("ingest.whisper_model"))
 	if model == "" {

@@ -579,11 +579,11 @@ func declared() []Setting {
 		},
 		{
 			// Both providers need an endpoint: the Ollama host for local AI, or the
-			// OpenAI-compatible base URL for hosted AI. The default host is conventional, not
+			// OpenAI-compatible base URL for local or hosted AI. The default host is conventional, not
 			// universal, so hiding this for Ollama made remote Ollama impossible to configure.
 			Key: "llm.url", Label: "AI service address", EnvVar: "LLM_URL", Group: GroupAI,
 			Kind: KindURL, Default: "",
-			Doc: "For Ollama, its host such as http://ollama:11434. For a hosted provider, the exact OpenAI-compatible API base; Loomarr fills this for OpenRouter, while Custom remains editable.",
+			Doc: "For Ollama, enter its address, such as http://ollama:11434. For any OpenAI-compatible service, local or hosted, enter the API base ending in /v1. Loomarr fills this in for OpenRouter; Custom stays editable.",
 		},
 		{
 			// The normal AI page uses the ranked picker for both provider kinds so two
@@ -595,10 +595,11 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
-			// Ollama is local and needs no key — this only applies to a hosted service.
-			Key: "llm.api_key", Label: "Hosted AI API key", EnvVar: "LLM_API_KEY", Group: GroupAI,
+			// Ollama needs no key. An OpenAI-compatible service may be local or hosted and
+			// may require one, so describe the protocol rather than where the service runs.
+			Key: "llm.api_key", Label: "OpenAI-compatible API key", EnvVar: "LLM_API_KEY", Group: GroupAI,
 			Kind: KindSecret, Default: "",
-			Doc:      "API key for your hosted AI service. Never shown again after saving.",
+			Doc:      "API key for the OpenAI-compatible AI service, if it requires one. This is separate from the speech-to-text key. Never shown again after saving.",
 			ShowWhen: map[string][]string{"llm.provider": {"openai"}},
 		},
 		{
@@ -608,6 +609,34 @@ func declared() []Setting {
 			Kind: KindDuration, Default: "2m", Advanced: true,
 			Doc:      "How long to keep the local AI model loaded in memory between requests. Loading it takes several seconds, so keeping it ready makes suggestions much faster — but the model shares GPU memory with channel playback, so the default is short (2m) to free that memory for streaming. Raise it if you rarely stream and want faster suggestions; set 0 to free memory as soon as each request finishes.",
 			ShowWhen: map[string][]string{"llm.provider": {"ollama"}},
+		},
+		{
+			Key: "asr.provider", Label: "Speech-to-text service", EnvVar: "ASR_PROVIDER", Group: GroupAI,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("whisper", "Built-in Whisper"),
+				opt("hosted", "Lineup AI service"),
+				opt("openai", "OpenAI-compatible speech service"),
+			},
+			Default: "whisper",
+			Doc:     "The app-wide service that turns speech into timed text. Use built-in Whisper, the configured lineup AI service, or a separate OpenAI-compatible speech service.",
+		},
+		{
+			Key: "asr.model", Label: "Speech-to-text model", EnvVar: "ASR_MODEL", Group: GroupAI,
+			Kind: KindString, Default: "openai/whisper-large-v3",
+			Doc:      "Model used by the selected remote speech-to-text service. It must return timed transcript segments.",
+			ShowWhen: map[string][]string{"asr.provider": {"hosted", "openai"}},
+		},
+		{
+			Key: "asr.url", Label: "Speech-to-text service address", EnvVar: "ASR_URL", Group: GroupAI,
+			Kind: KindURL, Default: "",
+			Doc:      "Address of the separate speech-to-text service, ending in /v1. Loomarr adds /audio/transcriptions.",
+			ShowWhen: map[string][]string{"asr.provider": {"openai"}},
+		},
+		{
+			Key: "asr.api_key", Label: "Speech-to-text API key", EnvVar: "ASR_API_KEY", Group: GroupAI,
+			Kind: KindSecret, Default: "",
+			Doc:      "API key for the speech-to-text service. Loomarr never sends the lineup AI key to this service. Never shown again after saving.",
+			ShowWhen: map[string][]string{"asr.provider": {"openai"}},
 		},
 		{
 			Key: "suggest.max_acquisitions", Label: "Pending-download limit per person", EnvVar: "SUGGEST_MAX_ACQUISITIONS", Group: GroupAI,
@@ -717,20 +746,7 @@ func declared() []Setting {
 			// never the whole catalog.
 			Key: "filler.transcribe.enabled", Label: "Transcribe unclear clips", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
 			Kind: KindBool, Default: false, Advanced: true,
-			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the transcription provider selected below.",
-		},
-		{
-			Key: "filler.transcribe.provider", Label: "Transcription service", EnvVar: "FILLER_TRANSCRIBE_PROVIDER", Group: GroupFiller,
-			Kind: KindEnum, Enum: []EnumOption{
-				opt("whisper", "Local (whisper)"), opt("hosted", "Hosted AI service"),
-			},
-			Default: "whisper", Advanced: true,
-			Doc: "Where timed transcripts come from: the bundled local Whisper engine, or the hosted AI provider configured under AI. OpenRouter supports this with the same key used for text and vision.",
-		},
-		{
-			Key: "filler.transcribe.model", Label: "Transcription model", EnvVar: "FILLER_TRANSCRIBE_MODEL", Group: GroupFiller,
-			Kind: KindString, Default: "openai/whisper-large-v3", Advanced: true,
-			Doc: "Speech-to-text model used for hosted transcription. This is separate from the chat and vision models because it must return timed transcript segments.",
+			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the app-wide speech-to-text service configured under AI.",
 		},
 		{
 			// Vision tagging (§10 V44). ⚠ OFF by default AND gated on a vision-capable LLM: the

@@ -302,14 +302,14 @@ func TestHostedTranscriber_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	set := visionSet(t, map[string]string{
-		"playout.ffmpeg_path":        ffmpeg,
-		"llm.provider":               "openai",
-		"llm.hosted_provider":        "openrouter",
-		"llm.url":                    server.URL,
-		"llm.model":                  "openai/gpt-4o-mini",
-		"llm.api_key.openrouter":     "provider-secret",
-		"filler.transcribe.provider": "hosted",
-		"filler.transcribe.model":    "openai/whisper-large-v3",
+		"playout.ffmpeg_path":    ffmpeg,
+		"llm.provider":           "openai",
+		"llm.hosted_provider":    "openrouter",
+		"llm.url":                server.URL,
+		"llm.model":              "openai/gpt-4o-mini",
+		"llm.api_key.openrouter": "provider-secret",
+		"asr.provider":           "hosted",
+		"asr.model":              "openai/whisper-large-v3",
 	})
 
 	segments, err := buildFillerMediaTools(set, nil).Transcribe(context.Background(), "clip.mp4", 0, 1_000)
@@ -321,6 +321,30 @@ func TestHostedTranscriber_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 	}
 	if authorization != "Bearer provider-secret" {
 		t.Errorf("authorization = %q, want the selected provider's namespaced key", authorization)
+	}
+}
+
+func TestOpenAITranscriber_UsesOnlyItsDedicatedConfiguration(t *testing.T) {
+	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\nfor last; do :; done\nprintf wav > \"$last\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	set := visionSet(t, map[string]string{
+		"playout.ffmpeg_path":  ffmpeg,
+		"llm.provider":         "openai",
+		"llm.url":              "https://chat.invalid/v1",
+		"llm.api_key":          "chat-secret",
+		"asr.provider":         "openai",
+		"asr.model":            "whisper-turbo",
+		"asr.url":              "",
+		"asr.api_key":          "dedicated-speech-secret",
+		"ingest.whisper_path":  "/must-not-run/whisper-cli",
+		"ingest.whisper_model": "/must-not-run/model.bin",
+	})
+
+	_, err := buildFillerMediaTools(set, nil).Transcribe(context.Background(), "clip.mp4", 0, 1_000)
+	if err == nil || !strings.Contains(err.Error(), "transcription URL is not configured") {
+		t.Fatalf("Transcribe error = %v, want the dedicated URL failure", err)
 	}
 }
 

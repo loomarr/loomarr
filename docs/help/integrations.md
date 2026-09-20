@@ -43,25 +43,57 @@ Two one-click actions (wizard, or **Settings → Connections**), both re-runnabl
 - **Wire Tunarr to your library** — so channels have real programs to play.
 - **Connect Tunarr to the guide** — so channels appear in your TV guide.
 
-## LLM (Ollama or hosted)
+## AI for lineup suggestions
 
-Turns your sentence into a lineup. Must support tool-calling.
+This turns a request such as “make me a rainy Sunday detective channel” into a lineup. The model
+must support tool calling. You can choose it under **Settings → AI**, or set these environment
+variables:
 
 - **Local Ollama** (default): `LLM_PROVIDER=ollama`, `LLM_URL=http://ollama:11434`. Don't
   pick a tag by hand — the AI settings picker ranks models that fit your GPU. Prefer a
   Q6_K quant.
+- **Another local AI server** (llama.cpp, vLLM, LM Studio, LocalAI, or a compatible gateway):
+  `LLM_PROVIDER=openai`, `LLM_URL=http://your-ai-server:8080/v1`, and
+  `LLM_MODEL=the-model-name-served-by-that-server`. Add `LLM_API_KEY` (or
+  `LLM_API_KEY_FILE`) if the server requires one.
 - **Hosted** (OpenAI, Gemini, Groq, OpenRouter): `LLM_PROVIDER=openai`, `LLM_URL` = the
   base ending in `/v1`, `LLM_MODEL`, `LLM_API_KEY`.
 
-OpenRouter can run every filler AI capability with that same key. In Filler settings, choose
-**Hosted AI service** for language detection and transcription, set the transcription model
-(the default is `openai/whisper-large-v3`), and enable vision with an image-capable model. The
-chat, vision, and speech-to-text model ids remain separate because they accept different inputs;
-the credential and provider are shared.
+For a local OpenAI-compatible server, the model name must match one returned by its `/v1/models`
+endpoint. Loomarr talks to it through `/v1/chat/completions`. Choosing **Custom
+(OpenAI-compatible)** in the AI model picker checks the address, model, and key before saving them.
+The change takes effect immediately — no restart.
 
-Switching models takes effect immediately — no restart.
+## Speech-to-text
 
-**What leaves your network.** With local Ollama, nothing. With a hosted provider, Loomarr sends
+Speech-to-text has one app-wide service choice. It can use built-in Whisper, reuse the lineup AI
+service, or connect to a separate speech server. Configure it under
+**Settings → AI → Speech-to-text**. For the separate server, choose
+**OpenAI-compatible speech service**, then enter:
+
+- **Service address:** the speech server's API base ending in `/v1`, for example
+  `http://your-ai-server:8083/v1`
+- **Model:** the speech model name served by that endpoint
+- **API key:** the key made for Loomarr's speech access
+
+The equivalent environment variables are `ASR_PROVIDER=openai`, `ASR_URL`, `ASR_MODEL`, and
+`ASR_API_KEY` (or `ASR_API_KEY_FILE`). Loomarr sends audio to `/v1/audio/transcriptions` and expects
+timed transcript segments. It never substitutes the lineup AI address or key, so a typo cannot
+silently send audio to the wrong service.
+
+Features use this shared connection without owning another copy of its settings. For example, turn
+on **Transcribe unclear clips** under **Settings → Filler** to let that feature use the configured
+speech service.
+
+OpenRouter can run every filler AI capability with the lineup key. Under
+**AI → Speech-to-text**, choose **Lineup AI service** and set the transcription model (the default
+is `openai/whisper-large-v3`). In Filler settings, choose the hosted service for language
+detection and enable vision with an image-capable model. The text, vision, and speech-to-text
+model ids remain separate because they accept different inputs; the credential is shared only
+when you deliberately choose the lineup service.
+
+**What leaves your network.** With local Ollama or a local OpenAI-compatible server, requests stay
+on your network. With a hosted provider, Loomarr sends
 your intent plus titles and metadata from your library, so the model picks among real options.
 TMDB always receives title searches.
 

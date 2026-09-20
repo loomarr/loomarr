@@ -172,15 +172,29 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 			if sel.URL == "" {
 				return nil
 			}
-			return hostedSTTAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, set.str("filler.transcribe.model"), sel.APIKey).WithMetrics(recorder)}
+			return hostedSTTAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, set.str("asr.model"), sel.APIKey).WithMetrics(recorder)}
 		},
-		Model: func() string { return set.str("filler.transcribe.model") },
+		Model: func() string { return set.str("asr.model") },
+	}
+	private := &mediatools.HostedTranscriber{
+		FFmpegPath: ffmpegPath,
+		Client: func() mediatools.AudioTranscriptionClient {
+			return &mediatools.OpenAITranscriptionClient{
+				BaseURL: func() string { return set.str("asr.url") },
+				APIKey:  func() string { return set.str("asr.api_key") },
+			}
+		},
+		Model: func() string { return set.str("asr.model") },
 	}
 	return tools.WithTranscriber(func() mediatools.SpanTranscriber {
-		if set.str("filler.transcribe.provider") != "hosted" {
+		switch set.str("asr.provider") {
+		case "hosted":
+			return hosted
+		case "openai":
+			return private
+		default:
 			return nil
 		}
-		return hosted
 	})
 }
 

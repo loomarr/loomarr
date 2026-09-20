@@ -102,12 +102,10 @@ var fillerOwners = map[string]Owner{
 	"ingest.whisper_path":  OwnerFillerTools,
 	"ingest.whisper_model": OwnerFillerTools,
 
-	"filler.transcribe.provider": OwnerAI,
-	"filler.transcribe.model":    OwnerAI,
-	"filler.vision.provider":     OwnerAI,
-	"filler.vision.model":        OwnerAI,
-	"filler.vision.url":          OwnerAI,
-	"filler.vision.api_key":      OwnerAI,
+	"filler.vision.provider": OwnerAI,
+	"filler.vision.model":    OwnerAI,
+	"filler.vision.url":      OwnerAI,
+	"filler.vision.api_key":  OwnerAI,
 }
 
 var knownOwners = map[Owner]struct{}{

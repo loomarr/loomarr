@@ -164,6 +164,12 @@ func knownEnvVars(t *testing.T) map[string]struct{} {
 	for _, s := range settings.NewRegistry().All() {
 		if s.EnvVar != "" {
 			out[s.EnvVar] = struct{}{}
+			// The settings service gives every declared secret the Docker-secrets
+			// <VAR>_FILE form automatically (config-design §3). Derive it here from
+			// the registry instead of maintaining a second exception list.
+			if s.Kind == settings.KindSecret {
+				out[s.EnvVar+"_FILE"] = struct{}{}
+			}
 		}
 	}
 

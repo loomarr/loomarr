@@ -230,6 +230,19 @@ func TestRegistry_AIConditionalFields(t *testing.T) {
 	if len(allowed) != 1 || allowed[0] != "openai" {
 		t.Errorf("llm.api_key should ShowWhen llm.provider=openai, got %v", key.ShowWhen)
 	}
+	for _, settingKey := range []string{"asr.provider", "asr.model", "asr.url", "asr.api_key"} {
+		setting, ok := reg.Get(settingKey)
+		if !ok {
+			t.Errorf("%s not declared", settingKey)
+			continue
+		}
+		if setting.Group != GroupAI || setting.Owner != OwnerAI {
+			t.Errorf("%s = group %q, owner %q; want app-wide AI settings", settingKey, setting.Group, setting.Owner)
+		}
+	}
+	if _, ok := reg.Get("filler.transcribe.provider"); ok {
+		t.Error("feature-owned transcription provider is still declared")
+	}
 }
 
 func TestRegistry_FillerWorkflowPresentation(t *testing.T) {

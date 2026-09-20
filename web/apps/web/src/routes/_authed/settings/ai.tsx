@@ -31,12 +31,17 @@ const AiSettings = () => {
               onBaseUrlChange={(value) => setEdit("llm.url", value)}
               visionProvider={liveValue("filler.vision.provider")}
               visionModel={liveValue("filler.vision.model")}
-              transcriptionProvider={liveValue("filler.transcribe.provider")}
-              transcriptionModel={liveValue("filler.transcribe.model")}
               onRoleSettingChange={setEdit}
               tmdbConfigured={tmdbConfigured}
             />
           ),
+        },
+        {
+          group: "ai",
+          title: "Speech-to-text",
+          description:
+            "Choose one speech service for the whole app. Features that need transcripts use this connection; turn each feature on where it lives.",
+          keys: ["asr.provider", "asr.model", "asr.url", "asr.api_key"],
         },
         {
           group: "ai",

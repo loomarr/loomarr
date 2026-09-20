@@ -649,10 +649,10 @@ describe("Settings honesty", () => {
           setting({ key: "suggest.max_acquisitions", group: "ai", kind: "int", value: "5" }),
           setting({ key: "filler.vision.provider", group: "filler", value: "inherit" }),
           setting({ key: "filler.vision.model", group: "filler", value: "" }),
-          setting({ key: "filler.transcribe.provider", group: "filler", value: "whisper" }),
+          setting({ key: "asr.provider", group: "ai", value: "whisper" }),
           setting({
-            key: "filler.transcribe.model",
-            group: "filler",
+            key: "asr.model",
+            group: "ai",
             value: "openai/whisper-large-v3",
           }),
         ],
@@ -731,7 +731,7 @@ describe("Settings honesty", () => {
     expect(screen.getByRole("link", { name: "Return to channel" })).toHaveAttribute("href", "/guide");
   });
 
-  it("stages capability-filtered vision and transcription roles from a configured hosted provider", async () => {
+  it("keeps the global speech connection separate from advanced vision choices", async () => {
     server.use(
       getMeMockHandler(me()),
       getSettingsListMockHandler({
@@ -742,8 +742,24 @@ describe("Settings honesty", () => {
           setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: true }),
           setting({ key: "filler.vision.provider", group: "filler", value: "inherit" }),
           setting({ key: "filler.vision.model", group: "filler", value: "" }),
-          setting({ key: "filler.transcribe.provider", group: "filler", value: "whisper" }),
-          setting({ key: "filler.transcribe.model", group: "filler", value: "openai/whisper-large-v3" }),
+          setting({
+            key: "asr.provider",
+            label: "Speech-to-text service",
+            group: "ai",
+            kind: "enum",
+            value: "whisper",
+            enumOptions: [
+              { value: "whisper", label: "Built-in Whisper" },
+              { value: "hosted", label: "Lineup AI service" },
+              { value: "openai", label: "OpenAI-compatible speech service" },
+            ],
+          }),
+          setting({
+            key: "asr.model",
+            label: "Speech-to-text model",
+            group: "ai",
+            value: "openai/whisper-large-v3",
+          }),
         ],
       }),
       getSystemLlmStatusMockHandler({
@@ -775,15 +791,14 @@ describe("Settings honesty", () => {
 
     renderAt("/settings/ai");
     expect(await screen.findByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Advanced model roles/i }));
+    expect(screen.getByRole("heading", { name: "Speech-to-text" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Speech-to-text service")).toHaveTextContent("Built-in Whisper");
+    await userEvent.click(screen.getByRole("button", { name: /Advanced vision model/i }));
     const vision = await screen.findByRole("region", { name: "Vision" });
     expect(within(vision).queryByRole("button", { name: /Text only/i })).not.toBeInTheDocument();
     await userEvent.click(within(vision).getByRole("button", { name: /Gemini Vision/i }));
 
-    const transcription = screen.getByRole("region", { name: "Transcription" });
-    expect(within(transcription).getByRole("button", { name: /Bundled local Whisper/i })).toBeDisabled();
-    await userEvent.click(within(transcription).getByRole("button", { name: /Whisper large v3/i }));
-    expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("4 unsaved changes");
+    expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("2 unsaved changes");
   });
 
   it("keeps the household language choice available when the detector still needs setup", async () => {
