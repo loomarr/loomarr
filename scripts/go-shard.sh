@@ -249,7 +249,9 @@ if [ "${1:-}" = "--certification" ]; then
   [[ "$index" =~ ^[0-9]+$ ]] || usage
   [[ "$total" =~ ^[0-9]+$ ]] || usage
   [ "$total" -eq "$CERTIFICATION_LANES" ] || usage
-  [ "$index" -ge 1 ] && [ "$index" -le "$CERTIFICATION_LANES" ] || usage
+  if [ "$index" -lt 1 ] || [ "$index" -gt "$CERTIFICATION_LANES" ]; then
+    usage
+  fi
   out="$(certification_lane_paths "$index")"
   if [ -z "$out" ]; then
     echo "go-shard: certification lane $spec is EMPTY" >&2
