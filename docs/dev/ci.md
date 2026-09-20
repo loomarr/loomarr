@@ -541,10 +541,10 @@ failing native result.
 ## Sharding
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go and
-Rust contracts run once in `go-contracts`, in parallel with three test-only Go shards and the
-independent release-worker certification. Their union is the same assurance as `make verify SCOPE=all`
-plus the existing CI-only certification. The `ci-ok` aggregate requires every job, so moving a
-contract out of the test shards cannot make it optional.
+Rust contracts run once in `go-contracts`, in parallel with six ordinary Go test lanes, one serial
+media-certification lane, and the independent release-worker certification. Their union is the same
+assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
+requires every job, so moving a contract out of the test lanes cannot make it optional.
 
 `make go-shard-verify` runs in `go-contracts` and asserts the Go shards are a true partition of
 `go list ./...` — a split that drops a package would otherwise pass by not running it.
@@ -553,9 +553,13 @@ The Go partition uses longest-processing-time assignment over a reviewed table c
 material package timings. Packages below five measured seconds, including new packages awaiting a
 hosted measurement, receive a one-second planning floor and remain fail-safe members of the exact
 partition. Merge-group run 35472062915 exposed 1430/657/583 package-seconds in the former three-way
-alphabetical split and a 31m10s critical path. Its measured weights produce a six-way plan of about
-450 seconds per shard. `make go-shard-verify SHARDS=6` rejects missing or duplicated packages, a
-modeled shard above nine test minutes, or more than 25% imbalance. The workflow also caps each whole
+alphabetical split and a 31m10s critical path. Six ordinary lanes use bounded `-p=2` package
+parallelism; the reviewed latency-sensitive playout/capacity set runs concurrently in a seventh
+`-p=1` lane so synthetic media targets never compete with each other. The measured weights produce
+an ordinary six-way plan of about 440 seconds per lane before bounded overlap, while the serial lane
+models about 343 seconds. `make go-shard-verify SHARDS=6` rejects missing or duplicated packages, a
+modeled lane above nine test minutes, or more than 25% ordinary-lane imbalance. Release verification
+additionally rejects an unreviewed serial package or workflow lane. The workflow also caps each whole
 job at 15 minutes, leaving six minutes for setup and compilation while making renewed latency drift a
 hard failure. `TestGoShardUsesMeasuredLongestProcessingTime` pins deterministic assignment, and
 `TestGoShardBalancesMeasuredRaceWork` pins the latency and balance budgets against the current tree.
@@ -580,6 +584,14 @@ Domain tests that need current persistence state, rather than migration behavior
 database. Routing those helpers through the existing isolated migrated fixture reduced the exact
 package profile to 4.19s (94.4%). Tests that exercise startup, migration, downgrade, historical data,
 or restart behavior must continue to open and migrate fresh databases.
+
+The suggestion worker tests use that same isolated migrated-store fixture and start a due-work drain
+before entering their two-second recurring poll. Profiling also found theme scoring recalculating the
+same series-title scope for every item and qualifier; preparing it once per score preserves every
+2,000-iteration property assertion. On 2026-09-20, the one-time preparation reduced the complete
+local `internal/suggest` race package from 112.28 to 19.35 seconds after the worker/fixture changes;
+the deterministic property alone fell from 66.16 to 6.16 seconds. Hosted lane evidence remains the
+authority for the merge-queue budget.
 
 PostgreSQL conformance also uses an isolated template, but through PostgreSQL's own database-clone
 interface rather than file copying. Seven successful merge-queue samples put the real-Postgres step

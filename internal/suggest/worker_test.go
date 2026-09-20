@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,12 +26,7 @@ import (
 
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "s.db"), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return testkit.MigratedSQLiteStore(t)
 }
 
 func idGen() func() string {
@@ -49,6 +43,33 @@ func buildService(t *testing.T, st suggest.ProposalStore, llmMock *testkit.LLM) 
 	sug := suggest.New(llmMock, cat, tm, 10)
 	return suggest.NewService(st, sug, suggest.Config{Workers: 2, Timeout: time.Second, CacheTTL: time.Hour},
 		idGen(), time.Now, testkit.Logger())
+}
+
+type claimSignalStore struct {
+	suggest.ProposalStore
+	claimed chan struct{}
+}
+
+func (s *claimSignalStore) ClaimDueJobs(context.Context, time.Time, time.Duration, int) ([]store.Job, error) {
+	select {
+	case s.claimed <- struct{}{}:
+	default:
+	}
+	return nil, nil
+}
+
+func TestWorkerClaimsImmediatelyOnStartup(t *testing.T) {
+	st := &claimSignalStore{claimed: make(chan struct{}, 1)}
+	svc := suggest.NewService(st, nil, suggest.Config{Workers: 1}, idGen(), time.Now, testkit.Logger())
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go svc.Run(ctx)
+
+	select {
+	case <-st.claimed:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not claim due jobs immediately on startup")
+	}
 }
 
 // scopeFeedbackSource observes only the in-memory execution scope supplied at the
