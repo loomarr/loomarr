@@ -32,29 +32,30 @@ func TestVerifyCIContainerDownloadsRequiresIsolatedCompletePostgresTests(t *test
 	}
 }
 
-func TestVerifyCIContainerDownloadsRequiresExactGoShardFlags(t *testing.T) {
+func TestVerifyCIContainerDownloadsRequiresLaneOwnedGoFlags(t *testing.T) {
 	t.Parallel()
-	for name, replacement := range map[string]string{
-		"package concurrency restored": "GOFLAGS: -p=2",
-		"tests filtered out":           "GOFLAGS: -p=1 -run=^$",
-		"tool substitution":            "GOFLAGS: -p=1 -toolexec=/attacker",
+	for name, environment := range map[string]string{
+		"workflow package concurrency": "GOFLAGS: -p=2",
+		"tests filtered out":           "GOFLAGS: -run=^$",
+		"tool substitution":            "GOFLAGS: -toolexec=/attacker",
 		"dynamic flags":                "GOFLAGS: ${{ vars.GOFLAGS }}",
-		"extra environment":            "GOFLAGS: -p=1\n          MAKEFLAGS: -n",
+		"Make dry run":                 "MAKEFLAGS: -n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := writeCIContainerDownloadsFixture(t)
 			if err := VerifyCIContainerDownloads(root); err != nil {
-				t.Fatalf("valid isolated Go shard rejected: %v", err)
+				t.Fatalf("valid Go lane rejected: %v", err)
 			}
 			path := filepath.Join(root, ".github", "workflows", "ci-go.yml")
 			source := readFixtureFile(t, path)
-			const flags = "GOFLAGS: -p=1"
-			if !strings.Contains(source, flags) {
-				t.Fatal("fixture lacks the isolated Go shard flags")
+			const command = "      - run: make test GO_TEST_LANE=${{ matrix.lane }}"
+			if !strings.Contains(source, command) {
+				t.Fatal("fixture lacks the Go lane command")
 			}
-			writeFixtureFile(t, path, strings.Replace(source, flags, replacement, 1))
+			replacement := command + "\n        env:\n          " + environment
+			writeFixtureFile(t, path, strings.Replace(source, command, replacement, 1))
 			if err := VerifyCIContainerDownloads(root); err == nil {
-				t.Fatal("altered Go shard execution contract accepted")
+				t.Fatal("workflow-controlled Go lane flags accepted")
 			}
 		})
 	}

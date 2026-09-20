@@ -264,7 +264,7 @@ func TestVerifyCIFamilyWorkflows(t *testing.T) {
 		body := "on:\n  workflow_call:\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: true\n"
 		switch job {
 		case "go":
-			body = "on:\n  workflow_call:\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}\n"
+			body = "on:\n  workflow_call:\njobs:\n  run:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make test GO_TEST_LANE=${{ matrix.lane }}\n"
 		case "apple-cache-validation":
 			body = "on:\n  workflow_call:\njobs:\n  producer:\n    runs-on: macos-26\n    steps:\n      - run: true\n  consumer:\n    needs: producer\n    runs-on: macos-26\n    steps:\n      - run: true\n"
 		}
@@ -285,7 +285,7 @@ func TestVerifyCIFamilyWorkflows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	withoutReleaseverifyTests := strings.Replace(string(validGoWorkflow), "make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}", "true", 1)
+	withoutReleaseverifyTests := strings.Replace(string(validGoWorkflow), "make test GO_TEST_LANE=${{ matrix.lane }}", "true", 1)
 	if err := os.WriteFile(goWorkflow, []byte(withoutReleaseverifyTests), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -297,8 +297,8 @@ func TestVerifyCIFamilyWorkflows(t *testing.T) {
 	}
 	metadataOnly := strings.Replace(
 		string(validGoWorkflow),
-		"      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}",
-		"      - name: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}\n        run: true",
+		"      - run: make test GO_TEST_LANE=${{ matrix.lane }}",
+		"      - name: make test GO_TEST_LANE=${{ matrix.lane }}\n        run: true",
 		1,
 	)
 	if err := os.WriteFile(goWorkflow, []byte(metadataOnly), 0o600); err != nil {

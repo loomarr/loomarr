@@ -122,4 +122,4 @@ filler-pilot-review	internal/fillercorpus/pilotreview.go	contracts,go,postgres,i
 filler-pilot-review-command	cmd/filler-corpus-pilot-rights-review/main.go;cmd/filler-corpus-pilot-rights-lock/main.go	contracts,go,postgres,image
 filler-eval-doc	internal/fillereval/README.md	docs
 ci-ffmpeg-toolchain	scripts/ci-ffmpeg.sh	contracts,go,go_full,policy
-go-race-sharding	scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-test-packages.sh	contracts,go,go_full,policy
+go-race-sharding	scripts/go-isolated-packages.txt;scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-test-lane.sh;scripts/go-test-packages.sh	contracts,go,go_full,policy

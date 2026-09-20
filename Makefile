@@ -30,10 +30,10 @@ DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev
 # covers. Anything that can hold a relative link to a doc belongs here.
 LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs 'design/*.md' .agents .claude
 
-# CI-only shard passthrough for `make test` / comprehensive verification (e.g. GO_SHARD=1/2). Empty by
-# default — see the note on the `test` target. The visual suite's separate environment-only
-# shard input is documented in mk/frontend.mk. Never set this in a local gate run.
-GO_SHARD ?=
+# CI-only lane passthrough for `make test` (1/6..6/6 or isolated). Empty by default — see the
+# note on the `test` target. The visual suite's separate environment-only shard input is documented
+# in mk/frontend.mk. Never set this in a local gate run.
+GO_TEST_LANE ?=
 
 # Build-tagged sources are INVISIBLE to `go vet ./...` and to golangci-lint, because both ask
 # the Go build system which files exist and the build system honours `//go:build`. That blind

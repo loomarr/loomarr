@@ -12,19 +12,21 @@ env:
 
 jobs:
   run:
-    name: Go — race-policy tests (${{ matrix.shard }}/${{ strategy.job-total }})
+    name: Go — race-policy tests (${{ matrix.lane }})
     runs-on: ubuntu-latest
     # The weighted package plan reserves nine minutes for tests and six for setup/compilation.
     # Crossing the operator-facing 15-minute budget fails loud instead of delaying the queue.
     timeout-minutes: 15
     # This job is test-only. Repository-wide contracts run once in `go-contracts`, in parallel;
-    # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every shard spent
-    # runner time and inflated each shard's cache without adding assurance.
+    # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every lane spent
+    # runner time and inflated each lane's cache without adding assurance.
     #
-    # SIX measured-weight shards. Merge-group run 35472062915 showed the former three-way
-    # alphabetical split at 1430/657/583 package-seconds and a 31m10s critical path. The reviewed
+    # SIX measured-weight ordinary lanes plus one serial media-certification lane. Merge-group run
+    # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
+    # a 31m10s critical path. The reviewed
     # weights in scripts/go-race-weights.tsv and longest-processing-time assignment model the
-    # current tree at ~450s per shard. `make go-shard-verify` rejects coverage or balance drift.
+    # current tree at ~440s per ordinary lane. `make go-shard-verify` rejects coverage or balance
+    # drift and proves the seven lanes remain an exact partition.
     #
     # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of
     # concurrency-free config/table-test packages runs without the detector. `make go-race-verify`
@@ -35,9 +37,9 @@ jobs:
     # is the guard, and it is not optional.
     #
     strategy:
-      fail-fast: false # one shard's failures must not hide the others'
+      fail-fast: false # one lane's failures must not hide the others'
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        lane: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6", "isolated"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -95,15 +97,15 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          # ⚠ THE SHARD IS PART OF THE KEY. Each shard compiles a DIFFERENT set of packages, so
+          # ⚠ THE LANE IS PART OF THE KEY. Each lane compiles a DIFFERENT set of packages, so
           # a shared key would have them overwrite each other's build objects every run — each
-          # shard restoring a cache built for the other's packages and recompiling its own.
-          # It also makes the save well-defined: without it both shards race to write one key
-          # and whichever lost simply skipped, so half the objects were never cached at all.
-          key: go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          # lane restoring a cache built for another lane's packages and recompiling its own.
+          # It also makes the save well-defined: without it all lanes race to write one key
+          # and every loser simply skips, so most objects are never cached at all.
+          key: go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
           restore-keys: |
-            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-${{ hashFiles('go.sum') }}-
-            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-s${{ matrix.shard }}-
+            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-
       # Exercise the deployed media toolchain. Distribution FFmpeg versions have different
       # MPEG-TS startup latency; both executables must match the production image's pins.
       # Cache the immutable archive by digest and verify every hit before extraction.
@@ -128,11 +130,9 @@ jobs:
           test "$(command -v ffprobe)" = "$RUNNER_TEMP/loomarr-ffmpeg/ffprobe"
           ffmpeg -version
           ffprobe -version
-      - run: make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}
-        # Independent synthetic targets otherwise compete for the same worker
-        # while asserting strict media latency. Retain race and shard coverage.
-        env:
-          GOFLAGS: -p=1
+      - run: make test GO_TEST_LANE=${{ matrix.lane }}
+        # The lane runner pins ordinary packages to -p=2 and the reviewed media-certification
+        # packages to -p=1. It rejects caller-controlled GOFLAGS and retains race coverage.
       # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
       # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
       # restored again once that PR closes — cache reads are scoped to the branch and its

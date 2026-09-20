@@ -1,0 +1,8 @@
+# Packages whose tests exercise independent synthetic playout targets with strict latency or
+# capacity assertions. CI runs this reviewed lane with package parallelism pinned to -p=1.
+cmd/playout-load-cert
+internal/app
+internal/playout
+internal/playoutcert
+internal/prepared
+internal/testkit/playoutcertfixture
