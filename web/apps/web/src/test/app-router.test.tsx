@@ -34,6 +34,8 @@ const ADMIN: MeBody = {
   quota: 0,
 };
 
+const MEMBER: MeBody = { ...ADMIN, id: "u2", name: "Bo", role: "member", autoApprove: false };
+
 // ⚠ THE POINT OF `appHandlers`: this test mounts the REAL route tree, so the app fetches whatever
 // each landed route needs. The stub this replaced answered ALL of that with a catch-all
 // `json({}, 200)` — every screen in the suite rendered against empty objects and nothing said so.
@@ -42,18 +44,18 @@ const ADMIN: MeBody = {
 //
 // `me` is hand-written because it is STATEFUL (401 → 200 after login) and status-bearing, which
 // generated handlers cannot express — the spec declares errors via `default:` with no 401 code.
-const stubAuth = (startAuthed: boolean) => {
+const stubAuth = (startAuthed: boolean, identity: MeBody = ADMIN) => {
   let authed = startAuthed;
   const logins: unknown[] = [];
   server.use(
     ...appHandlers(),
     http.get("*/v1/auth/me", () =>
-      authed ? HttpResponse.json(ADMIN) : HttpResponse.json({ title: "Unauthorized" }, { status: 401 }),
+      authed ? HttpResponse.json(identity) : HttpResponse.json({ title: "Unauthorized" }, { status: 401 }),
     ),
     getLoginMockHandler(async ({ request }) => {
       logins.push(await request.json());
       authed = true;
-      return ADMIN;
+      return identity;
     }),
   );
   return { logins };
@@ -349,5 +351,45 @@ describe("legacy tab links redirect to their new paths", () => {
     stubAuth(true);
     const router = renderApp("/queue");
     await waitFor(() => expect(at(router)).toMatch(/^\/queue\/(approval|flight)$/));
+  });
+});
+
+describe("Filler role boundaries", () => {
+  const at = (router: ReturnType<typeof renderApp>) => router.state.location.href;
+
+  it("redirects a member away from Incoming before its private read", async () => {
+    let incomingReads = 0;
+    stubAuth(true, MEMBER);
+    server.use(
+      http.get("*/v1/filler/incoming", () => {
+        incomingReads += 1;
+        return HttpResponse.json({
+          preparing: { rows: [], total: 0 },
+          needsHelp: { rows: [], total: 0 },
+          recentlyReady: { rows: [], total: 0 },
+        });
+      }),
+    );
+
+    const router = renderApp("/filler/incoming");
+
+    await waitFor(() => expect(at(router)).toBe("/filler/library"));
+    expect(incomingReads).toBe(0);
+  });
+
+  it("redirects a member away from Filler settings before its private read", async () => {
+    let settingsReads = 0;
+    stubAuth(true, MEMBER);
+    server.use(
+      http.get("*/v1/settings", () => {
+        settingsReads += 1;
+        return HttpResponse.json({ settings: [], features: { filler: true } });
+      }),
+    );
+
+    const router = renderApp("/filler/settings/details");
+
+    await waitFor(() => expect(at(router)).toBe("/filler/manage"));
+    expect(settingsReads).toBe(0);
   });
 });

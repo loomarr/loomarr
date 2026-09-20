@@ -27,7 +27,7 @@ import type { FillerPageProps } from "./filler-page.type";
 const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   useDocumentTitle("Filler");
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isLoading: authLoading } = useAuth();
 
   // Preserve Library's deep-linkable state when an operator leaves and returns. The shell only
   // carries the opaque route state; FillerCatalog owns its interpretation and mutations.
@@ -45,11 +45,29 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     ...(search.parent ? { parent: search.parent } : {}),
   };
 
-  const settings = settingsApi.useSettingsList();
-  const fillerConfigured = Boolean(unwrap(settings.data, (body) => body.features)?.filler);
+  // Settings are admin-only. Members derive the same installation state from the
+  // member-readable watch projection instead of probing a route they cannot access.
+  const settings = settingsApi.useSettingsList({ query: { enabled: isAdmin } });
   const watch = unwrap(fillerApi.useFillerWatch().data, (body) => body);
+  const fillerConfigured = isAdmin
+    ? Boolean(unwrap(settings.data, (body) => body.features)?.filler)
+    : watch
+      ? watch.health !== "unconfigured"
+      : undefined;
+  const configurationPending = authLoading || (isAdmin ? settings.isPending : watch === undefined);
   const poolQuery = fillerApi.useFillerPool({ query: { enabled: tab === "library" } });
   const pool = unwrap(poolQuery.data, (body) => body);
+
+  if (configurationPending && tab !== "settings") {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <PageHeader title="Filler" description={<FillerDescription />} />
+        <div className="min-h-0 flex-1 p-6" role="status">
+          <p className="text-muted-foreground text-sm">Loading filler…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!fillerConfigured && tab !== "settings") {
     return (

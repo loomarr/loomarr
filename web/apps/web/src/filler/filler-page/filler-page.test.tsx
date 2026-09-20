@@ -142,6 +142,23 @@ const renderPage = (tab: "library" | "incoming" | "sources", initialPath = "/fil
   });
 
 describe("FillerPage shell", () => {
+  it("uses the member-readable watch state without requesting admin settings", async () => {
+    stubFillerPage();
+    let settingsReads = 0;
+    server.use(
+      getMeMockHandler(me({ id: "member-1", name: "Member", role: "member", autoApprove: false })),
+      http.get("*/v1/settings", () => {
+        settingsReads += 1;
+        return HttpResponse.json({ settings: [], features: { filler: true } });
+      }),
+    );
+
+    renderPage("library");
+
+    expect(await screen.findByText("One")).toBeInTheDocument();
+    expect(settingsReads).toBe(0);
+  });
+
   // The Library badge is shell-owned and intentionally stable: it reports the server-owned watch
   // count, while the extracted catalog module owns its filtered result count and paging details.
   it("keeps the Library badge stable from the server-owned catalog count", async () => {
