@@ -21,11 +21,12 @@ interface FilmstripSegment {
 
 interface SegmentFilmstripProps {
   segments: FilmstripSegment[];
-  // The block currently focused in the editor below, highlighted so the strip and the rows
+  // The block currently selected for inspection, highlighted so the strip and compact list
   // agree about what is selected. Absent = nothing focused.
   activeKey?: string;
-  // Clicking or pressing Enter selects the span, reveals its row and opens the one bounded player.
-  onSelect?: (key: string) => void;
+  // Clicking or pressing Enter opens the shared Sheet for this span. The exact trigger is returned
+  // so the Sheet can restore focus when it closes.
+  onSelect?: (key: string, trigger: HTMLButtonElement) => void;
   className?: string;
 }
 

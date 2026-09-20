@@ -23,6 +23,9 @@ interface SegmentPreviewProps {
   // Safe here and only here: the toggle click IS the gesture browsers require. Stories omit it —
   // a moving playhead changes the snapshot on every visual run.
   autoPlay?: boolean;
+  // The split-review Sheet already has an explicit opening gesture and owns the selected clip.
+  // In that context render only the player, without a second thumbnail/toggle inside the panel.
+  embedded?: boolean;
   className?: string;
 }
 

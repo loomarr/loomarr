@@ -47,7 +47,7 @@ describe("SegmentFilmstrip", () => {
     expect(within(buttons[1] as HTMLElement).getByText("Preview unavailable")).toBeInTheDocument();
 
     await userEvent.click(buttons[1] as HTMLElement);
-    expect(onSelect).toHaveBeenCalledWith("second");
+    expect(onSelect).toHaveBeenCalledWith("second", buttons[1]);
   });
 
   it("keeps duration proportions while giving every clip a usable minimum width", () => {

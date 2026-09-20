@@ -6,7 +6,8 @@ import { VideoPlayer } from "@/components/ui/video-player";
 import { cn } from "@/lib/utils";
 import type { SegmentPreviewProps } from "./segment-preview.type";
 
-// SegmentPreview — one proposed cut, played in place (§10 V54).
+// SegmentPreview — one proposed cut, played from the parent recording (§10 V54/V70). It remains
+// a lazy tile where used alone and renders only the bounded player inside split review's Sheet.
 //
 // ⚠ **The gap this closes.** The split-review page asked an operator whether a cut at 04:17 was
 // right and gave them nothing to see or hear: measured 2026-08-12 on a 52-segment reel, the page's
@@ -31,6 +32,7 @@ const SegmentPreview = ({
   open,
   onOpenChange,
   autoPlay,
+  embedded,
   className,
 }: SegmentPreviewProps) => {
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -42,6 +44,30 @@ const SegmentPreview = ({
   const span = endMs - startMs;
   const panelId = `seg-preview-${position}`;
   const verbId = `seg-preview-verb-${position}`;
+
+  const player = failed ? (
+    <div
+      role="alert"
+      className="flex aspect-video items-center justify-center rounded-md bg-static-900 p-6 text-center text-muted-foreground text-sm"
+    >
+      This preview couldn’t be played. The original recording may be unavailable.
+    </div>
+  ) : (
+    <VideoPlayer
+      src={clipMediaURL(clipHash)}
+      startAt={startMs / 1000}
+      endAt={endMs / 1000}
+      autoPlay={autoPlay}
+    />
+  );
+
+  if (embedded) {
+    return (
+      <div className={cn("w-full", className)} onErrorCapture={() => setFailedSource(sourceKey)}>
+        {player}
+      </div>
+    );
+  }
 
   return (
     // Escape is scoped to this subtree on purpose: a document-level handler in a 52-row list
@@ -126,21 +152,7 @@ const SegmentPreview = ({
         >
           {/* No `title`: the row's Name field names this segment eight pixels away, and the player
               does not repeat a heading that already says what it is. */}
-          {failed ? (
-            <div
-              role="alert"
-              className="flex aspect-video items-center justify-center rounded-md bg-static-900 p-6 text-center text-muted-foreground text-sm"
-            >
-              This preview couldn’t be played. The original recording may be unavailable.
-            </div>
-          ) : (
-            <VideoPlayer
-              src={clipMediaURL(clipHash)}
-              startAt={startMs / 1000}
-              endAt={endMs / 1000}
-              autoPlay={autoPlay}
-            />
-          )}
+          {player}
         </div>
       )}
     </div>

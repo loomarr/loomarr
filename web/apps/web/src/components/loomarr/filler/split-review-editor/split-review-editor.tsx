@@ -1,13 +1,15 @@
 import type { SplitReviewSegmentDTO } from "@loomarr/api/models/splitReviewSegmentDTO";
 import type { SplitSegment } from "@loomarr/api/models/splitSegment";
 import { formatClipDuration, formatMmSs, parseMmSs, pluralize } from "@loomarr/core/format";
-import { Merge, Pencil, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Merge, Pencil, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Image } from "@/components/ui/image";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { languageName } from "@/lib/languages";
 import { cn } from "@/lib/utils";
 import { SegmentFilmstrip } from "../segment-filmstrip";
@@ -105,6 +107,28 @@ const languageNeedsRecheck = {
   languageNote: "Language will be checked again after this edit.",
 } as const;
 
+const nameNowOwnedByOperator = {
+  nameOrigin: "operator-edited",
+  nameEvidence: undefined,
+} as const;
+
+const nameDetail = (segment: SplitReviewSegmentDTO): string | undefined => {
+  switch (segment.nameOrigin) {
+    case "model-proposed":
+      return segment.nameEvidence
+        ? `Name suggested from this clip: “${segment.nameEvidence}”`
+        : "Name suggested from this clip.";
+    case "source-authored":
+      return "Name provided by the source.";
+    case "fallback":
+      return "Temporary name based on the recording.";
+    case "operator-edited":
+      return "Name edited during review.";
+    default:
+      return undefined;
+  }
+};
+
 const unresolvedLanguageMessage = (segment: SplitReviewSegmentDTO): string | undefined => {
   switch (segment.languageReason) {
     case "unavailable":
@@ -132,17 +156,26 @@ const SplitReviewEditor = ({
   className,
 }: SplitReviewEditorProps) => {
   const [draft, setDraft] = useState<DraftSegment[]>(() => (proposal.segments ?? []).map(toDraft));
-  // Which block the strip has focused. Local, not URL state: it is a pointer at a row on screen,
-  // and a shared link carrying it would deep-link someone to a segment index that a merge or a
-  // drop has since renumbered.
-  const [focusedKey, setFocusedKey] = useState<string>();
-  // ⚠ At most ONE preview open, held here rather than per row — see the prop's comment below.
-  const [previewKey, setPreviewKey] = useState<string>();
+  // Selection belongs to this review session, not the URL: merges and removals deliberately change
+  // the draft identities beneath it. The trigger is retained separately so Base UI restores focus
+  // to the exact filmstrip tile or compact row that opened the Sheet.
+  const [selectedKey, setSelectedKey] = useState<string>();
+  const detailTrigger = useRef<HTMLElement>(null);
+
+  const openSegment = (key: string, trigger: HTMLElement) => {
+    detailTrigger.current = trigger;
+    setSelectedKey(key);
+  };
 
   const setSegment = (i: number, patch: Partial<DraftSegment>) =>
     setDraft((prev) => prev.map((d, j) => (j === i ? { ...d, ...patch } : d)));
 
-  const drop = (i: number) => setDraft((prev) => prev.filter((_, j) => j !== i));
+  const drop = (i: number) => {
+    const removed = draft[i];
+    const next = draft[i + 1] ?? draft[i - 1];
+    setDraft((prev) => prev.filter((_, j) => j !== i));
+    if (removed?.key === selectedKey) setSelectedKey(next?.key);
+  };
 
   // Merge with next CONCATENATES THE SPANS (end becomes the next segment's end). Tags keep
   // the first segment's, inheriting from the next only what the first lacks; transcripts
@@ -150,28 +183,28 @@ const SplitReviewEditor = ({
   // ⚠ `category` (kept here as first-wins, matching every other single-value field) is a
   // DERIVED shadow (§10 V45a) — this review gate never writes it directly, so first-wins is
   // just which half's shadow happens to display until the confirmed segment is re-tagged.
-  const mergeWithNext = (i: number) =>
-    setDraft((prev) => {
-      if (i + 1 >= prev.length) return prev;
-      const a = prev[i];
-      const b = prev[i + 1];
-      if (!a || !b) return prev;
-      const merged: DraftSegment = {
-        ...a,
-        key: `${a.key}+${b.key}`,
-        endText: b.endText,
-        era: a.era || b.era || undefined,
-        suggestedEra: a.suggestedEra || b.suggestedEra || undefined,
-        audience: a.audience || b.audience || undefined,
-        category: a.category || b.category || undefined,
-        dupOf: a.dupOf || b.dupOf || undefined,
-        unsplittable: a.unsplittable || b.unsplittable || undefined,
-        transcript: [a.transcript, b.transcript].filter(Boolean).join("\n") || undefined,
-        artwork: undefined,
-        ...languageNeedsRecheck,
-      };
-      return [...prev.slice(0, i), merged, ...prev.slice(i + 2)];
-    });
+  const mergeWithNext = (i: number) => {
+    const a = draft[i];
+    const b = draft[i + 1];
+    if (!a || !b) return;
+    const merged: DraftSegment = {
+      ...a,
+      key: `${a.key}+${b.key}`,
+      endText: b.endText,
+      era: a.era || b.era || undefined,
+      suggestedEra: a.suggestedEra || b.suggestedEra || undefined,
+      audience: a.audience || b.audience || undefined,
+      category: a.category || b.category || undefined,
+      dupOf: a.dupOf || b.dupOf || undefined,
+      unsplittable: a.unsplittable || b.unsplittable || undefined,
+      transcript: [a.transcript, b.transcript].filter(Boolean).join("\n") || undefined,
+      artwork: undefined,
+      ...languageNeedsRecheck,
+      ...nameNowOwnedByOperator,
+    };
+    setDraft((prev) => [...prev.slice(0, i), merged, ...prev.slice(i + 2)]);
+    setSelectedKey(merged.key);
+  };
 
   const confirmable = draft.length > 0 && draft.every(isValid);
 
@@ -199,39 +232,30 @@ const SplitReviewEditor = ({
         ? { attention: "Loomarr may have missed a cut here." }
         : {}),
   }));
+  const selectedIndex = draft.findIndex((segment) => segment.key === selectedKey);
+  const selected = selectedIndex >= 0 ? draft[selectedIndex] : undefined;
 
   return (
-    <div className={cn("flex flex-col gap-4", className)}>
-      {/* The reel at a glance, above the rows it describes (the v2 mock's `rl.strip`). Clicking
-          a block focuses that segment's row — the strip is a map, the rows are the work. */}
+    <div className={cn("flex w-full min-w-0 max-w-full flex-col gap-4 overflow-x-hidden", className)}>
+      {/* The reel stays stable while the selected clip is inspected in the shared Sheet. */}
       <SegmentFilmstrip
         segments={stripSegments}
-        {...(focusedKey ? { activeKey: focusedKey } : {})}
-        onSelect={(key) => {
-          setFocusedKey(key);
-          setPreviewKey(key);
-        }}
+        {...(selectedKey ? { activeKey: selectedKey } : {})}
+        onSelect={openSegment}
       />
 
-      {draft.map((seg, i) => (
-        <SegmentRow
-          key={seg.key}
-          segment={seg}
-          position={i}
-          last={i === draft.length - 1}
-          focused={focusedKey === seg.key}
-          clipHash={proposal.clipHash}
-          minClipDurationMs={minClipDurationMs}
-          // ⚠ ONE open at a time, held here rather than per row. Two expanded previews are two
-          // audio streams talking over each other, and a per-row `useState` would let all 52
-          // open — 52 range requests against one 20-minute file.
-          previewOpen={previewKey === seg.key}
-          onPreviewChange={(open) => setPreviewKey(open ? seg.key : undefined)}
-          onChange={(patch) => setSegment(i, patch)}
-          onDrop={() => drop(i)}
-          onMergeWithNext={() => mergeWithNext(i)}
-        />
-      ))}
+      <ol className="flex list-none flex-col gap-2" aria-label="Clips in this recording">
+        {draft.map((seg, i) => (
+          <SegmentSummaryRow
+            key={seg.key}
+            segment={seg}
+            position={i}
+            minClipDurationMs={minClipDurationMs}
+            selected={selectedKey === seg.key}
+            onOpen={(trigger) => openSegment(seg.key, trigger)}
+          />
+        ))}
+      </ol>
 
       {draft.length === 0 && (
         <p className="text-muted-foreground text-sm">
@@ -252,98 +276,127 @@ const SplitReviewEditor = ({
           </Button>
         </div>
       </div>
+
+      <Sheet
+        open={Boolean(selected)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedKey(undefined);
+        }}
+        swipeDirection="right"
+      >
+        {selected ? (
+          <SheetContent finalFocus={detailTrigger}>
+            <SheetHeader>
+              <SheetTitle>{selected.name || "Unnamed clip"}</SheetTitle>
+              <SheetDescription>
+                {`Clip ${selectedIndex + 1} of ${draft.length} · ${selected.startText}–${selected.endText}`}
+              </SheetDescription>
+            </SheetHeader>
+            <div className="flex flex-col gap-5 p-6">
+              <div className="flex items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={selectedIndex === 0}
+                  onClick={() => setSelectedKey(draft[selectedIndex - 1]?.key)}
+                  aria-label="Previous clip"
+                >
+                  <ChevronLeft aria-hidden />
+                  Previous
+                </Button>
+                <span className="font-mono text-muted-foreground text-xs tabular-nums">
+                  {selectedIndex + 1} / {draft.length}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={selectedIndex === draft.length - 1}
+                  onClick={() => setSelectedKey(draft[selectedIndex + 1]?.key)}
+                  aria-label="Next clip"
+                >
+                  Next
+                  <ChevronRight aria-hidden />
+                </Button>
+              </div>
+
+              <SegmentInspector
+                key={selected.key}
+                segment={selected}
+                position={selectedIndex}
+                last={selectedIndex === draft.length - 1}
+                clipHash={proposal.clipHash}
+                minClipDurationMs={minClipDurationMs}
+                onChange={(patch) => setSegment(selectedIndex, patch)}
+                onDrop={() => drop(selectedIndex)}
+                onMergeWithNext={() => mergeWithNext(selectedIndex)}
+              />
+            </div>
+          </SheetContent>
+        ) : null}
+      </Sheet>
     </div>
   );
 };
 
-interface SegmentRowProps {
+interface SegmentSummaryRowProps {
   segment: DraftSegment;
   position: number;
-  last: boolean;
-  focused: boolean;
-  // The COMPOSITE's hash — what the preview plays a window of. A proposed cut has no bytes yet.
-  clipHash: string;
   minClipDurationMs?: number;
-  previewOpen: boolean;
-  onPreviewChange: (open: boolean) => void;
-  onChange: (patch: Partial<DraftSegment>) => void;
-  onDrop: () => void;
-  onMergeWithNext: () => void;
+  selected: boolean;
+  onOpen: (trigger: HTMLButtonElement) => void;
 }
 
-const SegmentRow = ({
+const SegmentSummaryRow = ({
   segment,
   position,
-  last,
-  focused,
-  clipHash,
   minClipDurationMs,
-  previewOpen,
-  onPreviewChange,
-  onChange,
-  onDrop,
-  onMergeWithNext,
-}: SegmentRowProps) => {
+  selected,
+  onOpen,
+}: SegmentSummaryRowProps) => {
   const n = position + 1;
   const span = spanMs(segment);
   const valid = isValid(segment);
-  const languageMessage = unresolvedLanguageMessage(segment);
-  const timingNeedsAttention =
+  const needsAttention =
     !valid ||
     segment.unsplittable ||
+    Boolean(segment.holdReason) ||
     (span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs);
-  const hasDetails = Boolean(
-    (!segment.language && languageMessage) ||
-      segment.dupOf ||
-      segment.boundaryConfidence ||
-      segment.transcript,
-  );
-  const ref = useRef<HTMLDivElement>(null);
-
-  // ⚠ Clicking a strip block has to SHOW the row, not merely tint it. A long reel puts most of
-  // its segments off-screen, so a highlight the operator has to go hunting for is the same as no
-  // response at all. `block: "nearest"` avoids yanking the page when the row is already visible.
-  useEffect(() => {
-    if (focused) ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [focused]);
 
   return (
-    <Card ref={ref} className={cn(focused && "ring-1 ring-signal-300")}>
-      <section aria-label={`Segment ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-3 p-3">
-        <div className="flex flex-wrap items-start gap-3">
-          <SegmentPreview
-            clipHash={clipHash}
-            // Preview the draft the operator can actually keep. Untouched cuts retain detector
-            // millisecond precision; typed values use the same resolver as the confirm body.
-            startMs={resolveMs(segment.startText, segment.startMs)}
-            endMs={resolveMs(segment.endText, segment.endMs)}
-            position={position}
-            labelledBy={`seg-num-${position}`}
-            artwork={segment.artwork}
-            open={previewOpen}
-            onOpenChange={onPreviewChange}
-            autoPlay
-          />
-          <div className="min-w-44 flex-1 pt-0.5">
-            <div className="flex items-center gap-2">
-              <span
-                id={`seg-num-${position}`}
-                className="font-mono text-muted-foreground text-xs tabular-nums"
-              >
-                #{n}
+    <li>
+      <Card className={cn(selected && "ring-1 ring-signal-300")}>
+        <button
+          type="button"
+          aria-label={`Open clip ${n}: ${segment.name || "unnamed"}`}
+          aria-current={selected ? "true" : undefined}
+          onClick={(event) => onOpen(event.currentTarget)}
+          className="flex w-full items-center gap-3 rounded-lg p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="relative h-14 w-24 shrink-0 overflow-hidden rounded-md border border-border bg-static-900">
+            {segment.artwork ? (
+              <Image image={segment.artwork} alt="" sizes="96px" className="size-full object-cover" />
+            ) : (
+              <span className="flex size-full items-center justify-center px-2 text-center text-[10px] text-muted-foreground">
+                Preview unavailable
               </span>
-              <h3 className="truncate font-medium text-sm">{segment.name || "Unnamed clip"}</h3>
-            </div>
-            <p
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="font-mono text-muted-foreground text-xs tabular-nums">#{n}</span>
+              <span className="truncate font-medium text-sm">{segment.name || "Unnamed clip"}</span>
+            </span>
+            <span
               className={cn(
-                "mt-1 font-mono text-xs tabular-nums",
+                "mt-1 block font-mono text-xs tabular-nums",
                 valid ? "text-muted-foreground" : "text-onair-300",
               )}
-              title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}
             >
               {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            </span>
+            <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {segment.era ? <Badge variant="neutral">{`${segment.era}s`}</Badge> : null}
               {segment.audience ? (
                 <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
@@ -354,125 +407,222 @@ const SegmentRow = ({
                   {segment.language === "none" ? "No speech" : languageName(segment.language)}
                 </Badge>
               ) : null}
-              {(() => {
-                const extra = (segment.tags ?? []).filter((tag) => tag !== segment.category).length;
-                return extra > 0 ? <Badge variant="neutral">+{extra}</Badge> : null;
-              })()}
-            </div>
-          </div>
-          <div className="ml-auto flex flex-wrap justify-end gap-1">
-            {!last && (
-              <Button variant="ghost" size="sm" onClick={onMergeWithNext} title="Join this clip and the next">
-                <Merge aria-hidden />
-                Join next
-              </Button>
+              {needsAttention ? <Badge variant="caution">Needs a closer look</Badge> : null}
+            </span>
+          </span>
+          <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        </button>
+      </Card>
+    </li>
+  );
+};
+
+interface SegmentInspectorProps {
+  segment: DraftSegment;
+  position: number;
+  last: boolean;
+  // The COMPOSITE's hash — what the preview plays a window of. A proposed cut has no bytes yet.
+  clipHash: string;
+  minClipDurationMs?: number;
+  onChange: (patch: Partial<DraftSegment>) => void;
+  onDrop: () => void;
+  onMergeWithNext: () => void;
+}
+
+const SegmentInspector = ({
+  segment,
+  position,
+  last,
+  clipHash,
+  minClipDurationMs,
+  onChange,
+  onDrop,
+  onMergeWithNext,
+}: SegmentInspectorProps) => {
+  const n = position + 1;
+  const span = spanMs(segment);
+  const valid = isValid(segment);
+  const languageMessage = unresolvedLanguageMessage(segment);
+  const namingMessage = nameDetail(segment);
+  const timingNeedsAttention =
+    !valid ||
+    segment.unsplittable ||
+    (span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs);
+  const hasDetails = Boolean(
+    namingMessage ||
+      (!segment.language && languageMessage) ||
+      segment.dupOf ||
+      segment.boundaryConfidence ||
+      segment.transcript,
+  );
+  return (
+    <section aria-label={`Clip ${n}: ${segment.name || "unnamed"}`} className="flex flex-col gap-4">
+      <SegmentPreview
+        clipHash={clipHash}
+        // Preview the draft the operator can actually keep. Untouched cuts retain detector
+        // millisecond precision; typed values use the same resolver as the confirm body.
+        startMs={resolveMs(segment.startText, segment.startMs)}
+        endMs={resolveMs(segment.endText, segment.endMs)}
+        position={position}
+        labelledBy={`seg-num-${position}`}
+        artwork={segment.artwork}
+        open
+        onOpenChange={() => {}}
+        autoPlay
+        embedded
+      />
+
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "font-mono text-xs tabular-nums",
+              valid ? "text-muted-foreground" : "text-onair-300",
             )}
-            <Button variant="ghost" size="sm" onClick={onDrop} title="Do not keep this clip">
-              <Trash2 aria-hidden />
-              Remove
-            </Button>
+            title={valid ? undefined : "Needs mm:ss times, end after start, at least 3 seconds"}
+          >
+            {`${segment.startText}–${segment.endText} · ${span !== undefined && span > 0 ? formatClipDuration(span) : "invalid span"}`}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {segment.era ? <Badge variant="neutral">{`${segment.era}s`}</Badge> : null}
+            {segment.audience ? (
+              <Badge variant="neutral">{AUDIENCE_LABEL[segment.audience] ?? segment.audience}</Badge>
+            ) : null}
+            {segment.category ? <Badge variant="neutral">{segment.category}</Badge> : null}
+            {segment.languageChecked && segment.language ? (
+              <Badge variant="neutral">
+                {segment.language === "none" ? "No speech" : languageName(segment.language)}
+              </Badge>
+            ) : null}
+            {(() => {
+              const extra = (segment.tags ?? []).filter((tag) => tag !== segment.category).length;
+              return extra > 0 ? <Badge variant="neutral">+{extra}</Badge> : null;
+            })()}
           </div>
         </div>
-
-        {segment.holdReason ? (
-          <p role="status" className="rounded-sm bg-caution-tint-15 px-2 py-1.5 text-caution text-sm">
-            {`Take a closer look: ${segment.holdReason}.`}
-          </p>
-        ) : null}
-        {segment.unsplittable ? (
-          <p className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
-            Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next
-            clip, or remove it.
-          </p>
-        ) : null}
-        {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
-          <p role="status" className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
-            This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer,
-            join it with the next clip, or remove it.
-          </p>
-        ) : null}
-
-        {segment.suggestedEra ? (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span>Loomarr thinks this may be from around {segment.suggestedEra}.</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
-            >
-              {`Use ${segment.suggestedEra}`}
+        <div className="flex flex-wrap justify-end gap-1">
+          {!last && (
+            <Button variant="ghost" size="sm" onClick={onMergeWithNext} title="Join this clip and the next">
+              <Merge aria-hidden />
+              Join next
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => onChange({ suggestedEra: undefined })}>
-              Not right
-            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={onDrop} title="Do not keep this clip">
+            <Trash2 aria-hidden />
+            Remove
+          </Button>
+        </div>
+      </div>
+
+      {segment.holdReason ? (
+        <p role="status" className="rounded-sm bg-caution-tint-15 px-2 py-1.5 text-caution text-sm">
+          {`Take a closer look: ${segment.holdReason}.`}
+        </p>
+      ) : null}
+      {segment.unsplittable ? (
+        <p className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
+          Loomarr may have missed a cut here. Preview it, then adjust the timing, join it with the next clip,
+          or remove it.
+        </p>
+      ) : null}
+      {span !== undefined && minClipDurationMs !== undefined && span < minClipDurationMs ? (
+        <p role="status" className="rounded-sm bg-onair-tint-15 px-2 py-1.5 text-onair-300 text-sm">
+          This clip is shorter than your {formatClipDuration(minClipDurationMs)} minimum. Make it longer, join
+          it with the next clip, or remove it.
+        </p>
+      ) : null}
+
+      {segment.suggestedEra ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span>Loomarr thinks this may be from around {segment.suggestedEra}.</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onChange({ era: segment.suggestedEra, suggestedEra: undefined })}
+          >
+            {`Use ${segment.suggestedEra}`}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => onChange({ suggestedEra: undefined })}>
+            Not right
+          </Button>
+        </div>
+      ) : null}
+
+      <details open={timingNeedsAttention} className="rounded-md border border-border/70 px-3 py-2">
+        <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-sm">
+          <Pencil aria-hidden className="size-3.5" /> Rename or adjust timing
+        </summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
+          <div>
+            <Label htmlFor={`seg-name-${position}`}>Name</Label>
+            <Input
+              id={`seg-name-${position}`}
+              value={segment.name}
+              onChange={(event) => onChange({ name: event.target.value, ...nameNowOwnedByOperator })}
+            />
           </div>
-        ) : null}
+          <div>
+            <Label htmlFor={`seg-start-${position}`}>Starts</Label>
+            <Input
+              id={`seg-start-${position}`}
+              aria-label="Start (mm:ss)"
+              className="font-mono tabular-nums"
+              value={segment.startText}
+              onChange={(event) =>
+                onChange({
+                  startText: event.target.value,
+                  artwork: undefined,
+                  ...languageNeedsRecheck,
+                  ...nameNowOwnedByOperator,
+                })
+              }
+            />
+          </div>
+          <div>
+            <Label htmlFor={`seg-end-${position}`}>Ends</Label>
+            <Input
+              id={`seg-end-${position}`}
+              aria-label="End (mm:ss)"
+              className="font-mono tabular-nums"
+              value={segment.endText}
+              onChange={(event) =>
+                onChange({
+                  endText: event.target.value,
+                  artwork: undefined,
+                  ...languageNeedsRecheck,
+                  ...nameNowOwnedByOperator,
+                })
+              }
+            />
+          </div>
+        </div>
+      </details>
 
-        <details open={timingNeedsAttention} className="rounded-md border border-border/70 px-3 py-2">
-          <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-sm">
-            <Pencil aria-hidden className="size-3.5" /> Rename or adjust timing
-          </summary>
-          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_7rem_7rem]">
-            <div>
-              <Label htmlFor={`seg-name-${position}`}>Name</Label>
-              <Input
-                id={`seg-name-${position}`}
-                value={segment.name}
-                onChange={(event) => onChange({ name: event.target.value })}
-              />
-            </div>
-            <div>
-              <Label htmlFor={`seg-start-${position}`}>Starts</Label>
-              <Input
-                id={`seg-start-${position}`}
-                aria-label="Start (mm:ss)"
-                className="font-mono tabular-nums"
-                value={segment.startText}
-                onChange={(event) =>
-                  onChange({ startText: event.target.value, artwork: undefined, ...languageNeedsRecheck })
-                }
-              />
-            </div>
-            <div>
-              <Label htmlFor={`seg-end-${position}`}>Ends</Label>
-              <Input
-                id={`seg-end-${position}`}
-                aria-label="End (mm:ss)"
-                className="font-mono tabular-nums"
-                value={segment.endText}
-                onChange={(event) =>
-                  onChange({ endText: event.target.value, artwork: undefined, ...languageNeedsRecheck })
-                }
-              />
-            </div>
+      {hasDetails ? (
+        <details className="px-1 text-sm">
+          <summary className="cursor-pointer text-muted-foreground">Details</summary>
+          <div className="mt-2 space-y-2 text-muted-foreground">
+            {namingMessage ? <p>{namingMessage}</p> : null}
+            {!segment.language && languageMessage ? (
+              <p title={segment.languageNote}>{languageMessage}</p>
+            ) : null}
+            {segment.dupOf ? <p>{`Looks like a clip already in your library: ${segment.dupOf}`}</p> : null}
+            {segment.boundaryConfidence ? (
+              <p className="font-mono text-xs">
+                {`Cut confidence ${segment.boundaryConfidence}%`}
+                {segment.startEvidence ? ` · start: ${segment.startEvidence}` : ""}
+                {segment.endEvidence ? ` · end: ${segment.endEvidence}` : ""}
+              </p>
+            ) : null}
+            {segment.transcript ? (
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-sm bg-static-800 p-3 font-mono text-xs">
+                {segment.transcript}
+              </pre>
+            ) : null}
           </div>
         </details>
-
-        {hasDetails ? (
-          <details className="px-1 text-sm">
-            <summary className="cursor-pointer text-muted-foreground">Details</summary>
-            <div className="mt-2 space-y-2 text-muted-foreground">
-              {!segment.language && languageMessage ? (
-                <p title={segment.languageNote}>{languageMessage}</p>
-              ) : null}
-              {segment.dupOf ? <p>{`Looks like a clip already in your library: ${segment.dupOf}`}</p> : null}
-              {segment.boundaryConfidence ? (
-                <p className="font-mono text-xs">
-                  {`Cut confidence ${segment.boundaryConfidence}%`}
-                  {segment.startEvidence ? ` · start: ${segment.startEvidence}` : ""}
-                  {segment.endEvidence ? ` · end: ${segment.endEvidence}` : ""}
-                </p>
-              ) : null}
-              {segment.transcript ? (
-                <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-sm bg-static-800 p-3 font-mono text-xs">
-                  {segment.transcript}
-                </pre>
-              ) : null}
-            </div>
-          </details>
-        ) : null}
-      </section>
-    </Card>
+      ) : null}
+    </section>
   );
 };
 

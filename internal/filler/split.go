@@ -22,9 +22,10 @@ import (
 // ⚠ "classify each segment" used to sit before dedup and is GONE (§10 V51g). It
 // was one LLM turn per segment — 51 × 7.4s ≈ 377s on a 16m47s reel, against a
 // 120s pass — so the rung could never finish and restarted every two minutes.
-// **Split cuts; it does not describe.** Each segment is spawned as its own clip
-// and reaches `tag` on its own ladder, after `transcribe`, with a real
-// transcript instead of the string "… part 7".
+// **Split does not classify.** Its one descriptive exception is a bounded display-name proposal
+// grounded in the exact segment's existing vision/transcript observation (§10 V69). Each segment
+// is still spawned as its own clip and reaches `tag` on its own ladder, after `transcribe`; naming
+// has no admission authority.
 
 const (
 	// MinSegmentMs drops slivers: black/silence detection on real compilations
@@ -214,9 +215,12 @@ type SplitSegment struct {
 	Index   int   `json:"index"`
 	StartMs int64 `json:"startMs"`
 	EndMs   int64 `json:"endMs"`
-	// Name is the proposed clip name (from the LLM's product label, or
-	// "<compilation> part N"). It becomes the clip's filename on confirm.
-	Name string `json:"name"`
+	// Name is the proposed display name. Its origin says whether it came from the source, exact
+	// segment evidence, a deterministic fallback, or the operator. NameEvidence is deliberately
+	// descriptive only: it cannot authorize a cut, classification, or admission.
+	Name         string `json:"name"`
+	NameOrigin   string `json:"nameOrigin,omitempty"`
+	NameEvidence string `json:"nameEvidence,omitempty"`
 	// Era/Audience/Tags come from the SAME Classify the tag job uses, over the
 	// segment's transcript. Era is grounded (year in the text) or zero — an
 	// ungrounded guess is carried ONLY as SuggestedEra (§10 era rule).
@@ -575,6 +579,9 @@ func segmentsFromChapters(chapters []Chapter, floor segmentFloor) ([]SplitSegmen
 			continue
 		}
 		seg.Name = strings.TrimSpace(ch.Title)
+		if seg.Name != "" {
+			seg.NameOrigin = SplitNameSourceAuthored
+		}
 		out = append(out, seg)
 	}
 	return out, dropped

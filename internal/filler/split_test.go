@@ -129,6 +129,12 @@ func TestSegmentsFromChapters_DropsUnderTheCatalogFloor(t *testing.T) {
 	if dropped.Count != 1 || dropped.Ms != 5_000 {
 		t.Errorf("tally = %+v, want 1 fragment / 5000ms", dropped)
 	}
+	for _, segment := range segs {
+		if segment.NameOrigin != SplitNameSourceAuthored || segment.NameEvidence != "" {
+			t.Errorf("chapter title provenance = %q / %q, want source-authored without synthetic evidence",
+				segment.NameOrigin, segment.NameEvidence)
+		}
+	}
 }
 
 // ⚠ The SECOND floor comparison, after overlap truncation — a distinct code path from the first.

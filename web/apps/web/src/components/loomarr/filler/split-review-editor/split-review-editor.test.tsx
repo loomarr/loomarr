@@ -59,18 +59,46 @@ const renderEditor = (onConfirm = vi.fn(), onBack = vi.fn()) => {
   return { onConfirm, onBack };
 };
 
+const openClip = (position: number): HTMLElement => {
+  const trigger = screen.getAllByRole("button", { name: /open clip/i })[position - 1];
+  if (!trigger) throw new Error(`clip ${position} trigger was not rendered`);
+  fireEvent.click(trigger);
+  return screen.getByRole("dialog");
+};
+
 // The payload the editor hands the page — this IS the body the page POSTs to /confirm,
 // so these tests assert on it rather than on pixels.
 const confirmed = (onConfirm: ReturnType<typeof vi.fn>): SplitSegment[] => {
+  if (screen.queryByRole("dialog")) fireEvent.click(screen.getByRole("button", { name: "Close" }));
   fireEvent.click(screen.getByRole("button", { name: /keep clips/i }));
   expect(onConfirm).toHaveBeenCalledOnce();
   return onConfirm.mock.calls[0]?.[0] as SplitSegment[];
 };
 
 describe("SplitReviewEditor", () => {
+  it("keeps the reel stable while the selected clip is edited in the shared sheet", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+
+    const firstTrigger = screen.getByRole("button", { name: /open clip 1: first ad/i });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+
+    await user.click(firstTrigger);
+    expect(await screen.findByRole("dialog", { name: "First ad" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("First ad");
+
+    await user.click(screen.getByRole("button", { name: "Next clip" }));
+    expect(screen.getByRole("dialog", { name: "Second ad" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(firstTrigger).toHaveFocus();
+  });
+
   it("renders each segment's name, mm:ss cuts, duration and tag chips", () => {
     renderEditor();
-    const first = screen.getByRole("region", { name: /segment 1: first ad/i });
+    const first = openClip(1);
     expect(within(first).getByLabelText("Name")).toHaveValue("First ad");
     expect(within(first).getByLabelText("Start (mm:ss)")).toHaveValue("00:00");
     expect(within(first).getByLabelText("End (mm:ss)")).toHaveValue("00:30");
@@ -79,9 +107,11 @@ describe("SplitReviewEditor", () => {
     expect(within(first).getByText("Kids")).toBeInTheDocument();
     expect(within(first).getByText("toys")).toBeInTheDocument();
     expect(within(first).getByText("English")).toBeInTheDocument();
-    const second = screen.getByRole("region", { name: /segment 2: second ad/i });
+    fireEvent.click(within(first).getByRole("button", { name: "Next clip" }));
+    const second = screen.getByRole("dialog");
     expect(within(second).getByText("No speech")).toBeInTheDocument();
-    const third = screen.getByRole("region", { name: /segment 3: long block/i });
+    fireEvent.click(within(second).getByRole("button", { name: "Next clip" }));
+    const third = screen.getByRole("dialog");
     expect(within(third).getByText(/speech recognition had a problem/i)).toBeInTheDocument();
   });
 
@@ -110,17 +140,47 @@ describe("SplitReviewEditor", () => {
       />,
     );
 
-    expect(screen.getByText(/speech recognition isn’t set up/i)).toBeInTheDocument();
-    expect(screen.getByText(/couldn’t confidently identify the language/i)).toBeInTheDocument();
+    const first = openClip(1);
+    expect(within(first).getByText(/speech recognition isn’t set up/i)).toBeInTheDocument();
+    fireEvent.click(within(first).getByRole("button", { name: "Next clip" }));
+    expect(
+      within(screen.getByRole("dialog")).getByText(/couldn’t confidently identify the language/i),
+    ).toBeInTheDocument();
   });
 
   it("renders the duplicate flag, the unsplittable marker, and the transcript behind a toggle", () => {
     renderEditor();
-    const third = screen.getByRole("region", { name: /segment 3: long block/i });
+    const third = openClip(3);
     expect(within(third).getByText(/already in your library: clip-gushers\.mp4/i)).toBeInTheDocument();
     expect(within(third).getByText(/may have missed a cut/i)).toBeInTheDocument();
     fireEvent.click(within(third).getByText(/^details$/i));
     expect(within(third).getByText(/word from our sponsor/)).toBeInTheDocument();
+  });
+
+  it("keeps automatic naming evidence quietly under Details", () => {
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Toys R Us commercial",
+              nameOrigin: "model-proposed",
+              nameEvidence: "TOYS R US — THE WORLD'S BIGGEST TOY STORE",
+            }),
+          ],
+        }}
+        onConfirm={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    const row = openClip(1);
+    const detailText = within(row).getByText(/name suggested from this clip/i);
+    expect(detailText.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(within(row).getByText(/^details$/i));
+    expect(detailText.closest("details")).toHaveAttribute("open");
+    expect(detailText).toHaveTextContent(/TOYS R US — THE WORLD'S BIGGEST TOY STORE/);
   });
 
   it("explains the automatic hold and shows the boundary evidence", () => {
@@ -143,7 +203,7 @@ describe("SplitReviewEditor", () => {
       />,
     );
 
-    const row = screen.getByRole("region", { name: /segment 1: needs classification/i });
+    const row = openClip(1);
     expect(
       within(row).getByText(/take a closer look: a segment could not be classified/i),
     ).toBeInTheDocument();
@@ -154,19 +214,52 @@ describe("SplitReviewEditor", () => {
 
   it("confirms the edited cut list — names and mm:ss times parsed back to ms", () => {
     const { onConfirm } = renderEditor();
-    const first = screen.getByRole("region", { name: /segment 1: first ad/i });
+    const first = openClip(1);
     fireEvent.change(within(first).getByLabelText("Name"), { target: { value: "Sunny D" } });
     fireEvent.change(within(first).getByLabelText("Start (mm:ss)"), { target: { value: "0:02" } });
     fireEvent.change(within(first).getByLabelText("End (mm:ss)"), { target: { value: "0:32" } });
 
     const payload = confirmed(onConfirm);
     expect(payload).toHaveLength(3);
-    expect(payload[0]).toMatchObject({ index: 0, name: "Sunny D", startMs: 2000, endMs: 32000 });
+    expect(payload[0]).toMatchObject({
+      index: 0,
+      name: "Sunny D",
+      nameOrigin: "operator-edited",
+      startMs: 2000,
+      endMs: 32000,
+    });
+    expect(payload[0]?.nameEvidence).toBeUndefined();
+  });
+
+  it("clears machine naming evidence when the exact span changes", () => {
+    const onConfirm = vi.fn();
+    render(
+      <SplitReviewEditor
+        proposal={{
+          ...proposal,
+          segments: [
+            seg({
+              name: "Toys R Us commercial",
+              nameOrigin: "model-proposed",
+              nameEvidence: "TOYS R US",
+            }),
+          ],
+        }}
+        onConfirm={onConfirm}
+        onBack={vi.fn()}
+      />,
+    );
+    openClip(1);
+    fireEvent.change(screen.getByLabelText("Start (mm:ss)"), { target: { value: "0:02" } });
+
+    const payload = confirmed(onConfirm);
+    expect(payload[0]).toMatchObject({ name: "Toys R Us commercial", nameOrigin: "operator-edited" });
+    expect(payload[0]?.nameEvidence).toBeUndefined();
   });
 
   it("dropping a segment removes it from the payload and renumbers the rest", () => {
     const { onConfirm } = renderEditor();
-    const first = screen.getByRole("region", { name: /segment 1: first ad/i });
+    const first = openClip(1);
     fireEvent.click(within(first).getByRole("button", { name: /^remove$/i }));
 
     const payload = confirmed(onConfirm);
@@ -177,7 +270,7 @@ describe("SplitReviewEditor", () => {
 
   it("merging with next concatenates the spans into one segment", () => {
     const { onConfirm } = renderEditor();
-    const first = screen.getByRole("region", { name: /segment 1: first ad/i });
+    const first = openClip(1);
     fireEvent.click(within(first).getByRole("button", { name: /join next/i }));
 
     const payload = confirmed(onConfirm);
@@ -186,12 +279,14 @@ describe("SplitReviewEditor", () => {
     // the first's name; the second segment is gone from the list.
     expect(payload[0]).toMatchObject({ index: 0, name: "First ad", startMs: 0, endMs: 61000 });
     expect(payload[0]).toMatchObject({ language: "", languageChecked: false });
+    expect(payload[0]).toMatchObject({ nameOrigin: "operator-edited" });
+    expect(payload[0]?.nameEvidence).toBeUndefined();
     expect(payload[1]).toMatchObject({ index: 1, name: "Long block" });
   });
 
   it("clears the displayed language evidence when a cut boundary changes", () => {
     renderEditor();
-    const first = screen.getByRole("region", { name: /segment 1: first ad/i });
+    const first = openClip(1);
     fireEvent.change(within(first).getByLabelText("Start (mm:ss)"), { target: { value: "0:02" } });
 
     expect(within(first).queryByText("English")).not.toBeInTheDocument();
@@ -200,7 +295,7 @@ describe("SplitReviewEditor", () => {
 
   it("accepting an era suggestion grounds it as the segment's era; rejecting clears it", () => {
     const accept = renderEditor();
-    const second = screen.getByRole("region", { name: /segment 2: second ad/i });
+    const second = openClip(2);
     fireEvent.click(within(second).getByRole("button", { name: /use 1985/i }));
 
     const payload = confirmed(accept.onConfirm);
@@ -209,7 +304,7 @@ describe("SplitReviewEditor", () => {
 
   it("rejecting an era suggestion drops the guess without setting an era", () => {
     const { onConfirm } = renderEditor();
-    const second = screen.getByRole("region", { name: /segment 2: second ad/i });
+    const second = openClip(2);
     fireEvent.click(within(second).getByRole("button", { name: /not right/i }));
 
     const payload = confirmed(onConfirm);
@@ -219,9 +314,10 @@ describe("SplitReviewEditor", () => {
 
   it("refuses to confirm an unparseable or inverted span", () => {
     const { onConfirm } = renderEditor();
-    const first = screen.getByRole("region", { name: /segment 1: first ad/i });
+    const first = openClip(1);
     fireEvent.change(within(first).getByLabelText("End (mm:ss)"), { target: { value: "not-a-time" } });
     expect(within(first).getByText(/invalid span/i)).toBeInTheDocument();
+    fireEvent.click(within(first).getByRole("button", { name: "Close" }));
     expect(screen.getByRole("button", { name: /keep clips/i })).toBeDisabled();
     expect(onConfirm).not.toHaveBeenCalled();
   });
@@ -236,7 +332,7 @@ describe("SplitReviewEditor", () => {
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent(/shorter than your 10s minimum/i);
+    expect(within(openClip(1)).getByRole("status")).toHaveTextContent(/shorter than your 10s minimum/i);
   });
 
   it("Back leaves without confirming", () => {
@@ -287,10 +383,10 @@ describe("SplitReviewEditor — sub-second cuts", () => {
 
     // The operator retypes the first segment's end. mm:ss is the precision they were offered, so
     // whole seconds is what they meant — the fix must not "helpfully" keep the old milliseconds.
-    const end = screen.getAllByLabelText(/end/i)[0];
+    const end = within(openClip(1)).getByLabelText(/end/i);
     if (!end) throw new Error("no end-time input rendered");
     fireEvent.change(end, { target: { value: "00:25" } });
-    fireEvent.click(screen.getByRole("button", { name: /keep clips/i }));
+    confirmed(onConfirm);
 
     const wire = onConfirm.mock.calls[0]?.[0] as SplitSegment[];
     expect(wire[0]?.endMs).toBe(25_000);
@@ -298,36 +394,31 @@ describe("SplitReviewEditor — sub-second cuts", () => {
     expect(wire[0]?.startMs).toBe(1_500);
   });
 
-  // --- the inline preview (§10 V54) ---------------------------------------------------------
+  // --- the one Sheet-owned preview (§10 V70) -----------------------------------------------
 
   // ⚠ Two expanded previews are two audio streams talking over each other, and a per-row
   // `useState` would let all 52 open — 52 range requests against one 20-minute file.
-  it("keeps at most one preview open", async () => {
-    const { container } = render(
-      <SplitReviewEditor proposal={proposal} onConfirm={vi.fn()} onBack={vi.fn()} />,
-    );
+  it("keeps at most one preview mounted while traversing the reel", async () => {
+    render(<SplitReviewEditor proposal={proposal} onConfirm={vi.fn()} onBack={vi.fn()} />);
 
-    const tiles = screen.getAllByRole("button", { name: /preview segment/i });
-    await userEvent.click(tiles[0] as HTMLElement);
-    expect(container.querySelectorAll("video")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: /open clip 1: first ad/i }));
+    expect(document.body.querySelectorAll("video")).toHaveLength(1);
+    const firstPlayer = document.body.querySelector("video");
 
-    await userEvent.click(tiles[1] as HTMLElement);
+    await userEvent.click(screen.getByRole("button", { name: "Next clip" }));
 
-    expect(container.querySelectorAll("video")).toHaveLength(1);
-    const second = screen.getByRole("region", { name: /segment 2: second ad/i });
-    expect(within(second).getByRole("button", { name: /preview segment/i })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
+    expect(document.body.querySelectorAll("video")).toHaveLength(1);
+    expect(firstPlayer).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Second ad" })).toBeInTheDocument();
   });
 
-  it("gives the preview a name that collides with no other control in the row", () => {
+  it("keeps the selected clip's controls distinct inside the sheet", () => {
     renderEditor();
-    const third = screen.getByRole("region", { name: /segment 3: long block/i });
+    const third = openClip(3);
 
     // Each of these must still resolve to exactly one control.
     expect(within(third).getByText(/^details$/i)).toBeInTheDocument();
     expect(within(third).getByRole("button", { name: /^remove$/i })).toBeInTheDocument();
-    expect(within(third).getByRole("button", { name: /preview segment/i })).toBeInTheDocument();
+    expect(third.querySelectorAll("video")).toHaveLength(1);
   });
 });
