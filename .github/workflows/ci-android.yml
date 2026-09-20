@@ -29,6 +29,15 @@ jobs:
       - run: corepack enable
       - run: make fe-install
       - run: make fe-codegen
+      - name: Install pinned ccache
+        id: ccache
+        run: web/scripts/install-android-ccache.sh "${RUNNER_TEMP}/loomarr-android-ccache-tool"
+      - name: Cache ccache compiler results
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/loomarr-android-ccache
+          key: android-tv-ccache-v1-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}
+          restore-keys: android-tv-ccache-v1-${{ runner.os }}-ccache-4.14-
       - name: Cache Gradle
         id: gradle-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -48,6 +57,11 @@ jobs:
         run: make android-profile
         env:
           ANDROID_CI_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/android-ci
+          CCACHE_DIR: ${{ runner.temp }}/loomarr-android-ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_MAXSIZE: 2G
+          CCACHE_SLOPPINESS: ""
+          LOOMARR_ANDROID_CCACHE_LAUNCHER: ${{ steps.ccache.outputs.launcher }}
       - name: Retain the exact unsigned merge-result bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

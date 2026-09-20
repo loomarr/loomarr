@@ -13,6 +13,7 @@ readonly GRADLE_HEAP="${LOOMARR_ANDROID_GRADLE_HEAP:-1280m}"
 readonly ARCHITECTURES="armeabi-v7a,arm64-v8a,x86,x86_64"
 readonly GRADLE_WORKERS=1
 readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
+readonly CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-2G}"
 
 if [[ -z "${VERSION_NAME}" ]]; then
   printf 'usage: %s <major.minor.patch[-beta.N|-rc.N]>\n' "$0" >&2
@@ -22,6 +23,47 @@ if [[ -z "${ANDROID_HOME:-}" ]]; then
   printf 'ANDROID_HOME must point to the Android SDK\n' >&2
   exit 2
 fi
+
+CCACHE_LAUNCHER=""
+if [[ -n "${LOOMARR_ANDROID_CCACHE_LAUNCHER:-}" ]]; then
+  [[ "${LOOMARR_ANDROID_CCACHE_LAUNCHER}" == /* ]] || {
+    printf 'LOOMARR_ANDROID_CCACHE_LAUNCHER must be an absolute path\n' >&2
+    exit 2
+  }
+  CCACHE_LAUNCHER=$(realpath "${LOOMARR_ANDROID_CCACHE_LAUNCHER}")
+  [[ -x "${CCACHE_LAUNCHER}" ]] || {
+    printf 'LOOMARR_ANDROID_CCACHE_LAUNCHER must be an executable absolute path\n' >&2
+    exit 2
+  }
+  "${CCACHE_LAUNCHER}" --version | grep -Fxq 'ccache version 4.14' || {
+    printf 'LOOMARR_ANDROID_CCACHE_LAUNCHER must be ccache version 4.14\n' >&2
+    exit 2
+  }
+  [[ -n "${CCACHE_DIR:-}" ]] || { printf 'CCACHE_DIR is required when ccache is enabled\n' >&2; exit 2; }
+  mkdir -p "${CCACHE_DIR}"
+  CCACHE_DIR=$(realpath "${CCACHE_DIR}")
+  CCACHE_BASEDIR=$(realpath "${CCACHE_BASEDIR:-${REPO_ROOT}}")
+  [[ "${CCACHE_BASEDIR}" == "${REPO_ROOT}" ]] || {
+    printf 'CCACHE_BASEDIR must be this worktree root for worktree-independent keys\n' >&2
+    exit 2
+  }
+  [[ -z "${CCACHE_SLOPPINESS:-}" ]] || { printf 'CCACHE_SLOPPINESS is forbidden\n' >&2; exit 2; }
+  export CCACHE_DIR CCACHE_BASEDIR CCACHE_COMPILERCHECK=content CCACHE_MAXSIZE
+  "${CCACHE_LAUNCHER}" --set-config=compiler_check=content
+  "${CCACHE_LAUNCHER}" --set-config=max_size="${CCACHE_MAXSIZE}"
+  "${CCACHE_LAUNCHER}" --zero-stats
+fi
+readonly CCACHE_LAUNCHER
+
+record_ccache_evidence() {
+  local phase=$1
+  [[ -n "${CCACHE_LAUNCHER}" && -n "${ANDROID_BUILD_PROFILE_DIR:-}" ]] || return 0
+  mkdir -p "${ANDROID_BUILD_PROFILE_DIR}"
+  "${CCACHE_LAUNCHER}" --version > "${ANDROID_BUILD_PROFILE_DIR}/ccache-version.txt"
+  "${CCACHE_LAUNCHER}" --show-config > "${ANDROID_BUILD_PROFILE_DIR}/ccache-config.txt"
+  "${CCACHE_LAUNCHER}" --show-stats --format=json > "${ANDROID_BUILD_PROFILE_DIR}/ccache-stats-${phase}.json"
+}
+record_ccache_evidence pre
 
 "${REPO_ROOT}/scripts/check-android-release-env.sh"
 
@@ -83,13 +125,30 @@ gradle_status=0
 (
   cd "${APP_DIR}/android"
   CMAKE_BUILD_PARALLEL_LEVEL="${NATIVE_JOBS}" NODE_ENV=production EXPO_TV=1 \
+    LOOMARR_ANDROID_CCACHE_LAUNCHER="${CCACHE_LAUNCHER}" \
     ./gradlew "${gradle_args[@]}"
 ) || gradle_status=$?
 if [[ -n "${ANDROID_BUILD_PROFILE_DIR:-}" && -d "${APP_DIR}/android/build/reports/profile" ]]; then
   cp -R "${APP_DIR}/android/build/reports/profile" "${ANDROID_BUILD_PROFILE_DIR}/gradle"
 fi
 if (( gradle_status != 0 )); then
+  record_ccache_evidence post
   exit "${gradle_status}"
+fi
+record_ccache_evidence post
+
+if [[ -n "${CCACHE_LAUNCHER}" ]]; then
+  mapfile -t ninja_rules < <(find "${APP_DIR}/android/.cxx" -type f -name rules.ninja -print 2>/dev/null | sort)
+  ((${#ninja_rules[@]} > 0)) || { printf 'CMake generated no Ninja rules for ccache proof\n' >&2; exit 1; }
+  for ninja_rule in "${ninja_rules[@]}"; do
+    grep -Fq -- "${CCACHE_LAUNCHER}" "${ninja_rule}" || {
+      printf 'CMake Ninja rule lacks the reviewed ccache launcher: %s\n' "${ninja_rule}" >&2
+      exit 1
+    }
+  done
+  if [[ -n "${ANDROID_BUILD_PROFILE_DIR:-}" ]]; then
+    printf '%s\n' "${ninja_rules[@]}" > "${ANDROID_BUILD_PROFILE_DIR}/ccache-ninja-launchers.txt"
+  fi
 fi
 
 readonly GENERATED_AAB="${APP_DIR}/android/app/build/outputs/bundle/release/app-release.aab"

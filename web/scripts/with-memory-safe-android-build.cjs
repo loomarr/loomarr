@@ -22,14 +22,32 @@ def loomarrAndroidNativeJobs = System.getenv("LOOMARR_ANDROID_NATIVE_JOBS") ?: "
 if (!(loomarrAndroidNativeJobs ==~ /^[1-9][0-9]*$/)) {
     throw new GradleException("LOOMARR_ANDROID_NATIVE_JOBS must be a positive integer")
 }
+def loomarrAndroidCcacheLauncher = System.getenv("LOOMARR_ANDROID_CCACHE_LAUNCHER")
+def loomarrAndroidCcacheArguments = []
+if (loomarrAndroidCcacheLauncher != null && !loomarrAndroidCcacheLauncher.isBlank()) {
+    def loomarrAndroidCcachePath = new File(loomarrAndroidCcacheLauncher)
+    if (!loomarrAndroidCcachePath.isAbsolute()) {
+        throw new GradleException("LOOMARR_ANDROID_CCACHE_LAUNCHER must be an executable absolute path")
+    }
+    def loomarrAndroidCcacheFile = loomarrAndroidCcachePath.canonicalFile
+    if (!loomarrAndroidCcacheFile.isFile() || !loomarrAndroidCcacheFile.canExecute()) {
+        throw new GradleException("LOOMARR_ANDROID_CCACHE_LAUNCHER must be an executable absolute path")
+    }
+    loomarrAndroidCcacheArguments = [
+        "-DCMAKE_C_COMPILER_LAUNCHER=\${loomarrAndroidCcacheFile}",
+        "-DCMAKE_CXX_COMPILER_LAUNCHER=\${loomarrAndroidCcacheFile}"
+    ]
+}
 subprojects { subproject ->
     ["com.android.application", "com.android.library"].each { pluginId ->
         subproject.pluginManager.withPlugin(pluginId) {
-            subproject.android.defaultConfig.externalNativeBuild.cmake.arguments(
+            def loomarrAndroidCmakeArguments = [
                 "-DCMAKE_JOB_POOLS=loomarr_compile=\${loomarrAndroidNativeJobs};loomarr_link=\${loomarrAndroidNativeJobs}",
                 "-DCMAKE_JOB_POOL_COMPILE=loomarr_compile",
                 "-DCMAKE_JOB_POOL_LINK=loomarr_link"
-            )
+            ]
+            loomarrAndroidCmakeArguments.addAll(loomarrAndroidCcacheArguments)
+            subproject.android.defaultConfig.externalNativeBuild.cmake.arguments(*loomarrAndroidCmakeArguments)
         }
     }
 }

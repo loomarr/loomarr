@@ -94,6 +94,7 @@ ci-tuner-workflow	.github/workflows/ci-tuner.yml	tuner,policy
 ci-image-workflow	.github/workflows/ci-image.yml	image,policy
 ci-docs-workflow	.github/workflows/ci-docs.yml	docs,policy
 ci-android-workflow	.github/workflows/ci-android.yml	android,policy
+android-tv-compiler-cache	web/scripts/build-shield-play.sh;web/scripts/build-shield-play.test.sh;web/scripts/install-android-ccache.sh;web/scripts/install-android-ccache.test.sh	contracts,android
 make-root	Makefile	contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy
 make-docs-module	mk/docs.mk	docs,policy
 make-eval-module	mk/eval.mk	contracts,go,policy

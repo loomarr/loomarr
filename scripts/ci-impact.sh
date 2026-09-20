@@ -174,6 +174,11 @@ classify() {
       select_gate expo_android_tv
       select_gate android
       ;;
+    web/scripts/build-shield-play.sh|web/scripts/build-shield-play.test.sh|web/scripts/install-android-ccache.sh|web/scripts/install-android-ccache.test.sh)
+      known=true
+      select_gate contracts
+      select_gate android
+      ;;
     web/scripts/check-imports.mjs|web/scripts/check-imports.test.mjs)
       known=true
       select_gate clients

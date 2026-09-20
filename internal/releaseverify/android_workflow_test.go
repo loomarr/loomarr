@@ -69,6 +69,15 @@ func TestCIAndroidGradleCachePolicy(t *testing.T) {
 	workflow := string(data)
 
 	for _, want := range []string{
+		"- name: Install pinned ccache",
+		"web/scripts/install-android-ccache.sh",
+		"CCACHE_DIR: ${{ runner.temp }}/loomarr-android-ccache",
+		"LOOMARR_ANDROID_CCACHE_LAUNCHER: ${{ steps.ccache.outputs.launcher }}",
+		"CCACHE_BASEDIR: ${{ github.workspace }}",
+		"CCACHE_MAXSIZE: 2G",
+		"CCACHE_SLOPPINESS: ",
+		"path: ${{ runner.temp }}/loomarr-android-ccache",
+		"key: android-tv-ccache-v1-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}",
 		"id: gradle-cache",
 		"path: |\n            ~/.gradle/caches\n            ~/.gradle/wrapper",
 		"key: android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}",
@@ -83,6 +92,10 @@ func TestCIAndroidGradleCachePolicy(t *testing.T) {
 		}
 	}
 	for _, forbidden := range []string{
+		".cxx",
+		"android/",
+		"*.aab",
+		"keystore",
 		"steps.gradle-cache.outputs.cache-primary-key",
 		"steps.gradle-cache.outputs.cache-matched-key",
 	} {

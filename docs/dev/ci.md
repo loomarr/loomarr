@@ -422,6 +422,15 @@ Apple mobile, Apple TV, and Expo Android mobile are active. The mobile Android j
 seven days. Expo Android TV remains a classifier decision until its independently required job and
 current-main evidence exist.
 
+The permanent-identity Android TV producer keeps its exact-SHA Gradle cache and also restores a
+separate 2 GiB ccache directory across source identities. The workflow installs the exact §14 pin,
+while the build wrapper rejects a relative/wrong-version launcher, a foreign base directory, or any
+sloppiness setting. Ccache uses compiler-content identity and checkout-relative paths; the key may
+restore prior compiler objects, but it never includes generated `android/` or `.cxx` trees, bundles,
+signing material, or evidence. Version, configuration, pre/post JSON statistics, and generated Ninja
+launcher coverage are retained with the existing Android profile artifact. A developer build that
+does not supply a ccache launcher follows the unchanged cold path.
+
 ## Per-run measurements
 
 The required `CI` aggregate appends a timing table after it has evaluated every required result.

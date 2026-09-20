@@ -17,6 +17,14 @@ test("adds bounded CMake pools to every generated Android subproject", () => {
   assert.match(generated, /CMAKE_JOB_POOL_LINK=loomarr_link/);
   assert.match(generated, /subproject\.pluginManager\.withPlugin\(pluginId\)/);
   assert.match(generated, /com\.android\.library/);
+  assert.match(generated, /LOOMARR_ANDROID_CCACHE_LAUNCHER/);
+  assert.match(generated, /loomarrAndroidCcacheLauncher != null/);
+  assert.match(generated, /loomarrAndroidCcachePath\.isAbsolute\(\)/);
+  assert.match(generated, /loomarrAndroidCcacheArguments = \[\]/);
+  assert.match(generated, /loomarrAndroidCmakeArguments\.addAll/);
+  assert.doesNotMatch(generated, /must name the pinned ccache launcher/);
+  assert.match(generated, /CMAKE_C_COMPILER_LAUNCHER=/);
+  assert.match(generated, /CMAKE_CXX_COMPILER_LAUNCHER=/);
   assert.equal(addMemorySafeAndroidBuild(generated), generated);
 });
 
