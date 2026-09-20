@@ -107,6 +107,9 @@ describe("SegmentFilmstrip", () => {
 
     const clip = screen.getByRole("button", { name: "01:05 · Toy ad" });
     await userEvent.hover(clip);
+    const descriptionId = clip.getAttribute("aria-describedby");
+    expect(descriptionId).toBeTruthy();
+    expect(screen.getByRole("tooltip")).toHaveAttribute("id", descriptionId);
     expect(await screen.findByText(/commercial · animation · english/i)).toBeInTheDocument();
     expect(screen.getByText(/may have missed a cut/i)).toBeInTheDocument();
     expect(screen.getByText(/click to play this exact clip/i)).toBeInTheDocument();

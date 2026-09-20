@@ -16,15 +16,19 @@ test("split review opens one exact preview from mouse or keyboard", async ({ pag
   expect(firstClipBounds?.height).toBeLessThanOrEqual(timelineBounds?.height ?? 0);
 
   await clips.first().hover();
-  await expect(page.getByText("Click to play this exact clip.")).toBeVisible();
+  await expect(page.getByRole("tooltip").filter({ hasText: "Sunny D — Dude!" })).toBeVisible();
 
   await clips.first().click();
   await expect(page.locator("video")).toHaveCount(1);
   await expect(clips.first()).toHaveAttribute("aria-current", "true");
 
   await page.mouse.move(0, 0);
-  await clips.nth(1).focus();
-  await expect(page.getByText("Click to play this exact clip.")).toBeVisible();
+  // Use a real keyboard transition. Base UI intentionally opens a tooltip only for
+  // keyboard-visible focus; locator.focus() is programmatic focus and does not establish
+  // keyboard modality in Chromium.
+  await page.keyboard.press("Tab");
+  await expect(clips.nth(1)).toBeFocused();
+  await expect(page.getByRole("tooltip").filter({ hasText: "Rotoscoped tech spot" })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.locator("video")).toHaveCount(1);
   await expect(clips.nth(1)).toHaveAttribute("aria-current", "true");

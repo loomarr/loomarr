@@ -1,4 +1,5 @@
 import { formatClipDuration, formatMmSs } from "@loomarr/core/format";
+import { useId } from "react";
 import { Image } from "@/components/ui/image";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { languageName } from "@/lib/languages";
@@ -33,6 +34,7 @@ const timelineItems = (spans: Array<FilmstripSegment & { durationMs: number }>):
 // controlling relative width. A minimum column width makes 50+ clips horizontally scannable rather
 // than compressing them into untappable slivers; the reel scrolls instead of turning into a wall.
 const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentFilmstripProps) => {
+  const tooltipIdPrefix = useId();
   const spans = segments.map((segment) => ({
     ...segment,
     durationMs: Math.max(0, segment.endMs - segment.startMs),
@@ -70,7 +72,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
           }}
           aria-label="Detected clips, in order"
         >
-          {items.map((item) => {
+          {items.map((item, itemIndex) => {
             if (item.kind === "gap") {
               const label = `${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)} unassigned`;
               return (
@@ -85,6 +87,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
 
             const name = item.name || "Unnamed clip";
             const label = `${formatMmSs(item.startMs)} · ${name}`;
+            const tooltipId = `${tooltipIdPrefix}-clip-${itemIndex}`;
             const tags = (item.tags ?? []).slice(0, 3);
             return (
               <li key={item.key} className="min-h-0 min-w-0">
@@ -94,6 +97,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                       <button
                         type="button"
                         aria-label={label}
+                        aria-describedby={tooltipId}
                         aria-current={activeKey === item.key ? "true" : undefined}
                         onClick={() => onSelect?.(item.key)}
                         className={cn(
@@ -119,7 +123,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                       </span>
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent className="w-64 p-3" side="bottom" align="start">
+                  <TooltipContent id={tooltipId} className="w-64 p-3" side="bottom" align="start">
                     <p className="truncate font-medium text-sm">{name}</p>
                     <p className="mt-0.5 font-mono text-muted-foreground text-xs tabular-nums">
                       {formatMmSs(item.startMs)}–{formatMmSs(item.endMs)} ·{" "}
