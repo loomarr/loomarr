@@ -14,17 +14,17 @@ jobs:
   run:
     name: Go — race-policy tests (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
+    # The weighted package plan reserves nine minutes for tests and six for setup/compilation.
+    # Crossing the operator-facing 15-minute budget fails loud instead of delaying the queue.
+    timeout-minutes: 15
     # This job is test-only. Repository-wide contracts run once in `go-contracts`, in parallel;
     # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every shard spent
     # runner time and inflated each shard's cache without adding assurance.
     #
-    # THREE shards, not two. Re-measured 2026-08-18: the per-package -race suite is ~381s but is
-    # dominated by a few packages (internal/app alone is ~125s), so round-robin balance depends on
-    # the split COUNT. Modelled critical path (slowest shard): 2 shards = 237s, 3 = 185s, 4 = 215s
-    # — 4 REGRESSES because round-robin happens to pile app+store+integration onto one shard. 3 is
-    # the measured sweet spot (−22% vs 2). The real floor is internal/app at ~125s, one unsplittable
-    # package; sharding cannot beat it — that needs the per-test SQLite-setup sharing the `test`
-    # target's note describes, tracked separately.
+    # SIX measured-weight shards. Merge-group run 35472062915 showed the former three-way
+    # alphabetical split at 1430/657/583 package-seconds and a 31m10s critical path. The reviewed
+    # weights in scripts/go-race-weights.tsv and longest-processing-time assignment model the
+    # current tree at ~450s per shard. `make go-shard-verify` rejects coverage or balance drift.
     #
     # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of
     # concurrency-free config/table-test packages runs without the detector. `make go-race-verify`
@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false # one shard's failures must not hide the others'
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7

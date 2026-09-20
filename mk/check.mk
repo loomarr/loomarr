@@ -113,17 +113,17 @@ test: rust-test-worker eval-contract ## unit tests with their required Rust work
 	pkgs="$$(./scripts/go-shard.sh $(GO_SHARD))"; \
 	race_pkgs="$$(printf '%s\n' "$$pkgs" | ./scripts/go-race-policy.sh --race)"; \
 	norace_pkgs="$$(printf '%s\n' "$$pkgs" | ./scripts/go-race-policy.sh --no-race)"; \
-	if [ -n "$$race_pkgs" ]; then $(GO) test -race -timeout 25m $$race_pkgs; fi; \
-	if [ -n "$$norace_pkgs" ]; then $(GO) test -timeout 25m $$norace_pkgs; fi
+	if [ -n "$$race_pkgs" ]; then GO_BIN="$(GO)" GO_SHARD="$(GO_SHARD)" ./scripts/go-test-packages.sh race 25m $$race_pkgs; fi; \
+	if [ -n "$$norace_pkgs" ]; then GO_BIN="$(GO)" GO_SHARD="$(GO_SHARD)" ./scripts/go-test-packages.sh plain 25m $$norace_pkgs; fi
 
 .PHONY: go-shard-verify
-go-shard-verify: ## the GO_SHARD split must be a PARTITION of go list ./... (CI red on drift)
+go-shard-verify: ## the GO_SHARD split must cover every package within its latency and balance budgets
 # ⚠ THIS IS A REAL GATE, not a sanity check. Sharding is the one optimization here that can
 # QUIETLY SHRINK the suite: a split that drops a package does not fail — those tests simply never
 # run, every shard reports success, and CI is green over code it never executed. Nothing else in
 # the pipeline would notice. SHARDS must match ci.yml's `matrix.shard` count; CI passes it from
 # `strategy.job-total` so the two cannot drift apart.
-	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
+	@./scripts/go-shard.sh --verify $(or $(SHARDS),6)
 
 .PHONY: go-race-verify
 go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package
