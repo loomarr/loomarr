@@ -138,19 +138,12 @@ fi
 record_ccache_evidence post
 
 if [[ -n "${CCACHE_LAUNCHER}" ]]; then
-  mapfile -t ninja_rules < <(
-    find "${WEB_ROOT}" -type f -path '*/.cxx/*/CMakeFiles/rules.ninja' -print 2>/dev/null | sort
-  )
-  ((${#ninja_rules[@]} > 0)) || { printf 'CMake generated no Ninja rules for ccache proof\n' >&2; exit 1; }
-  for ninja_rule in "${ninja_rules[@]}"; do
-    grep -Fq -- "${CCACHE_LAUNCHER}" "${ninja_rule}" || {
-      printf 'CMake Ninja rule lacks the reviewed ccache launcher: %s\n' "${ninja_rule}" >&2
-      exit 1
-    }
-  done
+  ccache_evidence_output=""
   if [[ -n "${ANDROID_BUILD_PROFILE_DIR:-}" ]]; then
-    printf '%s\n' "${ninja_rules[@]}" > "${ANDROID_BUILD_PROFILE_DIR}/ccache-ninja-launchers.txt"
+    ccache_evidence_output="${ANDROID_BUILD_PROFILE_DIR}/ccache-ninja-launchers.txt"
   fi
+  "${WEB_ROOT}/scripts/verify-android-ccache-evidence.sh" \
+    "${CCACHE_LAUNCHER}" "${WEB_ROOT}" "${ccache_evidence_output}"
 fi
 
 readonly GENERATED_AAB="${APP_DIR}/android/app/build/outputs/bundle/release/app-release.aab"

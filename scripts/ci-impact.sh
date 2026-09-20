@@ -174,7 +174,7 @@ classify() {
       select_gate expo_android_tv
       select_gate android
       ;;
-    web/scripts/build-shield-play.sh|web/scripts/build-shield-play.test.sh|web/scripts/install-android-ccache.sh|web/scripts/install-android-ccache.test.sh)
+    web/scripts/build-shield-play.sh|web/scripts/build-shield-play.test.sh|web/scripts/install-android-ccache.sh|web/scripts/install-android-ccache.test.sh|web/scripts/verify-android-ccache-evidence.sh)
       known=true
       select_gate contracts
       select_gate android
