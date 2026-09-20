@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 build="$script_dir/build-shield-play.sh"
 verifier="$script_dir/verify-android-ccache-evidence.sh"
+tv_package="$script_dir/../apps/tv/package.json"
 
 temp_dir=$(mktemp -d)
 trap 'rm -rf -- "$temp_dir"' EXIT
@@ -75,3 +76,13 @@ if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_CCACHE_LAUNCHER=relative-ccache "$b
   echo 'build wrapper accepted a relative ccache launcher' >&2
   exit 1
 fi
+
+for unused_native_dependency in react-native-reanimated react-native-worklets; do
+  if node -e '
+    const manifest = require(process.argv[1]);
+    process.exit(Object.hasOwn(manifest.dependencies ?? {}, process.argv[2]) ? 0 : 1);
+  ' "$tv_package" "$unused_native_dependency"; then
+    printf 'TV manifest directly declares unused native dependency %s\n' "$unused_native_dependency" >&2
+    exit 1
+  fi
+done

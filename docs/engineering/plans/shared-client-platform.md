@@ -358,8 +358,9 @@ The clean native proof is green for both generated Android targets: mobile produ
 required Leanback application, marks touchscreen and faketouch optional, and exposes a Leanback
 launcher activity. The proof also caught an optional-peer mismatch that Expo Doctor and production
 JS bundles did not: Expo SDK 57 supports Reanimated 4.5.1 with Worklets 0.10.1, while pnpm had
-auto-selected incompatible 4.6.0 and 0.12.1 releases. Both app manifests now pin Expo's supported
-pair directly.
+auto-selected incompatible 4.6.0 and 0.12.1 releases. Workspace overrides and the mobile manifest
+pin Expo's supported pair directly. The TV manifest later removed its unused direct declarations
+after a generated-graph proof showed that they alone caused Reanimated and Worklets to autolink.
 
 A 2026-08-25 regression proof caught that the earlier app-only pool did not reach Reanimated: AGP
 launched Ninja directly with six Clang children despite `CMAKE_BUILD_PARALLEL_LEVEL=1`, pinned the
