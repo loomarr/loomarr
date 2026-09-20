@@ -20,7 +20,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 	entries := map[workflowActionKey]string{
 		{workflow: "android-beta.yml", job: "release", step: 0}:             `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "android-beta.yml", job: "release", step: 1}:             `{"uses":"actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c","with":{"distribution":"temurin","java-version":"21"}}`,
-		{workflow: "android-beta.yml", job: "release", step: 2}:             `{"uses":"android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699"}`,
+		{workflow: "android-beta.yml", job: "release", step: 2}:             `{"uses":"android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699","with":{"packages":"platform-tools"}}`,
 		{workflow: "android-beta.yml", job: "release", step: 6}:             `{"name":"Retain the signed AAB and release evidence","uses":"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","with":{"name":"loomarr-android-tv-${{ github.sha }}","path":".artifacts/android-release/*","if-no-files-found":"error","retention-days":30}}`,
 		{workflow: "apple-compilation-cache.yml", job: "publish", step: 0}:  `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "apple-compilation-cache.yml", job: "publish", step: 2}:  `{"uses":"actions/setup-node@820762786026740c76f36085b0efc47a31fe5020","with":{"node-version":"${{ env.NODE_VERSION }}"}}`,
@@ -31,7 +31,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "ci-agent.yml", job: "run", step: 1}:                     `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"${{ env.GO_VERSION }}","cache":false}}`,
 		{workflow: "ci-android.yml", job: "run", step: 0}:                   `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "ci-android.yml", job: "run", step: 1}:                   `{"uses":"actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c","with":{"distribution":"temurin","java-version":"21"}}`,
-		{workflow: "ci-android.yml", job: "run", step: 2}:                   `{"uses":"android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699"}`,
+		{workflow: "ci-android.yml", job: "run", step: 2}:                   `{"uses":"android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699","with":{"packages":"platform-tools"}}`,
 		{workflow: "ci-android.yml", job: "run", step: 3}:                   `{"uses":"actions/setup-node@820762786026740c76f36085b0efc47a31fe5020","with":{"node-version":"22"}}`,
 		{workflow: "ci-android.yml", job: "run", step: 7}:                   `{"name":"Cache Gradle","id":"gradle-cache","uses":"actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9","with":{"path":"~/.gradle/caches\n~/.gradle/wrapper\n","key":"android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-${{ github.run_id }}","restore-keys":"android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.sha }}-"}}`,
 		{workflow: "ci-android.yml", job: "run", step: 10}:                  `{"name":"Retain the exact unsigned merge-result bundle","uses":"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","with":{"name":"loomarr-android-unsigned-${{ github.sha }}","path":".artifacts/android-ci/*","if-no-files-found":"error","retention-days":30}}`,
@@ -46,7 +46,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "ci-apple-tv.yml", job: "run", step: 8}:                  `{"name":"Keep simulator screenshot","if":"always()","uses":"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","with":{"name":"apple-client-tv","path":"${{ runner.temp }}/apple-client-tv/","if-no-files-found":"warn","retention-days":7}}`,
 		{workflow: "ci-expo-android-mobile.yml", job: "run", step: 0}:       `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "ci-expo-android-mobile.yml", job: "run", step: 1}:       `{"uses":"actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c","with":{"distribution":"temurin","java-version":"21"}}`,
-		{workflow: "ci-expo-android-mobile.yml", job: "run", step: 2}:       `{"uses":"android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699"}`,
+		{workflow: "ci-expo-android-mobile.yml", job: "run", step: 2}:       `{"uses":"android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699","with":{"packages":"platform-tools"}}`,
 		{workflow: "ci-expo-android-mobile.yml", job: "run", step: 3}:       `{"uses":"actions/setup-node@820762786026740c76f36085b0efc47a31fe5020","with":{"node-version":"22"}}`,
 		{workflow: "ci-expo-android-mobile.yml", job: "run", step: 7}:       `{"name":"Keep the standalone mobile APK","if":"always()","uses":"actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a","with":{"name":"expo-android-mobile","path":"web/apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk","if-no-files-found":"error","retention-days":7}}`,
 

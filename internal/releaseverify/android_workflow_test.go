@@ -92,6 +92,33 @@ func TestCIAndroidGradleCachePolicy(t *testing.T) {
 	}
 }
 
+func TestAndroidSetupRequestsOnlySupportedPackages(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test source")
+	}
+	workflowsDir := filepath.Join(filepath.Dir(source), "..", "..", ".github", "workflows")
+	for _, workflow := range []struct {
+		name string
+		job  string
+	}{
+		{name: "android-beta.yml", job: "release"},
+		{name: "ci-android.yml", job: "run"},
+		{name: "ci-expo-android-mobile.yml", job: "run"},
+	} {
+		t.Run(workflow.name, func(t *testing.T) {
+			document := readWorkflowFixture(t, filepath.Join(workflowsDir, workflow.name))
+			job := mappingValueMust(t, mappingValueMust(t, document, "jobs"), workflow.job)
+			steps := mappingValueMust(t, job, "steps")
+			setup := steps.Content[workflowUsesStepIndex(t, steps.Content, "android-actions/setup-android")]
+			with := mappingValueMust(t, setup, "with")
+			if got := yamlScalar(t, with, "packages"); got != "platform-tools" {
+				t.Fatalf("setup-android packages = %q, want only supported platform-tools", got)
+			}
+		})
+	}
+}
+
 func replaceOnce(oldValue, newValue string, t *testing.T) func(string) string {
 	t.Helper()
 	return func(value string) string {
