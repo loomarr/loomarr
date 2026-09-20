@@ -1,7 +1,9 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as settingsApi from "@loomarr/api/endpoints/settings";
+import type { SplitLanguageExclusion } from "@loomarr/api/models/splitLanguageExclusion";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
+import { formatMmSs, pluralize } from "@loomarr/core/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -9,6 +11,8 @@ import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { SplitReviewEditor } from "@/components/loomarr/filler/split-review-editor";
+import { Button } from "@/components/ui/button";
+import { languageName } from "@/lib/languages";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import type { SplitReviewPageProps } from "./split-review-page.type";
 
@@ -17,6 +21,40 @@ const durationSettingMs = (value: string | undefined): number | undefined => {
   const match = /^(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m)?(?:(\d+(?:\.\d+)?)s)?$/.exec(value);
   if (!match || (!match[1] && !match[2] && !match[3])) return undefined;
   return (Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0)) * 1000;
+};
+
+const LanguageReceipt = ({
+  exclusions,
+  checkedFor,
+}: {
+  exclusions: SplitLanguageExclusion[];
+  checkedFor: string;
+}) => {
+  if (exclusions.length === 0) return null;
+  return (
+    <details className="rounded-lg border border-border bg-muted/20 p-4 text-sm">
+      <summary className="cursor-pointer font-medium">
+        Loomarr left out {pluralize(exclusions.length, "clip")} spoken in another language
+        <span className="ml-1 font-normal text-muted-foreground">
+          · Show skipped {exclusions.length === 1 ? "clip" : "clips"}
+        </span>
+      </summary>
+      <p className="mt-2 text-muted-foreground">
+        This split was checked for {languageName(checkedFor)}. These clips remain in the original compilation
+        but won’t be added as filler.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {exclusions.map((item) => (
+          <li key={`${item.startMs}-${item.endMs}`} className="rounded-md bg-background/60 px-3 py-2">
+            <span className="block font-medium">{item.name}</span>
+            <span className="text-muted-foreground text-xs">
+              {`${languageName(item.detectedLanguage)} · ${formatMmSs(item.startMs)}–${formatMmSs(item.endMs)}`}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
 };
 
 // SplitReviewPage — the /filler/splits/$proposalId screen (§10 V34). Detection persisted
@@ -59,6 +97,16 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
       onError: (e) => toast.error(toProblem(e).title ?? "Couldn't confirm the split"),
     },
   });
+  const recheck = fillerApi.useRewindFillerClip({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: fillerApi.getFillerIncomingQueryKey() });
+        toast.success("Rechecking this compilation");
+        void navigate({ to: "/filler/incoming" });
+      },
+      onError: (e) => toast.error(toProblem(e).title ?? "Couldn't start the recheck"),
+    },
+  });
 
   if (authLoading) return null;
   if (!isAdmin) {
@@ -82,6 +130,13 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
       (body) => body.settings.find((entry) => entry.key === "filler.min_duration")?.value,
     ),
   );
+  const currentLanguage = unwrap(
+    settings.data,
+    (body) => body.settings.find((entry) => entry.key === "filler.language")?.value,
+  );
+  const checkedLanguage = p.languagePreference ?? "";
+  const languageChanged =
+    checkedLanguage !== "" && currentLanguage !== undefined && currentLanguage !== checkedLanguage;
 
   return (
     // p-6 for the same reason as the catalog page: the shell adds no gutter, so a page
@@ -95,6 +150,25 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
           is right; leaving keeps the proposal for later.
         </p>
       </div>
+      {languageChanged ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-caution/40 bg-caution-tint-15 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">Your commercial language is now {languageName(currentLanguage)}</p>
+            <p className="mt-1 text-muted-foreground text-sm">
+              This split was checked for {languageName(checkedLanguage)}. Recheck it before you confirm.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={recheck.isPending}
+            onClick={() => recheck.mutate({ data: { hash: p.clipHash, from: "split" } })}
+          >
+            {recheck.isPending ? "Starting recheck…" : `Recheck with ${languageName(currentLanguage)}`}
+          </Button>
+        </div>
+      ) : null}
+      <LanguageReceipt exclusions={p.languageExclusions ?? []} checkedFor={checkedLanguage} />
       <SplitReviewEditor
         proposal={p}
         {...(minClipDurationMs !== undefined ? { minClipDurationMs } : {})}
