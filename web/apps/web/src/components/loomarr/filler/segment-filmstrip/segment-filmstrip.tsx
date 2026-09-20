@@ -51,7 +51,12 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
     .join(" ");
 
   return (
-    <section className={cn("rounded-lg border border-border bg-muted/15 p-3", className)}>
+    <section
+      className={cn(
+        "min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-muted/15 p-3",
+        className,
+      )}
+    >
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="font-medium text-sm">Clips Loomarr found</h2>
@@ -99,7 +104,7 @@ const SegmentFilmstrip = ({ segments, activeKey, onSelect, className }: SegmentF
                         aria-label={label}
                         aria-describedby={tooltipId}
                         aria-current={activeKey === item.key ? "true" : undefined}
-                        onClick={() => onSelect?.(item.key)}
+                        onClick={(event) => onSelect?.(item.key, event.currentTarget)}
                         className={cn(
                           "group relative size-full overflow-hidden rounded-md border border-border bg-static-900 text-left",
                           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal focus-visible:outline-offset-1",

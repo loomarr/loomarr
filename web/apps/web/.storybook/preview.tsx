@@ -28,7 +28,10 @@ const WorkshopThemeProvider = ({ children, theme }: PropsWithChildren<{ theme: W
     document.body.style.color = colors.content.primary;
   }, [colors.content.primary, colors.surface.canvas, resolvedTheme]);
 
-  return <LoomarrProvider theme={theme.mode}>{children}</LoomarrProvider>;
+  // Resolve `system` once. Passing it through would make LoomarrProvider subscribe to the same
+  // media query a second time; those two React Native Web listeners can publish on adjacent
+  // frames, briefly leaving a dark component on the light canvas (and vice versa).
+  return <LoomarrProvider theme={resolvedTheme}>{children}</LoomarrProvider>;
 };
 
 const preview: Preview = {
