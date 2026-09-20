@@ -21,6 +21,8 @@ done
 # shellcheck disable=SC2016
 grep -Fq 'if [[ -n "${LOOMARR_ANDROID_CCACHE_LAUNCHER:-}" ]]' "$build"
 grep -Fq '*/.cxx/*/CMakeFiles/rules.ninja' "$build"
+# The build source must retain the web-root expression literally.
+# shellcheck disable=SC2016
 grep -Fq 'find "${WEB_ROOT}"' "$build"
 
 if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_CCACHE_LAUNCHER=relative-ccache "$build" 1.0.0 >/dev/null 2>&1; then
