@@ -573,9 +573,16 @@ auth ceiling first produced a six-lane plan of 372/371/371/371/371/371 seconds, 
 tree no longer has enough ordinary work to keep six hosted runners efficiently occupied. Replaying
 the measured package topology with the repaired auth cost gave five ordinary lanes a 42% spread,
 while four lanes produced 465/418/491/447 package-seconds (17.5%) and also removed two runner-queue
-slots from the critical path. The checked-in four-lane weights now model aggregate work at
-557/557/557/556 seconds and the actual sequential race/non-race `-p=2` policy at bounded-worker
-makespans of 295/279/279/279 seconds.
+slots from the critical path. The first authoritative current-tree four-lane run, 35504999984,
+validated the repaired auth package at 23.614 seconds and completed all six Go jobs successfully.
+Its ordinary job/test times were 9m36s/9m02s, 8m31s/7m52s, 7m02s/6m28s and 9m30s/8m52s.
+The 9m53s queue-to-finish critical path was materially lower than 14+ minutes, but the roughly 40%
+ordinary test-time spread still failed acceptance. The run therefore did not merge. Refreshing every
+material weight from that exact tree with uniform 10% headroom produces checked-in aggregate loads
+of 533/533/532/532 seconds and bounded-worker makespans of 267/267/267/266 seconds. Replaying the
+new package assignment against the exact hosted timings gives aggregate loads of
+486.182/487.343/481.509/481.157 seconds and bounded-worker loads of
+243.929/243.735/240.832/240.868 seconds: about 1.3% spread in both views.
 `make go-shard-verify SHARDS=4` rejects missing or duplicated packages, an ordinary aggregate above
 600 seconds, a bounded-worker or serial-certification makespan above nine minutes, or more than 25%
 imbalance within any group. Aggregate and worker limits are deliberately separate: package overlap

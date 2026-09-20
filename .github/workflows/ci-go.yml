@@ -25,7 +25,7 @@ jobs:
     # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
     # a 31m10s critical path. The reviewed
     # weights in scripts/go-race-weights.tsv and longest-processing-time assignment model the
-    # current tree at ~557 aggregate package-seconds per ordinary lane before bounded `-p=2`
+    # current tree at ~533 aggregate package-seconds per ordinary lane before bounded `-p=2`
     # overlap. `make go-shard-verify` rejects coverage, bounded-worker latency, or balance drift
     # and proves the six lanes remain an exact partition.
     #
