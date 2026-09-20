@@ -69,7 +69,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make vet-tags` |  | go vet over custom-tagged sources |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
-| `make test` | ✅ | unit tests with their required Rust worker (never touch the network — §19) <br>*runs:* `rust-test-worker` `eval-contract` |
+| `make test` | ✅ | unit tests; unsharded runs include Rust worker and eval contracts (never network — §19) |
 | `make go-shard-verify` | ✅ | Go test lanes must cover every package within their latency and balance budgets |
 | `make go-race-verify` |  | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
 | `make test-ffmpeg` |  | media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification) |

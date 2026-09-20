@@ -21,13 +21,14 @@ jobs:
     # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every lane spent
     # runner time and inflated each lane's cache without adding assurance.
     #
-    # FOUR measured-weight ordinary lanes plus two serial media-certification lanes. Merge-group run
+    # TWO measured-weight ordinary lanes plus two serial media-certification lanes. Merge-group run
     # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
     # a 31m10s critical path. The reviewed
     # weights in scripts/go-race-weights.tsv and longest-processing-time assignment model the
-    # current tree at ~533 aggregate package-seconds per ordinary lane before bounded `-p=2`
-    # overlap. `make go-shard-verify` rejects coverage, bounded-worker latency, or balance drift
-    # and proves the six lanes remain an exact partition.
+    # current tree at ~1,065 aggregate package-seconds per ordinary lane before bounded `-p=4`
+    # overlap. The four-worker makespan remains ~267 seconds—the same modeled critical path as four
+    # `-p=2` lanes—while requiring two fewer hosted runners. `make go-shard-verify` rejects coverage,
+    # bounded-worker latency, or balance drift and proves the four lanes remain an exact partition.
     #
     # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of
     # concurrency-free config/table-test packages runs without the detector. `make go-race-verify`
@@ -40,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false # one lane's failures must not hide the others'
       matrix:
-        lane: ["1/4", "2/4", "3/4", "4/4", "certification-1/2", "certification-2/2"]
+        lane: ["1/2", "2/2", "certification-1/2", "certification-2/2"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -132,7 +133,7 @@ jobs:
           ffmpeg -version
           ffprobe -version
       - run: make test GO_TEST_LANE=${{ matrix.lane }}
-        # The lane runner pins ordinary packages to -p=2 and both reviewed media-certification
+        # The lane runner pins ordinary packages to -p=4 and both reviewed media-certification
         # lanes to -p=1. It rejects caller-controlled GOFLAGS and retains race coverage.
       # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
       # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be

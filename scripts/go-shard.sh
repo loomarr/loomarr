@@ -3,13 +3,13 @@
 # `make test` across runners without making media certification compete for a worker.
 #
 #   ./scripts/go-shard.sh          -> "./..."   (the whole tree — the default, always)
-#   ./scripts/go-shard.sh 2/4      -> the 2nd ordinary measured-weight slice
+#   ./scripts/go-shard.sh 2/2      -> the 2nd ordinary measured-weight slice
 #   ./scripts/go-shard.sh --certification 2/2
 #                                  -> the second reviewed media-certification lane
-#   ./scripts/go-shard.sh --plan 4 -> print each ordinary shard's modeled package-seconds
-#   ./scripts/go-shard.sh --worker-plan 4
-#                                  -> print each shard's bounded two-worker makespan
-#   ./scripts/go-shard.sh --verify 4
+#   ./scripts/go-shard.sh --plan 2 -> print each ordinary shard's modeled package-seconds
+#   ./scripts/go-shard.sh --worker-plan 2
+#                                  -> print each shard's bounded four-worker makespan
+#   ./scripts/go-shard.sh --verify 2
 #                                  -> assert exact coverage and every latency/balance budget
 #
 # The partition uses longest-processing-time assignment over a small, reviewed set of measured
@@ -17,7 +17,7 @@
 # future package remains assigned even before it has a hosted timing. This replaces alphabetical
 # placement, which drifted from a balanced 2026-09-01 sample to 1430/657/583 package-seconds in
 # merge-group run 35472062915. Latency-sensitive media packages live in two reviewed serial lanes;
-# the remaining weighted packages are balanced across four ordinary lanes. Separate runners let the
+# the remaining weighted packages are balanced across two ordinary lanes. Separate runners let the
 # two certification groups overlap without allowing package concurrency inside either group.
 #
 # ⚠ THE --verify MODE IS NOT OPTIONAL DECORATION. A sharding bug that DROPS a package does not
@@ -34,8 +34,9 @@ CERTIFICATION="${GO_SHARD_CERTIFICATION:-$ROOT/scripts/go-certification-lanes.ts
 RACE_POLICY="${GO_SHARD_RACE_POLICY:-$ROOT/scripts/go-race-policy.sh}"
 CERTIFICATION_LANES=2
 MAX_WEIGHT_SECONDS=540
-MAX_ORDINARY_AGGREGATE_SECONDS=600
+MAX_ORDINARY_AGGREGATE_SECONDS=1200
 MAX_IMBALANCE_PERCENT=125
+ORDINARY_WORKERS=4
 
 if [[ ! -r "$WEIGHTS" ]]; then
   echo "go-shard: weight file is not readable: $WEIGHTS" >&2
@@ -187,13 +188,13 @@ plan() {
 }
 
 # Model the package scheduler used by an ordinary lane. The race and non-race groups execute
-# sequentially, each with GOFLAGS=-p=2, so their independent two-worker LPT makespans must be
+# sequentially, each with GOFLAGS=-p=4, so their independent four-worker LPT makespans must be
 # added. Keeping this distinct from aggregate package-seconds lets the coverage plan reject both
 # excessive total work and a latency regression hidden by the bounded package overlap.
-weighted_two_worker_makespan() {
+weighted_worker_makespan() {
   local module
   module="$(go list -m)"
-  awk -v module="$module" -v weights_file="$WEIGHTS" '
+  awk -v module="$module" -v weights_file="$WEIGHTS" -v workers="$ORDINARY_WORKERS" '
     BEGIN {
       while ((getline line < weights_file) > 0) {
         if (line ~ /^[[:space:]]*(#|$)/) continue
@@ -225,10 +226,17 @@ weighted_two_worker_makespan() {
       }
       for (rank = 1; rank <= count; rank++) {
         item = order[rank]
-        worker = (load[2] < load[1]) ? 2 : 1
+        worker = 1
+        for (candidate = 2; candidate <= workers; candidate++) {
+          if (load[candidate] < load[worker]) worker = candidate
+        }
         load[worker] += cost[item]
       }
-      print (load[1] > load[2]) ? load[1] : load[2]
+      high = load[1]
+      for (worker = 2; worker <= workers; worker++) {
+        if (load[worker] > high) high = load[worker]
+      }
+      print high
     }
   '
 }
@@ -240,10 +248,10 @@ ordinary_worker_load() {
   race_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --race)"
   plain_packages="$(printf '%s\n' "$shard_packages" | "$RACE_POLICY" --no-race)"
   if [[ -n "$race_packages" ]]; then
-    race_load="$(printf '%s\n' "$race_packages" | weighted_two_worker_makespan)"
+    race_load="$(printf '%s\n' "$race_packages" | weighted_worker_makespan)"
   fi
   if [[ -n "$plain_packages" ]]; then
-    plain_load="$(printf '%s\n' "$plain_packages" | weighted_two_worker_makespan)"
+    plain_load="$(printf '%s\n' "$plain_packages" | weighted_worker_makespan)"
   fi
   echo $((race_load + plain_load))
 }

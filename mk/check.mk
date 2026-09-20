@@ -77,7 +77,13 @@ lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --build-tags '$(TAGS_CSV)' $(PKG)
 
 .PHONY: test
-test: rust-test-worker eval-contract ## unit tests with their required Rust worker (never touch the network — §19)
+# Local `make test` retains both self-contained prerequisites. CI's lane-scoped invocations omit
+# them because `go-contracts` runs eval-contract exactly once and packages that exercise the real
+# image worker already acquire it through internal/testkit. Repeating both prerequisites in every
+# hosted lane cost roughly 96 seconds per cold runner without adding coverage. The lane runner owns
+# this branch because CI Makefiles deliberately reject conditional directives as unaudited control
+# flow; its release-verifier test pins both paths.
+test: ## unit tests; unsharded runs include Rust worker and eval contracts (never network — §19)
 # ⚠ **-timeout is set explicitly because Go's default is 10m PER PACKAGE and `internal/api` grew
 # past it.** Measured 2026-08-09: that package alone is 267s locally under `-race`, and a CI runner
 # is roughly twice as slow — so it tripped the default and the job died with `panic: test timed out
@@ -90,10 +96,10 @@ test: rust-test-worker eval-contract ## unit tests with their required Rust work
 # is ~500 tests each paying a fresh SQLite open plus migrations, and the fix when this bites again is
 # to share that setup, NOT to raise the number a second time.
 #
-# GO_TEST_LANE is a CI-only passthrough (`make test GO_TEST_LANE=1/4`): EMPTY by default, so a local
+# GO_TEST_LANE is a CI-only passthrough (`make test GO_TEST_LANE=1/2`): EMPTY by default, so a local
 # `make test` — and `make verify SCOPE=all` — runs the whole tree. Sharding must
 # never be implicit, or someone runs a fraction of the gate and reads the green as the whole thing.
-# The six literal lanes live in ci-go.yml's `matrix.lane`; see scripts/go-test-lane.sh.
+# The four literal lanes live in ci-go.yml's `matrix.lane`; see scripts/go-test-lane.sh.
 #
 # ⚠ `&&`, not a `$(shell ...)` expansion. `$(shell)` swallows a non-zero exit and yields the empty
 # string, and `go test` with NO packages exits 0 — so a bad lane would have produced a silent
@@ -116,9 +122,9 @@ go-shard-verify: ## Go test lanes must cover every package within their latency 
 # ⚠ THIS IS A REAL GATE, not a sanity check. Sharding is the one optimization here that can
 # QUIETLY SHRINK the suite: a split that drops a package does not fail — those tests simply never
 # run, every lane reports success, and CI is green over code it never executed. Nothing else in
-# the pipeline would notice. The release verifier pins SHARDS=4 and the workflow's four ordinary
+# the pipeline would notice. The release verifier pins SHARDS=2 and the workflow's two ordinary
 # identities plus its two certification identities, so execution and coverage authority cannot drift.
-	@./scripts/go-shard.sh --verify $(or $(SHARDS),4)
+	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
 
 .PHONY: go-race-verify
 go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package

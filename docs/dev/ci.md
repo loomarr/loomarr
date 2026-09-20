@@ -540,9 +540,10 @@ failing native result.
 
 ## Sharding
 
-Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go and
-Rust contracts run once in `go-contracts`, in parallel with four ordinary Go test lanes, two serial
-media-certification lanes, and the independent release-worker certification. Their union is the same
+Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go
+contracts run once in `go-contracts` and Rust contracts once in `rust-contracts`, in parallel with
+two ordinary Go test lanes, two serial media-certification lanes, and the independent release-worker
+certification. Their union is the same
 assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
 requires every job, so moving a contract out of the test lanes cannot make it optional.
 
@@ -553,7 +554,7 @@ The Go partition uses longest-processing-time assignment over a reviewed table c
 material package timings. Packages below five measured seconds, including new packages awaiting a
 hosted measurement, receive a one-second planning floor and remain fail-safe members of the exact
 partition. Merge-group run 35472062915 exposed 1430/657/583 package-seconds in the former three-way
-alphabetical split and a 31m10s critical path. Four ordinary lanes use bounded `-p=2` package
+alphabetical split and a 31m10s critical path. Two ordinary lanes use bounded `-p=4` package
 parallelism. The reviewed latency-sensitive playout/capacity set runs in two concurrent `-p=1`
 lanes, so each group remains serial while separate runners safely overlap the groups. Merge-group
 run 35497917692 measured the former combined certification lane at 9m53s, including `internal/app`
@@ -570,21 +571,31 @@ local SSO race subset from 30.59 to 5.64 seconds and the complete auth race pack
 19.64 seconds, with the real RS256 verifier, allowlist refusals, disabled-person checks, session
 revocation, password hashing, and every existing assertion retained. A conservative provisional
 auth ceiling first produced a six-lane plan of 372/371/371/371/371/371 seconds, but the repaired
-tree no longer has enough ordinary work to keep six hosted runners efficiently occupied. Replaying
-the measured package topology with the repaired auth cost gave five ordinary lanes a 42% spread,
-while four lanes produced 465/418/491/447 package-seconds (17.5%) and also removed two runner-queue
-slots from the critical path. The first authoritative current-tree four-lane run, 35504999984,
+tree no longer has enough ordinary work to keep six hosted runners efficiently occupied. The first
+authoritative current-tree four-ordinary-lane run, 35504999984,
 validated the repaired auth package at 23.614 seconds and completed all six Go jobs successfully.
 Its ordinary job/test times were 9m36s/9m02s, 8m31s/7m52s, 7m02s/6m28s and 9m30s/8m52s.
 The 9m53s queue-to-finish critical path was materially lower than 14+ minutes, but the roughly 40%
 ordinary test-time spread still failed acceptance. The run therefore did not merge. Refreshing every
-material weight from that exact tree with uniform 10% headroom produces checked-in aggregate loads
-of 533/533/532/532 seconds and bounded-worker makespans of 267/267/267/266 seconds. Replaying the
-new package assignment against the exact hosted timings gives aggregate loads of
-486.182/487.343/481.509/481.157 seconds and bounded-worker loads of
-243.929/243.735/240.832/240.868 seconds: about 1.3% spread in both views.
-`make go-shard-verify SHARDS=4` rejects missing or duplicated packages, an ordinary aggregate above
-600 seconds, a bounded-worker or serial-certification makespan above nine minutes, or more than 25%
+material weight from that exact tree with uniform 10% headroom produced checked-in aggregate loads
+of 533/533/532/532 seconds and bounded-worker makespans of 267/267/267/266 seconds. The next
+authoritative run, 35507559795, proved why more shard tuning was the wrong fix: lane 2 reported only
+about four minutes of longest-worker package execution (`internal/store` at 239.922 seconds), yet
+spent 9m37s in the test step. Its cache log showed a complete miss followed by repeated module
+downloads, a 40.94-second Rust build, and a 55-second eval-contract invocation before the lane even
+started its ordinary package phase. Those prerequisites ran identically in all six jobs.
+
+The resulting architecture preserves the same work with fewer runners. Two ordinary lanes each
+carry 1,065 modeled aggregate package-seconds and use bounded `-p=4`; their independent race and
+non-race scheduler phases each use four-worker longest-processing-time placement, producing the
+same 267/267-second modeled critical worker load as the former four `-p=2` lanes. The two serial
+certification lanes remain unchanged. Lane-scoped `make test` omits the eager Rust and eval
+prerequisites: `go-contracts` executes `eval-contract` once, while the only Go packages that need
+the real image worker acquire it through `internal/testkit`. Unsharded local `make test` retains
+both explicit prerequisites and remains self-contained.
+
+`make go-shard-verify SHARDS=2` rejects missing or duplicated packages, an ordinary aggregate above
+1,200 seconds, a bounded-worker or serial-certification makespan above nine minutes, or more than 25%
 imbalance within any group. Aggregate and worker limits are deliberately separate: package overlap
 cannot hide unbounded total work, and a balanced aggregate cannot hide one saturated worker. Release
 verification additionally rejects an unreviewed serial package, grouping or workflow lane. The

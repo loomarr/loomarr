@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const goRaceShardCount = 4
+const goRaceShardCount = 2
 
 func TestGoShardUsesMeasuredLongestProcessingTime(t *testing.T) {
 	t.Parallel()
@@ -61,6 +61,19 @@ example.invalid/i`
 				t.Fatalf("go shard %s =\n%s\nwant measured longest-processing-time assignment\n%s", shard, got, expected)
 			}
 		})
+	}
+
+	cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--worker-plan", "1")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "GO_SHARD_WEIGHTS="+weights, "GO_SHARD_CERTIFICATION="+isolated)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("model bounded workers: %v\n%s", err, stderr.String())
+	}
+	if got := strings.TrimSpace(string(output)); got != "1 12" {
+		t.Fatalf("bounded-worker plan = %q, want four-worker LPT makespan %q", got, "1 12")
 	}
 }
 
@@ -122,9 +135,11 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", ".."))
 	bin := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "runner.log")
+	makeLogPath := filepath.Join(t.TempDir(), "make.log")
 	sharder := filepath.Join(bin, "sharder")
 	policy := filepath.Join(bin, "policy")
 	runner := filepath.Join(bin, "runner")
+	makeBin := filepath.Join(bin, "make")
 	if err := os.WriteFile(sharder, []byte("#!/usr/bin/env bash\nset -euo pipefail\nprintf 'example.invalid/race\\nexample.invalid/plain\\n'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +147,9 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(runner, []byte("#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s|%s|%s\\n' \"${GO_TEST_LANE:-}\" \"${GOFLAGS:-}\" \"$*\" >> \"$GO_TEST_LOG\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(makeBin, []byte("#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' \"$*\" >> \"$GO_TEST_MAKE_LOG\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	baseEnv := make([]string, 0, len(os.Environ()))
@@ -150,7 +168,9 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 			"GO_TEST_SHARDER="+sharder,
 			"GO_TEST_RACE_POLICY="+policy,
 			"GO_TEST_PACKAGE_RUNNER="+runner,
+			"GO_TEST_MAKE_BIN="+makeBin,
 			"GO_TEST_LOG="+logPath,
+			"GO_TEST_MAKE_LOG="+makeLogPath,
 		)
 		cmd.Env = append(cmd.Env, extra...)
 		output, err := cmd.CombinedOutput()
@@ -160,7 +180,7 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 		return nil
 	}
 
-	if err := run("2/4"); err != nil {
+	if err := run("2/2"); err != nil {
 		t.Fatalf("ordinary lane: %v", err)
 	}
 	if err := run("certification-1/2"); err != nil {
@@ -176,8 +196,8 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "2/4|-p=2|race 25m example.invalid/race\n" +
-		"2/4|-p=2|plain 25m example.invalid/plain\n" +
+	want := "2/2|-p=4|race 25m example.invalid/race\n" +
+		"2/2|-p=4|plain 25m example.invalid/plain\n" +
 		"certification-1/2|-p=1|race 25m example.invalid/race\n" +
 		"certification-1/2|-p=1|plain 25m example.invalid/plain\n" +
 		"certification-2/2|-p=1|race 25m example.invalid/race\n" +
@@ -187,11 +207,23 @@ func TestGoTestLanePinsBoundedParallelismAndIsolation(t *testing.T) {
 	if got := string(contents); got != want {
 		t.Fatalf("lane runner log =\n%s\nwant\n%s", got, want)
 	}
-	if err := run("2/4", "GOFLAGS=-p=99"); err == nil {
+	makeContents, err := os.ReadFile(makeLogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantMake := "-C " + absoluteRoot + " rust-test-worker eval-contract\n"
+	if got := string(makeContents); got != wantMake {
+		t.Fatalf("shared prerequisite log = %q, want exactly one unsharded invocation %q", got, wantMake)
+	}
+	if err := run("2/2", "GOFLAGS=-p=99"); err == nil {
 		t.Fatal("ordinary lane accepted caller-controlled GOFLAGS")
 	}
-	if err := run("2/6"); err == nil {
-		t.Fatal("ordinary lane accepted retired six-lane identity")
+	if err := run("2/4"); err == nil {
+		t.Fatal("ordinary lane accepted retired four-lane identity")
 	}
 }
 
@@ -234,7 +266,7 @@ example.invalid/cert-two`
 		}
 	}
 
-	run("a 301\nb 300\ncert-one 1\ncert-two 1\n", "modeled aggregate split exceeds")
+	run("a 601\nb 600\ncert-one 1\ncert-two 1\n", "modeled aggregate split exceeds")
 	run("a 550\nb 1\ncert-one 1\ncert-two 1\n", "modeled bounded-worker split exceeds")
 }
 
@@ -316,7 +348,7 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 		minLoad = min(minLoad, load)
 		maxLoad = max(maxLoad, load)
 	}
-	if maxLoad > 600 {
+	if maxLoad > 1200 {
 		t.Fatalf("modeled ordinary shard exceeds aggregate package-work budget: loads=%v", loads)
 	}
 	if maxLoad*100 > minLoad*125 {
@@ -379,7 +411,7 @@ exit "${FAKE_GO_EXIT:-0}"
 	run := func(exitCode string) error {
 		cmd := exec.Command("bash", filepath.Join("scripts", "go-test-packages.sh"), "race", "25m", "example.invalid/fast", "example.invalid/slow")
 		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "GO_BIN="+fakeGo, "GO_TEST_LANE=2/4", "GITHUB_STEP_SUMMARY="+summary, "FAKE_GO_EXIT="+exitCode)
+		cmd.Env = append(os.Environ(), "GO_BIN="+fakeGo, "GO_TEST_LANE=2/2", "GITHUB_STEP_SUMMARY="+summary, "FAKE_GO_EXIT="+exitCode)
 		return cmd.Run()
 	}
 	if err := run("0"); err != nil {
@@ -390,7 +422,7 @@ exit "${FAKE_GO_EXIT:-0}"
 		t.Fatal(err)
 	}
 	text := string(body)
-	for _, want := range []string{"Go race package timings (2/4)", "`example.invalid/slow` | 12.500", "`example.invalid/fast` | 1.250", "Reported package total: 13.750s"} {
+	for _, want := range []string{"Go race package timings (2/2)", "`example.invalid/slow` | 12.500", "`example.invalid/fast` | 1.250", "Reported package total: 13.750s"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("summary missing %q:\n%s", want, text)
 		}

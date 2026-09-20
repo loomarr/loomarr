@@ -30,7 +30,7 @@ DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev
 # covers. Anything that can hold a relative link to a doc belongs here.
 LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs 'design/*.md' .agents .claude
 
-# CI-only lane passthrough for `make test` (1/4..4/4 or certification-1/2..2/2). Empty by default —
+# CI-only lane passthrough for `make test` (1/2, 2/2, or certification-1/2..2/2). Empty by default —
 # see the note on the `test` target. The visual suite's separate environment-only shard input is documented
 # in mk/frontend.mk. Never set this in a local gate run.
 GO_TEST_LANE ?=

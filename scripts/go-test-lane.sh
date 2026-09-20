@@ -9,12 +9,14 @@ lane="${GO_TEST_LANE:-}"
 sharder="${GO_TEST_SHARDER:-$ROOT/scripts/go-shard.sh}"
 race_policy="${GO_TEST_RACE_POLICY:-$ROOT/scripts/go-race-policy.sh}"
 package_runner="${GO_TEST_PACKAGE_RUNNER:-$ROOT/scripts/go-test-packages.sh}"
+make_bin="${GO_TEST_MAKE_BIN:-make}"
 
 case "$lane" in
   "")
     shard_args=()
     lane_flags="${GOFLAGS:-}"
     lane_label="unsharded"
+    "$make_bin" -C "$ROOT" rust-test-worker eval-contract
     ;;
   certification-[12]/2)
     if [[ -n "${GOFLAGS:-}" ]]; then
@@ -25,17 +27,17 @@ case "$lane" in
     lane_flags="-p=1"
     lane_label="$lane"
     ;;
-  [1-4]/4)
+  [1-2]/2)
     if [[ -n "${GOFLAGS:-}" ]]; then
       echo "go-test-lane: lane-scoped GOFLAGS are owned by the runner" >&2
       exit 2
     fi
     shard_args=("$lane")
-    lane_flags="-p=2"
+    lane_flags="-p=4"
     lane_label="$lane"
     ;;
   *)
-    echo "go-test-lane: invalid lane '$lane' (want 1/4..4/4, certification-1/2, certification-2/2, or empty for the full local suite)" >&2
+    echo "go-test-lane: invalid lane '$lane' (want 1/2, 2/2, certification-1/2, certification-2/2, or empty for the full local suite)" >&2
     exit 2
     ;;
 esac

@@ -267,8 +267,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make fe-tokens-verify": exactWorkflowStep(6, "Token artifacts are committed and current", workflowStepAuthority{targets: []string{"fe-tokens-verify"}, condition: "matrix.shard == 1"}),
 		}),
 		"ci-go-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify": exactWorkflowStep(4, "Static analysis and repository contracts", workflowStepAuthority{targets: []string{"fmt", "shellcheck", "privacy-verify", "vet", "tags-verify", "vet-tags", "lint", "agent-harness-test", "compose-verify", "release-verify", "go-race-verify"}}),
-			"make go-shard-verify SHARDS=4": exactWorkflowStep(5, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}}),
+			"make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify eval-contract": exactWorkflowStep(4, "Static analysis and repository contracts", workflowStepAuthority{targets: []string{"fmt", "shellcheck", "privacy-verify", "vet", "tags-verify", "vet-tags", "lint", "agent-harness-test", "compose-verify", "release-verify", "go-race-verify", "eval-contract"}}),
+			"make go-shard-verify SHARDS=2": exactWorkflowStep(5, "The test lanes cover every package", workflowStepAuthority{targets: []string{"go-shard-verify"}}),
 			"make openapi-verify":           exactWorkflowStep(6, "OpenAPI spec is committed and current", workflowStepAuthority{targets: []string{"openapi-verify"}}),
 			"make config-docs-verify":       exactWorkflowStep(7, "Config docs are committed and current", workflowStepAuthority{targets: []string{"config-docs-verify"}}),
 			"make arch-docs-verify":         exactWorkflowStep(8, "The §2 package map is committed and current", workflowStepAuthority{targets: []string{"arch-docs-verify"}}),
