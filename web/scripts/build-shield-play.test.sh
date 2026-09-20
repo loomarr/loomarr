@@ -65,12 +65,12 @@ if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_GRADLE_WORKERS=0 "$build" 1.0.0 >/d
   echo 'build wrapper accepted zero Gradle workers' >&2
   exit 1
 fi
-grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be between 1 and 3' "$temp_dir/gradle-workers-zero.err"
-if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_GRADLE_WORKERS=4 "$build" 1.0.0 >/dev/null 2>"$temp_dir/gradle-workers-four.err"; then
-  echo 'build wrapper accepted more than three Gradle workers' >&2
+grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2' "$temp_dir/gradle-workers-zero.err"
+if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_GRADLE_WORKERS=3 "$build" 1.0.0 >/dev/null 2>"$temp_dir/gradle-workers-three.err"; then
+  echo 'build wrapper accepted more than two Gradle workers' >&2
   exit 1
 fi
-grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be between 1 and 3' "$temp_dir/gradle-workers-four.err"
+grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2' "$temp_dir/gradle-workers-three.err"
 if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_CCACHE_LAUNCHER=relative-ccache "$build" 1.0.0 >/dev/null 2>&1; then
   echo 'build wrapper accepted a relative ccache launcher' >&2
   exit 1

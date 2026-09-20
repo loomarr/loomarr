@@ -428,10 +428,9 @@ while the build wrapper rejects a relative/wrong-version launcher, a foreign bas
 sloppiness setting. Ccache uses compiler-content identity and checkout-relative paths; the key may
 restore prior compiler objects, but it never includes generated `android/` or `.cxx` trees, bundles,
 signing material, or evidence. Version, configuration, pre/post JSON statistics, and generated Ninja
-launcher coverage are retained with the existing Android profile artifact. CI may permit up to three
+launcher coverage are retained with the existing Android profile artifact. CI also permits two
 Gradle projects to execute in parallel while keeping each CMake task's compile/link pool at one;
-local builds retain the one-worker default, and the selected bound requires hosted timing and memory
-evidence. A developer build
+local builds retain the one-worker default, and the wrapper accepts no value above two. A developer build
 automatically acquires the same pinned macOS or Linux tool into `.artifacts/`, reuses its local
 compiler-result directory across later builds in that worktree, and falls back to the unchanged cold
 path when acquisition is unavailable. Set `LOOMARR_ANDROID_CCACHE=off` to request that cold path.
