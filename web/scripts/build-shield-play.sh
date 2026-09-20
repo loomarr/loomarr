@@ -23,8 +23,8 @@ if [[ -z "${ANDROID_HOME:-}" ]]; then
   printf 'ANDROID_HOME must point to the Android SDK\n' >&2
   exit 2
 fi
-if [[ "${GRADLE_WORKERS}" != "1" && "${GRADLE_WORKERS}" != "2" ]]; then
-  printf 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2\n' >&2
+if [[ "${GRADLE_WORKERS}" != "1" && "${GRADLE_WORKERS}" != "2" && "${GRADLE_WORKERS}" != "3" ]]; then
+  printf 'LOOMARR_ANDROID_GRADLE_WORKERS must be between 1 and 3\n' >&2
   exit 2
 fi
 

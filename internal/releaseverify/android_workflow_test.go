@@ -76,7 +76,7 @@ func TestCIAndroidGradleCachePolicy(t *testing.T) {
 		"CCACHE_BASEDIR: ${{ github.workspace }}",
 		"CCACHE_MAXSIZE: 2G",
 		"CCACHE_SLOPPINESS: ",
-		"LOOMARR_ANDROID_GRADLE_WORKERS: \"2\"",
+		"LOOMARR_ANDROID_GRADLE_WORKERS: \"3\"",
 		"path: ${{ runner.temp }}/loomarr-android-ccache",
 		"key: android-tv-ccache-v1-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/tv/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}",
 		"id: gradle-cache",

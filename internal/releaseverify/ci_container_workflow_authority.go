@@ -206,7 +206,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 					"CCACHE_MAXSIZE":                  "2G",
 					"CCACHE_SLOPPINESS":               "",
 					"LOOMARR_ANDROID_CCACHE_LAUNCHER": "${{ steps.ccache.outputs.launcher }}",
-					"LOOMARR_ANDROID_GRADLE_WORKERS":  "2",
+					"LOOMARR_ANDROID_GRADLE_WORKERS":  "3",
 				},
 			}),
 		}),
