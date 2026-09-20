@@ -207,6 +207,22 @@ func optionalCountryCode(v any) error {
 	return nil
 }
 
+func credentialFreeHTTPSEndpoint(v any) error {
+	raw, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("want an HTTPS endpoint")
+	}
+	if raw == "" {
+		return nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
+		parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("want an HTTPS endpoint without credentials, query, or fragment")
+	}
+	return nil
+}
+
 // storagePath validates generation-scoped storage roots without importing their owning modules
 // back into settings. Absolute paths keep one generation anchored to an unambiguous root.
 // Refusing the filesystem root prevents a bad edit from turning a bounded subsystem into a walk
@@ -959,6 +975,54 @@ func declared() []Setting {
 			Key: "filler.storage.library_budget_gb", Label: "Filler storage allowance", EnvVar: "FILLER_STORAGE_LIBRARY_BUDGET_GB", Group: GroupFiller,
 			Kind: KindInt, Default: 0, Validate: nonNegativeWholeNumber,
 			Doc: "How much space Loomarr may use for filler, in GiB. Leave at 0 to choose a safe allowance automatically. Loomarr always keeps a protected amount of free space for the rest of the system.",
+		},
+		{
+			Key: "filler.research.enabled", Label: "Find missing details automatically", EnvVar: "FILLER_RESEARCH_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true,
+			Doc: "Look for a clip's likely time period and location using public sources. This does not affect whether the clip can play.",
+		},
+		{
+			Key: "filler.research.wikidata_enabled", Label: "Wikidata", EnvVar: "FILLER_RESEARCH_WIKIDATA_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
+			Doc: "Search Wikidata for public facts that may help identify a clip's era or location.",
+		},
+		{
+			Key: "filler.research.wikipedia_enabled", Label: "Wikipedia", EnvVar: "FILLER_RESEARCH_WIKIPEDIA_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
+			Doc: "Search Wikipedia for public background that may help identify a clip's era or location.",
+		},
+		{
+			Key: "filler.research.archive_enabled", Label: "Archive.org", EnvVar: "FILLER_RESEARCH_ARCHIVE_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
+			Doc: "Search Archive.org's public catalog for related historical items and metadata.",
+		},
+		{
+			Key: "filler.research.loc_enabled", Label: "Library of Congress", EnvVar: "FILLER_RESEARCH_LOC_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
+			Doc: "Search the Library of Congress public catalog for related historical records.",
+		},
+		{
+			Key: "filler.research.web_provider", Label: "Web search provider", EnvVar: "FILLER_RESEARCH_WEB_PROVIDER", Group: GroupFiller,
+			Kind: KindEnum, Default: "none", Advanced: true,
+			Enum: []EnumOption{opt("none", "Not configured"), opt("brave", "Brave Search"), opt("searxng", "SearXNG (self-hosted)")},
+			Doc:  "Optional last-resort search after trusted public sources cannot identify a clip. Search is automatic and never decides safety, readiness, or scheduling.",
+		},
+		{
+			Key: "filler.research.brave_api_key", Label: "Brave Search API key", EnvVar: "FILLER_RESEARCH_BRAVE_API_KEY", Group: GroupFiller,
+			Kind: KindSecret, Default: "", Advanced: true,
+			ShowWhen: map[string][]string{"filler.research.web_provider": {"brave"}},
+			Doc:      "Installation-wide Brave Search key. Loomarr sends the public clip title and search terms, never the media file. The key is encrypted and never shown again.",
+		},
+		{
+			Key: "filler.research.searxng_url", Label: "SearXNG address", EnvVar: "FILLER_RESEARCH_SEARXNG_URL", Group: GroupFiller,
+			Kind: KindURL, Default: "", Advanced: true, Validate: credentialFreeHTTPSEndpoint,
+			ShowWhen: map[string][]string{"filler.research.web_provider": {"searxng"}},
+			Doc:      "HTTPS address of your SearXNG server. Loomarr requests its bounded JSON search API and does not fetch result pages.",
+		},
+		{
+			Key: "filler.research.monthly_limit", Label: "Monthly web searches", EnvVar: "FILLER_RESEARCH_MONTHLY_LIMIT", Group: GroupFiller,
+			Kind: KindInt, Default: 100, Advanced: true, Validate: positiveWholeNumber,
+			Doc: "Most general-web searches Loomarr may make in one UTC calendar month. Trusted public-source lookups do not count toward this limit.",
 		},
 		{
 			Key: "filler.incoming.ready_window", Label: "Keep ready clips in Incoming", EnvVar: "FILLER_INCOMING_READY_WINDOW", Group: GroupFiller,

@@ -113,6 +113,7 @@ const (
 	OwnerFillerFolders   Owner = "filler.folders"
 	OwnerFillerDownloads Owner = "filler.downloads"
 	OwnerFillerStorage   Owner = "filler.storage"
+	OwnerFillerDetails   Owner = "filler.details"
 	OwnerFillerIncoming  Owner = "filler.incoming"
 	OwnerFillerBreaks    Owner = "filler.breaks"
 	OwnerFillerReview    Owner = "filler.review"

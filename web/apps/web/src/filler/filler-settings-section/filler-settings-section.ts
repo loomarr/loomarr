@@ -21,6 +21,13 @@ const SETTINGS_SECTIONS = [
     group: "everyday",
   },
   {
+    id: "details",
+    label: "Clip details",
+    description: "Choose how Loomarr fills in missing names, dates, and locations.",
+    aliases: ["web search", "Brave Search", "SearXNG", "missing metadata", "research"],
+    group: "everyday",
+  },
+  {
     id: "incoming",
     label: "Incoming history",
     description: "Choose how long ready clips remain visible in Incoming.",

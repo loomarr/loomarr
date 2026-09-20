@@ -9401,6 +9401,49 @@ quiet when no model, network, or useful result exists; evidence detail is progre
 the exact-Clip panel. Commercial discovery adapters remain behind the same interface and require a
 fresh terms/retention review before selection.
 
+**General web search is an optional last resort, not a parallel research task (#1349).** The
+ordinary **Clip details** settings task keeps credential-free structured research on by default and
+offers one **Add web search** action. Brave Search is the recommended hosted provider; an
+operator-supplied SearXNG endpoint is the self-hosted Advanced choice. Provider credentials are
+installation-wide write-only settings, and the normal screen exposes only readiness, the current
+month's request count and the last successful check. Provider replacement, the conservative monthly
+ceiling, connection testing and removal stay under Advanced. Removing web search deletes its stored
+credential but leaves existing cited reports intact; turning context research off suppresses future
+lookups without changing Ready media or accepted metadata.
+
+The plain-language **Where Loomarr looks** disclosure names the four structured sources Loomarr
+searches: Wikidata, Wikipedia, Archive.org, and the Library of Congress. Its resting summary reports
+how many are selected without repeating pipeline status. Each source is enabled by default and may
+be disabled independently; the ordinary view does not expose adapter ordering, versions, or other
+retrieval knobs. The main **Find missing details automatically** switch remains the master control.
+Exact metadata from the Clip's already-selected source is not a search source and cannot be disabled
+here. Disabling all structured sources is valid: configured web search may act as the only lookup,
+while an installation without a web provider performs no external lookup and does not report a
+background failure. An unconfigured installation shows web search as an optional fallback instead
+of claiming that generic "Clip details are ready" status.
+
+The one pipeline driver first uses exact public source metadata, then fixed-host Wikidata,
+Wikipedia, Archive.org, and Library of Congress structured adapters. Library of Congress is the
+initial credential-free public catalog; additional country-specific catalogs require a separately
+reviewed official API contract rather than guessed endpoints or user/model-selected hosts. It
+invokes general web search only when the interpreter still lacks one of the requested
+era/geography answers, and at most once for one Clip input revision. A durable atomic monthly ledger
+and per-revision attempt record reserve each request before dispatch, so concurrent workers cannot
+cross the configured ceiling and a failed provider cannot create a later unattended cost loop;
+the status projection reports the same count and last success/failure. Structured citations retain
+priority, while bounded round-robin merging prevents one peer adapter from consuming the whole
+citation packet and reserves room for fallback snippets when the fallback actually runs. Provider
+failure or exhaustion keeps the structured report, records degraded status, and never fails
+preparation, playback, or admission.
+
+Brave uses only its fixed documented API host. SearXNG configuration accepts one credential-free
+HTTPS endpoint; its JSON search response is bounded and no public instance is selected by Loomarr.
+The first increment stores attributable result titles, public URLs and bounded snippets only: it
+does not fetch result pages. Search content is untrusted data, never model instructions, and the
+model receives citation identifiers rather than browsing or fetch authority. General-web evidence
+may improve only the existing non-authorizing context suggestion; it cannot write verified axes,
+Airworthiness, language, readiness, scheduling or admission facts.
+
 Transcript, frame and context catch-up use that same post-ready coordinator rather than putting a
 Ready Clip back on the readiness conveyor. The `filler-pipeline` driver always advances bounded
 preparation first, then spends the independent enrichment budgets; a remote failure cannot change
@@ -12126,6 +12169,9 @@ Notifications → Add provider**.
 | `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
 | `FILLER_FETCH_MAX_CATALOG_CLIPS` | `2000` (§10 V38b). Auto-fetch stops when the catalog reaches this. ⚠ Manual queueing and approved pulls still work at the limit: a ceiling on what happens UNATTENDED is not a ceiling on what an operator may deliberately do |
 | `FILLER_STORAGE_LIBRARY_BUDGET_GB` | `0` (automatic) (§10, "Storage is reserved before Loomarr writes"). Soft allowance for Loomarr-managed filler media on its real filesystem: automatic means `min(10% of filesystem capacity, 20 GiB)`; a positive value is the operator's allowance. Hot-applies to new reservations. It never weakens the hard host reserve. The upgrade migration moves a verified stored value from the retired fetch-only disk ceiling to `filler.storage.library_budget_gb` and removes that obsolete key; its old env name and runtime path are not retained. |
+| `FILLER_RESEARCH_ENABLED` | `true` (§10 context research). Find missing descriptive clip details from exact public source metadata and credential-free structured sources when a text model is configured. Turning it off stops future context lookups; it does not remove reports or affect playback. |
+| `FILLER_RESEARCH_WEB_PROVIDER` / `FILLER_RESEARCH_BRAVE_API_KEY` / `FILLER_RESEARCH_SEARXNG_URL` | `none` / *(secret)* / empty (§10 #1349). Optional last-resort search after structured evidence cannot supply the requested context. Provider is `none`, `brave`, or `searxng`; Brave uses the fixed API host and SearXNG uses the operator's HTTPS endpoint. Secrets are masked and replace-only. |
+| `FILLER_RESEARCH_MONTHLY_LIMIT` | `100` (§10 #1349). Maximum general-web search requests reserved in one UTC calendar month. Structured sources do not consume it; connection tests and pipeline fallbacks do. The server enforces the limit atomically before dispatch. |
 | `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
 
 **Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (AGENTS.md do-nots). Full mechanics: `config-design.md`.

@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -93,6 +94,7 @@ type Server struct {
 	shutdown        <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
 	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
 	fillerScreening FillerScreeningService
+	fillerResearch  FillerResearchService
 	fillerDecisions *fillerdecision.Service // durable V63 admission audit and projections
 	pods            PodPreviewer            // /v1/channels/{id}/pods (§12); nil ⇒ 501
 	taxonomy        TaxonomyEditor          // taxonomy impact + graph convergence; nil keeps store-only test wiring
@@ -464,6 +466,14 @@ type FillerService interface {
 	// copy cuts seek rather than decode, so this is seconds, not the detection's
 	// minutes. filler.ErrSplitValidation ⇒ 422; a missing proposal ⇒ ErrNotFound.
 	ConfirmSplit(ctx context.Context, proposalID string, segments []filler.SplitSegment) error
+}
+
+// FillerResearchService owns the operator-facing status and pre-save provider check for optional
+// clip-detail research. Search results remain internal pipeline evidence; this seam intentionally
+// exposes no query or per-clip command.
+type FillerResearchService interface {
+	Status(context.Context) (fillerresearch.WebStatus, error)
+	Test(context.Context, fillerresearch.WebConfig) (fillerresearch.WebStatus, bool, string, error)
 }
 
 // TaxonomyEditor is the deep graph-edit module used by taxonomy writes. The store still owns the
@@ -1024,6 +1034,7 @@ type Options struct {
 	Shutdown        <-chan struct{}         // generation lifetime; closes SSE so http.Server.Shutdown can drain
 	Filler          FillerService           // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
 	FillerScreening FillerScreeningService  // exact browser-safe rendered-child screening projection
+	FillerResearch  FillerResearchService   // optional structured-first web-search status and validation
 	FillerDecisions *fillerdecision.Service // /v1/filler/decisions* (§10 V63)
 	Pods            PodPreviewer            // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
 	Taxonomy        TaxonomyEditor          // taxonomy impact + committed channel convergence

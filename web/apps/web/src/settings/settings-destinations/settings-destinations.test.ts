@@ -21,6 +21,7 @@ const PUBLIC_SETTING_OWNERS = [
   "filler.folders",
   "filler.downloads",
   "filler.storage",
+  "filler.details",
   "filler.incoming",
   "filler.breaks",
   "filler.review",
@@ -48,7 +49,7 @@ describe("settings destination catalog", () => {
     );
     for (const item of SETTINGS_DESTINATIONS) {
       const path = item.path.match(
-        /^\/filler\/settings\/(folders|downloads|storage|incoming|breaks|review|playback|limits|tools)$/,
+        /^\/filler\/settings\/(folders|downloads|storage|details|incoming|breaks|review|playback|limits|tools)$/,
       )
         ? "/filler/settings/$section"
         : item.path;

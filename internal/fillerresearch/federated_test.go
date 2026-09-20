@@ -51,6 +51,12 @@ func TestFederatedMergesDeduplicatesCapsAndKeepsStableIdentity(t *testing.T) {
 			t.Fatalf("citation ids = %+v", got.Citations)
 		}
 	}
+	wantURLs := []string{wikiURLs[0], archiveURLs[0], archiveURLs[1], wikiURLs[2], archiveURLs[2]}
+	for i, want := range wantURLs {
+		if got.Citations[i].URL != want {
+			t.Fatalf("round-robin citation %d = %q, want %q", i, got.Citations[i].URL, want)
+		}
+	}
 }
 
 func TestFederatedContinuesAfterOneAdapterFails(t *testing.T) {
@@ -75,5 +81,28 @@ func TestFederatedRequiresTwoIdentifiedAdapters(t *testing.T) {
 	}
 	if _, err := NewFederated(scriptedRetriever{}); err == nil {
 		t.Fatal("unidentified adapter accepted")
+	}
+}
+
+func TestFederatedIdentityTracksLiveSourceSelection(t *testing.T) {
+	enabled := true
+	one, err := NewSwitchable(scriptedRetriever{adapter: "one", version: "v1"}, func() bool { return enabled })
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := NewSwitchable(scriptedRetriever{adapter: "two", version: "v2"}, func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	federated, err := NewFederated(one, two)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, before := federated.Identity()
+	enabled = false
+	_, after := federated.Identity()
+	if before != "federated-v1:one:switchable-v1:v1:on+two:switchable-v1:v2:on" ||
+		after != "federated-v1:one:switchable-v1:v1:off+two:switchable-v1:v2:on" {
+		t.Fatalf("versions before=%q after=%q", before, after)
 	}
 }

@@ -3,6 +3,7 @@ package fillerresearch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,10 +15,30 @@ const PromptVersion = "filler-context-v2"
 
 type Researcher struct {
 	retriever Retriever
+	fallback  Retriever
 	provider  llm.Provider
 	producer  string
 	version   string
 	now       func() time.Time
+}
+
+func (r *Researcher) WithFallback(fallback Retriever) *Researcher {
+	if r != nil {
+		r.fallback = fallback
+	}
+	return r
+}
+
+func (r *Researcher) Identity() (string, string) {
+	if r == nil || r.retriever == nil {
+		return "context-stack", "context-stack-v1:unavailable"
+	}
+	primary, primaryVersion := r.retriever.Identity()
+	if r.fallback == nil {
+		return primary, primaryVersion
+	}
+	fallback, fallbackVersion := r.fallback.Identity()
+	return "context-stack", "context-stack-v1:" + primary + ":" + primaryVersion + "+" + fallback + ":" + fallbackVersion
 }
 
 func New(retriever Retriever, provider llm.Provider, providerName, model string, now func() time.Time) *Researcher {
@@ -42,12 +63,81 @@ func (r *Researcher) Research(ctx context.Context, input Input) (Report, error) 
 	if input.KnownEra > 0 && strings.TrimSpace(input.KnownCountry) != "" {
 		return Report{}, fmt.Errorf("%w: the requested context is already verified", ErrInvalid)
 	}
-	lookup := Lookup{Title: input.Title, Description: input.Description}
-	packet, err := r.retriever.Retrieve(ctx, lookup)
-	if err != nil {
-		return Report{}, err
+	lookup := Lookup{Title: input.Title, Description: input.Description,
+		ClipHash: input.ClipHash, InputRevision: input.InputRevision}
+	packet, primaryErr := r.retriever.Retrieve(ctx, lookup)
+	if primaryErr != nil && r.fallback == nil {
+		return Report{}, primaryErr
 	}
-	packet = withSourceCitation(packet, input)
+	var report Report
+	if primaryErr == nil {
+		var err error
+		report, err = r.interpret(ctx, input, withSourceCitation(r.identified(packet), input))
+		if err != nil {
+			return Report{}, err
+		}
+		if !needsFallback(input, report.Suggestion) || r.fallback == nil {
+			return report, nil
+		}
+	}
+
+	fallback, fallbackErr := r.fallback.Retrieve(ctx, lookup)
+	if fallbackErr != nil {
+		if primaryErr == nil {
+			return report, nil
+		}
+		return Report{}, errors.Join(primaryErr, fallbackErr)
+	}
+	if primaryErr == nil {
+		packet = mergeFallbackPacket(packet, fallback)
+	} else {
+		packet = fallback
+	}
+	combined, err := r.interpret(ctx, input, withSourceCitation(r.identified(packet), input))
+	if err != nil && primaryErr == nil {
+		return report, nil
+	}
+	return combined, err
+}
+
+func (r *Researcher) identified(packet Packet) Packet {
+	packet.Adapter, packet.AdapterVersion = r.Identity()
+	return packet
+}
+
+func needsFallback(input Input, suggestion Suggestion) bool {
+	return (input.KnownEra == 0 && suggestion.Year == 0 && suggestion.Decade == 0) ||
+		(strings.TrimSpace(input.KnownCountry) == "" && strings.TrimSpace(suggestion.CountryCode) == "" &&
+			strings.TrimSpace(suggestion.Country) == "")
+}
+
+func mergeFallbackPacket(primary, fallback Packet) Packet {
+	merged := Packet{Query: primary.Query, Adapter: primary.Adapter, AdapterVersion: primary.AdapterVersion,
+		RetrievedAt: primary.RetrievedAt}
+	if fallback.RetrievedAt.After(merged.RetrievedAt) {
+		merged.RetrievedAt = fallback.RetrievedAt
+	}
+	seen := make(map[string]bool, MaxCitations)
+	appendCitation := func(citation Citation) {
+		key := strings.ToLower(strings.TrimSpace(citation.URL))
+		if key == "" || seen[key] || len(merged.Citations) == MaxCitations {
+			return
+		}
+		seen[key] = true
+		citation.ID = len(merged.Citations) + 1
+		merged.Citations = append(merged.Citations, citation)
+	}
+	// Leave two slots for the fallback and one for the exact source citation added afterward.
+	for _, citation := range primary.Citations[:min(2, len(primary.Citations))] {
+		appendCitation(citation)
+	}
+	for _, citation := range fallback.Citations[:min(2, len(fallback.Citations))] {
+		appendCitation(citation)
+	}
+	return merged
+}
+
+func (r *Researcher) interpret(ctx context.Context, input Input, packet Packet) (Report, error) {
 	if err := packet.Validate(); err != nil {
 		return Report{}, err
 	}

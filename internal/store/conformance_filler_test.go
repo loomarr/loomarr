@@ -4409,6 +4409,55 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+func testFillerResearchWebUsage(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	month := "2026-09"
+	at := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	usage, err := s.FillerResearchWebUsage(ctx, month)
+	if err != nil || usage.Month != month || usage.RequestCount != 0 {
+		t.Fatalf("empty usage = %+v, err %v", usage, err)
+	}
+	usage, err = s.ReserveFillerResearchWebRequest(ctx, month, fillerresearch.WebProviderBrave, 2, fillerresearch.WebAttempt{})
+	if err != nil || usage.RequestCount != 1 || usage.LastProvider != fillerresearch.WebProviderBrave {
+		t.Fatalf("first reservation = %+v, err %v", usage, err)
+	}
+	if err := s.CompleteFillerResearchWebRequest(ctx, month, true, at); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReserveFillerResearchWebRequest(ctx, month, fillerresearch.WebProviderSearXNG, 2, fillerresearch.WebAttempt{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReserveFillerResearchWebRequest(ctx, month, fillerresearch.WebProviderBrave, 2, fillerresearch.WebAttempt{}); !errors.Is(err, fillerresearch.ErrWebSearchLimit) {
+		t.Fatalf("third reservation error = %v, want limit", err)
+	}
+	usage, err = s.FillerResearchWebUsage(ctx, month)
+	if err != nil || usage.RequestCount != 2 || usage.LastSuccessAt != at || usage.LastProvider != fillerresearch.WebProviderSearXNG {
+		t.Fatalf("bounded usage = %+v, err %v", usage, err)
+	}
+	next, err := s.FillerResearchWebUsage(ctx, "2026-10")
+	if err != nil || next.RequestCount != 0 || next.Month != "2026-10" {
+		t.Fatalf("next month usage = %+v, err %v", next, err)
+	}
+	clip := sampleClip("web-attempt", "Web attempt", filler.Commercial, 0, "", "")
+	if err := s.UpsertClip(ctx, clip); err != nil {
+		t.Fatal(err)
+	}
+	attempt := fillerresearch.WebAttempt{ClipHash: clip.Hash, InputRevision: 2,
+		AdapterVersion: "web-v1:brave", ReservedAt: at}
+	if _, err := s.ReserveFillerResearchWebRequest(ctx, "2026-10", fillerresearch.WebProviderBrave, 2, attempt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReserveFillerResearchWebRequest(ctx, "2026-10", fillerresearch.WebProviderBrave, 2, attempt); !errors.Is(err, fillerresearch.ErrWebSearchAttempted) {
+		t.Fatalf("duplicate attempt error = %v, want already attempted", err)
+	}
+	next, err = s.FillerResearchWebUsage(ctx, "2026-10")
+	if err != nil || next.RequestCount != 1 {
+		t.Fatalf("deduplicated usage = %+v, err %v", next, err)
+	}
+}
+
 // testIncomingConveyorCount keeps the bounded Incoming total on the same readiness rule as the
 // list it describes. A split detection checkpoint is private pipeline state, so its composite
 // remains on the conveyor; only a completed proposal claims that composite into the reels list.

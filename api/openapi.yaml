@@ -3760,6 +3760,106 @@ components:
         - acquisitions
         - repairs
       type: object
+    FillerResearchStatusDTO:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerResearchStatusDTO.json
+          format: uri
+          readOnly: true
+          type: string
+        configured:
+          type: boolean
+        lastFailureAt:
+          description: RFC3339
+          type: string
+        lastSuccessAt:
+          description: RFC3339
+          type: string
+        month:
+          description: UTC usage month in YYYY-MM form
+          type: string
+        provider:
+          enum:
+            - none
+            - brave
+            - searxng
+          type: string
+        requestCount:
+          format: int64
+          minimum: 0
+          type: integer
+        requestLimit:
+          format: int64
+          minimum: 1
+          type: integer
+        state:
+          enum:
+            - "off"
+            - unconfigured
+            - ready
+            - degraded
+            - limit_reached
+          type: string
+        structuredEnabled:
+          description: Whether Loomarr checks credential-free trusted public sources for missing clip details
+          type: boolean
+      required:
+        - structuredEnabled
+        - provider
+        - configured
+        - state
+        - month
+        - requestCount
+        - requestLimit
+      type: object
+    FillerResearchTestInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerResearchTestInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        apiKey:
+          description: Brave Search API key used for this validation only; never returned
+          type: string
+        endpoint:
+          description: Credential-free SearXNG HTTPS endpoint used for this validation only
+          type: string
+        provider:
+          enum:
+            - brave
+            - searxng
+          type: string
+      required:
+        - provider
+      type: object
+    FillerResearchTestOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/FillerResearchTestOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        message:
+          type: string
+        ok:
+          type: boolean
+        status:
+          $ref: "#/components/schemas/FillerResearchStatusDTO"
+      required:
+        - ok
+        - message
+        - status
+      type: object
     FillerScreeningAxisDTO:
       additionalProperties: false
       properties:
@@ -13604,6 +13704,52 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Filler readiness and next action
+      tags:
+        - filler
+  /v1/filler/research/status:
+    get:
+      description: Admin only. Reports trusted-source and optional web-search availability and bounded monthly usage. Provider secrets are never returned.
+      operationId: filler-research-status
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerResearchStatusDTO"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Clip-detail research status
+      tags:
+        - filler
+  /v1/filler/research/test:
+    post:
+      description: Admin only. Validates proposed Brave Search or SearXNG details before they are saved. The check consumes one bounded monthly request and never returns the credential.
+      operationId: filler-research-test
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FillerResearchTestInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillerResearchTestOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Test a clip-detail web-search provider
       tags:
         - filler
   /v1/filler/retry:

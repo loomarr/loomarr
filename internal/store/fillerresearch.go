@@ -6,11 +6,117 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 )
 
 var ErrFillerResearchStale = errors.New("filler context inputs changed during research")
+
+func (s *sqlStore) ReserveFillerResearchWebRequest(ctx context.Context, month string,
+	provider fillerresearch.WebProvider, limit int, attempt fillerresearch.WebAttempt) (fillerresearch.WebUsage, error) {
+	if len(month) != 7 || limit < 1 || (provider != fillerresearch.WebProviderBrave && provider != fillerresearch.WebProviderSearXNG) {
+		return fillerresearch.WebUsage{}, fillerresearch.ErrInvalid
+	}
+	if (strings.TrimSpace(attempt.ClipHash) != "" || attempt.InputRevision != 0 ||
+		strings.TrimSpace(attempt.AdapterVersion) != "" || !attempt.ReservedAt.IsZero()) && !attempt.Tracked() {
+		return fillerresearch.WebUsage{}, fillerresearch.ErrInvalid
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fillerresearch.WebUsage{}, fmt.Errorf("reserve filler web search: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if attempt.Tracked() {
+		result, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_research_web_attempts
+			(clip_hash, input_revision, adapter_version, provider, reserved_at)
+			VALUES (?, ?, ?, ?, ?) ON CONFLICT(clip_hash, input_revision, adapter_version) DO NOTHING`),
+			attempt.ClipHash, attempt.InputRevision, attempt.AdapterVersion, string(provider), epoch(attempt.ReservedAt))
+		if err != nil {
+			return fillerresearch.WebUsage{}, fmt.Errorf("reserve filler web search attempt: %w", err)
+		}
+		inserted, err := result.RowsAffected()
+		if err != nil {
+			return fillerresearch.WebUsage{}, fmt.Errorf("reserve filler web search attempt: affected rows: %w", err)
+		}
+		if inserted != 1 {
+			return fillerresearch.WebUsage{}, fillerresearch.ErrWebSearchAttempted
+		}
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_research_web_usage
+		(month, request_count, last_provider, last_success_at, last_failure_at)
+		VALUES (?, 0, '', 0, 0) ON CONFLICT(month) DO NOTHING`), month); err != nil {
+		return fillerresearch.WebUsage{}, fmt.Errorf("reserve filler web search: initialize: %w", err)
+	}
+	result, err := tx.ExecContext(ctx, s.ph(`UPDATE filler_research_web_usage
+		SET request_count = request_count + 1, last_provider = ?
+		WHERE month = ? AND request_count < ?`), string(provider), month, limit)
+	if err != nil {
+		return fillerresearch.WebUsage{}, fmt.Errorf("reserve filler web search: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fillerresearch.WebUsage{}, fmt.Errorf("reserve filler web search: affected rows: %w", err)
+	}
+	if updated != 1 {
+		return fillerresearch.WebUsage{}, fillerresearch.ErrWebSearchLimit
+	}
+	usage, err := scanFillerResearchWebUsage(tx.QueryRowContext(ctx, s.ph(`SELECT month, request_count,
+		last_provider, last_success_at, last_failure_at FROM filler_research_web_usage WHERE month = ?`), month))
+	if err != nil {
+		return fillerresearch.WebUsage{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return fillerresearch.WebUsage{}, fmt.Errorf("reserve filler web search: commit: %w", err)
+	}
+	return usage, nil
+}
+
+func (s *sqlStore) CompleteFillerResearchWebRequest(ctx context.Context, month string, success bool, at time.Time) error {
+	column := "last_failure_at"
+	if success {
+		column = "last_success_at"
+	}
+	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE filler_research_web_usage SET `+column+` = ? WHERE month = ?`), epoch(at), month)
+	if err != nil {
+		return fmt.Errorf("complete filler web search: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("complete filler web search: affected rows: %w", err)
+	}
+	if updated != 1 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *sqlStore) FillerResearchWebUsage(ctx context.Context, month string) (fillerresearch.WebUsage, error) {
+	usage, err := scanFillerResearchWebUsage(s.db.QueryRowContext(ctx, s.ph(`SELECT month, request_count,
+		last_provider, last_success_at, last_failure_at FROM filler_research_web_usage WHERE month = ?`), month))
+	if errors.Is(err, sql.ErrNoRows) {
+		return fillerresearch.WebUsage{Month: month}, nil
+	}
+	return usage, err
+}
+
+type fillerResearchRowScanner interface{ Scan(...any) error }
+
+func scanFillerResearchWebUsage(row fillerResearchRowScanner) (fillerresearch.WebUsage, error) {
+	var (
+		usage                 fillerresearch.WebUsage
+		provider              string
+		lastSuccess, lastFail int64
+	)
+	if err := row.Scan(&usage.Month, &usage.RequestCount, &provider, &lastSuccess, &lastFail); err != nil {
+		return fillerresearch.WebUsage{}, err
+	}
+	usage.LastProvider = fillerresearch.WebProvider(provider)
+	usage.LastSuccessAt = fromEpoch(lastSuccess)
+	usage.LastFailureAt = fromEpoch(lastFail)
+	return usage, nil
+}
 
 func (s *sqlStore) ListFillerResearchCandidates(ctx context.Context, producer, producerVersion,
 	adapter, adapterVersion string, limit int) ([]fillerresearch.Candidate, error) {

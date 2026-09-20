@@ -74,6 +74,16 @@ interface MockBackend {
     fillerSourcePolicy: { mode: "defaults" | "custom" | "never"; everySeconds: number; maxPerCheck: number };
     fillerSourceItems: Array<{ sourceId: string; remoteId: string; url: string }>;
     fillerAcquisitionStatus: "queued" | "running" | "success" | "error";
+    fillerResearchTests: Array<Record<string, unknown>>;
+    fillerResearchStatus: {
+      provider: "none" | "brave" | "searxng";
+      configured: boolean;
+      state: "unconfigured" | "ready" | "degraded" | "limit_reached";
+      requestCount: number;
+      requestLimit: number;
+      lastSuccessAt?: string;
+      lastFailureAt?: string;
+    };
   };
 }
 
@@ -112,6 +122,14 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     },
     fillerSourceItems: [] as Array<{ sourceId: string; remoteId: string; url: string }>,
     fillerAcquisitionStatus: "queued" as "queued" | "running" | "success" | "error",
+    fillerResearchTests: [] as Array<Record<string, unknown>>,
+    fillerResearchStatus: {
+      provider: "none" as "none" | "brave" | "searxng",
+      configured: false,
+      state: "unconfigured" as "unconfigured" | "ready" | "degraded" | "limit_reached",
+      requestCount: 0,
+      requestLimit: 100,
+    },
     proposals: (opts.pendingProposal ? [{ id: "prop-1", status: "submitted" }] : []) as Array<{
       id: string;
       status: string;
@@ -950,9 +968,44 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
 
     // --- settings (the wizard's terminal act writes setup.completed here) ---------
     if (path === "/v1/settings" && method === "PATCH") {
-      Object.assign(state.edits, (body().edits as Record<string, string>) ?? {});
+      const edits = (body().edits as Record<string, string>) ?? {};
+      Object.assign(state.edits, edits);
+      if (edits["filler.research.monthly_limit"]) {
+        state.fillerResearchStatus.requestLimit = Number(edits["filler.research.monthly_limit"]);
+      }
+      if (edits["filler.research.web_provider"]) {
+        const provider = edits["filler.research.web_provider"] as "none" | "brave" | "searxng";
+        state.fillerResearchStatus.provider = provider;
+        state.fillerResearchStatus.configured = provider !== "none";
+        state.fillerResearchStatus.state = provider === "none" ? "unconfigured" : "ready";
+      }
       const results = Object.keys(state.edits).map((key) => ({ key, status: "saved" }));
       return json(route, { results });
+    }
+    if (path === "/v1/filler/research/status" && method === "GET") {
+      return json(route, {
+        structuredEnabled: state.edits["filler.research.enabled"] !== "false",
+        month: "2026-09",
+        ...state.fillerResearchStatus,
+      });
+    }
+    if (path === "/v1/filler/research/test" && method === "POST") {
+      const request = body();
+      state.fillerResearchTests.push(request);
+      state.fillerResearchStatus.requestCount += 1;
+      state.fillerResearchStatus.lastSuccessAt = "2026-09-20T12:00:00Z";
+      return json(route, {
+        ok: true,
+        message: "Web search is ready.",
+        status: {
+          structuredEnabled: true,
+          month: "2026-09",
+          ...state.fillerResearchStatus,
+          provider: request.provider,
+          configured: true,
+          state: "ready",
+        },
+      });
     }
     if (path === "/v1/locations" && method === "GET") {
       const query = (url.searchParams.get("q") ?? "").toLowerCase();
@@ -1143,6 +1196,67 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   set: true,
                   provenance: "db" as const,
                   value: "0",
+                },
+                {
+                  key: "filler.research.enabled",
+                  label: "Find missing details automatically",
+                  group: "filler",
+                  owner: "filler.details",
+                  kind: "bool",
+                  presentation: "switch",
+                  doc: "Look for a clip's likely time period and location using public sources.",
+                  advanced: false,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: state.edits["filler.research.enabled"] ?? "true",
+                },
+                ...(
+                  [
+                    ["filler.research.wikidata_enabled", "Wikidata"],
+                    ["filler.research.wikipedia_enabled", "Wikipedia"],
+                    ["filler.research.archive_enabled", "Archive.org"],
+                    ["filler.research.loc_enabled", "Library of Congress"],
+                  ] as const
+                ).map(([key, label]) => ({
+                  key,
+                  label,
+                  group: "filler",
+                  owner: "filler.details",
+                  kind: "bool",
+                  presentation: "switch",
+                  doc: `Search ${label}.`,
+                  advanced: true,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: state.edits[key] ?? "true",
+                })),
+                {
+                  key: "filler.research.monthly_limit",
+                  label: "Monthly web searches",
+                  group: "filler",
+                  owner: "filler.details",
+                  kind: "int",
+                  doc: "The most general-web searches Loomarr may make each month.",
+                  advanced: true,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: state.edits["filler.research.monthly_limit"] ?? "100",
+                },
+                {
+                  key: "filler.research.searxng_url",
+                  label: "SearXNG address",
+                  group: "filler",
+                  owner: "filler.details",
+                  kind: "url",
+                  doc: "The address of a self-hosted SearXNG server.",
+                  advanced: true,
+                  secret: false,
+                  set: Boolean(state.edits["filler.research.searxng_url"]),
+                  provenance: "db" as const,
+                  value: state.edits["filler.research.searxng_url"] ?? "",
                 },
               ]
             : []),

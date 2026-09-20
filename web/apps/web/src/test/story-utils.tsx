@@ -83,14 +83,21 @@ const RouterHarness = ({ content, initialPath = "/guide" }: { content: ReactNode
   // tree. Context re-renders the slot, which is the whole point of the harness.
   const router = useMemo(() => {
     const rootRoute = createRootRoute();
-    const routes = NAV_PATHS.map((path) =>
+    // A registered navigation root may have literal child paths in the real route tree
+    // (for example `/filler/settings/details`). Register the exact initial path as well so
+    // the harness exercises that component instead of silently falling through to TanStack's
+    // Not Found screen. The allowlist check above still prevents arbitrary paths.
+    const routePaths = NAV_PATHS.includes(base as (typeof NAV_PATHS)[number])
+      ? NAV_PATHS
+      : [...NAV_PATHS, base];
+    const routes = routePaths.map((path) =>
       createRoute({ getParentRoute: () => rootRoute, path, component: ContentSlot }),
     );
     return createRouter({
       routeTree: rootRoute.addChildren(routes),
       history: createMemoryHistory({ initialEntries: [initialPath] }),
     });
-  }, [initialPath]);
+  }, [initialPath, base]);
   return (
     <ContentContext.Provider value={content}>
       <RouterProvider router={router} />

@@ -2,6 +2,9 @@ package fillerresearch
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -13,13 +16,29 @@ type fixtureRetriever struct {
 	packet Packet
 	lookup Lookup
 	calls  int
+	err    error
+}
+
+type sequenceProvider struct {
+	responses []string
+	calls     int
+}
+
+func (*sequenceProvider) Name() string { return "fixture" }
+func (p *sequenceProvider) Chat(context.Context, []llm.Message, llm.ChatOptions) (llm.Response, error) {
+	if p.calls >= len(p.responses) {
+		return llm.Response{}, errors.New("unexpected model call")
+	}
+	response := p.responses[p.calls]
+	p.calls++
+	return llm.Response{Content: response}, nil
 }
 
 func (r *fixtureRetriever) Identity() (string, string) { return "fixture", "fixture-v1" }
 func (r *fixtureRetriever) Retrieve(_ context.Context, lookup Lookup) (Packet, error) {
 	r.calls++
 	r.lookup = lookup
-	return r.packet, nil
+	return r.packet, r.err
 }
 
 type fixtureProvider struct {
@@ -128,5 +147,81 @@ func TestReportRejectsUncitedClaims(t *testing.T) {
 		CompletedAt: time.Now(), Packet: researchPacket(), Suggestion: Suggestion{Decade: 1970, Confidence: 60}}
 	if err := report.Validate(); err == nil || !strings.Contains(err.Error(), "requires a citation") {
 		t.Fatalf("uncited claim error = %v", err)
+	}
+}
+
+func TestResearchUsesWebFallbackOnlyAfterStructuredEvidenceAbstains(t *testing.T) {
+	primary := &fixtureRetriever{packet: researchPacket()}
+	fallbackPacket := Packet{Query: "Tootsie Pop", Adapter: "web", AdapterVersion: "web-v1", RetrievedAt: time.Unix(150, 0).UTC(),
+		Citations: []Citation{{ID: 1, Title: "Campaign history", URL: "https://example.com/history", Extract: "The campaign started in the United States in 1970."}}}
+	fallback := &fixtureRetriever{packet: fallbackPacket}
+	provider := &sequenceProvider{responses: []string{
+		`{"confidence":0,"explanation":"Not enough structured evidence.","citationIds":[]}`,
+		`{"decade":1970,"countryCode":"US","country":"United States","confidence":60,"explanation":"Likely campaign context.","citationIds":[2]}`,
+	}}
+	report, err := New(primary, provider, "fixture", "model", time.Now).WithFallback(fallback).Research(t.Context(), Input{
+		ClipHash: "hash", Title: "Tootsie Pop", InputRevision: 1, SourceKind: "archive", SourceID: "archive:classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if primary.calls != 1 || fallback.calls != 1 || provider.calls != 2 || report.Suggestion.Decade != 1970 || len(report.Packet.Citations) != 2 {
+		t.Fatalf("primary=%d fallback=%d model=%d report=%+v", primary.calls, fallback.calls, provider.calls, report)
+	}
+}
+
+func TestResearchSkipsFallbackWhenStructuredEvidenceAnswersAndPreservesItOnFallbackFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		first       string
+		fallbackErr error
+		wantCalls   int
+	}{
+		{name: "answered", first: `{"decade":1970,"countryCode":"US","country":"United States","confidence":60,"explanation":"Likely.","citationIds":[1]}`, wantCalls: 0},
+		{name: "fallback unavailable", first: `{"confidence":0,"explanation":"Unknown.","citationIds":[]}`, fallbackErr: errors.New("offline"), wantCalls: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fallback := &fixtureRetriever{err: tc.fallbackErr}
+			provider := &sequenceProvider{responses: []string{tc.first}}
+			report, err := New(&fixtureRetriever{packet: researchPacket()}, provider, "fixture", "model", time.Now).
+				WithFallback(fallback).Research(t.Context(), Input{ClipHash: "hash", Title: "Tootsie Pop", InputRevision: 1,
+				SourceKind: "archive", SourceID: "archive:classic"})
+			if err != nil || fallback.calls != tc.wantCalls || provider.calls != 1 {
+				t.Fatalf("report=%+v err=%v fallback=%d model=%d", report, err, fallback.calls, provider.calls)
+			}
+		})
+	}
+}
+
+func TestResearchLiveFixtureInvokesWebOnceOnlyAfterStructuredAbstention(t *testing.T) {
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":[{"title":"Campaign archive","url":"https://example.org/campaign","content":"The campaign ran in the United States during the 1970s."}]}`))
+	}))
+	defer server.Close()
+	ledger := &memoryWebLedger{}
+	web := NewWeb(func() WebConfig {
+		return WebConfig{Provider: WebProviderSearXNG, SearXNGURL: server.URL, MonthlyLimit: 5}
+	}, ledger, WebOptions{Client: server.Client(), Now: func() time.Time { return time.Unix(500, 0).UTC() }})
+	primary := &fixtureRetriever{packet: researchPacket()}
+	provider := &sequenceProvider{responses: []string{
+		`{"confidence":0,"explanation":"The structured source does not establish the requested details.","citationIds":[]}`,
+		`{"decade":1970,"countryCode":"US","country":"United States","confidence":60,"explanation":"Likely campaign context.","citationIds":[2]}`,
+	}}
+
+	report, err := New(primary, provider, "fixture", "model", time.Now).WithFallback(web).Research(t.Context(), Input{
+		ClipHash: "hash", Title: "Hard-to-identify advert", InputRevision: 1,
+		SourceKind: "archive", SourceID: "archive:hard",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if primary.calls != 1 || provider.calls != 2 || requests != 1 || ledger.usage.RequestCount != 1 {
+		t.Fatalf("primary=%d model=%d web=%d usage=%+v", primary.calls, provider.calls, requests, ledger.usage)
+	}
+	if report.Suggestion.Decade != 1970 || report.Suggestion.CountryCode != "US" {
+		t.Fatalf("suggestion = %+v", report.Suggestion)
 	}
 }

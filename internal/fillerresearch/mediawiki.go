@@ -60,7 +60,7 @@ func NewMediaWiki(config MediaWikiConfig) (*MediaWiki, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &MediaWiki{client: client, endpoint: endpoint, userAgent: userAgent, now: now}, nil
+	return &MediaWiki{client: sameOriginClient(client, endpoint), endpoint: endpoint, userAgent: userAgent, now: now}, nil
 }
 
 type mediaWikiResponse struct {
