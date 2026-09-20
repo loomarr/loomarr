@@ -37,6 +37,8 @@ for needle in \
   'CCACHE_COMPILERCHECK=content' \
   'CCACHE_MAXSIZE' \
   'CCACHE_SLOPPINESS' \
+  'LOOMARR_ANDROID_GRADLE_WORKERS' \
+  '--parallel' \
   'must be an absolute path' \
   '--zero-stats' \
   '--print-stats --format=json' \
@@ -49,6 +51,16 @@ done
 # The build source must retain this literal optional-environment guard.
 # shellcheck disable=SC2016
 grep -Fq 'if [[ -n "${LOOMARR_ANDROID_CCACHE_LAUNCHER:-}" ]]' "$build"
+if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_GRADLE_WORKERS=0 "$build" 1.0.0 >/dev/null 2>"$temp_dir/gradle-workers-zero.err"; then
+  echo 'build wrapper accepted zero Gradle workers' >&2
+  exit 1
+fi
+grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2' "$temp_dir/gradle-workers-zero.err"
+if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_GRADLE_WORKERS=3 "$build" 1.0.0 >/dev/null 2>"$temp_dir/gradle-workers-three.err"; then
+  echo 'build wrapper accepted more than two Gradle workers' >&2
+  exit 1
+fi
+grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2' "$temp_dir/gradle-workers-three.err"
 if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_CCACHE_LAUNCHER=relative-ccache "$build" 1.0.0 >/dev/null 2>&1; then
   echo 'build wrapper accepted a relative ccache launcher' >&2
   exit 1

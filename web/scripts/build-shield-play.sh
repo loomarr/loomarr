@@ -11,7 +11,7 @@ readonly APP_DIR="${WEB_ROOT}/apps/tv"
 readonly OUTPUT_DIR="${ANDROID_RELEASE_OUTPUT_DIR:-${REPO_ROOT}/.artifacts/android-release}"
 readonly GRADLE_HEAP="${LOOMARR_ANDROID_GRADLE_HEAP:-1280m}"
 readonly ARCHITECTURES="armeabi-v7a,arm64-v8a,x86,x86_64"
-readonly GRADLE_WORKERS=1
+readonly GRADLE_WORKERS="${LOOMARR_ANDROID_GRADLE_WORKERS:-1}"
 readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
 readonly CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-2G}"
 
@@ -21,6 +21,10 @@ if [[ -z "${VERSION_NAME}" ]]; then
 fi
 if [[ -z "${ANDROID_HOME:-}" ]]; then
   printf 'ANDROID_HOME must point to the Android SDK\n' >&2
+  exit 2
+fi
+if [[ "${GRADLE_WORKERS}" != "1" && "${GRADLE_WORKERS}" != "2" ]]; then
+  printf 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2\n' >&2
   exit 2
 fi
 
@@ -105,6 +109,9 @@ gradle_args=(
   -Pkotlin.compiler.execution.strategy=in-process
   "-PreactNativeArchitectures=${ARCHITECTURES}"
 )
+if ((GRADLE_WORKERS > 1)); then
+  gradle_args+=(--parallel)
+fi
 if [[ -n "${ANDROID_BUILD_PROFILE_DIR:-}" ]]; then
   mkdir -p "${ANDROID_BUILD_PROFILE_DIR}"
   gradle_args+=(--profile)
