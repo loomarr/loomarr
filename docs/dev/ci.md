@@ -585,7 +585,7 @@ database. Routing those helpers through the existing isolated migrated fixture r
 package profile to 4.19s (94.4%). Tests that exercise startup, migration, downgrade, historical data,
 or restart behavior must continue to open and migrate fresh databases.
 
-The suggestion worker tests use that same isolated migrated-store fixture and start a due-work drain
+The Proposal Job worker tests use that same isolated migrated-store fixture and start a due-work drain
 before entering their two-second recurring poll. Profiling also found theme scoring recalculating the
 same series-title scope for every item and qualifier; preparing it once per score preserves every
 2,000-iteration property assertion. On 2026-09-20, the one-time preparation reduced the complete
