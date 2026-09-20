@@ -3618,8 +3618,9 @@ It never uses an externally uploaded build scan or adds diagnostic files to the 
 artifact. Local builds default to one native worker and one Gradle worker. CI runs at most two
 Gradle projects in parallel while retaining one native compiler/link slot inside each task; the
 wrapper rejects any Gradle worker count other than one or two. The bounded hosted experiment cut
-the fresh-source build from 30m56s to 19m13s with zero OOM event deltas, all four ABIs, and the same
-verified artifact. Release continues to promote the already verified producer artifact.
+fresh-source builds from the 30m56s one-worker cold control to 19m13s and 16m15s with zero OOM event
+deltas, all four ABIs, and the same verified artifact. A measured three-worker candidate regressed to
+19m07s and is rejected. Release continues to promote the already verified producer artifact.
 
 The producer may additionally use the §14-pinned ccache executable through the generated Expo/CMake
 plugin. CI requires an absolute verified launcher, content-based compiler identity, a checkout-relative
