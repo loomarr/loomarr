@@ -34,7 +34,7 @@ func run(args []string, stdout, stderr io.Writer, now func() time.Time) int {
 		return exitError
 	}
 	if *root == "" || *manifestPath == "" || *outPath == "" {
-		fmt.Fprintln(stderr, "filler-release-readiness: -root, -manifest, and -out are required")
+		_, _ = fmt.Fprintln(stderr, "filler-release-readiness: -root, -manifest, and -out are required")
 		return exitError
 	}
 
@@ -42,40 +42,40 @@ func run(args []string, stdout, stderr io.Writer, now func() time.Time) int {
 	if *generatedAtText != "" {
 		parsed, err := time.Parse(time.RFC3339, *generatedAtText)
 		if err != nil {
-			fmt.Fprintf(stderr, "filler-release-readiness: parse -generated-at: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "filler-release-readiness: parse -generated-at: %v\n", err)
 			return exitError
 		}
 		generatedAt = parsed.UTC()
 	}
 	manifestBytes, err := os.ReadFile(*manifestPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "filler-release-readiness: read manifest: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "filler-release-readiness: read manifest: %v\n", err)
 		return exitError
 	}
 
 	var evidenceFS fs.FS
 	evidenceRoot, rootErr := os.OpenRoot(*root)
 	if rootErr == nil {
-		defer evidenceRoot.Close()
+		defer func() { _ = evidenceRoot.Close() }()
 		evidenceFS = evidenceRoot.FS()
 	}
 
 	report := fillerrelease.Evaluate(evidenceFS, manifestBytes, generatedAt)
 	encoded, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
-		fmt.Fprintf(stderr, "filler-release-readiness: encode report: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "filler-release-readiness: encode report: %v\n", err)
 		return exitError
 	}
 	encoded = append(encoded, '\n')
 	if err := os.WriteFile(*outPath, encoded, 0o644); err != nil {
-		fmt.Fprintf(stderr, "filler-release-readiness: write report: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "filler-release-readiness: write report: %v\n", err)
 		return exitError
 	}
 
 	if report.Verdict == fillerrelease.VerdictHold {
-		fmt.Fprintf(stdout, "HOLD: %d release-readiness reason(s); report: %s\n", len(report.Holds), *outPath)
+		_, _ = fmt.Fprintf(stdout, "HOLD: %d release-readiness reason(s); report: %s\n", len(report.Holds), *outPath)
 		return exitHold
 	}
-	fmt.Fprintf(stdout, "GO: filler release evidence is complete; report: %s\n", *outPath)
+	_, _ = fmt.Fprintf(stdout, "GO: filler release evidence is complete; report: %s\n", *outPath)
 	return exitGo
 }

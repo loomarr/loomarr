@@ -504,7 +504,7 @@ func (e *evaluation) validateArtifact(item artifact, subject string) bool {
 		e.addHold("artifact_missing", subject)
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		e.addHold("artifact_unreadable", subject)
