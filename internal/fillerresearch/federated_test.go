@@ -83,3 +83,26 @@ func TestFederatedRequiresTwoIdentifiedAdapters(t *testing.T) {
 		t.Fatal("unidentified adapter accepted")
 	}
 }
+
+func TestFederatedIdentityTracksLiveSourceSelection(t *testing.T) {
+	enabled := true
+	one, err := NewSwitchable(scriptedRetriever{adapter: "one", version: "v1"}, func() bool { return enabled })
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := NewSwitchable(scriptedRetriever{adapter: "two", version: "v2"}, func() bool { return true })
+	if err != nil {
+		t.Fatal(err)
+	}
+	federated, err := NewFederated(one, two)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, before := federated.Identity()
+	enabled = false
+	_, after := federated.Identity()
+	if before != "federated-v1:one:switchable-v1:v1:on+two:switchable-v1:v2:on" ||
+		after != "federated-v1:one:switchable-v1:v1:off+two:switchable-v1:v2:on" {
+		t.Fatalf("versions before=%q after=%q", before, after)
+	}
+}

@@ -21,6 +21,13 @@ interface ClipDetailsSettingsProps {
 
 const providerLabel = (provider: string) => (provider === "searxng" ? "SearXNG" : "Brave Search");
 
+const structuredSourceKeys = [
+  "filler.research.wikidata_enabled",
+  "filler.research.wikipedia_enabled",
+  "filler.research.archive_enabled",
+  "filler.research.loc_enabled",
+] as const;
+
 const lastChecked = (value?: string): string | undefined => {
   if (!value) return undefined;
   const date = new Date(value);
@@ -41,6 +48,9 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
   const [message, setMessage] = useState<string>();
 
   const monthly = entries.find((entry) => entry.key === "filler.research.monthly_limit");
+  const structuredSources = structuredSourceKeys
+    .map((key) => entries.find((entry) => entry.key === key))
+    .filter((entry): entry is SettingEntry => entry !== undefined);
   const enabled = liveValue("filler.research.enabled") === "true";
   const configured = status?.configured === true;
   const currentProvider = status?.provider === "searxng" ? "searxng" : "brave";
@@ -193,31 +203,74 @@ const ClipDetailsSettings = ({ entries, liveValue, setEdit }: ClipDetailsSetting
         >
           Add web search
         </Button>
-      ) : (
-        <details className="rounded-lg border border-border p-4">
-          <summary className="cursor-pointer font-medium text-sm">Advanced</summary>
-          <div className="mt-5 space-y-5">
-            {monthly ? (
-              <SettingField
-                entry={monthly}
-                value={liveValue(monthly.key)}
-                onChange={(value) => setEdit(monthly.key, value)}
-              />
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => void runCurrentTest()} disabled={busy}>
-                {testProvider.isPending ? "Checking…" : "Test connection"}
-              </Button>
-              <Button type="button" variant="outline" onClick={openSetup} disabled={busy}>
-                Replace provider
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => void remove()} disabled={busy}>
-                Remove web search
-              </Button>
+      ) : null}
+
+      <details className="rounded-lg border border-border p-4">
+        <summary className="cursor-pointer font-medium text-sm">Advanced</summary>
+        <div className="mt-5 space-y-6">
+          <section className="space-y-3" aria-labelledby="clip-detail-sources-heading">
+            <div>
+              <h3 id="clip-detail-sources-heading" className="font-medium text-sm">
+                Sources to check
+              </h3>
+              <p className="mt-1 text-muted-foreground text-xs">
+                Loomarr checks these public sources before optional web search.
+              </p>
             </div>
-          </div>
-        </details>
-      )}
+            <div className="divide-y divide-border rounded-lg border border-border">
+              {structuredSources.map((entry) => {
+                const labelID = `clip-detail-source-${entry.key.replaceAll(".", "-")}`;
+                return (
+                  <div
+                    key={entry.key}
+                    className="flex min-h-12 items-center justify-between gap-4 px-3 py-2.5"
+                  >
+                    <span id={labelID} className="font-medium text-sm">
+                      {entry.label}
+                    </span>
+                    <SettingField
+                      compact
+                      labelledBy={labelID}
+                      entry={entry}
+                      value={liveValue(entry.key)}
+                      onChange={(value) => setEdit(entry.key, value)}
+                      disabledReason={!enabled ? "Turn on Find missing clip details first." : undefined}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            {!enabled ? (
+              <p className="text-muted-foreground text-xs">
+                Turn on Find missing clip details to use these sources.
+              </p>
+            ) : null}
+          </section>
+
+          {configured ? (
+            <section className="space-y-5 border-border border-t pt-5" aria-label="Web search controls">
+              {monthly ? (
+                <SettingField
+                  entry={monthly}
+                  value={liveValue(monthly.key)}
+                  onChange={(value) => setEdit(monthly.key, value)}
+                />
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={() => void runCurrentTest()} disabled={busy}>
+                  {testProvider.isPending ? "Checking…" : "Test connection"}
+                </Button>
+                <Button type="button" variant="outline" onClick={openSetup} disabled={busy}>
+                  Replace provider
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => void remove()} disabled={busy}>
+                  Remove web search
+                </Button>
+              </div>
+            </section>
+          ) : null}
+        </div>
+      </details>
 
       {message ? (
         <p aria-live="polite" className={success ? "text-lock text-sm" : "text-caution-foreground text-sm"}>

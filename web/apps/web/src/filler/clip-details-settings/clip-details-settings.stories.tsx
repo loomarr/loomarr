@@ -6,6 +6,28 @@ import { widthFrame } from "@/test/story-utils";
 import { ClipDetailsSettings } from "./clip-details-settings";
 
 const entries: SettingEntry[] = [
+  ...(
+    [
+      ["filler.research.wikidata_enabled", "Wikidata"],
+      ["filler.research.wikipedia_enabled", "Wikipedia"],
+      ["filler.research.archive_enabled", "Archive.org"],
+      ["filler.research.loc_enabled", "Library of Congress"],
+    ] as const
+  ).map(([key, label]) => ({
+    key,
+    label,
+    value: "true",
+    kind: "bool" as const,
+    presentation: "switch" as const,
+    group: "filler",
+    owner: "filler.details",
+    advanced: true,
+    doc: `Search ${label}.`,
+    provenance: "default" as const,
+    apply: "live" as const,
+    secret: false,
+    set: true,
+  })),
   {
     key: "filler.research.monthly_limit",
     label: "Monthly web searches",
@@ -67,7 +89,8 @@ const meta = {
   component: ClipDetailsSettings,
   args: {
     entries,
-    liveValue: (key: string) => (key === "filler.research.enabled" ? "true" : "100"),
+    liveValue: (key: string) =>
+      key === "filler.research.enabled" || key.endsWith("_enabled") ? "true" : "100",
     setEdit: () => {},
   },
   decorators: [widthFrame(720)],

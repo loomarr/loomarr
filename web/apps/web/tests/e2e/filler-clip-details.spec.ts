@@ -16,6 +16,7 @@ test("clip-detail search stays simple through setup, status, advanced controls, 
   await expect(page.getByText("Clip details are ready")).toBeVisible();
   await expect(page.getByText(/Web search is used only when they cannot identify a clip/)).toBeVisible();
   await expect(page.getByText("Monthly web searches")).not.toBeVisible();
+  await expect(page.getByText("Wikidata")).not.toBeVisible();
   await expectNoHorizontalOverflow(page);
 
   await page.getByRole("button", { name: "Add web search" }).click();
@@ -31,6 +32,13 @@ test("clip-detail search stays simple through setup, status, advanced controls, 
     .toEqual([{ provider: "brave", apiKey: "browser-secret" }]);
   expect(backend.state.edits["filler.research.brave_api_key"]).toBe("browser-secret");
   await page.getByText("Advanced", { exact: true }).click();
+  await expect(page.getByRole("switch", { name: "Wikidata" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Wikipedia" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Archive.org" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Library of Congress" })).toBeChecked();
+  await page.getByRole("switch", { name: "Archive.org" }).click();
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect.poll(() => backend.state.edits["filler.research.archive_enabled"]).toBe("false");
   await expect(page.getByRole("spinbutton", { name: "Monthly web searches" })).toHaveValue("100");
   await page.getByRole("button", { name: "Test connection" }).click();
   await expect.poll(() => backend.state.fillerResearchTests.at(-1)).toEqual({ provider: "brave" });

@@ -192,8 +192,19 @@ func buildFillerSubsystem(
 		loc, locErr := fillerresearch.NewLOC(fillerresearch.LOCConfig{
 			Client: structuredClient, UserAgent: researchUserAgent,
 		})
-		retriever, retrievalErr := fillerresearch.NewFederated(wikidata, wiki, archive, loc)
-		if err := errors.Join(wikiErr, wikidataErr, archiveErr, locErr, retrievalErr); err != nil {
+		wikidataSource, wikidataSwitchErr := fillerresearch.NewSwitchable(wikidata,
+			func() bool { return set.boolOn("filler.research.wikidata_enabled") })
+		wikipediaSource, wikipediaSwitchErr := fillerresearch.NewSwitchable(wiki,
+			func() bool { return set.boolOn("filler.research.wikipedia_enabled") })
+		archiveSource, archiveSwitchErr := fillerresearch.NewSwitchable(archive,
+			func() bool { return set.boolOn("filler.research.archive_enabled") })
+		locSource, locSwitchErr := fillerresearch.NewSwitchable(loc,
+			func() bool { return set.boolOn("filler.research.loc_enabled") })
+		retriever, retrievalErr := fillerresearch.NewFederated(
+			wikidataSource, wikipediaSource, archiveSource, locSource,
+		)
+		if err := errors.Join(wikiErr, wikidataErr, archiveErr, locErr, wikidataSwitchErr,
+			wikipediaSwitchErr, archiveSwitchErr, locSwitchErr, retrievalErr); err != nil {
 			log.Warn("could not construct filler context retrieval", "err", err)
 		} else {
 			web := fillerresearch.NewWeb(func() fillerresearch.WebConfig {
@@ -212,10 +223,12 @@ func buildFillerSubsystem(
 			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
 				fillerResearchSignals{files: layout.FS()}.Load,
 				func() int {
-					if !set.boolOn("filler.research.enabled") {
-						return 0
-					}
-					return min(1, set.intv("filler.pipeline.max_clips"))
+					structuredEnabled := set.boolOn("filler.research.wikidata_enabled") ||
+						set.boolOn("filler.research.wikipedia_enabled") ||
+						set.boolOn("filler.research.archive_enabled") ||
+						set.boolOn("filler.research.loc_enabled")
+					return fillerResearchRunLimit(set.boolOn("filler.research.enabled"), structuredEnabled,
+						set.str("filler.research.web_provider"), set.intv("filler.pipeline.max_clips"))
 				})
 		}
 	}
@@ -263,4 +276,12 @@ func buildFillerSubsystem(
 	log.Info("filler auto-fetch registered", "every", set.dur("filler.fetch.every"),
 		"max_per_run", set.intv("filler.fetch.max_per_run"))
 	return result
+}
+
+func fillerResearchRunLimit(enabled, structuredEnabled bool, webProvider string, pipelineLimit int) int {
+	provider := strings.TrimSpace(webProvider)
+	if !enabled || (!structuredEnabled && (provider == "" || provider == string(fillerresearch.WebProviderNone))) {
+		return 0
+	}
+	return min(1, pipelineLimit)
 }

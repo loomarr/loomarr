@@ -982,6 +982,26 @@ func declared() []Setting {
 			Doc: "Look up likely era and location when a public source did not provide them. Loomarr checks trusted public sources first; this never changes whether a clip is safe or ready to play.",
 		},
 		{
+			Key: "filler.research.wikidata_enabled", Label: "Wikidata", EnvVar: "FILLER_RESEARCH_WIKIDATA_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
+			Doc: "Search Wikidata for public facts that may help identify a clip's era or location.",
+		},
+		{
+			Key: "filler.research.wikipedia_enabled", Label: "Wikipedia", EnvVar: "FILLER_RESEARCH_WIKIPEDIA_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
+			Doc: "Search Wikipedia for public background that may help identify a clip's era or location.",
+		},
+		{
+			Key: "filler.research.archive_enabled", Label: "Archive.org", EnvVar: "FILLER_RESEARCH_ARCHIVE_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
+			Doc: "Search Archive.org's public catalog for related historical items and metadata.",
+		},
+		{
+			Key: "filler.research.loc_enabled", Label: "Library of Congress", EnvVar: "FILLER_RESEARCH_LOC_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Presentation: PresentationSwitch, Default: true, Advanced: true,
+			Doc: "Search the Library of Congress public catalog for related historical records.",
+		},
+		{
 			Key: "filler.research.web_provider", Label: "Web search provider", EnvVar: "FILLER_RESEARCH_WEB_PROVIDER", Group: GroupFiller,
 			Kind: KindEnum, Default: "none", Advanced: true,
 			Enum: []EnumOption{opt("none", "Not configured"), opt("brave", "Brave Search"), opt("searxng", "SearXNG (self-hosted)")},

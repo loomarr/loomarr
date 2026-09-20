@@ -1210,6 +1210,27 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   provenance: "db" as const,
                   value: state.edits["filler.research.enabled"] ?? "true",
                 },
+                ...(
+                  [
+                    ["filler.research.wikidata_enabled", "Wikidata"],
+                    ["filler.research.wikipedia_enabled", "Wikipedia"],
+                    ["filler.research.archive_enabled", "Archive.org"],
+                    ["filler.research.loc_enabled", "Library of Congress"],
+                  ] as const
+                ).map(([key, label]) => ({
+                  key,
+                  label,
+                  group: "filler",
+                  owner: "filler.details",
+                  kind: "bool",
+                  presentation: "switch",
+                  doc: `Search ${label}.`,
+                  advanced: true,
+                  secret: false,
+                  set: true,
+                  provenance: "db" as const,
+                  value: state.edits[key] ?? "true",
+                })),
                 {
                   key: "filler.research.monthly_limit",
                   label: "Monthly web searches",

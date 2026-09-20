@@ -12,6 +12,26 @@ import { server } from "@/test/msw/server";
 import { ClipDetailsSettings } from "./clip-details-settings";
 
 const entries = [
+  ...(
+    [
+      ["filler.research.wikidata_enabled", "Wikidata"],
+      ["filler.research.wikipedia_enabled", "Wikipedia"],
+      ["filler.research.archive_enabled", "Archive.org"],
+      ["filler.research.loc_enabled", "Library of Congress"],
+    ] as const
+  ).map(([key, label]) =>
+    setting({
+      key,
+      label,
+      value: "true",
+      kind: "bool",
+      presentation: "switch",
+      group: "filler",
+      owner: "filler.details",
+      advanced: true,
+      doc: `Search ${label}.`,
+    }),
+  ),
   setting({
     key: "filler.research.monthly_limit",
     label: "Monthly web searches",
@@ -33,13 +53,15 @@ const entries = [
   }),
 ];
 
-const renderPanel = (values: Record<string, string> = {}) =>
+const renderPanel = (values: Record<string, string> = {}, setEdit = vi.fn()) =>
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <ClipDetailsSettings
         entries={entries}
-        liveValue={(key) => values[key] ?? (key === "filler.research.enabled" ? "true" : "")}
-        setEdit={vi.fn()}
+        liveValue={(key) =>
+          values[key] ?? (key === "filler.research.enabled" || key.endsWith("_enabled") ? "true" : "")
+        }
+        setEdit={setEdit}
       />
     </QueryClientProvider>,
   );
@@ -85,6 +107,13 @@ describe("ClipDetailsSettings", () => {
     expect(await screen.findByText("Clip details are ready")).toBeInTheDocument();
     expect(screen.getByText(/Web search is used only when they cannot identify a clip/)).toBeInTheDocument();
     expect(screen.queryByText("Monthly web searches")).not.toBeInTheDocument();
+    expect(screen.getByText("Wikidata")).not.toBeVisible();
+
+    await userEvent.click(screen.getByText("Advanced"));
+    expect(screen.getByRole("switch", { name: "Wikidata" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Wikipedia" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Archive.org" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "Library of Congress" })).toBeChecked();
 
     await userEvent.click(screen.getByRole("button", { name: "Add web search" }));
     const sheet = await screen.findByRole("dialog");
@@ -104,6 +133,27 @@ describe("ClipDetailsSettings", () => {
       },
     ]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("stages an independently disabled structured source", async () => {
+    const setEdit = vi.fn();
+    server.use(
+      getFillerResearchStatusMockHandler({
+        structuredEnabled: true,
+        provider: "none",
+        configured: false,
+        state: "unconfigured",
+        month: "2026-09",
+        requestCount: 0,
+        requestLimit: 100,
+      }),
+    );
+    renderPanel({}, setEdit);
+
+    await userEvent.click(await screen.findByText("Advanced"));
+    await userEvent.click(screen.getByRole("switch", { name: "Archive.org" }));
+
+    expect(setEdit).toHaveBeenCalledWith("filler.research.archive_enabled", "false");
   });
 
   it("shows usage and keeps provider controls under Advanced when configured", async () => {

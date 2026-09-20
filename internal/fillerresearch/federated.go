@@ -13,7 +13,6 @@ const FederatedAdapterVersion = "federated-v1"
 // keeps provider fan-out, partial-failure behavior, URL de-duplication and packet ceilings local.
 type Federated struct {
 	retrievers []Retriever
-	version    string
 }
 
 func NewFederated(retrievers ...Retriever) (*Federated, error) {
@@ -26,22 +25,25 @@ func NewFederated(retrievers ...Retriever) (*Federated, error) {
 	if len(filtered) < 2 {
 		return nil, fmt.Errorf("%w: federated retrieval requires at least two adapters", ErrInvalid)
 	}
-	versions := make([]string, 0, len(filtered))
 	for _, retriever := range filtered {
 		adapter, version := retriever.Identity()
 		if strings.TrimSpace(adapter) == "" || strings.TrimSpace(version) == "" {
 			return nil, fmt.Errorf("%w: retrieval adapter identity is required", ErrInvalid)
 		}
-		versions = append(versions, adapter+":"+version)
 	}
-	return &Federated{retrievers: filtered, version: FederatedAdapterVersion + ":" + strings.Join(versions, "+")}, nil
+	return &Federated{retrievers: filtered}, nil
 }
 
 func (f *Federated) Identity() (string, string) {
 	if f == nil {
 		return "federated", FederatedAdapterVersion
 	}
-	return "federated", f.version
+	versions := make([]string, 0, len(f.retrievers))
+	for _, retriever := range f.retrievers {
+		adapter, version := retriever.Identity()
+		versions = append(versions, adapter+":"+version)
+	}
+	return "federated", FederatedAdapterVersion + ":" + strings.Join(versions, "+")
 }
 
 func (f *Federated) Retrieve(ctx context.Context, lookup Lookup) (Packet, error) {
@@ -51,8 +53,8 @@ func (f *Federated) Retrieve(ctx context.Context, lookup Lookup) (Packet, error)
 	if err := lookup.Validate(); err != nil {
 		return Packet{}, err
 	}
-	packet := Packet{Query: lookup.CanonicalTitle(), Adapter: "federated",
-		AdapterVersion: FederatedAdapterVersion}
+	_, version := f.Identity()
+	packet := Packet{Query: lookup.CanonicalTitle(), Adapter: "federated", AdapterVersion: version}
 	var failures []error
 	packets := make([]Packet, 0, len(f.retrievers))
 	for _, retriever := range f.retrievers {
@@ -104,7 +106,6 @@ func (f *Federated) Retrieve(ctx context.Context, lookup Lookup) (Packet, error)
 		return Packet{}, fmt.Errorf("retrieve filler context evidence: %w", errors.Join(failures...))
 	}
 	packet.Citations = boundCitations(packet.Citations)
-	packet.AdapterVersion = f.version
 	if err := packet.Validate(); err != nil {
 		return Packet{}, err
 	}

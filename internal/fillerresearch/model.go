@@ -23,7 +23,10 @@ const (
 	MaxExplanationLen = 600
 )
 
-var ErrInvalid = errors.New("invalid filler context research")
+var (
+	ErrInvalid           = errors.New("invalid filler context research")
+	ErrRetrieverDisabled = errors.New("filler context source is disabled")
+)
 
 // Input contains only metadata already published by a registered remote source. Callers must not
 // put a local filename, private library title, transcript, or household data in this envelope.
