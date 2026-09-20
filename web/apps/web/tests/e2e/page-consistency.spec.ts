@@ -220,3 +220,25 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
   );
   expect(fillerRequests).not.toContain("/v1/filler/attention");
 });
+
+test("Filler keeps member navigation on member-readable routes", async ({ page }) => {
+  await installMockBackend(page, { authed: true, role: "member", fillerEnabled: true });
+  const privateReads: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === "/v1/filler/incoming" || path === "/v1/settings") privateReads.push(path);
+  });
+
+  await page.goto("/filler/incoming");
+  await expect(page).toHaveURL(/\/filler\/library$/);
+  const sections = page.getByRole("navigation", { name: "Filler sections" });
+  await expect(sections.locator('a[aria-current="page"]')).toHaveCount(1);
+  await expect(sections.getByRole("link", { name: /^Library/ })).toHaveAttribute("aria-current", "page");
+  await expect(sections.getByRole("link", { name: "Incoming" })).toHaveCount(0);
+  await expect(sections.getByRole("link", { name: "Sources" })).toHaveCount(0);
+
+  await page.goto("/filler/settings/details");
+  await expect(page).toHaveURL(/\/filler\/manage$/);
+  await expect(page.getByRole("heading", { level: 2, name: "Settings and tools" })).toBeVisible();
+  expect(privateReads).toEqual([]);
+});

@@ -1,4 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { meQueryOptions } from "@/auth/me-query";
 import { FillerPage } from "@/filler/filler-page";
 
 // Incoming — what has arrived but isn't filed yet. Its own path (V-nav-paths), same as
@@ -8,6 +9,14 @@ import { FillerPage } from "@/filler/filler-page";
 // old `catalogSearch` carve-out in filler-page recorded).
 const IncomingScreen = () => <FillerPage tab="incoming" />;
 
-const Route = createFileRoute("/_authed/filler/incoming")({ component: IncomingScreen });
+const Route = createFileRoute("/_authed/filler/incoming")({
+  beforeLoad: async ({ context }) => {
+    const me = await context.queryClient.ensureQueryData(meQueryOptions());
+    if (me.status !== 200 || me.data.role !== "admin") {
+      throw redirect({ to: "/filler/library" });
+    }
+  },
+  component: IncomingScreen,
+});
 
 export { Route };
