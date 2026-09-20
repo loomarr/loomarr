@@ -136,7 +136,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `httpx` | 13 | `metrics` |
 | `invitation` | 6 | `contact` |
 | `library` | 10 | `filler`, `httpx`, `metrics` |
-| `llm` | 7 | `httpx`, `metrics` |
+| `llm` | 8 | `httpx`, `metrics` |
 | `mediatools` | 11 | `diagnostics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
@@ -260,7 +260,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillerbakeoff`** · 9 importers · → `filleradmission`, `fillereval`, `httpx`, `openroutermedia`
   Runs bounded, inference-spending filler admission comparisons.
-- **`llm`** · 7 importers · → `httpx`, `metrics`
+- **`llm`** · 8 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
@@ -275,6 +275,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillerenrichment`** · 3 importers · → `llm`, `taxonomy`
   Owns progressive descriptive understanding for filler clips.
+- **`fillerresearch`** · 3 importers · → `llm`
+  Owns bounded external context lookup for publicly sourced filler.
 - **`mediatools`** · 11 importers · → `diagnostics`, `playout`, `proctree`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
@@ -331,7 +333,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`library`** · 10 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 14 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 **Layer 9**
@@ -409,12 +411,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 14**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 15**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -4605,6 +4607,33 @@ all fail toward doing less:
 | `filler.fetch.max_per_run` | `10` | Items one source may pull per poll — a collection of thousands trickles in rather than arriving at once |
 | `filler.fetch.max_catalog_clips` | `2000` | A **ceiling on the whole catalog**. At the limit, auto-fetch stops; manual queueing and approved pulls still work |
 | `filler.storage.library_budget_gb` | `0` (automatic) | A soft allowance for Loomarr-managed filler media. Automatic is `min(10% of filesystem capacity, 20 GiB)`; a positive value overrides that allowance but never the hard host reserve below |
+
+These user-facing limits compose with two internal provider protections. One fetch pass may
+queue at most **50 items from any one provider**, even when many enabled Sources for that provider
+are due. The limit is deliberately not another setting: it keeps one upstream service and one
+background pass bounded while the per-Source control remains the useful household choice. Sources
+left due by this aggregate limit are considered by the next scheduler pass; a provider cannot turn
+the limit into starvation by repeatedly restarting from its newest items.
+
+YouTube enumeration is newest-first and checkpointed. A newly registered Source examines at most
+the newest **100 entries** before yielding, and each successful check durably records both the last
+stable item identity it examined and the newest identity observed at the start of that sweep. A
+later check finds that item in the bounded listing and resumes after it; entries inserted above it
+are re-observed and removed by exact identity deduplication rather than making a numeric offset
+ambiguous. When it reaches the prior newest-item watermark, provider
+exhaustion, or the 100-entry lookback, it commits the new watermark and clears the in-progress
+cursor for the next refresh. A missing cursor safely restarts the bounded sweep and relies on durable
+provider/source/item deduplication rather than guessing where to continue. A failed listing or queue
+operation does not advance the checkpoint.
+
+Automatic YouTube acquisition rejects entries before download when their duration is unknown,
+shorter than `filler.min_duration`, longer than `filler.autosplit.max_duration`, or when yt-dlp
+identifies them as live, upcoming, private, unavailable, or otherwise too incomplete to fetch.
+Archive.org keeps its existing metadata-tolerant behavior because its bounded collection listing
+does not reliably expose the same fields. Successful Source checks persist a closed summary of
+queued, already-known, too-short, too-long, live, upcoming, private, unavailable, and incomplete
+outcomes. The ordinary UI may explain those counts in plain language; extractor logs, cursor
+coordinates, and provider implementation details remain diagnostics rather than controls.
 
 Incoming shows Ready clips only as recent activity. `filler.incoming.ready_window` defaults to
 `24h`, hot-applies on the next Incoming read, and accepts one hour through 30 days inclusive. It
@@ -8998,9 +9027,10 @@ Filler → Manage presents the global policy as **Automatic downloads**. The com
 Never, Every 6 hours, Every 12 hours, Daily, Weekly, and Custom; Custom reveals the duration editor.
 The per-source count is visible beside it rather than hidden as an expert-only limit. The section
 states the bounded consequence using the current number of enabled, configured remote Sources — for
-example, “3 sources means at most 30 new clips per check.” Catalog/storage protection remains under
-Advanced and is explained as a household-wide backstop. Environment-pinned values stay visibly
-locked through the ordinary settings contract.
+example, “3 sources means at most 30 new clips per check,” while never promising more than the
+internal 50-item provider-pass ceiling. Catalog/storage protection remains under Advanced and is
+explained as a household-wide backstop. Environment-pinned values stay visibly locked through the
+ordinary settings contract.
 
 ### What the Sources tab shows (V38c — the mock, read properly)
 
@@ -9033,6 +9063,10 @@ is inherited or overridden, and one closed readiness state (`ready`, `off`, `nee
 `not_configured`, or `out_of_area`); counts and available actions use that server-owned state rather
 than browser inference. Candidate-level geography remains a separate hard acquisition constraint,
 and an inherited source value does not turn missing or conflicting candidate evidence into a match.
+The same separation continues after admission: Installation geography and inherited effective source
+coverage are not Clip evidence and are never copied into a Clip's location. Only explicit item evidence,
+an explicit registered-source coverage override, or an operator correction may populate Clip geography;
+the catalog leaves Location absent when none of those facts exists.
 
 **A config disclosure per row** (V38c), on the same shelf as the search and URL expanders the mock
 already draws. It shows the source's target **read-only** and makes its *behaviour* editable —
@@ -9204,10 +9238,13 @@ V51b replaces the seven sweeps with **one ordered per-clip pipeline** and one dr
 vision → score`. Each stage answers two questions separately — *does this stage apply to this Clip,
 in this install?* (no exec, re-evaluated while the Clip is on the conveyor) and *do the work*.
 Missing optional capability records a skipped rung and does not block Ready. A later capability
-change enriches already-Ready Clips through the separate progressive-enrichment path; it never
-rewinds readiness or holds playable media (#1251).
+change enriches already-Ready Clips through the post-ready progressive-enrichment phase; it never
+rewinds readiness or holds playable media (#1251). Preparation and post-ready enrichment share the
+one `filler-pipeline` driver and task row, but retain different authority: preparation may establish
+Ready, while enrichment may only improve descriptive facts and suggestions.
 
-**Progressive enrichment is a separate, per-axis loop (#1251).** Readiness answers whether exact
+**Progressive enrichment is a separate-authority, per-axis loop inside the one pipeline driver
+(#1251).** Readiness answers whether exact
 bytes may play; enrichment incrementally improves their descriptive matching metadata. The axes are
 kind, era, brand, target audience, geography, language, and the controlled taxonomy dimensions product,
 format, seasonal, audience cue, and presentation. A missing descriptive answer never holds,
@@ -9257,8 +9294,35 @@ the same identity does not pay for another call. An absent provider does not que
 create a visible problem. Operator evidence, including an intentional empty correction, is never
 reopened by automation.
 
-Transcript and frame catch-up use that same coordinator rather than putting a Ready Clip back on
-the readiness conveyor. Each enabled capability has its own provider/model/prompt identity and the
+**Context research is a suggestion path, not another evidence rank.** When a publicly acquired
+Clip still lacks verified era or geography after the ordinary passes, Loomarr may use its public
+item title and description to build a deterministic bounded search plan. One retrieval module fans
+that plan out to documented fixed-host knowledge adapters, merges partial successes, de-duplicates
+URLs, and caps the final evidence packet. The default adapters search English Wikipedia for
+campaign/background context and Archive.org's metadata index for related historical items; exact
+public source metadata may also contribute an attributable citation without another fetch. Each
+adapter owns its query syntax, host validation, response limits, version and provider etiquette.
+A configured text model may interpret only the merged packet; it receives no general web tool,
+returns no fetch targets, and cannot introduce a citation Loomarr did not retrieve. Local paths,
+private-library metadata, transcripts, and household data never become public lookup queries.
+Arbitrary pages and consumer search interfaces are not fetched. YouTube-wide search is not a
+default dependency because its official API requires a separately configured Google project/key;
+the acquisition sidecar remains the exact YouTube-item evidence available without that credential.
+
+A context report persists separately from accepted axes and records the Clip/input revision,
+retrieval adapter/version, interpreting provider/model/prompt, completion time, confidence,
+explanation, and exact titled citation URLs. Campaign-level context may render as, for example,
+`Likely 1970s · United States`; it never writes verified `era` or geography, affects scheduling,
+or changes readiness, Placement, Airworthiness, or admission. Exact item/content evidence and
+operator corrections suppress or supersede the corresponding suggestion. The ordinary UI stays
+quiet when no model, network, or useful result exists; evidence detail is progressive disclosure in
+the exact-Clip panel. Commercial discovery adapters remain behind the same interface and require a
+fresh terms/retention review before selection.
+
+Transcript, frame and context catch-up use that same post-ready coordinator rather than putting a
+Ready Clip back on the readiness conveyor. The `filler-pipeline` driver always advances bounded
+preparation first, then spends the independent enrichment budgets; a remote failure cannot change
+the preparation result. Each enabled capability has its own provider/model/prompt identity and the
 existing `MaxWhisper` or `MaxVision` per-pass bound. A Clip is eligible only while at least one axis
 that capability can inform remains unresolved, and an operator answer (including an intentional
 empty answer) closes that axis to automation. A successful media pass records its completion even
@@ -10174,6 +10238,15 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   A channel's Filler section renders its saved coverage before matching controls, making inherited
   behavior the ordinary path. Per-clip overrides stay collapsed under explicit `Prefer on this
   channel` and `Exclude from this channel` language; they are never presented as required setup.
+  Every real Clip segment in the assembled break preview is individually playable through the same
+  content-hash media route and shared player as the catalog. The embedded fallback card is not
+  playable, and preview does not create a separately stitched Pod asset.
+
+  Exact Clip details resolve the registered source identity to its human label and keep the canonical
+  source id as transport/debug identity rather than primary UI. The detail response may also project
+  dimensions, cadence, codecs, container, channel/rate, and byte size from the already-validated
+  durable playback lineage in the sidecar. It does not run ffprobe during a read. These file facts sit
+  under progressive disclosure; the ordinary card keeps the short quality label.
 
   Acquisition is not readiness. These records and summaries do not weaken registered-source
   enablement, disk/catalog limits, grounding, required checks, or the held-to-Ready transition.

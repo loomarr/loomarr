@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
@@ -321,9 +322,11 @@ type ClipDTO struct {
 	Tags []string `json:"tags,omitempty" doc:"The clip's taxonomy tags (leaf + rolled-up ancestors); category is the derived primary product leaf (§10 V45a)"`
 	// AssertedTags is what the classifier/operator actually chose. Editors round-trip this field;
 	// Tags includes derived ancestors and must never be sent back as assertions.
-	AssertedTags []string `json:"assertedTags,omitempty" doc:"Directly asserted taxonomy tags; excludes derived rollups and is the set clip editors should round-trip"`
-	DurationMs   int64    `json:"durationMs"`
-	Source       string   `json:"source,omitempty"`
+	AssertedTags []string      `json:"assertedTags,omitempty" doc:"Directly asserted taxonomy tags; excludes derived rollups and is the set clip editors should round-trip"`
+	DurationMs   int64         `json:"durationMs"`
+	Source       string        `json:"source,omitempty"`
+	SourceLabel  string        `json:"sourceLabel,omitempty" doc:"Human-readable registered source name; use this instead of the canonical source identity in ordinary UI"`
+	Media        *ClipMediaDTO `json:"media,omitempty" doc:"Prepared playback file facts; included only for an exact single-clip detail read"`
 	// Quality is the resolution label ("1080p", "480p"); "" for an audio-only clip or one
 	// scanned before the column existed. Shipped in migration 00014 and surfaced here by V28 —
 	// it existed in the store for two phases with no way to see it.
@@ -410,9 +413,24 @@ type ClipDTO struct {
 	// ⚠ Deliberately NOT the transcript itself: it is kilobytes per clip that no grid renders, so
 	// at a 100-row page it would be roughly ten times the rest of the payload. The detail surface
 	// fetches the text; the listing only needs to know there is some.
-	HasTranscript bool               `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
-	SourceURL     string             `json:"sourceUrl,omitempty" doc:"Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID."`
-	Enrichment    *ClipEnrichmentDTO `json:"enrichment,omitempty" doc:"Quiet server-owned detail state and provenance. Available on exact single-hash reads only; omitted from catalog pages."`
+	HasTranscript     bool                      `json:"hasTranscript,omitempty" doc:"Whether a transcript exists (§10 V44). The text itself is a detail-surface read — kilobytes per clip that no grid renders."`
+	SourceURL         string                    `json:"sourceUrl,omitempty" doc:"Original public item URL from hash-bound acquisition provenance. Available on exact single-hash reads; absent when unknown. Never inferred from a name or source ID."`
+	Enrichment        *ClipEnrichmentDTO        `json:"enrichment,omitempty" doc:"Quiet server-owned detail state and provenance. Available on exact single-hash reads only; omitted from catalog pages."`
+	ContextSuggestion *ClipContextSuggestionDTO `json:"contextSuggestion,omitempty" doc:"Cited likely era/geography context. It is not verified metadata and never affects scheduling. Available on exact single-hash reads only."`
+}
+
+// ClipMediaDTO is the small human-facing projection of the prepared playback lineage. The full
+// lineage remains in the portable sidecar; the API does not re-probe media during a detail read.
+type ClipMediaDTO struct {
+	Width         int    `json:"width,omitempty"`
+	Height        int    `json:"height,omitempty"`
+	FrameRate     string `json:"frameRate,omitempty" doc:"Exact ffprobe cadence, usually a rational such as 24000/1001"`
+	Container     string `json:"container,omitempty"`
+	VideoCodec    string `json:"videoCodec,omitempty"`
+	AudioCodec    string `json:"audioCodec,omitempty"`
+	AudioChannels int    `json:"audioChannels,omitempty"`
+	AudioRateHz   int    `json:"audioRateHz,omitempty"`
+	Bytes         int64  `json:"bytes,omitempty"`
 }
 
 type ClipEnrichmentDTO struct {
@@ -423,6 +441,41 @@ type ClipEnrichmentDTO struct {
 type ClipEnrichmentFactDTO struct {
 	Axis     string `json:"axis" enum:"kind,era,audience,brand,geography,language,product,format,seasonal,audience-cue,presentation"`
 	Evidence string `json:"evidence" enum:"inference,source_default,trusted_mapping,content_observation,item_metadata,operator"`
+}
+
+type ClipContextSuggestionDTO struct {
+	Year        int                    `json:"year,omitempty"`
+	Decade      int                    `json:"decade,omitempty"`
+	CountryCode string                 `json:"countryCode,omitempty"`
+	Country     string                 `json:"country,omitempty"`
+	Confidence  int                    `json:"confidence"`
+	Explanation string                 `json:"explanation,omitempty"`
+	Sources     []ClipContextSourceDTO `json:"sources"`
+}
+
+type ClipContextSourceDTO struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+func clipContextSuggestionDTO(report fillerresearch.Report, verifiedEra int, verifiedCountry string) *ClipContextSuggestionDTO {
+	suggestion := report.Suggestion
+	if verifiedEra > 0 {
+		suggestion.Year, suggestion.Decade = 0, 0
+	}
+	if verifiedCountry != "" {
+		suggestion.CountryCode, suggestion.Country = "", ""
+	}
+	if suggestion.Year == 0 && suggestion.Decade == 0 && suggestion.Country == "" {
+		return nil
+	}
+	detail := &ClipContextSuggestionDTO{Year: suggestion.Year, Decade: suggestion.Decade,
+		CountryCode: suggestion.CountryCode, Country: suggestion.Country,
+		Confidence: suggestion.Confidence, Explanation: suggestion.Explanation}
+	for _, citation := range report.Cited() {
+		detail.Sources = append(detail.Sources, ClipContextSourceDTO{Title: citation.Title, URL: citation.URL})
+	}
+	return detail
 }
 
 func clipEnrichmentDTO(states []fillerenrichment.State) *ClipEnrichmentDTO {
@@ -516,6 +569,38 @@ func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) Clip
 		d.HoverImage = img(c.HoverImageHash)
 	}
 	return d
+}
+
+func clipMediaDTO(tags filler.SidecarTags) *ClipMediaDTO {
+	if tags.MediaAssets == nil || tags.MediaAssets.Playback == nil {
+		return nil
+	}
+	playback := tags.MediaAssets.Playback
+	return &ClipMediaDTO{
+		Width: playback.OutputProbe.Width, Height: playback.OutputProbe.Height,
+		FrameRate: playback.OutputProbe.Cadence, Bytes: playback.Asset.Bytes,
+		Container: playback.Recipe.Container, VideoCodec: playback.Recipe.VideoCodec,
+		AudioCodec: playback.Recipe.AudioCodec, AudioChannels: playback.Recipe.AudioChannels,
+		AudioRateHz: playback.Recipe.AudioRateHz,
+	}
+}
+
+func fillerSourceLabel(source string, labels map[string]string) string {
+	if label := strings.TrimSpace(labels[source]); label != "" {
+		return label
+	}
+	switch source {
+	case "filler-dir", "folder":
+		return "Your clip folder"
+	case "library":
+		return "Media server library"
+	case "manual":
+		return "Manually added"
+	case "":
+		return ""
+	default:
+		return "Imported source"
+	}
 }
 
 type listFillerInput struct {
@@ -641,14 +726,29 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 	// Resolved for the whole page BEFORE the loop — see clipArtworkResolver on why a lookup
 	// inside the loop would be two queries per tile.
 	img := s.clipArtworkResolver(ctx, clips)
+	sources, err := s.store.ListFillerSources(ctx)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("list filler sources", err)
+	}
+	sourceLabels := make(map[string]string, len(sources))
+	for _, source := range sources {
+		sourceLabels[source.ID] = source.Label
+	}
 	for _, c := range clips {
 		d := clipToDTO(c, s.playsCounted(), img)
+		d.SourceLabel = fillerSourceLabel(c.Source, sourceLabels)
 		if len(in.Hashes) == 1 {
 			states, err := s.store.ListFillerEnrichment(ctx, c.Hash)
 			if err != nil {
 				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read clip details", "The clip's background details could not be read. Try again.", err)
 			}
 			d.Enrichment = clipEnrichmentDTO(states)
+			report, err := s.store.LatestFillerResearchReport(ctx, c.Hash)
+			if err == nil {
+				d.ContextSuggestion = clipContextSuggestionDTO(report, c.Era, c.Country)
+			} else if !errors.Is(err, store.ErrNotFound) {
+				return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read likely context", "The clip's likely context could not be read. Try again.", err)
+			}
 			provenanceClip := c
 			if c.ParentHash != "" {
 				parent, err := s.store.GetClip(ctx, c.ParentHash)
@@ -664,6 +764,11 @@ func (s *Server) listFiller(ctx context.Context, in *listFillerInput) (*listFill
 			if found && artifact.ClipHash == provenanceClip.Hash {
 				if u, err := url.Parse(artifact.SourceURL); err == nil && u.User == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") {
 					d.SourceURL = u.String()
+				}
+			}
+			if files := s.fillerLayout.FS(); files != nil {
+				if tags, ok := filler.ReadSidecarTagsFS(files, c.Path); ok {
+					d.Media = clipMediaDTO(tags)
 				}
 			}
 		}

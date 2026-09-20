@@ -37,6 +37,17 @@ describe("FillerCatalog", () => {
   it("opens the exact clip panel before optional editing", async () => {
     const detailedClip: ClipDTO = {
       ...clip,
+      media: {
+        width: 1920,
+        height: 1080,
+        frameRate: "24000/1001",
+        container: "mp4",
+        videoCodec: "h264",
+        audioCodec: "aac",
+        audioChannels: 2,
+        audioRateHz: 48000,
+        bytes: 9361105,
+      },
       enrichment: {
         state: "details_limited",
         facts: [{ axis: "kind", evidence: "item_metadata" }],
@@ -63,6 +74,9 @@ describe("FillerCatalog", () => {
     expect(within(panel).getByText("Details limited")).toBeInTheDocument();
     await userEvent.click(within(panel).getByText("More about this clip"));
     expect(within(panel).getByText("Item details")).toBeInTheDocument();
+    expect(within(panel).getByText(/1920×1080.*H\.264.*23\.98 fps/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/AAC.*stereo.*48 kHz/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/MP4.*8\.9 MB/i)).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "Edit details" })).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Edit details" }));
     expect(

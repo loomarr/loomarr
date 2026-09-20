@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"strings"
@@ -11,12 +12,15 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
 type fillerEnrichmentRepository struct{ st store.Store }
+
+type fillerResearchRepository struct{ st store.Store }
 
 func activeFillerTextSelection(set resolved, recorder *metrics.Recorder) fillerenrichment.TextSelection {
 	selection := resolveSelection(set)
@@ -206,6 +210,51 @@ func (r fillerEnrichmentRepository) ListTaxa(ctx context.Context) ([]taxonomy.Ta
 
 func (r fillerEnrichmentRepository) ApplyPass(ctx context.Context, pass fillerenrichment.Pass) (int, error) {
 	return r.st.ApplyFillerEnrichmentPass(ctx, pass)
+}
+
+func (r fillerResearchRepository) ListCandidates(ctx context.Context, producer, producerVersion,
+	adapter, adapterVersion string, limit int) ([]fillerresearch.Candidate, error) {
+	return r.st.ListFillerResearchCandidates(ctx, producer, producerVersion, adapter, adapterVersion, limit)
+}
+
+func (r fillerResearchRepository) SaveReport(ctx context.Context, report fillerresearch.Report) error {
+	return r.st.SaveFillerResearchReport(ctx, report)
+}
+
+type fillerResearchSignals struct{ files fs.FS }
+
+func (l fillerResearchSignals) Load(_ context.Context, candidate fillerresearch.Candidate) (fillerresearch.Input, error) {
+	input := fillerresearch.Input{Title: candidate.Name}
+	if metadata, ok := filler.ReadSourceMetadataFS(l.files, candidate.Path); ok {
+		input.Title = metadata.Title
+		input.Description = metadata.Description
+		input.SourceURL = metadata.WebpageURL
+	}
+	input.SourceKind, _, _ = strings.Cut(candidate.SourceID, ":")
+	return input, nil
+}
+
+// fillerDetailRunner keeps one scheduler row while the modules retain different authority:
+// enrichment writes verified axes; research writes only cited suggestions.
+type fillerDetailRunner struct {
+	enrichment fillerEnrichmentRunner
+	research   *fillerresearch.Runner
+}
+
+func (r fillerDetailRunner) Run(ctx context.Context) (fillerenrichment.RunResult, error) {
+	var out fillerenrichment.RunResult
+	var enrichmentErr error
+	if r.enrichment != nil {
+		out, enrichmentErr = r.enrichment.Run(ctx)
+	}
+	if r.research == nil {
+		return out, enrichmentErr
+	}
+	researched, researchErr := r.research.Run(ctx)
+	out.Considered += researched.Considered
+	out.Updated += researched.Updated
+	out.Failed += researched.Failed
+	return out, errors.Join(enrichmentErr, researchErr)
 }
 
 type fillerEnrichmentSignals struct {

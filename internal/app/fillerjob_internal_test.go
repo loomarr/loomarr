@@ -1,6 +1,9 @@
 package app
 
 import (
+	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -16,6 +19,7 @@ func TestFillerMediaJobsDeclareALongTimeout(t *testing.T) {
 	cases := map[string]scheduler.Job{
 		"filler-sync":        fillerSyncJob(nil),
 		"filler-fetch":       fillerFetchJob(nil),
+		"filler-pipeline":    fillerPipelineJob(nil),
 		"filler-split-sweep": fillerSplitSweepJob(nil),
 	}
 	for name, job := range cases {
@@ -24,6 +28,42 @@ func TestFillerMediaJobsDeclareALongTimeout(t *testing.T) {
 				"ceiling runs under River's 1-minute default and on the `default` queue, where a large "+
 				"pass is SIGKILLed and starves nothing but itself", name, job.Timeout)
 		}
+	}
+}
+
+func TestFillerPipelineDriverRunsDetailsAfterPreparation(t *testing.T) {
+	var order []string
+	driver := fillerPipelineDriver{
+		prepare: func(context.Context) error {
+			order = append(order, "prepare")
+			return errors.New("preparation failed")
+		},
+		details: func(context.Context) error {
+			order = append(order, "details")
+			return errors.New("details failed")
+		},
+	}
+	err := driver.Run(t.Context())
+	if strings.Join(order, ",") != "prepare,details" {
+		t.Fatalf("order = %v", order)
+	}
+	if err == nil || !strings.Contains(err.Error(), "preparation failed") || !strings.Contains(err.Error(), "details failed") {
+		t.Fatalf("joined error = %v", err)
+	}
+}
+
+func TestFillerPipelineDriverStopsAfterCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	detailsRan := false
+	driver := fillerPipelineDriver{
+		prepare: func(context.Context) error { cancel(); return nil },
+		details: func(context.Context) error { detailsRan = true; return nil },
+	}
+	if err := driver.Run(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want cancellation", err)
+	}
+	if detailsRan {
+		t.Fatal("details ran after the scheduler lease was cancelled")
 	}
 }
 

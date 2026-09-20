@@ -9,7 +9,7 @@ import (
 
 const (
 	DeterministicProducer        = "deterministic-metadata"
-	DeterministicProducerVersion = "2"
+	DeterministicProducerVersion = "3"
 	ControlledTaxonomyVersion    = "seed-v2"
 )
 

@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
@@ -686,7 +687,7 @@ type FillerSourceStore interface {
 	// Claim/complete/fail are the durable source-check lease and retry boundary shared by the
 	// scheduler and the manual Look for new clips command.
 	ClaimFillerSourceCheck(ctx context.Context, id string, observedLastCheck, now, leaseUntil time.Time) (bool, error)
-	CompleteFillerSourceCheck(ctx context.Context, id string, leaseUntil, checkedAt time.Time) error
+	CompleteFillerSourceCheck(ctx context.Context, id string, leaseUntil time.Time, completion filler.SourceCheckCompletion) error
 	FailFillerSourceCheck(ctx context.Context, id string, leaseUntil, retryAt time.Time) error
 	// SetFillerSourceFetchPolicy writes one source's per-source fetch overrides (§10 V38c).
 	//
@@ -710,6 +711,14 @@ type FillerEnrichmentStore interface {
 	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error)
 	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error)
 	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
+}
+
+// FillerResearchStore owns cited context suggestions. Reports are deliberately separate from
+// FillerEnrichmentStore: no method here projects a suggestion into a catalog fact.
+type FillerResearchStore interface {
+	ListFillerResearchCandidates(ctx context.Context, producer, producerVersion, adapter, adapterVersion string, limit int) ([]fillerresearch.Candidate, error)
+	SaveFillerResearchReport(ctx context.Context, report fillerresearch.Report) error
+	LatestFillerResearchReport(ctx context.Context, clipHash string) (fillerresearch.Report, error)
 }
 
 // AiringStore records what actually went to air — written from playout only.
@@ -917,6 +926,7 @@ type Store interface {
 	UserStore
 	ClipStore
 	FillerEnrichmentStore
+	FillerResearchStore
 	FillerSourceStore
 	FillerPullStore
 	FillerAcquisitionStore

@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -14,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
@@ -138,16 +141,18 @@ func buildFillerSubsystem(
 		"every", set.dur("filler.sync_every"))
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder)
-	jobs.Add(fillerPipelineJob(pipeline))
+	enrichmentSignals := fillerEnrichmentSignals{
+		store: st, files: layout.FS(),
+	}
 	enrichment := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: layout.FS()}.Load,
+		enrichmentSignals.Load,
 		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
 	)
 	enrichmentCoordinator := fillerenrichment.NewCoordinator(
 		enrichment, fillerEnrichmentRepository{st: st},
 		func() fillerenrichment.TextSelection { return activeFillerTextSelection(set, metricRecorder) },
-		fillerEnrichmentSignals{store: st, files: layout.FS()}.Load,
+		enrichmentSignals.Load,
 		func() int { return set.intv("filler.pipeline.max_clips") }, time.Now,
 	).WithCapabilities(
 		fillerenrichment.NewCapabilityRunner(
@@ -165,7 +170,28 @@ func buildFillerSubsystem(
 			func() int { return set.intv("filler.pipeline.max_vision") }, time.Now,
 		),
 	)
-	jobs.Add(fillerEnrichmentJob(enrichmentCoordinator))
+	selection := activeFillerTextSelection(set, metricRecorder)
+	var researchRunner *fillerresearch.Runner
+	if selection.Provider != nil && strings.TrimSpace(selection.Model) != "" {
+		wiki, wikiErr := fillerresearch.NewMediaWiki(fillerresearch.MediaWikiConfig{
+			UserAgent: "Loomarr/1.0 (https://github.com/loomarr/loomarr)",
+		})
+		archive, archiveErr := fillerresearch.NewArchive(fillerresearch.ArchiveConfig{
+			UserAgent: "Loomarr/1.0 (https://github.com/loomarr/loomarr)",
+		})
+		retriever, retrievalErr := fillerresearch.NewFederated(wiki, archive)
+		if err := errors.Join(wikiErr, archiveErr, retrievalErr); err != nil {
+			log.Warn("could not construct filler context retrieval", "err", err)
+		} else {
+			researcher := fillerresearch.New(retriever, selection.Provider, selection.ProviderName,
+				selection.Model, time.Now)
+			researchRunner = fillerresearch.NewRunner(fillerResearchRepository{st: st}, researcher,
+				fillerResearchSignals{files: layout.FS()}.Load,
+				func() int { return min(1, set.intv("filler.pipeline.max_clips")) })
+		}
+	}
+	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner}
+	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details)))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
 		decisionService.WithDiagnosticRecovery(adapter)
@@ -195,8 +221,11 @@ func buildFillerSubsystem(
 		},
 		sourceEnumerator, adapter,
 		filler.FetchLimits{
-			MaxPerRun:       func() int { return set.intv("filler.fetch.max_per_run") },
-			MaxCatalogClips: func() int { return set.intv("filler.fetch.max_catalog_clips") },
+			MaxPerRun:         func() int { return set.intv("filler.fetch.max_per_run") },
+			MaxProviderPerRun: func() int { return 50 },
+			MaxCatalogClips:   func() int { return set.intv("filler.fetch.max_catalog_clips") },
+			MinDuration:       func() time.Duration { return set.dur("filler.min_duration") },
+			MaxDuration:       func() time.Duration { return set.dur("filler.autosplit.max_duration") },
 		}, log,
 	)
 	adapter.autoFetch = autoFetch

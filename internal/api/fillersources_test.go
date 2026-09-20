@@ -269,6 +269,48 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 	}
 }
 
+func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	ctx := t.Context()
+	src := store.NewFillerSource(
+		"youtube:outcomes", "youtube", "https://www.youtube.com/@outcomes/videos", "Outcome channel", time.Now().UTC(),
+	)
+	if err := st.UpsertFillerSource(ctx, src); err != nil {
+		t.Fatal(err)
+	}
+	checkedAt := time.Date(2026, 9, 19, 14, 0, 0, 0, time.UTC)
+	leaseUntil := checkedAt.Add(30 * time.Minute)
+	claimed, err := st.ClaimFillerSourceCheck(ctx, src.ID, time.Time{}, checkedAt, leaseUntil)
+	if err != nil || !claimed {
+		t.Fatalf("claim = %v, %v", claimed, err)
+	}
+	if err := st.CompleteFillerSourceCheck(ctx, src.ID, leaseUntil, filler.SourceCheckCompletion{
+		CheckedAt: checkedAt,
+		Checkpoint: filler.SourceScanCheckpoint{
+			Cursor: "internal-cursor", PendingWatermark: "internal-newest",
+		},
+		ReplaceOutcomes: true,
+		Outcomes: filler.SourceCheckSummary{
+			filler.SourceOutcomeQueued: 3, filler.SourceOutcomeTooLong: 12,
+			filler.SourceOutcomeUnavailable: 2,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var projected api.FillerSourceDTO
+	for _, source := range getSources(t, srv).Sources {
+		if source.ID == src.ID {
+			projected = source
+			break
+		}
+	}
+	if projected.LastCheck == nil || projected.LastCheck.Queued != 3 ||
+		projected.LastCheck.TooLong != 12 || projected.LastCheck.Unavailable != 2 {
+		t.Fatalf("last check = %+v, want typed outcome counts", projected.LastCheck)
+	}
+}
+
 // The read-model's reason for existing: counts come from the CATALOG, not from a table.
 func TestFillerSources_CountsClipsByProvenance(t *testing.T) {
 	srv := serverWithClips(t, map[string]string{"filler.dir": "/data/filler"}, []store.Clip{
@@ -551,6 +593,9 @@ func TestFillerSources_FetchRequiresOneSelectedSource(t *testing.T) {
 // rows that meant a successful 200 with no download ever queued — exactly the reported symptom.
 func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 	srv, _, ff := newFillerServer(t)
+	ff.fetchResult.Outcomes = filler.SourceCheckSummary{
+		filler.SourceOutcomeQueued: 2, filler.SourceOutcomeTooLong: 4,
+	}
 	resp := do(t, srv, http.MethodPost, "/v1/filler/sources/fetch?id=archive%3Aclassic", adminToken, "")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("fetch → %d, want 200", resp.StatusCode)
@@ -562,15 +607,17 @@ func TestFillerSources_FetchNowRunsAcquisitionBeforeCatalogSync(t *testing.T) {
 		t.Fatalf("fetched source ids = %v, want only the selected row", ff.fetchedSourceIDs)
 	}
 	var body struct {
-		SourceID      string `json:"sourceId"`
-		SourcesPolled int    `json:"sourcesPolled"`
-		Queued        int    `json:"queued"`
-		MaxPerCheck   int    `json:"maxPerCheck"`
+		SourceID      string                           `json:"sourceId"`
+		SourcesPolled int                              `json:"sourcesPolled"`
+		Queued        int                              `json:"queued"`
+		MaxPerCheck   int                              `json:"maxPerCheck"`
+		Outcomes      *api.FillerSourceCheckSummaryDTO `json:"outcomes"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.SourceID != "archive:classic" || body.SourcesPolled != 1 || body.Queued != 2 || body.MaxPerCheck != 7 {
+	if body.SourceID != "archive:classic" || body.SourcesPolled != 1 || body.Queued != 2 || body.MaxPerCheck != 7 ||
+		body.Outcomes == nil || body.Outcomes.Queued != 2 || body.Outcomes.TooLong != 4 {
 		t.Fatalf("fetch result = %+v, want selected source identity and its acquisition outcome", body)
 	}
 }

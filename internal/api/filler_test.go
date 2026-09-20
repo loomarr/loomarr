@@ -404,6 +404,41 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 	}
 }
 
+func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	source := store.NewFillerSource(
+		"youtube:https://www.youtube.com/channel/UC123/videos",
+		"youtube", "https://www.youtube.com/channel/UC123/videos", "Friendly Channel", time.Now().UTC(),
+	)
+	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	clip := store.Clip{Clip: filler.Clip{
+		Hash: "source-label", Path: "source-label.mp4", Name: "Friendly advert",
+		Kind: filler.Commercial, DurationMs: 30_000, Source: source.ID,
+	}}
+	if err := st.UpsertClip(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := do(t, srv, http.MethodGet, "/v1/filler?hashes=source-label", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Clips []struct {
+			Source      string `json:"source"`
+			SourceLabel string `json:"sourceLabel"`
+		} `json:"clips"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Clips) != 1 || body.Clips[0].Source != source.ID || body.Clips[0].SourceLabel != "Friendly Channel" {
+		t.Fatalf("source projection = %+v, want canonical identity plus Friendly Channel", body.Clips)
+	}
+}
+
 // clearSeededSources drops whatever migrations pre-populated, so a test describes a state it built.
 func clearSeededSources(t *testing.T, st store.Store) {
 	t.Helper()

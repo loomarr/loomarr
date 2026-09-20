@@ -14,6 +14,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -730,6 +731,24 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, old); err != nil {
 		t.Fatal(err)
 	}
+	run := filler.AcquisitionRun{
+		ID: "identity-acquisition", Trigger: filler.AcquisitionSource, SourceID: "youtube:ads",
+		Status: filler.AcquisitionSuccess, Requested: 1, Fetched: 1,
+		StartedAt: now, CompletedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filler.AcquisitionArtifact{
+		ID: "identity-artifact", AcquisitionID: run.ID, SourceID: run.SourceID,
+		Provider: "youtube", SourceURL: "https://www.youtube.com/watch?v=identity-artifact",
+		RemoteID: "identity-artifact", MediaPath: old.Path,
+		MediaSHA256: strings.Repeat("a", 64), MediaBytes: 42, ClipHash: old.Hash,
+		State: filler.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
+		t.Fatal(err)
+	}
 	if err := s.UpsertClipFingerprint(ctx, old.Hash, "dhash-v1", []uint64{1, 2, 3}); err != nil {
 		t.Fatal(err)
 	}
@@ -820,6 +839,10 @@ func testClipIdentityReplacement(t *testing.T, newStore NewStoreFunc) {
 	if _, found, err := cachedClipFingerprint(ctx, s, replacement.Hash, "dhash-v1"); err != nil || found {
 		t.Errorf("old-byte fingerprint was re-keyed onto replacement bytes: found=%v err=%v", found, err)
 	}
+	gotArtifact, found, err := s.AcquisitionArtifactForClip(ctx, replacement.Path, replacement.Hash)
+	if err != nil || !found || gotArtifact.ID != artifact.ID || gotArtifact.ClipHash != replacement.Hash {
+		t.Errorf("acquisition provenance did not follow replacement: %+v, found=%v err=%v", gotArtifact, found, err)
+	}
 }
 
 // A pending conditioned target may be reconstructed by Sync before the source row is re-keyed.
@@ -837,6 +860,24 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	source.Transcript = "source-owned transcript"
 	source.UpdatedAt = now
 	if err := s.UpsertClip(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	run := filler.AcquisitionRun{
+		ID: "conditioning-acquisition", Trigger: filler.AcquisitionSource, SourceID: "youtube:ads",
+		Status: filler.AcquisitionSuccess, Requested: 1, Fetched: 1,
+		StartedAt: now, CompletedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertAcquisitionRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filler.AcquisitionArtifact{
+		ID: "conditioning-artifact", AcquisitionID: run.ID, SourceID: run.SourceID,
+		Provider: "youtube", SourceURL: "https://www.youtube.com/watch?v=conditioning-artifact",
+		RemoteID: "conditioning-artifact", MediaPath: source.Path,
+		MediaSHA256: strings.Repeat("b", 64), MediaBytes: 84, ClipHash: source.Hash,
+		State: filler.ArtifactConsumed, CompletedAt: now, UpdatedAt: now,
+	}
+	if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
@@ -882,6 +923,10 @@ func testConditioningPublicationCommit(t *testing.T, newStore NewStoreFunc) {
 	}
 	if pipeline, found, err := s.GetClipPipeline(ctx, target.Hash); err != nil || !found || pipeline.Stage != filler.StageTranscode {
 		t.Fatalf("adopted target pipeline = %+v, found=%v err=%v", pipeline, found, err)
+	}
+	gotArtifact, found, err := s.AcquisitionArtifactForClip(ctx, target.Path, target.Hash)
+	if err != nil || !found || gotArtifact.ID != artifact.ID || gotArtifact.ClipHash != target.Hash {
+		t.Fatalf("adopted target provenance = %+v, found=%v err=%v", gotArtifact, found, err)
 	}
 	if err := s.CommitConditioningPublication(ctx, publication, got); err != nil {
 		t.Fatalf("recognize post-rekey target: %v", err)
@@ -2726,10 +2771,10 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if claimed, err := s.ClaimFillerSourceCheck(ctx, "src-1", time.Time{}, claimAt, leaseUntil); err != nil || claimed {
 		t.Fatalf("overlapping source check claim = %v, %v, want false/nil", claimed, err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil.Add(time.Second), checked); !errors.Is(err, filler.ErrSourceCheckClaimLost) {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil.Add(time.Second), filler.SourceCheckCompletion{CheckedAt: checked}); !errors.Is(err, filler.ErrSourceCheckClaimLost) {
 		t.Fatalf("stale source check completion = %v, want claim lost", err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil, checked); err != nil {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", leaseUntil, filler.SourceCheckCompletion{CheckedAt: checked}); err != nil {
 		t.Fatal(err)
 	}
 	if !src1(t, s).LastCheckedAt.Equal(checked) {
@@ -2760,7 +2805,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("retry source check claim = %v, %v", claimed, err)
 	}
 	checked = retryAt.Add(time.Minute)
-	if err := s.CompleteFillerSourceCheck(ctx, "src-1", retryLease, checked); err != nil {
+	if err := s.CompleteFillerSourceCheck(ctx, "src-1", retryLease, filler.SourceCheckCompletion{CheckedAt: checked}); err != nil {
 		t.Fatal(err)
 	}
 	recoveredSource := src1(t, s)
@@ -2865,7 +2910,7 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	// Restart durability is part of the scheduler contract, not merely a same-process read.
 	// Persist all three timing facts plus a source override, close the production store, reopen
 	// the same database, and prove the next process sees the exact state on both SQL backends.
-	restartSource := NewFillerSource("restart-policy", "archive", "restart_policy", "Restart policy", created)
+	restartSource := NewFillerSource("restart-policy", "youtube", "https://www.youtube.com/@restart/videos", "Restart policy", created)
 	if err := s.UpsertFillerSource(ctx, restartSource); err != nil {
 		t.Fatal(err)
 	}
@@ -2879,8 +2924,39 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if err != nil || !claimed {
 		t.Fatalf("restart source success claim = %v, %v", claimed, err)
 	}
-	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, restartChecked); err != nil {
+	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, restartLease, filler.SourceCheckCompletion{
+		CheckedAt: restartChecked,
+		Checkpoint: filler.SourceScanCheckpoint{
+			Cursor: "video-10", PendingWatermark: "video-1", Watermark: "prior-video",
+		},
+		ReplaceOutcomes: true,
+		Outcomes: filler.SourceCheckSummary{
+			filler.SourceOutcomeQueued:      3,
+			filler.SourceOutcomeTooLong:     12,
+			filler.SourceOutcomeUnavailable: 2,
+		},
+	}); err != nil {
 		t.Fatal(err)
+	}
+	continuedAt := restartChecked.Add(time.Minute)
+	continuedLease := continuedAt.Add(30 * time.Minute)
+	claimed, err = s.ClaimFillerSourceCheck(ctx, restartSource.ID, restartChecked, continuedAt, continuedLease)
+	if err != nil || !claimed {
+		t.Fatalf("continuation source check claim = %v, %v", claimed, err)
+	}
+	if err := s.CompleteFillerSourceCheck(ctx, restartSource.ID, continuedLease, filler.SourceCheckCompletion{
+		CheckedAt:  continuedAt,
+		Checkpoint: filler.SourceScanCheckpoint{Watermark: "video-1"},
+		Outcomes:   filler.SourceCheckSummary{filler.SourceOutcomeTooShort: 2},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	restartChecked = continuedAt
+	continuedSource, _ := findSource(t, s, restartSource.ID)
+	if continuedSource.LastCheckSummary[filler.SourceOutcomeQueued] != 3 ||
+		continuedSource.LastCheckSummary[filler.SourceOutcomeTooShort] != 2 ||
+		continuedSource.ScanCheckpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) {
+		t.Fatalf("continued source summary/checkpoint = %+v / %+v", continuedSource.LastCheckSummary, continuedSource.ScanCheckpoint)
 	}
 	failureAt := restartChecked.Add(time.Hour)
 	failureLease := failureAt.Add(30 * time.Minute)
@@ -2902,9 +2978,33 @@ func testFillerSources(t *testing.T, newStore NewStoreFunc) {
 	if restarted.FetchEverySeconds == nil || *restarted.FetchEverySeconds != restartEvery ||
 		restarted.FetchMaxPerRun == nil || *restarted.FetchMaxPerRun != restartMax ||
 		!restarted.LastCheckedAt.Equal(restartChecked) || restarted.CheckFailureCount != 1 ||
-		!restarted.CheckRetryAt.Equal(restartRetry) || !restarted.CheckLeaseUntil.IsZero() {
+		!restarted.CheckRetryAt.Equal(restartRetry) || !restarted.CheckLeaseUntil.IsZero() ||
+		restarted.ScanCheckpoint != (filler.SourceScanCheckpoint{Watermark: "video-1"}) ||
+		restarted.LastCheckSummary[filler.SourceOutcomeQueued] != 3 ||
+		restarted.LastCheckSummary[filler.SourceOutcomeTooShort] != 2 ||
+		restarted.LastCheckSummary[filler.SourceOutcomeTooLong] != 12 ||
+		restarted.LastCheckSummary[filler.SourceOutcomeUnavailable] != 2 {
 		_ = reopened.Close()
 		t.Fatalf("source policy/check state after restart = %+v", restarted)
+	}
+	newSweepAt, newSweepLease := restartRetry, restartRetry.Add(30*time.Minute)
+	claimed, err = reopened.ClaimFillerSourceCheck(ctx, restartSource.ID, restartChecked, newSweepAt, newSweepLease)
+	if err != nil || !claimed {
+		_ = reopened.Close()
+		t.Fatalf("new sweep claim after restart = %v, %v", claimed, err)
+	}
+	if err := reopened.CompleteFillerSourceCheck(ctx, restartSource.ID, newSweepLease, filler.SourceCheckCompletion{
+		CheckedAt: newSweepAt, Checkpoint: filler.SourceScanCheckpoint{Watermark: "new-video"},
+		ReplaceOutcomes: true,
+		Outcomes:        filler.SourceCheckSummary{filler.SourceOutcomeLive: 1},
+	}); err != nil {
+		_ = reopened.Close()
+		t.Fatal(err)
+	}
+	replaced, _ := findSource(t, reopened, restartSource.ID)
+	if len(replaced.LastCheckSummary) != 1 || replaced.LastCheckSummary[filler.SourceOutcomeLive] != 1 {
+		_ = reopened.Close()
+		t.Fatalf("new sweep outcomes = %+v, want only live:1", replaced.LastCheckSummary)
 	}
 	if err := reopened.Close(); err != nil {
 		t.Fatal(err)
@@ -4202,6 +4302,79 @@ func testFillerProgressiveEnrichment(t *testing.T, newStore NewStoreFunc) {
 	missing.ClipHash = "missing-clip"
 	if _, _, err := s.ApplyFillerEnrichment(ctx, missing, at); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing clip error = %v, want ErrNotFound", err)
+	}
+}
+
+func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	s := newStore(t)
+	ctx := context.Background()
+	at := time.Unix(1_700_000_500, 0).UTC()
+	clip := sampleClip("context-clip", "Tootsie Pop Classic Commercial", filler.Commercial, 0, "", "")
+	clip.Source = "archive:classic_tv_commercials"
+	clip.UpdatedAt = at
+	if err := s.UpsertClip(ctx, clip); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := s.ListFillerResearchCandidates(ctx, "context-model:fixture", "prompt:model",
+		"mediawiki", fillerresearch.MediaWikiAdapterVersion, 3)
+	if err != nil || len(candidates) != 1 || candidates[0].ClipHash != clip.Hash || candidates[0].InputRevision < 1 {
+		t.Fatalf("candidates = %+v, err %v", candidates, err)
+	}
+	report := fillerresearch.Report{ClipHash: clip.Hash, InputRevision: candidates[0].InputRevision,
+		Producer: "context-model:fixture", ProducerVersion: "prompt:model", CompletedAt: at.Add(time.Second),
+		Suggestion: fillerresearch.Suggestion{Decade: 1970, CountryCode: "US", Country: "United States",
+			Confidence: 70, Explanation: "Likely campaign context; the exact cut is not proven.", CitationIDs: []int{1}},
+		Packet: fillerresearch.Packet{Query: clip.Name, Adapter: "mediawiki",
+			AdapterVersion: fillerresearch.MediaWikiAdapterVersion, RetrievedAt: at,
+			Citations: []fillerresearch.Citation{{ID: 1, Title: "Tootsie Pop",
+				URL:     "https://en.wikipedia.org/wiki/Tootsie_Pop",
+				Extract: "The animated commercial debuted on US television in 1970."}}}}
+	if err := s.SaveFillerResearchReport(ctx, report); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LatestFillerResearchReport(ctx, clip.Hash)
+	if err != nil || !reflect.DeepEqual(got, report) {
+		t.Fatalf("latest report = %+v, err %v, want %+v", got, err, report)
+	}
+	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, report.ProducerVersion,
+		report.Packet.Adapter, report.Packet.AdapterVersion, 3)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("same identity candidates after save = %+v, err %v", candidates, err)
+	}
+	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, "prompt:new-model",
+		report.Packet.Adapter, report.Packet.AdapterVersion, 3)
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("changed model candidates = %+v, err %v", candidates, err)
+	}
+	if err := s.SetClipTranscript(ctx, clip.Path, "How many licks?", at.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveFillerResearchReport(ctx, report); !errors.Is(err, ErrFillerResearchStale) {
+		t.Fatalf("save stale report error = %v, want ErrFillerResearchStale", err)
+	}
+	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, report.ProducerVersion,
+		report.Packet.Adapter, report.Packet.AdapterVersion, 3)
+	if err != nil || len(candidates) != 1 || candidates[0].InputRevision == report.InputRevision {
+		t.Fatalf("changed-input candidates = %+v, err %v", candidates, err)
+	}
+	verified := clip
+	verified.Hash = "known-context"
+	verified.Path = clipPathFor(verified.Hash)
+	verified.Era = 1999
+	verified.Country = "GB"
+	if err := s.UpsertClip(ctx, verified); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, report.ProducerVersion,
+		report.Packet.Adapter, report.Packet.AdapterVersion, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range candidates {
+		if candidate.ClipHash == verified.Hash {
+			t.Fatalf("fully verified clip was selected: %+v", candidate)
+		}
 	}
 }
 

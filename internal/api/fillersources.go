@@ -128,6 +128,9 @@ type FillerSourceDTO struct {
 	// LastCheckedAt is absent when never checked. A successful empty check still advances it;
 	// bringing in an item is a separate provenance fact that does not drive scheduling.
 	LastCheckedAt string `json:"lastCheckedAt,omitempty" doc:"RFC3339; absent if never checked"`
+	// LastCheck explains the bounded automatic-acquisition decisions without exposing yt-dlp
+	// diagnostics or cursor mechanics. Absent until a check has observed at least one item.
+	LastCheck *FillerSourceCheckSummaryDTO `json:"lastCheck,omitempty"`
 	// AutomaticDownloads is the server-resolved source policy. Omitted on derived/provider rows
 	// that cannot automatically download media themselves.
 	AutomaticDownloads *SourceAutomaticDownloadsDTO `json:"automaticDownloads,omitempty"`
@@ -176,6 +179,41 @@ type FillerSourceDTO struct {
 	// ⚠ **Never accepted on a request body.** `POST /v1/filler/sources` takes a kind and derives
 	// the parent; accepting one would let a client assert a parent that contradicts the kind.
 	ParentID string `json:"parentId,omitempty"`
+}
+
+// FillerSourceCheckSummaryDTO is the closed, plain-language-ready result of one bounded source
+// sweep. Fields stay explicit so generated clients and the UI cannot invent disposition strings.
+type FillerSourceCheckSummaryDTO struct {
+	Queued             int `json:"queued"`
+	AlreadyKnown       int `json:"alreadyKnown"`
+	TooShort           int `json:"tooShort"`
+	TooLong            int `json:"tooLong"`
+	Live               int `json:"live"`
+	Upcoming           int `json:"upcoming"`
+	Private            int `json:"private"`
+	Unavailable        int `json:"unavailable"`
+	MetadataIncomplete int `json:"metadataIncomplete"`
+}
+
+func fillerSourceCheckSummaryDTO(summary filler.SourceCheckSummary) *FillerSourceCheckSummaryDTO {
+	var total int
+	for _, count := range summary {
+		total += count
+	}
+	if total == 0 {
+		return nil
+	}
+	return &FillerSourceCheckSummaryDTO{
+		Queued:             summary[filler.SourceOutcomeQueued],
+		AlreadyKnown:       summary[filler.SourceOutcomeAlreadyKnown],
+		TooShort:           summary[filler.SourceOutcomeTooShort],
+		TooLong:            summary[filler.SourceOutcomeTooLong],
+		Live:               summary[filler.SourceOutcomeLive],
+		Upcoming:           summary[filler.SourceOutcomeUpcoming],
+		Private:            summary[filler.SourceOutcomePrivate],
+		Unavailable:        summary[filler.SourceOutcomeUnavailable],
+		MetadataIncomplete: summary[filler.SourceOutcomeMetadataIncomplete],
+	}
 }
 
 // providerIDPrefix namespaces the derived group ids (`provider:archive`, `provider:youtube`) so
@@ -1170,6 +1208,7 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 				// A folder or library is not searchable for the same reason.
 				Searchable:         src.Kind == "archive" && s.filler != nil,
 				AutomaticDownloads: s.sourceAutomaticDownloads(src, src.EffectiveEnabled() && eligible),
+				LastCheck:          fillerSourceCheckSummaryDTO(src.LastCheckSummary),
 			}
 			// Exact source attribution (§10 V57), for downloaded and scanned sources alike. Older
 			// kind-only provenance remains in the folder/legacy aggregate rather than being guessed
@@ -1421,16 +1460,17 @@ func sourceDetail(kind, uri string) string {
 
 type fetchFillerSourceOutput struct {
 	Body struct {
-		SourceID      string `json:"sourceId" doc:"Selected registered source"`
-		SourcesPolled int    `json:"sourcesPolled" doc:"Remote sources actually inspected by this pass"`
-		Queued        int    `json:"queued" doc:"New remote items queued for acquisition"`
-		Skipped       int    `json:"skipped" doc:"Remote items already known to the catalog or acquisition history"`
-		MaxPerCheck   int    `json:"maxPerCheck" doc:"Effective clip limit for this selected source"`
-		StoppedBy     string `json:"stoppedBy,omitempty" enum:"catalog" doc:"Capacity ceiling that stopped the pass"`
-		Total         int    `json:"total"`
-		Added         int    `json:"added"`
-		Updated       int    `json:"updated"`
-		Pruned        int    `json:"pruned"`
+		SourceID      string                       `json:"sourceId" doc:"Selected registered source"`
+		SourcesPolled int                          `json:"sourcesPolled" doc:"Remote sources actually inspected by this pass"`
+		Queued        int                          `json:"queued" doc:"New remote items queued for acquisition"`
+		Skipped       int                          `json:"skipped" doc:"Remote items already known to the catalog or acquisition history"`
+		MaxPerCheck   int                          `json:"maxPerCheck" doc:"Effective clip limit for this selected source"`
+		StoppedBy     string                       `json:"stoppedBy,omitempty" enum:"catalog,provider" doc:"Capacity ceiling that stopped the pass"`
+		Outcomes      *FillerSourceCheckSummaryDTO `json:"outcomes,omitempty"`
+		Total         int                          `json:"total"`
+		Added         int                          `json:"added"`
+		Updated       int                          `json:"updated"`
+		Pruned        int                          `json:"pruned"`
 	}
 }
 
@@ -1478,6 +1518,7 @@ func (s *Server) fetchFillerSource(ctx context.Context, in *fetchFillerSourceInp
 	out.Body.Skipped = fetchResult.Skipped
 	out.Body.MaxPerCheck = fetchResult.MaxPerCheck
 	out.Body.StoppedBy = fetchResult.StoppedBy
+	out.Body.Outcomes = fillerSourceCheckSummaryDTO(fetchResult.Outcomes)
 	out.Body.Total, out.Body.Added, out.Body.Updated, out.Body.Pruned = total, added, updated, pruned
 	return out, nil
 }

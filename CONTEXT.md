@@ -319,6 +319,18 @@ producer or vocabulary change. Budget waits, retries, and provider failures are 
 state rather than additional semantic values.
 _Avoid_: pending review, Needs-help task, preparation state
 
+**Context suggestion**:
+A versioned, cited hypothesis about a Clip's likely era or geography, derived from bounded external
+context for a publicly sourced item. It is deliberately separate from Enrichment state: it cannot
+become a scheduling fact, readiness decision, or accepted axis without stronger exact-item/content
+evidence or an operator correction.
+_Avoid_: verified metadata, enrichment fact, scheduling tag
+
+**Evidence packet**:
+The small immutable set of titled citations Loomarr retrieved from one owned adapter and supplied to
+an interpreter. The interpreter may cite only members of the packet and never chooses a fetch URL.
+_Avoid_: browsing session, search result dump, model tool output
+
 **Completed composite**:
 A Composite whose conveyor work finished without making the container playable. Its confirmed
 Segments continue independently toward Ready; the container itself never enters a Pod.

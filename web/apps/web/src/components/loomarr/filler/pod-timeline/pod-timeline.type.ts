@@ -12,6 +12,7 @@ interface PodTimelineProps {
   era?: number;
   audience?: string;
   className?: string;
+  onPreview?: (entry: PodEntryDTO) => void;
 }
 
 export type { PodTimelineProps };

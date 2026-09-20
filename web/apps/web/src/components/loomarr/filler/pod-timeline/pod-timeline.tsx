@@ -51,7 +51,14 @@ const SEGMENT_WORD: Record<PodEntryDTO["kind"], string> = {
   interstitial: "interstitial",
 };
 
-const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }: PodTimelineProps) => {
+const PodTimeline = ({
+  entries,
+  matchLevel = "exact",
+  era,
+  audience,
+  className,
+  onPreview,
+}: PodTimelineProps) => {
   const total = entries.reduce((sum, e) => sum + e.durationMs, 0) || 1;
   const chip = MATCH[matchLevel];
   // The distinct segment kinds in THIS pod, in first-appearance order — the legend
@@ -83,18 +90,31 @@ const PodTimeline = ({ entries, matchLevel = "exact", era, audience, className }
             // segment. The list is replaced whole on every preview rather than mutated,
             // which is the reordering case the rule guards against.
             // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
-            key={`${entry.path ?? "card"}-${i}`}
+            key={`${entry.hash ?? entry.path ?? "card"}-${i}`}
             title={`${entry.name} · ${formatClipDuration(entry.durationMs)}`}
             style={{ flexBasis: `${(entry.durationMs / total) * 100}%` }}
-            className={cn(
-              "flex min-w-0 items-center justify-center border-border border-r px-1 last:border-r-0",
-              SEGMENT_FILL[entry.kind],
-            )}
+            className={cn("min-w-0 border-border border-r last:border-r-0", SEGMENT_FILL[entry.kind])}
           >
-            <span className="sr-only">{`${entry.name}, ${formatClipDuration(entry.durationMs)}`}</span>
-            <Caption tone="strong" shout className="truncate">
-              {SEGMENT_ABBR[entry.kind]}
-            </Caption>
+            {onPreview && entry.hash && !entry.isFallbackCard ? (
+              <button
+                type="button"
+                aria-label={`Preview ${entry.name}`}
+                className="flex h-full w-full min-w-0 cursor-pointer items-center justify-center px-1 outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                onClick={() => onPreview(entry)}
+              >
+                <span className="sr-only">{`${entry.name}, ${formatClipDuration(entry.durationMs)}`}</span>
+                <Caption tone="strong" shout className="truncate">
+                  {SEGMENT_ABBR[entry.kind]}
+                </Caption>
+              </button>
+            ) : (
+              <span className="flex h-full min-w-0 items-center justify-center px-1">
+                <span className="sr-only">{`${entry.name}, ${formatClipDuration(entry.durationMs)}`}</span>
+                <Caption tone="strong" shout className="truncate">
+                  {SEGMENT_ABBR[entry.kind]}
+                </Caption>
+              </span>
+            )}
           </li>
         ))}
       </ul>

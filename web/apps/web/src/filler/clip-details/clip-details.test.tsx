@@ -49,6 +49,22 @@ describe("ClipDetails", () => {
     expect(screen.queryByRole("button", { name: "Edit details" })).not.toBeInTheDocument();
   });
 
+  it("shows the registered source label instead of its canonical storage key", () => {
+    render(
+      <ClipDetails
+        clip={{
+          ...clip,
+          source: "youtube:https://www.youtube.com/channel/UC123/videos",
+          sourceLabel: "Friendly Channel",
+        }}
+      />,
+    );
+    expect(screen.getByText("Friendly Channel")).toBeInTheDocument();
+    expect(
+      screen.queryByText("youtube:https://www.youtube.com/channel/UC123/videos"),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps unknown optional facts quiet and does not infer home location", () => {
     render(<ClipDetails clip={{ ...clip, kind: "unclassified", source: "filler-dir" }} />);
     expect(screen.getByText("Your clip folder")).toBeInTheDocument();
@@ -67,7 +83,7 @@ describe("ClipDetails", () => {
   ])("does not link an unsafe or absent source: %s", (sourceUrl) => {
     render(<ClipDetails clip={{ ...clip, source: "classic", sourceUrl }} />);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
-    expect(screen.getByText("classic")).toBeInTheDocument();
+    expect(screen.getByText("Imported source")).toBeInTheDocument();
   });
 
   it("does not describe preview playback as an airing", () => {
@@ -89,5 +105,34 @@ describe("ClipDetails", () => {
   it("keeps a complete enrichment state quiet", () => {
     render(<ClipDetails clip={{ ...clip, enrichment: { state: "complete" } }} />);
     expect(screen.queryByText(/Adding details|Details limited/)).not.toBeInTheDocument();
+  });
+
+  it("labels researched campaign context as likely and links its evidence", () => {
+    render(
+      <ClipDetails
+        clip={{
+          ...clip,
+          contextSuggestion: {
+            decade: 1970,
+            countryCode: "US",
+            country: "United States",
+            confidence: 70,
+            explanation: "The campaign debuted then; this exact cut is not proven.",
+            sources: [{ title: "Tootsie Pop", url: "https://en.wikipedia.org/wiki/Tootsie_Pop" }],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("Year")).toBeInTheDocument();
+    expect(screen.getByText("1970s · Likely")).toBeInTheDocument();
+    expect(screen.getByText("Location")).toBeInTheDocument();
+    expect(screen.getByText("United States · Likely")).toBeInTheDocument();
+    expect(screen.getByText("Context")).toBeInTheDocument();
+    expect(screen.getByText("The campaign debuted then; this exact cut is not proven.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Tootsie Pop/ })).toHaveAttribute(
+      "href",
+      "https://en.wikipedia.org/wiki/Tootsie_Pop",
+    );
+    expect(screen.queryByText(/Background context, not confirmed/i)).not.toBeInTheDocument();
   });
 });

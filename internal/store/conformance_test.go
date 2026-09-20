@@ -193,6 +193,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ClipTopLevelOnly", func(t *testing.T) { testClipTopLevelOnly(t, newStore) })
 		t.Run("ClipCreatedAt", func(t *testing.T) { testClipCreatedAt(t, newStore) })
 		t.Run("FillerProgressiveEnrichment", func(t *testing.T) { testFillerProgressiveEnrichment(t, newStore) })
+		t.Run("FillerContextResearch", func(t *testing.T) { testFillerContextResearch(t, newStore) })
 		t.Run("CompositeLineage", func(t *testing.T) { testCompositeLineage(t, newStore) })
 		t.Run("SplitConfirmationAtomic", func(t *testing.T) { testSplitConfirmationAtomic(t, newStore) })
 		t.Run("SplitConfirmationRequiresReviewParent", func(t *testing.T) {

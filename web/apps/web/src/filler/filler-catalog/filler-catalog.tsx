@@ -2,7 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
-import { formatClipDuration, pluralize } from "@loomarr/core/format";
+import { formatBytes, formatClipDuration, pluralize } from "@loomarr/core/format";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { LayoutGrid, List } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
@@ -81,6 +81,34 @@ const ENRICHMENT_AXIS_LABEL: Record<string, string> = {
   "audience-cue": "Audience cue",
   presentation: "Presentation",
 };
+
+const displayCodec = (codec: string | undefined) => {
+  if (!codec) return undefined;
+  const known: Record<string, string> = { h264: "H.264", h265: "H.265", hevc: "HEVC", aac: "AAC" };
+  return known[codec.toLowerCase()] ?? codec.toUpperCase();
+};
+
+const displayFrameRate = (cadence: string | undefined) => {
+  if (!cadence) return undefined;
+  const [rawNumerator, rawDenominator] = cadence.split("/");
+  const numerator = Number(rawNumerator);
+  const denominator = rawDenominator ? Number(rawDenominator) : 1;
+  const fps = numerator / denominator;
+  return Number.isFinite(fps) && fps > 0
+    ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(fps)} fps`
+    : undefined;
+};
+
+const displayAudioChannels = (channels: number | undefined) => {
+  if (channels === 1) return "mono";
+  if (channels === 2) return "stereo";
+  return channels ? `${channels} channels` : undefined;
+};
+
+const displayAudioRate = (rate: number | undefined) =>
+  rate
+    ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(rate / 1000)} kHz`
+    : undefined;
 
 const ENRICHMENT_EVIDENCE_LABEL: Record<string, string> = {
   operator: "You set this",
@@ -272,6 +300,34 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
   const inspectedClip = unwrap(inspection.data, (body) =>
     body.clips.find((clip) => clip.hash === inspecting),
   );
+  const videoLine = inspectedClip?.media
+    ? [
+        inspectedClip.media.width && inspectedClip.media.height
+          ? `${inspectedClip.media.width}×${inspectedClip.media.height}`
+          : undefined,
+        displayCodec(inspectedClip.media.videoCodec),
+        displayFrameRate(inspectedClip.media.frameRate),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
+  const audioLine = inspectedClip?.media
+    ? [
+        displayCodec(inspectedClip.media.audioCodec),
+        displayAudioChannels(inspectedClip.media.audioChannels),
+        displayAudioRate(inspectedClip.media.audioRateHz),
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
+  const fileLine = inspectedClip?.media
+    ? [
+        inspectedClip.media.container?.toUpperCase(),
+        inspectedClip.media.bytes ? formatBytes(inspectedClip.media.bytes) : undefined,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : undefined;
   const parent = fillerApi.useListFiller(
     { hashes: parentHash ? [parentHash] : [], includeComposites: true, limit: 1 },
     { query: { enabled: Boolean(parentHash) } },
@@ -832,10 +888,27 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                     <details className="rounded-lg border border-border p-4 text-sm">
                       <summary className="cursor-pointer font-medium">More about this clip</summary>
                       <dl className="mt-3 space-y-2">
-                        {inspectedClip.quality ? (
+                        {videoLine ? (
+                          <div>
+                            <dt className="text-muted-foreground">Video</dt>
+                            <dd>{videoLine}</dd>
+                          </div>
+                        ) : inspectedClip.quality ? (
                           <div>
                             <dt className="text-muted-foreground">Resolution</dt>
                             <dd>{inspectedClip.quality}</dd>
+                          </div>
+                        ) : null}
+                        {audioLine ? (
+                          <div>
+                            <dt className="text-muted-foreground">Audio</dt>
+                            <dd>{audioLine}</dd>
+                          </div>
+                        ) : null}
+                        {fileLine ? (
+                          <div>
+                            <dt className="text-muted-foreground">File</dt>
+                            <dd>{fileLine}</dd>
                           </div>
                         ) : null}
                         {inspectedClip.language ? (
@@ -869,7 +942,10 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
                             </dd>
                           </div>
                         ) : null}
-                        {!inspectedClip.quality &&
+                        {!videoLine &&
+                        !audioLine &&
+                        !fileLine &&
+                        !inspectedClip.quality &&
                         !inspectedClip.language &&
                         !inspectedClip.license &&
                         !inspectedClip.enrichment?.facts?.length ? (

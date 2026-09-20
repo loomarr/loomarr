@@ -20,7 +20,7 @@ func completeSourceCheck(t *testing.T, st store.Store, id string, checkedAt time
 	if err != nil || !claimed {
 		t.Fatalf("claim source check %q = %v, %v", id, claimed, err)
 	}
-	if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, checkedAt); err != nil {
+	if err := st.CompleteFillerSourceCheck(t.Context(), id, leaseUntil, filler.SourceCheckCompletion{CheckedAt: checkedAt}); err != nil {
 		t.Fatal(err)
 	}
 }

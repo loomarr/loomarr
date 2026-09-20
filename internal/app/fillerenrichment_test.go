@@ -213,3 +213,76 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 		t.Fatalf("completed clips remained candidates: %+v, err %v", candidates, err)
 	}
 }
+
+func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallationLocation(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_300, 0).UTC()
+	source := store.NewFillerSource("youtube:inherited", "youtube", "https://youtube.example/channel",
+		"Inherited source", at)
+	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	clip := store.Clip{Clip: filler.Clip{
+		Hash: "inherited-geography", Path: "inherited-geography.mp4", Name: "Local advert",
+		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
+	}, UpdatedAt: at, CreatedAt: at}
+	if err := st.UpsertClip(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	files := fstest.MapFS{
+		"inherited-geography.info.json": {Data: []byte(`{"title":"Local advert","loomarr":{"sourceId":"youtube:inherited"}}`)},
+	}
+	runner := fillerenrichment.NewRunner(
+		fillerEnrichmentRepository{st: st},
+		fillerEnrichmentSignals{store: st, files: files}.Load,
+		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
+	)
+	result, err := runner.Run(t.Context())
+	if err != nil || result.Considered != 1 {
+		t.Fatalf("Run() = %+v, err %v", result, err)
+	}
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GeographicScope != filler.GeographicUnknown || got.Country != "" || got.Market != "" {
+		t.Fatalf("inherited source invented clip geography = %+v", got.Clip)
+	}
+}
+
+func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_400, 0).UTC()
+	source := store.NewFillerSource("youtube:regional", "youtube", "https://youtube.example/channel",
+		"Regional source", at)
+	source.Geography = filler.Geography{Country: "GB", Market: "London"}
+	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	clip := store.Clip{Clip: filler.Clip{
+		Hash: "explicit-geography", Path: "explicit-geography.mp4", Name: "Regional advert",
+		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
+	}, UpdatedAt: at, CreatedAt: at}
+	if err := st.UpsertClip(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	files := fstest.MapFS{
+		"explicit-geography.info.json": {Data: []byte(`{"title":"Regional advert","loomarr":{"sourceId":"youtube:regional"}}`)},
+	}
+	runner := fillerenrichment.NewRunner(
+		fillerEnrichmentRepository{st: st},
+		fillerEnrichmentSignals{store: st, files: files}.Load,
+		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
+	)
+	result, err := runner.Run(t.Context())
+	if err != nil || result.Considered != 1 {
+		t.Fatalf("Run() = %+v, err %v", result, err)
+	}
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GeographicScope != filler.GeographicLocal || got.Country != "GB" || got.Market != "London" {
+		t.Fatalf("explicit source geography = %+v, want local GB / London", got.Clip)
+	}
+}

@@ -16,7 +16,13 @@ type EnumeratedItem struct {
 	ReleaseYear int
 	PublishedAt string
 	DurationMS  int
-	Height      int
+	// DurationKnown distinguishes a real zero from absent flat-playlist metadata. Automatic
+	// acquisition fails closed on the latter rather than asking the downloader to discover the
+	// item's size and shape after it has already been selected.
+	DurationKnown bool
+	Height        int
+	Availability  string
+	LiveStatus    string
 }
 
 // YouTubeEnumerator lists one playlist or channel without downloading media.
@@ -51,15 +57,17 @@ func (e *YouTubeEnumerator) Enumerate(ctx context.Context, target string, limit 
 	var listing struct {
 		PlaylistCount int `json:"playlist_count"`
 		Entries       []struct {
-			ID          string  `json:"id"`
-			URL         string  `json:"url"`
-			WebpageURL  string  `json:"webpage_url"`
-			Title       string  `json:"title"`
-			License     string  `json:"license"`
-			ReleaseYear int     `json:"release_year"`
-			UploadDate  string  `json:"upload_date"`
-			Duration    float64 `json:"duration"`
-			Height      int     `json:"height"`
+			ID           string   `json:"id"`
+			URL          string   `json:"url"`
+			WebpageURL   string   `json:"webpage_url"`
+			Title        string   `json:"title"`
+			License      string   `json:"license"`
+			ReleaseYear  int      `json:"release_year"`
+			UploadDate   string   `json:"upload_date"`
+			Duration     *float64 `json:"duration"`
+			Height       int      `json:"height"`
+			Availability string   `json:"availability"`
+			LiveStatus   string   `json:"live_status"`
 		} `json:"entries"`
 	}
 	if err := json.Unmarshal(out, &listing); err != nil {
@@ -71,13 +79,24 @@ func (e *YouTubeEnumerator) Enumerate(ctx context.Context, target string, limit 
 		if url == "" {
 			url = entry.URL
 		}
-		if entry.ID == "" || url == "" {
+		if entry.ID == "" {
 			continue
+		}
+		// A private or unavailable flat-playlist entry may retain its stable video id while
+		// omitting both URL fields. Keep it so source policy can record the real outcome instead
+		// of making the item disappear from the check summary.
+		if url == "" {
+			url = "https://www.youtube.com/watch?v=" + entry.ID
+		}
+		durationMS := 0
+		if entry.Duration != nil {
+			durationMS = int(*entry.Duration * 1000)
 		}
 		items = append(items, EnumeratedItem{
 			ID: entry.ID, URL: url, Title: entry.Title, License: entry.License,
 			ReleaseYear: entry.ReleaseYear, PublishedAt: entry.UploadDate,
-			DurationMS: int(entry.Duration * 1000), Height: entry.Height,
+			DurationMS: durationMS, DurationKnown: entry.Duration != nil, Height: entry.Height,
+			Availability: entry.Availability, LiveStatus: entry.LiveStatus,
 		})
 		if len(items) == limit {
 			break
