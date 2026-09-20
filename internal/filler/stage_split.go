@@ -526,6 +526,20 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 			return StageResult{}, ErrDeferred
 		}
 	}
+	// Representative frames are presentation evidence, not detector authority. Prepare them after
+	// the proposal is reviewable, persist a bounded batch, and resume long reels on later passes.
+	// A failed frame is marked unavailable inside prepareArtwork so it cannot trap the pipeline.
+	if !p.ArtworkPrepared {
+		prepared, pending, artworkErr := s.splitter.prepareArtwork(ctx, *p)
+		if artworkErr != nil {
+			return StageResult{}, artworkErr
+		}
+		p = &prepared
+		if pending > 0 {
+			return StageResult{Verdict: VerdictDefer, Note: fmt.Sprintf(
+				"prepared previews for %d of %d clips", len(p.Segments)-pending, len(p.Segments))}, nil
+		}
+	}
 	if p.StructureDecision == nil && s.structureDecisioner != nil {
 		assessed, assessErr := s.splitter.AssessProposalStructure(ctx, *p, s.structureDecisioner)
 		if errors.Is(assessErr, ErrProposalGone) {
@@ -737,6 +751,10 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 	out := make(map[string]struct{})
 	for _, p := range proposals {
 		if !p.Ready() {
+			out[p.ClipHash] = struct{}{}
+			continue
+		}
+		if !p.ArtworkPrepared && s.splitter != nil && s.splitter.artwork != nil {
 			out[p.ClipHash] = struct{}{}
 			continue
 		}

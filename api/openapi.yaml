@@ -9420,13 +9420,13 @@ components:
         - startedAt
         - updatedAt
       type: object
-    SplitProposal:
+    SplitReviewProposalDTO:
       additionalProperties: false
       properties:
         $schema:
           description: A URL to the JSON Schema for this object.
           examples:
-            - https://example.com/v1/schemas/SplitProposal.json
+            - https://example.com/v1/schemas/SplitReviewProposalDTO.json
           format: uri
           readOnly: true
           type: string
@@ -9445,13 +9445,75 @@ components:
           type: string
         segments:
           items:
-            $ref: "#/components/schemas/SplitSegment"
+            $ref: "#/components/schemas/SplitReviewSegmentDTO"
           type: array
       required:
         - id
         - clipHash
         - createdAt
         - segments
+      type: object
+    SplitReviewSegmentDTO:
+      additionalProperties: false
+      properties:
+        artwork:
+          $ref: "#/components/schemas/ImageDTO"
+          description: Representative still from this exact proposed span; absent when extraction was unavailable
+        audience:
+          type: string
+        boundaryConfidence:
+          format: int64
+          type: integer
+        category:
+          type: string
+        dupOf:
+          type: string
+        endEvidence:
+          type: string
+        endMs:
+          format: int64
+          type: integer
+        era:
+          format: int64
+          type: integer
+        holdReason:
+          type: string
+        index:
+          format: int64
+          type: integer
+        language:
+          type: string
+        languageChecked:
+          type: boolean
+        languageNote:
+          type: string
+        languageReason:
+          type: string
+        looked:
+          type: boolean
+        name:
+          type: string
+        startEvidence:
+          type: string
+        startMs:
+          format: int64
+          type: integer
+        suggestedEra:
+          format: int64
+          type: integer
+        tags:
+          items:
+            type: string
+          type: array
+        transcript:
+          type: string
+        unsplittable:
+          type: boolean
+      required:
+        - index
+        - startMs
+        - endMs
+        - name
       type: object
     SplitSegment:
       additionalProperties: false
@@ -13843,7 +13905,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SplitProposal"
+                $ref: "#/components/schemas/SplitReviewProposalDTO"
           description: OK
         default:
           content:

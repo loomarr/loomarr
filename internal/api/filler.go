@@ -1391,8 +1391,28 @@ func (s *Server) getFillerSplitOperation(
 type getFillerSplitInput struct {
 	ProposalID string `path:"proposalId"`
 }
+
+// SplitReviewSegmentDTO is the review projection of one detected span. The embedded cut fields
+// remain the one generated contract used by confirmation; Artwork is server-authored presentation
+// evidence and is never accepted back on the write path.
+type SplitReviewSegmentDTO struct {
+	filler.SplitSegment
+	Artwork *ImageDTO `json:"artwork,omitempty" doc:"Representative still from this exact proposed span; absent when extraction was unavailable"`
+}
+
+// SplitReviewProposalDTO keeps detector state private while giving the review surface complete
+// image records in one read. Hashes and filesystem paths are not a frontend rendering contract.
+type SplitReviewProposalDTO struct {
+	ID                 string                          `json:"id"`
+	ClipHash           string                          `json:"clipHash"`
+	CreatedAt          time.Time                       `json:"createdAt"`
+	Segments           []SplitReviewSegmentDTO         `json:"segments"`
+	LanguagePreference string                          `json:"languagePreference,omitempty"`
+	LanguageExclusions []filler.SplitLanguageExclusion `json:"languageExclusions,omitempty"`
+}
+
 type getFillerSplitOutput struct {
-	Body filler.SplitProposal
+	Body SplitReviewProposalDTO
 }
 
 // getFillerSplit reads one proposal — the review surface's source of truth.
@@ -1410,7 +1430,22 @@ func (s *Server) getFillerSplit(ctx context.Context, in *getFillerSplitInput) (*
 		return nil, errNotFound("Split proposal not found",
 			"Detection is still running; the proposal will appear here when its cut list is ready.")
 	}
-	return &getFillerSplitOutput{Body: p}, nil
+	hashes := make([]string, 0, len(p.Segments))
+	for _, segment := range p.Segments {
+		hashes = append(hashes, segment.ArtworkImageHash)
+	}
+	byHash := s.imageDTOsByHash(ctx, hashes)
+	segments := make([]SplitReviewSegmentDTO, 0, len(p.Segments))
+	for _, segment := range p.Segments {
+		segments = append(segments, SplitReviewSegmentDTO{
+			SplitSegment: segment,
+			Artwork:      byHash[segment.ArtworkImageHash],
+		})
+	}
+	return &getFillerSplitOutput{Body: SplitReviewProposalDTO{
+		ID: p.ID, ClipHash: p.ClipHash, CreatedAt: p.CreatedAt, Segments: segments,
+		LanguagePreference: p.LanguagePreference, LanguageExclusions: p.LanguageExclusions,
+	}}, nil
 }
 
 type confirmFillerSplitInput struct {

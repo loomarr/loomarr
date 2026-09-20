@@ -13,6 +13,10 @@ interface FilmstripSegment {
   // Renders muted, matching the editor's own treatment: a segment the detector could not split
   // is evidence of a boundary it missed, not a clip.
   unsplittable?: boolean;
+  artwork?: ImageDTO;
+  tags?: string[];
+  language?: string;
+  attention?: string;
 }
 
 interface SegmentFilmstripProps {
@@ -20,9 +24,11 @@ interface SegmentFilmstripProps {
   // The block currently focused in the editor below, highlighted so the strip and the rows
   // agree about what is selected. Absent = nothing focused.
   activeKey?: string;
-  // Clicking a block asks the editor to reveal that segment (the mock's `sp.focus`).
-  onFocus?: (key: string) => void;
+  // Clicking or pressing Enter selects the span, reveals its row and opens the one bounded player.
+  onSelect?: (key: string) => void;
   className?: string;
 }
 
 export type { FilmstripSegment, SegmentFilmstripProps };
+
+import type { ImageDTO } from "@loomarr/api/models/imageDTO";

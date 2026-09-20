@@ -9128,6 +9128,34 @@ unconfirmed suggestion.
 
    A proposed segment has **no bytes of its own** until confirm writes them, so the preview is a **byte-range window of the parent composite** (`GET /v1/filler/media/{clipHash}`, range-served by `http.ServeContent`). That is the operational reason V45's keep-the-parent rule matters to an operator and not only to lineage: without the retained reel there is nothing to play. The route is `RoleMember`, the page is admin-gated, and the browser authenticates with the session cookie it already holds — **no new authorization surface**.
 
+   **The review starts with the clips Loomarr found, not detector diagnostics (V68).** Every
+   proposed segment receives one representative still extracted from its exact source-bound span.
+   The still is ingested through the shared image service as member-visible, proposal-owned
+   artwork; the proposal document retains only the content hash and exact span binding. Confirm,
+   replacement, rewind, and expiry release the proposal's image references, after which the normal
+   image garbage collector owns the bytes. A failed extraction is a terminal presentation outcome
+   for that proposal and renders as **Preview unavailable** rather than a broken image or an
+   invented frame. Re-detection is the retry path. No browser-visible filesystem path and no new
+   image store exist.
+
+   The proportional timeline is the primary overview. It remains one ordered list, scrolls rather
+   than compressing a long reel into untappable slivers, and gives every segment its still, name,
+   duration, time range, useful tags, language, and any plain-language reason it needs attention.
+   Hover and keyboard focus expose the same lightweight summary without starting media. Click or
+   Enter selects the segment, reveals its compact row, and opens the existing exact bounded player;
+   at most one player is mounted, and changing selection, collapsing it, or leaving the page tears
+   that player down. Fifty segments therefore mean fifty lazy still images and **one** possible
+   range stream, never fifty video elements.
+
+   The ordinary row vocabulary is **Rename**, **Adjust timing**, **Join next**, **Remove**, and
+   **Keep clips**. Boundary confidence, detector evidence, transcripts, recognition diagnostics,
+   and other pipeline terms remain available under **Details** instead of competing with the
+   decision. The page explains once that keeping clips creates individual filler items while
+   retaining the original recording for recovery. Editing, sub-second boundary preservation,
+   exact-span playback, language recheck invalidation, and the confirmation authority remain
+   unchanged; this is a review presentation and evidence-lifecycle change, not a new admission
+   path.
+
    ⚠ **The player is clamped to `[startMs, endMs]` and reports the SEGMENT's length, never the reel's.** A 30-second cut of a 22-minute recording reads `0:04 / 0:30`. Handing the readout the reel's own numbers would present the whole recording as if it were the clip, which is precisely what makes a preview useless for judging one cut. One preview is open at a time and collapsing **unmounts** the element — otherwise every row the operator has ever clicked holds a range request open against a 20-minute file.
 
    ⚠ **This was "not optional, ever" until V43, and the blanket rule was over-applied.** Boundary

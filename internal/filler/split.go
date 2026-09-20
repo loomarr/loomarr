@@ -297,6 +297,22 @@ type SplitSegment struct {
 	// decide what happened or expose it as primary copy.
 	LanguageReason string `json:"languageReason,omitempty"`
 	LanguageNote   string `json:"languageNote,omitempty"`
+	// ArtworkImageHash is the shared image-service identity of the representative frame for this
+	// exact proposed span. It is persisted beside the proposal but never accepted from the wire:
+	// API output resolves it to a complete ImageDTO, while confirmation remains only a cut-list
+	// command. ArtworkChecked distinguishes an extraction failure from work that has not run yet.
+	ArtworkImageHash string `json:"-"`
+	ArtworkChecked   bool   `json:"-"`
+}
+
+// SplitSegmentArtwork is the persisted binding between one exact proposal span and its temporary
+// representative still. Keeping it outside SplitSegment's JSON contract prevents artwork
+// lifecycle fields from becoming operator-editable confirmation input.
+type SplitSegmentArtwork struct {
+	StartMs   int64  `json:"startMs"`
+	EndMs     int64  `json:"endMs"`
+	ImageHash string `json:"imageHash,omitempty"`
+	Checked   bool   `json:"checked"`
 }
 
 // SplitDetectionProgress is the private durable checkpoint for coarse boundary detection. It is
@@ -390,6 +406,11 @@ type SplitProposal struct {
 	// LanguageExclusions accounts for confidently mismatched spans omitted before review. It is
 	// receipt data, not an admission signal: unknown and wordless spans remain in Segments.
 	LanguageExclusions []SplitLanguageExclusion `json:"languageExclusions,omitempty"`
+	// ArtworkPrepared is true once every surviving segment has either a representative still or
+	// an explicit unavailable outcome. It does not participate in Ready: visual preparation must
+	// never turn a valid cut proposal into detector work or block confirmation after an image
+	// subsystem failure.
+	ArtworkPrepared bool `json:"-"`
 	// Source binds detection and confirmation to one exact derivative. It is internal durable
 	// state rather than review UI; zero is a pre-V66 proposal that resolves through legacy rules.
 	Source SplitSourceAsset `json:"-"`

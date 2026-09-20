@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect } from "storybook/test";
 import { widthFrame } from "@/test/story-utils";
 import { pauseStoryVideo } from "@/test/story-video";
-import { TINY_MP4 } from "@/test/video-fixture";
+import { TINY_WEBM } from "@/test/video-fixture";
 import { ClipDetails } from "./clip-details";
 
 const meta = {
@@ -15,10 +15,10 @@ const meta = {
 type Story = StoryObj<typeof meta>;
 
 const Known: Story = {
-  args: { clip: { ...fillerRefinementKnownClip, hash: TINY_MP4 }, onEdit: () => {} },
+  args: { clip: { ...fillerRefinementKnownClip, hash: TINY_WEBM }, onEdit: () => {} },
 };
 const Unknown: Story = {
-  args: { clip: { ...fillerRefinementUnknownClip, hash: TINY_MP4 } },
+  args: { clip: { ...fillerRefinementUnknownClip, hash: TINY_WEBM } },
 };
 const Preparing: Story = {
   args: { clip: { ...fillerRefinementUnknownClip, held: true, enrichment: { state: "adding_details" } } },

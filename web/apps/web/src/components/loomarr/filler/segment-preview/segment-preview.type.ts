@@ -1,3 +1,5 @@
+import type { ImageDTO } from "@loomarr/api/models/imageDTO";
+
 interface SegmentPreviewProps {
   // The COMPOSITE's content hash — the parent reel, not the segment's.
   //
@@ -13,6 +15,7 @@ interface SegmentPreviewProps {
   // id of the VISIBLE "#N" marker in the row. The tile has no text of its own, and an sr-only-only
   // name drifts from what is on screen — so the name is composed from a fixed verb plus this.
   labelledBy: string;
+  artwork?: ImageDTO;
   // Controlled by the editor, which keeps at most ONE preview open: two expanded previews are two
   // audio streams, and 52 mounted <video>s are 52 open range requests against a 20-minute file.
   open: boolean;

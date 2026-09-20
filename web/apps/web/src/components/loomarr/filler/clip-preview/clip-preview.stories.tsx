@@ -2,7 +2,7 @@ import { taggedClip } from "@loomarr/fixtures";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { pauseStoryVideo } from "@/test/story-video";
-import { TINY_MP4 } from "@/test/video-fixture";
+import { TINY_WEBM } from "@/test/video-fixture";
 import { ClipPreview } from "./clip-preview";
 
 // The real embedded player, not a lookalike or a second modal. Pause its inline fixture
@@ -18,12 +18,12 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-const Default: Story = { args: { clip: { ...taggedClip, hash: TINY_MP4 } } };
+const Default: Story = { args: { clip: { ...taggedClip, hash: TINY_WEBM } } };
 const LongTitle: Story = {
   args: {
     clip: {
       ...taggedClip,
-      hash: TINY_MP4,
+      hash: TINY_WEBM,
       name: "Cleveland local broadcast reel, tape 1, side B, segment 4 of 9 — an unusually long clip name (1987)",
     },
   },

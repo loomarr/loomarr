@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
-import { TINY_MP4 } from "@/test/video-fixture";
+import { TINY_WEBM } from "@/test/video-fixture";
 import { VideoPlayer } from "./video-player";
 
 // The app's video surface, with Loomarr's controls rather than the browser's (V39).
@@ -31,20 +31,20 @@ type Story = StoryObj<typeof meta>;
 // practically — an autoplaying player has a moving playhead, so its snapshot would differ on
 // every visual run.
 const Default: Story = {
-  args: { src: TINY_MP4, title: "CTV-LifewithBonnie.mkv — CTV Life with Bonnie" },
+  args: { src: TINY_WEBM, title: "CTV-LifewithBonnie.mkv — CTV Life with Bonnie" },
 };
 
 // Untitled: a player embedded under a heading that already names the thing does not need to
 // repeat it, so the whole top overlay disappears rather than rendering an empty scrim.
 const NoTitle: Story = {
-  args: { src: TINY_MP4 },
+  args: { src: TINY_WEBM },
 };
 
 // A long name truncates rather than wrapping — the title sits on a scrim over arbitrary video, and
 // a second line would cover more of the frame than it is worth.
 const LongTitle: Story = {
   args: {
-    src: TINY_MP4,
+    src: TINY_WEBM,
     title: "CLE-B01_161770-162673 — Cleveland local broadcast reel, tape 1, side B, segment 4 of 9 (1987)",
   },
 };

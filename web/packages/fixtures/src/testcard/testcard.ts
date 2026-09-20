@@ -8,7 +8,7 @@ import type { PodPoolDTO } from "@loomarr/api/models/podPoolDTO";
 import type { PoolDTO } from "@loomarr/api/models/poolDTO";
 import type { Proposal } from "@loomarr/api/models/proposal";
 import type { PullDTO } from "@loomarr/api/models/pullDTO";
-import type { SplitProposal } from "@loomarr/api/models/splitProposal";
+import type { SplitReviewProposalDTO } from "@loomarr/api/models/splitReviewProposalDTO";
 import type { SearchResult } from "@loomarr/core/contracts";
 
 // The "test card" — deterministic demo data shared by Storybook stories and tests, on
@@ -340,7 +340,7 @@ const suggestedEraClip: ClipDTO = {
 // A persisted split proposal (§10 V34) mid-review, covering every segment state the
 // editor must render honestly: a clean classified segment, one with an unconfirmed era
 // suggestion, a dHash duplicate flag, an unsplittable over-long span, and a transcript.
-const splitProposal: SplitProposal = {
+const splitProposal: SplitReviewProposalDTO = {
   id: "split-testcard",
   clipHash: "c5e2000000000000000000000000000000000000000000000000000000000080",
   createdAt: "2026-07-25T20:00:00Z",
@@ -353,6 +353,7 @@ const splitProposal: SplitProposal = {
       era: 1990,
       audience: "kids",
       category: "food & drink",
+      artwork: thumbnailedClip.thumbImage,
       transcript: "[00:01] Sunny D, dude!\n[00:12] Packed with sunshine.",
     },
     {
@@ -362,6 +363,7 @@ const splitProposal: SplitProposal = {
       name: "Rotoscoped tech spot",
       audience: "general",
       category: "tech",
+      artwork: thumbnailedClip.thumbImage,
       // The classifier guessed 1985 from tone; the year is in no text signal, so the
       // validator refused to persist it (§10 era grounding). The operator confirms.
       suggestedEra: 1985,
@@ -374,6 +376,7 @@ const splitProposal: SplitProposal = {
       era: 1990,
       audience: "kids",
       category: "food & drink",
+      artwork: thumbnailedClip.thumbImage,
       // dHash match against an existing catalog row — a FLAG, never a silent drop.
       dupOf: "clip-gushers.mp4",
     },

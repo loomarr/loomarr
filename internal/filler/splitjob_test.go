@@ -51,6 +51,7 @@ type fakeTools struct {
 	boundaryFn       func(context.Context, int64, int64) ([]filler.Interval, error)
 	cutCalls         []string
 	grayCalls        []string
+	keyframeSpans    [][2]int64
 	grayHook         func(string, int64, int64)
 	cutFn            func(string, int64, int64, string) error
 }
@@ -127,8 +128,22 @@ func (f *fakeTools) GrayFrames(_ context.Context, path string, start, end int64)
 	return frames, nil
 }
 
-func (f *fakeTools) KeyframesIn(ctx context.Context, path string, _, _ int64, n int) ([][]byte, error) {
+func (f *fakeTools) KeyframesIn(ctx context.Context, path string, start, end int64, n int) ([][]byte, error) {
+	f.keyframeSpans = append(f.keyframeSpans, [2]int64{start, end})
 	return f.Keyframes(ctx, path, n)
+}
+
+type splitArtworkCapture struct {
+	proposalIDs []string
+	segments    []filler.SplitSegment
+	frames      [][]byte
+}
+
+func (c *splitArtworkCapture) IngestSplitArtwork(_ context.Context, proposalID string, segment filler.SplitSegment, jpeg []byte) (string, error) {
+	c.proposalIDs = append(c.proposalIDs, proposalID)
+	c.segments = append(c.segments, segment)
+	c.frames = append(c.frames, append([]byte(nil), jpeg...))
+	return fmt.Sprintf("artwork-%d-%d", segment.StartMs, segment.EndMs), nil
 }
 
 func (f *fakeTools) Keyframes(_ context.Context, path string, _ int) ([][]byte, error) {
@@ -957,6 +972,44 @@ func TestPropose_ChaptersShortCircuitDetection(t *testing.T) {
 	// The catalog is UNTOUCHED: propose never writes clips.
 	if len(st.clips) != 1 {
 		t.Errorf("propose wrote to the catalog: %+v", st.clips)
+	}
+}
+
+func TestPropose_PreparesRepresentativeArtworkForEachExactSpan(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/with-artwork.mp4", 61_000)
+	tools := &fakeTools{
+		chapters: []filler.Chapter{
+			{StartMs: 0, EndMs: 30_000, Title: "First"},
+			{StartMs: 30_000, EndMs: 61_000, Title: "Second"},
+		},
+		keyframes: map[string][][]byte{"with-artwork.mp4": {[]byte("representative-jpeg")}},
+	}
+	capture := &splitArtworkCapture{}
+	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSplitArtwork(capture)
+
+	proposal, err := splitter.Propose(context.Background(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proposal.ArtworkPrepared || len(proposal.Segments) != 2 {
+		t.Fatalf("proposal artwork = prepared %v, segments %+v", proposal.ArtworkPrepared, proposal.Segments)
+	}
+	wantSpans := [][2]int64{{0, 30_000}, {30_000, 61_000}}
+	if !reflect.DeepEqual(tools.keyframeSpans, wantSpans) {
+		t.Fatalf("representative frame spans = %v, want %v", tools.keyframeSpans, wantSpans)
+	}
+	if len(capture.segments) != 2 || capture.proposalIDs[0] != proposal.ID || capture.proposalIDs[1] != proposal.ID {
+		t.Fatalf("artwork sink calls = ids %v segments %+v", capture.proposalIDs, capture.segments)
+	}
+	for i, segment := range proposal.Segments {
+		if !segment.ArtworkChecked || segment.ArtworkImageHash == "" {
+			t.Errorf("segment %d artwork = checked %v hash %q", i, segment.ArtworkChecked, segment.ArtworkImageHash)
+		}
+	}
+	persisted, err := st.GetSplitProposal(context.Background(), proposal.ID)
+	if err != nil || !reflect.DeepEqual(persisted.Segments, proposal.Segments) || !persisted.ArtworkPrepared {
+		t.Fatalf("persisted artwork proposal = (%+v, %v)", persisted, err)
 	}
 }
 
@@ -2539,11 +2592,11 @@ func TestConfirm_ReSplitReplacesOldChildrenOnlyWhenComplete(t *testing.T) {
 	}
 
 	newProposal := filler.SplitProposal{
-		ID: "new", ClipHash: parentHash, CreatedAt: time.Now().Add(time.Second),
+		ID: "new", ClipHash: parentHash, CreatedAt: time.Now().Add(time.Second), ArtworkPrepared: true,
 		Segments: []filler.SplitSegment{
-			{StartMs: 0, EndMs: 20_000, Name: "new one"},
-			{StartMs: 20_000, EndMs: 40_000, Name: "new two"},
-			{StartMs: 40_000, EndMs: 60_000, Name: "new three"},
+			{StartMs: 0, EndMs: 20_000, Name: "new one", ArtworkChecked: true, ArtworkImageHash: "image-one"},
+			{StartMs: 20_000, EndMs: 40_000, Name: "new two", ArtworkChecked: true, ArtworkImageHash: "image-two"},
+			{StartMs: 40_000, EndMs: 60_000, Name: "new three", ArtworkChecked: true, ArtworkImageHash: "image-three"},
 		},
 	}
 	if err := st.UpsertSplitProposal(context.Background(), newProposal); err != nil {
@@ -2553,7 +2606,15 @@ func TestConfirm_ReSplitReplacesOldChildrenOnlyWhenComplete(t *testing.T) {
 	parent.Held = true
 	st.clips[parentHash] = parent
 	stageParentForSplitReview(st, parentHash)
-	first, err := sp.ConfirmSome(context.Background(), newProposal.ID, newProposal.Segments[:1], newProposal.Segments[1:])
+	hold := append([]filler.SplitSegment(nil), newProposal.Segments[1:]...)
+	for i := range hold {
+		hold[i].ArtworkChecked = false
+		hold[i].ArtworkImageHash = ""
+	}
+	// Simulate one operator-adjusted interval beside one untouched interval. The wire never carries
+	// artwork fields, so exact evidence must be rebound while changed evidence is invalidated.
+	hold[1].StartMs = 41_000
+	first, err := sp.ConfirmSome(context.Background(), newProposal.ID, newProposal.Segments[:1], hold)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2577,6 +2638,12 @@ func TestConfirm_ReSplitReplacesOldChildrenOnlyWhenComplete(t *testing.T) {
 	persisted := st.proposals[newProposal.ID]
 	if len(persisted.Spawned) != 1 || persisted.Spawned[0] != first[0] {
 		t.Fatalf("proposal spawned state = %v, want first partial child", persisted.Spawned)
+	}
+	if persisted.ArtworkPrepared || persisted.Segments[0].ArtworkImageHash != "image-two" || !persisted.Segments[0].ArtworkChecked {
+		t.Fatalf("exact held segment artwork was not preserved: prepared=%v segments=%+v", persisted.ArtworkPrepared, persisted.Segments)
+	}
+	if persisted.Segments[1].ArtworkImageHash != "" || persisted.Segments[1].ArtworkChecked {
+		t.Fatalf("edited held segment kept stale artwork: %+v", persisted.Segments[1])
 	}
 
 	last, err := sp.Confirm(context.Background(), newProposal.ID, persisted.Segments)
