@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // ⚠ THE V8 SAFETY GATE (§11, §19, D-F).
@@ -26,12 +27,7 @@ import (
 
 func newSSOStore(t *testing.T) store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/sso.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return testkit.MigratedSQLiteStore(t)
 }
 
 func ssoConfig(enabled bool) func() auth.SSOConfig {

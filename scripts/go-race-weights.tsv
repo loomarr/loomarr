@@ -1,45 +1,47 @@
 # Conservative `go test -race` package seconds from the observed upper envelope of the current
-# implementation. Most rows come from merge-group runs 35481945657, 35485325595, and 35486394498;
-# internal/suggest reflects the post-refactor 34.908s result from run 35497917692.
+# implementation. Most rows come from merge-group runs 35481945657, 35485325595, 35486394498,
+# and 35500779353; internal/suggest reflects the post-refactor 34.908s result from run 35497917692.
+# internal/auth is a conservative provisional ceiling after migrated-template reuse cut its local
+# race package from 118.89s to 19.64s; replace it with the next hosted result.
 # Packages below five seconds use the conservative one-second floor in go-shard.sh.
 # Keep only material weights here: the CI summary identifies entries that need refreshing.
 internal/suggest	35
-internal/auth	265
-internal/fillerreview	221
+internal/auth	60
+internal/fillerreview	249
 internal/store	294
 internal/backendtransition	246
-internal/app	169
-internal/api	172
+internal/app	171
+internal/api	188
 internal/recurate	168
-internal/integration	125
-internal/reconcile	112
-internal/binder	88
+internal/integration	127
+internal/reconcile	123
+internal/binder	101
 internal/playoutcert	82
 cmd/playout-load-cert	77
-internal/clipfetch	64
-internal/releaseverify	39
-internal/images	35
-internal/fillersafetyreview	24
-internal/fillerreference	20
-internal/schedule	18
-internal/secretprotection	20
-internal/channels	13
-internal/fillervisualsafety	13
+internal/clipfetch	67
+internal/releaseverify	52
+internal/images	39
+internal/fillersafetyreview	25
+internal/fillerreference	23
+internal/schedule	20
+internal/secretprotection	24
+internal/channels	15
+internal/fillervisualsafety	16
 internal/playout	13
-internal/notifications	13
-internal/proposalworkflow	12
+internal/notifications	16
+internal/proposalworkflow	16
 cmd/seed	17
-internal/fillereval	11
+internal/fillereval	13
 cmd/image-cert	10
 internal/filler	12
 internal/scheduler	10
-internal	8
-internal/fillersafetycert	8
-internal/fillersafetycorpus	9
+internal	9
+internal/fillersafetycert	12
+internal/fillersafetycorpus	10
 internal/fillerstructurewindowcert	8
-internal/installationlocation	8
+internal/installationlocation	9
 cmd/filler-reference-audit	7
-internal/devbootstrap	7
+internal/devbootstrap	8
 internal/inventory	9
 internal/invitation	7
 internal/mediatools	6

@@ -558,9 +558,19 @@ parallelism. The reviewed latency-sensitive playout/capacity set runs in two con
 lanes, so each group remains serial while separate runners safely overlap the groups. Merge-group
 run 35497917692 measured the former combined certification lane at 9m53s, including `internal/app`
 at 159.215 seconds and the complementary playout packages at 157.874 reported package-seconds.
-That natural seam produces modeled certification groups of 171 and 172 seconds. The same run
+That natural seam produces modeled certification groups of 173 and 172 seconds after the latest
+hosted-weight refresh. The same run
 measured the refactored `internal/suggest` at 34.908 seconds; refreshing its obsolete 368-second
-weight produces an ordinary six-way plan of 385 seconds per lane before bounded overlap.
+weight removed that package bottleneck. Merge-group run 35500779353 then put every Go job between
+6m59s and 9m01s, but the ordinary job spread was still about 29%. Its package summary exposed
+`internal/auth` at 300.797 seconds and refreshed every material upper-envelope weight. Both auth
+test-store helpers had independently replayed the complete SQLite migration history for every
+private test database. Routing them through the existing isolated migrated template reduced the
+local SSO race subset from 30.59 to 5.64 seconds and the complete auth race package from 118.89 to
+19.64 seconds, with the real RS256 verifier, allowlist refusals, disabled-person checks, session
+revocation, password hashing, and every existing assertion retained. A conservative provisional
+auth ceiling produces an ordinary plan of 372/371/371/371/371/371 seconds before bounded overlap;
+the next hosted result replaces that projection.
 `make go-shard-verify SHARDS=6` rejects missing or duplicated packages, a modeled lane above nine
 test minutes, or more than 25% imbalance within either the ordinary or certification group. Release
 verification additionally rejects an unreviewed serial package, grouping or workflow lane. The
