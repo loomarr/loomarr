@@ -20,6 +20,7 @@ func (temporalStructureWindowNoopLedger) Settle(context.Context, fillerstructure
 }
 
 func TestNewTemporalStructureWindowOpenRouterFamilyPinsSnapshotPriceAndProductionRuntime(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC)
 	config := temporalStructureWindowOpenRouterFamilyTestConfig(t, now)
 	family, err := NewTemporalStructureWindowOpenRouterFamily(config)
@@ -35,6 +36,7 @@ func TestNewTemporalStructureWindowOpenRouterFamilyPinsSnapshotPriceAndProductio
 }
 
 func TestNewTemporalStructureWindowOpenRouterFamilyRejectsStaleOrUnderReservedRoute(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC)
 	stale := temporalStructureWindowOpenRouterFamilyTestConfig(t, now)
 	stale.Snapshot.RetrievedAt = now.Add(-25 * time.Hour)

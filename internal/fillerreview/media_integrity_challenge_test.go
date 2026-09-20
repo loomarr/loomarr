@@ -12,6 +12,7 @@ import (
 )
 
 func TestMediaIntegrityChallengeBuildsLabelFreePackageAndScoresSeparateAxes(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	qualityPath := filepath.Join(root, "quality.json")
 	authorityPath := filepath.Join(root, "authority.json")
@@ -62,6 +63,7 @@ func TestMediaIntegrityChallengeBuildsLabelFreePackageAndScoresSeparateAxes(t *t
 }
 
 func TestMediaIntegrityChallengeFailsClosedOnVocabularyAndIdentityDrift(t *testing.T) {
+	t.Parallel()
 	preparedAt := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	report := mediaIntegrityFixtureReport(preparedAt.Add(-time.Hour))
 	authority := MediaIntegrityChallengeAuthoring{SchemaVersion: MediaIntegrityChallengeSchemaVersion, ContractVersion: MediaIntegrityChallengeContractVersion, AuthoredAt: preparedAt.Add(-time.Minute), PolicyVersion: MediaIntegrityPolicyVersion}

@@ -123,6 +123,7 @@ func lineupKeys(ch store.Channel) map[provision.Key]bool {
 // still-available title the LLM merely didn't re-pick this run — it ADDS the new picks and
 // keeps the rest. This is the "1980s Action Heroes lost RoboCop/Terminator/Raiders" fix.
 func TestPlan_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Existing lineup: 3 available films.
 	putAvailable(t, st, 1, "RoboCop")
@@ -169,6 +170,7 @@ func TestPlan_AutoCurate_IsAdditive_NeverDropsAvailable(t *testing.T) {
 // the trimmed channel itself moments before the binder ran, which made it a second lineup
 // writer ordered against this one by a comment.
 func TestPlan_AutoCurate_AppliesRetirementsFromTheProposal(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	putAvailable(t, st, 1, "Keeper")
 	putAvailable(t, st, 2, "Retired") // still in the library — only the turnstile wants it gone
@@ -202,6 +204,7 @@ func TestPlan_AutoCurate_AppliesRetirementsFromTheProposal(t *testing.T) {
 // proposal must not quietly delete anything the person kept. Asserted because the field is on
 // the shared proposal body and nothing in the type system stops a non-auto-curate path setting it.
 func TestPlan_ManualApproval_IgnoresRetirements(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	putAvailable(t, st, 1, "Kept By A Human")
 	seedChannel(t, st, "c1", "job1",
@@ -225,6 +228,7 @@ func TestPlan_ManualApproval_IgnoresRetirements(t *testing.T) {
 // A genuinely-gone title (unavailable in the library) IS dropped by auto-curate — that's the
 // conservative prune the §8.2 semantics allow.
 func TestPlan_AutoCurate_DropsUnavailable(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	putAvailable(t, st, 1, "Keeper")
 	putUnavailable(t, st, 2, "Gone") // left the library
@@ -251,6 +255,7 @@ func TestPlan_AutoCurate_DropsUnavailable(t *testing.T) {
 // A MANUAL approval (not auto-curate) REPLACES the lineup — a person decided, including to
 // remove titles. This guards that the additive behavior is auto-curate-ONLY.
 func TestPlan_ManualApprove_ReplacesLineup(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	putAvailable(t, st, 1, "Old")
 	seedChannel(t, st, "c1", "job1",
@@ -282,6 +287,7 @@ func TestPlan_ManualApprove_ReplacesLineup(t *testing.T) {
 // fields — the AutoCurate opt-in itself, hand-edited Rules, and Window — none of which the
 // refreshed proposal carries. Without this, a channel auto-curates once then turns itself off.
 func TestPlan_AutoCurate_PreservesOperatorOwnedPolicy(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	putAvailable(t, st, 1, "Film")
 	ac := &schedule.AutoCurate{MinScorePct: 75}
@@ -312,6 +318,7 @@ func TestPlan_AutoCurate_PreservesOperatorOwnedPolicy(t *testing.T) {
 }
 
 func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	ctx := context.Background()
 	body := suggest.Proposal{
@@ -392,6 +399,7 @@ func TestPlanApprovedChannelPreservesAnExplicitEmptyFillerSelection(t *testing.T
 }
 
 func TestPlan_RejectsAnythingOtherThanAnApprovedCandidate(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	b := binder.New(st, nil, nil, testkit.Logger())
 
@@ -436,6 +444,7 @@ func (r *recordedActivity) Error(_ context.Context, kind, subjectID, text string
 }
 
 func TestAfterApprovalCommitted_IsBestEffort(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	codec := &recordingCodec{err: errors.New("probe unavailable")}
 	reconciler := &recordingReconciler{err: errors.New("tunarr unavailable")}

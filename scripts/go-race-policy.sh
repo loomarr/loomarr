@@ -113,20 +113,25 @@ if [ -z "$stdin_pkgs" ]; then
 fi
 
 off_paths="$(race_off_paths)"
-stdin_sorted="$(printf '%s\n' "$stdin_pkgs" | sort -u)"
 
 if [ -z "$off_paths" ]; then
 	# Empty opt-out list: everything runs under -race, nothing runs without it.
 	case "$mode" in
-		--race) printf '%s\n' "$stdin_sorted" ;;
+		--race) printf '%s\n' "$stdin_pkgs" | awk 'NF && !seen[$0]++' ;;
 		--no-race) : ;; # emit nothing
 	esac
 	exit 0
 fi
 
 case "$mode" in
-	# Packages in the input that are NOT opted out -> run under -race.
-	--race) comm -23 <(printf '%s\n' "$stdin_sorted") <(printf '%s\n' "$off_paths") ;;
-	# Packages in the input that ARE opted out -> run without -race.
-	--no-race) comm -12 <(printf '%s\n' "$stdin_sorted") <(printf '%s\n' "$off_paths") ;;
+	# Preserve the sharder's descending-cost order. Sorting here used to undo its LPT schedule and
+	# made heavy packages start minutes late even though the aggregate lane weights were balanced.
+	--race)
+		awk 'NR == FNR { off[$0] = 1; next } NF && !seen[$0]++ && !($0 in off)' \
+			<(printf '%s\n' "$off_paths") <(printf '%s\n' "$stdin_pkgs")
+		;;
+	--no-race)
+		awk 'NR == FNR { off[$0] = 1; next } NF && !seen[$0]++ && ($0 in off)' \
+			<(printf '%s\n' "$off_paths") <(printf '%s\n' "$stdin_pkgs")
+		;;
 esac

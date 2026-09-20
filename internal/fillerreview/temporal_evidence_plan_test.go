@@ -8,6 +8,7 @@ import (
 )
 
 func TestBuildTemporalEvidencePlanPreservesBoundariesAndSamplesTransitions(t *testing.T) {
+	t.Parallel()
 	plan, err := BuildTemporalEvidencePlan(10_000,
 		[]mediatools.Interval{{StartMs: 0, EndMs: 1_000}, {StartMs: 8_500, EndMs: 10_000}},
 		[]mediatools.Interval{{StartMs: 0, EndMs: 800}, {StartMs: 9_000, EndMs: 10_000}},
@@ -25,6 +26,7 @@ func TestBuildTemporalEvidencePlanPreservesBoundariesAndSamplesTransitions(t *te
 }
 
 func TestBuildTemporalEvidencePlanNeverErasesFullyBlankSpan(t *testing.T) {
+	t.Parallel()
 	blank := []mediatools.Interval{{StartMs: 0, EndMs: 2_000}}
 	plan, err := BuildTemporalEvidencePlan(2_000, blank, blank, nil)
 	if err != nil {

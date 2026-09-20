@@ -12872,8 +12872,12 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   `-p=1`. The lanes execute concurrently, so protecting media latency does not serialize unrelated
   repository packages. Each certification lane remains serial so independent synthetic targets
   never compete for the same worker while asserting latency and capacity; the two balanced groups
-  use separate runners and therefore overlap without sharing worker resources. Race
-  instrumentation, within-package concurrency and the complete package partition remain unchanged.
+  use separate runners and therefore overlap without sharing worker resources. Ordinary shards are
+  emitted in descending measured-cost order and the race-policy split must preserve that order, so
+  the bounded Go scheduler starts critical packages before cheap work. Fixture-isolated top-level
+  tests in `fillerreview`, `recurate`, `binder`, and non-integration `backendtransition` may use
+  bounded `t.Parallel`; environment-mutating integration tests remain serial. Race instrumentation
+  and the complete package partition remain unchanged.
   The Postgres Make target pins `-p=1` directly; its
   release-verifier contract requires that exact recipe and still rejects workflow environment
   overrides. Go runtime workers use the production Dockerfile's retained FFmpeg build and
@@ -12896,8 +12900,9 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   preserving six minutes for setup, compilation, and cache variance while making latency
   regressions fail loud. `go-shard-verify` proves the two ordinary shards plus both certification
   lanes remain an exact partition of `go list ./...` and enforces both modeled budgets; the
-  release-verification suite pins the weighted assignment, certification package grouping, lane
-  parallelism, workflow lanes and timeout. Lane-scoped CI invocations omit `make test`'s eager Rust
+  release-verification suite pins the weighted assignment and executable descending-cost order,
+  race-policy order preservation, certification package grouping, lane parallelism, workflow lanes
+  and timeout. Lane-scoped CI invocations omit `make test`'s eager Rust
   worker and evaluation prerequisites: the repository-contract job runs `eval-contract` exactly
   once, and packages that exercise the production image protocol acquire the real debug worker
   through `internal/testkit`. Unsharded local `make test` retains both prerequisites. The release

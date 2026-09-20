@@ -12,6 +12,7 @@ import (
 // must carry through lineupEntries onto the LineupEntry the scheduler enforces —
 // the last hop of the §8 season-scope path. A movie carries none.
 func TestLineupEntriesCarriesSeasonWindow(t *testing.T) {
+	t.Parallel()
 	p := suggest.Proposal{
 		Lineup: []suggest.ProposalItem{
 			{MediaType: provision.Series, TVDBID: 71663, Name: "The Simpsons", SeasonMin: 1, SeasonMax: 10,

@@ -10,6 +10,7 @@ import (
 )
 
 func TestPublishTemporalStructureShortLongShadowBindsCertifiedFamilyLineage(t *testing.T) {
+	t.Parallel()
 	fixture := temporalStructureShortLongShadowFixture(t)
 	artifact, fileSHA, err := PublishTemporalStructureShortLongShadow(fixture.config)
 	if err != nil {
@@ -27,6 +28,7 @@ func TestPublishTemporalStructureShortLongShadowBindsCertifiedFamilyLineage(t *t
 }
 
 func TestPublishTemporalStructureShortLongShadowRejectsUncertifiedWindowLineage(t *testing.T) {
+	t.Parallel()
 	fixture := temporalStructureShortLongShadowFixture(t)
 	windowSet := readStrictTestJSON[TemporalStructureShadowDecisionSet](t, fixture.config.WindowDecisionSetPath)
 	windowSet.Families[0].ResultFileSHA256 = strings.Repeat("f", 64)
@@ -39,6 +41,7 @@ func TestPublishTemporalStructureShortLongShadowRejectsUncertifiedWindowLineage(
 }
 
 func TestPublishTemporalStructureShortLongShadowRejectsFailedCertificate(t *testing.T) {
+	t.Parallel()
 	fixture := temporalStructureShortLongShadowFixture(t)
 	certificate := readStrictTestJSON[TemporalStructureWindowCertificationArtifact](t, fixture.config.WindowCertificationPath)
 	certificate.Report.Status = fillerstructurewindowcert.StatusFailed

@@ -13,6 +13,7 @@ import (
 )
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryAcceptsBoundSourceRecord(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	ledger := fixture.downloadLedger(t)
 	if _, digest, err := loadTemporalStructureHoldoutProgrammeInventory(fixture.inventory, fixture.root, ledger, fixture.plannedAt); err != nil || !reviewSHA256(digest) {
@@ -21,6 +22,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryAcceptsBoundSourceRecord(
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryNormalizesSourceRecordReference(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
 	mutateTemporalStructureProgrammeRecord(t, fixture, &inventory, func(record *fillercorpus.Inventory) {
@@ -33,6 +35,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryNormalizesSourceRecordRef
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsUppercaseHostParentReference(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
 	inventory.Sources[0].Provenance.Reference = strings.Replace(inventory.Sources[0].Provenance.Reference, "example.invalid", "EXAMPLE.INVALID", 1)
@@ -40,6 +43,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsUppercaseHostParen
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsNormalizedLedgerParentCollision(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	ledger := fixture.downloadLedger(t)
 	parent := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory).Sources[0]
@@ -65,6 +69,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsNormalizedLedgerPa
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsHostileSourceRecords(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, *temporalStructureHoldoutFixture, *TemporalStructureHoldoutProgrammeInventory){
 		"missing source record": func(_ *testing.T, _ *temporalStructureHoldoutFixture, inventory *TemporalStructureHoldoutProgrammeInventory) {
 			inventory.Sources[0].Provenance.SourceRecordPath = "missing-source-record.json"
@@ -106,6 +111,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsHostileSourceRecor
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsHostileMetadataAndMediaPaths(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, *temporalStructureHoldoutFixture, *TemporalStructureHoldoutProgrammeInventory){
 		"missing metadata": func(t *testing.T, fixture *temporalStructureHoldoutFixture, inventory *TemporalStructureHoldoutProgrammeInventory) {
 			mutateTemporalStructureProgrammeRecord(t, *fixture, inventory, func(record *fillercorpus.Inventory) { record.Cases[0].MetadataCache = "missing-metadata.json" })
@@ -156,6 +162,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsHostileMetadataAnd
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsSymlinkedEvidence(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, *temporalStructureHoldoutFixture, *TemporalStructureHoldoutProgrammeInventory){
 		"symlink file": func(t *testing.T, fixture *temporalStructureHoldoutFixture, inventory *TemporalStructureHoldoutProgrammeInventory) {
 			link := filepath.Join(fixture.root, "record-link.json")
@@ -183,6 +190,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsSymlinkedEvidence(
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsBrokenRecordBindings(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, *temporalStructureHoldoutFixture, *TemporalStructureHoldoutProgrammeInventory){
 		"item identity": func(_ *testing.T, _ *temporalStructureHoldoutFixture, inventory *TemporalStructureHoldoutProgrammeInventory) {
 			inventory.Sources[0].Provenance.ItemID = "wrong-item"
@@ -222,6 +230,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsBrokenRecordBindin
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsSeventhProgrammeSourceMatchingUnselectedFiller(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
 	seventh := inventory.Sources[0]
@@ -322,6 +331,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsSeventhProgrammeSo
 }
 
 func TestBuildTemporalStructureHoldoutPlanDoesNotPublishOnProgrammeInventoryFailure(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
 	inventory.Sources[0].Provenance.SourceRecordPath = "missing-source-record.json"

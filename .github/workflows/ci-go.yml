@@ -25,9 +25,10 @@ jobs:
     # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
     # a 31m10s critical path. The reviewed
     # weights in scripts/go-race-weights.tsv and longest-processing-time assignment model the
-    # current tree at ~1,065 aggregate package-seconds per ordinary lane before bounded `-p=4`
-    # overlap. The four-worker makespan remains ~267 seconds—the same modeled critical path as four
-    # `-p=2` lanes—while requiring two fewer hosted runners. `make go-shard-verify` rejects coverage,
+    # current tree at 921/920 aggregate package-seconds per ordinary lane before bounded `-p=4`
+    # overlap and 244/231-second worker makespans. The sharder emits that measured order and the
+    # race-policy filter preserves it; restoring lexical order made heavy packages start more than
+    # six minutes late in merge-group run 35510845578. `make go-shard-verify` rejects coverage,
     # bounded-worker latency, or balance drift and proves the four lanes remain an exact partition.
     #
     # -race is also SCOPED (scripts/go-race-policy.sh): a short, verified opt-out set of

@@ -16,6 +16,7 @@ import (
 )
 
 func TestBuildTemporalStructureWindowCorpusMediaPublishesExactBlindedSourcesAndTruth(t *testing.T) {
+	t.Parallel()
 	config, media := temporalStructureWindowMediaFixture(t, filepath.Join(t.TempDir(), "rendered"))
 	result, err := BuildTemporalStructureWindowCorpusMedia(t.Context(), config)
 	if err != nil {
@@ -109,6 +110,7 @@ func TestBuildTemporalStructureWindowCorpusMediaPublishesExactBlindedSourcesAndT
 }
 
 func TestBuildTemporalStructureWindowCorpusMediaFailsAtomicallyAndRejectsTamper(t *testing.T) {
+	t.Parallel()
 	t.Run("decode failure", func(t *testing.T) {
 		output := filepath.Join(t.TempDir(), "rendered")
 		config, media := temporalStructureWindowMediaFixture(t, output)

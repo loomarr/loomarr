@@ -13,6 +13,7 @@ import (
 )
 
 func TestPublishTemporalStructureWindowPreflightReportsExactRunAndRequiresRepresentedEdges(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(root, "suite"))
 	if _, err := BuildTemporalStructureWindowCertificationSuite(t.Context(), suiteConfig); err != nil {
@@ -82,6 +83,7 @@ func TestPublishTemporalStructureWindowPreflightReportsExactRunAndRequiresRepres
 }
 
 func TestBuildTemporalStructureWindowPreflightRecognizesRepresentedContinuousEnvelope(t *testing.T) {
+	t.Parallel()
 	profile := fillerstructurewindow.CanonicalProfile()
 	manifest := TemporalStructureWindowSetManifest{
 		AssessmentMediaProfileSHA256: fillerstructuremedia.CanonicalProfile().SHA256,

@@ -14,11 +14,14 @@
 #
 # The partition uses longest-processing-time assignment over a small, reviewed set of measured
 # package costs. Packages below the materiality floor cost one modeled second, so every current and
-# future package remains assigned even before it has a hosted timing. This replaces alphabetical
-# placement, which drifted from a balanced 2026-09-01 sample to 1430/657/583 package-seconds in
-# merge-group run 35472062915. Latency-sensitive media packages live in two reviewed serial lanes;
-# the remaining weighted packages are balanced across two ordinary lanes. Separate runners let the
-# two certification groups overlap without allowing package concurrency inside either group.
+# future package remains assigned even before it has a hosted timing. Each ordinary lane is emitted
+# in descending measured-cost order too: `go test` schedules from its argument list, so restoring
+# `go list` order after modeling LPT left expensive packages waiting behind cheap compilations and
+# made the modeled worker bound fictional. This replaces alphabetical placement, which drifted from
+# a balanced 2026-09-01 sample to 1430/657/583 package-seconds in merge-group run 35472062915.
+# Latency-sensitive media packages live in two reviewed serial lanes; the remaining weighted
+# packages are balanced across two ordinary lanes. Separate runners let the two certification
+# groups overlap without allowing package concurrency inside either group.
 #
 # ⚠ THE --verify MODE IS NOT OPTIONAL DECORATION. A sharding bug that DROPS a package does not
 # fail anything: the dropped tests simply never run and every shard stays green, which is the
@@ -96,8 +99,9 @@ ordinary_packages() {
 }
 
 # Assign the largest measured package to the currently lightest shard. Ties are deterministic:
-# package path for work ordering, then the lowest shard number for placement. Output stays in the
-# original `go list` order so callers receive a stable package list.
+# package path for work ordering, then the lowest shard number for placement. Output stays in that
+# descending-cost work order so the bounded `go test -p` scheduler starts the critical packages
+# first instead of creating a several-minute tail after the aggregate split was already balanced.
 partition() {
   local mode="$1" index="$2" total="$3" module
   module="$(go list -m)"
@@ -150,7 +154,8 @@ partition() {
         for (shard = 1; shard <= n; shard++) print shard, load[shard]
         exit
       }
-      for (item = 1; item <= count; item++) {
+      for (rank = 1; rank <= count; rank++) {
+        item = order[rank]
         if (assigned[item] == target) print package[item]
       }
     }

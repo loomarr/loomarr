@@ -585,14 +585,29 @@ spent 9m37s in the test step. Its cache log showed a complete miss followed by r
 downloads, a 40.94-second Rust build, and a 55-second eval-contract invocation before the lane even
 started its ordinary package phase. Those prerequisites ran identically in all six jobs.
 
-The resulting architecture preserves the same work with fewer runners. Two ordinary lanes each
-carry 1,065 modeled aggregate package-seconds and use bounded `-p=4`; their independent race and
-non-race scheduler phases each use four-worker longest-processing-time placement, producing the
-same 267/267-second modeled critical worker load as the former four `-p=2` lanes. The two serial
-certification lanes remain unchanged. Lane-scoped `make test` omits the eager Rust and eval
+The resulting architecture preserves the same work with fewer runners. Two ordinary lanes use
+bounded `-p=4`, and the two serial certification lanes remain unchanged. Lane-scoped `make test`
+omits the eager Rust and eval
 prerequisites: `go-contracts` executes `eval-contract` once, while the only Go packages that need
 the real image worker acquire it through `internal/testkit`. Unsharded local `make test` retains
 both explicit prerequisites and remains self-contained.
+
+The first authoritative two-ordinary-lane run, 35510845578, proved that balancing aggregate work
+was still insufficient. Both certification jobs passed in 5m57s and 7m15s from queue creation, but
+ordinary test steps took 10m23s and 10m41s and completed 11m18s and 11m35s after queue creation.
+Their 18-second spread ruled out shard imbalance. The executable package order was the real defect:
+the sharder modeled longest-processing-time workers, then restored `go list` order, and the race
+policy sorted that order lexically again. `internal/store` and `internal/recurate` consequently
+started about 6m21s and 6m34s into their test steps. Four large, fixture-isolated packages also ran
+all top-level tests serially. The runner now emits and preserves descending measured-cost order,
+and `internal/fillerreview`, `internal/backendtransition`'s non-integration tests,
+`internal/recurate`, and `internal/binder` use bounded `t.Parallel` execution. The PostgreSQL-tagged
+backend tests remain serial because they mutate process environment. Same-machine four-CPU race
+controls measured `fillerreview` at 115.237s serial versus 41.154s parallel; the other three
+packages completed together in 58.83s versus 82.61s with their internal parallelism disabled.
+Scaling the hosted weights by those ratios and repartitioning yields 921/920 aggregate seconds and
+244/231-second bounded-worker makespans. The next merge-group run remains the authority for hosted
+latency and replaces those provisional scaled weights.
 
 `make go-shard-verify SHARDS=2` rejects missing or duplicated packages, an ordinary aggregate above
 1,200 seconds, a bounded-worker or serial-certification makespan above nine minutes, or more than 25%
@@ -601,8 +616,9 @@ cannot hide unbounded total work, and a balanced aggregate cannot hide one satur
 verification additionally rejects an unreviewed serial package, grouping or workflow lane. The
 workflow also caps each whole job at 15 minutes, leaving six minutes for setup and compilation while
 making renewed latency drift a hard failure. `TestGoShardUsesMeasuredLongestProcessingTime` pins
-deterministic assignment, and `TestGoShardBalancesMeasuredRaceWork` pins the latency and balance
-budgets against the current tree.
+deterministic assignment and executable work order, `TestGoRacePolicyPreservesSharderWorkOrder`
+prevents the policy split from sorting it away, and `TestGoShardBalancesMeasuredRaceWork` pins the
+latency and balance budgets against the current tree.
 
 Within the SQLite store package, conformance assertions clone one closed, fully migrated template
 database rather than replaying the complete migration history for every assertion. The 2026-09-01

@@ -16,6 +16,7 @@ import (
 )
 
 func TestLoadTemporalStructureHoldoutReferenceDownloadLedgerRejectsHostileInputs(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	audit := readStrictTestJSON[fillerreference.Audit](t, fixture.referenceAudit)
 	ledger := fixture.downloadLedger(t)
@@ -88,6 +89,7 @@ func TestLoadTemporalStructureHoldoutReferenceDownloadLedgerRejectsHostileInputs
 }
 
 func TestTemporalStructureHoldoutPlanReproducesCompleteBlindedChallenge(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	planRoot := filepath.Join(t.TempDir(), "plan")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(planRoot)); err != nil {
@@ -136,6 +138,7 @@ func TestTemporalStructureHoldoutPlanReproducesCompleteBlindedChallenge(t *testi
 }
 
 func TestBuildTemporalStructureChallengeRejectsReceiptThatDoesNotBindAuthoring(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	planRoot := filepath.Join(t.TempDir(), "plan")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(planRoot)); err != nil {
@@ -159,6 +162,7 @@ func TestBuildTemporalStructureChallengeRejectsReceiptThatDoesNotBindAuthoring(t
 }
 
 func TestBuildTemporalStructureChallengeRejectsMissingLedgerReceiptAndLegacyV5(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	planRoot := filepath.Join(t.TempDir(), "plan")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(planRoot)); err != nil {
@@ -195,6 +199,7 @@ func TestBuildTemporalStructureChallengeRejectsMissingLedgerReceiptAndLegacyV5(t
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsMissingLedgerWithoutPublishing(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	config := fixture.config(filepath.Join(t.TempDir(), "output"))
 	config.ReferenceDownloadLedgerPath = filepath.Join(t.TempDir(), "missing-ledger.json")
@@ -207,6 +212,7 @@ func TestBuildTemporalStructureHoldoutPlanRejectsMissingLedgerWithoutPublishing(
 }
 
 func TestBuildTemporalStructureHoldoutPlanRequiresExplicitLineageMode(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	config := fixture.config(filepath.Join(t.TempDir(), "plan"))
 	config.Genesis = false
@@ -221,6 +227,7 @@ func TestBuildTemporalStructureHoldoutPlanRequiresExplicitLineageMode(t *testing
 }
 
 func TestValidateTemporalStructureHoldoutReceiptRejectsLegacyAuthority(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	root := filepath.Join(t.TempDir(), "plan")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(root)); err != nil {
@@ -235,6 +242,7 @@ func TestValidateTemporalStructureHoldoutReceiptRejectsLegacyAuthority(t *testin
 }
 
 func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConstructions(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	first := filepath.Join(t.TempDir(), "first")
 	second := filepath.Join(t.TempDir(), "second")
@@ -315,6 +323,7 @@ func TestBuildTemporalStructureHoldoutPlanBindsAuthoritiesAndBuildsBalancedConst
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsRepeatedProgrammeProvenanceParent(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
 	inventory.Sources[1].Provenance.Authority = inventory.Sources[0].Provenance.Authority
@@ -330,6 +339,7 @@ func TestBuildTemporalStructureHoldoutPlanRejectsRepeatedProgrammeProvenancePare
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsProgrammeParentDerivedFromFiller(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, *temporalStructureHoldoutFixture, *TemporalStructureHoldoutProgrammeInventory, *fillerreference.DownloadLedger){
 		"same authority item identity": func(t *testing.T, fixture *temporalStructureHoldoutFixture, inventory *TemporalStructureHoldoutProgrammeInventory, ledger *fillerreference.DownloadLedger) {
 			inventory.Sources[0].Provenance.Authority = ledger.Cases[0].Authority
@@ -366,6 +376,7 @@ func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsProgrammeParentDer
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsProgrammeParentWithReferenceLineage(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
 	ledger := fixture.downloadLedger(t)
@@ -393,6 +404,7 @@ func TestBuildTemporalStructureHoldoutPlanRejectsProgrammeParentWithReferenceLin
 }
 
 func TestLoadTemporalStructureHoldoutProgrammeInventoryRejectsProgrammeParentMatchingUnselectedReference(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	inventory := readStrictTestJSON[TemporalStructureHoldoutProgrammeInventory](t, fixture.inventory)
 	ledger := fixture.downloadLedger(t)
@@ -430,6 +442,7 @@ func mutateTemporalStructureProgrammeRecord(t *testing.T, fixture temporalStruct
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsProhibitedRoleCoverage(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	report := readStrictTestJSON[TemporalSuitabilityComparisonReport](t, fixture.suitability)
 	report.CaseComparisons[0].Disposition = "prohibited_hold"
@@ -446,6 +459,7 @@ func TestBuildTemporalStructureHoldoutPlanRejectsProhibitedRoleCoverage(t *testi
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsUnsatisfiedTransitionStrata(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	authority := readStrictTestJSON[TemporalTransitionAuthority](t, fixture.transition)
 	for index := range authority.Cases {
@@ -462,6 +476,7 @@ func TestBuildTemporalStructureHoldoutPlanRejectsUnsatisfiedTransitionStrata(t *
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsDuplicateFamilyCoverage(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	privateMap := readStrictTestJSON[TemporalTruthEvidencePrivateMap](t, fixture.privateMap)
 	audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
@@ -483,6 +498,7 @@ func TestBuildTemporalStructureHoldoutPlanRejectsDuplicateFamilyCoverage(t *test
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsInventedFamilyGraph(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
 	audit.Families = []temporalStructureHoldoutDuplicateFamily{{
@@ -499,6 +515,7 @@ func TestBuildTemporalStructureHoldoutPlanRejectsInventedFamilyGraph(t *testing.
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsMissingReferenceFamilyFingerprint(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	audit := readStrictTestJSON[temporalStructureHoldoutFamilyAudit](t, fixture.family)
 	audit.Fingerprints = audit.Fingerprints[:len(audit.Fingerprints)-1]
@@ -511,6 +528,7 @@ func TestBuildTemporalStructureHoldoutPlanRejectsMissingReferenceFamilyFingerpri
 }
 
 func TestTemporalStructureHoldoutReceiptRejectsProgrammeSpotTampering(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	output := filepath.Join(t.TempDir(), "output")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(output)); err != nil {
@@ -600,6 +618,7 @@ func TestTemporalStructureHoldoutReceiptRejectsProgrammeSpotTampering(t *testing
 }
 
 func TestTemporalStructureHoldoutRejectsIncompleteReferenceAudit(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	reference := readStrictTestJSON[fillerreference.Audit](t, fixture.referenceAudit)
 	reference.Cases = reference.Cases[:len(reference.Cases)-1]
@@ -612,6 +631,7 @@ func TestTemporalStructureHoldoutRejectsIncompleteReferenceAudit(t *testing.T) {
 }
 
 func TestBuildTemporalStructureHoldoutPlanAllowsFamilyAuthoritySupersetOfSelection(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(filepath.Join(t.TempDir(), "output"))); err != nil {
 		t.Fatalf("reference family superset was rejected: %v", err)
@@ -619,6 +639,7 @@ func TestBuildTemporalStructureHoldoutPlanAllowsFamilyAuthoritySupersetOfSelecti
 }
 
 func TestTemporalStructureHoldoutAcceptsBoundLegacyReferenceAudit(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	reference := readStrictTestJSON[fillerreference.Audit](t, fixture.referenceAudit)
 	reference.SchemaVersion = 2
@@ -632,6 +653,7 @@ func TestTemporalStructureHoldoutAcceptsBoundLegacyReferenceAudit(t *testing.T) 
 }
 
 func TestTemporalStructureHoldoutAllowsSelectedReferenceExclusionWithoutFingerprint(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	reference := readStrictTestJSON[fillerreference.Audit](t, fixture.referenceAudit)
 	excludedID := reference.Cases[len(reference.Cases)-1].CaseID
@@ -667,6 +689,7 @@ func TestTemporalStructureHoldoutAllowsSelectedReferenceExclusionWithoutFingerpr
 }
 
 func TestBuildTemporalStructureHoldoutPlanRejectsMediaQualitySummaryDrift(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	report := readStrictTestJSON[TemporalMediaQualityReport](t, fixture.quality)
 	report.PolicyContinueCases--

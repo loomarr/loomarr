@@ -1,19 +1,20 @@
-# Conservative `go test -race` package seconds from authoritative merge-group run 35504999984 on
-# the current implementation, rounded up with 10% headroom. Refresh from the highest current-tree
-# observation after each representative run; do not retain pre-refactor costs as current weights.
+# Conservative `go test -race` package seconds from authoritative merge-group run 35504999984,
+# rounded up with 10% headroom. The four packages parallelized in #1347 scale that hosted baseline
+# by their same-machine `-parallel=4` / `-parallel=1` race-test ratios; refresh all four from the
+# next authoritative hosted run. Do not retain pre-refactor costs as current weights.
 # Packages below five seconds use the conservative one-second floor in go-shard.sh.
 # Keep only material weights here: the CI summary identifies entries that need refreshing.
 internal/suggest	40
 internal/auth	26
-internal/fillerreview	264
+internal/fillerreview	95
 internal/store	242
-internal/backendtransition	173
+internal/backendtransition	122
 internal/app	186
 internal/api	213
-internal/recurate	145
+internal/recurate	103
 internal/integration	111
 internal/reconcile	143
-internal/binder	112
+internal/binder	85
 internal/playoutcert	88
 cmd/playout-load-cert	72
 internal/clipfetch	82

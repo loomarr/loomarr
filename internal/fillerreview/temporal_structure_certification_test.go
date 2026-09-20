@@ -13,6 +13,7 @@ import (
 )
 
 func TestPublishTemporalStructureCertificationBindsCompleteHoldoutLineage(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	holdoutRoot := filepath.Join(t.TempDir(), "holdout")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(holdoutRoot)); err != nil {

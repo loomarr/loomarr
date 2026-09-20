@@ -10,6 +10,7 @@ import (
 )
 
 func TestCompareTemporalPanelIsSymmetricDiagnosticEvidence(t *testing.T) {
+	t.Parallel()
 	config := newTemporalPanelComparisonFixture(t)
 	report, err := CompareTemporalPanel(config)
 	if err != nil {
@@ -33,6 +34,7 @@ func TestCompareTemporalPanelIsSymmetricDiagnosticEvidence(t *testing.T) {
 }
 
 func TestCompareTemporalPanelFailsClosedOnAuthorityDrift(t *testing.T) {
+	t.Parallel()
 	config := newTemporalPanelComparisonFixture(t)
 	attestation, err := readStrictJSON[TemporalModelAssessmentAttestation](config.SecondAttestationPath)
 	if err != nil {
@@ -46,6 +48,7 @@ func TestCompareTemporalPanelFailsClosedOnAuthorityDrift(t *testing.T) {
 }
 
 func TestPublishTemporalPanelComparisonIsImmutable(t *testing.T) {
+	t.Parallel()
 	config := newTemporalPanelComparisonFixture(t)
 	config.OutputPath = filepath.Join(t.TempDir(), "comparison.json")
 	if _, digest, err := PublishTemporalPanelComparison(config); err != nil || !reviewSHA256(digest) {
@@ -61,6 +64,7 @@ func TestPublishTemporalPanelComparisonIsImmutable(t *testing.T) {
 }
 
 func TestTemporalPanelDispositionRefusesLargeHumanQueue(t *testing.T) {
+	t.Parallel()
 	candidates := make([]TemporalPanelDiagnosticCandidate, TemporalPanelMaximumTargetedCases+1)
 	for index := range candidates {
 		candidates[index].EvidenceAlias = "evidence"
@@ -72,6 +76,7 @@ func TestTemporalPanelDispositionRefusesLargeHumanQueue(t *testing.T) {
 }
 
 func TestTemporalPanelReasonsExposeSharedUsabilityBlindSpot(t *testing.T) {
+	t.Parallel()
 	comparison := TemporalPanelCaseComparison{
 		Human: TemporalPanelLabel{Unit: fillereval.UnitUnusable},
 		First: TemporalPanelLabel{Unit: fillereval.UnitStandalone}, Second: TemporalPanelLabel{Unit: fillereval.UnitStandalone},

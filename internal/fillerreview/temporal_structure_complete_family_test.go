@@ -66,6 +66,7 @@ func (f *fakeTemporalStructureCompleteFamily) AssessWithEvidence(_ context.Conte
 }
 
 func TestRunTemporalStructureCompleteFamilyPublishesCompleteTruthBlindEvidence(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	manifest := readStrictTestJSON[TemporalStructureWindowSetManifest](t, config.WindowSetManifestPath)
 	preparer := &fakeTemporalStructureCompletePreparer{root: t.TempDir(), profileSHA: manifest.AssessmentMediaProfileSHA256}
@@ -102,6 +103,7 @@ func TestRunTemporalStructureCompleteFamilyPublishesCompleteTruthBlindEvidence(t
 }
 
 func TestRunTemporalStructureCompleteFamilyReturnsNoPartialResult(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	manifest := readStrictTestJSON[TemporalStructureWindowSetManifest](t, config.WindowSetManifestPath)
 	preparer := &fakeTemporalStructureCompletePreparer{root: t.TempDir(), profileSHA: manifest.AssessmentMediaProfileSHA256}
@@ -118,6 +120,7 @@ func TestRunTemporalStructureCompleteFamilyReturnsNoPartialResult(t *testing.T) 
 }
 
 func TestValidateTemporalStructureCompleteFamilyResultRejectsAccountingDrift(t *testing.T) {
+	t.Parallel()
 	config, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	manifest := readStrictTestJSON[TemporalStructureWindowSetManifest](t, config.WindowSetManifestPath)
 	result, err := RunTemporalStructureCompleteFamily(t.Context(), TemporalStructureCompleteFamilyConfig{

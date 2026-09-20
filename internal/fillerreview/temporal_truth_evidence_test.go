@@ -19,6 +19,7 @@ import (
 )
 
 func TestBuildTemporalTruthEvidenceCaseAllowsRepeatedFrameBytesWithoutLeakingPrivateIdentity(t *testing.T) {
+	t.Parallel()
 	frame := temporalTruthTestJPEG(t)
 	media := &temporalTruthFakeMedia{frame: frame}
 	ocr := temporalTruthFakeOCR{}
@@ -47,6 +48,7 @@ func TestBuildTemporalTruthEvidenceCaseAllowsRepeatedFrameBytesWithoutLeakingPri
 }
 
 func TestLoadTemporalTruthEvidenceRejectsTamperedPublicArtifact(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	videoRaw, frameRaw := []byte("video"), temporalTruthTestJPEG(t)
 	if err := os.WriteFile(filepath.Join(root, "video.mp4"), videoRaw, 0o640); err != nil {
@@ -87,6 +89,7 @@ func TestLoadTemporalTruthEvidenceRejectsTamperedPublicArtifact(t *testing.T) {
 }
 
 func TestTemporalTruthEvidenceStageRemovesPartialOutputOnFailure(t *testing.T) {
+	t.Parallel()
 	parent := t.TempDir()
 	output := filepath.Join(parent, "evidence")
 	stage, err := beginTemporalTruthEvidenceStage(output)

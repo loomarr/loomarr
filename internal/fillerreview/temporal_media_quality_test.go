@@ -11,6 +11,7 @@ import (
 )
 
 func TestMeasureTemporalMediaQualityCaseUsesProductionPolicy(t *testing.T) {
+	t.Parallel()
 	input := temporalMediaQualityInput{EvidenceAlias: "evidence-a", HumanUnit: fillereval.UnitUnusable, DurationMS: 30_000, HadAudio: true, Path: "review.mp4"}
 	got := measureTemporalMediaQualityCase(context.Background(), input, func(_ context.Context, path string, durationMS int64, hadAudio bool) (mediatools.MediaQuality, error) {
 		if path != input.Path || durationMS != input.DurationMS || !hadAudio {
@@ -24,6 +25,7 @@ func TestMeasureTemporalMediaQualityCaseUsesProductionPolicy(t *testing.T) {
 }
 
 func TestAccumulateTemporalMediaQualitySeparatesHumanLabels(t *testing.T) {
+	t.Parallel()
 	var report TemporalMediaQualityReport
 	items := []TemporalMediaQualityCase{
 		{HumanUnit: fillereval.UnitUnusable, PolicyVerdict: mediaQualityReview},
@@ -41,6 +43,7 @@ func TestAccumulateTemporalMediaQualitySeparatesHumanLabels(t *testing.T) {
 }
 
 func TestMeasureTemporalMediaQualityCaseRecordsOperationalFailure(t *testing.T) {
+	t.Parallel()
 	want := errors.New("decode failed")
 	got := measureTemporalMediaQualityCase(context.Background(), temporalMediaQualityInput{EvidenceAlias: "evidence-a", DurationMS: 1}, func(context.Context, string, int64, bool) (mediatools.MediaQuality, error) {
 		return mediatools.MediaQuality{}, want
@@ -51,6 +54,7 @@ func TestMeasureTemporalMediaQualityCaseRecordsOperationalFailure(t *testing.T) 
 }
 
 func TestTemporalMediaQualityProbeRejectionUsesProductionReason(t *testing.T) {
+	t.Parallel()
 	got := temporalMediaQualityProbeRejection(temporalMediaQualityInput{EvidenceAlias: "evidence-a", HumanUnit: fillereval.UnitUnusable, DurationMS: 30_000}, filler.ReasonNoAudio, "no audio")
 	if got.PolicyVerdict != mediaQualityReject || got.PolicyReason != filler.ReasonNoAudio || got.PolicyDetail != "no audio" || got.OperationalFailure != "" {
 		t.Fatalf("unexpected probe rejection: %#v", got)
@@ -58,6 +62,7 @@ func TestTemporalMediaQualityProbeRejectionUsesProductionReason(t *testing.T) {
 }
 
 func TestTemporalMediaQualityContractVersionsTogether(t *testing.T) {
+	t.Parallel()
 	if TemporalMediaQualitySchemaVersion != 2 || TemporalMediaQualityContractVersion != "filler-temporal-media-quality-v2" {
 		t.Fatalf("media quality schema and contract drifted: %d %q", TemporalMediaQualitySchemaVersion, TemporalMediaQualityContractVersion)
 	}

@@ -13,6 +13,7 @@ import (
 )
 
 func TestPublishTemporalStructureAnchorAdjudicationBurnsChallengeWithoutRepairingScore(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureAnchorAdjudicationFixture(t)
 	output := filepath.Join(t.TempDir(), "authority.json")
 	config := fixture.config(output)
@@ -49,6 +50,7 @@ func TestPublishTemporalStructureAnchorAdjudicationBurnsChallengeWithoutRepairin
 }
 
 func TestValidateTemporalStructureAnchorAdjudicationRequiresExactCompleteReview(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureAnchorAdjudicationFixture(t)
 	base := fixture.submission
 	tests := []struct {
@@ -96,6 +98,7 @@ func TestValidateTemporalStructureAnchorAdjudicationRequiresExactCompleteReview(
 }
 
 func TestPublishTemporalStructureAnchorAdjudicationRejectsOpenedArtifactDrift(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureAnchorAdjudicationFixture(t)
 	comparison := fixture.comparison
 	comparison.AllAssessorsExactCorrect++

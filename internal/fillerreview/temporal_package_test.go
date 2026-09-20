@@ -10,6 +10,7 @@ import (
 )
 
 func TestLoadTemporalReviewPackageVerifiesFilesAndExposesSignals(t *testing.T) {
+	t.Parallel()
 	packagePath := writeTemporalTestPackage(t)
 	pack, cases, packageSHA256, err := LoadTemporalReviewPackage(packagePath, 1)
 	if err != nil {

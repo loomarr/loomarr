@@ -9,6 +9,7 @@ import (
 )
 
 func TestRunOpenRouterTemporalSuitabilityAcceptsAuthorityBoundStructureVideo(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 9, 2, 4, 0, 0, 0, time.UTC)
 	structure := newTemporalStructureFixture(t)
 	root, challengeResult := structure.build(t, "suitability-structure")
@@ -30,6 +31,7 @@ func TestRunOpenRouterTemporalSuitabilityAcceptsAuthorityBoundStructureVideo(t *
 }
 
 func TestLoadTemporalSuitabilityEvidenceProjectsOnlyThePaidTransportSurface(t *testing.T) {
+	t.Parallel()
 	structure := newTemporalStructureFixture(t)
 	root, result := structure.build(t, "suitability-projection")
 	manifestPath := filepath.Join(root, "public", "manifest.json")
@@ -49,6 +51,7 @@ func TestLoadTemporalSuitabilityEvidenceProjectsOnlyThePaidTransportSurface(t *t
 }
 
 func TestLoadTemporalSuitabilityEvidenceRejectsAuthorityModeDrift(t *testing.T) {
+	t.Parallel()
 	structure := newTemporalStructureFixture(t)
 	root, _ := structure.build(t, "suitability-mode")
 	manifestPath := filepath.Join(root, "public", "manifest.json")

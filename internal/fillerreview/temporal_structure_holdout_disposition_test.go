@@ -11,6 +11,7 @@ import (
 )
 
 func TestTemporalStructureHoldoutRequiresExplicitNegativeDispositionsBeforeMedia(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	planRoot := filepath.Join(t.TempDir(), "plan")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(planRoot)); err != nil {

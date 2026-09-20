@@ -10,6 +10,7 @@ import (
 )
 
 func TestCompareTemporalStructureAssessmentsScoresConstructionTruthAndBoundaries(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureComparisonFixture(t)
 	firstPath := writeTemporalHumanJSON(t, t.TempDir(), "first.json", fixture.assessmentSet("assessor-a", "qwen", "qwen/model"))
 	secondPath := writeTemporalHumanJSON(t, t.TempDir(), "second.json", fixture.assessmentSet("assessor-b", "claude", "anthropic/model"))
@@ -54,6 +55,7 @@ func TestCompareTemporalStructureAssessmentsScoresConstructionTruthAndBoundaries
 }
 
 func TestScoreTemporalStructureSegmentsSeparatesUnderAndOverSplitting(t *testing.T) {
+	t.Parallel()
 	truth := []TemporalStructureTruthSegment{
 		{StartMS: 0, EndMS: 10_000, Role: fillereval.TemporalSegmentCommercial},
 		{StartMS: 10_000, EndMS: 20_000, Role: fillereval.TemporalSegmentPromo},
@@ -93,6 +95,7 @@ func TestScoreTemporalStructureSegmentsSeparatesUnderAndOverSplitting(t *testing
 }
 
 func TestCompareTemporalStructureAssessmentsSeparatesErrorsFailuresAndAgreement(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureComparisonFixture(t)
 	first := fixture.assessmentSet("assessor-a", "qwen", "qwen/model")
 	second := fixture.assessmentSet("assessor-b", "claude", "anthropic/model")
@@ -143,6 +146,7 @@ func TestCompareTemporalStructureAssessmentsSeparatesErrorsFailuresAndAgreement(
 }
 
 func TestCompareTemporalStructureAssessmentsRequiresIndependentModelsAndPostResultTime(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureComparisonFixture(t)
 	first := fixture.assessmentSet("assessor-a", "same-family", "model-a")
 	second := fixture.assessmentSet("assessor-b", "same-family", "model-b")
@@ -163,6 +167,7 @@ func TestCompareTemporalStructureAssessmentsRequiresIndependentModelsAndPostResu
 }
 
 func TestPublishTemporalStructureComparisonIsImmutable(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureComparisonFixture(t)
 	firstPath := writeTemporalHumanJSON(t, t.TempDir(), "first.json", fixture.assessmentSet("assessor-a", "qwen", "qwen/model"))
 	secondPath := writeTemporalHumanJSON(t, t.TempDir(), "second.json", fixture.assessmentSet("assessor-b", "claude", "anthropic/model"))

@@ -11,6 +11,7 @@ import (
 )
 
 func TestLoadTemporalCalibrationPackageBindsSelectionToPackage(t *testing.T) {
+	t.Parallel()
 	packagePath := writeTemporalTestPackage(t)
 	pack, _, packageSHA256, err := LoadTemporalReviewPackage(packagePath, 1)
 	if err != nil {

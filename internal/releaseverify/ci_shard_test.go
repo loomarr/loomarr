@@ -18,15 +18,17 @@ func TestGoShardUsesMeasuredLongestProcessingTime(t *testing.T) {
 
 	bin := t.TempDir()
 	fakeGo := filepath.Join(bin, "go")
-	const packages = `example.invalid/a
-example.invalid/b
-example.invalid/c
-example.invalid/d
-example.invalid/e
-example.invalid/f
-example.invalid/g
+	// Deliberately scramble `go list` order. The emitted lane must retain the measured LPT work
+	// order; otherwise the Go scheduler starts cheap packages first and creates a critical tail.
+	const packages = `example.invalid/i
+example.invalid/a
 example.invalid/h
-example.invalid/i`
+example.invalid/b
+example.invalid/g
+example.invalid/c
+example.invalid/f
+example.invalid/d
+example.invalid/e`
 	if err := os.WriteFile(fakeGo, []byte("#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"$*\" == \"list -m\" ]]; then echo example.invalid; exit; fi\n[[ \"$*\" == \"list ./...\" ]]\necho 'go: downloading example.invalid/dependency v1.0.0' >&2\nprintf '%s\\n' '"+strings.ReplaceAll(packages, "\n", "' '")+"'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +76,36 @@ example.invalid/i`
 	}
 	if got := strings.TrimSpace(string(output)); got != "1 12" {
 		t.Fatalf("bounded-worker plan = %q, want four-worker LPT makespan %q", got, "1 12")
+	}
+}
+
+func TestGoRacePolicyPreservesSharderWorkOrder(t *testing.T) {
+	t.Parallel()
+
+	bin := t.TempDir()
+	fakeGo := filepath.Join(bin, "go")
+	if err := os.WriteFile(fakeGo, []byte("#!/usr/bin/env bash\nset -euo pipefail\n[[ \"$*\" == \"list -m\" ]]\necho example.invalid\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Clean(filepath.Join("..", ".."))
+	run := func(mode string) string {
+		t.Helper()
+		cmd := exec.Command("bash", filepath.Join("scripts", "go-race-policy.sh"), mode)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		cmd.Stdin = strings.NewReader("example.invalid/z\nexample.invalid/internal/config\nexample.invalid/a\nexample.invalid/z\nexample.invalid/internal/setup\n")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("race policy %s: %v\n%s", mode, err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+
+	if got, want := run("--race"), "example.invalid/z\nexample.invalid/a"; got != want {
+		t.Fatalf("race work order =\n%s\nwant\n%s", got, want)
+	}
+	if got, want := run("--no-race"), "example.invalid/internal/config\nexample.invalid/internal/setup"; got != want {
+		t.Fatalf("plain work order =\n%s\nwant\n%s", got, want)
 	}
 }
 
