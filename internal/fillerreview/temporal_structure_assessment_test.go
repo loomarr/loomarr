@@ -13,6 +13,7 @@ import (
 )
 
 func TestLoadTemporalStructureAssessmentRequiresCompleteBoundAuthority(t *testing.T) {
+	t.Parallel()
 	challenge := newTemporalStructureComparisonFixture(t)
 	set := challenge.assessmentSet("assessor-a", "qwen", "qwen/model")
 	path := writeTemporalHumanJSON(t, t.TempDir(), "assessment.json", set)
@@ -26,6 +27,7 @@ func TestLoadTemporalStructureAssessmentRequiresCompleteBoundAuthority(t *testin
 }
 
 func TestLoadTemporalStructureAssessmentRejectsSemanticAndAccountingDrift(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*temporalStructureComparisonFixture, *TemporalStructureAssessmentSet)
@@ -95,6 +97,7 @@ func TestLoadTemporalStructureAssessmentRejectsSemanticAndAccountingDrift(t *tes
 }
 
 func TestLoadTemporalStructureAssessmentAllowsUnusableSegmentWithoutDecisiveEvidence(t *testing.T) {
+	t.Parallel()
 	challenge := newTemporalStructureComparisonFixture(t)
 	set := challenge.assessmentSet("assessor-a", "qwen", "qwen/model")
 	item := temporalStructureAssessmentByTruth(&set, fillereval.UnitCompilation)
@@ -107,6 +110,7 @@ func TestLoadTemporalStructureAssessmentAllowsUnusableSegmentWithoutDecisiveEvid
 }
 
 func TestLoadTemporalStructureAssessmentRejectsUnknownFields(t *testing.T) {
+	t.Parallel()
 	challenge := newTemporalStructureComparisonFixture(t)
 	set := challenge.assessmentSet("assessor-a", "qwen", "qwen/model")
 	raw, err := json.Marshal(set)

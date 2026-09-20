@@ -338,7 +338,7 @@ func VerifyCIFamilyWorkflows(path string) error {
 		if err != nil {
 			return fmt.Errorf("CI family caller %s: %w", jobName, err)
 		}
-		if jobName == "go" && !jobRunsExactCommand(implementation, "make test GO_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}") {
+		if jobName == "go" && !jobRunsExactCommand(implementation, "make test GO_TEST_LANE=${{ matrix.lane }}") {
 			return errors.New("CI Go family must run the sharded repository test target")
 		}
 	}

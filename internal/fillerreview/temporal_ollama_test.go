@@ -13,6 +13,7 @@ import (
 )
 
 func TestRunOllamaTemporalAssessmentUsesSeparateUnitAndRoleCalls(t *testing.T) {
+	t.Parallel()
 	const model = "model:fixed"
 	digest := strings.Repeat("e", 64)
 	var mu sync.Mutex

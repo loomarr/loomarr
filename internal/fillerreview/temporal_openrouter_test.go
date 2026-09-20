@@ -15,6 +15,7 @@ import (
 )
 
 func TestRunOpenRouterTemporalAssessmentReservesAndBindsTwoAxisCalls(t *testing.T) {
+	t.Parallel()
 	const (
 		model    = "review/vendor-model"
 		provider = "Provider Route"
@@ -89,6 +90,7 @@ func TestRunOpenRouterTemporalAssessmentReservesAndBindsTwoAxisCalls(t *testing.
 }
 
 func TestRunOpenRouterTemporalModelAssessmentUsesCompleteFreshPackage(t *testing.T) {
+	t.Parallel()
 	const (
 		model    = "review/vendor-model"
 		provider = "Provider Route"
@@ -138,6 +140,7 @@ func TestRunOpenRouterTemporalModelAssessmentUsesCompleteFreshPackage(t *testing
 }
 
 func TestTemporalClaimSchemaUsesPortableStructuredOutputSubset(t *testing.T) {
+	t.Parallel()
 	item := TemporalReviewCase{
 		Frames:             []TemporalReviewFrame{{ID: "frame-01", OCRSignalID: "ocr-01"}},
 		TranscriptSegments: []TemporalReviewTranscript{{ID: "transcript-01"}},
@@ -171,6 +174,7 @@ func TestTemporalClaimSchemaUsesPortableStructuredOutputSubset(t *testing.T) {
 }
 
 func TestTemporalStructureSchemaUsesPortableStructuredOutputSubset(t *testing.T) {
+	t.Parallel()
 	schema := temporalStructureOpenRouterSchema(60_000)
 	properties, ok := schema["properties"].(map[string]any)
 	if !ok {
@@ -203,6 +207,7 @@ func TestTemporalStructureSchemaUsesPortableStructuredOutputSubset(t *testing.T)
 }
 
 func TestRunOpenRouterTemporalAssessmentTurnsSettledInvalidClaimIntoOperationalFailure(t *testing.T) {
+	t.Parallel()
 	packagePath, selectionPath := writeTemporalCalibrationFixture(t)
 	now := time.Unix(20_000, 0).UTC()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -231,6 +236,7 @@ func TestRunOpenRouterTemporalAssessmentTurnsSettledInvalidClaimIntoOperationalF
 }
 
 func TestRunOpenRouterTemporalAssessmentClassifiesHTTP502AsRetryableProviderFailure(t *testing.T) {
+	t.Parallel()
 	packagePath, selectionPath := writeTemporalCalibrationFixture(t)
 	now := time.Unix(25_000, 0).UTC()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -254,6 +260,7 @@ func TestRunOpenRouterTemporalAssessmentClassifiesHTTP502AsRetryableProviderFail
 }
 
 func TestRunOpenRouterTemporalAssessmentRecordsPreRequestBudgetExhaustion(t *testing.T) {
+	t.Parallel()
 	packagePath, selectionPath := writeTemporalCalibrationFixture(t)
 	now := time.Unix(30_000, 0).UTC()
 	var calls atomic.Int32

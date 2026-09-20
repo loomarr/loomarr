@@ -3,6 +3,7 @@ package fillerreview
 import "testing"
 
 func TestTemporalTruthReviewVideoPinsInputAndOutputThreads(t *testing.T) {
+	t.Parallel()
 	arguments := temporalTruthReviewVideoArguments("source.ogv", 0, 1_000, "review.mp4")
 	input := argumentIndex(arguments, "-i")
 	if input < 0 || !hasArgumentPair(arguments[:input], "-threads", "1") {

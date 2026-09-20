@@ -59,6 +59,7 @@ func seedChannelStatus(t *testing.T, st store.Store, id, jobID string, status sc
 // The runner triggers a refine ONLY for eligible channels: live/building + intent-backed +
 // auto-curate. Paused, detached, hand-made (no IntentRef), and non-opted-in channels are skipped.
 func TestRunner_TriggersOnlyEligibleChannels(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedJob(t, st, "job-live", "90s action")
 	seedJob(t, st, "job-building", "90s scifi")
@@ -98,6 +99,7 @@ func TestRunner_TriggersOnlyEligibleChannels(t *testing.T) {
 // The refresh refine carries the channel's ORIGINAL intent (from its source job) with NO
 // operator RefineText — a scheduled "re-evaluate against the library", not a human change.
 func TestRunner_RefreshIntentKeepsOriginalNoRefineText(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedJob(t, st, "job1", "90s action heroes")
 	seedChannelStatus(t, st, "c1", "job1", schedule.StatusLive, &schedule.AutoCurate{}, 1)
@@ -120,6 +122,7 @@ func TestRunner_RefreshIntentKeepsOriginalNoRefineText(t *testing.T) {
 // restored later from the claimed Proposal Job id, so this transient handoff must
 // never pretend to be execution authority.
 func TestRunner_RefreshIntentDoesNotClaimFeedbackScope(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedJob(t, st, "job1", "90s action heroes")
 	seedChannelStatus(t, st, "channel-a", "job1", schedule.StatusLive, &schedule.AutoCurate{}, 1)
@@ -135,6 +138,7 @@ func TestRunner_RefreshIntentDoesNotClaimFeedbackScope(t *testing.T) {
 
 // No eligible channels → the runner is a cheap no-op (0 kicked, no error).
 func TestRunner_NoEligibleChannelsIsNoop(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedJob(t, st, "job1", "x")
 	seedChannelStatus(t, st, "c1", "job1", schedule.StatusLive, nil, 1) // not opted in

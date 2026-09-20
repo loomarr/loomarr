@@ -11,6 +11,7 @@ import (
 )
 
 func TestLoadInitializesEmptyFleetFromDesired(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		desired           string
 		publishedInternal bool
@@ -40,6 +41,7 @@ func TestLoadInitializesEmptyFleetFromDesired(t *testing.T) {
 }
 
 func TestLoadInitializesPreExistingFleetFromDesired(t *testing.T) {
+	t.Parallel()
 	st := testkit.SQLiteStore(t)
 	_, err := st.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
 		ID: "existing", Name: "Existing", Number: 1, Strategy: schedule.Sequential, Status: schedule.StatusLive,
@@ -62,6 +64,7 @@ func TestLoadInitializesPreExistingFleetFromDesired(t *testing.T) {
 }
 
 func TestStatePreparesBeforePublishingAndSurvivesReload(t *testing.T) {
+	t.Parallel()
 	st := testkit.SQLiteStore(t)
 	ctx := context.Background()
 	state, err := Load(ctx, st, BackendInternal)
@@ -97,6 +100,7 @@ func TestStatePreparesBeforePublishingAndSurvivesReload(t *testing.T) {
 }
 
 func TestLoadCorruptStateFailsClosed(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		raw  string
@@ -130,6 +134,7 @@ func TestLoadCorruptStateFailsClosed(t *testing.T) {
 }
 
 func TestStateRejectsUnknownBackendAndZeroState(t *testing.T) {
+	t.Parallel()
 	st := testkit.SQLiteStore(t)
 	ctx := context.Background()
 	state, err := Load(ctx, st, BackendInternal)
@@ -154,6 +159,7 @@ func TestStateRejectsUnknownBackendAndZeroState(t *testing.T) {
 }
 
 func TestCancelPreparedPreservesAppliedAndIsSteadyStateNoOp(t *testing.T) {
+	t.Parallel()
 	st := testkit.SQLiteStore(t)
 	state, err := Load(context.Background(), st, BackendTunarr)
 	if err != nil {

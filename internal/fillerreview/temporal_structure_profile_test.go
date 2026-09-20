@@ -14,6 +14,7 @@ func temporalStructureTestProfile() TemporalTruthVideoProfile {
 }
 
 func TestTemporalStructureRejectsNonconformingRenderProfileBeforePublication(t *testing.T) {
+	t.Parallel()
 	mutations := map[string]func(*TemporalTruthVideoInfo){
 		"width":           func(v *TemporalTruthVideoInfo) { v.Width = 640 },
 		"height":          func(v *TemporalTruthVideoInfo) { v.Height = 480 },
@@ -46,6 +47,7 @@ func TestTemporalStructureRejectsNonconformingRenderProfileBeforePublication(t *
 }
 
 func TestTemporalStructureManifestBindsMeasuredProfile(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureFixture(t)
 	root, _ := fixture.build(t, "profile-seed")
 	manifestPath := filepath.Join(root, "public", "manifest.json")
@@ -87,6 +89,7 @@ func TestTemporalStructureManifestBindsMeasuredProfile(t *testing.T) {
 }
 
 func TestTemporalTruthProbeExtractsStreamProfile(t *testing.T) {
+	t.Parallel()
 	raw := `{"streams":[{"codec_type":"video","codec_name":"h264","width":960,"height":720,"pix_fmt":"yuv420p","avg_frame_rate":"30/1"},{"codec_type":"audio","codec_name":"aac","sample_rate":"48000","channels":2}],"format":{"duration":"2.0"}}`
 	info, err := decodeTemporalTruthVideoProbe([]byte(raw))
 	if err != nil || info.DurationMS != 2000 || info.Profile != temporalStructureTestProfile() {

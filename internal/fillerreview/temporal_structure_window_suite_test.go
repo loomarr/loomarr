@@ -15,6 +15,7 @@ import (
 )
 
 func TestBuildTemporalStructureWindowCertificationSuiteUsesOnlyLockedPreModelEvidence(t *testing.T) {
+	t.Parallel()
 	config, motion := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	result, err := BuildTemporalStructureWindowCertificationSuite(t.Context(), config)
 	if err != nil {
@@ -69,6 +70,7 @@ func TestBuildTemporalStructureWindowCertificationSuiteUsesOnlyLockedPreModelEvi
 }
 
 func TestBuildTemporalStructureWindowCertificationSuiteFailsAtomically(t *testing.T) {
+	t.Parallel()
 	config, motion := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	motion.failAt = 3
 	_, err := BuildTemporalStructureWindowCertificationSuite(t.Context(), config)
@@ -81,6 +83,7 @@ func TestBuildTemporalStructureWindowCertificationSuiteFailsAtomically(t *testin
 }
 
 func TestParseTemporalStructureWindowMicrolumaIsExactAndBounded(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		value string
 		want  int64
@@ -107,6 +110,7 @@ func TestParseTemporalStructureWindowMicrolumaIsExactAndBounded(t *testing.T) {
 }
 
 func TestTemporalStructureWindowWordlessEvidenceRequiresRetainedNonSpeechMarkersOnly(t *testing.T) {
+	t.Parallel()
 	if temporalStructureWindowTranscriptIsWordless(nil) {
 		t.Fatal("missing transcript was treated as wordless evidence")
 	}

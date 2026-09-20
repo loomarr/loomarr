@@ -17,6 +17,7 @@ import (
 )
 
 func TestInspectOpenRouterReviewCheckpointEmitsOnlySanitizedReadiness(t *testing.T) {
+	t.Parallel()
 	config, checkpointDir, _ := openRouterInspectionFixture(t)
 	manifest, err := readStrictJSON[Package](filepath.Join(config.ArtifactPaths.PackageDir, "manifest.json"))
 	if err != nil {
@@ -51,6 +52,7 @@ func TestInspectOpenRouterReviewCheckpointEmitsOnlySanitizedReadiness(t *testing
 }
 
 func TestInspectOpenRouterReviewCheckpointDoesNotAuthorizeRecoveryOrClaimSpendReservation(t *testing.T) {
+	t.Parallel()
 	config, _, _ := openRouterInspectionFixture(t)
 
 	attestation, err := InspectOpenRouterReviewCheckpoint(config)
@@ -75,6 +77,7 @@ func TestInspectOpenRouterReviewCheckpointDoesNotAuthorizeRecoveryOrClaimSpendRe
 }
 
 func TestInspectOpenRouterReviewCheckpointRequiresExactReviewerB300CaseContract(t *testing.T) {
+	t.Parallel()
 	for name, mutate := range map[string]func(*OpenRouterReviewInspectionConfig){
 		"reviewer": func(config *OpenRouterReviewInspectionConfig) { config.ReviewerID = "hosted-reviewer-a" },
 		"count":    func(config *OpenRouterReviewInspectionConfig) { config.ExpectedCases = 299 },
@@ -91,6 +94,7 @@ func TestInspectOpenRouterReviewCheckpointRequiresExactReviewerB300CaseContract(
 }
 
 func TestInspectOpenRouterReviewCheckpointAcceptsHistoricalSnapshotIdentity(t *testing.T) {
+	t.Parallel()
 	config, _, _ := openRouterInspectionFixture(t)
 
 	attestation, err := InspectOpenRouterReviewCheckpoint(config)
@@ -100,6 +104,7 @@ func TestInspectOpenRouterReviewCheckpointAcceptsHistoricalSnapshotIdentity(t *t
 }
 
 func TestInspectOpenRouterReviewCheckpointUsesClosedInspectionStatus(t *testing.T) {
+	t.Parallel()
 	config, _, _ := openRouterInspectionFixture(t)
 	attestation, err := InspectOpenRouterReviewCheckpoint(config)
 	if err != nil {
@@ -112,6 +117,7 @@ func TestInspectOpenRouterReviewCheckpointUsesClosedInspectionStatus(t *testing.
 }
 
 func TestInspectOpenRouterReviewCheckpointExposesOnlySanitizedFields(t *testing.T) {
+	t.Parallel()
 	config, _, _ := openRouterInspectionFixture(t)
 	attestation, err := InspectOpenRouterReviewCheckpoint(config)
 	if err != nil {
@@ -148,6 +154,7 @@ func TestInspectOpenRouterReviewCheckpointExposesOnlySanitizedFields(t *testing.
 }
 
 func TestInspectOpenRouterReviewCheckpointDigestRecomputesIndependently(t *testing.T) {
+	t.Parallel()
 	config, _, _ := openRouterInspectionFixture(t)
 	attestation, err := InspectOpenRouterReviewCheckpoint(config)
 	if err != nil {
@@ -174,6 +181,7 @@ func TestInspectOpenRouterReviewCheckpointDigestRecomputesIndependently(t *testi
 }
 
 func TestInspectOpenRouterReviewCheckpointFailsClosed(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		mutate func(*testing.T, OpenRouterReviewInspectionConfig, string)
 		want   string
@@ -273,6 +281,7 @@ func TestInspectOpenRouterReviewCheckpointFailsClosed(t *testing.T) {
 }
 
 func TestInspectOpenRouterReviewCheckpointRejectsArtifactIdentityAndOrderDrift(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		mutate func(*testing.T, *OpenRouterReviewInspectionConfig, string)
 		want   string
@@ -366,6 +375,7 @@ func TestInspectOpenRouterReviewCheckpointRejectsArtifactIdentityAndOrderDrift(t
 }
 
 func TestInspectOpenRouterReviewCheckpointRejectsNonExactTypesModesAndSymlinks(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, OpenRouterReviewInspectionConfig, string, openRouterCheckpointIdentity){
 		"package directory mode": func(t *testing.T, config OpenRouterReviewInspectionConfig, _ string, _ openRouterCheckpointIdentity) {
 			t.Helper()
@@ -516,6 +526,7 @@ func TestInspectOpenRouterReviewCheckpointRejectsNonExactTypesModesAndSymlinks(t
 }
 
 func TestInspectOpenRouterReviewCheckpointDoesNotMutateInputDirectories(t *testing.T) {
+	t.Parallel()
 	config, checkpointDir, _ := openRouterInspectionFixture(t)
 	before := inspectionTreeFingerprint(t, config.ArtifactPaths.PackageDir, checkpointDir)
 	if _, err := InspectOpenRouterReviewCheckpoint(config); err != nil {
@@ -528,6 +539,7 @@ func TestInspectOpenRouterReviewCheckpointDoesNotMutateInputDirectories(t *testi
 }
 
 func TestInspectOpenRouterReviewCheckpointUsesOpenedArtifactsAfterPathReplacement(t *testing.T) {
+	t.Parallel()
 	config, checkpointDir, _ := openRouterInspectionFixture(t)
 	artifacts, err := OpenOpenRouterReviewInspectionArtifacts(OpenRouterReviewInspectionArtifactPaths{
 		PackageDir: config.ArtifactPaths.PackageDir, CheckpointDir: checkpointDir,
@@ -562,6 +574,7 @@ func TestInspectOpenRouterReviewCheckpointUsesOpenedArtifactsAfterPathReplacemen
 }
 
 func TestInspectOpenRouterReviewCheckpointReportsExactLockRecoveryBoundary(t *testing.T) {
+	t.Parallel()
 	config, checkpointDir, identity := openRouterInspectionFixture(t)
 	identityRaw, err := json.Marshal(identity)
 	if err != nil {
@@ -594,6 +607,7 @@ func TestInspectOpenRouterReviewCheckpointReportsExactLockRecoveryBoundary(t *te
 }
 
 func TestInspectOpenRouterReviewCheckpointRequiresExactActiveLockMode(t *testing.T) {
+	t.Parallel()
 	config, checkpointDir, identity := openRouterInspectionFixture(t)
 	raw := validInspectionLock(t, config, identity)
 	if err := os.WriteFile(filepath.Join(checkpointDir, openRouterActiveRunLockFilename), raw, 0o400); err != nil {
@@ -607,6 +621,7 @@ func TestInspectOpenRouterReviewCheckpointRequiresExactActiveLockMode(t *testing
 }
 
 func TestInspectOpenRouterReviewCheckpointRejectsEmptyPresentActiveLock(t *testing.T) {
+	t.Parallel()
 	config, checkpointDir, _ := openRouterInspectionFixture(t)
 	if err := os.WriteFile(filepath.Join(checkpointDir, openRouterActiveRunLockFilename), nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -619,6 +634,7 @@ func TestInspectOpenRouterReviewCheckpointRejectsEmptyPresentActiveLock(t *testi
 }
 
 func TestInspectOpenRouterReviewCheckpointRejectsUnreferencedPrivateTreeObjects(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, OpenRouterReviewInspectionConfig, string){
 		"package regular file": func(t *testing.T, config OpenRouterReviewInspectionConfig, _ string) {
 			t.Helper()

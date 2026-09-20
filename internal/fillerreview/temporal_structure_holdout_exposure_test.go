@@ -13,6 +13,7 @@ import (
 )
 
 func TestBuildTemporalStructureReplacementHoldoutReproducesBytes(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	prior := emptyTemporalStructureHoldoutExposure()
 	prior.SourceSHA256 = []string{strings.Repeat("e", 64)}
@@ -48,6 +49,7 @@ func TestBuildTemporalStructureReplacementHoldoutReproducesBytes(t *testing.T) {
 }
 
 func TestLoadTemporalStructureHoldoutPriorAcceptsPublishedAdjudication(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureAnchorAdjudicationFixture(t)
 	path := filepath.Join(t.TempDir(), "authority.json")
 	if _, err := PublishTemporalStructureAnchorAdjudication(fixture.config(path)); err != nil {
@@ -67,6 +69,7 @@ func TestLoadTemporalStructureHoldoutPriorAcceptsPublishedAdjudication(t *testin
 }
 
 func TestBuildTemporalStructureReplacementHoldoutCarriesCumulativeExposure(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	prior := emptyTemporalStructureHoldoutExposure()
 	prior.SourceSHA256 = []string{strings.Repeat("e", 64)}
@@ -98,6 +101,7 @@ func TestBuildTemporalStructureReplacementHoldoutCarriesCumulativeExposure(t *te
 }
 
 func TestBuildTemporalStructureReplacementHoldoutRejectsPriorRequestLeakage(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	genesisRoot := filepath.Join(t.TempDir(), "genesis")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(genesisRoot)); err != nil {

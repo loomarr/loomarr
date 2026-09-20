@@ -3,6 +3,7 @@ package fillerreview
 import "testing"
 
 func TestOpenReplacementCandidateReviewAuthorityReproducesExistingLocks(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	authority, err := OpenReplacementCandidateReviewAuthority(ReplacementCandidateReviewConfig{
 		SelectionPath: fixture.selection, EvidenceManifestPath: fixture.manifest, EvidencePrivateMapPath: fixture.privateMap,

@@ -540,11 +540,12 @@ failing native result.
 
 ## Sharding
 
-Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go and
-Rust contracts run once in `go-contracts`, in parallel with three test-only Go shards and the
-independent release-worker certification. Their union is the same assurance as `make verify SCOPE=all`
-plus the existing CI-only certification. The `ci-ok` aggregate requires every job, so moving a
-contract out of the test shards cannot make it optional.
+Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go
+contracts run once in `go-contracts` and Rust contracts once in `rust-contracts`, in parallel with
+two ordinary Go test lanes, two serial media-certification lanes, and the independent release-worker
+certification. Their union is the same
+assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
+requires every job, so moving a contract out of the test lanes cannot make it optional.
 
 `make go-shard-verify` runs in `go-contracts` and asserts the Go shards are a true partition of
 `go list ./...` — a split that drops a package would otherwise pass by not running it.
@@ -553,12 +554,80 @@ The Go partition uses longest-processing-time assignment over a reviewed table c
 material package timings. Packages below five measured seconds, including new packages awaiting a
 hosted measurement, receive a one-second planning floor and remain fail-safe members of the exact
 partition. Merge-group run 35472062915 exposed 1430/657/583 package-seconds in the former three-way
-alphabetical split and a 31m10s critical path. Its measured weights produce a six-way plan of about
-450 seconds per shard. `make go-shard-verify SHARDS=6` rejects missing or duplicated packages, a
-modeled shard above nine test minutes, or more than 25% imbalance. The workflow also caps each whole
-job at 15 minutes, leaving six minutes for setup and compilation while making renewed latency drift a
-hard failure. `TestGoShardUsesMeasuredLongestProcessingTime` pins deterministic assignment, and
-`TestGoShardBalancesMeasuredRaceWork` pins the latency and balance budgets against the current tree.
+alphabetical split and a 31m10s critical path. Two ordinary lanes use bounded `-p=4` package
+parallelism. The reviewed latency-sensitive playout/capacity set runs in two concurrent `-p=1`
+lanes, so each group remains serial while separate runners safely overlap the groups. Merge-group
+run 35497917692 measured the former combined certification lane at 9m53s, including `internal/app`
+at 159.215 seconds and the complementary playout packages at 157.874 reported package-seconds.
+That natural seam produces modeled certification groups of 173 and 172 seconds after the latest
+hosted-weight refresh. The same run
+measured the refactored `internal/suggest` at 34.908 seconds; refreshing its obsolete 368-second
+weight removed that package bottleneck. Merge-group run 35500779353 then put every Go job between
+6m59s and 9m01s, but the ordinary job spread was still about 29%. Its package summary exposed
+`internal/auth` at 300.797 seconds and refreshed every material upper-envelope weight. Both auth
+test-store helpers had independently replayed the complete SQLite migration history for every
+private test database. Routing them through the existing isolated migrated template reduced the
+local SSO race subset from 30.59 to 5.64 seconds and the complete auth race package from 118.89 to
+19.64 seconds, with the real RS256 verifier, allowlist refusals, disabled-person checks, session
+revocation, password hashing, and every existing assertion retained. A conservative provisional
+auth ceiling first produced a six-lane plan of 372/371/371/371/371/371 seconds, but the repaired
+tree no longer has enough ordinary work to keep six hosted runners efficiently occupied. The first
+authoritative current-tree four-ordinary-lane run, 35504999984,
+validated the repaired auth package at 23.614 seconds and completed all six Go jobs successfully.
+Its ordinary job/test times were 9m36s/9m02s, 8m31s/7m52s, 7m02s/6m28s and 9m30s/8m52s.
+The 9m53s queue-to-finish critical path was materially lower than 14+ minutes, but the roughly 40%
+ordinary test-time spread still failed acceptance. The run therefore did not merge. Refreshing every
+material weight from that exact tree with uniform 10% headroom produced checked-in aggregate loads
+of 533/533/532/532 seconds and bounded-worker makespans of 267/267/267/266 seconds. The next
+authoritative run, 35507559795, proved why more shard tuning was the wrong fix: lane 2 reported only
+about four minutes of longest-worker package execution (`internal/store` at 239.922 seconds), yet
+spent 9m37s in the test step. Its cache log showed a complete miss followed by repeated module
+downloads, a 40.94-second Rust build, and a 55-second eval-contract invocation before the lane even
+started its ordinary package phase. Those prerequisites ran identically in all six jobs.
+
+The resulting architecture preserves the same work with fewer runners. Two ordinary lanes use
+bounded `-p=4`, and the two serial certification lanes remain unchanged. Lane-scoped `make test`
+omits the eager Rust and eval prerequisites: `go-contracts` executes `eval-contract` once, while
+composition packages that need the real image worker acquire it through `internal/testkit` and
+pass its executable at the explicit application override seam. Unsharded local `make test` retains
+both explicit prerequisites and remains self-contained.
+
+The first authoritative two-ordinary-lane run, 35510845578, proved that balancing aggregate work
+was still insufficient. Both certification jobs passed in 5m57s and 7m15s from queue creation, but
+ordinary test steps took 10m23s and 10m41s and completed 11m18s and 11m35s after queue creation.
+Their 18-second spread ruled out shard imbalance. The executable package order was the real defect:
+the sharder modeled longest-processing-time workers, then restored `go list` order, and the race
+policy sorted that order lexically again. `internal/store` and `internal/recurate` consequently
+started about 6m21s and 6m34s into their test steps. Four large, fixture-isolated packages also ran
+all top-level tests serially. The runner now emits and preserves descending measured-cost order,
+and `internal/fillerreview`, `internal/backendtransition`'s non-integration tests,
+`internal/recurate`, and `internal/binder` use bounded `t.Parallel` execution. The PostgreSQL-tagged
+backend tests remain serial because they mutate process environment. Same-machine four-CPU race
+controls measured `fillerreview` at 115.237s serial versus 41.154s parallel; the other three
+packages completed together in 58.83s versus 82.61s with their internal parallelism disabled.
+Scaling the hosted weights by those ratios and repartitioning yields 921/920 aggregate seconds and
+244/231-second bounded-worker makespans. Those scaled weights remain provisional until consecutive
+successful merge-group runs replace them with complete hosted measurements.
+
+Merge-group run 35515087033 measured ordinary lane 1/2 at 8m31s job time and 8m02s test time,
+while ordinary lane 2/2 reached its test failure in 8m10s. Certification lane 2/2 passed in 5m09s;
+lane 1/2 passed in 7m00s after waiting 2m39s for the repository's 20-runner concurrency ceiling.
+The run was not accepted: lane 2/2 exposed that the integration composition harness had relied on
+the old eager Rust build instead of acquiring its required worker. The harness now obtains the
+worker through `internal/testkit` and passes it through `app.Overrides.ImageWorkerExecutable`, so a
+focused clean `go test ./internal/integration` is self-contained without rebuilding Rust in lanes
+that do not consume it. Fresh consecutive merge-group passes remain required.
+
+`make go-shard-verify SHARDS=2` rejects missing or duplicated packages, an ordinary aggregate above
+1,200 seconds, a bounded-worker or serial-certification makespan above nine minutes, or more than 25%
+imbalance within any group. Aggregate and worker limits are deliberately separate: package overlap
+cannot hide unbounded total work, and a balanced aggregate cannot hide one saturated worker. Release
+verification additionally rejects an unreviewed serial package, grouping or workflow lane. The
+workflow also caps each whole job at 15 minutes, leaving six minutes for setup and compilation while
+making renewed latency drift a hard failure. `TestGoShardUsesMeasuredLongestProcessingTime` pins
+deterministic assignment and executable work order, `TestGoRacePolicyPreservesSharderWorkOrder`
+prevents the policy split from sorting it away, and `TestGoShardBalancesMeasuredRaceWork` pins the
+latency and balance budgets against the current tree.
 
 Within the SQLite store package, conformance assertions clone one closed, fully migrated template
 database rather than replaying the complete migration history for every assertion. The 2026-09-01
@@ -580,6 +649,14 @@ Domain tests that need current persistence state, rather than migration behavior
 database. Routing those helpers through the existing isolated migrated fixture reduced the exact
 package profile to 4.19s (94.4%). Tests that exercise startup, migration, downgrade, historical data,
 or restart behavior must continue to open and migrate fresh databases.
+
+The Proposal Job worker tests use that same isolated migrated-store fixture and start a due-work drain
+before entering their two-second recurring poll. Profiling also found theme scoring recalculating the
+same series-title scope for every item and qualifier; preparing it once per score preserves every
+2,000-iteration property assertion. On 2026-09-20, the one-time preparation reduced the complete
+local `internal/suggest` race package from 112.28 to 19.35 seconds after the worker/fixture changes;
+the deterministic property alone fell from 66.16 to 6.16 seconds. Hosted lane evidence remains the
+authority for the merge-queue budget.
 
 PostgreSQL conformance also uses an isolated template, but through PostgreSQL's own database-clone
 interface rather than file copying. Seven successful merge-queue samples put the real-Postgres step

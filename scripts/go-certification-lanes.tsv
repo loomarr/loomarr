@@ -1,0 +1,9 @@
+# Lane  Package whose tests exercise synthetic playout targets with strict latency or capacity assertions.
+# Each reviewed lane is pinned to -p=1. Separate runners overlap the two groups without allowing
+# package concurrency inside either certification group.
+1	internal/app
+1	internal/prepared
+1	internal/testkit/playoutcertfixture
+2	cmd/playout-load-cert
+2	internal/playout
+2	internal/playoutcert

@@ -12,6 +12,7 @@ import (
 // falls back to a truncated intent description, then a generic label. Fix B from the live
 // smoke: a raw prompt made a half-assed title.
 func TestChannelNameFromIntent(t *testing.T) {
+	t.Parallel()
 	mk := func(p suggest.Proposal) store.Proposal {
 		b, _ := json.Marshal(p)
 		return store.Proposal{ProposalJSON: string(b)}

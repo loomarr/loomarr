@@ -289,6 +289,10 @@ func (s *Service) Run(ctx context.Context) {
 	defer ticker.Stop()
 	s.log.Info("suggestion worker pool started", "workers", s.workers, "timeout", s.timeout)
 	sem := make(chan struct{}, s.workers)
+	// A service start or restart should recover already-due work immediately. Waiting
+	// for the first polling tick adds two seconds to every queued Proposal Job and to
+	// every independent worker lifecycle exercised by the test suite.
+	s.drainOnce(ctx, sem)
 	for {
 		select {
 		case <-ctx.Done():

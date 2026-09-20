@@ -17,6 +17,7 @@ import (
 )
 
 func TestBuildTemporalStructureWindowSetUsesProductionPlanAndPublishesCompleteMedia(t *testing.T) {
+	t.Parallel()
 	corpusConfig, _ := temporalStructureWindowMediaFixture(t, filepath.Join(t.TempDir(), "corpus"))
 	if _, err := BuildTemporalStructureWindowCorpusMedia(t.Context(), corpusConfig); err != nil {
 		t.Fatal(err)
@@ -103,6 +104,7 @@ func TestBuildTemporalStructureWindowSetUsesProductionPlanAndPublishesCompleteMe
 }
 
 func TestBuildTemporalStructureWindowSetFailsAtomicallyAndRejectsWindowTamper(t *testing.T) {
+	t.Parallel()
 	t.Run("preparer failure", func(t *testing.T) {
 		corpusConfig, _ := temporalStructureWindowMediaFixture(t, filepath.Join(t.TempDir(), "corpus"))
 		if _, err := BuildTemporalStructureWindowCorpusMedia(t.Context(), corpusConfig); err != nil {

@@ -15,6 +15,7 @@ import (
 )
 
 func TestPublishTemporalSuitabilityProjectionQuarantinesSourceAcrossDerivatives(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSuitabilityProjectionFixture(t)
 	firstOutput := filepath.Join(t.TempDir(), "projection.json")
 	secondOutput := filepath.Join(t.TempDir(), "projection.json")
@@ -67,6 +68,7 @@ func TestPublishTemporalSuitabilityProjectionQuarantinesSourceAcrossDerivatives(
 }
 
 func TestPublishTemporalSuitabilityProjectionAcceptsImmutableArchivedV1Challenge(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSuitabilityProjectionFixture(t)
 	convertTemporalSuitabilityProjectionFixtureToArchivedV1(t, fixture)
 
@@ -80,6 +82,7 @@ func TestPublishTemporalSuitabilityProjectionAcceptsImmutableArchivedV1Challenge
 }
 
 func TestPublishTemporalSuitabilityProjectionRejectsArchivedV1ContractDriftBeforeOutput(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, temporalSuitabilityProjectionFixture){
 		"missing production disposition": func(t *testing.T, fixture temporalSuitabilityProjectionFixture) {
 			manifest := readStrictTestJSON[map[string]any](t, fixture.manifest)
@@ -155,6 +158,7 @@ func TestPublishTemporalSuitabilityProjectionRejectsArchivedV1ContractDriftBefor
 }
 
 func TestPublishTemporalSuitabilityProjectionRejectsArchivedV1DuplicateObjectKeysBeforeOutput(t *testing.T) {
+	t.Parallel()
 	tests := map[string]func(*testing.T, temporalSuitabilityProjectionFixture){
 		"manifest top-level escaped equivalent": func(t *testing.T, fixture temporalSuitabilityProjectionFixture) {
 			injectDuplicateTemporalSuitabilityProjectionJSONKey(t, fixture.manifest, "challengeId", "challenge\\u0049d")
@@ -188,6 +192,7 @@ func TestPublishTemporalSuitabilityProjectionRejectsArchivedV1DuplicateObjectKey
 }
 
 func TestGeneralTemporalStructureLoadersRejectArchivedV1Challenge(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSuitabilityProjectionFixture(t)
 	convertTemporalSuitabilityProjectionFixtureToArchivedV1(t, fixture)
 	if _, _, _, _, err := LoadTemporalStructureChallenge(fixture.manifest, fixture.authority, 3); err == nil {
@@ -199,6 +204,7 @@ func TestGeneralTemporalStructureLoadersRejectArchivedV1Challenge(t *testing.T) 
 }
 
 func TestProjectTemporalSuitabilityObservationSplitsCrossSegmentRange(t *testing.T) {
+	t.Parallel()
 	item := TemporalStructureChallengeAuthorityCase{
 		Alias: "case-cross", Segments: []TemporalStructureChallengeAuthorityPart{
 			{SourceID: "first", SourceDurationMS: 10_000, RequestedMS: 10_000, RenderedMS: 10_000, OutputStartMS: 0, OutputEndMS: 10_000},
@@ -217,6 +223,7 @@ func TestProjectTemporalSuitabilityObservationSplitsCrossSegmentRange(t *testing
 }
 
 func TestPublishTemporalSuitabilityComparisonRejectsTimeBeforeCompletedResult(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalSuitabilityProjectionFixture(t)
 	_, _, err := PublishTemporalSuitabilityComparison(TemporalSuitabilityComparisonConfig{
 		EvidenceManifestPath: fixture.manifest, StructureAuthorityPath: fixture.authority,
@@ -230,6 +237,7 @@ func TestPublishTemporalSuitabilityComparisonRejectsTimeBeforeCompletedResult(t 
 }
 
 func TestPublishTemporalSuitabilityProjectionFailsClosedOnAmbiguousSourceAndUnmappedObservation(t *testing.T) {
+	t.Parallel()
 	t.Run("ambiguous source", func(t *testing.T) {
 		fixture := newTemporalSuitabilityProjectionFixture(t)
 		authority := readStrictTestJSON[TemporalStructureChallengeAuthority](t, fixture.authority)

@@ -11,6 +11,7 @@ import (
 )
 
 func TestPublishTemporalStructureWindowAuthorityDerivesOnlyPassingObservedEnvelope(t *testing.T) {
+	t.Parallel()
 	fixture := temporalStructureWindowAuthorityFixture(t)
 	authority, fileSHA, err := PublishTemporalStructureWindowAuthority(fixture)
 	if err != nil {
@@ -29,6 +30,7 @@ func TestPublishTemporalStructureWindowAuthorityDerivesOnlyPassingObservedEnvelo
 }
 
 func TestPublishTemporalStructureWindowAuthorityRejectsMissingReviewOrShadowDrift(t *testing.T) {
+	t.Parallel()
 	fixture := temporalStructureWindowAuthorityFixture(t)
 	fixture.AutomaticMaterializationAllowed = false
 	if _, _, err := PublishTemporalStructureWindowAuthority(fixture); err == nil || !strings.Contains(err.Error(), "explicit permission") {

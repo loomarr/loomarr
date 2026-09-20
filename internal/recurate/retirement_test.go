@@ -88,6 +88,7 @@ func lineupOf(t *testing.T, st store.Store, id string) map[provision.Key]bool {
 // and re-curation keeps running and spending tokens while nothing can ever change. Observed
 // live: 25 → 27 → 30 → 34 against a cap of 40, nothing ever leaving.
 func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Cap of 2, both slots full. Only "Bench Title" is retirable — the other is on the air.
 	seedFullChannel(t, st, "ch1", "job1",
@@ -149,6 +150,7 @@ func TestCurator_AtTheCapABetterTitleRetiresTheWeakest(t *testing.T) {
 }
 
 func TestCurator_KeepFeedbackProtectsTitleFromAutomaticRetirement(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedFullChannel(t, st, "ch-keep", "job-keep",
 		[]schedule.LineupEntry{lineupEntry(100, "Airing Title"), lineupEntry(200, "Family Favorite")},
@@ -178,6 +180,7 @@ func TestCurator_KeepFeedbackProtectsTitleFromAutomaticRetirement(t *testing.T) 
 // planning to watch it today. When the ONLY thing at the cap is scheduled, the newcomer is
 // dropped over-cap instead: a stale channel beats yanking a programme out from under a viewer.
 func TestCurator_NeverRetiresSomethingCurrentlyAiring(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Cap of 1, and that one title is on the air.
 	seedFullChannel(t, st, "ch1", "job1",
@@ -203,6 +206,7 @@ func TestCurator_NeverRetiresSomethingCurrentlyAiring(t *testing.T) {
 
 // Below the cap nothing is retired: the turnstile is a CAP behaviour, not a general churn.
 func TestCurator_BelowTheCapNothingIsRetired(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedFullChannel(t, st, "ch1", "job1",
 		[]schedule.LineupEntry{lineupEntry(100, "Keeper"), lineupEntry(200, "Also Keeper")},
@@ -227,6 +231,7 @@ func TestCurator_BelowTheCapNothingIsRetired(t *testing.T) {
 // all-retirable would let a single run churn an entire lineup, the exact opposite of the
 // guard's purpose. Found by breaking TestCurator_TitleCap, whose channel has no Desired.
 func TestCurator_UnknownScheduleRetiresNothing(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedFullChannel(t, st, "ch1", "job1",
 		[]schedule.LineupEntry{lineupEntry(100, "A"), lineupEntry(200, "B")},
@@ -254,6 +259,7 @@ func TestCurator_UnknownScheduleRetiresNothing(t *testing.T) {
 // churns the lineup every week — precisely the failure additive binding (§8.2) exists to
 // prevent. "No better" means nothing moves.
 func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedFullChannel(t, st, "ch1", "job1",
 		[]schedule.LineupEntry{lineupEntry(100, "Airing"), lineupEntry(200, "Bench")},
@@ -280,6 +286,7 @@ func TestCurator_EqualConfidenceDoesNotRetire(t *testing.T) {
 // describes. Above the rotation target a channel TRADES: a better candidate displaces the
 // stalest retirable title even while free slots remain.
 func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Cap 4 ⇒ target 3. Three titles: at the target, with a free slot still available.
 	seedFullChannel(t, st, "ch1", "job1",
@@ -317,6 +324,7 @@ func TestCurator_AboveRotationTargetTradesEvenWithRoom(t *testing.T) {
 // BELOW the target a young channel fills up rather than churning — rotation pressure applies to
 // a mature lineup, not to one that is still being assembled.
 func TestCurator_BelowRotationTargetJustGrows(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Cap 10 ⇒ target 7. Two titles is well below it.
 	seedFullChannel(t, st, "ch1", "job1",
@@ -340,6 +348,7 @@ func TestCurator_BelowRotationTargetJustGrows(t *testing.T) {
 // Above the target, a candidate that beats NOTHING retirable still takes a free slot — rotation
 // is a preference, not a gate. Only at the hard cap does "nothing to displace" mean "dropped".
 func TestCurator_AboveTargetWithNothingWeakerStillAdds(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Cap 4 ⇒ target 3. Everything present is AIRING, so nothing is retirable.
 	seedFullChannel(t, st, "ch1", "job1",

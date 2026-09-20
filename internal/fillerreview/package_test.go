@@ -18,6 +18,7 @@ import (
 )
 
 func TestBuildMaterializesBlindVerifiedReviewPackage(t *testing.T) {
+	t.Parallel()
 	fixture := reviewFixture(t)
 	output := filepath.Join(t.TempDir(), "review-package")
 	result, err := Build(fixture.config(output, MaterializeHardlink))
@@ -82,6 +83,7 @@ func TestBuildMaterializesBlindVerifiedReviewPackage(t *testing.T) {
 }
 
 func TestBuildCopyModeCreatesIndependentVerifiedFiles(t *testing.T) {
+	t.Parallel()
 	fixture := reviewFixture(t)
 	output := filepath.Join(t.TempDir(), "review-package")
 	if _, err := Build(fixture.config(output, MaterializeCopy)); err != nil {
@@ -109,6 +111,7 @@ func TestBuildCopyModeCreatesIndependentVerifiedFiles(t *testing.T) {
 }
 
 func TestBuildRejectsChangedDerivativeWithoutPublishing(t *testing.T) {
+	t.Parallel()
 	fixture := reviewFixture(t)
 	if err := os.WriteFile(filepath.Join(fixture.corpusRoot, "frame.jpg"), bytes.Repeat([]byte("x"), len(fixture.media)), 0o640); err != nil {
 		t.Fatal(err)

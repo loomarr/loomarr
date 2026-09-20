@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompareTemporalSuitabilityResultsCorroboratesOnlyOverlappingRanges(t *testing.T) {
+	t.Parallel()
 	aliases := []string{"corroborated", "first-only", "failure", "coverage", "candidate"}
 	first := temporalSuitabilityComparisonSet("first", "family-a", aliases)
 	second := temporalSuitabilityComparisonSet("second", "family-b", aliases)

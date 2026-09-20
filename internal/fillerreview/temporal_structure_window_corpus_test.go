@@ -14,6 +14,7 @@ import (
 )
 
 func TestBuildTemporalStructureWindowCorpusPlanReproducesSeamConstructions(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	holdout := filepath.Join(t.TempDir(), "holdout")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(holdout)); err != nil {
@@ -169,6 +170,7 @@ func TestBuildTemporalStructureWindowCorpusPlanReproducesSeamConstructions(t *te
 }
 
 func TestBuildTemporalStructureWindowCorpusPlanRejectsDriftedAuthority(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixture(t)
 	holdout := filepath.Join(t.TempDir(), "holdout")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(holdout)); err != nil {
@@ -188,6 +190,7 @@ func TestBuildTemporalStructureWindowCorpusPlanRejectsDriftedAuthority(t *testin
 }
 
 func TestBuildTemporalStructureWindowCorpusPlanRejectsShortProgrammeParentsBeforePublication(t *testing.T) {
+	t.Parallel()
 	fixture := newTemporalStructureHoldoutFixtureWithProgrammeParentDuration(t, 180_000)
 	holdout := filepath.Join(t.TempDir(), "holdout")
 	if _, err := BuildTemporalStructureHoldoutPlan(fixture.config(holdout)); err != nil {

@@ -26,6 +26,7 @@ type workflowJobContextAuthority struct {
 
 type workflowStrategyAuthority struct {
 	shards  []int
+	lanes   []string
 	include []workflowMatrixEntryAuthority
 }
 
@@ -54,7 +55,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci-docs.yml", job: "run"}:                {name: "Docs — links + structure + prose", runsOn: "ubuntu-latest"},
 		{workflow: "ci-frontend.yml", job: "run"}:            {name: "Frontend — biome + typecheck + unit + build (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2}}},
 		{workflow: "ci-go-contracts.yml", job: "run"}:        {name: "Go — repository contracts", runsOn: "ubuntu-latest"},
-		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", timeoutMinutes: 15, strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4, 5, 6}}},
+		{workflow: "ci-go.yml", job: "run"}:                  {name: "Go — race-policy tests (${{ matrix.lane }})", runsOn: "ubuntu-latest", timeoutMinutes: 15, strategy: &workflowStrategyAuthority{lanes: []string{"1/2", "2/2", "certification-1/2", "certification-2/2"}}},
 		{workflow: "ci-image-certification.yml", job: "run"}: {name: "Rust image — runtime certification", runsOn: "ubuntu-latest"},
 		{workflow: "ci-image.yml", job: "run"}: {
 			name: "Image — release build (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}", timeoutMinutes: 45,
@@ -225,10 +226,34 @@ func verifyWorkflowStrategy(job *yaml.Node, want *workflowStrategyAuthority, lab
 		}
 		return verifyWorkflowShards(matrix, want.shards, label)
 	}
+	if len(want.lanes) > 0 {
+		if !mappingHasOnlyKeys(matrix, "lane") {
+			return fmt.Errorf("%s matrix differs from its source-bound authority", label)
+		}
+		return verifyWorkflowLanes(matrix, want.lanes, label)
+	}
 	if !mappingHasOnlyKeys(matrix, "include") {
 		return fmt.Errorf("%s matrix differs from its source-bound authority", label)
 	}
 	return verifyWorkflowMatrixInclude(matrix, want.include, label)
+}
+
+func verifyWorkflowLanes(matrix *yaml.Node, want []string, label string) error {
+	lanes, ok := mappingValue(matrix, "lane")
+	if !ok || lanes.Kind != yaml.SequenceNode || len(lanes.Content) != len(want) {
+		return fmt.Errorf("%s matrix lanes differ from their source-bound authority", label)
+	}
+	got := make([]string, len(lanes.Content))
+	for index, lane := range lanes.Content {
+		if lane.Kind != yaml.ScalarNode || lane.Tag != "!!str" {
+			return fmt.Errorf("%s matrix lanes must be strings", label)
+		}
+		got[index] = lane.Value
+	}
+	if !slices.Equal(got, want) {
+		return fmt.Errorf("%s matrix lanes differ from their source-bound authority", label)
+	}
+	return nil
 }
 
 func verifyWorkflowShards(matrix *yaml.Node, want []int, label string) error {

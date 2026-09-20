@@ -71,6 +71,7 @@ func (f *fakeTemporalStructureWindowFamily) AssessWithEvidence(_ context.Context
 }
 
 func TestRunTemporalStructureWindowFamilyUsesOnlyCompletePublicMediaSets(t *testing.T) {
+	t.Parallel()
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	manifest := readStrictTestJSON[TemporalStructureWindowSetManifest](t, suiteConfig.WindowSetManifestPath)
 	windows := 0
@@ -116,6 +117,7 @@ func TestRunTemporalStructureWindowFamilyUsesOnlyCompletePublicMediaSets(t *test
 }
 
 func TestTemporalStructureWindowFamilyArtifactRoundTripsAgainstManifest(t *testing.T) {
+	t.Parallel()
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	family := &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile("family-a")}
 	result, err := RunTemporalStructureWindowFamily(t.Context(), TemporalStructureWindowFamilyConfig{
@@ -150,6 +152,7 @@ func TestTemporalStructureWindowFamilyArtifactRoundTripsAgainstManifest(t *testi
 }
 
 func TestValidateTemporalStructureWindowFamilyResultRejectsDrift(t *testing.T) {
+	t.Parallel()
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	manifest, manifestSHA, err := LoadTemporalStructureWindowSetPublic(suiteConfig.WindowSetManifestPath, TemporalStructureWindowCorpusCases)
 	if err != nil {
@@ -193,6 +196,7 @@ func TestValidateTemporalStructureWindowFamilyResultRejectsDrift(t *testing.T) {
 }
 
 func TestRunTemporalStructureWindowFamilyReturnsNoPartialResult(t *testing.T) {
+	t.Parallel()
 	suiteConfig, _ := temporalStructureWindowSuiteFixture(t, filepath.Join(t.TempDir(), "suite"))
 	family := &fakeTemporalStructureWindowFamily{profile: temporalStructureWindowFamilyProfile("family-a"), failAt: 3}
 	result, err := RunTemporalStructureWindowFamily(t.Context(), TemporalStructureWindowFamilyConfig{

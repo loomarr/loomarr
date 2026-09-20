@@ -13,6 +13,7 @@ import (
 )
 
 func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	st := transitionFaultStore(base, probe, nil)
@@ -49,6 +50,7 @@ func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.
 }
 
 func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.T) {
+	t.Parallel()
 	st := testkit.SQLiteStore(t)
 	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	controller := NewController(st, probe, probe, probe)
@@ -76,6 +78,7 @@ func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.
 }
 
 func TestControllerReconnectRepairsAppliedBackendWithoutPublishingPrepared(t *testing.T) {
+	t.Parallel()
 	st := initializedStore(t, BackendTunarr)
 	state, err := Load(context.Background(), st, BackendInternal)
 	if err != nil {
@@ -107,6 +110,7 @@ func TestControllerReconnectRepairsAppliedBackendWithoutPublishingPrepared(t *te
 }
 
 func TestControllerReconnectSerializesWithAnotherControllerCutover(t *testing.T) {
+	t.Parallel()
 	st := initializedStore(t, BackendTunarr)
 	probe := testkit.NewBackendTransitionProbe()
 	cutover := NewController(st, probe, probe, nil)
@@ -153,6 +157,7 @@ func TestControllerReconnectSerializesWithAnotherControllerCutover(t *testing.T)
 }
 
 func TestControllerRestartRetriesEveryPhase(t *testing.T) {
+	t.Parallel()
 	crash := errors.New("simulated process interruption")
 	for _, phase := range []string{
 		"save-prepared", "fleet", "publisher-prepare", "refresh", "cutover", "save-published", "retire",
@@ -219,6 +224,7 @@ func TestControllerRestartRetriesEveryPhase(t *testing.T) {
 }
 
 func TestControllerDesiredReversalReplacesPreparedTargetBeforeRepair(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	ctx := context.Background()
 	state, err := Load(ctx, base, BackendTunarr)
@@ -263,6 +269,7 @@ func TestControllerDesiredReversalReplacesPreparedTargetBeforeRepair(t *testing.
 }
 
 func TestControllerFailedTargetReplacementLeavesPriorTargetDurableAndRetryable(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	ctx := context.Background()
 	state, _ := Load(ctx, base, BackendTunarr)
@@ -289,6 +296,7 @@ func TestControllerFailedTargetReplacementLeavesPriorTargetDurableAndRetryable(t
 }
 
 func TestControllerSteadyStateRepairsURLsAndRetriesRefresh(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	probe.RequirePublisherRepair() // same backend, but its resolved registration URLs changed
@@ -339,6 +347,7 @@ func TestControllerSteadyStateRepairsURLsAndRetriesRefresh(t *testing.T) {
 }
 
 func TestControllerSteadyStateURLRepairStopsBeforePublisherWhenFleetFails(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	fleetErr := errors.New("channel fleet unavailable")
@@ -368,6 +377,7 @@ func TestControllerSteadyStateURLRepairStopsBeforePublisherWhenFleetFails(t *tes
 }
 
 func TestControllerRetirementFailureLeavesNewBackendApplied(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	probe.FailRetireOnce(errors.New("stale tuner busy"))
@@ -386,6 +396,7 @@ func TestControllerRetirementFailureLeavesNewBackendApplied(t *testing.T) {
 }
 
 func TestControllerSerializesConcurrentApplyAndRuntimeReads(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -436,6 +447,7 @@ func TestControllerSerializesConcurrentApplyAndRuntimeReads(t *testing.T) {
 }
 
 func TestControllerApplyCurrentResolvesDesiredAfterWaitingForPriorTransition(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -477,6 +489,7 @@ func TestControllerApplyCurrentResolvesDesiredAfterWaitingForPriorTransition(t *
 }
 
 func TestControllerMutateAndApplyCurrentOwnsMutationThroughPublication(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	controller := NewController(
@@ -524,6 +537,7 @@ func TestControllerMutateAndApplyCurrentOwnsMutationThroughPublication(t *testin
 }
 
 func TestControllerMutateAndApplyCurrentSkipsRepairAfterIneffectiveMutation(t *testing.T) {
+	t.Parallel()
 	base := initializedStore(t, BackendTunarr)
 	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	controller := NewController(base, probe, probe, nil)
@@ -550,6 +564,7 @@ func TestControllerMutateAndApplyCurrentSkipsRepairAfterIneffectiveMutation(t *t
 }
 
 func TestControllerMutateAndApplyCurrentStopsBeforeMutationWhenRefreshFails(t *testing.T) {
+	t.Parallel()
 	refreshErr := errors.New("refresh durable settings")
 	controller := NewController(initializedStore(t, BackendTunarr), nil, nil, nil)
 	mutated := false

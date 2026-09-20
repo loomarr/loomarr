@@ -98,6 +98,7 @@ func titleState(t *testing.T, st store.Store, tmdbID int) provision.State {
 // A net-new acquisition ABOVE the quality bar is requested (wanted) via the approval gate;
 // one BELOW the bar is dropped — never requested. This is the intent-weight gate (§8.2).
 func TestCurator_QualityBar(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{}) // global thresholds
 	p := seedProposal(t, st, "p1", "job1", nil, []suggest.ProposalItem{
@@ -124,6 +125,7 @@ func TestCurator_QualityBar(t *testing.T) {
 // An in-library pick is added regardless of any acquisition bar (it's already available, no
 // acquisition), and it does NOT create a wanted row.
 func TestCurator_InLibraryAddedNoAcquisition(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{})
 	p := seedProposal(t, st, "p1", "job1",
@@ -147,6 +149,7 @@ func TestCurator_InLibraryAddedNoAcquisition(t *testing.T) {
 // THE APPROVAL-GATE NEGATIVE (§19/prime-directive-#3): a channel NOT opted into auto-curate is
 // never auto-approved — its proposal stays submitted and NO title is requested by re-curation.
 func TestCurator_NotOptedInNeverRequests(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Channel exists + is intent-backed, but AutoCurate is nil (not opted in).
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, nil)
@@ -173,6 +176,7 @@ func TestCurator_NotOptedInNeverRequests(t *testing.T) {
 // The growth cap bounds how many net-new titles re-curation requests: current lineup + kept
 // acquisitions never exceeds maxTitles. The BEST (highest-confidence) survivors fill the room.
 func TestCurator_TitleCap(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Channel already has 2 titles; cap is 3 → room for exactly 1 net-new.
 	existing := []schedule.LineupEntry{
@@ -203,6 +207,7 @@ func TestCurator_TitleCap(t *testing.T) {
 
 // A per-channel MinScorePct override is stricter/looser than the global default.
 func TestCurator_PerChannelOverride(t *testing.T) {
+	t.Parallel()
 	st := newStore(t)
 	// Global bar 60, but this channel overrides to 90 → an 0.80 title is now below the bar.
 	seedAutoCurateChannel(t, st, "ch1", "job1", nil, &schedule.AutoCurate{MinScorePct: 90})

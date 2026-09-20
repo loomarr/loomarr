@@ -40,6 +40,9 @@ func themeFit(intent Intent, items []ProposalItem) (*float64, ThemeEvidence) {
 	for _, term := range terms {
 		e.Qualifiers = append(e.Qualifiers, QualifierEvidence{Term: term})
 	}
+	// Scope is an Intent property. Computing it per item/qualifier repeats Unicode
+	// normalization and phrase matching without changing the answer.
+	seriesTitleScope := intentUsesSeriesTitleScope(intent)
 	hits := 0
 	for _, item := range items {
 		// A catalog title alone is too weak to establish a requested theme.
@@ -53,7 +56,7 @@ func themeFit(intent Intent, items []ProposalItem) (*float64, ThemeEvidence) {
 		}
 		e.AssessedItems++
 		for i, term := range terms {
-			if supportsQualifier(item, term) || intentUsesSeriesTitleScope(intent) && titleSupportsSubject(item.Name, term) {
+			if supportsQualifier(item, term) || seriesTitleScope && titleSupportsSubject(item.Name, term) {
 				e.Qualifiers[i].SupportedItems++
 				hits++
 			}
