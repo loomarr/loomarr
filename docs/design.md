@@ -7935,6 +7935,28 @@ exactly one valid hashed, positive-byte, positive-duration, positive-dimension `
 presentation. Missing streams or a missing/malformed presentation are unusable; impossible segment
 bounds invalidate the audit rather than being reinterpreted as a hold.
 
+The one retained 300-case development cohort crosses the household licensing retirement through a
+single, offline, fail-closed refresh, not through a legacy reader in the audit or runtime. The refresh
+owns the exact locked manifest, packet JSONL, product mapping, and negative content-review bytes from
+the v3/v1 reference contract. Every legacy packet must be schema 1, bind its manifest case and content
+hash, contain exactly one deterministic decoder fact and exactly one `source_license=eligible`
+source-policy fact, and otherwise match the closed packet shape. The refresh removes only that retired
+licensing fact, advances the packet to schema 2 / `filler-evidence-v2`, recomputes the case evidence
+digest, and advances the corpus lock. Case, content, source, provenance, semantic truth, role, slices,
+taxonomy, policy flags, independent label attestations, and adjudication remain byte-equivalent under
+their typed representation; a change to any of them invalidates the refresh. Because label
+attestations bind the semantic label projection rather than the transport packet digest, this
+declared removal does not manufacture or repeat semantic review.
+
+The product mapping and negative review are re-bound only after the refreshed manifest bytes exist.
+The negative finding must still name the same unique content SHA-256 and the same in-clip evidence
+references; it cannot be added, removed, or edited during refresh. One path-free machine-readable
+report records all old/new artifact hashes, the exact contract transition, 300/300 transformed cases,
+300 removed licensing facts, and preserved label/adjudication denominators. Outputs are current-only,
+created atomically in a new directory, and must pass the ordinary v4 audit; the application retains no
+v3/v1 adapter, feature flag, or compatibility branch. The refresh performs no media mutation, network
+request, provider call, spend, semantic relabel, admission, or maintainer acceptance.
+
 The production-reference duplicate inventory is a separate deterministic derivative of one exact
 production-reference audit artifact. It fingerprints every non-excluded case and no other case,
 re-opens each acquired source only beneath the declared source root, and verifies the full source
@@ -7977,6 +7999,16 @@ every selected case exactly once, and reports only measured versus technical-hol
 It neither edits media nor assigns filler identity, taxonomy, editorial grade, scheduling use,
 acceptance, admission, or provider authority. At least 48 measured sources may proceed to complete
 playback; otherwise Gate B records an honest technical shortfall and stops.
+
+The one retained v3 inspection seed crosses the licensing retirement only through an offline,
+fail-closed rebind after the current Gate A and duplicate-inventory bytes exist. The rebind strictly
+decodes all three artifacts, requires the legacy seed identity, validates the current audit and full
+duplicate graph, and changes only the contract version and the two artifact SHA-256 bindings. It then
+passes the result through the ordinary Gate B selector before publication. The ordered 50 case IDs,
+selection policy, triage method and limitations, explicit findings, status, and required next gate
+remain byte-semantically unchanged. A path-free report records the input and output identities and
+the preserved selection count. The rebind performs no media access, selection, backfill, editorial
+decision, acceptance, or admission and creates no general v3 compatibility path.
 
 Shared transcription is a separately locked provider artifact, not text pasted into a mutable packet.
 For each case it binds the exact raw packet digest, audio signal identity/hash/bytes/duration, transcript
