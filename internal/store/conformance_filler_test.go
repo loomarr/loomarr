@@ -3347,11 +3347,12 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	p := filler.SplitProposal{
 		ID: "sp_1", ClipHash: clipHashFor("comps/1987.mp4"), CreatedAt: now,
 		Source: source, Structure: &structure, StructureDecision: &structureDecision,
+		ArtworkPrepared:    true,
 		LanguagePreference: "en",
 		LanguageExclusions: []filler.SplitLanguageExclusion{{StartMs: 149_000, EndMs: 179_000, Name: "Polish advert", DetectedLanguage: "pl", ExpectedLanguage: "en", Reason: filler.SplitExclusionLanguageMismatch}},
 		Segments: []filler.SplitSegment{
-			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence, Language: "en", LanguageChecked: true},
-			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true, RoleEvidence: &videoRoleEvidence},
+			{Index: 0, StartMs: 0, EndMs: 30000, Name: "comps/1987 part 1", Era: 1987, Audience: filler.Kids, Category: "toys", RoleEvidence: &roleEvidence, Language: "en", LanguageChecked: true, ArtworkChecked: true, ArtworkImageHash: "preview-one"},
+			{Index: 1, StartMs: 30000, EndMs: 61000, Name: "unknown", SuggestedEra: 1985, DupOf: "old/ad.mp4", Looked: true, RoleEvidence: &videoRoleEvidence, ArtworkChecked: true},
 			{Index: 2, StartMs: 61000, EndMs: 149000, Name: "comps/1987 part 3", Unsplittable: true, Transcript: "[00:00] …", LanguageChecked: true, LanguageReason: filler.SplitLanguageFailed, LanguageNote: "Language could not be checked"},
 		},
 	}
@@ -3382,6 +3383,9 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !reflect.DeepEqual(got.Segments[1].RoleEvidence, &videoRoleEvidence) || got.Segments[1].RoleEvidence.VideoSHA256 == "" {
 		t.Errorf("segment video role evidence lost: %+v", got.Segments[1].RoleEvidence)
+	}
+	if !got.ArtworkPrepared || !got.Segments[0].ArtworkChecked || got.Segments[0].ArtworkImageHash != "preview-one" || !got.Segments[1].ArtworkChecked || got.Segments[1].ArtworkImageHash != "" {
+		t.Errorf("segment artwork state lost: prepared=%v segments=%+v", got.ArtworkPrepared, got.Segments)
 	}
 
 	draft := filler.SplitProposal{
@@ -3528,6 +3532,21 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
+	preview := Image{
+		Hash: "split-preview", Origin: "extracted", Visibility: "member", Role: "thumb",
+		MIME: "image/jpeg", Width: 320, Height: 180, Bytes: 12,
+		CreatedAt: now, UpdatedAt: now, LastUsedAt: now,
+	}
+	if err := s.PutImage(ctx, preview); err != nil {
+		t.Fatal(err)
+	}
+	for _, proposalID := range []string{"sp_keep", "sp_orphan"} {
+		if err := s.PutImageRef(ctx, ImageRef{
+			ImageHash: preview.Hash, OwnerKind: "filler_split_proposal", OwnerID: proposalID, Role: "thumb",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	// ⚠ A KEEPER is enrolled first on purpose, so the assertion distinguishes "pruned the orphan"
 	// from "emptied the table" — a prune with a broken predicate passes the orphan check alone.
@@ -3540,6 +3559,12 @@ func testSplitProposals(t *testing.T, newStore NewStoreFunc) {
 	}
 	if _, err := s.GetSplitProposal(ctx, "sp_keep"); err != nil {
 		t.Errorf("the prune took a LIVE proposal with it: %v", err)
+	}
+	if images, err := s.ImagesForOwner(ctx, "filler_split_proposal", "sp_orphan"); err != nil || len(images) != 0 {
+		t.Errorf("orphan proposal kept its image references: images=%+v err=%v", images, err)
+	}
+	if images, err := s.ImagesForOwner(ctx, "filler_split_proposal", "sp_keep"); err != nil || len(images) != 1 {
+		t.Errorf("live proposal lost its image references: images=%+v err=%v", images, err)
 	}
 	// ⚠ Asserted on the LIST too, because that is the surface the defect was seen on.
 	remaining, err := s.ListSplitProposals(ctx)

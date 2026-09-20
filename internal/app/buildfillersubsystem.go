@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/programmer"
@@ -46,6 +47,7 @@ func buildFillerSubsystem(
 	processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder,
+	imageService *images.Service,
 	owner *generationLifecycle,
 ) fillerBuild {
 	var result fillerBuild
@@ -105,7 +107,7 @@ func buildFillerSubsystem(
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
 	fetcher := buildFetcher(set, layout, log, st, storageGovernor)
-	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor)
+	splitter := buildSplitter(st, set, layout, log, wake, metricRecorder, storageGovernor, imageService)
 	ytDlpPath := resolveTool(set.str("ingest.ytdlp_path"), "yt-dlp")
 	adapter := fillerServiceAdapter{
 		syncer: syncer, fetcher: fetcher,

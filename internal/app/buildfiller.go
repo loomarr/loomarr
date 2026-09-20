@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
@@ -131,7 +132,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 // rather than guessed (§15).
 //
 // The LLM provider wires whenever one is configured because splitting is operator-invoked.
-func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor) *filler.Splitter {
+func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil
@@ -142,9 +143,13 @@ func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog
 	tools := buildFillerMediaTools(set, recorder)
 
 	// The same live minimum is enforced during detection and at the scan boundary (§10 V34).
-	return filler.NewSplitter(fillerSplitStoreAdapter{st: st, wake: wake}, tools, splitProvider, dir,
+	splitter := filler.NewSplitter(fillerSplitStoreAdapter{st: st, wake: wake}, tools, splitProvider, dir,
 		func() time.Duration { return set.dur("filler.min_duration") }, newID, time.Now, log).
 		WithStorageGovernor(governor)
+	if imageService != nil {
+		splitter.WithSplitArtwork(fillerSplitArtworkAdapter{images: imageService})
+	}
+	return splitter
 }
 
 // activeFillerProvider resolves the same branded provider selection as the AI surface. OpenRouter
