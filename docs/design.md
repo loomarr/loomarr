@@ -9728,7 +9728,9 @@ The Sources page renders one calm section for Archive.org and one for YouTube. E
 switch, a single accessible **search-or-paste** field, a stable keyboard-operable suggestion list,
 and quiet rows for sources already added. Selecting a suggestion first shows the exact target that
 will be added; registration remains an explicit action with duplicate and failure states beside
-that target. Provider/type chips, repeated card borders, and always-visible tuning controls are
+that target. **Cancel** discards that transient selection and returns focus to the finder; a slow
+resolution response cannot restore a target after the operator has cancelled or entered newer
+text. Provider/type chips, repeated card borders, and always-visible tuning controls are
 absent: provider headings already supply the context.
 Turning a provider's master switch off disables its child source controls and folds the provider
 body closed, including its add flow and registered rows. It changes no child's saved switch value:
@@ -9760,7 +9762,11 @@ collection.
 A registered source row is an index entry, not a miniature settings page. It shows the switch,
 name, one truthful status, and one affordance to open the source workspace. That workspace reuses
 the application Sheet: it slides from the right on desktop, fills a narrow screen, traps and
-restores focus, and keeps the Sources list stationary behind it. The selected source's exact check
+restores focus, and keeps the Sources list stationary behind it. The index is `/filler/sources` and
+an open workspace is `/filler/sources/{sourceId}`: direct links and reload restore the same source,
+browser Back and Forward follow the open workspace, and closing returns to the index without
+leaving selection in component-only or query-string state. A stale source bookmark returns to the
+index, and the route rejects members before reading the admin-only source list. The selected source's exact check
 outcome, provider link, same three-item source preview used before registration, clip browser,
 location exception, cadence/limits, and removal live together there. Opening a registered remote
 source resolves its saved target directly; the operator never has to search for a source they have

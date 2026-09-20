@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { SourcesTab } from "./sources-tab";
 
@@ -97,7 +97,7 @@ const makeWrapper = () => {
 describe("SourcesTab", () => {
   it("fetches the source list itself rather than being handed it", async () => {
     const wasListed = stubSources();
-    render(<SourcesTab />, { wrapper: makeWrapper() });
+    render(<SourcesTab onSelectSource={() => {}} onCloseSource={() => {}} />, { wrapper: makeWrapper() });
 
     await waitFor(() => expect(wasListed()).toBe(true));
   });
@@ -129,9 +129,20 @@ describe("SourcesTab", () => {
       ],
       total: 12,
     });
-    render(<SourcesTab />, { wrapper: makeWrapper() });
+    render(<SourcesTab onSelectSource={() => {}} onCloseSource={() => {}} />, { wrapper: makeWrapper() });
 
     expect(await screen.findByText("/data/filler")).toBeInTheDocument();
+  });
+
+  it("returns a stale source bookmark to the source index", async () => {
+    stubSources();
+    const closeSource = vi.fn();
+    render(
+      <SourcesTab selectedSourceID="archive:removed" onSelectSource={() => {}} onCloseSource={closeSource} />,
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(closeSource).toHaveBeenCalledOnce());
   });
 
   // ⚠ A failed list must still render the tab, not blank it. Sources is where an operator goes
@@ -141,7 +152,7 @@ describe("SourcesTab", () => {
   // local-source affordance survives — the operator can still act.
   it("stays renderable when the source list fails", async () => {
     server.use(getMeMockHandler({ ...ADMIN }), healthyReadiness(), sourcesFail());
-    render(<SourcesTab />, { wrapper: makeWrapper() });
+    render(<SourcesTab onSelectSource={() => {}} onCloseSource={() => {}} />, { wrapper: makeWrapper() });
 
     expect(await screen.findByText(/add a folder or library/i)).toBeInTheDocument();
   });

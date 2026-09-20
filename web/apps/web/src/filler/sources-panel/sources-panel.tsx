@@ -6,7 +6,7 @@ import type { FillerSourceSuggestionDTO } from "@loomarr/api/models/fillerSource
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -160,7 +160,13 @@ const downloadScheduleSeconds: Record<Exclude<DownloadSchedulePreset, "custom">,
 // SourcesPanel — the Sources tab of the filler page (§10 V35/V37/V38c): registered sources
 // (folders, libraries, archive.org, YouTube), each switchable, fetchable and (if `removable`)
 // forgettable, plus per-source search for archive.org and the "Add a source" form.
-const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
+const SourcesPanel = ({
+  sources,
+  sourcesError,
+  selectedSourceID,
+  onSelectSource,
+  onCloseSource,
+}: SourcesPanelProps) => {
   const queryClient = useQueryClient();
   const { isAdmin } = useAuth();
   const readinessQuery = fillerApi.useFillerReadiness();
@@ -194,7 +200,6 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   });
   const cleanupResult = unwrap(cleanupStorage.data, (body) => body);
 
-  const [selectedSourceID, setSelectedSourceID] = useState<string>();
   const [sourcePreview, setSourcePreview] = useState<{
     sourceID: string;
     result: FillerSourceSuggestionDTO;
@@ -210,6 +215,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const downloadSaveButton = useRef<HTMLButtonElement>(null);
   const [searchPreview, setSearchPreview] = useState<FillerSourcePreviewItemDTO>();
   const sourceTrigger = useRef<HTMLElement>(null);
+  const initializedSourceID = useRef<string | undefined>(undefined);
   const selectedSource = sources.find((source) => source.id === selectedSourceID);
 
   const fetchSource = fillerApi.useFetchFillerSource({
@@ -279,10 +285,19 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
   const resolveSourcePreview = fillerApi.useResolveFillerSource();
   const openSource = (source: (typeof sources)[number]) => {
     sourceTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setSelectedSourceID(source.id);
+    onSelectSource(source.id);
+  };
+
+  useEffect(() => {
+    if (!selectedSource) {
+      initializedSourceID.current = undefined;
+      return;
+    }
+    if (initializedSourceID.current === selectedSource.id) return;
+    initializedSourceID.current = selectedSource.id;
     setCheckResult(undefined);
-    setSourceCountry(source.country ?? "");
-    setSourceMarket(source.market ?? "");
+    setSourceCountry(selectedSource.country ?? "");
+    setSourceMarket(selectedSource.market ?? "");
     setSourceQuery("");
     setSubmittedQuery("");
     setStatIds([]);
@@ -290,33 +305,37 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
     setSearchPreview(undefined);
     setBrowseOpen(false);
     setSettingsOpen(false);
-    setDownloadMode(source.automaticDownloads?.mode ?? "defaults");
-    setDownloadEverySeconds(source.automaticDownloads?.everySeconds || 6 * 3600);
-    setDownloadMaxPerCheck(source.automaticDownloads?.maxPerCheck ?? 10);
+    setDownloadMode(selectedSource.automaticDownloads?.mode ?? "defaults");
+    setDownloadEverySeconds(selectedSource.automaticDownloads?.everySeconds || 6 * 3600);
+    setDownloadMaxPerCheck(selectedSource.automaticDownloads?.maxPerCheck ?? 10);
     setEditingCustomDownloadSchedule(
-      downloadSchedulePreset(source.automaticDownloads?.everySeconds || 6 * 3600) === "custom",
+      downloadSchedulePreset(selectedSource.automaticDownloads?.everySeconds || 6 * 3600) === "custom",
     );
     setDownloadSaveError(undefined);
-    const uri = source.uri?.trim();
-    if ((source.kind === "archive" || source.kind === "youtube") && source.providerEnabled && uri) {
+    const uri = selectedSource.uri?.trim();
+    if (
+      (selectedSource.kind === "archive" || selectedSource.kind === "youtube") &&
+      selectedSource.providerEnabled &&
+      uri
+    ) {
       resolveSourcePreview.mutate(
-        { kind: source.kind, data: { input: uri } },
+        { kind: selectedSource.kind, data: { input: uri } },
         {
           onSuccess: (response) => {
             const result = unwrap(response, (body) => body);
-            if (result) setSourcePreview({ sourceID: source.id, result });
+            if (result) setSourcePreview({ sourceID: selectedSource.id, result });
           },
         },
       );
     }
-  };
+  }, [selectedSource, resolveSourcePreview]);
 
   const [removingSource, setRemovingSource] = useState<string>();
   const removeSource = fillerApi.useDeleteFillerSource({
     mutation: {
       onSettled: () => setRemovingSource(undefined),
       onSuccess: () => {
-        setSelectedSourceID(undefined);
+        onCloseSource();
         toast.success("Source removed", {
           description: "Clips it already brought in stay in your catalog.",
         });
@@ -589,7 +608,7 @@ const SourcesPanel = ({ sources, sourcesError }: SourcesPanelProps) => {
         open={Boolean(selectedSource)}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedSourceID(undefined);
+            onCloseSource();
             setSourcePreview(undefined);
             setSearchPreview(undefined);
             setBrowseOpen(false);

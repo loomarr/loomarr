@@ -1,5 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import { unwrap } from "@loomarr/api/unwrap";
+import { useEffect } from "react";
 import { SourcesPanel } from "../sources-panel";
 
 // SourcesTab — where clips come from. A thin wrapper that owns the ONE query the Sources tab
@@ -16,11 +17,35 @@ import { SourcesPanel } from "../sources-panel";
 // and the "every source dark / nothing for days" rule is domain logic that belongs where it can
 // be tested against the store. That is why moving this query out of the shell costs the header
 // nothing.
-const SourcesTab = () => {
+interface SourcesTabProps {
+  selectedSourceID?: string;
+  onSelectSource: (sourceID: string) => void;
+  onCloseSource: () => void;
+}
+
+const SourcesTab = ({ selectedSourceID, onSelectSource, onCloseSource }: SourcesTabProps) => {
   const sourcesQuery = fillerApi.useListFillerSources();
   const sources = unwrap(sourcesQuery.data, (b) => b.sources) ?? [];
 
-  return <SourcesPanel sources={sources} sourcesError={sourcesQuery.error?.detail} />;
+  useEffect(() => {
+    if (
+      selectedSourceID &&
+      sourcesQuery.isSuccess &&
+      !sources.some((source) => source.id === selectedSourceID)
+    ) {
+      onCloseSource();
+    }
+  }, [onCloseSource, selectedSourceID, sources, sourcesQuery.isSuccess]);
+
+  return (
+    <SourcesPanel
+      sources={sources}
+      sourcesError={sourcesQuery.error?.detail}
+      selectedSourceID={selectedSourceID}
+      onSelectSource={onSelectSource}
+      onCloseSource={onCloseSource}
+    />
+  );
 };
 
 export { SourcesTab };
