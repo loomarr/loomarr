@@ -5787,9 +5787,11 @@ tuning makes safe to act on.
 
 Two defences, and they are deliberately independent:
 
-- **Long recordings are sampled from the MIDDLE.** Past two minutes a clip has stopped being one
-  advert and become a recording of several, which always opens with leader. This fixes *where* we
-  look — the same clips measured −25 and −28 LUFS mid-recording, squarely in speech range.
+- **An ordinary commercial is inspected in full; longer recordings use the middle 30 seconds.**
+  The bounded middle is past opening leader while a complete spot carries enough speech for a
+  stable decision. This fixes *where* we look: long recordings measured −25 and −28 LUFS in the
+  middle, and nearby ten-second cuts of a live Spanish Jersey Mike's spot alternated between
+  English and Spanish while its complete 30-second speech was correctly identified as Spanish.
 - **A span below a loudness floor is never asked about at all.** `−50 LUFS`, measured with the
   same `ebur128` the loudness half of V40 uses. This holds *wherever* we land, including on a clip
   that is genuinely silent throughout. The floor leaves wide room above the quietest real clip
@@ -5808,8 +5810,8 @@ language made one clip depend on two unrelated services and excluded dedicated A
 | | `asr.provider = whisper` (default) | `= hosted` |
 | --- | --- | --- |
 | Engine | vendored `whisper-cli` + `ggml-small.en.bin` | a timed speech-to-text model through a dedicated or inherited OpenAI-compatible endpoint |
-| Per clip | ~3s natively, **~341s under QEMU** | ~1s — it is a network call, so architecture stops mattering |
-| Cost | free | fractions of a cent for a 10s span |
+| Per clip | bounded background inference over at most 30s of audio | one bounded network inference over at most 30s of audio |
+| Cost | free | provider-dependent speech-to-text cost |
 | Offline | yes | no |
 
 The connected option uses the standard OpenAI-compatible multipart `/audio/transcriptions` route

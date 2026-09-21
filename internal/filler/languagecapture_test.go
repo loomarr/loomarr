@@ -14,7 +14,7 @@ import (
 //
 //   - `lang_es.json` — a Spanish Coca-Cola advert from archive.org
 //     (`spanishrevolution-ElmejoranunciodeCocaCola-1LE-AHD7l80`, declared `language: spanish` by
-//     the source), sampled 1s–11s exactly as `LanguageSpan(29814)` asks for.
+//     the source), captured from 1s–11s by the original fixture procedure.
 //   - `lang_en.json` — a real catalog clip from the dev drop-folder, same span rule.
 //
 // Hand-written fixtures test my understanding of the format; these test the format. AGENTS.md's

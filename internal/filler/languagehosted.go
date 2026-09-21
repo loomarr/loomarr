@@ -33,7 +33,7 @@ type HostedLanguage struct {
 	// Model is read per call for the same reason.
 	Model func() string
 	// FFmpegPath extracts the span; the wire format is 16kHz mono wav for the same reason whisper
-	// wants it — small, universally decodable, and ~430KB of base64 for ten seconds.
+	// wants it — small and universally decodable.
 	FFmpegPath string
 	tmpDir     string
 }
@@ -95,7 +95,7 @@ func (h *HostedLanguage) DetectLanguage(ctx context.Context, file string, startM
 		return LangNone, nil
 	}
 	// ⚠ **A FULL-SIZE file of silence is the case that actually bit.** The size check above only
-	// catches an empty wav; ten seconds of leader is 320KB of near-zero samples and sails through.
+	// catches an empty wav; a bounded window of leader is a full-size file and sails through.
 	// Asked what language silence is in, a model does not decline — it guesses.
 	//
 	// Found live: a 978s recorded ad break whose first 10s measure -70 LUFS was answered `ar` and
