@@ -361,8 +361,10 @@ JS bundles did not: Expo SDK 57 supports Reanimated 4.5.1 with Worklets 0.10.1, 
 auto-selected incompatible 4.6.0 and 0.12.1 releases. Workspace overrides and the mobile manifest
 originally pinned Expo's supported pair directly. Generated-graph proofs later showed that neither
 application imports the pair. TV stopped autolinking after its direct declarations were removed;
-mobile also needs an explicit application-scoped autolinking exclusion because Expo Router retains
-the modules transitively. Exact workspace overrides remain for development-tool compatibility.
+mobile also needs explicit platform-scoped autolinking exclusions because Expo Router retains the
+modules transitively. Android excludes both modules; Apple excludes Reanimated but continues to
+autolink Worklets because Gesture Handler conditionally requires its CocoaPod. Exact workspace
+overrides remain for development-tool compatibility.
 
 A 2026-08-25 regression proof caught that the earlier app-only pool did not reach Reanimated: AGP
 launched Ninja directly with six Clang children despite `CMAKE_BUILD_PARALLEL_LEVEL=1`, pinned the

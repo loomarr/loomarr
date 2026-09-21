@@ -38,10 +38,17 @@
   },
   "expo": {
     "autolinking": {
-      "exclude": [
-        "react-native-reanimated",
-        "react-native-worklets"
-      ]
+      "android": {
+        "exclude": [
+          "react-native-reanimated",
+          "react-native-worklets"
+        ]
+      },
+      "ios": {
+        "exclude": [
+          "react-native-reanimated"
+        ]
+      }
     },
     "install": {
       "exclude": [
