@@ -3451,6 +3451,10 @@ The remote has three explicit surfaces:
   Left opens Surf (with Menu retained as an alias), and Back follows the Android TV convention by
   returning to the device launcher. The transient chrome
   shows Channel identity, the on-air block, progress, and next block from the member JSON Guide.
+  During a filler block, the on-air label is `Commercials · <active clip title>` when the Guide
+  supplies a friendly pod-entry title; the client resolves that entry from the ordered durations,
+  may show its brand, era, and quality as secondary facts, and never exposes a content hash or raw
+  source path. The progress rail continues to represent the complete scheduled filler block.
   The Channel identity and programme bar are one transient state: both clear after five seconds of
   inactivity and reappear together after a remote action or tune. The programme bar and its
   continuous progress track span the physical screen width and meet the bottom edge; title,
@@ -3488,7 +3492,10 @@ The remote has three explicit surfaces:
 
 Focus is never implicit: each surface requests focus after placement, clamps every move to a valid
 target, and keeps the focused row visible under remote repeat. Guide and Watching derive "now" from
-the server-authored clock, never the television RTC. Pairing, device capability probing,
+the server-authored clock, never the television RTC. When native HLS omits programme-date-time,
+the signed play-URL response's `serverTimeMs` anchors that clock and the client advances it only by
+locally measured elapsed time. The standard HTTP `Date` response header remains a compatibility
+fallback for older servers. Pairing, device capability probing,
 latest-request-wins tuning, signed URL handling, bounded player error recovery, and overscan-safe
 margins remain unchanged.
 

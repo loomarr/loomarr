@@ -47,5 +47,21 @@ grep -Fq "launcherTileSaturation: \$launcherSaturation" "${script}" || {
 	printf 'release emulator evidence manifest must retain launcher screenshot and pixel measurements\n' >&2
 	exit 1
 }
+grep -Fq 'filler-active.png' "${script}" || {
+	printf 'release emulator harness must retain the active filler chrome screenshot\n' >&2
+	exit 1
+}
+grep -Fq 'Commercials · First sponsor spot' "${root}/web/packages/ui/tests/surf-data.test.ts" || {
+	printf 'shared Watching data must assert the named filler clip shown by emulator chrome\n' >&2
+	exit 1
+}
+grep -Fq 'fillerProgrammeTransition: true' "${script}" || {
+	printf 'release emulator evidence must retain the programme/filler/programme transition result\n' >&2
+	exit 1
+}
+grep -Fq 'LOOMARR_DISCOVER/1' "${root}/web/scripts/tv-emulator-fixture-server.mjs" || {
+	printf 'release emulator fixture must provide container-safe UDP discovery\n' >&2
+	exit 1
+}
 
 echo 'test-android-release-emulator-contract-test: ok'

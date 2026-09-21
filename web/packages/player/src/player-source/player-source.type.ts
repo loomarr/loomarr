@@ -10,6 +10,8 @@ interface PlayerSource {
   expiresAt?: number;
   /** Transport-specific headers. Signed Loomarr HLS sources intentionally omit these. */
   headers?: Readonly<Record<string, string>>;
+  /** Server-authored Unix milliseconds at mint time, used to keep native live chrome off device RTC. */
+  serverTimeMs?: number;
   uri: string;
 }
 

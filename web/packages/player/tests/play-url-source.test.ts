@@ -16,9 +16,10 @@ describe("play URL source", () => {
         JSON.stringify({
           expiresAt: "2026-08-26T13:00:00Z",
           relativeUrl: "/v1/playout/hls/science/master.m3u8?sig=one",
+          serverTimeMs: Date.parse("2026-08-26T12:59:50Z"),
           url: "http://localhost:8080/wrong.m3u8",
         }),
-        { status: 200 },
+        { headers: { Date: "Wed, 26 Aug 2026 12:59:45 GMT" }, status: 200 },
       ),
     );
     const source = createPlayUrlSourcePort({
@@ -32,6 +33,7 @@ describe("play URL source", () => {
     expectTypeOf(source).toMatchTypeOf<PlayerSourcePort>();
     expect(result).toEqual({
       expiresAt: Date.parse("2026-08-26T13:00:00Z"),
+      serverTimeMs: Date.parse("2026-08-26T12:59:50Z"),
       uri: "http://living-room:8080/v1/playout/hls/science/master.m3u8?sig=one",
     });
     expect(result.headers).toBeUndefined();

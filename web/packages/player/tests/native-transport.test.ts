@@ -89,6 +89,43 @@ describe("Expo video transport", () => {
     expect(events.map(({ type }) => type)).toEqual(["first-frame", "playing", "live-state", "error"]);
   });
 
+  it("advances the live wall clock when native HLS omits programme-date-time metadata", async () => {
+    vi.useFakeTimers();
+    const deviceTime = new Date("2026-09-21T20:00:00Z");
+    const serverTime = new Date("2026-09-21T18:00:00Z");
+    vi.setSystemTime(deviceTime);
+    const { emit, player } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+    const events: PlayerTransportEvent[] = [];
+    transport.subscribe((event) => events.push(event));
+
+    await transport.replace(
+      {
+        serverTimeMs: serverTime.getTime(),
+        uri: "https://loomarr.test/live-without-program-date-time.m3u8",
+      },
+      { attemptId: 12, signal: new AbortController().signal },
+    );
+    vi.advanceTimersByTime(90_000);
+    emit("timeUpdate", {
+      bufferedPosition: 120,
+      currentLiveTimestamp: null,
+      currentOffsetFromLive: null,
+      currentTime: 90,
+    });
+
+    expect(events.at(-1)).toEqual({
+      attemptId: 12,
+      state: {
+        lagSeconds: 0,
+        mode: "live",
+        noticeRevision: 0,
+        viewerTimeMs: serverTime.getTime() + 90_000,
+      },
+      type: "live-state",
+    });
+  });
+
   it("serializes replacements and skips an aborted request before it reaches native playback", async () => {
     const first = deferred();
     const { player, raw } = nativePlayer();
