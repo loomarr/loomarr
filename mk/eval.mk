@@ -802,6 +802,25 @@ filler-release-readiness: ## produce the beta filler release GO/HOLD report with
 	  $(GO) run ./cmd/filler-release-readiness "$$@"
 
 
+filler-household-cohort: ## bind the frozen beta filler seed to exact Ready playback outputs
+	@test -n "$$LOOMARR_FILLER_HOUSEHOLD_SEED" || { echo "filler-household-cohort: LOOMARR_FILLER_HOUSEHOLD_SEED is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_HOUSEHOLD_FAMILIES" || { echo "filler-household-cohort: LOOMARR_FILLER_HOUSEHOLD_FAMILIES is required" >&2; exit 2; }; \
+	  test -n "$$LOOMARR_FILLER_HOUSEHOLD_COOKIE_FILE" || { echo "filler-household-cohort: LOOMARR_FILLER_HOUSEHOLD_COOKIE_FILE is required" >&2; exit 2; }; \
+	  eval "$$(./scripts/dev-env.sh export)"; \
+	  database="$${LOOMARR_FILLER_HOUSEHOLD_DB:-$${LOOMARR_AGENT_DATABASE_URL#sqlite://}}"; \
+	  filler_root="$${LOOMARR_FILLER_HOUSEHOLD_ROOT:-$$LOOMARR_AGENT_FILLER_DIR}"; \
+	  base_url="$${LOOMARR_FILLER_HOUSEHOLD_BASE_URL:-$$LOOMARR_API}"; \
+	  out="$${LOOMARR_FILLER_HOUSEHOLD_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-household-cohort.json}"; \
+	  test -n "$$database" || { echo "filler-household-cohort: database path is required" >&2; exit 2; }; \
+	  test -n "$$filler_root" || { echo "filler-household-cohort: filler root is required" >&2; exit 2; }; \
+	  test -n "$$base_url" || { echo "filler-household-cohort: API base URL is required" >&2; exit 2; }; \
+	  mkdir -p "$$(dirname "$$out")"; \
+	  $(GO) run ./cmd/filler-household-cohort \
+	    -db "$$database" -filler-root "$$filler_root" \
+	    -seed "$$LOOMARR_FILLER_HOUSEHOLD_SEED" -families "$$LOOMARR_FILLER_HOUSEHOLD_FAMILIES" \
+	    -base-url "$$base_url" -cookie-file "$$LOOMARR_FILLER_HOUSEHOLD_COOKIE_FILE" -out "$$out"
+
+
 eval-planner-release-contract: ## verify the frozen production-intent release corpus without inference
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -count=1 -tags=eval -run '^TestReleaseGate' ./internal/eval/
 

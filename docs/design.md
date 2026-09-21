@@ -8586,7 +8586,7 @@ former auto-file-named setting is retired because conditioning does not grant pu
 
 The household workspace and the operational `/v1/filler/readiness` projection answer whether an
 installed Loomarr can use filler now. They do not certify a release candidate. A beta candidate is
-releasable only when one local, versioned manifest binds the exact server, Web, and Shield candidate
+releasable only when one local, versioned manifest binds the exact server, Web, and Android TV candidate
 identities to the immutable evidence accepted for that candidate. The release process evaluates that
 manifest into one canonical, privacy-safe **GO** or **HOLD** report; issue state and prose comments are
 coordination aids, never release authority.
@@ -8598,19 +8598,36 @@ and exit status. Tests substitute an in-memory filesystem through the same inter
 filesystem; the evaluator has no GitHub, provider, search, download, publication, deployment, or
 runtime-admission authority.
 
-The manifest is strict and closed. It names a schema version, assembly/expiry window, release tag,
-git commit, server image digest, Web build, Shield artifact/version, and configuration-profile
-identity. Its cohort binds intentional source identities and exactly 32 unique content, lineage, and
-playback-derivative hashes. It references the required structure, role, visual, spoken, written,
-suitability, media-playback, enrichment, and terminal-admission evidence by safe relative path and
-SHA-256 digest; every authority also declares its schema, policy, model, profile, and build identities.
-It binds Web and Shield installed journeys that exercise channel selection, pod selection, and range
-playback, plus deployment and rollback evidence and the candidate's SBOM, signature, provenance, and
-notice artifacts. Each result carries its explicit denominator, abstentions, holds, prohibited
-admissions, and residual human or operational decisions. Unknown fields, duplicate identities,
-unsafe paths, missing or changed artifacts, inconsistent denominators, stale candidate bindings,
-incomplete journeys, unverified release artifacts, prohibited admissions, or any residual decision
-fail closed. Artifact contents are not copied into the public report.
+The beta.6 manifest is strict and closed. It names schema version 2, an assembly/expiry window,
+release tag, git commit, server image digest, Web build, Android TV artifact/version, and
+configuration-profile identity. Its cohort binds intentional source identities and exactly 32
+unique source-master, lineage, playback-derivative, and sidecar hashes selected in frozen seed order
+from clips the shipping pipeline actually marked Ready. Every row records successful Range playback,
+and at most one row may name a duplicate-family identity. This exact household cohort is release
+evidence, not general filler certification or a second admission path.
+
+The manifest references seven bounded pipeline results: media preparation, duplicate control,
+configured-language handling, suitability, readiness, playback, and descriptive enrichment. Each
+result declares its schema, policy, model, prompt, profile, and build identities plus an explicit
+denominator, abstentions, holds, and prohibited admissions. A deterministic result uses `none` for
+model and prompt; the enrichment result identifies the model and prompt without granting either
+readiness authority. Separate Archive.org and operator-authorized YouTube journeys each bind their
+exact source and playback hashes and prove acquisition, preparation, Library readiness, and Range
+playback through the shipping path.
+
+The same manifest binds Web and Android TV emulator installed journeys that exercise channel
+selection, pod selection, and Range playback, plus deployment and rollback evidence and the candidate's SBOM,
+signature, provenance, and notice artifacts. Unknown fields, duplicate identities or families,
+unsafe paths, missing or changed artifacts, inconsistent denominators, non-Ready clips, stale
+candidate bindings, incomplete source or client journeys, unverified release artifacts, prohibited
+admissions, or any residual decision fail closed. Artifact contents are not copied into the public
+report. General structure, role, visual, spoken, written, and unattended-admission certification is
+beta.7 work and must not appear as passing beta.6 release evidence.
+
+The Android TV beta.6 journey runs on one explicitly named Android TV emulator and binds that
+emulator identity, installed candidate identity, and playback evidence. The release harness refuses
+a physical device for this gate, which keeps the acceptance run repeatable and unattended. Physical
+Shield review remains useful post-beta confidence work, but it is not beta.6 release authority.
 
 The evaluator always returns a report for readable manifest bytes, including malformed manifests.
 Every HOLD uses stable machine-readable reason codes plus bounded public-safe context. A GO report is
@@ -9186,9 +9203,10 @@ is inherited or overridden, and one closed readiness state (`ready`, `off`, `nee
 than browser inference. Candidate-level geography remains a separate hard acquisition constraint,
 and an inherited source value does not turn missing or conflicting candidate evidence into a match.
 The same separation continues after admission: Installation geography and inherited effective source
-coverage are not Clip evidence and are never copied into a Clip's location. Only explicit item evidence,
-an explicit registered-source coverage override, or an operator correction may populate Clip geography;
-the catalog leaves Location absent when none of those facts exists.
+coverage are not Clip evidence and are never copied into a Clip's location. Explicit item evidence,
+an explicit registered-source coverage override, an operator correction, or the narrowly bounded cited
+country projection defined below may populate Clip geography; the catalog leaves Location absent when
+none of those facts exists.
 
 **A config disclosure per row** (V38c), on the same shelf as the search and URL expanders the mock
 already draws. It shows the source's target **read-only** and makes its *behaviour* editable —
@@ -9465,7 +9483,12 @@ scheduler do not reimplement them.
 Each axis persists `missing`, `complete`, `unsupported`, or `stale` independently, together with the
 accepted value and its exact evidence kind/reference, Evidence rank, confidence, producer/version,
 taxonomy version where applicable, and observation time. `complete` may carry no value after an
-applicable pass found none; this prevents an honest absence from becoming endless work.
+applicable pass found none; this prevents an honest absence from becoming endless work. Geography is
+the exception: machine-produced `complete` requires a non-empty location because an empty terminal
+geography falsely looks resolved while the hard household boundary still excludes the Clip. An
+unsuccessful geography pass leaves that axis absent rather than persisting a terminal empty value.
+An operator may still deliberately clear geography; that higher-ranked empty correction remains
+terminal and is never reopened by research.
 `unsupported` wakes when a capability becomes available, while `stale` is re-evaluated after a
 relevant producer or vocabulary version changes. Backoff, budget waits, and provider failures are
 queue state rather than invented semantic states.
@@ -9501,7 +9524,7 @@ the same identity does not pay for another call. An absent provider does not que
 create a visible problem. Operator evidence, including an intentional empty correction, is never
 reopened by automation.
 
-**Context research is a suggestion path, not another evidence rank.** When a publicly acquired
+**Context research is a cited-context path, not another evidence rank.** When a publicly acquired
 Clip still lacks verified era or geography after the ordinary passes, Loomarr may use its public
 item title and description to build a deterministic bounded search plan. One retrieval module fans
 that plan out to documented fixed-host knowledge adapters, merges partial successes, de-duplicates
@@ -9516,14 +9539,20 @@ Arbitrary pages and consumer search interfaces are not fetched. YouTube-wide sea
 default dependency because its official API requires a separately configured Google project/key;
 the acquisition sidecar remains the exact YouTube-item evidence available without that credential.
 
-A context report persists separately from accepted axes and records the Clip/input revision,
-retrieval adapter/version, interpreting provider/model/prompt, completion time, confidence,
-explanation, and exact titled citation URLs. Campaign-level context may render as, for example,
-`Likely 1970s · United States`; it never writes verified `era` or geography, affects scheduling,
-or changes readiness, Placement, Airworthiness, or admission. Exact item/content evidence and
-operator corrections suppress or supersede the corresponding suggestion. The ordinary UI stays
-quiet when no model, network, or useful result exists; evidence detail is progressive disclosure in
-the exact-Clip panel. Commercial discovery adapters remain behind the same interface and require a
+A context report persists separately and records the Clip/input revision, retrieval adapter/version,
+interpreting provider/model/prompt, completion time, confidence, explanation, and exact titled citation
+URLs. Campaign-level context may render as, for example, `Likely 1970s · United States`. Era remains
+descriptive and never becomes a scheduling fact from this report. Country has one deliberately narrow
+automatic projection: an uppercase ISO alpha-2 country, confidence of at least 60, and at least one
+citation from Loomarr's retrieved packet may populate an otherwise-empty Clip geography as `national`,
+with inference-ranked evidence that names the report's adapter and cited IDs. It never invents a market,
+overrides stronger item/source/operator evidence, or uses the household/source location as proof. Saving
+a new report and its accepted country projection is atomic; a bounded catch-up pass applies already-
+stored qualifying reports without re-searching or manual requeue. This changes only descriptive
+scheduling metadata for an already-admitted Clip: it never changes readiness, Placement, Airworthiness,
+or admission, and unknown/conflicting geography remains excluded by the hard boundary. The ordinary UI
+stays quiet when no model, network, or useful result exists; evidence detail is progressive disclosure
+in the exact-Clip panel. Commercial discovery adapters remain behind the same interface and require a
 fresh terms/retention review before selection.
 
 **General web search is an optional last resort, not a parallel research task (#1349).** The
@@ -9566,8 +9595,8 @@ HTTPS endpoint; its JSON search response is bounded and no public instance is se
 The first increment stores attributable result titles, public URLs and bounded snippets only: it
 does not fetch result pages. Search content is untrusted data, never model instructions, and the
 model receives citation identifiers rather than browsing or fetch authority. General-web evidence
-may improve only the existing non-authorizing context suggestion; it cannot write verified axes,
-Airworthiness, language, readiness, scheduling or admission facts.
+may feed only the same bounded cited-context report and country projection above; it cannot write era,
+market, Airworthiness, language, readiness, Placement or admission facts.
 
 Transcript, frame and context catch-up use that same post-ready coordinator rather than putting a
 Ready Clip back on the readiness conveyor. The `filler-pipeline` driver always advances bounded

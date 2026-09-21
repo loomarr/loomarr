@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 )
 
@@ -201,10 +204,118 @@ func (s *sqlStore) SaveFillerResearchReport(ctx context.Context, report fillerre
 		report.Packet.AdapterVersion, report.InputRevision, string(raw), epoch(report.CompletedAt)); err != nil {
 		return fmt.Errorf("save filler context report: %w", err)
 	}
+	if state, ok := fillerResearchCountryState(report); ok {
+		if _, _, err := s.applyFillerEnrichmentTx(ctx, tx, state, report.CompletedAt); err != nil {
+			return fmt.Errorf("save filler context country: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("save filler context report: commit: %w", err)
 	}
 	return nil
+}
+
+// PromoteStoredFillerResearchCountries is the bounded upgrade path for reports written before
+// cited country projection existed. It reuses the stored packet and never performs another search.
+func (s *sqlStore) PromoteStoredFillerResearchCountries(ctx context.Context, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	countryPredicate := `COALESCE(json_extract(report_json, '$.suggestion.countryCode'), '') <> ''
+		AND COALESCE(json_extract(report_json, '$.suggestion.confidence'), 0) >= ?`
+	if s.dialect == DialectPostgres {
+		countryPredicate = `COALESCE(report_json::jsonb #>> '{suggestion,countryCode}', '') <> ''
+			AND COALESCE((report_json::jsonb #>> '{suggestion,confidence}')::integer, 0) >= ?`
+	}
+	query := `SELECT report_json FROM (
+		SELECT r.report_json, r.completed_at,
+			ROW_NUMBER() OVER (PARTITION BY r.clip_hash ORDER BY r.completed_at DESC, r.producer_version DESC) AS row_number
+		FROM filler_context_reports r
+		JOIN clips c ON c.hash = r.clip_hash
+		WHERE c.removed_at = 0 AND c.is_composite = false AND c.country = ''
+		  AND r.input_revision = c.enrichment_revision
+		  AND NOT EXISTS (
+			SELECT 1 FROM filler_enrichment_axes e
+			WHERE e.clip_hash = c.hash AND e.axis = 'geography' AND e.evidence_kind = 'operator'
+		  )
+	) ranked WHERE row_number = 1 AND ` + countryPredicate + `
+	ORDER BY completed_at, report_json LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, s.ph(query), fillerresearch.MinCountryProjectionConfidence, limit)
+	if err != nil {
+		return 0, fmt.Errorf("list stored filler context countries: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var reports []fillerresearch.Report
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return 0, fmt.Errorf("scan stored filler context country: %w", err)
+		}
+		var report fillerresearch.Report
+		if err := json.Unmarshal([]byte(raw), &report); err != nil {
+			return 0, fmt.Errorf("decode stored filler context country: %w", err)
+		}
+		reports = append(reports, report)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("list stored filler context countries: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, fmt.Errorf("close stored filler context countries: %w", err)
+	}
+	promoted := 0
+	for _, report := range reports {
+		state, ok := fillerResearchCountryState(report)
+		if !ok {
+			continue
+		}
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return promoted, fmt.Errorf("promote stored filler context country: begin: %w", err)
+		}
+		if err := s.requireEnrichmentClipTx(ctx, tx, report.ClipHash); err != nil {
+			_ = tx.Rollback()
+			return promoted, err
+		}
+		accepted, changed, err := s.applyFillerEnrichmentTx(ctx, tx, state, time.Now().UTC())
+		if err == nil && !changed && accepted.Value.Geography != (fillerenrichment.Geography{}) {
+			err = s.projectFillerEnrichmentTx(ctx, tx, accepted, time.Now().UTC())
+		}
+		if err != nil {
+			_ = tx.Rollback()
+			return promoted, fmt.Errorf("promote stored filler context country: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return promoted, fmt.Errorf("promote stored filler context country: commit: %w", err)
+		}
+		promoted++
+	}
+	return promoted, nil
+}
+
+func fillerResearchCountryState(report fillerresearch.Report) (fillerenrichment.State, bool) {
+	country, citationIDs, ok := report.CountryFact()
+	if !ok {
+		return fillerenrichment.State{}, false
+	}
+	sort.Ints(citationIDs)
+	ids := make([]string, len(citationIDs))
+	for i, id := range citationIDs {
+		ids[i] = strconv.Itoa(id)
+	}
+	return fillerenrichment.State{
+		ClipHash: report.ClipHash,
+		Axis:     fillerenrichment.AxisGeography,
+		Status:   fillerenrichment.StatusComplete,
+		Value: fillerenrichment.Value{Geography: fillerenrichment.Geography{
+			Scope: "national", Country: country,
+		}},
+		Evidence: fillerenrichment.Evidence{
+			Kind: fillerenrichment.EvidenceInference, Reference: "context.report:" + report.Packet.Adapter + ":citations:" + strings.Join(ids, ","),
+			Confidence: report.Suggestion.Confidence, Producer: report.Producer,
+			ProducerVersion: report.ProducerVersion, ObservedAt: report.CompletedAt,
+		},
+	}, true
 }
 
 func (s *sqlStore) LatestFillerResearchReport(ctx context.Context, clipHash string) (fillerresearch.Report, error) {

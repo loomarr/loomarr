@@ -4364,6 +4364,28 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 	if err := s.SaveFillerResearchReport(ctx, report); err != nil {
 		t.Fatal(err)
 	}
+	projected, err := s.GetClip(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projected.GeographicScope != filler.GeographicNational || projected.Country != "US" ||
+		projected.Market != "" || !strings.HasPrefix(projected.GeoEvidence, "context.report:mediawiki:citations:") {
+		t.Fatalf("cited country projection = %+v", projected.Clip)
+	}
+	states, err := s.ListFillerEnrichment(ctx, clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var geography fillerenrichment.State
+	for _, state := range states {
+		if state.Axis == fillerenrichment.AxisGeography {
+			geography = state
+		}
+	}
+	if geography.Value.Geography.Country != "US" || geography.Evidence.Kind != fillerenrichment.EvidenceInference ||
+		geography.Evidence.Confidence != 70 {
+		t.Fatalf("cited geography state = %+v", geography)
+	}
 	got, err := s.LatestFillerResearchReport(ctx, clip.Hash)
 	if err != nil || !reflect.DeepEqual(got, report) {
 		t.Fatalf("latest report = %+v, err %v, want %+v", got, err, report)
@@ -4372,6 +4394,46 @@ func testFillerContextResearch(t *testing.T, newStore NewStoreFunc) {
 		report.Packet.Adapter, report.Packet.AdapterVersion, 3)
 	if err != nil || len(candidates) != 0 {
 		t.Fatalf("same identity candidates after save = %+v, err %v", candidates, err)
+	}
+	// Simulate a pre-projection database: the cited report and accepted state exist, but the clip
+	// projection is absent. The bounded catch-up must repair it without another retrieval.
+	if err := s.UpdateClipGeography(ctx, clip.Hash, string(filler.GeographicUnknown), "", "", "", "", "", "", at.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3)
+	if err != nil || promoted != 1 {
+		t.Fatalf("PromoteStoredFillerResearchCountries() = %d, %v", promoted, err)
+	}
+	projected, err = s.GetClip(ctx, clip.Hash)
+	if err != nil || projected.Country != "US" || projected.GeographicScope != filler.GeographicNational {
+		t.Fatalf("caught-up country = %+v, err %v", projected.Clip, err)
+	}
+	// A newer report that abstains supersedes an older confident suggestion for catch-up. Do not
+	// resurrect stale context just because it is the newest report that happens to qualify.
+	if err := s.UpdateClipGeography(ctx, clip.Hash, string(filler.GeographicUnknown), "", "", "", "", "", "", at.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	abstained := report
+	abstained.ProducerVersion = "prompt:newer"
+	abstained.CompletedAt = at.Add(4 * time.Second)
+	abstained.Suggestion = fillerresearch.Suggestion{Confidence: 10, Explanation: "The cited page does not identify a country."}
+	if err := s.SaveFillerResearchReport(ctx, abstained); err != nil {
+		t.Fatal(err)
+	}
+	if promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3); err != nil || promoted != 0 {
+		t.Fatalf("promotion after newer abstention = %d, %v, want 0", promoted, err)
+	}
+	// An explicit operator clear is terminal even when an older report was confident.
+	if _, _, err := s.ApplyFillerEnrichment(ctx, fillerenrichment.State{
+		ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography, Status: fillerenrichment.StatusComplete,
+		Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceOperator,
+			Reference: "operator.clip_edit", Confidence: 100, Producer: "operator",
+			ProducerVersion: "1", ObservedAt: at.Add(5 * time.Second)},
+	}, at.Add(5*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if promoted, err := s.PromoteStoredFillerResearchCountries(ctx, 3); err != nil || promoted != 0 {
+		t.Fatalf("promotion after operator clear = %d, %v, want 0", promoted, err)
 	}
 	candidates, err = s.ListFillerResearchCandidates(ctx, report.Producer, "prompt:new-model",
 		report.Packet.Adapter, report.Packet.AdapterVersion, 3)

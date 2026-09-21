@@ -20,6 +20,7 @@ type Candidate struct {
 type Repository interface {
 	ListCandidates(ctx context.Context, producer, producerVersion, adapter, adapterVersion string, limit int) ([]Candidate, error)
 	SaveReport(ctx context.Context, report Report) error
+	PromoteStoredCountries(ctx context.Context, limit int) (int, error)
 }
 
 type SignalLoader func(context.Context, Candidate) (Input, error)
@@ -49,9 +50,19 @@ func (r *Runner) Run(ctx context.Context) (RunResult, error) {
 	if r == nil || r.repository == nil || r.researcher == nil || r.load == nil || r.limit() <= 0 {
 		return result, nil
 	}
+	limit := r.limit()
+	promoted, err := r.repository.PromoteStoredCountries(ctx, limit)
+	if err != nil {
+		return result, fmt.Errorf("promote stored filler context countries: %w", err)
+	}
+	result.Updated += promoted
+	limit -= promoted
+	if limit <= 0 {
+		return result, nil
+	}
 	adapter, adapterVersion := r.researcher.Identity()
 	candidates, err := r.repository.ListCandidates(ctx, r.researcher.producer, r.researcher.version,
-		adapter, adapterVersion, r.limit())
+		adapter, adapterVersion, limit)
 	if err != nil {
 		return result, fmt.Errorf("list filler context candidates: %w", err)
 	}
