@@ -312,12 +312,16 @@ describe("SettingField", () => {
     const onChange = vi.fn();
     render(
       <SettingField
-        entry={entry({ key: "filler.transcribe.enabled", label: "Transcribe unclear clips", kind: "bool" })}
+        entry={entry({
+          key: "filler.transcribe.enabled",
+          label: "Listen for missing clip details",
+          kind: "bool",
+        })}
         value="false"
         onChange={onChange}
       />,
     );
-    await userEvent.click(screen.getByLabelText("Transcribe unclear clips"));
+    await userEvent.click(screen.getByLabelText("Listen for missing clip details"));
     expect(onChange).toHaveBeenCalledWith("true");
   });
 

@@ -40,16 +40,21 @@ func activeFillerTranscriptCapability(set resolved) fillerenrichment.CapabilityS
 	if !set.boolv("filler.transcribe.enabled") {
 		return fillerenrichment.CapabilitySelection{}
 	}
-	if set.str("filler.transcribe.provider") == "hosted" {
-		selection := resolveSelection(set)
-		model := strings.TrimSpace(set.str("filler.transcribe.model"))
-		if selection.URL == "" || model == "" || selection.Provider == "" {
+	if set.str("asr.provider") == "hosted" {
+		model := strings.TrimSpace(set.str("asr.model"))
+		url := strings.TrimSpace(set.str("asr.url"))
+		identity := "speech-service"
+		if url == "" {
+			selection := resolveSelection(set)
+			url, identity = selection.URL, selection.Provider
+		}
+		if url == "" || model == "" || identity == "" {
 			return fillerenrichment.CapabilitySelection{}
 		}
 		return fillerenrichment.CapabilitySelection{Available: true,
-			Producer: "transcript:" + selection.Provider,
+			Producer: "transcript:" + identity,
 			ProducerVersion: capabilityVersion(filler.TranscriptionPassVersion,
-				selection.Provider, selection.URL, model)}
+				identity, url, model)}
 	}
 	model := strings.TrimSpace(set.str("ingest.whisper_model"))
 	if model == "" {

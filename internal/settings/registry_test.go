@@ -232,6 +232,39 @@ func TestRegistry_AIConditionalFields(t *testing.T) {
 	}
 }
 
+func TestRegistry_SpeechRecognitionIsOneGlobalNewInstallChoice(t *testing.T) {
+	reg := NewRegistry()
+	provider, ok := reg.Get("asr.provider")
+	if !ok {
+		t.Fatal("asr.provider not declared")
+	}
+	if provider.Group != GroupAI || provider.Default != "whisper" || provider.Advanced {
+		t.Errorf("asr.provider = group %q default %#v advanced %v, want visible AI setting defaulting to built-in whisper",
+			provider.Group, provider.Default, provider.Advanced)
+	}
+	if len(provider.Enum) != 2 {
+		t.Fatalf("asr.provider choices = %v, want exactly two", provider.Enum)
+	}
+	if got := []string{provider.Enum[0].Value, provider.Enum[1].Value}; !slices.Equal(got, []string{"whisper", "hosted"}) {
+		t.Errorf("asr.provider choices = %v, want one built-in and one connected choice", got)
+	}
+	for _, key := range []string{"asr.url", "asr.api_key", "asr.model"} {
+		setting, exists := reg.Get(key)
+		if !exists {
+			t.Errorf("%s not declared", key)
+			continue
+		}
+		if setting.Group != GroupAI || !setting.Advanced || !slices.Equal(setting.ShowWhen["asr.provider"], []string{"hosted"}) {
+			t.Errorf("%s must be an advanced AI field shown only for the connected speech service", key)
+		}
+	}
+	for _, retired := range []string{"filler.transcribe.provider", "filler.transcribe.model", "filler.language_provider"} {
+		if _, exists := reg.Get(retired); exists {
+			t.Errorf("retired duplicate setting %s is still declared", retired)
+		}
+	}
+}
+
 func TestRegistry_FillerWorkflowPresentation(t *testing.T) {
 	r := NewRegistry()
 	for _, s := range r.All() {

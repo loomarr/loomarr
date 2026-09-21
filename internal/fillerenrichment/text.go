@@ -16,7 +16,10 @@ import (
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
-const textPromptVersion = "filler-progressive-text-v2"
+const (
+	textPromptVersion  = "filler-progressive-text-v3"
+	textModelBatchSize = 8
+)
 
 var textAxes = []Axis{
 	AxisKind, AxisAudience, AxisBrand, AxisProduct, AxisFormat,
@@ -126,6 +129,13 @@ func (c *Coordinator) Run(ctx context.Context) (RunResult, error) {
 	}
 	result.Considered += len(candidates)
 	var modelErrors []error
+	type textWork struct {
+		candidate   Candidate
+		completedAt time.Time
+		axes        []Axis
+		signals     Signals
+	}
+	work := make([]textWork, 0, len(candidates))
 	for _, candidate := range candidates {
 		if err := ctx.Err(); err != nil {
 			return result, err
@@ -136,35 +146,59 @@ func (c *Coordinator) Run(ctx context.Context) (RunResult, error) {
 			return result, fmt.Errorf("load enrichment state for %s: %w", candidate.ClipHash, err)
 		}
 		axes := unresolvedTextAxes(states, producer, producerVersion, taxonomyVersion)
-		var proposed []State
-		if len(axes) > 0 {
-			signals, err := c.load(ctx, candidate, completedAt)
-			if err != nil {
-				return result, fmt.Errorf("load text enrichment signals for %s: %w", candidate.ClipHash, err)
+		if len(axes) == 0 {
+			if _, err := c.repository.ApplyPass(ctx, Pass{
+				ClipHash: candidate.ClipHash, Producer: producer, ProducerVersion: producerVersion,
+				TaxonomyVersion: taxonomyVersion, CompletedAt: completedAt,
+			}); err != nil {
+				return result, fmt.Errorf("apply text enrichment for %s: %w", candidate.ClipHash, err)
 			}
-			signals.ClipHash = candidate.ClipHash
-			if signals.Kind == "" {
-				signals.Kind = candidate.Kind
-			}
-			if signals.Title == "" {
-				signals.Title = candidate.Name
-			}
-			signals.ObservedAt = completedAt
-			proposed, err = classifyText(ctx, selection.Provider, forest, axes, signals, producer, producerVersion, taxonomyVersion)
-			if err != nil {
+			continue
+		}
+		signals, err := c.load(ctx, candidate, completedAt)
+		if err != nil {
+			return result, fmt.Errorf("load text enrichment signals for %s: %w", candidate.ClipHash, err)
+		}
+		signals.ClipHash = candidate.ClipHash
+		if signals.Kind == "" {
+			signals.Kind = candidate.Kind
+		}
+		if signals.Title == "" {
+			signals.Title = candidate.Name
+		}
+		signals.ObservedAt = completedAt
+		work = append(work, textWork{candidate: candidate, completedAt: completedAt, axes: axes, signals: signals})
+	}
+	for start := 0; start < len(work); start += textModelBatchSize {
+		end := min(start+textModelBatchSize, len(work))
+		batch := work[start:end]
+		inputs := make([]textBatchInput, len(batch))
+		for index, item := range batch {
+			inputs[index] = textBatchInput{Axes: item.axes, Signals: item.signals}
+		}
+		proposals, itemErrors, err := classifyTextBatch(ctx, selection.Provider, forest, inputs,
+			producer, producerVersion, taxonomyVersion)
+		if err != nil {
+			result.Failed += len(batch)
+			modelErrors = append(modelErrors, fmt.Errorf("enrich filler text batch: %w", err))
+			continue
+		}
+		for _, item := range batch {
+			if itemErr := itemErrors[item.candidate.ClipHash]; itemErr != nil {
 				result.Failed++
-				modelErrors = append(modelErrors, fmt.Errorf("enrich filler text for %s: %w", candidate.ClipHash, err))
+				modelErrors = append(modelErrors, fmt.Errorf("enrich filler text for %s: %w", item.candidate.ClipHash, itemErr))
 				continue
 			}
+			changed, err := c.repository.ApplyPass(ctx, Pass{
+				ClipHash: item.candidate.ClipHash, Producer: producer, ProducerVersion: producerVersion,
+				TaxonomyVersion: taxonomyVersion, CompletedAt: item.completedAt,
+				States: proposals[item.candidate.ClipHash],
+			})
+			if err != nil {
+				return result, fmt.Errorf("apply text enrichment for %s: %w", item.candidate.ClipHash, err)
+			}
+			result.Updated += changed
 		}
-		changed, err := c.repository.ApplyPass(ctx, Pass{
-			ClipHash: candidate.ClipHash, Producer: producer, ProducerVersion: producerVersion,
-			TaxonomyVersion: taxonomyVersion, CompletedAt: completedAt, States: proposed,
-		})
-		if err != nil {
-			return result, fmt.Errorf("apply text enrichment for %s: %w", candidate.ClipHash, err)
-		}
-		result.Updated += changed
 	}
 	return result, errors.Join(append(passErrors, modelErrors...)...)
 }
@@ -204,6 +238,20 @@ type textOutput struct {
 	AudienceCue  stringList      `json:"audienceCue"`
 	Presentation stringList      `json:"presentation"`
 	Confidence   confidenceScore `json:"confidence"`
+}
+
+type textBatchInput struct {
+	Axes    []Axis
+	Signals Signals
+}
+
+type textBatchOutput struct {
+	Items []json.RawMessage `json:"items"`
+}
+
+type textBatchItemOutput struct {
+	ID string `json:"id"`
+	textOutput
 }
 
 // confidenceScore accepts either the requested 0-100 percentage or the common 0-1 model
@@ -301,6 +349,100 @@ JSON keys: kind, audience, brand, product, format, seasonal, audienceCue, presen
 	if err := json.Unmarshal([]byte(llm.ExtractJSONObject(response.Content)), &output); err != nil {
 		return nil, fmt.Errorf("model output is not JSON: %w", err)
 	}
+	return statesFromTextOutput(forest, requested, signals, output, producer, producerVersion, taxonomyVersion), nil
+}
+
+func classifyTextBatch(ctx context.Context, provider llm.Provider, forest *taxonomy.Forest, inputs []textBatchInput,
+	producer, producerVersion, taxonomyVersion string) (map[string][]State, map[string]error, error) {
+	if len(inputs) == 0 {
+		return map[string][]State{}, map[string]error{}, nil
+	}
+	type promptItem struct {
+		ID            string   `json:"id"`
+		RequestedAxes []string `json:"requestedAxes"`
+		Text          string   `json:"text"`
+	}
+	prompt := make([]promptItem, len(inputs))
+	requested := make(map[string]map[Axis]bool, len(inputs))
+	signals := make(map[string]Signals, len(inputs))
+	for index, input := range inputs {
+		id := strings.TrimSpace(input.Signals.ClipHash)
+		if id == "" {
+			return nil, nil, fmt.Errorf("batch clip id is empty")
+		}
+		if _, duplicate := requested[id]; duplicate {
+			return nil, nil, fmt.Errorf("batch repeats clip id %q", id)
+		}
+		axisSet := make(map[Axis]bool, len(input.Axes))
+		axisNames := make([]string, len(input.Axes))
+		for axisIndex, axis := range input.Axes {
+			axisSet[axis] = true
+			axisNames[axisIndex] = string(axis)
+		}
+		requested[id] = axisSet
+		signals[id] = input.Signals
+		prompt[index] = promptItem{ID: id, RequestedAxes: axisNames, Text: signalText(input.Signals)}
+	}
+	promptJSON, err := json.Marshal(prompt)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encode text enrichment batch: %w", err)
+	}
+	system := `Classify each filler clip from its supplied text. Return one JSON object and no prose.
+The object must contain an "items" array with exactly one result per input id, using the same id.
+For each item, fill only its requested axes. Use only taxonomy slugs from the vocabulary. Use an empty string or array when the text does not support an answer.
+Do not guess a year, country, location, safety rating, or facts based only on nostalgia, visual style, or general knowledge.
+Kind must be one of commercial, bumper, station_id, psa, trailer, interstitial, or empty.
+Audience must be one of kids, family, general, late_night, or empty. Brand must appear literally in that item's supplied text.
+Confidence must be an integer percentage from 0 through 80.
+The product, format, seasonal, audienceCue, and presentation values must always be JSON arrays, even for one item.
+Each item keys: id, kind, audience, brand, product, format, seasonal, audienceCue, presentation, confidence.`
+	user := fmt.Sprintf("Taxonomy:\n%s\n\nClips:\n%s", forest.Vocab(), promptJSON)
+	response, err := provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
+		llm.ChatOptions{JSONMode: true})
+	if err != nil {
+		return nil, nil, err
+	}
+	var batch textBatchOutput
+	if err := json.Unmarshal([]byte(llm.ExtractJSONObject(response.Content)), &batch); err != nil {
+		return nil, nil, fmt.Errorf("model batch output is not JSON: %w", err)
+	}
+	results := make(map[string][]State, len(inputs))
+	itemErrors := make(map[string]error)
+	seen := make(map[string]bool, len(batch.Items))
+	for _, raw := range batch.Items {
+		var identity struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &identity); err != nil {
+			continue
+		}
+		id := strings.TrimSpace(identity.ID)
+		if _, known := requested[id]; !known {
+			continue
+		}
+		if seen[id] {
+			itemErrors[id] = fmt.Errorf("model returned clip id more than once")
+			continue
+		}
+		seen[id] = true
+		var output textBatchItemOutput
+		if err := json.Unmarshal(raw, &output); err != nil {
+			itemErrors[id] = fmt.Errorf("model item is not valid JSON: %w", err)
+			continue
+		}
+		results[id] = statesFromTextOutput(forest, requested[id], signals[id], output.textOutput,
+			producer, producerVersion, taxonomyVersion)
+	}
+	for id := range requested {
+		if !seen[id] {
+			itemErrors[id] = fmt.Errorf("model omitted clip id")
+		}
+	}
+	return results, itemErrors, nil
+}
+
+func statesFromTextOutput(forest *taxonomy.Forest, requested map[Axis]bool, signals Signals,
+	output textOutput, producer, producerVersion, taxonomyVersion string) []State {
 	confidence := int(output.Confidence)
 	if confidence <= 0 || confidence > 80 {
 		confidence = 80
@@ -361,7 +503,7 @@ JSON keys: kind, audience, brand, product, format, seasonal, audienceCue, presen
 			"model.taxonomy_grounded", EvidenceInference))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Axis < out[j].Axis })
-	return out, nil
+	return out
 }
 
 func resolveAxisTags(forest *taxonomy.Forest, axis taxonomy.Axis, raw []string) []string {

@@ -31,12 +31,22 @@ const AiSettings = () => {
               onBaseUrlChange={(value) => setEdit("llm.url", value)}
               visionProvider={liveValue("filler.vision.provider")}
               visionModel={liveValue("filler.vision.model")}
-              transcriptionProvider={liveValue("filler.transcribe.provider")}
-              transcriptionModel={liveValue("filler.transcribe.model")}
               onRoleSettingChange={setEdit}
               tmdbConfigured={tmdbConfigured}
             />
           ),
+        },
+        {
+          group: "ai",
+          title: "Speech recognition",
+          description:
+            "Choose how Loomarr understands spoken language and fills in missing clip details. The built-in option needs no setup.",
+          keys: [
+            "asr.provider",
+            "asr.url",
+            "asr.api_key",
+            "asr.model",
+          ],
         },
         {
           group: "ai",

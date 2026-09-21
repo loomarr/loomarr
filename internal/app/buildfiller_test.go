@@ -252,45 +252,12 @@ func TestBuildFetcher_DownloadsIntoTheAppliedWatchFolder(t *testing.T) {
 	}
 }
 
-// The hosted picker stores credentials under the branded provider, not the flattened `openai`
-// wire kind. The filler language path must resolve that same active selection or it sends an
-// unauthenticated request even though Settings says the provider is configured.
-func TestHostedLanguageAsker_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
+func TestHostedTranscriber_UsesTheSeparateSpeechService(t *testing.T) {
 	var authorization string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authorization = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"en"}}]}`))
-	}))
-	t.Cleanup(server.Close)
-
-	set := visionSet(t, map[string]string{
-		"llm.provider":           "openai",
-		"llm.hosted_provider":    "openrouter",
-		"llm.url":                server.URL,
-		"llm.model":              "audio-model",
-		"llm.api_key.openrouter": "provider-secret",
-	})
-	asker := hostedLanguageAsker(set, nil)
-	if asker == nil {
-		t.Fatal("hosted language asker is nil for a configured provider")
-	}
-	if _, err := asker.AskAboutAudio(context.Background(), filler.AudioAsk{
-		Audio: []byte("audio"), Format: "wav", Prompt: "language?",
-	}); err != nil {
-		t.Fatalf("ask about audio: %v", err)
-	}
-	if authorization != "Bearer provider-secret" {
-		t.Errorf("authorization = %q, want the selected provider's namespaced key", authorization)
-	}
-}
-
-func TestHostedTranscriber_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
-	var authorization string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authorization = r.Header.Get("Authorization")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"text":"Buy now.","duration":1,"segments":[{"start":0,"end":1,"text":"Buy now."}]}`))
+		_, _ = w.Write([]byte(`{"language":"en","text":"Buy now.","duration":1,"segments":[{"start":0,"end":1,"text":"Buy now."}]}`))
 	}))
 	t.Cleanup(server.Close)
 
@@ -302,14 +269,16 @@ func TestHostedTranscriber_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	set := visionSet(t, map[string]string{
-		"playout.ffmpeg_path":        ffmpeg,
-		"llm.provider":               "openai",
-		"llm.hosted_provider":        "openrouter",
-		"llm.url":                    server.URL,
-		"llm.model":                  "openai/gpt-4o-mini",
-		"llm.api_key.openrouter":     "provider-secret",
-		"filler.transcribe.provider": "hosted",
-		"filler.transcribe.model":    "openai/whisper-large-v3",
+		"playout.ffmpeg_path":    ffmpeg,
+		"llm.provider":           "openai",
+		"llm.hosted_provider":    "openrouter",
+		"llm.url":                "https://chat.invalid/v1",
+		"llm.model":              "openai/gpt-4o-mini",
+		"llm.api_key.openrouter": "provider-secret",
+		"asr.provider":           "hosted",
+		"asr.url":                server.URL,
+		"asr.api_key":            "speech-secret",
+		"asr.model":              "whisper-large-v3-turbo-q5_0",
 	})
 
 	segments, err := buildFillerMediaTools(set, nil).Transcribe(context.Background(), "clip.mp4", 0, 1_000)
@@ -319,8 +288,8 @@ func TestHostedTranscriber_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 	if len(segments) != 1 || segments[0].Text != "Buy now." {
 		t.Fatalf("segments = %+v", segments)
 	}
-	if authorization != "Bearer provider-secret" {
-		t.Errorf("authorization = %q, want the selected provider's namespaced key", authorization)
+	if authorization != "Bearer speech-secret" {
+		t.Errorf("authorization = %q, want the speech service's own key", authorization)
 	}
 }
 

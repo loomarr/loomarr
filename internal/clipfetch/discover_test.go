@@ -176,6 +176,22 @@ func TestDiscoverCollection_QuotesTheIdentifier(t *testing.T) {
 	}
 }
 
+// Archive collections may contain images, texts, audio, and software alongside movies. Those
+// records cannot become filler clips and, more importantly, cannot be sized before acquisition.
+// Letting one into a prepared batch makes the storage governor correctly refuse the entire batch,
+// including otherwise downloadable videos.
+func TestDiscoverCollection_OnlyOffersVideoItems(t *testing.T) {
+	var gotQuery string
+	srv := discoverServer(t, func(q url.Values) { gotQuery = q.Get("q") })
+
+	if _, err := discoverer(t, srv.URL).DiscoverCollection(context.Background(), "classic_tv_commercials", 0); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotQuery, "mediatype:movies") {
+		t.Errorf("query = %q, want video-only collection discovery", gotQuery)
+	}
+}
+
 func TestDiscoverCollection_RejectsAnUnusableRef(t *testing.T) {
 	srv := discoverServer(t, nil)
 

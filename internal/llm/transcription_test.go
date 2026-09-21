@@ -2,8 +2,9 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestOpenAI_TranscribeAudioRequestsTimedSegments(t *testing.T) {
-	transport := httpfixture.NewScriptedTransport(httpfixture.Step{Response: transcriptionHTTPResponse(http.StatusOK, `{"id":"stt-1","model":"openai/whisper-large-v3","text":"Buy now. Call today.","duration":4.2,"segments":[{"start":0.1,"end":1.5,"text":" Buy now. "},{"start":1.5,"end":4.2,"text":"Call today."}],"usage":{"prompt_tokens":9,"completion_tokens":4}}`)})
+	transport := httpfixture.NewScriptedTransport(httpfixture.Step{Response: transcriptionHTTPResponse(http.StatusOK, `{"id":"stt-1","model":"openai/whisper-large-v3","language":"en","text":"Buy now. Call today.","duration":4.2,"segments":[{"start":0.1,"end":1.5,"text":" Buy now. "},{"start":1.5,"end":4.2,"text":"Call today."}],"usage":{"prompt_tokens":9,"completion_tokens":4}}`)})
 	client := NewOpenAI("https://openai.invalid/v1", "chat-model", "secret")
 	client.http = &http.Client{Transport: transport}
 	result, err := client.TranscribeAudio(context.Background(), TranscriptionRequest{
@@ -25,21 +26,40 @@ func TestOpenAI_TranscribeAudioRequestsTimedSegments(t *testing.T) {
 	if len(requests) != 1 || requests[0].URL != "https://openai.invalid/v1/audio/transcriptions" || requests[0].Header.Get("Authorization") != "Bearer secret" {
 		t.Fatalf("requests = %+v", requests)
 	}
-	var got transcriptionRequest
-	if err := json.Unmarshal(requests[0].Body, &got); err != nil {
+	mediaType, params, err := mime.ParseMediaType(requests[0].Header.Get("Content-Type"))
+	if err != nil || mediaType != "multipart/form-data" {
+		t.Fatalf("content type = %q (%v)", requests[0].Header.Get("Content-Type"), err)
+	}
+	reader := multipart.NewReader(strings.NewReader(string(requests[0].Body)), params["boundary"])
+	form, err := reader.ReadForm(1024)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Model != "openai/whisper-large-v3" || got.ResponseFormat != "verbose_json" {
-		t.Fatalf("request = %+v", got)
+	defer func() { _ = form.RemoveAll() }()
+	if form.Value["model"][0] != "openai/whisper-large-v3" || form.Value["response_format"][0] != "verbose_json" {
+		t.Fatalf("form values = %+v", form.Value)
 	}
-	if len(got.TimestampGranularities) != 1 || got.TimestampGranularities[0] != "segment" {
-		t.Fatalf("timestamp granularities = %v", got.TimestampGranularities)
+	if form.Value["timestamp_granularities[]"][0] != "segment" || form.Value["language"][0] != "en" {
+		t.Fatalf("form values = %+v", form.Value)
 	}
-	if got.InputAudio.Data != "d2F2" || got.InputAudio.Format != "wav" {
-		t.Fatalf("audio = %+v", got.InputAudio)
+	files := form.File["file"]
+	if len(files) != 1 || files[0].Filename != "audio.wav" {
+		t.Fatalf("files = %+v", files)
+	}
+	audio, err := files[0].Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = audio.Close() }()
+	body, err := io.ReadAll(audio)
+	if err != nil || string(body) != "wav" {
+		t.Fatalf("audio = %q (%v)", body, err)
 	}
 	if len(result.Segments) != 2 || result.Segments[0].StartMs != 100 || result.Segments[1].EndMs != 4200 {
 		t.Fatalf("segments = %+v", result.Segments)
+	}
+	if result.Language != "en" {
+		t.Fatalf("language = %q, want en", result.Language)
 	}
 	if result.Attribution.Tokens.Prompt != 9 || result.Attribution.Tokens.Completion != 4 || result.Attribution.GenerationID != "stt-1" {
 		t.Fatalf("attribution = %+v", result.Attribution)
@@ -53,6 +73,33 @@ func TestOpenAI_TranscribeAudioRejectsUntimedText(t *testing.T) {
 	_, err := client.TranscribeAudio(context.Background(), TranscriptionRequest{Audio: []byte("wav")})
 	if err == nil {
 		t.Fatal("untimed transcription accepted")
+	}
+}
+
+func TestOpenAI_TranscribeAudioOmitsLanguageWhenDetectionIsRequested(t *testing.T) {
+	transport := httpfixture.NewScriptedTransport(httpfixture.Step{Response: transcriptionHTTPResponse(http.StatusOK,
+		`{"language":"es","text":"Hola.","segments":[{"start":0,"end":1,"text":"Hola."}]}`)})
+	client := NewOpenAI("https://speech.invalid/v1", "stt", "secret")
+	client.http = &http.Client{Transport: transport}
+	result, err := client.TranscribeAudio(context.Background(), TranscriptionRequest{Audio: []byte("wav")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := transport.Requests()[0]
+	_, params, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	form, err := multipart.NewReader(strings.NewReader(string(request.Body)), params["boundary"]).ReadForm(1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = form.RemoveAll() }()
+	if _, present := form.Value["language"]; present {
+		t.Fatalf("language hint = %v, want the optional field omitted so the service auto-detects", form.Value["language"])
+	}
+	if result.Language != "es" {
+		t.Fatalf("detected language = %q, want es", result.Language)
 	}
 }
 

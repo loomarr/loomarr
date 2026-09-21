@@ -649,10 +649,10 @@ describe("Settings honesty", () => {
           setting({ key: "suggest.max_acquisitions", group: "ai", kind: "int", value: "5" }),
           setting({ key: "filler.vision.provider", group: "filler", value: "inherit" }),
           setting({ key: "filler.vision.model", group: "filler", value: "" }),
-          setting({ key: "filler.transcribe.provider", group: "filler", value: "whisper" }),
+          setting({ key: "asr.provider", group: "ai", value: "whisper" }),
           setting({
-            key: "filler.transcribe.model",
-            group: "filler",
+            key: "asr.model",
+            group: "ai",
             value: "openai/whisper-large-v3",
           }),
         ],
@@ -731,7 +731,7 @@ describe("Settings honesty", () => {
     expect(screen.getByRole("link", { name: "Return to channel" })).toHaveAttribute("href", "/guide");
   });
 
-  it("stages capability-filtered vision and transcription roles from a configured hosted provider", async () => {
+  it("keeps vision model choice separate from one user-facing speech connection", async () => {
     server.use(
       getMeMockHandler(me()),
       getSettingsListMockHandler({
@@ -742,8 +742,44 @@ describe("Settings honesty", () => {
           setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: true }),
           setting({ key: "filler.vision.provider", group: "filler", value: "inherit" }),
           setting({ key: "filler.vision.model", group: "filler", value: "" }),
-          setting({ key: "filler.transcribe.provider", group: "filler", value: "whisper" }),
-          setting({ key: "filler.transcribe.model", group: "filler", value: "openai/whisper-large-v3" }),
+          setting({
+            key: "asr.provider",
+            label: "Speech recognition",
+            group: "ai",
+            kind: "enum",
+            value: "whisper",
+            enumOptions: [
+              { value: "whisper", label: "Built in on this device" },
+              { value: "hosted", label: "Connected speech service" },
+            ],
+          }),
+          setting({
+            key: "asr.url",
+            label: "Speech service address",
+            group: "ai",
+            kind: "url",
+            value: "",
+            advanced: true,
+            showWhen: { "asr.provider": ["hosted"] },
+          }),
+          setting({
+            key: "asr.api_key",
+            label: "Speech service API key",
+            group: "ai",
+            kind: "secret",
+            secret: true,
+            set: false,
+            advanced: true,
+            showWhen: { "asr.provider": ["hosted"] },
+          }),
+          setting({
+            key: "asr.model",
+            label: "Speech model",
+            group: "ai",
+            value: "openai/whisper-large-v3",
+            advanced: true,
+            showWhen: { "asr.provider": ["hosted"] },
+          }),
         ],
       }),
       getSystemLlmStatusMockHandler({
@@ -775,15 +811,20 @@ describe("Settings honesty", () => {
 
     renderAt("/settings/ai");
     expect(await screen.findByRole("heading", { name: "Choose a lineup model" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Advanced model roles/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Advanced vision model/i }));
     const vision = await screen.findByRole("region", { name: "Vision" });
     expect(within(vision).queryByRole("button", { name: /Text only/i })).not.toBeInTheDocument();
     await userEvent.click(within(vision).getByRole("button", { name: /Gemini Vision/i }));
 
-    const transcription = screen.getByRole("region", { name: "Transcription" });
-    expect(within(transcription).getByRole("button", { name: /Bundled local Whisper/i })).toBeDisabled();
-    await userEvent.click(within(transcription).getByRole("button", { name: /Whisper large v3/i }));
-    expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("4 unsaved changes");
+    expect(screen.queryByRole("region", { name: "Transcription" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Speech recognition" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("combobox", { name: "Speech recognition" }));
+    await userEvent.click(screen.getByRole("option", { name: "Connected speech service" }));
+    await userEvent.click(screen.getByRole("button", { name: "Show advanced (3)" }));
+    expect(screen.getByLabelText("Speech service address")).toBeInTheDocument();
+    expect(screen.getByLabelText("Speech model")).toBeInTheDocument();
+    expect(screen.getByLabelText("Speech service API key")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /unsaved changes/i })).toHaveTextContent("3 unsaved changes");
   });
 
   it("keeps the household language choice available when the detector still needs setup", async () => {
@@ -800,7 +841,7 @@ describe("Settings honesty", () => {
             value: "en",
             advanced: true,
           }),
-          setting({ key: "filler.language_provider", group: "filler", value: "whisper", advanced: true }),
+          setting({ key: "asr.provider", group: "ai", value: "whisper" }),
           setting({ key: "filler.language_model", group: "filler", value: "", advanced: true }),
           setting({ key: "ingest.whisper_path", group: "filler", value: "/usr/bin/whisper", advanced: true }),
           setting({ key: "playout.ffmpeg_path", group: "playout", value: "/usr/bin/ffmpeg", advanced: true }),
@@ -829,7 +870,7 @@ describe("Settings honesty", () => {
             value: "en",
             advanced: true,
           }),
-          setting({ key: "filler.language_provider", group: "filler", value: "hosted", advanced: true }),
+          setting({ key: "asr.provider", group: "ai", value: "hosted" }),
           setting({ key: "llm.url", group: "ai", value: "http://ai.internal/v1" }),
           setting({ key: "llm.model", group: "ai", value: "audio-model" }),
           setting({ key: "llm.api_key", group: "ai", kind: "secret", secret: true, set: false }),

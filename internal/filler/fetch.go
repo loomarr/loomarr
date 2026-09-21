@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+	"unicode"
 )
 
 // Auto-fetch (§10 V38b): a registered, enabled source is polled on a schedule and new items
@@ -488,6 +490,30 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 		// representation quality, era-observation diversity, and stable identity now choose the
 		// bounded prefix instead of whichever item the provider returned first.
 		candidates := make([]AcquisitionCandidate, 0, len(items))
+		preferredCampaigns := map[string]AcquisitionCandidate{}
+		if src.Kind == "youtube" {
+			// The cursor can split one provider listing across several checks. Choose the best
+			// explicit duration variant from the whole bounded listing before applying that cursor,
+			// otherwise a :15 cut in one check and a :30 cut in the next both reach the catalog.
+			for _, item := range items {
+				if _, rejected := f.automaticRejection(src, item); rejected {
+					continue
+				}
+				campaign := sourceCampaignKey(item.Title)
+				if campaign == "" {
+					continue
+				}
+				candidate := AcquisitionCandidate{
+					Identity: RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID},
+					URL:      item.URL, Title: item.Title, License: item.License, ObservedYear: item.ObservedYear,
+					PublishedAt: item.PublishedAt, DurationMS: item.DurationMS, Height: item.Height,
+				}
+				current, found := preferredCampaigns[campaign]
+				if !found || sourceVariantBetter(candidate, current) {
+					preferredCampaigns[campaign] = candidate
+				}
+			}
+		}
 		consider := items
 		if src.Kind == "youtube" {
 			start := 0
@@ -525,6 +551,13 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			if outcome, rejected := f.automaticRejection(src, item); rejected {
 				outcomes[outcome]++
 				continue
+			}
+			if campaign := sourceCampaignKey(item.Title); campaign != "" {
+				if preferred := preferredCampaigns[campaign]; preferred.Identity.RemoteID != item.ID {
+					res.Skipped++
+					outcomes[SourceOutcomeAlreadyKnown]++
+					continue
+				}
 			}
 			identity := RemoteIdentity{Provider: src.Kind, SourceID: src.ID, RemoteID: item.ID}
 			if src.Kind == "youtube" && inPass[identity.Key()] != "" {
@@ -645,6 +678,77 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 			"note", "remaining due sources will be considered on the next scheduler pass")
 	}
 	return res, nil
+}
+
+func sourceCampaignKey(title string) string {
+	fields := strings.FieldsFunc(strings.ToLower(strings.TrimSpace(title)), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	if len(fields) == 0 {
+		return ""
+	}
+	durationAt := -1
+	for index, field := range fields {
+		if !sourceDurationToken(field) {
+			continue
+		}
+		beforeTime := index > 0 && sourceTimeWord(fields[index-1])
+		afterTime := index+1 < len(fields) && sourceTimeWord(fields[index+1])
+		beforeLanguage := index > 0 && sourceLanguageWord(fields[index-1]) && index == len(fields)-1
+		afterLanguage := index+1 < len(fields) && sourceLanguageWord(fields[index+1]) && index+2 == len(fields)
+		if beforeTime || afterTime || beforeLanguage || afterLanguage {
+			durationAt = index
+			break
+		}
+	}
+	if durationAt < 0 {
+		return ""
+	}
+	key := make([]string, 0, len(fields)-1)
+	for index, field := range fields {
+		if index == durationAt || sourceTimeWord(field) || field == "spot" {
+			continue
+		}
+		key = append(key, field)
+	}
+	return strings.Join(key, " ")
+}
+
+func sourceDurationToken(value string) bool {
+	switch value {
+	case "5", "10", "15", "20", "30", "45", "60", "90", "120":
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceTimeWord(value string) bool {
+	switch value {
+	case "s", "sec", "secs", "second", "seconds":
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceLanguageWord(value string) bool {
+	switch value {
+	case "english", "spanish", "french", "german", "italian", "portuguese":
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceVariantBetter(candidate, current AcquisitionCandidate) bool {
+	if candidate.DurationMS != current.DurationMS {
+		return candidate.DurationMS > current.DurationMS
+	}
+	if candidate.Height != current.Height {
+		return candidate.Height > current.Height
+	}
+	return candidate.Identity.Key() < current.Identity.Key()
 }
 
 func (f *Fetcher) automaticRejection(source FetchSource, item DiscoveredRef) (SourceOutcome, bool) {

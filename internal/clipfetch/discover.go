@@ -112,7 +112,10 @@ func (c *archiveClient) discoverPage(ctx context.Context, ref string, limit, pag
 	// ⚠ The identifier is a VALUE inside the query, so it is quoted and escaped rather than
 	// concatenated: a collection id containing a space or a colon would otherwise change the
 	// meaning of the Solr query rather than being searched for.
-	q.Set("q", `collection:"`+strings.ReplaceAll(id, `"`, `\"`)+`"`)
+	// A collection may mix movies with images, texts, audio, and software. Only movies can
+	// become filler clips. Filtering at discovery keeps impossible-to-size non-video records
+	// out of the acquisition batch without weakening the storage governor's fail-closed rule.
+	q.Set("q", `collection:"`+strings.ReplaceAll(id, `"`, `\"`)+`" AND mediatype:movies`)
 	// Ask for everything a listing renders in ONE request. The download walk asks for
 	// `identifier` alone because it fetches each item's metadata anyway; a listing that did
 	// that would make N+1 requests to show N rows.

@@ -44,18 +44,17 @@ type fillerPipelineRunner interface {
 // that are already ready. A preparation failure does not strand the ready backlog, but a cancelled
 // lease stops before beginning more work.
 type fillerPipelineDriver struct {
-	prepare func(context.Context) error
+	prepare func(context.Context) (filler.PipelineResult, error)
 	details func(context.Context) error
 }
 
 func newFillerPipelineDriver(pipeline *filler.Pipeline, details fillerEnrichmentRunner) fillerPipelineDriver {
 	return fillerPipelineDriver{
-		prepare: func(ctx context.Context) error {
+		prepare: func(ctx context.Context) (filler.PipelineResult, error) {
 			if pipeline == nil {
-				return nil
+				return filler.PipelineResult{}, nil
 			}
-			_, err := pipeline.RunOnce(ctx)
-			return err
+			return pipeline.RunOnce(ctx)
 		},
 		details: func(ctx context.Context) error {
 			if details == nil {
@@ -68,12 +67,19 @@ func newFillerPipelineDriver(pipeline *filler.Pipeline, details fillerEnrichment
 }
 
 func (d fillerPipelineDriver) Run(ctx context.Context) error {
+	var prepared filler.PipelineResult
 	var prepareErr error
 	if d.prepare != nil {
-		prepareErr = d.prepare(ctx)
+		prepared, prepareErr = d.prepare(ctx)
 	}
 	if err := ctx.Err(); err != nil {
 		return errors.Join(prepareErr, err)
+	}
+	// Descriptive enrichment is optional and may involve a remote model. Let the next bounded
+	// scheduler pass keep moving clips toward playable readiness before spending that lease on
+	// details. Scheduled retries do not block enrichment because they cannot advance yet.
+	if prepared.Overview.Runnable > 0 || prepared.Overview.InProgress > 0 {
+		return prepareErr
 	}
 	var detailsErr error
 	if d.details != nil {

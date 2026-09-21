@@ -11,7 +11,14 @@ import (
 // in mediatools' timed segment type; the composition-root adapter maps the hosted client's wire
 // type once, and the filler pipeline stays unaware of the vendor.
 type AudioTranscriptionClient interface {
-	TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) ([]TranscriptSegment, error)
+	TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) (AudioTranscription, error)
+}
+
+// AudioTranscription is the provider-neutral speech result. Language is the detected language,
+// not a requested hint; callers leave the hint empty when detection is the purpose of the call.
+type AudioTranscription struct {
+	Language string
+	Segments []TranscriptSegment
 }
 
 // HostedTranscriber extracts bounded WAV spans and sends them to an STT provider. OpenRouter's
@@ -83,13 +90,13 @@ func (h *HostedTranscriber) Transcribe(ctx context.Context, file string, startMs
 		if client == nil {
 			return nil, fmt.Errorf("hosted transcription provider became unavailable")
 		}
-		segments, err := client.TranscribeAudio(ctx, model, "wav", language, audio)
+		transcription, err := client.TranscribeAudio(ctx, model, "wav", language, audio)
 		if err != nil {
 			return nil, err
 		}
 		offset := chunkStart - startMs
 		chunkDuration := chunkEnd - chunkStart
-		for _, seg := range segments {
+		for _, seg := range transcription.Segments {
 			seg.StartMs = max(0, min(seg.StartMs, chunkDuration)) + offset
 			seg.EndMs = max(0, min(seg.EndMs, chunkDuration)) + offset
 			if seg.EndMs > seg.StartMs {

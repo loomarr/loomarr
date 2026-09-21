@@ -3,11 +3,11 @@ package llm
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -34,26 +34,15 @@ type TranscriptionSegment struct {
 
 type TranscriptionResult struct {
 	Segments    []TranscriptionSegment
+	Language    string
 	Attribution Attribution
-}
-
-type transcriptionRequest struct {
-	Model                  string             `json:"model"`
-	InputAudio             transcriptionAudio `json:"input_audio"`
-	Language               string             `json:"language,omitempty"`
-	ResponseFormat         string             `json:"response_format"`
-	TimestampGranularities []string           `json:"timestamp_granularities"`
-}
-
-type transcriptionAudio struct {
-	Data   string `json:"data"`
-	Format string `json:"format"`
 }
 
 type transcriptionResponse struct {
 	ID                 string             `json:"id"`
 	Model              string             `json:"model"`
 	Text               string             `json:"text"`
+	Language           string             `json:"language"`
 	Duration           float64            `json:"duration"`
 	Usage              openAIUsage        `json:"usage"`
 	OpenRouterMetadata openRouterMetadata `json:"openrouter_metadata"`
@@ -83,23 +72,39 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 	if format == "" {
 		format = "wav"
 	}
-	body, err := json.Marshal(transcriptionRequest{
-		Model: model,
-		InputAudio: transcriptionAudio{
-			Data: base64.StdEncoding.EncodeToString(req.Audio), Format: format,
-		},
-		Language: req.Language, ResponseFormat: "verbose_json",
-		TimestampGranularities: []string{"segment"},
-	})
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for name, value := range map[string]string{
+		"model": model, "response_format": "verbose_json", "timestamp_granularities[]": "segment",
+	} {
+		if err := writer.WriteField(name, value); err != nil {
+			return TranscriptionResult{}, fmt.Errorf("build transcription request: %w", err)
+		}
+	}
+	if req.Language != "" {
+		if err := writer.WriteField("language", req.Language); err != nil {
+			return TranscriptionResult{}, fmt.Errorf("build transcription request: %w", err)
+		}
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename=%q`, "audio."+format))
+	header.Set("Content-Type", "audio/"+format)
+	part, err := writer.CreatePart(header)
 	if err != nil {
-		return TranscriptionResult{}, fmt.Errorf("marshal transcription request: %w", err)
+		return TranscriptionResult{}, fmt.Errorf("build transcription request: %w", err)
+	}
+	if _, err := part.Write(req.Audio); err != nil {
+		return TranscriptionResult{}, fmt.Errorf("build transcription request: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return TranscriptionResult{}, fmt.Errorf("build transcription request: %w", err)
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		o.baseURL+"/audio/transcriptions", bytes.NewReader(body))
+		o.baseURL+"/audio/transcriptions", &body)
 	if err != nil {
 		return TranscriptionResult{}, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
 	o.addMetadataHeader(httpReq)
 	if o.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
@@ -142,7 +147,7 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 		generationID = strings.TrimSpace(resp.Header.Get("X-Generation-Id"))
 	}
 	return TranscriptionResult{
-		Segments: segments,
+		Segments: segments, Language: strings.TrimSpace(strings.ToLower(out.Language)),
 		Attribution: attributionFromWire(o.provider, model, generationID, out.Model, out.Usage,
 			out.OpenRouterMetadata, []string{"audio", "text"}, time.Since(started)),
 	}, nil

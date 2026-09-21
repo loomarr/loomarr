@@ -30,7 +30,7 @@ can move without weakening the release's promised outcome.
 | Release | Viewer/operator outcome | Primary gate owners |
 | --- | --- | --- |
 | **beta.5 — Trustworthy creation and playback** | Understand the request, explain uncertainty and launch readiness, recover cleanly, and watch the accepted changes on the declared household setup. | #1103, #1044, #1098/#1068, #1015/#494, #1097/#1037; approval safety #955 and applicable release prerequisites #688/#661/#1162 |
-| **beta.6 — Household filler release** | Ingest real Archive.org and operator-authorized YouTube media, review one exact 32-clip set, and prove those clips reach real breaks and play on Web and Shield. Unreviewed media remains held. | #1371, #1204, #741 |
+| **beta.6 — Household filler release** | Ingest real Archive.org and operator-authorized YouTube media, let the shipping pipeline screen and enrich it automatically, and prove useful clips reach real breaks and play on Web and Shield. | #1371, #1204, #741 |
 | **beta.7 — General filler certification and sustained use** | Generalize safe unattended admission beyond the accepted set, then preserve preferences and resources through repeated curation and ordinary maintenance. | #548/#549/#555, the structure/spoken/written/visual/audience/enrichment authorities, #498/#497, #749, #970, #1104; carry forward #1037/#1097 |
 
 These are release outcomes, not a serial queue of one PR per issue. The many filler issues include
@@ -45,18 +45,19 @@ program a prerequisite for one beta. [#1204](https://github.com/loomarr/loomarr/
 the integration record and [#741](https://github.com/loomarr/loomarr/issues/741) owns the exact
 content decision. Execute in this order:
 
-1. Build one browser-review package for the measured 50-item reserve and record exactly 32 explicit
-   accept decisions against exact prepared-media SHA-256 identities. Human work is one batched review,
-   not per-stage approval.
+1. Feed the measured reserve through deterministic media, duplicate, language, and suitability
+   checks, with the configured model filling descriptive metadata. Record exact output identities,
+   deterministic outcomes, and model/prompt identity for the metadata it supplied. The model is not
+   a readiness authority. Do not build a parallel clip-review application.
 2. Ingest real Archive.org media and operator-authorized YouTube media through the shipping source
    path. Preserve provider URL, source identity and available rights/provenance as metadata without
    making household playback wait for a licensing decision.
-3. Prove the accepted set completes preparation, metadata enrichment, Library publication and
-   placement into a real eligible break. Unknown or unreviewed media remains held; no legacy path or
-   broad allow-list may fill the gap.
-4. Play the exact accepted outputs on the shipping Web client and a physical Shield. Record useful
-   failure and recovery behavior, not screenshots alone.
-5. Bind the release commit, image and client identities, the 32 clip/output identities, installed
+3. Prove the pipeline-produced set completes preparation, metadata enrichment, Library publication
+   and placement into a real eligible break. Missing optional model metadata does not block a clip
+   that passed the deterministic readiness gates; no legacy path or broad allow-list may fill gaps.
+4. Spot-check representative exact outputs in Loomarr, then play them on the shipping Web client and
+   a physical Shield. Record useful failure and recovery behavior, not screenshots alone.
+5. Bind the release commit, image and client identities, selected clip/output identities, installed
    journeys, rollback procedure and remaining limitations into one GO/HOLD packet before tagging.
 
 This cut grants no new provider spend, truth decision or general admission authority. The complete
@@ -135,26 +136,29 @@ replaces the required correctness rows. #970 Web parity foundations can start in
 
 ## beta.6 — Household filler release
 
-- **Lock the exact content set — #741.** Prepare the deterministic 50-item reserve with the shipping
-  derivative recipe and technical checks, present exact playable outputs in one review surface, and
-  export exactly 32 accepted SHA-bound decisions. Do not pad weak roles or admit both members of a
-  duplicate family merely to reach a quota.
+- **Exercise the automatic pipeline — #741.** Prepare the measured reserve with the shipping
+  derivative recipe and deterministic duplicate, language, and suitability checks. Use the
+  configured model to describe clips, not to decide readiness. Record exact input/output hashes,
+  deterministic outcomes, model/prompt identity for metadata, holds, and reasons. Do not admit both
+  members of a duplicate family merely to reach a quota or add a parallel manual review application.
 - **Exercise real sources — #1371/#1204.** Use Archive.org and operator-authorized YouTube content,
   preserve friendly source and provenance metadata, and prove the shipping acquisition path rather
   than substituting copied fixtures for the installed journey.
-- **Prove source to air.** Run the accepted outputs through preparation and enrichment, publish them
+- **Prove source to air.** Run the pipeline-produced outputs through preparation and enrichment, publish them
   through the sole Library/admission path, attach them to a real Channel, and observe them in an
-  eligible break. A clip outside the accepted set remains held even if its metadata looks plausible.
+  eligible break. Deterministic rejection or an unavailable required media gate keeps a clip out;
+  missing optional descriptive metadata does not.
 - **Prove the two release clients.** Verify preview and playback on the shipping Web build and a
   physical Shield on the declared household network. Record exact server/client identities and any
   known limitations.
 - **Cut a recoverable release.** Produce one privacy-safe GO/HOLD report with artifact digests,
   installed-client evidence, deployment steps and rollback. Tag only the exact candidate that passed.
 
-**Exit:** exactly 32 human-accepted output identities from real supported sources are traceable from
-acquisition through a real break and play on Web and Shield; the candidate's build, evidence and
-rollback are recorded; unreviewed content still fails closed. General claims about arbitrary media,
-all languages, all source categories or unattended admission are expressly outside beta.6.
+**Exit:** exact pipeline-produced output identities from real supported sources are traceable from
+acquisition through a real break and representative outputs play on Web and Shield; deterministic
+holds and rejections are explained; the candidate's build, evidence and rollback are recorded.
+The maintainer performs one release-level spot check, not clip-by-clip approval. General claims about
+all languages, all source categories or independently certified model accuracy remain outside beta.6.
 
 ## beta.7 — General filler certification and sustained use
 
@@ -216,7 +220,7 @@ Use #549/#555/#787, #1085/#1086 and the source/holdout owners as one evidence lo
 5. Promote only a versioned route/model/profile that passes the full applicable regression and
    shadow criteria. Keep unsupported material held, and preserve re-evaluation/rollback authority.
 
-Beta.6 contributes exact accepted regression cases but makes no general recognition claim. Beta.7
+Beta.6 contributes exact pipeline-produced regression cases but makes no general recognition claim. Beta.7
 qualifies the supported production envelope and uses observed errors and expanded independent truth
 to improve it. The three-pillar program #856 remains
 independent: no online weight updates or implicit household taste inference. Stock-model evidence
@@ -253,7 +257,7 @@ missing decisions. Never run `make smoke*` from an agent session.
 The table preserves the 2026-09-09 complete-allocation snapshot and records the 2026-09-20 release
 cut. Closed work keeps the release in which it contributed; open general-certification work moves to
 beta.7. Beta.6 has three open owners: #1371 for the Monday cut, #1204 for integration evidence, and
-#741 for the exact 32-clip decision. A target is not a claim that code is absent or that an open
+#741 for the automated real-content cohort. A target is not a claim that code is absent or that an open
 parent can close when only one child ships. Verify remaining clauses against current main and retain
 original assignees and acceptance criteria.
 

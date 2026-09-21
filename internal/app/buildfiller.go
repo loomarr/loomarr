@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -173,16 +174,12 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 	hosted := &mediatools.HostedTranscriber{
 		FFmpegPath: ffmpegPath,
 		Client: func() mediatools.AudioTranscriptionClient {
-			sel := resolveSelection(set)
-			if sel.URL == "" {
-				return nil
-			}
-			return hostedSTTAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, set.str("filler.transcribe.model"), sel.APIKey).WithMetrics(recorder)}
+			return hostedSpeechClient(set, recorder)
 		},
-		Model: func() string { return set.str("filler.transcribe.model") },
+		Model: func() string { return set.str("asr.model") },
 	}
 	return tools.WithTranscriber(func() mediatools.SpanTranscriber {
-		if set.str("filler.transcribe.provider") != "hosted" {
+		if set.str("asr.provider") != "hosted" {
 			return nil
 		}
 		return hosted
@@ -221,26 +218,13 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	// HTTP client with a key. `filler.language` and the reject rule still hot-apply; changing
 	// the PROVIDER needs a restart, which is the same bargain `llm.provider` makes.
 	var langDetect filler.LanguageDetector
-	if set.str("filler.language_provider") == "hosted" {
-		// ⚠ Its OWN client rather than the descriptive enrichment provider. Reusing the latter
-		// would silently tie this safety gate to unrelated classification availability.
-		//
-		// ⚠ Nil asker ⇒ the detector reports "cannot tell" and the gate keeps every clip.
-		// That is the honest state for an install that selected `hosted` without configuring
-		// a service URL: inert, not broken, and not silently deleting things. A key is not a
-		// universal prerequisite because a Custom OpenAI-compatible endpoint may be keyless.
-		// ⚠ **CLOSURES, not resolved values.** The first cut called `set.str(...)` here and
-		// baked the URL, model and key into a client at boot — so changing `llm.model` in
-		// Settings did nothing, the detector kept calling whatever was configured at startup,
-		// and every clip failed with a real 404 ("No endpoints found that support input
-		// audio") about a request the operator thought they had already fixed. Cost a live
-		// debugging session to find, because the error was accurate and the config looked right.
-		//
-		// Everything else in this feature reads live; the one setting that decides whether the
-		// backend can work at all must too.
+	if set.str("asr.provider") == "hosted" {
+		// Language and transcripts share one speech-recognition service. A dedicated ASR endpoint
+		// should not need a second chat model that happens to accept audio just to answer the same
+		// question. The closures keep URL, model and credential changes live between clips.
 		langDetect = filler.NewHostedLanguage(
-			func() filler.AudioAsker { return hostedLanguageAsker(set, recorder) },
-			func() string { return set.str("llm.model") },
+			func() mediatools.AudioTranscriptionClient { return hostedSpeechClient(set, recorder) },
+			func() string { return set.str("asr.model") },
 			set.str("playout.ffmpeg_path"), "")
 	} else {
 		// ⚠ `filler.language_model`, NOT `ingest.whisper_model`. The latter is
@@ -443,17 +427,22 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 	return fillerPipeline, transcribeStage, visionStage
 }
 
-// hostedLanguageAsker resolves the canonical active selection on every call. Hosted credentials
-// are stored per provider (llm.api_key.openrouter, llm.api_key.custom, …), so reading the legacy
-// base key here made the main picker work while the filler language request was sent without the
-// selected provider's key. Custom OpenAI-compatible endpoints may legitimately need no key; URL,
-// not credential presence, is therefore the availability boundary.
-func hostedLanguageAsker(set resolved, recorder *metrics.Recorder) filler.AudioAsker {
-	sel := resolveSelection(set)
-	if sel.URL == "" {
-		return nil // not configured ⇒ the gate keeps every clip
+// hostedSpeechClient resolves one speech-recognition service for both language detection and timed
+// transcripts. A blank dedicated URL reuses the active hosted AI service (the OpenRouter path); an
+// explicit URL never inherits that service's secret, so a custom host cannot receive it by accident.
+func hostedSpeechClient(set resolved, recorder *metrics.Recorder) mediatools.AudioTranscriptionClient {
+	url := strings.TrimSpace(set.str("asr.url"))
+	model := strings.TrimSpace(set.str("asr.model"))
+	provider := "openai"
+	key := set.str("asr.api_key")
+	if url == "" {
+		sel := resolveSelection(set)
+		url, provider, key = sel.URL, sel.Provider, sel.APIKey
 	}
-	return audioAskerAdapter{llm.NewOpenAIForProvider(sel.Provider, sel.URL, sel.Model, sel.APIKey).WithMetrics(recorder)}
+	if url == "" || model == "" {
+		return nil
+	}
+	return hostedSTTAdapter{llm.NewOpenAIForProvider(provider, url, model, key).WithMetrics(recorder)}
 }
 
 // buildPodAdapter constructs the pod assembler: the thing that picks which commercials fill a
