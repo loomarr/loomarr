@@ -66,6 +66,15 @@ func (r *Researcher) Research(ctx context.Context, input Input) (Report, error) 
 	lookup := Lookup{Title: input.Title, Description: input.Description,
 		ClipHash: input.ClipHash, InputRevision: input.InputRevision}
 	packet, primaryErr := r.retriever.Retrieve(ctx, lookup)
+	// Exact public source metadata is the first research source and cannot be disabled. A miss from
+	// related-item adapters must not discard it: build the bounded packet shell here, then let
+	// withSourceCitation add the already-validated Archive.org/YouTube item below.
+	if primaryErr != nil && strings.TrimSpace(input.SourceURL) != "" {
+		adapter, adapterVersion := r.Identity()
+		packet = Packet{Query: lookup.CanonicalTitle(), Adapter: adapter, AdapterVersion: adapterVersion,
+			RetrievedAt: r.now().UTC()}
+		primaryErr = nil
+	}
 	if primaryErr != nil && r.fallback == nil {
 		return Report{}, primaryErr
 	}

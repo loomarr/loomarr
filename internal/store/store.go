@@ -713,11 +713,11 @@ type FillerEnrichmentStore interface {
 	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
 }
 
-// FillerResearchStore owns cited context suggestions. Reports are deliberately separate from
-// FillerEnrichmentStore: no method here projects a suggestion into a catalog fact.
+// FillerResearchStore owns cited context reports and their narrowly bounded country projection.
 type FillerResearchStore interface {
 	ListFillerResearchCandidates(ctx context.Context, producer, producerVersion, adapter, adapterVersion string, limit int) ([]fillerresearch.Candidate, error)
 	SaveFillerResearchReport(ctx context.Context, report fillerresearch.Report) error
+	PromoteStoredFillerResearchCountries(ctx context.Context, limit int) (int, error)
 	LatestFillerResearchReport(ctx context.Context, clipHash string) (fillerresearch.Report, error)
 	ReserveFillerResearchWebRequest(ctx context.Context, month string, provider fillerresearch.WebProvider, limit int, attempt fillerresearch.WebAttempt) (fillerresearch.WebUsage, error)
 	CompleteFillerResearchWebRequest(ctx context.Context, month string, success bool, at time.Time) error

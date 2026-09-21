@@ -115,6 +115,23 @@ func TestState_CompleteMayRecordHonestEmpty(t *testing.T) {
 	}
 }
 
+func TestState_CompleteGeographyRequiresALocation(t *testing.T) {
+	state := fillerenrichment.State{ClipHash: "clip", Axis: fillerenrichment.AxisGeography,
+		Status: fillerenrichment.StatusComplete, Evidence: evidence(fillerenrichment.EvidenceInference, 70)}
+	if err := state.Validate(); !errors.Is(err, fillerenrichment.ErrInvalidState) {
+		t.Fatalf("complete empty geography error = %v, want ErrInvalidState", err)
+	}
+	state.Value.Geography = fillerenrichment.Geography{Scope: "national", Country: "US"}
+	if err := state.Validate(); err != nil {
+		t.Fatalf("complete country rejected: %v", err)
+	}
+	state.Value.Geography = fillerenrichment.Geography{}
+	state.Evidence = evidence(fillerenrichment.EvidenceOperator, 100)
+	if err := state.Validate(); err != nil {
+		t.Fatalf("intentional operator-empty geography rejected: %v", err)
+	}
+}
+
 func TestState_RejectsUnknownKind(t *testing.T) {
 	state := fillerenrichment.State{ClipHash: "clip", Axis: fillerenrichment.AxisKind,
 		Status: fillerenrichment.StatusComplete, Value: fillerenrichment.Value{Text: "promo"},
@@ -180,6 +197,9 @@ func TestAnalyzeDeterministic_TootsieUsesItemTextButNotUploadDate(t *testing.T) 
 	}
 	if got[fillerenrichment.AxisEra].Value.Year != 0 || got[fillerenrichment.AxisEra].Status != fillerenrichment.StatusComplete {
 		t.Fatalf("upload date became era or deterministic check was not recorded: %+v", got[fillerenrichment.AxisEra])
+	}
+	if _, exists := got[fillerenrichment.AxisGeography]; exists {
+		t.Fatalf("unknown geography was marked complete: %+v", got[fillerenrichment.AxisGeography])
 	}
 }
 

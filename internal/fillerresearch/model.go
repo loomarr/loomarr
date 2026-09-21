@@ -21,6 +21,9 @@ const (
 	MaxExtractBytes   = 5_000
 	MaxPacketBytes    = 20_000
 	MaxExplanationLen = 600
+	// MinCountryProjectionConfidence is the narrow threshold at which a cited public-context
+	// answer may fill an otherwise-unknown clip country. It remains inference-ranked downstream.
+	MinCountryProjectionConfidence = 60
 )
 
 var (
@@ -142,6 +145,17 @@ type Report struct {
 	CompletedAt     time.Time  `json:"completedAt"`
 	Suggestion      Suggestion `json:"suggestion"`
 	Packet          Packet     `json:"packet"`
+}
+
+// CountryFact returns the one context-research value allowed to become scheduling metadata.
+// Validate has already bound every returned citation ID to Loomarr's retrieved packet; keeping
+// this decision here prevents the store and pipeline from growing subtly different thresholds.
+func (r Report) CountryFact() (countryCode string, citationIDs []int, ok bool) {
+	if err := r.Validate(); err != nil || r.Suggestion.CountryCode == "" ||
+		r.Suggestion.Confidence < MinCountryProjectionConfidence || len(r.Suggestion.CitationIDs) == 0 {
+		return "", nil, false
+	}
+	return r.Suggestion.CountryCode, append([]int(nil), r.Suggestion.CitationIDs...), true
 }
 
 func (r Report) Validate() error {

@@ -65,6 +65,11 @@ func AnalyzeDeterministic(signals Signals) []State {
 		byAxis[axis] = State{ClipHash: signals.ClipHash, Axis: axis, Status: StatusComplete, Value: value, Evidence: evidence}
 	}
 	for _, axis := range DeterministicAxes {
+		// Unlike descriptive set axes, an empty geography is not a completed answer: it would
+		// suppress later work while the household boundary still excludes the clip.
+		if axis == AxisGeography {
+			continue
+		}
 		evidence := itemEvidence("item.metadata_checked", 100)
 		if axis == AxisProduct || axis == AxisFormat || axis == AxisSeasonal || axis == AxisAudienceCue || axis == AxisPresentation {
 			evidence.TaxonomyVersion = ControlledTaxonomyVersion

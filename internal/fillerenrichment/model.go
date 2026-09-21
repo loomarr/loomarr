@@ -247,6 +247,10 @@ func (s State) Validate() error {
 	if err := validateValue(s.Axis, s.Value.canonical()); err != nil {
 		return err
 	}
+	if s.Axis == AxisGeography && s.Status == StatusComplete && s.Value.Geography == (Geography{}) &&
+		s.Evidence.Kind != EvidenceOperator {
+		return fmt.Errorf("%w: complete geography requires a location", ErrInvalidState)
+	}
 	if s.Status == StatusUnsupported && !s.Value.empty() {
 		return fmt.Errorf("%w: unsupported state cannot carry a value", ErrInvalidState)
 	}

@@ -110,6 +110,22 @@ func TestResearchIncludesCanonicalSourceMetadataAsEvidence(t *testing.T) {
 	}
 }
 
+func TestResearchUsesExactSourceMetadataWhenStructuredSearchMisses(t *testing.T) {
+	retriever := &fixtureRetriever{err: errors.New("no related results")}
+	provider := &fixtureProvider{content: `{"decade":1980,"countryCode":"GB","country":"United Kingdom","confidence":70,"explanation":"The exact source description identifies a British advert.","citationIds":[1]}`}
+	researcher := New(retriever, provider, "fixture", "model", func() time.Time { return time.Unix(300, 0).UTC() })
+	report, err := researcher.Research(t.Context(), Input{ClipHash: "hash", Title: "HP Sauce Advert",
+		Description: "British condiment advertisement from the 1980s.", InputRevision: 1,
+		SourceKind: "archive", SourceID: "archive:classic", SourceURL: "https://archive.org/details/hp-sauce"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Suggestion.CountryCode != "GB" || len(report.Packet.Citations) != 1 ||
+		report.Packet.Citations[0].URL != "https://archive.org/details/hp-sauce" || len(report.Cited()) != 1 {
+		t.Fatalf("source-only report = %+v", report)
+	}
+}
+
 func TestResearchRejectsAnArbitraryClaimedSourceURLBeforeRetrieval(t *testing.T) {
 	retriever := &fixtureRetriever{packet: researchPacket()}
 	researcher := New(retriever, &fixtureProvider{}, "fixture", "model", time.Now)
@@ -147,6 +163,22 @@ func TestReportRejectsUncitedClaims(t *testing.T) {
 		CompletedAt: time.Now(), Packet: researchPacket(), Suggestion: Suggestion{Decade: 1970, Confidence: 60}}
 	if err := report.Validate(); err == nil || !strings.Contains(err.Error(), "requires a citation") {
 		t.Fatalf("uncited claim error = %v", err)
+	}
+}
+
+func TestReportCountryFactRequiresCitedConfidentCountry(t *testing.T) {
+	report := Report{ClipHash: "hash", InputRevision: 1, Producer: "context-model:fixture", ProducerVersion: "v1",
+		CompletedAt: time.Now(), Packet: researchPacket(), Suggestion: Suggestion{
+			CountryCode: "US", Country: "United States", Confidence: MinCountryProjectionConfidence,
+			CitationIDs: []int{1},
+		}}
+	country, citations, ok := report.CountryFact()
+	if !ok || country != "US" || len(citations) != 1 || citations[0] != 1 {
+		t.Fatalf("CountryFact() = %q, %v, %v", country, citations, ok)
+	}
+	report.Suggestion.Confidence--
+	if _, _, ok := report.CountryFact(); ok {
+		t.Fatal("low-confidence country became authoritative")
 	}
 }
 

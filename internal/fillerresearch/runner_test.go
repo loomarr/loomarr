@@ -22,6 +22,8 @@ func (r *runnerRepository) SaveReport(_ context.Context, report Report) error {
 	return nil
 }
 
+func (r *runnerRepository) PromoteStoredCountries(context.Context, int) (int, error) { return 0, nil }
+
 func TestRunnerSelectsCandidatesWithTheConfiguredRetrieverIdentity(t *testing.T) {
 	at := time.Unix(200, 0).UTC()
 	wiki := scriptedRetriever{adapter: "mediawiki", version: "v2", packet: researchPacket()}

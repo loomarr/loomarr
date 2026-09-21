@@ -12,8 +12,8 @@ func TestFillerResearchRunLimitHonorsMasterSourcesAndWebFallback(t *testing.T) {
 		want              int
 	}{
 		{name: "master off", structuredEnabled: true, webProvider: "brave", pipelineLimit: 5, want: 0},
-		{name: "structured source", enabled: true, structuredEnabled: true, pipelineLimit: 5, want: 1},
-		{name: "web only", enabled: true, webProvider: "brave", pipelineLimit: 5, want: 1},
+		{name: "structured source", enabled: true, structuredEnabled: true, pipelineLimit: 5, want: 5},
+		{name: "web only", enabled: true, webProvider: "brave", pipelineLimit: 5, want: 5},
 		{name: "nothing selected", enabled: true, pipelineLimit: 5, want: 0},
 		{name: "explicit no web", enabled: true, webProvider: " none ", pipelineLimit: 5, want: 0},
 		{name: "pipeline paused", enabled: true, structuredEnabled: true, pipelineLimit: 0, want: 0},

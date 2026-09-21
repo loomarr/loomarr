@@ -283,5 +283,5 @@ func fillerResearchRunLimit(enabled, structuredEnabled bool, webProvider string,
 	if !enabled || (!structuredEnabled && (provider == "" || provider == string(fillerresearch.WebProviderNone))) {
 		return 0
 	}
-	return min(1, pipelineLimit)
+	return max(0, pipelineLimit)
 }

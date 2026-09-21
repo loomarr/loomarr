@@ -199,7 +199,7 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 		func() int { return 10 }, func() time.Time { return at.Add(time.Minute) },
 	)
 	result, err := runner.Run(t.Context())
-	if err != nil || result.Considered != 2 || result.Updated != 2*len(fillerenrichment.DeterministicAxes) {
+	if err != nil || result.Considered != 2 || result.Updated != 2*len(fillerenrichment.DeterministicAxes)-1 {
 		t.Fatalf("Run() = %+v, err %v", result, err)
 	}
 	hp, err := st.GetClip(t.Context(), "hp")

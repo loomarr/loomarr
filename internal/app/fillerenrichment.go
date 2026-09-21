@@ -226,6 +226,10 @@ func (r fillerResearchRepository) SaveReport(ctx context.Context, report fillerr
 	return r.st.SaveFillerResearchReport(ctx, report)
 }
 
+func (r fillerResearchRepository) PromoteStoredCountries(ctx context.Context, limit int) (int, error) {
+	return r.st.PromoteStoredFillerResearchCountries(ctx, limit)
+}
+
 type fillerResearchSignals struct{ files fs.FS }
 
 func (l fillerResearchSignals) Load(_ context.Context, candidate fillerresearch.Candidate) (fillerresearch.Input, error) {
