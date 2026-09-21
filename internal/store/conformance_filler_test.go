@@ -5368,6 +5368,51 @@ func testFillerTerminalReadyTransaction(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("exact ready retry was not idempotent: %v", err)
 	}
 
+	// A deliberate restart retains the immutable Ready event but puts the clip back on hold and
+	// returns its conveyor to running. Reaching the terminal rung again must reapply publication;
+	// treating the old event as proof that the current row is already settled leaves the clip at
+	// score/running forever while every pass reports success.
+	restartedAt := at.Add(time.Minute)
+	if n, err := s.HoldClips(ctx, []string{"77/77/" + hash + ".mp4"}, restartedAt); err != nil || n != 1 {
+		t.Fatalf("hold ready clip for restart = %d, %v", n, err)
+	}
+	restarted := current
+	restarted.Attempts = 2
+	restarted.ForceRun = true
+	restarted.PreparationAttempt = 2
+	restarted.PreparationStartedAt = restartedAt
+	restarted.PreparationStartReason = filler.PreparationStartedByRestart
+	restarted.StageQueuedAt = restartedAt
+	restarted.StageStartedAt = restartedAt
+	restarted.UpdatedAt = restartedAt
+	if err := s.UpsertClipPipeline(ctx, restarted); err != nil {
+		t.Fatal(err)
+	}
+	republished := commit
+	republished.Pipeline.Attempts = restarted.Attempts
+	republished.Pipeline.PreparationAttempt = restarted.PreparationAttempt
+	republished.Pipeline.PreparationStartedAt = restarted.PreparationStartedAt
+	republished.Pipeline.PreparationStartReason = restarted.PreparationStartReason
+	republished.Pipeline.StageQueuedAt = restarted.StageQueuedAt
+	republished.Pipeline.StageStartedAt = restarted.StageStartedAt
+	republished.Pipeline.UpdatedAt = restartedAt.Add(time.Second)
+	if err := s.CommitFillerReady(ctx, republished); err != nil {
+		t.Fatalf("publish after a completed restart: %v", err)
+	}
+	republishedClip, err := s.GetClip(ctx, hash)
+	if err != nil || republishedClip.Held || republishedClip.Placement != filler.PlacementBreakBody {
+		t.Fatalf("restarted clip was not republished = %+v, err=%v", republishedClip, err)
+	}
+	republishedRow, found, err := s.GetClipPipeline(ctx, hash)
+	if err != nil || !found || republishedRow.Disposition != filler.DispositionReady ||
+		republishedRow.Status != filler.StatusDone || republishedRow.PreparationAttempt != 2 {
+		t.Fatalf("restarted conveyor was not settled = %+v, found=%t err=%v", republishedRow, found, err)
+	}
+	unchangedEvent, found, err := s.GetFillerReadyEvent(ctx, hash)
+	if err != nil || !found || unchangedEvent.CreatedAt != event.CreatedAt {
+		t.Fatalf("restart rewrote immutable Ready event = %+v, found=%t err=%v", unchangedEvent, found, err)
+	}
+
 	staleHash := strings.Repeat("6", 64)
 	if err := s.UpsertClip(ctx, Clip{Clip: filler.Clip{
 		Hash: staleHash, Path: "66/66/" + staleHash + ".mp4", Name: "No pipeline",
