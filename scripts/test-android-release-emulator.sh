@@ -200,6 +200,27 @@ wait_for_state() {
 	return 1
 }
 
+tune_fixture_channel() {
+	local play_url_count
+	play_url_count=$(curl --fail --silent "http://127.0.0.1:${JOURNEY_PORT}/__journey" |
+		jq -er '.playUrlChannels | length')
+	launch
+	wait_for_state "fixture channel source refresh" \
+		"(.playUrlChannels | length) > ${play_url_count} and .playUrlChannels[-1] == \"classic-animation\""
+	sleep 2
+	key KEYCODE_CHANNEL_UP
+	wait_for_state "temporary fixture channel tune" '.playUrlChannels[-1] == "science-fiction"'
+	key KEYCODE_CHANNEL_UP
+	wait_for_state "fixture channel retune" '.playUrlChannels[-1] == "classic-animation"'
+}
+
+set_fixture_phase() {
+	local phase=$1
+	curl --fail --silent --show-error --request POST \
+		"http://127.0.0.1:${JOURNEY_PORT}/__journey/phase/${phase}" >/dev/null
+	wait_for_state "${phase} fixture clock" ".schedulePhase == \"${phase}\""
+}
+
 launch() {
 	adb -s "${EMULATOR_SERIAL}" shell am force-stop "${PACKAGE_ID}"
 	adb -s "${EMULATOR_SERIAL}" shell am start -n "${PACKAGE_ID}/.MainActivity" >/dev/null
@@ -305,6 +326,22 @@ wait_for_ui "pairing code after manual entry" "Pairing code 2468"
 wait_for_state "manual pair start and approval polling" '.pairStarts == 1 and .pairPolls >= 1'
 wait_for_state "playback after manual pairing" '.playUrlChannels[-1] == "classic-animation"'
 
+# The fixture publishes one server-authored programme → filler → programme schedule. Each phase
+# advances the server clock, then refreshes the signed source and transient chrome without altering
+# that Guide timeline. This catches native HLS sources that play correctly while their on-air
+# identity freezes on the tune-time programme.
+wait_for_ui "programme before the filler break" "The Simpsons · Before the break"
+adb -s "${EMULATOR_SERIAL}" exec-out screencap -p >"${evidence_dir}/programme-before-filler.png"
+set_fixture_phase filler
+tune_fixture_channel
+sleep 1
+adb -s "${EMULATOR_SERIAL}" exec-out screencap -p >"${evidence_dir}/filler-active.png"
+set_fixture_phase programme-after
+tune_fixture_channel
+sleep 1
+adb -s "${EMULATOR_SERIAL}" exec-out screencap -p >"${evidence_dir}/programme-after-filler.png"
+printf 'android-emulator: programme, named filler, and returning programme chrome passed\n'
+
 # Any D-pad activity makes Watching chrome visible; five seconds without input must hide it.
 key KEYCODE_DPAD_DOWN
 adb -s "${EMULATOR_SERIAL}" exec-out screencap -p >"${evidence_dir}/playbar-visible.png"
@@ -375,6 +412,7 @@ jq -n \
 	 launcherTileMinLuma: $launcherMinLuma, launcherTileSaturation: $launcherSaturation,
 	 pairedColdLaunchMaxLuma: $pairedLaunchMaxLuma, pairedColdLaunchMinLuma: $pairedLaunchMinLuma,
 	 pairedColdLaunchRecording: "paired-launch.mp4", pairedColdLaunchVideoCovered: true,
+	 fillerProgrammeTransition: true, fillerTitle: "Friendly Sponsor Spot",
 	 playbarAutoHide: true}' \
 	>"${evidence_dir}/acceptance.json"
 

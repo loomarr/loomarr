@@ -49,8 +49,11 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
 
     const body = (await response.json()) as PlayURLOutputBody;
     const expiry = Date.parse(body.expiresAt);
+    const headerServerTime = Date.parse(response.headers.get("Date") ?? "");
+    const serverTime = Number.isFinite(body.serverTimeMs) ? body.serverTimeMs : headerServerTime;
     return {
       expiresAt: Number.isFinite(expiry) ? expiry : undefined,
+      ...(Number.isFinite(serverTime) ? { serverTimeMs: serverTime } : {}),
       uri: resolveStreamUrl(baseUrl, body),
     };
   },

@@ -73,6 +73,7 @@ const stubTracks = (tracks: Partial<ChannelTracksOutputBody> = {}) => {
       url: "http://localhost/hls/master.m3u8",
       relativeUrl: "/hls/master.m3u8",
       expiresAt: "2026-08-09T23:59:59Z",
+      serverTimeMs: Date.UTC(2026, 7, 9, 23, 54, 59),
     }),
     getChannelTracksMockHandler(() => {
       probed = true;

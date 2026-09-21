@@ -64,7 +64,10 @@ const createNativePlayerTransport = (
   let timeSubscription: { remove: () => void } | undefined;
   let liveMode: LivePlaybackMode = "live";
   let noticeRevision = 0;
+  let serverClockOffsetMs: number | undefined;
   let viewerTimeMs = Date.now();
+
+  const liveNow = () => Date.now() + (serverClockOffsetMs ?? 0);
 
   const emit = (event: PlayerTransportEvent) => {
     if (disposed) return;
@@ -75,11 +78,16 @@ const createNativePlayerTransport = (
     currentLiveTimestamp: number | null = player?.currentLiveTimestamp ?? null,
     currentOffsetFromLive: number | null = player?.currentOffsetFromLive ?? null,
   ): LivePlaybackState => {
-    const now = Date.now();
+    const now = liveNow();
     if (currentLiveTimestamp !== null && Number.isFinite(currentLiveTimestamp)) {
       viewerTimeMs = currentLiveTimestamp;
     } else if (currentOffsetFromLive !== null && Number.isFinite(currentOffsetFromLive)) {
       viewerTimeMs = now - Math.max(0, currentOffsetFromLive) * 1_000;
+    } else if (liveMode === "live") {
+      // Expo may omit both values for a live HLS stream without EXT-X-PROGRAM-DATE-TIME.
+      // The viewer is still at the live edge, so keeping the tune-time fallback would freeze
+      // programme identity and progress across every later schedule boundary.
+      viewerTimeMs = now;
     }
     return {
       lagSeconds: liveMode === "live" ? 0 : Math.max(0, Math.round((now - viewerTimeMs) / 1_000)),
@@ -162,7 +170,7 @@ const createNativePlayerTransport = (
         player.currentTime = player.duration;
       }
       liveMode = "live";
-      viewerTimeMs = Date.now();
+      viewerTimeMs = liveNow();
       emitLiveState(null, 0);
       player.play();
     },
@@ -173,7 +181,7 @@ const createNativePlayerTransport = (
       if (timestamp !== null && Number.isFinite(timestamp)) {
         viewerTimeMs = timestamp;
       } else if (offset !== null && Number.isFinite(offset)) {
-        viewerTimeMs = Date.now() - Math.max(0, offset) * 1_000;
+        viewerTimeMs = liveNow() - Math.max(0, offset) * 1_000;
       }
       liveMode = "paused";
       player.pause();
@@ -183,7 +191,7 @@ const createNativePlayerTransport = (
     play: () => {
       if (!player) return;
       if (liveMode === "paused") {
-        const lagSeconds = Math.max(0, Math.round((Date.now() - viewerTimeMs) / 1_000));
+        const lagSeconds = Math.max(0, Math.round((liveNow() - viewerTimeMs) / 1_000));
         if (lagSeconds >= LIVE_DVR_HORIZON_SECONDS) {
           noticeRevision += 1;
           const offset = player.currentOffsetFromLive;
@@ -193,7 +201,7 @@ const createNativePlayerTransport = (
             player.currentTime = player.duration;
           }
           liveMode = "live";
-          viewerTimeMs = Date.now();
+          viewerTimeMs = liveNow();
           emitLiveState(null, 0);
         } else {
           liveMode = "behind";
@@ -212,7 +220,11 @@ const createNativePlayerTransport = (
           activeAttemptId = context.attemptId;
           liveMode = "live";
           noticeRevision = 0;
-          viewerTimeMs = Date.now();
+          serverClockOffsetMs =
+            source.serverTimeMs !== undefined && Number.isFinite(source.serverTimeMs)
+              ? source.serverTimeMs - Date.now()
+              : undefined;
+          viewerTimeMs = liveNow();
           await current.replaceAsync({
             contentType: "hls",
             headers: source.headers ? { ...source.headers } : undefined,

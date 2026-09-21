@@ -97,6 +97,9 @@ type playURLOutput struct {
 		RelativeURL string `json:"relativeUrl" doc:"Same-origin signed HLS (.m3u8) URL for the in-app web player — prefer this in a browser (no CORS)"`
 		// ExpiresAt is when the URLs stop verifying — the client re-mints before then.
 		ExpiresAt time.Time `json:"expiresAt" doc:"When the signed URLs expire (RFC 3339)"`
+		// ServerTimeMs is the authoritative schedule clock at mint time. Native HLS does not always
+		// expose programme-date-time, so clients advance this anchor by locally measured elapsed time.
+		ServerTimeMs int64 `json:"serverTimeMs" doc:"Server wall-clock at mint time (Unix milliseconds); native clients use it instead of device RTC"`
 	}
 }
 
@@ -132,7 +135,8 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 			"Loomarr couldn't read the current playout credential. Try again in a moment.", err)
 	}
 
-	exp := time.Now().Add(playURLTTL)
+	now := time.Now()
+	exp := now.Add(playURLTTL)
 	quality := normalizeQuality(in.Quality)
 	// Resolve how this channel is served to this client (§9.1 V50 content-driven codec): the
 	// channel's stored broadcast codec decides the timeline codec/container, and the client body only
@@ -156,6 +160,7 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	out.Body.URL = s.playoutHLSURLWithKey(playoutToken, ch.ID, quality, plan, exp)
 	out.Body.RelativeURL = rel
 	out.Body.ExpiresAt = exp
+	out.Body.ServerTimeMs = now.UnixMilli()
 	return out, nil
 }
 

@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -238,6 +239,32 @@ func setChannelStatus(t *testing.T, st store.Store, id string, status schedule.C
 	ch.Status = status
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestChannelPlayURLCarriesAuthoritativeServerClock(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{})
+	seedChannel(t, harness.Store, "ch1", "Channel One", 1, "internal")
+	before := time.Now().UnixMilli()
+
+	resp := do(t, harness.Server, http.MethodPost, "/v1/channels/ch1/play-url", adminToken, `{}`)
+	after := time.Now().UnixMilli()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("play URL status = %d, want 200", resp.StatusCode)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		RelativeURL string `json:"relativeUrl"`
+		ServerTime  int64  `json:"serverTimeMs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.RelativeURL == "" {
+		t.Fatal("play URL response omitted the signed relative URL")
+	}
+	if body.ServerTime < before || body.ServerTime > after {
+		t.Fatalf("serverTimeMs = %d, want request interval %d..%d", body.ServerTime, before, after)
 	}
 }
 

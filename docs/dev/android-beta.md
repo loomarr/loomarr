@@ -91,8 +91,9 @@ Before dispatch, the exact CI artifact must pass the clean-install journey on a 
 TV emulator on the maintainer's machine. The journey starts with empty app data and no embedded
 server URL, observes the launcher artwork and process-dead launch animation, uses automatic LAN
 discovery (plus the manual fallback in a separate case), completes pairing, restarts into Watching,
-and proves the playbar hides after five seconds of remote inactivity. Agents never use the physical
-Shield for this release gate.
+proves the playbar hides after five seconds of remote inactivity, and observes a server-authored
+programme → named filler clip → programme transition in Watching chrome. Agents never use the
+physical Shield for this release gate.
 
 Download the exact merge-queue artifact, then run the compile-free acceptance harness with one
 explicit emulator serial:
@@ -107,8 +108,9 @@ LOOMARR_TV_EMULATOR_SERIAL=emulator-5554 \
 The harness refuses physical-device serials, verifies the producer digest and bundle identity,
 creates device-specific APK splits with a disposable local key, and installs only those splits. It
 then drives automatic DNS-SD pairing and a separate manual-address pairing against an isolated
-fixture, checks the five-second playbar deadline, and retains screenshots, a paired cold-launch
-recording, and digest-bound acceptance evidence under `.artifacts/emulator-proof/`. It downloads
+fixture, checks the five-second playbar deadline and programme/filler/programme identity, and retains
+screenshots, a paired cold-launch recording, and digest-bound acceptance evidence under
+`.artifacts/emulator-proof/`. It downloads
 the pinned official bundletool only when `LOOMARR_BUNDLETOOL_JAR` is not supplied; no application
 source is compiled.
 

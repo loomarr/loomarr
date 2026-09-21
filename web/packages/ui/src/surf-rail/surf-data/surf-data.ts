@@ -17,6 +17,33 @@ const programmeFacts = (airing: GuideAiringLayout) =>
     airing.source.genres?.slice(0, 2).join(" · "),
   ].filter((fact): fact is string => Boolean(fact));
 
+const activeFillerEntry = (airing: GuideAiringLayout, nowMs: number) => {
+  if (airing.source.kind !== "filler" || !airing.source.pod?.entries.length) return undefined;
+  let offsetMs = Math.max(0, nowMs - airing.source.startMs);
+  for (const entry of airing.source.pod.entries) {
+    if (offsetMs < entry.durationMs) return entry;
+    offsetMs -= entry.durationMs;
+  }
+  return airing.source.pod.entries.at(-1);
+};
+
+const fillerFacts = (entry: NonNullable<ReturnType<typeof activeFillerEntry>>) =>
+  [entry.brand, entry.era ? String(entry.era) : undefined, entry.quality].filter((fact): fact is string =>
+    Boolean(fact),
+  );
+
+const watchingAiringTitle = (airing: GuideAiringLayout, nowMs: number): string => {
+  const entry = activeFillerEntry(airing, nowMs);
+  const name = entry?.name.trim();
+  return name ? `Commercials · ${name}` : guideAiringLabel(airing.source);
+};
+
+const progressPercentAt = (airing: GuideAiringLayout, nowMs: number): number | undefined => {
+  const durationMs = airing.source.stopMs - airing.source.startMs;
+  if (durationMs <= 0 || nowMs < airing.source.startMs || nowMs >= airing.source.stopMs) return undefined;
+  return Math.min(100, Math.max(0, ((nowMs - airing.source.startMs) / durationMs) * 100));
+};
+
 const surfChannelData = (
   channel: GuideLayout["channels"][number],
   nowMs: number,
@@ -26,6 +53,7 @@ const surfChannelData = (
     (airing) => airing.source.startMs <= nowMs && airing.source.stopMs > nowMs,
   );
   const next = channel.airings.find((airing) => airing.source.startMs >= (now?.source.stopMs ?? nowMs));
+  const fillerEntry = now ? activeFillerEntry(now, nowMs) : undefined;
 
   return {
     channelLogoUri: channel.source.logo,
@@ -46,12 +74,12 @@ const surfChannelData = (
           badge: { label: "On now", tone: "live" },
           description: now.source.description,
           episodeLabel: formatGuideEpisode(now.source.season, now.source.episode),
-          facts: programmeFacts(now),
-          progressPercent: now.progressRatio === undefined ? undefined : now.progressRatio * 100,
+          facts: fillerEntry ? fillerFacts(fillerEntry) : programmeFacts(now),
+          progressPercent: progressPercentAt(now, nowMs),
           remainingLabel: `${Math.max(1, Math.ceil((now.source.stopMs - nowMs) / 60_000))}m left`,
           seriesTitle: now.source.series,
           timeLabel: formatGuideTimeRange(now.source.startMs, now.source.stopMs, timezone),
-          title: guideAiringLabel(now.source),
+          title: watchingAiringTitle(now, nowMs),
         }
       : undefined,
   };

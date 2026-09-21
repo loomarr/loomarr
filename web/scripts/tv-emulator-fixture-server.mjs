@@ -1,3 +1,4 @@
+import { createSocket } from "node:dgram";
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
@@ -12,6 +13,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535 || !mediaDirectory) {
 }
 
 const deviceToken = "journey-device-token";
+const discoveryPort = 51_029;
+const discoveryRequest = "LOOMARR_DISCOVER/1";
 const state = {
   eventConnections: 0,
   eventDisconnects: 0,
@@ -21,6 +24,15 @@ const state = {
   playUrlChannels: [],
   revocations: 0,
   channelLoads: 0,
+  guideEpochMs: null,
+  schedulePhase: "programme-before",
+};
+
+const phaseServerTime = () => {
+  const epoch = state.guideEpochMs ?? Date.now();
+  if (state.schedulePhase === "filler") return epoch + 5 * 60_000 + 10_000;
+  if (state.schedulePhase === "programme-after") return epoch + 10 * 60_000 + 10_000;
+  return epoch;
 };
 
 const writeJson = (response, status, body, headers = {}) => {
@@ -51,23 +63,53 @@ const channels = [
 
 const guide = () => {
   const now = Date.now();
+  state.guideEpochMs ??= now;
   const fromMs = now - 30 * 60_000;
   const toMs = now + 210 * 60_000;
-  const airing = (scheduleBlockId, title, series) => ({
+  const airing = (scheduleBlockId, title, series, startMs = fromMs, stopMs = toMs) => ({
     description: `${title} emulator journey fixture`,
     episode: 2,
     kind: "program",
     scheduleBlockId,
     season: 7,
     series,
-    startMs: fromMs,
-    stopMs: now + 30 * 60_000,
+    startMs,
+    stopMs,
     title,
   });
+  const fillerStartMs = state.guideEpochMs + 5 * 60_000;
+  const fillerStopMs = state.guideEpochMs + 10 * 60_000;
   return {
     channels: [
       {
-        airings: [airing("radioactive-man", "Radioactive Man", "The Simpsons")],
+        airings: [
+          airing("before-break", "Before the break", "The Simpsons", fromMs, fillerStartMs),
+          {
+            kind: "filler",
+            pod: {
+              entries: [
+                {
+                  brand: "Acme Household",
+                  durationMs: 5 * 60_000,
+                  era: 1980,
+                  hash: "raw-fixture-hash-must-not-render",
+                  isFallbackCard: false,
+                  kind: "commercial",
+                  name: "Friendly Sponsor Spot",
+                  path: "/raw/fixture/path-must-not-render.mp4",
+                  quality: "1080p",
+                },
+              ],
+              matchLevel: "exact",
+              totalMs: 5 * 60_000,
+            },
+            scheduleBlockId: "commercial-break",
+            startMs: fillerStartMs,
+            stopMs: fillerStopMs,
+            title: "",
+          },
+          airing("after-break", "After the break", "The Simpsons", fillerStopMs, toMs),
+        ],
         channelId: "classic-animation",
         name: "Classic Animation",
         number: 77,
@@ -112,6 +154,12 @@ const server = createServer((request, response) => {
 
   if (request.method === "GET" && pathname === "/__journey") {
     writeJson(response, 200, state);
+    return;
+  }
+  const phase = pathname.match(/^\/__journey\/phase\/(programme-before|filler|programme-after)$/);
+  if (request.method === "POST" && phase) {
+    state.schedulePhase = phase[1];
+    writeJson(response, 200, { schedulePhase: state.schedulePhase });
     return;
   }
   if (request.method === "GET" && pathname.startsWith("/journey/")) {
@@ -191,11 +239,18 @@ const server = createServer((request, response) => {
       return;
     }
     state.playUrlChannels.push(channelId);
-    writeJson(response, 200, {
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      relativeUrl: "/journey/media.m3u8",
-      url: "",
-    });
+    const serverTime = phaseServerTime();
+    writeJson(
+      response,
+      200,
+      {
+        expiresAt: new Date(serverTime + 60_000).toISOString(),
+        relativeUrl: "/journey/media.m3u8",
+        serverTimeMs: serverTime,
+        url: "",
+      },
+      { Date: new Date(serverTime).toUTCString() },
+    );
     return;
   }
   if (request.method === "GET" && pathname === "/v1/system/version") {
@@ -218,12 +273,28 @@ const server = createServer((request, response) => {
   writeJson(response, 404, { title: "Fixture route not found" });
 });
 
+const discovery = createSocket({ reuseAddr: true, type: "udp4" });
+discovery.on("message", (message, sender) => {
+  if (message.toString("utf8") !== discoveryRequest) return;
+  const payload = Buffer.from(
+    JSON.stringify({
+      id: "emulator-acceptance",
+      name: "Loomarr Emulator Acceptance",
+      protocol: 1,
+      url: `http://10.0.2.2:${port}`,
+    }),
+  );
+  discovery.send(payload, sender.port, sender.address);
+});
+discovery.bind(discoveryPort, "0.0.0.0");
+
 server.listen(port, listenHost, () => {
   console.log(`tv-emulator-fixture: listening on http://${listenHost}:${port}`);
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
+    discovery.close();
     server.close(() => process.exit(0));
     server.closeAllConnections();
     setTimeout(() => process.exit(1), 1_000).unref();

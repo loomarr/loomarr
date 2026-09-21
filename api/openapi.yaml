@@ -6775,6 +6775,10 @@ components:
         relativeUrl:
           description: Same-origin signed HLS (.m3u8) URL for the in-app web player — prefer this in a browser (no CORS)
           type: string
+        serverTimeMs:
+          description: Server wall-clock at mint time (Unix milliseconds); native clients use it instead of device RTC
+          format: int64
+          type: integer
         url:
           description: Absolute signed HLS (.m3u8) URL for native/off-origin clients; empty if the server's public address is unset
           type: string
@@ -6782,6 +6786,7 @@ components:
         - url
         - relativeUrl
         - expiresAt
+        - serverTimeMs
       type: object
     PlayoutCapability:
       additionalProperties: false
