@@ -32,7 +32,8 @@ func TestOpenAI_NormalizesToolCallArgumentsAndSampling(t *testing.T) {
 	o := llm.NewOpenAI(srv.URL, "gpt-x", "sk-test")
 	temp := 0.2
 	resp, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "hi"}},
-		llm.ChatOptions{Tools: []llm.ToolSchema{{Name: "catalog_search"}}, JSONMode: true, Temperature: &temp, MaxTokens: 256})
+		llm.ChatOptions{Tools: []llm.ToolSchema{{Name: "catalog_search"}}, JSONMode: true, Temperature: &temp,
+			MaxTokens: 256, ReasoningEffort: "none"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +64,9 @@ func TestOpenAI_NormalizesToolCallArgumentsAndSampling(t *testing.T) {
 	}
 	if sentReq["max_tokens"] != float64(256) {
 		t.Errorf("max_tokens = %v, want 256", sentReq["max_tokens"])
+	}
+	if sentReq["reasoning_effort"] != "none" || sentReq["reasoning"] != nil {
+		t.Errorf("reasoning controls = %v / %v, want top-level none", sentReq["reasoning_effort"], sentReq["reasoning"])
 	}
 	if authHdr != "Bearer sk-test" {
 		t.Errorf("auth header = %q, want Bearer sk-test", authHdr)

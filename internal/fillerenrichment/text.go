@@ -19,6 +19,12 @@ import (
 const (
 	textPromptVersion  = "filler-progressive-text-v3"
 	textModelBatchSize = 8
+	// The response contracts are small JSON records. Keep an explicit ceiling so a
+	// provider that fails to terminate JSON cannot occupy the one household model
+	// slot until the transport deadline. The batch allowance covers eight complete
+	// records, including their 64-character clip identities.
+	textSingleMaxTokens = 512
+	textBatchMaxTokens  = 2048
 )
 
 var textAxes = []Axis{
@@ -341,7 +347,7 @@ JSON keys: kind, audience, brand, product, format, seasonal, audienceCue, presen
 	user := fmt.Sprintf("Requested axes: %s\nTaxonomy:\n%s\n\nClip text:\n%s",
 		strings.Join(axisNames, ", "), forest.Vocab(), signalText(signals))
 	response, err := provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
-		llm.ChatOptions{JSONMode: true})
+		llm.ChatOptions{JSONMode: true, MaxTokens: textSingleMaxTokens, ReasoningEffort: "none"})
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +404,7 @@ The product, format, seasonal, audienceCue, and presentation values must always 
 Each item keys: id, kind, audience, brand, product, format, seasonal, audienceCue, presentation, confidence.`
 	user := fmt.Sprintf("Taxonomy:\n%s\n\nClips:\n%s", forest.Vocab(), promptJSON)
 	response, err := provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
-		llm.ChatOptions{JSONMode: true})
+		llm.ChatOptions{JSONMode: true, MaxTokens: textBatchMaxTokens, ReasoningEffort: "none"})
 	if err != nil {
 		return nil, nil, err
 	}

@@ -129,6 +129,10 @@ type ChatOptions struct {
 	Temperature *float64
 	TopP        *float64
 	MaxTokens   int // 0 ⇒ provider default
+	// ReasoningEffort is an explicit per-request control for hybrid reasoning
+	// models. "none" keeps bounded structured extraction from spending its whole
+	// output allowance on hidden reasoning before it emits the required JSON.
+	ReasoningEffort string
 }
 
 // Provider is the provider-neutral LLM primitive (§8). One Chat turn: given the
