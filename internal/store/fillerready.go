@@ -48,6 +48,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 	defer func() { _ = tx.Rollback() }()
 
 	var existingClip, existingAcquisition, existingKind, existingRef, existingPlacement, existingOutcome string
+	readyEventExists := false
 	err = tx.QueryRowContext(ctx, s.ph(`SELECT clip_hash, acquisition_id, enrollment_kind,
 		enrollment_ref, placement, outcome FROM filler_ready_events WHERE id = ?`), e.ID).
 		Scan(&existingClip, &existingAcquisition, &existingKind, &existingRef, &existingPlacement, &existingOutcome)
@@ -55,31 +56,25 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		if existingClip == e.ClipHash && existingAcquisition == e.AcquisitionID &&
 			existingKind == string(e.Enrollment.Kind) && existingRef == e.Enrollment.Reference &&
 			existingPlacement == string(e.Placement) && existingOutcome == "ready" {
-			return nil
+			readyEventExists = true
+		} else {
+			return fmt.Errorf("%w: ready event id conflicts", filler.ErrReadyStale)
 		}
-		return fmt.Errorf("%w: ready event id conflicts", filler.ErrReadyStale)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("read filler ready event: %w", err)
 	}
 
-	clipQuery := `SELECT held, removed_at, is_composite, source FROM clips WHERE hash = ?`
+	clipQuery := `SELECT held, removed_at, is_composite, source, placement FROM clips WHERE hash = ?`
 	if s.dialect == DialectPostgres {
 		clipQuery += ` FOR UPDATE`
 	}
 	var held, composite bool
 	var removedAt int64
-	var source string
-	if err := tx.QueryRowContext(ctx, s.ph(clipQuery), e.ClipHash).Scan(&held, &removedAt, &composite, &source); errors.Is(err, sql.ErrNoRows) {
+	var source, placement string
+	if err := tx.QueryRowContext(ctx, s.ph(clipQuery), e.ClipHash).Scan(&held, &removedAt, &composite, &source, &placement); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("lock ready clip %s: %w", e.ClipHash, err)
-	}
-	if !held || removedAt != 0 || composite {
-		return fmt.Errorf("%w: clip is not a held active non-composite", filler.ErrReadyStale)
-	}
-	if e.Enrollment.Kind == filler.EnrollmentSource && source != e.Enrollment.Reference {
-		return fmt.Errorf("%w: source enrollment changed", filler.ErrReadyStale)
 	}
 
 	pipelineQuery := clipPipelineSelect + ` WHERE clip_hash = ?`
@@ -91,6 +86,20 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		return ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("lock ready pipeline %s: %w", e.ClipHash, err)
+	}
+	// A retry after the original transaction committed is already done only when BOTH persisted
+	// sides still describe that published result. The immutable event alone is insufficient: a
+	// deliberate restart keeps it while putting the clip on hold and the conveyor back in motion.
+	if readyEventExists && !held && removedAt == 0 && !composite && placement == string(e.Placement) &&
+		current.Disposition == filler.DispositionReady && current.Stage == filler.StageScore &&
+		current.Status == filler.StatusDone {
+		return nil
+	}
+	if !held || removedAt != 0 || composite {
+		return fmt.Errorf("%w: clip is not a held active non-composite", filler.ErrReadyStale)
+	}
+	if e.Enrollment.Kind == filler.EnrollmentSource && source != e.Enrollment.Reference {
+		return fmt.Errorf("%w: source enrollment changed", filler.ErrReadyStale)
 	}
 	if err := commit.ValidateAgainst(current); err != nil {
 		return err
@@ -138,11 +147,13 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		return fmt.Errorf("%w: conveyor changed before publication", filler.ErrReadyStale)
 	}
 
-	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_ready_events
-		(id, clip_hash, acquisition_id, enrollment_kind, enrollment_ref, placement, outcome, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, 'ready', ?)`), e.ID, e.ClipHash, e.AcquisitionID,
-		string(e.Enrollment.Kind), e.Enrollment.Reference, string(e.Placement), epoch(e.CreatedAt)); err != nil {
-		return fmt.Errorf("record filler ready event %s: %w", e.ID, err)
+	if !readyEventExists {
+		if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_ready_events
+			(id, clip_hash, acquisition_id, enrollment_kind, enrollment_ref, placement, outcome, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, 'ready', ?)`), e.ID, e.ClipHash, e.AcquisitionID,
+			string(e.Enrollment.Kind), e.Enrollment.Reference, string(e.Placement), epoch(e.CreatedAt)); err != nil {
+			return fmt.Errorf("record filler ready event %s: %w", e.ID, err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit filler ready %s: %w", e.ClipHash, err)

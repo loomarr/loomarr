@@ -134,12 +134,18 @@ func TestReadyCommitRequiresExactTerminalLadderAdvance(t *testing.T) {
 	current.Disposition = filler.DispositionRunning
 	current.Status = filler.StatusRunning
 	current.Progress = 0
+	current.ForceRun = true // the successful terminal rung consumes this one-shot restart marker
 	current.PreparationStartedAt = current.PreparationStartedAt.Truncate(time.Second)
 	current.StageQueuedAt = current.StageQueuedAt.Truncate(time.Second)
 	current.StageStartedAt = current.StageStartedAt.Truncate(time.Second)
 	current.Stages = append([]filler.StageRecord(nil), settled.Stages[:len(settled.Stages)-1]...)
 	if err := commit.ValidateAgainst(current); err != nil {
 		t.Fatalf("exact terminal advance = %v", err)
+	}
+	stillForced := commit
+	stillForced.Pipeline.ForceRun = true
+	if err := stillForced.ValidateAgainst(current); !errors.Is(err, filler.ErrReadyStale) {
+		t.Fatalf("terminal commit retaining force marker = %v, want ErrReadyStale", err)
 	}
 
 	tests := []struct {

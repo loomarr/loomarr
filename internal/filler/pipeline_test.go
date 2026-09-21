@@ -396,6 +396,65 @@ func TestPipeline_RewindResetsOnlyTheRequestedSuffix(t *testing.T) {
 	}
 }
 
+// A restart is also a withdrawal from playback. A Ready clip is unheld by definition; resetting
+// only its conveyor leaves it simultaneously playable and "preparing", then terminal readiness
+// rejects it forever because every score attempt still sees the unheld catalog row.
+func TestPipeline_RewindReadyClipHoldsItUntilTheRestartCompletes(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "ready-restart")
+	clip := st.clips["ready-restart"]
+	clip.Held = false
+	clip.Placement = filler.PlacementBreakBody
+	st.clips[clip.Hash] = clip
+	row := st.rows[clip.Hash]
+	row.Stage = filler.StageScore
+	row.Status = filler.StatusDone
+	row.Disposition = filler.DispositionReady
+	row.PreparationProgress = 100
+	for _, id := range filler.StageOrder {
+		row.Stages = append(row.Stages, filler.StageRecord{Stage: id, Status: filler.StatusDone})
+	}
+	st.rows[clip.Hash] = row
+
+	p := newPipe(st, asSlice(allStages()), filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(t.Context(), clip.Hash, filler.StageScore, false); err != nil {
+		t.Fatal(err)
+	}
+	if !st.clips[clip.Hash].Held {
+		t.Fatal("rewound Ready clip remained playable while its pipeline was running")
+	}
+	if _, err := p.RunOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	got := st.rows[clip.Hash]
+	if got.Disposition != filler.DispositionReady || got.Status != filler.StatusDone || got.Attempts != 1 {
+		t.Fatalf("restarted clip = %+v, want one score attempt ending Ready", got)
+	}
+}
+
+func TestPipeline_RewindDoesNotResetTheConveyorWhenHoldingFails(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "ready-hold-failure")
+	clip := st.clips["ready-hold-failure"]
+	clip.Held = false
+	st.clips[clip.Hash] = clip
+	row := st.rows[clip.Hash]
+	row.Stage = filler.StageScore
+	row.Status = filler.StatusDone
+	row.Disposition = filler.DispositionReady
+	st.rows[clip.Hash] = row
+	st.holdErr = errors.New("catalog write failed")
+
+	p := newPipe(st, nil, filler.DefaultBudget()).WithRewind(st, "")
+	if err := p.Rewind(t.Context(), clip.Hash, filler.StageScore, false); !errors.Is(err, st.holdErr) {
+		t.Fatalf("Rewind error = %v, want hold failure", err)
+	}
+	if got := st.rows[clip.Hash]; got.Stage != row.Stage || got.Status != row.Status ||
+		got.Disposition != row.Disposition || got.PreparationAttempt != row.PreparationAttempt {
+		t.Fatalf("hold failure reset conveyor: got %+v, want unchanged %+v", got, row)
+	}
+}
+
 func TestPipeline_RewindRunsAStageThatWouldNormallySkip(t *testing.T) {
 	st := newPipeMemStore()
 	seedEnrolled(st, "already-tagged")

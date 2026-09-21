@@ -108,6 +108,22 @@ func (p *Pipeline) Rewind(ctx context.Context, hash string, from StageID, force 
 	if !found {
 		return fmt.Errorf("clip %s is not in the catalog", hash)
 	}
+	if clip.Path == "" {
+		return fmt.Errorf("clip %s has no playable path", hash)
+	}
+
+	// A Ready clip is unheld. Restarting only its conveyor makes it simultaneously playable and
+	// "preparing", and the terminal Ready transaction then rejects it forever because publication
+	// requires the current catalog row to be held. Hold first, before invalidating any derived
+	// facts: a failed hold leaves both the playable clip and its terminal conveyor untouched.
+	held, err := p.clips.HoldClips(ctx, []string{clip.Path}, p.now().UTC())
+	if err != nil {
+		return fmt.Errorf("hold clip for pipeline restart: %w", err)
+	}
+	if held != 1 {
+		return fmt.Errorf("hold clip for pipeline restart: clip %s changed before restart", hash)
+	}
+	clip.Held = true
 
 	if err := p.invalidate(ctx, clip, idx); err != nil {
 		return err

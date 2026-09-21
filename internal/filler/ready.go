@@ -89,7 +89,7 @@ func (c ReadyCommit) ValidateAgainst(current ClipPipeline) error {
 	if current.ClipHash != p.ClipHash || current.AcquisitionID != p.AcquisitionID ||
 		current.Stage != p.Stage || current.Stage != StageScore || current.Status != StatusRunning ||
 		current.Disposition != DispositionRunning || current.Attempts != p.Attempts ||
-		current.ForceRun != p.ForceRun || current.RejectReason != p.RejectReason ||
+		p.ForceRun || current.RejectReason != p.RejectReason ||
 		current.RejectDetail != p.RejectDetail || !current.EnrolledAt.Equal(p.EnrolledAt) ||
 		current.PreparationAttempt != p.PreparationAttempt ||
 		!samePersistedSecond(current.PreparationStartedAt, p.PreparationStartedAt) ||
