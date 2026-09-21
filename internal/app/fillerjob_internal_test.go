@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/scheduler"
 )
 
@@ -34,9 +35,9 @@ func TestFillerMediaJobsDeclareALongTimeout(t *testing.T) {
 func TestFillerPipelineDriverRunsDetailsAfterPreparation(t *testing.T) {
 	var order []string
 	driver := fillerPipelineDriver{
-		prepare: func(context.Context) error {
+		prepare: func(context.Context) (filler.PipelineResult, error) {
 			order = append(order, "prepare")
-			return errors.New("preparation failed")
+			return filler.PipelineResult{}, errors.New("preparation failed")
 		},
 		details: func(context.Context) error {
 			order = append(order, "details")
@@ -56,7 +57,10 @@ func TestFillerPipelineDriverStopsAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	detailsRan := false
 	driver := fillerPipelineDriver{
-		prepare: func(context.Context) error { cancel(); return nil },
+		prepare: func(context.Context) (filler.PipelineResult, error) {
+			cancel()
+			return filler.PipelineResult{}, nil
+		},
 		details: func(context.Context) error { detailsRan = true; return nil },
 	}
 	if err := driver.Run(ctx); !errors.Is(err, context.Canceled) {
@@ -64,6 +68,25 @@ func TestFillerPipelineDriverStopsAfterCancellation(t *testing.T) {
 	}
 	if detailsRan {
 		t.Fatal("details ran after the scheduler lease was cancelled")
+	}
+}
+
+func TestFillerPipelineDriverDefersDetailsWhilePreparationCanAdvance(t *testing.T) {
+	detailsRan := false
+	driver := fillerPipelineDriver{
+		prepare: func(context.Context) (filler.PipelineResult, error) {
+			return filler.PipelineResult{Overview: filler.PipelineOverview{Runnable: 4}}, nil
+		},
+		details: func(context.Context) error {
+			detailsRan = true
+			return nil
+		},
+	}
+	if err := driver.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if detailsRan {
+		t.Fatal("optional details ran while playable preparation still had runnable clips")
 	}
 }
 

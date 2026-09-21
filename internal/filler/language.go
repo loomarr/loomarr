@@ -15,7 +15,7 @@ import (
 // Language detection for the quality gate (§10 V40).
 //
 // The question is narrow: "is this clip's SPEECH in the language filler is expected to be in?"
-// Not "transcribe it" — a classification over the first few seconds is enough, which is why the
+// Not "transcribe it" — classification over a bounded representative sample is enough, which is why the
 // local backend can use a far smaller model than compilation splitting needs.
 //
 // ⚠ **Three answers, not two**, and collapsing any pair breaks the gate:
@@ -56,16 +56,16 @@ type LanguageDetector interface {
 
 // LanguageSampleMs is how much audio a detector inspects.
 //
-// Ten seconds, not the whole clip. Language identification reads phonetics, not meaning, so it
-// converges in a couple of seconds — and on the local backend every extra second is real compute
-// (~341s per clip under QEMU is the constraint that made this a background job at all).
-const LanguageSampleMs int64 = 10_000
+// Thirty seconds is the whole of an ordinary commercial and a bounded representative window for
+// a longer recording. Shorter excerpts proved too brittle on real mixed-brand speech: the same
+// Spanish Jersey Mike's spot alternated between English and Spanish for nearby ten-second cuts,
+// while its complete 30-second speech was correctly identified. This remains one inference call.
+const LanguageSampleMs int64 = 30_000
 
 // LanguageSpan returns the window a detector should inspect for a clip of the given length.
 //
-// ⚠ Starts at 1s rather than 0. The first moments of an advert are very often a musical sting or
-// a silent logo card, and a detector handed only that answers "none" for a clip that talks for the
-// remaining 28 seconds. One second in is past the sting on the spots this catalog holds.
+// ⚠ Ordinary spots are inspected in full. Clips longer than the sample are inspected in their
+// MIDDLE, which avoids opening leader while retaining enough speech for a stable decision.
 func LanguageSpan(durationMs int64) (startMs, endMs int64) {
 	const skipMs int64 = 1_000
 	if durationMs <= 0 {
@@ -78,33 +78,16 @@ func LanguageSpan(durationMs int64) (startMs, endMs int64) {
 		// spare second to skip, and taking nothing would report "none" for every short clip.
 		return 0, durationMs
 	}
-	// ⚠ **A LONG recording is sampled from its MIDDLE, not its opening.** A fixed 1s offset is
-	// right for a 30-second spot and wrong for a 978-second one: recorded ad breaks and VHS
-	// transfers begin with leader — dead air, a blank frame, tape run-up — so the first ten
-	// seconds are silence, and a detector handed silence produces a guess.
+	// Recorded ad breaks and VHS transfers often begin with leader — dead air, a blank frame, tape
+	// run-up — so their opening is not representative. A centered bounded sample fixes where we
+	// look without turning a long compilation into an unbounded inference request.
 	//
 	// Found live: "USA Network Commercial Breaks (10-6-1994)", 978s, whose first 10s measure
 	// **-70 LUFS**. The model was asked what language the silence was in, answered `ar`, and the
 	// gate tombstoned a perfectly good American ad break.
-	//
-	// The threshold is where a clip stops being an advert and starts being a recording of several.
-	if durationMs > longRecordingMs {
-		start := durationMs/2 - LanguageSampleMs/2
-		return start, start + LanguageSampleMs
-	}
-
-	start := skipMs
-	if end := start + LanguageSampleMs; end > durationMs {
-		start = durationMs - LanguageSampleMs
-	}
+	start := (durationMs - LanguageSampleMs) / 2
 	return start, start + LanguageSampleMs
 }
-
-// longRecordingMs is where a clip stops being one advert and starts being a recording of several.
-//
-// Two minutes: no single commercial runs that long, so anything past it is a compilation, a break
-// recording or a tape transfer — all of which open with leader rather than content.
-const longRecordingMs int64 = 120_000
 
 // NormalizeLanguage reduces a code to its base tag for comparison: `en-US`, `EN`, `eng ` all
 // become `en`.
@@ -303,8 +286,8 @@ const silenceFloorLUFS = -50.0
 
 // spanIsSilent reports whether an extracted span is effectively silent.
 //
-// ⚠ **The guard that the byte-size check could not be.** A ten-second wav of leader is 320KB of
-// near-zero samples — full size, entirely empty. Asked what language that is, a model guesses
+// ⚠ **The guard that the byte-size check could not be.** A wav of leader is full size but contains
+// only near-zero samples. Asked what language that is, a model guesses
 // rather than declining, and the gate then deletes a clip on the strength of a guess.
 //
 // Uses `ebur128`, the same measurement the loudness half of V40 already relies on, so "silent"

@@ -435,14 +435,13 @@ func fromOpenAIToolCalls(tcs []openaiToolCall) []ToolCall {
 }
 
 // AskAboutImages sends one question about a clip's keyframes and returns the model's answer
-// (§10 V44 vision tier). It follows AskAboutAudio's precedent exactly: a multimodal chat
-// completion whose user message carries `image_url` content parts alongside the text prompt,
+// (§10 V44 vision tier): a multimodal chat completion whose user message carries `image_url`
+// content parts alongside the text prompt,
 // deliberately NOT a widening of `Message.Content` (that string is on the hot path of every
-// text request, §8). The frames ride as full `data:image/jpeg;base64,…` URIs — the image
-// part's shape, unlike the audio part's bare base64 (see vision.go / audio.go).
+// text request, §8). The frames ride as full `data:image/jpeg;base64,…` URIs.
 //
-// Like AskAboutAudio it does NOT use the Provider interface: that models a tool-calling chat
-// loop, and this is a single stateless question whose answer is a small tagging JSON.
+// It does NOT use the Provider interface: that models a tool-calling chat loop, and this is a
+// single stateless question whose answer is a small tagging JSON.
 func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]byte) (Response, error) {
 	if len(jpegs) == 0 {
 		return Response{}, fmt.Errorf("vision request carries no images")

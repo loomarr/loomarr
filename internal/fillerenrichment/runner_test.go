@@ -68,8 +68,10 @@ func TestCoordinator_OneBadModelAnswerDoesNotStarveLaterClips(t *testing.T) {
 		states:     map[string][]fillerenrichment.State{},
 	}
 	provider := &textProvider{
-		responses: []string{`{"audience":"family","brand":"","product":[],"format":[],"presentation":[],"seasonal":[],"audienceCue":[],"confidence":70}`},
-		errors:    []error{context.DeadlineExceeded, nil},
+		responses: []string{`{"items":[
+			{"id":"bad","audience":"family","brand":"","product":[],"format":[],"presentation":[],"seasonal":[],"audienceCue":[],"confidence":"not-a-number"},
+			{"id":"good","audience":"family","brand":"","product":[],"format":[],"presentation":[],"seasonal":[],"audienceCue":[],"confidence":70}
+		]}`},
 	}
 	coordinator := fillerenrichment.NewCoordinator(nil, repository, func() fillerenrichment.TextSelection {
 		return fillerenrichment.TextSelection{Provider: provider, ProviderName: "fixture", Model: "model"}
@@ -125,11 +127,11 @@ func TestCoordinator_UsesOneModelCallOnlyForStillEmptyAxes(t *testing.T) {
 			{Slug: "kids-cue", Label: "Kids-oriented cue", Axis: taxonomy.AxisAudienceCue},
 		},
 	}
-	provider := &textProvider{responses: []string{`{
-		"audience":"kids","brand":"A made-up brand","product":["candy"],
+	provider := &textProvider{responses: []string{`{"items":[{
+		"id":"tootsie","audience":"kids","brand":"A made-up brand","product":["candy"],
 		"format":["commercial"],"presentation":["animated"],
 		"seasonal":["candy"],"audienceCue":["kids-cue"],"confidence":88
-	}`}}
+	}]}`}}
 	deterministic := fillerenrichment.NewRunner(repository, func(_ context.Context, c fillerenrichment.Candidate, _ time.Time) (fillerenrichment.Signals, error) {
 		return fillerenrichment.Signals{Title: c.Name, Kind: c.Kind}, nil
 	}, func() int { return 10 }, func() time.Time { return now })
@@ -173,6 +175,37 @@ func TestCoordinator_UsesOneModelCallOnlyForStillEmptyAxes(t *testing.T) {
 	}
 }
 
+func TestCoordinator_BatchesSeveralClipsIntoOneModelRequest(t *testing.T) {
+	now := time.Unix(250, 0).UTC()
+	repository := &runnerRepository{
+		candidates: []fillerenrichment.Candidate{
+			{ClipHash: "first", Name: "First commercial"},
+			{ClipHash: "second", Name: "Second commercial"},
+		},
+		states: map[string][]fillerenrichment.State{},
+	}
+	provider := &textProvider{responses: []string{
+		`{"items":[
+			{"id":"first","kind":"commercial","audience":"general","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70},
+			{"id":"second","kind":"commercial","audience":"family","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70}
+		]}`,
+		`{"kind":"commercial","audience":"family","brand":"","product":[],"format":[],"seasonal":[],"audienceCue":[],"presentation":[],"confidence":70}`,
+	}}
+	coordinator := fillerenrichment.NewCoordinator(nil, repository, func() fillerenrichment.TextSelection {
+		return fillerenrichment.TextSelection{Provider: provider, ProviderName: "fixture", Model: "model"}
+	}, func(_ context.Context, candidate fillerenrichment.Candidate, _ time.Time) (fillerenrichment.Signals, error) {
+		return fillerenrichment.Signals{Title: candidate.Name}, nil
+	}, func() int { return 10 }, func() time.Time { return now })
+
+	result, err := coordinator.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.calls) != 1 || len(repository.passes) != 2 || result.Failed != 0 {
+		t.Fatalf("calls=%d passes=%d result=%+v, want one model batch and two clip passes", len(provider.calls), len(repository.passes), result)
+	}
+}
+
 func TestCoordinator_IsQuietWithoutAConfiguredTextProvider(t *testing.T) {
 	repository := &runnerRepository{}
 	runner := fillerenrichment.NewRunner(repository, func(context.Context, fillerenrichment.Candidate, time.Time) (fillerenrichment.Signals, error) {
@@ -200,7 +233,7 @@ func TestTextPass_OperatorEmptyAnswerIsNotReopened(t *testing.T) {
 		},
 		taxa: []taxonomy.Taxon{{Slug: "commercial", Label: "Commercial", Axis: taxonomy.AxisFormat}},
 	}
-	provider := &textProvider{responses: []string{`{"audience":"kids","brand":"","product":[],"format":["commercial"],"presentation":[],"seasonal":[],"audienceCue":[],"confidence":80}`}}
+	provider := &textProvider{responses: []string{`{"items":[{"id":"operator","audience":"kids","brand":"","product":[],"format":["commercial"],"presentation":[],"seasonal":[],"audienceCue":[],"confidence":80}]}`}}
 	coordinator := fillerenrichment.NewCoordinator(nil, repository, func() fillerenrichment.TextSelection {
 		return fillerenrichment.TextSelection{Provider: provider, ProviderName: "ollama", Model: "local"}
 	}, func(_ context.Context, c fillerenrichment.Candidate, _ time.Time) (fillerenrichment.Signals, error) {

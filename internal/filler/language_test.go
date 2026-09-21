@@ -73,23 +73,22 @@ func TestLanguageRejects_SilenceIsNeverGroundsForRejection(t *testing.T) {
 	}
 }
 
-// The sampled window. ⚠ It starts 1s in because the first moments of an advert are very often a
-// musical sting or a silent logo card, and a detector handed only that answers "none" for a clip
-// that talks for the remaining 28 seconds.
+// The sampled window. A normal commercial is inspected in full: live evidence from a 30-second
+// Spanish Jersey Mike's spot showed that nearby ten-second cuts alternated between English and
+// Spanish while its complete speech was correctly classified as Spanish.
 func TestLanguageSpan(t *testing.T) {
-	t.Run("skips the opening sting on a normal spot", func(t *testing.T) {
+	t.Run("takes all of a normal spot", func(t *testing.T) {
 		start, end := filler.LanguageSpan(30_000)
-		if start != 1_000 {
-			t.Errorf("start = %dms, want 1000 — frame 0 is often a silent logo card", start)
+		if start != 0 || end != 30_000 {
+			t.Errorf("span = [%d,%d), want the complete [0,30000) commercial", start, end)
 		}
 		if end-start != filler.LanguageSampleMs {
 			t.Errorf("span = %dms, want %dms", end-start, filler.LanguageSampleMs)
 		}
 	})
 
-	// ⚠ A clip SHORTER than the window has no spare second to skip. Taking a 10s window from a 6s
-	// bumper would ask about audio that does not exist, and the answer is "none" for every short
-	// clip in the catalog.
+	// ⚠ A clip SHORTER than the window is inspected in full. Asking past a 6s bumper would produce
+	// an empty tail and make the result depend on audio that does not exist.
 	t.Run("takes all of a clip shorter than the window", func(t *testing.T) {
 		start, end := filler.LanguageSpan(6_000)
 		if start != 0 || end != 6_000 {

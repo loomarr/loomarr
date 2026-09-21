@@ -626,6 +626,32 @@ func declared() []Setting {
 			ShowWhen: map[string][]string{"llm.provider": {"ollama"}},
 		},
 		{
+			Key: "asr.provider", Label: "Speech recognition", EnvVar: "ASR_PROVIDER", Group: GroupAI,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("whisper", "Built in on this device"), opt("hosted", "Connected speech service"),
+			},
+			Default: "whisper",
+			Doc:     "How Loomarr understands speech in clips. The built-in option stays on this device; a connected service is faster on low-power hardware and can use a separate address and key under Advanced.",
+		},
+		{
+			Key: "asr.url", Label: "Speech service address", EnvVar: "ASR_URL", Group: GroupAI,
+			Kind: KindURL, Default: "", Advanced: true,
+			Doc:      "OpenAI-compatible speech-to-text API base, such as http://fictional-ai-server:8083/v1. Leave blank to reuse the active hosted AI service.",
+			ShowWhen: map[string][]string{"asr.provider": {"hosted"}},
+		},
+		{
+			Key: "asr.api_key", Label: "Speech service API key", EnvVar: "ASR_API_KEY", Group: GroupAI,
+			Kind: KindSecret, Default: "", Advanced: true,
+			Doc:      "API key for the separate speech service. It is never shown again after saving and the main AI key is never sent to a custom speech address.",
+			ShowWhen: map[string][]string{"asr.provider": {"hosted"}},
+		},
+		{
+			Key: "asr.model", Label: "Speech model", EnvVar: "ASR_MODEL", Group: GroupAI,
+			Kind: KindString, Default: "openai/whisper-large-v3", Advanced: true,
+			Doc:      "Speech-to-text model used by the connected service. It is separate from the lineup model because it must return timed transcript segments and the detected language.",
+			ShowWhen: map[string][]string{"asr.provider": {"hosted"}},
+		},
+		{
 			Key: "suggest.max_acquisitions", Label: "Pending-download limit per person", EnvVar: "SUGGEST_MAX_ACQUISITIONS", Group: GroupAI,
 			Kind: KindInt, Default: 10,
 			Doc: "The most titles a single suggestion may download.",
@@ -726,27 +752,12 @@ func declared() []Setting {
 			Doc: "Scan the drop-folder for clips. Switching it off stops the catalog sync; clips already in the catalog stay.",
 		},
 		{
-			// On-demand transcription (§10 V44). ⚠ OFF by default: it shares the whisper seam with
-			// the language gate on the local path (~341s per clip under QEMU), and spends provider
-			// credit on the hosted path, so it is a deliberate opt-in either way. The job is
-			// SELECTIVE even when on — it only transcribes clips whose source described them thinly,
-			// never the whole catalog.
-			Key: "filler.transcribe.enabled", Label: "Transcribe unclear clips", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
-			Kind: KindBool, Default: false, Advanced: true,
-			Doc: "Listen to clips whose source told us almost nothing and write down what they say, so Loomarr can work out the brand and era. Uses the transcription provider selected below.",
-		},
-		{
-			Key: "filler.transcribe.provider", Label: "Transcription service", EnvVar: "FILLER_TRANSCRIBE_PROVIDER", Group: GroupFiller,
-			Kind: KindEnum, Enum: []EnumOption{
-				opt("whisper", "Local (whisper)"), opt("hosted", "Hosted AI service"),
-			},
-			Default: "whisper", Advanced: true,
-			Doc: "Where timed transcripts come from: the bundled local Whisper engine, or the hosted AI provider configured under AI. OpenRouter supports this with the same key used for text and vision.",
-		},
-		{
-			Key: "filler.transcribe.model", Label: "Transcription model", EnvVar: "FILLER_TRANSCRIBE_MODEL", Group: GroupFiller,
-			Kind: KindString, Default: "openai/whisper-large-v3", Advanced: true,
-			Doc: "Speech-to-text model used for hosted transcription. This is separate from the chat and vision models because it must return timed transcript segments.",
+			// Selective speech details (§10 V44). Enabled by default because it only listens when a
+			// source did not provide enough identity, and the local engine has no egress or usage cost.
+			// Choosing a connected service remains the explicit egress/cost decision.
+			Key: "filler.transcribe.enabled", Label: "Listen for missing clip details", EnvVar: "FILLER_TRANSCRIBE_ENABLED", Group: GroupFiller,
+			Kind: KindBool, Default: true, Advanced: true,
+			Doc: "When a source provides very little information, listen for spoken brand and product details. Loomarr skips this for clips that already have enough context. Choose the speech service under Settings → AI.",
 		},
 		{
 			// Vision tagging (§10 V44). ⚠ OFF by default AND gated on a vision-capable LLM: the
@@ -1138,25 +1149,6 @@ func declared() []Setting {
 			Kind: KindEnum, Enum: fillerLanguageOptions(), Presentation: PresentationLanguage, Default: "en",
 			Doc: "The language filler is expected to be in. A clip whose speech is confidently something else is rejected; a clip with no speech at all is always kept.",
 		},
-		{
-			// Mirrors `llm.provider`'s local-vs-hosted split (§8.1), and for the same reason:
-			// local is free and offline, hosted costs money and leaves the box.
-			//
-			// ⚠ **NOT Ollama.** "We already run a local LLM so we do not need whisper" is the
-			// reasonable inference and it is wrong — Ollama has no audio input path at all
-			// (probed 2026-08-03: completion/vision/tools/thinking, no `audio`; vision is images).
-			// Local audio means whisper; hosted is what Ollama cannot be.
-			//
-			// ⚠ whisper is ~3s per clip natively but **~341s under QEMU**, which is why the job
-			// runs in the background and why an arm64 install effectively needs the hosted path.
-			Key: "filler.language_provider", Label: "Language detection service", EnvVar: "FILLER_LANGUAGE_PROVIDER", Group: GroupFiller,
-			Kind: KindEnum, Enum: []EnumOption{
-				opt("whisper", "Local (whisper)"), opt("hosted", "Hosted AI service"),
-			},
-			Default: "whisper", Advanced: true,
-			Doc: "What works out a clip's language: the built-in local engine (free and offline, but slow on low-power hardware), or a hosted AI service (fast anywhere, costs a fraction of a cent per clip and sends a few seconds of audio off this machine).",
-		},
-
 		// --- Filler ingest (§10, §15) ---
 		// ⚠ The vendored binaries ship in the SINGLE image (§16). This block used to be
 		// labelled "loomarr:filler image variant only" — that variant no longer exists, so

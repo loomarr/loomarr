@@ -95,7 +95,6 @@ var fillerOwners = map[string]Owner{
 	"filler.max_clip_duration":   OwnerFillerPlayback,
 	"filler.target_lufs":         OwnerFillerPlayback,
 	"filler.language":            OwnerFillerPlayback,
-	"filler.language_provider":   OwnerFillerPlayback,
 	"filler.language_model":      OwnerFillerPlayback,
 
 	"filler.pipeline.max_clips":        OwnerFillerLimits,
@@ -111,12 +110,10 @@ var fillerOwners = map[string]Owner{
 	"ingest.whisper_path":  OwnerFillerTools,
 	"ingest.whisper_model": OwnerFillerTools,
 
-	"filler.transcribe.provider": OwnerAI,
-	"filler.transcribe.model":    OwnerAI,
-	"filler.vision.provider":     OwnerAI,
-	"filler.vision.model":        OwnerAI,
-	"filler.vision.url":          OwnerAI,
-	"filler.vision.api_key":      OwnerAI,
+	"filler.vision.provider": OwnerAI,
+	"filler.vision.model":    OwnerAI,
+	"filler.vision.url":      OwnerAI,
+	"filler.vision.api_key":  OwnerAI,
 }
 
 var knownOwners = map[Owner]struct{}{

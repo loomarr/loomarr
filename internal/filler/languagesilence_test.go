@@ -21,7 +21,7 @@ import (
 //
 // Two fixes, and this covers the load-bearing one:
 //
-//   - `LanguageSpan` now samples a long recording from its MIDDLE. That fixes WHERE we look.
+//   - `LanguageSpan` samples every longer clip from its MIDDLE. That fixes WHERE we look.
 //   - `spanIsSilent` refuses to ask at all below the floor. That holds WHEREVER we land, including
 //     on a clip that is genuinely silent throughout.
 //
@@ -60,7 +60,7 @@ func TestSilenceFloor_LeavesRoomForTheQuietestRealClip(t *testing.T) {
 	}
 }
 
-// The span rule itself: a long recording is sampled from the middle, a normal advert is not.
+// The span rule itself: long recordings use their middle while ordinary adverts are read in full.
 func TestLanguageSpan_LongRecordingsAreSampledFromTheMiddle(t *testing.T) {
 	// The real clip: 978.767s.
 	start, end := LanguageSpan(978_767)
@@ -71,9 +71,8 @@ func TestLanguageSpan_LongRecordingsAreSampledFromTheMiddle(t *testing.T) {
 		t.Errorf("span is %dms, want %dms", end-start, LanguageSampleMs)
 	}
 
-	// ⚠ A normal advert is UNCHANGED. The middle of a 30-second spot is no better than 1s in, and
-	// changing it would invalidate the behaviour already verified against real clips.
-	if s, e := LanguageSpan(30_000); s != 1_000 || e != 11_000 {
-		t.Errorf("30s advert span = [%d,%d), want [1000,11000) unchanged", s, e)
+	// Ten-second excerpts of a real Spanish commercial were unstable; the complete spot was not.
+	if s, e := LanguageSpan(30_000); s != 0 || e != 30_000 {
+		t.Errorf("30s advert span = [%d,%d), want the complete spot [0,30000)", s, e)
 	}
 }

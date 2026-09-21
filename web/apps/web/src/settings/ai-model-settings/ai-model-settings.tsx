@@ -111,8 +111,6 @@ const AiModelSettings = ({
   onModelChange,
   visionProvider = "inherit",
   visionModel = "",
-  transcriptionProvider = "whisper",
-  transcriptionModel = "openai/whisper-large-v3",
   onRoleSettingChange,
   tmdbConfigured,
 }: {
@@ -122,8 +120,6 @@ const AiModelSettings = ({
   onModelChange?: () => void;
   visionProvider?: string;
   visionModel?: string;
-  transcriptionProvider?: string;
-  transcriptionModel?: string;
   onRoleSettingChange?: (key: string, value: string) => void;
   tmdbConfigured?: boolean;
 }) => {
@@ -371,24 +367,6 @@ const AiModelSettings = ({
       : visionProvider === "ollama" || (!isHosted && visionProvider === "inherit")
         ? `ollama:${visionModel}`
         : `hosted:${visionModel}`;
-  const transcriptionOptions: RoleOption[] = [
-    {
-      id: "whisper",
-      label: "Bundled local Whisper",
-      detail: "Default. Runs locally and does not use hosted credits.",
-    },
-    ...(isHosted && activeProvider?.keyConfigured
-      ? (activeProvider?.models ?? [])
-          .filter((model) => model.transcription)
-          .map((model) => ({
-            id: `hosted:${model.id}`,
-            label: model.label,
-            detail: `${activeProvider?.label ?? "Hosted"} · timed speech-to-text`,
-          }))
-      : []),
-  ];
-  const activeTranscription = transcriptionProvider === "hosted" ? `hosted:${transcriptionModel}` : "whisper";
-
   return (
     <div className="flex flex-col gap-4">
       <section aria-labelledby="role-lineup" className="flex flex-col gap-3 border-border border-t pt-4">
@@ -426,8 +404,8 @@ const AiModelSettings = ({
         </section>
       )}
       <CollapsibleSection
-        title="Advanced model roles"
-        description="Optionally choose separate models for filler vision and transcription."
+        title="Advanced vision model"
+        description="Choose a separate model only when the lineup model cannot read clip frames."
       >
         <div className="flex flex-col gap-4">
           <RolePicker
@@ -443,20 +421,6 @@ const AiModelSettings = ({
                 const [kind, ...parts] = id.split(":");
                 onRoleSettingChange("filler.vision.provider", kind === "ollama" ? "ollama" : "inherit");
                 onRoleSettingChange("filler.vision.model", parts.join(":"));
-              }
-            }}
-          />
-          <RolePicker
-            title="Transcription"
-            description="Creates timed speech segments. Bundled Whisper is the local default; hosted choices use the same active provider credential."
-            options={transcriptionOptions}
-            active={activeTranscription}
-            onSelect={(id) => {
-              if (id === "whisper") {
-                onRoleSettingChange("filler.transcribe.provider", "whisper");
-              } else {
-                onRoleSettingChange("filler.transcribe.provider", "hosted");
-                onRoleSettingChange("filler.transcribe.model", id.slice("hosted:".length));
               }
             }}
           />

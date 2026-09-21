@@ -19,13 +19,13 @@ func (f *fixedSpanTranscriber) Transcribe(context.Context, string, int64, int64)
 	return []TranscriptSegment{{StartMs: 0, EndMs: 1000, Text: "hosted"}}, nil
 }
 
-func (r *recordingSTT) TranscribeAudio(_ context.Context, model, format, language string, audio []byte) ([]TranscriptSegment, error) {
+func (r *recordingSTT) TranscribeAudio(_ context.Context, model, format, language string, audio []byte) (AudioTranscription, error) {
 	r.calls++
 	r.model, r.lang = model, language
 	if format != "wav" || string(audio) != fmt.Sprintf("chunk-%d", r.calls) {
-		return nil, fmt.Errorf("request %d = %q/%q", r.calls, format, audio)
+		return AudioTranscription{}, fmt.Errorf("request %d = %q/%q", r.calls, format, audio)
 	}
-	return []TranscriptSegment{{StartMs: 100, EndMs: 1_100, Text: fmt.Sprintf("part %d", r.calls)}}, nil
+	return AudioTranscription{Language: "en", Segments: []TranscriptSegment{{StartMs: 100, EndMs: 1_100, Text: fmt.Sprintf("part %d", r.calls)}}}, nil
 }
 
 func TestHostedTranscriber_ChunksAndReassemblesTimestamps(t *testing.T) {

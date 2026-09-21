@@ -295,6 +295,69 @@ func TestFetch_ScheduledPassCapsAllSourcesFromOneProvider(t *testing.T) {
 	}
 }
 
+func TestFetch_YouTubePrefersDifferentCampaignsOverShortAndLongCuts(t *testing.T) {
+	short := youtubeRef("qb-15", 15*time.Second)
+	short.Title = "JM X NFL QB Danny :15 sec. spot"
+	long := youtubeRef("qb-30", 30*time.Second)
+	long.Title = "JM X NFL QB Danny :30 sec. spot"
+	other := youtubeRef("hot-takes", 30*time.Second)
+	other.Title = "Hot Takes - 30 Sec"
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{
+			ID: "youtube:jersey-mikes", Kind: "youtube", URI: "https://youtube.com/@jerseymikes/videos", Enabled: true,
+		}},
+		offers: []filler.DiscoveredRef{short, long, other},
+	}
+
+	res, err := newFetcher(t, stub, limits(2, 2000)).RunSource(t.Context(), "youtube:jersey-mikes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Queued != 2 || !reflect.DeepEqual(stub.queuedIDs, []string{"hot-takes", "qb-30"}) {
+		t.Fatalf("queued = %v, want the fuller QB cut and a different campaign", stub.queuedIDs)
+	}
+}
+
+func TestFetch_YouTubeDurationVariantsDoNotReturnOnTheNextCheck(t *testing.T) {
+	const sourceID = "youtube:jersey-mikes"
+	short := youtubeRef("qb-15", 15*time.Second)
+	short.Title = "JM X NFL QB Danny :15 sec. spot"
+	long := youtubeRef("qb-30", 30*time.Second)
+	long.Title = "JM X NFL QB Danny :30 sec. spot"
+	firstOther := youtubeRef("hot-takes", 30*time.Second)
+	firstOther.Title = "Hot Takes - 30 Sec"
+	secondOther := youtubeRef("remember", 30*time.Second)
+	secondOther.Title = "Remember Get It Before Its Gone - 30 Sec"
+	stub := &fetchStub{
+		sources: []filler.FetchSource{{
+			ID: sourceID, Kind: "youtube", URI: "https://youtube.com/@jerseymikes/videos", Enabled: true,
+		}},
+		offers: []filler.DiscoveredRef{short, firstOther, secondOther, long},
+	}
+	states := map[string]filler.ExistingRemoteState{}
+	fetcher := newFetcherWithRemoteStates(t, stub, limits(2, 2000), states)
+
+	first, err := fetcher.RunSource(t.Context(), sourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completion := stub.completions[sourceID]
+	for _, id := range stub.queuedIDs {
+		states[(filler.RemoteIdentity{Provider: "youtube", SourceID: sourceID, RemoteID: id}).Key()] = filler.RemoteQueued
+	}
+	stub.sources[0].ScanCheckpoint = completion.Checkpoint
+	stub.queuedIDs = nil
+
+	second, err := fetcher.RunSource(t.Context(), sourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Queued != 2 || second.Queued != 1 || !reflect.DeepEqual(stub.queuedIDs, []string{"qb-30"}) {
+		t.Fatalf("checks queued %d then %d/%v, want two different campaigns then only the fuller QB cut",
+			first.Queued, second.Queued, stub.queuedIDs)
+	}
+}
+
 func TestFetch_ManualCheckRetainsTheProviderPassCap(t *testing.T) {
 	items := make([]filler.DiscoveredRef, 60)
 	for i := range items {

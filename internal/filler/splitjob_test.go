@@ -1022,9 +1022,9 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 		{StartMs: 40_000, EndMs: 60_000, Title: "Wordless advert"},
 	}}
 	detector := &spanLanguageDetector{answers: map[[2]int64]string{
-		{1_000, 11_000}:  "en",
-		{21_000, 31_000}: "es",
-		{41_000, 51_000}: filler.LangNone,
+		{0, 20_000}:      "en",
+		{20_000, 40_000}: "es",
+		{40_000, 60_000}: filler.LangNone,
 	}}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
@@ -1055,7 +1055,7 @@ func TestPropose_ExcludesConfidentLanguageMismatchBeforeReview(t *testing.T) {
 	if proposal.Segments[1].Name != "Wordless advert" || proposal.Segments[1].Language != filler.LangNone || !proposal.Segments[1].LanguageChecked {
 		t.Errorf("wordless segment = %+v", proposal.Segments[1])
 	}
-	wantSpans := [][2]int64{{1_000, 11_000}, {21_000, 31_000}, {41_000, 51_000}}
+	wantSpans := [][2]int64{{0, 20_000}, {20_000, 40_000}, {40_000, 60_000}}
 	if !reflect.DeepEqual(detector.spans, wantSpans) {
 		t.Errorf("language spans = %v, want %v", detector.spans, wantSpans)
 	}
@@ -1077,8 +1077,8 @@ func TestPropose_KeepsUnknownAndFailedLanguageChecksReviewable(t *testing.T) {
 		{StartMs: 20_000, EndMs: 40_000, Title: "Temporarily unavailable advert"},
 	}}
 	detector := &spanLanguageDetector{
-		answers: map[[2]int64]string{{1_000, 11_000}: ""},
-		errors:  map[[2]int64]error{{21_000, 31_000}: errors.New("detector timed out")},
+		answers: map[[2]int64]string{{0, 20_000}: ""},
+		errors:  map[[2]int64]error{{20_000, 40_000}: errors.New("detector timed out")},
 	}
 	sp := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
@@ -1151,9 +1151,9 @@ func TestSplitStage_ResumesBoundedLanguageChecksBeforeReview(t *testing.T) {
 		{StartMs: 40_000, EndMs: 60_000, Title: "Wordless advert"},
 	}}
 	detector := &spanLanguageDetector{answers: map[[2]int64]string{
-		{1_000, 11_000}:  "en",
-		{21_000, 31_000}: "es",
-		{41_000, 51_000}: filler.LangNone,
+		{0, 20_000}:      "en",
+		{20_000, 40_000}: "es",
+		{40_000, 60_000}: filler.LangNone,
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
@@ -1211,8 +1211,8 @@ func TestSplitStage_ResolvesAnEntirelyMismatchedCompilationWithoutAskingForRevie
 		{StartMs: 20_000, EndMs: 40_000, Title: "Second Polish advert"},
 	}}
 	detector := &spanLanguageDetector{answers: map[[2]int64]string{
-		{1_000, 11_000}:  "pl",
-		{21_000, 31_000}: "pl",
+		{0, 20_000}:      "pl",
+		{20_000, 40_000}: "pl",
 	}}
 	splitter := newSplitter(st, tools, nil, t.TempDir()).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,
@@ -1761,9 +1761,9 @@ func TestConfirm_WritesReviewedSegments(t *testing.T) {
 		{StartMs: 61_000, EndMs: 91_000, Title: "Boundary edit"},
 	}}
 	detector := &spanLanguageDetector{answers: map[[2]int64]string{
-		{1_000, 11_000}:  "en",
-		{31_000, 41_000}: filler.LangNone,
-		{62_000, 72_000}: "en",
+		{0, 30_000}:      "en",
+		{30_500, 60_500}: filler.LangNone,
+		{61_000, 91_000}: "en",
 	}}
 	sp := newSplitter(st, tools, nil, drop).WithSegmentLanguage(filler.SegmentLanguagePolicy{
 		Detector: detector,

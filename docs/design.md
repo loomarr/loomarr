@@ -4596,9 +4596,9 @@ non-object answer remains a retryable provider failure. The Ollama vision reques
 native JSON output mode; prompt-only JSON produced malformed syntax often enough to consume real
 retries. Hosted providers retain their existing portable prompt-and-parse path.
 
-**On-demand transcription (V44).** Transcribing every clip inline is not affordable — a clip costs ~3s natively but ~341s under QEMU (§10 language gate), so a 100-clip folder would be a ~9.5-hour scan on arm64. The `transcribe` job (below, modelled on the language gate) is therefore opt-in, timer-driven, batched, and **selective**: it transcribes only clips whose source text is *thin OR that remain untagged after a text-only pass* — a clip with a rich archive.org description never pays for Whisper. Transcripts persist to the store **and** the sidecar (like `originalName`/`normalizedLufs`), so they survive a catalog rebuild.
+**Selective transcription (V44).** Transcribing every clip inline is not affordable — a clip costs ~3s natively but ~341s under QEMU (§10 language gate), so a 100-clip folder would become a ~9.5-hour intake on arm64. The background pipeline therefore listens only when a source description is *thin OR the clip remains unidentified after a text-only pass* — a clip with rich Archive.org details never pays for Whisper. The selective local path is enabled by default; choosing a connected service is the explicit egress/cost decision, and operators may turn the detail pass off independently. Transcripts persist to the store **and** the sidecar (like `originalName`/`normalizedLufs`), so they survive a catalog rebuild.
 
-**Vision tagging (V44) is hosted-provider-first, with a local path.** The hosted implementation follows the audio precedent (`internal/llm/audio.go`): a separate `AskAboutImages` method building `image_url` content parts with `data:image/jpeg;base64,…` URIs, **not** a widening of `Message.Content` (that string is on the hot path of every text request). A **local** path wires Ollama's per-message `images` field so a fully-local install (llava / llama-vision) also gets visual tagging — the one V44 change that touches the shared `Chat` path, and therefore the one guarded by tests proving the existing text path is unchanged. Keyframes come from `ffmpeg` stills (the `FFmpegArtwork` renderer already produces viewable 320px JPEGs; the `GrayFrames` dHash path is 9×8 grayscale and unusable for vision). Vision is a new external capability, recorded in §14 with its cost rationale.
+**Vision tagging (V44) is hosted-provider-first, with a local path.** The hosted implementation uses a separate `AskAboutImages` method building `image_url` content parts with `data:image/jpeg;base64,…` URIs, **not** a widening of `Message.Content` (that string is on the hot path of every text request). A **local** path wires Ollama's per-message `images` field so a fully-local install (llava / llama-vision) also gets visual tagging — the one V44 change that touches the shared `Chat` path, and therefore the one guarded by tests proving the existing text path is unchanged. Keyframes come from `ffmpeg` stills (the `FFmpegArtwork` renderer already produces viewable 320px JPEGs; the `GrayFrames` dHash path is 9×8 grayscale and unusable for vision). Vision is a new external capability, recorded in §14 with its cost rationale.
 
 **Era must be grounded in the source text — a measured §8 hole, closed by V34 (maintainer's call: both halves, not one).** Running the real tagging prompt over real transcripts invented an era on 2 of 10 clips — `1980` and `1970` with no year anywhere in the text, inferred from tone — and the validator had no way to tell an inferred year from a read one (plan §6.4). So: an `era` tag is accepted **only when that year appears literally in the clip's text signals** (filename, sidecar text, or transcript); otherwise it is **not persisted as fact** and is instead recorded as a **suggestion** the operator confirms (`PATCH /v1/filler/tags` setting `era` confirms and clears it). This applies to **every** tagging path, not just transcripts — the sidecar path has always been able to hit it; transcripts merely made it frequent enough to measure.
 
@@ -4659,6 +4659,12 @@ operation does not advance the checkpoint.
 Automatic YouTube acquisition rejects entries before download when their duration is unknown,
 shorter than `filler.min_duration`, longer than `filler.autosplit.max_duration`, or when yt-dlp
 identifies them as live, upcoming, private, unavailable, or otherwise too incomplete to fetch.
+Across one bounded checkpointed YouTube sweep, an explicit duration suffix in otherwise-identical
+titles (for example, the 15- and 30-second cuts of one campaign) is a diversity hint: Loomarr picks
+the fuller declared cut from the complete bounded listing before advancing its cursor, and continues
+for a different campaign. Unsuffixed titles never collapse on text alone, and this selection hint is
+not persisted as duplicate evidence. This prevents variants separated across consecutive checks
+from filling the Library without pretending that similar names prove identical media.
 Archive.org keeps its existing metadata-tolerant behavior because its bounded collection listing
 does not reliably expose the same fields. Successful Source checks persist a closed summary of
 queued, already-known, too-short, too-long, live, upcoming, private, unavailable, and incomplete
@@ -5781,27 +5787,37 @@ tuning makes safe to act on.
 
 Two defences, and they are deliberately independent:
 
-- **Long recordings are sampled from the MIDDLE.** Past two minutes a clip has stopped being one
-  advert and become a recording of several, which always opens with leader. This fixes *where* we
-  look — the same clips measured −25 and −28 LUFS mid-recording, squarely in speech range.
+- **An ordinary commercial is inspected in full; longer recordings use the middle 30 seconds.**
+  The bounded middle is past opening leader while a complete spot carries enough speech for a
+  stable decision. This fixes *where* we look: long recordings measured −25 and −28 LUFS in the
+  middle, and nearby ten-second cuts of a live Spanish Jersey Mike's spot alternated between
+  English and Spanish while its complete 30-second speech was correctly identified as Spanish.
 - **A span below a loudness floor is never asked about at all.** `−50 LUFS`, measured with the
   same `ebur128` the loudness half of V40 uses. This holds *wherever* we land, including on a clip
   that is genuinely silent throughout. The floor leaves wide room above the quietest real clip
   measured in this catalog (−32.6 LUFS), because treating a quiet advert as silent would be the
   same bug in the other direction.
 
-⚠ The local backend has a third defence the hosted one structurally cannot: it checks whether
-whisper transcribed anything, so silence yields no utterances and returns `none` naturally. Only
-the hosted path can guess, which is why the floor exists.
+Both backends also require at least one non-empty transcribed segment before accepting a detected
+language. Silence or music therefore returns `none` even when a recognizer reports a guessed
+language code. The loudness floor remains an independent guard that avoids sending obvious silence
+to either engine.
 
-**Two backends behind one seam**, mirroring `llm.provider`'s local-vs-hosted split (§8.1):
+**Two backends behind one speech-recognition choice.** Language detection and optional timed
+transcripts use the same engine; asking users to configure a second audio-capable chat model for
+language made one clip depend on two unrelated services and excluded dedicated ASR servers.
 
-| | `filler.language_provider = whisper` (default) | `= hosted` |
+| | `asr.provider = whisper` (default) | `= hosted` |
 | --- | --- | --- |
-| Engine | vendored `whisper-cli` + `ggml-small.en.bin` | an audio-input model via the §8.1 hosted provider |
-| Per clip | ~3s natively, **~341s under QEMU** | ~1s — it is a network call, so architecture stops mattering |
-| Cost | free | fractions of a cent for a 10s span |
+| Engine | vendored `whisper-cli` + `ggml-small.en.bin` | a timed speech-to-text model through a dedicated or inherited OpenAI-compatible endpoint |
+| Per clip | bounded background inference over at most 30s of audio | one bounded network inference over at most 30s of audio |
+| Cost | free | provider-dependent speech-to-text cost |
 | Offline | yes | no |
+
+The connected option uses the standard OpenAI-compatible multipart `/audio/transcriptions` route
+with `verbose_json` segment timing and the response's detected `language`. `ASR_URL`, `ASR_MODEL`,
+and `ASR_API_KEY[_FILE]` may point it at a dedicated service; a blank URL reuses the selected hosted
+AI service for providers such as OpenRouter. An explicit speech URL never inherits the main AI key.
 
 ⚠ **An unavailable backend is a skip, not a retry.** If the selected detector has no model,
 executable, media tool, or hosted client configured, the language rung records why it did not apply
@@ -5824,7 +5840,7 @@ whisper; the hosted option is what Ollama cannot be.
 so an arm64 install effectively has only the hosted path. The feature is off by default rather than
 degrading silently there.
 
-⚠ **Local is the default, and hosted is an opt-in that costs money and leaves the house.** Sending
+⚠ **Local is the default, and a connected service is an opt-in that may cost money and leaves the house.** Sending
 clip audio to a third party is a change in posture, not a performance tweak — the same reason §8.1
 defaults to local Ollama and makes hosted a deliberate choice with a key. It is also the first
 feature that spends money per clip.
@@ -5908,8 +5924,8 @@ useless for vision. A new `MediaTools.Keyframes` seam returns JPEG bytes for sev
 the clip — the same seam pattern as `Transcribe`.
 
 ⚠ **Hosted-first, with a local path — and the local path is the one careful change.** The hosted
-implementation follows `internal/llm/audio.go`: a separate `AskAboutImages` building `image_url`
-content parts with `data:image/jpeg;base64,…`, **not** a widening of `Message.Content` (that string
+implementation uses a separate `AskAboutImages` method building `image_url` content parts with
+`data:image/jpeg;base64,…`, **not** a widening of `Message.Content` (that string
 is on the hot path of every text request, §8 provider abstraction). The **local** path wires
 Ollama's per-message `images` field — Ollama *does* report a `vision` capability (probed live
 2026-08-03, §10 quality gate; it is images-only, which is exactly what this needs), so a fully-local
@@ -6348,29 +6364,26 @@ from the display path, rather than carrying dead fields that read as capability.
 
 #### Settings + AI-page implications (V45 — governed by `docs/config-design.md`)
 
-⚠ **V61/V62 supersede this manual three-role surface with five automatic role routes.** The
-historical implementation has three model roles: text, vision, and audio/transcription. They may share one
-hosted OpenAI-compatible provider (including OpenRouter) while keeping separate model ids because
-their modalities differ. Local transcription remains the bundled whisper path; there is no
-embedding role.
+⚠ **V61/V62 supersede the manual three-role picker with automatic routes and one speech
+connection.** Text and vision may share one hosted OpenAI-compatible provider (including
+OpenRouter). Speech recognition may reuse it or declare a dedicated compatible endpoint. Local
+speech remains the bundled whisper path; there is no embedding role.
 
-⚠ **All three roles resolve one active provider selection, including its branded credential.** A
+⚠ **Text and inherited vision resolve one active provider selection, including its branded credential.** A
 hosted selection stores the wire kind as `llm.provider=openai`, its brand as
 `llm.hosted_provider` (`openrouter`, `custom`, …), and its secret as
 `llm.api_key.<brand>`. Text tagging and split classification, inherited vision, hosted timed
-transcription, and the setup connection check must all resolve that selection rather than reading
-the legacy `llm.api_key` row directly. The wire remains OpenAI-compatible; the brand exists so a
-restart can recover the right namespaced key. Custom endpoints may have an empty key, so endpoint
-presence — not credential presence — is the runtime availability boundary, while the setup check
-reports the selected provider's own credential state.
+transcription with a blank speech URL, and the setup connection check resolve that selection rather
+than reading the base `llm.api_key` row directly. Speech may instead declare its own
+`ASR_URL`/`ASR_MODEL`/`ASR_API_KEY`; that explicit endpoint never inherits the main provider's
+credential. The wire remains OpenAI-compatible. Custom endpoints may have an empty key, so endpoint
+presence — not credential presence — is the runtime availability boundary.
 
-- **A "Model roles" section on the AI page** — text / vision / audio, each a reusable
-  `ModelPicker` (the component is already props-driven — `catalog`/`active`/`onSelect`, not hardwired
-  to `llm.model`), each pointed at its own settings key. The one backend addition is filtering the
-  ranked model catalog **by role capability** (Ollama's `/api/show` reports `vision`/`embedding`/…,
-  which §8.1 model selection already reads) so the vision picker only offers vision-capable models.
-- **The organising principle: models live on the AI page; feature toggles and behavior live on the
-  Filler page.** So `filler.vision.model` is exposed on the AI page;
+- **The AI page exposes the lineup model, an advanced vision override, and one Speech recognition
+  section.** The ordinary speech choice is simply built-in or connected. A connected service's
+  URL, model, and key stay behind Advanced.
+- **The organising principle: provider connections live on the AI page; feature toggles and behavior
+  live on the Filler page.** So `filler.vision.model` and the speech connection are exposed on AI;
   `filler.vision.enabled` / `filler.transcribe.enabled` and
   the split/curation behavior knobs stay on Filler.
 
@@ -9465,9 +9478,12 @@ Filler-specific enable switch. Ready Clips wake automatically when a relevant ca
 taxonomy version appears; the manual whole-catalog tagging action and the clip-wide `ai_tagged` /
 `vision_tagged` authority retire once this loop owns catch-up.
 
-The text-model pass is automatic when the household has a configured text provider. It makes one
-bounded JSON-mode call per eligible Clip, names only axes whose accepted value is still empty, and
-serves the current operator-editable taxonomy in the prompt. Returned taxonomy terms are
+The text-model pass is automatic when the household has a configured text provider. It groups at
+most eight eligible Clips into one bounded JSON-mode call, keys every returned item to the supplied
+Clip hash, names only axes whose accepted value is still empty, and serves the current
+operator-editable taxonomy once in the batch prompt. Each returned item is validated and persisted
+independently, so one malformed item cannot discard valid siblings; a whole-request failure leaves
+the batch unstamped for a later retry. Returned taxonomy terms are
 resolve-or-dropped against that same vocabulary, a brand is accepted only when it occurs literally
 in the supplied item/transcript/visible-text signals, and the pass never asks a text model to infer
 era or geography. Its durable pass identity binds the prompt version, branded provider, selected
@@ -9546,8 +9562,10 @@ Airworthiness, language, readiness, scheduling or admission facts.
 
 Transcript, frame and context catch-up use that same post-ready coordinator rather than putting a
 Ready Clip back on the readiness conveyor. The `filler-pipeline` driver always advances bounded
-preparation first, then spends the independent enrichment budgets; a remote failure cannot change
-the preparation result. Each enabled capability has its own provider/model/prompt identity and the
+preparation first. When runnable or active preparation remains, it yields the lease without starting
+optional enrichment so downloaded Clips keep moving toward playable readiness; scheduled retries do
+not block unrelated detail work. A remote enrichment failure cannot change the preparation result.
+Each enabled capability has its own provider/model/prompt identity and the
 existing `MaxWhisper` or `MaxVision` per-pass bound. A Clip is eligible only while at least one axis
 that capability can inform remains unresolved, and an operator answer (including an intentional
 empty answer) closes that axis to automation. A successful media pass records its completion even
@@ -11438,8 +11456,8 @@ surface without a wire-format migration. The opt-in profiler also exposes Go 1.2
   - **`ffmpeg` is a core runtime dependency, not an ingest-only tool** (revised — §9.1). It serves two callers now: yt-dlp's stream merging, and **internal playout's encoder**. A Loomarr that can't encode can't play out, so the previous opt-in-variant model (below) no longer describes a coherent artifact.
   - **`ffprobe` is bundled** (revised — it was previously excluded to save ~99MB, on the grounds that *"Loomarr never probes media — Tunarr assigns duration during its `local`-source scan"*). Internal playout owns duration and cut points, so the premise is gone. Both reversals trace to the same root cause: §9.1.
   - **`whisper-cli` (whisper.cpp) transcribes filler audio for compilation splitting** (§10, V34 — a maintainer-approved §14 addition, 2026-07-31). The transcript is the only signal that sees an ad boundary with no black frame and no silence: measured, one 149s block defeated every A/V detector while holding three complete adverts whose cuts exist only in language (plan §6.4). It matches the vendored-binary pattern in the ways that matter — exec'd, no cgo, no service — and ships in the single image with its model file like the rest of the tooling. ⚠ **It is NOT self-contained the way `yt-dlp` is** (this line used to say it was): whisper-cli links `libwhisper` + `libggml`, so those ship beside it, and **ggml `dlopen()`s its compute backend from the executable's own directory** — hence the binary lives in `/usr/local/lib/whisper` with a symlink on `PATH`. Getting that layout wrong produces a binary where `--help` succeeds and the first real transcription aborts (`GGML_ASSERT(device) failed`), so the image proves whisper by **transcribing at build time**, never by `--help`. On amd64 upstream ships 15 `libggml-cpu-*` microarchitecture variants selected at run time; copy the whole set or it fails only on untested host CPUs. ⚠ **Model size is a correctness property, not a tuning preference:** verified against the vendored **v1.9.1** binary on a real 244s commercial break — `tiny.en` dropped a complete 20s advert at the file's average loudness and `base.en` dropped 7s of equally audible speech, while **`small.en`** had no gap over audible content (its only gap is true near-silence). `small.en` therefore ships, at **466MB** — the single largest item in the image. Full method and table: plan §6.4.
-  - **OpenRouter can replace the local inference paths, including timed transcription** (§8.1, §10). Text/tool calls and vision already use its OpenAI-compatible `/chat/completions`; audio-language questions use `input_audio`; transcription uses its dedicated `/audio/transcriptions` endpoint with `response_format: verbose_json` and segment timestamps. This is one credential and provider selection, but deliberately not one model: the text model, vision model, and STT model are separate capability choices. Long spans are chunked below the endpoint's processing timeout and timestamps are offset back onto the original span. This adds no dependency or service. It does add explicit egress and usage cost for clip audio/frames, so every hosted modality remains an operator choice and the local whisper/Ollama paths remain available.
-  - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision follows the `internal/llm/audio.go` precedent exactly — a separate `OpenAI.AskAboutImages` building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default and gated the same way hosted audio is. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
+  - **OpenRouter can replace the local inference paths, including speech recognition** (§8.1, §10). Text/tool calls and vision use its OpenAI-compatible `/chat/completions`; language detection and timed transcription share `/audio/transcriptions` with `response_format: verbose_json`, detected language, and segment timestamps. This may be one credential and provider selection, but deliberately not one model: the text model, vision model, and STT model have different modalities. A dedicated OpenAI-compatible speech endpoint may instead supply its own URL, model, and credential. Long spans are chunked below the endpoint's processing timeout and timestamps are offset back onto the original span. It adds explicit egress and possible usage cost for clip audio/frames, so every hosted modality remains an operator choice and the local whisper/Ollama paths remain available.
+  - **Vision-based filler tagging is a CAPABILITY, not a new binary** (§10 V44 — a maintainer-approved §14 addition, 2026-08-06). It adds no vendored artifact: keyframes come from the `ffmpeg` already bundled, and the model call reuses an existing provider. **Hosted** vision uses a separate `OpenAI.AskAboutImages` method building `image_url` content parts with `data:image/jpeg;base64,…`, deliberately *not* widening `Message.Content` (that string is on the hot path of every text request, §8). **Local** vision wires Ollama's per-message `images` field; Ollama reports a `vision` capability (probed live 2026-08-03, images-only — §10 quality gate), so a fully-local install gets it without egress or per-clip cost. The two costs this introduces, stated plainly: (1) the local `images` wiring is the only V44 change to the shared `Chat` path, guarded by a test proving an image-free request is unchanged; (2) the hosted path spends multimodal tokens per clip and sends frames off the box, so it is off by default. No image variant, no new exec'd tool — this is why it is a capability line rather than a vendored-binary one.
 - **ffmpeg is bundled** (not skipped) so yt-dlp can merge separate video/audio streams — without it, high-resolution YouTube sources either fail or silently downgrade to a muxed low-quality rendition, which is a poor default for content that will be shown between programs. The cost is a second fast-moving vendored binary; both are version-pinned in the image and overridable by path (§10 config).
 - **React Native stories, native reference captures, emulator journeys, artifact inspection, and physical Shield review** are the Android TV evidence. The accepted React Native Shield replacement retires the former Kotlin/Compose JVM screenshot harness rather than retaining two presentation authorities.
 - CI (GitHub Actions): `golangci-lint`; `make openapi` then **`git diff --exit-code api/openapi.yaml`** (spec drift = red); **`vacuum`** lints the spec as valid 3.1; FE Biome + typegen + `tsc` + Vitest (jsdom units) + story-coverage; Storybook build + Playwright visual/a11y over `storybook-static` (Docker); Playwright e2e smoke.
@@ -12262,8 +12280,7 @@ Notifications → Add provider**.
 | `FILLER_VISION_ENABLED` / `FILLER_VISION_MODEL` | **`true` / empty** (§10 V44) — whether a clip's own frames are read, and by which model. Empty model ⇒ reuse `LLM_MODEL`, for an install whose main model already sees images. ⚠ **Neither row existed in this table until V54a**, though both settings shipped in V44; the omission is why the gap one row below went unnoticed. |
 | `FILLER_VISION_PROVIDER` / `FILLER_VISION_URL` / `FILLER_VISION_API_KEY` | **all empty ⇒ vision uses the main LLM's provider, URL and key** — unchanged behaviour for every existing install (§10 V54a). Set them to point vision at a *different service* from the one that writes text. ⚠ **This gap was load-bearing.** `FILLER_VISION_MODEL` promised a vision model independent of `LLM_MODEL`, but the provider was built from `LLM_URL`/`LLM_API_KEY`, so the model name was the ONLY independent part: naming a local `llava:7b` while `LLM_URL` was a hosted endpoint sent an Ollama tag to that endpoint. Measured on the maintainer's stack — `llava:7b` → `https://openrouter.ai/api/v1` → **HTTP 401** on every segment, so split grounding had never once run and the gate refused every reel with *"a segment could not be classified"*. ⚠ **The key is NEVER inherited when `FILLER_VISION_PROVIDER` is set.** Declaring a separate vision service means declaring its own credentials: inheriting would send the operator's hosted key to whatever host they named, including `localhost`. ⚠ `FILLER_VISION_URL` empty with provider `ollama` resolves to the conventional `http://localhost:11434`, the same rule `ollamaBase` already applies to probes and pulls. |
 | `FILLER_LANGUAGE` | `en` — the installation-level commercial language, chosen beside Location during setup or under Settings → Access and devices (§10 V40). It is searchable by friendly language name; provider/model details stay Advanced. A clip whose SPEECH is confidently something else is rejected; a clip with no speech at all is always kept, because a wordless visual spot has no language and those are often the best filler. Empty selects any language and disables the gate. The preference remains editable even when the detector is unavailable so setup records the household answer once; the backend reports and skips unavailable work without discarding that choice. |
-| `FILLER_LANGUAGE_PROVIDER` | `whisper` \| `hosted` — which engine answers "what language is this?" (§10 V40), mirroring `LLM_PROVIDER`'s local-vs-hosted split. **`whisper`** uses the vendored `whisper-cli` + model already configured by `INGEST_WHISPER_*`: free and offline, but ~3s per clip natively and **~341s under QEMU**, which is why the job runs in the BACKGROUND and why an arm64 install effectively needs the hosted path. **`hosted`** sends a ~10s audio span to an audio-input model through the §8.1 hosted provider: ~1s regardless of architecture, fractions of a cent per clip. ⚠ **NOT Ollama** — it has no audio input path at all (probed 2026-08-03: `completion`/`vision`/`tools`/`thinking`, no `audio`), so "we already run a local LLM" does not remove the need for whisper. ⚠ Hosted sends clip audio off the box and spends money per clip, so local is the default and hosted is a deliberate choice |
-| `FILLER_TRANSCRIBE_PROVIDER` / `FILLER_TRANSCRIBE_MODEL` | **`whisper` / `openai/whisper-large-v3`** (§10). Which backend writes timed clip transcripts and rescues spoken-only compilation boundaries. `whisper` uses the bundled local `INGEST_WHISPER_*` paths. `hosted` uses the selected §8.1 OpenAI-compatible provider's key and base URL; OpenRouter is the supported all-hosted path and exposes `/audio/transcriptions` with `verbose_json` segment timestamps. The model is separate from `LLM_MODEL`: a chat/vision model and an STT model have different modalities, so one model id cannot honestly serve both. Hosted spans are split into sub-minute requests and their timestamps reassembled, respecting OpenRouter's ~60s upstream processing timeout while preserving the timing the boundary-rescue prompt requires. A provider without the transcription endpoint fails visibly and retries; it never falls back to untimed invented cuts. ⚠ Hosted transcription sends clip audio off the box and incurs provider cost; local remains the default. |
+| `ASR_PROVIDER` / `ASR_URL` / `ASR_MODEL` / `ASR_API_KEY` | **`whisper` / empty / `openai/whisper-large-v3` / empty** (§10). One speech-recognition choice supplies both language detection and optional timed clip transcripts. `whisper` uses the bundled local `INGEST_WHISPER_*` paths. `hosted` uses standard multipart `/audio/transcriptions` with `verbose_json`; empty URL reuses the selected §8.1 hosted provider, while an explicit URL uses only its own optional API key. The model is separate from `LLM_MODEL` because chat/vision and STT have different modalities. Hosted spans are split into sub-minute requests and timestamps are reassembled. The detected language is trusted only when at least one non-empty segment proves speech. A service without timed segments fails visibly and retries; it never falls back to invented cuts. Connected speech sends clip audio off the box and may incur cost; local remains the default. |
 | `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
 | `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
 | `INGEST_TIMEOUT` | `30m` — per-item wall-clock ceiling so one wedged fetch cannot hold the pipeline forever. Ingest concurrency is pipeline-owned policy. |

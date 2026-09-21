@@ -36,9 +36,9 @@ func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) 
 	}
 
 	local := visionSet(t, map[string]string{
-		"filler.transcribe.enabled":  "true",
-		"filler.transcribe.provider": "whisper",
-		"ingest.whisper_model":       "/models/ggml-small.en.bin",
+		"filler.transcribe.enabled": "true",
+		"asr.provider":              "whisper",
+		"ingest.whisper_model":      "/models/ggml-small.en.bin",
 	})
 	transcript := activeFillerTranscriptCapability(local)
 	if !transcript.Available || transcript.Producer != "transcript:whisper" || transcript.ProducerVersion == "" {
@@ -46,26 +46,35 @@ func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) 
 	}
 
 	hostedA := visionSet(t, map[string]string{
-		"filler.transcribe.enabled":  "true",
-		"filler.transcribe.provider": "hosted",
-		"filler.transcribe.model":    "openai/whisper-large-v3",
-		"llm.provider":               "openai",
-		"llm.hosted_provider":        "openrouter",
-		"llm.url":                    "https://openrouter.ai/api/v1",
-		"llm.model":                  "openai/gpt-4o-mini",
+		"filler.transcribe.enabled": "true",
+		"asr.provider":              "hosted",
+		"asr.model":                 "openai/whisper-large-v3",
+		"llm.provider":              "openai",
+		"llm.hosted_provider":       "openrouter",
+		"llm.url":                   "https://openrouter.ai/api/v1",
+		"llm.model":                 "openai/gpt-4o-mini",
 	})
 	hostedB := visionSet(t, map[string]string{
-		"filler.transcribe.enabled":  "true",
-		"filler.transcribe.provider": "hosted",
-		"filler.transcribe.model":    "google/gemini-2.5-flash",
-		"llm.provider":               "openai",
-		"llm.hosted_provider":        "openrouter",
-		"llm.url":                    "https://openrouter.ai/api/v1",
-		"llm.model":                  "openai/gpt-4o-mini",
+		"filler.transcribe.enabled": "true",
+		"asr.provider":              "hosted",
+		"asr.model":                 "google/gemini-2.5-flash",
+		"llm.provider":              "openai",
+		"llm.hosted_provider":       "openrouter",
+		"llm.url":                   "https://openrouter.ai/api/v1",
+		"llm.model":                 "openai/gpt-4o-mini",
 	})
 	a, b := activeFillerTranscriptCapability(hostedA), activeFillerTranscriptCapability(hostedB)
 	if !a.Available || a.Producer != "transcript:openrouter" || a.ProducerVersion == b.ProducerVersion {
 		t.Fatalf("hosted transcript identities = %+v / %+v", a, b)
+	}
+	dedicated := activeFillerTranscriptCapability(visionSet(t, map[string]string{
+		"filler.transcribe.enabled": "true",
+		"asr.provider":              "hosted",
+		"asr.url":                   "http://fictional-ai-server:8083/v1",
+		"asr.model":                 "whisper-large-v3-turbo-q5_0",
+	}))
+	if !dedicated.Available || dedicated.Producer != "transcript:speech-service" {
+		t.Fatalf("dedicated speech capability = %+v", dedicated)
 	}
 
 	visionA := activeFillerVisionCapability(visionSet(t, map[string]string{

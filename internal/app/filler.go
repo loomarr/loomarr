@@ -1670,33 +1670,16 @@ func orNone(path string) string {
 	return path
 }
 
-// audioAskerAdapter bridges llm.OpenAI → filler.AudioAsker (the hosted language detector, V40).
-//
-// ⚠ It exists only to map two identical structs across a package boundary, and that duplication is
-// deliberate: `internal/filler` declares its own `AudioAsk` rather than importing `internal/llm`,
-// the same dependency inversion `MediaTools` uses. The domain describes what it needs; the
-// composition root supplies something that satisfies it.
-type audioAskerAdapter struct{ oa *llm.OpenAI }
-
-func (a audioAskerAdapter) AskAboutAudio(ctx context.Context, req filler.AudioAsk) (string, error) {
-	resp, err := a.oa.AskAboutAudio(ctx, llm.AudioRequest{
-		Model: req.Model, Prompt: req.Prompt, Audio: req.Audio,
-		Format: req.Format, MaxTokens: req.MaxTokens,
-	})
-	return resp.Content, err
-}
-
 // hostedSTTAdapter maps the OpenAI-compatible transcription wire into mediatools' timed segment
-// seam. OpenRouter uses the same base URL and bearer key as the rest of Loomarr's hosted AI work;
-// only the capability-specific model differs.
+// seam, including the service's detected language.
 type hostedSTTAdapter struct{ oa *llm.OpenAI }
 
-func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) ([]mediatools.TranscriptSegment, error) {
+func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, language string, audio []byte) (mediatools.AudioTranscription, error) {
 	result, err := a.oa.TranscribeAudio(ctx, llm.TranscriptionRequest{
 		Model: model, Audio: audio, Format: format, Language: language,
 	})
 	if err != nil {
-		return nil, err
+		return mediatools.AudioTranscription{}, err
 	}
 	out := make([]mediatools.TranscriptSegment, 0, len(result.Segments))
 	for _, seg := range result.Segments {
@@ -1704,7 +1687,7 @@ func (a hostedSTTAdapter) TranscribeAudio(ctx context.Context, model, format, la
 			StartMs: seg.StartMs, EndMs: seg.EndMs, Text: seg.Text,
 		})
 	}
-	return out, nil
+	return mediatools.AudioTranscription{Language: result.Language, Segments: out}, nil
 }
 
 // (`fillerSplitRunStoreAdapter` bridged the scheduled split job's store until V51b retired it. Its

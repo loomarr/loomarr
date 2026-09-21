@@ -48,8 +48,8 @@ func NewLanguageStage(detector LanguageDetector, store LanguageClipStore, clipDi
 
 func (s *LanguageStage) ID() StageID { return StageLanguage }
 
-// Cost: whisper. The local backend samples ~10s of audio, which is ~3s natively and ~341s under
-// QEMU — the same spend as a transcription, so it draws on the same budget.
+// Cost: whisper. The local backend samples at most 30s of audio, so it remains background work and
+// draws on the same bounded budget as transcription.
 func (s *LanguageStage) Cost() StageCost { return CostWhisper }
 
 // Applies when the gate is on and this clip has not been heard yet.

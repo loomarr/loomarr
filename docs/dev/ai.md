@@ -84,6 +84,7 @@ deterministic code enforces it. Nothing downloads until an admin approves.
 | TMDB | Title searches |
 
 Two optional filler features send more and are off by default: vision tagging sends video
-keyframes, hosted transcription sends audio. A fully local install sends only TMDB lookups.
+keyframes, and connected speech recognition sends audio. A fully local install sends only TMDB
+lookups.
 
 Choose the provider in Settings → AI. Switching takes effect immediately.
