@@ -17,7 +17,8 @@ type ChatPolicy struct {
 
 // ResolveChatPolicy shares the text wire policy with diagnostic reporting.
 func ResolveChatPolicy(provider, model string, opts ChatOptions) ChatPolicy {
-	sampling := ChatPolicy{Temperature: opts.Temperature, TopP: opts.TopP, CompletionLimitParameter: "max_tokens"}
+	sampling := ChatPolicy{Temperature: opts.Temperature, TopP: opts.TopP,
+		ReasoningEffort: opts.ReasoningEffort, CompletionLimitParameter: "max_tokens"}
 	// Exact OpenRouter capability entry, checked against the model and Vertex
 	// endpoint metadata. Do not infer compatibility for a future model version.
 	if opts.Profile == GroundedSelection && provider == "openrouter" && model == "google/gemini-3.8-flash" {

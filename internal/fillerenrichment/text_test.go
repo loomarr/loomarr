@@ -13,6 +13,7 @@ import (
 type classifierProvider struct {
 	content  string
 	messages []llm.Message
+	options  []llm.ChatOptions
 }
 
 func (p *classifierProvider) Name() string { return "fixture" }
@@ -22,6 +23,7 @@ func (p *classifierProvider) Chat(_ context.Context, messages []llm.Message, opt
 		panic("text enrichment did not request JSON mode")
 	}
 	p.messages = append([]llm.Message(nil), messages...)
+	p.options = append(p.options, options)
 	return llm.Response{Content: p.content}, nil
 }
 
@@ -68,6 +70,33 @@ func TestClassifyText_GroundsIndependentAxesAndLiteralBrand(t *testing.T) {
 	}
 	if len(provider.messages) != 2 || strings.Contains(provider.messages[1].Content, "license") {
 		t.Fatalf("unexpected prompt = %#v", provider.messages)
+	}
+	if len(provider.options) != 1 || provider.options[0].MaxTokens != textSingleMaxTokens ||
+		provider.options[0].ReasoningEffort != "none" {
+		t.Fatalf("single classification controls = %#v, want %d tokens and no reasoning", provider.options, textSingleMaxTokens)
+	}
+}
+
+func TestClassifyTextBatch_BoundsTheCompleteEightClipResponse(t *testing.T) {
+	provider := &classifierProvider{content: `{"items":[]}`}
+	inputs := make([]textBatchInput, textModelBatchSize)
+	for index := range inputs {
+		inputs[index] = textBatchInput{
+			Axes: []Axis{AxisKind},
+			Signals: Signals{
+				ClipHash: strings.Repeat(string(rune('a'+index)), 64),
+				Title:    "Fixture",
+			},
+		}
+	}
+	_, _, err := classifyTextBatch(t.Context(), provider, taxonomy.New(nil), inputs,
+		"text-model:fixture", "prompt:model", "taxonomy:fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.options) != 1 || provider.options[0].MaxTokens != textBatchMaxTokens ||
+		provider.options[0].ReasoningEffort != "none" {
+		t.Fatalf("batch classification controls = %#v, want %d tokens and no reasoning", provider.options, textBatchMaxTokens)
 	}
 }
 
