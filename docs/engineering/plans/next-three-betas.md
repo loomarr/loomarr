@@ -30,7 +30,7 @@ can move without weakening the release's promised outcome.
 | Release | Viewer/operator outcome | Primary gate owners |
 | --- | --- | --- |
 | **beta.5 — Trustworthy creation and playback** | Understand the request, explain uncertainty and launch readiness, recover cleanly, and watch the accepted changes on the declared household setup. | #1103, #1044, #1098/#1068, #1015/#494, #1097/#1037; approval safety #955 and applicable release prerequisites #688/#661/#1162 |
-| **beta.6 — Household filler release** | Ingest real Archive.org and operator-authorized YouTube media, let the shipping pipeline screen and enrich it automatically, and prove useful clips reach real breaks and play on Web and Shield. | #1371, #1204, #741 |
+| **beta.6 — Household filler release** | Ingest real Archive.org and operator-authorized YouTube media, let the shipping pipeline screen and enrich it automatically, and prove useful clips reach real breaks and play on Web and an Android TV emulator. | #1371, #1204, #741 |
 | **beta.7 — General filler certification and sustained use** | Generalize safe unattended admission beyond the accepted set, then preserve preferences and resources through repeated curation and ordinary maintenance. | #548/#549/#555, the structure/spoken/written/visual/audience/enrichment authorities, #498/#497, #749, #970, #1104; carry forward #1037/#1097 |
 
 These are release outcomes, not a serial queue of one PR per issue. The many filler issues include
@@ -56,7 +56,7 @@ content decision. Execute in this order:
    and placement into a real eligible break. Missing optional model metadata does not block a clip
    that passed the deterministic readiness gates; no legacy path or broad allow-list may fill gaps.
 4. Spot-check representative exact outputs in Loomarr, then play them on the shipping Web client and
-   a physical Shield. Record useful failure and recovery behavior, not screenshots alone.
+   one explicitly named Android TV emulator. Record useful failure and recovery behavior, not screenshots alone.
 5. Bind the release commit, image and client identities, selected clip/output identities, installed
    journeys, rollback procedure and remaining limitations into one GO/HOLD packet before tagging.
 
@@ -72,7 +72,7 @@ unattended-admission certification program moves intact to beta.7; it is not sil
 | Continuous raw/live AAC and strict playout certification | #1157; full protected queue `34341681693` | Reuse the accepted harness and repaired finite-output/epoch handling. The generated 106-Channel, capacity-four result does not establish deployment capacity. Prepared HLS remains process-free. |
 | Exact acquisition, quarantine, derivatives, structure, safety projections and sole admission/publication authority | #1130–#1139, #1142/#1143 | The replacement pipeline is integrated. Missing/uncertified evidence holds media; there is no legacy admission fallback. Real certificates, written projection, enrichment and activation still need applicable acceptance. |
 | Incoming workspace and holdout/quarantine authority | #1141/#1144 | Extend the existing interfaces for the complete source-to-air journey; do not recreate a second workbench. Tooling and proposed labels are not independent truth. |
-| React Native Shield acceptance, Internal distribution and Linux Docker discovery repairs | #970, #1078, #1150; current client plan | Keep the accepted React Native client. Test each new candidate on the actual Shield/LAN; Web migration remains open. Do not resurrect the retired Compose path. |
+| React Native Shield acceptance, Internal distribution and Linux Docker discovery repairs | #970, #1078, #1150; current client plan | Keep the accepted React Native client. Use the repeatable Android TV emulator journey for beta.6; physical Shield review remains post-beta confidence work. Web migration remains open. Do not resurrect the retired Compose path. |
 | Proportional verification, dependency patches and concurrent delivery workflow | #1154/#1155, #1120 | Keep affected PR checks, protected integration gates and parallel disjoint work. #1050 remains a measured build-speed improvement. |
 
 ## beta.5 — Trustworthy creation and playback
@@ -148,15 +148,15 @@ replaces the required correctness rows. #970 Web parity foundations can start in
   through the sole Library/admission path, attach them to a real Channel, and observe them in an
   eligible break. Deterministic rejection or an unavailable required media gate keeps a clip out;
   missing optional descriptive metadata does not.
-- **Prove the two release clients.** Verify preview and playback on the shipping Web build and a
-  physical Shield on the declared household network. Record exact server/client identities and any
-  known limitations.
+- **Prove the two release clients.** Verify preview and playback on the shipping Web build and one
+  explicitly named Android TV emulator. Record exact server/client/target identities and any known
+  limitations; physical Shield review is not beta.6 release authority.
 - **Cut a recoverable release.** Produce one privacy-safe GO/HOLD report with artifact digests,
   installed-client evidence, deployment steps and rollback. Tag only the exact candidate that passed.
 
 **Exit:** exact pipeline-produced output identities from real supported sources are traceable from
-acquisition through a real break and representative outputs play on Web and Shield; deterministic
-holds and rejections are explained; the candidate's build, evidence and rollback are recorded.
+acquisition through a real break and representative outputs play on Web and the Android TV emulator;
+deterministic holds and rejections are explained; the candidate's build, evidence and rollback are recorded.
 The maintainer performs one release-level spot check, not clip-by-clip approval. General claims about
 all languages, all source categories or independently certified model accuracy remain outside beta.6.
 
