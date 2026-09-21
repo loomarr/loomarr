@@ -41,12 +41,7 @@ const AiSettings = () => {
           title: "Speech recognition",
           description:
             "Choose how Loomarr understands spoken language and fills in missing clip details. The built-in option needs no setup.",
-          keys: [
-            "asr.provider",
-            "asr.url",
-            "asr.api_key",
-            "asr.model",
-          ],
+          keys: ["asr.provider", "asr.url", "asr.api_key", "asr.model"],
         },
         {
           group: "ai",
