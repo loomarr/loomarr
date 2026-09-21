@@ -660,7 +660,8 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 		}
 		return artifact, true, errors.New(reason)
 	}
-	if artifact.State == ArtifactRepair {
+	const identityMismatch = "manifested media bytes do not match the recorded digest, size, and clip identity"
+	if artifact.State == ArtifactRepair && artifact.RepairReason != identityMismatch {
 		return artifact, true, errors.New(artifact.RepairReason)
 	}
 	path := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
@@ -668,22 +669,70 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return fail("manifested media is missing, symlinked, or not a regular file")
 	}
-	digest, size, err := FileSHA256(path)
-	if err != nil {
-		return fail("manifested media cannot be hashed: " + err.Error())
-	}
-	if digest != artifact.MediaSHA256 || size != artifact.MediaBytes || rc.ID != artifact.ClipHash {
-		return fail("manifested media bytes do not match the recorded digest, size, and clip identity")
-	}
 	tags, state := ReadSidecarTagsState(path)
 	if state == SidecarInvalid {
 		return fail("manifested media has malformed portable provenance")
+	}
+	normalizeConsumedManifest := false
+	if tags.MediaAssets != nil && tags.MediaAssets.Playback != nil &&
+		(artifact.State == ArtifactConsumed || artifact.RepairReason == identityMismatch) {
+		// V66 deliberately gives the acquired source and the playable catalog entry different
+		// identities. The acquisition manifest continues to bind the immutable source-master
+		// SHA/size while clip_hash follows the current playback derivative. Comparing all three
+		// fields to the visible playback file therefore quarantines every correctly transcoded
+		// acquisition on its next scan. Re-open the two roles named by the closed portable
+		// manifest instead: source bytes must match the acquisition, and playback bytes/path/hash
+		// must match the current catalog row.
+		assets := tags.MediaAssets
+		playback := assets.Playback.Asset
+		if assets.SourceMaster.SHA256 != artifact.MediaSHA256 || assets.SourceMaster.Bytes != artifact.MediaBytes {
+			return fail("manifested source master does not match the recorded acquisition bytes")
+		}
+		if artifact.ClipHash != rc.ID || playback.ClipHash != rc.ID ||
+			filepath.Clean(filepath.FromSlash(playback.Path)) != filepath.Clean(filepath.FromSlash(rc.Path)) {
+			return fail(identityMismatch)
+		}
+		if err := validateMediaAssetFile(ctx, s.dir, playback, MediaAssetPlayback, ""); err != nil {
+			return fail("manifested playback derivative does not match the portable media manifest")
+		}
+		// Verify the retained source on first normalization and while repairing the historical
+		// false-positive. Once media_path names the immutable master, ordinary scans keep their
+		// former one-full-file-hash cost; any later stage that reuses the master re-verifies it.
+		if artifact.State == ArtifactRepair || artifact.MediaPath != assets.SourceMaster.Path {
+			if err := validateMediaAssetFile(ctx, s.dir, assets.SourceMaster, MediaAssetSourceMaster, mediaMasterDirName); err != nil {
+				return fail("manifested source master does not match the portable media manifest")
+			}
+		}
+		normalizeConsumedManifest = artifact.State != ArtifactConsumed ||
+			artifact.MediaPath != assets.SourceMaster.Path ||
+			artifact.SidecarPath != sidecarPathFor(assets.SourceMaster.Path) || artifact.RepairReason != ""
+		artifact.State = ArtifactConsumed
+		artifact.MediaPath = assets.SourceMaster.Path
+		artifact.SidecarPath = sidecarPathFor(assets.SourceMaster.Path)
+		artifact.RepairReason = ""
+	} else {
+		if artifact.State == ArtifactRepair {
+			return artifact, true, errors.New(artifact.RepairReason)
+		}
+		digest, size, err := FileSHA256(path)
+		if err != nil {
+			return fail("manifested media cannot be hashed: " + err.Error())
+		}
+		if digest != artifact.MediaSHA256 || size != artifact.MediaBytes || rc.ID != artifact.ClipHash {
+			return fail(identityMismatch)
+		}
 	}
 	if state == SidecarAbsent || tags.SourceID != artifact.SourceID || tags.AcquisitionID != artifact.AcquisitionID || !SidecarFetchedByUs(path) {
 		if err := WriteSidecarTags(path, SidecarTags{
 			SourceID: artifact.SourceID, AcquisitionID: artifact.AcquisitionID,
 		}, true); err != nil {
 			return fail("manifested media portable provenance cannot be repaired: " + err.Error())
+		}
+	}
+	if normalizeConsumedManifest {
+		artifact.UpdatedAt = s.now().UTC()
+		if err := s.acquisitions.UpsertAcquisitionArtifacts(ctx, []AcquisitionArtifact{artifact}); err != nil {
+			return artifact, true, fmt.Errorf("normalize consumed acquisition artifact: %w", err)
 		}
 	}
 	return artifact, true, nil
