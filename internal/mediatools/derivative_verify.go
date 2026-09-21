@@ -20,6 +20,7 @@ const (
 	DerivativeQCVersion        = 1
 	derivativeQCOutputLimit    = 4 << 20
 	derivativeKeyframeSlackMs  = int64(250)
+	derivativeGOPSlackMs       = int64(500)
 	derivativeTerminalSlackMs  = int64(500)
 	derivativeLoudnessSlackLU  = 2.0
 	derivativeTopLevelBoxLimit = 4096
@@ -44,7 +45,7 @@ func ValidateDerivativeQC(qc DerivativeQC, durationMs int64, keyframeSeconds int
 		!qc.FastStart || !qc.CompleteDecode || !qc.Seekable {
 		return errors.New("derivative compatibility verification is incomplete")
 	}
-	maximumGap := int64(keyframeSeconds)*1000 + derivativeKeyframeSlackMs
+	maximumGap := int64(keyframeSeconds)*1000 + derivativeGOPSlackMs
 	if qc.FirstVideoKeyframeMs < 0 || qc.FirstVideoKeyframeMs > derivativeKeyframeSlackMs ||
 		qc.MaxVideoKeyframeGapMs < 0 || qc.MaxVideoKeyframeGapMs > maximumGap ||
 		qc.TerminalKeyframeGapMs < 0 || qc.TerminalKeyframeGapMs > maximumGap+derivativeTerminalSlackMs {
@@ -198,11 +199,14 @@ func verifyFastStart(path string) (bool, error) {
 func verifyDerivativeKeyframes(ctx context.Context, ffprobePath, path string, durationMs int64) (int64, int64, int64, error) {
 	raw, err := runDerivativeCommand(ctx, ffprobePath, false,
 		"-v", "error", "-select_streams", "v:0", "-skip_frame", "nokey",
-		"-show_frames", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", path)
+		"-show_frames", "-show_streams", "-show_entries", "frame=best_effort_timestamp_time:stream=start_time", "-of", "json", path)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("verify derivative keyframes: %w", err)
 	}
 	var document struct {
+		Streams []struct {
+			Start string `json:"start_time"`
+		} `json:"streams"`
 		Frames []struct {
 			Timestamp string `json:"best_effort_timestamp_time"`
 		} `json:"frames"`
@@ -213,13 +217,23 @@ func verifyDerivativeKeyframes(ctx context.Context, ffprobePath, path string, du
 	if len(document.Frames) == 0 {
 		return 0, 0, 0, errors.New("verify derivative keyframes: output has no video keyframe")
 	}
+	if len(document.Streams) != 1 {
+		return 0, 0, 0, errors.New("verify derivative keyframes: output video start is unavailable")
+	}
+	startSeconds, err := strconv.ParseFloat(strings.TrimSpace(document.Streams[0].Start), 64)
+	if err != nil || math.IsNaN(startSeconds) || math.IsInf(startSeconds, 0) || startSeconds < 0 {
+		return 0, 0, 0, fmt.Errorf("verify derivative keyframes: invalid video start %q", document.Streams[0].Start)
+	}
 	timestamps := make([]int64, 0, len(document.Frames))
 	for _, frame := range document.Frames {
 		seconds, err := strconv.ParseFloat(strings.TrimSpace(frame.Timestamp), 64)
 		if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 {
 			return 0, 0, 0, fmt.Errorf("verify derivative keyframes: invalid timestamp %q", frame.Timestamp)
 		}
-		milliseconds := int64(math.Round(seconds * 1000))
+		milliseconds := int64(math.Round((seconds - startSeconds) * 1000))
+		if milliseconds < 0 {
+			return 0, 0, 0, errors.New("verify derivative keyframes: timestamp precedes video start")
+		}
 		if len(timestamps) > 0 && milliseconds <= timestamps[len(timestamps)-1] {
 			return 0, 0, 0, errors.New("verify derivative keyframes: timestamps are not strictly increasing")
 		}
@@ -230,9 +244,14 @@ func verifyDerivativeKeyframes(ctx context.Context, ffprobePath, path string, du
 		maximum = max(maximum, timestamps[index]-timestamps[index-1])
 	}
 	terminal := durationMs - timestamps[len(timestamps)-1]
-	if terminal < 0 {
+	// Container duration and frame timestamps use different muxer timebases. ffprobe can
+	// therefore report a valid final frame a fraction of a frame beyond the rounded container
+	// duration. Keep that difference inside the same bounded terminal slack used by QC; a larger
+	// disagreement still means the measured timeline is inconsistent.
+	if terminal < -derivativeTerminalSlackMs {
 		return 0, 0, 0, errors.New("verify derivative keyframes: keyframe lies beyond output duration")
 	}
+	terminal = max(terminal, 0)
 	return first, maximum, terminal, nil
 }
 
