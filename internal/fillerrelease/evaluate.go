@@ -15,21 +15,20 @@ import (
 	"time"
 )
 
-const manifestSchemaVersion = 1
+const manifestSchemaVersion = 2
 
 var (
-	requiredAuthorities = []string{
+	requiredPipelineChecks = []string{
+		"duplicates",
 		"enrichment",
-		"media_playback",
-		"role",
-		"spoken",
-		"structure",
+		"language",
+		"media",
+		"playback",
+		"readiness",
 		"suitability",
-		"terminal_admission",
-		"visual",
-		"written",
 	}
-	requiredJourneys         = []string{"shield", "web"}
+	requiredSourceJourneys   = []string{"archive_org", "youtube"}
+	requiredJourneys         = []string{"android_tv_emulator", "web"}
 	requiredReleaseArtifacts = []string{
 		"deployment",
 		"notices",
@@ -54,8 +53,8 @@ type Candidate struct {
 	Tag                        string `json:"tag"`
 	ServerImageDigest          string `json:"server_image_digest"`
 	WebBuildIdentity           string `json:"web_build_identity"`
-	ShieldArtifactSHA256       string `json:"shield_artifact_sha256"`
-	ShieldVersion              string `json:"shield_version"`
+	AndroidTVArtifactSHA256    string `json:"android_tv_artifact_sha256"`
+	AndroidTVVersion           string `json:"android_tv_version"`
 	ConfigurationProfileSHA256 string `json:"configuration_profile_sha256"`
 }
 
@@ -78,9 +77,10 @@ type Check struct {
 	ArtifactSHA256 string `json:"artifact_sha256,omitempty"`
 }
 
-// Certificate records every declared outcome so a zero-hold result cannot be
-// inferred from a rounded pass percentage.
-type Certificate struct {
+// PipelineCheck records every declared household-pipeline outcome so a zero-hold
+// result cannot be inferred from a rounded pass percentage. It is release
+// evidence, not a general content-safety certificate.
+type PipelineCheck struct {
 	Subject              string `json:"subject"`
 	Status               string `json:"status"`
 	Passed               int    `json:"passed"`
@@ -93,22 +93,23 @@ type Certificate struct {
 
 // Report is the canonical, privacy-safe release decision.
 type Report struct {
-	SchemaVersion          int           `json:"schema_version"`
-	ManifestSchemaVersion  int           `json:"manifest_schema_version,omitempty"`
-	ManifestSHA256         string        `json:"manifest_sha256,omitempty"`
-	Release                string        `json:"release,omitempty"`
-	GeneratedAt            time.Time     `json:"generated_at"`
-	Verdict                Verdict       `json:"verdict"`
-	Candidate              Candidate     `json:"candidate"`
-	CandidateSHA256        string        `json:"candidate_sha256,omitempty"`
-	Cohort                 CohortSummary `json:"cohort"`
-	Certificates           []Certificate `json:"certificates"`
-	Journeys               []Check       `json:"journeys"`
-	ReleaseArtifacts       []Check       `json:"release_artifacts"`
-	ResidualHumanDecisions int           `json:"residual_human_decisions"`
-	OperationalFailures    int           `json:"operational_failures"`
-	Holds                  []Hold        `json:"holds"`
-	ReportSHA256           string        `json:"report_sha256"`
+	SchemaVersion          int             `json:"schema_version"`
+	ManifestSchemaVersion  int             `json:"manifest_schema_version,omitempty"`
+	ManifestSHA256         string          `json:"manifest_sha256,omitempty"`
+	Release                string          `json:"release,omitempty"`
+	GeneratedAt            time.Time       `json:"generated_at"`
+	Verdict                Verdict         `json:"verdict"`
+	Candidate              Candidate       `json:"candidate"`
+	CandidateSHA256        string          `json:"candidate_sha256,omitempty"`
+	Cohort                 CohortSummary   `json:"cohort"`
+	PipelineChecks         []PipelineCheck `json:"pipeline_checks"`
+	SourceJourneys         []Check         `json:"source_journeys"`
+	Journeys               []Check         `json:"journeys"`
+	ReleaseArtifacts       []Check         `json:"release_artifacts"`
+	ResidualHumanDecisions int             `json:"residual_human_decisions"`
+	OperationalFailures    int             `json:"operational_failures"`
+	Holds                  []Hold          `json:"holds"`
+	ReportSHA256           string          `json:"report_sha256"`
 }
 
 // CohortSummary exposes counts only; source identities and clip-level evidence
@@ -128,7 +129,8 @@ type manifest struct {
 	ValidUntil             time.Time         `json:"valid_until"`
 	Candidate              Candidate         `json:"candidate"`
 	Cohort                 cohort            `json:"cohort"`
-	Authorities            []authority       `json:"authorities"`
+	PipelineChecks         []pipelineCheck   `json:"pipeline_checks"`
+	SourceJourneys         []sourceJourney   `json:"source_journeys"`
 	Journeys               []journey         `json:"journeys"`
 	ReleaseArtifacts       []releaseArtifact `json:"release_artifacts"`
 	ResidualHumanDecisions int               `json:"residual_human_decisions"`
@@ -141,10 +143,14 @@ type cohort struct {
 }
 
 type clip struct {
-	ContentSHA256            string `json:"content_sha256"`
+	SourceMasterSHA256       string `json:"source_master_sha256"`
 	LineageSHA256            string `json:"lineage_sha256"`
 	PlaybackDerivativeSHA256 string `json:"playback_derivative_sha256"`
+	SidecarSHA256            string `json:"sidecar_sha256"`
 	SourceIdentity           string `json:"source_identity"`
+	DuplicateFamilyIdentity  string `json:"duplicate_family_identity,omitempty"`
+	Ready                    bool   `json:"ready"`
+	RangePlayback            bool   `json:"range_playback"`
 }
 
 type artifact struct {
@@ -152,13 +158,14 @@ type artifact struct {
 	SHA256 string `json:"sha256"`
 }
 
-type authority struct {
+type pipelineCheck struct {
 	Kind                 string   `json:"kind"`
 	CandidateSHA256      string   `json:"candidate_sha256"`
 	Artifact             artifact `json:"artifact"`
 	SchemaIdentity       string   `json:"schema_identity"`
 	PolicyIdentity       string   `json:"policy_identity"`
 	ModelIdentity        string   `json:"model_identity"`
+	PromptIdentity       string   `json:"prompt_identity"`
 	ProfileIdentity      string   `json:"profile_identity"`
 	BuildIdentity        string   `json:"build_identity"`
 	Passed               int      `json:"passed"`
@@ -166,6 +173,19 @@ type authority struct {
 	Abstentions          int      `json:"abstentions"`
 	Holds                int      `json:"holds"`
 	ProhibitedAdmissions int      `json:"prohibited_admissions"`
+}
+
+type sourceJourney struct {
+	Provider           string   `json:"provider"`
+	CandidateSHA256    string   `json:"candidate_sha256"`
+	Artifact           artifact `json:"artifact"`
+	SourceIdentity     string   `json:"source_identity"`
+	SourceMasterSHA256 string   `json:"source_master_sha256"`
+	PlaybackSHA256     string   `json:"playback_sha256"`
+	Acquired           bool     `json:"acquired"`
+	Prepared           bool     `json:"prepared"`
+	LibraryReady       bool     `json:"library_ready"`
+	RangePlayback      bool     `json:"range_playback"`
 }
 
 type journey struct {
@@ -201,10 +221,11 @@ func Evaluate(root fs.FS, manifestBytes []byte, generatedAt time.Time) Report {
 	e := evaluation{
 		root: root,
 		report: Report{
-			SchemaVersion:    1,
+			SchemaVersion:    2,
 			GeneratedAt:      generatedAt.UTC(),
 			Verdict:          VerdictHold,
-			Certificates:     []Certificate{},
+			PipelineChecks:   []PipelineCheck{},
+			SourceJourneys:   []Check{},
 			Journeys:         []Check{},
 			ReleaseArtifacts: []Check{},
 			Holds:            []Hold{},
@@ -256,7 +277,8 @@ func (e *evaluation) validateManifest(input manifest) {
 	e.validateFreshness(input.AssembledAt, input.ValidUntil)
 	e.validateCandidate(input.Candidate, input.Release)
 	e.validateCohort(input.Cohort)
-	e.validateAuthorities(input.Authorities)
+	e.validatePipelineChecks(input.PipelineChecks)
+	e.validateSourceJourneys(input.SourceJourneys)
 	e.validateJourneys(input.Journeys)
 	e.validateReleaseArtifacts(input.ReleaseArtifacts)
 	if input.ResidualHumanDecisions != 0 {
@@ -289,8 +311,8 @@ func (e *evaluation) validateCandidate(candidate Candidate, release string) {
 		{"tag", strings.TrimSpace(candidate.Tag) != ""},
 		{"server_image_digest", validImageDigest(candidate.ServerImageDigest)},
 		{"web_build_identity", validIdentity(candidate.WebBuildIdentity)},
-		{"shield_artifact_sha256", validDigest(candidate.ShieldArtifactSHA256)},
-		{"shield_version", strings.TrimSpace(candidate.ShieldVersion) != ""},
+		{"android_tv_artifact_sha256", validDigest(candidate.AndroidTVArtifactSHA256)},
+		{"android_tv_version", strings.TrimSpace(candidate.AndroidTVVersion) != ""},
 		{"configuration_profile_sha256", validDigest(candidate.ConfigurationProfileSHA256)},
 	}
 	for _, identity := range identities {
@@ -322,15 +344,30 @@ func (e *evaluation) validateCohort(input cohort) {
 		e.addHold("source_identity_missing", "review_set")
 	}
 
-	contentHashes := make(map[string]struct{}, len(input.Clips))
+	sourceHashes := make(map[string]struct{}, len(input.Clips))
 	lineageHashes := make(map[string]struct{}, len(input.Clips))
 	derivativeHashes := make(map[string]struct{}, len(input.Clips))
+	sidecarHashes := make(map[string]struct{}, len(input.Clips))
+	duplicateFamilies := make(map[string]struct{})
 	for _, item := range input.Clips {
-		validateCohortDigest(e, item.ContentSHA256, contentHashes, "clip_content")
+		validateCohortDigest(e, item.SourceMasterSHA256, sourceHashes, "source_master")
 		validateCohortDigest(e, item.LineageSHA256, lineageHashes, "clip_lineage")
 		validateCohortDigest(e, item.PlaybackDerivativeSHA256, derivativeHashes, "playback_derivative")
+		validateCohortDigest(e, item.SidecarSHA256, sidecarHashes, "clip_sidecar")
 		if _, exists := declaredSources[item.SourceIdentity]; !exists {
 			e.addHold("clip_source_unbound", "review_set")
+		}
+		if !item.Ready {
+			e.addHold("clip_not_ready", "review_set")
+		}
+		if !item.RangePlayback {
+			e.addHold("clip_range_playback_failed", "review_set")
+		}
+		if item.DuplicateFamilyIdentity != "" {
+			if _, exists := duplicateFamilies[item.DuplicateFamilyIdentity]; exists {
+				e.addHold("duplicate_family_repeated", "review_set")
+			}
+			duplicateFamilies[item.DuplicateFamilyIdentity] = struct{}{}
 		}
 	}
 	e.report.Cohort.LineageCount = len(lineageHashes)
@@ -348,16 +385,16 @@ func validateCohortDigest(e *evaluation, digest string, seen map[string]struct{}
 	seen[digest] = struct{}{}
 }
 
-func (e *evaluation) validateAuthorities(authorities []authority) {
-	seen := make(map[string]struct{}, len(authorities))
-	for _, result := range authorities {
-		subject := "authority:" + result.Kind
-		if !slices.Contains(requiredAuthorities, result.Kind) {
-			e.addHold("authority_unknown", subject)
+func (e *evaluation) validatePipelineChecks(checks []pipelineCheck) {
+	seen := make(map[string]struct{}, len(checks))
+	for _, result := range checks {
+		subject := "pipeline_check:" + result.Kind
+		if !slices.Contains(requiredPipelineChecks, result.Kind) {
+			e.addHold("pipeline_check_unknown", subject)
 			continue
 		}
 		if _, exists := seen[result.Kind]; exists {
-			e.addHold("authority_duplicate", subject)
+			e.addHold("pipeline_check_duplicate", subject)
 			continue
 		}
 		seen[result.Kind] = struct{}{}
@@ -365,16 +402,16 @@ func (e *evaluation) validateAuthorities(authorities []authority) {
 		passing = e.validateArtifact(result.Artifact, subject) && passing
 		for identityName, identity := range map[string]string{
 			"build": result.BuildIdentity, "model": result.ModelIdentity, "policy": result.PolicyIdentity,
-			"profile": result.ProfileIdentity, "schema": result.SchemaIdentity,
+			"profile": result.ProfileIdentity, "prompt": result.PromptIdentity, "schema": result.SchemaIdentity,
 		} {
 			if strings.TrimSpace(identity) == "" {
-				e.addHold("authority_identity_missing", subject+":"+identityName)
+				e.addHold("pipeline_check_identity_missing", subject+":"+identityName)
 				passing = false
 			}
 		}
 		if result.Total <= 0 || result.Passed < 0 || result.Abstentions < 0 || result.Holds < 0 || result.Passed+result.Abstentions+result.Holds != result.Total {
 			e.addHoldDetail(
-				"authority_denominator_invalid",
+				"pipeline_check_denominator_invalid",
 				subject,
 				"passed + abstentions + holds = total; total > 0",
 				fmt.Sprintf("%d + %d + %d = %d", result.Passed, result.Abstentions, result.Holds, result.Total),
@@ -382,22 +419,57 @@ func (e *evaluation) validateAuthorities(authorities []authority) {
 			passing = false
 		}
 		if result.Passed != result.Total || result.Abstentions != 0 || result.Holds != 0 {
-			e.addHold("authority_not_passing", subject)
+			e.addHold("pipeline_check_not_passing", subject)
 			passing = false
 		}
 		if result.ProhibitedAdmissions != 0 {
 			e.addHold("prohibited_admission", subject)
 			passing = false
 		}
-		e.report.Certificates = append(e.report.Certificates, Certificate{
+		e.report.PipelineChecks = append(e.report.PipelineChecks, PipelineCheck{
 			Subject: result.Kind, Status: checkStatus(passing), Passed: result.Passed, Total: result.Total,
 			Abstentions: result.Abstentions, Holds: result.Holds, ProhibitedAdmissions: result.ProhibitedAdmissions,
 			ArtifactSHA256: result.Artifact.SHA256,
 		})
 	}
-	for _, kind := range requiredAuthorities {
+	for _, kind := range requiredPipelineChecks {
 		if _, exists := seen[kind]; !exists {
-			e.addHold("authority_missing", "authority:"+kind)
+			e.addHold("pipeline_check_missing", "pipeline_check:"+kind)
+		}
+	}
+}
+
+func (e *evaluation) validateSourceJourneys(journeys []sourceJourney) {
+	seen := make(map[string]struct{}, len(journeys))
+	for _, result := range journeys {
+		subject := "source_journey:" + result.Provider
+		if !slices.Contains(requiredSourceJourneys, result.Provider) {
+			e.addHold("source_journey_unknown", subject)
+			continue
+		}
+		if _, exists := seen[result.Provider]; exists {
+			e.addHold("source_journey_duplicate", subject)
+			continue
+		}
+		seen[result.Provider] = struct{}{}
+		passing := e.validateCandidateBinding(result.CandidateSHA256, subject)
+		passing = e.validateArtifact(result.Artifact, subject) && passing
+		if strings.TrimSpace(result.SourceIdentity) == "" || !validDigest(result.SourceMasterSHA256) || !validDigest(result.PlaybackSHA256) {
+			e.addHold("source_journey_identity_invalid", subject)
+			passing = false
+		}
+		if !result.Acquired || !result.Prepared || !result.LibraryReady || !result.RangePlayback {
+			e.addHold("source_journey_incomplete", subject)
+			passing = false
+		}
+		e.report.SourceJourneys = append(e.report.SourceJourneys, Check{
+			Kind: "source_journey", Subject: result.Provider, Status: checkStatus(passing), Passed: boolInt(passing), Total: 1,
+			ArtifactSHA256: result.Artifact.SHA256,
+		})
+	}
+	for _, provider := range requiredSourceJourneys {
+		if _, exists := seen[provider]; !exists {
+			e.addHold("source_journey_missing", "source_journey:"+provider)
 		}
 	}
 }
@@ -419,6 +491,10 @@ func (e *evaluation) validateJourneys(journeys []journey) {
 		passing = e.validateArtifact(result.Artifact, subject) && passing
 		if strings.TrimSpace(result.BuildIdentity) == "" || strings.TrimSpace(result.DeploymentTargetIdentity) == "" {
 			e.addHold("journey_identity_missing", subject)
+			passing = false
+		}
+		if result.Platform == "android_tv_emulator" && !strings.HasPrefix(result.DeploymentTargetIdentity, "emulator-") {
+			e.addHold("journey_target_invalid", subject)
 			passing = false
 		}
 		if !result.Installed || !result.ChannelSelected || !result.PodSelected || !result.RangePlayback {
@@ -551,9 +627,10 @@ func (e *evaluation) finish() Report {
 			return strings.Compare(a.Subject, b.Subject)
 		})
 	}
-	slices.SortFunc(e.report.Certificates, func(a, b Certificate) int {
+	slices.SortFunc(e.report.PipelineChecks, func(a, b PipelineCheck) int {
 		return strings.Compare(a.Subject, b.Subject)
 	})
+	sortChecks(e.report.SourceJourneys)
 	sortChecks(e.report.Journeys)
 	sortChecks(e.report.ReleaseArtifacts)
 	if len(e.report.Holds) == 0 {

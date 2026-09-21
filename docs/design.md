@@ -8586,7 +8586,7 @@ former auto-file-named setting is retired because conditioning does not grant pu
 
 The household workspace and the operational `/v1/filler/readiness` projection answer whether an
 installed Loomarr can use filler now. They do not certify a release candidate. A beta candidate is
-releasable only when one local, versioned manifest binds the exact server, Web, and Shield candidate
+releasable only when one local, versioned manifest binds the exact server, Web, and Android TV candidate
 identities to the immutable evidence accepted for that candidate. The release process evaluates that
 manifest into one canonical, privacy-safe **GO** or **HOLD** report; issue state and prose comments are
 coordination aids, never release authority.
@@ -8598,19 +8598,36 @@ and exit status. Tests substitute an in-memory filesystem through the same inter
 filesystem; the evaluator has no GitHub, provider, search, download, publication, deployment, or
 runtime-admission authority.
 
-The manifest is strict and closed. It names a schema version, assembly/expiry window, release tag,
-git commit, server image digest, Web build, Shield artifact/version, and configuration-profile
-identity. Its cohort binds intentional source identities and exactly 32 unique content, lineage, and
-playback-derivative hashes. It references the required structure, role, visual, spoken, written,
-suitability, media-playback, enrichment, and terminal-admission evidence by safe relative path and
-SHA-256 digest; every authority also declares its schema, policy, model, profile, and build identities.
-It binds Web and Shield installed journeys that exercise channel selection, pod selection, and range
-playback, plus deployment and rollback evidence and the candidate's SBOM, signature, provenance, and
-notice artifacts. Each result carries its explicit denominator, abstentions, holds, prohibited
-admissions, and residual human or operational decisions. Unknown fields, duplicate identities,
-unsafe paths, missing or changed artifacts, inconsistent denominators, stale candidate bindings,
-incomplete journeys, unverified release artifacts, prohibited admissions, or any residual decision
-fail closed. Artifact contents are not copied into the public report.
+The beta.6 manifest is strict and closed. It names schema version 2, an assembly/expiry window,
+release tag, git commit, server image digest, Web build, Android TV artifact/version, and
+configuration-profile identity. Its cohort binds intentional source identities and exactly 32
+unique source-master, lineage, playback-derivative, and sidecar hashes selected in frozen seed order
+from clips the shipping pipeline actually marked Ready. Every row records successful Range playback,
+and at most one row may name a duplicate-family identity. This exact household cohort is release
+evidence, not general filler certification or a second admission path.
+
+The manifest references seven bounded pipeline results: media preparation, duplicate control,
+configured-language handling, suitability, readiness, playback, and descriptive enrichment. Each
+result declares its schema, policy, model, prompt, profile, and build identities plus an explicit
+denominator, abstentions, holds, and prohibited admissions. A deterministic result uses `none` for
+model and prompt; the enrichment result identifies the model and prompt without granting either
+readiness authority. Separate Archive.org and operator-authorized YouTube journeys each bind their
+exact source and playback hashes and prove acquisition, preparation, Library readiness, and Range
+playback through the shipping path.
+
+The same manifest binds Web and Android TV emulator installed journeys that exercise channel
+selection, pod selection, and Range playback, plus deployment and rollback evidence and the candidate's SBOM,
+signature, provenance, and notice artifacts. Unknown fields, duplicate identities or families,
+unsafe paths, missing or changed artifacts, inconsistent denominators, non-Ready clips, stale
+candidate bindings, incomplete source or client journeys, unverified release artifacts, prohibited
+admissions, or any residual decision fail closed. Artifact contents are not copied into the public
+report. General structure, role, visual, spoken, written, and unattended-admission certification is
+beta.7 work and must not appear as passing beta.6 release evidence.
+
+The Android TV beta.6 journey runs on one explicitly named Android TV emulator and binds that
+emulator identity, installed candidate identity, and playback evidence. The release harness refuses
+a physical device for this gate, which keeps the acceptance run repeatable and unattended. Physical
+Shield review remains useful post-beta confidence work, but it is not beta.6 release authority.
 
 The evaluator always returns a report for readable manifest bytes, including malformed manifests.
 Every HOLD uses stable machine-readable reason codes plus bounded public-safe context. A GO report is

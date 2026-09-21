@@ -30,12 +30,13 @@ func TestEvaluateCompleteCandidateIsGo(t *testing.T) {
 	if report.ManifestSHA256 == "" || report.Cohort.SHA256 == "" {
 		t.Fatal("manifest or cohort digest is empty")
 	}
-	for _, check := range report.Certificates {
+	for _, check := range report.PipelineChecks {
 		if check.Status != "PASS" {
 			t.Fatalf("certificate %#v is not passing", check)
 		}
 	}
-	checks := append(report.Journeys, report.ReleaseArtifacts...)
+	checks := append(report.SourceJourneys, report.Journeys...)
+	checks = append(checks, report.ReleaseArtifacts...)
 	for _, check := range checks {
 		if check.Status != "PASS" {
 			t.Fatalf("check %#v is not passing", check)
@@ -76,8 +77,8 @@ func TestEvaluateRejectsUnknownManifestFields(t *testing.T) {
 
 func TestEvaluateRejectsDuplicateJSONFields(t *testing.T) {
 	report := fillerrelease.Evaluate(fstest.MapFS{}, []byte(`{
-  "schema_version": 1,
-  "schema_version": 1
+  "schema_version": 2,
+  "schema_version": 2
 }`), time.Time{})
 
 	assertHold(t, report, "manifest_malformed")
@@ -85,7 +86,7 @@ func TestEvaluateRejectsDuplicateJSONFields(t *testing.T) {
 
 func TestEvaluateChangedArtifactIsHold(t *testing.T) {
 	files, manifest := completeBundle(t)
-	files["evidence/structure.json"] = &fstest.MapFile{Data: []byte("changed")}
+	files["evidence/media.json"] = &fstest.MapFile{Data: []byte("changed")}
 
 	report := fillerrelease.Evaluate(files, manifest, time.Time{})
 
@@ -94,7 +95,7 @@ func TestEvaluateChangedArtifactIsHold(t *testing.T) {
 
 func TestEvaluateMissingArtifactIsHold(t *testing.T) {
 	files, manifest := completeBundle(t)
-	delete(files, "evidence/structure.json")
+	delete(files, "evidence/media.json")
 
 	report := fillerrelease.Evaluate(files, manifest, time.Date(2026, 9, 20, 18, 0, 0, 0, time.UTC))
 
@@ -107,7 +108,7 @@ func TestEvaluateUnsafeArtifactPathIsHold(t *testing.T) {
 	if err := json.Unmarshal(manifest, &raw); err != nil {
 		t.Fatal(err)
 	}
-	raw.Authorities[0].Artifact.Path = "../outside.json"
+	raw.PipelineChecks[0].Artifact.Path = "../outside.json"
 	manifest, err := json.Marshal(raw)
 	if err != nil {
 		t.Fatal(err)
@@ -118,13 +119,13 @@ func TestEvaluateUnsafeArtifactPathIsHold(t *testing.T) {
 	assertHold(t, report, "artifact_path_invalid")
 }
 
-func TestEvaluateMissingAuthorityAndResidualDecisionAreHolds(t *testing.T) {
+func TestEvaluateMissingPipelineCheckAndResidualDecisionAreHolds(t *testing.T) {
 	files, manifest := completeBundle(t)
 	var raw manifestFixture
 	if err := json.Unmarshal(manifest, &raw); err != nil {
 		t.Fatal(err)
 	}
-	raw.Authorities = raw.Authorities[1:]
+	raw.PipelineChecks = raw.PipelineChecks[1:]
 	raw.ResidualHumanDecisions = 1
 	manifest, err := json.Marshal(raw)
 	if err != nil {
@@ -133,7 +134,7 @@ func TestEvaluateMissingAuthorityAndResidualDecisionAreHolds(t *testing.T) {
 
 	report := fillerrelease.Evaluate(files, manifest, time.Time{})
 
-	assertHold(t, report, "authority_missing")
+	assertHold(t, report, "pipeline_check_missing")
 	assertHold(t, report, "residual_human_decisions")
 }
 
@@ -166,15 +167,25 @@ func TestEvaluateRequiredClassesFailClosed(t *testing.T) {
 		{"exact clip count", "clip_count_invalid", func(m *manifestFixture) { m.Cohort.Clips = m.Cohort.Clips[:31] }},
 		{"too many clips", "clip_count_invalid", func(m *manifestFixture) { m.Cohort.Clips = append(m.Cohort.Clips, m.Cohort.Clips[0]) }},
 		{"source lineage", "clip_source_unbound", func(m *manifestFixture) { m.Cohort.Clips[0].SourceIdentity = "unbound" }},
-		{"repeated authority", "authority_duplicate", func(m *manifestFixture) { m.Authorities = append(m.Authorities, m.Authorities[0]) }},
-		{"authority denominator", "authority_denominator_invalid", func(m *manifestFixture) { m.Authorities[0].Total++ }},
-		{"authority abstention", "authority_not_passing", func(m *manifestFixture) {
-			m.Authorities[0].Passed--
-			m.Authorities[0].Abstentions++
+		{"clip readiness", "clip_not_ready", func(m *manifestFixture) { m.Cohort.Clips[0].Ready = false }},
+		{"clip range playback", "clip_range_playback_failed", func(m *manifestFixture) { m.Cohort.Clips[0].RangePlayback = false }},
+		{"duplicate family", "duplicate_family_repeated", func(m *manifestFixture) {
+			m.Cohort.Clips[0].DuplicateFamilyIdentity = "family-a"
+			m.Cohort.Clips[1].DuplicateFamilyIdentity = "family-a"
 		}},
-		{"prohibited admission", "prohibited_admission", func(m *manifestFixture) { m.Authorities[0].ProhibitedAdmissions = 1 }},
-		{"authority identity", "authority_identity_missing", func(m *manifestFixture) { m.Authorities[0].PolicyIdentity = "" }},
+		{"repeated pipeline check", "pipeline_check_duplicate", func(m *manifestFixture) { m.PipelineChecks = append(m.PipelineChecks, m.PipelineChecks[0]) }},
+		{"pipeline denominator", "pipeline_check_denominator_invalid", func(m *manifestFixture) { m.PipelineChecks[0].Total++ }},
+		{"pipeline abstention", "pipeline_check_not_passing", func(m *manifestFixture) {
+			m.PipelineChecks[0].Passed--
+			m.PipelineChecks[0].Abstentions++
+		}},
+		{"prohibited admission", "prohibited_admission", func(m *manifestFixture) { m.PipelineChecks[0].ProhibitedAdmissions = 1 }},
+		{"pipeline identity", "pipeline_check_identity_missing", func(m *manifestFixture) { m.PipelineChecks[0].PolicyIdentity = "" }},
+		{"source journey", "source_journey_incomplete", func(m *manifestFixture) { m.SourceJourneys[0].LibraryReady = false }},
 		{"installed playback", "journey_playback_incomplete", func(m *manifestFixture) { m.Journeys[0].RangePlayback = false }},
+		{"physical Android TV target", "journey_target_invalid", func(m *manifestFixture) {
+			m.Journeys[0].DeploymentTargetIdentity = "shield-physical-device"
+		}},
 		{"release verification", "release_artifact_unverified", func(m *manifestFixture) { m.ReleaseArtifacts[0].Verified = false }},
 		{"residual human decision", "residual_human_decisions", func(m *manifestFixture) { m.ResidualHumanDecisions = 1 }},
 		{"operational failure", "operational_failures", func(m *manifestFixture) { m.OperationalFailures = 1 }},
@@ -199,14 +210,19 @@ func TestEvaluateRequiredClassesFailClosed(t *testing.T) {
 	}
 }
 
-func TestEvaluateEveryRequiredAuthorityJourneyAndReleaseArtifact(t *testing.T) {
+func TestEvaluateEveryRequiredPipelineSourceClientAndReleaseArtifact(t *testing.T) {
 	tests := []struct {
 		name   string
 		code   string
 		mutate func(*manifestFixture, int)
 		count  int
 	}{
-		{"authority", "authority_missing", func(m *manifestFixture, i int) { m.Authorities = append(m.Authorities[:i], m.Authorities[i+1:]...) }, 9},
+		{"pipeline check", "pipeline_check_missing", func(m *manifestFixture, i int) {
+			m.PipelineChecks = append(m.PipelineChecks[:i], m.PipelineChecks[i+1:]...)
+		}, 7},
+		{"source journey", "source_journey_missing", func(m *manifestFixture, i int) {
+			m.SourceJourneys = append(m.SourceJourneys[:i], m.SourceJourneys[i+1:]...)
+		}, 2},
 		{"journey", "journey_missing", func(m *manifestFixture, i int) { m.Journeys = append(m.Journeys[:i], m.Journeys[i+1:]...) }, 2},
 		{"release artifact", "release_artifact_missing", func(m *manifestFixture, i int) {
 			m.ReleaseArtifacts = append(m.ReleaseArtifacts[:i], m.ReleaseArtifacts[i+1:]...)
@@ -241,11 +257,11 @@ func TestReportOmitsPrivateEvidenceDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	privateMarker := "private-household-title-and-transcript"
-	oldPath := manifest.Authorities[0].Artifact.Path
+	oldPath := manifest.PipelineChecks[0].Artifact.Path
 	newPath := "private/" + privateMarker + ".json"
 	files[newPath] = files[oldPath]
 	delete(files, oldPath)
-	manifest.Authorities[0].Artifact.Path = newPath
+	manifest.PipelineChecks[0].Artifact.Path = newPath
 	manifest.Cohort.SourceIdentities[0] = privateMarker
 	for i := range manifest.Cohort.Clips {
 		manifest.Cohort.Clips[i].SourceIdentity = privateMarker
@@ -291,6 +307,7 @@ type resultFixture struct {
 	SchemaIdentity       string          `json:"schema_identity"`
 	PolicyIdentity       string          `json:"policy_identity"`
 	ModelIdentity        string          `json:"model_identity"`
+	PromptIdentity       string          `json:"prompt_identity"`
 	ProfileIdentity      string          `json:"profile_identity"`
 	BuildIdentity        string          `json:"build_identity"`
 	Passed               int             `json:"passed"`
@@ -298,6 +315,19 @@ type resultFixture struct {
 	Abstentions          int             `json:"abstentions"`
 	Holds                int             `json:"holds"`
 	ProhibitedAdmissions int             `json:"prohibited_admissions"`
+}
+
+type sourceJourneyFixture struct {
+	Provider           string          `json:"provider"`
+	CandidateSHA256    string          `json:"candidate_sha256"`
+	Artifact           artifactFixture `json:"artifact"`
+	SourceIdentity     string          `json:"source_identity"`
+	SourceMasterSHA256 string          `json:"source_master_sha256"`
+	PlaybackSHA256     string          `json:"playback_sha256"`
+	Acquired           bool            `json:"acquired"`
+	Prepared           bool            `json:"prepared"`
+	LibraryReady       bool            `json:"library_ready"`
+	RangePlayback      bool            `json:"range_playback"`
 }
 
 type journeyFixture struct {
@@ -325,16 +355,20 @@ type candidateFixture struct {
 	Tag                        string `json:"tag"`
 	ServerImageDigest          string `json:"server_image_digest"`
 	WebBuildIdentity           string `json:"web_build_identity"`
-	ShieldArtifactSHA256       string `json:"shield_artifact_sha256"`
-	ShieldVersion              string `json:"shield_version"`
+	AndroidTVArtifactSHA256    string `json:"android_tv_artifact_sha256"`
+	AndroidTVVersion           string `json:"android_tv_version"`
 	ConfigurationProfileSHA256 string `json:"configuration_profile_sha256"`
 }
 
 type clipFixture struct {
-	ContentSHA256            string `json:"content_sha256"`
+	SourceMasterSHA256       string `json:"source_master_sha256"`
 	LineageSHA256            string `json:"lineage_sha256"`
 	PlaybackDerivativeSHA256 string `json:"playback_derivative_sha256"`
+	SidecarSHA256            string `json:"sidecar_sha256"`
 	SourceIdentity           string `json:"source_identity"`
+	DuplicateFamilyIdentity  string `json:"duplicate_family_identity,omitempty"`
+	Ready                    bool   `json:"ready"`
+	RangePlayback            bool   `json:"range_playback"`
 }
 
 type cohortFixture struct {
@@ -349,7 +383,8 @@ type manifestFixture struct {
 	ValidUntil             time.Time                `json:"valid_until"`
 	Candidate              candidateFixture         `json:"candidate"`
 	Cohort                 cohortFixture            `json:"cohort"`
-	Authorities            []resultFixture          `json:"authorities"`
+	PipelineChecks         []resultFixture          `json:"pipeline_checks"`
+	SourceJourneys         []sourceJourneyFixture   `json:"source_journeys"`
 	Journeys               []journeyFixture         `json:"journeys"`
 	ReleaseArtifacts       []releaseArtifactFixture `json:"release_artifacts"`
 	ResidualHumanDecisions int                      `json:"residual_human_decisions"`
@@ -364,8 +399,8 @@ func completeBundle(t *testing.T) (fstest.MapFS, []byte) {
 		Tag:                        "v0.2.0-beta.6",
 		ServerImageDigest:          "sha256:" + digest("server"),
 		WebBuildIdentity:           digest("web")[:40],
-		ShieldArtifactSHA256:       digest("shield"),
-		ShieldVersion:              "0.2.0-beta.6",
+		AndroidTVArtifactSHA256:    digest("android-tv"),
+		AndroidTVVersion:           "0.2.0-beta.6",
 		ConfigurationProfileSHA256: digest("config"),
 	}
 	candidateBytes, err := json.Marshal(candidate)
@@ -375,7 +410,7 @@ func completeBundle(t *testing.T) (fstest.MapFS, []byte) {
 	candidateDigest := digest(string(candidateBytes))
 
 	manifest := manifestFixture{
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		Release:       "v0.2.0-beta.6",
 		AssembledAt:   time.Date(2026, 9, 20, 17, 0, 0, 0, time.UTC),
 		ValidUntil:    time.Date(2026, 9, 21, 17, 0, 0, 0, time.UTC),
@@ -384,27 +419,44 @@ func completeBundle(t *testing.T) (fstest.MapFS, []byte) {
 	}
 	for i := range 32 {
 		manifest.Cohort.Clips = append(manifest.Cohort.Clips, clipFixture{
-			ContentSHA256:            digest(fmt.Sprintf("clip-%02d", i)),
+			SourceMasterSHA256:       digest(fmt.Sprintf("source-%02d", i)),
 			LineageSHA256:            digest(fmt.Sprintf("lineage-%02d", i)),
 			PlaybackDerivativeSHA256: digest(fmt.Sprintf("playback-%02d", i)),
+			SidecarSHA256:            digest(fmt.Sprintf("sidecar-%02d", i)),
 			SourceIdentity:           "archive:starter",
+			Ready:                    true,
+			RangePlayback:            true,
 		})
 	}
-	for _, kind := range []string{"structure", "role", "visual", "spoken", "written", "suitability", "media_playback", "enrichment", "terminal_admission"} {
+	for _, kind := range []string{"duplicates", "enrichment", "language", "media", "playback", "readiness", "suitability"} {
 		path := "evidence/" + kind + ".json"
 		artifact := addArtifact(files, path, []byte("evidence for "+kind))
-		manifest.Authorities = append(manifest.Authorities, resultFixture{
+		manifest.PipelineChecks = append(manifest.PipelineChecks, resultFixture{
 			Kind: kind, CandidateSHA256: candidateDigest, Artifact: artifact,
-			SchemaIdentity: "schema-v1", PolicyIdentity: "policy-v1", ModelIdentity: "none",
+			SchemaIdentity: "schema-v1", PolicyIdentity: "policy-v1", ModelIdentity: "none", PromptIdentity: "none",
 			ProfileIdentity: "household-beta", BuildIdentity: "build-v1", Passed: 32, Total: 32,
 		})
 	}
-	for _, platform := range []string{"web", "shield"} {
+	for _, provider := range []string{"archive_org", "youtube"} {
+		path := "sources/" + provider + ".json"
+		manifest.SourceJourneys = append(manifest.SourceJourneys, sourceJourneyFixture{
+			Provider: provider, CandidateSHA256: candidateDigest,
+			Artifact:       addArtifact(files, path, []byte("source journey for "+provider)),
+			SourceIdentity: provider + ":fixture", SourceMasterSHA256: digest(provider + "-source"),
+			PlaybackSHA256: digest(provider + "-playback"), Acquired: true, Prepared: true,
+			LibraryReady: true, RangePlayback: true,
+		})
+	}
+	for _, platform := range []string{"android_tv_emulator", "web"} {
 		path := "journeys/" + platform + ".json"
+		deploymentTarget := "web-localhost"
+		if platform == "android_tv_emulator" {
+			deploymentTarget = "emulator-5554"
+		}
 		manifest.Journeys = append(manifest.Journeys, journeyFixture{
 			Platform: platform, CandidateSHA256: candidateDigest,
 			Artifact:      addArtifact(files, path, []byte("journey for "+platform)),
-			BuildIdentity: "build-v1", DeploymentTargetIdentity: "test-installation",
+			BuildIdentity: "build-v1", DeploymentTargetIdentity: deploymentTarget,
 			Installed: true, ChannelSelected: true, PodSelected: true, RangePlayback: true, Passed: true,
 		})
 	}
