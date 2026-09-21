@@ -5003,6 +5003,15 @@ therefore recover the relationship without trusting a database cache or re-runni
 The hidden source also carries enough portable provenance to find its acquired source and original
 name when the playable rendition is absent.
 
+After transcode, the consumed acquisition artifact intentionally spans two roles: its full-file
+SHA-256, byte length, and media path identify the immutable source master, while its Clip hash links
+to the current playback derivative in the catalog. A catalog scan verifies those roles separately
+through the closed media-asset manifest and normalizes an older intake path to the retained master;
+it never compares the source-master digest and length to the playback file merely because both
+belong to the same acquisition. A historical repair created by that invalid cross-role comparison
+may clear automatically only after the exact retained source and current playback bytes both
+reverify; any other repair reason or identity drift remains held.
+
 **Archive chooses a source representation, not the cheapest playback file.** Selection is a pure,
 stable ordering over Archive's declared file metadata. A recognized video original outranks a
 derivative; within the same source class Loomarr prefers complete positive duration and dimensions,
