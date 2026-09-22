@@ -123,8 +123,9 @@ ffmpeg -hide_banner -loglevel error -y \
 	"${temp_dir}/media.m3u8"
 
 start_fixture() {
+	local discovery=${1:-enabled}
 	node "${repo_root}/web/scripts/tv-emulator-fixture-server.mjs" \
-		"${JOURNEY_PORT}" "${temp_dir}" 0.0.0.0 >"${temp_dir}/fixture.log" 2>&1 &
+		"${JOURNEY_PORT}" "${temp_dir}" 0.0.0.0 "${discovery}" >"${temp_dir}/fixture.log" 2>&1 &
 	fixture_pid=$!
 	for _ in {1..50}; do
 		if curl --fail --silent "http://127.0.0.1:${JOURNEY_PORT}/__journey" >/dev/null; then return 0; fi
@@ -310,7 +311,7 @@ wait "${discovery_pid}" >/dev/null 2>&1 || true
 discovery_pid=""
 stop_fixture
 sleep 1
-start_fixture
+start_fixture disabled
 adb -s "${EMULATOR_SERIAL}" reverse "tcp:${JOURNEY_PORT}" "tcp:${JOURNEY_PORT}" >/dev/null
 adb -s "${EMULATOR_SERIAL}" shell pm clear "${PACKAGE_ID}" >/dev/null
 launch

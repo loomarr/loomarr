@@ -63,5 +63,9 @@ grep -Fq 'LOOMARR_DISCOVER/1' "${root}/web/scripts/tv-emulator-fixture-server.mj
 	printf 'release emulator fixture must provide container-safe UDP discovery\n' >&2
 	exit 1
 }
+grep -Fq 'start_fixture disabled' "${script}" || {
+	printf 'release emulator harness must disable automatic discovery during the manual-entry journey\n' >&2
+	exit 1
+}
 
 echo 'test-android-release-emulator-contract-test: ok'

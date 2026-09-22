@@ -6,15 +6,28 @@ import { extname, join, normalize } from "node:path";
 const port = Number.parseInt(process.argv[2] ?? "18777", 10);
 const mediaDirectory = process.argv[3];
 const listenHost = process.argv[4] ?? "127.0.0.1";
+const discoveryMode = process.argv[5] ?? "enabled";
+const discoveryPort = Number.parseInt(process.argv[6] ?? "51029", 10);
 
-if (!Number.isInteger(port) || port < 1 || port > 65_535 || !mediaDirectory) {
-  console.error("usage: node tv-emulator-fixture-server.mjs PORT MEDIA_DIRECTORY [LISTEN_HOST]");
+if (
+  !Number.isInteger(port) ||
+  port < 1 ||
+  port > 65_535 ||
+  !mediaDirectory ||
+  !["disabled", "enabled"].includes(discoveryMode) ||
+  !Number.isInteger(discoveryPort) ||
+  discoveryPort < 1 ||
+  discoveryPort > 65_535
+) {
+  console.error(
+    "usage: node tv-emulator-fixture-server.mjs PORT MEDIA_DIRECTORY [LISTEN_HOST] [enabled|disabled] [DISCOVERY_PORT]",
+  );
   process.exit(2);
 }
 
 const deviceToken = "journey-device-token";
-const discoveryPort = 51_029;
 const discoveryRequest = "LOOMARR_DISCOVER/1";
+const discoveryEnabled = discoveryMode === "enabled";
 const state = {
   eventConnections: 0,
   eventDisconnects: 0,
@@ -273,20 +286,22 @@ const server = createServer((request, response) => {
   writeJson(response, 404, { title: "Fixture route not found" });
 });
 
-const discovery = createSocket({ reuseAddr: true, type: "udp4" });
-discovery.on("message", (message, sender) => {
-  if (message.toString("utf8") !== discoveryRequest) return;
-  const payload = Buffer.from(
-    JSON.stringify({
-      id: "emulator-acceptance",
-      name: "Loomarr Emulator Acceptance",
-      protocol: 1,
-      url: `http://10.0.2.2:${port}`,
-    }),
-  );
-  discovery.send(payload, sender.port, sender.address);
-});
-discovery.bind(discoveryPort, "0.0.0.0");
+const discovery = discoveryEnabled ? createSocket({ reuseAddr: true, type: "udp4" }) : undefined;
+if (discovery) {
+  discovery.on("message", (message, sender) => {
+    if (message.toString("utf8") !== discoveryRequest) return;
+    const payload = Buffer.from(
+      JSON.stringify({
+        id: "emulator-acceptance",
+        name: "Loomarr Emulator Acceptance",
+        protocol: 1,
+        url: `http://10.0.2.2:${port}`,
+      }),
+    );
+    discovery.send(payload, sender.port, sender.address);
+  });
+  discovery.bind(discoveryPort, "0.0.0.0");
+}
 
 server.listen(port, listenHost, () => {
   console.log(`tv-emulator-fixture: listening on http://${listenHost}:${port}`);
@@ -294,7 +309,7 @@ server.listen(port, listenHost, () => {
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
-    discovery.close();
+    discovery?.close();
     server.close(() => process.exit(0));
     server.closeAllConnections();
     setTimeout(() => process.exit(1), 1_000).unref();
