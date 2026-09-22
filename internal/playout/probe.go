@@ -145,6 +145,25 @@ func executeFFprobeObserved(ctx context.Context, bin string, args []string, mana
 	return parseProbeJSON(out.Bytes())
 }
 
+func probeHLSFirstVideoPTS(ctx context.Context, ffmpegPath, playlist string, manager *diagnostics.ProcessManager) (time.Duration, error) {
+	args := []string{
+		"-v", "error", "-select_streams", "v:0", "-read_intervals", "%+#1",
+		"-show_entries", "packet=pts_time", "-of", "json", playlist,
+	}
+	result, err := executeFFprobeObserved(ctx, ffprobeBesideFFmpeg(ffmpegPath), args, manager)
+	if err != nil {
+		return 0, err
+	}
+	if len(result.Packets) != 1 {
+		return 0, errors.New("first HLS segment has no video timestamp")
+	}
+	secondsValue, err := strconv.ParseFloat(result.Packets[0].PTS, 64)
+	if err != nil || math.IsNaN(secondsValue) || math.IsInf(secondsValue, 0) || secondsValue < 0 || secondsValue >= float64(math.MaxInt64)/float64(time.Second) {
+		return 0, errors.New("first HLS video timestamp is invalid")
+	}
+	return time.Duration(secondsValue * float64(time.Second)), nil
+}
+
 // CopyStartProber proves a video random-access point for this finite source interval.
 // The returned seek retains that frame at FFmpeg's millisecond argument precision.
 type CopyStartProber func(context.Context, string, time.Duration, time.Duration, float64) (time.Duration, bool)

@@ -127,7 +127,7 @@ func TestOriginCancelledHLSWaitPreservesSharedPeer(t *testing.T) {
 		tuned <- err
 	}()
 	playlist := <-started
-	peer, err := m.acquirePlaylist("shared", PlanBaseline)
+	peer, err := m.acquirePlaylist("shared", PlanBaseline, false)
 	if err != nil {
 		t.Fatal(err)
 	}

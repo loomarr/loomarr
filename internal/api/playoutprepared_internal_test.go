@@ -72,6 +72,28 @@ func TestHLSPreparedModeReturnsNoContentWithoutLiveFallback(t *testing.T) {
 	}
 }
 
+func TestHLSWarmModeMarksSpeculativeLiveAdmission(t *testing.T) {
+	probe := &preparedProbePlayout{presentation: playout.Presentation{
+		Manifest: []byte("#EXTM3U\n#EXTINF:4,\nseg-0.ts\n"), Release: func() {},
+	}}
+	s := preparedHandlerServer(t, probe)
+	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/master.m3u8?mode=warm", nil)
+	req.SetPathValue("id", "ch-one")
+	w := httptest.NewRecorder()
+
+	s.hlsPlaylistHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !probe.request.Speculative || probe.request.PreparedOnly || probe.request.Delivery != playout.DeliveryHLS {
+		t.Fatalf("Tune request = %#v, want speculative live HLS", probe.request)
+	}
+	if strings.Contains(w.Body.String(), "mode=warm") {
+		t.Fatalf("warm hint leaked into asset URL: %q", w.Body.String())
+	}
+}
+
 func TestHLSPreparedModeIsNotCopiedOntoImmutableAssetURLs(t *testing.T) {
 	probe := &preparedProbePlayout{presentation: playout.Presentation{
 		Manifest: []byte("#EXTM3U\np-publication-segment\n"), Release: func() {},

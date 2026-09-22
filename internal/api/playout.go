@@ -79,8 +79,9 @@ const playoutTokenParam = "token"
 const playoutPlanParam = "plan"
 
 // playoutModeParam is an unsigned least-privilege modifier on the signed HLS master route. The
-// only accepted behavior today is `prepared`: it removes live fallback, so changing it cannot
-// expand what the channel-scoped signature authorizes.
+// accepted behaviors are `prepared`, which removes live fallback, and `warm`, which permits a
+// bounded live snapshot but forbids reclaiming another Channel's retained session. Neither expands
+// what the channel-scoped signature authorizes.
 const playoutModeParam = "mode"
 
 // Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides
@@ -564,9 +565,11 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mode := r.URL.Query().Get(playoutModeParam)
 	presentation, err := s.playout.Tune(r.Context(), playout.TuneRequest{
 		ChannelID: channelID, Plan: clientPlan(r), Delivery: playout.DeliveryHLS,
-		PreparedOnly: r.URL.Query().Get(playoutModeParam) == "prepared",
+		PreparedOnly: mode == "prepared",
+		Speculative:  mode == "warm",
 	})
 	if err != nil {
 		if errors.Is(err, playout.ErrPreparedUnavailable) {
@@ -814,11 +817,11 @@ type playoutAssetInput struct {
 	Asset string `path:"asset" example:"seg-7.ts" doc:"A file beside the master playlist — a segment, or the media playlist"`
 }
 
-// playoutHLSInput documents the master-only prepared mode. Keeping it separate from
+// playoutHLSInput documents the master-only prepared and speculative-warm modes. Keeping it separate from
 // playoutChannelInput avoids claiming that MPEG-TS/program routes accept the hint.
 type playoutHLSInput struct {
 	ID   string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
-	Mode string `query:"mode" enum:"prepared" doc:"Optional prepared-only lookup; returns 204 on a miss and never starts live playout"`
+	Mode string `query:"mode" enum:"prepared,warm" doc:"Optional least-privilege lookup: prepared forbids live fallback; warm permits speculative live startup without reclaiming another Channel"`
 }
 
 // streamOp registers one playout streaming route on the Huma API: method + path, the shared playout

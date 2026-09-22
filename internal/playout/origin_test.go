@@ -41,13 +41,15 @@ func TestOriginTuneReportsUnavailableDelivery(t *testing.T) {
 }
 
 type tuneHLS struct {
-	channel string
-	path    string
-	stopped string
+	channel     string
+	path        string
+	stopped     string
+	speculative bool
 }
 
-func (h *tuneHLS) acquirePlaylist(channel string, _ EncodePlan) (hlsPlaylistLease, error) {
+func (h *tuneHLS) acquirePlaylist(channel string, _ EncodePlan, speculative bool) (hlsPlaylistLease, error) {
 	h.channel = channel
+	h.speculative = speculative
 	return hlsPlaylistLease{path: h.path, release: func() {}, await: func(ctx context.Context) error { return ctx.Err() }}, nil
 }
 
@@ -73,13 +75,13 @@ func TestOriginTuneHidesLiveDeliveryMechanisms(t *testing.T) {
 		t.Fatalf("MPEG-TS tune = (%#v, %v)", stream, err)
 	}
 	manifest, err := origin.Tune(context.Background(), TuneRequest{
-		ChannelID: "ch-two", Plan: PlanBaseline, Delivery: DeliveryHLS,
+		ChannelID: "ch-two", Plan: PlanBaseline, Delivery: DeliveryHLS, Speculative: true,
 	})
 	if err != nil || manifest.Stream != nil || string(manifest.Manifest) != "#EXTM3U\n" {
 		t.Fatalf("HLS tune = (%#v, %v)", manifest, err)
 	}
-	if sessions.channel != "ch-one" || hls.channel != "ch-two" {
-		t.Fatalf("adapters saw sessions=%q hls=%q", sessions.channel, hls.channel)
+	if sessions.channel != "ch-one" || hls.channel != "ch-two" || !hls.speculative {
+		t.Fatalf("adapters saw sessions=%q hls=%q speculative=%t", sessions.channel, hls.channel, hls.speculative)
 	}
 	origin.StopChannel("ch-one")
 	if sessions.stopped != "ch-one" || hls.stopped != "ch-one" {

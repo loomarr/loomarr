@@ -40,7 +40,7 @@ func TestPumpBlocksReportsOnlyAuthoritativeAiringTransitions(t *testing.T) {
 	var logs bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&logs, nil))
 
-	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, log)
+	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, time.Time{}, log)
 
 	if got := output.String(); got != "ab" {
 		t.Fatalf("mux input = %q, want both finite blocks", got)
@@ -89,7 +89,7 @@ func TestPumpBlocksDoesNotReplayACleanlyFinishedAiring(t *testing.T) {
 	})
 	var output writeCloser
 
-	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
+	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, time.Time{}, nil)
 
 	if got, want := output.String(), "programme-tailcommercial"; got != want {
 		t.Fatalf("mux input = %q, want %q; the outgoing Airing was replayed", got, want)

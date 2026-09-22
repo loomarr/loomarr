@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/proctree"
@@ -64,6 +65,9 @@ type Process struct {
 	Stdin io.WriteCloser
 	proc  *proctree.Supervisor
 	run   *diagnostics.ProcessHandle
+	// timelineOrigin maps the session's retained MPEG-TS timestamps back to the Channel schedule.
+	// It is set only by the block-session spawner; ordinary finite processes leave it zero.
+	timelineOrigin time.Time
 
 	finishOnce sync.Once
 	ioWG       sync.WaitGroup

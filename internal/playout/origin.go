@@ -41,6 +41,9 @@ type TuneRequest struct {
 	// PreparedOnly forbids live fallback. It is a read-only probe for media already published by
 	// the readiness control plane and must never create an encoder/remux session on a miss.
 	PreparedOnly bool
+	// Speculative permits bounded live fallback but must not reclaim another Channel's retained
+	// session. Adjacent Watch warming uses it so optional work cannot displace foreground playback.
+	Speculative bool
 }
 
 // Presentation is one tuned Channel. Exactly one of Stream or Manifest is populated according
@@ -88,7 +91,7 @@ type sessionAttacher interface {
 }
 
 type hlsOrigin interface {
-	acquirePlaylist(string, EncodePlan) (hlsPlaylistLease, error)
+	acquirePlaylist(string, EncodePlan, bool) (hlsPlaylistLease, error)
 	AssetPath(string, EncodePlan, string) (string, bool)
 	StopChannel(channelID string)
 	StopAll()
@@ -234,14 +237,9 @@ func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, e
 	}
 	// Admission already owns the shared remux. Readiness must not keep lifecycle
 	// teardown from cancelling that remux, or outlive an abandoned HTTP request.
-	path, release, err := lease.read(ctx)
+	manifest, release, err := lease.readManifest(ctx)
 	if err != nil {
 		return Presentation{}, err
-	}
-	manifest, err := os.ReadFile(path)
-	if err != nil {
-		release()
-		return Presentation{}, fmt.Errorf("playout: read manifest: %w", err)
 	}
 	if o.prepared != nil && o.observer != nil {
 		o.observer.PlayoutFallback("prepared_to_live")
@@ -283,7 +281,7 @@ func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presenta
 			}
 			return Presentation{}, nil, ErrUnsupportedDelivery
 		}
-		lease, err := o.hls.acquirePlaylist(request.ChannelID, request.Plan)
+		lease, err := o.hls.acquirePlaylist(request.ChannelID, request.Plan, request.Speculative)
 		return Presentation{}, &lease, err
 	default:
 		return Presentation{}, nil, ErrUnsupportedDelivery

@@ -633,7 +633,24 @@ func (r *playoutResolver) segmentedBroadcasts(
 				break
 			}
 		}
-		out = append(out, project(segSlots, epoch, segFrom, segTo)...)
+		segment := project(segSlots, epoch, segFrom, segTo)
+		// Project keeps the true start/stop of a programme crossing the requested viewport.
+		// That is correct at the OUTER Guide edges, but an INTERNAL rolling-window boundary
+		// changes which arranged cycle is authoritative. Clip both sides there or the outgoing
+		// cycle's tail and incoming cycle's head occupy the same wall-clock time.
+		clipFrom := time.Time{}
+		if i > 0 {
+			clipFrom = segFrom
+		}
+		clipTo := time.Time{}
+		if segTo.Before(to) {
+			clipTo = segTo
+		}
+		for _, broadcast := range segment {
+			if clipped, ok := broadcast.ClipTo(clipFrom, clipTo); ok {
+				out = append(out, clipped)
+			}
+		}
 		segFrom = segTo
 	}
 	return out, nil

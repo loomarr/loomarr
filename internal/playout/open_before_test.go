@@ -129,7 +129,7 @@ func TestPumpBlocksOpensSuccessorBeforeBoundaryWithoutExpiringItsLifetime(t *tes
 			}
 		})
 		var output writeCloser
-		pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
+		pumpBlocks(ctx, &output, source, "channel", PlanBaseline, time.Time{}, nil)
 		if output.String() != "abc" {
 			t.Fatalf("output = %q", output.String())
 		}
@@ -174,7 +174,7 @@ func TestPumpBlocksDiscardsLookaheadWithChangedBoundary(t *testing.T) {
 			}
 		})
 		var output writeCloser
-		pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
+		pumpBlocks(ctx, &output, source, "channel", PlanBaseline, time.Time{}, nil)
 		if calls != 3 || output.String() != "acurrent" {
 			t.Fatalf("calls=%d output=%q", calls, output.String())
 		}

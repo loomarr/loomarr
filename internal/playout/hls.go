@@ -85,8 +85,11 @@ const firstSegmentPoll = 100 * time.Millisecond
 // the remux without a process. The remux attaches at the CLIENT's resolved
 // plan (§9.1 V48): a baseline `<video>` gets HEVC/AC3 transcoded to h264/aac, while an HEVC-capable
 // client gets it copied — the plan the Watch handler resolved from the DeviceProfile decides which.
+// Speculative attachment has the same bytes but a stricter admission policy: it cannot reclaim
+// another Channel's idle capacity.
 type HLSAttacher interface {
 	AttachSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (sinkLease, error)
+	AttachSpeculativeSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (sinkLease, error)
 }
 
 type hlsProcessCorrelator interface {
@@ -98,13 +101,16 @@ type hlsProcessCorrelator interface {
 // tested without executing a binary — the same seam Manager's Spawner provides.
 type hlsSpawner func(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger) (*hlsProcess, error)
 
+type hlsClockProbe func(context.Context, string) (time.Duration, error)
+
 // HLSManager owns the per-channel HLS remuxes. One per process, built beside the session Manager.
 type HLSManager struct {
-	attacher HLSAttacher
-	ffmpeg   string
-	log      *slog.Logger
-	grace    time.Duration
-	spawn    hlsSpawner
+	attacher   HLSAttacher
+	ffmpeg     string
+	log        *slog.Logger
+	grace      time.Duration
+	spawn      hlsSpawner
+	clockProbe hlsClockProbe
 
 	// readyTimeout is how long a starting remux waits for its first segment. A field rather than
 	// the constant used directly, for one reason: the NEGATIVE readiness cases (a header-only
@@ -161,15 +167,20 @@ func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Dura
 		return nil, fmt.Errorf("hls: segment root under %q: %w", baseDir, err)
 	}
 	spawn := hlsSpawner(startHLSFFmpeg)
+	var observer *diagnostics.ProcessManager
 	if len(observers) > 0 && observers[0] != nil {
 		manager := observers[0]
+		observer = manager
 		spawn = func(ctx context.Context, bin, dir string, plan EncodePlan, log *slog.Logger) (*hlsProcess, error) {
 			return startHLSFFmpegObserved(ctx, bin, dir, plan, log, manager)
 		}
 	}
 	return &HLSManager{
 		attacher: attacher, ffmpeg: ffmpeg, grace: grace, log: log,
-		spawn:   spawn,
+		spawn: spawn,
+		clockProbe: func(ctx context.Context, playlist string) (time.Duration, error) {
+			return probeHLSFirstVideoPTS(ctx, ffmpeg, playlist, observer)
+		},
 		root:    root,
 		remuxes: map[remuxKey]*hlsRemux{},
 	}, nil
@@ -185,9 +196,10 @@ func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Dura
 // hlsPlaylistLease owns one viewer reference while media readiness is pending.
 // Acquiring the lease is short and lifecycle-ordered; reading it may wait for media.
 type hlsPlaylistLease struct {
-	path    string
-	release func()
-	await   func(context.Context) error
+	path     string
+	release  func()
+	await    func(context.Context) error
+	snapshot func(context.Context) ([]byte, error)
 }
 
 func (l hlsPlaylistLease) read(ctx context.Context) (string, func(), error) {
@@ -198,7 +210,28 @@ func (l hlsPlaylistLease) read(ctx context.Context) (string, func(), error) {
 	return l.path, l.release, nil
 }
 
-func (m *HLSManager) acquirePlaylist(channelID string, plan EncodePlan) (hlsPlaylistLease, error) {
+func (l hlsPlaylistLease) readManifest(ctx context.Context) ([]byte, func(), error) {
+	if err := l.await(ctx); err != nil {
+		l.release()
+		return nil, nil, err
+	}
+	var (
+		body []byte
+		err  error
+	)
+	if l.snapshot != nil {
+		body, err = l.snapshot(ctx)
+	} else {
+		body, err = os.ReadFile(l.path)
+	}
+	if err != nil {
+		l.release()
+		return nil, nil, err
+	}
+	return body, l.release, nil
+}
+
+func (m *HLSManager) acquirePlaylist(channelID string, plan EncodePlan, speculative bool) (hlsPlaylistLease, error) {
 	key := remuxKey{channel: channelID, plan: plan}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -208,7 +241,7 @@ func (m *HLSManager) acquirePlaylist(channelID string, plan EncodePlan) (hlsPlay
 		}
 		delete(m.remuxes, key)
 	}
-	r, err := m.start(channelID, plan)
+	r, err := m.start(channelID, plan, speculative)
 	if err != nil {
 		return hlsPlaylistLease{}, err
 	}
@@ -219,9 +252,11 @@ func (m *HLSManager) acquirePlaylist(channelID string, plan EncodePlan) (hlsPlay
 
 func (m *HLSManager) playlistLease(r *hlsRemux, path string, release func()) hlsPlaylistLease {
 	timeout := m.readyWait()
-	return hlsPlaylistLease{path: path, release: release, await: func(ctx context.Context) error {
-		return r.awaitPlaylist(ctx, timeout)
-	}}
+	return hlsPlaylistLease{
+		path: path, release: release,
+		await:    func(ctx context.Context) error { return r.awaitPlaylist(ctx, timeout) },
+		snapshot: r.snapshotManifest,
+	}
 }
 
 // AssetPath resolves an HLS segment (`seg-N.ts`, referenced by the live playlist) to its on-disk
@@ -270,7 +305,7 @@ func (m *HLSManager) OpenAssetSource(channelID string, plan EncodePlan, rel stri
 }
 
 // start launches a remux for a channel at one EncodePlan. Caller holds m.mu.
-func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error) {
+func (m *HLSManager) start(channelID string, plan EncodePlan, speculative bool) (*hlsRemux, error) {
 	dir, err := os.MkdirTemp(m.root, "ch-")
 	if err != nil {
 		return nil, fmt.Errorf("hls: channel dir: %w", err)
@@ -290,7 +325,12 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 	// this costs no extra encode there — only genuinely incompatible content pays, and only while
 	// watched. The remux ffmpeg is `-c copy` regardless of plan — it re-containers whatever the
 	// session hands it (HEVC-in-TS included; hls.js ≥1.6 transmuxes that client-side).
-	sessLease, err := m.attacher.AttachSink(ctx, channelID, plan, relay)
+	var sessLease sinkLease
+	if speculative {
+		sessLease, err = m.attacher.AttachSpeculativeSink(ctx, channelID, plan, relay)
+	} else {
+		sessLease, err = m.attacher.AttachSink(ctx, channelID, plan, relay)
+	}
 	if err != nil {
 		cancel()
 		relay.abort(err)
@@ -313,7 +353,8 @@ func (m *HLSManager) start(channelID string, plan EncodePlan) (*hlsRemux, error)
 		setSessionActive: sessLease.SetActive,
 		relay:            relay,
 		grace:            m.grace, log: m.log,
-		onClosed: func() { m.remove(key) },
+		clockProbe: m.clockProbe,
+		onClosed:   func() { m.remove(key) },
 	}
 
 	// Direct-play: the remux stream-copies the session's bytes into HLS. No renditions, no
@@ -429,6 +470,11 @@ type hlsRemux struct {
 	log              *slog.Logger
 	grace            time.Duration
 	onClosed         func()
+	clockProbe       hlsClockProbe
+
+	clockMu    sync.Mutex
+	clockReady bool
+	clockShift time.Duration
 
 	mu             sync.Mutex
 	viewers        int
@@ -436,6 +482,79 @@ type hlsRemux struct {
 	graceStop      *time.Timer
 	idleSince      time.Time
 	idleGeneration uint64
+}
+
+func (r *hlsRemux) snapshotManifest(ctx context.Context) ([]byte, error) {
+	body, err := os.ReadFile(r.playlist)
+	if err != nil {
+		return nil, fmt.Errorf("hls: read manifest: %w", err)
+	}
+	if r.source == nil || r.source.timelineOrigin.IsZero() {
+		return body, nil
+	}
+
+	r.clockMu.Lock()
+	defer r.clockMu.Unlock()
+	if !r.clockReady {
+		if r.clockProbe == nil {
+			return nil, fmt.Errorf("hls: media-clock probe unavailable")
+		}
+		firstGenerated, err := firstProgramDateTime(body)
+		if err != nil {
+			return nil, err
+		}
+		probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		firstPTS, err := r.clockProbe(probeCtx, r.playlist)
+		if err != nil {
+			return nil, fmt.Errorf("hls: probe first video timestamp: %w", err)
+		}
+		r.clockShift = r.source.timelineOrigin.Add(firstPTS).Sub(firstGenerated)
+		r.clockReady = true
+	}
+	return shiftProgramDateTimes(body, r.clockShift)
+}
+
+func firstProgramDateTime(body []byte) (time.Time, error) {
+	const prefix = "#EXT-X-PROGRAM-DATE-TIME:"
+	for _, line := range strings.Split(string(body), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		parsed, err := parseHLSProgramDateTime(strings.TrimSpace(strings.TrimPrefix(trimmed, prefix)))
+		if err != nil {
+			return time.Time{}, fmt.Errorf("hls: invalid programme-date-time: %w", err)
+		}
+		return parsed, nil
+	}
+	return time.Time{}, fmt.Errorf("hls: manifest has no programme-date-time")
+}
+
+func parseHLSProgramDateTime(value string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05.999999999-0700"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unsupported timestamp %q", value)
+}
+
+func shiftProgramDateTimes(body []byte, shift time.Duration) ([]byte, error) {
+	const prefix = "#EXT-X-PROGRAM-DATE-TIME:"
+	lines := strings.Split(string(body), "\n")
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, prefix) {
+			continue
+		}
+		parsed, err := parseHLSProgramDateTime(strings.TrimSpace(strings.TrimPrefix(trimmed, prefix)))
+		if err != nil {
+			return nil, fmt.Errorf("hls: invalid programme-date-time: %w", err)
+		}
+		lines[index] = prefix + parsed.Add(shift).Format(time.RFC3339Nano)
+	}
+	return []byte(strings.Join(lines, "\n")), nil
 }
 
 // addViewer increments the refcount, returning the playlist path + a detach func. ok=false when

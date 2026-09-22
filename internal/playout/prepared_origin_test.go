@@ -60,7 +60,7 @@ func TestPreparedBlockFailureResolvesBeforeScheduledEnd(t *testing.T) {
 		}}, nil
 	})
 	var output writeCloser
-	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
+	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, time.Time{}, nil)
 	if calls != 2 {
 		t.Fatalf("source calls = %d; partial child failure waited for scheduled end instead of resolving again", calls)
 	}
@@ -643,7 +643,7 @@ func TestPumpBlocksLatePreparedHandoffRetainsCurrentPosition(t *testing.T) {
 					return preparedSource(ctx, blockRequest)
 				})
 				var output writeCloser
-				pumpBlocks(ctx, &output, source, "channel", PlanBaseline, nil)
+				pumpBlocks(ctx, &output, source, "channel", PlanBaseline, time.Time{}, nil)
 				wantCalls := 2
 				if tc.slowLookup {
 					wantCalls = 3

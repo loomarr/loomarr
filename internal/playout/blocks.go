@@ -73,13 +73,17 @@ func BlockSpawner(ffmpeg string, profile BlockProfile, source BlockSource, log *
 		if err != nil {
 			return nil, err
 		}
+		// One schedule origin owns every finite child in this session and is retained beside the
+		// process so delivery adapters can map copied media timestamps back to the same clock.
+		origin := time.Now().Add(-10 * time.Second)
+		proc.timelineOrigin = origin
 		if parentID := proc.ProcessRunID(); parentID != "" {
 			ctx = diagnostics.WithProcessSpec(ctx, diagnostics.ProcessSpec{ParentRunID: parentID})
 		}
 		go pumpBlocks(ctx, proc.Stdin, func(ctx context.Context, request BlockRequest) (Block, error) {
 			request.AudioBitrate = profile.AudioBitrate
 			return source(ctx, request)
-		}, channelID, plan, log)
+		}, channelID, plan, origin, log)
 		return proc, nil
 	}
 }
@@ -120,12 +124,14 @@ func BlockMuxArgs(profile BlockProfile) []string {
 
 func pumpBlocks(
 	ctx context.Context, dst io.WriteCloser, source BlockSource,
-	channelID string, plan EncodePlan, log *slog.Logger,
+	channelID string, plan EncodePlan, origin time.Time, log *slog.Logger,
 ) {
 	defer func() { _ = dst.Close() }()
 	// Leave positive transport-coordinate headroom at tune-in. This changes neither the
 	// authoritative schedule instant nor the strict deadline for prospective opening.
-	origin := time.Now().Add(-10 * time.Second)
+	if origin.IsZero() {
+		origin = time.Now().Add(-10 * time.Second)
+	}
 	var previous AiringIdentity
 	previousFinishedCleanly := false
 	for ctx.Err() == nil {
