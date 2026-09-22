@@ -15,9 +15,10 @@ import (
 // the way windowSlice advances its start by the window index (§6.5). Records the instants it was
 // asked about so a test can assert the guide re-resolved at each boundary.
 type rotatingCycle struct {
-	mu      sync.Mutex
-	askedAt []time.Time
-	window  time.Duration
+	mu                sync.Mutex
+	askedAt           []time.Time
+	window            time.Duration
+	programmeDuration time.Duration
 }
 
 func (c *rotatingCycle) CyclePreview(_ context.Context, _ string, at time.Time) (
@@ -36,6 +37,9 @@ func (c *rotatingCycle) CyclePreview(_ context.Context, _ string, at time.Time) 
 		idx := at.Unix() / int64(c.window/time.Second)
 		title = "win-" + time.Unix(idx*int64(c.window/time.Second), 0).UTC().Format("0102-15")
 		dur = c.window
+	}
+	if c.programmeDuration > 0 {
+		dur = c.programmeDuration
 	}
 	return at, []schedule.Slot{{
 		Kind: schedule.SlotProgram, Key: provision.Key("movie:tmdb:1"),
@@ -80,6 +84,41 @@ func TestSegmentedBroadcasts_ReResolvesAtEachWindowBoundary(t *testing.T) {
 	}
 	if eng.asks() < 3 {
 		t.Fatalf("CyclePreview asked %d times, want >= 3 (one per window boundary)", eng.asks())
+	}
+}
+
+// A rolling-window boundary changes which arranged cycle is authoritative. Programme times at
+// each edge come from cycle arithmetic and can extend across that boundary when runtime and window
+// length are not aligned. Concatenating those full edges makes two different programmes occupy the
+// same wall-clock time in the Guide even though only one cycle can be authoritative there.
+func TestSegmentedBroadcasts_ClipsAdjacentCyclesAtWindowBoundary(t *testing.T) {
+	t.Parallel()
+	window := time.Hour
+	eng := &rotatingCycle{window: window, programmeDuration: 90 * time.Minute}
+	boundary := time.Date(2026, time.August, 15, 1, 0, 0, 0, time.UTC)
+	accepted := &stubChannels{}
+	accepted.ch.ID = "ch1"
+	accepted.ch.PlayoutAnchor = boundary.Add(-50 * time.Minute)
+	r := &playoutResolver{engine: eng, channels: accepted, now: func() time.Time { return boundary }}
+
+	bs, err := r.segmentedBroadcasts(
+		context.Background(), "ch1", boundary.Add(-30*time.Minute), boundary.Add(30*time.Minute),
+		playout.BroadcastsBetween,
+	)
+	if err != nil {
+		t.Fatalf("segmentedBroadcasts: %v", err)
+	}
+	if len(bs) != 2 {
+		t.Fatalf("broadcasts = %+v, want one edge from each rolling window", bs)
+	}
+	if bs[0].Title == bs[1].Title {
+		t.Fatalf("rolling-window titles = %q and %q, want distinct arrangements", bs[0].Title, bs[1].Title)
+	}
+	if bs[0].Stop.After(bs[1].Start) {
+		t.Fatalf("adjacent rolling windows overlap: first stops %s, next starts %s", bs[0].Stop, bs[1].Start)
+	}
+	if !bs[0].Stop.Equal(boundary) || !bs[1].Start.Equal(boundary) {
+		t.Fatalf("handoff = %s → %s, want both edges clipped to %s", bs[0].Stop, bs[1].Start, boundary)
 	}
 }
 

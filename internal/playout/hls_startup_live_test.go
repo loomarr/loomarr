@@ -117,6 +117,15 @@ func TestLive_HLSStartsBeforeFiniteInputCloses(t *testing.T) {
 				}
 			}
 			t.Logf("complete segment ready after %s with source pipe held open", time.Since(started))
+			probeCtx, probeCancel := context.WithTimeout(ctx, 3*time.Second)
+			firstVideoPTS, err := probeHLSFirstVideoPTS(probeCtx, bin, filepath.Join(dir, hlsPlaylistName), nil)
+			probeCancel()
+			if err != nil {
+				t.Fatalf("probe first %s HLS video timestamp: %v", test.plan.String(), err)
+			}
+			if firstVideoPTS < 9*time.Second || firstVideoPTS > 11*time.Second {
+				t.Fatalf("first %s HLS video timestamp = %s, want the retained ten-second source clock", test.plan.String(), firstVideoPTS)
+			}
 			if err := stdin.Close(); err != nil {
 				t.Fatal(err)
 			}

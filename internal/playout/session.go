@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -117,6 +118,10 @@ type Session struct {
 	// supervisor requests. The session format is pinned, while the selected hardware engine may
 	// legitimately change after a child falls back.
 	encoder Encoder
+	// reclaimIdle is promoted permanently when any foreground viewer acquires this session. A
+	// speculative-only warm may use spare capacity but cannot later evict foreground work when a
+	// programme boundary changes its real cost from copy to transcode.
+	reclaimIdle atomic.Bool
 
 	mu      sync.Mutex
 	viewers map[int]sessionViewer
@@ -322,7 +327,7 @@ const DefaultGrace = 30 * time.Second
 func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan) (Stream, func(), error) {
 	key := sessionKey{channel: channelID, plan: plan}
 	for {
-		s, err := m.acquire(ctx, key)
+		s, err := m.acquire(ctx, key, true)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -338,9 +343,24 @@ func (m *Manager) Attach(ctx context.Context, channelID string, plan EncodePlan)
 // smaller byte budget intended for network viewers. The sink's offer is synchronous and must stay
 // non-blocking; returning false drops only that sink, preserving the channel for every other viewer.
 func (m *Manager) AttachSink(ctx context.Context, channelID string, plan EncodePlan, sink sessionSink) (sinkLease, error) {
+	return m.attachSink(ctx, channelID, plan, sink, true)
+}
+
+// AttachSpeculativeSink registers a warm-only delivery consumer without allowing it to evict an
+// existing grace-idle session at the capacity boundary. A real viewer may reclaim warm work; an
+// adjacent-channel prediction may not displace the Channel already on screen.
+func (m *Manager) AttachSpeculativeSink(
+	ctx context.Context, channelID string, plan EncodePlan, sink sessionSink,
+) (sinkLease, error) {
+	return m.attachSink(ctx, channelID, plan, sink, false)
+}
+
+func (m *Manager) attachSink(
+	ctx context.Context, channelID string, plan EncodePlan, sink sessionSink, reclaimIdle bool,
+) (sinkLease, error) {
 	key := sessionKey{channel: channelID, plan: plan}
 	for {
-		s, err := m.acquire(ctx, key)
+		s, err := m.acquire(ctx, key, reclaimIdle)
 		if err != nil {
 			return sinkLease{}, err
 		}
@@ -372,10 +392,12 @@ func (l sinkLease) SetActive(active bool) bool {
 	return l.setActive(active)
 }
 
-// acquire finds or starts the one session for a channel/plan. Viewer registration is deliberately
+// acquire finds or starts the one session for a channel/plan. reclaimIdle distinguishes real demand
+// from an adjacent warm prediction; only real demand may retire another Channel to make capacity.
+// Viewer registration is deliberately
 // outside this method so byte-channel viewers and the in-process HLS sink share all admission,
 // spawn-race, grace, and failure handling rather than growing two subtly different managers.
-func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error) {
+func (m *Manager) acquire(ctx context.Context, key sessionKey, reclaimIdle bool) (*Session, error) {
 
 	// ⚠ **The find-or-create is atomic, but the SPAWN is not held under m.mu.** The lock protects
 	// only the map decision (reuse an existing session, or reserve a placeholder for a new one);
@@ -389,11 +411,14 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 	// Different keys never contend — each reserves its own placeholder and spawns concurrently.
 	m.mu.Lock()
 	if s := m.sessions[key]; s != nil {
+		if reclaimIdle {
+			s.reclaimIdle.Store(true)
+		}
 		m.mu.Unlock()
 		<-s.ready
 		if s.initErr != nil {
 			m.discardFailed(key, s)
-			return m.acquire(ctx, key)
+			return m.acquire(ctx, key, reclaimIdle)
 		}
 		return s, nil
 	}
@@ -411,11 +436,14 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 	// than spawning a second process; the same-key atomicity contract still holds.
 	m.mu.Lock()
 	if s := m.sessions[key]; s != nil {
+		if reclaimIdle {
+			s.reclaimIdle.Store(true)
+		}
 		m.mu.Unlock()
 		<-s.ready
 		if s.initErr != nil {
 			m.discardFailed(key, s)
-			return m.acquire(ctx, key)
+			return m.acquire(ctx, key, reclaimIdle)
 		}
 		return s, nil
 	}
@@ -435,8 +463,8 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 			}
 		}
 		m.mu.Unlock()
-		if reclaimOldestIdle(candidates) {
-			return m.acquire(ctx, key)
+		if reclaimIdle && reclaimOldestIdle(candidates) {
+			return m.acquire(ctx, key, reclaimIdle)
 		}
 		if m.observer != nil {
 			m.observer.PlayoutSessionStarted("capacity")
@@ -444,7 +472,7 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey) (*Session, error)
 		return nil, ErrAtCapacity
 	}
 	// Reserve the slot with a not-yet-spawned placeholder, then spawn outside the lock.
-	s := m.newPlaceholder(key.channel, key.plan)
+	s := m.newPlaceholder(key.channel, key.plan, reclaimIdle)
 	s.cost = newCost
 	m.committedCost += newCost
 	m.sessions[key] = s
@@ -578,7 +606,7 @@ func (m *Manager) discardClosed(key sessionKey, s *Session) {
 
 // newPlaceholder builds a Session whose encoder is not spawned yet. `ready` gates every viewer until
 // spawnPlaceholder resolves it (success or initErr), so concurrent same-key callers share one spawn.
-func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
+func (m *Manager) newPlaceholder(channelID string, plan EncodePlan, reclaimIdle bool) *Session {
 	key := sessionKey{channel: channelID, plan: plan}
 	s := &Session{
 		ChannelID: channelID,
@@ -595,6 +623,7 @@ func (m *Manager) newPlaceholder(channelID string, plan EncodePlan) *Session {
 		inactiveViewers: map[int]bool{},
 		ready:           make(chan struct{}),
 	}
+	s.reclaimIdle.Store(reclaimIdle)
 	// Capture identity as well as key. An old close callback can race a foreground Attach that
 	// has already replaced this closed session at the same key; it must never delete or release
 	// the replacement's admission cost.
@@ -1227,6 +1256,10 @@ func (m *Manager) AdmitProgram(channelID string, plan EncodePlan, transcoding bo
 			m.mu.Unlock()
 			m.notifyChange()
 			return true
+		}
+		if !s.reclaimIdle.Load() {
+			m.mu.Unlock()
+			return false
 		}
 		candidates := make([]idleCandidate, 0, len(m.sessions))
 		for candidateKey, candidateSession := range m.sessions {

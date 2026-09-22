@@ -20,7 +20,15 @@ import (
 
 // Playlist keeps the existing manager conformance scenarios on the same acquire/read seam.
 func (m *HLSManager) Playlist(channel string, plan EncodePlan) (string, func(), error) {
-	lease, err := m.acquirePlaylist(channel, plan)
+	lease, err := m.acquirePlaylist(channel, plan, false)
+	if err != nil {
+		return "", nil, err
+	}
+	return lease.read(context.Background())
+}
+
+func (m *HLSManager) SpeculativePlaylist(channel string, plan EncodePlan) (string, func(), error) {
+	lease, err := m.acquirePlaylist(channel, plan, true)
 	if err != nil {
 		return "", nil, err
 	}
@@ -40,6 +48,12 @@ func (a *eagerAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, si
 	return sinkLease{release: func() { sink.close() }}, nil
 }
 
+func (a *eagerAttacher) AttachSpeculativeSink(
+	ctx context.Context, channel string, plan EncodePlan, sink sessionSink,
+) (sinkLease, error) {
+	return a.AttachSink(ctx, channel, plan, sink)
+}
+
 // burstAttacher models the larger-than-memory startup burst a warm session produces when its
 // readrate initial burst is released. It deliberately keeps the sink open after the burst so
 // the remux stays alive while the test inspects what reached ffmpeg's stdin.
@@ -56,6 +70,12 @@ func (a *burstAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, si
 	}
 	close(a.sent)
 	return sinkLease{release: func() { sink.close() }}, nil
+}
+
+func (a *burstAttacher) AttachSpeculativeSink(
+	ctx context.Context, channel string, plan EncodePlan, sink sessionSink,
+) (sinkLease, error) {
+	return a.AttachSink(ctx, channel, plan, sink)
 }
 
 type recordingWriteCloser struct {
@@ -101,6 +121,12 @@ func (f *fakeAttacher) AttachSink(_ context.Context, _ string, _ EncodePlan, sin
 		f.detaches.Add(1)
 		sink.close()
 	}}, nil
+}
+
+func (f *fakeAttacher) AttachSpeculativeSink(
+	ctx context.Context, channel string, plan EncodePlan, sink sessionSink,
+) (sinkLease, error) {
+	return f.AttachSink(ctx, channel, plan, sink)
 }
 
 // newTestHLSManager builds a manager whose ffmpeg spawn is faked: it writes a stub master
@@ -513,6 +539,77 @@ func TestHLSManager_RejoinWithinGraceKeepsOneAttach(t *testing.T) {
 
 	if got := att.attaches.Load(); got != 1 {
 		t.Fatalf("a rejoin within grace caused %d attaches, want 1", got)
+	}
+}
+
+// Adjacent warming is optional work. On a one-slot machine it must accept a cold miss rather than
+// evicting the grace-idle remux that the foreground player is polling between manifest requests.
+func TestHLSManager_SpeculativeWarmDoesNotReclaimForegroundSession(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	sessions := testManager(t, spawn, 1, time.Minute)
+	m := newTestHLSManager(t, sessions)
+	m.grace = time.Minute
+
+	_, detach, err := m.Playlist("foreground", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := encoder("foreground").w.Write([]byte("transport")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	detach()
+
+	if _, release, err := m.SpeculativePlaylist("adjacent", PlanFull); !errors.Is(err, ErrAtCapacity) {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("speculative warm error = %v, want ErrAtCapacity", err)
+	}
+	select {
+	case <-encoder("foreground").stopped:
+		t.Fatal("speculative warm evicted the foreground session")
+	default:
+	}
+	if _, ok := m.AssetPath("foreground", PlanFull, hlsPlaylistName); !ok {
+		t.Fatal("speculative warm retired the foreground remux assets")
+	}
+}
+
+func TestHLSManager_SpeculativeWarmDoesNotReclaimAtLaterProgramBoundary(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	sessions := testManager(t, spawn, 1, time.Minute)
+	sessions.estimateCost = func(_ context.Context, channel string, _ EncodePlan) int {
+		if channel == "adjacent" {
+			return 0
+		}
+		return 1
+	}
+	m := newTestHLSManager(t, sessions)
+	m.grace = time.Minute
+
+	_, detachForeground, err := m.Playlist("foreground", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := encoder("foreground").w.Write([]byte("transport")); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	detachForeground()
+
+	_, detachWarm, err := m.SpeculativePlaylist("adjacent", PlanFull)
+	if err != nil {
+		t.Fatalf("copy-only speculative warm should use spare capacity: %v", err)
+	}
+	defer detachWarm()
+	if sessions.AdmitProgram("adjacent", PlanFull, true) {
+		t.Fatal("speculative warm reclaimed foreground capacity when its next programme needed a transcode")
+	}
+	select {
+	case <-encoder("foreground").stopped:
+		t.Fatal("speculative programme transition evicted the foreground session")
+	default:
 	}
 }
 

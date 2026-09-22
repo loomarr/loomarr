@@ -86,6 +86,16 @@ const liveStateAt = (clock: LiveClock, now: number): LivePlaybackState => {
 
 type NativeDatedMedia = HTMLVideoElement & { getStartDate?: () => Date };
 
+interface DisplayedClockAnchor {
+  mediaTimeSeconds: number;
+  wallClockMs: number;
+}
+
+interface DisplayedClockSample {
+  anchor?: DisplayedClockAnchor;
+  wallClockMs: number;
+}
+
 // The Watch clock describes the frame on screen, not the wall-clock edge the Channel is producing.
 // hls.js maps currentTime through EXT-X-PROGRAM-DATE-TIME directly. Safari's native HLS surface
 // exposes the same mapping as the Date at media time zero, so add the element's currentTime there.
@@ -94,17 +104,32 @@ const displayedWallClockMs = (
   video: HTMLVideoElement | undefined,
   hls: Hls | undefined,
   fallback: number,
-): number => {
+  previous?: DisplayedClockAnchor,
+): DisplayedClockSample => {
+  const mediaTime = video?.currentTime;
+  const hasMediaTime = typeof mediaTime === "number" && Number.isFinite(mediaTime);
   const playingDate = hls?.playingDate;
   const playingMs = playingDate?.getTime();
-  if (playingMs !== undefined && Number.isFinite(playingMs)) return playingMs;
+  if (playingMs !== undefined && Number.isFinite(playingMs)) {
+    return {
+      wallClockMs: playingMs,
+      anchor: hasMediaTime ? { mediaTimeSeconds: mediaTime, wallClockMs: playingMs } : previous,
+    };
+  }
 
   const native = video as NativeDatedMedia | undefined;
   const startMs = native?.getStartDate?.().getTime();
-  if (startMs !== undefined && Number.isFinite(startMs) && Number.isFinite(native?.currentTime)) {
-    return startMs + (native?.currentTime ?? 0) * 1_000;
+  if (startMs !== undefined && Number.isFinite(startMs) && hasMediaTime) {
+    const wallClockMs = startMs + mediaTime * 1_000;
+    return { wallClockMs, anchor: { mediaTimeSeconds: mediaTime, wallClockMs } };
   }
-  return fallback;
+  if (previous && hasMediaTime) {
+    return {
+      wallClockMs: previous.wallClockMs + (mediaTime - previous.mediaTimeSeconds) * 1_000,
+      anchor: previous,
+    };
+  }
+  return { wallClockMs: fallback, anchor: previous };
 };
 
 const containsMediaTime = (ranges: TimeRanges, point: number): boolean => {
@@ -334,6 +359,7 @@ function useBrowserHlsPlayer({
     hls?: Hls;
     sourceURL?: string;
     lastKeepaliveMs: number;
+    clockAnchor?: DisplayedClockAnchor;
   }>({ lastKeepaliveMs: 0 });
   const [transportState, setTransportState] = useState<{ channelId: string; value: LivePlaybackState }>({
     channelId,
@@ -349,7 +375,9 @@ function useBrowserHlsPlayer({
       if (sampleFrame && clock.mode !== "paused") {
         const fallback = clock.mode === "live" ? at : at - clock.lagMs;
         const active = activeRef.current;
-        clock.viewerTimeMs = displayedWallClockMs(active.video, active.hls, fallback);
+        const sample = displayedWallClockMs(active.video, active.hls, fallback, active.clockAnchor);
+        active.clockAnchor = sample.anchor;
+        clock.viewerTimeMs = sample.wallClockMs;
       }
       setTransportState({ channelId, value: liveStateAt(clock, at) });
     },
@@ -387,7 +415,9 @@ function useBrowserHlsPlayer({
       if (clock.channelId !== channelId) return;
       const fallback = clock.mode === "behind" ? at - clock.lagMs : at;
       const active = activeRef.current;
-      clock.viewerTimeMs = displayedWallClockMs(active.video, active.hls, fallback);
+      const sample = displayedWallClockMs(active.video, active.hls, fallback, active.clockAnchor);
+      active.clockAnchor = sample.anchor;
+      clock.viewerTimeMs = sample.wallClockMs;
       clock.mode = "paused";
       clock.pausedMediaTime = video.currentTime;
       video.pause();

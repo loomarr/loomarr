@@ -228,12 +228,36 @@ type Broadcast struct {
 	Nominal bool
 	// Start and Stop are absolute wall-clock. Stop is exclusive.
 	Start, Stop time.Time
+	// identityStart is the scheduler-owned start before a caller clips this projection at an
+	// authority boundary. ScheduleBlockID must continue to join the clipped Guide card to the
+	// Process run derived from the same airing; using the display-only clipped Start would mint a
+	// second identity for one scheduled block.
+	identityStart time.Time
 }
 
 // ScheduleBlockID returns the same opaque identity the live Airing path assigns. It is deterministic
 // across Guide reads and restarts but reveals none of the content identity used to derive it.
 func (b Broadcast) ScheduleBlockID(channelID string) string {
-	return ScheduledBlockID(channelID, b.Start, b.Kind, broadcastIdentity(b))
+	startedAt := b.Start
+	if !b.identityStart.IsZero() {
+		startedAt = b.identityStart
+	}
+	return ScheduledBlockID(channelID, startedAt, b.Kind, broadcastIdentity(b))
+}
+
+// ClipTo projects a Broadcast inside [from, to) without changing its scheduler identity.
+// A zero bound leaves that edge untouched. This is for caller-owned authority boundaries such as
+// a rolling-window rotation; ordinary Guide request edges deliberately retain the programme's
+// real start and stop even when they extend beyond the requested viewport.
+func (b Broadcast) ClipTo(from, to time.Time) (Broadcast, bool) {
+	b.identityStart = b.Start
+	if !from.IsZero() && b.Start.Before(from) {
+		b.Start = from
+	}
+	if !to.IsZero() && b.Stop.After(to) {
+		b.Stop = to
+	}
+	return b, b.Stop.After(b.Start)
 }
 
 // ContentIdentity is the same scheduler-owned identity used by live Airings and ScheduleBlockID.

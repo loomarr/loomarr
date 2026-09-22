@@ -15075,14 +15075,15 @@ paths:
             examples:
               - ch_abc123
             type: string
-        - description: Optional prepared-only lookup; returns 204 on a miss and never starts live playout
+        - description: "Optional least-privilege lookup: prepared forbids live fallback; warm permits speculative live startup without reclaiming another Channel"
           explode: false
           in: query
           name: mode
           schema:
-            description: Optional prepared-only lookup; returns 204 on a miss and never starts live playout
+            description: "Optional least-privilege lookup: prepared forbids live fallback; warm permits speculative live startup without reclaiming another Channel"
             enum:
               - prepared
+              - warm
             type: string
       responses:
         "200":

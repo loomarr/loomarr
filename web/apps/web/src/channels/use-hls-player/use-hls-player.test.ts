@@ -826,6 +826,39 @@ describe("useHlsPlayer", () => {
     });
   });
 
+  it("keeps the playhead on a stalled decoded frame when HLS temporarily loses its date", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const video = videoEl() as HTMLVideoElement;
+    video.currentTime = 44;
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+
+    act(() => result.current.attach(video));
+    await waitFor(() => expect(hls.instances).toHaveLength(1));
+    const controller = hls.instances[0] as { playingDate: Date | null };
+    const timeUpdate = vi
+      .mocked(video.addEventListener)
+      .mock.calls.find(([event]) => event === "timeupdate")?.[1] as EventListener;
+
+    controller.playingDate = new Date(992_000);
+    act(() => timeUpdate(new Event("timeupdate")));
+    expect(result.current.liveTransport.state.viewerTimeMs).toBe(992_000);
+
+    // During the reproduced boundary stall hls.js briefly reports no playingDate. The wall clock
+    // crosses into filler, but the media element is still showing the final episode frame.
+    controller.playingDate = null;
+    vi.mocked(Date.now).mockReturnValue(1_012_000);
+    act(() => timeUpdate(new Event("timeupdate")));
+    expect(result.current.liveTransport.state.viewerTimeMs).toBe(992_000);
+
+    // Once decoded media advances, the retained mapping advances with it even before hls.js
+    // republishes program-date-time metadata.
+    video.currentTime = 45;
+    act(() => timeUpdate(new Event("timeupdate")));
+    expect(result.current.liveTransport.state.viewerTimeMs).toBe(993_000);
+  });
+
   it("keeps an intentional pause while the active controller buffers another fragment", async () => {
     hls.supported = true;
     channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });

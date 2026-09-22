@@ -3226,6 +3226,13 @@ Channel number, name, current programme, and `Tuning…`; it stays over the exis
 replacement produces a decoded frame, then fades. A failed tune keeps the target identity visible
 with a retry action rather than silently snapping back to the previous Channel.
 
+The Watch timeline, programme label, and commercial-break playhead describe the **decoded frame on
+screen**, not the server's wall-clock schedule edge. Once the player has observed a valid
+program-date-time mapping, it retains that media-time-to-wall-clock anchor across temporary HLS
+metadata gaps and advances it only as the media element's decoded position advances. A stalled frame
+therefore freezes the visible playhead and programme context; it MUST NOT fall forward to `Date.now()`
+and claim that a commercial has begun while the preceding programme is still on screen.
+
 Adjacent warming begins with a **prepared-only probe**. The client keeps signed play URLs for the
 previous and next surfable Channels, then fetches each HLS master with `mode=prepared`. That mode is a
 least-privilege hint on the existing signed HLS route: `Playout.Tune` may return a prepared
@@ -3246,8 +3253,12 @@ library's declared-file and containment checks before opening bytes.
 
 Adjacent warming is **prepared-first, bounded-live on a miss**. The controller first performs the
 read-only prepared probe described above. A hit warms its immutable init/media bytes. A `204` miss
-then fetches one normal signed HLS snapshot for only the previous and next surfable Channels. That
-snapshot may establish the existing bounded live Origin and its normal grace lease, but it never
+then fetches one HLS snapshot marked `mode=warm` for only the previous and next surfable Channels.
+`warm` is a least-privilege admission hint: it may join or establish the existing bounded live
+Origin, but it MUST NOT reclaim another Channel's grace-idle session to do so. The mode is removed
+from returned asset URLs and from the signed URL retained for a real tune, so a later foreground
+request is admitted normally. That snapshot may establish the existing live Origin and its normal
+grace lease, but it never
 creates a browser player, MediaSource, or decoder; live admission remains authoritative and a
 capacity rejection is a harmless cold miss. This is the immediate hot-set path while whole-program
 preparation catches up: catalog size does not create work because only `current - 1`, `current`, and
@@ -3353,7 +3364,12 @@ A complete segment must become available while the live input remains open, with
 source EOF. Regression coverage includes a large initial video packet and audio starting three
 seconds after video, in addition to aligned H.264 MPEG-TS and HEVC fMP4. This does not shorten the
 segment cadence or alter copied media. FFmpeg's generated programme-date-time is not proof of the
-original schedule timestamp.
+original schedule timestamp. Before a live manifest crosses the Playout interface, the live HLS
+origin probes the first published video timestamp once and maps it through the session's schedule
+origin. It replaces FFmpeg's wall-clock-at-segment-write programme dates with that authoritative
+media-clock mapping for every segment in the snapshot. This correction belongs to the shared
+backend presentation: Web, native HLS, and future clients consume the same schedule-correct clock
+and never estimate encoder or segmenter latency themselves.
 
 The MPEG-TS HLS remux preserves packet payloads and the source audio/video timestamps, including
 spacing across source gaps. It flushes transport output without mux delay so an AAC payload group
@@ -3883,7 +3899,10 @@ Refusing an over-budget transcode is deliberate — the operator gets an actiona
 not universal stutter. A proven-warm session with zero viewers is different from active work: it is
 retained only to make a likely bounce-back cheap. Before returning 503, admission reclaims the
 **least-recently-viewed grace-idle session whose nonzero cost can free the needed slot** and retries;
-sessions with viewers are never eviction candidates. Copy-only idle sessions do not consume the
+sessions with viewers are never eviction candidates. A speculative adjacent warm request never
+performs this reclamation: an existing or newly tuned foreground Channel wins the capacity race,
+while a real foreground tune retains the normal idle-reclamation behavior needed for Channel
+surfing. Copy-only idle sessions do not consume the
 transcode budget and are therefore not evicted merely to satisfy that budget. An HLS remux's session
 lease marks its internal sink inactive when the last manifest request releases, so session admission
 and viewer telemetry see real demand while bytes continue feeding the warm remux. Evicting that idle

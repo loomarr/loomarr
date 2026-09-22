@@ -425,6 +425,21 @@ func TestPlayoutHLS_PreparedAssetMatchesTheRegisteredRoute(t *testing.T) {
 	}
 }
 
+// The typed Huma input validates query enums before the raw streaming handler runs. Keep the
+// speculative warmer mode in that contract; a handler-only test cannot catch a stale enum because
+// it bypasses route validation entirely.
+func TestPlayoutHLS_WarmModePassesRegisteredRouteValidation(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: &fakePlayoutSessions{}})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/master.m3u8?token="+playoutToken+"&mode=warm")
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200 from registered warm route: %s", resp.StatusCode, body)
+	}
+}
+
 // --- The stream endpoint ---
 
 // The response must look like a LIVE stream, not a file. A Content-Length promises an end that

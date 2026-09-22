@@ -7,6 +7,12 @@ const preparedURL = (raw: string): string => {
   return url.toString();
 };
 
+const warmURL = (raw: string): string => {
+  const url = new URL(raw, window.location.href);
+  url.searchParams.set("mode", "warm");
+  return url.toString();
+};
+
 // warmableAssets selects the init map and newest media fragment. It tracks the active map across
 // discontinuities, so a manifest spanning two programmes warms the init that belongs to the
 // fragment the player will join, not merely the first map in the file.
@@ -27,9 +33,10 @@ const warmableAssets = (manifest: string): string[] => {
 };
 
 // warmChannel never creates a player, MediaSource, or decoder. It tries the durable prepared origin
-// first; on a clean miss it fetches one normal HLS snapshot so the server's existing bounded live
-// origin can establish the adjacent remux during the current channel's tune-in. The exact normal
-// signed URL is retained for the real tune, and capacity/errors remain harmless speculative misses.
+// first; on a clean miss it fetches one `mode=warm` HLS snapshot so the server's existing bounded
+// live origin can establish the adjacent remux without reclaiming foreground capacity. The exact
+// normal signed URL is retained for the real tune, and capacity/errors remain harmless speculative
+// misses.
 const warmChannel = async (channelId: string, signal: AbortSignal): Promise<WarmedChannel | undefined> => {
   const source = await mintChannelPlaySource(channelId, signal);
   if (!source) return undefined;
@@ -40,12 +47,12 @@ const warmChannel = async (channelId: string, signal: AbortSignal): Promise<Warm
   });
   let manifestURL = response.url || preparedURL(source.url);
   if (response.status === 204) {
-    response = await fetch(source.url, {
+    response = await fetch(warmURL(source.url), {
       signal,
       credentials: "same-origin",
       cache: "no-store",
     });
-    manifestURL = response.url || new URL(source.url, window.location.href).toString();
+    manifestURL = response.url || warmURL(source.url);
   }
   if (!response.ok) return { ...source, warmed: false };
 

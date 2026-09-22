@@ -200,6 +200,27 @@ func TestScheduledBlockIDIsOpaqueStableAndScheduleSpecific(t *testing.T) {
 	}
 }
 
+func TestBroadcastClipToPreservesScheduleBlockIdentity(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, time.August, 15, 0, 10, 0, 0, time.UTC)
+	broadcast := Broadcast{
+		Kind: schedule.SlotProgram, Title: "Long programme", LibraryItemID: "item-1",
+		Start: start, Stop: start.Add(90 * time.Minute),
+	}
+	wantID := broadcast.ScheduleBlockID("channel-1")
+
+	clipped, ok := broadcast.ClipTo(start.Add(50*time.Minute), start.Add(70*time.Minute))
+	if !ok {
+		t.Fatal("ClipTo rejected a non-empty projection")
+	}
+	if got := clipped.ScheduleBlockID("channel-1"); got != wantID {
+		t.Fatalf("clipped ScheduleBlockID = %q, want original identity %q", got, wantID)
+	}
+	if !clipped.Start.Equal(start.Add(50*time.Minute)) || !clipped.Stop.Equal(start.Add(70*time.Minute)) {
+		t.Fatalf("clipped interval = %s → %s", clipped.Start, clipped.Stop)
+	}
+}
+
 // A programme already in progress must report its REAL start, not the window's start. A media
 // server draws the current programme from its actual beginning; a clipped start renders as a
 // show that appears to begin the moment you opened the guide.

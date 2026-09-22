@@ -122,6 +122,7 @@ new/seg.m4s?sig=x
     );
     expect(requests).toHaveLength(3);
     expect(requests[0]?.searchParams.get("mode")).toBe("prepared");
-    expect(requests.slice(1).every((request) => !request.searchParams.has("mode"))).toBe(true);
+    expect(requests[1]?.searchParams.get("mode")).toBe("warm");
+    expect(requests[2]?.searchParams.has("mode")).toBe(false);
   });
 });
