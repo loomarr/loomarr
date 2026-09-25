@@ -56,12 +56,44 @@ type readyOutput struct {
 	}
 }
 
-// registerOps mounts the operational surface. `pprofOn` gates the profiler routes.
-func (s *Server) registerOps(api huma.API, pprofOn bool) {
-	metricsHandler := http.NotFoundHandler()
-	if s.metrics != nil {
-		metricsHandler = s.metrics.Handler()
+// scrapeGuard puts the Prometheus scrape token in front of the exposition (§7, #1408).
+//
+// ⚠ **The route stays RolePublic and the check lives HERE, on purpose.** RolePublic means "the
+// role middleware asks no question" — a scrape job holds no Loomarr session, so a session or
+// API_TOKEN is not the credential. Keeping the guard in the handler also means a cookie, a
+// member login or the admin API_TOKEN can never unlock it by accident: the only accepted
+// credential is the dedicated scrape token, so leaking one never leaks the other.
+//
+// ⚠ **Fail closed.** An empty token refuses every request (403, naming the setting) rather than
+// serving openly — a missing secret must never read as "no auth wanted".
+//
+// The presented value is compared in constant time and is never logged.
+func scrapeGuard(token string, next http.Handler) http.HandlerFunc {
+	const prefix = "Bearer "
+	return func(w http.ResponseWriter, r *http.Request) {
+		if token == "" {
+			http.Error(w, "metrics are disabled: set LOOMARR_METRICS_TOKEN (or LOOMARR_METRICS_TOKEN_FILE) "+
+				"and send it as `Authorization: Bearer <token>`", http.StatusForbidden)
+			return
+		}
+		h := r.Header.Get("Authorization")
+		if len(h) <= len(prefix) || h[:len(prefix)] != prefix || !constantEq(h[len(prefix):], token) {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="loomarr-metrics"`)
+			http.Error(w, "metrics require the scrape token as `Authorization: Bearer <token>`", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
 	}
+}
+
+// registerOps mounts the operational surface. `pprofOn` gates the profiler routes;
+// `metricsToken` is the scrape credential guarding /metrics ("" ⇒ refused).
+func (s *Server) registerOps(api huma.API, pprofOn bool, metricsToken string) {
+	var metricsInner http.Handler = http.NotFoundHandler()
+	if s.metrics != nil {
+		metricsInner = s.metrics.Handler()
+	}
+	metricsHandler := scrapeGuard(metricsToken, metricsInner)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "healthz", Method: http.MethodGet, Path: "/v1/healthz",
 		Summary: "Liveness probe",
@@ -88,7 +120,8 @@ func (s *Server) registerOps(api huma.API, pprofOn bool) {
 	rawOp[struct{}](api, bytesResponse(huma.Operation{
 		OperationID: "metrics", Method: http.MethodGet, Path: "/v1/metrics",
 		Summary: "Prometheus metrics",
-		Description: "Public, no credential — a scrape job holds no session. Go runtime collectors " +
+		Description: "Requires the Prometheus scrape token as `Authorization: Bearer <LOOMARR_METRICS_TOKEN>` — not a session or the API token. " +
+			"401 for a missing or wrong token; 403 when no token is configured (fail closed). Go runtime collectors " +
 			"plus Loomarr's §17 series. Also served at `/metrics`.",
 		Tags: []string{"ops"},
 	}, "Prometheus text exposition.", "text/plain"), RolePublic, metricsHandler.ServeHTTP)

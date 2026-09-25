@@ -232,10 +232,18 @@ func TestBuildExposesDomainMetrics(t *testing.T) {
 	t.Parallel()
 	st := testkit.MigratedSQLiteStore(t)
 
-	h := buildTestApplication(t, st, Overrides{}).Handler()
+	h := buildTestApplication(t, st, Overrides{MetricsToken: "composition-scrape-token"}).Handler()
 
+	// Through the real composition root: no credential is refused, the token unlocks it (§7, #1408).
+	anon := httptest.NewRecorder()
+	h.ServeHTTP(anon, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if anon.Code != http.StatusUnauthorized {
+		t.Fatalf("/metrics without the scrape token = %d, want 401", anon.Code)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Authorization", "Bearer composition-scrape-token")
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/metrics = %d, want 200", rec.Code)
 	}
@@ -247,6 +255,25 @@ func TestBuildExposesDomainMetrics(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/metrics missing domain gauge %q (store collector not wired?)", want)
+		}
+	}
+}
+
+// An install with no scrape token configured refuses /metrics at the composition root (§7,
+// #1408) — fail closed, not open — and the refusal names the variable to set.
+func TestBuildRefusesMetricsWithoutScrapeToken(t *testing.T) {
+	t.Parallel()
+	st := testkit.MigratedSQLiteStore(t)
+	h := buildTestApplication(t, st, Overrides{}).Handler()
+
+	for _, path := range []string{"/metrics", "/v1/metrics"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s with no token configured = %d, want 403", path, rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "LOOMARR_METRICS_TOKEN") {
+			t.Errorf("%s refusal does not name LOOMARR_METRICS_TOKEN: %q", path, rec.Body.String())
 		}
 	}
 }

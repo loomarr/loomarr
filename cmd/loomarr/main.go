@@ -214,6 +214,14 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		log.Warn("LOOMARR_PPROF is set — /debug/pprof/* is exposed UNAUTHENTICATED. Development only; never leave this on.")
 	}
 
+	// /metrics is refused without a scrape token (§7, #1408). Say so once at boot, naming the
+	// setting, so an operator whose Prometheus target just went `down` after an upgrade finds
+	// the cause in the log rather than in a source read. The value is never logged.
+	if cfg.MetricsToken == "" {
+		log.Warn("LOOMARR_METRICS_TOKEN is not set — /metrics is refused (403) until it is. " +
+			"Set LOOMARR_METRICS_TOKEN or LOOMARR_METRICS_TOKEN_FILE and send it as a bearer token from Prometheus.")
+	}
+
 	// One channel serializes every operator-owned generation transition. Keeping restart
 	// and migration on separate channels would let two simultaneous clicks both be
 	// accepted while select arbitrarily discarded one. Buffered so the winning handler
@@ -231,6 +239,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		EncryptionDataDir:      config.DataDirFor(cfg.DatabaseURL),
 		DevLogin:               cfg.DevLogin,
 		Pprof:                  cfg.Pprof,
+		MetricsToken:           cfg.MetricsToken,
 		Restart:                lifecycle.RequestRestart,
 		DatabaseMigration:      lifecycle.RequestMigration,
 		DatabaseMigrationError: databaseMigration.lastError,

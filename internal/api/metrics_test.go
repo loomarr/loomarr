@@ -12,10 +12,118 @@ import (
 	"github.com/loomarr/loomarr/internal/metrics"
 )
 
-// /metrics is unauthenticated on the LAN (§7) and exposes both the Go runtime
+// scrapeToken is the configured Prometheus scrape credential in these tests.
+const scrapeToken = "test-scrape-token-0123456789"
+
+// newMetricsHarness builds the production router with the scrape token configured (or empty
+// for the fail-closed case) and returns a log buffer so a test can prove no credential is logged.
+func newMetricsHarness(t *testing.T, token string) (*apiHarness, *strings.Builder) {
+	t.Helper()
+	logs := &strings.Builder{}
+	h := startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		return api.Router(slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})), api.Options{
+			Store: defaults.Store, Auth: defaults.Auth, MetricsToken: token,
+		})
+	})
+	return h, logs
+}
+
+// scrape issues GET path with an optional bearer credential and extra headers.
+func scrape(t *testing.T, h *apiHarness, path, bearer string, extra map[string]string) (int, string, http.Header) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, h.Server.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	for k, v := range extra {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body), resp.Header
+}
+
+// /metrics requires the scrape token (§7, #1408): a public listener must not hand request
+// volumes, route latency and process details to anyone who can reach it. Fail closed when no
+// token is configured, and never let a Loomarr credential (admin API token, member, session)
+// stand in for the scrape token.
+func TestMetricsRequiresScrapeToken(t *testing.T) {
+	for _, path := range []string{"/v1/metrics", "/metrics"} {
+		t.Run(path, func(t *testing.T) {
+			h, _ := newMetricsHarness(t, scrapeToken)
+
+			if code, _, hdr := scrape(t, h, path, "", nil); code != http.StatusUnauthorized {
+				t.Errorf("no credential = %d, want 401", code)
+			} else if !strings.HasPrefix(hdr.Get("WWW-Authenticate"), "Bearer") {
+				t.Errorf("401 lacks a Bearer challenge: %q", hdr.Get("WWW-Authenticate"))
+			}
+			for name, bearer := range map[string]string{
+				"wrong token":             "not-the-token",
+				"prefix of the token":     scrapeToken[:len(scrapeToken)-1],
+				"token with extra suffix": scrapeToken + "x",
+				"admin API token":         adminToken,
+				"member token":            memberToken,
+			} {
+				if code, body, _ := scrape(t, h, path, bearer, nil); code != http.StatusUnauthorized {
+					t.Errorf("%s = %d, want 401; body: %s", name, code, body)
+				}
+			}
+			// A session cookie alone does not unlock it — a scrape job holds no session and a
+			// member/admin login is a different credential.
+			if code, _, _ := scrape(t, h, path, "", map[string]string{"Cookie": "loomarr_session=anything"}); code != http.StatusUnauthorized {
+				t.Errorf("session cookie alone = %d, want 401", code)
+			}
+			// The correct token yields the exposition.
+			code, body, _ := scrape(t, h, path, scrapeToken, nil)
+			if code != http.StatusOK {
+				t.Fatalf("correct token = %d, want 200; body: %s", code, body)
+			}
+			if !strings.Contains(body, "go_goroutines") {
+				t.Error("authorized scrape missing the Go runtime collectors")
+			}
+		})
+	}
+}
+
+// No token configured ⇒ refused for everyone, including a caller presenting a Loomarr
+// credential, with a message that names the setting to fix.
+func TestMetricsFailsClosedWithoutConfiguredToken(t *testing.T) {
+	h, _ := newMetricsHarness(t, "")
+	for _, bearer := range []string{"", adminToken, memberToken, "anything", " "} {
+		code, body, _ := scrape(t, h, "/v1/metrics", bearer, nil)
+		if code != http.StatusForbidden {
+			t.Errorf("bearer %q with no token configured = %d, want 403", bearer, code)
+		}
+		if !strings.Contains(body, "LOOMARR_METRICS_TOKEN") {
+			t.Errorf("refusal does not name LOOMARR_METRICS_TOKEN: %q", body)
+		}
+		if strings.Contains(body, "go_goroutines") {
+			t.Error("refused response leaked metrics")
+		}
+	}
+}
+
+// The scrape token (and any guess at it) must never reach the log.
+func TestMetricsTokenNeverLogged(t *testing.T) {
+	h, logs := newMetricsHarness(t, scrapeToken)
+	scrape(t, h, "/v1/metrics", "wrong-guess-secret", nil)
+	scrape(t, h, "/v1/metrics", scrapeToken, nil)
+	if out := logs.String(); strings.Contains(out, scrapeToken) || strings.Contains(out, "wrong-guess-secret") {
+		t.Errorf("log output contains a bearer credential:\n%s", out)
+	}
+}
+
+// /metrics is authenticated by the scrape token (§7) and exposes both the Go runtime
 // collectors and Loomarr's own HTTP series (§18).
 func TestMetricsExposed(t *testing.T) {
-	harness := newAPIHarness(t)
+	harness, _ := newMetricsHarness(t, scrapeToken)
 
 	// Drive one request so the labelled HTTP vecs emit a series (Prometheus
 	// counter/histogram vecs produce no lines until a label set is observed).
@@ -23,10 +131,10 @@ func TestMetricsExposed(t *testing.T) {
 		_ = r.Body.Close()
 	}
 
-	resp := harness.Do(http.MethodGet, "/v1/metrics", "", "")
+	resp := harness.Do(http.MethodGet, "/v1/metrics", scrapeToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /v1/metrics without a token = %d, want 200 (unauthenticated ops)", resp.StatusCode)
+		t.Fatalf("GET /v1/metrics with the scrape token = %d, want 200", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
 	text := string(body)
@@ -51,14 +159,14 @@ func TestMetricsExposed(t *testing.T) {
 // A served request is recorded against its matched route pattern, not the raw
 // path — the label that keeps cardinality bounded (§18).
 func TestMetricsRecordsRoute(t *testing.T) {
-	harness := newAPIHarness(t)
+	harness, _ := newMetricsHarness(t, scrapeToken)
 
 	// Drive a request through a known, low-cardinality route.
 	if r := harness.Do(http.MethodGet, "/v1/healthz", "", ""); r != nil {
 		_ = r.Body.Close()
 	}
 
-	resp := harness.Do(http.MethodGet, "/v1/metrics", "", "")
+	resp := harness.Do(http.MethodGet, "/v1/metrics", scrapeToken, "")
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	text := string(body)
@@ -84,7 +192,7 @@ func TestRouterUsesItsGenerationRecorderForTrafficAndScrapes(t *testing.T) {
 		Version: "v9.8.7", Revision: "generation-a", Database: "postgres",
 	})
 	srv := httptest.NewServer(api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Metrics: recorder,
+		Metrics: recorder, MetricsToken: scrapeToken,
 	}))
 	t.Cleanup(srv.Close)
 
@@ -94,7 +202,9 @@ func TestRouterUsesItsGenerationRecorderForTrafficAndScrapes(t *testing.T) {
 	}
 	_ = health.Body.Close()
 
-	response, err := http.Get(srv.URL + "/v1/metrics")
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/metrics", nil)
+	req.Header.Set("Authorization", "Bearer "+scrapeToken)
+	response, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("GET /v1/metrics: %v", err)
 	}

@@ -140,7 +140,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerEvents(humaAPI) // §8 SSE — typed frames, nil-guarded on the bus
 	srv.registerSSO(humaAPI)    // §11 V8 redirects, nil-guarded on the provider
 	srv.registerProvisioning(humaAPI)
-	srv.registerOps(humaAPI, opts.Pprof) // §17 probes/metrics/profiler + the API reference
+	srv.registerOps(humaAPI, opts.Pprof, opts.MetricsToken) // §17 probes/metrics/profiler + the API reference
 
 	// ⚠ Everything that used to be listed here — /v1/backup, the backup download, the three clip
 	// byte routes, and the channel-icon serve — is now registered with its own domain, as a rawOp

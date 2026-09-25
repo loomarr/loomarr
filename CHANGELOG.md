@@ -10,6 +10,12 @@ signed multi-architecture `ghcr.io/loomarr/loomarr` images from successful `main
 Changes on `main` that have not yet shipped belong here. `PROGRESS.md` carries current initiative
 status; pull requests and GitHub Releases carry the durable delivery record.
 
+- **Security — `/metrics` now requires a scrape token (#1408).** `/v1/metrics` and `/metrics` were
+  served to anyone who could reach the listener. They now require
+  `Authorization: Bearer <LOOMARR_METRICS_TOKEN>` (or `LOOMARR_METRICS_TOKEN_FILE`) and are refused
+  with `403` until one is configured. **Upgrade note:** an existing Prometheus job goes `down` until
+  the token is set and added to its `scrape_config`; see `docs/install/monitoring.md`.
+
 ## [v0.1.0-beta.1] — 2026-08-18
 
 The first public beta established the installable appliance described below. Later beta fixes and

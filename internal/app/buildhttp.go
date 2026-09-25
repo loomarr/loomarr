@@ -115,6 +115,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		TrustProxy:          set.boolv("security.trust_proxy"),
 		DevLogin:            ov.DevLogin,
 		Pprof:               ov.Pprof,
+		MetricsToken:        ov.MetricsToken,
 		Channels:            channelSvc,
 		LiveTV:              liveTVSvc,
 		TunerRescanner:      tunerRescanner,

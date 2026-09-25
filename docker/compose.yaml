@@ -110,6 +110,10 @@ services:
       LIBRARY_FLAVOR: ${LIBRARY_FLAVOR}
       LIBRARY_URL: ${LIBRARY_URL}
       LIBRARY_TOKEN: ${LIBRARY_TOKEN}
+      # Prometheus scrape credential (design §7/§15). Unset ⇒ /metrics is refused. Set one of the
+      # two; _FILE is a path INSIDE the container (mount a secret there).
+      LOOMARR_METRICS_TOKEN: ${LOOMARR_METRICS_TOKEN:-}
+      LOOMARR_METRICS_TOKEN_FILE: ${LOOMARR_METRICS_TOKEN_FILE:-}
       SEERR_URL: ${SEERR_URL}
       SEERR_API_KEY: ${SEERR_API_KEY}
       TUNARR_URL: ${TUNARR_URL}
