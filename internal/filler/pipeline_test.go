@@ -26,6 +26,7 @@ type pipeMemStore struct {
 	removed   []string
 	held      []string
 	holdErr   error
+	commitErr error
 }
 
 func (m *pipeMemStore) HoldClips(_ context.Context, paths []string, _ time.Time) (int, error) {
@@ -194,6 +195,9 @@ func (m *pipeMemStore) RetryClipPipeline(ctx context.Context, _ filler.ClipPipel
 }
 
 func (m *pipeMemStore) CommitFillerReady(_ context.Context, commit filler.ReadyCommit) error {
+	if m.commitErr != nil {
+		return m.commitErr
+	}
 	c, ok := m.clips[commit.Event.ClipHash]
 	if !ok || !c.Held || c.IsComposite {
 		return filler.ErrReadyStale
