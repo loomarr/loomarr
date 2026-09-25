@@ -911,6 +911,9 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		// Persist the rewind and let the next pass run the missing rung.
 		return row.Disposition, p.persist(ctx, row, clip)
 	}
+	if settled, ok := settleReleased(row, clip, p.now().UTC()); ok {
+		return settled.Disposition, p.persist(ctx, settled, clip)
+	}
 	readyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	settled, err := p.ready.Commit(readyCtx, clip, row)
@@ -919,6 +922,27 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 	}
 	p.publish(settled, clip)
 	return settled.Disposition, nil
+}
+
+// settleReleased closes a finished conveyor row whose clip an older path already published (#1445):
+// present, same hash, not removed, not composite, and no longer held. TerminalReady.Commit requires
+// a held clip, so such a row failed every attempt and only ever backed off. The clip is already
+// playable, so nothing is republished and Kind/placement stay as they are; only the row settles,
+// with a note saying why. Any other identity mismatch is left for Commit to refuse as stale.
+func settleReleased(row ClipPipeline, clip StoreClip, at time.Time) (ClipPipeline, bool) {
+	if clip.Hash == "" || clip.Path == "" || row.ClipHash != clip.Hash || clip.Held ||
+		!clip.RemovedAt.IsZero() || clip.IsComposite || row.Disposition != DispositionRunning ||
+		validateCompletedReadyLadder(row) != nil {
+		return row, false
+	}
+	row.Record(StageScore, StatusDone, "clip was already released to the catalog; settled without republishing", row.Attempts, at)
+	row.Disposition = DispositionReady
+	row.Status = StatusDone
+	row.Progress = 100
+	row.PreparationProgress = 100
+	row.NextRun = time.Time{}
+	row.ForceRun = false
+	return row, true
 }
 
 // repairLadderGaps rewinds a running row to its first rung that has no record, dropping the
