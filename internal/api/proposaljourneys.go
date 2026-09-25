@@ -54,13 +54,15 @@ type ProposalJourneyFailureDTO struct {
 }
 
 type ProposalJourneyProposalDTO struct {
-	ID         string           `json:"id"`
-	Status     string           `json:"status" enum:"submitted,approved,denied,superseded"`
-	ApprovedBy string           `json:"approvedBy,omitempty"`
-	DenyReason string           `json:"denyReason,omitempty"`
-	ModSummary string           `json:"modSummary,omitempty"`
-	Note       string           `json:"note,omitempty"`
-	Proposal   suggest.Proposal `json:"proposal"`
+	ID             string           `json:"id"`
+	Status         string           `json:"status" enum:"submitted,approved,denied,superseded"`
+	ApprovedBy     string           `json:"approvedBy,omitempty"`
+	ApprovedByName string           `json:"approvedByName,omitempty" doc:"Display name of the approver, or Automatic for an auto-approval; empty if unknown"`
+	ApprovedAt     string           `json:"approvedAt,omitempty" doc:"When this was approved (RFC3339)"`
+	DenyReason     string           `json:"denyReason,omitempty"`
+	ModSummary     string           `json:"modSummary,omitempty"`
+	Note           string           `json:"note,omitempty"`
+	Proposal       suggest.Proposal `json:"proposal"`
 }
 
 type ProposalJourneyChannelDTO struct {
@@ -119,10 +121,15 @@ func (s *Server) listProposalJourneys(ctx context.Context, in *proposalJourneyLi
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read channel requests",
 			"Loomarr couldn't restore your channel requests. Try again in a moment.", err)
 	}
+	names, err := s.journeyPersonNames(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read channel requests",
+			"Loomarr couldn't restore your channel requests. Try again in a moment.", err)
+	}
 	out := &proposalJourneyListOutput{}
 	out.Body.Journeys = make([]ProposalJourneyDTO, 0, len(journeys))
 	for _, journey := range journeys {
-		out.Body.Journeys = append(out.Body.Journeys, proposalJourneyDTO(journey))
+		out.Body.Journeys = append(out.Body.Journeys, proposalJourneyDTO(journey, names))
 	}
 	return out, nil
 }
@@ -206,10 +213,24 @@ func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInpu
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the channel request",
 			"Loomarr couldn't restore this channel request. Try again in a moment.", err)
 	}
-	return &proposalJourneyOutput{Body: proposalJourneyDTO(journey)}, nil
+	names, err := s.journeyPersonNames(ctx)
+	if err != nil {
+		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the channel request",
+			"Loomarr couldn't restore this channel request. Try again in a moment.", err)
+	}
+	return &proposalJourneyOutput{Body: proposalJourneyDTO(journey, names)}, nil
 }
 
-func proposalJourneyDTO(journey proposalworkflow.Journey) ProposalJourneyDTO {
+// journeyPersonNames resolves approver ids to names for a Journey. A server wired without a store
+// (the workflow fakes in tests) has no people to name, so every approver reads as unknown.
+func (s *Server) journeyPersonNames(ctx context.Context) (personNames, error) {
+	if s.store == nil {
+		return personNames{}, nil
+	}
+	return s.personNames(ctx)
+}
+
+func proposalJourneyDTO(journey proposalworkflow.Journey, names personNames) ProposalJourneyDTO {
 	dto := ProposalJourneyDTO{
 		Version: journey.Version, JobID: journey.JobID, Milestone: string(journey.Milestone),
 		Intent: journey.Intent, Attempts: make([]ProposalJobAttemptDTO, 0, len(journey.Attempts)),
@@ -229,7 +250,8 @@ func proposalJourneyDTO(journey proposalworkflow.Journey) ProposalJourneyDTO {
 	if journey.Proposal != nil {
 		dto.Proposal = &ProposalJourneyProposalDTO{
 			ID: journey.Proposal.ID, Status: string(journey.Proposal.Status),
-			ApprovedBy: journey.Proposal.ApprovedBy, DenyReason: journey.Proposal.DenyReason,
+			ApprovedBy: journey.Proposal.ApprovedBy, ApprovedByName: names.name(journey.Proposal.ApprovedBy),
+			ApprovedAt: rfc3339OrEmpty(journey.Proposal.ApprovedAt), DenyReason: journey.Proposal.DenyReason,
 			ModSummary: journey.Proposal.ModSummary, Note: journey.Proposal.Note,
 			Proposal: journey.Proposal.Proposal,
 		}

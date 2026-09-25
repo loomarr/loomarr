@@ -7808,7 +7808,13 @@ components:
     ProposalJourneyProposalDTO:
       additionalProperties: false
       properties:
+        approvedAt:
+          description: When this was approved (RFC3339)
+          type: string
         approvedBy:
+          type: string
+        approvedByName:
+          description: Display name of the approver, or Automatic for an auto-approval; empty if unknown
           type: string
         denyReason:
           type: string

@@ -197,3 +197,28 @@ func TestAttemptStateRequiresMatchingLeaseAndTimes(t *testing.T) {
 		t.Fatal("terminal attempt accepted without finish time")
 	}
 }
+
+// #1405: the Queue page became Requests, so a notification links to the Requests tab that holds
+// what it is about, and Web Push still accepts the old /queue/ path stored before the rename.
+func TestNotificationLinksPointAtRequests(t *testing.T) {
+	for _, tc := range []struct {
+		kind ReferenceKind
+		want string
+	}{
+		{ReferenceProposal, "https://loomarr.test/requests/needs-you"},
+		{ReferenceTitle, "https://loomarr.test/requests/in-progress"},
+	} {
+		if got := notificationLink("https://loomarr.test", Intent{ReferenceKind: tc.kind}); got != tc.want {
+			t.Errorf("%s link = %q, want %q", tc.kind, got, tc.want)
+		}
+	}
+	for link, want := range map[string]string{
+		"https://loomarr.test/requests/needs-you": "/requests/needs-you",
+		"https://loomarr.test/queue/approval":     "/queue/approval",
+		"https://loomarr.test/settings":           "/",
+	} {
+		if got := webPushPath(link); got != want {
+			t.Errorf("webPushPath(%q) = %q, want %q", link, got, want)
+		}
+	}
+}

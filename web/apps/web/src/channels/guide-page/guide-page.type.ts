@@ -5,6 +5,9 @@ type GuidePageProps = {
   initialIntent?: string;
   // Opaque Job id used to resume an authorized recovery flow from My Requests.
   initialJobId?: string;
+  // Opens the (empty) describe panel on arrival — the "Request a channel" door the Requests page's
+  // empty state links to (`?new=1`).
+  openOnArrival?: boolean;
 };
 
 export type { GuidePageProps };

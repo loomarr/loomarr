@@ -24,8 +24,8 @@ import type { AppShellProps, NavItem } from "./app-shell.type";
 // This used to be `NAV.filter(i => !i.admin || isAdmin)`, which can only ever present a
 // member with the admin's product minus some entries. A member is not a diminished admin —
 // they arrive to watch and to ask for things — and the same two routes need DIFFERENT NAMES
-// for them: `/suggest` is "Request a channel", `/queue` is "My requests". A filter cannot
-// rename, so the shape of the old code made the right IA inexpressible.
+// for them: `/suggest` was "Request a channel", `/settings/notifications` is "Notifications". A
+// filter cannot rename, so the shape of the old code made the right IA inexpressible.
 const ADMIN_NAV: NavItem[] = [
   // Dashboard leads the admin rail, matching the v2 mock. It was deferred while it did not
   // exist ("a nav entry to a placeholder is worse than no entry", §12) — V16 built the
@@ -39,7 +39,7 @@ const ADMIN_NAV: NavItem[] = [
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: CalendarClock },
-  { to: "/queue", label: "Queue", icon: LayoutGrid },
+  { to: "/requests", label: "Requests", icon: LayoutGrid },
   { to: "/filler", label: "Filler", icon: Clapperboard },
   { to: "/people", label: "People", icon: Users },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -57,7 +57,7 @@ const ADMIN_NAV: NavItem[] = [
 // once, not an IA choice. The verb lives on the surface it acts on.
 const MEMBER_NAV: NavItem[] = [
   { to: "/guide", label: "Guide", icon: CalendarClock },
-  { to: "/queue", label: "My requests", icon: LayoutGrid },
+  { to: "/requests", label: "Requests", icon: LayoutGrid },
   { to: "/settings/notifications", label: "Notifications", icon: Settings },
   { to: "/help", label: "Help", icon: ListChecks },
 ];
@@ -67,6 +67,7 @@ const AppShell = ({
   isAdmin = true,
   userName = "Operator",
   serverVersion,
+  badges,
   onOpenCommand,
   onLogout,
 }: AppShellProps) => (
@@ -105,10 +106,27 @@ const AppShell = ({
           <Link
             key={to}
             to={to}
-            className="flex cursor-pointer items-center justify-center gap-3 rounded-md px-2 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal md:justify-start md:px-3"
+            className="relative flex cursor-pointer items-center justify-center gap-3 rounded-md px-2 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal md:justify-start md:px-3"
           >
             <Icon className="size-4" aria-hidden />
             <span className="sr-only md:not-sr-only">{label}</span>
+            {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work waiting on
+                the viewer. Absent at zero: a permanent "0" would train the eye to ignore it. On the
+                icon-only rail it collapses to a dot. */}
+            {(badges?.[to] ?? 0) > 0 && (
+              <>
+                <span
+                  data-testid={`nav-badge-${to}`}
+                  className="ml-auto hidden rounded-full bg-suggest-tint-15 px-[7px] py-px font-mono text-2xs text-suggest-300 md:inline"
+                >
+                  {badges?.[to]}
+                </span>
+                <span
+                  aria-hidden
+                  className="absolute top-1.5 right-2 size-2 rounded-full bg-suggest md:hidden"
+                />
+              </>
+            )}
           </Link>
         ))}
       </nav>

@@ -341,3 +341,15 @@ func (s *sequenceEmailSender) Send(
 	s.results = s.results[1:]
 	return result
 }
+
+// #1405: proposal and title notifications link to the Requests tab that holds them.
+func TestProductNotificationLinkPointsAtRequests(t *testing.T) {
+	for kind, want := range map[notifications.ReferenceKind]string{
+		notifications.ReferenceProposal: "https://loomarr.test/requests/needs-you",
+		notifications.ReferenceTitle:    "https://loomarr.test/requests/in-progress",
+	} {
+		if got := productNotificationLink("https://loomarr.test", notifications.Intent{ReferenceKind: kind}); got != want {
+			t.Errorf("%s link = %q, want %q", kind, got, want)
+		}
+	}
+}

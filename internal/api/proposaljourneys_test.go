@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
@@ -259,4 +260,34 @@ func proposalJourneyServer(t *testing.T, workflow api.ProposalWorkflow) *httptes
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// The Requests detail says who approved a request and when (#1405). The Journey carried only the
+// approver's raw id and no time, so the page could not show either without a second, unscoped
+// call to the proposals list.
+func TestProposalJourneyReportsWhoApprovedAndWhen(t *testing.T) {
+	t.Parallel()
+
+	approvedAt := time.Date(2026, 9, 24, 18, 30, 0, 0, time.UTC)
+	workflow := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
+		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1",
+		Milestone: proposalworkflow.MilestoneLive,
+		Intent:    suggest.Intent{Description: "Saturday morning cartoons"},
+		Proposal: &proposalworkflow.ProposalRef{
+			ID: "proposal-1", Status: proposalworkflow.ProposalApproved,
+			ApprovedBy: suggest.AutoApprovedBy, ApprovedAt: approvedAt,
+		},
+	}}
+	srv := proposalJourneyServer(t, workflow)
+
+	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-1", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	var body api.ProposalJourneyDTO
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Proposal == nil || body.Proposal.ApprovedAt != "2026-09-24T18:30:00Z" ||
+		body.Proposal.ApprovedByName != "Automatic" {
+		t.Fatalf("Journey proposal = %+v, want approvedAt 2026-09-24T18:30:00Z by Automatic", body.Proposal)
+	}
 }

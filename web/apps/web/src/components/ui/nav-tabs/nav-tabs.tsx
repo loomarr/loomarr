@@ -22,63 +22,96 @@ import type { NavTabsProps } from "./nav-tabs.type";
 //
 // The active pill is the Settings treatment (maintainer's pick, 2026-08-02): `signal-tint-15`
 // fill, `signal` text, `rounded-md`. It replaced an underline-only bar on Filler and Queue.
-const NavTabs = ({ tabs, activeId, linkComponent: Link, label, className }: NavTabsProps) => (
-  <nav
-    aria-label={label}
-    className={cn(
-      "flex shrink-0 flex-wrap gap-1 border-border border-b pb-2 sm:flex-nowrap sm:overflow-x-auto",
-      className,
-    )}
-  >
-    {tabs.map((tab) => {
-      const active = tab.id === activeId;
-      return (
-        <Link
-          key={tab.id}
-          to={tab.to}
-          {...(tab.search ? { search: tab.search } : {})}
-          // The injected router link otherwise prefix-matches a parent destination such as
-          // `/filler` while the operator is on `/filler/incoming`, creating two current pages.
-          // Search params refine a destination; they never make its navigation entry inactive.
-          activeOptions={{ exact: true, includeSearch: false }}
-          id={`tab-${tab.id}`}
-          // ⚠ `aria-current` marks the active destination for a screen reader. Without it the
-          // amber fill is the ONLY signal, which is invisible to anyone not looking at colour.
-          {...(active ? { "aria-current": "page" as const } : {})}
-          // ⚠ There is deliberately NO `aria-controls`. It was carried over from `CountTabs`,
-          // where the tabs genuinely revealed panels in the same document — but these NAVIGATE,
-          // so there is no panel for a link to control, and pointing at one that may not be
-          // mounted is axe's `aria-valid-attr-value` at CRITICAL impact. `aria-current` alone is
-          // the right vocabulary for "this is the page you are on"; the caught violation is a
-          // reminder that copying ARIA between two things that merely look alike is how a
-          // component acquires attributes that promise behaviour it does not have.
-          className={cn(
-            "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors",
-            "text-muted-foreground hover:bg-accent hover:text-foreground",
-            active && "bg-signal-tint-15 font-medium text-signal",
-          )}
-        >
-          {tab.label}
-          {/* ⚠ Omitted when a tab has no count, rather than rendered as "0" — see NavTab.count. */}
-          {tab.count !== undefined && (
-            <span
-              className={cn(
-                "rounded-full px-1.5 py-px font-mono text-2xs",
-                // ⚠ The ACTIVE pill sits on `background`, not on a `signal` tint. Amber text on an
-                // amber tint composites amber-on-amber: measured 4.11:1 against the required
-                // 4.5:1 at 11px — an axe `color-contrast` failure at SERIOUS impact, and one only
-                // this gate could catch. The tint was chosen for visual harmony without checking
-                // it against the fill already behind it (the active tab is itself tinted).
-                active ? "bg-background text-signal" : "bg-static-800 text-static-400",
-              )}
-            >
-              {tab.count}
-            </span>
-          )}
-        </Link>
-      );
-    })}
-  </nav>
-);
+//
+// ⚠ **Two looks, one component.** `variant="underline"` is the v2 mock's Queue tab bar (Requests):
+// transparent tabs, a 2px bottom border in `signal` on the active one, and a 1px rule under the
+// bar that the active underline overlaps. The pill stays the default because Settings, Filler and
+// channel detail are drawn with pills in their own mocks — the variant exists so a screen follows
+// ITS mock rather than every bar being forced into one style.
+const NavTabs = ({
+  tabs,
+  activeId,
+  linkComponent: Link,
+  label,
+  variant = "pill",
+  className,
+}: NavTabsProps) => {
+  const underline = variant === "underline";
+  return (
+    <nav
+      aria-label={label}
+      className={cn(
+        "flex shrink-0 flex-wrap gap-1 border-border border-b sm:flex-nowrap sm:overflow-x-auto",
+        !underline && "pb-2",
+        className,
+      )}
+    >
+      {tabs.map((tab) => {
+        const active = tab.id === activeId;
+        return (
+          <Link
+            key={tab.id}
+            to={tab.to}
+            {...(tab.search ? { search: tab.search } : {})}
+            // The injected router link otherwise prefix-matches a parent destination such as
+            // `/filler` while the operator is on `/filler/incoming`, creating two current pages.
+            // Search params refine a destination; they never make its navigation entry inactive.
+            activeOptions={{ exact: true, includeSearch: false }}
+            id={`tab-${tab.id}`}
+            // ⚠ `aria-current` marks the active destination for a screen reader. Without it the
+            // amber fill is the ONLY signal, which is invisible to anyone not looking at colour.
+            {...(active ? { "aria-current": "page" as const } : {})}
+            // ⚠ There is deliberately NO `aria-controls`. It was carried over from `CountTabs`,
+            // where the tabs genuinely revealed panels in the same document — but these NAVIGATE,
+            // so there is no panel for a link to control, and pointing at one that may not be
+            // mounted is axe's `aria-valid-attr-value` at CRITICAL impact. `aria-current` alone is
+            // the right vocabulary for "this is the page you are on"; the caught violation is a
+            // reminder that copying ARIA between two things that merely look alike is how a
+            // component acquires attributes that promise behaviour it does not have.
+            className={cn(
+              "flex shrink-0 items-center gap-2 whitespace-nowrap transition-colors",
+              underline
+                ? cn(
+                    // `-mb-px` lets the 2px underline sit over the bar's 1px rule.
+                    "-mb-px border-b-2 bg-transparent px-[13px] py-[9px] text-[13.5px] hover:text-foreground",
+                    active
+                      ? "border-signal font-medium text-foreground"
+                      : "border-transparent text-muted-foreground",
+                  )
+                : cn(
+                    "rounded-md px-3 py-1.5 text-muted-foreground text-sm hover:bg-accent hover:text-foreground",
+                    active && "bg-signal-tint-15 font-medium text-signal",
+                  ),
+            )}
+          >
+            {tab.label}
+            {/* ⚠ Omitted when a tab has no count, rather than rendered as "0" — see NavTab.count. */}
+            {tab.count !== undefined && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 py-px font-mono text-2xs",
+                  // ⚠ The ACTIVE pill sits on `background`, not on a `signal` tint. Amber text on an
+                  // amber tint composites amber-on-amber: measured 4.11:1 against the required
+                  // 4.5:1 at 11px — an axe `color-contrast` failure at SERIOUS impact, and one only
+                  // this gate could catch. The tint was chosen for visual harmony without checking
+                  // it against the fill already behind it (the active tab is itself tinted).
+                  underline
+                    ? tab.attention && tab.count > 0
+                      ? "bg-suggest-tint-15 px-[7px] text-suggest-300"
+                      : "bg-static-800 px-[7px] text-static-400"
+                    : active
+                      ? "bg-background text-signal"
+                      : "bg-static-800 text-static-400",
+                )}
+              >
+                {tab.count}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+};
 
 export { NavTabs };

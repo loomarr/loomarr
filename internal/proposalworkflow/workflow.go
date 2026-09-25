@@ -125,6 +125,7 @@ type ProposalRef struct {
 	ID         string
 	Status     ProposalStatus
 	ApprovedBy string
+	ApprovedAt time.Time
 	DenyReason string
 	ModSummary string
 	Note       string

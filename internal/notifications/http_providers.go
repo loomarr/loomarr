@@ -189,11 +189,11 @@ func notificationLink(base string, intent Intent) string {
 	}
 	switch intent.ReferenceKind {
 	case ReferenceProposal:
-		return base + "/queue/approval"
+		return base + "/requests/needs-you"
 	case ReferenceChannel:
 		return base + "/channels/" + url.PathEscape(intent.ReferenceID)
 	case ReferenceTitle:
-		return base + "/queue/flight"
+		return base + "/requests/in-progress"
 	default:
 		return base
 	}

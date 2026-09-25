@@ -98,7 +98,7 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
+const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -129,7 +129,9 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   // a draft, or this tab owns an active Proposal Job. The last case makes a reload return to the
   // current review rather than a bare grid; closing still hides it for the current page lifetime.
   const [adding, setAdding] = useState(() =>
-    Boolean(initialIntent || initialJobId || readActiveSuggestionJob() || readSuggestionDraft()),
+    Boolean(
+      initialIntent || initialJobId || openOnArrival || readActiveSuggestionJob() || readSuggestionDraft(),
+    ),
   );
   const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>("describe");
 
@@ -140,7 +142,8 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   const closePanel = () => {
     setAdding(false);
     clearSuggestionDraft();
-    if (initialIntent || initialJobId) void navigate({ to: "/guide", search: {}, replace: true });
+    if (initialIntent || initialJobId || openOnArrival)
+      void navigate({ to: "/guide", search: {}, replace: true });
   };
 
   // A recovered job is deliberately resumable from the URL, but a user who explicitly starts
