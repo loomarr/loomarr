@@ -184,12 +184,22 @@ func resolveSelection(set resolved) llm.Selection {
 	// to the "openai" wire kind: llm.hosted_provider holds the brand persisted at
 	// select time. This keeps the namespaced-key lookup and catalog Active match
 	// working across restart (an env-pinned openai with no brand stays "openai").
-	if sel.Provider == "openai" {
+	//
+	// The stored brand is only honoured while it still describes the resolved server: an
+	// operator who later pins llm.url in the environment (env > db, config-design §3) is no
+	// longer talking to the picker's provider, and re-branding would send the stale
+	// namespaced key to the pinned server.
+	envKey := set.svc.Provenance(setLLMAPIKey) == settings.ProvenanceEnv
+	if sel.Provider == "openai" && !envKey {
 		if v, err := set.svc.LoadRaw(setLLMHosted); err == nil && v != "" {
-			sel.Provider = v
+			if hp, ok := llm.HostedProviderByKey(v); ok && hostedSelectionMatches(sel, hp) {
+				sel.Provider = v
+			}
 		}
 	}
-	if sel.Provider != "" && sel.Provider != "ollama" {
+	// An env-pinned key is the operator's explicit choice: it outranks any persisted copy and
+	// the persisted brand (whose only job is to pick that copy) is not applied at all.
+	if sel.Provider != "" && sel.Provider != "ollama" && !envKey {
 		if v, err := set.svc.LoadRaw(setLLMAPIKey + "." + sel.Provider); err == nil && v != "" {
 			sel.APIKey = v
 		}
