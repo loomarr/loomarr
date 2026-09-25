@@ -497,8 +497,8 @@ func VerifyCIManualScopes(path string) error {
 		return errors.New("CI scope input must be a choice defaulting to release-candidate")
 	}
 	options, err := requiredSequence(scope, "options")
-	if err != nil || len(options.Content) != 3 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" || options.Content[2].Value != "apple-cache-validation" {
-		return errors.New("CI scope choices must be release-candidate, full, then apple-cache-validation")
+	if err != nil || len(options.Content) != 4 || options.Content[0].Value != "release-candidate" || options.Content[1].Value != "full" || options.Content[2].Value != "apple-cache-validation" || options.Content[3].Value != "tuner" {
+		return errors.New("CI scope choices must be release-candidate, full, apple-cache-validation, then tuner")
 	}
 
 	jobs, err := requiredMap(root, "jobs")

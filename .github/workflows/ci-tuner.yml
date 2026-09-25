@@ -2,6 +2,15 @@ name: CI / Tuner — Chromium + Firefox + WebKit
 
 on:
   workflow_call:
+    # Defaults reproduce the merge-queue run exactly (whole matrix, one repetition). Only the manual
+    # `tuner` dispatch scope in ci.yml passes anything else; scripts/tuner-args.sh validates them.
+    inputs:
+      project:
+        type: string
+        default: all
+      repeat_each:
+        type: string
+        default: "1"
 
 permissions:
   contents: read
@@ -29,6 +38,9 @@ jobs:
       - name: Install pinned browser engines
         run: cd web && pnpm --filter @loomarr/web exec playwright install chromium firefox webkit
       - name: 100-Channel controller matrix
+        env:
+          TUNER_PROJECT: ${{ inputs.project }}
+          TUNER_REPEAT_EACH: ${{ inputs.repeat_each }}
         run: make tuner-e2e-host
       - name: Keep tuner failure evidence
         if: failure()

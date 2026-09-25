@@ -345,7 +345,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		}),
 		"ci-tuner.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install":     exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make tuner-e2e-host": exactWorkflowStep(5, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}}),
+			"make tuner-e2e-host": exactWorkflowStep(5, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}, environment: map[string]string{"TUNER_PROJECT": "${{ inputs.project }}", "TUNER_REPEAT_EACH": "${{ inputs.repeat_each }}"}}),
 		}),
 		"codeql.yml": codeQLWorkflowAuthority(),
 		"ci.yml": {

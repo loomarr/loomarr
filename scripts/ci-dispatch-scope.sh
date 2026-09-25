@@ -6,7 +6,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mode="${2:-legacy}"
 
 if [[ $# -lt 1 || $# -gt 2 || ("$mode" != legacy && "$mode" != impact) ]]; then
-	echo 'usage: ci-dispatch-scope.sh <release-candidate|full|apple-cache-validation> [legacy|impact]' >&2
+	echo 'usage: ci-dispatch-scope.sh <release-candidate|full|apple-cache-validation|tuner> [legacy|impact]' >&2
 	exit 2
 fi
 
@@ -49,6 +49,26 @@ OUTPUT
 		if [[ "$mode" == impact ]]; then
 			"$root/scripts/ci-impact.sh" </dev/null | awk -F= 'BEGIN { OFS = "=" }
 				$1 == "policy" { $2 = "true" }
+				{ print }'
+			exit 0
+		fi
+		cat <<'OUTPUT'
+go=false
+web=false
+clients=false
+image=false
+docs=false
+agent=false
+android=false
+release_candidate=false
+OUTPUT
+		;;
+	tuner)
+		# A measurement rerun of the tuner matrix (project / repeat_each are workflow inputs).
+		# Nothing else in the matrix is entered, so the run costs one macOS job.
+		if [[ "$mode" == impact ]]; then
+			"$root/scripts/ci-impact.sh" </dev/null | awk -F= 'BEGIN { OFS = "=" }
+				$1 == "tuner" { $2 = "true" }
 				{ print }'
 			exit 0
 		fi

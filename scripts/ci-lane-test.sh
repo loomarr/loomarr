@@ -25,6 +25,7 @@ assert_lane merge_group '' merge-queue
 assert_lane workflow_dispatch release-candidate manual-release-candidate
 assert_lane workflow_dispatch full manual-full
 assert_lane workflow_dispatch apple-cache-validation manual-apple-cache-validation
+assert_lane workflow_dispatch tuner manual-tuner
 
 assert_rejected push
 assert_rejected pull_request full
