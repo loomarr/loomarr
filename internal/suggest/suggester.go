@@ -314,7 +314,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 			}
 			return Proposal{}, err
 		}
-		out, perr := parsePicks(final)
+		out, perr := parsePicks(withAcceptedDateMeaning(final, acceptedMeaning))
 		if perr == nil {
 			meaning, meaningErr := validateIntentDateMeaning(intent, out.DateMeaning)
 			if meaningErr != nil {

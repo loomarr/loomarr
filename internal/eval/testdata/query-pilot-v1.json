@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "version": "query-pilot-development-v1",
   "split": "development",
-  "promptVersion": "suggester-prompt-v15",
+  "promptVersion": "suggester-prompt-v16",
   "toolSchemaVersion": "catalog-search-v9",
   "sourceVersion": "reference-source-v6",
   "catalogFixture": {
