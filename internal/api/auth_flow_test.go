@@ -631,29 +631,19 @@ func TestListProposals_MineScopesToTheCaller(t *testing.T) {
 	}
 }
 
-// Without `mine`, the list is EVERYONE's proposals — including other members' requests and the
-// approvers' deny reasons and notes — which is the admin approval queue's data (#1404). A member
-// asking for it is refused (§11/§19 negative); an admin still gets the unscoped queue.
-func TestListProposals_WithoutMineIsAdminOnly(t *testing.T) {
+// Without `mine`, the list is everyone's proposals, and any authenticated user may read it: read
+// visibility is global (design §342), re-confirmed by the maintainer for #1429.
+func TestListProposals_WithoutMineIsUnscoped(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
 	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
 	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
 
 	kid := login(t, srv, "kid", "pw")
-	for _, status := range []string{"submitted", "approved", "denied"} {
-		resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status="+status, kid, "")
-		_ = resp.Body.Close()
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("member GET /v1/proposals?status=%s → %d, want 403 (§19)", status, resp.StatusCode)
-		}
-	}
-
-	boss := login(t, srv, "boss", "pw")
-	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=submitted", boss, "")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=submitted", kid, "")
 	defer func() { _ = resp.Body.Close() }()
 	if got := proposalIDs(t, resp); len(got) != 2 {
-		t.Errorf("admin unscoped list returned %v, want both proposals", got)
+		t.Errorf("unscoped list returned %v, want both proposals", got)
 	}
 }
 

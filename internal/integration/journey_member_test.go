@@ -31,6 +31,7 @@ func TestJourney_Member(t *testing.T) {
 	// B2: members MAY do member things (auth passes → not 401/403).
 	allowed := []struct{ method, path, body string }{
 		{http.MethodGet, "/v1/search?q=matrix", ""},
+		{http.MethodGet, "/v1/proposals", ""},
 		{http.MethodGet, "/v1/proposals?mine=true", ""},
 		{http.MethodGet, "/v1/channels", ""},
 		{http.MethodGet, "/v1/titles?state=wanted", ""},
@@ -67,9 +68,6 @@ func TestJourney_Member(t *testing.T) {
 		{http.MethodPost, "/v1/channels/x/reconcile", ""},
 		{http.MethodPost, "/v1/proposals/x/approve", ""},
 		{http.MethodPost, "/v1/proposals/x/deny", `{}`},
-		// #1404: everyone's proposals is the admin queue's data; a member reads only mine=true.
-		{http.MethodGet, "/v1/proposals?status=submitted", ""},
-		{http.MethodGet, "/v1/proposals?status=denied", ""},
 		{http.MethodPost, "/v1/filler/sync", ""},
 		// §10 V45a: the clip tag edit is PATCH /v1/filler/tags with the clip HASH in the body. The
 		// admin gate must 403 a member BEFORE the handler resolves the clip, so a bogus hash still 403s.

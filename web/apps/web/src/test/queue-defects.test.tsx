@@ -175,17 +175,28 @@ describe("Members on the Queue", () => {
     expect(screen.queryByRole("button", { name: /Try again/ })).not.toBeInTheDocument();
   });
 
-  it("never fetch everyone's decided proposals", async () => {
-    const seen = stub({ me: MEMBER });
+  // History is readable by every member (design §342, re-confirmed for #1429); only approving is
+  // admin-only.
+  it("see the History tab next to In flight, but not Needs approval", async () => {
+    stub({ me: MEMBER });
     renderAt("/queue/flight");
 
     await screen.findByRole("link", { name: /In flight/ });
-    expect(seen.filter((u) => /status=(approved|denied)$/.test(u))).toEqual([]);
+    expect(screen.getByRole("link", { name: /History/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Needs approval/ })).not.toBeInTheDocument();
   });
 
-  it.each(["/queue/approval", "/queue/history"])("are redirected away from %s", async (path) => {
+  it("can open History", async () => {
+    const seen = stub({ me: MEMBER });
+    const router = renderAt("/queue/history");
+
+    await waitFor(() => expect(seen.some((u) => /status=(approved|denied)$/.test(u))).toBe(true));
+    expect(router.state.location.pathname).toBe("/queue/history");
+  });
+
+  it("are redirected away from /queue/approval", async () => {
     const seen = stub({ me: MEMBER, proposals: [proposal] });
-    const router = renderAt(path);
+    const router = renderAt("/queue/approval");
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/queue/flight"));
     expect(seen.some((u) => /status=submitted$/.test(u))).toBe(false);

@@ -287,13 +287,10 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 		}
 		props = filtered
 	} else {
-		// Everyone's proposals — with other members' requests, deny reasons and approver notes —
-		// is the admin approval queue's data (§11). A member asks for their own with mine=true.
-		// Refused here rather than by the route's role: the SAME operation serves both callers.
-		if roleFrom(ctx) != RoleAdmin {
-			return nil, apiErr(http.StatusForbidden, "Only admins can list everyone's requests",
-				"Ask for your own requests with mine=true.")
-		}
+		// Everyone's proposals, readable by any authenticated user: read visibility is global in
+		// this household-scale app (design §342), and the maintainer re-confirmed it on 2026-09-25
+		// (#1429). Do not add an admin gate here without changing §342 first; members' UI hides
+		// admin-only ACTIONS, which the server still enforces on the mutating routes.
 		props, err = s.store.ListProposalsByStatus(ctx, status)
 		if err != nil {
 			return nil, err
