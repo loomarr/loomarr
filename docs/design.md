@@ -373,7 +373,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
 - **`images`** · 2 importers · → `images/rustgen`, `logchange`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
-- **`moviecollections`** · 3 importers · → `catalog`, `provision`
+- **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
 - **`reconcile`** · 1 importer · → `activity`, `library`, `provision`, `requester`, `schedule`, `scheduler`, `store`
   Provisioning backstop (design §4, §7, §18).
@@ -395,7 +395,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 12**
 
-- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 
 **Layer 13**
