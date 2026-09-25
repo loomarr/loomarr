@@ -142,3 +142,40 @@ describe("play URL source", () => {
     });
   });
 });
+
+describe("play URL source warm", () => {
+  const mintBody = JSON.stringify({
+    expiresAt: "2026-08-26T13:00:00Z",
+    relativeUrl: "/v1/playout/hls/science/master.m3u8?sig=one&plan=full",
+    url: "",
+  });
+
+  it("mints then fetches the signed playlist in speculative warm mode and drains the body", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(mintBody, { status: 200 }))
+      .mockResolvedValueOnce(new Response("#EXTM3U\n", { status: 200 }));
+    const source = createPlayUrlSourcePort({ baseUrl: "http://living-room:8080", fetch: request });
+    const signal = new AbortController().signal;
+
+    await source.warm?.(channel, {}, signal);
+
+    const [warmUrl, init] = request.mock.calls[1] ?? [];
+    const url = new URL(warmUrl);
+    expect(url.pathname).toBe("/v1/playout/hls/science/master.m3u8");
+    expect(url.searchParams.get("mode")).toBe("warm");
+    expect(url.searchParams.get("sig")).toBe("one");
+    expect(url.searchParams.get("plan")).toBe("full");
+    expect(init).toMatchObject({ method: "GET", signal });
+  });
+
+  it("treats a busy host as a harmless miss", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(mintBody, { status: 200 }))
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }));
+    const source = createPlayUrlSourcePort({ baseUrl: "http://living-room:8080", fetch: request });
+
+    await expect(source.warm?.(channel, {}, new AbortController().signal)).resolves.toBeUndefined();
+  });
+});

@@ -365,3 +365,59 @@ describe("player controller", () => {
     expect(transport.replace).not.toHaveBeenCalled();
   });
 });
+
+describe("player controller neighbour warming", () => {
+  const warmCatalog: PlayerChannel[] = [1, 2, 3, 4, 5].map((n) => ({
+    id: `ch${n}`,
+    inAppPlayable: true,
+    name: `Channel ${n}`,
+    number: n,
+  }));
+
+  it("warms the neighbours as soon as the tune is accepted, without waiting for a first frame", async () => {
+    const warm = vi.fn().mockResolvedValue(undefined);
+    const { controller } = harness({
+      mint: vi.fn((channel) => Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8` })),
+      warm,
+    });
+    await controller.reconcile(warmCatalog);
+    warm.mockClear();
+    await controller.tuneChannel("ch3");
+    await vi.waitFor(() => expect(warm.mock.calls.map(([channel]) => channel.id).sort()).toContain("ch2"));
+    expect(warm.mock.calls.map(([channel]) => channel.id)).not.toContain("ch3");
+  });
+
+  it("aborts the previous warms when the viewer moves on", async () => {
+    const signals: AbortSignal[] = [];
+    const warm = vi.fn((_channel, _profile, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<void>(() => {});
+    });
+    const { controller } = harness({
+      mint: vi.fn((channel) => Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8` })),
+      warm,
+    });
+    await controller.reconcile(warmCatalog);
+    await controller.tuneChannel("ch3");
+    await vi.waitFor(() => expect(signals.length).toBeGreaterThan(0));
+    const stale = signals.slice();
+    await controller.tuneChannel("ch4");
+    expect(stale.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("stops warming on dispose", async () => {
+    const signals: AbortSignal[] = [];
+    const warm = vi.fn((_channel, _profile, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<void>(() => {});
+    });
+    const { controller } = harness({
+      mint: vi.fn((channel) => Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8` })),
+      warm,
+    });
+    await controller.reconcile(warmCatalog);
+    await vi.waitFor(() => expect(signals.length).toBeGreaterThan(0));
+    controller.dispose();
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+});

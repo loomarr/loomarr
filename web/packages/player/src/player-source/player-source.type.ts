@@ -21,6 +21,12 @@ interface PlayerSourcePort {
     profile: DevicePlaybackProfile,
     signal: AbortSignal,
   ) => Promise<PlayerSource>;
+  /**
+   * Speculatively starts a channel's stream on the server without playing it, so a later tune finds
+   * it running. Optional: a source that cannot warm is simply never pre-warmed. Resolves whether or
+   * not the server had capacity; a refusal is a miss, not an error.
+   */
+  warm?: (channel: PlayerChannel, profile: DevicePlaybackProfile, signal: AbortSignal) => Promise<void>;
 }
 
 export type { DevicePlaybackProfile, PlayerChannel, PlayerSource, PlayerSourcePort };
