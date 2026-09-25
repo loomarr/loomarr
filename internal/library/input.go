@@ -146,15 +146,52 @@ func (c *Client) ResolveInput(ctx context.Context, itemID string, pathMap PathMa
 	if len(pathMap) == 0 {
 		return InputSource{URL: stream, Kind: InputHTTP} // no mapping configured → stream
 	}
+	// The cached SERVER path is tried first: mapping and stat are local, so a hit costs no
+	// media-server request and keeps a channel airing through a media-server outage. The mapping
+	// is applied here, at read time, so a `library.path_map` edit needs no cache rebuild.
+	if c.paths != nil {
+		if cached, ok, err := c.paths.ItemPath(ctx, itemID); err == nil && ok {
+			if local, mapped := pathMap.Apply(cached); mapped && statFn != nil && statFn(local) {
+				return InputSource{URL: local, Kind: InputFile}
+			}
+		}
+	}
+	// Cold or stale (the file moved, or the mapping no longer reaches it): ask the media server,
+	// then refresh the cache so the next resolution is local again.
 	serverPath, err := c.ItemPath(ctx, itemID)
 	if err != nil || serverPath == "" {
 		return InputSource{URL: stream, Kind: InputHTTP}
+	}
+	if c.paths != nil {
+		// Best-effort: a failed write only costs the next resolution a lookup.
+		_ = c.paths.SetItemPath(ctx, itemID, serverPath)
 	}
 	local, ok := pathMap.Apply(serverPath)
 	if !ok || statFn == nil || !statFn(local) {
 		return InputSource{URL: stream, Kind: InputHTTP}
 	}
 	return InputSource{URL: local, Kind: InputFile}
+}
+
+// PathCache remembers the media server's OWN file path for an item (never the mapped local path,
+// so `library.path_map` applies at read time). Implementations are best-effort durable: a miss or
+// error only means ResolveInput asks the media server.
+type PathCache interface {
+	// ItemPath returns the cached server path, with ok=false when none is cached.
+	ItemPath(ctx context.Context, itemID string) (path string, ok bool, err error)
+	// SetItemPath stores the server path for an item, replacing any previous one.
+	SetItemPath(ctx context.Context, itemID, serverPath string) error
+}
+
+// WithPathCache returns a copy of the client that resolves inputs through cache. The copy shares
+// the connection source and HTTP transport, so hot-applied connection edits still take effect.
+func (c *Client) WithPathCache(cache PathCache) *Client {
+	if c == nil {
+		c = c.Snapshot() // the unconfigured client Snapshot already defines for nil
+	}
+	cp := *c
+	cp.paths = cache
+	return &cp
 }
 
 // StatReadableFile reports whether path is a readable regular file — the production statFn for

@@ -178,7 +178,9 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// Postgres replicas receive the same cutover through durable invalidations.
 	channelEngine.WithScheduleInvalidator(playoutMgr)
 	playoutRes = &playoutResolver{
-		engine: channelEngine, lib: lib, now: time.Now,
+		// The library client with the server-path cache (#1456): airtime input resolution reads
+		// the remembered path locally and only asks the media server on a cold or stale entry.
+		engine: channelEngine, lib: lib.WithPathCache(libraryPathCache{st}), now: time.Now,
 		metrics:       deps.metrics,
 		detectContext: rootCtx,
 		// The store, narrowed to GetTitle — the grid's provenance line reads acquisition
