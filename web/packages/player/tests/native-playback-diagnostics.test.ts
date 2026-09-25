@@ -18,7 +18,13 @@ describe("native playback diagnostics", () => {
     diagnostics.channelChanged("seven");
     diagnostics.transportEvent({ attemptId: 1, type: "first-frame" });
     diagnostics.channelChanged("eight");
-    diagnostics.transportEvent({ attemptId: 2, error: "secret decoder detail", type: "error" });
+    diagnostics.playerError({
+      attempt: 2,
+      channelId: "eight",
+      elapsedMs: 41_400,
+      error: "secret decoder detail",
+      fatal: false,
+    });
     diagnostics.dispose();
     diagnostics.dispose();
 
@@ -46,7 +52,7 @@ describe("native playback diagnostics", () => {
       },
       {
         channelId: "eight",
-        errorCode: "native_transport_error",
+        errorCode: "decoder.a2.t41s",
         event: "player.media_error",
         fatal: false,
         playbackSessionId: "native-1",

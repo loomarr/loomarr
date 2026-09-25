@@ -1,3 +1,4 @@
+import { getIngestClientDiagnosticsUrl } from "@loomarr/api/endpoints/diagnostics";
 import type { ClientBatch } from "@loomarr/api/models/clientBatch";
 import type { ClientObservation as GeneratedClientObservation } from "@loomarr/api/models/clientObservation";
 
@@ -93,5 +94,20 @@ class ClientDiagnosticsReporter {
   }
 }
 
+/**
+ * Builds the batch sender for clients that authenticate with a bearer token rather than the
+ * browser session (Android TV). A non-2xx answer throws so the reporter requeues the batch.
+ */
+const createAuthenticatedBatchSender =
+  (request: typeof globalThis.fetch, wire: (events: AcceptedObservation[]) => ClientBatch): SendBatch =>
+  async (events) => {
+    const response = await request(getIngestClientDiagnosticsUrl(), {
+      body: JSON.stringify(wire(events)),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    if (!response.ok) throw new Error(`Client diagnostics rejected (${response.status}).`);
+  };
+
 export type { AcceptedObservation, ClientDiagnosticsIdentity, ClientObservation, SendBatch };
-export { ClientDiagnosticsReporter };
+export { ClientDiagnosticsReporter, createAuthenticatedBatchSender };

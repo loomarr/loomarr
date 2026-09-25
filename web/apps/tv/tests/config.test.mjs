@@ -215,11 +215,12 @@ test("drives every Watching state from the generated catalog and authoritative G
 
   assert.match(appSource, /createChannelCatalogPort\(runtime\.request\)/);
   assert.match(appSource, /createGuideSourcePort\(runtime\.request\)/);
-  assert.match(appSource, /await controller\.reconcile\(await catalog\.list\(request\.signal\)\)/);
+  assert.match(appSource, /createCatalogRefresher\(\{ controller, list: catalog\.list \}\)/);
+  assert.match(appSource, /await catalogRefresher\.refresh\(\)/);
   assert.match(appSource, /watchingScheduleFromGuide\(/);
-  assert.match(appSource, /loading=\{catalogLoading\}/);
-  assert.match(appSource, /loadError=\{loadError\}/);
-  assert.match(appSource, /if \(loadError\) refreshSafely\(\)/);
+  assert.match(appSource, /loading=\{catalogState\.loading\}/);
+  assert.match(appSource, /loadError=\{catalogState\.error\}/);
+  assert.match(appSource, /if \(catalogState\.error\) refreshSafely\(\)/);
   assert.match(appSource, /else void controller\.retry\(\)/);
   assert.match(appSource, /onChangeServer=\{\(\) => runtime\.session\.chooseServer\(\)\}/);
 });
@@ -297,14 +298,27 @@ test("wires authenticated artwork, channel invalidation, identity, versions, and
   assert.match(appSource, /serverVersion=\{serverVersion\}/);
 });
 
+test("reports playback diagnostics to the paired server and recovers player errors", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /createAuthenticatedBatchSender\(runtime\.request,/);
+  assert.match(appSource, /platform: "android_tv", source: "android_tv"/);
+  assert.match(appSource, /onPlayerError: diagnostics\.playback\.playerError/);
+  assert.match(appSource, /transport\.subscribe\(diagnostics\.playback\.transportEvent\)/);
+  assert.match(appSource, /diagnostics\.playback\.channelChanged\(channelId\)/);
+  assert.match(appSource, /diagnostics\.playback\.dispose\(\);\s+diagnostics\.reporter\.dispose\(\)/);
+});
+
 test("releases playback and invalidation resources in the background before authoritative retune", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
   assert.match(appSource, /createNativePlayerLifecycle\(\{ controller, refresh, transport \}\)/);
   assert.match(appSource, /AppState\.addEventListener\("change", \(state\) =>/);
-  assert.match(appSource, /refreshRequest\.current\?\.abort\(\);\s+lifecycle\.enterBackground\(\)/);
+  assert.match(
+    appSource,
+    /catalogRefresher\.abort\(\);\s+versionRequest\.current\?\.abort\(\);\s+lifecycle\.enterBackground\(\)/,
+  );
   assert.match(appSource, /void lifecycle\.enterForeground\(\)\.catch/);
-  assert.match(appSource, /throw error/);
   assert.match(appSource, /if \(closeStream\) return/);
   assert.match(appSource, /else closeActiveStream\(\)/);
   assert.match(appSource, /subscription\.remove\(\);\s+closeActiveStream\(\)/);
