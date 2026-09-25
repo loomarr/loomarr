@@ -3,9 +3,13 @@ package library_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library"
@@ -390,5 +394,45 @@ func TestStaleLoomarrListings_LeavesForeignProvidersAlone(t *testing.T) {
 	}
 	if len(stale) != 0 {
 		t.Errorf("a provider Loomarr didn't write must never be reported stale, got %v", stale)
+	}
+}
+
+// TransientClass separates "the media server is busy or unreachable" (worth a retry) from a
+// rejected request (worth an operator's attention). #1407: Emby answered a tuner re-POST with
+// 500 ServiceUnavailable while stalled, and one job run per day reported it as a hard failure.
+func TestTransientClass(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/System/Configuration/livetv" {
+			_, _ = w.Write(testkit.Fixture(t, "livetv/livetv_config_jellyfin.json"))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("ServiceUnavailable"))
+	}))
+	defer srv.Close()
+	err := newLiveTVClient(srv.URL).RescanTuner(context.Background(), "http://192.0.2.79:8001/api/channels.m3u")
+	if err == nil || err.Error() != "POST /LiveTv/TunerHosts: status 500: ServiceUnavailable" {
+		t.Fatalf("err = %v, want the unchanged status-500 message", err)
+	}
+	if got := library.TransientClass(err); got != "server-error" {
+		t.Errorf("500 class = %q, want server-error", got)
+	}
+	wrapped := fmt.Errorf("rescan tuner: %w", err)
+	if got := library.TransientClass(wrapped); got != "server-error" {
+		t.Errorf("wrapped 500 class = %q, want server-error", got)
+	}
+
+	timeout := fmt.Errorf("POST /x: %w", &url.Error{Op: "Post", URL: "http://emby", Err: context.DeadlineExceeded})
+	if got := library.TransientClass(timeout); got != "timeout" {
+		t.Errorf("client timeout class = %q, want timeout", got)
+	}
+	refused := &url.Error{Op: "Post", URL: "http://emby", Err: &net.OpError{Op: "dial", Err: errors.New("connection refused")}}
+	if got := library.TransientClass(refused); got != "connection" {
+		t.Errorf("dial failure class = %q, want connection", got)
+	}
+	for _, e := range []error{errors.New("boom"), context.Canceled, fmt.Errorf("POST /x: status 401: no")} {
+		if got := library.TransientClass(e); got != "" {
+			t.Errorf("%v class = %q, want not transient", e, got)
+		}
 	}
 }

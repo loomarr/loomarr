@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/backendtransition"
@@ -42,6 +44,7 @@ func buildBackendTransition(
 type backendPublisher struct {
 	connector       *setup.LiveTVConnector
 	urls            func(context.Context, string) (setup.LiveTVURLs, error)
+	log             *slog.Logger // optional
 	mu              sync.Mutex
 	preparedTarget  string
 	preparedURLs    setup.LiveTVURLs
@@ -111,7 +114,15 @@ func (p *backendPublisher) Refresh(ctx context.Context, target string) error {
 	if err != nil {
 		return err
 	}
-	return operation.RefreshTarget(ctx, urls)
+	err = operation.RefreshTarget(ctx, urls)
+	var transient *setup.TransientError
+	if errors.As(err, &transient) && p.log != nil {
+		// Logged here, once per exhausted retry budget, so the controller can defer the failure
+		// to the next maintenance run without the cause vanishing (#1407).
+		p.log.Warn("media server busy; live tv refresh deferred to the next run",
+			"cause_class", transient.Class(), "attempts", transient.Attempts(), "target", target, "err", err)
+	}
+	return err
 }
 
 func (p *backendPublisher) RetireStale(ctx context.Context, target string) error {

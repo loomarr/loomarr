@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -402,11 +403,7 @@ func (c *Client) do(req *http.Request, out any) error {
 		// media server's own explanation (e.g. Emby's reason for rejecting a tuner
 		// add), which is exactly what an operator needs to fix a wiring failure.
 		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		msg := strings.TrimSpace(string(snippet))
-		if msg == "" {
-			return fmt.Errorf("%s %s: status %d", req.Method, req.URL.Path, resp.StatusCode)
-		}
-		return fmt.Errorf("%s %s: status %d: %s", req.Method, req.URL.Path, resp.StatusCode, msg)
+		return &StatusError{Method: req.Method, Path: req.URL.Path, Status: resp.StatusCode, Body: strings.TrimSpace(string(snippet))}
 	}
 	if out == nil {
 		return nil
@@ -415,6 +412,47 @@ func (c *Client) do(req *http.Request, out any) error {
 		return fmt.Errorf("decode %s: %w", req.URL.Path, err)
 	}
 	return nil
+}
+
+// StatusError is a non-2xx media-server answer. It keeps the status machine-readable so callers
+// can tell a busy server (5xx) from a rejected request (4xx) without parsing the message.
+type StatusError struct {
+	Method, Path string
+	Status       int
+	Body         string
+}
+
+func (e *StatusError) Error() string {
+	if e.Body == "" {
+		return fmt.Sprintf("%s %s: status %d", e.Method, e.Path, e.Status)
+	}
+	return fmt.Sprintf("%s %s: status %d: %s", e.Method, e.Path, e.Status, e.Body)
+}
+
+// TransientClass names why a media-server call failed in a way a later attempt may cure —
+// "server-error" (5xx), "timeout", or "connection" (dial/reset) — or "" when it is not
+// transient (a rejected request, a cancelled context, or anything unrecognised). Emby answers
+// 500 ServiceUnavailable while it is busy, which is not a wiring fault.
+func TransientClass(err error) string {
+	var status *StatusError
+	if errors.As(err, &status) {
+		if status.Status >= 500 {
+			return "server-error"
+		}
+		return ""
+	}
+	if err == nil || errors.Is(err, context.Canceled) {
+		return ""
+	}
+	var netErr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+		return "timeout"
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return "connection"
+	}
+	return ""
 }
 
 // doTolerate404 runs a request whose target may already be gone, treating a 404 as
