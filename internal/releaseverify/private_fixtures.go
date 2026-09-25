@@ -63,6 +63,12 @@ var privateFixtureFingerprints = map[string]string{
 	"3c20e4ea1540e8a9e4f3792764b6b1e88c3cb053dbed9a8142ec69f24e8e5321": "captured profile PIN",
 	"9a30575229a11f77aab25c846c01fe7c6fcab1679be3c87078d213f9c660917f": "private-fixture regression sentinel",
 	"268dad736496c95f7eb7ba9f2aae5ce9c2136359567db100a9155ffd457d991e": "private-fixture field regression sentinel",
+	"8e27f8d60ea2541b68d9062e41e40cc744d6aa46f8571679250312a435903e97": "maintainer homelab hostname",
+	"0c27572d249c007fe9b7d2197aef332509cffeced09b53bc07872f0549cf1271": "maintainer homelab hostname",
+	"fd7f8deffba663b9b663b538810195896436cb8478efc8c36d1c1f97f91e0ea3": "maintainer homelab hostname",
+	"c99b8b1e1259c7ba2d4c0d9f69b0eb168b9ee12841032aa27312431826387b3b": "maintainer domain label",
+	"e63a759369515e566af2969418b3bde8700baa922a2ac5cea35bc619025891d7": "maintainer tailnet label",
+	"8bed4e0bfe7e772387c58ff90007e8a5493e8d5d54c3f03162302182f83352e3": "homelab hostname regression sentinel",
 }
 
 var privateFixtureCandidatePatterns = []*regexp.Regexp{
@@ -71,6 +77,8 @@ var privateFixtureCandidatePatterns = []*regexp.Regexp{
 	regexp.MustCompile(`[[:alnum:]_-]+(?:\.[[:alnum:]_-]+){2,}`),
 	regexp.MustCompile(`[[:xdigit:]]{32}`),
 	regexp.MustCompile(`[[:xdigit:]]{12}`),
+	// Bare hostnames and single DNS labels, which the dotted-name pattern above cannot see.
+	regexp.MustCompile(`[[:alnum:]_]+(?:-[[:alnum:]_]+)*`),
 }
 
 var privateFixtureFieldPattern = regexp.MustCompile(`"(?:Name|jellyfinUsername|displayName|ProfilePin)"[[:space:]]*:[[:space:]]*"[^"]*"`)

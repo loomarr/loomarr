@@ -54,7 +54,7 @@ const PairingStory = ({
   return (
     <PairingShell
       density={density}
-      initialServerUrl="https://loomarr.projectguacamole.com"
+      initialServerUrl="https://loomarr.example.com"
       renderPaired={() => (
         <Surface>
           <Text textRole="title">Paired</Text>

@@ -426,4 +426,4 @@ Exclude or hold all of the following:
 6. Produce two blind semantic-label batches and a third adjudication only for disagreements.
 7. Generate independent opaque-alias review packets, lock the schema-v5 manifest with at least 300
    development and 1,126 holdout cases, then run #555's paid, label-blind OpenRouter bakeoff on
-   identical evidence packets and proceed to fictional-media-server shadow certification.
+   identical evidence packets and proceed to media-server-host shadow certification.

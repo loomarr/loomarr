@@ -96,7 +96,7 @@ schema, eight providers, and $0.40 / $3.00 per million text tokens
 ([Qwen model card](https://huggingface.co/Qwen/Qwen3.8-27B),
 [OpenRouter endpoint](https://openrouter.ai/qwen/qwen3.8-27b)). Its output price is high relative
 to Gemma, but Loomarr's output is a tiny closed evidence object, so measured per-clip cost may still
-be competitive. It is not a reason to load 27B weights on fictional-media-server: use bounded
+be competitive. It is not a reason to load 27B weights on the media-server host: use bounded
 OpenRouter calls unless a separate local-resource certification proves an installation can run it
 without competing with playout.
 
@@ -648,7 +648,7 @@ model, provider, prompt, schema, taxonomy, evidence extractor, or policy change.
    server-owned projections.
 8. Run the bounded OpenRouter bakeoff, choose a cascade from measured results, and record its model,
    provider, price, and privacy snapshot.
-9. Shadow on `fictional-media-server`, adjudicate disagreements, then enable slices in the staged
+9. Shadow on the media-server host, adjudicate disagreements, then enable slices in the staged
    order above.
 
 ## 9. Unresolved decisions requiring evidence or maintainer policy
