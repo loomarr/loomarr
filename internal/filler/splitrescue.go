@@ -39,6 +39,9 @@ type rescuedSpan struct {
 
 // rescueSystemPrompt asks for advert boundaries in ONE transcript. The
 // single-advert rule is the load-bearing line (above).
+// rescueMaxTokens bounds the span list (~25 tokens per span).
+const rescueMaxTokens = 512
+
 const rescueSystemPrompt = `You find the boundaries between TV adverts inside one transcript of a single continuous video segment.
 The transcript lines are timestamped [mm:ss]. Adverts usually run back to back with no pause.
 Return ONLY this JSON, no prose:
@@ -70,7 +73,7 @@ func findAdBreaks(ctx context.Context, provider llm.Provider, transcript []Trans
 	resp, err := provider.Chat(llm.WithCallSite(ctx, "filler.split_rescue"), []llm.Message{
 		{Role: llm.System, Content: rescueSystemPrompt},
 		{Role: llm.User, Content: "Transcript:\n" + text + "\nFind the advert boundaries."},
-	}, llm.ChatOptions{JSONMode: true})
+	}, llm.StructuredChatOptions(rescueMaxTokens))
 	if err != nil {
 		return nil, fmt.Errorf("rescue llm: %w", err)
 	}

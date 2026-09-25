@@ -142,7 +142,7 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		Model:     o.model,
 		Stream:    false,
 		Messages:  toOllamaMessages(messages),
-		Tools:     toOllamaTools(opts.Tools),
+		Tools:     toOllamaTools(ollamaTools(opts)),
 		Options:   ollamaOptions(opts),
 		KeepAlive: o.keepAlive,
 	}
@@ -153,7 +153,7 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	// reasoning model's chain-of-thought interferes with tool calls and JSON on
 	// Ollama (empty output / leaked markers). Finalization deliberately removes
 	// tools, so JSONMode must independently keep thinking off.
-	if len(opts.Tools) > 0 || opts.JSONMode {
+	if len(ollamaTools(opts)) > 0 || opts.JSONMode {
 		off := false
 		req.Think = &off
 	}
@@ -225,6 +225,8 @@ func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 		Stream:    false,
 		Format:    "json",
 		KeepAlive: o.keepAlive,
+		// Bounded and near-deterministic, like the hosted path; still no num_ctx block.
+		Options: map[string]any{"temperature": visionTemperature, "num_predict": VisionMaxTokens},
 		Messages: []ollamaMessage{{
 			Role:    "user",
 			Content: prompt,
@@ -481,3 +483,12 @@ var (
 	_ Warmer   = (*Ollama)(nil)
 	_ Evictor  = (*Ollama)(nil)
 )
+
+// ollamaTools honours ToolChoiceNone by omitting the tools: Ollama's native API has no tool_choice,
+// and offering tools it cannot forbid invites a repeated tool call instead of the final answer.
+func ollamaTools(opts ChatOptions) []ToolSchema {
+	if opts.ToolChoice == ToolChoiceNone {
+		return nil
+	}
+	return opts.Tools
+}

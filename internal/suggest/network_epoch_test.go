@@ -271,7 +271,7 @@ func TestSuggest_NetworkStyleDoesNotReopenToolsOnJSONRepair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(proposal.Lineup) != 1 || len(corpus.Discoveries()) != 1 || len(model.LastOpts.Tools) != 0 {
+	if len(proposal.Lineup) != 1 || len(corpus.Discoveries()) != 1 || canCallTools(model.LastOpts) {
 		t.Fatalf("JSON repair reopened retrieval: proposal=%+v discoveries=%+v opts=%+v", proposal, corpus.Discoveries(), model.LastOpts)
 	}
 }

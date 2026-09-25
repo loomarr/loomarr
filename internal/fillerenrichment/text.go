@@ -347,7 +347,7 @@ JSON keys: kind, audience, brand, product, format, seasonal, audienceCue, presen
 	user := fmt.Sprintf("Requested axes: %s\nTaxonomy:\n%s\n\nClip text:\n%s",
 		strings.Join(axisNames, ", "), forest.Vocab(), signalText(signals))
 	response, err := provider.Chat(llm.WithCallSite(ctx, "filler.text_single"), []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
-		llm.ChatOptions{JSONMode: true, MaxTokens: textSingleMaxTokens, ReasoningEffort: "none"})
+		withLowTemperature(textSingleMaxTokens))
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +404,7 @@ The product, format, seasonal, audienceCue, and presentation values must always 
 Each item keys: id, kind, audience, brand, product, format, seasonal, audienceCue, presentation, confidence.`
 	user := fmt.Sprintf("Taxonomy:\n%s\n\nClips:\n%s", forest.Vocab(), promptJSON)
 	response, err := provider.Chat(llm.WithCallSite(ctx, "filler.text_batch"), []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
-		llm.ChatOptions{JSONMode: true, MaxTokens: textBatchMaxTokens, ReasoningEffort: "none"})
+		withLowTemperature(textBatchMaxTokens))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -565,4 +565,12 @@ func taxonomyIdentity(forest *taxonomy.Forest) (string, error) {
 	}
 	sum := sha256.Sum256(raw)
 	return "taxonomy:" + hex.EncodeToString(sum[:8]), nil
+}
+
+// withLowTemperature is the structured request shape plus the explicit thinking-off that
+// enrichment already relied on.
+func withLowTemperature(maxTokens int) llm.ChatOptions {
+	opts := llm.StructuredChatOptions(maxTokens)
+	opts.ReasoningEffort = "none"
+	return opts
 }

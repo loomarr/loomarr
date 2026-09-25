@@ -13,6 +13,9 @@ import (
 
 const PromptVersion = "filler-context-v2"
 
+// researchMaxTokens bounds the answer: the schema is ~130 tokens on average, so 512 costs nothing.
+const researchMaxTokens = 512
+
 type Researcher struct {
 	retriever Retriever
 	fallback  Retriever
@@ -172,7 +175,7 @@ JSON keys: year, decade, countryCode, country, confidence, explanation, citation
 	user := fmt.Sprintf("Public source title: %s\nPublic source description: %s\nRequested context: %s\nEvidence packet:\n%s",
 		input.Title, input.Description, strings.Join(requested, ", "), packetJSON)
 	response, err := r.provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
-		llm.ChatOptions{JSONMode: true})
+		llm.StructuredChatOptions(researchMaxTokens))
 	if err != nil {
 		return Report{}, fmt.Errorf("interpret filler context evidence: %w", err)
 	}

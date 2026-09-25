@@ -101,7 +101,7 @@ func RunToolFinalizationDiagnostic(ctx context.Context, provider llm.Provider, m
 	if err != nil {
 		return ToolFinalizationDiagnostic{}, fmt.Errorf("marshal diagnostic tool schema: %w", err)
 	}
-	opts := chatOpts(nil, groundedTemp)
+	opts := chatOpts(nil, groundedTemp, true, false)
 	sampling := llm.ResolveChatPolicy(provider.Name(), model, opts)
 	report := ToolFinalizationDiagnostic{
 		SchemaVersion:            plannerDiagnosticSchemaVersion,

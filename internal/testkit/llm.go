@@ -26,6 +26,10 @@ type LLM struct {
 	// LastOpts captures the ChatOptions of the most recent call, so a test can
 	// assert sampling controls (temperature/max_tokens) are forwarded (T0.1).
 	LastOpts llm.ChatOptions
+	// PrefixCache makes the mock report a prompt-prefix-caching server (llm.PrefixCacher).
+	PrefixCache bool
+	// AllOpts is every call's ChatOptions in order, for asserting on the sequence.
+	AllOpts []llm.ChatOptions
 	// LastMessages captures the prompt of the most recent call. Some defects live
 	// in the PROMPT rather than the response — filler tagging spent its life sending
 	// "Source description: tunarr-local" (a provenance enum where a description
@@ -69,6 +73,8 @@ func (m *LLM) SetResponses(responses ...llm.Response) {
 
 func (m *LLM) Name() string { return "mock" }
 
+func (m *LLM) CachesPromptPrefix() bool { return m.PrefixCache }
+
 func (m *LLM) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
 	if m.OnChat != nil {
 		m.OnChat()
@@ -83,6 +89,7 @@ func (m *LLM) Chat(ctx context.Context, messages []llm.Message, opts llm.ChatOpt
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.LastOpts = opts
+	m.AllOpts = append(m.AllOpts, opts)
 	m.LastMessages = messages
 	m.Calls++
 	if len(m.Errors) > 0 {

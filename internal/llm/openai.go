@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -159,12 +161,62 @@ func ValidateOpenRouterCertificationRoute(model, upstreamProvider string) error 
 
 func (o *OpenAI) Name() string { return o.provider }
 
+// CachesPromptPrefix: a self-hosted OpenAI-compatible server (llama.cpp) reuses its KV cache
+// across requests; a hosted API is priced by the tokens sent.
+func (o *OpenAI) CachesPromptPrefix() bool { return o.selfHosted() }
+
+// selfHosted reports whether the endpoint is an operator-run OpenAI-compatible server (llama.cpp,
+// vLLM, LM Studio) rather than a hosted API. Only those take chat_template_kwargs; the check is the
+// endpoint's identity, never the model name.
+func (o *OpenAI) selfHosted() bool {
+	switch o.provider {
+	case "openrouter":
+		return false
+	case CustomProviderKey:
+		return true
+	}
+	u, err := url.Parse(o.baseURL)
+	if err != nil {
+		return false
+	}
+	return isPrivateHost(u.Hostname())
+}
+
+// cgnatNet is 100.64.0.0/10 (carrier-grade NAT, which Tailscale addresses come from).
+var cgnatNet = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// privateHostSuffixes are the DNS suffixes only an operator's own network resolves.
+var privateHostSuffixes = []string{".local", ".lan", ".internal", ".home.arpa"}
+
+// isPrivateHost is the fail-safe direction of the self-hosted check: only a host that is clearly
+// on the operator's own network qualifies. Every other host is treated as a hosted API, which may
+// reject fields it does not know, so an unlisted public vendor never receives llama.cpp-only fields.
+func isPrivateHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == "" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || cgnatNet.Contains(ip)
+	}
+	if host == "localhost" || !strings.Contains(host, ".") {
+		return true // a single-label name is a docker service or LAN host, never a public API
+	}
+	for _, suffix := range privateHostSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // --- wire types (OpenAI /v1/chat/completions) ---
 
 type openaiChatReq struct {
 	Model               string               `json:"model"`
 	Messages            []openaiMessage      `json:"messages"`
 	Tools               []openaiTool         `json:"tools,omitempty"`
+	ToolChoice          string               `json:"tool_choice,omitempty"`
 	ResponseFormat      *openaiRespFmt       `json:"response_format,omitempty"`
 	Temperature         *float64             `json:"temperature,omitempty"`
 	TopP                *float64             `json:"top_p,omitempty"`
@@ -173,8 +225,11 @@ type openaiChatReq struct {
 	Provider            *openRouterChatRoute `json:"provider,omitempty"`
 	ReasoningEffort     string               `json:"reasoning_effort,omitempty"`
 	Reasoning           *openRouterReasoning `json:"reasoning,omitempty"`
-	Stream              bool                 `json:"stream"`
-	StreamOptions       *streamOptions       `json:"stream_options,omitempty"`
+	// ChatTemplateKwargs reaches the server's chat template (llama.cpp, vLLM). Only sent to a
+	// self-hosted endpoint: a hosted API rejects the unknown field.
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
+	Stream             bool           `json:"stream"`
+	StreamOptions      *streamOptions `json:"stream_options,omitempty"`
 }
 
 type openRouterReasoning struct {
@@ -292,6 +347,17 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	}
 	if req.Provider == nil && sampling.DefaultUpstream != "" {
 		req.Provider = strictOpenRouterChatRoute(sampling.DefaultUpstream)
+	}
+	if len(wireTools) > 0 {
+		req.ToolChoice = opts.ToolChoice
+	}
+	if o.selfHosted() && (opts.JSONMode || len(wireTools) > 0 || sampling.ReasoningEffort == "none") {
+		// Thinking off is stated, not inherited from the server's default: a template whose default
+		// flips to reasoning would spend a whole structured-output budget before the first token.
+		req.ChatTemplateKwargs = map[string]any{"enable_thinking": false}
+		if sampling.ReasoningEffort == "none" {
+			sampling.ReasoningEffort = ""
+		}
 	}
 	if sampling.ReasoningEffort != "" {
 		if o.provider == "openrouter" {
@@ -449,9 +515,12 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	}
 
 	body, err := json.Marshal(visionChatReq{
-		Model:    o.model,
-		Messages: []visionMessage{{Role: "user", Content: parts}},
-		Stream:   true, StreamOptions: &streamOptions{IncludeUsage: true},
+		Model:          o.model,
+		Messages:       []visionMessage{{Role: "user", Content: parts}},
+		MaxTokens:      VisionMaxTokens,
+		Temperature:    &visionTemperature,
+		ResponseFormat: &openaiRespFmt{Type: "json_object"},
+		Stream:         true, StreamOptions: &streamOptions{IncludeUsage: true},
 	})
 	if err != nil {
 		return Response{}, fmt.Errorf("marshal vision request: %w", err)

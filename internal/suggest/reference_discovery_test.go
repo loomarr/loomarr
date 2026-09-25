@@ -29,7 +29,7 @@ func (m *namedSetToolAvailabilityLLM) Name() string { return "named-set-tool-ava
 
 func (m *namedSetToolAvailabilityLLM) Chat(_ context.Context, _ []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
 	m.calls++
-	if len(opts.Tools) > 0 {
+	if canCallTools(opts) {
 		return testkit.ToolCallResponse("catalog_search", map[string]any{
 			"mode": "collection", "media_type": "movie", "titles": []any{"Model Guess"},
 			"dateMeaning": dateMeaningNone(),

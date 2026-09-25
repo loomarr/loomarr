@@ -122,11 +122,20 @@ type Attribution struct {
 // WantsTools reports whether the model requested tool execution this turn.
 func (r Response) WantsTools() bool { return len(r.ToolCalls) > 0 }
 
+// ToolChoiceNone is the ChatOptions.ToolChoice value that forbids tool calls.
+const ToolChoiceNone = "none"
+
 // ChatOptions tune a single Chat call.
 type ChatOptions struct {
 	Profile  ChatProfile  // zero preserves the caller's existing sampling
 	Tools    []ToolSchema // tools the model may call this turn
 	JSONMode bool         // force the final content to be valid JSON (§8 output contract)
+	// ToolChoice constrains tool use for this turn. Empty is the provider default
+	// (auto). ToolChoiceNone keeps Tools on the wire but forbids calling them, so a
+	// finalization turn shares its prompt prefix — chat templates render the tools
+	// before the system prompt — with the tool turns before it, and a server-side
+	// prompt cache survives. A provider that cannot honour it omits the tools instead.
+	ToolChoice string
 	// Sampling controls (provider-neutral). Pointers so "unset" is distinct from a
 	// deliberate 0 — temperature 0 is a valid, desirable value for JSON/tool-calling
 	// (deterministic, schema-adherent). A nil pointer ⇒ the provider's default.
@@ -146,6 +155,19 @@ type Provider interface {
 	Chat(ctx context.Context, messages []Message, opts ChatOptions) (Response, error)
 	// Name identifies the provider for logs/metrics.
 	Name() string
+}
+
+// PrefixCacher is implemented by a provider whose server keeps the evaluated prompt prefix
+// between requests (a self-hosted llama.cpp slot). Only for such a provider does a request's
+// leading content matter: keeping the tools array on every turn (tool_choice none to forbid
+// calls) preserves the cached prefix, whereas a hosted provider bills every token sent, so
+// there the tools are dropped once retrieval is over. Callers type-assert, like Warmer.
+type PrefixCacher interface{ CachesPromptPrefix() bool }
+
+// CachesPromptPrefix reports whether p keeps a prompt prefix cache worth preserving.
+func CachesPromptPrefix(p Provider) bool {
+	c, ok := p.(PrefixCacher)
+	return ok && c.CachesPromptPrefix()
 }
 
 // Warmer is an OPTIONAL Provider capability (§8.2): preload the model so the next
@@ -216,4 +238,17 @@ func NewProvider(provider, url, model, key string) Provider {
 		return NewOpenAI(url, model, key)
 	}
 	return NewOllama(url, model)
+}
+
+// StructuredTemperature is the sampling temperature for short structured-output calls
+// (JSON classification, extraction): near-deterministic, never the server default (1.0 on
+// llama.cpp), which makes schema adherence a coin flip.
+const StructuredTemperature = 0.1
+
+// StructuredChatOptions is the request shape for a bounded JSON call: JSON mode, a low
+// temperature and an explicit completion limit sized to the schema, so a runaway answer
+// cannot hold a single-slot server until the request timeout.
+func StructuredChatOptions(maxTokens int) ChatOptions {
+	t := StructuredTemperature
+	return ChatOptions{JSONMode: true, Temperature: &t, MaxTokens: maxTokens}
 }

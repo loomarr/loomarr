@@ -80,7 +80,7 @@ func TestSuggest_DateSourceOrderReferenceEvidenceTitleAnchorsTheMatrix(t *testin
 	if err != nil || len(proposal.Lineup) != 1 || proposal.Lineup[0].TMDBID != matrixCandidate().TMDBID || model.Calls != 2 || len(references.Calls()) != 1 || len(corpus.Searches()) != 1 || len(corpus.Discoveries()) != 0 {
 		t.Fatalf("proposal=%+v err=%v model calls=%d reference calls=%d searches=%d discoveries=%d", proposal, err, model.Calls, len(references.Calls()), len(corpus.Searches()), len(corpus.Discoveries()))
 	}
-	if len(model.LastOpts.Tools) != 0 {
+	if canCallTools(model.LastOpts) {
 		t.Fatalf("final tools = %#v, want nil", model.LastOpts.Tools)
 	}
 	if proposal.Trace.SurfacedTotal != 1 || proposal.Trace.RecordedTotal != 1 {

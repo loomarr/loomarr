@@ -2239,6 +2239,19 @@ array element indexes and half-open rune offsets in the original untrimmed strin
 data, not date classifications: the model still selects and interprets date spans, and the
 existing validator remains authoritative. Unicode whitespace separates tokens; a date expression
 may span multiple tokens. Empty fields are omitted without renumbering array elements.
+On a provider that keeps a prompt-prefix cache (`llm.PrefixCacher`: a self-hosted OpenAI-compatible
+server such as llama.cpp) every turn of one suggestion — retrieval, finalization and repair — sends
+the same tools array; finalization and repair forbid calling it with `tool_choice: "none"` (a provider with no such control, such as
+Ollama's native API, omits the tools instead). Removing the tools would change the prompt from its
+first tokens, because chat templates render them before the system prompt, and a single-slot
+server would re-prefill the whole conversation (~5-9k tokens, 20-40 s on the household host).
+Static content (system prompt, tools) leads; variable content follows. A hosted provider, priced by
+the tokens it is sent and with no slot to keep warm, still drops the tools at finalization. Structured filler calls
+(research, split rescue, vision, text classification) set JSON mode, a low temperature and an
+explicit `max_tokens`; a self-hosted OpenAI-compatible endpoint also receives
+`chat_template_kwargs.enable_thinking=false` on structured and tool turns instead of relying on the
+server default. With `filler.vision.provider=inherit`, a `filler.vision.model` that the inherited
+endpoint does not list in `/v1/models` is reported in a warning and replaced by the main model.
 Each tool-free finalization request also supplies an
 explicit end-of-retrieval instruction and the complete accepted canonical `dateMeaning` to copy.
 This request-only message does not accumulate in conversation history or replace final validation.

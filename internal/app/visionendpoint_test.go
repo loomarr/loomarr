@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -214,5 +217,58 @@ func TestHotVisionProvider_SaysWhyWhenThereIsNoEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "filler.vision.url") {
 		t.Errorf("error %q does not name the setting that fixes it", err)
+	}
+}
+
+// The household install kept filler.vision.model=openai/gpt-4.1-nano (an OpenRouter name) against a
+// llama.cpp server that answered it by accident with its only model, so attribution recorded a model
+// nothing ran. A model the inherited endpoint does not serve is named in a warning and replaced by the
+// main model; one it does serve (by id or alias) is left alone; an endpoint that cannot list models is
+// trusted, because absence of a list proves nothing.
+func TestHotVisionProvider_ReconcilesAVisionModelTheInheritedEndpointDoesNotServe(t *testing.T) {
+	t.Parallel()
+	served := `{"data":[{"id":"flash-next","aliases":["qwen-flash"]}]}`
+	status := http.StatusOK
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(served))
+	}))
+	t.Cleanup(srv.Close)
+
+	for _, tc := range []struct {
+		name, model, wantModel string
+		status                 int
+		wantWarn               bool
+	}{
+		{"stale name from another provider", "openai/gpt-4.1-nano", "flash-next", http.StatusOK, true},
+		{"served id", "flash-next", "flash-next", http.StatusOK, false},
+		{"served alias", "qwen-flash", "qwen-flash", http.StatusOK, false},
+		{"no model list to check against", "openai/gpt-4.1-nano", "openai/gpt-4.1-nano", http.StatusNotFound, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			status = tc.status
+			var logs strings.Builder
+			h := &hotVisionProvider{
+				set: visionSet(t, map[string]string{
+					"llm.provider": "openai", "llm.url": srv.URL + "/v1", "llm.model": "flash-next",
+					"filler.vision.model": tc.model,
+				}),
+				log: slog.New(slog.NewTextHandler(&logs, nil)),
+			}
+			if _, err := h.resolve(); err != nil {
+				t.Fatal(err)
+			}
+			if h.last.model != tc.wantModel {
+				t.Errorf("vision model = %q, want %q", h.last.model, tc.wantModel)
+			}
+			warned := strings.Contains(logs.String(), "filler.vision.model")
+			if warned != tc.wantWarn {
+				t.Errorf("warned = %v, want %v; log: %s", warned, tc.wantWarn, logs.String())
+			}
+		})
 	}
 }

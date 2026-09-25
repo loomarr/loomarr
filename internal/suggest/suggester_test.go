@@ -147,12 +147,12 @@ func (m *emptyThenGroundedLLM) Chat(_ context.Context, _ []llm.Message, opts llm
 	case 1:
 		return catalogSearchResponse(map[string]any{"query": "definitely absent"}), nil
 	case 2:
-		if len(opts.Tools) == 0 {
+		if !canCallTools(opts) {
 			return llm.Response{}, errors.New("catalog tool disappeared after an empty result")
 		}
 		return catalogSearchResponse(map[string]any{"query": "matrix"}), nil
 	default:
-		if len(opts.Tools) != 0 {
+		if canCallTools(opts) {
 			return llm.Response{}, errors.New("catalog tool remained after a grounded result")
 		}
 		return finalResponseWithNone(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:603","name":"The Matrix"}]}`), nil
@@ -164,7 +164,7 @@ func (m *toolAvailabilitySensitiveLLM) Name() string { return "tool-availability
 func (m *toolAvailabilitySensitiveLLM) Chat(_ context.Context, _ []llm.Message, opts llm.ChatOptions) (llm.Response, error) {
 	m.calls++
 	m.opts = append(m.opts, opts)
-	if len(opts.Tools) > 0 {
+	if canCallTools(opts) {
 		return catalogSearchResponse(map[string]any{"query": "matrix"}), nil
 	}
 	if len(m.final) > 0 {
@@ -276,7 +276,7 @@ func TestSuggest_RepairKeepsToolsDisabledAfterGrounding(t *testing.T) {
 		t.Fatalf("model calls = %d, want retrieval + malformed final + repaired final", model.calls)
 	}
 	for turn, opts := range model.opts[1:] {
-		if len(opts.Tools) != 0 || !opts.JSONMode {
+		if canCallTools(opts) || !opts.JSONMode {
 			t.Fatalf("finalization turn %d options = %+v, want JSON mode without tools", turn+1, opts)
 		}
 	}
@@ -1542,7 +1542,7 @@ func TestSuggest_ForwardsSamplingControls(t *testing.T) {
 	if len(retrievalOpts.Tools) != 1 || retrievalOpts.JSONMode {
 		t.Errorf("retrieval options = %+v, want one tool without JSON mode", retrievalOpts)
 	}
-	if len(finalOpts.Tools) != 0 || !finalOpts.JSONMode {
+	if canCallTools(finalOpts) || !finalOpts.JSONMode {
 		t.Errorf("finalization options = %+v, want JSON mode without tools", finalOpts)
 	}
 }

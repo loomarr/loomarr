@@ -44,7 +44,7 @@ func TestSuggest_ReferenceInterpretationPhaseSurvivesRepairThenEnds(t *testing.T
 					if notes != 1 || !strings.HasPrefix(last.Content, prefix) || last.Role != llm.User {
 						t.Errorf("interpretation request %d has %d phase notes; last=%s", model.Calls, notes, last.Role)
 					}
-					if len(model.LastOpts.Tools) != 0 || !model.LastOpts.JSONMode {
+					if canCallTools(model.LastOpts) || !model.LastOpts.JSONMode {
 						t.Error("interpretation enabled tools or omitted JSON mode")
 					}
 				}
@@ -103,7 +103,7 @@ func TestSuggest_FinalizationCarriesAcceptedMeaningThroughRepair(t *testing.T) {
 			if len(proposal.Lineup) != 1 || model.Calls != 3 {
 				t.Fatalf("lineup=%v calls=%d", proposal.Lineup, model.Calls)
 			}
-			if len(model.LastOpts.Tools) != 0 || !model.LastOpts.JSONMode {
+			if canCallTools(model.LastOpts) || !model.LastOpts.JSONMode {
 				t.Fatal("repair re-enabled retrieval")
 			}
 			notes := 0
