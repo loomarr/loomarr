@@ -128,6 +128,8 @@ const appHandlers = (): RequestHandler[] => [
   getChannelPlayUrlMockHandler({
     url: "",
     relativeUrl: "",
+    stillUrl: "",
+    relativeStillUrl: "",
     expiresAt: "2026-01-01T00:00:00Z",
     serverTimeMs: Date.UTC(2026, 0, 1),
   }),
