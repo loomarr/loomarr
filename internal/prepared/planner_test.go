@@ -518,6 +518,7 @@ func TestPlannerRunsRetentionAfterYieldingPreparation(t *testing.T) {
 	if err := p.Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	waitForPlanner(t, p)
 	if retainer.calls != 1 || retainer.budget != 512 || len(retainer.protected) != 1 || retainer.protected[0] != protected {
 		t.Fatalf("retention calls = %d at %d bytes, want one at 512", retainer.calls, retainer.budget)
 	}
@@ -551,6 +552,7 @@ func TestPlannerStatusReportsResolvedReadinessAndRetentionAfterYield(t *testing.
 	if err := p.Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	waitForPlanner(t, p)
 	want := PlannerStatus{
 		Available: true, LastRunAt: now, Readiness: wantReadiness,
 		Retention: RetentionStatus{
@@ -658,6 +660,7 @@ func TestPlannerDeadlineDuringPassStillObservesAndRetains(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Run error = %v, want deadline exceeded after finalization", err)
 	}
+	waitForPlanner(t, p)
 	if len(work.requests) != 0 {
 		t.Fatalf("planner admitted %d publications after its deadline", len(work.requests))
 	}
@@ -689,6 +692,7 @@ func TestPlannerObservationFailurePreservesTheResolvedHotSet(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "transient schedule read") {
 		t.Fatalf("Run error = %v, want observation failure", err)
 	}
+	waitForPlanner(t, p)
 	if retainer.calls != 1 || len(retainer.protected) != 1 || retainer.protected[0] != protected {
 		t.Fatalf("retention lost pre-work hot set after observation failure: %+v", retainer.protected)
 	}
@@ -733,4 +737,71 @@ func TestPlannerStatusPreservesUnavailableReason(t *testing.T) {
 	if got := p.Status(); got.Available || got.UnavailableReason != "prepared volume is read-only" {
 		t.Fatalf("status = %+v", got)
 	}
+}
+
+// waitForPlanner drains the retention sweep a pass starts; the sweep is planner-owned, not part of
+// the pass, so a test that inspects its effects must wait for it.
+func waitForPlanner(t *testing.T, p *Planner) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if err := p.Wait(ctx); err != nil {
+		t.Fatalf("planner did not drain: %v", err)
+	}
+}
+
+type blockingRetainer struct {
+	started chan struct{}
+	release chan struct{}
+	ctx     chan context.Context
+}
+
+func (r *blockingRetainer) Prune(ctx context.Context, _ int64, _ []Specification) (PruneResult, error) {
+	r.ctx <- ctx
+	r.started <- struct{}{}
+	<-r.release
+	return PruneResult{}, nil
+}
+
+// Retention stats every file of every publication, so its cost scales with the store, not the
+// schedule window. The pass carries a short scheduler ceiling; retention must therefore run under
+// the planner's lifecycle and never hold the pass open.
+func TestPlannerRetentionDoesNotHoldThePassOpen(t *testing.T) {
+	retainer := &blockingRetainer{
+		started: make(chan struct{}, 2), release: make(chan struct{}), ctx: make(chan context.Context, 2),
+	}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: fixedCandidates{}, Preparation: &recordingPreparation{},
+		Pool: media.NewEncodePool(func() int { return 2 }), Retainer: retainer,
+		BudgetBytes: func() int64 { return 512 },
+	})
+
+	passCtx, endPass := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- p.Run(passCtx) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the pass waited on retention; a slow sweep would exhaust the job's short ceiling")
+	}
+	<-retainer.started
+	endPass() // the scheduler's job context ends with the pass
+	if err := (<-retainer.ctx).Err(); err != nil {
+		t.Fatalf("retention ran under the pass context (err %v); it must outlive the pass", err)
+	}
+
+	// Single-flight: a second pass while the sweep is still running must not start another.
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-retainer.started:
+		t.Fatal("a second retention sweep started while the first was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(retainer.release)
+	waitForPlanner(t, p)
 }
