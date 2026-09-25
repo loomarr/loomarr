@@ -105,7 +105,7 @@ func (a *PodAdapter) WithMetrics(observer PodMetrics) *PodAdapter {
 // so we assemble a generous pool (~one long break's worth); Tunarr picks per gap.
 const poolGapMs int64 = 600_000 // 10 min of clips
 
-const defaultBreakDurationMs int64 = 300_000 // 5 min; mirrors filler.break_duration
+const defaultBreakDurationMs int64 = 30_000 // 30s; mirrors filler.break_duration
 
 // BuildFillerList implements channels.PodFiller: assemble a matched clip pool for a
 // channel and return the clips' Tunarr program uuids for its filler-list. ok=false
