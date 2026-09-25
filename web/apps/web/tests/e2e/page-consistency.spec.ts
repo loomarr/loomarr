@@ -8,9 +8,9 @@ import { installMockBackend } from "./mock-backend";
 const pages = [
   { path: "/dashboard", title: "Dashboard" },
   { path: "/guide", title: "Channels" },
-  { path: "/queue/approval", title: "Queue" },
-  { path: "/queue/flight", title: "Queue" },
-  { path: "/queue/history", title: "Queue" },
+  // Requests replaced Queue (#1405). With no requests in this mock, the page shows its empty state
+  // under the same header, which is all the shell contract needs.
+  { path: "/requests", title: "Requests" },
   { path: "/filler", title: "Filler" },
   { path: "/filler/incoming", title: "Filler" },
   { path: "/filler/sources", title: "Filler" },
@@ -38,11 +38,7 @@ const viewports = [
   { name: "mobile", width: 390, height: 844, navWidth: 56 },
 ] as const;
 
-const sectionDestinations: Record<string, Array<{ navigation: string; current: string }>> = {
-  "/queue/approval": [{ navigation: "Queue sections", current: "Needs approval" }],
-  "/queue/flight": [{ navigation: "Queue sections", current: "In flight" }],
-  "/queue/history": [{ navigation: "Queue sections", current: "History" }],
-};
+const sectionDestinations: Record<string, Array<{ navigation: string; current: string }>> = {};
 
 const settingsPages = new Set(
   pages.map((entry) => entry.path).filter((path) => path.startsWith("/settings/")),

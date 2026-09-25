@@ -93,7 +93,11 @@ const fetchNeedsYouCount = async (queryClient: QueryClient, isAdmin: boolean): P
       ? queryClient.ensureQueryData(fillerApi.getListFillerPullsQueryOptions({ status: "pending" }))
       : undefined,
   ]);
-  const failed = (jobs.status === 200 ? jobs.data.journeys : []).filter(requestNeedsYou).length;
+  // `?? []` like every other reader here: this runs in a route's beforeLoad, so a throw is not a
+  // wrong count but the whole Requests page replaced by the router's error boundary.
+  const failed = ((jobs.status === 200 ? jobs.data.journeys : undefined) ?? []).filter(
+    requestNeedsYou,
+  ).length;
   return (
     failed +
     (proposals?.status === 200 ? (proposals.data.proposals?.length ?? 0) : 0) +

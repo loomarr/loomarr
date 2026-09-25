@@ -15,15 +15,17 @@ test.describe("the approval gate", () => {
   test("an admin approving enqueues the acquisition", async ({ page }) => {
     const mock = await installMockBackend(page, { authed: true, role: "admin", pendingProposal: true });
 
-    // The approvals surface is /queue's "Needs approval" tab (V27), not the origination
-    // panel: `/suggest` folded into the Guide header (§12), and what moved there is
-    // DESCRIBING a channel, not approving one. The tab is explicit in the URL because the
-    // queue opens on "In flight" — landing on the wrong tab would fail for the wrong reason.
-    await page.goto("/queue?tab=approval");
+    // The approvals surface is the Requests page's "Needs you" tab (#1405), not the origination
+    // panel: `/suggest` folded into the Guide header (§12), and what moved there is DESCRIBING a
+    // channel, not approving one. The tab is explicit in the URL so landing elsewhere fails for
+    // the right reason.
+    await page.goto("/requests/needs-you");
 
-    // The tabpanel is where an admin acts on work submitted by others — the only path from a
-    // proposal to a real acquisition. Scoped to the panel so a match cannot come from the
-    // tab's own label.
+    // The approvals section is where an admin acts on work submitted by others — the only path
+    // from a proposal to a real acquisition. Asserting its heading here is what keeps the
+    // member test's "heading absent" check from passing vacuously if the section is renamed.
+    await expect(page.getByRole("heading", { name: "Waiting for your approval" })).toBeVisible();
+    // Scoped to the panel so a match cannot come from the tab's own label.
     const queue = page.getByRole("tabpanel");
     await expect(queue.getByText(/90s saturday morning cartoons/i)).toBeVisible();
     await expect(queue.getByText(/1 to acquire/i)).toBeVisible();
@@ -47,30 +49,20 @@ test.describe("the approval gate", () => {
   test("a member is not offered approval, and nothing is enqueued", async ({ page }) => {
     const mock = await installMockBackend(page, { authed: true, role: "member", pendingProposal: true });
 
-    // Even asking for the approval tab directly: a member must not get it.
+    // Even asking for the approvals tab directly: a member must not get the gate. The old
+    // `/queue?tab=approval` link must land on the same page (#1405 redirects it), so both are
+    // exercised.
     await page.goto("/queue?tab=approval");
+    await expect(page).toHaveURL(/\/requests(\/|$)/);
+    await page.goto("/requests/needs-you");
 
-    // The approvals tab is admin-only, so a member never sees it at all (§11).
-    //
-    // Asserted on the FULL TAB LIST rather than on a name matcher. The count renders inside
-    // the tab ("Needs approval 1" once whitespace-normalized), so a name-based
-    // `toHaveCount(0)` matches nothing and passes whether or not the tab is present — it was
-    // verified to miss a deliberate sabotage that showed the tab to members. Comparing the
-    // whole list cannot be fooled that way: it fails if an extra tab appears, whatever its
-    // label happens to be.
-    //
-    // ⚠ Scoped to the Queue's own bar by its accessible NAME, and queried as LINKS. `NavTabs`
-    // replaced `CountTabs`: every tab is a real `<Link>` marked with `aria-current`, so
-    // `getByRole("tab")` now matches nothing and this assertion would have passed vacuously —
-    // the exact failure mode the comment above exists to prevent, arriving by a different
-    // route. The nav scope is needed because the app sidebar is also a list of links.
-    //
-    // History IS a member tab: proposal reads are global (§342), so members see what was decided,
-    // just not the approval gate.
-    await expect(page.getByRole("navigation", { name: /queue sections/i }).getByRole("link")).toHaveText([
-      /in flight/i,
-      /history/i,
-    ]);
+    // Approvals are an admin-only SECTION of "Needs you" (§11), not a tab: every viewer gets the
+    // same three tabs, and a member with no requests of their own gets the empty state instead.
+    // So the gate is asserted on the section's exact heading — which the admin test above proves
+    // is visible when the gate IS offered, so this absence cannot pass vacuously on a rename —
+    // and on the control itself.
+    await expect(page.getByRole("heading", { level: 1, name: "Requests" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Waiting for your approval" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^approve$/i })).toHaveCount(0);
 
     // And the outcome that actually matters: nothing was acquired.
