@@ -832,6 +832,27 @@ Loomarr observe?"* through stable fields an operator or support agent can filter
   size as a row-retention signal would therefore make the two supported backends behave
   differently. The value accounts for the retained normalized strings/JSON, and Process-run
   metadata accounts separately for its bounded output file.
+- **The retained total is a maintained running total, not a scan (#1398).** `diagnostic_retained_bytes`
+  holds one row per evidence table (`events`, `process_runs`) with the sum of its `size_bytes`.
+  Every insert, upsert and delete adjusts it in the **same transaction** as the row change, so the
+  two cannot drift, and the budget check reads two rows instead of `SUM()`-scanning millions
+  (a 2.7M-row scan on every housekeeping run is what starved the connection). Migration 00121
+  seeds it once from the existing rows; that seed scan and the index rebuilds below are a
+  one-time cost on the first boot after upgrade, proportional to table size — not a hang.
+- **Index policy for `diagnostic_events`.** Every read is time-bounded, so `idx_diagnostic_events_time`
+  is the workhorse and an extra index must earn its per-insert write cost by making a *selective*
+  filter cheap. `source` (a handful of values) and `instance_id` (one value per install) are not
+  selective, so their indexes were dropped. The six correlation ids (`request_id`,
+  `playback_session_id`, `channel_id`, `schedule_block_id`, `job_id`, `process_run_id`) keep an
+  index but it is **partial** (`WHERE col <> ''`): most rows leave most of them empty, and indexing
+  the empty value cost a write for nothing. `level` and `subsystem` keep their time-composite indexes.
+- **The budget is logical; the file is larger.** `diagnostics.max_storage_mb` bounds the summed
+  `size_bytes` (payload), not the database size. Row storage, indexes and page overhead sit on top
+  of it, so on-disk footprint is a multiple of the budget, and the multiple grows with the number
+  of indexes. Size the volume from the on-disk figure, not the budget. On SQLite the file **never
+  shrinks on DELETE**: retention frees pages that later inserts reuse, so the file plateaus at its
+  high-water mark and only a `VACUUM` returns space to the OS. Postgres reclaims per its own
+  autovacuum policy.
 - **Best-effort by contract.** A Diagnostic event is never part of the transaction or operation it
   describes. A failed or saturated recorder increments its drop counter and preserves stdout; it
   cannot fail an API request, Job, reconcile, or Playout process. Graceful application shutdown
@@ -12733,6 +12754,10 @@ URLs, tokens, or complete paths.
 diagnostics module. The initial beta remains single-replica for Playout ownership (§14), but every
 run records `instance_id`; a future shared-output adapter can replace local files without changing
 the caller interface or inventing ambiguous cross-instance rows.
+
+Retention reads the maintained `diagnostic_retained_bytes` running total rather than scanning the
+evidence tables, and the byte budget is logical (payload), not on-disk size; see §5 *Retention &
+housekeeping* for the table, index policy and the SQLite-only-shrinks-on-VACUUM caveat.
 
 ### Client diagnostics
 

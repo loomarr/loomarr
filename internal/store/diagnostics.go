@@ -28,6 +28,7 @@ func (s *sqlStore) AppendDiagnosticEvents(ctx context.Context, records []diagnos
 	defer func() { _ = tx.Rollback() }()
 	query := s.ph(`INSERT INTO diagnostic_events (` + diagnosticEventColumns + `)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	var added int64
 	for _, record := range records {
 		if record.ID == "" || record.Event == "" {
 			return fmt.Errorf("append diagnostic events: id and event are required")
@@ -41,6 +42,10 @@ func (s *sqlStore) AppendDiagnosticEvents(ctx context.Context, records []diagnos
 		); err != nil {
 			return fmt.Errorf("append diagnostic event %s: %w", record.ID, err)
 		}
+		added += record.SizeBytes
+	}
+	if err := s.addRetainedBytes(ctx, tx, retainedEvents, added); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit diagnostic event batch: %w", err)
@@ -90,45 +95,8 @@ func (s *sqlStore) QueryDiagnosticEvents(
 	if order != diagnostics.EventOrderNewest && order != diagnostics.EventOrderOldest {
 		return nil, fmt.Errorf("query diagnostic events: invalid module query")
 	}
-	comparison, direction := "<", "DESC"
-	if order == diagnostics.EventOrderOldest {
-		comparison, direction = ">", "ASC"
-	}
-	clauses := []string{"occurred_at >= ?", "occurred_at <= ?"}
-	args := []any{query.From, query.To}
-	addExact := func(column, value string) {
-		if value == "" {
-			return
-		}
-		clauses = append(clauses, column+" = ?")
-		args = append(args, value)
-	}
-	addExact("level", string(query.Level))
-	addExact("source", string(query.Source))
-	addExact("event", query.Event)
-	addExact("subsystem", query.Subsystem)
-	addExact("request_id", query.RequestID)
-	addExact("playback_session_id", query.PlaybackSessionID)
-	addExact("channel_id", query.ChannelID)
-	addExact("schedule_block_id", query.ScheduleBlockID)
-	addExact("job_id", query.JobID)
-	addExact("process_run_id", query.ProcessRunID)
-	addExact("instance_id", query.InstanceID)
-	if query.CursorID != "" {
-		clauses = append(clauses, "(occurred_at "+comparison+" ? OR (occurred_at = ? AND id "+comparison+" ?))")
-		args = append(args, query.CursorOccurredAt, query.CursorOccurredAt, query.CursorID)
-	}
-	if query.Text != "" {
-		literal := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(query.Text))
-		pattern := "%" + literal + "%"
-		clauses = append(clauses, `(LOWER(event) LIKE ? ESCAPE '\' OR LOWER(message) LIKE ? ESCAPE '\' OR
-			LOWER(subsystem) LIKE ? ESCAPE '\' OR LOWER(attributes_json) LIKE ? ESCAPE '\')`)
-		args = append(args, pattern, pattern, pattern, pattern)
-	}
-	args = append(args, query.Limit)
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT `+diagnosticEventColumns+`
-		FROM diagnostic_events WHERE `+strings.Join(clauses, " AND ")+`
-		ORDER BY occurred_at `+direction+`, id `+direction+` LIMIT ?`), args...)
+	text, args := diagnosticEventQuery(query)
+	rows, err := s.db.QueryContext(ctx, s.ph(text), args...)
 	if err != nil {
 		return nil, fmt.Errorf("query diagnostic events: %w", err)
 	}
@@ -145,6 +113,60 @@ func (s *sqlStore) QueryDiagnosticEvents(
 		return nil, fmt.Errorf("query diagnostic events rows: %w", err)
 	}
 	return out, nil
+}
+
+// diagnosticEventQuery builds the validated filter query, split out so a test can EXPLAIN exactly
+// what production runs. The query is already validated by QueryDiagnosticEvents.
+func diagnosticEventQuery(query diagnostics.EventStoreQuery) (string, []any) {
+	comparison, direction := "<", "DESC"
+	if query.Order == diagnostics.EventOrderOldest {
+		comparison, direction = ">", "ASC"
+	}
+	clauses := []string{"occurred_at >= ?", "occurred_at <= ?"}
+	args := []any{query.From, query.To}
+	addExact := func(column, value string) {
+		if value == "" {
+			return
+		}
+		clauses = append(clauses, column+" = ?")
+		args = append(args, value)
+	}
+	// The correlation-id indexes are partial (`WHERE col <> ''`, migration 00121). The planner
+	// cannot prove `col = ?` implies `col <> ''` for a bound parameter, so the redundant term is
+	// what lets it pick them.
+	addCorrelation := func(column, value string) {
+		if value == "" {
+			return
+		}
+		clauses = append(clauses, column+" <> ''")
+		addExact(column, value)
+	}
+	addExact("level", string(query.Level))
+	addExact("source", string(query.Source))
+	addExact("event", query.Event)
+	addExact("subsystem", query.Subsystem)
+	addCorrelation("request_id", query.RequestID)
+	addCorrelation("playback_session_id", query.PlaybackSessionID)
+	addCorrelation("channel_id", query.ChannelID)
+	addCorrelation("schedule_block_id", query.ScheduleBlockID)
+	addCorrelation("job_id", query.JobID)
+	addCorrelation("process_run_id", query.ProcessRunID)
+	addExact("instance_id", query.InstanceID)
+	if query.CursorID != "" {
+		clauses = append(clauses, "(occurred_at "+comparison+" ? OR (occurred_at = ? AND id "+comparison+" ?))")
+		args = append(args, query.CursorOccurredAt, query.CursorOccurredAt, query.CursorID)
+	}
+	if query.Text != "" {
+		literal := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(query.Text))
+		pattern := "%" + literal + "%"
+		clauses = append(clauses, `(LOWER(event) LIKE ? ESCAPE '\' OR LOWER(message) LIKE ? ESCAPE '\' OR
+			LOWER(subsystem) LIKE ? ESCAPE '\' OR LOWER(attributes_json) LIKE ? ESCAPE '\')`)
+		args = append(args, pattern, pattern, pattern, pattern)
+	}
+	args = append(args, query.Limit)
+	return `SELECT ` + diagnosticEventColumns + `
+		FROM diagnostic_events WHERE ` + strings.Join(clauses, " AND ") + `
+		ORDER BY occurred_at ` + direction + `, id ` + direction + ` LIMIT ?`, args
 }
 
 func scanDiagnosticEvent(row interface{ Scan(...any) error }) (diagnostics.Record, error) {
@@ -178,7 +200,19 @@ func (s *sqlStore) UpsertDiagnosticProcessRun(ctx context.Context, run diagnosti
 	default:
 		return fmt.Errorf("upsert diagnostic process run %s: invalid status %q", run.ID, run.Status)
 	}
-	_, err := s.db.ExecContext(ctx, s.ph(`INSERT INTO diagnostic_process_runs (`+diagnosticProcessColumns+`)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin upsert diagnostic process run %s: %w", run.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	// The running total moves by the row's size CHANGE, so read the old size in the same tx.
+	var previous int64
+	switch err := tx.QueryRowContext(ctx, s.ph(`SELECT size_bytes FROM diagnostic_process_runs WHERE id = ?`), run.ID).Scan(&previous); {
+	case err == sql.ErrNoRows:
+	case err != nil:
+		return fmt.Errorf("upsert diagnostic process run %s: %w", run.ID, err)
+	}
+	_, err = tx.ExecContext(ctx, s.ph(`INSERT INTO diagnostic_process_runs (`+diagnosticProcessColumns+`)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET
 			purpose = excluded.purpose, parent_run_id = excluded.parent_run_id,
@@ -200,6 +234,12 @@ func (s *sqlStore) UpsertDiagnosticProcessRun(ctx context.Context, run diagnosti
 	)
 	if err != nil {
 		return fmt.Errorf("upsert diagnostic process run %s: %w", run.ID, err)
+	}
+	if err := s.addRetainedBytes(ctx, tx, retainedProcessRuns, run.SizeBytes-previous); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit upsert diagnostic process run %s: %w", run.ID, err)
 	}
 	return nil
 }
@@ -345,7 +385,7 @@ func (s *sqlStore) DeleteDiagnosticEvents(ctx context.Context, ids []string) (in
 	if len(ids) > diagnosticDeleteBatchMax {
 		return 0, fmt.Errorf("delete diagnostic events: batch of %d exceeds %d", len(ids), diagnosticDeleteBatchMax)
 	}
-	n, err := s.deleteByID(ctx, "diagnostic_events", ids)
+	n, err := s.deleteByID(ctx, retainedEvents, ids)
 	if err != nil {
 		return 0, fmt.Errorf("delete %d diagnostic events: %w", len(ids), err)
 	}
@@ -387,18 +427,78 @@ func (s *sqlStore) ListDiagnosticRetentionCandidates(
 
 // DeleteDiagnosticProcessRun repeats the terminal-state guard at the destructive boundary.
 func (s *sqlStore) DeleteDiagnosticProcessRun(ctx context.Context, id string) (bool, error) {
-	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_process_runs WHERE id = ? AND status <> 'running'`), id)
+	n, err := s.deleteCounted(ctx, retainedProcessRuns,
+		`DELETE FROM diagnostic_process_runs WHERE id = ? AND status <> 'running'`, id)
 	if err != nil {
 		return false, fmt.Errorf("delete diagnostic process run %s: %w", id, err)
 	}
-	return rowsAffected(result) > 0, nil
+	return n > 0, nil
+}
+
+// retainedScope names one row of diagnostic_retained_bytes: the running total of size_bytes for one
+// evidence table. Every write to diagnostic_events / diagnostic_process_runs moves its total in the
+// SAME transaction (addRetainedBytes / deleteCounted), so the two rows are always the table SUMs
+// without anyone scanning the tables (#1398: a SUM over 2.7M rows per housekeeping run).
+type retainedScope struct{ scope, table string }
+
+var (
+	retainedEvents      = retainedScope{"events", "diagnostic_events"}
+	retainedProcessRuns = retainedScope{"process_runs", "diagnostic_process_runs"}
+)
+
+const diagnosticRetainedBytesQuery = `SELECT COALESCE(SUM(bytes), 0) FROM diagnostic_retained_bytes`
+
+// addRetainedBytes applies a signed delta to one scope's total inside the caller's transaction.
+func (s *sqlStore) addRetainedBytes(ctx context.Context, tx *sql.Tx, scope retainedScope, delta int64) error {
+	if delta == 0 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`UPDATE diagnostic_retained_bytes SET bytes = bytes + ? WHERE scope = ?`),
+		delta, scope.scope); err != nil {
+		return fmt.Errorf("update retained diagnostics total (%s): %w", scope.scope, err)
+	}
+	return nil
+}
+
+// deleteCounted runs a DELETE on scope's table, learns the freed bytes from RETURNING, and moves
+// the running total by them in one transaction. The query must delete only from scope.table.
+func (s *sqlStore) deleteCounted(ctx context.Context, scope retainedScope, query string, args ...any) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, s.ph(query+` RETURNING size_bytes`), args...)
+	if err != nil {
+		return 0, err
+	}
+	var n int
+	var freed int64
+	for rows.Next() {
+		var size int64
+		if err := rows.Scan(&size); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		n++
+		freed += size
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := s.addRetainedBytes(ctx, tx, scope, -freed); err != nil {
+		return 0, err
+	}
+	return n, tx.Commit()
 }
 
 func (s *sqlStore) DiagnosticRetainedBytes(ctx context.Context) (int64, error) {
 	var retained int64
-	err := s.db.QueryRowContext(ctx, `SELECT
-		COALESCE((SELECT SUM(size_bytes) FROM diagnostic_events), 0) +
-		COALESCE((SELECT SUM(size_bytes) FROM diagnostic_process_runs), 0)`).Scan(&retained)
+	err := s.db.QueryRowContext(ctx, diagnosticRetainedBytesQuery).Scan(&retained)
 	if err != nil {
 		return 0, fmt.Errorf("measure retained diagnostics: %w", err)
 	}
@@ -427,29 +527,30 @@ func (s *sqlStore) PurgeDiagnostics(ctx context.Context, before time.Time, maxBy
 		if err := ctx.Err(); err != nil {
 			return result, fmt.Errorf("purge expired diagnostic events: %w", err)
 		}
-		exec, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_events WHERE id IN (
-			SELECT id FROM diagnostic_events WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT ?)`),
+		n, err := s.deleteCounted(ctx, retainedEvents, `DELETE FROM diagnostic_events WHERE id IN (
+			SELECT id FROM diagnostic_events WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT ?)`,
 			beforeMS, diagnosticPurgeBatch)
 		if err != nil {
 			return result, fmt.Errorf("purge expired diagnostic events: %w", err)
 		}
-		n := rowsAffected(exec)
 		result.Events += n
 		if n < diagnosticPurgeBatch {
 			break
 		}
 	}
-	processResult, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_process_runs
-		WHERE status <> 'running' AND ended_at > 0 AND ended_at < ? AND output_ref = ''`), beforeMS)
+	var err error
+	result.ProcessRuns, err = s.deleteCounted(ctx, retainedProcessRuns, `DELETE FROM diagnostic_process_runs
+		WHERE status <> 'running' AND ended_at > 0 AND ended_at < ? AND output_ref = ''`, beforeMS)
 	if err != nil {
 		return result, fmt.Errorf("purge expired diagnostic process runs: %w", err)
 	}
-	result.ProcessRuns = rowsAffected(processResult)
 
 	retained, err := s.DiagnosticRetainedBytes(ctx)
 	if err != nil {
 		return result, err
 	}
+	// `retained` is decremented locally as the loop deletes; the stored total is decremented by the
+	// same rows inside each delete, so the two stay equal.
 	for maxBytes > 0 && retained > maxBytes {
 		page, err := s.diagnosticBudgetPage(ctx, diagnosticPurgeBatch)
 		if err != nil {
@@ -470,11 +571,11 @@ func (s *sqlStore) PurgeDiagnostics(ctx context.Context, before time.Time, maxBy
 			}
 			retained -= item.size
 		}
-		events, err := s.deleteByID(ctx, "diagnostic_events", eventIDs)
+		events, err := s.deleteByID(ctx, retainedEvents, eventIDs)
 		if err != nil {
 			return result, fmt.Errorf("purge diagnostic budget candidates: %w", err)
 		}
-		runs, err := s.deleteByID(ctx, "diagnostic_process_runs", runIDs)
+		runs, err := s.deleteByID(ctx, retainedProcessRuns, runIDs)
 		if err != nil {
 			return result, fmt.Errorf("purge diagnostic budget candidates: %w", err)
 		}
@@ -520,9 +621,9 @@ func (s *sqlStore) diagnosticBudgetPage(ctx context.Context, limit int) ([]diagn
 	return page, rows.Err()
 }
 
-// deleteByID removes the named rows of one fixed table in a single statement. `table` is always a
-// literal from this file, never caller input.
-func (s *sqlStore) deleteByID(ctx context.Context, table string, ids []string) (int, error) {
+// deleteByID removes the named rows of one evidence table in a single counted statement. The table
+// comes from a retainedScope literal in this file, never caller input.
+func (s *sqlStore) deleteByID(ctx context.Context, scope retainedScope, ids []string) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
@@ -530,18 +631,6 @@ func (s *sqlStore) deleteByID(ctx context.Context, table string, ids []string) (
 	for i, id := range ids {
 		args[i] = id
 	}
-	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE id IN (?`+
-		strings.Repeat(", ?", len(ids)-1)+`)`), args...)
-	if err != nil {
-		return 0, err
-	}
-	return rowsAffected(result), nil
-}
-
-func rowsAffected(result sql.Result) int {
-	count, err := result.RowsAffected()
-	if err != nil {
-		return 0
-	}
-	return int(count)
+	return s.deleteCounted(ctx, scope, `DELETE FROM `+scope.table+` WHERE id IN (?`+
+		strings.Repeat(", ?", len(ids)-1)+`)`, args...)
 }

@@ -244,7 +244,15 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 		prog.Current = table
 		report()
 
-		copied, err := copyTable(ctx, srcTx, d, dstTx, table, func(n int64) {
+		var copied int64
+		var err error
+		if table == diagnosticRetainedBytesTable {
+			// Derived data: the SQL migration already seeded the target's rows, so copying the
+			// source's would collide on the primary key. It is recomputed from the copied
+			// evidence tables once the loop has finished.
+			continue
+		}
+		copied, err = copyTable(ctx, srcTx, d, dstTx, table, func(n int64) {
 			prog.Tables[i].Copied = n
 			report()
 		})
@@ -254,6 +262,19 @@ func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationP
 			return prog, fmt.Errorf("copy %s: %w", table, err)
 		}
 		prog.Tables[i].Copied = copied
+	}
+
+	for i, table := range tables {
+		if table != diagnosticRetainedBytesTable {
+			continue
+		}
+		n, err := recomputeDiagnosticRetainedBytes(ctx, dstTx)
+		if err != nil {
+			prog.Err = err.Error()
+			report()
+			return prog, fmt.Errorf("recompute %s: %w", table, err)
+		}
+		prog.Tables[i].Copied = n
 	}
 
 	// Re-count both sides independently before releasing the source snapshot. The
@@ -619,4 +640,27 @@ func coerce(v sql.NullString, ct *sql.ColumnType) (any, error) {
 // that ignored them would be a SQL-injection shape even if unreachable today.
 func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// diagnosticRetainedBytesTable is the running-total table behind the diagnostics byte budget.
+// It is derived from diagnostic_events and diagnostic_process_runs, so the data migrator
+// recomputes it on the target rather than copying it.
+const diagnosticRetainedBytesTable = "diagnostic_retained_bytes"
+
+// recomputeDiagnosticRetainedBytes rebuilds the derived totals from the evidence tables in tx
+// (the same seed the 00121 migration uses) and returns the resulting row count.
+func recomputeDiagnosticRetainedBytes(ctx context.Context, tx *sql.Tx) (int64, error) {
+	stmts := []string{
+		`DELETE FROM ` + diagnosticRetainedBytesTable,
+		`INSERT INTO ` + diagnosticRetainedBytesTable + ` (scope, bytes)
+			SELECT 'events', COALESCE(SUM(size_bytes), 0) FROM diagnostic_events`,
+		`INSERT INTO ` + diagnosticRetainedBytesTable + ` (scope, bytes)
+			SELECT 'process_runs', COALESCE(SUM(size_bytes), 0) FROM diagnostic_process_runs`,
+	}
+	for _, q := range stmts {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return 0, err
+		}
+	}
+	return countRows(ctx, tx, diagnosticRetainedBytesTable)
 }

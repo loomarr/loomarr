@@ -5,7 +5,11 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/diagnostics"
 )
 
 func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
@@ -272,5 +276,129 @@ func TestPostgresChannelRevisionMigrationBackfillsExistingRows(t *testing.T) {
 	}
 	if _, err := db.ExecContext(ctx, `UPDATE channels SET revision=0 WHERE id='pre-revision'`); err == nil {
 		t.Fatal("channel revision CHECK accepted zero")
+	}
+}
+
+// #1398: 00121 seeds the diagnostic running total from existing rows, drops the two unused
+// indexes, and rebuilds the six correlation indexes as partial ones. Mirrors the SQLite test.
+func TestPostgresDiagnosticRetainedBytesMigrationSeedsTheTotalAndTrimsIndexes(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	provider, err := newMigrationProvider(s.db, DialectPostgres, "migrations/postgres")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 120); err != nil {
+		t.Fatalf("migrate through 120: %v", err)
+	}
+	for i, size := range []int{120, 130, 250} {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO diagnostic_events (id, occurred_at, received_at, level, source, event, size_bytes)
+			VALUES ($1, $2, $2, 'info', 'server', 'e', $3)`, fmt.Sprintf("e%d", i), int64(i+1), size); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO diagnostic_process_runs (id, purpose, started_at, status, updated_at, size_bytes)
+		VALUES ('r1', 'p', 1, 'succeeded', 1, 77)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 121); err != nil {
+		t.Fatalf("apply 00121: %v", err)
+	}
+	if got, err := s.DiagnosticRetainedBytes(ctx); err != nil || got != 120+130+250+77 {
+		t.Fatalf("seeded total = %d, %v; want %d", got, err, 120+130+250+77)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'diagnostic_events'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	indexes := map[string]string{}
+	for rows.Next() {
+		var name, def string
+		if err := rows.Scan(&name, &def); err != nil {
+			t.Fatal(err)
+		}
+		indexes[name] = def
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	for _, gone := range []string{"idx_diagnostic_events_source_time", "idx_diagnostic_events_instance"} {
+		if _, ok := indexes[gone]; ok {
+			t.Errorf("%s should have been dropped", gone)
+		}
+	}
+	for _, partial := range []string{"request", "playback", "channel", "schedule_block", "job", "process"} {
+		if def := indexes["idx_diagnostic_events_"+partial]; !strings.Contains(def, "WHERE") {
+			t.Errorf("idx_diagnostic_events_%s should be partial, got %q", partial, def)
+		}
+	}
+	for _, kept := range []string{"idx_diagnostic_events_time", "idx_diagnostic_events_level_time", "idx_diagnostic_events_subsystem_time"} {
+		if _, ok := indexes[kept]; !ok {
+			t.Errorf("%s must survive", kept)
+		}
+	}
+}
+
+// #1398: the correlation indexes are partial, so a lookup only uses one when its WHERE carries the
+// redundant `col <> ”` term (diagnosticEventQuery).
+//
+// ⚠ On an empty table the planner prices idx_diagnostic_events_time (an ordered scan satisfying the
+// ORDER BY … LIMIT) the same as the partial index, so asserting its choice is a coin toss — it failed
+// for one column in the merge queue. Instead, inside a rolled-back transaction, drop the time index
+// and disable sequential scans: the only cheap plan left is the partial index, and the planner can
+// take it only if the query's WHERE implies the index predicate — exactly the property under test.
+func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgresForDataMigration(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range []string{
+		`SET LOCAL enable_seqscan = off`,
+		`DROP INDEX idx_diagnostic_events_time`,
+		`DROP INDEX idx_diagnostic_events_level_time`,
+		`DROP INDEX idx_diagnostic_events_subsystem_time`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	for column, filter := range map[string]diagnostics.EventStoreQuery{
+		"request":        {RequestID: "x"},
+		"playback":       {PlaybackSessionID: "x"},
+		"channel":        {ChannelID: "x"},
+		"schedule_block": {ScheduleBlockID: "x"},
+		"job":            {JobID: "x"},
+		"process":        {ProcessRunID: "x"},
+	} {
+		filter.From, filter.To, filter.Limit = 0, 1<<40, 50
+		sqlText, args := diagnosticEventQuery(filter)
+		rows, err := tx.QueryContext(ctx, "EXPLAIN "+s.ph(sqlText), args...)
+		if err != nil {
+			t.Fatalf("%s: %v", column, err)
+		}
+		var plan strings.Builder
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				t.Fatal(err)
+			}
+			plan.WriteString(line + "\n")
+		}
+		_ = rows.Close()
+		if !strings.Contains(plan.String(), "idx_diagnostic_events_"+column) {
+			t.Errorf("%s filter does not use idx_diagnostic_events_%s:\n%s", column, column, plan.String())
+		}
 	}
 }
