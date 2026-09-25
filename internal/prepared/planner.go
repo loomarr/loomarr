@@ -200,6 +200,7 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 		var resolveErr error
 		plan, resolveErr = p.resolver.Plan(ctx, now, now.Add(preparationLookahead))
 		errs = append(errs, resolveErr)
+		p.publishReadiness(plan.Summary)
 		preparationErrs := p.prepare(ctx, uniqueCandidates(plan.Candidates))
 		errs = append(errs, preparationErrs...)
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -242,6 +243,14 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 	}
 	runErr = errors.Join(errs...)
 	return runErr
+}
+
+// publishReadiness makes the resolved schedule visible while the pass is still running; the final
+// deferred write in Run replaces it with the post-work observation.
+func (p *Planner) publishReadiness(summary ReadinessSummary) {
+	p.statusMu.Lock()
+	p.status.Readiness = summary
+	p.statusMu.Unlock()
 }
 
 type preparationResult struct {
@@ -289,6 +298,9 @@ func (p *Planner) prepare(ctx context.Context, candidates []Candidate) []error {
 			continue
 		}
 		if result.err != nil {
+			// Logged now: the joined error only surfaces when the whole pass ends, which can be
+			// hours away while one long publication is still running.
+			p.log.Warn("prepared media publication failed", "source", result.sourceID, "err", result.err)
 			completed = append(completed, result)
 		}
 	}
