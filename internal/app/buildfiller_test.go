@@ -303,11 +303,11 @@ func TestFillerEnrichment_UsesTheSelectedProvidersNamespacedKey(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	set := visionSet(t, map[string]string{
-		"llm.provider":           "openai",
-		"llm.hosted_provider":    "openrouter",
-		"llm.url":                server.URL,
-		"llm.model":              "openai/gpt-4o-mini",
-		"llm.api_key.openrouter": "provider-secret",
+		"llm.provider":        "openai",
+		"llm.hosted_provider": "custom", // the picker persists an arbitrary URL as the custom brand
+		"llm.url":             server.URL,
+		"llm.model":           "openai/gpt-4o-mini",
+		"llm.api_key.custom":  "provider-secret",
 	})
 	selection := activeFillerTextSelection(set, nil)
 	if selection.Provider == nil {
