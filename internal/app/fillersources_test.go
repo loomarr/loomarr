@@ -551,3 +551,27 @@ func TestIngestPull_PreservesPerTargetSourcesUnderOneRun(t *testing.T) {
 		t.Fatal("downloader was not called")
 	}
 }
+
+// Discovery already knew each item's duration and height; dropping them at the ingest boundary
+// left the storage fallback with nothing to size an unestimable item from (#1394).
+func TestIngestSourceItems_PassesDiscoveryHintsToTheFetcher(t *testing.T) {
+	fetched := recordingClipIngestor{sources: make(chan []clipfetch.Source, 1)}
+	a := fillerServiceAdapter{
+		fetcher: fetched, acquisitions: recordingAcquisitions{runs: make(chan filler.AcquisitionRun, 3)},
+		newID: func() string { return "acq-18" },
+		start: testInteractiveOperationLauncher,
+	}
+	if _, err := a.IngestSourceItems(t.Context(), "archive:ads", "archive", []filler.DiscoveredRef{
+		{ID: "ad-1", URL: "https://archive.org/details/ad-1", DurationMS: 30_000, Height: 480},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case sources := <-fetched.sources:
+		if sources[0].DurationMS != 30_000 || sources[0].Height != 480 {
+			t.Fatalf("source = %+v, want the discovered duration and height", sources[0])
+		}
+	case <-time.After(time.Second):
+		t.Fatal("downloader was not called")
+	}
+}

@@ -496,11 +496,13 @@ const SourcesPanel = ({
                   ? `New filler is paused so this drive keeps ${formatBytes(storage.hardReserveBytes)} free.`
                   : storage.pausedBy === "library_limit"
                     ? `New filler is paused at its ${formatBytes(storage.softBudgetBytes)} allowance.`
-                    : storage.pausedBy === "capacity_unavailable" || storage.pausedBy === "estimate_unknown"
+                    : storage.pausedBy === "capacity_unavailable"
                       ? "Loomarr cannot safely check the available space in this folder."
-                      : storage.state === "approaching"
-                        ? `${formatBytes(storage.availableBytes)} is left for new filler. Loomarr will pause before it risks space kept for this drive.`
-                        : `Automatic downloads will pause before this drive has less than ${formatBytes(storage.hardReserveBytes)} free.`}
+                      : storage.pausedBy === "estimate_unknown"
+                        ? "A download could not be sized safely and was stopped. The folder is fine; Loomarr will try again."
+                        : storage.state === "approaching"
+                          ? `${formatBytes(storage.availableBytes)} is left for new filler. Loomarr will pause before it risks space kept for this drive.`
+                          : `Automatic downloads will pause before this drive has less than ${formatBytes(storage.hardReserveBytes)} free.`}
                 {storage.reservedBytes > 0
                   ? ` ${formatBytes(storage.reservedBytes)} is set aside for work in progress.`
                   : ""}
@@ -512,14 +514,12 @@ const SourcesPanel = ({
               render={
                 <a
                   href={`/filler/settings/${
-                    storage.pausedBy === "capacity_unavailable" || storage.pausedBy === "estimate_unknown"
-                      ? "folders"
-                      : "storage"
+                    storage.pausedBy === "capacity_unavailable" ? "folders" : "storage"
                   }`}
                 />
               }
             >
-              {storage.pausedBy === "capacity_unavailable" || storage.pausedBy === "estimate_unknown"
+              {storage.pausedBy === "capacity_unavailable"
                 ? "Choose folder"
                 : storage.pausedBy === "library_limit"
                   ? "Change allowance"

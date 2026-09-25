@@ -220,28 +220,46 @@ func (c *archiveClient) estimate(ctx context.Context, rawURL string) (storagegov
 	if len(ids) == 0 {
 		return storagegovernor.MediaBudget{}, ErrEstimateUnavailable
 	}
+	// Mirror walkCollection item for item, so the budget covers exactly what Download will fetch:
+	// an item it skips (metadata error, no video file) costs nothing, and an item it will
+	// download but cannot size gets the bounded fallback cap instead of failing the collection.
 	var total storagegovernor.MediaBudget
+	var counted bool
 	for _, itemID := range ids {
 		item, itemErr := c.metadata(ctx, itemID)
 		if itemErr != nil {
-			return storagegovernor.MediaBudget{}, itemErr
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return storagegovernor.MediaBudget{}, ctxErr
+			}
+			continue
 		}
 		budget, itemErr := estimateArchiveItem(item)
-		if itemErr != nil {
+		switch {
+		case errors.Is(itemErr, ErrNothingToFetch):
+			continue
+		case errors.Is(itemErr, ErrEstimateUnavailable):
+			budget = storagegovernor.UnknownAcquisitionBudget()
+		case itemErr != nil:
 			return storagegovernor.MediaBudget{}, fmt.Errorf("estimate archive item %s: %w", itemID, itemErr)
 		}
 		total, itemErr = addMediaBudget(total, budget)
 		if itemErr != nil {
 			return storagegovernor.MediaBudget{}, itemErr
 		}
+		counted = true
+	}
+	if !counted {
+		return storagegovernor.MediaBudget{}, ErrNothingToFetch
 	}
 	return total, nil
 }
 
+// estimateArchiveItem must agree with downloadItem about which items are fetched: no video file
+// means nothing is downloaded, so it is ErrNothingToFetch rather than an unknown size.
 func estimateArchiveItem(meta metadataResp) (storagegovernor.MediaBudget, error) {
 	file, ok := pickVideoFile(meta.Files)
 	if !ok {
-		return storagegovernor.MediaBudget{}, ErrEstimateUnavailable
+		return storagegovernor.MediaBudget{}, ErrNothingToFetch
 	}
 	return mediaBudget(
 		positiveArchiveInt(file.Size),

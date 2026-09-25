@@ -60,6 +60,10 @@ type AcquisitionTarget struct {
 	// where the ingest boundary must infer the downloader because no source policy exists.
 	Kind string
 	URL  string
+	// DurationMS and Height are what discovery already knew about the item (0 = unknown). They
+	// size the storage reservation when the provider cannot report a size at download time.
+	DurationMS int64
+	Height     int
 }
 
 // AcquisitionOutcome is the current lifecycle distribution of every clip enrolled from one run.

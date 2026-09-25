@@ -77,8 +77,12 @@ func ProjectReadiness(in ReadinessInput) Readiness {
 		out.Next = ReadinessFreeSpace
 	case in.Storage.PausedBy == "library_limit":
 		out.Next = ReadinessChangeLimit
-	case in.Storage.PausedBy == "capacity_unavailable" || in.Storage.PausedBy == "estimate_unknown":
+	case in.Storage.PausedBy == "capacity_unavailable":
 		out.Next = ReadinessChooseFolder
+	// estimate_unknown is deliberately absent: an item whose size cannot be estimated is a problem
+	// with that item, not with the folder, and acquisition now caps it instead of pausing. If the
+	// reason still reaches here (a download outgrew its cap) the acquisition run's own failure,
+	// below, is the accurate next step. Sending it to "choose another folder" was the wrong fix.
 	case in.Repairs.Count > 0:
 		out.Next, out.Count = ReadinessRetryAcquisition, in.Repairs.Count
 	case len(in.Runs) > 0 && (in.Runs[0].Status == AcquisitionError || in.Runs[0].Artifacts.Repair > 0):

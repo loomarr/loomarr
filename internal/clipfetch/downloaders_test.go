@@ -111,8 +111,8 @@ printf '%s\n' '{"duration":60,"height":1080,"filesize_approx":1,"requested_forma
 	if err != nil {
 		t.Fatal(err)
 	}
-	if budget.WriteCeilingBytes <= 110_000_000 || budget.ReservationBytes <= budget.WriteCeilingBytes {
-		t.Fatalf("yt-dlp estimate = %+v, want selected formats plus processing headroom", budget)
+	if budget.WriteCeilingBytes != 110_000_000+32<<20 || budget.ReservationBytes != budget.WriteCeilingBytes {
+		t.Fatalf("yt-dlp estimate = %+v, want selected formats plus the staging margin, reserved 1:1", budget)
 	}
 }
 

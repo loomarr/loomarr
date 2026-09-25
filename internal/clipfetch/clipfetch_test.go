@@ -448,3 +448,212 @@ func TestYtDlpArchiveCommitExcludesUnreportedOutputs(t *testing.T) {
 		t.Fatalf("shared archive = %q, %v", got, err)
 	}
 }
+
+// perSourceDownloader lets a batch mix estimable and unestimable sources, which is the
+// production shape from #1394: one archive item in a batch has no size or duration metadata.
+type perSourceDownloader struct {
+	budgets  map[string]storagegovernor.MediaBudget
+	estimate map[string]error
+	download downloaderFunc
+}
+
+func (d perSourceDownloader) Estimate(_ context.Context, source clipfetch.Source) (storagegovernor.MediaBudget, error) {
+	if err := d.estimate[source.URL]; err != nil {
+		return storagegovernor.MediaBudget{}, err
+	}
+	return d.budgets[source.URL], nil
+}
+
+func (d perSourceDownloader) Download(ctx context.Context, source clipfetch.Source, dir string) (clipfetch.DownloadResult, error) {
+	return d.download(ctx, source, dir)
+}
+
+// One item with no size estimate used to fail the whole batch (Prepare released everything and
+// returned estimate_unknown), and because selection is deterministic the same item was picked on
+// every retry. The unestimable item must instead get a bounded fallback and the batch proceed.
+func TestPrepareQueuesTheRestOfABatchWhenOneItemHasNoEstimate(t *testing.T) {
+	t.Parallel()
+	meter := &capacityMeter{measurement: storagegovernor.Measurement{
+		ID: "disk", TotalBytes: 600 * storagegovernor.GiB, FreeBytes: 400 * storagegovernor.GiB,
+	}}
+	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 20 * storagegovernor.GiB}
+	})
+	good := storagegovernor.MediaBudget{WriteCeilingBytes: storagegovernor.GiB, ReservationBytes: storagegovernor.GiB}
+	var downloaded []string
+	downloader := perSourceDownloader{
+		budgets: map[string]storagegovernor.MediaBudget{
+			"https://archive.example/one": good, "https://archive.example/three": good,
+		},
+		estimate: map[string]error{"https://archive.example/two": clipfetch.ErrEstimateUnavailable},
+		download: func(_ context.Context, source clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
+			downloaded = append(downloaded, source.URL)
+			return clipfetch.DownloadResult{Fetched: 1}, nil
+		},
+	}
+	ingestor := clipfetch.New(nil, downloader, "/filler", discardLog()).WithStorageGovernor(governor)
+	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{
+		{Kind: clipfetch.Archive, URL: "https://archive.example/one"},
+		{Kind: clipfetch.Archive, URL: "https://archive.example/two"},
+		{Kind: clipfetch.Archive, URL: "https://archive.example/three"},
+	}, storagegovernor.Automatic)
+	if err != nil {
+		t.Fatalf("Prepare failed the whole batch for one unestimable item: %v", err)
+	}
+	result := plan.Run(t.Context())
+	if len(downloaded) != 3 || result.Fetched != 3 || result.Failed != 0 {
+		t.Fatalf("downloaded = %v result = %+v, want every item to proceed", downloaded, result)
+	}
+}
+
+// The fallback for an unknown estimate is a byte CAP enforced during the download, not a blind
+// download: an item that turns out larger than the cap is aborted and leaves nothing behind.
+func TestPrepareCapsAnUnknownEstimateDownloadAndAbortsOnOverrun(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	executable := testkit.Executable(t, "fake-yt-dlp", `#!/bin/sh
+case "$*" in
+  *--simulate*) printf '%s\n' '{}'; exit 0 ;;
+esac
+result=""
+while test "$#" -gt 0; do
+  case "$1" in
+    --print-to-file) result="$3"; shift 3 ;;
+    *) shift ;;
+  esac
+done
+stage=$(dirname "$result")
+truncate -s 2000000000 "$stage/unbounded.mp4"
+sleep 2
+`)
+	governor, err := storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{{
+		Path: root, Domain: storagegovernor.DomainFiller,
+	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 20 * storagegovernor.GiB}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingestor := clipfetch.New(clipfetch.NewYtDlpDownloader(executable, "ffmpeg"), nil, root, discardLog()).
+		WithArtifactWriter(artifactWriterFunc(func(context.Context, []filler.AcquisitionArtifact) error { return nil })).
+		WithStorageGovernor(governor)
+	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{{
+		ID: "youtube:test", AcquisitionID: "unknown-size", Kind: clipfetch.YouTube,
+		URL: "https://youtube.com/watch?v=no-metadata",
+	}}, storagegovernor.Automatic)
+	if err != nil {
+		t.Fatalf("Prepare refused an item whose size is unknown instead of capping it: %v", err)
+	}
+	result := plan.Run(t.Context())
+	if result.Failed != 1 || result.Fetched != 0 || len(result.Artifacts) != 0 {
+		t.Fatalf("overrun result = %+v, want one aborted source and no published artifact", result)
+	}
+	stage := filepath.Join(root, ".loomarr-acquisitions", "unknown-size", "000")
+	if _, err := os.Stat(stage); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("staging remains after the cap aborted the download: %v", err)
+	}
+}
+
+// Each item's reservation is released as soon as ITS download ends (success or failure), so a
+// finished item never keeps holding budget while the rest of the batch runs.
+func TestPlanReleasesEachReservationWhenItsItemFinishes(t *testing.T) {
+	t.Parallel()
+	meter := &capacityMeter{measurement: storagegovernor.Measurement{
+		ID: "disk", TotalBytes: 600 * storagegovernor.GiB, FreeBytes: 400 * storagegovernor.GiB,
+	}}
+	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 20 * storagegovernor.GiB}
+	})
+	budget := storagegovernor.MediaBudget{WriteCeilingBytes: storagegovernor.GiB, ReservationBytes: storagegovernor.GiB}
+	var reservedDuring []int64
+	downloader := estimatingDownloader{
+		budget: budget,
+		download: func(_ context.Context, source clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
+			reservedDuring = append(reservedDuring, governor.Snapshot(t.Context(), "/filler").Snapshot.ReservedBytes)
+			if strings.HasSuffix(source.URL, "/one") {
+				return clipfetch.DownloadResult{}, errors.New("provider refused")
+			}
+			return clipfetch.DownloadResult{Fetched: 1}, nil
+		},
+	}
+	ingestor := clipfetch.New(nil, downloader, "/filler", discardLog()).WithStorageGovernor(governor)
+	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{
+		{Kind: clipfetch.Archive, URL: "https://archive.example/one"},
+		{Kind: clipfetch.Archive, URL: "https://archive.example/two"},
+		{Kind: clipfetch.Archive, URL: "https://archive.example/three"},
+	}, storagegovernor.Automatic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held := governor.Snapshot(t.Context(), "/filler").Snapshot.ReservedBytes; held != 3*storagegovernor.GiB {
+		t.Fatalf("reserved after Prepare = %d, want the sum of the three item reservations", held)
+	}
+	plan.Run(t.Context())
+	want := []int64{3 * storagegovernor.GiB, 2 * storagegovernor.GiB, storagegovernor.GiB}
+	for index := range want {
+		if reservedDuring[index] != want[index] {
+			t.Fatalf("reserved while item %d ran = %v, want %v (finished items release)", index, reservedDuring, want)
+		}
+	}
+	if held := governor.Snapshot(t.Context(), "/filler").Snapshot.ReservedBytes; held != 0 {
+		t.Fatalf("reserved after Run = %d, want zero", held)
+	}
+}
+
+// An item Download would skip (nothing to fetch) is dropped and counted, never reserved, and it
+// does not stop its neighbours.
+func TestPrepareDropsAnItemWithNothingToFetchWithoutReservingIt(t *testing.T) {
+	t.Parallel()
+	meter := &capacityMeter{measurement: storagegovernor.Measurement{
+		ID: "disk", TotalBytes: 600 * storagegovernor.GiB, FreeBytes: 400 * storagegovernor.GiB,
+	}}
+	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 20 * storagegovernor.GiB}
+	})
+	good := storagegovernor.MediaBudget{WriteCeilingBytes: storagegovernor.GiB, ReservationBytes: storagegovernor.GiB}
+	var downloaded []string
+	downloader := perSourceDownloader{
+		budgets: map[string]storagegovernor.MediaBudget{
+			"https://archive.example/one": good, "https://archive.example/three": good,
+		},
+		estimate: map[string]error{"https://archive.example/two": clipfetch.ErrNothingToFetch},
+		download: func(_ context.Context, source clipfetch.Source, _ string) (clipfetch.DownloadResult, error) {
+			downloaded = append(downloaded, source.URL)
+			return clipfetch.DownloadResult{Fetched: 1}, nil
+		},
+	}
+	ingestor := clipfetch.New(nil, downloader, "/filler", discardLog()).WithStorageGovernor(governor)
+	plan, err := ingestor.Prepare(t.Context(), []clipfetch.Source{
+		{Kind: clipfetch.Archive, URL: "https://archive.example/one"},
+		{Kind: clipfetch.Archive, URL: "https://archive.example/two"},
+		{Kind: clipfetch.Archive, URL: "https://archive.example/three"},
+	}, storagegovernor.Automatic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held := governor.Snapshot(t.Context(), "/filler").Snapshot.ReservedBytes; held != 2*storagegovernor.GiB {
+		t.Fatalf("reserved = %d, want two items' worth (the skipped one reserves nothing)", held)
+	}
+	result := plan.Run(t.Context())
+	if len(downloaded) != 2 || result.Fetched != 2 || result.Skipped != 1 || result.Failed != 0 {
+		t.Fatalf("downloaded = %v result = %+v, want 2 fetched and 1 skipped", downloaded, result)
+	}
+}
+
+// A provider outage that fails every estimate is still an error (so the source backs off), and it
+// is a plain estimate failure, not a storage pause.
+func TestPrepareFailsWhenEveryEstimateFailsForAnotherReason(t *testing.T) {
+	t.Parallel()
+	meter := &capacityMeter{measurement: storagegovernor.Measurement{
+		ID: "disk", TotalBytes: 600 * storagegovernor.GiB, FreeBytes: 400 * storagegovernor.GiB,
+	}}
+	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy { return storagegovernor.Policy{} })
+	outage := errors.New("archive.org unreachable")
+	downloader := perSourceDownloader{estimate: map[string]error{"https://archive.example/one": outage}}
+	ingestor := clipfetch.New(nil, downloader, "/filler", discardLog()).WithStorageGovernor(governor)
+	_, err := ingestor.Prepare(t.Context(), []clipfetch.Source{{Kind: clipfetch.Archive, URL: "https://archive.example/one"}}, storagegovernor.Automatic)
+	var capacityErr *clipfetch.CapacityError
+	if !errors.Is(err, outage) || errors.As(err, &capacityErr) {
+		t.Fatalf("Prepare error = %v, want the provider failure and not a capacity pause", err)
+	}
+}
