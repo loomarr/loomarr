@@ -366,7 +366,7 @@ func TestFillerEnrichmentResolvesEmptySourceGeographyToHomeCountry(t *testing.T)
 	if again, err := runner.Run(t.Context()); err != nil || again.Considered != 0 {
 		t.Fatalf("second Run() = %+v, err %v; the pass must be recorded so the clip is not re-selected", again, err)
 	}
-	got.Clip.Placement = filler.PlacementBreakBody
+	got.Placement = filler.PlacementBreakBody
 	pod := filler.Assemble([]filler.Clip{got.Clip}, filler.Window{ChannelID: "ch1", Seed: 1,
 		GapMs: 60000, PodMax: 2}, filler.Policy{Geography: filler.Geography{Country: "US"}}, nil)
 	if pod.MatchLevel == filler.MatchBumperCard {
