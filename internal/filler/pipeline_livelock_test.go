@@ -116,3 +116,47 @@ func TestPipeline_ReadyCommitFailureBacksOffAndYieldsItsSlot(t *testing.T) {
 		t.Fatalf("due row starved behind the failing commit: result=%+v row=%+v", res, st.rows["due"])
 	}
 }
+
+// A commit that fails once must not leave the failed score record behind: after the backoff the
+// score rung runs again, records done, and the row publishes with a full ordered ladder.
+func TestPipeline_ReadyCommitFailingOnceRecoversToReadyAfterBackoff(t *testing.T) {
+	st := newPipeMemStore()
+	seedEnrolled(st, "once")
+	row := st.rows["once"]
+	for _, id := range filler.StageOrder {
+		row.Stages = append(row.Stages, filler.StageRecord{Stage: id, Status: filler.StatusDone})
+	}
+	row.Stage, row.Status = filler.StageScore, filler.StatusQueued
+	st.rows["once"] = row
+
+	now := time.Unix(1_800_000_000, 0).UTC()
+	p := filler.NewPipeline(st, st, asSlice(allStages()), filler.DefaultBudget(), nil, func() time.Time { return now }, nil)
+
+	st.commitErr = errors.New("catalog write failed")
+	res, err := p.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := st.rows["once"]
+	if res.Failed != 1 || failed.Status != filler.StatusFailed || !failed.NextRun.After(now) {
+		t.Fatalf("first pass = %+v row=%+v, want one failure with a future next_run", res, failed)
+	}
+
+	st.commitErr = nil
+	now = failed.NextRun.Add(time.Second)
+	if _, err := p.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := st.rows["once"]
+	if got.Disposition != filler.DispositionReady || got.Status != filler.StatusDone || len(got.Stages) != len(filler.StageOrder) {
+		t.Fatalf("row did not recover to ready: %+v", got)
+	}
+	for i, id := range filler.StageOrder {
+		if got.Stages[i].Stage != id || (got.Stages[i].Status != filler.StatusDone && got.Stages[i].Status != filler.StatusSkipped) {
+			t.Fatalf("ladder[%d] = %+v, want %s complete", i, got.Stages[i], id)
+		}
+	}
+	if score := got.Stages[filler.StageIndex(filler.StageScore)]; score.Status != filler.StatusDone || got.Attempts > filler.MaxAttempts {
+		t.Fatalf("score=%+v attempts=%d, want score done and attempts within MaxAttempts", score, got.Attempts)
+	}
+}
