@@ -50,6 +50,10 @@ func newAuditCapsule(config Config) *auditCapsule {
 	capsule.registerSource(config.AdminBearer, probeSecret)
 	capsule.registerSource("Bearer "+config.AdminBearer, probeSecret)
 	capsule.registerSource(config.DeviceToken, probeSecret)
+	if config.MetricsToken != "" {
+		capsule.registerSource(config.MetricsToken, probeSecret)
+		capsule.registerSource("Bearer "+config.MetricsToken, probeSecret)
+	}
 	capsule.registerSource(config.BaseURL, probeCollision)
 	if origin, err := url.Parse(config.BaseURL); err == nil {
 		capsule.registerURL(origin, probeCollision)

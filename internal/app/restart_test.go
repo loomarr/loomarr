@@ -64,7 +64,7 @@ func buildServeShutdown(t *testing.T, generation int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{})
+	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{MetricsToken: "restart-test-scrape-token"})
 	if err != nil {
 		t.Fatalf("generation %d: build application: %v", generation, err)
 	}
@@ -82,7 +82,9 @@ func buildServeShutdown(t *testing.T, generation int) {
 		t.Fatalf("generation %d: /v1/healthz → %d, want 200", generation, resp.StatusCode)
 	}
 
-	metricsResp, err := http.Get(srv.URL + "/metrics")
+	metricsReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/metrics", nil)
+	metricsReq.Header.Set("Authorization", "Bearer restart-test-scrape-token")
+	metricsResp, err := http.DefaultClient.Do(metricsReq)
 	if err != nil {
 		t.Fatalf("generation %d: scrape metrics: %v", generation, err)
 	}

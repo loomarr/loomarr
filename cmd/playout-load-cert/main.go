@@ -155,6 +155,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	defer func() { _ = output.Close() }()
 	baseURL := strings.TrimSpace(getenv("LOOMARR_PLAYOUT_CERT_BASE_URL"))
 	adminBearer, deviceToken := getenv("LOOMARR_API_TOKEN"), getenv("LOOMARR_PLAYOUT_TOKEN")
+	metricsToken := getenv("LOOMARR_METRICS_TOKEN")
 	var isolated *app.PlayoutCertificationTarget
 	if isolatedMode {
 		isolated, err = app.NewPlayoutCertificationTarget(runCtx, app.PlayoutCertificationConfig{
@@ -177,8 +178,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 			}
 		}
 		baseURL, adminBearer, deviceToken = isolated.BaseURL, isolated.AdminBearer, isolated.DeviceToken
+		metricsToken = isolated.MetricsToken
 	}
 	config.BaseURL, config.AdminBearer, config.DeviceToken = baseURL, adminBearer, deviceToken
+	config.MetricsToken = metricsToken
 	config.RemoteAcknowledged = *remote && !isolatedMode
 	config.Validator = playoutcert.FFprobeValidator{Path: *ffprobe}
 	config.Decoder = playoutcert.FFmpegDecoder{Path: *ffmpeg}

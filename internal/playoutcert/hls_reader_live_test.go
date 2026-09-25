@@ -36,7 +36,7 @@ func TestSyntheticLiveHLSReaderContinuesAcrossProgrammeChanges(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, RequestTimeout: 20 * time.Second}
+	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, RequestTimeout: 20 * time.Second}
 	stream, err := playoutcert.ColdHLSStreamForTest(ctx, config, channels[0].ID)
 	if err != nil {
 		t.Fatal(err)

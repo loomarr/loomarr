@@ -46,9 +46,12 @@ type Decoder interface {
 }
 
 type Config struct {
-	Profile                          *ProfileEvidence
-	BaseURL                          string
-	AdminBearer                      string
+	Profile     *ProfileEvidence
+	BaseURL     string
+	AdminBearer string
+	// MetricsToken is the target's Prometheus scrape token (LOOMARR_METRICS_TOKEN, design §7); sent
+	// only on GET /metrics. Empty ⇒ no credential, which a hardened target refuses.
+	MetricsToken                     string
 	DeviceToken                      string
 	Channels                         []Channel
 	Certify                          bool

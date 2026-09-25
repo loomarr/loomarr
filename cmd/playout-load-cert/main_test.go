@@ -184,7 +184,7 @@ func quickUncertifiedRunReport(t *testing.T) playoutcert.Report {
 		}
 	})
 	report, err := playoutcert.Run(ctx, playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken,
 		Channels: channels,
 		Certify:  false, Concurrency: 1, SurfRounds: 1, FanInViewers: 1,
 		RequestTimeout: time.Second, CleanupTimeout: 50 * time.Millisecond, CleanupPoll: time.Millisecond,
@@ -230,7 +230,7 @@ func successfulRunReport(t *testing.T) playoutcert.Report {
 		}
 	})
 	report, err := playoutcert.Run(ctx, playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken,
 		// Publication is the contract under test here. Serial catalog probes keep this helper's
 		// nominally successful run independent of shared-runner scheduling while the dedicated
 		// certification tests retain concurrent 100-Channel coverage.

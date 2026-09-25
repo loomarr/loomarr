@@ -43,7 +43,7 @@ func TestSyntheticTargetCertifiesHundredPreparedChannelsAndBoundedTranscodeBurst
 		}
 	}()
 	config := playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken,
 		Channels: channels, Certify: true, Concurrency: 12, SurfRounds: 1, FanInViewers: 4,
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace:       time.Second,
@@ -142,7 +142,7 @@ func TestSyntheticTargetShutdownCertifiesMeasuredLiveBurst(t *testing.T) {
 		}
 	}()
 	report, err := playoutcert.Run(ctx, playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken,
 		Channels: channels, Certify: true, DisposableTarget: target.Scope(), Concurrency: 12, SurfRounds: 1, FanInViewers: 4,
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
@@ -195,7 +195,7 @@ func TestSyntheticTargetShutdownFailureCannotRetainQualification(t *testing.T) {
 		}
 	}()
 	report, err := playoutcert.Run(ctx, playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken,
 		Channels: channels, Certify: true, DisposableTarget: target.Scope(), Concurrency: 12, SurfRounds: 1, FanInViewers: 1,
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: time.Nanosecond,
@@ -239,7 +239,7 @@ func TestSyntheticPreparedPublicHLSChecksProgrammeSignals(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, ProgrammeEvidence: target.ProgrammeEvidence(), RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 3 * time.Second, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
+	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels, ProgrammeEvidence: target.ProgrammeEvidence(), RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 3 * time.Second, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
 	endpoint, err := playoutcert.NewEndpointForTest(playoutcert.NormalizeConfigForTest(config))
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +269,7 @@ func TestSyntheticPreparedPublicHLSContinuesAcrossFurtherProgrammeEpochs(t *test
 			t.Error(err)
 		}
 	}()
-	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, ProgrammeEvidence: target.ProgrammeEvidence(), RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 6 * time.Second, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
+	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels, ProgrammeEvidence: target.ProgrammeEvidence(), RequestTimeout: 10 * time.Second, RawCaptureBytes: 256 << 10, ProgrammeBoundaryTimeout: 20 * time.Second, ProgrammeBoundaryLateObservation: 6 * time.Second, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
 	endpoint, err := playoutcert.NewEndpointForTest(playoutcert.NormalizeConfigForTest(config))
 	if err != nil {
 		t.Fatal(err)
@@ -307,7 +307,7 @@ func TestSyntheticTargetParentFaultCertifiesAtOneMeasuredSlot(t *testing.T) {
 		}
 	}()
 	report, err := playoutcert.Run(ctx, playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken,
 		Channels: channels, Certify: true, Concurrency: 12, SurfRounds: 1, FanInViewers: 1,
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace: time.Second, RawCaptureBytes: 2 << 20, PreparedP95: 100 * time.Millisecond,
@@ -349,7 +349,7 @@ func TestSyntheticTargetRejectsStaleParentGenerationAfterReplacement(t *testing.
 			t.Errorf("close synthetic target: %v", closeErr)
 		}
 	}()
-	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: []playoutcert.Channel{channel}, RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
+	config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: []playoutcert.Channel{channel}, RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}}
 	config = playoutcert.NormalizeConfigForTest(config)
 	endpoint, err := playoutcert.NewEndpointForTest(config)
 	if err != nil {
@@ -421,7 +421,7 @@ func TestSyntheticTargetChildFaultDrillExitsOwnedEncoderAndRecoversPeer(t *testi
 		}
 	}()
 	config := playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels,
 		RequestTimeout: 15 * time.Second, RawCaptureBytes: 2 << 20,
 		Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}, FaultController: target,
 	}
@@ -523,7 +523,7 @@ func TestSyntheticTargetRejectsPostOverloadCorruptHeldMedia(t *testing.T) {
 		}
 	}()
 	config := playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken,
 		Channels: channels, Certify: true, Concurrency: 12, SurfRounds: 1, FanInViewers: 4,
 		RequestTimeout: 15 * time.Second, CleanupTimeout: 10 * time.Second, CleanupPoll: 25 * time.Millisecond,
 		WarmGrace:       time.Second,

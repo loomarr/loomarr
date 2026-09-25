@@ -126,7 +126,7 @@ func TestSyntheticTargetServesOrdinaryHLSAndJoinsRemux(t *testing.T) {
 		t.Fatalf("ordinary HLS media shape=%+v error=%v", shape, err)
 	}
 	before, err := playoutcert.SampleResources(ctx, playoutcert.Config{
-		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken,
+		BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken,
 		Client: http.DefaultClient, RequestTimeout: 5 * time.Second,
 	}, "before_shutdown")
 	if err != nil || before.SessionsActive != 1 || before.FFmpegRunning < 2 {

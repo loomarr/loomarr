@@ -35,7 +35,7 @@ func TestSyntheticHLSChecksExpectedProgrammeSignals(t *testing.T) {
 		t.Run(lane, func(t *testing.T) {
 			observeCtx, stop := context.WithTimeout(ctx, 25*time.Second)
 			defer stop()
-			config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels,
+			config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels,
 				ProgrammeEvidence: target.ProgrammeEvidence(), SignalDecoder: playoutcert.FFmpegSignalDecoder{Path: ffmpeg},
 				RequestTimeout: 10 * time.Second, ProgrammeBoundaryTimeout: 25 * time.Second, ProgrammeBoundaryLateObservation: 3 * time.Second, RawCaptureBytes: 256 << 10}
 			result, err := playoutcert.ObserveProgrammeSignalsForTest(observeCtx, config, lane, index)
