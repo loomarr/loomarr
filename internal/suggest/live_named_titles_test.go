@@ -86,7 +86,7 @@ func namedTitlesCorpus() *catalogfixture.Corpus {
 // TestLive_NamedTitles is the #1497 dev harness (skips without LOOMARR_LIVE_LLM_URL):
 // the real Suggester against a live model, printing the titles returned per request.
 //
-//	LOOMARR_LIVE_LLM_URL=http://fictional-ai-server:8080/v1 LOOMARR_LIVE_LLM_KEY=... LOOMARR_LIVE_LLM_MODEL=flash-next \
+//	LOOMARR_LIVE_LLM_URL=http://ai-server:8080/v1 LOOMARR_LIVE_LLM_KEY=... LOOMARR_LIVE_LLM_MODEL=flash-next \
 //	LOOMARR_LIVE_RUNS=5 LOOMARR_LIVE_DUMP=1 go test ./internal/suggest -run TestLive_NamedTitles -count=1 -v
 func TestLive_NamedTitles(t *testing.T) {
 	url := os.Getenv("LOOMARR_LIVE_LLM_URL")
