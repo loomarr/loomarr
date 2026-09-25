@@ -61,10 +61,7 @@ func NewNamed(_ string, timeout time.Duration) *http.Client {
 // call with a first-token budget, an inter-chunk idle budget and an overall cap instead, all
 // cancelling through the request context. recorder may be nil (standalone tools and tests).
 func NewLLM(recorder *metrics.Recorder) *http.Client {
-	if recorder == nil {
-		return newClient(0, newTransport(), nil)
-	}
-	return newNamedObservedClient("llm", 0, newTransport(), recorder)
+	return NewLLMNamed("llm", 0, recorder)
 }
 
 // NewNamedObserved is NewNamed bound to one application generation's Recorder.

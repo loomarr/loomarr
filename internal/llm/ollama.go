@@ -37,7 +37,7 @@ type Ollama struct {
 func (o *Ollama) WithMetrics(recorder *metrics.Recorder) *Ollama {
 	o.metrics = recorder
 	if recorder != nil {
-		o.http = httpx.NewNamedObserved("llm", httpx.TimeoutLLM, recorder)
+		o.http = httpx.NewLLMNamed("llm", httpx.TimeoutLLM, recorder)
 	}
 	return o
 }
@@ -53,7 +53,7 @@ func NewOllama(baseURL, model string) *Ollama {
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		model:        model,
 		guessedModel: guessed,
-		http:         httpx.NewNamed("llm", httpx.TimeoutLLM),
+		http:         httpx.NewLLMNamed("llm", httpx.TimeoutLLM, nil),
 	}
 }
 
