@@ -3,7 +3,6 @@ package mediatools
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"image/jpeg"
 	"os"
 	"os/exec"
@@ -82,10 +81,10 @@ func TestKeyframesIn_ProducesDecodableNativeSizeFrames(t *testing.T) {
 	}
 }
 
-// Image tokens scale with pixel area, so SD vision frames (height <= VisionScaleMaxHeight) are
-// scaled down 0.8x linear; anything taller keeps today's size because HD fine print did not survive.
+// Image tokens scale with pixel area, so every vision frame is scaled down 0.9x linear (0.81x the
+// pixels) regardless of source size; native-size frames are what KeyframesIn is for.
 // 0.64x the pixels) that keeps the same legibility ratio for SD and HD sources alike.
-func TestVisionKeyframesIn_ScalesOnlySDSources(t *testing.T) {
+func TestVisionKeyframesIn_ScalesEveryFrameByTheVisionFactor(t *testing.T) {
 	dir := t.TempDir()
 	ffmpeg := filepath.Join(dir, "ffmpeg")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$(dirname \"$0\")/calls\"\n"
@@ -104,7 +103,7 @@ func TestVisionKeyframesIn_ScalesOnlySDSources(t *testing.T) {
 		t.Fatalf("ffmpeg calls = %d, want 4 windows", len(calls))
 	}
 	for _, call := range calls {
-		if !strings.Contains(call, "iw*"+VisionFrameScale) || !strings.Contains(call, fmt.Sprintf("lte(ih,%d)", VisionScaleMaxHeight)) {
+		if !strings.Contains(call, "iw*"+VisionFrameScale) || strings.Contains(call, "min(iw,1920)") {
 			t.Fatalf("vision frames are not scaled by VisionFrameScale: %s", call)
 		}
 	}
@@ -113,7 +112,7 @@ func TestVisionKeyframesIn_ScalesOnlySDSources(t *testing.T) {
 	}
 }
 
-func TestVisionKeyframesIn_SDDownscalesAndLargerStaysNative(t *testing.T) {
+func TestVisionKeyframesIn_DownscalesEverySourceLinearly(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("ffmpeg unavailable")
@@ -126,11 +125,10 @@ func TestVisionKeyframesIn_SDDownscalesAndLargerStaysNative(t *testing.T) {
 		wantW, wantH  int
 		wantUnchanged bool
 	}{
-		{name: "HD 16:9 stays at today's size", size: "1280x720", wantW: 1280, wantH: 720},
-		{name: "boundary: 576 high is SD", size: "768x576", wantW: 614, wantH: 460},
-		{name: "boundary: 578 high is not SD", size: "768x578", wantW: 768, wantH: 578},
-		{name: "SD archive 4:3", size: "640x480", wantW: 512, wantH: 384},
-		{name: "tiny source", size: "320x240", wantW: 256, wantH: 192},
+		{name: "SD archive 4:3", size: "640x480", wantW: 576, wantH: 432},
+		{name: "widescreen SD", size: "854x480", wantW: 768, wantH: 432},
+		{name: "HD 16:9", size: "1280x720", wantW: 1152, wantH: 648},
+		{name: "tiny source", size: "320x240", wantW: 288, wantH: 216},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			clip := filepath.Join(dir, strings.ReplaceAll(tc.size, "x", "_")+".mp4")
