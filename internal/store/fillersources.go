@@ -132,11 +132,18 @@ func (f FillerSource) MaxPerRun(global int) int {
 // same location on every row". Candidate geography is still checked independently by the pull
 // planner, so this inheritance cannot make missing or conflicting item evidence pass.
 func (f FillerSource) GeographicallyEligible(target filler.Geography) bool {
+	return filler.SourceGeographicallyEligible(f.EffectiveGeography(target), target)
+}
+
+// EffectiveGeography is the single resolution of a source's coverage: its own assertion, or the
+// installation's home geography when it asserts no country. Fetch eligibility and clip
+// enrichment both call it so they cannot disagree about where a source's clips air.
+func (f FillerSource) EffectiveGeography(home filler.Geography) filler.Geography {
 	coverage := f.Geography.Normalize()
 	if coverage.Country == "" {
-		coverage = target.Normalize()
+		return home.Normalize()
 	}
-	return filler.SourceGeographicallyEligible(coverage, target)
+	return coverage
 }
 
 // Fetchable reports whether this source can be DOWNLOADED FROM — i.e. whether it may enter a
