@@ -48,6 +48,9 @@ type visionChatReq struct {
 	Model     string          `json:"model"`
 	Messages  []visionMessage `json:"messages"`
 	MaxTokens int             `json:"max_tokens,omitempty"`
+	Stream    bool            `json:"stream"`
+	// StreamOptions asks the server for the final usage chunk a streamed reply omits by default.
+	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 }
 
 type visionMessage struct {

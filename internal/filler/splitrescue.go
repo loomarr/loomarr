@@ -67,7 +67,7 @@ func findAdBreaks(ctx context.Context, provider llm.Provider, transcript []Trans
 	if text == "" {
 		return nil, fmt.Errorf("empty transcript")
 	}
-	resp, err := provider.Chat(ctx, []llm.Message{
+	resp, err := provider.Chat(llm.WithCallSite(ctx, "filler.split_rescue"), []llm.Message{
 		{Role: llm.System, Content: rescueSystemPrompt},
 		{Role: llm.User, Content: "Transcript:\n" + text + "\nFind the advert boundaries."},
 	}, llm.ChatOptions{JSONMode: true})

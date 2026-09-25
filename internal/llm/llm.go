@@ -72,6 +72,10 @@ type ToolSchema struct {
 type Response struct {
 	Content   string     // final text (JSON when JSONMode was requested)
 	ToolCalls []ToolCall // non-empty ⇒ the model wants tools run before continuing
+	// FinishReason is the provider's stop reason ("stop", "length", "tool_calls"); "length"
+	// means the reply hit max_tokens and any JSON in it is probably cut off. Empty when the
+	// provider did not report one.
+	FinishReason string
 	// Attribution is the provider-neutral accounting envelope for this one call.
 	// Zero values mean the adapter/provider did not report the fact; callers must
 	// never turn missing billing or routing facts into inferred ones.

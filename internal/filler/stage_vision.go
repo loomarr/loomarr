@@ -112,7 +112,7 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	}
 	reportProgress(ctx, StageVision, NoMeasurement)
 
-	resp, err := s.provider.AskAboutImages(ctx, visionPrompt(forest), frames)
+	resp, err := s.provider.AskAboutImages(llm.WithCallSite(ctx, "filler.vision"), visionPrompt(forest), frames)
 	if err != nil {
 		return StageResult{}, VisionObservation{}, fmt.Errorf("vision model for %s: %w", c.Path, err)
 	}

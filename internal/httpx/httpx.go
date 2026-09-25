@@ -55,6 +55,18 @@ func NewNamed(_ string, timeout time.Duration) *http.Client {
 	return newClient(timeout, newTransport(), nil)
 }
 
+// NewLLM returns the client for OpenAI-compatible chat calls. It carries NO whole-request
+// timeout on purpose: a fixed budget cannot tell a call queued behind other clients on a
+// single-slot model server (healthy, slow) from a wedged one (dead). internal/llm bounds each
+// call with a first-token budget, an inter-chunk idle budget and an overall cap instead, all
+// cancelling through the request context. recorder may be nil (standalone tools and tests).
+func NewLLM(recorder *metrics.Recorder) *http.Client {
+	if recorder == nil {
+		return newClient(0, newTransport(), nil)
+	}
+	return newNamedObservedClient("llm", 0, newTransport(), recorder)
+}
+
 // NewNamedObserved is NewNamed bound to one application generation's Recorder.
 // Production composition uses this form; NewNamed remains for standalone tools
 // and tests that do not own an application generation.
