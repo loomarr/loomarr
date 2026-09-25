@@ -53,7 +53,7 @@ Phase 10), not a contradiction. No `docs/design.md` edit was required in Phase 0
 - Docker daemon started + enabled (Server 29.6.1). Prereqs recorded in `PROGRESS.md`.
 - Temp Radarr webhook connection (id 3) removed; Tunarr spike container + volume torn down;
   webhook listeners killed. A re-grab of *In Flames* landed a fresh file (expected).
-- Secrets used from `fictional-media-server/.env` and `loomarr/.phase0.env` (git-ignored) —
+- Secrets used from the media-server host's `.env` and `loomarr/.phase0.env` (git-ignored) —
   never committed.
 
 ## Still open (not blocking — deferred to their phases)

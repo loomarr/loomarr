@@ -28,6 +28,19 @@ func TestVerifyPrivateFixturesRejectsTrackedCaseVariantWithoutDisclosingIt(t *te
 	}
 }
 
+func TestVerifyPrivateFixturesRejectsBareHostnameToken(t *testing.T) {
+	t.Parallel()
+
+	root := trackedFixtureRepository(t, map[string]string{
+		"notes.md": "run it on http://" + "homelab-hostname" + "-sentinel:8083/v1\n",
+	})
+
+	err := VerifyPrivateFixtures(root)
+	if err == nil || !strings.Contains(err.Error(), "homelab hostname regression sentinel") {
+		t.Fatalf("VerifyPrivateFixtures did not reject a bare hostname token: %v", err)
+	}
+}
+
 func TestVerifyPrivateFixturesIgnoresUntrackedCandidates(t *testing.T) {
 	t.Parallel()
 

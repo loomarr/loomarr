@@ -345,7 +345,7 @@ comparison.
    cannot be redistributed.
 4. Refresh the OpenRouter model and endpoint JSON, choose one provider per cell, calculate the
    maximum possible spend from the locked request/token ceilings, and stop for operator confirmation.
-5. Only then run the serial paid bakeoff and subsequent fictional-media-server shadow lane.
+5. Only then run the serial paid bakeoff and subsequent media-server-host shadow lane.
 
 This order avoids paying to benchmark an unrepresentative or legally ambiguous corpus and prevents
 provider routing changes from masquerading as model-quality differences.

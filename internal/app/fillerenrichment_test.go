@@ -70,7 +70,7 @@ func TestFillerMediaCapabilitySelectionsTrackLiveProviderIdentity(t *testing.T) 
 	dedicated := activeFillerTranscriptCapability(visionSet(t, map[string]string{
 		"filler.transcribe.enabled": "true",
 		"asr.provider":              "hosted",
-		"asr.url":                   "http://fictional-ai-server:8083/v1",
+		"asr.url":                   "http://ai-server:8083/v1",
 		"asr.model":                 "whisper-large-v3-turbo-q5_0",
 	}))
 	if !dedicated.Available || dedicated.Producer != "transcript:speech-service" {

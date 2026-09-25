@@ -48,7 +48,7 @@ const awaitingSession = async () => {
       write: vi.fn(async () => undefined),
     },
   });
-  const pairing = session.pair("https://loomarr.projectguacamole.com");
+  const pairing = session.pair("https://loomarr.example.com");
   await vi.waitFor(() => expect(session.snapshot().status).toBe("awaiting-approval"));
   return { pairing, session };
 };

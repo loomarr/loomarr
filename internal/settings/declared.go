@@ -636,7 +636,7 @@ func declared() []Setting {
 		{
 			Key: "asr.url", Label: "Speech service address", EnvVar: "ASR_URL", Group: GroupAI,
 			Kind: KindURL, Default: "", Advanced: true,
-			Doc:      "OpenAI-compatible speech-to-text API base, such as http://fictional-ai-server:8083/v1. Leave blank to reuse the active hosted AI service.",
+			Doc:      "OpenAI-compatible speech-to-text API base, such as http://ai-server:8083/v1. Leave blank to reuse the active hosted AI service.",
 			ShowWhen: map[string][]string{"asr.provider": {"hosted"}},
 		},
 		{
