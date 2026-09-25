@@ -48,6 +48,10 @@ const AuthedFrame = () => {
     ? `${versionBody.version}${versionBody.dirty ? " (modified)" : ""}`
     : undefined;
   useEffect(() => clientDiagnostics.setVersion(versionBody?.version), [versionBody?.version]);
+  useEffect(() => {
+    clientDiagnostics.setAuthenticated(true);
+    return () => clientDiagnostics.setAuthenticated(false);
+  }, []);
 
   const logout = authApi.useLogout({
     mutation: {

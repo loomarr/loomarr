@@ -587,7 +587,13 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 				atCapacityDetail)
 			return
 		}
-		s.log.Warn("playout: hls playlist failed", "channel", channelID, "err", err)
+		if errors.Is(r.Context().Err(), context.Canceled) {
+			// The viewer left mid-start (channel surfing); nobody receives this response and it
+			// is not a failure. The metrics middleware counts it as 499, not a 5xx.
+			s.log.Debug("playout: hls playlist cancelled by client", "channel", channelID)
+		} else {
+			s.log.Warn("playout: hls playlist failed", "channel", channelID, "err", err)
+		}
 		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel",
 			"Loomarr couldn't start this channel's in-app stream.")
 		return

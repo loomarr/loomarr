@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -148,7 +149,12 @@ func errorTransformer(log *slog.Logger) huma.Transformer {
 		if len(m.Errors) > 0 {
 			attrs = append(attrs, "cause", joinErrorDetails(m.Errors))
 		}
-		if m.Status >= 500 {
+		if m.Status >= 500 && ctx != nil && errors.Is(ctx.Context().Err(), context.Canceled) {
+			// The client hung up mid-request; the handler's "context canceled" surfaced as a 500
+			// but nobody is left to receive it and it is not our fault. Kept at debug for tracing.
+			log.Debug("request cancelled by client", "event", "api.request_cancelled",
+				"subsystem", "api", "request_id", reqID, "path", path)
+		} else if m.Status >= 500 {
 			log.Error("request failed", attrs...)
 		} else if m.Status >= 400 {
 			log.Info("request rejected", attrs...)

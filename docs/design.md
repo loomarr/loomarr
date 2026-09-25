@@ -187,6 +187,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`landiscovery`**
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
+- **`logchange`** · 2 importers
+  Keeps a repeating per-item condition from flooding the log.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
 - **`playoutcert`** · 1 importer
@@ -314,7 +316,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 7**
 
-- **`filler`** · 11 importers · → `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy`
+- **`filler`** · 11 importers · → `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillersafetycorpus`** · 1 importer · → `fillercorpus`, `fillersafety`, `fillersafetycert`
   Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
@@ -369,7 +371,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Prepares an isolated agent worktree for UI development.
 - **`fillerquarantine`** · 2 importers · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
   Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
-- **`images`** · 2 importers · → `images/rustgen`, `scheduler`
+- **`images`** · 2 importers · → `images/rustgen`, `logchange`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
 - **`moviecollections`** · 3 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
@@ -12983,7 +12985,7 @@ selection invalidates the preview and disables download until the replacement pr
   | Operator question | Families and labels |
   | --- | --- |
   | Which build and database backend am I scraping? | `loomarr_build_info{version,revision,database}` (constant `1`) |
-  | Is inbound HTTP failing, slow, saturated, or causing excessive dependency fan-out? | `loomarr_http_requests_total{method,route,code}`, `loomarr_http_request_duration_seconds{method,route}`, `loomarr_http_requests_in_flight`, `loomarr_http_outbound_fanout{method,route}`; `route` is the matched route template, never the request path, and an unknown method becomes `other` |
+  | Is inbound HTTP failing, slow, saturated, or causing excessive dependency fan-out? | `loomarr_http_requests_total{method,route,code}`, `loomarr_http_request_duration_seconds{method,route}`, `loomarr_http_requests_in_flight`, `loomarr_http_outbound_fanout{method,route}`; `route` is the matched route template, never the request path, and an unknown method becomes `other`; `code="499"` (nginx's client-closed-request) counts a request the client abandoned mid-flight whose handler failed with `context canceled`, so it is not in the 5xx rate |
   | Which dependency is failing or slow, and how much instability do retries hide? | `loomarr_outbound_requests_total{target,code}`, `loomarr_outbound_request_duration_seconds{target}`, `loomarr_outbound_retries_total{target,reason}`; count/latency wrap one logical retrying request while retries count each additional attempt, and reason is `transport`, `408`, `429`, `500`, `502`, `503`, or `504` |
   | Is the database pool saturated or churning? | `loomarr_database_connections{state}`, `loomarr_database_max_open_connections`, `loomarr_database_connection_waits_total`, `loomarr_database_connection_wait_duration_seconds_total`, `loomarr_database_connections_closed_total{reason}`; `state` is `open`, `in_use`, or `idle`, and `reason` is `idle_limit`, `idle_time`, or `lifetime` |
   | Is acquisition or Proposal work stuck? | compatibility gauges `loomarr_titles{state}`, `loomarr_jobs{status}`, `loomarr_proposal_job_oldest_age_seconds{status}`, `loomarr_proposal_job_attempts{outcome}`, `loomarr_proposal_job_failures{code}`, plus `loomarr_active_sessions`; these are current retained-object counts, not cumulative events |

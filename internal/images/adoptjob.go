@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/logchange"
 )
 
 // The artwork-adoption job (§22, V52 phase 6): pull already-rendered files on disk into the image
@@ -55,13 +57,25 @@ type AdoptJob struct {
 	store ArtworkAdoptStore
 	now   func() time.Time
 	log   *slog.Logger
+	// failures suppresses an owner's repeated identical adopt warning across runs.
+	failures *logchange.Throttle
+}
+
+// adoptFailureRepeat is how long an unchanged adopt failure stays quiet before warning again.
+const adoptFailureRepeat = 24 * time.Hour
+
+// warnAdoptFailed logs an owner's adopt failure once per distinct failure: an owner whose artwork
+// cannot be adopted is re-listed on every run, and would otherwise repeat the same line forever.
+func (j *AdoptJob) warnAdoptFailed(owner string, stillErr, animErr error) {
+	j.failures.Warn(j.log, owner, fmt.Sprintf("%v|%v", stillErr, animErr), "adopt artwork",
+		"owner", owner, "still_err", stillErr, "anim_err", animErr)
 }
 
 func NewAdoptJob(svc *Service, st ArtworkAdoptStore, now func() time.Time, log *slog.Logger) *AdoptJob {
 	if now == nil {
 		now = time.Now
 	}
-	return &AdoptJob{svc: svc, store: st, now: now, log: log}
+	return &AdoptJob{svc: svc, store: st, now: now, log: log, failures: logchange.New(adoptFailureRepeat)}
 }
 
 // AdoptResult is what one run did, for the log line.
@@ -96,9 +110,9 @@ func (j *AdoptJob) Run(ctx context.Context) (AdoptResult, error) {
 		res.Missing += sMissing + aMissing
 		if sErr != nil || aErr != nil {
 			res.Failed++
-			if j.log != nil {
-				j.log.Warn("adopt artwork", "owner", p.OwnerID, "still_err", sErr, "anim_err", aErr)
-			}
+			j.warnAdoptFailed(p.OwnerID, sErr, aErr)
+		} else {
+			j.failures.Forget(p.OwnerID)
 		}
 		// ⚠ Recorded even on a PARTIAL success — one hash present, the other empty. Skipping the
 		// write until both succeed would re-list this owner every run forever when only one of the

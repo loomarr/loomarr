@@ -37,6 +37,9 @@ class ClientDiagnosticsReporter {
   private timer?: ReturnType<typeof setTimeout>;
   private sending = false;
   private disposed = false;
+  // The diagnostics endpoint requires a session. A logged-out page that kept flushing got a 401
+  // every interval — thousands in bursts — so sending is gated on this and a 401 closes it.
+  private authenticated = true;
   private identity: ClientDiagnosticsIdentity;
 
   constructor(
@@ -50,6 +53,13 @@ class ClientDiagnosticsReporter {
     if (version) this.identity = { ...this.identity, clientVersion: version.slice(0, 64) };
   }
 
+  // Observations still queue (bounded) while unauthenticated so early errors survive login,
+  // but nothing is sent until the session is known good.
+  setAuthenticated(authenticated: boolean) {
+    this.authenticated = authenticated;
+    if (authenticated) this.schedule();
+  }
+
   record(observation: ClientObservation) {
     if (this.disposed) return;
     const accepted = { ...observation, occurredAt: observation.occurredAt ?? Date.now() };
@@ -58,16 +68,17 @@ class ClientDiagnosticsReporter {
   }
 
   async flush() {
-    if (this.sending || this.queue.length === 0) return;
+    if (this.sending || !this.authenticated || this.queue.length === 0) return;
     this.sending = true;
     const batch = this.queue.splice(0, BATCH_LIMIT);
     try {
       await this.sendBatch(batch);
-    } catch {
+    } catch (error) {
+      if ((error as { status?: unknown } | null)?.status === 401) this.authenticated = false;
       this.replaceQueue([...batch, ...this.queue]);
     } finally {
       this.sending = false;
-      if (this.queue.length > 0 && !this.disposed) this.schedule();
+      if (this.queue.length > 0 && this.authenticated && !this.disposed) this.schedule();
     }
   }
 

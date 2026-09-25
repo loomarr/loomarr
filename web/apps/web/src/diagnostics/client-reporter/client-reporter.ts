@@ -25,6 +25,10 @@ reporter = new ClientDiagnosticsReporter(
   { clientVersion: "embedded", platform: webPlatform(), source: "web" },
 );
 
+// The endpoint needs a session, so the embedded app stays silent until the authenticated shell
+// mounts (`_authed.tsx` opens the gate) — a logged-out page otherwise 401s every flush.
+reporter.setAuthenticated(false);
+
 const errorClassOf = (error: unknown): GeneratedClientObservation["errorClass"] => {
   if (error instanceof TypeError) return "type_error";
   if (error instanceof RangeError) return "range_error";
