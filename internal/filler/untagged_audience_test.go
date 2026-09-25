@@ -1,6 +1,10 @@
 package filler
 
-import "testing"
+import (
+	"fmt"
+	"math/rand"
+	"testing"
+)
 
 // The untagged-audience cliff (§10 V51f) and the guardrail that bounds the fix.
 //
@@ -106,5 +110,79 @@ func TestLadder_AKidsChannelWithAnUntaggedCatalogFallsToTheCard(t *testing.T) {
 	pod := Assemble(cat, w, Policy{}, nil)
 	if pod.MatchLevel != MatchBumperCard {
 		t.Fatalf("kids channel reached %s on an untagged catalog — the guardrail is gone", pod.MatchLevel)
+	}
+}
+
+// ⚠ THE #1449 SAFETY INVARIANT, as a property over random catalogs: on a kids or family channel a
+// clip whose audience is not grounded compatible NEVER airs — on any rung, at any era, whatever
+// else is in the catalog. With nothing eligible the pod is the bumper card, never an unsuitable ad.
+func TestAssemble_UngroundedAudienceNeverAirsOnKidsOrFamilyChannels(t *testing.T) {
+	rng := rand.New(rand.NewSource(1449))
+	audiences := []Audience{"", Kids, Family, General, LateNight}
+	for trial := 0; trial < 300; trial++ {
+		var cat []Clip
+		for i := 0; i < 1+rng.Intn(12); i++ {
+			cat = append(cat, Clip{
+				Hash: fmt.Sprintf("c%d-%d", trial, i), Path: fmt.Sprintf("c%d-%d", trial, i), Kind: Commercial,
+				Era: []int{0, 1985, 1992, 2005}[rng.Intn(4)], Audience: audiences[rng.Intn(len(audiences))],
+				DurationMs: 30_000,
+			})
+		}
+		for _, aud := range []Audience{Kids, Family} {
+			w := Window{Era: Year(1992), Audience: aud, GapMs: 120_000, PodMax: 4, Seed: int64(trial)}
+			pod := Assemble(cat, w, Policy{}, nil)
+			byPath := map[string]Clip{}
+			for _, c := range cat {
+				byPath[c.Path] = c
+			}
+			for _, e := range pod.Entries {
+				if c, ok := byPath[e.Path]; ok && !audienceFits(aud, c.Audience) {
+					t.Fatalf("trial %d: %s channel aired a %q-audience clip (rung %s)", trial, aud, c.Audience, pod.MatchLevel)
+				}
+			}
+		}
+	}
+}
+
+func TestAssemble_KidsChannelWithOnlyNonKidsClipsGetsTheBumperCard(t *testing.T) {
+	cat := []Clip{
+		commercial("late", 1992, LateNight),
+		commercial("general", 1992, General),
+		{Hash: "untagged", Path: "untagged", Kind: Commercial, Era: 1992, DurationMs: 30_000},
+	}
+	pod := Assemble(cat, Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
+	if pod.MatchLevel != MatchBumperCard || len(pod.Entries) != 1 || !pod.Entries[0].IsFallbackCard {
+		t.Fatalf("level=%s entries=%d, want only the bumper card", pod.MatchLevel, len(pod.Entries))
+	}
+}
+
+func TestAssemble_InWindowClipsArePreferredOnAnEraChannel(t *testing.T) {
+	cat := []Clip{commercial("in", 1992, General), commercial("out", 2015, General)}
+	pod := Assemble(cat, Window{Era: EraRange{From: 1989, To: 1999}, Audience: General, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
+	if pod.MatchLevel != MatchExact || len(pod.Entries) == 0 || pod.Entries[0].Path != "in" {
+		t.Fatalf("level=%s entries=%+v, want the in-window clip on the exact rung", pod.MatchLevel, pod.Entries)
+	}
+}
+
+// audienceFits is the property's oracle, written independently of the ladder: kids admits only
+// kids/family clips; family admits family/general.
+func audienceFits(channel, clip Audience) bool {
+	if channel == Kids {
+		return clip == Kids || clip == Family
+	}
+	return clip == channel || clip == General
+}
+
+func TestAssemble_KidsChannelNeverAirsGeneralClips(t *testing.T) {
+	cat := []Clip{commercial("general", 1992, General), commercial("kids", 1992, Kids), commercial("family", 1992, Family)}
+	pod := Assemble(cat, Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
+	for _, e := range pod.Entries {
+		if e.Path == "general" {
+			t.Fatal("a general-audience clip aired on a kids channel")
+		}
+	}
+	only := Assemble(cat[:1], Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
+	if only.MatchLevel != MatchBumperCard {
+		t.Fatalf("level=%s, want the bumper card when only general clips exist", only.MatchLevel)
 	}
 }
