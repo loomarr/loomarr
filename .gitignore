@@ -2,6 +2,8 @@
 .phase0.env
 .env
 *.local
+# The generated installation key (secret protection) lives beside a dev SQLite database.
+encryption.key
 
 # Build output — anchor to repo root so these ignore ONLY the compiled binaries,
 # not the cmd/loomarr and cmd/loomarr-ingest source directories (a bare pattern
