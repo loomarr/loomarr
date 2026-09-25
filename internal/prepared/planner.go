@@ -108,7 +108,8 @@ type Retainer interface {
 }
 
 // PlannerDependencies makes the readiness control plane's ownership explicit. Preparation and
-// retention intentionally share one scheduler pass so lifecycle cannot drift into a bolt-on task.
+// retention are both started by one scheduler pass so lifecycle cannot drift into a bolt-on task,
+// but both run under the Planner's lifecycle, so the pass itself stays short.
 type PlannerDependencies struct {
 	Resolver          CandidateResolver
 	Preparation       Preparation
@@ -143,6 +144,7 @@ type Planner struct {
 	workerWG  sync.WaitGroup
 	failures  []error
 	failedAt  map[Request]time.Time
+	retaining bool
 }
 
 func NewPlanner(deps PlannerDependencies) *Planner {
@@ -201,14 +203,12 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 	p.statusMu.Unlock()
 	var errs []error
 	var plan ReadinessPlan
-	var retention PruneResult
 	finalizationCtx := ctx
 	defer func() {
 		p.statusMu.Lock()
 		p.status.Running = false
 		p.status.LastRunAt = p.now()
 		p.status.Readiness = plan.Summary
-		p.status.Retention = retentionStatusFrom(retention)
 		p.status.LastError = ""
 		if runErr != nil {
 			p.status.LastError = runErr.Error()
@@ -244,11 +244,42 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 		}
 	}
 	if p.retainer != nil && p.budget != nil {
-		budget := p.budget()
-		result, err := p.retainer.Prune(finalizationCtx, budget, plan.Protected)
-		retention = result
+		p.startRetention(p.budget(), plan.Protected)
+	}
+	runErr = errors.Join(errs...)
+	return runErr
+}
+
+// startRetention runs one retention sweep under the Planner's lifecycle and returns immediately.
+// A sweep stats every file of every publication, so its cost grows with the store rather than with
+// the schedule window; run inside the pass it could outlast the pass's short ceiling and be cut
+// off every minute. It is single-flight: a sweep still running when the next pass arrives is left
+// to finish, and that pass's protected set is dropped (the next one carries a fresh set).
+func (p *Planner) startRetention(budget int64, protected []Specification) {
+	if p.lifecycle.Err() != nil {
+		return
+	}
+	p.workerMu.Lock()
+	if p.retaining {
+		p.workerMu.Unlock()
+		return
+	}
+	p.retaining = true
+	p.workerMu.Unlock()
+	p.workerWG.Add(1)
+	go func() {
+		defer p.workerWG.Done()
+		result, err := p.retainer.Prune(p.lifecycle, budget, protected)
+		p.workerMu.Lock()
+		p.retaining = false
+		p.workerMu.Unlock()
+		p.statusMu.Lock()
+		p.status.Retention = retentionStatusFrom(result)
+		p.statusMu.Unlock()
 		if err != nil {
-			errs = append(errs, fmt.Errorf("retain prepared media: %w", err))
+			if p.lifecycle.Err() == nil {
+				p.log.Warn("retain prepared media failed", "err", err)
+			}
 		}
 		fields := []any{
 			"bytes", result.RemainingBytes, "budget", result.BudgetBytes,
@@ -261,9 +292,7 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 		} else {
 			p.log.Info("prepared media retention pass", fields...)
 		}
-	}
-	runErr = errors.Join(errs...)
-	return runErr
+	}()
 }
 
 // publishReadiness makes the resolved schedule visible while the pass is still running; the final
