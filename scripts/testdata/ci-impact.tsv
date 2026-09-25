@@ -73,6 +73,7 @@ readme-contract	README.md	docs,policy
 embedded-help	docs/help/quickstart.md	contracts,go,go_full,image,docs
 agent-script	scripts/agent.sh	agent,policy
 agent-make-module	mk/agent.mk	agent,policy
+agent-orca-adapter	orca.yaml	agent,policy
 affected-test-tooling	scripts/changed-paths.sh;scripts/go-direct-impact.sh;scripts/test-affected.sh	agent,policy
 affected-loop-control-plane	AGENTS.md;docs/dev/agents.md;docs/dev/commands.md;docs/dev/testing.md;docs/dev/ci.md;mk/agent.mk;scripts/agent-harness-test.sh;scripts/agent.sh;scripts/changed-paths-test.sh;scripts/changed-paths.sh;scripts/ci-impact.sh;scripts/go-direct-impact-test.sh;scripts/go-direct-impact.sh;scripts/test-affected-test.sh;scripts/test-affected.sh;scripts/testdata/ci-impact.tsv;scripts/validate-android-release-source-test.sh;.github/workflows/ci.yml;internal/releaseverify/ci.go;internal/releaseverify/ci_container_bootstrap.go;internal/releaseverify/ci_container_bootstrap_test.go;internal/releaseverify/ci_container_workflow_authority.go;internal/releaseverify/ci_test.go	docs,agent,policy
 release-workflow	.github/workflows/release.yml	policy

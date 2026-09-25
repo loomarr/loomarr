@@ -226,6 +226,11 @@ dirty, credential-bearing, divergent, open, and ambiguous worktrees fail closed.
 For retained worktrees, record an owner, reason, and next review trigger on the tracking issue.
 Preservation is not a retirement plan; closing a pane or completing a goal does not clean a worktree.
 
+Orca creates worktrees itself, under its own workspace directory. The checked-in `orca.yaml` runs the
+same registration and bootstrap from Orca's setup hook, so an Orca worktree is registered without
+claims: run `make agent-start TASK=<branch> CLAIMS=...` before touching a shared output. See
+[`docs/dev/agents.md`](docs/dev/agents.md#orca).
+
 Develop against the URL printed by `make dev-fe`; the backend URL serves the last embedded SPA build and
 can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child; use `make dev-be`.
 

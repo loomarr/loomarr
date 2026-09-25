@@ -434,7 +434,8 @@ classify() {
         *) select_gate contracts ;;
       esac
       ;;
-    mk/agent.mk)
+    # orca.yaml is Orca's adapter over scripts/agent.sh, like the Make module that wraps it.
+    mk/agent.mk|orca.yaml)
       known=true
       select_gate agent
       select_gate policy
