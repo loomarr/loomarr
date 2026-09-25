@@ -120,6 +120,11 @@ type Origin struct {
 
 	admissionsMu sync.Mutex
 	admissions   map[*admissionLease]string
+
+	// Channel stills (still.go): the segment holders, tried in Tune's order, and the decoder.
+	stillSources   []stillSource
+	stillExtractor StillExtractor
+	stills         stillCache
 }
 
 type admissionLease struct {
@@ -151,6 +156,9 @@ type OriginDependencies struct {
 	// Nil preserves the SQLite single-replica path's existing local lifecycle behavior.
 	Eligible func(context.Context, string) (bool, error)
 	Observer OriginObserver
+	// Still decodes one frame of a segment for the channel-switch overlay. Nil disables stills
+	// (Origin.Still reports a clean miss) — used where no ffmpeg is wired.
+	Still StillExtractor
 }
 
 // OriginObserver receives bounded fallback transitions without Channel identity.
@@ -178,6 +186,13 @@ func NewOrigin(deps OriginDependencies) *Origin {
 	o.available = deps.Available
 	o.eligible = deps.Eligible
 	o.observer = deps.Observer
+	o.stillExtractor = deps.Still
+	if deps.Prepared != nil {
+		o.stillSources = append(o.stillSources, deps.Prepared)
+	}
+	if deps.LiveHLS != nil {
+		o.stillSources = append(o.stillSources, deps.LiveHLS)
+	}
 	return o
 }
 

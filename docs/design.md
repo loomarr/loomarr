@@ -2868,6 +2868,13 @@ wall-clock epoch, accepted cycle, admission gate, and filler fallback remain unc
   **browser or a native app** plays — a `<video>` element cannot consume raw MPEG-TS, so the same
   channel is *repackaged*, not re-encoded: a `-c copy` remux hangs off the channel encoder and fans
   its already-keyframe-aligned bytes into a rolling playlist.
+- **A channel still** (`GET /playout/still/{id}`, signed like the HLS pair; the play-url carries its
+  signed URL) is one JPEG frame decoded from the newest segment Loomarr already holds for the
+  channel — the prepared publication at the live edge, else the live remux — so it is never older
+  than one segment (4 s). It is decoded at most once per segment and cached, so a request never
+  decodes and no encoder is added. It exists so the channel-switch overlay (#1458) has a picture to
+  show before video plays; a channel with no segment yet answers 404 and the overlay shows its card
+  on the plain background.
 - **Scheduled break fallback is not an empty Channel.** If a filler pod has no playable clip, the
   synthetic card says “We'll be right back,” preserves the break's wall-clock identity, and is
   bounded by the time remaining in that break so it cannot cover the next programme. “Nothing

@@ -175,3 +175,19 @@ func (s *Server) playoutHLSPathURLWithKey(key, channelID string, quality string,
 	}
 	return fmt.Sprintf("/v1/playout/hls/%s/master.m3u8?%s", url.PathEscape(channelID), q.Encode())
 }
+
+// playoutStillPathURLWithKey is the RELATIVE signed URL of a channel's latest still frame. It
+// carries the same `sig` as the HLS URL — the signature scopes to the channel, not the path — and
+// the same unsigned `?plan=`, so the still comes from the plan's own segments.
+func (s *Server) playoutStillPathURLWithKey(key, channelID string, plan playout.EncodePlan, exp time.Time) string {
+	sig := signPlayoutWithKey(key, channelID, exp)
+	if sig == "" {
+		return ""
+	}
+	q := url.Values{}
+	q.Set(signQueryParam, sig)
+	if plan != playout.PlanBaseline {
+		q.Set(playoutPlanParam, plan.String())
+	}
+	return fmt.Sprintf("/v1/playout/still/%s?%s", url.PathEscape(channelID), q.Encode())
+}

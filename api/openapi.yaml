@@ -6772,6 +6772,9 @@ components:
           description: When the signed URLs expire (RFC 3339)
           format: date-time
           type: string
+        relativeStillUrl:
+          description: Same-origin signed URL of the channel's latest still frame for the in-app web player
+          type: string
         relativeUrl:
           description: Same-origin signed HLS (.m3u8) URL for the in-app web player — prefer this in a browser (no CORS)
           type: string
@@ -6779,12 +6782,17 @@ components:
           description: Server wall-clock at mint time (Unix milliseconds); native clients use it instead of device RTC
           format: int64
           type: integer
+        stillUrl:
+          description: Absolute signed URL of the channel's latest still frame (JPEG, at most one segment old); 404 when none exists yet. Empty if the server's public address is unset
+          type: string
         url:
           description: Absolute signed HLS (.m3u8) URL for native/off-origin clients; empty if the server's public address is unset
           type: string
       required:
         - url
         - relativeUrl
+        - stillUrl
+        - relativeStillUrl
         - expiresAt
         - serverTimeMs
       type: object
@@ -15234,6 +15242,37 @@ paths:
       summary: Playout status — why a channel is (or isn't) playing (admin)
       tags:
         - dashboard
+  /v1/playout/still/{id}:
+    get:
+      operationId: playout-still
+      parameters:
+        - description: Loomarr channel id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Loomarr channel id
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            image/jpeg:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The newest decoded frame of the channel, at most one segment old; 404 when none is available.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Channel latest still frame (signed-URL authed)
+      tags:
+        - playout
   /v1/playout/stream/{id}:
     get:
       operationId: playout-stream
