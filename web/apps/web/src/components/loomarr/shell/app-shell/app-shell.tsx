@@ -121,7 +121,10 @@ const AppShell = ({
                 >
                   {badges?.[to]}
                 </span>
-                <span aria-hidden className="absolute top-1.5 right-2 size-2 rounded-full bg-suggest md:hidden" />
+                <span
+                  aria-hidden
+                  className="absolute top-1.5 right-2 size-2 rounded-full bg-suggest md:hidden"
+                />
               </>
             )}
           </Link>
