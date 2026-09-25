@@ -2,6 +2,7 @@ package suggest_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -28,6 +29,43 @@ func TestSuggest_LeanFinalAfterToolCallOmitsDateMeaningNameAndMediaType(t *testi
 	}
 	if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "The Matrix" || proposal.Lineup[0].MediaType != "movie" {
 		t.Fatalf("lineup=%+v, want The Matrix re-derived from the surfaced candidate", proposal.Lineup)
+	}
+}
+
+// max_tokens is sized to the turn: a search call is a few hundred tokens and a final lineup about
+// 300-600, so neither needs the old 2048. On a slow model the cap is what bounds a runaway turn.
+func TestSuggest_MaxTokensAreSizedPerTurn(t *testing.T) {
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": dateMeaningNone()}),
+		testkit.FinalResponse(finalWithDateMeaning(t, dateMeaningNone())),
+	)
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action films"}); err != nil {
+		t.Fatal(err)
+	}
+	search, final := model.AllOpts[0].MaxTokens, model.AllOpts[1].MaxTokens
+	if search <= 0 || search > 768 || final <= search || final > 1280 {
+		t.Fatalf("max_tokens search=%d final=%d, want 0 < search <= 768 and search < final <= 1280", search, final)
+	}
+}
+
+// The cached prefix is the tools plus the system prompt: nothing that varies per request may sit
+// before the user turn, or a second channel request re-prefills ~5k tokens (#1403, #1487).
+func TestSuggest_PrefixIsByteIdenticalAcrossIntents(t *testing.T) {
+	prefix := func(description string) (string, string) {
+		model := testkit.NewLLM(testkit.FinalResponse(""), testkit.FinalResponse(""), testkit.FinalResponse(""))
+		corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+		_, _ = dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: description, Era: "1990s"})
+		tools, err := json.Marshal(model.AllOpts[0].Tools)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return model.LastMessages[0].Content, string(tools)
+	}
+	sysA, toolsA := prefix("cozy mysteries")
+	sysB, toolsB := prefix("Saturday morning cartoons for kids")
+	if sysA != sysB || toolsA != toolsB {
+		t.Fatal("system prompt or tools vary with the request; the cached prefix is invalidated")
 	}
 }
 

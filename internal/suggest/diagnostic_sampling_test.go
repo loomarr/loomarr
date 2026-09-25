@@ -42,7 +42,7 @@ func TestToolDiagnosticReportsSolCompletionLimitAndDefaultRoute(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		if sent["max_completion_tokens"] != float64(2048) || sent["max_tokens"] != nil || sent["tools"] != nil || sent["response_format"] == nil {
+		if sent["max_completion_tokens"] != float64(1024) || sent["max_tokens"] != nil || sent["tools"] != nil || sent["response_format"] == nil {
 			t.Errorf("unexpected finalization parameters: %v", sent)
 		}
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{}"}}]}`))
@@ -53,7 +53,7 @@ func TestToolDiagnosticReportsSolCompletionLimitAndDefaultRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.SchemaVersion != 3 || report.CompletionLimitParameter != "max_completion_tokens" || report.DefaultUpstream != "azure/us" || report.MaxTokens != 2048 || report.ThinkingSetting != "reasoning-effort-none-v1" || report.Temperature != nil {
+	if report.SchemaVersion != 3 || report.CompletionLimitParameter != "max_completion_tokens" || report.DefaultUpstream != "azure/us" || report.MaxTokens != 1024 || report.ThinkingSetting != "reasoning-effort-none-v1" || report.Temperature != nil {
 		t.Fatalf("effective request not reported: %+v", report)
 	}
 }

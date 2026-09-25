@@ -39,11 +39,18 @@ const catalogSearchLimit = 24
 // creative — tool-calling and structured output want determinism, not variety.
 var groundedTemp = 0.2
 
-// groundedMaxTokens bounds hosted-provider cost reservation and keeps a runaway
-// final response from crowding the tool loop. Two thousand tokens comfortably fit
-// the bounded proposal schema (at most 24 surfaced candidates and 10 actionable
-// acquisitions) while avoiding an unbounded provider default on every turn.
-const groundedMaxTokens = 2048
+// Output tokens are the latency budget (#1487): every generated token costs the model's per-token
+// time, 40 ms here and far more on a slower install. The caps are sized to the turn, about 2-3x
+// what a turn is observed to write, so they bound a runaway without ever truncating a normal reply.
+//
+// searchMaxTokens covers a catalog_search call (observed 80-290; a 1-8 title collection is the
+// largest legitimate one). groundedMaxTokens covers the final lineup (observed 250-350 for 8 picks
+// of key, confidence and a short rationale; a direct-final reply also carries name, mediaType and
+// dateMeaning per pick) and is the production envelope's per-call completion bound.
+const (
+	searchMaxTokens   = 640
+	groundedMaxTokens = 1024
+)
 
 // chatOpts builds the per-turn ChatOptions with the tools + grounded sampling.
 // temp lets the repair loop lower it further on a retry.
@@ -69,6 +76,9 @@ func chatOpts(tools []llm.ToolSchema, temp float64, finalizing, keepTools bool) 
 	opts := llm.ChatOptions{
 		Profile: llm.GroundedSelection,
 		Tools:   tools, JSONMode: finalizing, Temperature: &temp, MaxTokens: groundedMaxTokens,
+	}
+	if !finalizing {
+		opts.MaxTokens = searchMaxTokens
 	}
 	if finalizing {
 		if keepTools {

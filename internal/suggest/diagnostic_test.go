@@ -35,9 +35,9 @@ func TestRunToolFinalizationDiagnosticUsesFrozenPostResultContract(t *testing.T)
 	if len(report.SystemPromptSHA256) != 64 || len(report.UserPromptSHA256) != 64 || len(report.MessagesSHA256) != 64 || len(report.ToolSchemaSHA256) != 64 {
 		t.Fatalf("diagnostic hashes = system %q user %q messages %q tool %q", report.SystemPromptSHA256, report.UserPromptSHA256, report.MessagesSHA256, report.ToolSchemaSHA256)
 	}
-	if report.SystemPromptSHA256 != "5f18a21a3735ee668e64e94ef2ffb8e7b535a8bec6eb32e4c8a486b0e5d696d6" ||
+	if report.SystemPromptSHA256 != "13f28a0f4200aed457f06e1ddc313ee29286f083b4a985c8ed7e54361aab642e" ||
 		report.UserPromptSHA256 != "05ad3558029f3b882dbab599fd3e28198f4453346a4fab267ce93988eb95c3fd" ||
-		report.MessagesSHA256 != "2b62ddd07f20e090eac134eb3bc5d13c8ced2f547a9586559d69615fe67935b1" ||
+		report.MessagesSHA256 != "0cda5a4b25b55a8c2a5860bf4fd5856728073ca66897173d578f344051525843" ||
 		report.ToolSchemaSHA256 != "595a6ec8416fc9b0cf438cc86897006d69f5f2fcf6de238c0e310e8de8273f86" {
 		t.Fatalf("frozen diagnostic identity drifted without a version change: %+v", report)
 	}
