@@ -187,3 +187,71 @@ func TestParseMemAvailable(t *testing.T) {
 		}
 	}
 }
+
+// Review regression (#1477): a live viewer arrives seconds after a preparation burst, inside the
+// ramp window, with the reading already showing the burst. Preempted encodes must stop counting as
+// not-yet-visible memory the moment they exit, or live falls back to software for encodes that no
+// longer exist.
+func TestEncodePoolLivePreemptsARecentBurstInsideTheRampWindow(t *testing.T) {
+	var mu sync.Mutex
+	clock := time.Unix(1_000, 0)
+	host := &fakeHost{base: 5 * gib, cost: gib, known: true}
+	p := memoryPool(8, host, 2*gib, &clock, &mu)
+
+	var workers sync.WaitGroup
+	for range 3 {
+		workCtx, release, ok := p.AcquireBackground(t.Context(), time.Time{})
+		if !ok {
+			t.Fatal("burst setup lease refused")
+		}
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-workCtx.Done()
+			host.running.Add(-1)
+			release()
+		}()
+	}
+	host.running.Store(3) // the burst's allocations are already visible: a tight reading
+	mu.Lock()
+	clock = clock.Add(5 * time.Second) // well inside memoryRampWindow
+	mu.Unlock()
+
+	release, ok := p.AcquireForeground(t.Context())
+	workers.Wait()
+	if !ok {
+		t.Fatal("live playback fell back to software: preempted encodes still counted in the ramp window")
+	}
+	release()
+}
+
+func TestEncodePoolReleasedEncodeStopsCountingInsideTheRampWindow(t *testing.T) {
+	var mu sync.Mutex
+	clock := time.Unix(1_000, 0)
+	// 4 GiB available, 2 GiB reserve, 1 GiB per encode: two encodes fit.
+	host := &fakeHost{base: 4 * gib, cost: gib, known: true}
+	p := memoryPool(8, host, 2*gib, &clock, &mu)
+
+	_, first, ok1 := p.AcquireBackground(t.Context(), time.Time{})
+	_, second, ok2 := p.AcquireBackground(t.Context(), time.Time{})
+	if !ok1 || !ok2 {
+		t.Fatal("two encodes that fit were refused")
+	}
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("third encode admitted into the reserve")
+	}
+	mu.Lock()
+	clock = clock.Add(time.Second) // still inside the ramp window
+	mu.Unlock()
+	first() // exits early; its memory never showed in the reading
+	first() // a repeated release must not remove another lease's entry
+	_, third, ok := p.AcquireBackground(t.Context(), time.Time{})
+	if !ok {
+		t.Fatal("a released encode still counted against the next admission inside the ramp window")
+	}
+	if _, _, ok := p.AcquireBackground(t.Context(), time.Time{}); ok {
+		t.Fatal("double release freed a second ramp entry")
+	}
+	second()
+	third()
+}

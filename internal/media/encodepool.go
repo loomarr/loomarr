@@ -50,9 +50,13 @@ type EncodePool struct {
 	backgrounds map[uint64]*backgroundLease
 	changed     chan struct{}
 
-	memory   *MemoryGate
-	now      func() time.Time
-	admitted []time.Time // admission times inside memoryRampWindow, oldest first
+	memory *MemoryGate
+	now    func() time.Time
+	// ramping holds the admission time of each LIVE lease still inside memoryRampWindow, keyed by a
+	// per-lease id. Release deletes the entry, so an encode that was preempted or finished stops
+	// counting at once instead of shadowing the next admission for the rest of the window.
+	ramping map[uint64]time.Time
+	rampID  uint64
 }
 
 type backgroundLease struct {
@@ -94,20 +98,17 @@ func (p *EncodePool) memoryAdmitsLocked(available int64, known bool) bool {
 	if p.memory == nil || !known {
 		return true
 	}
-	now := p.clock()
-	cutoff := now.Add(-memoryRampWindow)
-	kept := p.admitted[:0]
-	for _, at := range p.admitted {
-		if at.After(cutoff) {
-			kept = append(kept, at)
+	cutoff := p.clock().Add(-memoryRampWindow)
+	for id, at := range p.ramping {
+		if !at.After(cutoff) {
+			delete(p.ramping, id) // old enough that the reading already reflects it
 		}
 	}
-	p.admitted = kept
 	cost := p.memory.PerEncode()
 	if cost <= 0 {
 		return true
 	}
-	return available-p.memory.Reserve()-int64(len(p.admitted))*cost >= cost
+	return available-p.memory.Reserve()-int64(len(p.ramping))*cost >= cost
 }
 
 func (p *EncodePool) readMemory() (int64, bool) {
@@ -234,8 +235,14 @@ func (p *EncodePool) AcquireBackground(ctx context.Context, neededAt time.Time) 
 
 func (p *EncodePool) acquireLocked(backgroundID uint64, cancel context.CancelFunc) func() {
 	p.held++
+	var rampID uint64
 	if p.memory != nil {
-		p.admitted = append(p.admitted, p.clock())
+		if p.ramping == nil {
+			p.ramping = make(map[uint64]time.Time)
+		}
+		p.rampID++
+		rampID = p.rampID
+		p.ramping[rampID] = p.clock()
 	}
 	if backgroundID == 0 {
 		p.foregrounds++
@@ -245,6 +252,9 @@ func (p *EncodePool) acquireLocked(backgroundID uint64, cancel context.CancelFun
 		once.Do(func() {
 			p.mu.Lock()
 			p.held--
+			// The encode no longer exists; it must not keep counting as not-yet-visible memory.
+			// once guards this path, and deleting an aged-out id is a no-op.
+			delete(p.ramping, rampID)
 			if backgroundID == 0 {
 				p.foregrounds--
 			} else {

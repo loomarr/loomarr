@@ -3083,9 +3083,9 @@ preparation encodes held 0.8–1.4 GiB resident each (0.55–1.05 GiB excluding 
 on a 31 GiB workstation with no swap, enough to push the host into memory reclaim. Available memory
 already excludes what running encodes hold, so a capacity derived from it would let running
 preparation refuse live playback. The pool instead asks one question per lease: does available
-memory, less `playout.memory_reserve_mb` and the cost of encodes admitted within the last 30 seconds
-(a new encoder's allocation is not yet visible, and preparation admits in bursts), still cover one
-encode? The per-encode cost is `playout.encode_memory_mb` when set; otherwise the larger of 1 GiB
+memory, less `playout.memory_reserve_mb` and the cost of encodes that are still running and were
+admitted within the last 30 seconds (a new encoder's allocation is not yet visible, and preparation
+admits in bursts), still cover one encode? A released or preempted encode stops counting at once. The per-encode cost is `playout.encode_memory_mb` when set; otherwise the larger of 1 GiB
 and the capability trial's measured peak RSS. The synthetic trial encodes `testsrc` and decodes no
 real file, so it under-reads real encodes (≈0.25 GiB against ≈1 GiB measured) and may only raise the
 estimate. A background lease that fails the check is not admitted. A foreground lease that fails it
