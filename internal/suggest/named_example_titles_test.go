@@ -65,7 +65,7 @@ func TestSuggest_LikeAsVerbNamesNoExample(t *testing.T) {
 	corpus := namedTitlesCorpus()
 	goonies := corpus.Candidates[3]
 	model := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "adventure", "media_type": "movie", "dateMeaning": meaning}),
+		catalogSearchResponse(map[string]any{"query": "The Goonies", "media_type": "movie", "dateMeaning": meaning}),
 		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(goonies.TMDBID)+`","name":"The Goonies"}]}`, meaning),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
@@ -76,5 +76,65 @@ func TestSuggest_LikeAsVerbNamesNoExample(t *testing.T) {
 		if strings.Contains(search.Query, "channel") {
 			t.Fatalf("prose after a verb 'like' was searched as a title: %q", search.Query)
 		}
+	}
+}
+
+// #1498 review, on the real library's shape: a named title with an owned
+// namesake still anchors, every named title AND the franchise anchor together,
+// the franchise is filtered to the request's decade, and a trailing "for a
+// family night" is not part of the last title.
+func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
+	cases := []struct {
+		description string
+		meaning     map[string]any
+		want        []string
+		absent      []string
+	}{
+		{
+			"A Sunday-afternoon channel of 1980s adventure movies like Indiana Jones and The Goonies",
+			fixtureDateMeaning("movie_release", "description", 30, 35, 1980, 1989),
+			[]string{"The Goonies", "Indiana Jones and the Temple of Doom", "Indiana Jones and the Last Crusade"},
+			[]string{"Indiana Jones and the Dial of Destiny"},
+		},
+		{
+			"Movies like Back to the Future and Gremlins for a family night",
+			dateMeaningNone(),
+			[]string{"Back to the Future", "Gremlins"},
+			nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.description, func(t *testing.T) {
+			corpus := namedTitlesCorpus()
+			var toyStory catalog.Candidate
+			for _, c := range corpus.Candidates {
+				if c.Name == "Toy Story 5" {
+					toyStory = c
+				}
+			}
+			model := testkit.NewLLM(
+				catalogSearchResponse(map[string]any{"query": "Toy Story", "media_type": "movie", "dateMeaning": tc.meaning}),
+				finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(toyStory.TMDBID)+`","name":"Toy Story 5"}]}`, tc.meaning),
+			)
+			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: tc.description})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for _, item := range append(append([]suggest.ProposalItem(nil), proposal.Lineup...), proposal.Acquisitions...) {
+				names = append(names, item.Name)
+			}
+			for _, want := range tc.want {
+				if !slices.Contains(names, want) {
+					t.Errorf("named %q was dropped: %v", want, names)
+				}
+			}
+			for _, bad := range tc.absent {
+				if slices.Contains(names, bad) {
+					t.Errorf("%q is outside the requested era: %v", bad, names)
+				}
+			}
+		})
 	}
 }

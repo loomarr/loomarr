@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -106,7 +105,7 @@ func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meani
 	if err != nil {
 		return sourceGroundingResult{}, err
 	}
-	explicit, err := s.groundExplicitRequiredTitles(ctx, intent)
+	explicit, err := s.groundExplicitRequiredTitles(ctx, intent, meaning)
 	if err != nil {
 		return sourceGroundingResult{}, err
 	}
@@ -143,7 +142,7 @@ func (e *referenceReadError) Unwrap() error { return e.err }
 // groundExplicitRequiredTitles resolves required user titles independently of
 // the model. Named sets additionally record membership; ordinary themes retain
 // the exact binding only for deterministic inclusion and namesake rejection.
-func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *Intent) ([]catalog.Candidate, error) {
+func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning) ([]catalog.Candidate, error) {
 	titles := directIncludedTitles(*intent)
 	examples := make(map[string]bool)
 	for _, title := range exampleTitles(*intent) {
@@ -174,18 +173,23 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 		candidates := results[index].candidates
 		cacheMembershipSourceResolution(*intent, title, candidates)
 		candidate, found := unambiguousMembershipCandidate(candidates, title)
-		if !found {
-			// An example may name a franchise ("Indiana Jones"), which is no
-			// single title. Its in-library members stand in for it; an ambiguous
-			// exact title still gets no implicit media/year choice.
-			if !slices.ContainsFunc(candidates, func(c catalog.Candidate) bool { return sameExactTitle(c.Name, title) }) {
-				for _, member := range franchiseMembers(candidates, title, examples[strings.ToLower(title)]) {
+		if !found && examples[strings.ToLower(title)] {
+			// An example is a soft anchor: several exact namesakes resolve to the
+			// best-known owned one instead of dropping it, and a franchise name
+			// ("Indiana Jones"), which is no single title, resolves to its
+			// in-library members within the request's era.
+			if best, exact := bestExampleCandidate(candidates, title); exact {
+				candidate, found = best, true
+			} else {
+				for _, member := range franchiseMembers(candidates, title, meaning) {
 					memberKey, _ := member.Key()
 					intent.requiredTitleKeys[normalizeTitleLabel(member.Name)] = memberKey
 					anchored = append(anchored, member)
 				}
 			}
-			continue
+		}
+		if !found {
+			continue // no implicit media/year choice for an ambiguous user anchor
 		}
 		key, _ := candidate.Key()
 		intent.requiredTitleKeys[normalizeTitleLabel(candidate.Name)] = key
@@ -204,14 +208,12 @@ const maxFranchiseMembers = 3
 // franchiseMembers returns up to maxFranchiseMembers library titles that begin
 // with the named franchise as whole words ("Indiana Jones and the Last
 // Crusade" for "Indiana Jones"), oldest first. Only example-cued names qualify.
-func franchiseMembers(candidates []catalog.Candidate, title string, isExample bool) []catalog.Candidate {
-	if !isExample {
-		return nil
-	}
+func franchiseMembers(candidates []catalog.Candidate, title string, meaning ValidatedDateMeaning) []catalog.Candidate {
 	prefix := normalizeTitleLabel(title) + " "
 	var members []catalog.Candidate
 	for _, candidate := range candidates {
-		if candidate.InLibrary && strings.HasPrefix(normalizeTitleLabel(candidate.Name)+" ", prefix) {
+		if candidate.InLibrary && strings.HasPrefix(normalizeTitleLabel(candidate.Name)+" ", prefix) &&
+			!candidateOutsideTitleDateRange(candidate, meaning) {
 			if _, err := candidate.Key(); err == nil {
 				members = append(members, candidate)
 			}
@@ -219,6 +221,30 @@ func franchiseMembers(candidates []catalog.Candidate, title string, isExample bo
 	}
 	sort.SliceStable(members, func(i, j int) bool { return members[i].Year < members[j].Year })
 	return members[:min(len(members), maxFranchiseMembers)]
+}
+
+// bestExampleCandidate picks one of several exact-title namesakes: owned first,
+// then most-voted, then earliest. exact reports whether any namesake existed.
+func bestExampleCandidate(candidates []catalog.Candidate, title string) (catalog.Candidate, bool) {
+	var exact []catalog.Candidate
+	for _, candidate := range candidates {
+		if _, err := candidate.Key(); err == nil && sameExactTitle(candidate.Name, title) {
+			exact = append(exact, candidate)
+		}
+	}
+	if len(exact) == 0 {
+		return catalog.Candidate{}, false
+	}
+	sort.SliceStable(exact, func(i, j int) bool {
+		if exact[i].InLibrary != exact[j].InLibrary {
+			return exact[i].InLibrary
+		}
+		if exact[i].VoteCount != exact[j].VoteCount {
+			return exact[i].VoteCount > exact[j].VoteCount
+		}
+		return exact[i].Year < exact[j].Year
+	})
+	return exact[0], true
 }
 
 // groundReference resolves a pasted public page only after inference has
@@ -653,6 +679,8 @@ var (
 	exampleCuePattern = regexp.MustCompile(`(?i:\b(?:like|such\s+as|similar\s+to|in\s+the\s+vein\s+of|along\s+the\s+lines\s+of|reminiscent\s+of)\b|\be\.g\.)`)
 )
 
+var exampleTrailerPattern = regexp.MustCompile(`(?i:\s+(?:for|from|to|that|who|which|when|where|on|but|so)\s+)`)
+
 // exampleCueIsDesire reports "I'd like a channel of…", where "like" is a verb
 // and no title follows.
 func exampleCueIsDesire(prefix string) bool {
@@ -680,7 +708,15 @@ func exampleTitles(intent Intent) []string {
 			if exampleCueIsDesire(field[:match[0]]) || cueHasNearbyExclusion(field[:match[0]]) {
 				continue
 			}
-			values = append(values, clauseTitles(field[match[1]:])...)
+			for _, title := range clauseTitles(field[match[1]:]) {
+				// The last title runs into the rest of the sentence ("Gremlins
+				// for a family night"); also try it cut at the first
+				// preposition/relative word. Exact resolution keeps whichever is a title.
+				if cut := exampleTrailerPattern.FindStringIndex(title); cut != nil && cut[0] > 0 {
+					values = append(values, strings.TrimSpace(title[:cut[0]]))
+				}
+				values = append(values, title)
+			}
 		}
 	}
 	return values

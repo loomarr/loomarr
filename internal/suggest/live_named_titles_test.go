@@ -42,12 +42,23 @@ func namedTitlesCorpus() *catalogfixture.Corpus {
 		{"Good Old Boy", 1988, []string{"Family", "Drama"}},
 		{"The Land Before Time", 1988, []string{"Animation", "Family"}},
 		{"Oliver & Company", 1988, []string{"Animation", "Family"}},
+		// The real library holds a modern franchise entry, a namesake of a named
+		// title, and more than one title named in a request (#1498 review).
+		{"Indiana Jones and the Dial of Destiny", 2023, []string{"Adventure", "Action"}},
+		{"The Goonies", 2019, []string{"Documentary"}},
+		{"Back to the Future", 1985, []string{"Adventure", "Comedy", "Science Fiction"}},
+		{"Gremlins", 1984, []string{"Comedy", "Horror", "Fantasy"}},
+		{"Toy Story 5", 2026, []string{"Animation", "Family"}},
 	}
 	cands := make([]catalog.Candidate, 0, len(rows))
 	for i, r := range rows {
+		votes := 1000
+		if r.year == 2019 {
+			votes = 3 // the documentary namesake
+		}
 		cands = append(cands, catalog.Candidate{
 			MediaType: "movie", TMDBID: 2000 + i, Name: r.name, Year: r.year, InLibrary: true, Genres: r.genres,
-			Overview: "An 1980s film in the library.",
+			VoteCount: votes, Overview: "An 1980s film in the library.",
 		})
 	}
 	corpus := &catalogfixture.Corpus{Candidates: cands}
