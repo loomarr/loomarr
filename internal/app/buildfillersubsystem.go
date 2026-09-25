@@ -233,7 +233,7 @@ func buildFillerSubsystem(
 		}
 	}
 	details := fillerDetailRunner{enrichment: enrichmentCoordinator, research: researchRunner}
-	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details)))
+	jobs.Add(fillerPipelineJob(newFillerPipelineDriver(pipeline, details, log)))
 	adapter.pipeline = pipeline
 	if decisionService != nil {
 		decisionService.WithDiagnosticRecovery(adapter)
