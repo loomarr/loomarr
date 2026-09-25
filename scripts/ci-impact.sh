@@ -417,6 +417,7 @@ classify() {
         scripts/ci-ffmpeg.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         scripts/go-certification-lanes.tsv|scripts/go-race-policy.sh|scripts/go-race-weights.tsv|scripts/go-shard.sh|scripts/go-test-lane.sh|scripts/go-test-packages.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
+        scripts/tuner-args*) select_gate tuner; select_gate policy ;;
         scripts/run-playwright-container.sh) select_gate contracts; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         # Selection policy is control-plane code. Product gates validate files they consume;
         # the always-on policy job independently validates this classifier and its fixtures.

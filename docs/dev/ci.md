@@ -507,6 +507,15 @@ a cache that works only within one machine is not eligible for later CI consumpt
 scope is included in `ci-ok` when selected and is skipped for pull requests, merge groups, release
 certification, and `full` dispatches.
 
+Select `tuner` to measure a browser-engine-specific tuner flake without paying for the rest of the
+matrix (#1443). It runs only the tuner job, on the `manual-tuner` lane, and takes two optional inputs:
+`project` (`all`, `chromium`, `firefox`, or `webkit`) and `repeat_each` (1 to 100), which
+`scripts/tuner-args.sh` turns into Playwright `--project` and `--repeat-each` flags. Invalid values
+fail closed rather than running less than asked, and retries stay owned by
+`playwright.tuner.config.ts` (0), so a repeated run can never hide a failure behind a retry. At the
+defaults (`all`, 1) the script prints nothing and `make tuner-e2e-host` is byte-identical to the
+merge-queue run. Other scopes ignore both inputs, and pull requests and merge groups never see them.
+
 After that portability proof is green, `Apple compilation cache` is the only workflow authorized to
 publish compiler results. It is manual-only, refuses every ref except `refs/heads/main`, and builds
 the complete mobile and TV Release install-launch-liveness gates before saving. A restored seed is

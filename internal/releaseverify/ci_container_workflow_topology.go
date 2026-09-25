@@ -58,6 +58,9 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 type reusableWorkflowCallerAuthority struct {
 	name      string
 	condition string
+	// with is the exact set of workflow_call inputs the caller may pass; nil means the caller
+	// passes none, and any `with:` key is then rejected.
+	with map[string]string
 }
 
 func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerAuthority {
@@ -78,7 +81,7 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"apple-cache-validation": {name: "Apple compilation cache — supported-toolchain validation", condition: "github.event_name == 'workflow_dispatch' && inputs.scope == 'apple-cache-validation'"},
 
 		"playwright": {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
-		"tuner":      {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'"},
+		"tuner":      {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'", with: map[string]string{"project": "${{ inputs.project || 'all' }}", "repeat_each": "${{ inputs.repeat_each || '1' }}"}},
 		"image":      {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
 		"docs":       {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
 		"android":    {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.impact_android == 'true'"},
@@ -129,8 +132,24 @@ func verifyWorkflowTopology(workflowName string, workflow *yaml.Node) error {
 
 func verifyReusableWorkflowCaller(jobName string, job *yaml.Node) error {
 	authority, ok := workflowAuthorityCatalog().reusableCallers[jobName]
-	if !ok || !mappingHasOnlyKeys(job, "name", "needs", "if", "uses") {
+	allowed := []string{"name", "needs", "if", "uses"}
+	if len(authority.with) > 0 {
+		allowed = append(allowed, "with")
+	}
+	if !ok || !mappingHasOnlyKeys(job, allowed...) {
 		return fmt.Errorf("reusable-workflow caller keys differ from their exact authority")
+	}
+	if len(authority.with) > 0 {
+		with, present := mappingValue(job, "with")
+		if !present || with.Kind != yaml.MappingNode || len(with.Content)/2 != len(authority.with) {
+			return fmt.Errorf("reusable-workflow caller with differs from its exact authority")
+		}
+		for key, want := range authority.with {
+			value, present := mappingValue(with, key)
+			if !present || value.Kind != yaml.ScalarNode || value.Tag != "!!str" || value.Value != want {
+				return fmt.Errorf("reusable-workflow caller with.%s differs from its exact authority", key)
+			}
+		}
 	}
 	for key, want := range map[string]string{
 		"name":  authority.name,

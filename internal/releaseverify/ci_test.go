@@ -389,7 +389,7 @@ func TestVerifyCIManualScopes(t *testing.T) {
       scope:
         default: release-candidate
         type: choice
-        options: [release-candidate, full, apple-cache-validation]
+        options: [release-candidate, full, apple-cache-validation, tuner]
 jobs:
   changes:
     outputs:

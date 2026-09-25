@@ -230,7 +230,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` `ensure-playwright-image` |
 | `make e2e` | ✅ | wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate) <br>*runs:* `fe-build` `ensure-playwright-image` |
 | `make tuner-e2e` |  | 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1) <br>*runs:* `fe-build` `ensure-playwright-image` |
-| `make tuner-e2e-host` | ✅ | 100-Channel tuner controller matrix in host-installed browsers (§9.1) <br>*runs:* `fe-build` |
+| `make tuner-e2e-host` | ✅ | 100-Channel tuner controller matrix in host-installed browsers (§9.1); TUNER_PROJECT / TUNER_REPEAT_EACH narrow a manual rerun <br>*runs:* `fe-build` |
 | `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` `ensure-playwright-image` |
 
 ## Maintainer smoke (NOT CI)

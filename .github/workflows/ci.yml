@@ -19,6 +19,25 @@ on:
           - release-candidate
           - full
           - apple-cache-validation
+          - tuner
+      # Only read by the `tuner` scope: rerun the tuner matrix in one Playwright project N times to
+      # measure an engine-specific flake without paying for the rest of the matrix (#1443). Retries
+      # stay 0 and no budget moves; other scopes ignore both inputs.
+      project:
+        description: "tuner scope only: Playwright project (all, chromium, firefox, webkit)"
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - chromium
+          - firefox
+          - webkit
+      repeat_each:
+        description: "tuner scope only: repetitions per project (1-100)"
+        required: false
+        default: "1"
+        type: string
 
 # Least privilege: CI only reads the repo.
 permissions:
@@ -416,6 +435,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'
     uses: ./.github/workflows/ci-tuner.yml
+    with:
+      project: ${{ inputs.project || 'all' }}
+      repeat_each: ${{ inputs.repeat_each || '1' }}
   image:
     name: Image — release build
     needs: changes

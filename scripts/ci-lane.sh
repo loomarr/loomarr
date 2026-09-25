@@ -24,6 +24,7 @@ case "$event" in
       release-candidate) echo 'lane=manual-release-candidate' ;;
       full) echo 'lane=manual-full' ;;
       apple-cache-validation) echo 'lane=manual-apple-cache-validation' ;;
+      tuner) echo 'lane=manual-tuner' ;;
       *) printf 'ci-lane: unsupported manual scope %q\n' "$scope" >&2; exit 2 ;;
     esac
     ;;

@@ -73,6 +73,37 @@ func TestVerifyCIContainerDownloadsRequiresExactReusableWorkflowCallerShape(t *t
 	}
 }
 
+func TestVerifyCIContainerDownloadsBindsTunerCallerInputsExactly(t *testing.T) {
+	t.Parallel()
+	const declared = "    with:\n      project: ${{ inputs.project || 'all' }}\n      repeat_each: ${{ inputs.repeat_each || '1' }}\n"
+	mutations := map[string]string{
+		"flipped project value":     "    with:\n      project: webkit\n      repeat_each: ${{ inputs.repeat_each || '1' }}\n",
+		"flipped repeat_each value": "    with:\n      project: ${{ inputs.project || 'all' }}\n      repeat_each: ${{ inputs.repeat_each }}\n",
+		"extra input":               declared + "      retries: 3\n",
+		"missing input":             "    with:\n      project: ${{ inputs.project || 'all' }}\n",
+		"dropped with":              "",
+	}
+	for name, replacement := range mutations {
+		t.Run(name, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			path := filepath.Join(root, ".github", "workflows", "ci.yml")
+			source := readFixtureFile(t, path)
+			if !strings.Contains(source, declared) {
+				t.Fatal("CI tuner caller `with` fixture changed")
+			}
+			writeFixtureFile(t, path, strings.Replace(source, declared, replacement, 1))
+			if err := VerifyCIContainerDownloads(root); err == nil {
+				t.Fatal("VerifyCIContainerDownloads accepted a tuner caller whose inputs differ from the exact authority")
+			}
+		})
+	}
+	t.Run("declared inputs pass", func(t *testing.T) {
+		if err := VerifyCIContainerDownloads(writeCIContainerDownloadsFixture(t)); err != nil {
+			t.Fatalf("declared tuner caller inputs rejected: %v", err)
+		}
+	})
+}
+
 func TestVerifyCIContainerDownloadsBindsCacheCleanupCommandAndContext(t *testing.T) {
 	t.Parallel()
 	tests := map[string]func(*yaml.Node){
