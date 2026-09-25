@@ -305,7 +305,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			}),
 		}),
-		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{}),
+		"ci-docs.yml": standardRunWorkflow(map[string]workflowStepAuthority{
+			"make docs-lint-prose": exactWorkflowStep(4, "Prose", workflowStepAuthority{targets: []string{"docs-lint-prose"}, allowsAcquisition: true}),
+		}),
 		"ci-frontend.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),
 			"make fe FE_SHARD=${{ matrix.shard }}/${{ strategy.job-total }}": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe"}}),
@@ -356,9 +358,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				"ci-policy": {
 					condition: "always()",
 					steps: map[string]workflowStepAuthority{
-						"make ci-lint release-verify":                                                exactWorkflowStep(3, "Workflow and publication policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify"}}),
-						"make agent-harness-test shellcheck":                                         exactWorkflowStep(4, "Agent harness and shell policy", workflowStepAuthority{targets: []string{"agent-harness-test", "shellcheck"}}),
-						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify"}}),
+						"make ci-lint release-verify":        exactWorkflowStep(3, "Workflow and publication policy", workflowStepAuthority{targets: []string{"ci-lint", "release-verify"}}),
+						"make agent-harness-test shellcheck": exactWorkflowStep(4, "Agent harness and shell policy", workflowStepAuthority{targets: []string{"agent-harness-test", "shellcheck"}}),
+						"go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify graphify-verify": exactWorkflowStep(5, "Documentation contracts read by Go", workflowStepAuthority{targets: []string{"arch-docs-verify", "config-docs-verify", "dev-docs-verify", "graphify-verify"}}),
 					},
 				},
 				"ci-ok": {

@@ -42,13 +42,12 @@ jobs:
             docs 'design/*.md' .agents .claude
           fail: true
 
-      # Repo vocabulary only — no stock style package. See .vale.ini for why.
+      # Repo vocabulary only — no stock style package. See .vale.ini for why. Use the same
+      # immutable container as local verification: the Vale action delegates to reviewdog, which
+      # requires GitHub to generate the PR diff even when Vale has no findings. Generated graph
+      # updates can exceed that presentation limit; the prose gate depends only on Vale's result.
       - name: Prose
-        uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3
-        with:
-          files: '["README.md", "CONTRIBUTING.md", "docs/help", "docs/install", "docs/dev"]'
-          fail_on_error: true
-          version: 3.17.1
+        run: make docs-lint-prose
 
       # The site must still build from the docs as committed. It renders docs/** IN PLACE, so
       # a moved or deleted page breaks the build here rather than on deploy.

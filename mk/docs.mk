@@ -15,7 +15,7 @@
 # ⚠ lychee publishes no semver tags on Docker Hub — only `sha-*`, `nightly` and `master`. The
 # sha tag is the pin; `latest` does not exist for this image and `master` is a moving target.
 LYCHEE_IMAGE ?= lycheeverse/lychee:sha-c36b9aa-alpine
-VALE_IMAGE   ?= jdkato/vale:v3.17.1
+VALE_IMAGE   ?= jdkato/vale:v3.17.1@sha256:7dba3c9104ba366f172d119022c4ec53a005f7d14dc1b80e285421a3f0b71657
 D2_IMAGE     ?= terrastruct/d2:v0.7.1@sha256:810f69aff66636a75ab0b14afaca7d9055698ebe3a54274b477b351dffef9b58
 DOCKER_DOC   := docker run --rm -v "$(CURDIR)":/work -w /work
 
