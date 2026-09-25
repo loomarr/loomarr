@@ -27,6 +27,10 @@ const schedule: WatchingScheduleData = {
   },
 };
 
+/** A data: URI, never a remote URL: the snapshot suite must not depend on the network. */
+const STILL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAECAIAAAA8r+mnAAAAVUlEQVR4nA3JIRIAIQwDwHsTGh1dHY2OruxUIZFIZCVPPNbu1+AdAUzDIvbAEcpxv0bvDHAaF7kHj1jOF/KugKZpUXvoSOV6kd4zkNNyMffIoyzP+wOonSmh7IzuzQAAAABJRU5ErkJggg==";
+
 const Preview = ({
   loading,
   loadError,
@@ -77,6 +81,12 @@ const Loading: Story = {
   args: { loading: true, scheduleData: {}, state: { catalog: [], recentChannelIds: [], status: "empty" } },
 };
 const Tuning: Story = { args: { state: { ...snapshot, status: "tuning" } } };
+// A viewer-initiated tune (channel up/down) is what raises the switch overlay: the surf card over the
+// channel's dimmed still, or over plain black when the channel has no still yet.
+const TuningSwitch: Story = { args: { state: { ...snapshot, status: "tuning", tuneReason: "step" } } };
+const TuningSwitchWithStill: Story = {
+  args: { state: { ...snapshot, status: "tuning", stillUri: STILL, tuneReason: "step" } },
+};
 const PlaybackError: Story = {
   args: { state: { ...snapshot, error: "The stream could not be decoded.", status: "failed" } },
 };
@@ -116,4 +126,6 @@ export {
   Paused,
   PlaybackError,
   Tuning,
+  TuningSwitch,
+  TuningSwitchWithStill,
 };

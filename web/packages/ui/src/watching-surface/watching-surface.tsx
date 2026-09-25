@@ -11,10 +11,13 @@ import { behindLabel, playbackMessage } from "./watching-surface-state";
 
 const LoadingChannels = ({ density }: Pick<WatchingSurfaceProps, "density">) => (
   <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
-    <ActivityIndicator
-      accessibilityLabel="Loading channels"
-      size={density === "tv" ? "tv" : density === "touch" ? "touch" : "default"}
-    />
+    {/* The indicator aligns itself to the start (so it never stretches); this wrapper carries it to the centre. */}
+    <View style={{ alignSelf: "center" }}>
+      <ActivityIndicator
+        accessibilityLabel="Loading channels"
+        size={density === "tv" ? "tv" : density === "touch" ? "touch" : "default"}
+      />
+    </View>
   </View>
 );
 

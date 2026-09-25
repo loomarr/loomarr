@@ -9,6 +9,19 @@ import { describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface } from "../index";
 
+// Layout is native-only (the DOM never reports onLayout), so the chrome bar's measured height is
+// driven through the very Surface props the TV renders: record every Surface's latest props.
+const surfaces = vi.hoisted(() => ({ latest: [] as Array<Record<string, unknown>> }));
+vi.mock("@loomarr/design-system", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@loomarr/design-system")>();
+  const { createElement } = await import("react");
+  const RecordingSurface = (props: Record<string, unknown>) => {
+    surfaces.latest.push(props);
+    return createElement(actual.Surface as never, props);
+  };
+  return { ...actual, Surface: RecordingSurface };
+});
+
 (
   globalThis as typeof globalThis & {
     IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -145,6 +158,39 @@ describe("TV channel switch overlay", () => {
     act(() => root.render(surface({ ...tuning, tuneReason: "catalog" })));
     expect(overlay(container)).toBeNull();
     act(() => root.unmount());
+  });
+
+  it("lifts the card above the chrome bar by the bar's measured height, not an assumed one", () => {
+    const { root } = mount();
+    surfaces.latest.length = 0;
+    act(() => root.render(surface(tuning)));
+    const bar = () => surfaces.latest.findLast((props) => typeof props.onLayout === "function");
+    const card = () => surfaces.latest.findLast((props) => props.width === 360);
+    expect(bar()).toBeDefined();
+
+    act(() => (bar()?.onLayout as (event: unknown) => void)({ nativeEvent: { layout: { height: 260 } } }));
+    expect(card()?.bottom).toBe(260 + 16);
+
+    act(() => (bar()?.onLayout as (event: unknown) => void)({ nativeEvent: { layout: { height: 132 } } }));
+    expect(card()?.bottom).toBe(132 + 16);
+    act(() => root.unmount());
+  });
+
+  it("centres the loading spinner (its own align-self must not undo the container's centring)", () => {
+    const { container, root } = mount();
+    (globalThis as unknown as { document: { body: HTMLElement } }).document.body.appendChild(container);
+    act(() =>
+      root.render(
+        surface({ catalog: [], recentChannelIds: [], status: "empty" }, { loading: true, schedule: {} }),
+      ),
+    );
+    const spinner = container.querySelector('[aria-label="Loading channels"]') as HTMLElement;
+    // A spinner that aligns itself to the start sits at the screen's left edge unless a
+    // shrink-wrapping, centred wrapper carries it.
+    expect(getComputedStyle(spinner).alignSelf).toBe("flex-start");
+    expect(getComputedStyle(spinner.parentElement as HTMLElement).alignSelf).toBe("center");
+    // No root.unmount(): react-native-web's reduced-motion subscription has no `remove` in jsdom.
+    container.remove();
   });
 
   it("is never drawn on touch density (the web Watch page adopts it separately)", () => {
