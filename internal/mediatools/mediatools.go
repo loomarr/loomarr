@@ -51,6 +51,9 @@ type MediaTools interface {
 	// than from its generated name (§10 V54). `Transcribe` has always taken a span for the same
 	// reason; vision only ever needed one because the vision RUNG runs on whole clips.
 	KeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error)
+	// VisionKeyframesIn is KeyframesIn bounded to VisionFrameMaxPixels — what a multimodal model
+	// is sent. Every call site that attaches images to an LLM prompt must use this one.
+	VisionKeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error)
 	// Cut writes [startMs,endMs) to out with stream copy (no re-encode — §10).
 	Cut(ctx context.Context, file string, startMs, endMs int64, out string) error
 }
@@ -213,6 +216,27 @@ func (t *FFmpegTools) Keyframes(ctx context.Context, file string, n int) ([][]by
 // difference between input- and output-seeking is the difference between per-segment framing
 // being viable at all and costing a full decode per segment (§10 V51g's budget rule).
 func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {
+	return t.keyframesIn(ctx, file, startMs, endMs, n, fmt.Sprintf("min(iw,%d)", SemanticFrameMaxWidth))
+}
+
+// VisionKeyframesIn is KeyframesIn sized for a multimodal model's prompt: the same windows, but
+// bounded to VisionFrameMaxPixels of AREA instead of a width. A vision model bills image tokens
+// by patch count, so pixels are the cost; a 640x480 archive frame or a 1280x720 HD one lands on
+// about the same budget. Never upscales.
+func (t *FFmpegTools) VisionKeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {
+	return t.keyframesIn(ctx, file, startMs, endMs, n,
+		fmt.Sprintf("min(iw,trunc(sqrt(%d*iw/ih)/2)*2)", VisionFrameMaxPixels))
+}
+
+// VisionFrameMaxPixels is the per-frame pixel budget for frames sent to a vision model (512x384
+// at 4:3). The unbounded path sent native 640x480 SD frames (~300k px). This keeps 80% of the
+// linear resolution, so a brand name or year that is legible on a 4:3 SD frame stays legible
+// (glyph height only shrinks ~20%), while cutting the pixels — and so the prompt tokens — by
+// about a third. Deliberately NOT applied to KeyframesIn: artwork and exact-frame evidence keep
+// their own contracts.
+const VisionFrameMaxPixels = 512 * 384
+
+func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, endMs int64, n int, widthExpr string) ([][]byte, error) {
 	if n <= 0 {
 		return nil, nil
 	}
@@ -240,7 +264,7 @@ func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, end
 			"-i", file,
 			"-t", fmt.Sprintf("%.3f", float64(windowMs)/1000),
 			"-an",
-			"-vf", fmt.Sprintf("thumbnail=n=%d,scale=w='min(iw,%d)':h=-2", semanticThumbnailFrames, SemanticFrameMaxWidth),
+			"-vf", fmt.Sprintf("thumbnail=n=%d,scale=w='%s':h=-2", semanticThumbnailFrames, widthExpr),
 			"-frames:v", "1",
 			"-q:v", "4",
 			"-f", "image2pipe", "-c:v", "mjpeg", "-")

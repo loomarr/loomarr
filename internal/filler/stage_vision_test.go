@@ -72,10 +72,8 @@ type scriptedVision struct {
 	spanCount          int
 }
 
-func (s *scriptedVision) KeyframesIn(_ context.Context, _ string, start, end int64, n int) ([][]byte, error) {
-	s.spanCalls++
-	s.spanStart, s.spanEnd, s.spanCount = start, end, n
-	return s.frames, s.err
+func (s *scriptedVision) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
+	return nil, errors.New("vision call used unbounded KeyframesIn; it must use VisionKeyframesIn")
 }
 
 func (s *scriptedVision) Keyframes(_ context.Context, _ string, _ int) ([][]byte, error) {
@@ -495,4 +493,10 @@ func TestVisionStage_OffStatesAreInapplicableWithAReason(t *testing.T) {
 			t.Errorf("%s: provider called %d times, want a no-op", tc.name, p.calls)
 		}
 	}
+}
+
+func (s *scriptedVision) VisionKeyframesIn(_ context.Context, _ string, start, end int64, n int) ([][]byte, error) {
+	s.spanCalls++
+	s.spanStart, s.spanEnd, s.spanCount = start, end, n
+	return s.frames, s.err
 }

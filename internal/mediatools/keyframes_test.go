@@ -3,6 +3,7 @@ package mediatools
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image/jpeg"
 	"os"
 	"os/exec"
@@ -78,5 +79,83 @@ func TestKeyframesIn_ProducesDecodableNativeSizeFrames(t *testing.T) {
 		if cfg.Width != 1280 || cfg.Height != 720 {
 			t.Fatalf("frame %d dimensions = %dx%d, want native 1280x720", i, cfg.Width, cfg.Height)
 		}
+	}
+}
+
+// Image tokens on a vision model scale with pixel AREA, so the vision bound is a pixel budget,
+// not a width: 640x480 archive material and 16:9 HD both land on roughly the same cost.
+func TestVisionKeyframesIn_BoundsPixelAreaNotJustWidth(t *testing.T) {
+	dir := t.TempDir()
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$(dirname \"$0\")/calls\"\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFFmpegTools(ffmpeg, "", "", "", "").VisionKeyframesIn(context.Background(), "clip.mp4", 0, 30_000, 4); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "calls"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(calls) != 4 {
+		t.Fatalf("ffmpeg calls = %d, want 4 windows", len(calls))
+	}
+	for _, call := range calls {
+		if strings.Contains(call, "min(iw,1920)") || !strings.Contains(call, fmt.Sprint(VisionFrameMaxPixels)) {
+			t.Fatalf("vision frames are not bounded by the pixel budget: %s", call)
+		}
+	}
+	if !strings.Contains(calls[len(calls)-1], "-ss 27.000") {
+		t.Fatalf("vision frames lost the end-card window: %s", calls[len(calls)-1])
+	}
+}
+
+func TestVisionKeyframesIn_DownscalesToBudgetAndNeverUpscales(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	dir := t.TempDir()
+	tools := NewFFmpegTools(ffmpeg, "", "", "", "")
+	for _, tc := range []struct {
+		name          string
+		size          string
+		wantW, wantH  int
+		wantUnchanged bool
+	}{
+		{name: "SD archive 4:3", size: "640x480", wantW: 512, wantH: 384},
+		{name: "HD 16:9", size: "1280x720", wantW: 590, wantH: 332},
+		{name: "already below budget", size: "320x240", wantW: 320, wantH: 240},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clip := filepath.Join(dir, strings.ReplaceAll(tc.size, "x", "_")+".mp4")
+			cmd := exec.Command(ffmpeg, "-nostdin", "-v", "error",
+				"-f", "lavfi", "-i", "testsrc2=size="+tc.size+":rate=30:duration=6",
+				"-c:v", "mpeg4", "-y", clip)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("build fixture: %v: %s", err, out)
+			}
+			frames, err := tools.VisionKeyframesIn(context.Background(), clip, 0, 6000, 4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(frames) != 4 {
+				t.Fatalf("frames = %d, want 4", len(frames))
+			}
+			for i, frame := range frames {
+				cfg, err := jpeg.DecodeConfig(bytes.NewReader(frame))
+				if err != nil {
+					t.Fatalf("frame %d is not a JPEG: %v", i, err)
+				}
+				if cfg.Width != tc.wantW || cfg.Height != tc.wantH {
+					t.Fatalf("frame %d = %dx%d, want %dx%d", i, cfg.Width, cfg.Height, tc.wantW, tc.wantH)
+				}
+				if cfg.Width*cfg.Height > VisionFrameMaxPixels {
+					t.Fatalf("frame %d has %d pixels, over the %d budget", i, cfg.Width*cfg.Height, VisionFrameMaxPixels)
+				}
+			}
+		})
 	}
 }

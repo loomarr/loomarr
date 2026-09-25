@@ -752,3 +752,7 @@ func TestSplit_FailedDetectionLeavesTheReelParked(t *testing.T) {
 		t.Errorf("attempts = %d, want 3 — a failed detection must not reset the retry budget", row.Attempts)
 	}
 }
+
+func (f splitFakeTools) VisionKeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
+	return nil, nil
+}

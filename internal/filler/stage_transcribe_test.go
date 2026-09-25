@@ -259,3 +259,7 @@ func TestTranscribeStage_OffStatesAreInapplicableWithAReason(t *testing.T) {
 		t.Errorf("transcribed %d times with the rung off", tools.calls)
 	}
 }
+
+func (s *scriptedTools) VisionKeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
+	return nil, nil
+}
