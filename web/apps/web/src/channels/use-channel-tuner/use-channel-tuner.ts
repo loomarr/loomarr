@@ -75,6 +75,7 @@ const useChannelTuner = ({
   const requestedId = useRef<string | undefined>(undefined);
   const latestAttemptId = useRef<number | undefined>(undefined);
   const warmed = useRef(new Map<string, WarmedChannel>());
+  const [readyId, setReadyId] = useState<string>();
 
   useEffect(() => {
     // A navigation from outside this controller becomes the new base. Keep our request while the
@@ -82,6 +83,7 @@ const useChannelTuner = ({
     pendingId.current = currentId;
     if (requestedId.current === currentId) return;
     requestedId.current = undefined;
+    setReadyId(undefined);
     setActiveId(currentId);
     setRequest(undefined);
   }, [currentId]);
@@ -89,12 +91,13 @@ const useChannelTuner = ({
   const current = catalog.find((channel) => channel.id === activeId);
 
   useEffect(() => {
-    // Warm as soon as the tune is accepted, not after the first decoded frame: at a 1 s dwell the
-    // neighbour's live session must already be starting or the press pays a cold start (#1457).
-    // Speculation cannot hurt the stream being tuned: the server admits a warm only into spare
-    // capacity and never reclaims another channel's session, and each retarget aborts the previous
-    // neighbours' warms (the cleanup below), so the latest request wins.
-    if (!current) return;
+    // Speculation must never contend with the stream the viewer just selected. The player marks
+    // this Channel ready when its own first manifest has arrived (#1484): until then the neighbours'
+    // warm requests would share the browser's per-host connections with the target's manifest.
+    // Waiting for the first decoded frame instead was too late: at a 1 s dwell the neighbour's live
+    // session had not started and the press paid a cold start (#1457). Each retarget aborts the
+    // previous neighbours' warms, so the latest request wins.
+    if (!current || readyId !== current.id) return;
     const controller = new AbortController();
     const neighbors = [adjacentChannel(catalog, current.id, -1), adjacentChannel(catalog, current.id, 1)]
       .filter((channel): channel is ChannelDTO => Boolean(channel && channel.id !== current.id))
@@ -118,7 +121,9 @@ const useChannelTuner = ({
         });
     }
     return () => controller.abort();
-  }, [catalog, current, warmChannel]);
+  }, [catalog, current, readyId, warmChannel]);
+
+  const ready = useCallback((channelId: string) => setReadyId(channelId), []);
 
   const step = useCallback(
     (direction: TuneDirection) => {
@@ -129,6 +134,7 @@ const useChannelTuner = ({
       latestAttemptId.current = attempt.id;
       pendingId.current = target.id;
       requestedId.current = target.id;
+      setReadyId(undefined);
       setRequest({ channel: target, attempt, phase: "acknowledging" });
       acrossNextPaint(
         () => {
@@ -182,6 +188,7 @@ const useChannelTuner = ({
     attempt: request?.phase === "tuning" ? request.attempt : undefined,
     acknowledging: request?.phase === "acknowledging",
     canSurf: catalog.length > 1,
+    ready,
     step,
     retry,
   };

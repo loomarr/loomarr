@@ -5,7 +5,7 @@ import {
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import { ChannelWatch } from "./channel-watch";
 
 const hls = vi.hoisted(() => ({
   status: "playing",
+  onManifest: undefined as (() => void) | undefined,
   attach: vi.fn(() => () => undefined),
   liveTransport: {
     state: {
@@ -34,12 +35,15 @@ const hls = vi.hoisted(() => ({
 const diagnosticsRecord = vi.hoisted(() => vi.fn());
 
 vi.mock("../use-hls-player", () => ({
-  useHlsPlayer: () => ({
-    status: hls.status,
-    playbackSessionId: "playback_1",
-    attach: hls.attach,
-    liveTransport: hls.liveTransport,
-  }),
+  useHlsPlayer: (_channelId: string, _attempt?: unknown, onManifest?: () => void) => {
+    hls.onManifest = onManifest;
+    return {
+      status: hls.status,
+      playbackSessionId: "playback_1",
+      attach: hls.attach,
+      liveTransport: hls.liveTransport,
+    };
+  },
 }));
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: diagnosticsRecord } }));
 
@@ -168,16 +172,21 @@ describe("ChannelWatch pickers", () => {
   it("renders accessible Channel Up/Down controls that share the tuner step action", async () => {
     stubTracks();
     const step = vi.fn();
+    const ready = vi.fn();
     render(
       <ChannelWatch
         channel={live}
         isAdmin
         onSavePolicy={vi.fn()}
-        tuner={{ canSurf: true, step, retry: vi.fn() }}
+        tuner={{ canSurf: true, ready, step, retry: vi.fn() }}
       />,
       { wrapper: makeWrapper() },
     );
     await startWatching();
+    // A playing player alone is not the signal: neighbours warm when the target's manifest arrives.
+    expect(ready).not.toHaveBeenCalled();
+    act(() => hls.onManifest?.());
+    expect(ready).toHaveBeenCalledWith("ch-1");
 
     await userEvent.click(screen.getByRole("button", { name: "Channel up" }));
     await userEvent.click(screen.getByRole("button", { name: "Channel down" }));

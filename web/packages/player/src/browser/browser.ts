@@ -48,6 +48,12 @@ interface BrowserHlsPlayerOptions {
   channelId: string;
   errorMessage: (error: unknown) => string;
   mintSource: (signal: AbortSignal) => Promise<BrowserPlaySource | undefined>;
+  /**
+   * Fires when this Channel's first manifest has arrived. Unlike `attempt.markPhase` it does not
+   * depend on a timed tune, so a cold page load reports it too. Held in a ref: changing it never
+   * re-binds the source.
+   */
+  onManifest?: () => void;
   recordDiagnostic: (observation: BrowserClientObservation) => void;
 }
 
@@ -331,8 +337,11 @@ function useBrowserHlsPlayer({
   channelId,
   errorMessage,
   mintSource,
+  onManifest,
   recordDiagnostic,
 }: BrowserHlsPlayerOptions): UseBrowserHlsPlayer {
+  const onManifestRef = useRef(onManifest);
+  onManifestRef.current = onManifest;
   const playbackSessionIDRef = useRef(createPlaybackSessionID());
   const channelIdentityRef = useRef(channelId);
   const replacedChannelRef = useRef<string | undefined>(undefined);
@@ -745,6 +754,7 @@ function useBrowserHlsPlayer({
         const onManifestParsed = () => {
           manifestParsed = true;
           playbackAttempt?.markPhase("manifest");
+          onManifestRef.current?.();
           joinTransferredLiveSync();
           playReplacement();
         };
@@ -933,7 +943,10 @@ function useBrowserHlsPlayer({
       // browser, not a Chromium false-positive.
       if (nativeHLS || video.canPlayType("application/vnd.apple.mpegurl")) {
         activeRef.current = { video, sourceURL: url, lastKeepaliveMs: Date.now() };
-        const onManifest = () => playbackAttempt?.markPhase("manifest");
+        const onManifest = () => {
+          playbackAttempt?.markPhase("manifest");
+          onManifestRef.current?.();
+        };
         // Native HLS has no transport controller to detach the previous URL for us.
         video.removeAttribute("src");
         video.load();
