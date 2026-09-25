@@ -126,6 +126,16 @@ const VideoPlayer = ({
     };
   }, [attach]);
 
+  // A live player with a tuner seam owns keyboard focus once, on mount. The shortcuts below are bound
+  // to the wrapper, and a freshly tuned page has focus on <body>, so without this the first channel
+  // key after tuning in went nowhere (#1459). Mount-only: later focus belongs to the viewer.
+  const tunable = Boolean(live && onChannelStep);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only claim; re-running on `tunable` flips must not steal focus back
+  useLayoutEffect(() => {
+    if (tunable && document.activeElement === document.body)
+      wrapperRef.current?.focus({ preventScroll: true });
+  }, []);
+
   // Keyboard shortcuts — what native controls would have given free: Space/K toggle, M mutes, arrows
   // seek (non-live only). Bound on the player's surface so they cannot fire while it is off-screen,
   // and skipped when focus is in a control that uses the same keys (Space on a <button> must click).
@@ -184,7 +194,12 @@ const VideoPlayer = ({
       {/* biome-ignore lint/a11y/noStaticElementInteractions: shortcut layer over a composite widget; every action also has a focusable control inside */}
       <div
         ref={wrapperRef}
-        className={cn("group/player relative aspect-video w-full overflow-hidden bg-black", className)}
+        className={cn(
+          "group/player relative aspect-video w-full overflow-hidden bg-black outline-none",
+          className,
+        )}
+        // Focusable by script only (not a Tab stop) so the mount claim above can land on the surface.
+        tabIndex={-1}
         onKeyDown={onKeyDown}
         onMouseEnter={onPointerActive}
         onMouseMove={onPointerActive}
