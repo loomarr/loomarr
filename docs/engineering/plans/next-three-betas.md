@@ -16,7 +16,9 @@ The latest published server release is
 capability repair [#1201](https://github.com/loomarr/loomarr/pull/1201) remains in protected
 integration at this baseline. Neither repair is present in the published beta.5 image.
 
-The remaining planned server releases are **v0.2.0-beta.6 and beta.7**; the beta.5 section below
+Beta.6 was published on 2026-09-22. On 2026-09-24 the maintainer made **beta.7 a stability and
+bug-fix release**, and the general filler certification program moved intact to **beta.8**. The
+remaining planned server releases are **v0.2.0-beta.7 and beta.8**; the beta.5 section below
 preserves its accepted release contract and explicit carry-forwards. Android TV keeps its separate
 version authority in `web/apps/tv/android-release.json` (currently `0.1.0-beta.5`); each release
 candidate records the exact server/client pairing and follows the existing protected promotion
@@ -31,7 +33,8 @@ can move without weakening the release's promised outcome.
 | --- | --- | --- |
 | **beta.5 — Trustworthy creation and playback** | Understand the request, explain uncertainty and launch readiness, recover cleanly, and watch the accepted changes on the declared household setup. | #1103, #1044, #1098/#1068, #1015/#494, #1097/#1037; approval safety #955 and applicable release prerequisites #688/#661/#1162 |
 | **beta.6 — Household filler release** | Ingest real Archive.org and operator-authorized YouTube media, let the shipping pipeline screen and enrich it automatically, and prove useful clips reach real breaks and play on Web and an Android TV emulator. | #1371, #1204, #741 |
-| **beta.7 — General filler certification and sustained use** | Generalize safe unattended admission beyond the accepted set, then preserve preferences and resources through repeated curation and ordinary maintenance. | #548/#549/#555, the structure/spoken/written/visual/audience/enrichment authorities, #498/#497, #749, #970, #1104; carry forward #1037/#1097 |
+| **beta.7 — Stability and bug fixes** | Filler actually reaches breaks and acquisition progresses again; the Guide loads without blank waits; TV playback recovers and reports its errors; local AI calls finish within their budget; the Queue page has one clear purpose. | Milestone [beta.7](https://github.com/loomarr/loomarr/milestone/4): blockers #1391/#1392; #1393–#1408, #688, #1040 |
+| **beta.8 — General filler certification and sustained use** | Generalize safe unattended admission beyond the accepted set, then preserve preferences and resources through repeated curation and ordinary maintenance. | #548/#549/#555, the structure/spoken/written/visual/audience/enrichment authorities, #498/#497, #749, #970, #1104; carry forward #1037/#1097 |
 
 These are release outcomes, not a serial queue of one PR per issue. The many filler issues include
 parents, delivered tooling and independent evidence tasks. Reuse accepted code; complete the
@@ -61,7 +64,7 @@ content decision. Execute in this order:
    journeys, rollback procedure and remaining limitations into one GO/HOLD packet before tagging.
 
 This cut grants no new provider spend, truth decision or general admission authority. The complete
-unattended-admission certification program moves intact to beta.7; it is not silently waived.
+unattended-admission certification program moves intact to beta.8; it is not silently waived.
 
 ## What the delivery already provides
 
@@ -100,7 +103,7 @@ Complete these lanes concurrently, with one owner for overlapping planner/scorer
    exact declared hardware/profile with the existing 100+ configured-Channel HLS/raw churn harness,
    measured active capacity, cleanup and percentile artifacts. The maintainer deferred only raw
    MPEG-TS prepared startup p95 targets (below 100 ms to first transport byte and 500 ms to first
-   decoded frame) to beta.7. Keep the original certifier, thresholds and failed reports. Raw validity,
+   decoded frame) to beta.8. Keep the original certifier, thresholds and failed reports. Raw validity,
    continuity, admission, capacity, recovery and cleanup remain required. Prepared HLS timing and
    the existing shipping-browser budgets remain beta.5 requirements.
 4. **Approval and login correctness — #955/#688.** Finish durable atomic pull approval/queueing,
@@ -160,7 +163,37 @@ deterministic holds and rejections are explained; the candidate's build, evidenc
 The maintainer performs one release-level spot check, not clip-by-clip approval. General claims about
 all languages, all source categories or independently certified model accuracy remain outside beta.6.
 
-## beta.7 — General filler certification and sustained use
+## beta.7 — Stability and bug fixes
+
+Scope comes from the 2026-09-24 production triage against beta.6, which diagnosed each issue below
+read-only and recorded its evidence, root cause and verification in the issue. Fix causes, not symptoms,
+and prove each fix on the household install, not only in tests.
+
+- **Filler reaches breaks (release blockers).** Resolve empty-country sources to the installation
+  geography during enrichment so a home country no longer filters every break empty (#1391). Repair
+  legacy pipeline rows missing the screen record, and apply backoff when readiness commit fails, so
+  the queue drains (#1392). Then #1393 (split-review false conflict), #1394 (acquisition estimate and
+  storage reservation), #1395 (artifacts stuck in repair).
+- **Guide latency.** Keep the previous window visible while the next loads (#1396). Take TMDB artwork
+  out of the request path and fix arrangement-cache misses (#1397). Bound `diagnostic_events` and
+  relieve SQLite connection contention (#1398). Measure click-to-content in the browser before and
+  after.
+- **TV playback.** Report player errors to the server and recover automatically (#1400); fix the
+  episode-boundary timestamp hole and hardware-decode fallback order (#1401).
+- **Local AI calls.** Replace the fixed 120s timeout and keep the failure cause (#1402); keep the
+  cached prompt prefix stable and bound filler JSON calls (#1403). Server launch flags (parallel slots,
+  cache reuse, speculative decoding) live in the homelab configuration, not this repository.
+- **Operability.** Log hygiene (#1399), metrics authentication (#1408), daily tuner rescan (#1407).
+- **Queue and usability.** Fix the Queue defects (#1404), then redefine the page as Requests once the
+  maintainer settles the brief's open questions (#1405). Finish the usability audit and ship its top
+  improvements (#1406), along with #1040. Fix the Emby login scheme bug (#688).
+
+**Exit:** on the household install, filler airs in real breaks on every channel with an eligible pool
+and the acquisition queue advances; Guide window changes show no blank grid; a forced TV player error
+recovers without a manual Retry and appears in server diagnostics; no LLM call fails on the client
+timeout under normal load; every beta.7 issue is closed or explicitly moved with a reason.
+
+## beta.8 — General filler certification and sustained use
 
 - **Finish source and truth authority.** Reuse the delivered corpus and review tooling while closing
   challenged truth (#1085), replacement/exposure authority (#1089), clean controls (#1011), and the
@@ -189,14 +222,14 @@ all languages, all source categories or independently certified model accuracy r
   rejection, inactivity or playback stops as inferred taste. Separate relevance and explicit
   preference fidelity from novelty; qualify against the existing repeated-release evidence.
 - **Coverage-driven filler — #749.** Use actual Channel/break gaps to propose bounded acquisition
-  through the certified beta.7 authority. Never turn a gap into an automatic download or admission
+  through the certified beta.8 authority. Never turn a gap into an automatic download or admission
   shortcut.
 - **Finish shared Web parity — #970.** Deliver remaining P6/P7 route cohorts and P8 retirement
   through existing visual, authorization, form, responsive and accessibility gates. Delete replaced
   surface implementations with their accepted replacements. Device evidence from one Shield does
   not establish iOS, Android-touch or Apple TV product readiness.
 - **Close integrated household acceptance — #1104.** Bind the beta.5 readiness/capacity profile,
-  beta.6 exact-content evidence, beta.7 general certificates, repeated-curation results and exact
+  beta.6 exact-content evidence, beta.8 general certificates, repeated-curation results and exact
   installed clients into one go/hold packet. Predeclare trial duration and any missing
   burden/freshness thresholds before runs;
   obtain maintainer acceptance of the exact build and supported envelope.
@@ -256,7 +289,7 @@ missing decisions. Never run `make smoke*` from an agent session.
 
 The table preserves the 2026-09-09 complete-allocation snapshot and records the 2026-09-20 release
 cut. Closed work keeps the release in which it contributed; open general-certification work moves to
-beta.7. Beta.6 has three open owners: #1371 for the Monday cut, #1204 for integration evidence, and
+beta.8. Beta.6 has three open owners: #1371 for the Monday cut, #1204 for integration evidence, and
 #741 for the automated real-content cohort. A target is not a claim that code is absent or that an open
 parent can close when only one child ships. Verify remaining clauses against current main and retain
 original assignees and acceptance criteria.
@@ -295,8 +328,8 @@ original assignees and acceptance criteria.
 | [#1044](https://github.com/loomarr/loomarr/issues/1044) | Partially understood Intent produces a confident Proposal instead of asking for clarification | beta.5 |
 | [#1015](https://github.com/loomarr/loomarr/issues/1015) | Add a local pre-release gate for channel-generation quality and latency | beta.5 |
 | [#494](https://github.com/loomarr/loomarr/issues/494) | Preserve candidate relevance and enrich grounded retrieval evidence | beta.5 |
-| [#1097](https://github.com/loomarr/loomarr/issues/1097) | Make prepared readiness converge across 50–100 channels | beta.5; support raw startup performance beta.7 |
-| [#1037](https://github.com/loomarr/loomarr/issues/1037) | Certify many-channel playout capacity and channel-surf churn | beta.5; raw startup performance beta.7 |
+| [#1097](https://github.com/loomarr/loomarr/issues/1097) | Make prepared readiness converge across 50–100 channels | beta.5; support raw startup performance beta.8 |
+| [#1037](https://github.com/loomarr/loomarr/issues/1037) | Certify many-channel playout capacity and channel-surf churn | beta.5; raw startup performance beta.8 |
 | [#955](https://github.com/loomarr/loomarr/issues/955) | Make filler pull approval atomically idempotent | beta.5 |
 | [#688](https://github.com/loomarr/loomarr/issues/688) | fix(auth): Emby successful login fails when client scheme is missing | beta.5 |
 | [#661](https://github.com/loomarr/loomarr/issues/661) | Complete binary source, notice and distribution evidence | beta.5 |
@@ -304,54 +337,54 @@ original assignees and acceptance criteria.
 | [#1040](https://github.com/loomarr/loomarr/issues/1040) | Make channel-generation progress calm, trustworthy, and delightful | beta.5 |
 | [#1113](https://github.com/loomarr/loomarr/issues/1113) | Add exact NPS video corpus source authority | beta.6 |
 | [#1112](https://github.com/loomarr/loomarr/issues/1112) | Overhaul filler UX around one source-to-air lifecycle | beta.6 |
-| [#1111](https://github.com/loomarr/loomarr/issues/1111) | Certify compilation identification and automatic split boundaries | beta.7 |
-| [#1110](https://github.com/loomarr/loomarr/issues/1110) | Add evidence-grounded filler entity and campaign enrichment | beta.7 |
-| [#1109](https://github.com/loomarr/loomarr/issues/1109) | Build source-level filler suitability and audience authority | beta.7 |
+| [#1111](https://github.com/loomarr/loomarr/issues/1111) | Certify compilation identification and automatic split boundaries | beta.8 |
+| [#1110](https://github.com/loomarr/loomarr/issues/1110) | Add evidence-grounded filler entity and campaign enrichment | beta.8 |
+| [#1109](https://github.com/loomarr/loomarr/issues/1109) | Build source-level filler suitability and audience authority | beta.8 |
 | [#1108](https://github.com/loomarr/loomarr/issues/1108) | Bridge qualified filler corpus into temporal holdout replacement planning | beta.6 |
 | [#1106](https://github.com/loomarr/loomarr/issues/1106) | Add exact Blender Open Movie corpus source authority | beta.6 |
 | [#1102](https://github.com/loomarr/loomarr/issues/1102) | Add exact USGS corpus source authority | beta.6 |
 | [#1100](https://github.com/loomarr/loomarr/issues/1100) | Preflight expected soundtrack before replacement-corpus download | beta.6 |
 | [#1093](https://github.com/loomarr/loomarr/issues/1093) | Bind development rights review to quarantine disposition | beta.6 |
-| [#1089](https://github.com/loomarr/loomarr/issues/1089) | Acquire unexposed truth sources for the replacement filler holdout | beta.7 |
-| [#1086](https://github.com/loomarr/loomarr/issues/1086) | Certify multimodal broadcast-suitability recall before filler admission | beta.7 |
-| [#1085](https://github.com/loomarr/loomarr/issues/1085) | Add targeted adjudication authority for challenged filler anchors | beta.7 |
+| [#1089](https://github.com/loomarr/loomarr/issues/1089) | Acquire unexposed truth sources for the replacement filler holdout | beta.8 |
+| [#1086](https://github.com/loomarr/loomarr/issues/1086) | Certify multimodal broadcast-suitability recall before filler admission | beta.8 |
+| [#1085](https://github.com/loomarr/loomarr/issues/1085) | Add targeted adjudication authority for challenged filler anchors | beta.8 |
 | [#1079](https://github.com/loomarr/loomarr/issues/1079) | Add measured transition-class authority to the temporal-structure holdout | beta.6 |
 | [#1070](https://github.com/loomarr/loomarr/issues/1070) | Make the direct-video structure protocol portable to Gemini reasoning routes | beta.6 |
-| [#1069](https://github.com/loomarr/loomarr/issues/1069) | Separate compilation disposition from final child-role authority | beta.7 |
-| [#1019](https://github.com/loomarr/loomarr/issues/1019) | Filler: make Airworthiness audience-aware across violence and other suitability flags | beta.7 |
-| [#1011](https://github.com/loomarr/loomarr/issues/1011) | Filler: build and certify the visual clean-control cohort | beta.7 |
+| [#1069](https://github.com/loomarr/loomarr/issues/1069) | Separate compilation disposition from final child-role authority | beta.8 |
+| [#1019](https://github.com/loomarr/loomarr/issues/1019) | Filler: make Airworthiness audience-aware across violence and other suitability flags | beta.8 |
+| [#1011](https://github.com/loomarr/loomarr/issues/1011) | Filler: build and certify the visual clean-control cohort | beta.8 |
 | [#995](https://github.com/loomarr/loomarr/issues/995) | Filler: bridge approved media into visual-corpus nominations | beta.6 |
 | [#993](https://github.com/loomarr/loomarr/issues/993) | Filler: add a Met Museum corpus inventory lane and private materializer | beta.6 |
 | [#965](https://github.com/loomarr/loomarr/issues/965) | Historical Filler workflow plan; current lifecycle authority is #1112 | Superseded by #1112 |
-| [#963](https://github.com/loomarr/loomarr/issues/963) | Certify complete-coverage structure assessment for long compilation reels | beta.7 |
-| [#962](https://github.com/loomarr/loomarr/issues/962) | Bind structure certification to the production media profile and source envelope | beta.7 |
-| [#961](https://github.com/loomarr/loomarr/issues/961) | Run certified independent structure assessments in production shadow | beta.7 |
+| [#963](https://github.com/loomarr/loomarr/issues/963) | Certify complete-coverage structure assessment for long compilation reels | beta.8 |
+| [#962](https://github.com/loomarr/loomarr/issues/962) | Bind structure certification to the production media profile and source envelope | beta.8 |
+| [#961](https://github.com/loomarr/loomarr/issues/961) | Run certified independent structure assessments in production shadow | beta.8 |
 | [#960](https://github.com/loomarr/loomarr/issues/960) | Record OpenRouter media over-reservation charges honestly | beta.6 |
-| [#959](https://github.com/loomarr/loomarr/issues/959) | Certify conservative multi-signal compilation decisions | beta.7 |
-| [#952](https://github.com/loomarr/loomarr/issues/952) | Certify commercial-compilation identification and segmentation | beta.7 |
-| [#951](https://github.com/loomarr/loomarr/issues/951) | Certify complete-source visual sensitive-content safety for filler | beta.7 |
-| [#947](https://github.com/loomarr/loomarr/issues/947) | Apply certified filler screens and enrichment at the admission boundary | beta.7 |
-| [#946](https://github.com/loomarr/loomarr/issues/946) | Add post-screen multimodal entity and taxonomy enrichment for filler | beta.7 |
-| [#945](https://github.com/loomarr/loomarr/issues/945) | Finish intentional, playback-ready, deeply enriched filler ingestion | beta.7 |
+| [#959](https://github.com/loomarr/loomarr/issues/959) | Certify conservative multi-signal compilation decisions | beta.8 |
+| [#952](https://github.com/loomarr/loomarr/issues/952) | Certify commercial-compilation identification and segmentation | beta.8 |
+| [#951](https://github.com/loomarr/loomarr/issues/951) | Certify complete-source visual sensitive-content safety for filler | beta.8 |
+| [#947](https://github.com/loomarr/loomarr/issues/947) | Apply certified filler screens and enrichment at the admission boundary | beta.8 |
+| [#946](https://github.com/loomarr/loomarr/issues/946) | Add post-screen multimodal entity and taxonomy enrichment for filler | beta.8 |
+| [#945](https://github.com/loomarr/loomarr/issues/945) | Finish intentional, playback-ready, deeply enriched filler ingestion | beta.8 |
 | [#932](https://github.com/loomarr/loomarr/issues/932) | Assemble spoken-safety cohorts into one reviewable certification draft | beta.6 |
 | [#930](https://github.com/loomarr/loomarr/issues/930) | Prepare VCTK clean controls for spoken-safety certification | beta.6 |
-| [#909](https://github.com/loomarr/loomarr/issues/909) | Certify full-duration written-text safety for filler | beta.7 |
-| [#908](https://github.com/loomarr/loomarr/issues/908) | Certify complete-source spoken-language safety for filler | beta.7 |
+| [#909](https://github.com/loomarr/loomarr/issues/909) | Certify full-duration written-text safety for filler | beta.8 |
+| [#908](https://github.com/loomarr/loomarr/issues/908) | Certify complete-source spoken-language safety for filler | beta.8 |
 | [#899](https://github.com/loomarr/loomarr/issues/899) | Build a source-diverse 36-case temporal-structure holdout | beta.6 |
-| [#870](https://github.com/loomarr/loomarr/issues/870) | Separate filler media integrity from presentation and suitability defects | beta.7 |
-| [#865](https://github.com/loomarr/loomarr/issues/865) | Add a separate airworthiness gate for filler content | beta.7 |
-| [#787](https://github.com/loomarr/loomarr/issues/787) | Build model-led labeling and sampled calibration for the 300-case filler corpus | beta.7 |
+| [#870](https://github.com/loomarr/loomarr/issues/870) | Separate filler media integrity from presentation and suitability defects | beta.8 |
+| [#865](https://github.com/loomarr/loomarr/issues/865) | Add a separate airworthiness gate for filler content | beta.8 |
+| [#787](https://github.com/loomarr/loomarr/issues/787) | Build model-led labeling and sampled calibration for the 300-case filler corpus | beta.8 |
 | [#741](https://github.com/loomarr/loomarr/issues/741) | Build the 32-clip production-ready filler reference cohort | beta.6 |
-| [#555](https://github.com/loomarr/loomarr/issues/555) | Run the bounded OpenRouter bakeoff and shadow-certify filler automation | beta.7 |
-| [#549](https://github.com/loomarr/loomarr/issues/549) | Build a versioned filler certification corpus and replayable evaluator (certification pending) | beta.7 |
-| [#548](https://github.com/loomarr/loomarr/issues/548) | Certify automatic filler admission with evidence, abstention, and exception-only UX | beta.7 |
-| [#1104](https://github.com/loomarr/loomarr/issues/1104) | Record integrated household-journey qualification and acceptance | beta.7 |
-| [#1061](https://github.com/loomarr/loomarr/issues/1061) | Stream Catalog-grounded titles while a Proposal Job is running | beta.7 |
-| [#970](https://github.com/loomarr/loomarr/issues/970) | refactor(clients): complete Shield and Web shared-design-system migration | beta.7 |
-| [#749](https://github.com/loomarr/loomarr/issues/749) | Acquire filler against Channel coverage gaps | beta.7 |
-| [#498](https://github.com/loomarr/loomarr/issues/498) | Measure discovery quality in production without inferring taste | beta.7 |
-| [#497](https://github.com/loomarr/loomarr/issues/497) | Remember recommendation exposure to prevent repetitive discovery | beta.7 |
-| [#935](https://github.com/loomarr/loomarr/issues/935) | Automate independent model review of spoken-safety certification drafts | beta.7 |
+| [#555](https://github.com/loomarr/loomarr/issues/555) | Run the bounded OpenRouter bakeoff and shadow-certify filler automation | beta.8 |
+| [#549](https://github.com/loomarr/loomarr/issues/549) | Build a versioned filler certification corpus and replayable evaluator (certification pending) | beta.8 |
+| [#548](https://github.com/loomarr/loomarr/issues/548) | Certify automatic filler admission with evidence, abstention, and exception-only UX | beta.8 |
+| [#1104](https://github.com/loomarr/loomarr/issues/1104) | Record integrated household-journey qualification and acceptance | beta.8 |
+| [#1061](https://github.com/loomarr/loomarr/issues/1061) | Stream Catalog-grounded titles while a Proposal Job is running | beta.8 |
+| [#970](https://github.com/loomarr/loomarr/issues/970) | refactor(clients): complete Shield and Web shared-design-system migration | beta.8 |
+| [#749](https://github.com/loomarr/loomarr/issues/749) | Acquire filler against Channel coverage gaps | beta.8 |
+| [#498](https://github.com/loomarr/loomarr/issues/498) | Measure discovery quality in production without inferring taste | beta.8 |
+| [#497](https://github.com/loomarr/loomarr/issues/497) | Remember recommendation exposure to prevent repetitive discovery | beta.8 |
+| [#935](https://github.com/loomarr/loomarr/issues/935) | Automate independent model review of spoken-safety certification drafts | beta.8 |
 | [#1020](https://github.com/loomarr/loomarr/issues/1020) | Prefer direct filesystem sources for internal playout when media is locally mounted | Later / conditional |
 | [#966](https://github.com/loomarr/loomarr/issues/966) | Normalize local NFO and optional metadata-provider evidence for AI retrieval | Later / conditional |
 | [#907](https://github.com/loomarr/loomarr/issues/907) | Prototype Apple SCA capability for source-level filler screening | Later / conditional |
