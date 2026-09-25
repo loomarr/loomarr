@@ -61,7 +61,7 @@ type ProcessRunView struct {
 	ExecutableVersion string        `json:"executableVersion,omitempty"`
 	StartedAt         int64         `json:"startedAt"`
 	EndedAt           int64         `json:"endedAt,omitempty"`
-	Status            ProcessStatus `json:"status" enum:"running,succeeded,failed,cancelled"`
+	Status            ProcessStatus `json:"status" enum:"running,succeeded,failed,cancelled,interrupted"`
 	ExitCode          *int          `json:"exitCode,omitempty"`
 	TerminationReason string        `json:"terminationReason,omitempty"`
 	FirstError        string        `json:"firstError,omitempty"`

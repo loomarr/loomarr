@@ -444,7 +444,13 @@ func (s *sqlStore) FinalizeStaleDiagnosticProcessRuns(ctx context.Context, insta
 	if err != nil {
 		return 0, fmt.Errorf("finalize stale diagnostic process runs: %w", err)
 	}
-	return rowsAffected(result), nil
+	// Status and timestamps only: size_bytes is unchanged, so the retained-bytes running total
+	// (#1398) needs no adjustment here.
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("finalize stale diagnostic process runs: %w", err)
+	}
+	return int(n), nil
 }
 
 // DeleteDiagnosticProcessRun repeats the terminal-state guard at the destructive boundary.
