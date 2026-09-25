@@ -413,3 +413,66 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return fn(request)
 }
+
+// countingWriter counts WriteHeader calls that reach the wire, which is what net/http complains
+// about ("superfluous response.WriteHeader call") when the count passes one.
+type countingWriter struct {
+	http.ResponseWriter
+	headerCalls int
+}
+
+func (c *countingWriter) WriteHeader(code int) {
+	c.headerCalls++
+	c.ResponseWriter.WriteHeader(code)
+}
+
+func TestRecorderHTTPCountsClientCancelAsClosedRequestNot500(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/guide", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError) // what the error path writes for "context canceled"
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request := httptest.NewRequest(http.MethodGet, "/v1/guide", nil).WithContext(ctx)
+	recorder.Middleware(mux).ServeHTTP(httptest.NewRecorder(), request)
+
+	body := scrape(t, recorder)
+	if strings.Contains(body, `code="500"`) {
+		t.Fatalf("client cancel was counted as a 500:\n%s", body)
+	}
+	if want := `loomarr_http_requests_total{code="499",method="GET",route="/v1/guide"} 1`; !strings.Contains(body, want) {
+		t.Errorf("scrape does not contain %q:\n%s", want, body)
+	}
+}
+
+func TestRecorderHTTPStillCountsGenuine500WhenClientStayed(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/guide", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	recorder.Middleware(mux).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/v1/guide", nil))
+
+	if want := `loomarr_http_requests_total{code="500",method="GET",route="/v1/guide"} 1`; !strings.Contains(scrape(t, recorder), want) {
+		t.Errorf("scrape does not contain %q", want)
+	}
+}
+
+func TestRecorderHTTPForwardsOnlyTheFirstWriteHeader(t *testing.T) {
+	recorder := metrics.New(metrics.Options{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/channels", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	wire := &countingWriter{ResponseWriter: httptest.NewRecorder()}
+	recorder.Middleware(mux).ServeHTTP(wire, httptest.NewRequest(http.MethodGet, "/v1/channels", nil))
+
+	if wire.headerCalls != 1 {
+		t.Fatalf("WriteHeader reached the wire %d times, want 1", wire.headerCalls)
+	}
+	if want := `code="503"`; !strings.Contains(scrape(t, recorder), want) {
+		t.Errorf("first status was not the one recorded")
+	}
+}

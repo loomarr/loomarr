@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/logchange"
 )
 
 // The ingest pipeline (§10 V51b): one ordered, per-clip run replacing seven independent cron
@@ -213,6 +215,8 @@ type Pipeline struct {
 	notify  Notifier
 	now     func() time.Time
 	log     *slog.Logger
+	// failures suppresses a clip's repeated identical failure warning across passes.
+	failures *logchange.Throttle
 	// legacyQualityChecked gates the one-time sidecar scan that requeues mezzanines made before
 	// content-quality facts rode the encode. It is intentionally process-local: after restart the
 	// sidecar reports make the scan a no-op, while any interrupted backlog is found again.
@@ -241,7 +245,8 @@ func NewPipeline(store PipelineStore, clips ClipStore, stages []Stage, budget Bu
 	for _, s := range stages {
 		byID[s.ID()] = s
 	}
-	p := &Pipeline{store: store, clips: clips, stages: byID, budget: budget, notify: notify, now: now, log: log}
+	p := &Pipeline{store: store, clips: clips, stages: byID, budget: budget, notify: notify, now: now, log: log,
+		failures: logchange.New(logRepeatInterval)}
 	if repository, ok := store.(ReadyRepository); ok {
 		p.ready = NewTerminalReady(repository, now)
 	}
@@ -392,9 +397,11 @@ func (p *Pipeline) RunOnce(ctx context.Context) (PipelineResult, error) {
 				continue
 			}
 			res.Failed++
-			if p.log != nil {
-				p.log.Warn("filler pipeline: clip failed", "clip", row.ClipHash, "err", err)
-			}
+			// ⚠ Warn on a NEW or CHANGED failure only. An identical failure repeating every pass
+			// (25 clips × 15 passes in production) is one condition, not 375 events; the repeats
+			// stay visible at DEBUG and in the `failed` count of the summary line below.
+			p.failures.Warn(p.log, row.ClipHash, err.Error(), "filler pipeline: clip failed",
+				"clip", row.ClipHash, "err", err)
 			continue
 		}
 		res.Advanced++

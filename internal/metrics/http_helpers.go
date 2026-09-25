@@ -19,6 +19,10 @@ func routeLabel(pattern string) string {
 	return pattern
 }
 
+// statusClientClosedRequest is nginx's non-standard 499, the conventional label for a request
+// the client abandoned before the server answered.
+const statusClientClosedRequest = 499
+
 func statusCode(code int) string {
 	if code == 0 {
 		code = http.StatusOK
@@ -32,11 +36,15 @@ type statusRecorder struct {
 	written bool
 }
 
+// WriteHeader forwards only the first status. A second call cannot change what the client saw,
+// and passing it on makes net/http log "superfluous response.WriteHeader call" — which the error
+// path of a client-cancelled request did on every cancel.
 func (s *statusRecorder) WriteHeader(code int) {
-	if !s.written {
-		s.code = code
-		s.written = true
+	if s.written {
+		return
 	}
+	s.code = code
+	s.written = true
 	s.ResponseWriter.WriteHeader(code)
 }
 

@@ -201,7 +201,7 @@ func (s *Scheduler) StartRiver(ctx context.Context, dialect store.Dialect, db *s
 		Queues:       s.riverQueues(dialect),
 		Workers:      workers,
 		PeriodicJobs: periodic,
-		Logger:       log,
+		Logger:       quietRiverLogger(log),
 		// Run-now latency. River's default fetch poll is 1 SECOND and SQLite has no
 		// LISTEN/NOTIFY to short-circuit it, so a click would wait up to a second where the
 		// old in-process scheduler started immediately. 100ms keeps that feeling immediate,

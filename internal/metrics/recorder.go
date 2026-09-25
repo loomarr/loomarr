@@ -2,7 +2,9 @@
 package metrics
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 	"sync"
@@ -390,7 +392,14 @@ func (r *Recorder) Middleware(next http.Handler) http.Handler {
 		method := methodLabel(request.Method)
 		route := routeLabel(request.Pattern)
 		r.http.duration.WithLabelValues(method, route).Observe(time.Since(start).Seconds())
-		r.http.requests.WithLabelValues(method, route, statusCode(response.code)).Inc()
+		code := response.code
+		// A client that hung up mid-request makes the handler fail with "context canceled", which
+		// the error path writes as a 500. That is the client's doing, not a server fault, so it
+		// is counted as nginx's 499 rather than inflating the 5xx rate.
+		if code >= http.StatusInternalServerError && errors.Is(request.Context().Err(), context.Canceled) {
+			code = statusClientClosedRequest
+		}
+		r.http.requests.WithLabelValues(method, route, statusCode(code)).Inc()
 	})
 }
 

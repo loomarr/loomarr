@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/logchange"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -157,6 +158,8 @@ type Syncer struct {
 	libraries    *LibraryScanner
 	acquisitions AcquisitionManifestStore
 	storage      *storagegovernor.Governor
+	// quarantined suppresses the repeated per-pass "remains quarantined" warning for one file.
+	quarantined *logchange.Throttle
 }
 
 // drainScanSources reads every registered folder and library into the watch folder (§10 V38c),
@@ -279,6 +282,7 @@ func NewSyncer(source FillerSource, store Store, layout Layout, now func() time.
 		source: source, store: store,
 		layout: layout, dir: layout.ClipDir(), watch: layout.WatchDir(),
 		log: log, now: now,
+		quarantined: logchange.New(logRepeatInterval),
 	}
 }
 
@@ -427,9 +431,7 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 			if found {
 				keep = append(keep, rc.ID)
 			}
-			if s.log != nil {
-				s.log.Warn("filler acquisition artifact remains quarantined", "clip", rc.Path, "err", err)
-			}
+			s.warnQuarantined(rc.Path, err)
 			continue
 		}
 		if acquired && strings.TrimSpace(rc.Source) == "" {
@@ -641,6 +643,14 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 		}
 		return nil
 	}
+}
+
+// warnQuarantined reports a claimed file that stays out of the catalog. Sync revisits the same
+// file every pass, so the warning is logged when the file first lands here or its reason changes,
+// not on every pass — one stuck artifact used to write the same line every two minutes.
+func (s *Syncer) warnQuarantined(clipPath string, err error) {
+	s.quarantined.Warn(s.log, clipPath, err.Error(), "filler acquisition artifact remains quarantined",
+		"clip", clipPath, "err", err)
 }
 
 func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (AcquisitionArtifact, bool, error) {

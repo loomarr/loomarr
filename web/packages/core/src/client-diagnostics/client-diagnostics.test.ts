@@ -136,3 +136,50 @@ describe("createAuthenticatedBatchSender", () => {
     await expect(send(events)).rejects.toThrow("429");
   });
 });
+
+describe("ClientDiagnosticsReporter while logged out", () => {
+  const unauthorized = () => Object.assign(new Error("Unauthorized"), { status: 401 });
+  const oneEvent = { event: "client.unhandled_error", errorClass: "error", surface: "root" } as const;
+
+  it("sends nothing until the session is marked authenticated", async () => {
+    vi.useFakeTimers();
+    const send = vi.fn<SendBatch>(async () => undefined);
+    const reporter = new ClientDiagnosticsReporter(send);
+    reporter.setAuthenticated(false);
+
+    reporter.record(oneEvent);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(send).not.toHaveBeenCalled();
+
+    reporter.setAuthenticated(true);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(send).toHaveBeenCalledTimes(1);
+    reporter.dispose();
+  });
+
+  it("stops after a 401 instead of retrying every flush interval", async () => {
+    vi.useFakeTimers();
+    const send = vi.fn<SendBatch>().mockRejectedValue(unauthorized());
+    const reporter = new ClientDiagnosticsReporter(send);
+
+    reporter.record(oneEvent);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    reporter.setAuthenticated(true);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(send).toHaveBeenCalledTimes(2);
+    reporter.dispose();
+  });
+
+  it("keeps retrying other failures", async () => {
+    vi.useFakeTimers();
+    const send = vi.fn<SendBatch>().mockRejectedValue(new Error("offline"));
+    const reporter = new ClientDiagnosticsReporter(send);
+
+    reporter.record(oneEvent);
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(send.mock.calls.length).toBeGreaterThan(1);
+    reporter.dispose();
+  });
+});
