@@ -27,6 +27,14 @@ const TabEmpty = ({ title, description }: { title: string; description: string }
   );
 };
 
+// The server's message sometimes already ends with its own guidance ("…this channel. Try again
+// later." + "Try again later."), so the guidance is appended only when the message lacks it.
+const failureHint = (message?: string, guidance?: string): string => {
+  const said = message?.trim().toLowerCase() ?? "";
+  const extra = guidance && !said.includes(guidance.trim().toLowerCase()) ? guidance : undefined;
+  return [message, extra].filter(Boolean).join(" ");
+};
+
 const cardFor = (
   { journey, status }: RequestEntry,
   extras?: { action?: React.ReactNode; hint?: string | undefined },
@@ -120,7 +128,7 @@ const NeedsYouList = () => {
             {failed.map((e) => {
               const fix = requestFixLabel(e.journey);
               return cardFor(e, {
-                hint: [e.status.detail, e.journey.failure?.guidance].filter(Boolean).join(" "),
+                hint: failureHint(e.status.detail, e.journey.failure?.guidance),
                 action: fix && (
                   <Link
                     to="/guide"

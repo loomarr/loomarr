@@ -89,6 +89,28 @@ describe("Requests tabs", () => {
     expect(screen.getByText(/The model took too long\./)).toBeInTheDocument();
   });
 
+  it("does not repeat the guidance when the message already ends with it", async () => {
+    stub({
+      me: MEMBER,
+      journeys: [
+        {
+          ...failed("j-bad"),
+          failure: {
+            code: "generation_failed",
+            reason: "generation_failed",
+            recoveryAction: "retry_later",
+            message: "Loomarr couldn't finish this channel. Try again later.",
+            guidance: "Try again later.",
+          },
+        },
+      ],
+    });
+    renderAt("/requests/needs-you");
+
+    const hint = await screen.findByText(/couldn't finish this channel/);
+    expect(hint).toHaveTextContent(/^Loomarr couldn't finish this channel\. Try again later\.$/);
+  });
+
   it("offers the one next action on an empty tab", async () => {
     stub({ me: MEMBER, journeys: [journey("j-done")] });
     renderAt("/requests/in-progress");
