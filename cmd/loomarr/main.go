@@ -223,8 +223,12 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// Build the fully-wired API handler. This is the composition seam that the
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
 	application, err := app.Build(rootCtx, st, log, app.Overrides{
-		Startup:                startup,
-		EncryptionDataDir:      config.ConventionalDataDir,
+		Startup: startup,
+		// The generated installation key lives beside the SQLite database (/data in the
+		// container, the database's own directory on a bare-metal or dev install). A fixed
+		// /data here made every non-container install fail to boot: `mkdir /data: permission
+		// denied` before the server ever listened.
+		EncryptionDataDir:      config.DataDirFor(cfg.DatabaseURL),
 		DevLogin:               cfg.DevLogin,
 		Pprof:                  cfg.Pprof,
 		Restart:                lifecycle.RequestRestart,
