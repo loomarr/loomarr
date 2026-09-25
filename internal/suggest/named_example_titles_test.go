@@ -207,3 +207,23 @@ func TestSuggest_ExampleAnchorsSurviveUnusableFinal(t *testing.T) {
 		t.Fatalf("lineup = %+v, want the named example", proposal.Lineup)
 	}
 }
+
+// b7acb924 on the real library: 24 titles surfaced, the model's final had no
+// picks, and the request failed with selection_empty. A resolved example
+// anchor is still a pick, so the request must succeed with it.
+func TestSuggest_ExampleAnchorSurvivesEmptyPicks(t *testing.T) {
+	description := "A channel of 1980s adventure movies such as The Goonies"
+	meaning := fixtureDateMeaning("movie_release", "description", 13, 18, 1980, 1989)
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "Toy Story", "media_type": "movie", "dateMeaning": meaning}),
+		finalResponseWithDateMeaning(`{"picks":[]}`, meaning),
+	)
+	s := suggest.New(model, catalog.New(nil, namedTitlesCorpus()), referenceExistsValidator{}, 10)
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "The Goonies" {
+		t.Fatalf("lineup = %+v, want the named example", proposal.Lineup)
+	}
+}
