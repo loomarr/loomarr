@@ -49,10 +49,19 @@ const schedule = {
   },
 };
 
+// This package compiles without the DOM lib, so type just the jsdom surface these tests use.
+type DomElement = {
+  innerHTML: string;
+  parentElement: DomElement;
+  querySelector: (selector: string) => DomElement | null;
+  remove: () => void;
+  textContent: string | null;
+};
+
 const mount = () => {
   const container = (
     globalThis as unknown as {
-      document: { createElement: (tagName: string) => Parameters<typeof createRoot>[0] & HTMLElement };
+      document: { createElement: (tagName: string) => Parameters<typeof createRoot>[0] & DomElement };
     }
   ).document.createElement("div");
   return { container, root: createRoot(container) };
@@ -81,7 +90,7 @@ const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof Watc
   </LoomarrProvider>
 );
 
-const overlay = (container: HTMLElement) => container.querySelector('[aria-label="Channel switch"]');
+const overlay = (container: DomElement) => container.querySelector('[aria-label="Channel switch"]');
 
 describe("TV channel switch overlay", () => {
   it("shows the surf card and the channel's still the moment a channel switch starts", () => {
@@ -164,9 +173,11 @@ describe("TV channel switch overlay", () => {
     const { root } = mount();
     surfaces.latest.length = 0;
     act(() => root.render(surface(tuning)));
-    const card = () => surfaces.latest.findLast((props) => props.width === 360);
+    const card = () => surfaces.latest.filter((props) => props.width === 360).at(-1);
     const measureBar = (height: number) => {
-      const onLayout = surfaces.latest.findLast((props) => typeof props.onLayout === "function")?.onLayout;
+      const onLayout = surfaces.latest
+        .filter((props) => typeof props.onLayout === "function")
+        .at(-1)?.onLayout;
       if (typeof onLayout !== "function") throw new Error("the chrome bar registered no onLayout");
       act(() => onLayout({ nativeEvent: { layout: { height } } }));
     };
@@ -180,18 +191,23 @@ describe("TV channel switch overlay", () => {
   });
 
   it("centres the loading spinner (its own align-self must not undo the container's centring)", () => {
+    const dom = globalThis as unknown as {
+      document: { body: { appendChild: (node: unknown) => void } };
+      getComputedStyle: (node: DomElement) => { alignSelf: string };
+    };
     const { container, root } = mount();
-    (globalThis as unknown as { document: { body: HTMLElement } }).document.body.appendChild(container);
+    dom.document.body.appendChild(container);
     act(() =>
       root.render(
         surface({ catalog: [], recentChannelIds: [], status: "empty" }, { loading: true, schedule: {} }),
       ),
     );
-    const spinner = container.querySelector('[aria-label="Loading channels"]') as HTMLElement;
+    const spinner = container.querySelector('[aria-label="Loading channels"]');
+    if (!spinner) throw new Error("no loading spinner rendered");
     // A spinner that aligns itself to the start sits at the screen's left edge unless a
     // shrink-wrapping, centred wrapper carries it.
-    expect(getComputedStyle(spinner).alignSelf).toBe("flex-start");
-    expect(getComputedStyle(spinner.parentElement as HTMLElement).alignSelf).toBe("center");
+    expect(dom.getComputedStyle(spinner).alignSelf).toBe("flex-start");
+    expect(dom.getComputedStyle(spinner.parentElement).alignSelf).toBe("center");
     // No root.unmount(): react-native-web's reduced-motion subscription has no `remove` in jsdom.
     container.remove();
   });
