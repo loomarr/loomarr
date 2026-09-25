@@ -701,6 +701,16 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 		return row.Disposition, p.persist(ctx, row, clip)
 	}
 
+	// A running row that is ahead of a rung it has no record for (a ladder that predates a rung
+	// added later, or a record dropped by a migration) can never satisfy terminal readiness.
+	// Rewind it to that rung so the ordinary loop records it, rather than failing publication
+	// on every pass.
+	// Only a row already parked on the final rung is rewound here; a row still climbing reaches
+	// the check before publication below.
+	if row.Stage == StageOrder[len(StageOrder)-1] {
+		p.repairLadderGaps(&row)
+	}
+
 	for {
 		// ⚠ Persist before handing the deadline back. Rungs resolved EARLIER in this same pass —
 		// a skip recorded, a `step` onto the next stage — live only in the local `row` until
@@ -889,14 +899,78 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 	// The terminal write is detached like ordinary persistence: finishing the ladder before the
 	// pass context expires must not re-spend the expensive rungs. The repository transaction owns
 	// the Ready event, Placement, hold release, and pipeline settlement together.
+	if p.repairLadderGaps(&row) {
+		// A rung was passed without leaving a record; publication would refuse the row forever.
+		// Persist the rewind and let the next pass run the missing rung.
+		return row.Disposition, p.persist(ctx, row, clip)
+	}
 	readyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	settled, err := p.ready.Commit(readyCtx, clip, row)
 	if err != nil {
-		return DispositionRunning, err
+		return DispositionRunning, p.onReadyFailure(ctx, row, clip, err)
 	}
 	p.publish(settled, clip)
 	return settled.Disposition, nil
+}
+
+// repairLadderGaps rewinds a running row to its first rung that has no record, dropping the
+// records from that rung on and keeping the rest in StageOrder. The rung then runs (or records
+// itself skipped, as screening does for a non-segment) through the normal loop, and its attempt
+// counter starts fresh instead of inheriting the livelocked row's.
+// It reports whether it rewound the row.
+func (p *Pipeline) repairLadderGaps(row *ClipPipeline) bool {
+	current := StageIndex(row.Stage)
+	if row.Disposition != DispositionRunning || current < 0 {
+		return false
+	}
+	recorded := make(map[StageID]bool, len(row.Stages))
+	for _, record := range row.Stages {
+		recorded[record.Stage] = true
+	}
+	gap := -1
+	for i := 0; i < current; i++ {
+		if !recorded[StageOrder[i]] {
+			gap = i
+			break
+		}
+	}
+	if gap < 0 {
+		return false
+	}
+	kept := make([]StageRecord, 0, gap)
+	for _, stage := range StageOrder[:gap] {
+		for _, record := range row.Stages {
+			if record.Stage == stage {
+				kept = append(kept, record)
+				break
+			}
+		}
+	}
+	row.Stages = kept
+	row.Stage, row.Status, row.Attempts, row.Progress = StageOrder[gap], StatusQueued, 0, 0
+	row.StageQueuedAt, row.StageStartedAt = p.now().UTC(), time.Time{}
+	row.NextRun = time.Time{}
+	return true
+}
+
+// onReadyFailure gives a failed terminal commit the same treatment as a failed stage: the error
+// is recorded on the final rung, the attempt count is bounded at MaxAttempts and the row is
+// persisted with a backoff. Without it the row stayed running with next_run=0, sorted first, and
+// took a work slot on every pass (#1392). The row is never skipped past the score rung, since
+// readiness requires it to have completed, so at MaxAttempts it keeps retrying at the longest
+// backoff — the same fail-closed shape screening uses.
+func (p *Pipeline) onReadyFailure(ctx context.Context, row ClipPipeline, clip StoreClip, cause error) error {
+	now := p.now().UTC()
+	if row.Attempts > MaxAttempts {
+		row.Attempts = MaxAttempts
+	}
+	row.Record(row.Stage, StatusFailed, "publishing failed: "+cause.Error(), row.Attempts, now)
+	row.NextRun = now.Add(backoff(row.Attempts))
+	if err := p.persist(ctx, row, clip); err != nil {
+		return errors.Join(cause, err)
+	}
+	return cause
 }
 
 // runStage contains a broken rung to one clip. The scheduler also recovers panics, but that
