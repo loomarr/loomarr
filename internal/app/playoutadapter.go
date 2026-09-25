@@ -1117,6 +1117,7 @@ func (r *playoutResolver) ResolvePreparedSource(
 	}
 	return prepared.Source{
 		ItemID: string(resolved.ItemID), SourceID: string(resolved.ID), Revision: resolved.Revision,
+		HDR: playoutFormatOf(resolved.Observation.Facts).HDR(),
 	}, input.URL, true
 }
 
@@ -1147,6 +1148,7 @@ func (r *playoutResolver) ResolvePreparedSourceFromInventory(
 	}
 	return prepared.Source{
 		ItemID: string(resolved.ItemID), SourceID: string(resolved.ID), Revision: resolved.Revision,
+		HDR: playoutFormatOf(resolved.Observation.Facts).HDR(),
 	}, input, true
 }
 

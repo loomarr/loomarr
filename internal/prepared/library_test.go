@@ -354,3 +354,27 @@ func writeOne(name, body string) prepared.Builder {
 		return prepared.Output{Files: []string{name}}, nil
 	}
 }
+
+// A build that gains or loses zscale must never reuse media made the other way, and a
+// pre-existing (flat) publication must keep its key so this change re-encodes nothing.
+func TestLibraryToneMapChangesIdentity(t *testing.T) {
+	t.Parallel()
+	lib, err := prepared.NewLibrary(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := baseline("source-a")
+	mapped := baseline("source-a")
+	mapped.Rendition.ToneMap = true
+	one, err := lib.Publish(context.Background(), flat, writeOne("segment.m4s", "flat"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := lib.Publish(context.Background(), mapped, writeOne("segment.m4s", "mapped"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one.Key == two.Key {
+		t.Fatal("tone-mapped output reused the flat publication identity")
+	}
+}

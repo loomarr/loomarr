@@ -247,6 +247,10 @@ func softwareVideoArgs(r RenditionContract) (VideoPlan, error) {
 	if r.HDR != "" && !strings.EqualFold(r.HDR, "sdr") {
 		return VideoPlan{}, ErrUnsupportedRendition
 	}
+	if r.ToneMap {
+		// The software fallback has no tone-map step; failing closed beats mislabelling flat output.
+		return VideoPlan{}, ErrUnsupportedRendition
+	}
 
 	accessSeconds := MaxRandomAccessInterval.Seconds()
 	gop := max(1, r.FrameRate*int(MaxRandomAccessInterval/time.Millisecond)/1000)

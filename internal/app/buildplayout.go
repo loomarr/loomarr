@@ -383,6 +383,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			},
 			GlobalBackendContext:    appliedBackendContext,
 			TransportBackendContext: transportBackendContext,
+			Tonemap:                 playout.TonemapperFor(set.str("playout.ffmpeg_path")),
 			Rendition: func() prepared.RenditionContract {
 				return playout.CanonicalPreparedRendition(
 					playout.TierFor(set.str("playout.quality_tier")),
