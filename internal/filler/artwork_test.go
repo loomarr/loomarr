@@ -3,6 +3,7 @@ package filler_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -468,5 +469,60 @@ func TestGenerateArtwork_NoDirOrNoClips(t *testing.T) {
 	}
 	if len(starts) != 0 {
 		t.Errorf("rendered %v with nothing to do", starts)
+	}
+}
+
+// artworkLog captures the one aggregate warning ListLocalClips emits for artwork.
+func artworkLog(t *testing.T, render filler.ArtworkRenderer, names ...string) (msg string, args map[string]any) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, n := range names {
+		writeAt(t, filepath.Join(dir, n), "video")
+	}
+	source := filler.DirSource{
+		Layout: testLayout(dir), Probe: fakeProbe(30_000), Artwork: render,
+		Log: func(m string, kv ...any) {
+			if !strings.Contains(m, "artwork") {
+				return
+			}
+			msg, args = m, map[string]any{}
+			for i := 0; i+1 < len(kv); i += 2 {
+				args[fmt.Sprint(kv[i])] = kv[i+1]
+			}
+		},
+	}
+	if _, err := source.ListLocalClips(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return msg, args
+}
+
+// ⚠ #1395: one clip failed every sync while 201 of 202 rendered, yet the warning blamed
+// playout.ffmpeg_path. A partial failure is clip-specific: report ITS error, not the global hint.
+func TestDirSource_PartialArtworkFailureReportsTheClipsOwnError(t *testing.T) {
+	render := func(_ context.Context, src, still, anim string, _ float64) error {
+		if strings.HasSuffix(src, "bad.mp4") {
+			return errors.New("moov atom not found")
+		}
+		return os.WriteFile(still, []byte("x"), 0o600)
+	}
+	msg, args := artworkLog(t, render, "good.mp4", "bad.mp4")
+	if msg == "" {
+		t.Fatal("no artwork warning logged for a failing clip")
+	}
+	if _, has := args["hint"]; has {
+		t.Errorf("partial failure must not carry the ffmpeg-path hint, got %v", args["hint"])
+	}
+	if s := fmt.Sprint(args["errors"]); !strings.Contains(s, "bad.mp4") || !strings.Contains(s, "moov atom not found") {
+		t.Errorf("errors = %q, want the failing clip and its ffmpeg error", s)
+	}
+}
+
+// When EVERY render fails the binary is the likely culprit, so the hint stays.
+func TestDirSource_TotalArtworkFailureKeepsTheFFmpegHint(t *testing.T) {
+	render := func(context.Context, string, string, string, float64) error { return errors.New("exec: not found") }
+	_, args := artworkLog(t, render, "a.mp4", "b.mp4")
+	if _, has := args["hint"]; !has {
+		t.Errorf("all renders failed: want the playout.ffmpeg_path hint, got %v", args)
 	}
 }

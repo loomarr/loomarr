@@ -118,3 +118,22 @@ func manifestRelativePath(path string) bool {
 	clean := filepath.Clean(path)
 	return clean != "." && clean != ".." && !strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
+
+// Repair reasons the runtime writes and later has to recognise. They are compared by value, so
+// they live here rather than as literals at each site.
+const (
+	// ArtifactMediaMissing is a TRANSIENT observation: the file was not where the manifest looked at
+	// that instant (e.g. mid transcode re-key). It says nothing about whether the bytes still exist.
+	ArtifactMediaMissing = "manifested media is missing, symlinked, or not a regular file"
+	// ArtifactMediaGone is the terminal counterpart, recorded only once no candidate location holds
+	// the file. It is deliberately not retryable.
+	ArtifactMediaGone = "manifested media is permanently missing: no file remains at its manifested or catalog location"
+
+	artifactIdentityMismatch = "manifested media bytes do not match the recorded digest, size, and clip identity"
+)
+
+// retryableRepair reports whether a stored repair reason describes an observation the scan should
+// re-check against the file, rather than a settled verdict.
+func retryableRepair(reason string) bool {
+	return reason == artifactIdentityMismatch || reason == ArtifactMediaMissing
+}

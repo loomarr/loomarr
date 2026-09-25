@@ -1,6 +1,7 @@
 package clipfetch
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -79,7 +80,20 @@ func RecoverAcquisitionArtifacts(
 					return result, err
 				}
 			}
+			if artifact.State == filler.ArtifactRepair && isSidecarExistsRepair(artifact.RepairReason) {
+				// Publication used to refuse its own earlier sidecar. Re-drive the row through the
+				// staged flow; a real conflict comes back as a settled repair that no longer has
+				// this shape, so it is not retried again.
+				artifact.State = filler.ArtifactStaged
+				artifact.RepairReason = ""
+			}
 			if artifact.State == filler.ArtifactRepair {
+				if artifact.RepairReason == filler.ArtifactMediaMissing && !manifestedMediaExists(watchDir, clipDir, artifact) {
+					artifact = repairArtifact(artifact, filler.ArtifactMediaGone, now())
+					if err := store.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{artifact}); err != nil {
+						return result, err
+					}
+				}
 				result.Repair++
 				continue
 			}
@@ -223,7 +237,7 @@ func recoverSidecar(stagePath, targetPath string, artifact filler.AcquisitionArt
 		return errors.New("manifest has no sidecar path")
 	}
 	if _, err := os.Lstat(targetPath); err == nil {
-		return verifyPortableProvenance(targetPath, artifact)
+		return acceptExistingSidecar(stagePath, targetPath, artifact)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -231,6 +245,60 @@ func recoverSidecar(stagePath, targetPath string, artifact filler.AcquisitionArt
 		return err
 	}
 	return publishFile(stagePath, targetPath)
+}
+
+// acceptExistingSidecar decides whether a sidecar already sitting at the publication target may
+// stand in for this artifact's own. It may when the bytes are identical to the staged sidecar, or
+// when it carries this artifact's exact acquisition provenance — both are a previous attempt of the
+// same publication. Anything else belongs to another item: it is reported with both identities and
+// is never replaced.
+func acceptExistingSidecar(stagePath, targetPath string, artifact filler.AcquisitionArtifact) error {
+	if staged, err := os.ReadFile(stagePath); err == nil {
+		if existing, err := os.ReadFile(targetPath); err == nil && bytes.Equal(staged, existing) {
+			return nil
+		}
+	}
+	provenanceErr := verifyPortableProvenance(targetPath, artifact)
+	if provenanceErr == nil {
+		return nil
+	}
+	tags, state := filler.ReadSidecarTagsState(strings.TrimSuffix(targetPath, ".info.json") + filepath.Ext(artifact.MediaPath))
+	existing := "no valid Loomarr provenance"
+	if state == filler.SidecarValid {
+		existing = fmt.Sprintf("source %q, acquisition %q", tags.SourceID, tags.AcquisitionID)
+	}
+	return fmt.Errorf("sidecar %s is occupied by another item (%s), not this artifact (source %q, acquisition %q): %w",
+		targetPath, existing, artifact.SourceID, artifact.AcquisitionID, provenanceErr)
+}
+
+// isSidecarExistsRepair recognises the historical repair shape written when publication refused a
+// pre-existing sidecar. Such rows are re-driven through the staged flow, which now decides properly.
+func isSidecarExistsRepair(reason string) bool {
+	return strings.HasPrefix(reason, "publish sidecar: ") && strings.HasSuffix(reason, "already exists")
+}
+
+// manifestedMediaExists reports whether any location the manifest can name still holds a regular
+// file: the watch-relative media or staging path, the clip-folder path, or the content-addressed
+// catalog path. A transient "missing" repair is only settled as gone when none does.
+func manifestedMediaExists(watchDir, clipDir string, artifact filler.AcquisitionArtifact) bool {
+	candidates := []string{
+		filepath.Join(watchDir, artifact.MediaPath),
+		filepath.Join(watchDir, artifact.StagingPath),
+	}
+	if clipDir != "" {
+		candidates = append(candidates, filepath.Join(clipDir, artifact.MediaPath))
+		if artifact.ClipHash != "" {
+			if catalog, err := filler.ClipPath(clipDir, artifact.ClipHash, filepath.Ext(artifact.MediaPath)); err == nil {
+				candidates = append(candidates, catalog)
+			}
+		}
+	}
+	for _, path := range candidates {
+		if info, err := os.Lstat(path); err == nil && info.Mode().IsRegular() {
+			return true
+		}
+	}
+	return false
 }
 
 func verifyPortableProvenance(path string, artifact filler.AcquisitionArtifact) error {

@@ -172,12 +172,32 @@ func PreviewPathFor(clipPath string) string {
 // skipped — so it returns a count and the caller logs it. A misconfigured ffmpeg then reads as
 // "0 of 412 generated" rather than as artwork mysteriously not existing.
 func GenerateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer) (failed int) {
-	return generateArtwork(ctx, dir, clips, render, nil)
+	return generateArtwork(ctx, dir, clips, render, nil).Failed
 }
 
-func generateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer, governor *storagegovernor.Governor) (failed int) {
+// maxReportedArtworkErrors bounds the per-clip errors carried in one warning.
+const maxReportedArtworkErrors = 3
+
+// artworkReport is what one artwork pass learned. Failed counts every clip left without complete
+// artwork (renderer errors and storage refusals); Attempted/RenderFailed count only clips the
+// renderer actually ran for, which is what tells "the binary is wrong" (every render failed) from
+// "this one file is bad" (some did).
+type artworkReport struct {
+	Failed       int
+	Attempted    int
+	RenderFailed int
+	// Errors holds the first few renderer errors, each naming its clip.
+	Errors []string
+}
+
+// AllRendersFailed reports whether the renderer failed for every clip it was run on.
+func (r artworkReport) AllRendersFailed() bool {
+	return r.Attempted > 0 && r.RenderFailed == r.Attempted
+}
+
+func generateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer, governor *storagegovernor.Governor) (report artworkReport) {
 	if dir == "" || len(clips) == 0 {
-		return 0
+		return report
 	}
 	if render == nil {
 		render = FFmpegArtwork("")
@@ -206,18 +226,18 @@ func generateArtwork(ctx context.Context, dir string, clips []RawClip, render Ar
 				EstimatedBytes: storagegovernor.EstimateArtwork(), Mode: storagegovernor.Automatic,
 			})
 			if lease == nil {
-				failed++
+				report.Failed++
 				continue
 			}
 			if decision = lease.Revalidate(ctx, 0); !decision.Allowed {
 				lease.Release()
-				failed++
+				report.Failed++
 				continue
 			}
 		}
 		if err := os.MkdirAll(filepath.Dir(stillDst), 0o750); err != nil {
 			lease.Release()
-			failed++
+			report.Failed++
 			continue
 		}
 
@@ -244,8 +264,15 @@ func generateArtwork(ctx context.Context, dir string, clips []RawClip, render Ar
 			}
 			lease.Release()
 		}
+		report.Attempted++
+		if renderErr != nil {
+			report.RenderFailed++
+			if len(report.Errors) < maxReportedArtworkErrors {
+				report.Errors = append(report.Errors, fmt.Sprintf("%s: %v", clips[i].Path, renderErr))
+			}
+		}
 		if renderErr != nil || capacityFailed {
-			failed++
+			report.Failed++
 			if capacityFailed {
 				if !haveStill {
 					_ = os.Remove(stillDst)
@@ -274,7 +301,7 @@ func generateArtwork(ctx context.Context, dir string, clips []RawClip, render Ar
 			clips[i].Preview = animRel
 		}
 	}
-	return failed
+	return report
 }
 
 func newlyWrittenArtworkBytes(still, animated string, hadStill, hadAnimated bool) int64 {

@@ -606,7 +606,7 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 		verify := func(path, observedHash string) error {
 			info, statErr := os.Lstat(path)
 			if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-				return errors.New("manifested media is missing, symlinked, or not a regular file")
+				return errors.New(ArtifactMediaMissing)
 			}
 			digest, size, digestErr := FileSHA256(path)
 			if digestErr != nil {
@@ -619,7 +619,7 @@ func (s *Syncer) bindAcquisitionArtifact(ctx context.Context) func(sourcePath, d
 				}
 			}
 			if digest != artifact.MediaSHA256 || size != artifact.MediaBytes || observedHash != artifact.ClipHash {
-				return errors.New("manifested media bytes do not match the recorded digest, size, and clip identity")
+				return errors.New(artifactIdentityMismatch)
 			}
 			return nil
 		}
@@ -670,14 +670,13 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 		}
 		return artifact, true, errors.New(reason)
 	}
-	const identityMismatch = "manifested media bytes do not match the recorded digest, size, and clip identity"
-	if artifact.State == ArtifactRepair && artifact.RepairReason != identityMismatch {
+	if artifact.State == ArtifactRepair && !retryableRepair(artifact.RepairReason) {
 		return artifact, true, errors.New(artifact.RepairReason)
 	}
 	path := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
 	info, err := os.Lstat(path)
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return fail("manifested media is missing, symlinked, or not a regular file")
+		return fail(ArtifactMediaMissing)
 	}
 	tags, state := ReadSidecarTagsState(path)
 	if state == SidecarInvalid {
@@ -685,7 +684,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 	}
 	normalizeConsumedManifest := false
 	if tags.MediaAssets != nil && tags.MediaAssets.Playback != nil &&
-		(artifact.State == ArtifactConsumed || artifact.RepairReason == identityMismatch) {
+		(artifact.State == ArtifactConsumed || retryableRepair(artifact.RepairReason)) {
 		// V66 deliberately gives the acquired source and the playable catalog entry different
 		// identities. The acquisition manifest continues to bind the immutable source-master
 		// SHA/size while clip_hash follows the current playback derivative. Comparing all three
@@ -700,7 +699,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 		}
 		if artifact.ClipHash != rc.ID || playback.ClipHash != rc.ID ||
 			filepath.Clean(filepath.FromSlash(playback.Path)) != filepath.Clean(filepath.FromSlash(rc.Path)) {
-			return fail(identityMismatch)
+			return fail(artifactIdentityMismatch)
 		}
 		if err := validateMediaAssetFile(ctx, s.dir, playback, MediaAssetPlayback, ""); err != nil {
 			return fail("manifested playback derivative does not match the portable media manifest")
@@ -721,7 +720,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 		artifact.SidecarPath = sidecarPathFor(assets.SourceMaster.Path)
 		artifact.RepairReason = ""
 	} else {
-		if artifact.State == ArtifactRepair {
+		if artifact.State == ArtifactRepair && artifact.RepairReason != ArtifactMediaMissing {
 			return artifact, true, errors.New(artifact.RepairReason)
 		}
 		digest, size, err := FileSHA256(path)
@@ -729,7 +728,7 @@ func (s *Syncer) authorizeAcquisition(ctx context.Context, rc RawClip) (Acquisit
 			return fail("manifested media cannot be hashed: " + err.Error())
 		}
 		if digest != artifact.MediaSHA256 || size != artifact.MediaBytes || rc.ID != artifact.ClipHash {
-			return fail(identityMismatch)
+			return fail(artifactIdentityMismatch)
 		}
 	}
 	if state == SidecarAbsent || tags.SourceID != artifact.SourceID || tags.AcquisitionID != artifact.AcquisitionID || !SidecarFetchedByUs(path) {

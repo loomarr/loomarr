@@ -575,11 +575,18 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 	}
 	// Thumbnails BEFORE the Tunarr annotation, and independent of it: the images are for the
 	// catalog UI and have nothing to do with whether Tunarr is reachable.
-	if failed := generateArtwork(ctx, d.Layout.ClipDir(), clips, d.Artwork, d.Storage); failed > 0 && d.Log != nil {
-		d.Log("filler: some clip artwork could not be generated",
-			"failed", failed, "of", len(clips),
-			"hint", "check playout.ffmpeg_path — a wrong binary fails every render, and the "+
+	if art := generateArtwork(ctx, d.Layout.ClipDir(), clips, d.Artwork, d.Storage); art.Failed > 0 && d.Log != nil {
+		args := []any{"failed", art.Failed, "of", len(clips)}
+		if len(art.Errors) > 0 {
+			args = append(args, "errors", strings.Join(art.Errors, "; "))
+		}
+		// The binary is only a suspect when EVERY render failed; a partial failure is specific to
+		// the failing clip(s), whose own ffmpeg error is reported above.
+		if art.AllRendersFailed() {
+			args = append(args, "hint", "check playout.ffmpeg_path — a wrong binary fails every render, and the "+
 				"animation needs libwebp compiled in (ffmpeg -encoders | grep webp)")
+		}
+		d.Log("filler: some clip artwork could not be generated", args...)
 	}
 
 	if d.Tunarr == nil || len(clips) == 0 {

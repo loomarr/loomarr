@@ -485,7 +485,7 @@ func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionAr
 		// Publish portable provenance first. A sidecar without media is inert; media without its
 		// sidecar creates a race with intake even though the durable manifest remains authoritative.
 		if outputs[index].SidecarPath != "" {
-			if err := publishFile(outputs[index].SidecarPath, filepath.Join(i.dropDir, updated[index].SidecarPath)); err != nil {
+			if err := publishSidecar(outputs[index].SidecarPath, filepath.Join(i.dropDir, updated[index].SidecarPath), updated[index]); err != nil {
 				updated[index].State = filler.ArtifactRepair
 				updated[index].RepairReason = "publish sidecar: " + err.Error()
 				updated[index].UpdatedAt = i.now().UTC()
@@ -508,6 +508,18 @@ func (i *Ingestor) publish(ctx context.Context, manifests []filler.AcquisitionAr
 		return updated, fmt.Errorf("acknowledge published acquisition outputs: %w", err)
 	}
 	return updated, nil
+}
+
+// publishSidecar publishes the provenance sidecar idempotently: an existing target that is this
+// artifact's own earlier attempt counts as published, while one belonging to another item is a
+// conflict and is left untouched.
+func publishSidecar(source, target string, artifact filler.AcquisitionArtifact) error {
+	if _, err := os.Lstat(target); err == nil {
+		return acceptExistingSidecar(source, target, artifact)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return os.Rename(source, target)
 }
 
 func publishFile(source, target string) error {
