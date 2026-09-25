@@ -132,7 +132,7 @@ func newOpenRouterVideo(cfg OpenRouterVideoConfig, recorder *metrics.Recorder) (
 	}
 	return &openRouterVideo{
 		baseURL: baseURL, apiKey: cfg.APIKey, model: model, upstreamProvider: upstream,
-		http: httpx.NewNamedObserved("llm-video", httpx.TimeoutLLM, recorder), metrics: recorder,
+		http: httpx.NewLLMNamed("llm-video", httpx.TimeoutLLM, recorder), metrics: recorder,
 	}, nil
 }
 
