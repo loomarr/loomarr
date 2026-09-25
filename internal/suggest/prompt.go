@@ -18,8 +18,8 @@ func assistantToolCallMsg(calls []llm.ToolCall) llm.Message {
 const systemPrompt = `You are Loomarr's channel planner. You build TV channels from real content only.
 RULES:
 - Follow the catalog_search argument schema exactly. If the provider exposes a required input object, place every search field and dateMeaning inside input; do not send flat fields outside that wrapper.
-- Every catalog_search call and your final JSON MUST carry dateMeaning with kind, anchors, and axes. It interprets submitted intent text, never a guessed title date. An anchor is a nonempty half-open rune span in description, era, refineText, mustInclude, or mustExclude; array fields require their element index. kind=none has empty anchors and axes when no date constraint is requested; title years alone are not filters. kind=ambiguous has anchors and no axes when a dated request needs clarification. kind=constraints has one to three independent axes (movie_release, series_premiere, series_airing), each with any or all and anchored inclusive 1900-2099 intervals. Combine ordinary "90s and 2000s movies" as an any union; use all only for an explicit same-axis intersection. Coalesce overlapping or adjacent any ranges.
-- DATE OBJECT SHAPE: each anchor is {"field":"description","start":<rune offset>,"end":<rune offset>}; select the actual date expression in that submitted field, excluding the surrounding prompt labels. Use "era" only if the user submitted an Era field. Scalar fields MUST omit index; mustInclude/mustExclude MUST include the array element index. Every interval is {"anchor":<zero-based index into anchors>,"start":<first year>,"end":<last year>}; anchor is mandatory even when it is 0, and is never a year. constraints requires a nonempty anchors array. In the final JSON, copy the accepted tool dateMeaning unchanged, including every interval anchor.
+- Every catalog_search call MUST carry dateMeaning with kind, anchors, and axes. Your final JSON carries dateMeaning (same shape) only when you made no catalog_search call; after a call Loomarr applies the accepted one itself, so omit it. It interprets submitted intent text, never a guessed title date. An anchor is a nonempty half-open rune span in description, era, refineText, mustInclude, or mustExclude; array fields require their element index. kind=none has empty anchors and axes when no date constraint is requested; title years alone are not filters. kind=ambiguous has anchors and no axes when a dated request needs clarification. kind=constraints has one to three independent axes (movie_release, series_premiere, series_airing), each with any or all and anchored inclusive 1900-2099 intervals. Combine ordinary "90s and 2000s movies" as an any union; use all only for an explicit same-axis intersection. Coalesce overlapping or adjacent any ranges.
+- DATE OBJECT SHAPE: each anchor is {"field":"description","start":<rune offset>,"end":<rune offset>}; select the actual date expression in that submitted field, excluding the surrounding prompt labels. Use "era" only if the user submitted an Era field. Scalar fields MUST omit index; mustInclude/mustExclude MUST include the array element index. Every interval is {"anchor":<zero-based index into anchors>,"start":<first year>,"end":<last year>}; anchor is mandatory even when it is 0, and is never a year. constraints requires a nonempty anchors array.
 - You MUST NOT invent titles. To find any title, call the catalog_search tool.
 - Pick the search mode from the intent. If the first call comes back empty, call the tool again using the alternate mode:
   - GENRE/MOOD/ERA intent (e.g. "90s action", "feel-good sci-fi") → call catalog_search with "genres" to DISCOVER by theme. Date windows come only from dateMeaning. Do NOT put a bare genre word in "query" — it won't match a title.
@@ -42,7 +42,7 @@ RULES:
 - FORMAT/MEDIUM is a hard qualifier, not a vibe. Words like "cartoons", "animated", "anime" mean the title must be ANIMATION; "live-action", "documentary", "docuseries", "stand-up", "reality" name their own medium. A title of the wrong medium does NOT fit no matter how well its tone or audience matches — "Saturday morning cartoons" is animated kids' TV, so a live-action family dramedy (however wholesome and colorful) is WRONG for it and must be dropped. Check the genres/overview for the medium (Animation vs Drama/Comedy) before picking, and never let a warm rationale talk a live-action show into a cartoon channel.
 - Select ONLY exact key strings returned by catalog_search. Copy each key byte for byte; it is the sole selection identifier. Never construct a key from memory or return separate tmdbId/tvdbId fields.
 - Use well-matched owned titles as anchors for immediate playability, but do not let the library consume the whole selection. When acquisitions are allowed and strong outside candidates exist, reserve about one-third of a 6-8 pick lineup (at least two picks) for genuinely less-obvious outside-library discoveries—not merely sequels, remakes, or equally obvious staples. Never sacrifice relevance or a hard qualifier to fill that share; a smaller accurate lineup is better.
-- Select at most 8 picks total. Favor a concise, varied lineup over exhausting every candidate; keep each pick rationale to one short sentence so the final grounded JSON fits the bounded completion budget.
+- Select at most 8 picks total. Favor a concise, varied lineup over exhausting every candidate; keep each pick rationale to a phrase of at most 6 words: the final JSON is generated token by token and its length is the slowest part of building a channel.
 - SEASON WINDOW for a series: when the intent implies an ERA of a long-running show, set "seasonMin"/"seasonMax" on that series pick so ONLY those seasons air. Examples: "Simpsons Classics" or "classic Simpsons" -> the golden-age run, seasonMin:1, seasonMax:10; "early Seinfeld" -> seasonMin:1, seasonMax:4; "first three seasons of X" -> seasonMin:1, seasonMax:3; "late-era X" -> seasonMin only. Use it ONLY when the intent scopes an era of a SERIES; omit both for movies and for "all of a show". This narrows which episodes play; it does NOT change what gets acquired.
 - Also infer a "policy" describing HOW the channel should behave, from the intent. Only include a field you can justify from the intent; omit the rest.
   - audience.ceiling: a KIDS/TEEN safety cap or the user's EXPLICIT rating limit — set it when the intent asks for a young audience ("cartoons"/"for kids" -> "TV-Y7"; "family" -> "TV-PG"; "teen" -> "TV-14") or says a cap such as "keep it PG-13". For a channel with neither, OMIT it entirely — an unqualified channel is adult-default and includes its R-rated titles (e.g. "action heroes" includes Die Hard/The Terminator; do NOT cap it). When in doubt, omit. Use ONLY these values: TV-Y, TV-Y7, TV-G, TV-PG, TV-14, TV-MA (or film G, PG, PG-13, R, NC-17).
@@ -61,13 +61,13 @@ RULES:
   - below 0.4 — a stretch. Prefer dropping the pick entirely over padding the lineup with it.
   Do NOT give everything 0.9+. If every pick scores the same, the score carries no information and the bar cannot do its job. A pick you were HANDED (see the suggestions below, if any) still needs your own honest score — judge it against the intent exactly as you would one you found yourself, and never omit the field.
 - Also invent a short, catchy "channelName" for the channel (2-4 words, like a real TV network — e.g. "Springfield Classics" for a Simpsons channel, "Fright Night Theater" for horror). NOT the user's raw prompt, and NOT a single title's name.
-When finished, reply with ONLY this JSON (no prose):
-{"channelName":"<2-4 words>","rationale":"<one sentence>","dateMeaning":{"kind":"none|constraints|ambiguous","anchors":[...],"axes":[...]},"picks":[{"mediaType":"movie|series","key":"<exact catalog key>","name":"<string>","rationale":"<why it fits>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>","holidays":["<holiday id>"]},"rules":[{"when":"<token>","what":"<token optional>","how":"<token optional>"}]}}`
+When finished, reply with ONLY this JSON (no prose). Loomarr already holds each title's name and media type from the catalog_search result, so a pick carries only its key; add "mediaType" and "name" to a pick, and a "dateMeaning" object to the JSON, only when you made no catalog_search call:
+{"channelName":"<2-4 words>","rationale":"<at most 12 words>","picks":[{"key":"<exact catalog key>","rationale":"<at most 6 words>","confidence":<0..1>,"seasonMin":<int optional, series era only>,"seasonMax":<int optional, series era only>}],"policy":{"audience":{"ceiling":"<rating>"},"genres":{"include":["..."],"exclude":["..."]},"ordering":"<mode>","seasonal":{"mode":"<mode>","holidays":["<holiday id>"]},"rules":[{"when":"<token>","what":"<token optional>","how":"<token optional>"}]}}`
 
 // repairPrompt nudges the model when its final turn wasn't valid schema JSON (or
 // was empty). Kept short + imperative; it never relaxes the grounding rules.
 const repairPrompt = `Your previous reply was not valid JSON matching the required schema (or was empty). ` +
-	`Reply now with ONLY the JSON object {"rationale":...,"dateMeaning":{"kind":...,"anchors":[...],"axes":[...]},"picks":[...]} and nothing else. ` +
+	`Reply now with ONLY the JSON object {"rationale":...,"picks":[...]} and nothing else (add "dateMeaning":{"kind":...,"anchors":[...],"axes":[...]} only if you made no catalog_search call). ` +
 	`Use ONLY exact key strings that appeared in a catalog_search result; copy each key byte for byte.`
 
 func requestsAdditionalSuggestions(i Intent) bool {
@@ -185,7 +185,34 @@ func finalizationMessages(messages []llm.Message, meaning *ValidatedDateMeaning)
 	}
 	request := make([]llm.Message, len(messages), len(messages)+1)
 	copy(request, messages)
-	return append(request, llm.Message{Role: llm.User, Content: "Retrieval is complete and no further tools are available. Produce the final JSON now using only the catalog candidates already provided; an incomplete catalog result does not authorize another search. Copy this accepted dateMeaning object unchanged into your final JSON: " + string(blob)}), nil
+	return append(request, llm.Message{Role: llm.User, Content: "Retrieval is complete and no further tools are available. Produce the final JSON now using only the catalog candidates already provided; an incomplete catalog result does not authorize another search. Loomarr applies this accepted dateMeaning itself, so omit dateMeaning from your JSON: " + string(blob)}), nil
+}
+
+// withAcceptedDateMeaning fills in the dateMeaning a final reply left out, using the meaning a tool
+// call already had validated. The final turn is the slowest step of a proposal (generation speed),
+// so the model is told not to restate a value the server holds. A reply that states its own
+// dateMeaning, or that is not a JSON object, is returned unchanged and validated as before.
+func withAcceptedDateMeaning(final string, accepted *ValidatedDateMeaning) string {
+	if accepted == nil {
+		return final
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(extractJSONObject(final)), &fields); err != nil {
+		return final
+	}
+	if _, stated := fields["dateMeaning"]; stated {
+		return final
+	}
+	blob, err := json.Marshal(accepted.DateMeaning())
+	if err != nil {
+		return final
+	}
+	fields["dateMeaning"] = blob
+	filled, err := json.Marshal(fields)
+	if err != nil {
+		return final
+	}
+	return string(filled)
 }
 
 func referenceInterpretationMessages(messages []llm.Message) []llm.Message {
