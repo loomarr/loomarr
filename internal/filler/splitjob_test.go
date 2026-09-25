@@ -2977,3 +2977,7 @@ func TestConfirm_ValidatesTheEdit(t *testing.T) {
 		t.Errorf("a rejected confirm still wrote: clips=%+v cuts=%v", st.clips, tools.cutCalls)
 	}
 }
+
+func (f *fakeTools) VisionKeyframesIn(ctx context.Context, path string, start, end int64, n int) ([][]byte, error) {
+	return f.KeyframesIn(ctx, path, start, end, n)
+}

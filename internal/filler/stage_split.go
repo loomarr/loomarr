@@ -244,7 +244,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 		if segs[i].Looked {
 			continue // ⚠ THE RESUME: an earlier pass already spent a look on this one.
 		}
-		frames, err := s.vision.Tools.KeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, VisionKeyframes)
+		frames, err := s.vision.Tools.VisionKeyframesIn(ctx, file, segs[i].StartMs, segs[i].EndMs, VisionKeyframes)
 		if err != nil || len(frames) == 0 {
 			segs[i].Looked, looked = true, looked+1
 			noFrames++

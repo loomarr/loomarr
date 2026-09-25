@@ -51,6 +51,9 @@ type MediaTools interface {
 	// than from its generated name (§10 V54). `Transcribe` has always taken a span for the same
 	// reason; vision only ever needed one because the vision RUNG runs on whole clips.
 	KeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error)
+	// VisionKeyframesIn is KeyframesIn scaled to VisionFrameScale — what a multimodal model
+	// is sent. Every call site that attaches images to an LLM prompt must use this one.
+	VisionKeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error)
 	// Cut writes [startMs,endMs) to out with stream copy (no re-encode — §10).
 	Cut(ctx context.Context, file string, startMs, endMs int64, out string) error
 }
@@ -213,6 +216,28 @@ func (t *FFmpegTools) Keyframes(ctx context.Context, file string, n int) ([][]by
 // difference between input- and output-seeking is the difference between per-segment framing
 // being viable at all and costing a full decode per segment (§10 V51g's budget rule).
 func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {
+	return t.keyframesIn(ctx, file, startMs, endMs, n, fmt.Sprintf("min(iw,%d)", SemanticFrameMaxWidth))
+}
+
+// VisionKeyframesIn is KeyframesIn sized for a multimodal model's prompt: the same windows, but
+// every frame is scaled to VisionFrameScale of its linear size. A vision model bills image tokens
+// by patch count, so pixels are the cost: 0.9x linear is 0.81x the pixels, about -10% prompt tokens
+// on a 640x480 call and about -18% on 1280x720.
+//
+// ⚠ 0.9, not lower, on purpose. A live A/B on dev clips (#1480, 3 runs per size at the vision
+// temperature of 0.1) showed 0.8x flipped a widescreen-SD political ad from commercial to
+// non_filler every time, while 0.9x kept its role and brand on every run and held every other
+// clip. A fixed pixel budget was worse still (HD fine print was lost).
+func (t *FFmpegTools) VisionKeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {
+	return t.keyframesIn(ctx, file, startMs, endMs, n, "trunc(iw*"+VisionFrameScale+"/2)*2")
+}
+
+// VisionFrameScale is the linear scale applied to frames sent to a vision model, as an ffmpeg
+// expression. Deliberately NOT applied to KeyframesIn: artwork and exact-frame evidence keep their
+// own contracts.
+const VisionFrameScale = "9/10"
+
+func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, endMs int64, n int, widthExpr string) ([][]byte, error) {
 	if n <= 0 {
 		return nil, nil
 	}
@@ -240,7 +265,7 @@ func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, end
 			"-i", file,
 			"-t", fmt.Sprintf("%.3f", float64(windowMs)/1000),
 			"-an",
-			"-vf", fmt.Sprintf("thumbnail=n=%d,scale=w='min(iw,%d)':h=-2", semanticThumbnailFrames, SemanticFrameMaxWidth),
+			"-vf", fmt.Sprintf("thumbnail=n=%d,scale=w='%s':h=-2", semanticThumbnailFrames, widthExpr),
 			"-frames:v", "1",
 			"-q:v", "4",
 			"-f", "image2pipe", "-c:v", "mjpeg", "-")

@@ -29,9 +29,8 @@ type spanTools struct {
 	err    error
 }
 
-func (s *spanTools) KeyframesIn(_ context.Context, _ string, startMs, endMs int64, _ int) ([][]byte, error) {
-	s.spans = append(s.spans, [2]int64{startMs, endMs})
-	return s.frames, s.err
+func (s *spanTools) KeyframesIn(context.Context, string, int64, int64, int) ([][]byte, error) {
+	return nil, errors.New("vision call used unbounded KeyframesIn; it must use VisionKeyframesIn")
 }
 func (s *spanTools) Keyframes(context.Context, string, int) ([][]byte, error) { return s.frames, s.err }
 func (s *spanTools) Chapters(context.Context, string) ([]Chapter, error)      { return nil, nil }
@@ -628,4 +627,12 @@ func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testin
 	if _, ok := hashes["observed"]; ok {
 		t.Fatal("observed proposal was requeued again")
 	}
+}
+
+// VisionKeyframesIn is the ONLY framing a vision call may use: the plain KeyframesIn above is
+// unbounded (up to 1920 px wide), so a call site that regresses to it would send a third more
+// pixels per frame. spanTools.KeyframesIn therefore refuses.
+func (s *spanTools) VisionKeyframesIn(_ context.Context, _ string, startMs, endMs int64, _ int) ([][]byte, error) {
+	s.spans = append(s.spans, [2]int64{startMs, endMs})
+	return s.frames, s.err
 }

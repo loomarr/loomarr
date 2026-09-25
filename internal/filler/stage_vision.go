@@ -103,7 +103,7 @@ func (s *VisionStage) Observe(ctx context.Context, c StoreClip) (StageResult, Vi
 	forest := taxonomy.New(taxa)
 
 	file := filepath.Join(s.clipDir, filepath.FromSlash(c.Path))
-	frames, err := s.tools.KeyframesIn(ctx, file, 0, c.DurationMs, VisionKeyframes)
+	frames, err := s.tools.VisionKeyframesIn(ctx, file, 0, c.DurationMs, VisionKeyframes)
 	if err != nil {
 		return StageResult{}, VisionObservation{}, fmt.Errorf("keyframes for %s: %w", c.Path, err)
 	}
