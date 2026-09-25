@@ -106,7 +106,7 @@ const AppShell = ({
           <Link
             key={to}
             to={to}
-            className="flex cursor-pointer items-center justify-center gap-3 rounded-md px-2 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal md:justify-start md:px-3"
+            className="relative flex cursor-pointer items-center justify-center gap-3 rounded-md px-2 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal md:justify-start md:px-3"
           >
             <Icon className="size-4" aria-hidden />
             <span className="sr-only md:not-sr-only">{label}</span>
@@ -121,7 +121,7 @@ const AppShell = ({
                 >
                   {badges?.[to]}
                 </span>
-                <span aria-hidden className="size-2 rounded-full bg-suggest md:hidden" />
+                <span aria-hidden className="absolute top-1.5 right-2 size-2 rounded-full bg-suggest md:hidden" />
               </>
             )}
           </Link>

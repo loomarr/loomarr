@@ -31,9 +31,9 @@ const OnYourChannel: Story = { args: { line: "On your channel", tone: "lock" } }
 // the card (outside the detail link).
 const Failed: Story = {
   args: {
-    line: "The model took too long.",
+    line: "Couldn't build",
     tone: "onair",
-    hint: "Try again in a moment.",
+    hint: "The model took too long. Try again in a moment.",
     action: (
       <a href="/guide" className="font-medium text-sm underline">
         Try again
