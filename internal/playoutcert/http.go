@@ -16,12 +16,14 @@ import (
 )
 
 type endpoint struct {
-	base    *url.URL
-	client  *http.Client
-	bearer  string
-	device  string
-	timeout time.Duration
-	audit   *auditCapsule
+	base   *url.URL
+	client *http.Client
+	bearer string
+	// metricsBearer authenticates GET /metrics only; it is not the admin credential.
+	metricsBearer string
+	device        string
+	timeout       time.Duration
+	audit         *auditCapsule
 }
 
 // SampleResources uses the same bounded endpoint sampler as Run for a caller
@@ -67,7 +69,7 @@ func newEndpoint(config Config, capsules ...*auditCapsule) (*endpoint, error) {
 		}
 		return nil
 	}
-	return &endpoint{base: base, client: &client, bearer: config.AdminBearer, device: config.DeviceToken, timeout: config.RequestTimeout, audit: audit}, nil
+	return &endpoint{base: base, client: &client, bearer: config.AdminBearer, metricsBearer: config.MetricsToken, device: config.DeviceToken, timeout: config.RequestTimeout, audit: audit}, nil
 }
 
 func (e *endpoint) resolve(path string) (*url.URL, error) {
@@ -119,6 +121,8 @@ func (e *endpoint) requestForProvenance(ctx context.Context, method, path string
 	}
 	if admin {
 		req.Header.Set("Authorization", "Bearer "+e.bearer)
+	} else if path == "/metrics" && e.metricsBearer != "" {
+		req.Header.Set("Authorization", "Bearer "+e.metricsBearer)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")

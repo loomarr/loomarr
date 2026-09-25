@@ -46,6 +46,9 @@ type Overrides struct {
 	// reason: run() sets it from LOOMARR_PPROF, and a test can build a handler either way
 	// through the real composition root.
 	Pprof bool
+	// MetricsToken is the Prometheus scrape bearer for /metrics (§7). run() sets it from
+	// LOOMARR_METRICS_TOKEN[_FILE]; empty ⇒ the endpoint refuses (fail closed).
+	MetricsToken string
 	// Restart asks the process to rebuild itself in place (§9.2). nil ⇒ the restart
 	// routes report 501 rather than pretending: an embedded or test-built handler has no
 	// loop behind it, and a button that silently does nothing is worse than an absent one.

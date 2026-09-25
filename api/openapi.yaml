@@ -14834,7 +14834,7 @@ paths:
         - settings
   /v1/metrics:
     get:
-      description: Public, no credential — a scrape job holds no session. Go runtime collectors plus Loomarr's §17 series. Also served at `/metrics`.
+      description: "Requires the Prometheus scrape token as `Authorization: Bearer <LOOMARR_METRICS_TOKEN>` — not a session or the API token. 401 for a missing or wrong token; 403 when no token is configured (fail closed). Go runtime collectors plus Loomarr's §17 series. Also served at `/metrics`."
       operationId: metrics
       responses:
         "200":

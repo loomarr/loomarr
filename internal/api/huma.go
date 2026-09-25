@@ -1019,6 +1019,7 @@ type Options struct {
 	TrustProxy       bool                   // TRUST_PROXY: honor X-Forwarded-For/-Proto only when true (§11)
 	DevLogin         bool                   // LOOMARR_DEV_LOGIN=1 ⇒ mount POST /v1/auth/dev-login (§11); default false ⇒ route absent
 	Pprof            bool                   // LOOMARR_PPROF=1 ⇒ mount /debug/pprof/* (§7); default false ⇒ routes absent
+	MetricsToken     string                 // LOOMARR_METRICS_TOKEN[_FILE] (§7): the Prometheus scrape bearer; empty ⇒ /metrics refused (fail closed)
 	Channels         ChannelService         // /v1/channels* reconcile (Phase 10); nil ⇒ reconcile route absent
 	LiveTV           LiveTVService          // /v1/setup/* (Phase 10); nil ⇒ setup routes absent
 	TunerRescanner   TunerRescanner         // §9 channel-list freshness; nil ⇒ best-effort poke unavailable

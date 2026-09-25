@@ -57,7 +57,7 @@ func TestGeneratedCopyReportRequiresActualMediaAndAdmission(t *testing.T) {
 					t.Error(err)
 				}
 			}()
-			report, err := playoutcert.Run(ctx, playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels,
+			report, err := playoutcert.Run(ctx, playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels,
 				Concurrency: 1, FanInViewers: 1, RequestTimeout: 25 * time.Second, CleanupTimeout: 8 * time.Second, CleanupPoll: 25 * time.Millisecond, WarmGrace: 100 * time.Millisecond,
 				RawCaptureBytes: 2 << 20, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}, ProgrammeEvidence: target.ProgrammeEvidence(),
 				ProgrammeBoundaryTimeout: 2 * time.Second, ProgrammeBoundaryLateObservation: 250 * time.Millisecond,

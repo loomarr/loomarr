@@ -98,6 +98,7 @@ var envVarsOutsideTheRegistry = map[string]string{
 	"PROMETHEUS_URL":                       "Grafana provisioning-only — selects the Prometheus datasource URL; Loomarr never reads it",
 	"API_TOKEN":                            "generated secret (internal/settings/secrets.go SecretAPI), not a registry row — an operator may pin it via env to script /v1/backup, so the install docs name it",
 	"LOOMARR_ENCRYPTION_KEY":               "boot-only installation key read directly by internal/secretprotection before settings can load",
+	"LOOMARR_METRICS_TOKEN_FILE":           "Docker-secrets path for the bootstrap scrape token, resolved in internal/config Load (#1408); the token itself is the declared LOOMARR_METRICS_TOKEN bootstrap key",
 	"LOOMARR_ENCRYPTION_KEY_FILE":          "boot-only installation-key file path read directly by internal/secretprotection",
 	"LOOMARR_ENCRYPTION_KEY_PREVIOUS":      "one-boot prior installation key used by internal/secretprotection for atomic key replacement",
 	"LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE": "one-boot prior installation-key file path used by internal/secretprotection for atomic key replacement",

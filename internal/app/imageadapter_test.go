@@ -96,7 +96,7 @@ func imageServer(t *testing.T) *httptest.Server {
 
 	st := testkit.MigratedSQLiteStore(t)
 
-	h := buildTestApplication(t, st, Overrides{}).Handler()
+	h := buildTestApplication(t, st, Overrides{MetricsToken: "image-test-scrape-token"}).Handler()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	return srv
@@ -170,7 +170,12 @@ func TestImageRoutesAreWired(t *testing.T) {
 	}
 
 	// --- observe the real worker boundary --------------------------------------------------
-	metricsResp := get(t, srv, "/metrics")
+	metricsReq, _ := http.NewRequest(http.MethodGet, srv.URL+"/metrics", nil)
+	metricsReq.Header.Set("Authorization", "Bearer image-test-scrape-token")
+	metricsResp, err := http.DefaultClient.Do(metricsReq)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() { _ = metricsResp.Body.Close() }()
 	metricsBody, err := io.ReadAll(metricsResp.Body)
 	if err != nil {

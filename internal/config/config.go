@@ -51,6 +51,15 @@ type Config struct {
 	// deliberately NOT a settings-registry key — a profiling surface that an admin
 	// session could switch on at runtime is a worse hole than the one it opens.
 	Pprof bool `env:"LOOMARR_PPROF" envDefault:"false"`
+
+	// MetricsToken is the bearer credential Prometheus presents to GET /v1/metrics and /metrics
+	// (§7, #1408). LOOMARR_METRICS_TOKEN or LOOMARR_METRICS_TOKEN_FILE (Docker-secrets idiom, both
+	// set is an error) — resolved in Load. Empty ⇒ the endpoint refuses every request.
+	//
+	// Bootstrap tier, not the settings registry, for the LOOMARR_PPROF reason: it gates an
+	// unauthenticated-by-nature surface, and a registry key is editable by any admin session.
+	// It is deliberately NOT the API_TOKEN, so a scraper credential cannot act as an admin.
+	MetricsToken string `env:"LOOMARR_METRICS_TOKEN"`
 }
 
 // Load reads the bootstrap configuration, resolving `env > file > default`
@@ -104,7 +113,31 @@ func Load() (*Config, error) {
 	if err := env.Parse(&c); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	if err := resolveMetricsTokenFile(&c); err != nil {
+		return nil, err
+	}
 	return &c, nil
+}
+
+// resolveMetricsTokenFile applies the <VAR>_FILE half of the secret idiom (config-design §3).
+// A non-empty <VAR> together with <VAR>_FILE is ambiguous and refused; an unreadable file stops
+// the boot rather than leaving the operator believing a token is set. Errors name the variable
+// and path, never the value.
+func resolveMetricsTokenFile(c *Config) error {
+	c.MetricsToken = strings.TrimSpace(c.MetricsToken) // a blank/whitespace pin means "unset", never a token
+	path := os.Getenv("LOOMARR_METRICS_TOKEN_FILE")
+	if path == "" {
+		return nil
+	}
+	if c.MetricsToken != "" {
+		return fmt.Errorf("LOOMARR_METRICS_TOKEN and LOOMARR_METRICS_TOKEN_FILE are both set (ambiguous)")
+	}
+	b, err := os.ReadFile(path) //nolint:gosec // path is operator-supplied config, by design
+	if err != nil {
+		return fmt.Errorf("read LOOMARR_METRICS_TOKEN_FILE (%s): %w", path, err)
+	}
+	c.MetricsToken = strings.TrimSpace(string(b))
+	return nil
 }
 
 // DataDirFor returns the directory a SQLite database lives in — where the bootstrap

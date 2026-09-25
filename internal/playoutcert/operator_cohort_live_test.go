@@ -82,7 +82,7 @@ func TestOperatorCohortPreparedChannelsKeepIndependentSources(t *testing.T) {
 	}
 	for index, channel := range channels {
 		t.Run(channel.ID, func(t *testing.T) {
-			config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, ProgrammeEvidence: target.ProgrammeEvidence(), SignalDecoder: playoutcert.FFmpegSignalDecoder{Path: ffmpeg}, RequestTimeout: 10 * time.Second, ProgrammeBoundaryTimeout: 25 * time.Second, ProgrammeBoundaryLateObservation: 3 * time.Second, RawCaptureBytes: 256 << 10}
+			config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels, ProgrammeEvidence: target.ProgrammeEvidence(), SignalDecoder: playoutcert.FFmpegSignalDecoder{Path: ffmpeg}, RequestTimeout: 10 * time.Second, ProgrammeBoundaryTimeout: 25 * time.Second, ProgrammeBoundaryLateObservation: 3 * time.Second, RawCaptureBytes: 256 << 10}
 			result, err := playoutcert.ObserveProgrammeSignalsForTest(ctx, config, "prepared", index)
 			if err != nil || result.Class != "ok" || result.Evidence.Transitions < 1 || result.Evidence.DecodedAudioSamplesDelta <= 0 || result.Evidence.DecodedFrameDelta <= 0 {
 				t.Fatalf("operator programme qualification=%+v err=%v", result, err)

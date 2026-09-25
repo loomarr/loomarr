@@ -31,7 +31,8 @@ import (
 func TestEveryOptionsFieldIsCopiedToServer(t *testing.T) {
 	// Fields that legitimately never become a same-named Server field.
 	skip := map[string]string{
-		"Pprof": "mounts a route; not stored on Server",
+		"Pprof":        "mounts a route; not stored on Server",
+		"MetricsToken": "guards the /metrics route at mount; not stored on Server",
 	}
 
 	fset := token.NewFileSet()

@@ -61,7 +61,7 @@ func TestOperatorCopyReportObservesActualAdmission(t *testing.T) {
 					t.Error(err)
 				}
 			}()
-			config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels,
+			config := playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels,
 				Concurrency: 1, FanInViewers: 1, RequestTimeout: 25 * time.Second, CleanupTimeout: 8 * time.Second, CleanupPoll: 25 * time.Millisecond,
 				WarmGrace: 100 * time.Millisecond, RawCaptureBytes: 2 << 20, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{},
 				ProgrammeEvidence: target.ProgrammeEvidence(), ProgrammeBoundaryTimeout: 2 * time.Second, ProgrammeBoundaryLateObservation: 250 * time.Millisecond,
@@ -198,7 +198,7 @@ func TestOperatorCohortCopyAndCodecTranscodesRespectCapacity(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	config := playoutcert.NormalizeConfigForTest(playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, Concurrency: 1, RequestTimeout: 30 * time.Second, CleanupTimeout: 8 * time.Second, CleanupPoll: 25 * time.Millisecond, WarmGrace: 100 * time.Millisecond, RawCaptureBytes: 2 << 20, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}})
+	config := playoutcert.NormalizeConfigForTest(playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels, Concurrency: 1, RequestTimeout: 30 * time.Second, CleanupTimeout: 8 * time.Second, CleanupPoll: 25 * time.Millisecond, WarmGrace: 100 * time.Millisecond, RawCaptureBytes: 2 << 20, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}})
 	endpoint, err := playoutcert.NewEndpointForTest(config)
 	if err != nil {
 		t.Fatal(err)
@@ -284,7 +284,7 @@ func TestOperatorCohortLongGOPStartsUseTranscodeCapacity(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	config := playoutcert.NormalizeConfigForTest(playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, Channels: channels, RequestTimeout: 20 * time.Second, CleanupTimeout: 8 * time.Second, CleanupPoll: 25 * time.Millisecond, WarmGrace: 100 * time.Millisecond, RawCaptureBytes: 2 << 20, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}})
+	config := playoutcert.NormalizeConfigForTest(playoutcert.Config{BaseURL: target.BaseURL, AdminBearer: target.AdminBearer, DeviceToken: target.DeviceToken, MetricsToken: target.MetricsToken, Channels: channels, RequestTimeout: 20 * time.Second, CleanupTimeout: 8 * time.Second, CleanupPoll: 25 * time.Millisecond, WarmGrace: 100 * time.Millisecond, RawCaptureBytes: 2 << 20, Validator: playoutcert.FFprobeValidator{}, Decoder: playoutcert.FFmpegDecoder{}})
 	endpoint, err := playoutcert.NewEndpointForTest(config)
 	if err != nil {
 		t.Fatal(err)

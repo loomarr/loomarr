@@ -90,7 +90,7 @@ for the LLM. Details in [`docs/design.md`](docs/design.md) §14.
 
 - **Probes** — `/v1/healthz` and `/v1/readyz`, unauthenticated on the LAN. `/healthz` and
   `/readyz` also work.
-- **Metrics** — `/v1/metrics` in Prometheus format: HTTP, dependency, database, Job, Playout, Go
+- **Metrics** — `/v1/metrics` (scrape token required) in Prometheus format: HTTP, dependency, database, Job, Playout, Go
   runtime, and bounded domain signals. See [Monitoring](docs/install/monitoring.md) for scraping and
   the source-controlled Grafana overview.
 - **Backup** — `GET /v1/backup` for SQLite; a mode-`0600` `pg_dump --format=custom` archive for

@@ -99,13 +99,14 @@ DATABASE_URL="$database_url" \
   SERVER_PUBLIC_URL="http://127.0.0.1:$backend_port" \
   LOOMARR_IMAGE_WORKER="$repo_root/target/debug/loomarr-image" \
   LOOMARR_DEV_LOGIN=1 \
+  LOOMARR_METRICS_TOKEN=loomarr-dev-metrics-token \
   FILLER_DROP_DIR="$tmp/filler" \
   PLAYOUT_PREPARED_DIR="$tmp/prepared" \
   DIAGNOSTICS_DIR="$tmp/diagnostics" \
   "$tmp/loomarr" >"$tmp/loomarr.log" 2>&1 &
 server_pid=$!
 
-wait_for_http "http://127.0.0.1:$backend_port/v1/metrics" >/dev/null
+wait_for_http "http://127.0.0.1:$backend_port/v1/healthz" >/dev/null
 
 echo 'observability-dev-runtime-test: starting Prometheus and Grafana'
 stack up >/dev/null

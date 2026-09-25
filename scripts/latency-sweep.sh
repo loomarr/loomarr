@@ -68,7 +68,8 @@ expand() {
 # calls-per-request without serialising traffic. Absent (older binary, route never hit) ⇒ blank.
 fanout_sum() {
   local route="$1"
-  curl -fsS "$BASE/metrics" 2>/dev/null \
+  # /metrics needs the scrape token (design §7); without LOOMARR_METRICS_TOKEN this is blank.
+  curl -fsS ${LOOMARR_METRICS_TOKEN:+-H "Authorization: Bearer $LOOMARR_METRICS_TOKEN"} "$BASE/metrics" 2>/dev/null \
     | awk -v r="$route" '$0 ~ "loomarr_http_outbound_fanout_sum" && $0 ~ r {print $NF; exit}'
 }
 

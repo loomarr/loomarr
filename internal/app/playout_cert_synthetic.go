@@ -51,6 +51,8 @@ type PlayoutCertificationTarget struct {
 	BaseURL     string
 	AdminBearer string
 	DeviceToken string
+	// MetricsToken is the in-process target's random scrape credential (design §7).
+	MetricsToken string
 
 	server            *http.Server
 	handler           http.Handler
@@ -237,7 +239,11 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	if err != nil {
 		return fail(err)
 	}
-	target.AdminBearer, target.DeviceToken = admin, device
+	metricsToken, err := randomCredential()
+	if err != nil {
+		return fail(err)
+	}
+	target.AdminBearer, target.DeviceToken, target.MetricsToken = admin, device, metricsToken
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fail(err)
@@ -324,7 +330,7 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		preparedObserver = target.preparation
 	}
 	handler := api.Router(logger, api.Options{
-		Store: st, Auth: api.NewTokenAuthorizer(admin), Log: logger, Metrics: recorder,
+		Store: st, Auth: api.NewTokenAuthorizer(admin), Log: logger, Metrics: recorder, MetricsToken: metricsToken,
 		PlayoutSecret: func() string { return device }, Playout: origin, PlayoutObserver: manager,
 		PreparedObserver: preparedObserver, EncodePool: target.encodePool,
 		PlayoutResolver: liveResolver,
@@ -594,7 +600,7 @@ func (t *PlayoutCertificationTarget) SampleStopped(ctx context.Context, point st
 	}
 	defer release()
 	return playoutcert.SampleResources(ctx, playoutcert.Config{
-		BaseURL: t.BaseURL, AdminBearer: t.AdminBearer, DeviceToken: t.DeviceToken,
+		BaseURL: t.BaseURL, AdminBearer: t.AdminBearer, DeviceToken: t.DeviceToken, MetricsToken: t.MetricsToken,
 		Client: &http.Client{Transport: syntheticSamplerTransport{handler: t.handler}}, RequestTimeout: 5 * time.Second,
 	}, point)
 }
