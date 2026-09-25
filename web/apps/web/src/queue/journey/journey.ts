@@ -7,18 +7,26 @@ import type { JourneyStage } from "./journey.type";
 // to interpret. The five API states (§4) collapse into the three things a person
 // actually wants to know: is it waiting, is it coming, is it here.
 //
-// `unavailable` deliberately does NOT become a fourth stage. It is a title that gave up
-// (§4 give-up after TTL) and it belongs to the "waiting" conversation — something the
-// operator may need to retry — rather than reading as a failure of the whole channel.
+// `unavailable` is its own "attention" stage. It is a title the reconciler gave up on (§4
+// give-up after TTL): nothing will request it next, so filing it under "waiting" ("Approved and
+// queued") described a dead title as alive (#1404). It still reads as one title's outcome, not
+// a failure of the whole channel.
 const STAGE_BY_STATE: Record<TitleDTOState, JourneyStage> = {
   wanted: "waiting",
   requested: "acquiring",
   downloading: "acquiring",
   available: "ready",
-  unavailable: "waiting",
+  unavailable: "attention",
 };
 
 const stageOf = (title: TitleDTO): JourneyStage => STAGE_BY_STATE[title.state] ?? "waiting";
+
+// In flight = still moving towards `available`: wanted, requested or downloading. Neither a
+// landed title nor a given-up one is in flight, so neither belongs in an "in flight" count.
+const isInFlight = (title: TitleDTO): boolean => {
+  const stage = stageOf(title);
+  return stage === "waiting" || stage === "acquiring";
+};
 
 // Progress is counted over titles that are ON the journey — anything that reached
 // `available`, out of everything asked for. It answers "how far along am I", which is
@@ -29,4 +37,4 @@ const journeyProgress = (titles: TitleDTO[]): { ready: number; total: number } =
   total: titles.length,
 });
 
-export { journeyProgress, stageOf };
+export { isInFlight, journeyProgress, stageOf };

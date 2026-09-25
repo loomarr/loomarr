@@ -17,6 +17,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -321,5 +322,34 @@ func TestDocsOffline(t *testing.T) {
 		if r := harness.Do(http.MethodGet, link, "", ""); r.StatusCode != http.StatusOK {
 			t.Errorf("the reference page links %s, which answers %d", link, r.StatusCode)
 		}
+	}
+}
+
+// A title the reconciler gave up on carries WHY (#1404): the queue can say "deadline exceeded"
+// instead of describing a dead title as "approved and queued".
+func TestListTitles_ExposesLastErrorOfGivenUpTitle(t *testing.T) {
+	harness := newAPIHarness(t)
+	rec := provision.Record{
+		Key: "movie:tmdb:9", Title: provision.Title{MediaType: provision.Movie, TMDBID: 9, Name: "Gave Up"},
+		State: provision.Unavailable, LastError: "deadline exceeded", Attempts: 3,
+	}
+	if err := harness.Store.UpsertTitle(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	resp := harness.Do(http.MethodGet, "/v1/titles?state=unavailable", adminToken, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list → %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Titles []struct {
+			Key       string `json:"key"`
+			LastError string `json:"lastError"`
+		} `json:"titles"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Titles) != 1 || body.Titles[0].LastError != "deadline exceeded" {
+		t.Errorf("titles = %+v, want one title with lastError %q", body.Titles, "deadline exceeded")
 	}
 }

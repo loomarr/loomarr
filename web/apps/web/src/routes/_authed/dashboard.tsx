@@ -1,7 +1,6 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
 import * as fillerApi from "@loomarr/api/endpoints/filler";
-import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
@@ -20,6 +19,7 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { usePendingApprovals } from "@/queue/pending-approvals";
 
 // Dashboard (§12, V16) — "is everything alright?" in one screen.
 //
@@ -45,17 +45,18 @@ const DashboardScreen = () => {
   // AND the GPU/LLM-VRAM contention header — one endpoint, one panel. Refreshed by the `playout` SSE
   // frame (wired in @loomarr/core), so no refetchInterval here.
   const playout = dashboardApi.useGetPlayoutStatus({ query: { enabled } });
-  // The approval queue's depth — the mock's `pendingCount`, the same number Queue's nav badge
-  // and its "Needs approval" tab show. One source, so they cannot disagree.
-  const pending = proposalsApi.useListProposals({ status: "submitted" }, { query: { enabled } });
-  const pendingCount = unwrap(pending.data, (b) => b.proposals?.length) ?? 0;
+  // The approval queue's depth — the mock's `pendingCount`, the same number Queue's "Needs
+  // approval" tab shows (proposals + pending filler pulls). One source, so they cannot disagree.
+  const { count: pendingCount } = usePendingApprovals(enabled);
 
-  // "Acquiring" spans every non-available state, and GET /v1/titles filters by ONE state, so
-  // this fans out and sums — the same aggregation the Queue page does.
+  // "Acquiring" is what is still IN FLIGHT — wanted, requested, downloading. Not `available`
+  // (landed) and not `unavailable` (given up; nothing is acquiring it). GET /v1/titles filters
+  // by ONE state, so this fans out and sums — the same aggregation the Queue page does.
   const acquiring = useQueries({
-    queries: Object.values(TitleDTOState)
-      .filter((s) => s !== TitleDTOState.available)
-      .map((state) => ({ ...titlesApi.getListTitlesQueryOptions({ state }), enabled })),
+    queries: [TitleDTOState.wanted, TitleDTOState.requested, TitleDTOState.downloading].map((state) => ({
+      ...titlesApi.getListTitlesQueryOptions({ state }),
+      enabled,
+    })),
   });
   const acquiringCount = acquiring.reduce((n, q) => n + (unwrap(q.data, (b) => b.titles?.length) ?? 0), 0);
 
@@ -136,7 +137,7 @@ const DashboardScreen = () => {
           {/* Needs-you is the only card that is a CALL TO ACTION rather than a status, so it
               takes a colour only when the number is non-zero — a permanently pink zero would
               train the eye to ignore it. */}
-          <Link to="/queue" search={{ tab: "approval" }}>
+          <Link to="/queue/approval">
             <StatCard
               label="Needs you"
               value={pendingCount}
@@ -144,7 +145,7 @@ const DashboardScreen = () => {
               tone={pendingCount > 0 ? "suggest" : "neutral"}
             />
           </Link>
-          <Link to="/queue" search={{ tab: "flight" }}>
+          <Link to="/queue/flight">
             <StatCard label="Acquiring" value={acquiringCount} note="titles in flight" tone="tune" />
           </Link>
           <Link to="/filler">

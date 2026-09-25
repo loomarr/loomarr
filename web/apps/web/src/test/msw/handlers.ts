@@ -17,6 +17,7 @@ import {
   getListChannelsMockHandler,
   getListDocsMockHandler,
   getListFillerMockHandler,
+  getListFillerPullsMockHandler,
   getListFillerSourcesMockHandler,
   getListInvitationsMockHandler,
   getListProposalJobsMockHandler,
@@ -133,6 +134,8 @@ const appHandlers = (): RequestHandler[] => [
   getListTitlesMockHandler({ titles: [] }),
   getListProposalJobsMockHandler({ journeys: [] }),
   getListProposalsMockHandler({ proposals: [] }),
+  // The Queue counts pending pulls alongside proposals (#1404), so every mount of /queue asks.
+  getListFillerPullsMockHandler({ pulls: [], total: 0 }),
   getListUsersMockHandler({ users: [] }),
   getListInvitationsMockHandler({ invitations: [] }),
   getSettingsListMockHandler({ settings: [], features: {} }),

@@ -18,7 +18,8 @@ const base = (over: Partial<ProposalDTO> = {}): ProposalDTO =>
     jobId: "j1",
     status: "approved",
     createdBy: "kid",
-    approvedBy: "boss",
+    approvedBy: "u-boss",
+    approvedByName: "boss",
     approvedAt: APPROVED_AT,
     proposal: { intent: { description: "Saturday morning cartoons for the kids" } },
     ...over,
@@ -58,6 +59,7 @@ const Denied: Story = {
     proposal: base({
       status: "denied",
       approvedBy: undefined,
+      approvedByName: undefined,
       approvedAt: undefined,
       denyReason: "over the acquisition cap this week — ask again Monday",
     }),

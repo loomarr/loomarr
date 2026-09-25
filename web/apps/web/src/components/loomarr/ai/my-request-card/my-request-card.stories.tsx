@@ -33,7 +33,9 @@ type Story = StoryObj<typeof meta>;
 
 const Waiting: Story = { args: { proposal: base() } };
 
-const Approved: Story = { args: { proposal: base({ status: "approved", approvedBy: "boss" }) } };
+const Approved: Story = {
+  args: { proposal: base({ status: "approved", approvedBy: "u-boss", approvedByName: "boss" }) },
+};
 
 // Approved-with-changes is a DISTINCT outcome: the lineup someone receives is not the one they
 // asked for, and "Approved" alone would hide that.
@@ -41,7 +43,8 @@ const ApprovedWithChanges: Story = {
   args: {
     proposal: base({
       status: "approved",
-      approvedBy: "boss",
+      approvedBy: "u-boss",
+      approvedByName: "boss",
       modSummary: "dropped 2, added 1",
       note: "swapped Gargoyles for Darkwing Duck — we already have that one",
     }),

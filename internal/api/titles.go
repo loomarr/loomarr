@@ -94,6 +94,9 @@ type TitleDTO struct {
 	Progress       float64 `json:"progress,omitempty" doc:"Download completion 0..1 (arr queue poll)"`
 	ETAText        string  `json:"etaText,omitempty" doc:"Human time-left from the download client"`
 	DownloadStatus string  `json:"downloadStatus,omitempty" doc:"Download-client status (downloading/warning/stalled/…)"`
+	// LastError is why the reconciler gave up on an `unavailable` title (e.g. "deadline
+	// exceeded"), so a client can say so instead of describing it as queued.
+	LastError string `json:"lastError,omitempty" example:"deadline exceeded" doc:"Why the title was given up on (unavailable only)"`
 }
 
 func toDTO(r provision.Record) TitleDTO {
@@ -103,6 +106,7 @@ func toDTO(r provision.Record) TitleDTO {
 		Name: r.Title.Name, Year: r.Title.Year,
 		State: string(r.State), LibraryID: r.LibraryID,
 		Progress: r.Progress, ETAText: r.ETAText, DownloadStatus: r.DownloadStatus,
+		LastError: r.LastError,
 	}
 }
 

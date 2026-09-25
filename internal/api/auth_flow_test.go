@@ -631,20 +631,66 @@ func TestListProposals_MineScopesToTheCaller(t *testing.T) {
 	}
 }
 
-// Without `mine`, the list is the unscoped queue it has always been. Read visibility
-// is global for authenticated users (§342), so this is not a leak — but it must stay
-// a DELIBERATE choice rather than something `mine` accidentally changed.
-func TestListProposals_WithoutMineIsUnscoped(t *testing.T) {
+// Without `mine`, the list is EVERYONE's proposals — including other members' requests and the
+// approvers' deny reasons and notes — which is the admin approval queue's data (#1404). A member
+// asking for it is refused (§11/§19 negative); an admin still gets the unscoped queue.
+func TestListProposals_WithoutMineIsAdminOnly(t *testing.T) {
 	harness := newAuthFlowHarness(t)
 	srv, st := harness.Server, harness.Store
 	seedProposalFor(t, st, "p-kid", "u-kid", "submitted", store.Proposal{})
 	seedProposalFor(t, st, "p-boss", "u-boss", "submitted", store.Proposal{})
 
 	kid := login(t, srv, "kid", "pw")
-	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=submitted", kid, "")
+	for _, status := range []string{"submitted", "approved", "denied"} {
+		resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status="+status, kid, "")
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("member GET /v1/proposals?status=%s → %d, want 403 (§19)", status, resp.StatusCode)
+		}
+	}
+
+	boss := login(t, srv, "boss", "pw")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=submitted", boss, "")
 	defer func() { _ = resp.Body.Close() }()
 	if got := proposalIDs(t, resp); len(got) != 2 {
-		t.Errorf("unscoped list returned %v, want both proposals", got)
+		t.Errorf("admin unscoped list returned %v, want both proposals", got)
+	}
+}
+
+// The DTO carries the people's NAMES, not just their ids (#1404): an id is what the store keeps,
+// a name is what a person can read. "auto" is the system approver and renders as "Automatic".
+func TestListProposals_ResolvesRequesterAndApproverNames(t *testing.T) {
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
+	seedProposalFor(t, st, "p-done", "u-kid", "approved", store.Proposal{ApprovedBy: "u-boss"})
+	seedProposalFor(t, st, "p-auto", "u-kid", "approved", store.Proposal{ApprovedBy: "auto"})
+	seedProposalFor(t, st, "p-gone", "u-removed", "approved", store.Proposal{ApprovedBy: "u-removed"})
+
+	boss := login(t, srv, "boss", "pw")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/proposals?status=approved", boss, "")
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		Proposals []struct {
+			ID             string `json:"id"`
+			CreatedByName  string `json:"createdByName"`
+			ApprovedByName string `json:"approvedByName"`
+		} `json:"proposals"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][2]string{
+		"p-done": {"kid", "boss"},
+		"p-auto": {"kid", "Automatic"},
+		"p-gone": {"", ""}, // a deleted user: no name to show, and never the raw id
+	}
+	for _, p := range body.Proposals {
+		if got := [2]string{p.CreatedByName, p.ApprovedByName}; got != want[p.ID] {
+			t.Errorf("%s names = %v, want %v", p.ID, got, want[p.ID])
+		}
+	}
+	if len(body.Proposals) != len(want) {
+		t.Fatalf("got %d proposals, want %d", len(body.Proposals), len(want))
 	}
 }
 

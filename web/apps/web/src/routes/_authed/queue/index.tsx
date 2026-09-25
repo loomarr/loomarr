@@ -1,3 +1,4 @@
+import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { meQueryOptions } from "@/auth/me-query";
@@ -17,10 +18,15 @@ const Route = createFileRoute("/_authed/queue/")({
     const isAdmin = me.status === 200 && me.data.role === "admin";
     if (!isAdmin) throw redirect({ to: "/queue/flight" });
 
-    const proposals = await context.queryClient.ensureQueryData(
-      proposalsApi.getListProposalsQueryOptions({ status: "submitted" }),
-    );
-    const pendingCount = proposals.status === 200 ? (proposals.data.proposals?.length ?? 0) : 0;
+    // Proposals AND pulls: either is a decision only an admin can make (the same count the tab
+    // and the Dashboard card show).
+    const [proposals, pulls] = await Promise.all([
+      context.queryClient.ensureQueryData(proposalsApi.getListProposalsQueryOptions({ status: "submitted" })),
+      context.queryClient.ensureQueryData(fillerApi.getListFillerPullsQueryOptions({ status: "pending" })),
+    ]);
+    const pendingCount =
+      (proposals.status === 200 ? (proposals.data.proposals?.length ?? 0) : 0) +
+      (pulls.status === 200 ? (pulls.data.pulls?.length ?? 0) : 0);
     throw redirect({ to: pendingCount > 0 ? "/queue/approval" : "/queue/flight" });
   },
 });
