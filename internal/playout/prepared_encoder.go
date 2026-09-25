@@ -24,7 +24,13 @@ func PreparedVideoArgs(encoder Encoder, r prepared.RenditionContract) (prepared.
 		VideoBitrate: r.VideoBitrateKbps, AudioBitrate: r.AudioBitrateKbps,
 		Encoder: encoder,
 	}
-	args := profile.scaleFilterArgs("")
+	// The chain is live's own (hdrToSDRChain via the same scaleFilterArgs slot); r.ToneMap is the
+	// answer to ToneMapApplies recorded at resolution time.
+	tonemap := ""
+	if r.ToneMap {
+		tonemap = hdrToSDRChain
+	}
+	args := profile.scaleFilterArgs(tonemap)
 	args = append(args, profile.videoEncodeArgs()...)
 	if r.VideoProfile != "" {
 		args = append(args, "-profile:v", r.VideoProfile)

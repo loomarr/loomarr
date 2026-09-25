@@ -71,6 +71,7 @@ type preparedInputsFake struct {
 	inventorySources map[string]library.InputSource
 	revisions        map[string]string
 	current          map[prepared.Source]bool
+	hdr              map[string]bool
 	calls            int
 	inventoryCalls   int
 	currentChecks    int
@@ -96,6 +97,7 @@ func (f *preparedInputsFake) ResolvePreparedSource(
 		return prepared.Source{}, "", false
 	}
 	source := preparedSource(itemID, 0)
+	source.HDR = f.hdr[itemID]
 	if revision := f.revisions[itemID]; revision != "" {
 		source.Revision = revision
 	}

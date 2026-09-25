@@ -98,10 +98,17 @@ type ProgramSpec struct {
 // that CAN tone-map must not be tone-mapped either (it would compress a range that was already
 // correct).
 func (s ProgramSpec) tonemapStep() string {
-	if !s.Tonemap || !s.Source.HDR() {
+	if !ToneMapApplies(s.Source.HDR(), s.Tonemap) {
 		return ""
 	}
 	return hdrToSDRChain
+}
+
+// ToneMapApplies is the one decision about tone-mapping, shared by live playout and prepared
+// media: the content is HDR AND the build can tone-map. Prepared media records the answer in its
+// rendition contract so a publication is never reused across a different answer.
+func ToneMapApplies(sourceHDR, buildCanTonemap bool) bool {
+	return sourceHDR && buildCanTonemap
 }
 
 // ProgramArgs builds the args to encode (or COPY) ONE program, starting Offset in, for Limit.

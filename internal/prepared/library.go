@@ -31,11 +31,15 @@ var (
 // RenditionContract is the transport-independent identity of prepared media. New transport
 // adapters select a compatible contract; they do not add platform names to publication identity.
 type RenditionContract struct {
-	VideoCodec        string `json:"videoCodec"`
-	VideoProfile      string `json:"videoProfile,omitempty"`
-	VideoLevel        string `json:"videoLevel,omitempty"`
-	PixelFormat       string `json:"pixelFormat,omitempty"`
-	HDR               string `json:"hdr,omitempty"`
+	VideoCodec   string `json:"videoCodec"`
+	VideoProfile string `json:"videoProfile,omitempty"`
+	VideoLevel   string `json:"videoLevel,omitempty"`
+	PixelFormat  string `json:"pixelFormat,omitempty"`
+	HDR          string `json:"hdr,omitempty"`
+	// ToneMap records that the video was tone-mapped from an HDR source to this SDR rendition. It is
+	// part of the publication key so a build that gains or loses zscale never reuses media made the
+	// other way; false is omitted, so existing flat publications keep their keys.
+	ToneMap           bool   `json:"toneMap,omitempty"`
 	AudioCodec        string `json:"audioCodec"`
 	AudioLayout       string `json:"audioLayout,omitempty"`
 	Width             int    `json:"width"`

@@ -65,6 +65,7 @@ type preparedRuntimeResolver struct {
 	globalBackendContext    func(context.Context) (string, error)
 	transportBackendContext func(context.Context) (string, error)
 	rendition               func() prepared.RenditionContract
+	tonemap                 func() bool
 	readiness               *prepared.Readiness
 }
 
@@ -84,7 +85,10 @@ type preparedRuntimeDependencies struct {
 	TransportBackend        func() string
 	TransportBackendContext func(context.Context) (string, error)
 	Rendition               func() prepared.RenditionContract
-	Readiness               *prepared.Readiness
+	// Tonemap reports whether this ffmpeg build can tone-map (playout.TonemapperFor). Nil means it
+	// cannot, so HDR sources are prepared flat exactly as live plays them on such a build.
+	Tonemap   func() bool
+	Readiness *prepared.Readiness
 }
 
 func newPreparedRuntimeResolver(deps preparedRuntimeDependencies) *preparedRuntimeResolver {
@@ -93,7 +97,7 @@ func newPreparedRuntimeResolver(deps preparedRuntimeDependencies) *preparedRunti
 		now: deps.Now, pathMap: deps.PathMap, policy: deps.Policy,
 		globalBackend: deps.GlobalBackend, transportBackend: deps.TransportBackend,
 		globalBackendContext: deps.GlobalBackendContext, transportBackendContext: deps.TransportBackendContext,
-		rendition: deps.Rendition, readiness: deps.Readiness,
+		rendition: deps.Rendition, tonemap: deps.Tonemap, readiness: deps.Readiness,
 	}
 }
 
@@ -310,7 +314,7 @@ func (r *preparedRuntimeResolver) resolveSourceFromInventory(
 		return prepared.Request{}, false
 	}
 	source.AudioTrack = track
-	return prepared.Request{Source: source, Rendition: r.rendition()}, true
+	return prepared.Request{Source: source, Rendition: r.renditionFor(source)}, true
 }
 
 func (r *preparedRuntimeResolver) resolveSource(
@@ -330,7 +334,7 @@ func (r *preparedRuntimeResolver) resolveSource(
 	source.AudioTrack = r.timeline.AudioTrackFor(ctx, key.ChannelID, key.LibraryItemID, input)
 	request := prepared.Request{
 		Source:    source,
-		Rendition: r.rendition(),
+		Rendition: r.renditionFor(source),
 	}
 	return request, true
 }
@@ -476,4 +480,13 @@ func (r *playoutResolver) ScheduledBroadcasts(
 	ctx context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
 	return r.segmentedBroadcasts(ctx, channelID, from, to, playout.BroadcastsBetween)
+}
+
+// renditionFor is the canonical rendition specialised for one source: live's tone-map decision
+// (HDR content on a build that can tone-map) recorded in the contract, so it is part of the
+// publication identity. A build without zscale prepares HDR flat, which is what live plays there.
+func (r *preparedRuntimeResolver) renditionFor(source prepared.Source) prepared.RenditionContract {
+	rendition := r.rendition()
+	rendition.ToneMap = playout.ToneMapApplies(source.HDR, r.tonemap != nil && r.tonemap())
+	return rendition
 }

@@ -31,6 +31,10 @@ type Source struct {
 	SourceID   string `json:"sourceId"`
 	Revision   string `json:"revision"`
 	AudioTrack int    `json:"audioTrack"`
+	// HDR is a content fact read from the resolved Inventory source (PQ or HLG transfer). It is not
+	// part of the fingerprint: a source whose HDR-ness changes has a new Revision, and what the
+	// build does about it is recorded in RenditionContract.ToneMap.
+	HDR bool `json:"hdr,omitempty"`
 }
 
 // Input is a transient FFmpeg input opened from Source immediately before background packaging.
