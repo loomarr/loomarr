@@ -349,7 +349,7 @@ func TestPostgresDiagnosticRetainedBytesMigrationSeedsTheTotalAndTrimsIndexes(t 
 // table cannot hide a predicate that fails to imply the index's.
 func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
 	ctx := context.Background()
-	s, err := openPostgres(ctx, startPostgres(t))
+	s, err := openPostgresForDataMigration(ctx, startPostgres(t))
 	if err != nil {
 		t.Fatal(err)
 	}
