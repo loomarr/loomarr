@@ -82,6 +82,9 @@ func (s *Swappable) Chat(ctx context.Context, messages []Message, opts ChatOptio
 	return p.Chat(ctx, messages, opts)
 }
 
+// CachesPromptPrefix delegates to the active provider.
+func (s *Swappable) CachesPromptPrefix() bool { return CachesPromptPrefix(*s.current.Load()) }
+
 // Name delegates to the active provider ("ollama"|"openai"), and thus changes when
 // the provider kind is swapped.
 func (s *Swappable) Name() string {

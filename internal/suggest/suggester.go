@@ -62,13 +62,20 @@ const groundedMaxTokens = 2048
 // template renders the tools before the system prompt, so dropping them at finalization changes the
 // prompt from its first tokens and a single-slot server re-prefills the whole conversation (~5-9k
 // tokens, ~20-40s). Static content (system + tools) leads, variable content follows.
-func chatOpts(tools []llm.ToolSchema, temp float64, finalizing bool) llm.ChatOptions {
+//
+// keepTools applies only to a provider that caches the prompt prefix (llm.PrefixCacher). A hosted
+// provider bills every token sent and has no slot to keep warm, so there finalization drops the tools.
+func chatOpts(tools []llm.ToolSchema, temp float64, finalizing, keepTools bool) llm.ChatOptions {
 	opts := llm.ChatOptions{
 		Profile: llm.GroundedSelection,
 		Tools:   tools, JSONMode: finalizing, Temperature: &temp, MaxTokens: groundedMaxTokens,
 	}
 	if finalizing {
-		opts.ToolChoice = llm.ToolChoiceNone
+		if keepTools {
+			opts.ToolChoice = llm.ToolChoiceNone
+		} else {
+			opts.Tools = nil
+		}
 	}
 	return opts
 }
@@ -493,7 +500,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				return "", err
 			}
 		}
-		resp, err := s.llm.Chat(llm.WithCallSite(ctx, "suggest.chat"), requestMessages, chatOpts(tools, temp, finalizing))
+		resp, err := s.llm.Chat(llm.WithCallSite(ctx, "suggest.chat"), requestMessages, chatOpts(tools, temp, finalizing, llm.CachesPromptPrefix(s.llm)))
 		if err != nil {
 			cause := err
 			if errors.Is(ctx.Err(), context.Canceled) && !errors.Is(err, context.Canceled) {

@@ -157,6 +157,19 @@ type Provider interface {
 	Name() string
 }
 
+// PrefixCacher is implemented by a provider whose server keeps the evaluated prompt prefix
+// between requests (a self-hosted llama.cpp slot). Only for such a provider does a request's
+// leading content matter: keeping the tools array on every turn (tool_choice none to forbid
+// calls) preserves the cached prefix, whereas a hosted provider bills every token sent, so
+// there the tools are dropped once retrieval is over. Callers type-assert, like Warmer.
+type PrefixCacher interface{ CachesPromptPrefix() bool }
+
+// CachesPromptPrefix reports whether p keeps a prompt prefix cache worth preserving.
+func CachesPromptPrefix(p Provider) bool {
+	c, ok := p.(PrefixCacher)
+	return ok && c.CachesPromptPrefix()
+}
+
 // Warmer is an OPTIONAL Provider capability (§8.2): preload the model so the next
 // Chat doesn't pay the cold-load cost (~9s vs ~0.5s warm for an 8B local model).
 //

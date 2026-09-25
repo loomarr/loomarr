@@ -16,7 +16,11 @@ func TestOpenAI_SelfHostedIsDecidedByEndpointNotModel(t *testing.T) {
 		{CustomProviderKey, "https://api.example.com/v1", true},
 		{"openai", "::not a url", false},
 	} {
-		if got := NewOpenAIForProvider(tc.provider, tc.url, "any-model", "").selfHosted(); got != tc.want {
+		p := NewOpenAIForProvider(tc.provider, tc.url, "any-model", "")
+		if p.CachesPromptPrefix() != tc.want {
+			t.Errorf("%s %s: CachesPromptPrefix != %v", tc.provider, tc.url, tc.want)
+		}
+		if got := p.selfHosted(); got != tc.want {
 			t.Errorf("%s %s: selfHosted=%v, want %v", tc.provider, tc.url, got, tc.want)
 		}
 	}

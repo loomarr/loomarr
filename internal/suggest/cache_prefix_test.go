@@ -22,6 +22,7 @@ func TestSuggest_EveryTurnSendsIdenticalToolsAndFinalizesWithToolChoiceNone(t *t
 		testkit.FinalResponse(""),
 		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
 	)
+	model.PrefixCache = true // a self-hosted llama.cpp slot
 	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
 	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action films"}); err != nil {
 		t.Fatal(err)
@@ -56,4 +57,21 @@ func TestSuggest_EveryTurnSendsIdenticalToolsAndFinalizesWithToolChoiceNone(t *t
 // (to keep the cached prefix) while tool_choice none forbids using them.
 func canCallTools(opts llm.ChatOptions) bool {
 	return len(opts.Tools) > 0 && opts.ToolChoice != llm.ToolChoiceNone
+}
+
+// A hosted provider has no slot to keep warm and bills every token sent: there finalization still
+// drops the tools, so the reserved input budget of a hosted run does not grow by the tool schema.
+func TestSuggest_HostedProviderFinalizationStillDropsTools(t *testing.T) {
+	meaning := dateMeaningNone()
+	model := testkit.NewLLM(
+		testkit.ToolCallResponse("catalog_search", map[string]any{"genres": []any{"action"}, "dateMeaning": meaning}),
+		testkit.FinalResponse(finalWithDateMeaning(t, meaning)),
+	)
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{matrixCandidate()}}
+	if _, err := dateExecutionSuggester(model, corpus).Suggest(context.Background(), suggest.Intent{Description: "action films"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(model.AllOpts) != 2 || len(model.AllOpts[0].Tools) == 0 || len(model.AllOpts[1].Tools) != 0 || model.AllOpts[1].ToolChoice != "" {
+		t.Errorf("hosted turns = %+v", model.AllOpts)
+	}
 }

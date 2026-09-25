@@ -160,6 +160,10 @@ func ValidateOpenRouterCertificationRoute(model, upstreamProvider string) error 
 
 func (o *OpenAI) Name() string { return o.provider }
 
+// CachesPromptPrefix: a self-hosted OpenAI-compatible server (llama.cpp) reuses its KV cache
+// across requests; a hosted API is priced by the tokens sent.
+func (o *OpenAI) CachesPromptPrefix() bool { return o.selfHosted() }
+
 // selfHosted reports whether the endpoint is an operator-run OpenAI-compatible server (llama.cpp,
 // vLLM, LM Studio) rather than a hosted API. Only those take chat_template_kwargs; the check is the
 // endpoint's identity, never the model name.
