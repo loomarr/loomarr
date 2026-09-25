@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ClientDiagnosticsReporter, type SendBatch } from "./client-diagnostics";
+import {
+  ClientDiagnosticsReporter,
+  createAuthenticatedBatchSender,
+  type SendBatch,
+} from "./client-diagnostics";
 
 const deferred = () => {
   let reject!: (error: unknown) => void;
@@ -104,5 +108,31 @@ describe("ClientDiagnosticsReporter", () => {
 
     await vi.runAllTimersAsync();
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("createAuthenticatedBatchSender", () => {
+  it("posts the wire batch through the authenticated fetch and throws on refusal", async () => {
+    const request = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    const reporter = new ClientDiagnosticsReporter(async () => undefined, {
+      clientVersion: "0.0.1",
+      platform: "shield_tv",
+      source: "android_tv",
+    });
+    const send = createAuthenticatedBatchSender(request, (events) => reporter.wireBatch(events));
+    const events = [{ event: "player.ready" as const, occurredAt: 1 }];
+
+    await send(events);
+    const [url, init] = request.mock.calls[0] ?? [];
+    expect(String(url)).toContain("/v1/diagnostics/client-events");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      events,
+      platform: "shield_tv",
+      source: "android_tv",
+    });
+
+    request.mockResolvedValueOnce(new Response(null, { status: 429 }));
+    await expect(send(events)).rejects.toThrow("429");
   });
 });

@@ -8,6 +8,9 @@ import type {
 } from "./player-controller.type";
 
 const RECENT_CHANNEL_LIMIT = 6;
+const DEFAULT_BACKOFF_MS = [1_000, 3_000, 7_000] as const;
+/** Playing this long without an error proves the stream recovered, so the retry budget refills. */
+const STABLE_PLAYBACK_MS = 30_000;
 
 const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
   [...channels]
@@ -16,13 +19,20 @@ const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
 
 const createPlayerController = ({
   initialTune = "first",
+  onPlayerError,
   profile,
+  recovery,
   source,
   transport,
 }: PlayerControllerOptions): PlayerController => {
+  const backoffMs = recovery?.backoffMs ?? DEFAULT_BACKOFF_MS;
   let disposed = false;
   let attempt = 0;
   let activeRequest: AbortController | undefined;
+  let consecutiveFailures = 0;
+  let tuneStartedAt = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let stableTimer: ReturnType<typeof setTimeout> | undefined;
   let snapshot: PlayerSnapshot = {
     catalog: [],
     recentChannelIds: [],
@@ -38,9 +48,63 @@ const createPlayerController = ({
   const isCurrentAttempt = (attemptId: number, signal?: AbortSignal) =>
     !disposed && attemptId === attempt && !signal?.aborted;
 
-  const tune = async (channel: PlayerChannel, reason: TuneReason, force = false) => {
+  const cancelRecoveryTimers = () => {
+    clearTimeout(retryTimer);
+    clearTimeout(stableTimer);
+    retryTimer = undefined;
+    stableTimer = undefined;
+  };
+
+  /**
+   * Counts one player error, reports it, and either schedules a silent re-tune of the same Channel
+   * (fresh mint + replace) or, once the budget is spent, publishes the manual-Retry failure.
+   */
+  const recordFailure = (message: string) => {
+    const channel = snapshot.channel;
+    if (!channel) return;
+    clearTimeout(stableTimer);
+    stableTimer = undefined;
+    consecutiveFailures += 1;
+    const retryable = consecutiveFailures <= backoffMs.length;
+    try {
+      onPlayerError?.({
+        attempt: consecutiveFailures,
+        channelId: channel.id,
+        elapsedMs: Date.now() - tuneStartedAt,
+        error: message,
+        fatal: !retryable,
+      });
+    } catch {
+      // Diagnostics must never affect playback.
+    }
+    if (!retryable) {
+      publish({ ...snapshot, error: message, reconnecting: undefined, status: "failed" });
+      return;
+    }
+    publish({
+      ...snapshot,
+      error: undefined,
+      reconnecting: { attempt: consecutiveFailures, maxAttempts: backoffMs.length },
+      status: "tuning",
+    });
+    retryTimer = setTimeout(
+      () => {
+        retryTimer = undefined;
+        void tune(channel, "retry", true, true);
+      },
+      backoffMs[consecutiveFailures - 1],
+    );
+  };
+
+  const tune = async (channel: PlayerChannel, reason: TuneReason, force = false, recovering = false) => {
     if (disposed) return;
     if (!force && snapshot.channel?.id === channel.id && snapshot.status !== "failed") return;
+    cancelRecoveryTimers();
+    const tunedAt = Date.now();
+    if (!recovering) {
+      consecutiveFailures = 0;
+      tuneStartedAt = tunedAt;
+    }
 
     const previousId = snapshot.channel?.id;
     const recentChannelIds =
@@ -63,9 +127,10 @@ const createPlayerController = ({
         lagSeconds: 0,
         mode: "live",
         noticeRevision: 0,
-        viewerTimeMs: Date.now(),
+        viewerTimeMs: tunedAt,
       },
       previousChannelId: recentChannelIds[0],
+      reconnecting: recovering ? { attempt: consecutiveFailures, maxAttempts: backoffMs.length } : undefined,
       recentChannelIds,
       status: "tuning",
       tuneReason: reason,
@@ -80,11 +145,12 @@ const createPlayerController = ({
       await transport.play();
     } catch (error) {
       if (!isCurrentAttempt(attemptId, request.signal)) return;
-      publish({
-        ...snapshot,
-        error: error instanceof Error ? error.message : "Couldn't tune that channel.",
-        status: "failed",
-      });
+      const message = error instanceof Error ? error.message : "Couldn't tune that channel.";
+      if (recovering) {
+        recordFailure(message);
+        return;
+      }
+      publish({ ...snapshot, error: message, status: "failed" });
     }
   };
 
@@ -103,21 +169,32 @@ const createPlayerController = ({
       return;
     }
     if (event.type === "error") {
-      publish({ ...snapshot, error: event.error, status: "failed" });
+      // A retry is already scheduled for this failure; a second error from the same dead player
+      // must not spend budget or report twice.
+      if (!retryTimer) recordFailure(event.error);
       return;
     }
     if (event.type === "paused") {
-      publish({ ...snapshot, error: undefined, status: "paused" });
+      cancelRecoveryTimers();
+      publish({ ...snapshot, error: undefined, reconnecting: undefined, status: "paused" });
       return;
     }
     if (event.type === "first-frame" && snapshot.status === "paused") return;
-    publish({ ...snapshot, error: undefined, status: "playing" });
+    if (event.type === "first-frame") consecutiveFailures = 0;
+    else if (consecutiveFailures > 0 && !stableTimer) {
+      stableTimer = setTimeout(() => {
+        stableTimer = undefined;
+        consecutiveFailures = 0;
+      }, STABLE_PLAYBACK_MS);
+    }
+    publish({ ...snapshot, error: undefined, reconnecting: undefined, status: "playing" });
   });
 
   return {
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      cancelRecoveryTimers();
       activeRequest?.abort();
       unsubscribeTransport();
       transport.pause();
@@ -131,8 +208,9 @@ const createPlayerController = ({
     },
     pause: () => {
       if (disposed || !snapshot.channel) return;
+      cancelRecoveryTimers();
       transport.pause();
-      publish({ ...snapshot, error: undefined, status: "paused" });
+      publish({ ...snapshot, error: undefined, reconnecting: undefined, status: "paused" });
     },
     play: async () => {
       if (disposed || !snapshot.channel) return;

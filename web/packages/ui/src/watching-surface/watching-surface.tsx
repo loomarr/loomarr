@@ -129,7 +129,7 @@ const TouchWatchingSurface = ({
             ) : null}
             {snapshot.status === "tuning" ? (
               <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
-                Tuning…
+                {snapshot.reconnecting ? "Reconnecting…" : "Tuning…"}
               </Text>
             ) : null}
             {snapshot.livePlayback ? (
@@ -365,7 +365,7 @@ const TvWatchingSurface = ({
                     marginTop={12}
                     textRole="metadata"
                   >
-                    Tuning…
+                    {snapshot.reconnecting ? "Reconnecting…" : "Tuning…"}
                   </Text>
                 ) : null}
                 {message ? (

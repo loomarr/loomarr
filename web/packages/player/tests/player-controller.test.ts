@@ -206,7 +206,8 @@ describe("player controller", () => {
       viewerTimeMs: 2_000,
     });
     emit({ attemptId: latestAttempt, error: "decoder failed", type: "error" });
-    expect(controller.getSnapshot()).toMatchObject({ error: "decoder failed", status: "failed" });
+    // Recovery is silent: the error schedules an automatic retry instead of the manual Retry state.
+    expect(controller.getSnapshot()).toMatchObject({ error: undefined, status: "tuning" });
     expect(source.mint).toHaveBeenCalledTimes(2);
 
     await controller.retry();

@@ -37,6 +37,29 @@ interface PlayerTransport {
   subscribe: (listener: (event: PlayerTransportEvent) => void) => () => void;
 }
 
+/** Present while the controller is silently re-tuning the same Channel after a player error. */
+interface PlayerReconnecting {
+  attempt: number;
+  maxAttempts: number;
+}
+
+/** One player error, reported once, for client diagnostics. */
+interface PlayerErrorReport {
+  /** 1-based count of consecutive failures on this tune, including this one. */
+  attempt: number;
+  channelId: string;
+  /** Milliseconds since the viewer's tune (automatic retries do not restart this clock). */
+  elapsedMs: number;
+  error: string;
+  /** True when this error exhausted automatic recovery and the manual Retry is shown. */
+  fatal: boolean;
+}
+
+interface PlayerRecoveryOptions {
+  /** Delay before each automatic retry; its length is the retry budget. */
+  backoffMs?: readonly number[];
+}
+
 interface PlayerSnapshot {
   attemptId?: number;
   catalog: readonly PlayerChannel[];
@@ -44,6 +67,7 @@ interface PlayerSnapshot {
   error?: string;
   livePlayback?: LivePlaybackState;
   previousChannelId?: string;
+  reconnecting?: PlayerReconnecting;
   recentChannelIds: readonly string[];
   status: PlayerStatus;
   tuneReason?: TuneReason;
@@ -66,7 +90,9 @@ interface PlayerController {
 
 interface PlayerControllerOptions {
   initialTune?: "first" | "none";
+  onPlayerError?: (report: PlayerErrorReport) => void;
   profile: DevicePlaybackProfile;
+  recovery?: PlayerRecoveryOptions;
   source: PlayerSourcePort;
   transport: PlayerTransport;
 }
@@ -76,6 +102,9 @@ export type {
   LivePlaybackState,
   PlayerController,
   PlayerControllerOptions,
+  PlayerErrorReport,
+  PlayerReconnecting,
+  PlayerRecoveryOptions,
   PlayerSnapshot,
   PlayerStatus,
   PlayerTransport,
