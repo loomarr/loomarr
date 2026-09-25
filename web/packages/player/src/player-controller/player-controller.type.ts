@@ -70,6 +70,8 @@ interface PlayerSnapshot {
   reconnecting?: PlayerReconnecting;
   recentChannelIds: readonly string[];
   status: PlayerStatus;
+  /** Signed address of the tuning channel's latest still, present only when it was prefetched with the warm. */
+  stillUri?: string;
   tuneReason?: TuneReason;
 }
 
@@ -91,6 +93,8 @@ interface PlayerController {
 interface PlayerControllerOptions {
   initialTune?: "first" | "none";
   onPlayerError?: (report: PlayerErrorReport) => void;
+  /** Fetches a warmed neighbour's still image ahead of time (e.g. `Image.prefetch`), so the switch overlay paints it from cache. */
+  prefetchStill?: (uri: string) => void;
   profile: DevicePlaybackProfile;
   recovery?: PlayerRecoveryOptions;
   source: PlayerSourcePort;
