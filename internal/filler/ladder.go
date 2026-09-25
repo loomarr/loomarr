@@ -346,8 +346,15 @@ func filterAudience(clips []Clip, aud Audience) []Clip {
 	}
 	out := make([]Clip, 0, len(clips))
 	for _, c := range clips {
-		// A general-audience clip fits any channel; otherwise require an exact
-		// audience match (kids ads on the kids channel, not late-night).
+		// A kids channel admits ONLY clips grounded kids or family (#1449, maintainer decision
+		// 2026-09-25): a general-audience ad is not good enough there. Every other channel keeps
+		// "a general-audience clip fits any channel", otherwise an exact audience match.
+		if aud == Kids {
+			if c.Audience == Kids || c.Audience == Family {
+				out = append(out, c)
+			}
+			continue
+		}
 		if c.Audience == aud || c.Audience == General {
 			out = append(out, c)
 		}

@@ -136,7 +136,7 @@ func TestAssemble_UngroundedAudienceNeverAirsOnKidsOrFamilyChannels(t *testing.T
 				byPath[c.Path] = c
 			}
 			for _, e := range pod.Entries {
-				if c, ok := byPath[e.Path]; ok && c.Audience != aud && c.Audience != General {
+				if c, ok := byPath[e.Path]; ok && !audienceFits(aud, c.Audience) {
 					t.Fatalf("trial %d: %s channel aired a %q-audience clip (rung %s)", trial, aud, c.Audience, pod.MatchLevel)
 				}
 			}
@@ -147,7 +147,7 @@ func TestAssemble_UngroundedAudienceNeverAirsOnKidsOrFamilyChannels(t *testing.T
 func TestAssemble_KidsChannelWithOnlyNonKidsClipsGetsTheBumperCard(t *testing.T) {
 	cat := []Clip{
 		commercial("late", 1992, LateNight),
-		commercial("family", 1992, Family),
+		commercial("general", 1992, General),
 		{Hash: "untagged", Path: "untagged", Kind: Commercial, Era: 1992, DurationMs: 30_000},
 	}
 	pod := Assemble(cat, Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
@@ -161,5 +161,28 @@ func TestAssemble_InWindowClipsArePreferredOnAnEraChannel(t *testing.T) {
 	pod := Assemble(cat, Window{Era: EraRange{From: 1989, To: 1999}, Audience: General, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
 	if pod.MatchLevel != MatchExact || len(pod.Entries) == 0 || pod.Entries[0].Path != "in" {
 		t.Fatalf("level=%s entries=%+v, want the in-window clip on the exact rung", pod.MatchLevel, pod.Entries)
+	}
+}
+
+// audienceFits is the property's oracle, written independently of the ladder: kids admits only
+// kids/family clips; family admits family/general.
+func audienceFits(channel, clip Audience) bool {
+	if channel == Kids {
+		return clip == Kids || clip == Family
+	}
+	return clip == channel || clip == General
+}
+
+func TestAssemble_KidsChannelNeverAirsGeneralClips(t *testing.T) {
+	cat := []Clip{commercial("general", 1992, General), commercial("kids", 1992, Kids), commercial("family", 1992, Family)}
+	pod := Assemble(cat, Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
+	for _, e := range pod.Entries {
+		if e.Path == "general" {
+			t.Fatal("a general-audience clip aired on a kids channel")
+		}
+	}
+	only := Assemble(cat[:1], Window{Era: Year(1992), Audience: Kids, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
+	if only.MatchLevel != MatchBumperCard {
+		t.Fatalf("level=%s, want the bumper card when only general clips exist", only.MatchLevel)
 	}
 }

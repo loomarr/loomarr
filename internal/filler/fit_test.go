@@ -224,10 +224,19 @@ func TestFitFor_NamesTheRejectingPredicate(t *testing.T) {
 // ⚠ A general-audience clip fits ANY channel — the one asymmetry in filterAudience, and the
 // reason a kids channel is not limited to clips tagged `kids`.
 func TestFitFor_GeneralAudienceFitsAnyChannel(t *testing.T) {
-	fit := FitFor(commercial("gen", 1992, General), Window{Era: Year(1992), Audience: Kids}, Policy{})
+	// Kids is the exception (#1449, maintainer decision 2026-09-25): see the next test.
+	fit := FitFor(commercial("gen", 1992, General), Window{Era: Year(1992), Audience: Family}, Policy{})
 
 	if fit.Reason != "" || fit.Level != MatchExact {
 		t.Errorf("got %s, want an exact match with no reason", fit)
+	}
+}
+
+func TestFitFor_GeneralAudienceDoesNotFitAKidsChannel(t *testing.T) {
+	fit := FitFor(commercial("gen", 1992, General), Window{Era: Year(1992), Audience: Kids}, Policy{})
+
+	if fit.Reason == "" || fit.Level == MatchExact {
+		t.Errorf("got %s, want a general clip refused on a kids channel", fit)
 	}
 }
 
