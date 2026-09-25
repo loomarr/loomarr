@@ -3,7 +3,6 @@ package mediatools
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"image/jpeg"
 	"os"
 	"os/exec"
@@ -82,9 +81,9 @@ func TestKeyframesIn_ProducesDecodableNativeSizeFrames(t *testing.T) {
 	}
 }
 
-// Image tokens on a vision model scale with pixel AREA, so the vision bound is a pixel budget,
-// not a width: 640x480 archive material and 16:9 HD both land on roughly the same cost.
-func TestVisionKeyframesIn_BoundsPixelAreaNotJustWidth(t *testing.T) {
+// Image tokens scale with pixel area, so vision frames are scaled down by a LINEAR factor (0.8x =
+// 0.64x the pixels) that keeps the same legibility ratio for SD and HD sources alike.
+func TestVisionKeyframesIn_ScalesLinearlyNotByFixedBudget(t *testing.T) {
 	dir := t.TempDir()
 	ffmpeg := filepath.Join(dir, "ffmpeg")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$(dirname \"$0\")/calls\"\n"
@@ -103,8 +102,8 @@ func TestVisionKeyframesIn_BoundsPixelAreaNotJustWidth(t *testing.T) {
 		t.Fatalf("ffmpeg calls = %d, want 4 windows", len(calls))
 	}
 	for _, call := range calls {
-		if strings.Contains(call, "min(iw,1920)") || !strings.Contains(call, fmt.Sprint(VisionFrameMaxPixels)) {
-			t.Fatalf("vision frames are not bounded by the pixel budget: %s", call)
+		if strings.Contains(call, "min(iw,1920)") || !strings.Contains(call, "iw*"+VisionFrameScale) {
+			t.Fatalf("vision frames are not scaled by VisionFrameScale: %s", call)
 		}
 	}
 	if !strings.Contains(calls[len(calls)-1], "-ss 27.000") {
@@ -112,7 +111,7 @@ func TestVisionKeyframesIn_BoundsPixelAreaNotJustWidth(t *testing.T) {
 	}
 }
 
-func TestVisionKeyframesIn_DownscalesToBudgetAndNeverUpscales(t *testing.T) {
+func TestVisionKeyframesIn_DownscalesToFourFifthsLinear(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Skip("ffmpeg unavailable")
@@ -126,8 +125,8 @@ func TestVisionKeyframesIn_DownscalesToBudgetAndNeverUpscales(t *testing.T) {
 		wantUnchanged bool
 	}{
 		{name: "SD archive 4:3", size: "640x480", wantW: 512, wantH: 384},
-		{name: "HD 16:9", size: "1280x720", wantW: 590, wantH: 332},
-		{name: "already below budget", size: "320x240", wantW: 320, wantH: 240},
+		{name: "HD 16:9", size: "1280x720", wantW: 1024, wantH: 576},
+		{name: "tiny source", size: "320x240", wantW: 256, wantH: 192},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			clip := filepath.Join(dir, strings.ReplaceAll(tc.size, "x", "_")+".mp4")
@@ -151,9 +150,6 @@ func TestVisionKeyframesIn_DownscalesToBudgetAndNeverUpscales(t *testing.T) {
 				}
 				if cfg.Width != tc.wantW || cfg.Height != tc.wantH {
 					t.Fatalf("frame %d = %dx%d, want %dx%d", i, cfg.Width, cfg.Height, tc.wantW, tc.wantH)
-				}
-				if cfg.Width*cfg.Height > VisionFrameMaxPixels {
-					t.Fatalf("frame %d has %d pixels, over the %d budget", i, cfg.Width*cfg.Height, VisionFrameMaxPixels)
 				}
 			}
 		})

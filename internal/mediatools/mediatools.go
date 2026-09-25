@@ -51,7 +51,7 @@ type MediaTools interface {
 	// than from its generated name (§10 V54). `Transcribe` has always taken a span for the same
 	// reason; vision only ever needed one because the vision RUNG runs on whole clips.
 	KeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error)
-	// VisionKeyframesIn is KeyframesIn bounded to VisionFrameMaxPixels — what a multimodal model
+	// VisionKeyframesIn is KeyframesIn scaled to VisionFrameScale — what a multimodal model
 	// is sent. Every call site that attaches images to an LLM prompt must use this one.
 	VisionKeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error)
 	// Cut writes [startMs,endMs) to out with stream copy (no re-encode — §10).
@@ -220,21 +220,21 @@ func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, end
 }
 
 // VisionKeyframesIn is KeyframesIn sized for a multimodal model's prompt: the same windows, but
-// bounded to VisionFrameMaxPixels of AREA instead of a width. A vision model bills image tokens
-// by patch count, so pixels are the cost; a 640x480 archive frame or a 1280x720 HD one lands on
-// about the same budget. Never upscales.
+// every frame is scaled to VisionFrameScale of its linear size. A vision model bills image tokens
+// by patch count, so pixels are the cost: 0.8x linear is 0.64x the pixels (about -36% tokens) for
+// every source, and 640x480 archive frames become 512x384.
+//
+// ⚠ A LINEAR factor, not a pixel budget, on purpose. A live A/B (#1480) showed a fixed 512x384-area
+// budget shrank 1280x720 sources 2.2x linear and flipped the role of a political ad and dropped a
+// brand read from fine print; 0.8x kept those reads at the same legibility ratio SD clips had.
 func (t *FFmpegTools) VisionKeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {
-	return t.keyframesIn(ctx, file, startMs, endMs, n,
-		fmt.Sprintf("min(iw,trunc(sqrt(%d*iw/ih)/2)*2)", VisionFrameMaxPixels))
+	return t.keyframesIn(ctx, file, startMs, endMs, n, "trunc(iw*"+VisionFrameScale+"/2)*2")
 }
 
-// VisionFrameMaxPixels is the per-frame pixel budget for frames sent to a vision model (512x384
-// at 4:3). The unbounded path sent native 640x480 SD frames (~300k px). This keeps 80% of the
-// linear resolution, so a brand name or year that is legible on a 4:3 SD frame stays legible
-// (glyph height only shrinks ~20%), while cutting the pixels — and so the prompt tokens — by
-// about a third. Deliberately NOT applied to KeyframesIn: artwork and exact-frame evidence keep
-// their own contracts.
-const VisionFrameMaxPixels = 512 * 384
+// VisionFrameScale is the linear scale applied to frames sent to a vision model, as an ffmpeg
+// expression. Deliberately NOT applied to KeyframesIn: artwork and exact-frame evidence keep their
+// own contracts.
+const VisionFrameScale = "4/5"
 
 func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, endMs int64, n int, widthExpr string) ([][]byte, error) {
 	if n <= 0 {
