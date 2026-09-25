@@ -75,7 +75,7 @@ func TestFillerPipelineDriverDefersDetailsWhilePreparationCanAdvance(t *testing.
 	detailsRan := false
 	driver := fillerPipelineDriver{
 		prepare: func(context.Context) (filler.PipelineResult, error) {
-			return filler.PipelineResult{Overview: filler.PipelineOverview{Runnable: 4}}, nil
+			return filler.PipelineResult{Advanced: 1, Overview: filler.PipelineOverview{Runnable: 4}}, nil
 		},
 		details: func(context.Context) error {
 			detailsRan = true
@@ -97,5 +97,42 @@ func TestFillerFetchJobUsesOnlyAnInternalWakeSchedule(t *testing.T) {
 	}
 	if job.ScheduleKey != "" {
 		t.Fatalf("filler fetch schedule key = %q, want no operator cron authority", job.ScheduleKey)
+	}
+}
+
+// #1412: production held 202 clips of which only 34 were ready. The rest sat Runnable/InProgress
+// without the pipeline advancing them, and "defer details while anything is runnable" meant the
+// enrichment runner never ran and filler_enrichment_passes stayed at zero rows.
+func TestFillerPipelineDriverRunsDetailsWhenPreparationMakesNoProgress(t *testing.T) {
+	detailsRan := false
+	driver := fillerPipelineDriver{
+		prepare: func(context.Context) (filler.PipelineResult, error) {
+			return filler.PipelineResult{Overview: filler.PipelineOverview{Runnable: 100, InProgress: 3}}, nil
+		},
+		details: func(context.Context) error { detailsRan = true; return nil },
+	}
+	if err := driver.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !detailsRan {
+		t.Fatal("details starved behind a backlog that preparation did not advance")
+	}
+}
+
+func TestFillerPipelineDriverBoundsDetailDeferralWhilePreparationAdvances(t *testing.T) {
+	ran := 0
+	driver := &fillerPipelineDriver{
+		prepare: func(context.Context) (filler.PipelineResult, error) {
+			return filler.PipelineResult{Advanced: 1, Overview: filler.PipelineOverview{Runnable: 100}}, nil
+		},
+		details: func(context.Context) error { ran++; return nil },
+	}
+	for range fillerDetailMaxDeferrals + 1 {
+		if err := driver.Run(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ran != 1 {
+		t.Fatalf("details ran %d times over %d advancing passes, want exactly once after the deferral bound", ran, fillerDetailMaxDeferrals+1)
 	}
 }

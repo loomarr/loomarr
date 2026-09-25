@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
@@ -46,10 +47,18 @@ type fillerPipelineRunner interface {
 type fillerPipelineDriver struct {
 	prepare func(context.Context) (filler.PipelineResult, error)
 	details func(context.Context) error
+	// deferred counts consecutive passes that skipped details because preparation was advancing.
+	deferred int
 }
 
-func newFillerPipelineDriver(pipeline *filler.Pipeline, details fillerEnrichmentRunner) fillerPipelineDriver {
-	return fillerPipelineDriver{
+// fillerDetailMaxDeferrals bounds how many consecutive advancing passes may postpone details.
+// ⚠ Deferral used to key on "anything is Runnable or InProgress", which is a property of the
+// backlog, not of progress: a backlog that never drains (production held 202 clips, 34 ready)
+// starved enrichment forever and filler_enrichment_passes stayed empty (#1412).
+const fillerDetailMaxDeferrals = 3
+
+func newFillerPipelineDriver(pipeline *filler.Pipeline, details fillerEnrichmentRunner, log *slog.Logger) *fillerPipelineDriver {
+	return &fillerPipelineDriver{
 		prepare: func(ctx context.Context) (filler.PipelineResult, error) {
 			if pipeline == nil {
 				return filler.PipelineResult{}, nil
@@ -60,13 +69,17 @@ func newFillerPipelineDriver(pipeline *filler.Pipeline, details fillerEnrichment
 			if details == nil {
 				return nil
 			}
-			_, err := details.Run(ctx)
+			result, err := details.Run(ctx)
+			if log != nil {
+				log.Info("filler details run", "considered", result.Considered,
+					"updated", result.Updated, "failed", result.Failed)
+			}
 			return err
 		},
 	}
 }
 
-func (d fillerPipelineDriver) Run(ctx context.Context) error {
+func (d *fillerPipelineDriver) Run(ctx context.Context) error {
 	var prepared filler.PipelineResult
 	var prepareErr error
 	if d.prepare != nil {
@@ -75,12 +88,16 @@ func (d fillerPipelineDriver) Run(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return errors.Join(prepareErr, err)
 	}
-	// Descriptive enrichment is optional and may involve a remote model. Let the next bounded
-	// scheduler pass keep moving clips toward playable readiness before spending that lease on
-	// details. Scheduled retries do not block enrichment because they cannot advance yet.
-	if prepared.Overview.Runnable > 0 || prepared.Overview.InProgress > 0 {
+	// Descriptive enrichment is optional and may involve a remote model. While preparation is
+	// actually advancing clips, let the next bounded pass keep moving them toward playable
+	// readiness — but only for a bounded number of passes, and never on the strength of a backlog
+	// that did not advance. Scheduled retries do not block enrichment because they cannot advance.
+	preparing := prepared.Advanced > 0 && (prepared.Overview.Runnable > 0 || prepared.Overview.InProgress > 0)
+	if preparing && d.deferred < fillerDetailMaxDeferrals {
+		d.deferred++
 		return prepareErr
 	}
+	d.deferred = 0
 	var detailsErr error
 	if d.details != nil {
 		detailsErr = d.details(ctx)

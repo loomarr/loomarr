@@ -295,3 +295,34 @@ func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.
 		t.Fatalf("explicit source geography = %+v, want local GB / London", got.Clip)
 	}
 }
+
+// #1412 end to end through the scheduler driver: production has no text model configured and a
+// preparation backlog that does not drain. The deterministic pass must still be recorded for an
+// existing clip that has never had one.
+func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_000, 0).UTC()
+	clip := store.Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "HP Sauce Advert",
+		Kind: filler.Commercial}, UpdatedAt: at, CreatedAt: at}
+	if err := st.UpsertClip(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	signals := fillerEnrichmentSignals{store: st, files: fstest.MapFS{}}
+	runner := fillerenrichment.NewRunner(fillerEnrichmentRepository{st: st}, signals.Load,
+		func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
+	coordinator := fillerenrichment.NewCoordinator(runner, fillerEnrichmentRepository{st: st},
+		func() fillerenrichment.TextSelection { return fillerenrichment.TextSelection{} },
+		signals.Load, func() int { return 25 }, func() time.Time { return at.Add(time.Minute) })
+	driver := newFillerPipelineDriver(nil, coordinator, nil)
+	driver.prepare = func(context.Context) (filler.PipelineResult, error) {
+		return filler.PipelineResult{Overview: filler.PipelineOverview{Runnable: 168, InProgress: 2}}, nil
+	}
+	if err := driver.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err := st.ListFillerEnrichmentCandidates(t.Context(), fillerenrichment.DeterministicProducer,
+		fillerenrichment.DeterministicProducerVersion, fillerenrichment.ControlledTaxonomyVersion, 10)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("clip still lacks a deterministic pass: %+v, err %v", candidates, err)
+	}
+}
