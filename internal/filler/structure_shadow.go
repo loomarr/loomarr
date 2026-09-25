@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -121,10 +120,20 @@ func (s *StructureSplitShadow) NeedsStructureSplitObservation(ctx context.Contex
 	if !found {
 		return true, nil
 	}
-	if !reflect.DeepEqual(existing, expected) {
+	if !sameStructureSplitShadowDecision(existing, expected) {
 		return false, ErrStructureSplitShadowConflict
 	}
 	return false, nil
+}
+
+// sameStructureSplitShadowDecision compares content identity, not Go representation. The stored
+// JSON omits empty span groups, so a decoded row carries nil where a fresh decision carries an empty
+// slice; reflect.DeepEqual calls those different. The digest is over the canonical JSON, which
+// treats nil and empty alike, so recomputing it from the stored document still catches any real
+// difference in spans, reasons, or identities.
+func sameStructureSplitShadowDecision(existing, expected StructureSplitShadowDecision) bool {
+	return existing.ID == expected.ID && existing.SHA256 == expected.SHA256 &&
+		StructureSplitShadowDecisionSHA256(existing) == expected.SHA256
 }
 
 func newStructureSplitShadowDecision(proposal SplitProposal, legacy, certified SplitPartition, materialization *StructureMaterializationPolicy, policyVersion string) (StructureSplitShadowDecision, error) {
