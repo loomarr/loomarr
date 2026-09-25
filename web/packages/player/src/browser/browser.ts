@@ -307,7 +307,10 @@ const manifestStartFailure = (data: ManifestLoadFailure, manifestLoadError: stri
   const code = data.response?.code;
   if (data.details !== manifestLoadError || code === undefined || code < 500) return undefined;
   try {
-    const problem = JSON.parse(decodeResponseBody(data.response?.data)) as { detail?: unknown; title?: unknown };
+    const problem = JSON.parse(decodeResponseBody(data.response?.data)) as {
+      detail?: unknown;
+      title?: unknown;
+    };
     for (const text of [problem.detail, problem.title]) {
       if (typeof text === "string" && text.trim() !== "") return text;
     }

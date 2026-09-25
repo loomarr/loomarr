@@ -957,7 +957,9 @@ describe("useHlsPlayer", () => {
         on: ReturnType<typeof vi.fn>;
         startLoad: ReturnType<typeof vi.fn>;
       };
-      await waitFor(() => expect(controller.on.mock.calls.some((call: unknown[]) => call[0] === "error")).toBe(true));
+      await waitFor(() =>
+        expect(controller.on.mock.calls.some((call: unknown[]) => call[0] === "error")).toBe(true),
+      );
       const onError = controller.on.mock.calls.find((call: unknown[]) => call[0] === "error")?.[1] as (
         event: string,
         data: unknown,
@@ -980,7 +982,10 @@ describe("useHlsPlayer", () => {
           "error",
           manifestFailure(
             502,
-            JSON.stringify({ title: "Bad Gateway", detail: "Loomarr could not reach its own program source." }),
+            JSON.stringify({
+              title: "Bad Gateway",
+              detail: "Loomarr could not reach its own program source.",
+            }),
           ),
         );
       });
