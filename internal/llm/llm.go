@@ -146,6 +146,17 @@ type ChatOptions struct {
 	// models. "none" keeps bounded structured extraction from spending its whole
 	// output allowance on hidden reasoning before it emits the required JSON.
 	ReasoningEffort string
+	// OnContentDelta, when set, receives each content fragment of a STREAMED reply as its
+	// frame arrives, in order, before the turn completes. It lets a caller show a reply
+	// taking shape (partial-JSON picks) without another model call.
+	//
+	// Contract: it runs on the stream-reading goroutine, so it must be cheap and must not
+	// block (copy the fragment and return; do the parsing elsewhere). It is only ever called
+	// after response bytes have arrived, so a request that fails before a body — or one a
+	// caller retries or replays — never produces a delta for the attempt that failed. A
+	// provider that does not stream (Ollama, a plain-JSON reply) never calls it; the caller
+	// then gets the whole content in the returned Response.
+	OnContentDelta func(fragment string)
 }
 
 // Provider is the provider-neutral LLM primitive (§8). One Chat turn: given the

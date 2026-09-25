@@ -146,7 +146,12 @@ const RefinePanel = ({
       {state === "running" && (
         <div className="flex flex-col gap-3">
           {refine.phase ? (
-            <GenerationProgress phase={refine.phase} round={refine.round} elapsedSeconds={elapsed} />
+            <GenerationProgress
+              phase={refine.phase}
+              round={refine.round}
+              elapsedSeconds={refine.progress ? undefined : elapsed}
+              progress={refine.progress}
+            />
           ) : (
             <p className="flex items-center gap-2 text-muted-foreground text-sm">
               <Loader2 className="size-4 animate-spin text-suggest-300" aria-hidden />

@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { StateBadge } from "@/components/loomarr/channels/state-badge";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -36,7 +37,13 @@ const when = (iso?: string): string | undefined => (iso ? new Date(iso).toLocale
 const RequestDetail = ({ jobId }: { jobId: string }) => {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
-  const query = proposalJobsApi.useGetProposalJob(jobId);
+  const query = proposalJobsApi.useGetProposalJob(jobId, {
+    query: {
+      // A generating request streams its progress; the SSE frame refetches sooner, this is the floor.
+      refetchInterval: (q) =>
+        q.state.data?.status === 200 && q.state.data.data.milestone === "generating" ? 2_000 : false,
+    },
+  });
   const { titles } = useRequests();
   const retryTitle = titlesApi.useEnqueueTitle({
     mutation: {
@@ -102,6 +109,13 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={status.tone}>{status.line}</Badge>
         </div>
+
+        {/* The same live surface the Guide shows while generating: stage line, titles as they are
+            chosen, count and time. It hands off to the failure card above or the decision and
+            lineup below as soon as the Journey moves on. */}
+        {journey.milestone === "generating" && (
+          <GenerationProgress phase="reasoning" progress={journey.progress} />
+        )}
 
         {journey.failure && (
           <Card className="flex flex-col gap-1 p-4">

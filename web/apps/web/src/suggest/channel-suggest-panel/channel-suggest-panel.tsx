@@ -170,7 +170,11 @@ const ChannelSuggestPanel = ({
           "reasoning" is the honest default. It used to fall back to "searching", which
           announced a library search that had not started and could not be the slow part. */}
       {run.isRunning && !proposal && (
-        <GenerationProgress phase={run.phase ?? "reasoning"} elapsedSeconds={elapsed} />
+        <GenerationProgress
+          phase={run.phase ?? "reasoning"}
+          elapsedSeconds={run.progress ? undefined : elapsed}
+          progress={run.progress}
+        />
       )}
 
       {/* Failed — recovery copy is fixed by the authoritative Journey. Actions remain

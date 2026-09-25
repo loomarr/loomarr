@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
@@ -62,6 +63,8 @@ type Service struct {
 	workflow   DurableWorkflow
 	notify     ProposalNotifier
 	quality    QualityRecorder
+	// tracked holds the live ProgressTracker of every running job, by job id.
+	tracked sync.Map
 }
 
 // QualityRecorder is the narrow, best-effort sink for authoritative Proposal
@@ -357,6 +360,8 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 	jobCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	jobCtx = WithProgress(jobCtx, func(p Phase, round int) { s.emitPhase(work.JobID, p, round) })
+	jobCtx, untrack := s.trackJob(jobCtx, work.JobID)
+	defer untrack()
 
 	intent, err := s.executionIntent(jobCtx, work.Kind, work.JobID, work.Intent)
 	if err != nil {
@@ -415,6 +420,8 @@ func (s *Service) runJob(ctx context.Context, job store.Job) {
 	// Thread live progress (§8) into the pipeline: the suggester reports
 	// searching→reasoning→scoring off this context; done/failed are emitted here.
 	jobCtx = WithProgress(jobCtx, func(p Phase, round int) { s.emitPhase(job.ID, p, round) })
+	jobCtx, untrack := s.trackJob(jobCtx, job.ID)
+	defer untrack()
 
 	var intent Intent
 	if err := json.Unmarshal([]byte(job.IntentJSON), &intent); err != nil {

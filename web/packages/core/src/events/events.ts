@@ -100,6 +100,10 @@ const useLoomarrEvents = (extra?: EventHandlers): void => {
       },
       onSuggestion: (e) => {
         invalidateByPrefix(qc, "/v1/proposals");
+        // A frame also fires as a running request's stage or picks change, and the journey read
+        // (GET /v1/proposal-jobs) carries that live progress — so the Requests card and detail
+        // catch up on the frame instead of waiting for their poll.
+        invalidateByPrefix(qc, "/v1/proposal-jobs");
         extraRef.current?.onSuggestion?.(e);
       },
       onLlmPull: (e) => {

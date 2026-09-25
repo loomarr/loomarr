@@ -21,6 +21,36 @@ type ProposalWorkflow interface {
 	Revise(context.Context, proposalworkflow.Viewer, string, suggest.Intent) error
 }
 
+// ProposalProgress reads the live snapshot of a generation that is running on this process.
+// ok is false for a job that is queued, finished or not running here.
+type ProposalProgress interface {
+	Progress(jobID string) (snapshot suggest.ProgressSnapshot, ok bool)
+}
+
+// ProposalJourneyProgressDTO is what a generating request has honestly done so far. Every
+// field is a real event: a phase change, a catalog_search's own arguments, or a pick that
+// resolved against the surfaced catalog (never one final validation would drop). It is in
+// memory on the running process — a run does not survive a restart — and is absent once the
+// Proposal or the failure exists. There is no percentage and no ETA by design: Target is the
+// most picks the model is asked for, so "4 of about 8" never overstates.
+type ProposalJourneyProgressDTO struct {
+	Stage     string                        `json:"stage" enum:"reading,searching,choosing,building" doc:"User-facing step: reading the request, searching the library, choosing titles, building the lineup"`
+	Terms     []string                      `json:"terms" doc:"What the catalog searches were actually asked for (bounded)"`
+	Picks     []ProposalJourneyProgressPick `json:"picks" doc:"Titles chosen so far, in the order the model chose them, each resolved against the surfaced catalog"`
+	Target    int                           `json:"target" doc:"The most titles the model is asked to pick"`
+	StartedAt time.Time                     `json:"startedAt"`
+}
+
+type ProposalJourneyProgressPick struct {
+	Key           string `json:"key"`
+	MediaType     string `json:"mediaType" enum:"movie,series"`
+	Name          string `json:"name"`
+	Year          int    `json:"year,omitempty"`
+	TMDBID        int    `json:"tmdbId,omitempty"`
+	InLibrary     bool   `json:"inLibrary"`
+	LibraryItemID string `json:"libraryItemId,omitempty"`
+}
+
 type ProposalJourneyDTO struct {
 	Version   int                         `json:"version" doc:"Current First-channel Journey schema version"`
 	JobID     string                      `json:"jobId"`
@@ -28,6 +58,7 @@ type ProposalJourneyDTO struct {
 	Intent    suggest.Intent              `json:"intent"`
 	Attempts  []ProposalJobAttemptDTO     `json:"attempts"`
 	Failure   *ProposalJourneyFailureDTO  `json:"failure,omitempty"`
+	Progress  *ProposalJourneyProgressDTO `json:"progress,omitempty" doc:"Live generation progress; present only while generating and running on this server"`
 	Proposal  *ProposalJourneyProposalDTO `json:"proposal,omitempty"`
 	Channel   *ProposalJourneyChannelDTO  `json:"channel,omitempty"`
 	Actions   []string                    `json:"actions" doc:"Server-authorized next actions"`
@@ -129,7 +160,9 @@ func (s *Server) listProposalJourneys(ctx context.Context, in *proposalJourneyLi
 	out := &proposalJourneyListOutput{}
 	out.Body.Journeys = make([]ProposalJourneyDTO, 0, len(journeys))
 	for _, journey := range journeys {
-		out.Body.Journeys = append(out.Body.Journeys, proposalJourneyDTO(journey, names))
+		dto := proposalJourneyDTO(journey, names)
+		dto.Progress = s.journeyProgress(journey) // the In progress card's stage line
+		out.Body.Journeys = append(out.Body.Journeys, dto)
 	}
 	return out, nil
 }
@@ -218,7 +251,9 @@ func (s *Server) getProposalJourney(ctx context.Context, in *proposalJourneyInpu
 		return nil, apiErrWithCause(http.StatusInternalServerError, "Couldn't read the channel request",
 			"Loomarr couldn't restore this channel request. Try again in a moment.", err)
 	}
-	return &proposalJourneyOutput{Body: proposalJourneyDTO(journey, names)}, nil
+	dto := proposalJourneyDTO(journey, names)
+	dto.Progress = s.journeyProgress(journey)
+	return &proposalJourneyOutput{Body: dto}, nil
 }
 
 // journeyPersonNames resolves approver ids to names for a Journey. A server wired without a store
@@ -267,4 +302,26 @@ func proposalJourneyFailureDTO(failure *proposalworkflow.Failure) *ProposalJourn
 		return nil
 	}
 	return &ProposalJourneyFailureDTO{Code: string(failure.Code), Reason: string(failure.Reason), RecoveryAction: string(failure.RecoveryAction), Message: failure.Message, Guidance: failure.Guidance, Trace: proposalworkflow.PublicFailureTrace(failure.Trace)}
+}
+
+// journeyProgress attaches the live snapshot to a generating Journey only.
+func (s *Server) journeyProgress(journey proposalworkflow.Journey) *ProposalJourneyProgressDTO {
+	if s.proposalProgress == nil || journey.Milestone != proposalworkflow.MilestoneGenerating {
+		return nil
+	}
+	snap, ok := s.proposalProgress.Progress(journey.JobID)
+	if !ok {
+		return nil
+	}
+	dto := &ProposalJourneyProgressDTO{
+		Stage: string(snap.Stage), Terms: append([]string{}, snap.Terms...), Target: snap.Target,
+		StartedAt: snap.StartedAt, Picks: make([]ProposalJourneyProgressPick, 0, len(snap.Picks)),
+	}
+	for _, p := range snap.Picks {
+		dto.Picks = append(dto.Picks, ProposalJourneyProgressPick{
+			Key: p.Key, MediaType: p.MediaType, Name: p.Name, Year: p.Year, TMDBID: p.TMDBID,
+			InLibrary: p.InLibrary, LibraryItemID: p.LibraryItemID,
+		})
+	}
+	return dto
 }

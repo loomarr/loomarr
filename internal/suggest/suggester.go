@@ -523,7 +523,11 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				return "", err
 			}
 		}
-		resp, err := s.llm.Chat(llm.WithCallSite(ctx, "suggest.chat"), requestMessages, chatOpts(tools, temp, finalizing, llm.CachesPromptPrefix(s.llm)))
+		opts := chatOpts(tools, temp, finalizing, llm.CachesPromptPrefix(s.llm))
+		// Picks appear as the final JSON streams in. A provider that does not stream never
+		// calls the hook, so its picks simply arrive with the completed turn's proposal.
+		opts.OnContentDelta = s.streamPicks(trackerFrom(ctx), *intent, surfaced)
+		resp, err := s.llm.Chat(llm.WithCallSite(ctx, "suggest.chat"), requestMessages, opts)
 		if err != nil {
 			cause := err
 			if errors.Is(ctx.Err(), context.Canceled) && !errors.Is(err, context.Canceled) {
@@ -560,6 +564,9 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 					return "", NewFailure(FailureBudgetExhausted, *trace, errors.New("suggestion budget exhausted"))
 				}
 				prepared, result, rankedTrace, valid := prepareToolCall(tc, *intent, *acceptedMeaning)
+				if valid {
+					trackerFrom(ctx).addTerms(searchTerms(prepared.arguments))
+				}
 				var cands []catalog.Candidate
 				meaning := (*ValidatedDateMeaning)(nil)
 				if valid {

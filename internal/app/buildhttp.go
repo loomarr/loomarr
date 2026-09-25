@@ -122,6 +122,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		TunarrConnect:       tunarrConnectSvc,
 		Suggest:             suggestSvc,
 		ProposalWorkflow:    proposalWorkflow,
+		ProposalProgress:    deps.suggestions.progress,
 		Search:              searchSvc,
 		MovieCollections:    movieCollectionsSvc,
 		Collections:         collectionsSvc,

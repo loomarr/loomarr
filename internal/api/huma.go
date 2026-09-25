@@ -78,6 +78,7 @@ type Server struct {
 	// Phase 11 is configured.
 	suggest          SuggestService
 	proposalWorkflow ProposalWorkflow
+	proposalProgress ProposalProgress
 	search           SearchService
 	movieCollections MovieCollectionService
 	// collections backs the scope.collections picker; nil ⇒ the route 501s, the same
@@ -1025,6 +1026,7 @@ type Options struct {
 	TunerRescanner   TunerRescanner         // §9 channel-list freshness; nil ⇒ best-effort poke unavailable
 	TunarrConnect    TunarrConnector        // /v1/setup/tunarr-connect + tunarr_library check (§6); nil ⇒ 501
 	Suggest          SuggestService         // /v1/proposals submit (Phase 11); nil ⇒ submit route 501
+	ProposalProgress ProposalProgress       // live generation progress on GET /v1/proposal-jobs/{jobId}; nil ⇒ none
 	ProposalWorkflow ProposalWorkflow       // authoritative /v1/proposal-jobs Journey reads
 	Search           SearchService          // /v1/search (Phase 11); nil ⇒ search route 501
 	MovieCollections MovieCollectionService // /v1/movie-collections; nil ⇒ route 501

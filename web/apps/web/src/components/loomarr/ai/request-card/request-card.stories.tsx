@@ -19,6 +19,11 @@ type Story = StoryObj<typeof meta>;
 
 const Generating: Story = { args: { line: "Generating", tone: "suggest" } };
 
+// The In progress card names the live stage and pick count from the streamed progress.
+const GeneratingLive: Story = {
+  args: { line: "Generating", tone: "suggest", hint: "Choosing titles… · 4 of about 8 picked" },
+};
+
 const GettingTitles: Story = {
   args: { line: "Getting 3 titles (2 downloading, 1 waiting)", tone: "caution" },
 };
@@ -43,4 +48,4 @@ const Failed: Story = {
 };
 
 export default meta;
-export { CouldntGet, Failed, Generating, GettingTitles, OnYourChannel };
+export { CouldntGet, Failed, Generating, GeneratingLive, GettingTitles, OnYourChannel };

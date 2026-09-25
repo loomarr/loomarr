@@ -2,6 +2,7 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { ProposalJourneyDTO } from "@loomarr/api/models/proposalJourneyDTO";
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { pluralize } from "@loomarr/core/format";
+import { pickCount, progressLine } from "@/components/loomarr/feedback/progress-line";
 import type { RequestAcquisition, RequestStatus } from "./request-status.type";
 
 // One request, read the way its requester asks about it: does it need me, is it still moving,
@@ -48,7 +49,15 @@ const requestStatus = (journey: ProposalJourneyDTO, titles: TitleDTO[]): Request
     case "denied":
       return { tab: "done", line: "Not approved", tone: "onair" };
     case "generating":
-      return { tab: "in-progress", line: "Generating", tone: "suggest" };
+      return {
+        tab: "in-progress",
+        line: "Generating",
+        // The live stage, in the same words the Guide and the detail use.
+        detail: journey.progress
+          ? [progressLine(journey.progress), pickCount(journey.progress)].filter(Boolean).join(" · ")
+          : undefined,
+        tone: "suggest",
+      };
     case "awaiting_approval":
       return { tab: "in-progress", line: "Waiting for approval", tone: "suggest" };
     default:

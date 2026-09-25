@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
@@ -34,7 +35,7 @@ func idGen() func() string {
 	return func() string { return "id-" + strconv.FormatInt(n.Add(1), 10) }
 }
 
-func buildService(t *testing.T, st suggest.ProposalStore, llmMock *testkit.LLM) *suggest.Service {
+func buildService(t *testing.T, st suggest.ProposalStore, llmMock llm.Provider) *suggest.Service {
 	ms := testkit.NewMediaServer(t)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev-1")
 	mt := testkit.NewTMDB(t)

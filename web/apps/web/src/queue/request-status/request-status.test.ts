@@ -145,3 +145,26 @@ describe("requestStatus", () => {
     });
   });
 });
+
+describe("requestStatus while generating", () => {
+  const progress = {
+    stage: "choosing" as const,
+    terms: ["speed"],
+    picks: [
+      { key: "movie:tmdb:100", mediaType: "movie" as const, name: "Speed", year: 1994, inLibrary: false },
+    ],
+    target: 8,
+    startedAt: "2026-09-25T12:00:00Z",
+  };
+
+  it("carries the live stage and pick count as the explanation line", () => {
+    expect(requestStatus(journey({ milestone: "generating", progress }), [])).toMatchObject({
+      line: "Generating",
+      detail: "Choosing titles… · 1 of about 8 picked",
+    });
+  });
+
+  it("has no explanation before the server has a snapshot", () => {
+    expect(requestStatus(journey({ milestone: "generating" }), []).detail).toBeUndefined();
+  });
+});

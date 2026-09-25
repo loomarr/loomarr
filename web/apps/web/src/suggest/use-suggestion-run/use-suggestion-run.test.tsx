@@ -82,6 +82,33 @@ describe("useSuggestionRun", () => {
     expect(result.current.error).toBeFalsy();
   });
 
+  it("re-reads the Journey on a frame, so a new stage or pick shows before the 2 s poll", async () => {
+    const journey = stub();
+    journey.progress = {
+      stage: "reading",
+      terms: [],
+      picks: [],
+      target: 8,
+      startedAt: "2026-08-22T12:00:00Z",
+    };
+    const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
+    act(() => result.current.start({ description: "90s action movies" }));
+    await waitFor(() => expect(result.current.progress?.stage).toBe("reading"));
+
+    journey.progress = {
+      stage: "choosing",
+      terms: ["heist"],
+      picks: [{ key: "movie:tmdb:1", mediaType: "movie", name: "Speed", year: 1994, inLibrary: true }],
+      target: 8,
+      startedAt: "2026-08-22T12:00:00Z",
+    };
+    await emit("job-1", "reasoning");
+
+    // waitFor's default timeout is 1 s: only the frame's invalidation can satisfy this in time.
+    await waitFor(() => expect(result.current.progress?.picks.map((p) => p.name)).toEqual(["Speed"]));
+    expect(result.current.progress?.stage).toBe("choosing");
+  });
+
   it("is not `failed` when the run is still in flight", async () => {
     stub();
     const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });

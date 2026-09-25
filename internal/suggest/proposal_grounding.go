@@ -35,33 +35,24 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 
 	for _, p := range picks {
 		key := p.key()
-		if key == "" {
+		cand, rejection := resolvePick(intent, p, surfaced)
+		switch rejection {
+		case pickMalformed:
 			traceDecision(trace, DecisionCandidate{Disposition: DispositionValidationDropped, Reason: ReasonMalformedID})
 			otherRejection = true
 			continue // no usable id → not grounded, drop
-		}
-		cand, ok := surfaced[provision.Key(key)]
-		if !ok {
+		case pickNotSurfaced:
 			traceDecision(trace, DecisionCandidate{Key: key, Disposition: DispositionValidationDropped, Reason: ReasonNotSurfaced})
 			otherRejection = true
 			continue // GROUNDING: the model named an id the tool never returned — drop it
-		}
-		if requiredIdentityConflicts(intent, cand) || titleExplicitlyExcluded(intent, cand.Name) || candidateContradictsExplicitQualifiers(intent, cand) {
+		case pickIrrelevant:
 			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
 			otherRejection = true
 			continue
-		}
-		if intent.ReferenceResolved && !intent.referenceKeys[provision.Key(key)] {
+		case pickMembershipUnproven:
 			traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
-			otherRejection = true
-			continue // a resolved reference cannot be padded with an unrelated grounded id
-		}
-		if requiresMembershipEvidence(intent) {
-			if !intent.membershipKeys[provision.Key(key)] || (intent.curatedTitleSet && intent.curatedTitleKey != provision.Key(key)) {
-				traceGroundedDecision(trace, cand, DispositionValidationDropped, ReasonNoRelevanceEvidence)
-				membershipRejected = true
-				continue // identity is real, but it was not explicitly enumerated as a member
-			}
+			membershipRejected = true
+			continue // identity is real, but it was not explicitly enumerated as a member
 		}
 		rationale := p.Rationale
 		if requiresMembershipEvidence(intent) {
@@ -570,4 +561,44 @@ func editorialRole(intent Intent, key provision.Key, source catalog.Scope, votes
 		return EditorialAdjacent
 	}
 	return EditorialDiscovery
+}
+
+// pickRejection is why a model pick cannot become a proposal item; pickAccepted (zero)
+// means it resolved.
+type pickRejection int
+
+const (
+	pickAccepted pickRejection = iota
+	pickMalformed
+	pickNotSurfaced
+	pickIrrelevant
+	pickMembershipUnproven
+)
+
+// resolvePick is the identity half of the grounding chokepoint: a pick resolves only to a
+// candidate a Catalog operation actually surfaced, and only if the intent's own
+// constraints leave it standing. buildProposal applies it to every final pick, and the live
+// progress stream applies the SAME function to each pick as it streams in, so a title can
+// never be shown as chosen that final validation would drop for identity reasons.
+func resolvePick(intent Intent, p pick, surfaced map[provision.Key]catalog.Candidate) (catalog.Candidate, pickRejection) {
+	key := p.key()
+	if key == "" {
+		return catalog.Candidate{}, pickMalformed
+	}
+	cand, ok := surfaced[provision.Key(key)]
+	if !ok {
+		return catalog.Candidate{}, pickNotSurfaced
+	}
+	if requiredIdentityConflicts(intent, cand) || titleExplicitlyExcluded(intent, cand.Name) || candidateContradictsExplicitQualifiers(intent, cand) {
+		return cand, pickIrrelevant
+	}
+	if intent.ReferenceResolved && !intent.referenceKeys[provision.Key(key)] {
+		return cand, pickIrrelevant // a resolved reference cannot be padded with an unrelated grounded id
+	}
+	if requiresMembershipEvidence(intent) {
+		if !intent.membershipKeys[provision.Key(key)] || (intent.curatedTitleSet && intent.curatedTitleKey != provision.Key(key)) {
+			return cand, pickMembershipUnproven
+		}
+	}
+	return cand, pickAccepted
 }
