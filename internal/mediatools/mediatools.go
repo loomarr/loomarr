@@ -220,21 +220,27 @@ func (t *FFmpegTools) KeyframesIn(ctx context.Context, file string, startMs, end
 }
 
 // VisionKeyframesIn is KeyframesIn sized for a multimodal model's prompt: the same windows, but
-// every frame is scaled to VisionFrameScale of its linear size. A vision model bills image tokens
-// by patch count, so pixels are the cost: 0.8x linear is 0.64x the pixels (about -36% tokens) for
-// every source, and 640x480 archive frames become 512x384.
+// SD sources (height <= VisionScaleMaxHeight) are scaled to VisionFrameScale of their linear size.
+// A vision model bills image tokens by patch count, so pixels are the cost: 0.8x linear is 0.64x
+// the pixels (about -36% tokens), and 640x480 archive frames become 512x384. Larger sources keep
+// KeyframesIn's size.
 //
-// ⚠ A LINEAR factor, not a pixel budget, on purpose. A live A/B (#1480) showed a fixed 512x384-area
-// budget shrank 1280x720 sources 2.2x linear and flipped the role of a political ad and dropped a
-// brand read from fine print; 0.8x kept those reads at the same legibility ratio SD clips had.
+// ⚠ SD ONLY, and LINEAR, on purpose. A live A/B (#1480) on dev clips showed SD frames keep every
+// brand read at 0.8x, while shrinking 1280x720 political ads (2.2x linear under a pixel budget,
+// 0.8x under a linear factor) dropped a brand read from fine print and flipped a role. HD text is
+// small relative to the frame, so HD frames are not touched.
 func (t *FFmpegTools) VisionKeyframesIn(ctx context.Context, file string, startMs, endMs int64, n int) ([][]byte, error) {
-	return t.keyframesIn(ctx, file, startMs, endMs, n, "trunc(iw*"+VisionFrameScale+"/2)*2")
+	return t.keyframesIn(ctx, file, startMs, endMs, n,
+		fmt.Sprintf("if(lte(ih,%d),trunc(iw*%s/2)*2,min(iw,%d))", VisionScaleMaxHeight, VisionFrameScale, SemanticFrameMaxWidth))
 }
 
-// VisionFrameScale is the linear scale applied to frames sent to a vision model, as an ffmpeg
+// VisionFrameScale is the linear scale applied to SD frames sent to a vision model, as an ffmpeg
 // expression. Deliberately NOT applied to KeyframesIn: artwork and exact-frame evidence keep their
 // own contracts.
 const VisionFrameScale = "4/5"
+
+// VisionScaleMaxHeight is the tallest source (PAL SD) that VisionFrameScale applies to.
+const VisionScaleMaxHeight = 576
 
 func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, endMs int64, n int, widthExpr string) ([][]byte, error) {
 	if n <= 0 {
