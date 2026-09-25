@@ -586,3 +586,24 @@ func testAiringHistory(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("unknown channel returned %d entries, want 0", len(none))
 	}
 }
+
+// testLibraryItemPaths pins the path-cache contract (#1456): the server path round-trips, a
+// re-write replaces it, and an unknown item is a miss rather than an error.
+func testLibraryItemPaths(t *testing.T, newStore NewStoreFunc) {
+	ctx := context.Background()
+	st := newStore(t)
+
+	if _, ok, err := st.LibraryItemPath(ctx, "lib-1"); err != nil || ok {
+		t.Fatalf("unknown item: ok=%v err=%v, want a clean miss", ok, err)
+	}
+	if err := st.SetLibraryItemPath(ctx, "lib-1", "/data/tv/a.mkv"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if err := st.SetLibraryItemPath(ctx, "lib-1", "/data/tv/b.mkv"); err != nil {
+		t.Fatalf("re-set: %v", err)
+	}
+	got, ok, err := st.LibraryItemPath(ctx, "lib-1")
+	if err != nil || !ok || got != "/data/tv/b.mkv" {
+		t.Fatalf("got (%q,%v,%v), want the replaced path", got, ok, err)
+	}
+}

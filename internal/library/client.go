@@ -70,6 +70,9 @@ type Client struct {
 	fixed    *Connection
 	deviceID string // stable per install (§11)
 	http     *http.Client
+	// paths remembers each item's media-server file path so ResolveInput needs no request at
+	// airtime. Nil ⇒ every resolution asks the server (input.go).
+	paths PathCache
 }
 
 // New builds a Library client with a FIXED connection (tests + static config).
@@ -124,7 +127,7 @@ func (c *Client) Snapshot() *Client {
 		return c
 	}
 	connection := normalizeConnection(c.current())
-	return &Client{fixed: &connection, deviceID: c.deviceID, http: c.http}
+	return &Client{fixed: &connection, deviceID: c.deviceID, http: c.http, paths: c.paths}
 }
 
 // Connection returns a copy of the immutable connection carried by this
