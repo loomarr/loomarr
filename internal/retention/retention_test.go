@@ -1,8 +1,12 @@
 package retention
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,7 +192,7 @@ func TestHousekeepingUsesFilesystemAwareDiagnosticsCoordinator(t *testing.T) {
 		Activity: func() time.Duration { return time.Hour }, Diagnostics: func() time.Duration { return 7 * 24 * time.Hour },
 		DiagnosticsMaxBytes: func() int64 { return 1234 },
 	}, func() time.Time { return now }, nil).WithDiagnostics(coordinator)
-	if err := service.PurgeDiagnostics(t.Context()); err != nil {
+	if _, err := service.PurgeDiagnostics(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if !coordinator.before.Equal(now.Add(-7*24*time.Hour)) || coordinator.max != 1234 {
@@ -196,5 +200,58 @@ func TestHousekeepingUsesFilesystemAwareDiagnosticsCoordinator(t *testing.T) {
 	}
 	if !store.diagnosticBefore.IsZero() {
 		t.Fatal("production coordinator fell through to store-only purge")
+	}
+}
+
+// #1411: the daily pass never finished because it ran under River's inherited one-minute
+// JobTimeout ("delete diagnostic event ...: context deadline exceeded" at 08:31, three nights
+// running). It must declare a ceiling far above that.
+func TestHousekeepingJobDeclaresItsOwnTimeout(t *testing.T) {
+	job := New(&retentionStore{}, Windows{}, nil, nil).Job()
+	if job.Timeout < 10*time.Minute {
+		t.Fatalf("housekeeping Timeout = %v; zero/short inherits River's 1-minute default", job.Timeout)
+	}
+}
+
+func TestHousekeepingLogsOneInfoLinePerRunWithRowsAndDuration(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	now := time.Date(2026, 8, 23, 17, 0, 0, 0, time.UTC)
+	service := New(&retentionStore{}, Windows{
+		Proposals: func() time.Duration { return time.Hour }, Jobs: func() time.Duration { return time.Hour },
+		Activity: func() time.Duration { return time.Hour }, Diagnostics: func() time.Duration { return time.Hour },
+		DiagnosticsMaxBytes: func() int64 { return 0 },
+	}, func() time.Time { return now }, log)
+	if err := service.Housekeeping(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var summary map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatal(err)
+		}
+		if entry["msg"] == "housekeeping finished" {
+			if summary != nil {
+				t.Fatal("more than one summary line for one run")
+			}
+			summary = entry
+		}
+	}
+	if summary == nil {
+		t.Fatalf("no 'housekeeping finished' line in:\n%s", buf.String())
+	}
+	if summary["level"] != "INFO" {
+		t.Fatalf("level = %v", summary["level"])
+	}
+	// retentionStore reports: invitations 3, notifications 2, recoveries 1, diagnostics 2 events + 1 run.
+	if summary["diagnostic_events"] != float64(2) || summary["diagnostic_process_runs"] != float64(1) {
+		t.Fatalf("diagnostic counts = %v / %v", summary["diagnostic_events"], summary["diagnostic_process_runs"])
+	}
+	if summary["rows_deleted"] != float64(9) {
+		t.Fatalf("rows_deleted = %v, want 9 (3+2+1+2+1)", summary["rows_deleted"])
+	}
+	if _, ok := summary["duration_ms"]; !ok {
+		t.Fatal("no duration_ms")
 	}
 }

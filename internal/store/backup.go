@@ -28,8 +28,8 @@ func (s *sqlStore) StreamBackup(ctx context.Context, w io.Writer) error {
 	_ = tmp.Close()
 	defer func() { _ = os.Remove(path) }()
 
-	// VACUUM INTO produces a consistent snapshot file.
-	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
+	// VACUUM INTO produces a consistent snapshot file (an empty target file is permitted).
+	if err := s.vacuumInto(ctx, path); err != nil {
 		return fmt.Errorf("vacuum into: %w", err)
 	}
 	f, err := os.Open(filepath.Clean(path))
@@ -41,6 +41,20 @@ func (s *sqlStore) StreamBackup(ctx context.Context, w io.Writer) error {
 		return fmt.Errorf("stream snapshot: %w", err)
 	}
 	return nil
+}
+
+// vacuumInto snapshots the database to path over a short-lived connection of its own, so the copy
+// never occupies the store's single pooled connection. See WriteBackup for why that matters.
+func (s *sqlStore) vacuumInto(ctx context.Context, path string) error {
+	snapshotter, err := sql.Open("sqlite", fmt.Sprintf(
+		"file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(on)", s.path))
+	if err != nil {
+		return fmt.Errorf("open snapshot handle: %w", err)
+	}
+	defer func() { _ = snapshotter.Close() }()
+	snapshotter.SetMaxOpenConns(1)
+	_, err = snapshotter.ExecContext(ctx, "VACUUM INTO ?", path)
+	return err
 }
 
 // BackupFile describes a backup written to disk.
@@ -81,7 +95,15 @@ func (s *sqlStore) WriteBackup(ctx context.Context, dir string) (BackupFile, err
 
 	// VACUUM INTO refuses to overwrite, which is the behaviour we want: a same-second
 	// collision should surface, not silently replace the earlier backup.
-	if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?", path); err != nil {
+	//
+	// ⚠ **On a handle of its own, never the shared pool.** The store's pool is MaxOpenConns(1), and
+	// VACUUM INTO on a 1.8 GB database holds its connection for the whole copy; River's leader
+	// election and the health probe queue behind it and time out (#1411: 06:30–07:30 UTC leadership
+	// loss, stale health at the 07:30 backup). VACUUM INTO only READS the source, and under WAL a
+	// reader neither blocks nor is blocked by the app's writer, so a second, short-lived handle
+	// costs the write-contention PoolOf warns about nothing. The price is that the copy pins a
+	// WAL read snapshot, delaying checkpoints until it ends.
+	if err := s.vacuumInto(ctx, path); err != nil {
 		return BackupFile{}, fmt.Errorf("vacuum into %s: %w", path, err)
 	}
 	// 0600: credentials are encrypted, but the backup still carries sensitive

@@ -108,14 +108,17 @@ func (s *processSinkMemory) ListDiagnosticRetentionCandidates(_ context.Context,
 	return result, nil
 }
 
-func (s *processSinkMemory) DeleteDiagnosticEvent(_ context.Context, id string) (bool, error) {
+func (s *processSinkMemory) DeleteDiagnosticEvents(_ context.Context, ids []string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.events[id]; !ok {
-		return false, nil
+	removed := 0
+	for _, id := range ids {
+		if _, ok := s.events[id]; ok {
+			delete(s.events, id)
+			removed++
+		}
 	}
-	delete(s.events, id)
-	return true, nil
+	return removed, nil
 }
 
 func (s *processSinkMemory) DeleteDiagnosticProcessRun(_ context.Context, id string) (bool, error) {

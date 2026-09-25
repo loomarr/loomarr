@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"path/filepath"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/scheduler"
@@ -129,6 +130,9 @@ func (s *backupsService) Job(log *slog.Logger) scheduler.Job {
 	return scheduler.Job{
 		Name: backupJobName, Group: scheduler.GroupBackup, Title: backupJobTitle, Description: backupJobDesc,
 		DefaultCron: backupJobCron, ScheduleKey: backupJobKey,
+		// ⚠ Must be declared: with none the job runs under River's inherited one-minute
+		// JobTimeout, and VACUUM INTO on the 1.8 GB household DB took ~57s (#1411).
+		Timeout: 15 * time.Minute,
 		Run: func(ctx context.Context) error {
 			entry, err := s.Run(ctx)
 			if err != nil {

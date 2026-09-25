@@ -88,75 +88,80 @@ func New(st Store, win Windows, now func() time.Time, log *slog.Logger) *Service
 // behind `approved_by`, `submitted` ones are members still waiting for an answer, and
 // `queued`/`running` jobs are not finished (age is not evidence work completed). Those
 // exemptions live in the store's WHERE clauses and are pinned by the conformance suite.
-func (s *Service) PurgeRecords(ctx context.Context) error {
+//
+// The purges below return the rows they deleted so Housekeeping can report one per-run total.
+func (s *Service) PurgeRecords(ctx context.Context) (int, error) {
 	now := s.now()
 	proposals, err := s.store.PurgeDeniedProposals(ctx, now.Add(-s.win.Proposals()))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	jobs, err := s.store.PurgeFinishedJobs(ctx, now.Add(-s.win.Jobs()))
 	if err != nil {
-		return err
+		return proposals, err
 	}
 	if (proposals > 0 || jobs > 0) && s.log != nil {
 		s.log.Info("retention purge", "denied_proposals", proposals, "finished_jobs", jobs)
 	}
-	return nil
+	return proposals + jobs, nil
 }
 
 // PurgeActivity removes activity rows past their window (§32).
-func (s *Service) PurgeActivity(ctx context.Context) error {
+func (s *Service) PurgeActivity(ctx context.Context) (int, error) {
 	n, err := s.store.PurgeActivity(ctx, s.now().Add(-s.win.Activity()))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if n > 0 && s.log != nil {
 		s.log.Info("activity purged", "rows", n)
 	}
-	return nil
+	return n, nil
 }
 
 // PurgeNotifications applies the fixed §11 product policy. It is deliberately not a setting:
 // terminal notification evidence is retained for 30 days while queued/sending work is exempt.
-func (s *Service) PurgeNotifications(ctx context.Context) error {
+func (s *Service) PurgeNotifications(ctx context.Context) (int, error) {
 	n, err := s.store.PurgeTerminalNotifications(ctx, s.now().Add(-notifications.Retention))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if n > 0 && s.log != nil {
 		s.log.Info("terminal notifications purged", "intents", n)
 	}
-	return nil
+	return n, nil
 }
 
 // PurgeInvitations applies the fixed §11 audit window to terminal and long-expired admission
 // decisions. Active Invitations remain available for redemption.
-func (s *Service) PurgeInvitations(ctx context.Context) error {
+func (s *Service) PurgeInvitations(ctx context.Context) (int, error) {
 	n, err := s.store.PurgeTerminalInvitations(ctx, s.now().Add(-invitation.Retention))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if n > 0 && s.log != nil {
 		s.log.Info("terminal invitations purged", "invitations", n)
 	}
-	return nil
+	return n, nil
 }
 
 // PurgePasswordRecoveries applies the same fixed 30-day account-security audit window.
-func (s *Service) PurgePasswordRecoveries(ctx context.Context) error {
+func (s *Service) PurgePasswordRecoveries(ctx context.Context) (int, error) {
 	n, err := s.store.PurgeTerminalPasswordRecoveries(ctx, s.now().Add(-recovery.Retention))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if n > 0 && s.log != nil {
 		s.log.Info("terminal password recoveries purged", "recoveries", n)
 	}
-	return nil
+	return n, nil
 }
 
 // PurgeDiagnostics enforces both the age window and logical retained-byte budget (§5, §17).
 // Active Process runs are protected by the store contract regardless of age or pressure.
-func (s *Service) PurgeDiagnostics(ctx context.Context) error {
+//
+// The result is returned EVEN ON ERROR: the purge works in batches, so a run cut short by its
+// deadline has still deleted real rows, and the caller's summary must not report zero for them.
+func (s *Service) PurgeDiagnostics(ctx context.Context) (diagnostics.PurgeResult, error) {
 	before, maxBytes := s.now().Add(-s.win.Diagnostics()), s.win.DiagnosticsMaxBytes()
 	var result diagnostics.PurgeResult
 	var err error
@@ -165,50 +170,63 @@ func (s *Service) PurgeDiagnostics(ctx context.Context) error {
 	} else {
 		result, err = s.store.PurgeDiagnostics(ctx, before, maxBytes)
 	}
-	if err != nil {
-		return err
-	}
 	if (result.Events > 0 || result.ProcessRuns > 0) && s.log != nil {
 		s.log.Info("diagnostics purged", "events", result.Events, "process_runs", result.ProcessRuns,
 			"retained_bytes", result.RetainedBytes)
 	}
-	return nil
+	return result, err
 }
 
 // Housekeeping bounds every append-only operational table in one pass. The individual
 // purges remain methods because they are independently testable policies, but separate
 // schedules offered no useful operator decision and made routine cleanup look like three
 // unrelated features.
+//
+// It ends with exactly one INFO line — rows deleted and duration — whether or not a stage failed,
+// so a night that deleted a million rows and then timed out is visible as such (#1411).
 func (s *Service) Housekeeping(ctx context.Context) error {
+	started := s.now()
 	var errs []error
-	if err := s.PurgeRecords(ctx); err != nil {
-		errs = append(errs, err)
+	rows := 0
+	count := func(n int, err error) {
+		rows += n
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
-	if err := s.PurgeActivity(ctx); err != nil {
-		errs = append(errs, err)
-	}
-	if err := s.PurgeInvitations(ctx); err != nil {
-		errs = append(errs, err)
-	}
-	if err := s.PurgePasswordRecoveries(ctx); err != nil {
-		errs = append(errs, err)
-	}
-	if err := s.PurgeNotifications(ctx); err != nil {
-		errs = append(errs, err)
-	}
-	if err := s.PurgeDiagnostics(ctx); err != nil {
-		errs = append(errs, err)
-	}
+	count(s.PurgeRecords(ctx))
+	count(s.PurgeActivity(ctx))
+	count(s.PurgeInvitations(ctx))
+	count(s.PurgePasswordRecoveries(ctx))
+	count(s.PurgeNotifications(ctx))
+	diag, err := s.PurgeDiagnostics(ctx)
+	count(diag.Events+diag.ProcessRuns, err)
 	if err := s.store.MaintainQualityLedger(ctx, s.now()); err != nil {
 		errs = append(errs, err)
 	}
 	if n, err := s.store.PurgeExpiredSessions(ctx, s.now()); err != nil {
 		errs = append(errs, err)
-	} else if n > 0 && s.log != nil {
-		s.log.Info("expired sessions purged", "rows", n)
+	} else {
+		rows += n
+		if n > 0 && s.log != nil {
+			s.log.Info("expired sessions purged", "rows", n)
+		}
+	}
+	if s.log != nil {
+		s.log.Info("housekeeping finished", "rows_deleted", rows,
+			"diagnostic_events", diag.Events, "diagnostic_process_runs", diag.ProcessRuns,
+			"duration_ms", s.now().Sub(started).Milliseconds(), "failed_stages", len(errs))
 	}
 	return errors.Join(errs...)
 }
+
+// housekeepingTimeout is the ceiling for one pass. ⚠ It MUST be declared: a job with no Timeout
+// runs under River's inherited one-minute JobTimeout, which killed the nightly pass at 08:31 on
+// 2026-09-22/23/24 ("delete diagnostic event ...: context deadline exceeded") before it could
+// drain a 2.7M-row diagnostic_events table (#1411). The pass now works in short batches that
+// yield the database connection, so a generous ceiling cannot starve anything else; it exists
+// only so a genuinely wedged pass is still cut off.
+const housekeepingTimeout = 25 * time.Minute
 
 // Job returns the single daily system-housekeeping task (§18.1).
 func (s *Service) Job() scheduler.Job {
@@ -216,6 +234,7 @@ func (s *Service) Job() scheduler.Job {
 		Name: "housekeeping", Group: scheduler.GroupSystem, Title: "Clean up old data",
 		Description: "Rolls up discovery-quality observations and removes expired sessions, old activity, invitations, password recoveries, diagnostics and notifications, denied requests, and completed jobs after their retention periods.",
 		DefaultCron: "0 30 4 * * *", ScheduleKey: "job.housekeeping.schedule",
-		Run: s.Housekeeping,
+		Timeout: housekeepingTimeout,
+		Run:     s.Housekeeping,
 	}
 }
