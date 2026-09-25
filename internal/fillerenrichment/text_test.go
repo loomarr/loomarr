@@ -72,7 +72,7 @@ func TestClassifyText_GroundsIndependentAxesAndLiteralBrand(t *testing.T) {
 		t.Fatalf("unexpected prompt = %#v", provider.messages)
 	}
 	if len(provider.options) != 1 || provider.options[0].MaxTokens != textSingleMaxTokens ||
-		provider.options[0].ReasoningEffort != "none" {
+		provider.options[0].ReasoningEffort != "none" || provider.options[0].Temperature == nil || *provider.options[0].Temperature > 0.2 {
 		t.Fatalf("single classification controls = %#v, want %d tokens and no reasoning", provider.options, textSingleMaxTokens)
 	}
 }
@@ -95,7 +95,7 @@ func TestClassifyTextBatch_BoundsTheCompleteEightClipResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(provider.options) != 1 || provider.options[0].MaxTokens != textBatchMaxTokens ||
-		provider.options[0].ReasoningEffort != "none" {
+		provider.options[0].ReasoningEffort != "none" || provider.options[0].Temperature == nil || *provider.options[0].Temperature > 0.2 {
 		t.Fatalf("batch classification controls = %#v, want %d tokens and no reasoning", provider.options, textBatchMaxTokens)
 	}
 }

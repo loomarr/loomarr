@@ -65,8 +65,11 @@ func TestOpenAI_NormalizesToolCallArgumentsAndSampling(t *testing.T) {
 	if sentReq["max_tokens"] != float64(256) {
 		t.Errorf("max_tokens = %v, want 256", sentReq["max_tokens"])
 	}
-	if sentReq["reasoning_effort"] != "none" || sentReq["reasoning"] != nil {
-		t.Errorf("reasoning controls = %v / %v, want top-level none", sentReq["reasoning_effort"], sentReq["reasoning"])
+	// The test server is loopback, i.e. a self-hosted endpoint: "none" is stated through the
+	// chat template, not as reasoning_effort (whose valid values a template may restrict).
+	kwargs, _ := sentReq["chat_template_kwargs"].(map[string]any)
+	if kwargs["enable_thinking"] != false || sentReq["reasoning_effort"] != nil || sentReq["reasoning"] != nil {
+		t.Errorf("reasoning controls = %v / %v / %v, want enable_thinking=false only", kwargs, sentReq["reasoning_effort"], sentReq["reasoning"])
 	}
 	if authHdr != "Bearer sk-test" {
 		t.Errorf("auth header = %q, want Bearer sk-test", authHdr)

@@ -57,11 +57,20 @@ const groundedMaxTokens = 2048
 // FINAL turn. Once retrieval returns candidates, the tool loop removes tools and
 // JSONMode becomes true for finalization and every repair. (Caught live: qwen3:8b
 // on a themed intent — correct genres, but the call landed in content, not tool_calls.)
-func chatOpts(tools []llm.ToolSchema, temp float64) llm.ChatOptions {
-	return llm.ChatOptions{
+//
+// Finalization keeps the SAME tools array and forbids calling it with tool_choice "none". A chat
+// template renders the tools before the system prompt, so dropping them at finalization changes the
+// prompt from its first tokens and a single-slot server re-prefills the whole conversation (~5-9k
+// tokens, ~20-40s). Static content (system + tools) leads, variable content follows.
+func chatOpts(tools []llm.ToolSchema, temp float64, finalizing bool) llm.ChatOptions {
+	opts := llm.ChatOptions{
 		Profile: llm.GroundedSelection,
-		Tools:   tools, JSONMode: len(tools) == 0, Temperature: &temp, MaxTokens: groundedMaxTokens,
+		Tools:   tools, JSONMode: finalizing, Temperature: &temp, MaxTokens: groundedMaxTokens,
 	}
+	if finalizing {
+		opts.ToolChoice = llm.ToolChoiceNone
+	}
+	return opts
 }
 
 // Validator re-checks a proposed acquisition against reality before it's
@@ -211,9 +220,6 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 		{Role: llm.User, Content: userPrompt(intent)},
 	}
 	tools := []llm.ToolSchema{catalogToolForIntent(intent)}
-	if sources.hasReference {
-		tools = nil
-	}
 
 	// Track every candidate the tool surfaced this run, keyed by provisioning key.
 	// A pick is grounded IFF it matches one of these — the model cannot smuggle in
@@ -465,9 +471,9 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 	if !continuation {
 		ledger.beginGeneration()
 	}
-	if *finalizationOnly {
-		tools = nil
-	}
+	// A reference intent starts in its tool-free interpretation phase; the tools stay on the wire
+	// (tool_choice none) so every turn shares one cacheable prefix.
+	finalizing := *finalizationOnly || sources.hasReference
 	invalidRounds := 0
 	for round := ledger.generationTurns; round < maxToolRounds; round++ {
 		// The model turn is about to block — say so BEFORE awaiting it. This is the
@@ -480,14 +486,14 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		if sources.hasReference && *acceptedMeaning == nil {
 			requestMessages = referenceInterpretationMessages(requestMessages)
 		}
-		if len(tools) == 0 {
+		if finalizing {
 			var err error
 			requestMessages, err = finalizationMessages(requestMessages, *acceptedMeaning)
 			if err != nil {
 				return "", err
 			}
 		}
-		resp, err := s.llm.Chat(llm.WithCallSite(ctx, "suggest.chat"), requestMessages, chatOpts(tools, temp))
+		resp, err := s.llm.Chat(llm.WithCallSite(ctx, "suggest.chat"), requestMessages, chatOpts(tools, temp, finalizing))
 		if err != nil {
 			cause := err
 			if errors.Is(ctx.Err(), context.Canceled) && !errors.Is(err, context.Canceled) {
@@ -508,7 +514,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 		// that unsolicited call: returning an empty final turn routes it through the
 		// existing bounded JSON-repair path while preserving the original surfaced
 		// candidates and hard call limits.
-		if len(tools) == 0 && resp.WantsTools() {
+		if finalizing && resp.WantsTools() {
 			return "", nil
 		}
 		if resp.WantsTools() {
@@ -613,7 +619,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				referenceGrounded := sources.hasReference && len(sources.result.reference.candidates) > 0
 				if len(cands) > 0 || referenceGrounded {
 					*finalizationOnly = true
-					tools = nil
+					finalizing = true
 				} else if rankedTrace.Terminal == ReasonRetrievalEmpty {
 					*emptyRetrievals++
 					if *emptyRetrievals >= maxEmptyRetrievals && len(surfaced) == 0 {

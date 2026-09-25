@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -561,7 +562,8 @@ type hotVisionProvider struct {
 	metrics *metrics.Recorder
 
 	mu   sync.Mutex
-	last visionWiring
+	raw  visionWiring // the wiring as settings resolved it: what memoisation compares
+	last visionWiring // what was built, after reconcileModel
 	cur  llm.VisionProvider
 }
 
@@ -585,9 +587,11 @@ func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.cur != nil && h.last == v {
+	if h.cur != nil && h.raw == v {
 		return h.cur, nil
 	}
+	raw := v
+	v = h.reconcileModel(v)
 	var p llm.VisionProvider
 	switch v.provider {
 	case "openai":
@@ -597,12 +601,38 @@ func (h *hotVisionProvider) resolve() (llm.VisionProvider, error) {
 	default:
 		return nil, fmt.Errorf("provider %q has no vision path", v.provider)
 	}
-	if h.log != nil && h.last != v {
+	if h.log != nil && h.raw != raw {
 		// The line that answers "which endpoint is vision actually using" — underivable from any
 		// output this process produced before V54a.
 		h.log.Info("filler vision endpoint resolved",
 			"provider", v.identity, "wire_provider", v.provider, "url", v.url, "model", v.model, "own_endpoint", v.own)
 	}
-	h.last, h.cur = v, p
+	h.raw, h.last, h.cur = raw, v, p
 	return p, nil
+}
+
+// reconcileModel answers a stale vision model honestly. With the provider inherited, filler.vision.model
+// names a model the MAIN endpoint must serve; a name left over from another provider (an OpenRouter
+// id against a llama.cpp server) was answered by whatever the server had loaded, so vision worked by
+// accident and attribution recorded a model that never ran. Where the endpoint lists its models and
+// does not list this one, say so once (the wiring is memoised) and use the main model. An endpoint
+// that cannot list models is trusted: no list proves nothing. OpenRouter is a catalog whose ids are
+// exactly these names, and a separately named vision service is the operator's declaration.
+func (h *hotVisionProvider) reconcileModel(v visionWiring) visionWiring {
+	main := resolveSelection(h.set)
+	if v.provider != "openai" || v.own || v.identity == "openrouter" || v.model == main.Model || main.Model == "" {
+		return v
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	served, err := llm.ServedModels(ctx, v.url, v.key)
+	if err != nil || len(served) == 0 || slices.Contains(served, v.model) {
+		return v
+	}
+	if h.log != nil {
+		h.log.Warn("filler.vision.model is not served by the inherited LLM endpoint; using the main model instead — clear filler.vision.model or set it to a served model",
+			"filler.vision.model", v.model, "url", v.url, "using", main.Model, "served", served)
+	}
+	v.model = main.Model
+	return v
 }

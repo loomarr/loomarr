@@ -43,12 +43,21 @@ type VisionProvider interface {
 // marshalled on every text request in the app, and widening its type to serve one caller would
 // put a runtime-typed field on the hot path for no benefit there (the same call audio.go makes).
 
+// VisionMaxTokens bounds one vision answer; the tagging JSON averages ~130 tokens.
+const VisionMaxTokens = 512
+
+var visionTemperature = StructuredTemperature
+
 // visionChatReq mirrors openaiChatReq but with multimodal content parts.
 type visionChatReq struct {
 	Model     string          `json:"model"`
 	Messages  []visionMessage `json:"messages"`
 	MaxTokens int             `json:"max_tokens,omitempty"`
-	Stream    bool            `json:"stream"`
+	// Temperature and ResponseFormat pin a tagging answer: the server default (temperature 1.0,
+	// no output limit) let one runaway answer hold a single-slot server until the request timeout.
+	Temperature    *float64       `json:"temperature,omitempty"`
+	ResponseFormat *openaiRespFmt `json:"response_format,omitempty"`
+	Stream         bool           `json:"stream"`
 	// StreamOptions asks the server for the final usage chunk a streamed reply omits by default.
 	StreamOptions *streamOptions `json:"stream_options,omitempty"`
 }

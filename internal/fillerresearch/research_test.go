@@ -76,7 +76,8 @@ func TestResearchKeepsCampaignContextAsACitedSuggestion(t *testing.T) {
 		t.Fatalf("report = %+v", report)
 	}
 	if retriever.lookup.Title != "Tootsie Pop Classic Commercial" || retriever.lookup.Description != "The classic commercial." ||
-		!provider.options.JSONMode || len(provider.messages) != 2 {
+		!provider.options.JSONMode || len(provider.messages) != 2 ||
+		provider.options.MaxTokens <= 0 || provider.options.Temperature == nil || *provider.options.Temperature > 0.2 {
 		t.Fatalf("lookup/options/messages = %+v %+v %#v", retriever.lookup, provider.options, provider.messages)
 	}
 	if len(provider.options.Tools) != 0 {

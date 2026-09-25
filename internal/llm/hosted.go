@@ -112,6 +112,7 @@ func HostedProviderByKey(key string) (HostedProvider, bool) {
 // little more than an id, in which case Loomarr shows the ids without guessing.
 type modelMeta struct {
 	ID           string   `json:"id"`
+	Aliases      []string `json:"aliases"` // llama.cpp: extra names the server answers to
 	Name         string   `json:"name"`
 	Context      int      `json:"context_length"`
 	SupportedP   []string `json:"supported_parameters"`
