@@ -11,18 +11,32 @@ import (
 	"github.com/loomarr/loomarr/internal/prepared"
 )
 
-type scaleResolver struct{ candidates []prepared.Candidate }
+// scaleResolver stops reporting a candidate once its publication completed, as the real resolver
+// does when the publication becomes ready.
+type scaleResolver struct {
+	candidates []prepared.Candidate
+	work       *blockingScalePreparation
+}
 
 func (r scaleResolver) Plan(context.Context, time.Time, time.Time) (prepared.ReadinessPlan, error) {
-	return prepared.ReadinessPlan{Candidates: r.candidates}, nil
+	r.work.mu.Lock()
+	defer r.work.mu.Unlock()
+	pending := make([]prepared.Candidate, 0, len(r.candidates))
+	for _, candidate := range r.candidates {
+		if !r.work.completed[candidate.Request.Source.SourceID] {
+			pending = append(pending, candidate)
+		}
+	}
+	return prepared.ReadinessPlan{Candidates: pending}, nil
 }
 
 type blockingScalePreparation struct {
-	mu       sync.Mutex
-	started  []string
-	start    chan string
-	canceled chan string
-	release  chan struct{}
+	mu        sync.Mutex
+	completed map[string]bool
+	started   []string
+	start     chan string
+	canceled  chan string
+	release   chan struct{}
 }
 
 func (p *blockingScalePreparation) Prepare(
@@ -38,6 +52,9 @@ func (p *blockingScalePreparation) Prepare(
 		p.canceled <- id
 		return prepared.Publication{}, ctx.Err()
 	case <-p.release:
+		p.mu.Lock()
+		p.completed[id] = true
+		p.mu.Unlock()
 		return prepared.Publication{}, nil
 	}
 }
@@ -83,14 +100,17 @@ func TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption(t *testin
 
 	work := &blockingScalePreparation{
 		start: make(chan string, 256), canceled: make(chan string, 256), release: make(chan struct{}),
+		completed: make(map[string]bool),
 	}
 	pool := media.NewEncodePool(func() int { return capacity })
+	resolver := scaleResolver{candidates: candidates, work: work}
 	planner := prepared.NewPlanner(prepared.PlannerDependencies{
-		Resolver: scaleResolver{candidates: candidates}, Preparation: work, Pool: pool,
+		Resolver: resolver, Preparation: work, Pool: pool,
 		Now: func() time.Time { return now },
 	})
-	done := make(chan error, 1)
-	go func() { done <- planner.Run(t.Context()) }()
+	if err := planner.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	started := make(map[string]bool, capacity-1)
 	for range capacity - 1 {
 		select {
@@ -132,8 +152,14 @@ func TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption(t *testin
 	reserveRelease()
 	secondRelease()
 
-	// Playback yielding is not the end of the pass: the cancelled wave is requeued at the front and
-	// the same most-urgent set is re-admitted, so the pool refills to N-1 without waiting a tick.
+	// Playback yielding is not the end of the work: on the next scheduler tick the cancelled wave is
+	// requeued at the front and the same most-urgent set is re-admitted, refilling the pool to N-1.
+	if err := planner.Wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := planner.Run(t.Context()); err != nil {
+		t.Fatalf("foreground preemption became an operator-visible planner failure: %v", err)
+	}
 	restarted := make(map[string]bool, capacity-1)
 	for range capacity - 1 {
 		select {
@@ -149,8 +175,22 @@ func TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption(t *testin
 		}
 	}
 	close(work.release)
-	if err := <-done; err != nil {
-		t.Fatalf("foreground preemption became an operator-visible planner failure: %v", err)
+	for range 100 {
+		if err := planner.Wait(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if err := planner.Run(t.Context()); err != nil {
+			t.Fatalf("planner failure while draining the schedule: %v", err)
+		}
+		work.mu.Lock()
+		finished := len(work.completed)
+		work.mu.Unlock()
+		if finished == 100 {
+			break
+		}
+	}
+	if err := planner.Wait(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 	work.mu.Lock()
 	startedCount := len(work.started)

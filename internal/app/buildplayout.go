@@ -386,7 +386,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		})
 		planner := prepared.NewPlanner(prepared.PlannerDependencies{
 			Resolver: preparedRuntime, Preparation: preparer, Pool: encodePool,
-			Retainer: preparedLibrary,
+			Retainer: preparedLibrary, Lifecycle: owner.ctx,
 			BudgetBytes: func() int64 {
 				return preparedBudgetBytes(set.intv("playout.prepared_budget_gb"))
 			},
@@ -394,6 +394,9 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		})
 		preparedObserver = planner
 		jobReg.Add(preparedPlayoutJob(planner, ""))
+		// Publication workers outlive scheduler passes; shutdown cancels owner.ctx first, then waits for them
+		// to discard their private staging.
+		owner.addStop(planner.Wait)
 		preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
 		rawPreparedBlockSource := preparedOrigin.MPEGTSBlockSource(
 			set.str("playout.ffmpeg_path"), log, deps.processDiagnostics,

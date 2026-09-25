@@ -124,9 +124,10 @@ func TestPreparedPlannerAtCapacityFourRunsThreeConcurrentPublications(t *testing
 
 func TestPreparedPlannerStatusReportsProgressDuringAPass(t *testing.T) {
 	planner, preparation, _ := productionShapedPlanner(t, 8)
-	done := make(chan error, 1)
-	go func() { done <- planner.Run(t.Context()) }()
-	defer func() { close(preparation.release); <-done }()
+	if err := planner.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { close(preparation.release); _ = planner.Wait(t.Context()) }()
 
 	waitStarted(t, preparation, 3)
 	status := planner.Status()
@@ -171,14 +172,19 @@ func TestPreparedPlannerLiveSessionsPreemptBackgroundInsteadOfFallingToSoftware(
 
 func TestPreparedPlannerRefillsAfterLiveSessionEndsButNotWhileItHoldsASlot(t *testing.T) {
 	planner, preparation, pool := productionShapedPlanner(t, 8)
-	done := make(chan error, 1)
-	go func() { done <- planner.Run(t.Context()) }()
-	defer func() { close(preparation.release); <-done }()
+	if err := planner.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { close(preparation.release); _ = planner.Wait(t.Context()) }()
 
 	waitStarted(t, preparation, 3)
 	release, ok := pool.pool.AcquireForeground(t.Context())
 	if !ok {
 		t.Fatal("live session refused")
+	}
+	// A scheduler tick while the live session holds a slot must not re-grab it.
+	if err := planner.Run(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 	select {
 	case <-preparation.started:
@@ -186,7 +192,28 @@ func TestPreparedPlannerRefillsAfterLiveSessionEndsButNotWhileItHoldsASlot(t *te
 	case <-time.After(500 * time.Millisecond):
 	}
 	release()
-	waitStarted(t, preparation, 3) // preempted work is requeued and the pool refills to N-1
+	// Once the live session ends, a later tick requeues the preempted work and refills to N-1.
+	// The tick is retried because a preempted worker may still be tearing down (launching pauses
+	// until it has exited so the most urgent work is re-admitted first).
+	deadline := time.Now().Add(5 * time.Second)
+	refilled := 0
+	for refilled < 3 && time.Now().Before(deadline) {
+		if err := planner.Run(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			select {
+			case <-preparation.started:
+				refilled++
+				continue
+			case <-time.After(50 * time.Millisecond):
+			}
+			break
+		}
+	}
+	if refilled != 3 {
+		t.Fatalf("only %d of 3 preempted publications were requeued after the live session ended", refilled)
+	}
 	if got := preparation.inFlight.Load(); got != 3 {
 		t.Fatalf("in-flight after the live session ended = %d, want 3", got)
 	}

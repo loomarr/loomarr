@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -77,23 +78,83 @@ func (p *recordingPreparation) Prepare(ctx context.Context, request Request) (Pu
 	return Publication{}, nil
 }
 
+// pendingCandidates is a resolver whose plan shrinks as publications complete, the way the real
+// resolver stops reporting a candidate once its publication is ready. Workers outlive Run, so a
+// fixed plan would be re-admitted on every pass.
+type pendingCandidates struct {
+	mu      sync.Mutex
+	items   []Candidate
+	summary ReadinessSummary
+}
+
+func (r *pendingCandidates) Plan(context.Context, time.Time, time.Time) (ReadinessPlan, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return ReadinessPlan{Candidates: append([]Candidate(nil), r.items...), Summary: r.summary}, nil
+}
+
+// complete removes every candidate for request, as a successful publication does.
+func (r *pendingCandidates) complete(request Request) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	kept := r.items[:0]
+	for _, candidate := range r.items {
+		if candidate.Request != request {
+			kept = append(kept, candidate)
+		}
+	}
+	r.items = kept
+}
+
+func (r *pendingCandidates) remaining() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.items)
+}
+
+// runUntilReady models scheduler ticks: run a pass, let its workers finish, repeat until the plan
+// is empty. It fails the test if that does not converge.
+func runUntilReady(t *testing.T, p *Planner, resolver *pendingCandidates) {
+	t.Helper()
+	// Start quiet: a worker finishing between a pass's plan snapshot and its launch is re-submitted
+	// (Prepare then peeks the library and returns at once), which is harmless but would skew counts.
+	if err := p.Wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for range 200 {
+		if err := p.Run(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if err := p.Wait(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if resolver.remaining() == 0 {
+			return
+		}
+	}
+	t.Fatalf("planner did not converge: %d candidates remain", resolver.remaining())
+}
+
 func TestPlannerPreparesUniqueCandidatesInNeedOrder(t *testing.T) {
 	now := time.Unix(1_000, 0)
 	a := Request{Source: testSource("a"), Rendition: baselineRendition()}
 	b := Request{Source: testSource("b", 1), Rendition: baselineRendition()}
-	work := &recordingPreparation{}
+	resolver := &pendingCandidates{items: []Candidate{
+		{NeededAt: now.Add(time.Hour), Request: b},
+		{NeededAt: now.Add(2 * time.Hour), Request: a},
+		{NeededAt: now, Request: a},
+	}}
+	work := &recordingPreparation{run: func(_ context.Context, request Request) error {
+		resolver.complete(request)
+		return nil
+	}}
+	// Capacity two leaves one background slot, so the ticks are what serialise a then b.
 	p := NewPlanner(PlannerDependencies{
-		Resolver: fixedCandidates{items: []Candidate{
-			{NeededAt: now.Add(time.Hour), Request: b},
-			{NeededAt: now.Add(2 * time.Hour), Request: a},
-			{NeededAt: now, Request: a},
-		}}, Preparation: work, Pool: media.NewEncodePool(func() int { return 2 }),
+		Resolver: resolver, Preparation: work, Pool: media.NewEncodePool(func() int { return 2 }),
 		Now: func() time.Time { return now },
 	})
 
-	if err := p.Run(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	runUntilReady(t, p, resolver)
 	if len(work.requests) != 2 || work.requests[0] != a || work.requests[1] != b {
 		t.Fatalf("requests = %#v, want [a b] in earliest-need order", work.requests)
 	}
@@ -112,12 +173,14 @@ func TestPlannerFillsAndRefillsMeasuredBackgroundCapacity(t *testing.T) {
 			Request:  Request{Source: testSource(string(rune(i + 1))), Rendition: baselineRendition()},
 		}
 	}
+	resolver := &pendingCandidates{items: items}
 	started := make(chan struct{}, capacity-1+len(items)) // room for the requeued wave and refills
 	releaseFirstWave := make(chan struct{})
 	var calls atomic.Int64
 	var active atomic.Int64
 	var peak atomic.Int64
-	work := &recordingPreparation{run: func(context.Context, Request) error {
+	work := &recordingPreparation{run: func(_ context.Context, request Request) error {
+		defer resolver.complete(request)
 		call := calls.Add(1)
 		current := active.Add(1)
 		defer active.Add(-1)
@@ -134,11 +197,12 @@ func TestPlannerFillsAndRefillsMeasuredBackgroundCapacity(t *testing.T) {
 		return nil
 	}}
 	p := NewPlanner(PlannerDependencies{
-		Resolver: fixedCandidates{items: items}, Preparation: work,
+		Resolver: resolver, Preparation: work,
 		Pool: media.NewEncodePool(func() int { return capacity }), Now: func() time.Time { return now },
 	})
-	done := make(chan error, 1)
-	go func() { done <- p.Run(t.Context()) }()
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	for range capacity - 1 {
 		select {
 		case <-started:
@@ -150,9 +214,8 @@ func TestPlannerFillsAndRefillsMeasuredBackgroundCapacity(t *testing.T) {
 		t.Fatalf("first-wave concurrency = %d, want %d", got, capacity-1)
 	}
 	close(releaseFirstWave)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
+	// Refill of the freed slots happens on the following scheduler ticks.
+	runUntilReady(t, p, resolver)
 	if got := calls.Load(); got != candidates {
 		t.Fatalf("preparation calls = %d, want %d after refill", got, candidates)
 	}
@@ -161,24 +224,36 @@ func TestPlannerFillsAndRefillsMeasuredBackgroundCapacity(t *testing.T) {
 	}
 }
 
+// blockingPlanCandidates holds the first Plan call open so a second Run can overlap the pass.
+type blockingPlanCandidates struct {
+	countingCandidates
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (f *blockingPlanCandidates) Plan(ctx context.Context, from, to time.Time) (ReadinessPlan, error) {
+	plan, err := f.countingCandidates.Plan(ctx, from, to)
+	if f.calls.Load() == 1 {
+		close(f.entered)
+		<-f.release
+	}
+	return plan, err
+}
+
 func TestPlannerCoalescesOverlappingRuns(t *testing.T) {
-	started := make(chan struct{})
-	finish := make(chan struct{})
-	resolver := &countingCandidates{items: []Candidate{{
-		Request: Request{Source: testSource("warming"), Rendition: baselineRendition()},
-	}}}
+	resolver := &blockingPlanCandidates{
+		countingCandidates: countingCandidates{items: []Candidate{{
+			Request: Request{Source: testSource("warming"), Rendition: baselineRendition()},
+		}}},
+		entered: make(chan struct{}), release: make(chan struct{}),
+	}
 	p := NewPlanner(PlannerDependencies{
-		Resolver: resolver,
-		Preparation: &recordingPreparation{run: func(context.Context, Request) error {
-			close(started)
-			<-finish
-			return nil
-		}},
+		Resolver: resolver, Preparation: &recordingPreparation{},
 		Pool: media.NewEncodePool(func() int { return 2 }), Now: time.Now,
 	})
 	first := make(chan error, 1)
 	go func() { first <- p.Run(t.Context()) }()
-	<-started
+	<-resolver.entered
 	if err := p.Run(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -188,9 +263,40 @@ func TestPlannerCoalescesOverlappingRuns(t *testing.T) {
 	if got := p.Status(); !got.Running {
 		t.Fatalf("overlapping yield cleared in-progress status: %+v", got)
 	}
-	close(finish)
+	close(resolver.release)
 	if err := <-first; err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A later pass must not start a publication a previous pass's worker is still producing.
+func TestPlannerDoesNotRestartAPublicationAlreadyInFlight(t *testing.T) {
+	started := make(chan struct{}, 4)
+	finish := make(chan struct{})
+	resolver := &countingCandidates{items: []Candidate{{
+		Request: Request{Source: testSource("long"), Rendition: baselineRendition()},
+	}}}
+	work := &recordingPreparation{run: func(context.Context, Request) error {
+		started <- struct{}{}
+		<-finish
+		return nil
+	}}
+	p := NewPlanner(PlannerDependencies{
+		Resolver: resolver, Preparation: work,
+		Pool: media.NewEncodePool(func() int { return 4 }), Now: time.Now,
+	})
+	for range 3 {
+		if err := p.Run(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	<-started
+	close(finish)
+	if err := p.Wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(work.requests) != 1 {
+		t.Fatalf("publication started %d times across three passes, want once", len(work.requests))
 	}
 }
 
@@ -253,6 +359,19 @@ func TestPlannerTreatsForegroundPreemptionAsAYield(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatalf("preempted planner returned an operator-visible failure: %v", err)
 	}
+	if err := p.Wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	// The next tick re-admits the preempted publication; the preemption itself was never a failure.
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatalf("pass after preemption reported the preemption as a failure: %v", err)
+	}
+	if err := p.Wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(work.requests) != 2 {
+		t.Fatalf("preparation attempts = %d, want the preempted attempt plus its requeue", len(work.requests))
+	}
 }
 
 func TestPlannerForegroundPreemptionRequeuesAndRefillsAcrossMeasuredCapacity(t *testing.T) {
@@ -265,26 +384,26 @@ func TestPlannerForegroundPreemptionRequeuesAndRefillsAcrossMeasuredCapacity(t *
 			Request:  Request{Source: testSource(fmt.Sprintf("%02d", i)), Rendition: baselineRendition()},
 		}
 	}
+	resolver := &pendingCandidates{items: items}
 	started := make(chan struct{}, capacity-1+len(items)) // room for the requeued wave and refills
-	finish := make(chan struct{})
 	var calls atomic.Int64
-	work := &recordingPreparation{run: func(ctx context.Context, _ Request) error {
-		calls.Add(1)
-		started <- struct{}{}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-finish:
+	work := &recordingPreparation{run: func(ctx context.Context, request Request) error {
+		if calls.Add(1) > capacity-1 {
+			resolver.complete(request) // the requeued wave and refills finish at once
 			return nil
 		}
+		started <- struct{}{}
+		<-ctx.Done() // the first wave holds its slots until live playback preempts it
+		return ctx.Err()
 	}}
 	pool := media.NewEncodePool(func() int { return capacity })
 	p := NewPlanner(PlannerDependencies{
-		Resolver: fixedCandidates{items: items}, Preparation: work, Pool: pool,
+		Resolver: resolver, Preparation: work, Pool: pool,
 		Now: func() time.Time { return now },
 	})
-	done := make(chan error, 1)
-	go func() { done <- p.Run(t.Context()) }()
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	for range capacity - 1 {
 		select {
 		case <-started:
@@ -316,12 +435,13 @@ func TestPlannerForegroundPreemptionRequeuesAndRefillsAcrossMeasuredCapacity(t *
 	}
 	reserveRelease()
 	preemptedRelease()
-	close(finish)
-	if err := <-done; err != nil {
-		t.Fatalf("preempted planner returned an operator-visible failure: %v", err)
+	if err := p.Wait(t.Context()); err != nil {
+		t.Fatal(err)
 	}
-	// The three preempted publications are requeued behind nothing (they are the most urgent) and
-	// every candidate then completes: 3 cancelled attempts + all 10 candidates.
+	// The three preempted publications are requeued ahead of everything else (they are the most
+	// urgent) on the following ticks and every candidate then completes: 3 cancelled attempts +
+	// all 10 candidates. Runs report no failure for the preemption.
+	runUntilReady(t, p, resolver)
 	if got := calls.Load(); got != int64(capacity-1+len(items)) {
 		t.Fatalf("preparation calls after live preemption = %d, want %d: the preempted wave requeued and refilled", got, capacity-1+len(items))
 	}
@@ -344,9 +464,23 @@ func TestPlannerContinuesPastOneBadSource(t *testing.T) {
 		Now: func() time.Time { return now },
 	})
 
+	// Workers outlive the pass, so a source's failure is reported by the pass that follows it.
+	// Capacity two leaves one slot: bad runs first, fails, and only then does good get its turn.
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	err := p.Run(t.Context())
-	if err == nil || len(work.requests) != 2 {
-		t.Fatalf("Run error = %v, requests = %d; want error plus continued progress", err, len(work.requests))
+	if err := p.Wait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "broken source") {
+		t.Fatalf("Run error = %v, want the earlier publication failure", err)
+	}
+	if !slices.Contains(work.requests, good) {
+		t.Fatalf("requests = %v: one bad source starved the good one", work.requests)
 	}
 }
 
@@ -458,40 +592,6 @@ func TestPlannerStatusObservesResultingReadinessAfterWork(t *testing.T) {
 	}
 }
 
-func TestPlannerDeadlineReserveDrainsIntoObservationAndRetention(t *testing.T) {
-	now := time.Unix(21_500, 0)
-	request := Request{Source: testSource("deferred"), Rendition: baselineRendition()}
-	beforeProtected := Specification{SourceFingerprint: "before", Rendition: baselineRendition()}
-	afterProtected := Specification{SourceFingerprint: "after", Rendition: baselineRendition()}
-	resolver := &observingCandidates{
-		before: ReadinessPlan{
-			Candidates: []Candidate{{Request: request}}, Protected: []Specification{beforeProtected},
-		},
-		after: ReadinessPlan{Protected: []Specification{afterProtected}},
-	}
-	work := &recordingPreparation{}
-	retainer := &recordingRetainer{}
-	p := NewPlanner(PlannerDependencies{
-		Resolver: resolver, Preparation: work, Pool: media.NewEncodePool(func() int { return 2 }),
-		Retainer: retainer, BudgetBytes: func() int64 { return 512 }, Now: func() time.Time { return now },
-	})
-	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(preparationDrainReserve-time.Minute))
-	defer cancel()
-
-	if err := p.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if len(work.requests) != 0 {
-		t.Fatal("planner started preparation inside its drain reserve")
-	}
-	if got := resolver.calls.Load(); got != 2 {
-		t.Fatalf("resolver calls = %d, want plan plus post-drain observation", got)
-	}
-	if retainer.calls != 1 || len(retainer.protected) != 1 || retainer.protected[0] != afterProtected {
-		t.Fatalf("retention protected = %+v, want post-observation hot set", retainer.protected)
-	}
-}
-
 type expiringPlannerContext struct {
 	context.Context
 	deadline time.Time
@@ -502,7 +602,7 @@ type expiringPlannerContext struct {
 
 func newExpiringPlannerContext(parent context.Context) *expiringPlannerContext {
 	return &expiringPlannerContext{
-		Context: parent, deadline: time.Now().Add(preparationDrainReserve + time.Minute),
+		Context: parent, deadline: time.Now().Add(time.Hour),
 		done: make(chan struct{}),
 	}
 }
@@ -522,7 +622,22 @@ func (c *expiringPlannerContext) expire() {
 	})
 }
 
-func TestPlannerDeadlineDuringWorkStillObservesAndRetains(t *testing.T) {
+// expiringOnPlan lets the scheduler's job deadline hit mid-pass, after the schedule resolved.
+type expiringOnPlan struct {
+	*observingCandidates
+	ctx *expiringPlannerContext
+}
+
+func (e expiringOnPlan) Plan(ctx context.Context, from, to time.Time) (ReadinessPlan, error) {
+	plan, err := e.observingCandidates.Plan(ctx, from, to)
+	e.ctx.expire()
+	return plan, err
+}
+
+// Publication workers no longer share the pass's deadline, so the deadline can only interrupt the
+// pass itself; it must still observe and retain under a live finalization context, and must not
+// admit new work with a dead context.
+func TestPlannerDeadlineDuringPassStillObservesAndRetains(t *testing.T) {
 	now := time.Unix(21_625, 0)
 	request := Request{Source: testSource("deadline"), Rendition: baselineRendition()}
 	protected := Specification{SourceFingerprint: "current", Rendition: baselineRendition()}
@@ -532,13 +647,9 @@ func TestPlannerDeadlineDuringWorkStillObservesAndRetains(t *testing.T) {
 	}
 	retainer := &recordingRetainer{}
 	ctx := newExpiringPlannerContext(t.Context())
+	work := &recordingPreparation{}
 	p := NewPlanner(PlannerDependencies{
-		Resolver: resolver,
-		Preparation: &recordingPreparation{run: func(workCtx context.Context, _ Request) error {
-			ctx.expire()
-			<-workCtx.Done()
-			return workCtx.Err()
-		}},
+		Resolver: expiringOnPlan{observingCandidates: resolver, ctx: ctx}, Preparation: work,
 		Pool: media.NewEncodePool(func() int { return 2 }), Retainer: retainer,
 		BudgetBytes: func() int64 { return 512 }, Now: func() time.Time { return now },
 	})
@@ -546,6 +657,9 @@ func TestPlannerDeadlineDuringWorkStillObservesAndRetains(t *testing.T) {
 	err := p.Run(ctx)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Run error = %v, want deadline exceeded after finalization", err)
+	}
+	if len(work.requests) != 0 {
+		t.Fatalf("planner admitted %d publications after its deadline", len(work.requests))
 	}
 	if got := resolver.calls.Load(); got != 2 || resolver.observeCtx != nil {
 		t.Fatalf("post-deadline observation = calls %d ctx %v, want one live finalization call", got, resolver.observeCtx)
@@ -597,14 +711,16 @@ func TestPlannerStatusReportsPassInProgress(t *testing.T) {
 		}},
 		Pool: media.NewEncodePool(func() int { return 2 }), Now: time.Now,
 	})
-	done := make(chan error, 1)
-	go func() { done <- p.Run(t.Context()) }()
+	if err := p.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	<-started
-	if got := p.Status(); !got.Running || !got.LastRunAt.IsZero() {
-		t.Fatalf("in-progress status = %+v", got)
+	// The pass has returned but its publication is still encoding: status must say so.
+	if got := p.Status(); !got.Running || got.LastRunAt.IsZero() {
+		t.Fatalf("in-progress status = %+v, want running with the pass recorded", got)
 	}
 	close(finish)
-	if err := <-done; err != nil {
+	if err := p.Wait(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if got := p.Status(); got.Running || got.LastRunAt.IsZero() {
