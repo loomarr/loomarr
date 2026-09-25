@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/textmatch"
@@ -181,7 +182,7 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 			if best, exact := bestExampleCandidate(candidates, title); exact {
 				candidate, found = best, true
 			} else {
-				for _, member := range franchiseMembers(candidates, title, meaning) {
+				for _, member := range s.franchiseMembers(ctx, candidates, title, meaning) {
 					memberKey, _ := member.Key()
 					intent.requiredTitleKeys[normalizeTitleLabel(member.Name)] = memberKey
 					anchored = append(anchored, member)
@@ -205,19 +206,57 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 // a single example cannot crowd out the rest of the channel.
 const maxFranchiseMembers = 3
 
-// franchiseMembers returns up to maxFranchiseMembers library titles that begin
-// with the named franchise as whole words ("Indiana Jones and the Last
-// Crusade" for "Indiana Jones"), oldest first. Only example-cued names qualify.
-func franchiseMembers(candidates []catalog.Candidate, title string, meaning ValidatedDateMeaning) []catalog.Candidate {
+// maxFranchiseSeeds bounds the movie-collection lookups per named franchise.
+const maxFranchiseSeeds = 2
+
+// MovieCollectionResolver resolves authoritative TMDB collection rosters, with
+// library presence, for provisioned movie Keys (moviecollections.Resolver).
+type MovieCollectionResolver interface {
+	Resolve(context.Context, []provision.Key) (moviecollections.Resolution, error)
+}
+
+// franchiseMembers returns up to maxFranchiseMembers in-library titles of the
+// franchise an example names ("Indiana Jones"), inside the request's era and
+// oldest first. Search hits whose names begin with the franchise seed a TMDB
+// collection lookup, so members that don't carry the name ("Raiders of the
+// Lost Ark") are found; without a resolver, or when it fails, the name-prefix
+// hits alone stand in.
+func (s *Suggester) franchiseMembers(ctx context.Context, candidates []catalog.Candidate, title string, meaning ValidatedDateMeaning) []catalog.Candidate {
 	prefix := normalizeTitleLabel(title) + " "
-	var members []catalog.Candidate
+	var pool []catalog.Candidate
+	var seeds []provision.Key
 	for _, candidate := range candidates {
-		if candidate.InLibrary && strings.HasPrefix(normalizeTitleLabel(candidate.Name)+" ", prefix) &&
-			!candidateOutsideTitleDateRange(candidate, meaning) {
-			if _, err := candidate.Key(); err == nil {
-				members = append(members, candidate)
+		key, err := candidate.Key()
+		if err != nil || !strings.HasPrefix(normalizeTitleLabel(candidate.Name)+" ", prefix) {
+			continue
+		}
+		if candidate.MediaType == provision.Movie && len(seeds) < maxFranchiseSeeds {
+			seeds = append(seeds, key)
+		}
+	}
+	if s.collections != nil && len(seeds) > 0 {
+		if resolution, err := s.collections.Resolve(ctx, seeds); err == nil || len(resolution.Collections) > 0 {
+			for _, collection := range resolution.Collections {
+				if strings.HasPrefix(normalizeTitleLabel(collection.Name)+" ", prefix) {
+					pool = append(pool, collection.Members...)
+				}
 			}
 		}
+	}
+	for _, candidate := range candidates {
+		if strings.HasPrefix(normalizeTitleLabel(candidate.Name)+" ", prefix) {
+			pool = append(pool, candidate)
+		}
+	}
+	seen := make(map[provision.Key]bool, len(pool))
+	var members []catalog.Candidate
+	for _, candidate := range pool {
+		key, err := candidate.Key()
+		if err != nil || seen[key] || !candidate.InLibrary || candidateOutsideTitleDateRange(candidate, meaning) {
+			continue
+		}
+		seen[key] = true
+		members = append(members, candidate)
 	}
 	sort.SliceStable(members, func(i, j int) bool { return members[i].Year < members[j].Year })
 	return members[:min(len(members), maxFranchiseMembers)]

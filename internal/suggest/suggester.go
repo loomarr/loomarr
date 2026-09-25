@@ -123,7 +123,16 @@ type Suggester struct {
 	ratings    RatingSource // optional acquisition-rating enrichment (§389)
 	feedback   FeedbackSource
 	references reference.Resolver
-	maxAcq     int // default SUGGEST_MAX_ACQUISITIONS cap
+	// collections is optional: it lets a named franchise resolve to its TMDB
+	// collection members rather than only title-prefix search hits.
+	collections MovieCollectionResolver
+	maxAcq      int // default SUGGEST_MAX_ACQUISITIONS cap
+}
+
+// WithMovieCollections wires TMDB collection rosters for named-franchise examples.
+func (s *Suggester) WithMovieCollections(resolver MovieCollectionResolver) *Suggester {
+	s.collections = resolver
+	return s
 }
 
 func (s *Suggester) WithFeedback(source FeedbackSource) *Suggester {

@@ -8,8 +8,11 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
+	"github.com/loomarr/loomarr/internal/testkit/moviecollectionsfixture"
 )
 
 // #1497: the model searched only "Indiana Jones" (never "The Goonies") and then
@@ -93,7 +96,7 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 		{
 			"A Sunday-afternoon channel of 1980s adventure movies like Indiana Jones and The Goonies",
 			fixtureDateMeaning("movie_release", "description", 30, 35, 1980, 1989),
-			[]string{"The Goonies", "Indiana Jones and the Temple of Doom", "Indiana Jones and the Last Crusade"},
+			[]string{"The Goonies", "Raiders of the Lost Ark", "Indiana Jones and the Temple of Doom", "Indiana Jones and the Last Crusade"},
 			[]string{"Indiana Jones and the Dial of Destiny"},
 		},
 		{
@@ -116,7 +119,9 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 				catalogSearchResponse(map[string]any{"query": "Toy Story", "media_type": "movie", "dateMeaning": tc.meaning}),
 				finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:`+strconv.Itoa(toyStory.TMDBID)+`","name":"Toy Story 5"}]}`, tc.meaning),
 			)
-			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+			collections, presence := indianaJonesCollection(corpus)
+			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10).
+				WithMovieCollections(moviecollections.New(collections).WithPresenceSource(func() catalog.LibraryPresence { return presence }))
 			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: tc.description})
 			if err != nil {
 				t.Fatal(err)
@@ -137,4 +142,23 @@ func TestSuggest_ExampleTitlesAnchorTogetherWithinEra(t *testing.T) {
 			}
 		})
 	}
+}
+
+// indianaJonesCollection is TMDB's authoritative roster for the franchise. It
+// includes Raiders of the Lost Ark, whose title does not begin "Indiana Jones".
+func indianaJonesCollection(corpus *catalogfixture.Corpus) (*moviecollectionsfixture.Source, *catalogfixture.Presence) {
+	var members []catalog.Candidate
+	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{}}
+	refs := map[int]moviecollections.CollectionRef{}
+	for _, c := range corpus.Candidates {
+		presence.Hits[c.TMDBID] = catalog.Presence{LibraryItemID: "item-" + strconv.Itoa(c.TMDBID)}
+		if c.Name == "Raiders of the Lost Ark" || strings.HasPrefix(c.Name, "Indiana Jones") {
+			members = append(members, catalog.Candidate{MediaType: "movie", TMDBID: c.TMDBID, Name: c.Name, Year: c.Year})
+			refs[c.TMDBID] = moviecollections.CollectionRef{TMDBID: 84, Name: "Indiana Jones Collection"}
+		}
+	}
+	return &moviecollectionsfixture.Source{
+		Refs:        refs,
+		Collections: map[int]moviecollections.SourceCollection{84: {TMDBID: 84, Name: "Indiana Jones Collection", Members: members}},
+	}, presence
 }
