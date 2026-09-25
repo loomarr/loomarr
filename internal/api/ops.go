@@ -89,7 +89,7 @@ func scrapeGuard(token string, next http.Handler) http.HandlerFunc {
 // registerOps mounts the operational surface. `pprofOn` gates the profiler routes;
 // `metricsToken` is the scrape credential guarding /metrics ("" ⇒ refused).
 func (s *Server) registerOps(api huma.API, pprofOn bool, metricsToken string) {
-	var metricsInner http.Handler = http.NotFoundHandler()
+	metricsInner := http.NotFoundHandler()
 	if s.metrics != nil {
 		metricsInner = s.metrics.Handler()
 	}
