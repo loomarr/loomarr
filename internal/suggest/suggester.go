@@ -123,7 +123,16 @@ type Suggester struct {
 	ratings    RatingSource // optional acquisition-rating enrichment (§389)
 	feedback   FeedbackSource
 	references reference.Resolver
-	maxAcq     int // default SUGGEST_MAX_ACQUISITIONS cap
+	// collections is optional: it lets a named franchise resolve to its TMDB
+	// collection members rather than only title-prefix search hits.
+	collections MovieCollectionResolver
+	maxAcq      int // default SUGGEST_MAX_ACQUISITIONS cap
+}
+
+// WithMovieCollections wires TMDB collection rosters for named-franchise examples.
+func (s *Suggester) WithMovieCollections(resolver MovieCollectionResolver) *Suggester {
+	s.collections = resolver
+	return s
 }
 
 func (s *Suggester) WithFeedback(source FeedbackSource) *Suggester {
@@ -445,8 +454,9 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 
 // buildRequiredNamedFallback completes a named-set request when retrieval and
 // independent constituent grounding succeeded but the provider never produced
-// usable final JSON. It is deliberately unavailable to ordinary themes: their
-// required title is not enough to reconstruct the broader editorial selection.
+// usable final JSON. Ordinary themes qualify only through example titles: any
+// other required title is not enough to reconstruct the broader editorial
+// selection, but user-named examples are still a floor worth returning.
 func (s *Suggester) buildRequiredNamedFallback(
 	ctx context.Context,
 	intent Intent,
@@ -454,11 +464,14 @@ func (s *Suggester) buildRequiredNamedFallback(
 	trace *DecisionTrace,
 	meaning *ValidatedDateMeaning,
 ) (Proposal, bool, error) {
-	if ctx.Err() != nil || !requiresMembershipEvidence(intent) || meaning == nil || len(intent.requiredTitleKeys) == 0 {
+	named := requiresMembershipEvidence(intent)
+	// Titles the user offered as examples are a floor: if the model never
+	// produces usable final JSON, the anchors alone beat "no titles found".
+	if ctx.Err() != nil || (!named && len(exampleTitles(intent)) == 0) || meaning == nil || len(intent.requiredTitleKeys) == 0 {
 		return Proposal{}, false, nil
 	}
 	for _, key := range intent.requiredTitleKeys {
-		if _, found := surfaced[key]; !found || !intent.membershipKeys[key] {
+		if _, found := surfaced[key]; !found || (named && !intent.membershipKeys[key]) {
 			return Proposal{}, false, nil
 		}
 	}

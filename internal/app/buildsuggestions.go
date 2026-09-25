@@ -94,9 +94,10 @@ func buildSuggestions(
 		return libraryPresence{lib: libraryClient.Snapshot()}
 	})
 	result.search = searchAdapter{catalogService}
-	result.movieCollections = movieCollectionAdapter{resolver: moviecollections.New(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
+	collectionResolver := moviecollections.New(tmdbClient).WithPresenceSource(func() catalog.LibraryPresence {
 		return libraryPresence{lib: libraryClient.Snapshot()}
-	})}
+	})
+	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
 	result.collections = libraryCollections{lib: libraryClient}
 	result.icons = iconAdapter{
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,
@@ -108,6 +109,7 @@ func buildSuggestions(
 	}
 	suggester := suggest.New(provider, catalogService, tmdbClient, set.intv("suggest.max_acquisitions"))
 	suggester.WithRatings(tmdbClient).
+		WithMovieCollections(collectionResolver).
 		WithFeedback(discoveryFeedbackSource{store: st}).
 		WithReferences(reference.NewWeb(httpx.NewPublicNamedObserved("reference", httpx.TimeoutReference, metricRecorder)))
 	service := suggest.NewService(st, suggester, suggest.Config{

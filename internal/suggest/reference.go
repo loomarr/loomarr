@@ -14,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/textmatch"
@@ -105,7 +106,7 @@ func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meani
 	if err != nil {
 		return sourceGroundingResult{}, err
 	}
-	explicit, err := s.groundExplicitRequiredTitles(ctx, intent)
+	explicit, err := s.groundExplicitRequiredTitles(ctx, intent, meaning)
 	if err != nil {
 		return sourceGroundingResult{}, err
 	}
@@ -142,8 +143,12 @@ func (e *referenceReadError) Unwrap() error { return e.err }
 // groundExplicitRequiredTitles resolves required user titles independently of
 // the model. Named sets additionally record membership; ordinary themes retain
 // the exact binding only for deterministic inclusion and namesake rejection.
-func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *Intent) ([]catalog.Candidate, error) {
+func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *Intent, meaning ValidatedDateMeaning) ([]catalog.Candidate, error) {
 	titles := directIncludedTitles(*intent)
+	examples := make(map[string]bool)
+	for _, title := range exampleTitles(*intent) {
+		examples[strings.ToLower(title)] = true
+	}
 	type result struct {
 		candidates []catalog.Candidate
 		err        error
@@ -169,6 +174,21 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 		candidates := results[index].candidates
 		cacheMembershipSourceResolution(*intent, title, candidates)
 		candidate, found := unambiguousMembershipCandidate(candidates, title)
+		if !found && examples[strings.ToLower(title)] {
+			// An example is a soft anchor: several exact namesakes resolve to the
+			// best-known owned one instead of dropping it, and a franchise name
+			// ("Indiana Jones"), which is no single title, resolves to its
+			// in-library members within the request's era.
+			if best, exact := bestExampleCandidate(candidates, title); exact {
+				candidate, found = best, true
+			} else {
+				for _, member := range s.franchiseMembers(ctx, candidates, title, meaning) {
+					memberKey, _ := member.Key()
+					intent.requiredTitleKeys[normalizeTitleLabel(member.Name)] = memberKey
+					anchored = append(anchored, member)
+				}
+			}
+		}
 		if !found {
 			continue // no implicit media/year choice for an ambiguous user anchor
 		}
@@ -180,6 +200,90 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 		anchored = append(anchored, candidate)
 	}
 	return anchored, nil
+}
+
+// maxFranchiseMembers bounds how many titles one named franchise may claim, so
+// a single example cannot crowd out the rest of the channel.
+const maxFranchiseMembers = 3
+
+// maxFranchiseSeeds bounds the movie-collection lookups per named franchise.
+const maxFranchiseSeeds = 2
+
+// MovieCollectionResolver resolves authoritative TMDB collection rosters, with
+// library presence, for provisioned movie Keys (moviecollections.Resolver).
+type MovieCollectionResolver interface {
+	Resolve(context.Context, []provision.Key) (moviecollections.Resolution, error)
+}
+
+// franchiseMembers returns up to maxFranchiseMembers in-library titles of the
+// franchise an example names ("Indiana Jones"), inside the request's era and
+// oldest first. Search hits whose names begin with the franchise seed a TMDB
+// collection lookup, so members that don't carry the name ("Raiders of the
+// Lost Ark") are found; without a resolver, or when it fails, the name-prefix
+// hits alone stand in.
+func (s *Suggester) franchiseMembers(ctx context.Context, candidates []catalog.Candidate, title string, meaning ValidatedDateMeaning) []catalog.Candidate {
+	prefix := normalizeTitleLabel(title) + " "
+	var pool []catalog.Candidate
+	var seeds []provision.Key
+	for _, candidate := range candidates {
+		key, err := candidate.Key()
+		if err != nil || !strings.HasPrefix(normalizeTitleLabel(candidate.Name)+" ", prefix) {
+			continue
+		}
+		if candidate.MediaType == provision.Movie && len(seeds) < maxFranchiseSeeds {
+			seeds = append(seeds, key)
+		}
+	}
+	if s.collections != nil && len(seeds) > 0 {
+		if resolution, err := s.collections.Resolve(ctx, seeds); err == nil || len(resolution.Collections) > 0 {
+			for _, collection := range resolution.Collections {
+				if strings.HasPrefix(normalizeTitleLabel(collection.Name)+" ", prefix) {
+					pool = append(pool, collection.Members...)
+				}
+			}
+		}
+	}
+	for _, candidate := range candidates {
+		if strings.HasPrefix(normalizeTitleLabel(candidate.Name)+" ", prefix) {
+			pool = append(pool, candidate)
+		}
+	}
+	seen := make(map[provision.Key]bool, len(pool))
+	var members []catalog.Candidate
+	for _, candidate := range pool {
+		key, err := candidate.Key()
+		if err != nil || seen[key] || !candidate.InLibrary || candidateOutsideTitleDateRange(candidate, meaning) {
+			continue
+		}
+		seen[key] = true
+		members = append(members, candidate)
+	}
+	sort.SliceStable(members, func(i, j int) bool { return members[i].Year < members[j].Year })
+	return members[:min(len(members), maxFranchiseMembers)]
+}
+
+// bestExampleCandidate picks one of several exact-title namesakes: owned first,
+// then most-voted, then earliest. exact reports whether any namesake existed.
+func bestExampleCandidate(candidates []catalog.Candidate, title string) (catalog.Candidate, bool) {
+	var exact []catalog.Candidate
+	for _, candidate := range candidates {
+		if _, err := candidate.Key(); err == nil && sameExactTitle(candidate.Name, title) {
+			exact = append(exact, candidate)
+		}
+	}
+	if len(exact) == 0 {
+		return catalog.Candidate{}, false
+	}
+	sort.SliceStable(exact, func(i, j int) bool {
+		if exact[i].InLibrary != exact[j].InLibrary {
+			return exact[i].InLibrary
+		}
+		if exact[i].VoteCount != exact[j].VoteCount {
+			return exact[i].VoteCount > exact[j].VoteCount
+		}
+		return exact[i].Year < exact[j].Year
+	})
+	return exact[0], true
 }
 
 // groundReference resolves a pasted public page only after inference has
@@ -609,7 +713,70 @@ var (
 	directIncludePattern = regexp.MustCompile(`(?i:\b(?:include|including|add|adding|keep|want|with)\b)`)
 	directExcludePattern = regexp.MustCompile(`(?i:\b(?:exclude|excluding|avoid|omit|remove|without)\b|\bbut\s+not\b)`)
 	directAndPattern     = regexp.MustCompile(`(?i:\s+and\s+)`)
+	// exampleCuePattern introduces titles the user offers as models of the
+	// channel ("adventure movies like Indiana Jones and The Goonies").
+	exampleCuePattern = regexp.MustCompile(`(?i:\b(?:like|such\s+as|similar\s+to|in\s+the\s+vein\s+of|along\s+the\s+lines\s+of|reminiscent\s+of)\b|\be\.g\.)`)
 )
+
+var exampleTrailerPattern = regexp.MustCompile(`(?i:\s+(?:for|from|to|that|who|which|when|where|on|but|so)\s+|\s*\()`)
+
+// exampleCueIsDesire reports "I'd like a channel of…", where "like" is a verb
+// and no title follows.
+func exampleCueIsDesire(prefix string) bool {
+	words := strings.Fields(strings.ToLower(prefix))
+	if len(words) == 0 {
+		return false
+	}
+	switch strings.Trim(words[len(words)-1], ",.;:") {
+	case "would", "i'd", "we'd", "you'd", "id", "to", "feel", "feels", "look", "looks", "just", "really":
+		return true
+	}
+	return false
+}
+
+// exampleTitles are the clause values after an example cue. They are anchors
+// for the same deterministic Catalog resolution as direct inclusions, so prose
+// after a cue ("like a rainy night") resolves to nothing and is dropped.
+func exampleTitles(intent Intent) []string {
+	if networkStyleRequest(intent) {
+		return nil // "like the History Channel" names a network, not a title
+	}
+	var values []string
+	for _, field := range []string{intent.Description, intent.RefineText} {
+		for _, match := range exampleCuePattern.FindAllStringIndex(field, -1) {
+			if exampleCueIsDesire(field[:match[0]]) || cueHasNearbyExclusion(field[:match[0]]) {
+				continue
+			}
+			for _, title := range clauseTitles(field[match[1]:]) {
+				// The last title runs into the rest of the sentence ("Gremlins
+				// for a family night"); also try it cut at the first
+				// preposition/relative word. Exact resolution keeps whichever is a title.
+				if cut := exampleTrailerPattern.FindStringIndex(title); cut != nil && cut[0] > 0 {
+					values = append(values, strings.TrimSpace(title[:cut[0]]))
+				}
+				values = append(values, title)
+			}
+		}
+	}
+	return values
+}
+
+// clauseTitles splits the bounded value of an inclusion or example clause into
+// its comma/"and"-separated title candidates.
+func clauseTitles(clause string) []string {
+	if stop := directClauseEnd(clause); stop >= 0 {
+		clause = clause[:stop]
+	}
+	clause = directAndPattern.ReplaceAllString(clause, ",")
+	var titles []string
+	for _, title := range strings.Split(clause, ",") {
+		title = strings.Trim(strings.TrimSpace(title), "-–—:;.!?()[]{}\"'")
+		if title != "" {
+			titles = append(titles, title)
+		}
+	}
+	return titles
+}
 
 // directIncludedTitles extracts only the bounded value of an explicit inclusion
 // clause. It is intentionally small grammar, not a general title recognizer;
@@ -622,19 +789,10 @@ func directIncludedTitles(intent Intent) []string {
 			if cueHasNearbyExclusion(field[:match[0]]) {
 				continue
 			}
-			clause := field[match[1]:]
-			if stop := directClauseEnd(clause); stop >= 0 {
-				clause = clause[:stop]
-			}
-			clause = directAndPattern.ReplaceAllString(clause, ",")
-			for _, title := range strings.Split(clause, ",") {
-				title = strings.Trim(strings.TrimSpace(title), "-–—:;.!?()[]{}\"'")
-				if title != "" {
-					values = append(values, title)
-				}
-			}
+			values = append(values, clauseTitles(field[match[1]:])...)
 		}
 	}
+	values = append(values, exampleTitles(intent)...)
 	return boundedReferenceTitles(values)
 }
 
