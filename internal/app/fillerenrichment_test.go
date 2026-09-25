@@ -326,3 +326,53 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 		t.Fatalf("clip still lacks a deterministic pass: %+v, err %v", candidates, err)
 	}
 }
+
+func TestFillerEnrichmentResolvesEmptySourceGeographyToHomeCountry(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_500, 0).UTC()
+	home := func() filler.Geography { return filler.Geography{Country: "US"} }
+	source := store.NewFillerSource("archive:inherit-home", "archive", "archive.org/details/commercials",
+		"Archive source", at)
+	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	clip := store.Clip{Clip: filler.Clip{
+		Hash: "inherit-home-geography", Path: "inherit-home.mp4", Name: "Inherited geography advert",
+		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
+	}, UpdatedAt: at, CreatedAt: at}
+	if err := st.UpsertClip(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	files := fstest.MapFS{
+		"inherit-home.info.json": {Data: []byte(`{"title":"Inherited geography advert","loomarr":{"sourceId":"archive:inherit-home"}}`)},
+	}
+	runner := fillerenrichment.NewRunner(
+		fillerEnrichmentRepository{st: st},
+		fillerEnrichmentSignals{store: st, files: files, home: home}.Load,
+		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
+	)
+	result, err := runner.Run(t.Context())
+	if err != nil || result.Considered != 1 {
+		t.Fatalf("Run() = %+v, err %v", result, err)
+	}
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The break-body assembler must now be able to use the clip for a US channel.
+	if !filler.GeographicallyEligible(got.Clip, filler.Geography{Country: "US"}) {
+		t.Fatalf("clip %+v is not eligible for a US installation", got.Clip)
+	}
+	if again, err := runner.Run(t.Context()); err != nil || again.Considered != 0 {
+		t.Fatalf("second Run() = %+v, err %v; the pass must be recorded so the clip is not re-selected", again, err)
+	}
+	got.Clip.Placement = filler.PlacementBreakBody
+	pod := filler.Assemble([]filler.Clip{got.Clip}, filler.Window{ChannelID: "ch1", Seed: 1,
+		GapMs: 60000, PodMax: 2}, filler.Policy{Geography: filler.Geography{Country: "US"}}, nil)
+	if pod.MatchLevel == filler.MatchBumperCard {
+		t.Fatalf("US pod over enriched clip fell back to the bumper card: %+v", pod)
+	}
+	if got.GeographicScope != filler.GeographicNational || got.Country != "US" || got.Market != "" {
+		t.Fatalf("inherited source geography = %+v, want national US", got.Clip)
+	}
+}

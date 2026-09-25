@@ -269,6 +269,8 @@ func (r fillerDetailRunner) Run(ctx context.Context) (fillerenrichment.RunResult
 type fillerEnrichmentSignals struct {
 	store store.FillerSourceStore
 	files fs.FS
+	// home is the installation geography an empty-country source inherits.
+	home func() filler.Geography
 }
 
 func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenrichment.Candidate, observedAt time.Time) (fillerenrichment.Signals, error) {
@@ -294,7 +296,11 @@ func (l fillerEnrichmentSignals) Load(ctx context.Context, candidate fillerenric
 		if source.ID != signals.SourceID {
 			continue
 		}
-		geography := source.Geography.Normalize()
+		var home filler.Geography
+		if l.home != nil {
+			home = l.home()
+		}
+		geography := source.EffectiveGeography(home)
 		scope := ""
 		if geography.Market != "" {
 			scope = string(filler.GeographicLocal)
