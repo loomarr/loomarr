@@ -490,7 +490,9 @@ func preserveRequiredTitles(intent Intent, picks []pick, surfaced map[provision.
 			existing[key] = proposed
 		}
 	}
-	result := make([]pick, 0, min(maxFinalSelectionPicks, len(required)+len(picks)))
+	// The result never exceeds maxFinalSelectionPicks, so allocate exactly that: no size arithmetic
+	// over model-supplied lengths (CodeQL go/allocation-size-overflow).
+	result := make([]pick, 0, maxFinalSelectionPicks)
 	selected := make(map[provision.Key]bool, len(required))
 	for _, candidate := range required {
 		key, err := candidate.Key()
