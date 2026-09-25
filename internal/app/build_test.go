@@ -14,8 +14,8 @@ func buildTestApplication(t *testing.T, st store.Store, overrides Overrides) *Ap
 	// PostgreSQL has no database-file directory from which secret protection can derive its
 	// generated installation-key path. Keep every composition test isolated from the production
 	// /data default and from other tests' key material.
-	if overrides.EncryptionDataDir == "" {
-		overrides.EncryptionDataDir = t.TempDir()
+	if overrides.DataDir == "" {
+		overrides.DataDir = t.TempDir()
 	}
 	application, err := Build(t.Context(), st, slog.New(slog.DiscardHandler), overrides)
 	if err != nil {

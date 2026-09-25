@@ -4,6 +4,13 @@
 *.local
 # The generated installation key (secret protection) lives beside a dev SQLite database.
 encryption.key
+# Storage directories default beside the database (#1461); a dev SQLite file at the repo root
+# makes that the repo root. Anchored so internal/images, internal/filler etc. stay tracked.
+/prepared/
+/backups/
+/images/
+/filler/
+/diagnostics/
 
 # Build output — anchor to repo root so these ignore ONLY the compiled binaries,
 # not the cmd/loomarr and cmd/loomarr-ingest source directories (a bare pattern

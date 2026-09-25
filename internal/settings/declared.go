@@ -494,8 +494,8 @@ func declared() []Setting {
 			// and restarts. Read once at composition because moving an active publication library while
 			// clients hold keyed asset URLs would split one origin across two roots.
 			Key: "playout.prepared_dir", Label: "Prepared media library", EnvVar: "PLAYOUT_PREPARED_DIR", Group: GroupPlayout,
-			Kind: KindString, Presentation: PresentationPath, Default: "/data/prepared", Advanced: true,
-			Doc: "Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults inside /data so the documented volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart.",
+			Kind: KindString, Presentation: PresentationPath, DataSubdir: "prepared", Advanced: true,
+			Doc: "Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults to a directory beside the database (/data in the container) so the database's own volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart.",
 		},
 		{
 			// A soft cap rather than a quota: active HLS publications win when their protected
@@ -548,8 +548,8 @@ func declared() []Setting {
 		},
 		{
 			Key: "backup.dir", Label: "Backup location", EnvVar: "BACKUP_DIR", Group: GroupBackup,
-			Kind: KindString, Presentation: PresentationPath, Default: "/data/backups",
-			Doc: "Where backups are written. Defaults inside /data so the documented volume carries them; point it elsewhere to keep backups off the same disk as the database.",
+			Kind: KindString, Presentation: PresentationPath, DataSubdir: "backups",
+			Doc: "Where backups are written. Defaults to a directory beside the database (/data in the container) so its volume carries them; point it elsewhere to keep backups off the same disk as the database.",
 		},
 
 		// --- Images (§15, §22, V52) ---
@@ -561,8 +561,8 @@ func declared() []Setting {
 			// is why image maintenance counts unrecoverable-missing rows as a warning rather than
 			// pretending it can repair them.
 			Key: "images.dir", Label: "Image library location", EnvVar: "IMAGES_DIR", Group: GroupImages,
-			Kind: KindString, Presentation: PresentationPath, Default: "/data/images",
-			Doc: "Where Loomarr stores images — originals and the resized copies it serves. Defaults inside /data so the documented volume carries it. Not covered by the database backup: back up the volume.",
+			Kind: KindString, Presentation: PresentationPath, DataSubdir: "images",
+			Doc: "Where Loomarr stores images — originals and the resized copies it serves. Defaults to a directory beside the database (/data in the container) so its volume carries it. Not covered by the database backup: back up the volume.",
 		},
 		{
 			Key: "images.max_upload_bytes", Label: "Maximum image upload", EnvVar: "IMAGES_MAX_UPLOAD_BYTES", Group: GroupImages,
@@ -705,8 +705,8 @@ func declared() []Setting {
 			// neighbours both defaulted; that asymmetry made the whole feature opt-in by
 			// accident. Still overridable to point at an existing library on another disk.
 			Key: "filler.dir", Label: "Clip library", EnvVar: "FILLER_DIR", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "/data/filler", Required: FeatureFiller, Validate: storagePath(false),
-			Doc: "Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults inside /data so the documented volume carries it; point it elsewhere to use an existing clip library.",
+			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, DataSubdir: "filler", Required: FeatureFiller, Validate: storagePath(false),
+			Doc: "Where Loomarr stores clips. Each is filed under its content hash with its metadata beside it. Defaults to a directory beside the database (/data in the container) so its volume carries it; point it elsewhere to use an existing clip library.",
 		},
 		{
 			// The watch folder (§10 V38c, "Two folders, one pipeline"). Clips ARRIVE here —
@@ -1430,7 +1430,7 @@ func declared() []Setting {
 		{
 			Key: "diagnostics.dir", EnvVar: "DIAGNOSTICS_DIR", Group: GroupAdvanced,
 			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart,
-			Default: "/data/diagnostics", Validate: storagePath(false), Advanced: true,
+			DataSubdir: "diagnostics", Validate: storagePath(false), Advanced: true,
 			Doc: "Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart.",
 		},
 		{

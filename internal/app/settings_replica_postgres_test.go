@@ -29,7 +29,7 @@ func TestTrackedPostgresReplicaSettingsRefreshObservesOtherStoreBatch(t *testing
 	}
 	baseLog := slog.New(slog.NewTextHandler(io.Discard, nil))
 	protection := testSecretProtection(t, stores[1])
-	set, _, _, _, err := bootSettings(ctx, stores[1], protection, baseLog)
+	set, _, _, _, err := bootSettings(ctx, stores[1], protection, baseLog, "")
 	if err != nil {
 		t.Fatal(err)
 	}

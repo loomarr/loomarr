@@ -40,7 +40,7 @@ func testFoundationStorageBudgetAndProjectionSurviveRestart(t *testing.T, st sto
 	if err := st.SetSetting(t.Context(), "filler.storage.library_budget_gb", "7"); err != nil {
 		t.Fatal(err)
 	}
-	overrides := Overrides{EncryptionDataDir: filepath.Join(root, "encryption")}
+	overrides := Overrides{DataDir: filepath.Join(root, "encryption")}
 	build := func() foundationBuild {
 		t.Helper()
 		lifecycle := newGenerationLifecycle(t.Context())
@@ -87,7 +87,7 @@ func TestFoundationRecomputesStorageForChangedFillerPathAfterRestart(t *testing.
 	}
 	t.Setenv("PLAYOUT_PREPARED_DIR", preparedDir)
 	t.Setenv("DIAGNOSTICS_DIR", diagnosticsDir)
-	overrides := Overrides{EncryptionDataDir: filepath.Join(root, "encryption")}
+	overrides := Overrides{DataDir: filepath.Join(root, "encryption")}
 	project := func(wantPath string, wantManaged int64) {
 		t.Helper()
 		lifecycle := newGenerationLifecycle(t.Context())

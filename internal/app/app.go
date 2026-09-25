@@ -22,9 +22,9 @@ import (
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
 // LLM provider) for tests. Both nil ⇒ the real URL-built adapters (production).
 type Overrides struct {
-	// EncryptionDataDir is the boot-configured directory for the generated
-	// installation key. Empty derives it from SQLite and otherwise uses /data.
-	EncryptionDataDir string
+	// DataDir is the boot-configured data directory (config.DataDirFor): where the generated
+	// installation key lives and what the storage-directory settings default beneath.
+	DataDir string
 	// ListenAddr is the address run() binds (LISTEN_ADDR). Internal playout's own block fetches go
 	// there over loopback rather than through server.public_url, which only external consumers
 	// (a media server, Tunarr) need. Empty (embedded builds without a listener) falls back to

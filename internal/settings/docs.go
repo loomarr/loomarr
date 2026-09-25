@@ -115,6 +115,9 @@ func defaultCell(s Setting) string {
 	if s.IsSecret() {
 		return "(secret)"
 	}
+	if s.DataSubdir != "" {
+		return "`<data dir>/" + s.DataSubdir + "`"
+	}
 	str := ValueString(s.Default)
 	if str == "" {
 		return "—"

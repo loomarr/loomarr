@@ -240,7 +240,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		// container, the database's own directory on a bare-metal or dev install). A fixed
 		// /data here made every non-container install fail to boot: `mkdir /data: permission
 		// denied` before the server ever listened.
-		EncryptionDataDir:      config.DataDirFor(cfg.DatabaseURL),
+		DataDir:                config.DataDirFor(cfg.DatabaseURL),
 		DevLogin:               cfg.DevLogin,
 		Pprof:                  cfg.Pprof,
 		MetricsToken:           cfg.MetricsToken,
