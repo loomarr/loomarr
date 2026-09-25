@@ -23,7 +23,7 @@ func TestStartupTableNeverWritesToNonInteractiveJSONOutput(t *testing.T) {
 
 func TestGenerationHealthDeclaresLiveChecksBeforeBoot(t *testing.T) {
 	health := newGenerationHealth(time.Unix(100, 0), 3).Health()
-	if health.Generation != 3 || len(health.Checks) != 10 {
+	if health.Generation != 3 || len(health.Checks) != 11 {
 		t.Fatalf("health = %+v", health)
 	}
 	continuous := map[string]bool{}
@@ -39,6 +39,7 @@ func TestGenerationHealthDeclaresLiveChecksBeforeBoot(t *testing.T) {
 		diagnostics.StartupCheckRequester,
 		diagnostics.StartupCheckLLM,
 		diagnostics.StartupCheckTMDB,
+		diagnostics.StartupCheckPublicURL,
 	} {
 		if !continuous[key] {
 			t.Errorf("%s was not declared continuous", key)

@@ -3,6 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,8 +25,52 @@ type startupIntegration struct {
 	remediation string
 }
 
+// unavailableDetail is the operator-facing reason for a configured check that failed. Most
+// checks stay deliberately generic (their probes may echo credentials); the public address has
+// exactly one fix, so it names the setting to change.
+func unavailableDetail(set resolved, key string) string {
+	if key == diagnostics.StartupCheckPublicURL {
+		return publicURLFailureDetail(set.str("server.public_url"))
+	}
+	return "configured but unavailable"
+}
+
+// publicURLFailureDetail names the address and the setting. Userinfo is stripped: the retained,
+// downloadable startup report must never carry a credential typed into the URL.
+func publicURLFailureDetail(raw string) string {
+	shown := strings.TrimSpace(raw)
+	if u, err := url.Parse(shown); err == nil && u.User != nil {
+		u.User = nil
+		shown = u.String()
+	}
+	return "This server can't reach its public address " + shown + " — check SERVER_PUBLIC_URL"
+}
+
+// publicURLProbe is the health probe for server.public_url: the server must answer its own
+// unauthenticated liveness route there, the same path a media server or Tunarr would dial.
+func publicURLProbe(set resolved, client *http.Client) func(context.Context) (bool, string) {
+	return func(ctx context.Context) (bool, string) {
+		base := strings.TrimRight(strings.TrimSpace(set.str("server.public_url")), "/")
+		if base == "" {
+			return false, "set the public address"
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/healthz", nil)
+		if err != nil {
+			return false, "the public address is not a valid URL"
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return false, "could not reach the public address"
+		}
+		_ = resp.Body.Close()
+		return resp.StatusCode >= 200 && resp.StatusCode < 300, ""
+	}
+}
+
 func startupIntegrations(set resolved) []startupIntegration {
 	return []startupIntegration{
+		{diagnostics.StartupCheckPublicURL, strings.TrimSpace(set.str("server.public_url")) != "",
+			"/settings/system/playback"},
 		{diagnostics.StartupCheckMediaServer,
 			set.str("library.flavor") != "" || set.str("library.url") != "" || set.str("library.token") != "",
 			"/settings/connections"},
@@ -53,6 +100,14 @@ func completeStartupIntegrations(
 			startup.Complete(check.key, diagnostics.StartupSkipped, "not configured", check.remediation, "")
 			continue
 		}
+		if check.key == diagnostics.StartupCheckPublicURL {
+			// The server dials itself here, and this runs during assembly, before the listener
+			// exists: probing now would report every install as unreachable. Current Health
+			// runs the same probe once the server is up.
+			startup.Complete(check.key, diagnostics.StartupSkipped,
+				"checked by Current Health once the server is listening", check.remediation, "")
+			continue
+		}
 		probe := probes[check.key]
 		if probe == nil {
 			startup.Complete(check.key, diagnostics.StartupWarning, "health probe unavailable", check.remediation, "")
@@ -71,8 +126,8 @@ func completeStartupIntegrations(
 			// Setup probes may include upstream URLs in their operator-facing explanation. The
 			// startup report is retained and downloadable, so keep its detail deliberately
 			// credential-free and route the operator to the richer live probe instead.
-			detail := "configured but unavailable"
-			if ctx.Err() != nil {
+			detail := unavailableDetail(set, check.key)
+			if ctx.Err() != nil && check.key != diagnostics.StartupCheckPublicURL {
 				detail = "health probe timed out"
 			}
 			startup.Complete(check.key, diagnostics.StartupWarning, detail, check.remediation, "")
@@ -165,10 +220,10 @@ func (r *currentHealthRunner) Run(parent context.Context) error {
 				})
 				return
 			}
-			detail := "configured but unavailable"
+			detail := unavailableDetail(r.set, check.key)
 			if check.key == diagnostics.StartupCheckDatabase {
 				detail = "database health check failed"
-			} else if ctx.Err() != nil {
+			} else if ctx.Err() != nil && check.key != diagnostics.StartupCheckPublicURL {
 				detail = "health probe timed out"
 			}
 			r.health.Observe(check.key, diagnostics.HealthObservation{

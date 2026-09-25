@@ -826,19 +826,30 @@ func (r *hlsRemux) awaitPlaylist(ctx context.Context, timeout time.Duration) err
 				// instead of rejoining this corpse for the remainder of the grace window.
 				r.teardown()
 				if last := r.proc.LastError(); last != "" {
-					return fmt.Errorf("hls: channel %s remux exited before producing a stream: %s", r.channelID, last)
+					return r.source.startFailure(StartEncoderExited,
+						fmt.Errorf("hls: channel %s remux exited before producing a stream: %s", r.channelID, last))
 				}
-				return fmt.Errorf("hls: channel %s remux exited before producing a stream: %v", r.channelID, r.proc.waitErr)
+				return r.source.startFailure(StartEncoderExited,
+					fmt.Errorf("hls: channel %s remux exited before producing a stream: %v", r.channelID, r.proc.waitErr))
 			default:
 			}
+		}
+		if r.source.blockOpenExhausted() {
+			// The programme source has refused every open; no segment is coming. Tear down so the
+			// viewer's retry starts a fresh session instead of rejoining this one.
+			r.teardown()
+			return r.source.startFailure(StartNoStream,
+				fmt.Errorf("hls: channel %s could not open its programme source", r.channelID))
 		}
 		if time.Now().After(deadline) {
 			// Include ffmpeg's last stderr line — the WHY behind "no stream". Without it this
 			// error is a bare timeout that sends diagnosis in the wrong direction.
 			if last := r.proc.LastError(); last != "" {
-				return fmt.Errorf("hls: channel %s produced no stream within %s: %s", r.channelID, timeout, last)
+				return r.source.startFailure(StartNoStream,
+					fmt.Errorf("hls: channel %s produced no stream within %s: %s", r.channelID, timeout, last))
 			}
-			return fmt.Errorf("hls: channel %s produced no stream within %s", r.channelID, timeout)
+			return r.source.startFailure(StartNoStream,
+				fmt.Errorf("hls: channel %s produced no stream within %s", r.channelID, timeout))
 		}
 		select {
 		case <-ctx.Done():

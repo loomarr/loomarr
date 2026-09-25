@@ -11,6 +11,7 @@ class MockHls {
     MANIFEST_PARSED: "manifestParsed",
   };
   static ErrorTypes = { MEDIA_ERROR: "mediaError", NETWORK_ERROR: "networkError" };
+  static ErrorDetails = { MANIFEST_LOAD_ERROR: "manifestLoadError" };
 
   media: HTMLMediaElement | null = null;
   url: string | null = null;

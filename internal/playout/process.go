@@ -80,6 +80,10 @@ type Process struct {
 	// decodeFault is sticky: ffmpeg logs further lines after the decoder error, so lastErr alone
 	// would lose it.
 	decodeFault bool
+	// blockFault is the latest failed block open (see noteBlockOpen); nil once a block opens.
+	blockFault *StartError
+	// blockFaults counts consecutive failed opens; a successful open resets it.
+	blockFaults int
 }
 
 // Start launches ffmpeg with the given args under ctx.

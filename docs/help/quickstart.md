@@ -43,8 +43,10 @@ in-app switchover.
 > Inside Docker, `localhost` means the container. Reach other services by name
 > (`http://emby:8096`) or your host's LAN IP.
 >
-> Set `SERVER_PUBLIC_URL` to the address your media server can reach Loomarr on. Stream URLs are
-> built from it, and a wrong value only shows up when a channel fails to play.
+> Set `SERVER_PUBLIC_URL` to the address your media server can reach Loomarr on. Stream URLs handed
+> to your media server are built from it, so a wrong value shows up as channels that never play
+> there. Playing in the Loomarr app does not depend on it, and Current Health flags an address this
+> server cannot reach.
 
 ## 2. Run the wizard
 

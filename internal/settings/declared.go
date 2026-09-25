@@ -372,7 +372,7 @@ func declared() []Setting {
 			// have to know which one Live TV reads.
 			Key: "server.public_url", Label: "Loomarr address", EnvVar: "SERVER_PUBLIC_URL", Group: GroupPlayout,
 			Kind: KindURL, Default: "",
-			Doc: "Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Internal playout serves every stream segment from this base, so a wrong value means channels appear in the guide and never play. Also used for uploaded channel icons.",
+			Doc: "Loomarr's own address as your media server and Tunarr can reach it, e.g. http://loomarr:8080. Your media server and Tunarr fetch every stream URL from this base, so a wrong value means channels appear in the guide there and never play. Loomarr's own in-app playback does not use it (it reaches itself on its listen address), and Current Health flags an address this server cannot reach. Also used for uploaded channel icons.",
 		},
 
 		{
