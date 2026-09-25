@@ -15,6 +15,11 @@ interface PlayerSource {
   uri: string;
 }
 
+/** A source minted for a neighbour, plus whether its playlist and first assets were all fetched. */
+interface WarmedSource extends PlayerSource {
+  warmed: boolean;
+}
+
 interface PlayerSourcePort {
   mint: (
     channel: PlayerChannel,
@@ -23,10 +28,15 @@ interface PlayerSourcePort {
   ) => Promise<PlayerSource>;
   /**
    * Speculatively starts a channel's stream on the server without playing it, so a later tune finds
-   * it running. Optional: a source that cannot warm is simply never pre-warmed. Resolves whether or
-   * not the server had capacity; a refusal is a miss, not an error.
+   * it running, and returns the exact signed source the real tune should reuse. Optional: a source
+   * that cannot warm is simply never pre-warmed. A refusal (no capacity) is a miss, not an error:
+   * it resolves with `warmed: false`.
    */
-  warm?: (channel: PlayerChannel, profile: DevicePlaybackProfile, signal: AbortSignal) => Promise<void>;
+  warm?: (
+    channel: PlayerChannel,
+    profile: DevicePlaybackProfile,
+    signal: AbortSignal,
+  ) => Promise<WarmedSource | undefined>;
 }
 
-export type { DevicePlaybackProfile, PlayerChannel, PlayerSource, PlayerSourcePort };
+export type { DevicePlaybackProfile, PlayerChannel, PlayerSource, PlayerSourcePort, WarmedSource };

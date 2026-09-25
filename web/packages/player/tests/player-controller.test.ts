@@ -391,7 +391,7 @@ describe("player controller neighbour warming", () => {
     const signals: AbortSignal[] = [];
     const warm = vi.fn((_channel, _profile, signal: AbortSignal) => {
       signals.push(signal);
-      return new Promise<void>(() => {});
+      return new Promise<never>(() => {});
     });
     const { controller } = harness({
       mint: vi.fn((channel) => Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8` })),
@@ -409,7 +409,7 @@ describe("player controller neighbour warming", () => {
     const signals: AbortSignal[] = [];
     const warm = vi.fn((_channel, _profile, signal: AbortSignal) => {
       signals.push(signal);
-      return new Promise<void>(() => {});
+      return new Promise<never>(() => {});
     });
     const { controller } = harness({
       mint: vi.fn((channel) => Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8` })),
@@ -419,5 +419,35 @@ describe("player controller neighbour warming", () => {
     await vi.waitFor(() => expect(signals.length).toBeGreaterThan(0));
     controller.dispose();
     expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+});
+
+describe("player controller warmed-source reuse", () => {
+  it("tunes a warmed neighbour with its exact signed source instead of minting again", async () => {
+    const list: PlayerChannel[] = [1, 2, 3].map((n) => ({
+      id: `ch${n}`,
+      inAppPlayable: true,
+      name: `Channel ${n}`,
+      number: n,
+    }));
+    const mint = vi.fn((channel: PlayerChannel) =>
+      Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?fresh` }),
+    );
+    const warm = vi.fn((channel: PlayerChannel) =>
+      Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?warmed`, warmed: true }),
+    );
+    const { controller, transport } = harness({ mint, warm });
+    await controller.reconcile(list);
+    await vi.waitFor(() => expect(warm).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    mint.mockClear();
+
+    await controller.step(1);
+
+    expect(mint).not.toHaveBeenCalled();
+    expect(transport.replace).toHaveBeenLastCalledWith(
+      expect.objectContaining({ uri: "https://loomarr.test/ch2.m3u8?warmed" }),
+      expect.anything(),
+    );
   });
 });
