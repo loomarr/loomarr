@@ -818,6 +818,7 @@ type DiagnosticStore interface {
 	ListDiagnosticEvents(ctx context.Context, limit int) ([]diagnostics.Record, error)
 	QueryDiagnosticEvents(ctx context.Context, query diagnostics.EventStoreQuery) ([]diagnostics.Record, error)
 	UpsertDiagnosticProcessRun(ctx context.Context, run diagnostics.ProcessRun) error
+	FinalizeStaleDiagnosticProcessRuns(ctx context.Context, instanceID string, now time.Time) (int, error)
 	GetDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, error)
 	FindDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, bool, error)
 	QueryDiagnosticProcessRuns(ctx context.Context, query diagnostics.ProcessStoreQuery) ([]diagnostics.ProcessRun, error)

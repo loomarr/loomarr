@@ -40,7 +40,7 @@ const validateSearch = (raw: Record<string, unknown>): Partial<DiagnosticsSearch
   processRange: oneOf(raw.processRange, ["1h", "6h", "24h"] as const, "1h"),
   processStatus: oneOf(
     raw.processStatus,
-    ["all", "running", "succeeded", "failed", "cancelled"] as const,
+    ["all", "running", "succeeded", "failed", "cancelled", "interrupted"] as const,
     "all",
   ),
   processPurpose: typeof raw.processPurpose === "string" ? raw.processPurpose.slice(0, 128) : "",

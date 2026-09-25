@@ -412,14 +412,14 @@ func (s *Server) serveCard(
 		// Keep fallback cards unlabelled until a real name/number is explicitly supplied.
 		return playout.OfflineCardArgs(p, font, title, "", duration, clock)
 	}
-	if c := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
-		s.pipeChild(w, r, channelID, "offline card", c)
+	if c, _ := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
+		s.pipeChild(w, r, channelID, "offline card", "", c)
 		return true
 	}
 	softwareEncoder := playout.SoftwareEncoderFor(profile.Encoder)
 	if profile.Encoder != softwareEncoder {
-		if c := s.startChild(r.Context(), channelID, encPlan, softwareEncoder, true, card(softwareEncoder)); c != nil {
-			s.pipeChild(w, r, channelID, "offline card", c)
+		if c, _ := s.startChild(r.Context(), channelID, encPlan, softwareEncoder, true, card(softwareEncoder)); c != nil {
+			s.pipeChild(w, r, channelID, "offline card", "", c)
 			return true
 		}
 	}
@@ -449,6 +449,10 @@ func (s *Server) streamProgram(
 	w http.ResponseWriter, r *http.Request, channelID string, target playout.EncodePlan, what string, spec playout.ProgramSpec,
 ) {
 	transcoding := !spec.Plan.CopyVideo
+	source := decodeSourceKey(spec.Input)
+	if s.decodeFaults.has(source) {
+		spec.SoftwareDecode = true
+	}
 	softwareEncoder := playout.SoftwareEncoderFor(spec.Profile.Encoder)
 	wantsHardware := transcoding && !playout.IsSoftwareEncoder(spec.Profile.Encoder)
 
@@ -469,8 +473,9 @@ func (s *Server) streamProgram(
 	}
 
 	// Attempt 1: as resolved (hardware when a slot was granted, else software).
-	if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
-		s.pipeChild(w, r, channelID, what, c)
+	c, decodeFault := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec))
+	if c != nil {
+		s.pipeChild(w, r, channelID, what, source, c)
 		return
 	}
 
@@ -482,17 +487,32 @@ func (s *Server) streamProgram(
 		return
 	}
 
+	// Attempt 2a — a GPU DECODER fault (#1401), not an encoder fault: the same hardware decode fails
+	// identically however often it is retried, and VRAM is not the cause. Decode this source in
+	// software, keep the hardware encode, and remember the source so its later programs skip the
+	// failing path too. If that also produces nothing the ordinary ladder below continues.
+	if decodeFault && wantsHardware && !spec.SoftwareDecode {
+		s.rememberDecodeFault(channelID, what, source)
+		spec.SoftwareDecode = true
+		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
+			s.pipeChild(w, r, channelID, what, source, c)
+			return
+		}
+	}
+
 	// Attempt 2 — the SAFETY NET (§9.1 V47). We got here despite holding a GPU slot (wantsHardware),
 	// so this is not saturation — the admission gate already routes saturation to software up front.
 	// It is the rarer case: a slot-holder's hardware encode produced nothing, usually because the
 	// resident LLM is holding the VRAM the encoder needs. Reclaim it (evict the LLM) and retry the
 	// SAME hardware encoder once. The zero-byte first attempt is the signal — no polling, no guess.
-	if wantsHardware && s.reclaimVRAM != nil {
+	// Skipped after a decoder fault: the software-decode retry above already varied the one thing
+	// that was failing, and evicting the LLM for a decoder fault only costs it a reload.
+	if wantsHardware && s.reclaimVRAM != nil && !decodeFault {
 		s.log.Info("playout: hardware encode produced nothing despite a free slot — reclaiming GPU memory and retrying",
 			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder)
 		s.reclaimVRAM(r.Context())
-		if c := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
-			s.pipeChild(w, r, channelID, what, c)
+		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
+			s.pipeChild(w, r, channelID, what, source, c)
 			return
 		}
 	}
@@ -505,8 +525,8 @@ func (s *Server) streamProgram(
 		softSpec.Profile.Encoder = softwareEncoder
 		s.log.Warn("playout: falling back to software encoding for this program",
 			"channel", channelID, "program", what, "from", spec.Profile.Encoder, "to", softwareEncoder)
-		if c := s.startChild(r.Context(), channelID, target, softwareEncoder, transcoding, playout.ProgramArgs(softSpec)); c != nil {
-			s.pipeChild(w, r, channelID, what, c)
+		if c, _ := s.startChild(r.Context(), channelID, target, softwareEncoder, transcoding, playout.ProgramArgs(softSpec)); c != nil {
+			s.pipeChild(w, r, channelID, what, source, c)
 			return
 		}
 	}
@@ -551,13 +571,13 @@ type liveChild struct {
 // END so the parent advances (routing it through the session map would collide on the channel key).
 func (s *Server) startChild(
 	ctx context.Context, channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, args []string,
-) *liveChild {
+) (c *liveChild, decodeFault bool) {
 	if ctx.Err() != nil {
-		return nil
+		return nil, false
 	}
 	if s.playoutObserver != nil && !s.playoutObserver.AdmitProgram(channelID, target, transcoding) {
 		s.log.Info("playout: program waiting for transcode capacity", "channel", channelID, "target", target.String())
-		return nil
+		return nil, false
 	}
 	// The child dies with the request. cancel is handed to the caller (pipeChild) which owns the
 	// stream's lifetime; on a nil return here we cancel immediately so a failed attempt leaves no
@@ -581,7 +601,7 @@ func (s *Server) startChild(
 	if err != nil {
 		s.log.Warn("playout: could not start the program encoder", "channel", channelID, "err", err)
 		cancel()
-		return nil
+		return nil, false
 	}
 
 	// PEEK the first chunk. A hardware-init failure closes stdout with no bytes — read returns
@@ -596,16 +616,19 @@ func (s *Server) startChild(
 			"channel", channelID, "encoder", enc, "ffmpeg", proc.LastError(), "readErr", readErr)
 		cancel()
 		_ = proc.Wait()
-		return nil
+		return nil, proc.HardwareDecodeFault()
 	}
 	first := make([]byte, n)
 	copy(first, buf[:n])
-	return &liveChild{proc: proc, first: first, enc: enc, target: target, cancel: cancel}
+	return &liveChild{proc: proc, first: first, enc: enc, target: target, cancel: cancel}, false
 }
 
 // pipeChild commits the HTTP response and streams the live child to it: the peeked first chunk, then
 // the rest of the encoder's output, until the program ends (EOF) or the client disconnects.
-func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, what string, c *liveChild) {
+//
+// source identifies the media input ("" for a synthetic card). A child that dies mid-stream on a GPU
+// decoder fault marks it, so the supervisor's immediate re-request decodes it in software (#1401).
+func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, what, source string, c *liveChild) {
 	defer func() {
 		c.cancel()
 		_ = c.proc.Wait()
@@ -639,8 +662,20 @@ func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, wh
 	// Stdout EOF alone does not prove completion. Cancel would suppress a natural
 	// nonzero exit, and returning normally would falsely finish the HTTP body.
 	if err := c.proc.Wait(); err != nil {
+		if c.proc.HardwareDecodeFault() {
+			s.rememberDecodeFault(channelID, what, source)
+		}
 		s.log.Warn("playout: program child failed after output began", "channel", channelID, "program", what, "err", err)
 		panic(http.ErrAbortHandler)
+	}
+}
+
+// rememberDecodeFault records that the GPU decoder failed on source so its later programs decode
+// in software. The source is never logged: it is a media-server URL that may carry credentials.
+func (s *Server) rememberDecodeFault(channelID, what, source string) {
+	if s.decodeFaults.add(source) {
+		s.log.Warn("playout: hardware decode failed for this source — decoding it in software from now on, encode stays on hardware",
+			"channel", channelID, "program", what)
 	}
 }
 

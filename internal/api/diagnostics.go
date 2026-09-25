@@ -101,7 +101,7 @@ type diagnosticProcessesInput struct {
 	To        int64                     `query:"to" minimum:"0" doc:"Window end as Unix epoch milliseconds; defaults to now"`
 	Limit     int                       `query:"limit" minimum:"1" maximum:"200" default:"100" doc:"Page size"`
 	Cursor    string                    `query:"cursor" maxLength:"512" doc:"Opaque cursor returned by the previous page"`
-	Status    diagnostics.ProcessStatus `query:"status" enum:"running,succeeded,failed,cancelled" doc:"Exact lifecycle status"`
+	Status    diagnostics.ProcessStatus `query:"status" enum:"running,succeeded,failed,cancelled,interrupted" doc:"Exact lifecycle status"`
 	Purpose   string                    `query:"purpose" maxLength:"128" doc:"Exact process purpose"`
 	ChannelID string                    `query:"channelId" maxLength:"128" doc:"Exact Channel correlation id"`
 	JobID     string                    `query:"jobId" maxLength:"128" doc:"Exact Job correlation id"`

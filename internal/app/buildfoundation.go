@@ -201,6 +201,13 @@ func buildFoundation(
 		result.log = slog.New(secretRedactor.Handler(diagnostics.NewSlogHandler(log.Handler(), result.diagnostics)))
 		slog.SetDefault(result.log)
 		result.activity = activity.New(st, result.log).WithNotifier(result.emitter)
+		// Before this process records any run: whatever the previous process left "running" is
+		// orphaned (#1401). Best-effort, like the recorder itself.
+		if n, err := st.FinalizeStaleDiagnosticProcessRuns(rootCtx, instanceID, time.Now()); err != nil {
+			fallbackLog.Error("diagnostics: could not finalize stale process runs", "err", err)
+		} else if n > 0 {
+			fallbackLog.Info("diagnostics: finalized process runs left running by a previous process", "count", n)
+		}
 		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
 			OutputDir: result.set.str("diagnostics.dir"), InstanceID: instanceID,
 			Storage:   result.storageGovernor,

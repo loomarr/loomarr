@@ -533,6 +533,15 @@ func hardwareDecodeArgs(enc Encoder) []string {
 	}
 }
 
+// IsHardwareDecodeFault reports whether an ffmpeg stderr line says the GPU DECODER failed on its
+// input, e.g. "[AVHWFramesContext @ 0x…] Failed to sync surface 0xc: 23 (internal decoding error)"
+// from iHD/VAAPI. That is a fault of decoding this source, distinct from encoder capacity or VRAM
+// contention: retrying the same `-hwaccel` path fails identically, so recovery must decode in
+// software (ProgramSpec.SoftwareDecode) while the encode stays on hardware.
+func IsHardwareDecodeFault(line string) bool {
+	return strings.Contains(line, "Failed to sync surface") || strings.Contains(line, "internal decoding error")
+}
+
 // Env overrides for machine-specific paths. Deliberately NOT registry settings (§15): they
 // describe this machine's filesystem, like the ffmpeg path, not app configuration that
 // should round-trip through a database.
