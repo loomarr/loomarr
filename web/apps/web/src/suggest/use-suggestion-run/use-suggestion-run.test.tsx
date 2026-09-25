@@ -84,7 +84,13 @@ describe("useSuggestionRun", () => {
 
   it("re-reads the Journey on a frame, so a new stage or pick shows before the 2 s poll", async () => {
     const journey = stub();
-    journey.progress = { stage: "reading", terms: [], picks: [], target: 8, startedAt: "2026-08-22T12:00:00Z" };
+    journey.progress = {
+      stage: "reading",
+      terms: [],
+      picks: [],
+      target: 8,
+      startedAt: "2026-08-22T12:00:00Z",
+    };
     const { result } = renderHook(() => useSuggestionRun(), { wrapper: makeWrapper() });
     act(() => result.current.start({ description: "90s action movies" }));
     await waitFor(() => expect(result.current.progress?.stage).toBe("reading"));
