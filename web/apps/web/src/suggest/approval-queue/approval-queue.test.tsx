@@ -1,6 +1,6 @@
 import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render as rtlRender, screen, waitFor } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -225,5 +225,104 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     expect(approvals[0]).toEqual({
       add: [{ name: "Added Series", mediaType: "series", inLibrary: false, year: 1989, tmdbId: 456 }],
     });
+  });
+});
+
+// #1404 — pulls, names and the per-row pending state, each against the production shape the
+// issue describes.
+describe("ApprovalQueue — pulls, names, per-row pending", () => {
+  const pull = {
+    id: "pull_1",
+    title: "Top up the 1990s",
+    reason: "Saturday Mornings falls back to bumpers.",
+    proposedBy: "ada",
+    status: "pending",
+    estimateClips: 52,
+    candidateCount: 1,
+    rejected: [],
+    sources: [],
+    createdAt: "2026-08-01T12:00:00Z",
+    plan: [],
+  };
+  const second = {
+    ...proposal,
+    id: "p2",
+    proposal: { ...proposal.proposal, intent: { description: "Noir" } },
+  };
+
+  // `holdApprove` leaves the approve request unanswered so the mutation stays pending.
+  const stub = (opts: { proposals?: unknown[]; pulls?: () => Response; holdApprove?: boolean }) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("/approve")) {
+          return opts.holdApprove ? new Promise<Response>(() => {}) : Promise.resolve(jsonResponse({}));
+        }
+        if (url.includes("/v1/filler/pulls")) {
+          return Promise.resolve(opts.pulls ? opts.pulls() : jsonResponse({ pulls: [] }));
+        }
+        if (url.includes("/v1/discovery/feedback")) return Promise.resolve(jsonResponse([]));
+        if (url.endsWith("/outlook")) return Promise.resolve(jsonResponse(outlook({ state: "uncertain" })));
+        if (url.includes("/v1/proposals")) {
+          return Promise.resolve(jsonResponse({ proposals: opts.proposals ?? [] }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      }),
+    );
+  };
+
+  it("shows a pending pull even when there are no proposals", async () => {
+    stub({ pulls: () => jsonResponse({ pulls: [pull] }) });
+    render(<ApprovalQueue />);
+
+    expect(await screen.findByText("Top up the 1990s")).toBeInTheDocument();
+    expect(screen.queryByText("Queue's clear")).not.toBeInTheDocument();
+  });
+
+  it("is clear only when there are neither proposals nor pulls", async () => {
+    stub({});
+    render(<ApprovalQueue />);
+
+    expect(await screen.findByText("Queue's clear")).toBeInTheDocument();
+  });
+
+  it("surfaces a filler-pull fetch error instead of hiding it (and is not 'clear')", async () => {
+    stub({
+      pulls: () =>
+        new Response(JSON.stringify({ title: "Boom", detail: "pulls unavailable" }), {
+          status: 500,
+          headers: { "content-type": "application/json" },
+        }),
+    });
+    render(<ApprovalQueue />);
+
+    expect(await screen.findByText("pulls unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Queue's clear")).not.toBeInTheDocument();
+  });
+
+  it("names the requester, never the raw user id", async () => {
+    stub({
+      proposals: [{ ...proposal, createdBy: "45dd1eae0a9b4f3c8d2e7f6a5b4c3d2e", createdByName: "Kid" }],
+    });
+    render(<ApprovalQueue />);
+
+    expect(await screen.findByText("Requested by Kid")).toBeInTheDocument();
+    expect(screen.queryByText(/45dd1eae/)).not.toBeInTheDocument();
+  });
+
+  it("marks only the row being approved as approving", async () => {
+    stub({ proposals: [proposal, second], holdApprove: true });
+    render(<ApprovalQueue />);
+
+    // Scoped to the rows: with two approvable rows the bulk bar adds its own "Approve" button.
+    const [list] = await screen.findAllByRole("list");
+    if (!list) throw new Error("no proposal list rendered");
+    const approveButtons = await within(list).findAllByRole("button", { name: /^Approve$/ });
+    expect(approveButtons).toHaveLength(2);
+    const [first, other] = approveButtons as [HTMLElement, HTMLElement];
+    await userEvent.click(first);
+
+    await waitFor(() => expect(first).toBeDisabled());
+    expect(other).toBeEnabled();
   });
 });

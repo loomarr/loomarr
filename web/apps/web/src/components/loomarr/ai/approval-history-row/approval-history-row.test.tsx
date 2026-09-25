@@ -9,7 +9,8 @@ const base = (over: Partial<ProposalDTO> = {}): ProposalDTO =>
     jobId: "j1",
     status: "approved",
     createdBy: "kid",
-    approvedBy: "boss",
+    approvedBy: "u-boss",
+    approvedByName: "boss",
     approvedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     proposal: { intent: { description: "Saturday morning cartoons" } },
     ...over,
@@ -49,6 +50,7 @@ describe("ApprovalHistoryRow", () => {
         proposal={base({
           status: "denied",
           approvedBy: undefined,
+          approvedByName: undefined,
           approvedAt: undefined,
           denyReason: "over the cap this week",
         })}
@@ -63,5 +65,29 @@ describe("ApprovalHistoryRow", () => {
   it("survives a proposal with no intent description", () => {
     render(<ApprovalHistoryRow proposal={base({ proposal: {} as ProposalDTO["proposal"] })} />);
     expect(screen.getByText("Suggested lineup")).toBeInTheDocument();
+  });
+});
+
+describe("ApprovalHistoryRow — names, not ids (#1404)", () => {
+  it("shows the approver's name and never the raw id", () => {
+    render(
+      <ApprovalHistoryRow
+        proposal={base({ approvedBy: "c9c1815f0a9b4f3c8d2e7f6a5b4c3d2e", approvedByName: "Ada" })}
+      />,
+    );
+
+    expect(screen.getByText(/Approved by Ada/)).toBeInTheDocument();
+    expect(screen.queryByText(/c9c1815f/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing about the approver when the name is unknown", () => {
+    render(
+      <ApprovalHistoryRow
+        proposal={base({ approvedBy: "c9c1815f0a9b4f3c8d2e7f6a5b4c3d2e", approvedByName: undefined })}
+      />,
+    );
+
+    expect(screen.queryByText(/Approved by/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/c9c1815f/)).not.toBeInTheDocument();
   });
 });

@@ -41,11 +41,11 @@ const ApprovalHistoryRow = ({ proposal, className }: ApprovalHistoryRowProps) =>
 
       {/* WHO, and WHAT they changed. `modSummary` is generated server-side, so it records what
           actually happened rather than what the approver said happened. */}
-      {(proposal.approvedBy || changed) && (
+      {(proposal.approvedByName || changed) && (
         <p className="text-muted-foreground text-xs">
-          {proposal.approvedBy && (
+          {proposal.approvedByName && (
             <span className="font-mono text-2xs uppercase tracking-wide">
-              {`Approved by ${proposal.approvedBy}`}
+              {`Approved by ${proposal.approvedByName}`}
             </span>
           )}
           {changed && <span className="text-caution">{`, ${proposal.modSummary}`}</span>}

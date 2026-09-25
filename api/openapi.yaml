@@ -7503,7 +7503,13 @@ components:
           type: string
         approvedBy:
           type: string
+        approvedByName:
+          description: Display name of the approver, or Automatic for an auto-approval; empty if unknown
+          type: string
         createdBy:
+          type: string
+        createdByName:
+          description: Display name of the requester; empty if unknown
           type: string
         denyReason:
           type: string
@@ -10468,6 +10474,11 @@ components:
           description: Stable identity key
           examples:
             - movie:tmdb:1111867
+          type: string
+        lastError:
+          description: Why the title was given up on (unavailable only)
+          examples:
+            - deadline exceeded
           type: string
         libraryId:
           type: string

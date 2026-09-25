@@ -1,6 +1,6 @@
 import type { TitleDTO } from "@loomarr/api";
 import { describe, expect, it } from "vitest";
-import { journeyProgress, stageOf } from "./journey";
+import { isInFlight, journeyProgress, stageOf } from "./journey";
 
 const title = (over: Partial<TitleDTO> = {}): TitleDTO => ({
   key: "movie:tmdb:603",
@@ -17,10 +17,21 @@ describe("stageOf", () => {
     expect(stageOf(title({ state: "available" }))).toBe("ready");
   });
 
-  it("keeps a given-up title in the waiting conversation, not a failure stage", () => {
-    // §4: unavailable means it gave up after the TTL. That is something to retry, not a
-    // verdict on the channel.
-    expect(stageOf(title({ state: "unavailable" }))).toBe("waiting");
+  it("gives a given-up title its own stage, not the queued one", () => {
+    // §4: unavailable means the reconciler gave up after the TTL. Nothing is going to request it
+    // next, so calling it "waiting" ("Approved and queued") told the operator something false
+    // (#1404).
+    expect(stageOf(title({ state: "unavailable" }))).toBe("attention");
+  });
+});
+
+describe("isInFlight", () => {
+  it("is true only for titles still moving towards available", () => {
+    expect(isInFlight(title({ state: "wanted" }))).toBe(true);
+    expect(isInFlight(title({ state: "requested" }))).toBe(true);
+    expect(isInFlight(title({ state: "downloading" }))).toBe(true);
+    expect(isInFlight(title({ state: "available" }))).toBe(false);
+    expect(isInFlight(title({ state: "unavailable" }))).toBe(false);
   });
 });
 

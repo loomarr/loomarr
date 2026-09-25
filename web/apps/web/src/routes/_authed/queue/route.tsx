@@ -11,7 +11,8 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { journeyProgress } from "@/queue/journey";
+import { isInFlight, journeyProgress } from "@/queue/journey";
+import { usePendingApprovals } from "@/queue/pending-approvals";
 
 // Queue / My requests (§12, §13) — where a member watches their submission land.
 // It deliberately leads with the JOURNEY ("4 of 7 have landed") rather than a table of
@@ -46,20 +47,18 @@ const QueueLayout = () => {
   // ⚠ From `useLocation`, not `?tab=`: which panel is active is now the PATH (V-nav-paths).
   const { pathname } = useLocation();
 
-  // Pending proposals drive BOTH the approval tab's list and its count, so the two cannot
-  // disagree — a tab reading "3" above a list of two is worse than no count. Members never see
-  // this tab (approving is admin-only, §11), so the query is gated rather than 403ing in the
-  // background on every member's page load.
-  const pending = proposalsApi.useListProposals(
-    { status: "submitted" },
-    { query: { enabled: isAdmin, retry: false } },
-  );
-  const pendingCount = unwrap(pending.data, (b) => b.proposals?.length) ?? 0;
+  // Pending proposals AND pulls drive both the approval tab's list and its count, so the two
+  // cannot disagree — a tab reading "3" above a list of two is worse than no count. Members never
+  // see this tab (approving is admin-only, §11), so the queries are gated rather than 403ing in
+  // the background on every member's page load.
+  const { count: pendingCount } = usePendingApprovals(isAdmin);
 
+  // History is readable by every member: read visibility is global (design §342), re-confirmed
+  // by the maintainer for #1429. Only the approval ACTIONS are admin-only.
   const decided = useQueries({
-    queries: (["approved", "denied"] as const).map((status) =>
-      proposalsApi.getListProposalsQueryOptions({ status }),
-    ),
+    queries: (["approved", "denied"] as const).map((status) => ({
+      ...proposalsApi.getListProposalsQueryOptions({ status }),
+    })),
   });
   const historyCount = decided.reduce((n, q) => n + (unwrap(q.data, (b) => b.proposals?.length) ?? 0), 0);
   const stateQueries = useQueries({
@@ -85,20 +84,23 @@ const QueueLayout = () => {
 
   const rows: TitleDTO[] = stateQueries.flatMap((q) => unwrap(q.data, (b) => b.titles) ?? []);
   const progress = journeyProgress(rows);
+  // Only titles still on their way — a landed title is done and a given-up one is not moving.
+  const inFlightCount = rows.filter(isInFlight).length;
 
-  // Members get ONE tab: approving is admin-only (§11), and a history of other people's
-  // decisions is not theirs to read. Rendering the bar with a single tab keeps the page's shape
-  // stable rather than hiding it entirely for half the users.
+  // Members get In flight and History: approving is admin-only (§11), but decided requests are
+  // readable by everyone (§342, re-confirmed for #1429).
   // ⚠ Each tab is a real DESTINATION, so `NavTabs` renders them as links. They were buttons
   // calling `navigate()` — identical to look at, but not middle-clickable, not copyable as a
   // link, and announced to assistive tech as an action rather than a place.
+  const flightTab = { id: "flight", label: "In flight", to: "/queue/flight", count: inFlightCount };
+  const historyTab = { id: "history", label: "History", to: "/queue/history", count: historyCount };
   const tabs = isAdmin
     ? [
         { id: "approval", label: "Needs approval", to: "/queue/approval", count: pendingCount },
-        { id: "flight", label: "In flight", to: "/queue/flight", count: rows.length },
-        { id: "history", label: "History", to: "/queue/history", count: historyCount },
+        flightTab,
+        historyTab,
       ]
-    : [{ id: "flight", label: "In flight", to: "/queue/flight", count: rows.length }];
+    : [flightTab, historyTab];
 
   // The last path segment IS the tab id (`/queue/approval` → "approval"). Falls back to
   // "flight" for a stale/unknown segment rather than rendering a blank panel — the same
@@ -116,9 +118,8 @@ const QueueLayout = () => {
         }
       />
 
-      {/* The three tabs (V27). Members see only In flight — approving is admin-only (§11) and a
-          history of other people's decisions is not theirs to read, so the bar renders with one
-          tab rather than two they would be refused. */}
+      {/* The three tabs (V27). Members see In flight and History — approving is admin-only (§11),
+          so Needs approval is the one tab they would be refused. */}
       <div className="px-6">
         <NavTabs label="Queue sections" linkComponent={Link} tabs={tabs} activeId={activeId} />
       </div>

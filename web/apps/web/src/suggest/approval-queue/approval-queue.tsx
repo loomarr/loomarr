@@ -91,7 +91,10 @@ const ApprovalQueue = () => {
 
   const rows = unwrap(proposals.data, (b) => b.proposals) ?? [];
 
-  if (rows.length === 0) {
+  // ⚠ Pulls count: with no proposals but a pending pull, "Queue's clear" would hide the one thing
+  // waiting on a human (#1404). A pulls FETCH ERROR also keeps us out of the empty state — "clear"
+  // must not mean "couldn't look".
+  if (rows.length === 0 && pulls.length === 0 && !pullsQuery.error) {
     return (
       <EmptyState
         title="Queue's clear"
@@ -101,6 +104,16 @@ const ApprovalQueue = () => {
   }
 
   const busy = approve.isPending || deny.isPending || bulk.isPending;
+
+  // Which rows a decision is in flight FOR. `busy` disables the shared controls, but only the row
+  // actually being decided shows "approving" — flagging every row made a two-row queue read as if
+  // both were being approved (#1404).
+  const deciding = new Set<string>([
+    ...(approve.isPending && approve.variables ? [approve.variables.id] : []),
+    ...(deny.isPending && deny.variables ? [deny.variables.id] : []),
+    // Object.values: the generated body type maps `string[]` to an index-signature object.
+    ...(bulk.isPending ? Object.values(bulk.variables?.data.ids ?? []) : []),
+  ]);
 
   // ⚠ A row with a PENDING EDIT is excluded from bulk. The bulk endpoint takes no edit field,
   // deliberately — "drop these two titles" means nothing applied across a batch — so bulk-
@@ -129,11 +142,17 @@ const ApprovalQueue = () => {
           proposes, a human commits" long before there was an object to commit; this is it.
           Above rather than below because there are usually few of them and they are cheap to
           decide, so burying them under a long title list would leave them unanswered. */}
+      {pullsQuery.error != null && (
+        <ErrorState error={pullsQuery.error} onRetry={() => pullsQuery.refetch()} />
+      )}
       {pulls.map((pull) => (
         <PullCard
           key={pull.id}
           pull={pull}
-          deciding={approvePull.isPending || dismissPull.isPending}
+          deciding={
+            (approvePull.isPending && approvePull.variables?.id === pull.id) ||
+            (dismissPull.isPending && dismissPull.variables?.id === pull.id)
+          }
           onApprove={(edits) => approvePull.mutate({ id: pull.id, data: edits })}
           onDismiss={() => dismissPull.mutate({ id: pull.id })}
         />
@@ -190,7 +209,7 @@ const ApprovalQueue = () => {
             <ApprovalQueueItem
               className="flex-1"
               title={p.proposal.intent?.description ?? "Suggested lineup"}
-              requestedBy={p.createdBy}
+              requestedBy={p.createdByName}
               summary={p.proposal.rationale}
               outlook={() => <LiveProposalOutlook id={p.id} proposal={p.proposal} edit={edits[p.id]} />}
               acquisitions={p.proposal.acquisitions?.length ?? 0}
@@ -201,7 +220,7 @@ const ApprovalQueue = () => {
               // What the proposal's own audience ceiling refused (§4, #259) — shown on the card
               // itself, because it changes what approving this row gets you.
               refused={p.proposal.refused ?? []}
-              status={busy ? "approving" : "pending"}
+              status={deciding.has(p.id) ? "approving" : "pending"}
               edit={edits[p.id]}
               onEdit={(edit) => setEdit(p.id, edit)}
               renderFeedback={(item) => {

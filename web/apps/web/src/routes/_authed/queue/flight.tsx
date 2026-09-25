@@ -5,6 +5,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { RotateCw } from "lucide-react";
+import { useAuth } from "@/auth/use-auth";
 import { StateBadge } from "@/components/loomarr/channels/state-badge";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
@@ -20,12 +21,14 @@ const STATES = Object.values(TitleDTOState);
 const STAGE_COPY = {
   waiting: { title: "Waiting", hint: "Approved and queued. Loomarr will request these next." },
   acquiring: { title: "On the way", hint: "Requested from your *arr apps and downloading." },
+  attention: { title: "Couldn't get", hint: "Loomarr gave up on these. Nothing is requesting them now." },
   ready: { title: "Ready", hint: "In your library and playable on a channel." },
 } as const;
 
-const ORDER = ["acquiring", "waiting", "ready"] as const;
+const ORDER = ["acquiring", "waiting", "attention", "ready"] as const;
 
 const FlightScreen = () => {
+  const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const stateQueries = useQueries({
     queries: STATES.map((state) => titlesApi.getListTitlesQueryOptions({ state })),
@@ -94,11 +97,17 @@ const FlightScreen = () => {
                       <span className="min-w-0 flex-1 truncate text-sm">
                         {t.name ?? t.key}
                         {t.year ? <span className="text-muted-foreground"> ({t.year})</span> : null}
+                        {/* WHY it was given up (e.g. "deadline exceeded") — otherwise the row only
+                            says it failed. */}
+                        {stage === "attention" && t.lastError ? (
+                          <span className="block truncate text-muted-foreground text-xs">{t.lastError}</span>
+                        ) : null}
                       </span>
                       <StateBadge state={t.state} />
-                      {/* A given-up title is the one thing a human can act on here:
-                      re-enqueue puts it back in the queue (§4). */}
-                      {t.state === "unavailable" && (
+                      {/* A given-up title is the one thing a human can act on here: re-enqueue
+                      puts it back in the queue (§4). Admin-only — POST /v1/titles is, so a member
+                      would only be offered a button that 403s. */}
+                      {isAdmin && t.state === "unavailable" && (
                         <Button
                           variant="outline"
                           size="sm"

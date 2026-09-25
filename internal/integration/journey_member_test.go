@@ -32,6 +32,7 @@ func TestJourney_Member(t *testing.T) {
 	allowed := []struct{ method, path, body string }{
 		{http.MethodGet, "/v1/search?q=matrix", ""},
 		{http.MethodGet, "/v1/proposals", ""},
+		{http.MethodGet, "/v1/proposals?mine=true", ""},
 		{http.MethodGet, "/v1/channels", ""},
 		{http.MethodGet, "/v1/titles?state=wanted", ""},
 		{http.MethodGet, "/v1/filler", ""},

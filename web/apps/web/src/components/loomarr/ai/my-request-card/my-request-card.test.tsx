@@ -35,7 +35,12 @@ describe("MyRequestCard", () => {
 
     render(
       <MyRequestCard
-        proposal={base({ status: "approved", modSummary: "dropped 2, added 1", approvedBy: "boss" })}
+        proposal={base({
+          status: "approved",
+          modSummary: "dropped 2, added 1",
+          approvedBy: "u-boss",
+          approvedByName: "boss",
+        })}
       />,
     );
     expect(screen.getByText("Approved with changes")).toBeInTheDocument();
@@ -46,7 +51,12 @@ describe("MyRequestCard", () => {
   it("renders CHANGED BY with the server-generated summary", () => {
     render(
       <MyRequestCard
-        proposal={base({ status: "approved", modSummary: "dropped 2, added 1", approvedBy: "boss" })}
+        proposal={base({
+          status: "approved",
+          modSummary: "dropped 2, added 1",
+          approvedBy: "u-boss",
+          approvedByName: "boss",
+        })}
       />,
     );
     expect(screen.getByText(/Changed by boss/)).toBeInTheDocument();

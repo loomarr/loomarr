@@ -64,8 +64,12 @@ test.describe("the approval gate", () => {
     // `getByRole("tab")` now matches nothing and this assertion would have passed vacuously —
     // the exact failure mode the comment above exists to prevent, arriving by a different
     // route. The nav scope is needed because the app sidebar is also a list of links.
+    //
+    // History IS a member tab: proposal reads are global (§342), so members see what was decided,
+    // just not the approval gate.
     await expect(page.getByRole("navigation", { name: /queue sections/i }).getByRole("link")).toHaveText([
       /in flight/i,
+      /history/i,
     ]);
     await expect(page.getByRole("button", { name: /^approve$/i })).toHaveCount(0);
 

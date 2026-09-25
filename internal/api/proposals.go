@@ -154,7 +154,12 @@ type ProposalDTO struct {
 	Status     string `json:"status" enum:"submitted,approved,denied,superseded"`
 	CreatedBy  string `json:"createdBy,omitempty"`
 	ApprovedBy string `json:"approvedBy,omitempty"`
-	DenyReason string `json:"denyReason,omitempty"`
+	// CreatedByName / ApprovedByName are the people behind those ids, resolved server-side so a
+	// client never shows a 32-hex id. Empty when the user no longer exists (or the caller was
+	// the break-glass token); "auto" resolves to "Automatic".
+	CreatedByName  string `json:"createdByName,omitempty" doc:"Display name of the requester; empty if unknown"`
+	ApprovedByName string `json:"approvedByName,omitempty" doc:"Display name of the approver, or Automatic for an auto-approval; empty if unknown"`
+	DenyReason     string `json:"denyReason,omitempty"`
 	// ModSummary and Note are the approval provenance (§7, D-K). Both have been PERSISTED
 	// since V25 and neither left the server: the note an approver wrote to explain an edited
 	// request reached the database and nothing could display it — the same "stored but never
@@ -199,6 +204,37 @@ func proposalToDTO(p store.Proposal) ProposalDTO {
 		ModSummary: p.ModSummary, Note: p.Note, ApprovedAt: rfc3339OrEmpty(p.ApprovedAt),
 		Proposal: payload, EpisodeSelectionPreview: suggest.EpisodeSelectionForIntent(payload.Intent),
 	}
+}
+
+// personNames resolves user ids to display names for a proposal payload. One ListUsers per
+// request (a household has a handful of accounts) rather than a lookup per row.
+type personNames map[string]string
+
+func (s *Server) personNames(ctx context.Context) (personNames, error) {
+	users, err := s.store.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names := make(personNames, len(users))
+	for _, u := range users {
+		names[u.ID] = u.Name
+	}
+	return names, nil
+}
+
+// name maps a stored created_by/approved_by to something a person can read. An unknown id
+// yields "" rather than the id itself: the raw id is exactly what this exists to keep off screen.
+func (n personNames) name(id string) string {
+	if id == suggest.AutoApprovedBy {
+		return "Automatic"
+	}
+	return n[id]
+}
+
+func (n personNames) apply(dto ProposalDTO) ProposalDTO {
+	dto.CreatedByName = n.name(dto.CreatedBy)
+	dto.ApprovedByName = n.name(dto.ApprovedBy)
+	return dto
 }
 
 type listProposalsInput struct {
@@ -251,16 +287,24 @@ func (s *Server) listProposals(ctx context.Context, in *listProposalsInput) (*li
 		}
 		props = filtered
 	} else {
+		// Everyone's proposals, readable by any authenticated user: read visibility is global in
+		// this household-scale app (design §342), and the maintainer re-confirmed it on 2026-09-25
+		// (#1429). Do not add an admin gate here without changing §342 first; members' UI hides
+		// admin-only ACTIONS, which the server still enforces on the mutating routes.
 		props, err = s.store.ListProposalsByStatus(ctx, status)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	names, err := s.personNames(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := &listProposalsOutput{}
 	out.Body.Proposals = make([]ProposalDTO, 0, len(props))
 	for _, p := range props {
-		out.Body.Proposals = append(out.Body.Proposals, proposalToDTO(p))
+		out.Body.Proposals = append(out.Body.Proposals, names.apply(proposalToDTO(p)))
 	}
 	return out, nil
 }
@@ -278,7 +322,11 @@ func (s *Server) getProposal(ctx context.Context, in *proposalIDInput) (*proposa
 	if err != nil {
 		return nil, err
 	}
-	return &proposalOutput{Body: proposalToDTO(p)}, nil
+	names, err := s.personNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &proposalOutput{Body: names.apply(proposalToDTO(p))}, nil
 }
 
 // --- approve / deny (the approval gate — §8/§11) ---
