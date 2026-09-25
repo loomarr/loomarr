@@ -126,6 +126,9 @@ func newGenerationHealth(processStarted time.Time, generation int) *diagnostics.
 		{Key: diagnostics.StartupCheckTMDB, Label: "TMDB", Required: false,
 			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
 			RemediationRoute: "/settings/connections"},
+		{Key: diagnostics.StartupCheckPublicURL, Label: "Public address", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
+			RemediationRoute: "/settings/system/playback"},
 	}, time.Now)
 }
 
@@ -223,7 +226,8 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// Build the fully-wired API handler. This is the composition seam that the
 	// integration harness also calls, so tests exercise the REAL wiring (§21).
 	application, err := app.Build(rootCtx, st, log, app.Overrides{
-		Startup: startup,
+		Startup:    startup,
+		ListenAddr: cfg.ListenAddr,
 		// The generated installation key lives beside the SQLite database (/data in the
 		// container, the database's own directory on a bare-metal or dev install). A fixed
 		// /data here made every non-container install fail to boot: `mkdir /data: permission

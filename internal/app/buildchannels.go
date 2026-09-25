@@ -279,7 +279,7 @@ func buildChannels(
 			readSecret: readGeneratedSecret, events: eventBus, jobs: jobReg, layout: fillerLayout,
 			channels: channelEngine, liveTVConnector: liveTVConnector, backendView: backendView,
 			resolveDesiredBackend: resolveDesiredBackend, appliedBackend: appliedBackendContext,
-			transportBackend: transportBackendContext, log: log,
+			transportBackend: transportBackendContext, log: log, listenAddr: ov.ListenAddr,
 			processDiagnostics: processDiagnostics,
 			storageGovernor:    storageGovernor,
 			metrics:            metricRecorder,

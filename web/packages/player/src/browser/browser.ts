@@ -285,6 +285,38 @@ const createHlsController = (HlsController: typeof Hls): Hls =>
     backBufferLength: 900,
   });
 
+interface ManifestLoadFailure {
+  details?: string;
+  response?: { code?: number; data?: unknown };
+}
+
+const decodeResponseBody = (body: unknown): string => {
+  if (typeof body === "string") return body;
+  if (body instanceof ArrayBuffer) return new TextDecoder().decode(body);
+  return "";
+};
+
+/**
+ * The reason a channel's playlist request was refused, when the server decided it (a 5xx problem
+ * response). The server answers a tune that could not start with a problem body whose `detail`
+ * says why (program source unreachable, encoder stopped, all tuners busy), after its start
+ * deadline. Retrying that request only reproduces the same wait, so the viewer is told instead.
+ * A 404 or an empty playlist is the ordinary warm-up race and stays on hls.js's own retry.
+ */
+const manifestStartFailure = (data: ManifestLoadFailure, manifestLoadError: string): string | undefined => {
+  const code = data.response?.code;
+  if (data.details !== manifestLoadError || code === undefined || code < 500) return undefined;
+  try {
+    const problem = JSON.parse(decodeResponseBody(data.response?.data)) as { detail?: unknown; title?: unknown };
+    for (const text of [problem.detail, problem.title]) {
+      if (typeof text === "string" && text.trim() !== "") return text;
+    }
+  } catch {
+    /* not a problem body — fall through to the generic sentence */
+  }
+  return "Couldn't start this channel. Try again in a moment.";
+};
+
 const createPlaybackSessionID = () => {
   const bytes = new Uint8Array(16);
   globalThis.crypto.getRandomValues(bytes);
@@ -722,7 +754,19 @@ function useBrowserHlsPlayer({
           // both belong to this viewer tune, rather than being an autoplay retry loop.
           playReplacement();
         };
-        const onError = (_evt: string, data: { fatal: boolean; type: string }) => {
+        const stopWithError = (message: string) => {
+          setState({ channelId, status: "error", error: message });
+          if (hlsRef.current.instance === hls) {
+            const standby = hlsRef.current.standby;
+            hlsRef.current.instance = undefined;
+            hlsRef.current.standby = undefined;
+            hlsRef.current.standbyFresh = false;
+            activeRef.current = { lastKeepaliveMs: 0 };
+            if (standby && standby !== hls) standby.destroy();
+          }
+          hls.destroy();
+        };
+        const onError = (_evt: string, data: { fatal: boolean; type: string } & ManifestLoadFailure) => {
           recordDiagnostic({
             ...diagnosticBase,
             event: "player.media_error",
@@ -740,6 +784,14 @@ function useBrowserHlsPlayer({
           // recovery for exactly this, so attempt it before declaring the stream dead: reload the
           // network pipeline for network errors, recover the media buffer for media errors. Only a
           // genuinely unrecoverable error (or one that keeps recurring) surfaces to the viewer.
+          const refused =
+            data.type === Hls.ErrorTypes.NETWORK_ERROR
+              ? manifestStartFailure(data, Hls.ErrorDetails.MANIFEST_LOAD_ERROR)
+              : undefined;
+          if (refused) {
+            stopWithError(refused);
+            return;
+          }
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               if (clockRef.current.mode === "live") {
@@ -752,16 +804,7 @@ function useBrowserHlsPlayer({
               hls.recoverMediaError();
               break;
             default:
-              setState({ channelId, status: "error", error: "The stream stopped. Try again in a moment." });
-              if (hlsRef.current.instance === hls) {
-                const standby = hlsRef.current.standby;
-                hlsRef.current.instance = undefined;
-                hlsRef.current.standby = undefined;
-                hlsRef.current.standbyFresh = false;
-                activeRef.current = { lastKeepaliveMs: 0 };
-                if (standby && standby !== hls) standby.destroy();
-              }
-              hls.destroy();
+              stopWithError("The stream stopped. Try again in a moment.");
           }
         };
         if (requestFrame) {

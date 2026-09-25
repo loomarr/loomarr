@@ -943,6 +943,78 @@ describe("useHlsPlayer", () => {
     expect(result.current.error).toMatch(/can't play live channels/i);
   });
 
+  describe("a fatal playlist refusal", () => {
+    const attachAndGetErrorHandler = async () => {
+      hls.supported = true;
+      channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+      const { result } = renderHook(() => useHlsPlayer("ch-1"));
+      act(() => {
+        result.current.attach(videoEl());
+      });
+      await waitFor(() => expect(hls.instances).toHaveLength(1));
+      const controller = hls.instances[0] as {
+        destroy: ReturnType<typeof vi.fn>;
+        on: ReturnType<typeof vi.fn>;
+        startLoad: ReturnType<typeof vi.fn>;
+      };
+      await waitFor(() => expect(controller.on.mock.calls.some((call: unknown[]) => call[0] === "error")).toBe(true));
+      const onError = controller.on.mock.calls.find((call: unknown[]) => call[0] === "error")?.[1] as (
+        event: string,
+        data: unknown,
+      ) => void;
+      controller.startLoad.mockClear(); // the initial load is not a retry
+      return { result, controller, onError };
+    };
+    const manifestFailure = (code: number, body: string) => ({
+      fatal: true,
+      type: "networkError",
+      details: "manifestLoadError",
+      response: { code, data: body },
+    });
+
+    it("shows the server's specific reason with a retry instead of looping", async () => {
+      const { result, controller, onError } = await attachAndGetErrorHandler();
+
+      act(() => {
+        onError(
+          "error",
+          manifestFailure(
+            502,
+            JSON.stringify({ title: "Bad Gateway", detail: "Loomarr could not reach its own program source." }),
+          ),
+        );
+      });
+
+      expect(result.current.status).toBe("error");
+      expect(result.current.error).toBe("Loomarr could not reach its own program source.");
+      expect(controller.startLoad).not.toHaveBeenCalled();
+      expect(controller.destroy).toHaveBeenCalled();
+    });
+
+    it("falls back to a generic sentence when a 5xx carries no problem body", async () => {
+      const { result, onError } = await attachAndGetErrorHandler();
+
+      act(() => {
+        onError("error", manifestFailure(502, "<html>bad gateway</html>"));
+      });
+
+      expect(result.current.status).toBe("error");
+      expect(result.current.error).toMatch(/couldn't start this channel/i);
+    });
+
+    it("keeps retrying a 404 — the ordinary warm-up race", async () => {
+      const { result, controller, onError } = await attachAndGetErrorHandler();
+
+      act(() => {
+        onError("error", manifestFailure(404, JSON.stringify({ detail: "not yet" })));
+      });
+
+      expect(result.current.status).not.toBe("error");
+      expect(controller.startLoad).toHaveBeenCalled();
+      expect(controller.destroy).not.toHaveBeenCalled();
+    });
+  });
+
   it("keeps the tuning overlay up until the replacement produces a decoded frame", async () => {
     channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/master.m3u8" });
     let firstFrame!: () => void;

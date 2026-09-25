@@ -82,7 +82,9 @@ func BlockSpawner(ffmpeg string, profile BlockProfile, source BlockSource, log *
 		}
 		go pumpBlocks(ctx, proc.Stdin, func(ctx context.Context, request BlockRequest) (Block, error) {
 			request.AudioBitrate = profile.AudioBitrate
-			return source(ctx, request)
+			block, err := source(ctx, request)
+			proc.noteBlockOpen(err)
+			return block, err
 		}, channelID, plan, origin, log)
 		return proc, nil
 	}

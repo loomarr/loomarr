@@ -60,9 +60,19 @@ type playoutDeps struct {
 	appliedBackend        func(context.Context) (string, error)
 	transportBackend      func(context.Context) (string, error)
 	log                   *slog.Logger
-	processDiagnostics    *diagnostics.ProcessManager
-	storageGovernor       *storagegovernor.Governor
-	metrics               *metrics.Recorder
+	// listenAddr is the process's bound address (LISTEN_ADDR). Internal playout reaches its own
+	// programme endpoint there; empty (embedded/test builds with no listener) falls back to
+	// server.public_url.
+	listenAddr         string
+	processDiagnostics *diagnostics.ProcessManager
+	storageGovernor    *storagegovernor.Governor
+	metrics            *metrics.Recorder
+}
+
+// programBase is the session parent's own-programme address, read live so a hot-applied
+// server.public_url still reaches the no-listener fallback.
+func (deps playoutDeps) programBase(set resolved) func() string {
+	return func() string { return internalProgramBase(deps.listenAddr, set.str("server.public_url")) }
 }
 
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
@@ -145,7 +155,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}
 	playoutMgr := playout.NewManager(
 		playoutSpawner(set.str("playout.ffmpeg_path"),
-			func() string { return set.str("server.public_url") },
+			deps.programBase(set),
 			playoutTokenFn, log, deps.processDiagnostics,
 			func() playout.BlockSource { return preparedBlockSource },
 			func(ctx context.Context) int { return playoutRes.Profile(ctx).AudioBitrate },
@@ -480,7 +490,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// otherwise gets no signal until a viewer hits the dead channel. Warn at boot so the
 	// operator sees it in the logs, not in a support ticket. (§9.1; beta-readiness D-4.)
 	if internalPlayoutNeedsPublicURL(set.str("server.public_url")) {
-		log.Warn("internal playout: server.public_url is unset — channels will appear in the guide but fail at tune time; set SERVER_PUBLIC_URL (or server.public_url) to this instance's reachable base URL")
+		log.Warn("internal playout: server.public_url is unset — in-app playback still works, but a media server or Tunarr cannot fetch channel streams; set SERVER_PUBLIC_URL (or server.public_url) to this instance's reachable base URL")
 	}
 
 	return playoutBuild{

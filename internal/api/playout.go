@@ -594,8 +594,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.log.Warn("playout: hls playlist failed", "channel", channelID, "err", err)
 		}
-		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel",
-			"Loomarr couldn't start this channel's in-app stream.")
+		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel", startFailureDetail(err))
 		return
 	}
 	// Release THIS fetch's refcount as it returns — the remux's grace timer keeps it alive
@@ -855,4 +854,25 @@ func (s *Server) playoutAuthMiddleware(hctx huma.Context, next func(huma.Context
 		return // authorizePlayout already wrote the 404
 	}
 	next(hctx)
+}
+
+// startFailureDetail explains a failed in-app tune in words the viewer can act on. It reads the
+// typed reason the playout module recorded; anything untyped keeps the generic sentence, so a new
+// failure never renders as a misleading specific one.
+func startFailureDetail(err error) string {
+	var start *playout.StartError
+	if !errors.As(err, &start) {
+		return "Loomarr couldn't start this channel's in-app stream."
+	}
+	switch start.Reason {
+	case playout.StartProgramSourceUnreachable:
+		return "Loomarr couldn't reach its own programme source, so this channel has nothing to play. Ask an administrator to check the server's network settings."
+	case playout.StartProgramSourceFailed:
+		return "This channel's programme source refused the request, so there is nothing to play yet. Try again in a moment."
+	case playout.StartEncoderExited:
+		return "The video encoder stopped before this channel produced a picture. Ask an administrator to check Playout settings and hardware encoding."
+	case playout.StartNoStream:
+		return "This channel didn't produce a picture in time. Try again, or pick another channel."
+	}
+	return "Loomarr couldn't start this channel's in-app stream."
 }

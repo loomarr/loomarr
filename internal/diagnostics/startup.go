@@ -169,6 +169,7 @@ const (
 	StartupCheckRequester        = "requester"
 	StartupCheckLLM              = "llm"
 	StartupCheckTMDB             = "tmdb"
+	StartupCheckPublicURL        = "public_url"
 
 	startupCompleteEvent  = "startup.complete"
 	healthTransitionEvent = "health.transition"

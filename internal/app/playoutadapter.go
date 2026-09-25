@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -1616,14 +1617,14 @@ func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
 // playoutSpawner builds the session encoder: finite children supply broadcast video and PCM
 // audio; one long-lived parent copies video, encodes continuous AAC, and paces viewer output.
 func playoutSpawner(
-	ffmpegBin string, publicURL func() string, token func() string, log *slog.Logger,
+	ffmpegBin string, programBase func() string, token func() string, log *slog.Logger,
 	processDiagnostics *diagnostics.ProcessManager, preparedSource func() playout.BlockSource,
 	audioBitrate func(context.Context) int, preparedReady func(context.Context, string, playout.EncodePlan) bool,
 ) playout.Spawner {
 	return func(ctx context.Context, channelID string, target playout.EncodePlan) (*playout.Process, error) {
-		base := publicURL()
+		base := programBase()
 		if base == "" {
-			return nil, fmt.Errorf("playout: server.public_url is not set, so the session cannot open blocks")
+			return nil, fmt.Errorf("playout: no address for the session's own programme endpoint (no listener and server.public_url is not set)")
 		}
 		var prepared playout.BlockSource
 		if preparedSource != nil {
@@ -1633,6 +1634,18 @@ func playoutSpawner(
 		profile := playout.BlockProfile{AudioBitrate: audioBitrate(ctx), PreparedStart: preparedReady != nil && preparedReady(ctx, channelID, target)}
 		return playout.BlockSpawner(ffmpegBin, profile, source, log, processDiagnostics)(ctx, channelID, target)
 	}
+}
+
+// internalProgramBase is where the session's parent fetches its own programme blocks. The hop
+// never leaves the process, so it dials the bound listener over loopback: server.public_url is
+// the address OTHER machines use, and routing this hop through it made in-app playback depend on
+// a hairpin route (or a stale IP) that has nothing to do with playing a channel. Only a build
+// with no listener (embedded/tests) falls back to the public URL.
+func internalProgramBase(listenAddr, publicURL string) string {
+	if strings.TrimSpace(listenAddr) != "" {
+		return "http://" + config.DialableHostPort(listenAddr)
+	}
+	return strings.TrimSpace(publicURL)
 }
 
 // playoutBlockSource owns the internal HTTP hop and the session-scoped broadcast token. The first

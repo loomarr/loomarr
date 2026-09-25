@@ -25,6 +25,11 @@ type Overrides struct {
 	// EncryptionDataDir is the boot-configured directory for the generated
 	// installation key. Empty derives it from SQLite and otherwise uses /data.
 	EncryptionDataDir string
+	// ListenAddr is the address run() binds (LISTEN_ADDR). Internal playout's own block fetches go
+	// there over loopback rather than through server.public_url, which only external consumers
+	// (a media server, Tunarr) need. Empty (embedded builds without a listener) falls back to
+	// server.public_url.
+	ListenAddr string
 	// Startup is the process-owned report for this application generation. nil creates a minimal
 	// embedded-build report so /readyz still derives from the same state object in tests.
 	Startup    *diagnostics.Startup
@@ -178,6 +183,8 @@ func buildHandler(
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images, owner,
 	)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
+	// Not a setup connection test: the public address is checked only as a health fact.
+	healthProbes[diagnostics.StartupCheckPublicURL] = publicURLProbe(set, &http.Client{Timeout: startupIntegrationTimeout})
 	completeStartupIntegrations(rootCtx, foundation.startup, set, healthProbes)
 	healthRunner := newCurrentHealthRunner(foundation.startup, st, set, healthProbes)
 	jobReg.Add(healthRunner.Job())

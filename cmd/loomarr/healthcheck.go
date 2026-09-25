@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"time"
 
@@ -73,18 +72,7 @@ func runHealthcheck() error {
 // LISTEN on, not one to CONNECT to — dialing it works on Linux by accident and is not
 // a property to rely on — so the loopback address is substituted while the port is kept.
 func healthcheckHostPort(listenAddr string) string {
-	host, port, err := net.SplitHostPort(listenAddr)
-	if err != nil {
-		// Not host:port at all (a bare port, or malformed). Treat the whole value as
-		// the port, matching how net/http itself tolerates ":8080"-ish input, rather
-		// than failing a healthcheck over a formatting edge case.
-		return net.JoinHostPort("127.0.0.1", listenAddr)
-	}
-	switch host {
-	case "", "0.0.0.0", "::", "[::]":
-		host = "127.0.0.1"
-	}
-	return net.JoinHostPort(host, port)
+	return config.DialableHostPort(listenAddr)
 }
 
 // errUnknownSubcommand keeps the dispatch in main() total: an unrecognised argument
