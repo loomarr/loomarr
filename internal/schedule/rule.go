@@ -256,6 +256,16 @@ func applyRuleScopeWithTrace(entries []LineupEntry, what *ScopePolicy, trace *sc
 // falls through to the channel's base whole-policy behavior (§6.5). Deterministic: the
 // same (rules, now) always yields the same active rule.
 func pickRule(rules []SchedulingRule, now time.Time) (SchedulingRule, bool) {
+	best := pickRuleIndex(rules, now)
+	if best == -1 {
+		return SchedulingRule{}, false
+	}
+	return rules[best], true
+}
+
+// pickRuleIndex is pickRule's selection as a position in `rules` (-1 = none), so a caller can key
+// on WHICH rule is active without comparing rule values.
+func pickRuleIndex(rules []SchedulingRule, now time.Time) int {
 	best := -1
 	for i, r := range rules {
 		if !r.When.Matches(now) {
@@ -265,10 +275,7 @@ func pickRule(rules []SchedulingRule, now time.Time) (SchedulingRule, bool) {
 			best = i
 		}
 	}
-	if best == -1 {
-		return SchedulingRule{}, false
-	}
-	return rules[best], true
+	return best
 }
 
 // ActiveRuleAttribution names which rule is active at a wall-clock — the cycle-preview

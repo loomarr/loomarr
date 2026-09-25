@@ -17,9 +17,10 @@ import (
 // arranged once", and a test that only asserted on the returned slots would pass just as
 // happily with no cache at all. Counting is what makes these tests capable of failing.
 type countingCycle struct {
-	mu    sync.Mutex
-	calls int
-	slots []schedule.Slot
+	mu     sync.Mutex
+	calls  int
+	slots  []schedule.Slot
+	window time.Duration
 }
 
 func (c *countingCycle) CyclePreview(context.Context, string, time.Time) (
@@ -28,7 +29,7 @@ func (c *countingCycle) CyclePreview(context.Context, string, time.Time) (
 	c.mu.Lock()
 	c.calls++
 	c.mu.Unlock()
-	return time.Time{}, c.slots, schedule.ActiveRuleAttribution{}, 0, nil
+	return time.Time{}, c.slots, schedule.ActiveRuleAttribution{}, c.window, nil
 }
 
 func (c *countingCycle) count() int {
@@ -165,32 +166,12 @@ func TestCycleCache_ChangedEntryMetadataIsRearranged(t *testing.T) {
 	}
 }
 
-// Crossing a bucket re-arranges: `at` feeds ComputeDesiredAt, ActiveRuleAt and ResolveWindow, so
-// a curation rule that switches the channel at 21:00 genuinely changes the answer. The bucket is
-// what bounds how long the pre-boundary arrangement can survive.
-func TestCycleCache_CrossingABucketRearranges(t *testing.T) {
-	t.Parallel()
-	r, eng, _ := cachedResolver(t, testChannel())
-	at := time.Now().Truncate(cycleBucket)
-
-	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
-		t.Fatalf("cycleAt: %v", err)
-	}
-	if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
-		t.Fatalf("cycleAt: %v", err)
-	}
-
-	if got := eng.count(); got != 2 {
-		t.Fatalf("arrangements computed = %d, want 2 (the bucket is not in the key)", got)
-	}
-}
-
 // Two requests a few seconds apart SHARE an arrangement. Without quantisation the guide's window
 // start moves every poll and the cache would never hit — a cache that is correct and useless.
 func TestCycleCache_NearbyInstantsShareAnArrangement(t *testing.T) {
 	t.Parallel()
 	r, eng, _ := cachedResolver(t, testChannel())
-	at := time.Now().Truncate(cycleBucket)
+	at := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
 
 	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
 		t.Fatalf("cycleAt: %v", err)
@@ -216,13 +197,14 @@ func TestCycleCache_EntryExpiresAfterTTL(t *testing.T) {
 	if !ok {
 		t.Fatal("fingerprint failed on an empty channel")
 	}
-	c.put(key, []schedule.Slot{{Kind: schedule.SlotProgram}}, 24*time.Hour)
+	c.put(key, now, []schedule.Slot{{Kind: schedule.SlotProgram}}, 24*time.Hour)
 
-	if _, _, hit := c.get(key); !hit {
+	if _, _, hit := c.get(key, now); !hit {
 		t.Fatal("fresh entry missed")
 	}
+	stored := now
 	now = now.Add(cycleCacheTTL + time.Second)
-	if _, _, hit := c.get(key); hit {
+	if _, _, hit := c.get(key, stored); hit {
 		t.Fatal("entry survived its TTL — availability/settings staleness is now unbounded")
 	}
 }
@@ -255,10 +237,10 @@ func TestCycleCache_TimeInvariantChannelIgnoresTheBucket(t *testing.T) {
 	ch := testChannel()
 	ch.Policy.Seasonal.Mode = schedule.SeasonalOff // explicit off + no rules ⇒ invariant
 	r, eng, _ := cachedResolver(t, ch)
-	at := time.Now().Truncate(cycleBucket)
+	at := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
 
-	// Instants an hour and a day apart — many buckets — must all hit.
-	for _, d := range []time.Duration{0, cycleBucket, time.Hour, 24 * time.Hour} {
+	// Instants a minute, an hour and a day apart must all hit.
+	for _, d := range []time.Duration{0, time.Minute, time.Hour, 24 * time.Hour} {
 		if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(d)); err != nil {
 			t.Fatalf("cycleAt(+%v): %v", d, err)
 		}
@@ -269,51 +251,69 @@ func TestCycleCache_TimeInvariantChannelIgnoresTheBucket(t *testing.T) {
 	}
 }
 
-// ⚠ THE TRAP. The resolved seasonal default is Auto, NOT Off, and activeHolidays walks the whole
-// built-in calendar when no holidays are explicitly selected — so a channel with an entirely
-// EMPTY seasonal policy still benches and unbenches items as holiday windows open. Treating
-// "nothing configured" as invariant would pass every test written against a rule-less channel and
-// then serve a Christmas lineup in January.
-func TestCycleCache_EmptySeasonalPolicyIsStillTimeVarying(t *testing.T) {
+// ⚠ THE TRAP the holiday case in the table test below guards: the resolved seasonal default is
+// Auto, NOT Off, so a channel with an entirely EMPTY seasonal policy still benches and unbenches
+// items as holiday windows open. The key must split there, or a Christmas lineup is served in
+// January.
+
+// #1397: `at` is the Guide window's `from`, so stepping ±1h or opening the Guide a minute later
+// used to change the minute-bucketed key and re-arrange every channel. Nothing the arrangement
+// reads had changed: the same rule, the same holiday state, the same rolling window.
+func TestCycleCache_AdjacentWindowsReuseTheArrangement(t *testing.T) {
 	t.Parallel()
-	ch := testChannel() // zero policy: Mode == SeasonalDefault ("") ⇒ resolves to Auto
-	if ch.Policy.Seasonal.Mode == schedule.SeasonalOff {
-		t.Fatal("precondition: a zero policy must NOT be SeasonalOff, or this test proves nothing")
-	}
-	r, eng, _ := cachedResolver(t, ch)
-	at := time.Now().Truncate(cycleBucket)
+	r, eng, _ := cachedResolver(t, testChannel()) // empty seasonal policy: the prod shape
+	at := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
 
-	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
-		t.Fatalf("cycleAt: %v", err)
+	for _, d := range []time.Duration{0, time.Hour, -time.Hour, 3 * time.Hour, 90 * time.Second} {
+		if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(d)); err != nil {
+			t.Fatalf("cycleAt(%v): %v", d, err)
+		}
 	}
-	if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
-		t.Fatalf("cycleAt: %v", err)
-	}
-
-	if got := eng.count(); got != 2 {
-		t.Fatalf("arrangements computed = %d, want 2 (an unset seasonal policy was treated as time-invariant)", got)
+	if got := eng.count(); got != 1 {
+		t.Fatalf("arrangements computed = %d, want 1 for windows inside one rolling window", got)
 	}
 }
 
-// A channel WITH curation rules keeps its bucket: a rule that switches the lineup at 21:00 is
-// exactly the case the bucket exists for, and dropping it there would serve the pre-boundary
-// lineup past the boundary.
-func TestCycleCache_RuledChannelKeepsItsBucket(t *testing.T) {
+// What the arrangement DOES read from the clock must still split the key, or the fix above would
+// serve a stale lineup. Each case moves `at` across exactly one real boundary.
+func TestCycleCache_ClockInputsThatChangeTheArrangementSplitTheKey(t *testing.T) {
 	t.Parallel()
-	ch := testChannel()
-	ch.Policy.Seasonal.Mode = schedule.SeasonalOff // off, so RULES are the only varying input
-	ch.Policy.Rules = []schedule.SchedulingRule{{ID: "r1", Label: "Marathon"}}
-	r, eng, _ := cachedResolver(t, ch)
-	at := time.Now().Truncate(cycleBucket)
-
-	if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
-		t.Fatalf("cycleAt: %v", err)
+	july := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name   string
+		mutate func(*store.Channel)
+		window time.Duration
+		a, b   time.Time
+		want   int
+	}{
+		{"holiday window opens (empty seasonal policy)", func(*store.Channel) {}, 0,
+			july, time.Date(2026, time.December, 20, 12, 0, 0, 0, time.UTC), 2},
+		{"rule boundary crossed", func(c *store.Channel) {
+			c.Policy.Rules = []schedule.SchedulingRule{{ID: "late", When: schedule.WhenPredicate{HourFrom: 21, HourTo: 23}}}
+		}, 0, july, july.Add(10 * time.Hour), 2},
+		{"rule boundary NOT crossed", func(c *store.Channel) {
+			c.Policy.Rules = []schedule.SchedulingRule{{ID: "late", When: schedule.WhenPredicate{HourFrom: 21, HourTo: 23}}}
+		}, 0, july, july.Add(2 * time.Hour), 1},
+		{"rolling window rotates", func(*store.Channel) {}, 24 * time.Hour,
+			july, july.Add(25 * time.Hour), 2},
+		{"same rolling window", func(*store.Channel) {}, 24 * time.Hour,
+			july, july.Add(2 * time.Hour), 1},
 	}
-	if _, _, err := r.cycleAt(context.Background(), "ch1", at.Add(cycleBucket)); err != nil {
-		t.Fatalf("cycleAt: %v", err)
-	}
-
-	if got := eng.count(); got != 2 {
-		t.Fatalf("arrangements computed = %d, want 2 (a ruled channel lost its bucket)", got)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			ch := testChannel()
+			c.mutate(&ch)
+			r, eng, _ := cachedResolver(t, ch)
+			eng.window = c.window
+			for _, at := range []time.Time{c.a, c.b} {
+				if _, _, err := r.cycleAt(context.Background(), "ch1", at); err != nil {
+					t.Fatalf("cycleAt: %v", err)
+				}
+			}
+			if got := eng.count(); got != c.want {
+				t.Fatalf("arrangements computed = %d, want %d", got, c.want)
+			}
+		})
 	}
 }

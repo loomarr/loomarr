@@ -940,7 +940,7 @@ func (c *Client) EpisodeStillURL(ctx context.Context, tmdbID, season, episode in
 		return "", nil
 	}
 	if status < 200 || status >= 300 {
-		return "", fmt.Errorf("tmdb GET %s: status %d", path, status)
+		return "", &StatusError{Path: path, Status: status}
 	}
 	if p := strings.TrimSpace(body.StillPath); p != "" {
 		return imageBase + p, nil // still_path already has a leading "/"
@@ -954,7 +954,7 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 		return err
 	}
 	if status < 200 || status >= 300 {
-		return fmt.Errorf("tmdb GET %s: status %d", path, status)
+		return &StatusError{Path: path, Status: status}
 	}
 	return nil
 }
@@ -978,7 +978,7 @@ func (c *Client) getStatus(ctx context.Context, path string, out any) (int, erro
 	defer func() { _ = resp.Body.Close() }()
 	if out != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-			return resp.StatusCode, fmt.Errorf("tmdb decode %s: %w", path, err)
+			return resp.StatusCode, &decodeError{err: fmt.Errorf("tmdb decode %s: %w", path, err)}
 		}
 	}
 	return resp.StatusCode, nil

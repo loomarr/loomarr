@@ -113,7 +113,10 @@ func TestTimelineThumbResolver(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			gotURL, gotHash := r.ThumbFor(ctx, c.key, c.season, c.episode)
+			gotURL, gotHash, err := r.resolve(ctx, c.key, c.season, c.episode)
+			if err != nil {
+				t.Fatalf("resolve(%q, %d, %d) failed: %v", c.key, c.season, c.episode, err)
+			}
 			if gotHash != c.wantHash {
 				t.Fatalf("ThumbFor(%q, %d, %d) hash = %q, want %q", c.key, c.season, c.episode, gotHash, c.wantHash)
 			}
@@ -160,7 +163,10 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 		fetch: fetch,
 	}
 
-	url, hash := r.ThumbFor(context.Background(), "series:tmdb:456", 1, 6)
+	url, hash, err := r.resolve(context.Background(), "series:tmdb:456", 1, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if want := "/v1/images/" + contentHash + "/w300.jpg?r=loomarr-rendition-v2"; url != want || hash != contentHash {
 		t.Errorf("ThumbFor on a cold image = (%q, %q), want (%q, %q)", url, hash, want, contentHash)
 	}
@@ -173,7 +179,7 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 func TestTimelineThumbWithoutImageServiceEmitsNothing(t *testing.T) {
 	t.Parallel()
 	r := timelineThumbResolver{tmdb: newTimelineTMDB(t)}
-	if url, hash := r.ThumbFor(context.Background(), "series:tmdb:456", 1, 6); url != "" || hash != "" {
+	if url, hash, err := r.resolve(context.Background(), "series:tmdb:456", 1, 6); err != nil || url != "" || hash != "" {
 		t.Errorf("ThumbFor with no image service = (%q, %q), want empty — never a third-party URL", url, hash)
 	}
 }

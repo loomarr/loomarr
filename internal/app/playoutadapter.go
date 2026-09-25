@@ -502,17 +502,16 @@ func (r *playoutResolver) cycleAt(
 		return slots, window, cerr
 	}
 
-	// The bucket is what lets two requests a few seconds apart share an arrangement: the guide's
-	// window start moves with every poll, so an exact-instant key would never hit. See
-	// cycleBucket on why one minute cannot straddle a rule boundary by more than itself.
-	bucket := at.Truncate(cycleBucket).Unix()
-	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, bucket)
+	// The key carries what `at` changes about the arrangement (active rule, active holidays; the
+	// rolling-window index is added inside the cache), not the wall-clock — so a navigated window
+	// or a later visit reuses the work. See the cycle cache's header.
+	key, ok := fingerprintChannel(channelID, ch.Lineup, ch.Policy, schedule.ClockSignature(ch.Policy, at))
 	if !ok {
 		_, slots, _, window, cerr := r.engine.CyclePreview(ctx, channelID, at)
 		return slots, window, cerr
 	}
 
-	if slots, window, hit := r.cycles.get(key); hit {
+	if slots, window, hit := r.cycles.get(key, at); hit {
 		if ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
 			return ch.Desired, window, nil
 		}
@@ -523,7 +522,7 @@ func (r *playoutResolver) cycleAt(
 	if err != nil {
 		return nil, 0, err
 	}
-	r.cycles.put(key, slots, window)
+	r.cycles.put(key, at, slots, window)
 	if ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
 		return ch.Desired, window, nil
 	}
