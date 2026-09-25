@@ -441,7 +441,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}
 	builtBackendController, err := buildBackendTransition(rootCtx, backendTransitionDependencies{
 		store: st, fleet: channelEngine,
-		publisher: &backendPublisher{connector: liveTVConnector, urls: backendURLs},
+		publisher: &backendPublisher{connector: liveTVConnector, urls: backendURLs, log: log},
 		cutover:   inheritedInternalCutover{channels: st, playout: playoutSvc},
 		desired:   resolveDesiredBackend,
 	})

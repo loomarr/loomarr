@@ -182,3 +182,30 @@ func TestBuildInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransi
 		t.Fatalf("Initialize performed remote projection: creates=%d pushes=%d", tunarr.Creates, tunarr.Pushes)
 	}
 }
+
+// #1407: a busy media server must be logged ONCE with its cause class, and must not stop the
+// publisher's other phases from running on later ticks.
+func TestBackendPublisherRefreshLogsTransientCauseOnce(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	urls := setup.LiveTVURLs{M3U: "http://a/playout/tuner.m3u", XMLTV: "http://a/playout/guide.xml"}
+	lib.RescanErr = setup.NewTransientError("server-error", 3, errors.New("POST /LiveTv/TunerHosts: status 500: ServiceUnavailable"))
+	var logs strings.Builder
+	publisher := &backendPublisher{
+		connector: setup.NewLiveTVConnectorFixed(lib, urls),
+		urls:      func(context.Context, string) (setup.LiveTVURLs, error) { return urls, nil },
+		log:       slog.New(slog.NewTextHandler(&logs, nil)),
+	}
+	ctx := context.Background()
+	if _, err := publisher.Prepare(ctx, backendtransition.BackendInternal); err != nil {
+		t.Fatal(err)
+	}
+	if err := publisher.Refresh(ctx, backendtransition.BackendInternal); err == nil {
+		t.Fatal("Refresh = nil, want the transient error still returned for the controller to defer")
+	}
+	if got := strings.Count(logs.String(), "live tv refresh deferred"); got != 1 {
+		t.Fatalf("deferral logged %d times, want once:\n%s", got, logs.String())
+	}
+	if !strings.Contains(logs.String(), "cause_class=server-error") {
+		t.Errorf("log lacks the cause class:\n%s", logs.String())
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/library"
 )
@@ -267,13 +268,65 @@ func refreshTarget(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) err
 		return err
 	}
 	var first error
-	if err := lib.RescanTuner(ctx, urls.M3U); err != nil {
+	if err := withTransientRetry(ctx, func() error { return lib.RescanTuner(ctx, urls.M3U) }); err != nil {
 		first = fmt.Errorf("rescan tuner: %w", err)
 	}
-	if err := lib.RefreshGuide(ctx); err != nil && first == nil {
+	if err := withTransientRetry(ctx, func() error { return lib.RefreshGuide(ctx) }); err != nil && first == nil {
 		first = fmt.Errorf("refresh guide: %w", err)
 	}
 	return first
+}
+
+// refreshBackoff is the pause before each retry of a refresh poke, so a poke makes
+// len(refreshBackoff)+1 attempts. Emby answers "500 ServiceUnavailable" while busy (#1407) and
+// recovers within seconds, so a short bounded schedule absorbs the stall; anything longer is left
+// to the next scheduled maintenance run. Both pokes are idempotent (the tuner re-POST carries the
+// host Id), which is what makes client-side retry safe here.
+var refreshBackoff = []time.Duration{2 * time.Second, 5 * time.Second}
+
+// TransientError marks a media-server failure that persisted through the whole retry budget but
+// is of a kind (busy, slow, unreachable) that clears on its own. Callers may defer it to the next
+// scheduled run instead of failing the operation.
+type TransientError struct {
+	class    string
+	attempts int
+	err      error
+}
+
+func (e *TransientError) Error() string   { return e.err.Error() }
+func (e *TransientError) Unwrap() error   { return e.err }
+func (e *TransientError) Transient() bool { return true }
+
+// Class is the library.TransientClass of the failure: server-error, timeout or connection.
+func (e *TransientError) Class() string { return e.class }
+
+// Attempts is how many times the poke was tried.
+func (e *TransientError) Attempts() int { return e.attempts }
+
+// withTransientRetry runs op, retrying only failures library.TransientClass calls transient.
+// Anything else (a 4xx, cancellation) returns at once so a real wiring fault is never delayed.
+// An exhausted transient failure is wrapped in *TransientError.
+func withTransientRetry(ctx context.Context, op func() error) error {
+	for attempt := 1; ; attempt++ {
+		err := op()
+		if err == nil {
+			return nil
+		}
+		class := library.TransientClass(err)
+		if class == "" || ctx.Err() != nil {
+			return err
+		}
+		if attempt > len(refreshBackoff) {
+			return &TransientError{class: class, attempts: attempt, err: err}
+		}
+		timer := time.NewTimer(refreshBackoff[attempt-1])
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return err
+		case <-timer.C:
+		}
+	}
 }
 
 func validateLiveTVURLs(urls LiveTVURLs) error {
@@ -411,4 +464,10 @@ func (c *LiveTVConnector) RescanTarget(ctx context.Context, urls LiveTVURLs) err
 		return nil // nothing to rescan; the poke is best-effort by contract (§9)
 	}
 	return c.library().RescanTuner(ctx, urls.M3U)
+}
+
+// NewTransientError builds the error withTransientRetry returns once its budget is spent, for
+// adapters and tests that need to stand in for a media server that stayed busy.
+func NewTransientError(class string, attempts int, err error) *TransientError {
+	return &TransientError{class: class, attempts: attempts, err: err}
 }

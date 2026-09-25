@@ -2,6 +2,7 @@ package backendtransition
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -342,13 +343,23 @@ func (c *Controller) repairPublished(ctx context.Context, target string) error {
 	}
 	// Always refresh for restart safety. If a prior repair created the target and refresh then
 	// failed, its next Prepare reports unchanged; skipping here would make the failure permanent.
-	if err := c.publisher.Refresh(ctx, target); err != nil {
+	// Steady state runs on every maintenance tick, so a media server that is merely busy (its
+	// retry budget already spent by the publisher, which logs the cause) is retried by the next
+	// tick; failing here would report a hard job failure and skip retirement for a transient stall.
+	if err := c.publisher.Refresh(ctx, target); err != nil && !isTransient(err) {
 		return fmt.Errorf("refresh published backend %q: %w", target, err)
 	}
 	if err := c.publisher.RetireStale(ctx, target); err != nil {
 		return fmt.Errorf("retire stale publishers for %q: %w", target, err)
 	}
 	return nil
+}
+
+// isTransient reports whether err says, via a Transient() bool method anywhere in its chain, that
+// it will clear on its own (a busy or briefly unreachable media server).
+func isTransient(err error) bool {
+	var t interface{ Transient() bool }
+	return errors.As(err, &t) && t.Transient()
 }
 
 func (c *Controller) save(ctx context.Context, state State) error {

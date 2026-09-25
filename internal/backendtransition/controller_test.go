@@ -631,3 +631,30 @@ func transitionFaultStore(
 		},
 	}
 }
+
+// transientRefreshErr mimics setup.TransientError: a media-server failure that outlived its
+// retry budget but clears on its own (#1407: Emby 500 ServiceUnavailable during a stall).
+type transientRefreshErr struct{}
+
+func (transientRefreshErr) Error() string   { return "rescan tuner: status 500: ServiceUnavailable" }
+func (transientRefreshErr) Transient() bool { return true }
+
+// Steady state re-refreshes every maintenance run, so a busy media server must not fail the run
+// or block stale-registration retirement; the next run retries. A non-transient failure still
+// fails loudly (TestControllerSteadyStateRepairsURLsAndRetriesRefresh).
+func TestControllerSteadyStateDefersTransientRefreshFailure(t *testing.T) {
+	t.Parallel()
+	base := initializedStore(t, BackendTunarr)
+	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
+	probe.RequirePublisherRepair()
+	probe.FailRefreshOnce(transientRefreshErr{})
+	controller := NewController(base, probe, probe, nil)
+
+	if err := controller.Apply(context.Background(), BackendTunarr); err != nil {
+		t.Fatalf("Apply = %v, want a transient refresh failure deferred to the next run", err)
+	}
+	assertDurableState(t, base, BackendTunarr, "")
+	if got := probe.RetireCalls(); got != 1 {
+		t.Fatalf("Retire calls = %d, want retirement to proceed past the deferred refresh", got)
+	}
+}
