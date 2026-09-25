@@ -59,7 +59,6 @@ const WatchScreen = () => {
           currentTitle: tuner.currentTitle,
           attempt: tuner.attempt,
           acknowledging: tuner.acknowledging,
-          ready: tuner.ready,
           step: tuner.step,
           retry: tuner.retry,
         }}

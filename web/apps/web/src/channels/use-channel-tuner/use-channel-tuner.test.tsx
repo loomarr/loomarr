@@ -111,8 +111,7 @@ describe("channel tuner", () => {
     const { result } = renderHook(() =>
       useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune: vi.fn(), warmChannel }),
     );
-    expect(warmChannel).not.toHaveBeenCalled();
-    act(() => result.current.ready("ch-10"));
+    // Warming starts with the accepted tune; it does not wait for the first decoded frame.
     await vi.waitFor(() => expect(warmChannel).toHaveBeenCalledWith("ch-30", expect.any(AbortSignal)));
     await act(async () => Promise.resolve());
     expect(mark).toHaveBeenCalledWith("loomarr:tuner:warm:ch-30");
@@ -129,18 +128,37 @@ describe("channel tuner", () => {
       expiresAt: Date.now() + 60 * 60 * 1000,
       warmed: false,
     });
-    const { result } = renderHook(() =>
+    renderHook(() =>
       useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune: vi.fn(), warmChannel }),
     );
 
-    act(() => result.current.ready("ch-10"));
     await vi.waitFor(() => expect(warmChannel).toHaveBeenCalled());
     await act(async () => Promise.resolve());
 
     expect(mark).not.toHaveBeenCalledWith("loomarr:tuner:warm:ch-30");
   });
 
-  it("warms the newly adjacent channel after a surfed target becomes ready", async () => {
+  it("aborts the previous neighbours' warms as soon as the viewer moves on", async () => {
+    const catalog = [1, 2, 3, 4].map((number) =>
+      channel({ id: `ch-${number}`, number, name: `Channel ${number}`, inAppPlayable: true }),
+    );
+    const signals: AbortSignal[] = [];
+    const warmChannel = vi.fn((_id: string, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<never>(() => {});
+    });
+    const { result, rerender } = renderHook(
+      ({ currentId }) =>
+        useChannelTuner({ currentId, channels: catalog, nowNext: [], onTune: vi.fn(), warmChannel }),
+      { initialProps: { currentId: "ch-2" } },
+    );
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    act(() => result.current.step(1));
+    rerender({ currentId: "ch-3" });
+    expect(signals.slice(0, 2).every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it("warms the newly adjacent channel after a surfed target is accepted", async () => {
     const catalog = [1, 2, 3, 4].map((number) =>
       channel({ id: `ch-${number}`, number, name: `Channel ${number}`, inAppPlayable: true }),
     );
@@ -163,7 +181,6 @@ describe("channel tuner", () => {
       { initialProps: { currentId: "ch-2" } },
     );
 
-    act(() => result.current.ready("ch-2"));
     await vi.waitFor(() =>
       expect(warmChannel.mock.calls.map(([id]) => id)).toEqual(expect.arrayContaining(["ch-1", "ch-3"])),
     );
@@ -172,7 +189,6 @@ describe("channel tuner", () => {
     act(() => result.current.step(1));
     expect(result.current.channel?.id).toBe("ch-3");
     rerender({ currentId: "ch-3" });
-    act(() => result.current.ready("ch-3"));
 
     await vi.waitFor(() => expect(warmChannel).toHaveBeenCalledWith("ch-4", expect.any(AbortSignal)));
   });

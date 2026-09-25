@@ -53,7 +53,6 @@ interface ChannelWatchProps {
     currentTitle?: string;
     attempt?: TuneAttempt;
     acknowledging?: boolean;
-    ready: (channelId: string) => void;
     step: (direction: TuneDirection) => void;
     retry: () => void;
   };
@@ -124,9 +123,6 @@ const ChannelWatch = ({
   tuner,
 }: ChannelWatchProps) => {
   const player = useHlsPlayer(channel.id, tuner?.attempt);
-  useEffect(() => {
-    if (player.status === "playing") tuner?.ready(channel.id);
-  }, [channel.id, player.status, tuner?.ready]);
   const expiryNoticeRef = useRef({ channelId: channel.id, revision: 0 });
   useEffect(() => {
     if (expiryNoticeRef.current.channelId !== channel.id) {
