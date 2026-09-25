@@ -761,3 +761,57 @@ func TestHLSManager_StopChannelStopsEveryPlanAndLeavesOtherChannels(t *testing.T
 		t.Fatalf("remaining remuxes = %#v, want only ch2", m.remuxes)
 	}
 }
+
+// The neighbour warm asks for the two adjacent sessions. On a two-slot host, with the viewer's own
+// channel holding one slot, only one neighbour can be warmed: the other must degrade to a harmless
+// ErrAtCapacity miss, and a real tune elsewhere must still be admitted by reclaiming the warm
+// session, so warmth can never occupy the slot a live viewer needs.
+func TestHLSManager_NeighbourWarmDegradesOnSmallHostAndNeverBlocksLiveTune(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	sessions := testManager(t, spawn, 2, time.Minute)
+	m := newTestHLSManager(t, sessions)
+	m.grace = time.Minute
+
+	// The viewer's channel: an active playlist lease held for the whole test.
+	_, detachForeground, err := m.Playlist("foreground", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer detachForeground()
+	if _, err := encoder("foreground").w.Write([]byte("transport")); err != nil {
+		t.Fatal(err)
+	}
+
+	var warmed, refused int
+	for _, neighbour := range []string{"prev", "next"} {
+		_, release, werr := m.SpeculativePlaylist(neighbour, PlanFull)
+		switch {
+		case werr == nil:
+			warmed++
+			if _, err := encoder(neighbour).w.Write([]byte("transport")); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(20 * time.Millisecond)
+			release()
+		case errors.Is(werr, ErrAtCapacity):
+			refused++
+		default:
+			t.Fatalf("warm %s: %v, want success or ErrAtCapacity", neighbour, werr)
+		}
+	}
+	if warmed != 1 || refused != 1 {
+		t.Fatalf("warmed=%d refused=%d on a two-slot host with one live viewer, want 1 and 1", warmed, refused)
+	}
+
+	// A real viewer tuning somewhere the warm did not cover reclaims the warm session.
+	_, detach, terr := m.Playlist("elsewhere", PlanFull)
+	if terr != nil {
+		t.Fatalf("live tune refused while only warm work held the spare slot: %v", terr)
+	}
+	detach()
+	select {
+	case <-encoder("foreground").stopped:
+		t.Fatal("live tune evicted the actively watched channel")
+	default:
+	}
+}

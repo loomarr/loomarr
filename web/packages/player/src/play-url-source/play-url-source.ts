@@ -37,8 +37,8 @@ const resolveStreamUrl = (
   throw new Error("This Loomarr returned no stream address for the channel.");
 };
 
-const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptions): PlayerSourcePort => ({
-  mint: async (channel, profile, signal) => {
+const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptions): PlayerSourcePort => {
+  const mint: PlayerSourcePort["mint"] = async (channel, profile, signal) => {
     const response = await request(getChannelPlayUrlUrl(channel.id), {
       body: JSON.stringify(profile),
       headers: { "Content-Type": "application/json" },
@@ -56,8 +56,22 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
       ...(Number.isFinite(serverTime) ? { serverTimeMs: serverTime } : {}),
       uri: resolveStreamUrl(baseUrl, body),
     };
-  },
-});
+  };
+
+  return {
+    mint,
+    // A `mode=warm` playlist fetch makes the server start the channel's live remux under speculative
+    // admission (it never reclaims another channel's session and answers 503 when full) and holds
+    // the response until the first segment is listed. Draining the body is what lets that finish.
+    warm: async (channel, profile, signal) => {
+      const { uri } = await mint(channel, profile, signal);
+      const url = new URL(uri);
+      url.searchParams.set("mode", "warm");
+      const response = await request(url.toString(), { method: "GET", signal });
+      await response.text();
+    },
+  };
+};
 
 const createChannelCatalogPort = (request: typeof globalThis.fetch): ChannelCatalogPort => ({
   list: async (signal) => {

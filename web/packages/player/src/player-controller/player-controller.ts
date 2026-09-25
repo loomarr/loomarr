@@ -1,3 +1,4 @@
+import { createNeighbourWarmer } from "../neighbour-warmer";
 import type { PlayerChannel } from "../player-source";
 import type {
   PlayerController,
@@ -24,6 +25,7 @@ const createPlayerController = ({
   recovery,
   source,
   transport,
+  warmRadius,
 }: PlayerControllerOptions): PlayerController => {
   const backoffMs = recovery?.backoffMs ?? DEFAULT_BACKOFF_MS;
   let disposed = false;
@@ -39,6 +41,7 @@ const createPlayerController = ({
     status: "empty",
   };
   const listeners = new Set<(next: PlayerSnapshot) => void>();
+  const warmer = createNeighbourWarmer({ profile, radius: warmRadius, source });
 
   const publish = (next: PlayerSnapshot) => {
     snapshot = next;
@@ -115,6 +118,8 @@ const createPlayerController = ({
         : [...snapshot.recentChannelIds];
 
     activeRequest?.abort();
+    // A stale prediction must not compete with the channel now being tuned.
+    warmer.cancel();
     const request = new AbortController();
     activeRequest = request;
     attempt += 1;
@@ -141,6 +146,8 @@ const createPlayerController = ({
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       await transport.replace(nextSource, { attemptId, signal: request.signal });
       if (!isCurrentAttempt(attemptId, request.signal)) return;
+      // The viewer's own stream is on its way; only now may neighbours start their sessions.
+      warmer.retarget(snapshot.catalog, channel.id);
       if (snapshot.status === "paused") return;
       await transport.play();
     } catch (error) {
@@ -196,6 +203,7 @@ const createPlayerController = ({
       disposed = true;
       cancelRecoveryTimers();
       activeRequest?.abort();
+      warmer.cancel();
       unsubscribeTransport();
       transport.pause();
       transport.dispose();
@@ -225,6 +233,7 @@ const createPlayerController = ({
       const catalog = playableCatalog(channels);
       if (catalog.length === 0) {
         activeRequest?.abort();
+        warmer.cancel();
         transport.pause();
         publish({
           catalog,

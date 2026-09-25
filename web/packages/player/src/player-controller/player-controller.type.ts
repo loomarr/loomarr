@@ -95,6 +95,8 @@ interface PlayerControllerOptions {
   recovery?: PlayerRecoveryOptions;
   source: PlayerSourcePort;
   transport: PlayerTransport;
+  /** Channels warmed each side of the current one (default 1, the server's retained warm-session limit). The server bounds admission. */
+  warmRadius?: number;
 }
 
 export type {

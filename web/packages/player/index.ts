@@ -6,6 +6,8 @@ export type {
 export { createCatalogRefresher } from "./src/catalog-refresher";
 export type { NativeDiagnosticsRecorder, NativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
 export { createNativePlaybackDiagnostics } from "./src/native-playback-diagnostics";
+export type { NeighbourWarmer, NeighbourWarmerOptions } from "./src/neighbour-warmer";
+export { createNeighbourWarmer } from "./src/neighbour-warmer";
 export type {
   LivePlaybackMode,
   LivePlaybackState,
