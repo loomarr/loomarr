@@ -1047,8 +1047,8 @@ func declared() []Setting {
 		},
 		{
 			Key: "filler.break_duration", Label: "Length of each break", EnvVar: "FILLER_BREAK_DURATION", Group: GroupFiller,
-			Kind: KindDuration, Default: "5m", Validate: breakDuration,
-			Doc: "How long each commercial break lasts by default. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
+			Kind: KindDuration, Default: "30s", Validate: breakDuration,
+			Doc: "How long each commercial break lasts by default — short, with the commercials rotated so recently shown ones wait their turn. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
 		},
 		{
 			Key: "filler.pod_max", Label: "Clips per break", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,

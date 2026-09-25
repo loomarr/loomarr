@@ -519,7 +519,7 @@ func programsPerWindow(slots []Slot, budgetMs int64) int {
 	return n
 }
 
-const defaultBreakDurationMs = 300_000
+const defaultBreakDurationMs = 30_000 // mirrors filler.break_duration
 
 // interleaveBreaks inserts SlotFiller break gaps between program slots at the
 // channel's BreaksPerHour density (§10). Runtime-aware and snapped to program
