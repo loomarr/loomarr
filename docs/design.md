@@ -187,6 +187,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`landiscovery`**
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
+- **`logchange`** · 2 importers
+  Keeps a repeating per-item condition from flooding the log.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
 - **`playoutcert`** · 1 importer
@@ -314,7 +316,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 7**
 
-- **`filler`** · 11 importers · → `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy`
+- **`filler`** · 11 importers · → `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 - **`fillersafetycorpus`** · 1 importer · → `fillercorpus`, `fillersafety`, `fillersafetycert`
   Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
@@ -369,7 +371,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Prepares an isolated agent worktree for UI development.
 - **`fillerquarantine`** · 2 importers · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
   Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
-- **`images`** · 2 importers · → `images/rustgen`, `scheduler`
+- **`images`** · 2 importers · → `images/rustgen`, `logchange`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
 - **`moviecollections`** · 3 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
