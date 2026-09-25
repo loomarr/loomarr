@@ -56,7 +56,11 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
   if (!journey) return <p className="p-6 text-muted-foreground text-sm">Loading…</p>;
 
   const status = requestStatus(journey, titles);
-  const acquisitions = requestAcquisitions(journey, titles);
+  // Only what is still outstanding: a title that has landed is part of the channel, so listing it
+  // as "being added" (or badging it AVAILABLE) contradicts a live channel.
+  const asked = requestAcquisitions(journey, titles);
+  const requested = asked.length;
+  const acquisitions = asked.filter(({ title }) => title?.state !== "available");
   const proposal = journey.proposal;
   const fix = requestFixLabel(journey);
   const lineup = proposal?.proposal.lineup ?? [];
@@ -133,8 +137,10 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
               <p className="text-muted-foreground text-sm">Nothing from your library was proposed.</p>
             ) : (
               <ul className="flex flex-col gap-1 text-sm">
-                {lineup.map((item) => (
-                  <li key={`${item.mediaType}:${item.tmdbId ?? item.name}`}>
+                {lineup.map((item, index) => (
+                  // A title can repeat within a proposal, so the id alone is not a unique key.
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the lineup is a fixed, ordered snapshot
+                  <li key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}>
                     {item.name}
                     {item.year ? <span className="text-muted-foreground"> ({item.year})</span> : null}
                   </li>
@@ -150,8 +156,10 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
           <Section title="Titles being added">
             <p className="text-muted-foreground text-sm">
               {journey.milestone === "live"
-                ? "Everything in this channel was already in your library."
-                : "Titles appear once the channel starts building."}
+                ? "All titles are on the channel."
+                : requested > 0
+                  ? "All titles have arrived."
+                  : "Titles appear once the channel starts building."}
             </p>
           </Section>
         )}
@@ -159,9 +167,10 @@ const RequestDetail = ({ jobId }: { jobId: string }) => {
         {acquisitions.length > 0 && (
           <Section title="Titles being added">
             <ul className="flex flex-col gap-2">
-              {acquisitions.map(({ item, title }) => (
+              {acquisitions.map(({ item, title }, index) => (
                 <li
-                  key={`${item.mediaType}:${item.tmdbId ?? item.name}`}
+                  // biome-ignore lint/suspicious/noArrayIndexKey: a title can repeat within a proposal
+                  key={`${index}:${item.mediaType}:${item.tmdbId ?? item.name}`}
                   className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2.5"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm">

@@ -6,8 +6,10 @@ type RequestTab = "needs-you" | "in-progress" | "done";
 
 interface RequestStatus {
   tab: RequestTab;
-  /** The single status line a card shows. */
+  /** The SHORT badge label — never a sentence; the sentence is `detail`. */
   line: string;
+  /** The one-sentence explanation shown beside the badge, when the label alone is not enough. */
+  detail?: string;
   /** Badge variant for the line. */
   tone: "suggest" | "lock" | "onair" | "caution";
 }

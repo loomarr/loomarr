@@ -9,7 +9,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { type QueryClient, useQueries } from "@tanstack/react-query";
 import { useAuth } from "@/auth/use-auth";
 import { usePendingApprovals } from "@/queue/pending-approvals";
-import { type RequestStatus, requestStatus } from "@/queue/request-status";
+import { type RequestStatus, requestNeedsYou, requestStatus } from "@/queue/request-status";
 
 // GET /v1/titles is a single-state FILTER (it 400s without `state`, §7), so the acquisition
 // states a request's status line needs are fetched one query per state and merged — the same
@@ -77,9 +77,7 @@ const useNeedsYouCount = (): number => {
   const { isAdmin } = useAuth();
   const jobs = proposalJobsApi.useListProposalJobs({ mine: true });
   const pending = usePendingApprovals(isAdmin);
-  const failed = (unwrap(jobs.data, (body) => body.journeys) ?? []).filter(
-    (journey) => journey.milestone === "failed",
-  ).length;
+  const failed = (unwrap(jobs.data, (body) => body.journeys) ?? []).filter(requestNeedsYou).length;
   return pending.count + failed;
 };
 
@@ -95,9 +93,7 @@ const fetchNeedsYouCount = async (queryClient: QueryClient, isAdmin: boolean): P
       ? queryClient.ensureQueryData(fillerApi.getListFillerPullsQueryOptions({ status: "pending" }))
       : undefined,
   ]);
-  const failed = (jobs.status === 200 ? jobs.data.journeys : []).filter(
-    (j) => j.milestone === "failed",
-  ).length;
+  const failed = (jobs.status === 200 ? jobs.data.journeys : []).filter(requestNeedsYou).length;
   return (
     failed +
     (proposals?.status === 200 ? (proposals.data.proposals?.length ?? 0) : 0) +

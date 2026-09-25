@@ -16,6 +16,63 @@ describe("RequestDetail", () => {
     expect(screen.getByText("Titles appear once the channel starts building.")).toBeInTheDocument();
   });
 
+  // A landed title is part of the channel: listing it as "being added" contradicts a live channel.
+  it("lists only outstanding titles, and says so when everything is on the channel", async () => {
+    stub({
+      me: MEMBER,
+      journeys: [
+        approved("j-d", "live", [{ mediaType: "movie", name: "RoboCop 2", tmdbId: 8, inLibrary: false }]),
+      ],
+      titles: { available: [title("RoboCop 2", "available", { tmdbId: 8 })] },
+    });
+    renderAt("/requests/j-d");
+
+    expect(await screen.findByText("All titles are on the channel.")).toBeInTheDocument();
+    expect(screen.queryByText("RoboCop 2")).not.toBeInTheDocument();
+  });
+
+  it("keeps an outstanding title listed next to landed ones being hidden", async () => {
+    stub({
+      me: MEMBER,
+      journeys: [
+        approved("j-d", "building", [
+          { mediaType: "movie", name: "RoboCop 2", tmdbId: 8, inLibrary: false },
+          { mediaType: "movie", name: "Still Coming", tmdbId: 9, inLibrary: false },
+        ]),
+      ],
+      titles: {
+        available: [title("RoboCop 2", "available", { tmdbId: 8 })],
+        downloading: [title("Still Coming", "downloading", { tmdbId: 9 })],
+      },
+    });
+    renderAt("/requests/j-d");
+
+    expect(await screen.findByText("Still Coming")).toBeInTheDocument();
+    expect(screen.queryByText("RoboCop 2")).not.toBeInTheDocument();
+  });
+
+  it("renders a title repeated in the lineup without a duplicate-key error", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const dup = { mediaType: "movie", name: "Twice", tmdbId: 181812 };
+    stub({
+      me: MEMBER,
+      journeys: [
+        {
+          ...approved("j-d", "live"),
+          proposal: {
+            id: "p",
+            status: "approved",
+            proposal: { intent: { description: "x" }, lineup: [dup, dup], acquisitions: [] },
+          },
+        },
+      ],
+    });
+    renderAt("/requests/j-d");
+
+    expect(await screen.findAllByText("Twice")).toHaveLength(2);
+    expect(error.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+  });
+
   it("names who approved it", async () => {
     stub({ me: MEMBER, journeys: [approved("j-d", "building")] });
     renderAt("/requests/j-d");

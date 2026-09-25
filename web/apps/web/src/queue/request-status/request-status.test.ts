@@ -76,7 +76,31 @@ describe("requestStatus", () => {
       [],
     );
     expect(s.tab).toBe("needs-you");
-    expect(s.line).toBe("The model took too long.");
+    expect(s.line).toBe("Couldn't build");
+    expect(s.detail).toBe("The model took too long.");
+  });
+
+  // Deleting a channel is deliberate, so an approved request whose channel is gone is Done, with a
+  // short badge; the sentence lives in `detail`.
+  it("files an approved request whose channel is gone under Done as 'Channel removed'", () => {
+    const s = requestStatus(
+      {
+        ...withAcquisitions("failed", [1]),
+        failure: {
+          code: "generation_failed",
+          reason: "generation_failed",
+          recoveryAction: "retry_later",
+          message: "This request was approved, but its channel no longer exists.",
+          guidance: "Try again to build a new channel from this request.",
+        },
+      },
+      [],
+    );
+    expect(s).toMatchObject({
+      tab: "done",
+      line: "Channel removed",
+      detail: "This request was approved, but its channel no longer exists.",
+    });
   });
 
   it("keeps a request that is generating or awaiting approval In progress", () => {

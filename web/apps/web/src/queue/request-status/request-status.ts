@@ -26,12 +26,23 @@ const requestAcquisitions = (journey: ProposalJourneyDTO, titles: TitleDTO[]): R
     title: titles.find((title) => sameTitle(item, title)),
   }));
 
+/** A request failed AND the viewer can do something about it — the Needs you tab, badge and count. */
+const requestNeedsYou = (journey: ProposalJourneyDTO): boolean =>
+  journey.milestone === "failed" && journey.proposal?.status !== "approved";
+
 const requestStatus = (journey: ProposalJourneyDTO, titles: TitleDTO[]): RequestStatus => {
   switch (journey.milestone) {
     case "failed":
+      // A failure on an APPROVED proposal means its channel is gone (the workflow reports no other
+      // failure once a proposal is approved). Deleting a channel is a deliberate act, not
+      // something the viewer must fix, so it is Done; Try again stays on the detail page.
+      if (!requestNeedsYou(journey)) {
+        return { tab: "done", line: "Channel removed", detail: journey.failure?.message, tone: "caution" };
+      }
       return {
         tab: "needs-you",
-        line: journey.failure?.message ?? "Couldn't generate this channel",
+        line: "Couldn't build",
+        detail: journey.failure?.message,
         tone: "onair",
       };
     case "denied":
@@ -80,4 +91,4 @@ const requestFixLabel = (journey: ProposalJourneyDTO): string | undefined => {
   return undefined;
 };
 
-export { requestAcquisitions, requestFixLabel, requestStatus };
+export { requestAcquisitions, requestFixLabel, requestNeedsYou, requestStatus };

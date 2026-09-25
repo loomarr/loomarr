@@ -57,6 +57,38 @@ describe("Requests tabs", () => {
     );
   });
 
+  // Deleting a channel is deliberate: it is Done with a short badge, not something the viewer must fix.
+  it("files an approved request whose channel was deleted under Done, not Needs you", async () => {
+    stub({
+      me: MEMBER,
+      journeys: [
+        {
+          ...approved("j-gone", "failed"),
+          failure: {
+            code: "generation_failed",
+            reason: "generation_failed",
+            recoveryAction: "retry_later",
+            message: "This request was approved, but its channel no longer exists.",
+            guidance: "Try again to build a new channel from this request.",
+          },
+        },
+      ],
+    });
+    renderAt("/requests/done");
+
+    expect(await screen.findByText("Channel removed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Needs you/ })).toHaveTextContent(/Needs you\s*0?$/);
+    expect(screen.queryByTestId("nav-badge-/requests")).not.toBeInTheDocument();
+  });
+
+  it("keeps the badge a short label and the sentence in the explanation line", async () => {
+    stub({ me: MEMBER, journeys: [failed("j-bad")] });
+    renderAt("/requests/needs-you");
+
+    expect(await screen.findByText("Couldn't build")).toBeInTheDocument();
+    expect(screen.getByText(/The model took too long\./)).toBeInTheDocument();
+  });
+
   it("offers the one next action on an empty tab", async () => {
     stub({ me: MEMBER, journeys: [journey("j-done")] });
     renderAt("/requests/in-progress");
@@ -80,7 +112,7 @@ describe("Members on Requests", () => {
     renderAt("/requests/needs-you");
 
     expect(await screen.findByText("Couldn't be built")).toBeInTheDocument();
-    expect(screen.getByText("Try again in a moment.")).toBeInTheDocument();
+    expect(screen.getByText(/Try again in a moment\./)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Try again" })).toBeInTheDocument();
     expect(screen.queryByText("Waiting for your approval")).not.toBeInTheDocument();
     expect(seen.some((u) => /status=submitted/.test(u))).toBe(false);

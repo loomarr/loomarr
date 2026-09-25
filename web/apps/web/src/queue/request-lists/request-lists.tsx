@@ -38,7 +38,9 @@ const cardFor = (
       line={status.line}
       tone={status.tone}
       createdAt={journey.createdAt}
-      {...extras}
+      // The badge is a short label; the sentence behind it is the explanation line.
+      hint={extras?.hint ?? status.detail}
+      action={extras?.action}
     />
   </li>
 );
@@ -118,7 +120,7 @@ const NeedsYouList = () => {
             {failed.map((e) => {
               const fix = requestFixLabel(e.journey);
               return cardFor(e, {
-                hint: e.journey.failure?.guidance,
+                hint: [e.status.detail, e.journey.failure?.guidance].filter(Boolean).join(" "),
                 action: fix && (
                   <Link
                     to="/guide"
