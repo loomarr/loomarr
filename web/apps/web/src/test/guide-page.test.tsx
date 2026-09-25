@@ -1,4 +1,5 @@
 import type { MeBody, TitleDTO } from "@loomarr/api";
+import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
 import {
   getChannelGuideMockHandler,
   getDeleteChannelMockHandler,
@@ -13,7 +14,7 @@ import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/rea
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { routeTree } from "@/routeTree.gen";
 import { channel } from "@/test/fixtures/channels";
 import { setting } from "@/test/fixtures/settings";
@@ -160,6 +161,84 @@ describe("Guide", () => {
     expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("Saturday Cartoons")).toBeInTheDocument();
     expect(await screen.findByText(/The Matrix/)).toBeInTheDocument();
+  });
+
+  // #1396: every window change is a new react-query key. Without placeholder data the grid went
+  // to channels=[] and the toolbar (gated on channels.length) unmounted until the server
+  // answered — the full latency, on exactly the navigations where the server is slowest.
+  describe("changing the time window", () => {
+    // The first request answers at once; every later one waits on `release()`, so a test can
+    // look at the page while the next window is genuinely still in flight.
+    const stubSlowNextWindow = () => {
+      const froms: number[] = [];
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      server.use(
+        getChannelGuideMockHandler(async ({ request }) => {
+          const from = Number(new URL(request.url).searchParams.get("from"));
+          froms.push(from);
+          // The initial window, however many times it is requested (loader + component).
+          if (from === froms[0]) return GUIDE;
+          await gate;
+          const next: GuideOutputBody = {
+            fromMs: from,
+            toMs: from + 4 * 3_600_000,
+            channels: [
+              {
+                channelId: "ch-next",
+                name: "Next Window Channel",
+                number: 44,
+                status: "live",
+                pendingCount: 0,
+                airings: [],
+              },
+            ],
+          };
+          return next;
+        }),
+      );
+      return { froms, release };
+    };
+
+    it("keeps the previous rows and the toolbar mounted, with a pending indicator, until the next window arrives", async () => {
+      const user = userEvent.setup();
+      stubGuide();
+      const { release } = stubSlowNextWindow();
+      const view = renderAt("/guide");
+      expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+      expect(view.queryByRole("status", { name: /loading guide/i })).not.toBeInTheDocument();
+
+      await user.click(view.getByRole("button", { name: "Forward an hour" }));
+
+      // The new window is pending: the old grid and the controls are still there.
+      expect(await view.findByRole("status", { name: /loading guide/i })).toBeInTheDocument();
+      expect(view.getByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+      expect(view.getByRole("button", { name: "Forward an hour" })).toBeInTheDocument();
+      expect(view.getByRole("button", { name: "NOW" })).toBeInTheDocument();
+      expect(view.queryByText("Dead air")).not.toBeInTheDocument();
+
+      release();
+      expect(await view.findByText("Next Window Channel")).toBeInTheDocument();
+      expect(view.queryByRole("status", { name: /loading guide/i })).not.toBeInTheDocument();
+    });
+
+    it("prefetches the adjacent windows once the current one has loaded", async () => {
+      stubGuide();
+      const { froms, release } = stubSlowNextWindow();
+      const view = renderAt("/guide");
+      expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+
+      const HOUR = 3_600_000;
+      const current = froms[0] ?? 0;
+      // ±1 hour (the stepper) and tomorrow at the same offset (the day picker's next stop).
+      await vi.waitFor(() => {
+        expect(froms).toEqual(expect.arrayContaining([current - HOUR, current + HOUR]));
+        expect(froms.length).toBeGreaterThanOrEqual(4);
+      });
+      release();
+    });
   });
 
   it("keeps everyday time controls visible and precise view controls behind one disclosure", async () => {
