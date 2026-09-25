@@ -164,14 +164,17 @@ describe("TV channel switch overlay", () => {
     const { root } = mount();
     surfaces.latest.length = 0;
     act(() => root.render(surface(tuning)));
-    const bar = () => surfaces.latest.findLast((props) => typeof props.onLayout === "function");
     const card = () => surfaces.latest.findLast((props) => props.width === 360);
-    expect(bar()).toBeDefined();
+    const measureBar = (height: number) => {
+      const onLayout = surfaces.latest.findLast((props) => typeof props.onLayout === "function")?.onLayout;
+      if (typeof onLayout !== "function") throw new Error("the chrome bar registered no onLayout");
+      act(() => onLayout({ nativeEvent: { layout: { height } } }));
+    };
 
-    act(() => (bar()?.onLayout as (event: unknown) => void)({ nativeEvent: { layout: { height: 260 } } }));
+    measureBar(260);
     expect(card()?.bottom).toBe(260 + 16);
 
-    act(() => (bar()?.onLayout as (event: unknown) => void)({ nativeEvent: { layout: { height: 132 } } }));
+    measureBar(132);
     expect(card()?.bottom).toBe(132 + 16);
     act(() => root.unmount());
   });
