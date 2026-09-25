@@ -8,12 +8,12 @@ const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disable
 
 // Moving 160x90 H.264 CMAF keeps decoded frames observable. Channel 1 uses a one-second VOD so
 // initial playback reaches ended and certifies disposal of an ended MediaSource. Replacement
-// Channels use a three-segment OPEN live window, matching PreparedOrigin's deliberate no-ENDLIST
+// Channels use a six-segment OPEN live window that slides with media-sequence, matching PreparedOrigin's deliberate no-ENDLIST
 // contract and its real multi-segment sliding window. hls.js starts two segments behind the live
 // edge; a one-segment open fixture is below that contract and intermittently leaves WebKit playing
 // without a paintable frame.
 // Keeping bytes inline leaves the origin deterministic while browsers exercise hls.js, MSE, and
-// decoding. The VOD fragment and three live fragments use the shared init above and this source:
+// decoding. The VOD fragment and eight live fragments use the shared init above and this source:
 //
 // ffmpeg -f lavfi -i "color=c=0x1A222C:s=160x90:r=24:d=4,drawbox=x=mod(t*40\,140):y=35:w=20:h=20:color=0x00ff88:t=fill"
 //   -an -c:v libx264 -pix_fmt yuv420p -g 24 -keyint_min 24 -sc_threshold 0 -f hls
@@ -35,18 +35,37 @@ const LIVE_MEDIA_FRAGMENTS = {
     "AAAAGHN0eXBtc2RoAAAAAG1zZGhtc2l4AAAANHNpZHgBAAAAAAAAAQAAMAAAAAAAAABkAAAAAAAAAAAAAAAAAQAAAygAADAAgAAAAAAAAShtb29mAAAAEG1maGQAAAAAAAAAAwAAARB0cmFmAAAAHHRmaGQAAgA4AAAAAQAAAgAAAACgAQEAAAAAABR0ZmR0AQAAAAAAAAAAAGAAAAAA2HRydW4AAAoFAAAAGAAAATACAAAAAAAAoAAABAAAAAAQAAAKAAAAAA0AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFgAACgAAAAAPAAAEAAAAAAwAAAAAAAAADAAAAgAAAAAWAAAKAAAAAA8AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFQAACAAAAAAOAAACAAAAAAwAAAIAAAACAG1kYXQAAACcZYiEABH//ufj/AptcF9wqGLu1tdyoujXh1cYhTyC6u2OqN+Hdwy1OB4/sq/J+cwBTrn5/wwp/Er/5RuOhPlmXmoYO7U0Z+u9EDjiaRSlmSCbl9imcacku+dxe3EUyxsuNL+9uOjPCjptc9hguh2mMm7iLxERh9zB2GtbIJZwcctcAPImO9rZWGZpHVSzJW5bIJDyFFAc8AACXLNQAAAADEGaJGxDv/6plgDmgAAAAAlBnkJ4hf8A84EAAAAIAZ5hdEK/AVMAAAAIAZ5jakK/AVMAAAASQZpoSahBaJlMCHf//qmWAOaBAAAAC0GehkURLC//APOAAAAACAGepXRCvwFTAAAACAGep2pCvwFTAAAAEkGarEmoQWyZTAh3//6plgDmgAAAAAtBnspFFSwv/wDzgQAAAAgBnul0Qr8BUwAAAAgBnutqQr8BUwAAABJBmvBJqEFsmUwId//+qZYA5oEAAAALQZ8ORRUsL/8A84AAAAAIAZ8tdEK/AVMAAAAIAZ8vakK/AVMAAAASQZs0SahBbJlMCHf//qmWAOaAAAAAC0GfUkUVLC//APOBAAAACAGfcXRCvwFTAAAACAGfc2pCvwFTAAAAEUGbd0moQWyZTAhX//44QBoxAAAACkGflUUVLCv/AVMAAAAIAZ+2akK/AVM=",
   "segment-3.m4s":
     "AAAAGHN0eXBtc2RoAAAAAG1zZGhtc2l4AAAANHNpZHgBAAAAAAAAAQAAMAAAAAAAAACUAAAAAAAAAAAAAAAAAQAAAyYAADAAgAAAAAAAAShtb29mAAAAEG1maGQAAAAAAAAABAAAARB0cmFmAAAAHHRmaGQAAgA4AAAAAQAAAgAAAACgAQEAAAAAABR0ZmR0AQAAAAAAAAAAAJAAAAAA2HRydW4AAAoFAAAAGAAAATACAAAAAAAAoAAABAAAAAAQAAAKAAAAAA0AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFgAACgAAAAAPAAAEAAAAAAwAAAAAAAAADAAAAgAAAAAVAAAKAAAAAA8AAAQAAAAADAAAAAAAAAAMAAACAAAAABUAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFQAACAAAAAAOAAACAAAAAAwAAAIAAAAB/m1kYXQAAACcZYiCAAR//ufj/AptcF9wqGLu1tdyoujXh1cYhTyC6u2OqN+Hdwy1OB4/sq/J+cwBTrn5/wwp/Er/5RuOhPlmXmoYO7U0Z+u9EDjiaRSlmSCbl9imcacku+dxe3EUyxsuNL+9uOjPCjptc9hguh2mMm7iLxERh9zB2GtbIJZwcctcAPImO9rZWGZpHVSzJW5bIJDyFFAc8AACXLNQAAAADEGaJGxDv/6plgDmgAAAAAlBnkJ4hf8A84EAAAAIAZ5hdEK/AVMAAAAIAZ5jakK/AVMAAAASQZpoSahBaJlMCHf//qmWAOaBAAAAC0GehkURLC//APOBAAAACAGepXRCvwFTAAAACAGep2pCvwFTAAAAEkGarEmoQWyZTAh3//6plgDmgAAAAAtBnspFFSwv/wDzgQAAAAgBnul0Qr8BUwAAAAgBnutqQr8BUwAAABFBmvBJqEFsmUwIb//+p4QBxwAAAAtBnw5FFSwv/wDzgAAAAAgBny10Qr8BUwAAAAgBny9qQr8BUwAAABFBmzRJqEFsmUwIZ//+nhAGzAAAAAtBn1JFFSwv/wDzgQAAAAgBn3F0Qr8BUwAAAAgBn3NqQr8BUwAAABFBm3dJqEFsmUwIV//+OEAaMQAAAApBn5VFFSwr/wFTAAAACAGftmpCvwFT",
+  "segment-4.m4s":
+    "AAAAGHN0eXBtc2RoAAAAAG1zZGhtc2l4AAAANHNpZHgBAAAAAAAAAQAAMAAAAAAAAADEAAAAAAAAAAAAAAAAAQAAAygAADAAgAAAAAAAAShtb29mAAAAEG1maGQAAAAAAAAABQAAARB0cmFmAAAAHHRmaGQAAgA4AAAAAQAAAgAAAACgAQEAAAAAABR0ZmR0AQAAAAAAAAAAAMAAAAAA2HRydW4AAAoFAAAAGAAAATACAAAAAAAAoAAABAAAAAAQAAAKAAAAAA0AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFgAACgAAAAAPAAAEAAAAAAwAAAAAAAAADAAAAgAAAAAWAAAKAAAAAA8AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFQAACAAAAAAOAAACAAAAAAwAAAIAAAACAG1kYXQAAACcZYiEABH//ufj/AptcF9wqGLu1tdyoujXh1cYhTyC6u2OqN+Hdwy1OB4/sq/J+cwBTrn5/wwp/Er/5RuOhPlmXmoYO7U0Z+u9EDjiaRSlmSCbl9imcacku+dxe3EUyxsuNL+9uOjPCjptc9hguh2mMm7iLxERh9zB2GtbIJZwcctcAPImO9rZWGZpHVSzJW5bIJDyFFAc8AACXLNRAAAADEGaJGxDv/6plgDmgAAAAAlBnkJ4hf8A84EAAAAIAZ5hdEK/AVMAAAAIAZ5jakK/AVMAAAASQZpoSahBaJlMCHf//qmWAOaBAAAAC0GehkURLC//APOBAAAACAGepXRCvwFTAAAACAGep2pCvwFTAAAAEkGarEmoQWyZTAh3//6plgDmgAAAAAtBnspFFSwv/wDzgQAAAAgBnul0Qr8BUwAAAAgBnutqQr8BUwAAABJBmvBJqEFsmUwId//+qZYA5oEAAAALQZ8ORRUsL/8A84EAAAAIAZ8tdEK/AVMAAAAIAZ8vakK/AVMAAAASQZs0SahBbJlMCHf//qmWAOaAAAAAC0GfUkUVLC//APOBAAAACAGfcXRCvwFTAAAACAGfc2pCvwFTAAAAEUGbd0moQWyZTAhX//44QBoxAAAACkGflUUVLCv/AVMAAAAIAZ+2akK/AVM=",
+  "segment-5.m4s":
+    "AAAAGHN0eXBtc2RoAAAAAG1zZGhtc2l4AAAANHNpZHgBAAAAAAAAAQAAMAAAAAAAAAD0AAAAAAAAAAAAAAAAAQAAAygAADAAgAAAAAAAAShtb29mAAAAEG1maGQAAAAAAAAABgAAARB0cmFmAAAAHHRmaGQAAgA4AAAAAQAAAgAAAACgAQEAAAAAABR0ZmR0AQAAAAAAAAAAAPAAAAAA2HRydW4AAAoFAAAAGAAAATACAAAAAAAAoAAABAAAAAAQAAAKAAAAAA0AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFgAACgAAAAAPAAAEAAAAAAwAAAAAAAAADAAAAgAAAAAWAAAKAAAAAA8AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFQAACAAAAAAOAAACAAAAAAwAAAIAAAACAG1kYXQAAACcZYiCAAR//ufj/AptcF9wqGLu1tdyoujXh1cYhTyC6u2OqN+Hdwy1OB4/sq/J+cwBTrn5/wwp/Er/5RuOhPlmXmoYO7U0Z+u9EDjiaRSlmSCbl9imcacku+dxe3EUyxsuNL+9uOjPCjptc9hguh2mMm7iLxERh9zB2GtbIJZwcctcAPImO9rZWGZpHVSzJW5bIJDyFFAc8AACXLNRAAAADEGaJGxDv/6plgDmgAAAAAlBnkJ4hf8A84EAAAAIAZ5hdEK/AVMAAAAIAZ5jakK/AVMAAAASQZpoSahBaJlMCHf//qmWAOaBAAAAC0GehkURLC//APOAAAAACAGepXRCvwFTAAAACAGep2pCvwFTAAAAEkGarEmoQWyZTAh3//6plgDmgAAAAAtBnspFFSwv/wDzgQAAAAgBnul0Qr8BUwAAAAgBnutqQr8BUwAAABJBmvBJqEFsmUwId//+qZYA5oEAAAALQZ8ORRUsL/8A84EAAAAIAZ8tdEK/AVMAAAAIAZ8vakK/AVMAAAASQZs0SahBbJlMCHf//qmWAOaAAAAAC0GfUkUVLC//APOBAAAACAGfcXRCvwFTAAAACAGfc2pCvwFTAAAAEUGbd0moQWyZTAhX//44QBoxAAAACkGflUUVLCv/AVMAAAAIAZ+2akK/AVM=",
+  "segment-6.m4s":
+    "AAAAGHN0eXBtc2RoAAAAAG1zZGhtc2l4AAAANHNpZHgBAAAAAAAAAQAAMAAAAAAAAAEkAAAAAAAAAAAAAAAAAQAAAygAADAAgAAAAAAAAShtb29mAAAAEG1maGQAAAAAAAAABwAAARB0cmFmAAAAHHRmaGQAAgA4AAAAAQAAAgAAAACgAQEAAAAAABR0ZmR0AQAAAAAAAAAAASAAAAAA2HRydW4AAAoFAAAAGAAAATACAAAAAAAAoAAABAAAAAAQAAAKAAAAAA0AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFgAACgAAAAAPAAAEAAAAAAwAAAAAAAAADAAAAgAAAAAWAAAKAAAAAA8AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFQAACAAAAAAOAAACAAAAAAwAAAIAAAACAG1kYXQAAACcZYiEABH//ufj/AptcF9wqGLu1tdyoujXh1cYhTyC6u2OqN+Hdwy1OB4/sq/J+cwBTrn5/wwp/Er/5RuOhPlmXmoYO7U0Z+u9EDjiaRSlmSCbl9imcacku+dxe3EUyxsuNL+9uOjPCjptc9hguh2mMm7iLxERh9zB2GtbIJZwcctcAPImO9rZWGZpHVSzJW5bIJDyFFAc8AACXLNQAAAADEGaJGxDv/6plgDmgAAAAAlBnkJ4hf8A84EAAAAIAZ5hdEK/AVMAAAAIAZ5jakK/AVMAAAASQZpoSahBaJlMCHf//qmWAOaBAAAAC0GehkURLC//APOAAAAACAGepXRCvwFTAAAACAGep2pCvwFTAAAAEkGarEmoQWyZTAh3//6plgDmgAAAAAtBnspFFSwv/wDzgQAAAAgBnul0Qr8BUwAAAAgBnutqQr8BUwAAABJBmvBJqEFsmUwId//+qZYA5oEAAAALQZ8ORRUsL/8A84AAAAAIAZ8tdEK/AVMAAAAIAZ8vakK/AVMAAAASQZs0SahBbJlMCHf//qmWAOaAAAAAC0GfUkUVLC//APOBAAAACAGfcXRCvwFTAAAACAGfc2pCvwFTAAAAEUGbd0moQWyZTAhX//44QBoxAAAACkGflUUVLCv/AVMAAAAIAZ+2akK/AVM=",
+  "segment-7.m4s":
+    "AAAAGHN0eXBtc2RoAAAAAG1zZGhtc2l4AAAANHNpZHgBAAAAAAAAAQAAMAAAAAAAAAFUAAAAAAAAAAAAAAAAAQAAAygAADAAgAAAAAAAAShtb29mAAAAEG1maGQAAAAAAAAACAAAARB0cmFmAAAAHHRmaGQAAgA4AAAAAQAAAgAAAACgAQEAAAAAABR0ZmR0AQAAAAAAAAAAAVAAAAAA2HRydW4AAAoFAAAAGAAAATACAAAAAAAAoAAABAAAAAAQAAAKAAAAAA0AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFgAACgAAAAAPAAAEAAAAAAwAAAAAAAAADAAAAgAAAAAWAAAKAAAAAA8AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFQAACAAAAAAOAAACAAAAAAwAAAIAAAACAG1kYXQAAACcZYiCAAR//ufj/AptcF9wqGLu1tdyoujXh1cYhTyC6u2OqN+Hdwy1OB4/sq/J+cwBTrn5/wwp/Er/5RuOhPlmXmoYO7U0Z+u9EDjiaRSlmSCbl9imcacku+dxe3EUyxsuNL+9uOjPCjptc9hguh2mMm7iLxERh9zB2GtbIJZwcctcAPImO9rZWGZpHVSzJW5bIJDyFFAc8AACXLNQAAAADEGaJGxDv/6plgDmgAAAAAlBnkJ4hf8A84EAAAAIAZ5hdEK/AVMAAAAIAZ5jakK/AVMAAAASQZpoSahBaJlMCHf//qmWAOaBAAAAC0GehkURLC//APOBAAAACAGepXRCvwFTAAAACAGep2pCvwFTAAAAEkGarEmoQWyZTAh3//6plgDmgAAAAAtBnspFFSwv/wDzgQAAAAgBnul0Qr8BUwAAAAgBnutqQr8BUwAAABJBmvBJqEFsmUwId//+qZYA5oEAAAALQZ8ORRUsL/8A84AAAAAIAZ8tdEK/AVMAAAAIAZ8vakK/AVMAAAASQZs0SahBbJlMCHf//qmWAOaAAAAAC0GfUkUVLC//APOBAAAACAGfcXRCvwFTAAAACAGfc2pCvwFTAAAAEUGbd0moQWyZTAhX//44QBoxAAAACkGflUUVLCv/AVMAAAAIAZ+2akK/AVM=",
+  "segment-8.m4s":
+    "AAAAGHN0eXBtc2RoAAAAAG1zZGhtc2l4AAAANHNpZHgBAAAAAAAAAQAAMAAAAAAAAAGEAAAAAAAAAAAAAAAAAQAAAyYAADAAgAAAAAAAAShtb29mAAAAEG1maGQAAAAAAAAACQAAARB0cmFmAAAAHHRmaGQAAgA4AAAAAQAAAgAAAACgAQEAAAAAABR0ZmR0AQAAAAAAAAAAAYAAAAAA2HRydW4AAAoFAAAAGAAAATACAAAAAAAAoAAABAAAAAAQAAAKAAAAAA0AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFgAACgAAAAAPAAAEAAAAAAwAAAAAAAAADAAAAgAAAAAVAAAKAAAAAA8AAAQAAAAADAAAAAAAAAAMAAACAAAAABUAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFQAACAAAAAAOAAACAAAAAAwAAAIAAAAB/m1kYXQAAACcZYiEABH//ufj/AptcF9wqGLu1tdyoujXh1cYhTyC6u2OqN+Hdwy1OB4/sq/J+cwBTrn5/wwp/Er/5RuOhPlmXmoYO7U0Z+u9EDjiaRSlmSCbl9imcacku+dxe3EUyxsuNL+9uOjPCjptc9hguh2mMm7iLxERh9zB2GtbIJZwcctcAPImO9rZWGZpHVSzJW5bIJDyFFAc8AACXLNRAAAADEGaJGxDv/6plgDmgAAAAAlBnkJ4hf8A84EAAAAIAZ5hdEK/AVMAAAAIAZ5jakK/AVMAAAASQZpoSahBaJlMCHf//qmWAOaBAAAAC0GehkURLC//APOBAAAACAGepXRCvwFTAAAACAGep2pCvwFTAAAAEkGarEmoQWyZTAh3//6plgDmgAAAAAtBnspFFSwv/wDzgQAAAAgBnul0Qr8BUwAAAAgBnutqQr8BUwAAABFBmvBJqEFsmUwIb//+p4QBxwAAAAtBnw5FFSwv/wDzgQAAAAgBny10Qr8BUwAAAAgBny9qQr8BUwAAABFBmzRJqEFsmUwIZ//+nhAGzAAAAAtBn1JFFSwv/wDzgQAAAAgBn3F0Qr8BUwAAAAgBn3NqQr8BUwAAABFBm3dJqEFsmUwIV//+OEAaMQAAAApBn5VFFSwr/wFTAAAACAGftmpCvwFT",
 } as const;
 
-const manifest = (sig: string, duration: 1 | 4) => `#EXTM3U
+// The open live window is LIVE_WINDOW segments wide, longer than three target durations, so an
+// Apple-native player always has a segment it may start at (RFC 8216 6.3.3 forbids starting within
+// three target durations of the end). The window slides with EXT-X-MEDIA-SEQUENCE across the
+// fragments above: it starts at segment 1 and advances one segment per manifest fetch until it
+// reaches the last fragment, then holds (the fixture has no more media to slide onto).
+const LIVE_WINDOW = 6;
+const LIVE_FRAGMENT_NAMES = Object.keys(LIVE_MEDIA_FRAGMENTS);
+const LIVE_LAST_START = LIVE_FRAGMENT_NAMES.length - LIVE_WINDOW + 1;
+
+const manifest = (sig: string, duration: 1 | 4, windowStart = 1) => `#EXTM3U
 #EXT-X-VERSION:7
 #EXT-X-TARGETDURATION:1
-#EXT-X-MEDIA-SEQUENCE:${duration === 1 ? 0 : 1}
+#EXT-X-MEDIA-SEQUENCE:${duration === 1 ? 0 : windowStart}
 ${duration === 1 ? "#EXT-X-PLAYLIST-TYPE:VOD\n" : ""}#EXT-X-INDEPENDENT-SEGMENTS
 #EXT-X-MAP:URI="init.mp4?sig=${sig}"
 ${
   duration === 1
     ? `#EXTINF:1.000000,\nsegment.m4s?sig=${sig}`
-    : Object.keys(LIVE_MEDIA_FRAGMENTS)
+    : LIVE_FRAGMENT_NAMES.slice(windowStart - 1, windowStart - 1 + LIVE_WINDOW)
         .map((name) => `#EXTINF:1.000000,\n${name}?sig=${sig}`)
         .join("\n")
 }
@@ -102,14 +121,14 @@ const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
       if (url.searchParams.get("mode") === "prepared") state.preparedProbes.push(id);
       else state.activeManifests.push(id);
     }
-    const asset = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s|segment-[1-3]\.m4s)$/);
+    const asset = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s|segment-[1-8]\.m4s)$/);
     if (asset) state.assetRequests.push(`${asset[1]}/${asset[2]}`);
     const playURL = path.match(/^\/v1\/channels\/(ch-\d+)\/play-url$/);
     if (playURL && request.method() === "POST") state.playURLMints.push(playURL[1] ?? "");
   });
   page.on("requestfinished", (request) => {
     const asset = new URL(request.url()).pathname.match(
-      /^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s|segment-[1-3]\.m4s)$/,
+      /^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s|segment-[1-8]\.m4s)$/,
     );
     if (asset) state.assetCompletions.push(`${asset[1]}/${asset[2]}`);
   });
@@ -161,6 +180,7 @@ const contentType = (path: string): string =>
 
 const startTunerServer = () => {
   const activeManifestDelays = new Map<string, number>();
+  const liveManifestFetches = new Map<string, number>();
   const now = Date.now();
   const staticRoot = resolve(process.cwd(), "../../../internal/web/dist");
   const server = createServer(async (request, response) => {
@@ -194,16 +214,22 @@ const startTunerServer = () => {
             await new Promise((resolve) => setTimeout(resolve, delay));
           }
         }
+        const fetches = liveManifestFetches.get(id) ?? 0;
+        liveManifestFetches.set(id, fetches + 1);
         return send(
           response,
           200,
           "application/vnd.apple.mpegurl",
-          manifest(url.searchParams.get("sig") ?? id, id === channelId(1) ? 1 : 4),
+          manifest(
+            url.searchParams.get("sig") ?? id,
+            id === channelId(1) ? 1 : 4,
+            Math.min(1 + fetches, LIVE_LAST_START),
+          ),
           { "cache-control": "no-store" },
         );
       }
 
-      const asset = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s|segment-[1-3]\.m4s)$/);
+      const asset = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s|segment-[1-8]\.m4s)$/);
       if (asset) {
         const bytes =
           asset[2] === "init.mp4"
