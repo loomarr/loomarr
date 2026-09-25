@@ -105,7 +105,7 @@ describe("TV channel switch overlay", () => {
     expect(shown?.textContent).toContain("The Current Frontier");
     expect(shown?.textContent).toContain("12m left");
     expect(shown?.innerHTML).toContain("The Current Frontier"); // the progress track is labelled with the programme
-    expect(container.innerHTML).toContain(encodeURIComponent("still/seven").replace("%2F", "/"));
+    expect(container.innerHTML).toContain(encodeURIComponent("still/seven").replaceAll("%2F", "/"));
     act(() => root.unmount());
   });
 
