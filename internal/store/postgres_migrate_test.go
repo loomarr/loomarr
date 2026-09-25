@@ -345,8 +345,13 @@ func TestPostgresDiagnosticRetainedBytesMigrationSeedsTheTotalAndTrimsIndexes(t 
 }
 
 // #1398: the correlation indexes are partial, so a lookup only uses one when its WHERE carries the
-// redundant `col <> ”` term (diagnosticEventQuery). enable_seqscan is off so the tiny fixture
-// table cannot hide a predicate that fails to imply the index's.
+// redundant `col <> ”` term (diagnosticEventQuery).
+//
+// ⚠ On an empty table the planner prices idx_diagnostic_events_time (an ordered scan satisfying the
+// ORDER BY … LIMIT) the same as the partial index, so asserting its choice is a coin toss — it failed
+// for one column in the merge queue. Instead, inside a rolled-back transaction, drop the time index
+// and disable sequential scans: the only cheap plan left is the partial index, and the planner can
+// take it only if the query's WHERE implies the index predicate — exactly the property under test.
 func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
 	ctx := context.Background()
 	s, err := openPostgresForDataMigration(ctx, startPostgres(t))
@@ -354,13 +359,20 @@ func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = s.Close() }()
-	conn, err := s.db.Conn(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = conn.Close() }()
-	if _, err := conn.ExecContext(ctx, `SET enable_seqscan = off`); err != nil {
-		t.Fatal(err)
+	defer func() { _ = tx.Rollback() }()
+	for _, stmt := range []string{
+		`SET LOCAL enable_seqscan = off`,
+		`DROP INDEX idx_diagnostic_events_time`,
+		`DROP INDEX idx_diagnostic_events_level_time`,
+		`DROP INDEX idx_diagnostic_events_subsystem_time`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
 	}
 	for column, filter := range map[string]diagnostics.EventStoreQuery{
 		"request":        {RequestID: "x"},
@@ -372,7 +384,7 @@ func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
 	} {
 		filter.From, filter.To, filter.Limit = 0, 1<<40, 50
 		sqlText, args := diagnosticEventQuery(filter)
-		rows, err := conn.QueryContext(ctx, "EXPLAIN "+s.ph(sqlText), args...)
+		rows, err := tx.QueryContext(ctx, "EXPLAIN "+s.ph(sqlText), args...)
 		if err != nil {
 			t.Fatalf("%s: %v", column, err)
 		}
