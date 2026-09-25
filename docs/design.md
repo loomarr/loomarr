@@ -3077,6 +3077,24 @@ Before the first background admission, preparation completes the memoized hardwa
 then applies the current cap and VRAM shading. The conservative pre-measurement floor must not become
 a process-lifetime preparation limit.
 
+**Host memory is a per-lease gate, not a capacity term.** Each hardware encode also holds host RAM —
+its device context's pinned and shared buffers plus the decode and filter pipeline. Three accelerated
+preparation encodes held 0.8–1.4 GiB resident each (0.55–1.05 GiB excluding shared driver libraries)
+on a 31 GiB workstation with no swap, enough to push the host into memory reclaim. Available memory
+already excludes what running encodes hold, so a capacity derived from it would let running
+preparation refuse live playback. The pool instead asks one question per lease: does available
+memory, less `playout.memory_reserve_mb` and the cost of encodes admitted within the last 30 seconds
+(a new encoder's allocation is not yet visible, and preparation admits in bursts), still cover one
+encode? The per-encode cost is `playout.encode_memory_mb` when set; otherwise the larger of 1 GiB
+and the capability trial's measured peak RSS. The synthetic trial encodes `testsrc` and decodes no
+real file, so it under-reads real encodes (≈0.25 GiB against ≈1 GiB measured) and may only raise the
+estimate. A background lease that fails the check is not admitted. A foreground lease that fails it
+treats the shortfall like a slot shortfall: it cancels background leases through the same
+preemption contract, re-checks as they exit, and takes the software fallback only when no
+background lease remains. Unknown host memory (a platform without `MemAvailable`) or a zero reserve
+leaves the gate open, matching unmeasured capacity. The check lives inside the shared pool; it is
+not a second semaphore.
+
 A session whose current block is prepared or direct-copy holds zero transcode capacity, but that is
 not a promise about its next Airing. Immediately before any later live child starts a video
 transcode, the Manager atomically raises that session's cost under the same measured admission gate

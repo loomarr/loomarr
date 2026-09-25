@@ -190,9 +190,11 @@ type playoutResolver struct {
 	detectContext  context.Context
 	detected       playout.Encoder
 	maxChannels    atomic.Int64
-	capabilityBin  string
-	capabilityGPU  string
-	capabilityPath string
+	// encodeHostBytes is the capability probe's measured per-encode host memory (0 = unmeasured).
+	encodeHostBytes atomic.Int64
+	capabilityBin   string
+	capabilityGPU   string
+	capabilityPath  string
 	// Test seam for the cheap persisted-evidence identity check. Nil fingerprints the real
 	// FFmpeg/GPU/profile and reads the evidence; it starts no encoder trial or full benchmark.
 	loadCapabilityEvidence func(context.Context) (playout.Capacity, bool)
@@ -1563,6 +1565,10 @@ func (r *playoutResolver) publishDetectedCapacity(cap playout.Capacity, reused b
 	r.detected = cap.Chosen
 	r.detectedMu.Unlock()
 	r.maxChannels.Store(int64(cap.MaxChannels))
+	if cap.EncodeHostBytes > 0 {
+		// Only a real measurement replaces the previous one; a cheap evidence reload carries none.
+		r.encodeHostBytes.Store(cap.EncodeHostBytes)
+	}
 	if r.log != nil {
 		skipped := make([]string, 0, len(cap.All))
 		for _, c := range cap.All {
@@ -1590,6 +1596,12 @@ func (r *playoutResolver) PublishedCapability() playout.Capacity {
 		return playout.Capacity{}
 	}
 	return playout.Capacity{Chosen: r.publishedEncoder(), MaxChannels: int(r.maxChannels.Load())}
+}
+
+// EncodeHostBytes is the measured host memory one hardware encode holds, 0 until a trial encode
+// has measured it on this host.
+func (r *playoutResolver) EncodeHostBytes() int64 {
+	return r.encodeHostBytes.Load()
 }
 
 // HWEncodeSlots is how many concurrent HARDWARE encodes this box sustains — the capability probe's

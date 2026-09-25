@@ -18,6 +18,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -145,6 +146,8 @@ func TestLive_DetectChoosesSomethingThatActuallyWorks(t *testing.T) {
 	if c.MaxChannels < 1 {
 		t.Errorf("MaxChannels = %d, want at least 1", c.MaxChannels)
 	}
+	t.Logf("chosen %s: max channels %d, measured host memory per encode %d MiB",
+		c.Chosen, c.MaxChannels, c.EncodeHostBytes>>20)
 	// ⚠ A WORKING ENCODER MUST HAVE A MEASURED SPEED. This is the assertion that catches a VACUOUS
 	// probe, and it is here because this test was green for months while trialEncode encoded
 	// nothing at all.
@@ -158,6 +161,11 @@ func TestLive_DetectChoosesSomethingThatActuallyWorks(t *testing.T) {
 	// "Works" alone cannot detect that, because a vacuous probe reports exactly what a real one
 	// does. A measured throughput cannot be faked by an encode that never ran.
 	for _, x := range c.All {
+		// The trial child's peak RSS sizes the encode pool's host-memory gate; on platforms that
+		// report it, a working trial that measured nothing would silently fall back to a default.
+		if x.Works && x.PeakRSSBytes <= 0 && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
+			t.Errorf("%s reports Works with no measured peak RSS", x.Encoder)
+		}
 		if x.Works && x.Speed <= 0 {
 			t.Errorf("%s reports Works with no measured speed — the trial exited cleanly without "+
 				"encoding anything, so this probe proves nothing", x.Encoder)

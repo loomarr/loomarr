@@ -123,6 +123,10 @@ type Capability struct {
 	// "this build cannot", which is a different and more useful message to an operator
 	// than "it failed".
 	Available bool
+	// PeakRSSBytes is the trial encoder child's peak resident host memory, 0 when the platform does
+	// not report it. It includes shared driver libraries, so it slightly overstates the incremental
+	// cost of one more encode — the safe direction for admission.
+	PeakRSSBytes int64
 }
 
 // Capacity is the whole answer: which encoder to use, and how many channels it sustains.
@@ -135,6 +139,9 @@ type Capacity struct {
 	// All is every probe result in preference order, so the wizard can show "every
 	// option, measured" and an operator can see WHY their GPU was skipped.
 	All []Capability
+	// EncodeHostBytes is the measured host memory one encode of the chosen encoder holds (its warm
+	// trial's peak RSS), 0 when unmeasured. It sizes the encode pool's host-memory gate.
+	EncodeHostBytes int64
 }
 
 // HARDWARE WINS by default when it works (maintainer's call). The reason is CPU HEADROOM
@@ -179,6 +186,7 @@ func DetectObserved(ctx context.Context, ffmpegPath string, p Profile, gpuVendor
 	if out.Chosen != EncoderSoftware {
 		if warm := trialEncodeObserved(ctx, ffmpegPath, out.Chosen, p, trialSecondsWarm, manager); warm.Works && warm.Speed > 0 {
 			out.MaxChannels = channelsFromSpeed(warm.Speed)
+			out.EncodeHostBytes = warm.PeakRSSBytes
 		}
 		// Clamp to [floor, ceiling] for any hardware encoder: the floor stops a still-low reading from
 		// throttling a real GPU to 1; the ceiling stands in for the driver session cap and the
@@ -370,7 +378,7 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc Encoder, p 
 	if !hasKeyframeObserved(probeCtx, ffmpegPath, outPath, manager) {
 		return Capability{Encoder: enc, Err: "encoded but produced no keyframe the HLS remux could segment on"}
 	}
-	return Capability{Encoder: enc, Works: true, Speed: speed}
+	return Capability{Encoder: enc, Works: true, Speed: speed, PeakRSSBytes: peakRSSBytes(cmd.ProcessState)}
 }
 
 // hasKeyframe reports whether an MPEG-TS file carries at least one video keyframe. This is the

@@ -510,6 +510,19 @@ func declared() []Setting {
 			Kind: KindInt, Default: "0", Validate: nonNegativeWholeNumber,
 			Doc: "Optional safety cap for simultaneous internal transcodes. Leave at 0 for Loomarr to use measured capacity automatically. A positive value can lower that measurement but cannot raise it.",
 		},
+		{
+			// Host memory is a per-lease gate on hardware encodes, not a capacity term (§9.1): each
+			// encoder's device context and pipeline hold ~0.5–1 GiB of host RAM. Hot-applied because
+			// the encode pool re-reads it on every lease.
+			Key: "playout.memory_reserve_mb", Label: "Host memory reserve for encodes", EnvVar: "PLAYOUT_MEMORY_RESERVE_MB", Group: GroupPlayout,
+			Kind: KindInt, Default: "2048", Advanced: true, Validate: nonNegativeWholeNumber,
+			Doc: "Host memory, in MiB, that hardware encoding must leave available. Background preparation stops starting new encodes before free memory would fall below this, and live playback reclaims memory from preparation before falling back to software. Set 0 to disable the host-memory check. Changes apply to the next encode without restart.",
+		},
+		{
+			Key: "playout.encode_memory_mb", Label: "Host memory per encode", EnvVar: "PLAYOUT_ENCODE_MEMORY_MB", Group: GroupPlayout,
+			Kind: KindInt, Default: "0", Advanced: true, Validate: nonNegativeWholeNumber,
+			Doc: "Host memory, in MiB, one hardware encode is expected to use. Leave at 0 to use 1024 MiB, or more if the encoder capability check measured more on this machine; set it when real encodes here use more, for example 4K or HDR tone mapping. Changes apply to the next encode without restart.",
+		},
 
 		{
 			// The guide's display timezone (§12, V13b gap 7). The API always speaks absolute
