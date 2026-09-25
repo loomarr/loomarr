@@ -119,6 +119,7 @@ type ProgressSnapshot struct {
 type ProgressTracker struct {
 	mu       sync.Mutex
 	snap     ProgressSnapshot
+	searched bool // a catalog search has run: the model is now choosing from its results
 	onChange func()
 }
 
@@ -157,16 +158,23 @@ func (t *ProgressTracker) update(fn func(*ProgressSnapshot) bool) {
 }
 
 // setPhase maps a pipeline phase onto a Stage. reasoning before any search is the model
-// reading the request; reasoning after one is it choosing from the results.
+// reading the request; reasoning after one is it choosing from the results. "After a search"
+// is the fact that a search ran, never whether its arguments spelled out any words: a
+// keywords-only discovery call or a collection call has no query or genres, and deriving the
+// stage from the term list pinned the stage on "Reading" for the whole second turn.
 func (t *ProgressTracker) setPhase(p Phase) {
+	if t == nil {
+		return
+	}
 	t.update(func(s *ProgressSnapshot) bool {
 		next := s.Stage
 		switch p {
 		case PhaseSearching:
+			t.searched = true
 			next = StageSearching
 		case PhaseReasoning:
 			next = StageReading
-			if len(s.Terms) > 0 {
+			if t.searched {
 				next = StageChoosing
 			}
 		case PhaseScoring:
@@ -234,9 +242,29 @@ func searchTerms(args map[string]any) []string {
 	if q := strings.TrimSpace(stringArg(args["query"])); q != "" {
 		terms = append(terms, q)
 	}
-	if genres, ok := args["genres"].([]any); ok {
-		for _, g := range genres {
-			if name := strings.TrimSpace(stringArg(g)); name != "" {
+	for _, key := range []string{"genres", "keywords"} {
+		if values, ok := args[key].([]any); ok {
+			for _, v := range values {
+				if name := strings.TrimSpace(stringArg(v)); name != "" {
+					terms = append(terms, name)
+				}
+			}
+		}
+	}
+	if network := strings.TrimSpace(stringArg(args["network"])); network != "" {
+		terms = append(terms, network)
+	}
+	// A collection call names exact titles, as bare strings or {name, year} objects.
+	if titles, ok := args["titles"].([]any); ok {
+		for _, raw := range titles {
+			name := ""
+			switch v := raw.(type) {
+			case string:
+				name = v
+			case map[string]any:
+				name = stringArg(v["name"])
+			}
+			if name = strings.TrimSpace(name); name != "" {
 				terms = append(terms, name)
 			}
 		}

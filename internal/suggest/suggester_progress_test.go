@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -242,5 +243,94 @@ func TestWorker_ProgressIsReadableMidStreamAndDroppedAfter(t *testing.T) {
 			t.Fatal("tracker outlived the run")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// The stage must follow what HAPPENED, not what the search arguments happened to spell out: a
+// discovery call filtered by keywords (or a collection call by titles) has no free-text query
+// and no genres, and the live Add-a-channel run sat on "Reading your request…" for its whole
+// second turn because the stage was derived from a non-empty term list.
+func TestProgress_StageAdvancesAfterASearchWithoutAQueryOrGenres(t *testing.T) {
+	for name, args := range map[string]map[string]any{
+		"keywords": {"keywords": []any{"heist"}, "media_type": "movie"},
+		"decade":   {"media_type": "movie", "vote_count_min": 100},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := &streamingLLM{
+				turns:    []llm.Response{catalogSearchResponse(args), finalResponseWithNone(speedFinal)},
+				fragment: split(speedFinal, 30),
+			}
+			var tracker *suggest.ProgressTracker
+			var stages []suggest.Stage
+			tracker = suggest.NewProgressTracker(time.Now(), func() {
+				if s := tracker.Snapshot().Stage; len(stages) == 0 || stages[len(stages)-1] != s {
+					stages = append(stages, s)
+				}
+			})
+			ctx := suggest.WithProgressTracker(context.Background(), tracker)
+			if _, err := buildSuggester(t, m).Suggest(suggest.WithProgress(ctx, func(suggest.Phase, int) {}), suggest.Intent{Description: "90s action"}); err != nil {
+				t.Fatal(err)
+			}
+			want := []suggest.Stage{suggest.StageSearching, suggest.StageChoosing, suggest.StageBuilding}
+			if !slices.Equal(stages, want) {
+				t.Errorf("stages = %v, want %v", stages, want)
+			}
+		})
+	}
+}
+
+// frameProbe records, for every SSE frame the service emits, what a client refetching the job
+// on that frame would read at that instant.
+type frameProbe struct {
+	mu     sync.Mutex
+	svc    *suggest.Service
+	frames []suggest.ProgressSnapshot
+}
+
+func (p *frameProbe) SuggestionPhase(jobID, _ string, _ int) {
+	snap, _ := p.svc.Progress(jobID)
+	p.mu.Lock()
+	p.frames = append(p.frames, snap)
+	p.mu.Unlock()
+}
+
+func (p *frameProbe) last() suggest.ProgressSnapshot {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.frames) == 0 {
+		return suggest.ProgressSnapshot{}
+	}
+	return p.frames[len(p.frames)-1]
+}
+
+// A resolved pick and every stage change must reach the client as an SSE frame while the model
+// is still streaming — the frame is what makes the client refetch instead of waiting for its poll.
+func TestWorker_EveryProgressChangeIsAnnouncedWhileStreaming(t *testing.T) {
+	ctx := context.Background()
+	model := &gatedLLM{
+		streamingLLM: streamingLLM{
+			turns:    []llm.Response{catalogSearchResponse(map[string]any{"query": "speed"}), finalResponseWithNone(speedFinal)},
+			fragment: split(speedFinal, strings.Index(speedFinal, `,{"mediaType"`)),
+		},
+		midStream: make(chan struct{}), release: make(chan struct{}),
+	}
+	svc := buildService(t, newStore(t), model)
+	probe := &frameProbe{svc: svc}
+	svc.WithProgressEmitter(probe)
+	if _, err := svc.Submit(ctx, suggest.Intent{Description: "90s action"}, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go svc.Run(runCtx)
+	select {
+	case <-model.midStream:
+	case <-time.After(10 * time.Second):
+		t.Fatal("run never reached the streamed turn")
+	}
+	defer close(model.release)
+	got := probe.last()
+	if got.Stage != suggest.StageChoosing || len(got.Picks) != 1 {
+		t.Errorf("latest frame's snapshot = %+v, want choosing with Speed: the last change before the stream parked was not announced", got)
 	}
 }
