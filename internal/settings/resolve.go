@@ -2,6 +2,9 @@ package settings
 
 import (
 	"fmt"
+	"path/filepath"
+
+	"github.com/loomarr/loomarr/internal/config"
 )
 
 // Resolve returns a key's live value and provenance (config-design §3). Order:
@@ -183,6 +186,9 @@ func (s *Service) resolve(set Setting, hasDB bool, dbRaw string, unlocked bool) 
 // rather than panic a read path.
 func (s *Service) defaultResolved(set Setting, caution, unlocked bool) Resolved {
 	v := set.Default
+	if set.DataSubdir != "" {
+		v = filepath.Join(s.dataDirOrConventional(), set.DataSubdir)
+	}
 	if raw, ok := set.Default.(string); ok {
 		if parsed, err := set.parse(raw); err == nil {
 			v = parsed
@@ -214,3 +220,12 @@ func (s *Service) String(key string) string {
 
 // Provenance returns just the provenance for a key (UI lock-state; cheap).
 func (s *Service) Provenance(key string) Provenance { return s.Resolve(key).Provenance }
+
+// dataDirOrConventional is the anchor for DataSubdir defaults: the configured data directory,
+// else the container's /data, so a Service built without one keeps the documented layout.
+func (s *Service) dataDirOrConventional() string {
+	if s.dataDir != "" {
+		return s.dataDir
+	}
+	return config.ConventionalDataDir
+}

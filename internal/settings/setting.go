@@ -171,8 +171,11 @@ type Setting struct {
 	Presentation Presentation // optional richer editor semantics beyond Kind
 	Apply        ApplyTiming  // empty/live = next read; restart = next app generation
 	Default      any          // zero value of the Kind if a key has no default (e.g. a secret)
-	Enum         []EnumOption // Kind == KindEnum: the closed set, each with a display label
-	Advanced     bool         // hidden behind the per-page "Show advanced" toggle (§5)
+	// DataSubdir, for a storage directory, derives the default as <data dir>/<DataSubdir>: the
+	// database's own directory, so a bare-metal install needs no /data. Replaces Default.
+	DataSubdir string
+	Enum       []EnumOption // Kind == KindEnum: the closed set, each with a display label
+	Advanced   bool         // hidden behind the per-page "Show advanced" toggle (§5)
 	// MigrationOnly retains a former setting solely long enough to import it into its successor.
 	// It is resolvable by the migration, but absent from every settings read/write and docs surface.
 	MigrationOnly bool

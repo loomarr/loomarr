@@ -112,14 +112,14 @@ func buildFoundation(
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 	}
 	if st != nil {
-		protection, err := buildSecretProtection(rootCtx, st, overrides.EncryptionDataDir)
+		protection, err := buildSecretProtection(rootCtx, st, overrides.DataDir)
 		if err != nil {
 			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,
 				"database secret protection could not be initialized", "/settings/system/security", "")
 			return foundationBuild{}, err
 		}
 		result.protection = protection
-		set, secrets, redactor, redactedLog, err := bootSettings(context.Background(), st, protection, log)
+		set, secrets, redactor, redactedLog, err := bootSettings(context.Background(), st, protection, log, overrides.DataDir)
 		if err != nil {
 			result.startup.Complete(diagnostics.StartupCheckGeneratedSecrets, diagnostics.StartupFailed,
 				"settings and generated secrets could not be initialized", "/settings/system/diagnostics", "")

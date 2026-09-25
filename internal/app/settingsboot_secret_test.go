@@ -30,7 +30,7 @@ func TestBootSettingsGeneratesOnlyOperationalTokensAndRedactsThem(t *testing.T) 
 	var logs bytes.Buffer
 	base := slog.New(slog.NewTextHandler(&logs, nil))
 	protection := testSecretProtection(t, st)
-	_, secrets, _, log, err := bootSettings(context.Background(), st, protection, base)
+	_, secrets, _, log, err := bootSettings(context.Background(), st, protection, base, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestBootSettingsRedactsSMTPPasswordFromApplicationLogs(t *testing.T) {
 	var logs bytes.Buffer
 	base := slog.New(slog.NewTextHandler(&logs, nil))
 	protection := testSecretProtection(t, st)
-	set, _, _, log, err := bootSettings(context.Background(), st, protection, base)
+	set, _, _, log, err := bootSettings(context.Background(), st, protection, base, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestBootSettingsMigratesNamespacedLLMKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	protection := testSecretProtection(t, st)
-	set, _, _, _, err := bootSettings(context.Background(), st, protection, slog.New(slog.DiscardHandler))
+	set, _, _, _, err := bootSettings(context.Background(), st, protection, slog.New(slog.DiscardHandler), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestBootSettingsLeavesLegacyPlaintextUntouchedWhenAnyCiphertextIsCorrupt(t 
 		t.Fatal(err)
 	}
 	protection := testSecretProtection(t, st)
-	if _, _, _, _, err := bootSettings(context.Background(), st, protection, slog.New(slog.DiscardHandler)); err == nil {
+	if _, _, _, _, err := bootSettings(context.Background(), st, protection, slog.New(slog.DiscardHandler), ""); err == nil {
 		t.Fatal("boot accepted corrupt protected setting")
 	}
 	got, err := st.GetSetting(context.Background(), "library.token")

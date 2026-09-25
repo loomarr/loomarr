@@ -67,6 +67,8 @@ type Service struct {
 	env    func(string) (string, bool) // injectable for tests; defaults to os.LookupEnv
 	log    *slog.Logger
 	loader Loader // kept for post-write hot-apply and replica refresh
+	// dataDir anchors the defaults of DataSubdir settings; see WithDataDir.
+	dataDir string
 
 	// execProbe reports whether a path is a runnable executable. Injectable so the
 	// `ingest` feature gate (the one environment-derived gate, config-design §7) can be
@@ -96,7 +98,14 @@ type Service struct {
 // New builds a Service over the registry, loading the current db overrides and
 // validating every env pin up front (config-design §3: an invalid env value fails
 // the boot, loudly). Returns an error meant to abort startup.
-func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger) (*Service, error) {
+// Option tunes a Service at construction.
+type Option func(*Service)
+
+// WithDataDir sets the directory a setting declared with DataSubdir defaults beneath: the
+// database's own directory (config.DataDirFor). Without it the container layout applies.
+func WithDataDir(dir string) Option { return func(s *Service) { s.dataDir = dir } }
+
+func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger, opts ...Option) (*Service, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -106,6 +115,9 @@ func New(ctx context.Context, reg *Registry, loader Loader, log *slog.Logger) (*
 		log:      log,
 		loader:   loader,
 		watchers: make(map[string][]chan Change),
+	}
+	for _, opt := range opts {
+		opt(s)
 	}
 	// Validate every env pin at boot — an operator typo must fail here, not lurk.
 	for _, set := range reg.All() {
