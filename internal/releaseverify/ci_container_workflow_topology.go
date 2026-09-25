@@ -82,7 +82,7 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 
 		"playwright": {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
 		"tuner":      {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'", with: map[string]string{"project": "${{ inputs.project || 'all' }}", "repeat_each": "${{ inputs.repeat_each || '1' }}"}},
-		"image":     {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
+		"image":      {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
 		"docs":       {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
 		"android":    {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.impact_android == 'true'"},
 	}
