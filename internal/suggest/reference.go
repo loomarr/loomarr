@@ -718,7 +718,7 @@ var (
 	exampleCuePattern = regexp.MustCompile(`(?i:\b(?:like|such\s+as|similar\s+to|in\s+the\s+vein\s+of|along\s+the\s+lines\s+of|reminiscent\s+of)\b|\be\.g\.)`)
 )
 
-var exampleTrailerPattern = regexp.MustCompile(`(?i:\s+(?:for|from|to|that|who|which|when|where|on|but|so)\s+)`)
+var exampleTrailerPattern = regexp.MustCompile(`(?i:\s+(?:for|from|to|that|who|which|when|where|on|but|so)\s+|\s*\()`)
 
 // exampleCueIsDesire reports "I'd like a channel of…", where "like" is a verb
 // and no title follows.

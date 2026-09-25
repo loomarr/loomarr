@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/moviecollections"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -161,4 +162,48 @@ func indianaJonesCollection(corpus *catalogfixture.Corpus) (*moviecollectionsfix
 		Refs:        refs,
 		Collections: map[int]moviecollections.SourceCollection{84: {TMDBID: 84, Name: "Indiana Jones Collection", Members: members}},
 	}, presence
+}
+
+// A trailing parenthetical must not fuse into the last named title ("The
+// Goonies (v3-1" resolved to nothing on the real library, #1498).
+func TestSuggest_ExampleTitleSurvivesTrailingParenthetical(t *testing.T) {
+	description := "A Sunday-afternoon channel of 1980s adventure movies like Indiana Jones and The Goonies (v3-1)"
+	meaning := fixtureDateMeaning("movie_release", "description", 30, 35, 1980, 1989)
+	corpus := namedTitlesCorpus()
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "Toy Story", "media_type": "movie", "dateMeaning": meaning}),
+		finalResponseWithDateMeaning(`{"picks":[{"mediaType":"movie","key":"movie:tmdb:2016","name":"Toy Story 5"}]}`, meaning),
+	)
+	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, item := range proposal.Lineup {
+		names = append(names, item.Name)
+	}
+	if !slices.Contains(names, "The Goonies") {
+		t.Fatalf("The Goonies lost to the trailing parenthetical: %v", names)
+	}
+}
+
+// If the model never produces usable final JSON, the named examples alone are
+// returned instead of "couldn't find any titles" (the heist failure, #1498).
+func TestSuggest_ExampleAnchorsSurviveUnusableFinal(t *testing.T) {
+	description := "A channel of 1980s adventure movies such as The Goonies"
+	meaning := fixtureDateMeaning("movie_release", "description", 13, 18, 1980, 1989)
+	corpus := namedTitlesCorpus()
+	responses := []llm.Response{catalogSearchResponse(map[string]any{"query": "Toy Story", "media_type": "movie", "dateMeaning": meaning})}
+	for range 6 {
+		responses = append(responses, llm.Response{Content: "I could not decide."})
+	}
+	s := suggest.New(testkit.NewLLM(responses...), catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: description})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proposal.Lineup) != 1 || proposal.Lineup[0].Name != "The Goonies" {
+		t.Fatalf("lineup = %+v, want the named example", proposal.Lineup)
+	}
 }
