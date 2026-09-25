@@ -152,7 +152,7 @@ tuner-e2e: fe-build ensure-playwright-image ## 100-Channel tuner controller matr
 
 .PHONY: tuner-e2e-host
 tuner-e2e-host: fe-build ## 100-Channel tuner controller matrix in host-installed browsers (§9.1); TUNER_PROJECT / TUNER_REPEAT_EACH narrow a manual rerun
-	cd web/apps/web && node_modules/.bin/playwright test --config=playwright.tuner.config.ts $$(../../../scripts/tuner-args.sh)
+	args=$$(scripts/tuner-args.sh) && cd web/apps/web && node_modules/.bin/playwright test --config=playwright.tuner.config.ts $$args
 
 .PHONY: e2e-update
 e2e-update: fe-build ensure-playwright-image ## regenerate the committed e2e page snapshots (sanctioned update path)
