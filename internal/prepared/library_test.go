@@ -164,6 +164,66 @@ func TestLibraryPublishMakesOneImmutablePublicationReusable(t *testing.T) {
 	}
 }
 
+// Two processes may prepare the same content-keyed publication (each holds only a per-process lock).
+// The atomic rename must make exactly one visible and the loser must discard its staging, so a
+// duplicate publication is harmless rather than a corruption or a leak.
+func TestLibraryConcurrentPublishersOfOneKeyLeaveOneEntryAndNoStaging(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	spec := baseline("shared-across-processes")
+	var inBuild sync.WaitGroup
+	inBuild.Add(2)
+
+	publish := func(id string) (prepared.Publication, error) {
+		lib, err := prepared.NewLibrary(root) // a separate Library stands in for a separate process
+		if err != nil {
+			return prepared.Publication{}, err
+		}
+		return lib.Publish(t.Context(), spec, func(_ context.Context, workspace string) (prepared.Output, error) {
+			inBuild.Done()
+			inBuild.Wait() // both publishers are mid-build before either may commit
+			if err := os.WriteFile(filepath.Join(workspace, "segment.m4s"), []byte(id), 0o600); err != nil {
+				return prepared.Output{}, err
+			}
+			return prepared.Output{Files: []string{"segment.m4s"}}, nil
+		})
+	}
+
+	var wg sync.WaitGroup
+	pubs := make([]prepared.Publication, 2)
+	errs := make([]error, 2)
+	for i, id := range []string{"first", "second"} {
+		wg.Go(func() { pubs[i], errs[i] = publish(id) })
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("publisher %d: %v", i, err)
+		}
+	}
+	if pubs[0].Key != pubs[1].Key || pubs[0].Directory != pubs[1].Directory {
+		t.Fatalf("publishers disagree on the entry: %#v vs %#v", pubs[0], pubs[1])
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != pubs[0].Key {
+		names := make([]string, len(entries))
+		for i, entry := range entries {
+			names[i] = entry.Name()
+		}
+		t.Fatalf("library root = %v, want exactly the published entry and no leftover staging", names)
+	}
+	body, err := os.ReadFile(filepath.Join(pubs[0].Directory, "segment.m4s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(body); got != "first" && got != "second" {
+		t.Fatalf("published content = %q, want one whole publisher's output", got)
+	}
+}
+
 func TestLibraryFailedPublishIsInvisibleAndKeepsPreviousPublication(t *testing.T) {
 	t.Parallel()
 	lib, err := prepared.NewLibrary(t.TempDir())

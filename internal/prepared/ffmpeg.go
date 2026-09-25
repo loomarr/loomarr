@@ -316,3 +316,28 @@ func commandDiagnostic(output []byte) string {
 	}
 	return strings.TrimSpace(string(output))
 }
+
+// VideoRateCeilingKbps reports the highest video bitrate the encoder plan for r is allowed to spend,
+// read from the -maxrate flag the encoder is actually launched with. A quality-targeted encode
+// (NVENC VBR/CQ) averages well above its nominal rung on hard scenes, up to twice the rung, so
+// storage reservation must be sized from this ceiling rather than the nominal bitrate. Zero means
+// the plan states no ceiling and the nominal bitrate applies.
+func (p *FFmpegPackager) VideoRateCeilingKbps(r RenditionContract) int {
+	if p == nil || p.videoArgs == nil {
+		return 0
+	}
+	video, err := p.videoArgs(r)
+	if err != nil {
+		return 0
+	}
+	for i := 0; i+1 < len(video.OutputArgs); i++ {
+		if video.OutputArgs[i] != "-maxrate" {
+			continue
+		}
+		value := strings.TrimSuffix(strings.ToLower(video.OutputArgs[i+1]), "k")
+		if kbps, convErr := strconv.Atoi(value); convErr == nil && kbps > 0 {
+			return kbps
+		}
+	}
+	return 0
+}

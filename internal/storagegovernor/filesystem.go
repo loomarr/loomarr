@@ -63,6 +63,9 @@ func (m *filesystemMeter) ManagedBytes(ctx context.Context, filesystemID string,
 			continue
 		}
 		err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+			if errors.Is(walkErr, fs.ErrNotExist) {
+				return nil // a listed entry vanished mid-walk: private staging is being cleaned up
+			}
 			if walkErr != nil {
 				return walkErr
 			}
@@ -82,7 +85,10 @@ func (m *filesystemMeter) ManagedBytes(ctx context.Context, filesystemID string,
 				}
 				return nil
 			}
-			info, err := entry.Info()
+			info, err := entryInfo(entry)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil // removed after it was listed: another writer's staging cleanup, not a fault
+			}
 			if err != nil {
 				return err
 			}
@@ -202,3 +208,7 @@ func nearestExisting(path string) (string, error) {
 		absolute = parent
 	}
 }
+
+// entryInfo is a seam so tests can remove an entry between the directory listing and its stat,
+// the window in which concurrent staging cleanup races a walk.
+var entryInfo = func(entry fs.DirEntry) (fs.FileInfo, error) { return entry.Info() }

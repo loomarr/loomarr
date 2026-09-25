@@ -25,6 +25,18 @@ func MonitorPath(parent context.Context, lease *Lease, root string, baseBytes in
 // pass. Their observed bytes are summed before the lease is revalidated, so individually small
 // outputs cannot collectively cross one reservation.
 func MonitorPaths(parent context.Context, lease *Lease, roots []string, baseBytes int64) (context.Context, func() error) {
+	return monitorPaths(parent, lease, roots, baseBytes, false)
+}
+
+// MonitorGrowingPath is MonitorPath for output whose size cannot be forecast tightly (a
+// quality-targeted encode). Instead of stopping a writer that outgrew its reservation, it
+// re-estimates from the observed footprint and extends the lease, so a nearly finished publication
+// is not discarded; it still stops when the extension is refused (the hard host reserve).
+func MonitorGrowingPath(parent context.Context, lease *Lease, root string, baseBytes int64) (context.Context, func() error) {
+	return monitorPaths(parent, lease, []string{root}, baseBytes, true)
+}
+
+func monitorPaths(parent context.Context, lease *Lease, roots []string, baseBytes int64, grow bool) (context.Context, func() error) {
 	ctx, cancel := context.WithCancelCause(parent)
 	stop := make(chan struct{})
 	done := make(chan error, 1)
@@ -48,6 +60,14 @@ func MonitorPaths(parent context.Context, lease *Lease, roots []string, baseByte
 			observed = maxObserved
 		} else {
 			maxObserved = observed
+		}
+		if grow && observed > lease.Estimated() {
+			if extension := lease.Extend(parent, saturatingAdd(observed, max(observed/growthMarginDenom, growthFloorBytes))); !extension.Allowed {
+				if extension.Err != nil {
+					return fmt.Errorf("storage write paused (%s): %w", extension.Snapshot.Reason, extension.Err)
+				}
+				return fmt.Errorf("storage write paused (%s)", extension.Snapshot.Reason)
+			}
 		}
 		decision := lease.Revalidate(parent, observed)
 		if decision.Allowed {
@@ -125,24 +145,40 @@ func privatePathBytes(root string) (int64, error) {
 	}
 	var total int64
 	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if errors.Is(walkErr, fs.ErrNotExist) {
+			return nil // a file the writer already replaced or removed is no longer output
+		}
 		if walkErr != nil {
 			return walkErr
 		}
-		entryInfo, infoErr := os.Lstat(path)
+		stat, infoErr := lstatEntry(path)
+		if errors.Is(infoErr, fs.ErrNotExist) {
+			return nil // written then removed between the listing and this stat (temp segment rename)
+		}
 		if infoErr != nil {
 			return infoErr
 		}
-		if entryInfo.Mode()&os.ModeSymlink != 0 {
+		if stat.Mode()&os.ModeSymlink != 0 {
 			return errors.New("storage output contains a symlink")
 		}
-		if entryInfo.IsDir() {
+		if stat.IsDir() {
 			return nil
 		}
-		if !entryInfo.Mode().IsRegular() {
+		if !stat.Mode().IsRegular() {
 			return errors.New("storage output contains a non-regular file")
 		}
-		total = saturatingAdd(total, entryInfo.Size())
+		total = saturatingAdd(total, stat.Size())
 		return nil
 	})
 	return total, err
 }
+
+// lstatEntry is a seam so tests can remove a file between the directory listing and its stat.
+var lstatEntry = os.Lstat
+
+// A re-estimate reserves a quarter beyond what was observed (at least 64 MiB) so a steadily growing
+// output does not need an extension on every monitor tick.
+const (
+	growthMarginDenom = 4
+	growthFloorBytes  = int64(64 << 20)
+)

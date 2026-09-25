@@ -143,8 +143,10 @@ func TestPreparerRefusesCapacityBeforeCreatingWorkspaceOrOpeningSource(t *testin
 	}
 }
 
-func TestPreparerStopsAndRemovesOutputThatExceedsItsReservation(t *testing.T) {
-	root := t.TempDir()
+// overrunPreparer packages one file larger than the estimate for the request, on a host with the
+// given free space beyond the hard reserve.
+func overrunPreparer(t *testing.T, root string, spareBytes int64) (*prepared.Preparer, prepared.Request) {
+	t.Helper()
 	library, err := prepared.NewLibrary(root)
 	if err != nil {
 		t.Fatal(err)
@@ -167,27 +169,44 @@ func TestPreparerStopsAndRemovesOutputThatExceedsItsReservation(t *testing.T) {
 		}
 		return prepared.Output{Files: []string{"segment.m4s"}}, nil
 	})
-	governor := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
-		ID: "prepared", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: 100 * storagegovernor.GiB,
-	}}, func(storagegovernor.Domain) storagegovernor.Policy {
+	policy := func(storagegovernor.Domain) storagegovernor.Policy {
 		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
-	})
-	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+	}
+	probe := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "prepared", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: 100 * storagegovernor.GiB,
+	}}, policy).Snapshot(t.Context(), root)
+	free := probe.Snapshot.HardReserveBytes + reservation + spareBytes
+	governor := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "prepared", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: free,
+	}}, policy)
+	return prepared.NewPreparer(prepared.PreparerDependencies{
 		Library: library, Packager: packager,
 		Access:  &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")},
 		Storage: governor,
-	})
+	}), request
+}
 
+func TestPreparerReEstimatesOutputThatGrowsPastItsReservationInsteadOfDiscardingIt(t *testing.T) {
+	root := t.TempDir()
+	preparer, request := overrunPreparer(t, root, 10*storagegovernor.GiB)
+	if _, err := preparer.Prepare(t.Context(), request); err != nil {
+		t.Fatalf("a publication that outgrew its estimate on a host with room was discarded: %v", err)
+	}
+}
+
+func TestPreparerStopsAndRemovesOutputWhenTheHostCannotTakeItsGrowth(t *testing.T) {
+	root := t.TempDir()
+	preparer, request := overrunPreparer(t, root, 0)
 	if _, err := preparer.Prepare(t.Context(), request); err == nil ||
-		!strings.Contains(err.Error(), string(storagegovernor.ReasonEstimateUnknown)) {
-		t.Fatalf("Prepare error = %v, want estimate ceiling", err)
+		!strings.Contains(err.Error(), string(storagegovernor.ReasonHostReserve)) {
+		t.Fatalf("Prepare error = %v, want the host-reserve refusal of the extension", err)
 	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 0 {
-		t.Fatalf("overrun left prepared staging: %v", entries)
+		t.Fatalf("refused growth left prepared staging: %v", entries)
 	}
 }
 
@@ -347,5 +366,55 @@ func TestPreparerLookupReusesACompletePublicationAfterRestart(t *testing.T) {
 	specification, ok, err := restarted.Lookup(request)
 	if err != nil || !ok || specification.SourceFingerprint == "" {
 		t.Fatalf("Lookup after restart = (%+v, %v, %v), want existing publication", specification, ok, err)
+	}
+}
+
+type ceilingPackager struct {
+	packagerFunc
+	ceilingKbps int
+}
+
+func (p ceilingPackager) VideoRateCeilingKbps(prepared.RenditionContract) int { return p.ceilingKbps }
+
+func TestPreparerReservesForTheEncodersRateCeilingNotItsNominalRung(t *testing.T) {
+	root := t.TempDir()
+	library, err := prepared.NewLibrary(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := preparedRequest("ceiling")
+	request.DurationMS = int64(time.Hour / time.Millisecond)
+	nominal, _ := storagegovernor.EstimatePrepared(
+		request.DurationMS, request.Rendition.VideoBitrateKbps, request.Rendition.AudioBitrateKbps,
+	)
+	policy := func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	}
+	hard := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "prepared", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: 100 * storagegovernor.GiB,
+	}}, policy).Snapshot(t.Context(), root).Snapshot.HardReserveBytes
+	// Room for the nominal estimate but not for twice the video rate.
+	governor := storagegovernor.New(preparedCapacityMeter{measurement: storagegovernor.Measurement{
+		ID: "prepared", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: hard + nominal + nominal/4,
+	}}, policy)
+	built := false
+	packager := ceilingPackager{
+		packagerFunc: func(context.Context, string, prepared.Input, int, prepared.RenditionContract) (prepared.Output, error) {
+			built = true
+			return prepared.Output{}, nil
+		},
+		ceilingKbps: request.Rendition.VideoBitrateKbps * 2,
+	}
+	preparer := prepared.NewPreparer(prepared.PreparerDependencies{
+		Library: library, Packager: packager,
+		Access:  &testkit.PreparedSourceAccess{Input: prepared.LocalInput("/media/movie.mkv")},
+		Storage: governor,
+	})
+	if _, err := preparer.Prepare(t.Context(), request); err == nil ||
+		!strings.Contains(err.Error(), string(storagegovernor.ReasonHostReserve)) {
+		t.Fatalf("Prepare error = %v, want a refusal sized from the encoder ceiling", err)
+	}
+	if built {
+		t.Fatal("packaging started although the ceiling reservation did not fit")
 	}
 }
