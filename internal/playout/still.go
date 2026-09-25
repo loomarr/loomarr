@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"golang.org/x/sync/singleflight"
 )
 
 // Channel stills — the frame the switch overlay shows while a channel's video is still starting.
@@ -60,6 +61,16 @@ type stillEntry struct {
 type stillCache struct {
 	mu      sync.Mutex
 	entries map[string]stillEntry
+	flight  singleflight.Group
+
+	slotsOnce sync.Once
+	slotsCh   chan struct{}
+}
+
+// slots is the decode semaphore, created on first use so a zero stillCache is ready.
+func (c *stillCache) slots() chan struct{} {
+	c.slotsOnce.Do(func() { c.slotsCh = make(chan struct{}, stillDecodeLimit) })
+	return c.slotsCh
 }
 
 // Still returns the channel's latest frame. ok=false is a clean miss (no segment, no extractor
@@ -87,13 +98,52 @@ func (o *Origin) Still(ctx context.Context, channelID string, plan EncodePlan) (
 
 func (o *Origin) stillFor(ctx context.Context, channelID string, seg stillSegment) (Still, bool, error) {
 	// Keyed by channel AND segment: the cache never serves a frame from before the newest segment.
-	cacheKey := channelID
 	o.stills.mu.Lock()
-	if e, hit := o.stills.entries[cacheKey]; hit && e.key == seg.key {
-		o.stills.mu.Unlock()
-		return e.still, true, nil
-	}
+	entry, cached := o.stills.entries[channelID]
 	o.stills.mu.Unlock()
+	if cached && entry.key == seg.key {
+		return entry.still, true, nil
+	}
+
+	// Single-flight per (channel, segment): N requests that miss together share ONE decode. The
+	// decode outlives any single caller (WithoutCancel), so the first viewer navigating away does
+	// not fail everyone waiting on it; each waiter still leaves as soon as its own ctx ends.
+	flight := o.stills.flight.DoChan(channelID+"\x00"+seg.key, func() (any, error) {
+		return o.decodeStill(context.WithoutCancel(ctx), channelID, seg)
+	})
+	select {
+	case <-ctx.Done():
+		return Still{}, false, ctx.Err()
+	case result := <-flight:
+		if result.Err != nil {
+			return Still{}, false, result.Err
+		}
+		decoded := result.Val.(stillDecode)
+		return decoded.still, decoded.ok, nil
+	}
+}
+
+type stillDecode struct {
+	still Still
+	ok    bool
+}
+
+// decodeStill runs at most stillDecodeLimit decodes at once, process-wide. Past the bound it never
+// queues ffmpeg: it serves the channel's previous frame while that is still recent (a slightly old
+// picture behind a dimmed card beats none), else reports a miss and the overlay shows its card.
+func (o *Origin) decodeStill(ctx context.Context, channelID string, seg stillSegment) (stillDecode, error) {
+	select {
+	case o.stills.slots() <- struct{}{}:
+		defer func() { <-o.stills.slots() }()
+	default:
+		o.stills.mu.Lock()
+		prev, ok := o.stills.entries[channelID]
+		o.stills.mu.Unlock()
+		if ok && o.stillNow().Sub(prev.still.At) <= stillStaleFallback {
+			return stillDecode{still: prev.still, ok: true}, nil
+		}
+		return stillDecode{}, nil
+	}
 
 	readers := make([]io.Reader, 0, len(seg.parts))
 	closers := make([]io.Closer, 0, len(seg.parts))
@@ -105,24 +155,39 @@ func (o *Origin) stillFor(ctx context.Context, channelID string, seg stillSegmen
 	for _, open := range seg.parts {
 		rc, err := open()
 		if err != nil {
-			return Still{}, false, fmt.Errorf("playout: open still segment: %w", err)
+			return stillDecode{}, fmt.Errorf("playout: open still segment: %w", err)
 		}
 		closers = append(closers, rc)
 		readers = append(readers, rc)
 	}
 	jpeg, err := o.stillExtractor(ctx, io.MultiReader(readers...))
 	if err != nil {
-		return Still{}, false, fmt.Errorf("playout: decode still: %w", err)
+		return stillDecode{}, fmt.Errorf("playout: decode still: %w", err)
 	}
 	still := Still{JPEG: jpeg, At: seg.at}
 	o.stills.mu.Lock()
 	if o.stills.entries == nil {
 		o.stills.entries = map[string]stillEntry{}
 	}
-	o.stills.entries[cacheKey] = stillEntry{key: seg.key, still: still}
+	o.stills.entries[channelID] = stillEntry{key: seg.key, still: still}
 	o.stills.mu.Unlock()
-	return still, true, nil
+	return stillDecode{still: still, ok: true}, nil
 }
+
+func (o *Origin) stillNow() time.Time {
+	if o.stillClock != nil {
+		return o.stillClock()
+	}
+	return time.Now()
+}
+
+// stillDecodeLimit bounds concurrent still decodes across all channels: a burst of channel surfing
+// must not become a pile of ffmpeg processes.
+const stillDecodeLimit = 2
+
+// stillStaleFallback is how old a previous frame may be and still stand in when the decode bound
+// is hit: two segment intervals.
+const stillStaleFallback = 2 * hlsSegmentDuration * time.Second
 
 // stillDecodeTimeout bounds one frame decode. The input is a single 4s segment, so this is
 // generous; a decode that exceeds it is a miss, not a stuck request.

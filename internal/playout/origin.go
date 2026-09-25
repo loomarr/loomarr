@@ -124,6 +124,7 @@ type Origin struct {
 	// Channel stills (still.go): the segment holders, tried in Tune's order, and the decoder.
 	stillSources   []stillSource
 	stillExtractor StillExtractor
+	stillClock     func() time.Time // nil = time.Now; a test seam for the stale-fallback window
 	stills         stillCache
 }
 
