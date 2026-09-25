@@ -360,3 +360,47 @@ func saturatingMultiply(left, right int64) int64 {
 	}
 	return left * right
 }
+
+// Extend raises this lease's estimate to newEstimate so a writer that outgrew its forecast is
+// re-estimated from what it has actually written instead of being discarded. It is admission for
+// the additional bytes only: the live hard host reserve (and any bytes other leases hold) still
+// applies, so an extension can be refused when the disk genuinely cannot take the rest.
+func (l *Lease) Extend(ctx context.Context, newEstimate int64) Decision {
+	if l == nil || l.governor == nil {
+		return Decision{Snapshot: Snapshot{Reason: ReasonCapacityUnavailable}, Err: errors.New("storage lease is unavailable")}
+	}
+	g := l.governor
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	current, ok := g.reservations[l.id]
+	if !ok {
+		return Decision{Snapshot: Snapshot{Reason: ReasonCapacityUnavailable}, Err: errors.New("storage lease was released")}
+	}
+	if newEstimate <= current.estimated {
+		return Decision{Allowed: true, Snapshot: Snapshot{Domain: current.domain}}
+	}
+	decision := g.snapshotLocked(ctx, current.path, current.domain, ConfirmedManual, l.id)
+	if !decision.Allowed {
+		return decision
+	}
+	if reason := limitingReason(decision.Snapshot, newEstimate-current.written, ConfirmedManual); reason != "" {
+		decision.Allowed = false
+		decision.Snapshot.Reason = reason
+		return decision
+	}
+	current.estimated = newEstimate
+	current.remaining = newEstimate - current.written
+	g.reservations[l.id] = current
+	return decision
+}
+
+// Estimated reports the bytes this lease currently forecasts it will write in total.
+func (l *Lease) Estimated() int64 {
+	if l == nil || l.governor == nil {
+		return 0
+	}
+	l.governor.mu.Lock()
+	defer l.governor.mu.Unlock()
+	return l.governor.reservations[l.id].estimated
+}

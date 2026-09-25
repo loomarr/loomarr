@@ -131,8 +131,14 @@ func (p *Preparer) Prepare(ctx context.Context, request Request) (Publication, e
 	}
 	var lease *storagegovernor.Lease
 	if p.storage != nil {
+		videoKbps := request.Rendition.VideoBitrateKbps
+		if ceiling, ok := p.packager.(interface{ VideoRateCeilingKbps(RenditionContract) int }); ok {
+			// Reserve for what the encoder may spend, not its nominal rung: a quality-targeted
+			// encode measured 8-10 Mbps against a 5.16 Mbps estimate and was paused mid-publication.
+			videoKbps = max(videoKbps, ceiling.VideoRateCeilingKbps(request.Rendition))
+		}
 		reservation, ok := storagegovernor.EstimatePrepared(
-			request.DurationMS, request.Rendition.VideoBitrateKbps, request.Rendition.AudioBitrateKbps,
+			request.DurationMS, videoKbps, request.Rendition.AudioBitrateKbps,
 		)
 		if !ok {
 			return Publication{}, fmt.Errorf("prepared storage paused (%s)", storagegovernor.ReasonEstimateUnknown)
@@ -161,7 +167,7 @@ func (p *Preparer) Prepare(ctx context.Context, request Request) (Publication, e
 		packageCtx := ctx
 		finishStorage := func() error { return nil }
 		if lease != nil {
-			packageCtx, finishStorage = storagegovernor.MonitorPath(ctx, lease, workspace, 0)
+			packageCtx, finishStorage = storagegovernor.MonitorGrowingPath(ctx, lease, workspace, 0)
 		}
 		output, err := p.packager.Package(packageCtx, workspace, input, request.Source.AudioTrack, request.Rendition)
 		storageErr := finishStorage()
