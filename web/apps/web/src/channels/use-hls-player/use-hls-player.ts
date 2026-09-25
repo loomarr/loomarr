@@ -13,7 +13,7 @@ import { markTunePhase, type TuneAttempt } from "../tuner-timing";
 type PlayerStatus = BrowserPlayerStatus;
 type UseHlsPlayer = UseBrowserHlsPlayer;
 
-const useHlsPlayer = (channelId: string, attempt?: TuneAttempt): UseHlsPlayer => {
+const useHlsPlayer = (channelId: string, attempt?: TuneAttempt, onManifest?: () => void): UseHlsPlayer => {
   const mintSource = useCallback(
     (signal: AbortSignal) => mintChannelPlaySource(channelId, signal),
     [channelId],
@@ -42,6 +42,7 @@ const useHlsPlayer = (channelId: string, attempt?: TuneAttempt): UseHlsPlayer =>
     channelId,
     errorMessage,
     mintSource,
+    onManifest,
     recordDiagnostic,
   });
 };

@@ -140,6 +140,27 @@ describe("channel tuner", () => {
     expect(mark).not.toHaveBeenCalledWith("loomarr:tuner:warm:ch-30");
   });
 
+  it("aborts the previous neighbours' warms as soon as the viewer moves on", async () => {
+    const catalog = [1, 2, 3, 4].map((number) =>
+      channel({ id: `ch-${number}`, number, name: `Channel ${number}`, inAppPlayable: true }),
+    );
+    const signals: AbortSignal[] = [];
+    const warmChannel = vi.fn((_id: string, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<never>(() => {});
+    });
+    const { result, rerender } = renderHook(
+      ({ currentId }) =>
+        useChannelTuner({ currentId, channels: catalog, nowNext: [], onTune: vi.fn(), warmChannel }),
+      { initialProps: { currentId: "ch-2" } },
+    );
+    act(() => result.current.ready("ch-2"));
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    act(() => result.current.step(1));
+    rerender({ currentId: "ch-3" });
+    expect(signals.slice(0, 2).every((signal) => signal.aborted)).toBe(true);
+  });
+
   it("warms the newly adjacent channel after a surfed target becomes ready", async () => {
     const catalog = [1, 2, 3, 4].map((number) =>
       channel({ id: `ch-${number}`, number, name: `Channel ${number}`, inAppPlayable: true }),

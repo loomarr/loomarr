@@ -92,8 +92,11 @@ const useChannelTuner = ({
 
   useEffect(() => {
     // Speculation must never contend with the stream the viewer just selected. The player marks
-    // this Channel ready after its first decoded frame; only then may its two neighbors consume
-    // HTTP connections or establish bounded live fallbacks.
+    // this Channel ready when its own first manifest has arrived (#1484): until then the neighbours'
+    // warm requests would share the browser's per-host connections with the target's manifest.
+    // Waiting for the first decoded frame instead was too late: at a 1 s dwell the neighbour's live
+    // session had not started and the press paid a cold start (#1457). Each retarget aborts the
+    // previous neighbours' warms, so the latest request wins.
     if (!current || readyId !== current.id) return;
     const controller = new AbortController();
     const neighbors = [adjacentChannel(catalog, current.id, -1), adjacentChannel(catalog, current.id, 1)]

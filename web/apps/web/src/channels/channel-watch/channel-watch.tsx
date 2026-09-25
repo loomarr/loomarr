@@ -5,7 +5,7 @@ import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { TrackDTO } from "@loomarr/api/models/trackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useHlsPlayer } from "@/channels/use-hls-player";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
@@ -123,10 +123,12 @@ const ChannelWatch = ({
   mediaServerUrl,
   tuner,
 }: ChannelWatchProps) => {
-  const player = useHlsPlayer(channel.id, tuner?.attempt);
-  useEffect(() => {
-    if (player.status === "playing") tuner?.ready(channel.id);
-  }, [channel.id, player.status, tuner?.ready]);
+  const tunerReady = tuner?.ready;
+  // The tuner warms this Channel's neighbours once its own manifest has arrived, not before: the
+  // warm requests would otherwise share the browser's per-host connections with the target's
+  // manifest and first segments (#1484). It is still well ahead of the first frame.
+  const onManifest = useCallback(() => tunerReady?.(channel.id), [channel.id, tunerReady]);
+  const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest);
   const expiryNoticeRef = useRef({ channelId: channel.id, revision: 0 });
   useEffect(() => {
     if (expiryNoticeRef.current.channelId !== channel.id) {

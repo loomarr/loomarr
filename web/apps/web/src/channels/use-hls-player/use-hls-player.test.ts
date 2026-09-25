@@ -139,6 +139,53 @@ describe("useHlsPlayer", () => {
     expect(result.current.attach).toBe(attach);
   });
 
+  it("reports the first manifest even when no tune attempt is timing it (a cold page load)", async () => {
+    hls.supported = true;
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    const onManifest = vi.fn();
+    const video = videoEl();
+    const { result } = renderHook(() => useHlsPlayer("ch-1", undefined, onManifest));
+
+    act(() => result.current.attach(video));
+    await waitFor(() =>
+      expect(
+        (hls.instances as { loadSource: ReturnType<typeof vi.fn> }[]).some(
+          (instance) => instance.loadSource.mock.calls.length > 0,
+        ),
+      ).toBe(true),
+    );
+    // Loading the source is not the manifest arriving: neighbours must not warm yet.
+    expect(onManifest).not.toHaveBeenCalled();
+
+    const active = (
+      hls.instances as { loadSource: ReturnType<typeof vi.fn>; on: ReturnType<typeof vi.fn> }[]
+    ).find((instance) => instance.loadSource.mock.calls.length > 0);
+    const manifestParsed = active?.on.mock.calls
+      .filter((call: unknown[]) => call[0] === "manifestParsed")
+      .at(-1)?.[1] as (() => void) | undefined;
+    expect(manifestParsed).toBeTypeOf("function");
+    act(() => manifestParsed?.());
+    expect(onManifest).toHaveBeenCalledOnce();
+  });
+
+  it("reports the first manifest on native HLS at loadedmetadata", async () => {
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    const onManifest = vi.fn();
+    const video = videoEl("application/vnd.apple.mpegurl");
+    const { result } = renderHook(() => useHlsPlayer("ch-1", undefined, onManifest));
+
+    act(() => result.current.attach(video));
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    expect(onManifest).not.toHaveBeenCalled();
+
+    const loadedMetadata = vi
+      .mocked(video.addEventListener)
+      .mock.calls.find((call) => call[0] === "loadedmetadata")?.[1] as (() => void) | undefined;
+    expect(loadedMetadata).toBeTypeOf("function");
+    act(() => loadedMetadata?.());
+    expect(onManifest).toHaveBeenCalledOnce();
+  });
+
   it("keeps one active controller and a fresh one-source standby across repeated tunes", async () => {
     hls.supported = true;
     channelPlayUrl.mockImplementation((id: string) =>
