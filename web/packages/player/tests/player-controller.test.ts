@@ -24,7 +24,10 @@ const deferred = <T>() => {
   return { promise, reject, resolve };
 };
 
-const harness = (source?: PlayerSourcePort, options: Partial<Parameters<typeof createPlayerController>[0]> = {}) => {
+const harness = (
+  source?: PlayerSourcePort,
+  options: Partial<Parameters<typeof createPlayerController>[0]> = {},
+) => {
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   const transport: PlayerTransport = {
     dispose: vi.fn(),
@@ -460,7 +463,8 @@ describe("player controller channel still", () => {
     name: `Channel ${n}`,
     number: n,
   }));
-  const mint = (channel: PlayerChannel) => Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?fresh` });
+  const mint = (channel: PlayerChannel) =>
+    Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?fresh` });
   const warm = (channel: PlayerChannel) =>
     Promise.resolve({
       stillUri: `https://loomarr.test/still/${channel.id}`,

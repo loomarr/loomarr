@@ -49,7 +49,7 @@ const resolveStillUrl = (
   return response.stillUrl?.trim() || undefined;
 };
 
-const createPlayUrlSourcePort =({ baseUrl, fetch: request }: PlayUrlSourceOptions): PlayerSourcePort => {
+const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptions): PlayerSourcePort => {
   const mint: PlayerSourcePort["mint"] = async (channel, profile, signal) => {
     const response = await request(getChannelPlayUrlUrl(channel.id), {
       body: JSON.stringify(profile),

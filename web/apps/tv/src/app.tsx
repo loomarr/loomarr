@@ -52,7 +52,7 @@ import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppState, BackHandler, useTVEventHandler, View } from "react-native";
+import { AppState, BackHandler, Image, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
 
@@ -94,6 +94,8 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     () =>
       createPlayerController({
         onPlayerError: diagnostics.playback.playerError,
+        // The signed still needs no auth header, so the platform image cache can hold it for the overlay.
+        prefetchStill: (uri) => void Image.prefetch(uri).catch(() => undefined),
         profile: {},
         source: createPlayUrlSourcePort({
           baseUrl: runtime.credential.serverUrl,

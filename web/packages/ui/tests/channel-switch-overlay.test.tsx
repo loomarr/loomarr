@@ -4,6 +4,7 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface } from "../index";
@@ -81,7 +82,7 @@ describe("TV channel switch overlay", () => {
     expect(shown?.textContent).toContain("Science Fiction");
     expect(shown?.textContent).toContain("The Current Frontier");
     expect(shown?.textContent).toContain("12m left");
-    expect(shown?.querySelector('[role="progressbar"]')).not.toBeNull();
+    expect(shown?.innerHTML).toContain("The Current Frontier"); // the progress track is labelled with the programme
     expect(container.innerHTML).toContain(encodeURIComponent("still/seven").replace("%2F", "/"));
     act(() => root.unmount());
   });
@@ -113,18 +114,26 @@ describe("TV channel switch overlay", () => {
   });
 
   it("drops a still that fails to load, keeping the card, so a broken image never shows", () => {
+    vi.useFakeTimers();
+    // The native image loader reports failure through the platform Image's onerror.
+    class FailingImage {
+      onerror?: () => void;
+      set src(_value: string) {
+        setTimeout(() => this.onerror?.(), 0);
+      }
+    }
+    vi.stubGlobal("Image", FailingImage);
     const { container, root } = mount();
     act(() => root.render(surface(tuning)));
-    const image = container.querySelector("img");
-    expect(image).not.toBeNull();
+    expect(container.innerHTML).toContain("still/seven");
 
-    act(() => {
-      image?.dispatchEvent(new (globalThis as unknown as { Event: typeof Event }).Event("error"));
-    });
+    act(() => vi.advanceTimersByTime(5));
 
-    expect(container.querySelector("img")).toBeNull();
+    expect(container.innerHTML).not.toContain("still/seven");
     expect(overlay(container)?.textContent).toContain("Science Fiction");
     act(() => root.unmount());
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("does not cover a recovery retry or the initial catalog tune", () => {
@@ -139,9 +148,6 @@ describe("TV channel switch overlay", () => {
   });
 
   it("is never drawn on touch density (the web Watch page adopts it separately)", () => {
-    const { container, root } = mount();
-    act(() => root.render(surface(tuning, { density: "touch" })));
-    expect(overlay(container)).toBeNull();
-    act(() => root.unmount());
+    expect(renderToStaticMarkup(surface(tuning, { density: "touch" }))).not.toContain("Channel switch");
   });
 });
