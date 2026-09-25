@@ -440,6 +440,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		},
 		Eligible: durablePlayoutEligibility,
 		Observer: deps.metrics,
+		Still:    playout.FFmpegStill(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 	})
 	owner.addQuiesce(func(context.Context) error {
 		origin.Quiesce()

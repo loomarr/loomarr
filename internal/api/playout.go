@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"errors"
@@ -96,6 +97,13 @@ type Playout interface {
 	// it after the store commits, so viewers already attached cannot outlive pause/detach/backend
 	// transitions that make the channel ineligible for internal playout.
 	StopChannel(channelID string)
+}
+
+// StillProvider is the optional capability behind GET /v1/playout/still/{id}: the channel's latest
+// decoded frame. Separate from Playout because a still is a display aid, not delivery — an origin
+// without one simply has no stills and the route 404s.
+type StillProvider interface {
+	Still(ctx context.Context, channelID string, plan playout.EncodePlan) (playout.Still, bool, error)
 }
 
 // PlayoutObserver is operational observation of playout, separate from the playback interface.
@@ -734,6 +742,32 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, rel, asset.Modified, asset.Content)
 }
 
+// stillHandler serves a channel's latest frame for the channel-switch overlay. The frame is
+// decoded at most once per segment (playout.Origin.Still), so this never transcodes per request.
+// Every failure — no provider, no segment, a failed decode — is the same 404: the client's answer
+// to all of them is "show the card on the plain background", and a broken image is worse.
+func (s *Server) stillHandler(w http.ResponseWriter, r *http.Request) {
+	provider, ok := s.playout.(StillProvider)
+	channelID := r.PathValue("id")
+	if !ok || channelID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	still, ok, err := provider.Still(r.Context(), channelID, clientPlan(r))
+	if err != nil {
+		s.log.Warn("playout: channel still failed", "channel", channelID, "err", err)
+	}
+	if err != nil || !ok || len(still.JPEG) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	// One segment interval (hlsSegmentDuration): a copy prefetched by the neighbour warmer can be
+	// painted with no round trip, and is never staler than the freshness the still promises.
+	w.Header().Set("Cache-Control", "private, max-age=4")
+	http.ServeContent(w, r, "", still.At, bytes.NewReader(still.JPEG))
+}
+
 // registerPlayout mounts the playout streaming routes on the Huma API (§9.1, V47).
 //
 // ⚠ These stream bytes, which Huma's typed-JSON model cannot express — but they mount on the SAME
@@ -779,6 +813,14 @@ func (s *Server) registerPlayout(api huma.API) {
 		Summary: "One program's MPEG-TS (device-authed)", Tags: []string{"playout"},
 	}, "One finite transport block; the channel supervisor re-opens this at each airing boundary.",
 		"video/mp2t"), s.programHandler)
+
+	// The latest still frame of a channel, for the switch overlay (still.go in playout). Authed like
+	// the HLS routes, so the play-url's signature covers it.
+	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
+		OperationID: "playout-still", Method: http.MethodGet, Path: "/v1/playout/still/{id}",
+		Summary: "Channel latest still frame (signed-URL authed)", Tags: []string{"playout"},
+	}, "The newest decoded frame of the channel, at most one segment old; 404 when none is available.",
+		"image/jpeg"), s.stillHandler)
 
 	// The in-app browser/native HLS surface (§9.1 Watch). Master playlist + its segments, authed by
 	// the signed URL (or the device token). Same-origin under the Huma API now, so the dev proxy and

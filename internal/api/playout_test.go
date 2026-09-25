@@ -49,6 +49,10 @@ type fakePlayoutSessions struct {
 	admitErr     error
 	denyProgram  bool
 	programCosts []bool
+	still        playout.Still
+	stillOK      bool
+	stillErr     error
+	stillAsked   []string
 }
 
 // attachRecord is one Attach call — its channel and codec target.
@@ -265,6 +269,34 @@ func TestChannelPlayURLCarriesAuthoritativeServerClock(t *testing.T) {
 	}
 	if body.ServerTime < before || body.ServerTime > after {
 		t.Fatalf("serverTimeMs = %d, want request interval %d..%d", body.ServerTime, before, after)
+	}
+}
+
+// The play-url carries the still URL signed by the same capability, so a client that already
+// minted a play-url for a neighbour channel can prefetch its still with no extra round trip — and
+// the URL it is handed must actually open the still route.
+func TestChannelPlayURLCarriesAWorkingStillURL(t *testing.T) {
+	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("\xff\xd8frame"), At: time.Unix(1, 0)}, stillOK: true}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	seedChannel(t, harness.Store, "ch1", "Channel One", 1, "internal")
+
+	resp := do(t, harness.Server, http.MethodPost, "/v1/channels/ch1/play-url", adminToken, `{}`)
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		StillURL         string `json:"stillUrl"`
+		RelativeStillURL string `json:"relativeStillUrl"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(body.RelativeStillURL, "/v1/playout/still/ch1?sig=") {
+		t.Fatalf("relativeStillUrl = %q, want the signed still route", body.RelativeStillURL)
+	}
+	if want := "http://loomarr.local:8080" + body.RelativeStillURL; body.StillURL != want {
+		t.Fatalf("stillUrl = %q, want %q", body.StillURL, want)
+	}
+	if got := getPlayout(t, harness.Server, body.RelativeStillURL); got.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s = %d, want 200: the minted URL must open the route", body.RelativeStillURL, got.StatusCode)
 	}
 }
 
@@ -805,5 +837,66 @@ func TestPlayoutTuner_QuotesInChannelNamesDoNotBreakTheM3U(t *testing.T) {
 	}
 	if strings.Contains(got, `tvg-name="Bob's "Best" Movies"`) {
 		t.Errorf("the quotes in the name were not escaped: %q", got)
+	}
+}
+
+// Still returns the configured frame, satisfying api.StillProvider.
+func (f *fakePlayoutSessions) Still(_ context.Context, channelID string, _ playout.EncodePlan) (playout.Still, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stillAsked = append(f.stillAsked, channelID)
+	return f.still, f.stillOK, f.stillErr
+}
+
+// The still route serves the channel's latest frame under the same auth as the rest of playout,
+// as a revalidating image (never cached as the live edge moves) stamped with the segment time.
+func TestPlayoutStill_ServesTheLatestFrame(t *testing.T) {
+	at := time.Unix(1_700_000_000, 0)
+	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("\xff\xd8frame"), At: at}, stillOK: true}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+
+	resp := getPlayout(t, harness.Server, "/v1/playout/still/ch1?token="+playoutToken)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "image/jpeg" {
+		t.Fatalf("Content-Type = %q, want image/jpeg", got)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "private, max-age=4" {
+		t.Fatalf("Cache-Control = %q, want a one-segment (4s) lifetime: a prefetched copy is reusable, never staler than a segment", got)
+	}
+	if got := resp.Header.Get("Last-Modified"); got != at.UTC().Format(http.TimeFormat) {
+		t.Fatalf("Last-Modified = %q, want the segment time so a client can judge freshness", got)
+	}
+	if body, _ := io.ReadAll(resp.Body); string(body) != "\xff\xd8frame" {
+		t.Fatalf("body = %q", body)
+	}
+}
+
+// No still is a plain 404 — the client shows the card on the dark background; it must never get
+// a broken image body or a 5xx that surfaces as an error.
+func TestPlayoutStill_MissingIs404(t *testing.T) {
+	for name, f := range map[string]*fakePlayoutSessions{
+		"no segment":    {stillOK: false},
+		"decode failed": {stillErr: errors.New("ffmpeg: boom")},
+	} {
+		harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+		resp := getPlayout(t, harness.Server, "/v1/playout/still/ch1?token="+playoutToken)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", name, resp.StatusCode)
+		}
+	}
+}
+
+func TestPlayoutStill_RejectsMissingOrWrongToken(t *testing.T) {
+	f := &fakePlayoutSessions{still: playout.Still{JPEG: []byte("x")}, stillOK: true}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	for _, q := range []string{"", "?token=nope", "?token=" + playoutToken[:10]} {
+		if resp := getPlayout(t, harness.Server, "/v1/playout/still/ch1"+q); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("still with %q: status %d, want 404", q, resp.StatusCode)
+		}
+	}
+	if len(f.stillAsked) != 0 {
+		t.Fatal("an unauthorized request reached the still provider")
 	}
 }

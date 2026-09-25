@@ -95,6 +95,11 @@ type playURLOutput struct {
 		// already on Loomarr's origin, so a relative URL needs no CORS (hls.js fetches by XHR) and
 		// works even when public_url is unset. Web clients should prefer this.
 		RelativeURL string `json:"relativeUrl" doc:"Same-origin signed HLS (.m3u8) URL for the in-app web player — prefer this in a browser (no CORS)"`
+		// StillURL and RelativeStillURL are the same channel's latest-frame image, signed by the same
+		// capability as the HLS URL. The switch overlay paints it behind the surf card, and the
+		// neighbour warmer prefetches it, so nothing waits on a request at the moment of the switch.
+		StillURL         string `json:"stillUrl" doc:"Absolute signed URL of the channel's latest still frame (JPEG, at most one segment old); 404 when none exists yet. Empty if the server's public address is unset"`
+		RelativeStillURL string `json:"relativeStillUrl" doc:"Same-origin signed URL of the channel's latest still frame for the in-app web player"`
 		// ExpiresAt is when the URLs stop verifying — the client re-mints before then.
 		ExpiresAt time.Time `json:"expiresAt" doc:"When the signed URLs expire (RFC 3339)"`
 		// ServerTimeMs is the authoritative schedule clock at mint time. Native HLS does not always
@@ -159,6 +164,10 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 	// for them is different (set the public address), so it is not an error for the web player.
 	out.Body.URL = s.playoutHLSURLWithKey(playoutToken, ch.ID, quality, plan, exp)
 	out.Body.RelativeURL = rel
+	out.Body.RelativeStillURL = s.playoutStillPathURLWithKey(playoutToken, ch.ID, plan, exp)
+	if base := s.playoutBaseURL(); base != "" && out.Body.RelativeStillURL != "" {
+		out.Body.StillURL = base + out.Body.RelativeStillURL
+	}
 	out.Body.ExpiresAt = exp
 	out.Body.ServerTimeMs = now.UnixMilli()
 	return out, nil
