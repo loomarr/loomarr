@@ -445,6 +445,33 @@ func TestProgramArgs_HardwareEncodersAlsoDecodeOnTheGPU(t *testing.T) {
 	}
 }
 
+// #1401: SoftwareDecode drops ONLY the GPU decode. The device init, the upload and the hardware
+// encoder must survive, or the fallback would silently become a full software encode (or fail on a
+// missing device reference) instead of keeping the session's pinned codec and GPU encode slot.
+func TestProgramArgs_SoftwareDecodeKeepsTheHardwareEncode(t *testing.T) {
+	for _, enc := range encoderPreference {
+		if IsSoftwareEncoder(enc) || len(hardwareDecodeArgs(enc)) == 0 {
+			continue
+		}
+		p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: enc}
+		hw := ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute})
+		sw := ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute, SoftwareDecode: true})
+
+		if !strings.Contains(joined(hw), "-hwaccel") {
+			t.Fatalf("%s: control case has no -hwaccel, the test proves nothing: %v", enc, hw)
+		}
+		if strings.Contains(joined(sw), "-hwaccel") {
+			t.Errorf("%s: SoftwareDecode still passes -hwaccel: %v", enc, sw)
+		}
+		if want := deviceInitArgs(enc); len(want) > 0 && !strings.Contains(joined(sw), joined(want)) {
+			t.Errorf("%s: SoftwareDecode lost the device init %v: %v", enc, want, sw)
+		}
+		if i := argIndex(sw, "-c:v"); i < 0 || sw[i+1] != string(enc) {
+			t.Errorf("%s: SoftwareDecode changed the video encoder: %v", enc, sw)
+		}
+	}
+}
+
 // Software must NOT hardware-decode: it would decode on the GPU only to download every frame
 // back for a CPU encode, which is strictly slower than decoding on the CPU.
 func TestProgramArgs_SoftwareDoesNotHardwareDecode(t *testing.T) {

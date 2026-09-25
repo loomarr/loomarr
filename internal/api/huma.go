@@ -226,6 +226,9 @@ type Server struct {
 	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
 	// testable without executing a binary; the composition root passes playout.Start.
 	playoutEncoder PlayoutEncoder
+	// decodeFaults remembers sources the GPU decoder failed on, so their next program decodes in
+	// software with the encode kept on hardware (#1401).
+	decodeFaults decodeFaultSet
 	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
 	playout Playout
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);

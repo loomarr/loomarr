@@ -60,6 +60,10 @@ type ProgramSpec struct {
 	// wall-clock pacing authority. Leaving read-rate on this child would pace the authoritative
 	// intra-segment seek itself and turn that discarded distance into cold-start latency.
 	UnpacedInput bool
+	// SoftwareDecode keeps the hardware ENCODE but decodes this source on the CPU. Set once the
+	// GPU decoder has failed on the source (IsHardwareDecodeFault); the encoder is unchanged so
+	// the session's pinned codec and GPU encode slot are untouched.
+	SoftwareDecode bool
 
 	// Source is the PROBE the Plan was derived from — the full MediaFormat, not the two booleans
 	// it reduces to.
@@ -137,7 +141,9 @@ func ProgramArgs(spec ProgramSpec) []string {
 		// HARDWARE DECODE. Measured on a 4K 10-bit HEVC film with an RTX 3080 Ti: the child went
 		// from 341% CPU to ~0%, the GPU decoder taking it instead. For 4K sources the decode
 		// dominates, so moving only the encode to the GPU barely helped.
-		args = append(args, hardwareDecodeArgs(spec.Profile.Encoder)...)
+		if !spec.SoftwareDecode {
+			args = append(args, hardwareDecodeArgs(spec.Profile.Encoder)...)
+		}
 	}
 
 	// --- Input options (before -i, so they apply to THIS input) ---

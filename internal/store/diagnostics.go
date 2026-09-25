@@ -196,7 +196,8 @@ func (s *sqlStore) UpsertDiagnosticProcessRun(ctx context.Context, run diagnosti
 		return fmt.Errorf("upsert diagnostic process run: id, purpose, and started_at are required")
 	}
 	switch run.Status {
-	case diagnostics.ProcessRunning, diagnostics.ProcessSucceeded, diagnostics.ProcessFailed, diagnostics.ProcessCancelled:
+	case diagnostics.ProcessRunning, diagnostics.ProcessSucceeded, diagnostics.ProcessFailed,
+		diagnostics.ProcessCancelled, diagnostics.ProcessInterrupted:
 	default:
 		return fmt.Errorf("upsert diagnostic process run %s: invalid status %q", run.ID, run.Status)
 	}
@@ -423,6 +424,27 @@ func (s *sqlStore) ListDiagnosticRetentionCandidates(
 		result = append(result, candidate)
 	}
 	return result, rows.Err()
+}
+
+// FinalizeStaleDiagnosticProcessRuns marks every run this instance left "running" as interrupted.
+// Called once at startup, before the new process records any run: an instance id is stable across
+// restarts, so a run still "running" then belongs to a process that died without finalizing it.
+// Left alone it is never purged (retention skips running rows).
+//
+// ASSUMPTION: Loomarr supports exactly one process per database (see
+// docs/engineering/plans/multi-replica-readiness.md), so matching on instance_id alone cannot
+// finalize a live sibling's runs. Multi-replica support must scope this by process liveness.
+func (s *sqlStore) FinalizeStaleDiagnosticProcessRuns(ctx context.Context, instanceID string, now time.Time) (int, error) {
+	ms := now.UnixMilli()
+	result, err := s.db.ExecContext(ctx, s.ph(`UPDATE diagnostic_process_runs
+		SET status = ?, ended_at = ?, updated_at = ?, termination_reason = ?
+		WHERE status = ? AND instance_id = ?`),
+		diagnostics.ProcessInterrupted, ms, ms, "process exited without finalizing this run",
+		diagnostics.ProcessRunning, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("finalize stale diagnostic process runs: %w", err)
+	}
+	return rowsAffected(result), nil
 }
 
 // DeleteDiagnosticProcessRun repeats the terminal-state guard at the destructive boundary.

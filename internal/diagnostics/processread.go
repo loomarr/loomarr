@@ -253,7 +253,7 @@ func (l *ProcessLog) validate(query ProcessQuery) (ProcessStoreQuery, int, error
 	}
 	if query.Status != "" {
 		switch query.Status {
-		case ProcessRunning, ProcessSucceeded, ProcessFailed, ProcessCancelled:
+		case ProcessRunning, ProcessSucceeded, ProcessFailed, ProcessCancelled, ProcessInterrupted:
 		default:
 			return ProcessStoreQuery{}, 0, invalidProcessQuery("unknown status")
 		}

@@ -11,7 +11,7 @@ type DiagnosticsSearch = ApplicationFilters & {
   view: DiagnosticsView;
   processId?: string;
   processRange: "1h" | "6h" | "24h";
-  processStatus: "all" | "running" | "succeeded" | "failed" | "cancelled";
+  processStatus: "all" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
   processPurpose: string;
   processChannelId: string;
   processJobId: string;

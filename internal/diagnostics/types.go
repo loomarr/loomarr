@@ -72,6 +72,9 @@ const (
 	ProcessSucceeded ProcessStatus = "succeeded"
 	ProcessFailed    ProcessStatus = "failed"
 	ProcessCancelled ProcessStatus = "cancelled"
+	// ProcessInterrupted marks a run its owning process never finalized, found still "running"
+	// by the next start's reconciliation. The real outcome is unknown.
+	ProcessInterrupted ProcessStatus = "interrupted"
 )
 
 // ProcessRun is the bounded durable metadata for one external media process. Raw output remains an

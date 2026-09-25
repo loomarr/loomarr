@@ -77,6 +77,9 @@ type Process struct {
 
 	mu      sync.Mutex
 	lastErr string
+	// decodeFault is sticky: ffmpeg logs further lines after the decoder error, so lastErr alone
+	// would lose it.
+	decodeFault bool
 }
 
 // Start launches ffmpeg with the given args under ctx.
@@ -412,6 +415,9 @@ func (p *Process) recordStderr(line string) {
 	}
 	p.mu.Lock()
 	p.lastErr = line
+	if IsHardwareDecodeFault(line) {
+		p.decodeFault = true
+	}
 	p.mu.Unlock()
 	if p.run != nil {
 		p.run.RecordOutput(line)
@@ -429,6 +435,14 @@ func (p *Process) LastError() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.lastErr
+}
+
+// HardwareDecodeFault reports whether the process's stderr ever showed the GPU decoder failing
+// on its input (see IsHardwareDecodeFault).
+func (p *Process) HardwareDecodeFault() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.decodeFault
 }
 
 // Stop terminates the process tree and waits for it.
