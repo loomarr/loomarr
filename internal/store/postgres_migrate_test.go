@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/diagnostics"
 )
 
 func TestPostgresDiscoveryFeedbackOrphanCleanupMigration(t *testing.T) {
@@ -338,6 +340,53 @@ func TestPostgresDiagnosticRetainedBytesMigrationSeedsTheTotalAndTrimsIndexes(t 
 	for _, kept := range []string{"idx_diagnostic_events_time", "idx_diagnostic_events_level_time", "idx_diagnostic_events_subsystem_time"} {
 		if _, ok := indexes[kept]; !ok {
 			t.Errorf("%s must survive", kept)
+		}
+	}
+}
+
+// #1398: the correlation indexes are partial, so a lookup only uses one when its WHERE carries the
+// redundant `col <> ”` term (diagnosticEventQuery). enable_seqscan is off so the tiny fixture
+// table cannot hide a predicate that fails to imply the index's.
+func TestPostgresDiagnosticCorrelationFiltersUsePartialIndexes(t *testing.T) {
+	ctx := context.Background()
+	s, err := openPostgres(ctx, startPostgres(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.ExecContext(ctx, `SET enable_seqscan = off`); err != nil {
+		t.Fatal(err)
+	}
+	for column, filter := range map[string]diagnostics.EventStoreQuery{
+		"request":        {RequestID: "x"},
+		"playback":       {PlaybackSessionID: "x"},
+		"channel":        {ChannelID: "x"},
+		"schedule_block": {ScheduleBlockID: "x"},
+		"job":            {JobID: "x"},
+		"process":        {ProcessRunID: "x"},
+	} {
+		filter.From, filter.To, filter.Limit = 0, 1<<40, 50
+		sqlText, args := diagnosticEventQuery(filter)
+		rows, err := conn.QueryContext(ctx, "EXPLAIN "+s.ph(sqlText), args...)
+		if err != nil {
+			t.Fatalf("%s: %v", column, err)
+		}
+		var plan strings.Builder
+		for rows.Next() {
+			var line string
+			if err := rows.Scan(&line); err != nil {
+				t.Fatal(err)
+			}
+			plan.WriteString(line + "\n")
+		}
+		_ = rows.Close()
+		if !strings.Contains(plan.String(), "idx_diagnostic_events_"+column) {
+			t.Errorf("%s filter does not use idx_diagnostic_events_%s:\n%s", column, column, plan.String())
 		}
 	}
 }
