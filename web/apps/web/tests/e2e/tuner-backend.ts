@@ -42,7 +42,7 @@ const manifest = (sig: string, duration: 1 | 4) => `#EXTM3U
 #EXT-X-TARGETDURATION:1
 #EXT-X-MEDIA-SEQUENCE:${duration === 1 ? 0 : 1}
 ${duration === 1 ? "#EXT-X-PLAYLIST-TYPE:VOD\n" : ""}#EXT-X-INDEPENDENT-SEGMENTS
-#EXT-X-MAP:URI="init.mp4?sig=${sig}"
+${duration === 1 ? "" : "#EXT-X-START:TIME-OFFSET=0\n"}#EXT-X-MAP:URI="init.mp4?sig=${sig}"
 ${
   duration === 1
     ? `#EXTINF:1.000000,\nsegment.m4s?sig=${sig}`
