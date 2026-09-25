@@ -112,3 +112,43 @@ describe("RequestDetail", () => {
     expect(screen.queryByRole("heading", { name: "Titles being added" })).not.toBeInTheDocument();
   });
 });
+
+describe("RequestDetail while generating", () => {
+  const generating = (progress?: unknown) => ({
+    version: 1,
+    jobId: "j-g",
+    milestone: "generating",
+    intent: { description: "90s action" },
+    attempts: [],
+    actions: [],
+    createdAt: "2026-09-25T12:00:00Z",
+    updatedAt: "2026-09-25T12:00:00Z",
+    ...(progress ? { progress } : {}),
+  });
+
+  it("shows the live stage and each title as it is chosen", async () => {
+    stub({
+      me: MEMBER,
+      journeys: [
+        generating({
+          stage: "choosing",
+          terms: ["speed"],
+          picks: [{ key: "movie:tmdb:100", mediaType: "movie", name: "Speed", year: 1994, inLibrary: false }],
+          target: 8,
+          startedAt: "2026-09-25T12:00:00Z",
+        }),
+      ],
+    });
+    renderAt("/requests/j-g");
+
+    expect(await screen.findByText("Choosing titles…")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Titles chosen so far" })).toHaveTextContent("Speed");
+    expect(screen.getByText(/1 of about 8 picked · \d+ s/)).toBeInTheDocument();
+  });
+
+  it("falls back to the plain waiting line before the first snapshot", async () => {
+    stub({ me: MEMBER, journeys: [generating()] });
+    renderAt("/requests/j-g");
+    expect(await screen.findByText("Understanding your channel…")).toBeInTheDocument();
+  });
+});

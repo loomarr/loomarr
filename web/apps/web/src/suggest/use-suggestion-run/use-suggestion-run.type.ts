@@ -1,5 +1,6 @@
 import type { Intent } from "@loomarr/api/models/intent";
 import type { ProposalJourneyFailureDTO } from "@loomarr/api/models/proposalJourneyFailureDTO";
+import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
 import type { ProposalJourneyProposalDTO } from "@loomarr/api/models/proposalJourneyProposalDTO";
 import type { SuggestionPhase } from "@loomarr/core/events";
 
@@ -13,6 +14,8 @@ interface SuggestionRun {
   // Phases repeat as the model alternates thinking and searching, so this is what tells
   // a viewer a slow run is still advancing.
   round?: number;
+  // The server's live snapshot while generating: real stage, search terms, streamed picks.
+  progress?: ProposalJourneyProgressDTO;
   // The proposal the run produced, once it exists.
   proposal?: ProposalJourneyProposalDTO;
   // Bounded, requester-safe failure guidance from the authoritative Journey.

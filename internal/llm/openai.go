@@ -378,7 +378,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	}
 	// A bare status hides WHY (a wrong llm.model, no credit, a slot error); exchange keeps the
 	// provider's own body in the error so it reaches logs and jobs.last_error.
-	c, status, err := o.exchange(ctx, "openai chat", body)
+	c, status, err := o.exchange(withContentDelta(ctx, opts.OnContentDelta), "openai chat", body)
 	o.finishCall(ctx, "openai chat", started, c, status, err)
 	if err != nil {
 		return Response{}, err

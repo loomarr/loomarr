@@ -29,6 +29,7 @@ import (
 
 type suggestionBuild struct {
 	suggest          api.SuggestService
+	progress         api.ProposalProgress // the same *suggest.Service, read for live generation progress
 	workflow         api.ProposalWorkflow
 	durableWorkflow  *proposalworkflow.Workflow
 	search           api.SearchService
@@ -126,6 +127,7 @@ func buildSuggestions(
 	jobs.Add(recurate.NewRunner(st, service, log).WithAdjacency(catalogService).Job())
 
 	result.suggest = service
+	result.progress = service
 	result.systemLLM = systemLLM
 	owner.goRun(func(ctx context.Context) { service.Run(ctx) })
 	log.Info("suggester started", "provider", provider.Name(), "workers", set.intv("job.workers"),

@@ -206,3 +206,65 @@ func TestOpenAI_LogsOneLinePerCallWithFinishReasonAndUsage(t *testing.T) {
 		}
 	}
 }
+
+// OnContentDelta hands the caller each content fragment as its frame arrives — the hook a
+// UI uses to stream a reply — and the reassembled Response is unchanged.
+func TestOpenAI_OnContentDeltaSeesEachFragmentInOrder(t *testing.T) {
+	srv := sseServer(t, steadyFrames(10*time.Millisecond), false)
+	o := llm.NewOpenAI(srv.URL, "m", "")
+	var got []string
+	resp, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "hi"}}, llm.ChatOptions{
+		OnContentDelta: func(s string) { got = append(got, s) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, "|") != "hel|lo" {
+		t.Errorf("deltas = %q, want hel|lo", got)
+	}
+	if resp.Content != "hello" {
+		t.Errorf("content = %q, want hello", resp.Content)
+	}
+}
+
+// ⚠ A delta is only ever delivered after response bytes arrive. A request that fails before
+// any body (connection refused, non-2xx) must never call it, so a caller that retries or
+// replays a request can never show fragments of an attempt that produced nothing.
+func TestOpenAI_OnContentDeltaNeverFiresWithoutResponseBytes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	o := llm.NewOpenAI(srv.URL, "m", "")
+	calls := 0
+	_, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "hi"}}, llm.ChatOptions{
+		OnContentDelta: func(string) { calls++ },
+	})
+	if err == nil {
+		t.Fatal("want an error from a 502")
+	}
+	if calls != 0 {
+		t.Errorf("OnContentDelta called %d times for a request with no response body", calls)
+	}
+}
+
+// A server that answers with one JSON document (no stream) never calls the hook: the caller
+// gets its content when the turn completes.
+func TestOpenAI_OnContentDeltaSilentForNonStreamingReply(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"g","model":"m","choices":[{"message":{"role":"assistant","content":"whole"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+	o := llm.NewOpenAI(srv.URL, "m", "")
+	calls := 0
+	resp, err := o.Chat(context.Background(), []llm.Message{{Role: llm.User, Content: "hi"}}, llm.ChatOptions{
+		OnContentDelta: func(string) { calls++ },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 || resp.Content != "whole" {
+		t.Errorf("calls=%d content=%q, want 0 and whole", calls, resp.Content)
+	}
+}

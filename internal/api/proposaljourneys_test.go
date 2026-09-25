@@ -252,11 +252,13 @@ func (f *fakeProposalWorkflow) Revise(
 	return f.err
 }
 
-func proposalJourneyServer(t *testing.T, workflow api.ProposalWorkflow) *httptest.Server {
+func proposalJourneyServer(t *testing.T, workflow api.ProposalWorkflow, configure ...func(*api.Options)) *httptest.Server {
 	t.Helper()
-	handler := api.Router(slog.New(slog.DiscardHandler), api.Options{
-		Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), ProposalWorkflow: workflow,
-	})
+	opts := api.Options{Auth: testAuthorizer{}, Log: slog.New(slog.DiscardHandler), ProposalWorkflow: workflow}
+	for _, fn := range configure {
+		fn(&opts)
+	}
+	handler := api.Router(slog.New(slog.DiscardHandler), opts)
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	return srv
@@ -289,5 +291,92 @@ func TestProposalJourneyReportsWhoApprovedAndWhen(t *testing.T) {
 	if body.Proposal == nil || body.Proposal.ApprovedAt != "2026-09-24T18:30:00Z" ||
 		body.Proposal.ApprovedByName != "Automatic" {
 		t.Fatalf("Journey proposal = %+v, want approvedAt 2026-09-24T18:30:00Z by Automatic", body.Proposal)
+	}
+}
+
+type fakeProgress struct {
+	snap suggest.ProgressSnapshot
+	ok   bool
+	got  string
+}
+
+func (f *fakeProgress) Progress(jobID string) (suggest.ProgressSnapshot, bool) {
+	f.got = jobID
+	return f.snap, f.ok
+}
+
+func getJourney(t *testing.T, srv *httptest.Server) api.ProposalJourneyDTO {
+	t.Helper()
+	resp := do(t, srv, http.MethodGet, "/v1/proposal-jobs/job-1", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET Journey = %d, want 200", resp.StatusCode)
+	}
+	var body api.ProposalJourneyDTO
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+// A generating Journey carries the live snapshot, so a reload or another device sees the same
+// stage line and streamed titles the first tab does.
+func TestProposalJourneyCarriesLiveProgressWhileGenerating(t *testing.T) {
+	t.Parallel()
+	started := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	progress := &fakeProgress{ok: true, snap: suggest.ProgressSnapshot{
+		Stage: suggest.StageChoosing, Terms: []string{"speed"}, Target: 8, StartedAt: started,
+		Picks: []suggest.ProgressPick{{Key: "movie:tmdb:100", MediaType: "movie", Name: "Speed", Year: 1994, TMDBID: 100, InLibrary: false}},
+	}}
+	wf := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
+		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1", Milestone: proposalworkflow.MilestoneGenerating,
+	}}
+	body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress }))
+	if progress.got != "job-1" {
+		t.Fatalf("progress read for %q, want job-1", progress.got)
+	}
+	p := body.Progress
+	if p == nil || p.Stage != "choosing" || p.Target != 8 || len(p.Terms) != 1 || p.Terms[0] != "speed" ||
+		len(p.Picks) != 1 || p.Picks[0].Name != "Speed" || p.Picks[0].Year != 1994 || !p.StartedAt.Equal(started) {
+		t.Fatalf("progress = %+v", p)
+	}
+}
+
+// Once the run has ended the Proposal or the failure is the record: no progress, even if a
+// stale snapshot were still around.
+func TestProposalJourneyOmitsProgressOutsideGenerating(t *testing.T) {
+	t.Parallel()
+	progress := &fakeProgress{ok: true, snap: suggest.ProgressSnapshot{Stage: suggest.StageChoosing}}
+	wf := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
+		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1", Milestone: proposalworkflow.MilestoneAwaitingApproval,
+	}}
+	if body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress })); body.Progress != nil {
+		t.Fatalf("progress = %+v on an awaiting_approval journey, want none", body.Progress)
+	}
+	// A queued job (not running on this process) has no snapshot: progress is absent, not empty.
+	progress.ok = false
+	wf.journey.Milestone = proposalworkflow.MilestoneGenerating
+	if body := getJourney(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress })); body.Progress != nil {
+		t.Fatalf("progress = %+v for a job with no live run, want none", body.Progress)
+	}
+}
+
+// The Requests page lists journeys, and its In progress card shows the same stage line.
+func TestProposalJourneyListCarriesLiveProgressToo(t *testing.T) {
+	t.Parallel()
+	progress := &fakeProgress{ok: true, snap: suggest.ProgressSnapshot{Stage: suggest.StageSearching, Terms: []string{"speed"}, Target: 8}}
+	wf := &fakeProposalWorkflow{journeys: []proposalworkflow.Journey{{
+		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1", Milestone: proposalworkflow.MilestoneGenerating,
+	}}}
+	resp := do(t, proposalJourneyServer(t, wf, func(o *api.Options) { o.ProposalProgress = progress }), http.MethodGet, "/v1/proposal-jobs", adminToken, "")
+	defer func() { _ = resp.Body.Close() }()
+	var body struct {
+		Journeys []api.ProposalJourneyDTO `json:"journeys"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Journeys) != 1 || body.Journeys[0].Progress == nil || body.Journeys[0].Progress.Stage != "searching" {
+		t.Fatalf("journeys = %+v, want the searching stage on the generating one", body.Journeys)
 	}
 }

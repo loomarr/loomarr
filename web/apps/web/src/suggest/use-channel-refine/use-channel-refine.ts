@@ -75,6 +75,7 @@ const useChannelRefine = (): ChannelRefine => {
     channelId: active?.channelId,
     phase: phase ?? (journey?.milestone === "failed" ? "failed" : proposal ? "done" : undefined),
     round,
+    progress: journey?.progress,
     proposal,
     failure: journey?.failure,
     actions: journey?.actions ?? [],

@@ -7729,6 +7729,9 @@ components:
             - live
             - failed
           type: string
+        progress:
+          $ref: "#/components/schemas/ProposalJourneyProgressDTO"
+          description: Live generation progress; present only while generating and running on this server
         proposal:
           $ref: "#/components/schemas/ProposalJourneyProposalDTO"
         updatedAt:
@@ -7812,6 +7815,69 @@ components:
           type: array
       required:
         - journeys
+      type: object
+    ProposalJourneyProgressDTO:
+      additionalProperties: false
+      properties:
+        picks:
+          description: Titles chosen so far, in the order the model chose them, each resolved against the surfaced catalog
+          items:
+            $ref: "#/components/schemas/ProposalJourneyProgressPick"
+          type: array
+        stage:
+          description: "User-facing step: reading the request, searching the library, choosing titles, building the lineup"
+          enum:
+            - reading
+            - searching
+            - choosing
+            - building
+          type: string
+        startedAt:
+          format: date-time
+          type: string
+        target:
+          description: The most titles the model is asked to pick
+          format: int64
+          type: integer
+        terms:
+          description: What the catalog searches were actually asked for (bounded)
+          items:
+            type: string
+          type: array
+      required:
+        - stage
+        - terms
+        - picks
+        - target
+        - startedAt
+      type: object
+    ProposalJourneyProgressPick:
+      additionalProperties: false
+      properties:
+        inLibrary:
+          type: boolean
+        key:
+          type: string
+        libraryItemId:
+          type: string
+        mediaType:
+          enum:
+            - movie
+            - series
+          type: string
+        name:
+          type: string
+        tmdbId:
+          format: int64
+          type: integer
+        year:
+          format: int64
+          type: integer
+      required:
+        - key
+        - mediaType
+        - name
+        - inLibrary
       type: object
     ProposalJourneyProposalDTO:
       additionalProperties: false

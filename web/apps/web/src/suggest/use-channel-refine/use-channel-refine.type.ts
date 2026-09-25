@@ -1,5 +1,6 @@
 import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
 import type { ProposalJourneyFailureDTO } from "@loomarr/api/models/proposalJourneyFailureDTO";
+import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
 import type { SuggestionPhase } from "@loomarr/core/events";
 
 interface ChannelRefine {
@@ -8,6 +9,8 @@ interface ChannelRefine {
   phase?: SuggestionPhase;
   // The tool-loop round the phase belongs to (1-based; undefined outside the loop).
   round?: number;
+  // The server's live snapshot while generating (stage, search terms, streamed picks).
+  progress?: ProposalJourneyProgressDTO;
   // The refined proposal, once it exists.
   proposal?: ProposalDTO;
   failure?: ProposalJourneyFailureDTO;

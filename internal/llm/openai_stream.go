@@ -90,6 +90,17 @@ func WithCallSite(ctx context.Context, site string) context.Context {
 	return context.WithValue(ctx, callSiteKey{}, site)
 }
 
+// contentDeltaKey carries ChatOptions.OnContentDelta down to exchange without widening its
+// signature.
+type contentDeltaKey struct{}
+
+func withContentDelta(ctx context.Context, fn func(string)) context.Context {
+	if fn == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, contentDeltaKey{}, fn)
+}
+
 // CallSite returns the name set by WithCallSite, or "unknown".
 func CallSite(ctx context.Context) string {
 	if site, _ := ctx.Value(callSiteKey{}).(string); site != "" {
@@ -221,6 +232,7 @@ func (o *OpenAI) exchange(ctx context.Context, op string, body []byte) (completi
 		sawFinish bool
 		sawDone   bool
 	)
+	onDelta, _ := ctx.Value(contentDeltaKey{}).(func(string))
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
@@ -261,6 +273,11 @@ func (o *OpenAI) exchange(ctx context.Context, op string, body []byte) (completi
 		}
 		for _, choice := range chunk.Choices {
 			content.WriteString(choice.Delta.Content)
+			// Reached only after a 2xx event-stream frame has been read, so a failed or
+			// replayed request never reports a fragment (see ChatOptions.OnContentDelta).
+			if onDelta != nil && choice.Delta.Content != "" {
+				onDelta(choice.Delta.Content)
+			}
 			for _, tc := range choice.Delta.ToolCalls {
 				for len(calls) <= tc.Index {
 					calls = append(calls, &openaiToolCall{Type: "function"})

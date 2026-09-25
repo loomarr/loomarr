@@ -113,6 +113,7 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
     jobId,
     phase,
     round,
+    progress: journey?.progress,
     proposal: journey?.proposal,
     failure: journey?.failure,
     intent: journey?.intent ?? intent,
