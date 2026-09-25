@@ -34,7 +34,7 @@ import (
 // DIFFERENT key, so a stale entry is unreachable rather than merely unlikely. The store read
 // that makes it possible is already on this path and costs ~0.7% of the request.
 //
-// The cost of the choice is that the fingerprint must cover every inpu ComputeDesiredAt reads.
+// The cost of the choice is that the fingerprint must cover every input ComputeDesiredAt reads.
 // fingerprintChannel below is that list, and it is the one thing to update when the scheduler
 // grows a new input — see the note there.
 //
@@ -47,71 +47,31 @@ import (
 //
 // Draft previews are never cached — CyclePreviewDraft with a non-nil draft is an unsaved
 // what-if whose whole purpose is to reflect the edit in hand.
+//
+// # How `at` enters the key (#1397)
+//
+// `at` is the Guide window's `from`, so it moves with every poll, every ±1h step and every day
+// change. It used to be quantised to the wall-clock minute, which made nearly every request a new
+// key: a navigated window always missed, and so did any visit more than a minute after the last.
+//
+// But `at` reaches the arrangement by exactly three routes — the active rule, the active holidays,
+// and the rolling-window index — so the key carries THOSE, not the time. schedule.ClockSignature
+// covers the first two; the rolling-window index is added per lookup from the window length the
+// cache learned when it stored the entry (see cycleCache). Two windows inside one rolling window,
+// under the same rule and holiday state, share one arrangement however far apart they are.
 
 // cycleCacheTTL bounds how long an arranged cycle may be reused.
 //
-// The fingerprint already covers channel STATE, so this bounds only the inputs a fingerprint
-// cannot see: engine-level availability (e.avail moves as titles land) and wall-clock drift
-// within a bucket. Sixty seconds is comfortably shorter than the guide's own thirty-second
-// re-render feeling stale, and short enough that a title landing shows up promptly.
-const cycleCacheTTL = 60 * time.Second
+// The fingerprint covers channel STATE and the clock signature covers the CLOCK, so this bounds
+// only what neither can see: engine-level availability (e.avail moves as titles land) and the
+// hot-applied break-density / default-window settings. Those move slowly, and a forecast that is
+// a few minutes behind them is the same class of staleness BroadcastsBetween already documents;
+// the window containing NOW is served from the persisted Desired cycle, not from here.
+const cycleCacheTTL = 5 * time.Minute
 
-// cycleBucket is how coarsely `at` is quantised into the key.
-//
-// `at` reaches ComputeDesiredAt, ActiveRuleAt and ResolveWindow, so a curation rule that
-// switches the channel at 21:00 genuinely changes the answer. Quantising means two requests a
-// few seconds apart share an entry instead of each paying a full arrangement — the guide's
-// window start moves with every poll, so an exact-instant key would never hit.
-//
-// One minute is deliberately finer than any rule boundary the rule engine can express (rules
-// switch on the hour, not the second), so a bucket cannot straddle one by more than the bucket
-// itself. That bounded skew is the SAME limitation BroadcastsBetween already documents for a
-// window spanning a rule boundary — this does not introduce a new class of staleness.
-const cycleBucket = time.Minute
-
-// timeVarying reports whether this channel's arrangement can change with `at` alone — with no
-// edit, no acquisition, nothing but the clock moving.
-//
-// # Why this exists
-//
-// Bucketing `at` into the key is what makes the cache correct for a channel whose lineup really
-// does change at 21:00. It is also what makes the cache MISS every sixty seconds for a channel
-// whose lineup does not: the guide's window start advances with the wall clock, so a new bucket
-// arrives every minute and re-pays a full arrangement for a byte-identical answer. Measured on
-// the dev install, arrangements were identical across +0/+6h/+1d/+3d on every channel, while the
-// endpoint's p99 sat at 90ms against a p50 of 21ms — that spread was this cache missing on the
-// bucket, not real work.
-//
-// So the bucket is now CONDITIONAL: a channel that cannot vary with time keys on its inputs
-// alone and stays cached until something actually edits it.
-//
-// # The predicate, and why it is deliberately pessimistic
-//
-// `at` reaches the arrangement by exactly two routes:
-//
-//   - pickRule (via ComputeDesiredAt, ActiveRuleAt and ResolveWindow) — which can only select a
-//     different rule if there ARE rules. Over an empty slice it returns the same "no match" for
-//     every instant.
-//   - applySeasonal — which returns entries untouched only when the RESOLVED mode is SeasonalOff.
-//
-// ⚠ The seasonal half is the trap. The resolved default is SeasonalAuto, not Off (policy.go
-// defaultSeasonalMode), and activeHolidays walks the whole built-in calendar when no holidays are
-// explicitly selected — so a channel with an entirely EMPTY seasonal policy is still time-varying,
-// and will bench or unbench items as a holiday window opens. A predicate that read "no holidays
-// configured ⇒ invariant" would look right, pass every test written against a rule-less channel,
-// and silently serve a Christmas lineup in January.
-//
-// Hence: time-varying UNLESS seasonality is explicitly switched off AND there are no rules. False
-// negatives here cost a cache miss; false positives cost a wrong lineup. The asymmetry decides
-// the default.
-func timeVarying(policy schedule.ChannelPolicy) bool {
-	if len(policy.Rules) > 0 {
-		return true
-	}
-	// Only an EXPLICIT off is safe to treat as time-invariant — an unset mode resolves to
-	// SeasonalAuto, which is time-varying.
-	return policy.Seasonal.Mode != schedule.SeasonalOff
-}
+// cycleCacheMaxEntries bounds the cache against a client paging through many windows. One channel
+// under one rule/holiday state has one entry per rolling window visited.
+const cycleCacheMaxEntries = 512
 
 // cycleEntry is one arranged cycle plus the rolling-window horizon it resolved to.
 //
@@ -125,13 +85,23 @@ type cycleEntry struct {
 	stored time.Time
 }
 
+// windowNote remembers the rolling-window length an input set resolved to. It is what lets a
+// lookup compute the window index BEFORE it has an arrangement: the length is a function of the
+// rule/channel/engine default, all of which are already pinned by the base key (or, for the
+// engine default, bounded by cycleCacheTTL).
+type windowNote struct {
+	window time.Duration
+	stored time.Time
+}
+
 // cycleCache memoises arranged cycles for the guide's read path.
 //
-// Bounded by channel count (one live entry per channel per bucket, pruned on write), so it
-// cannot grow with request volume the way a per-window key would.
+// Entries are keyed by (base fingerprint, rolling-window index). Bounded by cycleCacheMaxEntries
+// and pruned on write, so it cannot grow with request volume.
 type cycleCache struct {
 	mu      sync.Mutex
 	entries map[uint64]cycleEntry
+	windows map[uint64]windowNote
 	now     func() time.Time
 }
 
@@ -139,17 +109,33 @@ func newCycleCache(now func() time.Time) *cycleCache {
 	if now == nil {
 		now = time.Now
 	}
-	return &cycleCache{entries: map[uint64]cycleEntry{}, now: now}
+	return &cycleCache{entries: map[uint64]cycleEntry{}, windows: map[uint64]windowNote{}, now: now}
 }
 
-// get returns a live entry for this key, if one exists.
-func (c *cycleCache) get(key uint64) ([]schedule.Slot, time.Duration, bool) {
+// windowKey folds the rolling-window index of `at` into the base key.
+func windowKey(base uint64, at time.Time, window time.Duration) uint64 {
+	h := fnv.New64a()
+	var num [8]byte
+	binary.LittleEndian.PutUint64(num[:], base)
+	_, _ = h.Write(num[:])
+	binary.LittleEndian.PutUint64(num[:], uint64(schedule.WindowIndex(at, window)))
+	_, _ = h.Write(num[:])
+	return h.Sum64()
+}
+
+// get returns a live entry for this input set at `at`, if one exists. A base key never stored has
+// no known window length, so it simply misses.
+func (c *cycleCache) get(base uint64, at time.Time) ([]schedule.Slot, time.Duration, bool) {
 	if c == nil {
 		return nil, 0, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	e, ok := c.entries[key]
+	note, ok := c.windows[base]
+	if !ok || c.now().Sub(note.stored) > cycleCacheTTL {
+		return nil, 0, false
+	}
+	e, ok := c.entries[windowKey(base, at, note.window)]
 	if !ok || c.now().Sub(e.stored) > cycleCacheTTL {
 		return nil, 0, false
 	}
@@ -160,7 +146,7 @@ func (c *cycleCache) get(key uint64) ([]schedule.Slot, time.Duration, bool) {
 //
 // Pruning on WRITE rather than on a timer keeps this free of a background goroutine: the cache
 // is only touched by requests, so a cache nobody reads costs nothing rather than ticking.
-func (c *cycleCache) put(key uint64, slots []schedule.Slot, window time.Duration) {
+func (c *cycleCache) put(base uint64, at time.Time, slots []schedule.Slot, window time.Duration) {
 	if c == nil {
 		return
 	}
@@ -172,10 +158,27 @@ func (c *cycleCache) put(key uint64, slots []schedule.Slot, window time.Duration
 			delete(c.entries, k)
 		}
 	}
-	c.entries[key] = cycleEntry{slots: slots, window: window, stored: now}
+	for k, n := range c.windows {
+		if now.Sub(n.stored) > cycleCacheTTL {
+			delete(c.windows, k)
+		}
+	}
+	for len(c.entries) >= cycleCacheMaxEntries {
+		var oldest uint64
+		var oldestAt time.Time
+		for k, e := range c.entries {
+			if oldestAt.IsZero() || e.stored.Before(oldestAt) {
+				oldest, oldestAt = k, e.stored
+			}
+		}
+		delete(c.entries, oldest)
+	}
+	c.windows[base] = windowNote{window: window, stored: now}
+	c.entries[windowKey(base, at, window)] = cycleEntry{slots: slots, window: window, stored: now}
 }
 
-// fingerprintChannel hashes everything ComputeDesiredAt's answer depends on.
+// fingerprintChannel hashes everything ComputeDesiredAt's answer depends on, other than the
+// rolling-window index (the cache adds that per lookup).
 //
 // ⚠ THIS FUNCTION IS THE CACHE'S CORRECTNESS. An input the scheduler reads but this does not
 // hash is an input whose change cannot evict the entry — the arrangement would silently keep the
@@ -193,6 +196,7 @@ func (c *cycleCache) put(key uint64, slots []schedule.Slot, window time.Duration
 // JSON specifically because policy_json is how the store already round-trips ChannelPolicy, so
 // the encoding is faithful to what persistence considers meaningful. Encoding errors fall back
 // to a zero fingerprint, which forces a miss — the safe direction.
+//
 // # What the fingerprint deliberately does NOT cover
 //
 // Three inputs live inside channels.Engine and are invisible from here: e.avail (availability,
@@ -205,17 +209,17 @@ func (c *cycleCache) put(key uint64, slots []schedule.Slot, window time.Duration
 // and give the system two answers to one question — the §10 shared-assembler mistake in a new
 // place. Instead they are covered by cycleCacheTTL: all three are slow-moving (an operator
 // changing a setting, a filler pool emptying, an acquisition completing), so bounding their
-// staleness at one minute is a deliberate trade, not an oversight. A change to any of them shows
-// up within a TTL rather than instantly.
-// The `bucket` argument is the caller's quantised `at`, and is folded in ONLY for a channel
-// whose arrangement can actually vary with time (see timeVarying). For an invariant channel it
-// is deliberately ignored, so every instant shares one entry and the cache survives until the
-// lineup or policy changes — which is the whole point of fingerprinting the inputs.
+// staleness is a deliberate trade, not an oversight. A change to any of them shows up within a
+// TTL rather than instantly.
+//
+// `clock` is schedule.ClockSignature(policy, at): the rule and holiday state at `at`. It is
+// folded in for EVERY channel — for one whose policy cannot vary with time (seasonality off, no
+// rules) it is constant, so that channel keeps one entry across every instant.
 func fingerprintChannel(
 	channelID string,
 	lineup []schedule.LineupEntry,
 	policy schedule.ChannelPolicy,
-	bucket int64,
+	clock uint64,
 ) (uint64, bool) {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(channelID))
@@ -235,12 +239,7 @@ func fingerprintChannel(
 	_, _ = h.Write(policyJSON)
 
 	var num [8]byte
-	writeNum := func(v int64) {
-		binary.LittleEndian.PutUint64(num[:], uint64(v))
-		_, _ = h.Write(num[:])
-	}
-	if timeVarying(policy) {
-		writeNum(bucket)
-	}
+	binary.LittleEndian.PutUint64(num[:], clock)
+	_, _ = h.Write(num[:])
 	return h.Sum64(), true
 }

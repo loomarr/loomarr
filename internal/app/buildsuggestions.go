@@ -83,9 +83,9 @@ func buildSuggestions(
 	result.imageFetcher = registerImageJobs(
 		rootCtx, jobs, result.images, imageStore{st}, fillerLayout, set, activityRecorder, log,
 	)
-	result.timelineThumbs = timelineThumbResolver{
+	result.timelineThumbs = newTimelineThumbs(rootCtx, timelineThumbResolver{
 		tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher,
-	}
+	}, log)
 	if engine, ok := channelService.(*channels.Engine); ok {
 		engine.WithFranchises(tmdbFranchises{tmdb: tmdbClient})
 	}
