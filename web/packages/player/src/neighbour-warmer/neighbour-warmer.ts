@@ -30,6 +30,7 @@ const MIN_REMAINING_MS = 60_000;
  * were warmed.
  */
 const createNeighbourWarmer = ({
+  prefetchStill,
   profile,
   radius = DEFAULT_RADIUS,
   source,
@@ -47,6 +48,8 @@ const createNeighbourWarmer = ({
     if (!result || signal.aborted) return;
     const { warmed: _certified, ...reusable } = result;
     warmed.set(channel.id, { at: Date.now(), source: reusable });
+    // Fetched now, while the viewer is idle, so the switch overlay paints it from cache.
+    if (reusable.stillUri) prefetchStill?.(reusable.stillUri);
   };
 
   const warmRings = async (
@@ -78,6 +81,7 @@ const createNeighbourWarmer = ({
       active = controller;
       void warmRings(catalog, index, controller);
     },
+    stillFor: (channelId) => warmed.get(channelId)?.source.stillUri,
     take: (channelId) => {
       const entry = warmed.get(channelId);
       warmed.delete(channelId);

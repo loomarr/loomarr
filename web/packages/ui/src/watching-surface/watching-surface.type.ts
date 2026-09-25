@@ -11,6 +11,8 @@ interface ChannelNumberEntry {
 
 interface WatchingProgrammeData extends ProgrammeIdentityData {
   progressPercent?: number;
+  /** "12m left": shown on the channel switch overlay's surf card. */
+  remainingLabel?: string;
 }
 
 interface WatchingScheduleData {

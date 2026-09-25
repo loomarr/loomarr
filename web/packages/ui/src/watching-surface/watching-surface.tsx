@@ -1,7 +1,9 @@
 import { Action, ActivityIndicator, ProgressTrack, Surface, Text } from "@loomarr/design-system";
-import { useCallback, useEffect, useRef } from "react";
+import type { PlayerSnapshot } from "@loomarr/player";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
+import { ChannelSwitchOverlay } from "../channel-switch-overlay";
 import { ChannelIdentity, ProgrammeIdentity } from "../identity";
 import { TransientOverlay } from "../overlay";
 import type { WatchingSurfaceProps } from "./watching-surface.type";
@@ -9,10 +11,13 @@ import { behindLabel, playbackMessage } from "./watching-surface-state";
 
 const LoadingChannels = ({ density }: Pick<WatchingSurfaceProps, "density">) => (
   <View style={{ alignItems: "center", flex: 1, justifyContent: "center" }}>
-    <ActivityIndicator
-      accessibilityLabel="Loading channels"
-      size={density === "tv" ? "tv" : density === "touch" ? "touch" : "default"}
-    />
+    {/* The indicator aligns itself to the start (so it never stretches); this wrapper carries it to the centre. */}
+    <View style={{ alignSelf: "center" }}>
+      <ActivityIndicator
+        accessibilityLabel="Loading channels"
+        size={density === "tv" ? "tv" : density === "touch" ? "touch" : "default"}
+      />
+    </View>
   </View>
 );
 
@@ -218,6 +223,18 @@ const TouchWatchingSurface = ({
   );
 };
 
+/** Viewer-initiated tunes only: a recovery retry or the boot-time catalog tune has no "switch" to cover. */
+const SWITCH_REASONS: ReadonlySet<PlayerSnapshot["tuneReason"]> = new Set([
+  "channel",
+  "number",
+  "previous",
+  "step",
+]);
+/** Gap between the bottom chrome bar and the switch overlay's card. */
+const SWITCH_CARD_GAP = 16;
+/** Bar height assumed until it has been measured (the overlay draws in the same frame as the bar). */
+const DEFAULT_CHROME_HEIGHT = 180;
+
 const TvWatchingSurface = ({
   chromeVisible = true,
   controlsActivityKey = 0,
@@ -240,6 +257,12 @@ const TvWatchingSurface = ({
   const overlayVisible = !loading && (controlsVisible || Boolean(message) || snapshot.status === "tuning");
   const activityKeyRef = useRef(controlsActivityKey);
   const dismissControlsRef = useRef(onDismissControls);
+  const [chromeHeight, setChromeHeight] = useState(DEFAULT_CHROME_HEIGHT);
+  const switching =
+    !loading &&
+    snapshot.status === "tuning" &&
+    !snapshot.reconnecting &&
+    SWITCH_REASONS.has(snapshot.tuneReason);
 
   useEffect(() => {
     activityKeyRef.current = controlsActivityKey;
@@ -261,6 +284,18 @@ const TvWatchingSurface = ({
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>{player}</View>
+      {chromeVisible && snapshot.channel ? (
+        <ChannelSwitchOverlay
+          bottomInset={chromeHeight + SWITCH_CARD_GAP}
+          channel={{
+            channelName: snapshot.channel.name,
+            channelNumber: String(snapshot.channel.number),
+            now: schedule?.now,
+          }}
+          stillUri={snapshot.stillUri}
+          visible={switching}
+        />
+      ) : null}
       {chromeVisible ? (
         <>
           {loading ? null : (
@@ -316,6 +351,9 @@ const TvWatchingSurface = ({
                 bottom={0}
                 gap={0}
                 left={0}
+                onLayout={(event: { nativeEvent: { layout: { height: number } } }) =>
+                  setChromeHeight(Math.round(event.nativeEvent.layout.height))
+                }
                 paddingTop={24}
                 position="absolute"
                 right={0}

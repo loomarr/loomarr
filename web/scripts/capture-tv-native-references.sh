@@ -108,6 +108,8 @@ stories=(
   "watching-loading|loomarr-components-watching-surface--loading"
   "watching-empty|loomarr-components-watching-surface--empty-channel"
   "watching-error|loomarr-components-watching-surface--playback-error"
+  "watching-switch|loomarr-components-watching-surface--tuning-switch"
+  "watching-switch-still|loomarr-components-watching-surface--tuning-switch-with-still"
   "surf-focused|loomarr-components-surf-journey--tv"
   "surf-loading|loomarr-components-surf-journey--tv-loading"
   "surf-empty|loomarr-components-surf-journey--tv-empty"

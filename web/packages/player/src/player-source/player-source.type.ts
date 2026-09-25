@@ -12,6 +12,8 @@ interface PlayerSource {
   headers?: Readonly<Record<string, string>>;
   /** Server-authored Unix milliseconds at mint time, used to keep native live chrome off device RTC. */
   serverTimeMs?: number;
+  /** Signed address of the channel's latest still frame, for the switch overlay. Absent when the server sent none. */
+  stillUri?: string;
   uri: string;
 }
 

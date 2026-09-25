@@ -244,3 +244,39 @@ describe("play URL source warm", () => {
     expect(warmed?.uri).toContain("sig=one");
   });
 });
+
+describe("play URL source still address", () => {
+  const respond = (body: Record<string, unknown>) =>
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          expiresAt: "2026-08-26T13:00:00Z",
+          relativeUrl: "/v1/playout/hls/science/master.m3u8?sig=one",
+          serverTimeMs: 1,
+          url: "",
+          ...body,
+        }),
+        { status: 200 },
+      ),
+    );
+  const mint = (request: ReturnType<typeof respond>) =>
+    createPlayUrlSourcePort({ baseUrl: "http://living-room:8080/", fetch: request }).mint(
+      channel,
+      {},
+      new AbortController().signal,
+    );
+
+  it("carries the signed still for the switch overlay, resolved like the stream address", async () => {
+    const result = await mint(
+      respond({ relativeStillUrl: "/v1/playout/still/science?sig=one", stillUrl: "http://elsewhere/still" }),
+    );
+    expect(result.stillUri).toBe("http://living-room:8080/v1/playout/still/science?sig=one");
+  });
+
+  it("falls back to the absolute still, and omits it when the server sent none", async () => {
+    expect((await mint(respond({ relativeStillUrl: "", stillUrl: "http://abs/still?sig=1" }))).stillUri).toBe(
+      "http://abs/still?sig=1",
+    );
+    expect("stillUri" in (await mint(respond({})))).toBe(false);
+  });
+});

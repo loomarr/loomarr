@@ -24,7 +24,10 @@ const deferred = <T>() => {
   return { promise, reject, resolve };
 };
 
-const harness = (source?: PlayerSourcePort) => {
+const harness = (
+  source?: PlayerSourcePort,
+  options: Partial<Parameters<typeof createPlayerController>[0]> = {},
+) => {
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   const transport: PlayerTransport = {
     dispose: vi.fn(),
@@ -46,6 +49,7 @@ const harness = (source?: PlayerSourcePort) => {
     profile: { maxResolution: 2160 },
     source: sourcePort,
     transport,
+    ...options,
   });
   return {
     controller,
@@ -449,5 +453,51 @@ describe("player controller warmed-source reuse", () => {
       expect.objectContaining({ uri: "https://loomarr.test/ch2.m3u8?warmed" }),
       expect.anything(),
     );
+  });
+});
+
+describe("player controller channel still", () => {
+  const list: PlayerChannel[] = [1, 2, 3].map((n) => ({
+    id: `ch${n}`,
+    inAppPlayable: true,
+    name: `Channel ${n}`,
+    number: n,
+  }));
+  const mint = (channel: PlayerChannel) =>
+    Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?fresh` });
+  const warm = (channel: PlayerChannel) =>
+    Promise.resolve({
+      stillUri: `https://loomarr.test/still/${channel.id}`,
+      uri: `https://loomarr.test/${channel.id}.m3u8?warmed`,
+      warmed: true,
+    });
+
+  it("prefetches a neighbour's still as soon as it is warmed", async () => {
+    const prefetchStill = vi.fn();
+    const { controller } = harness({ mint, warm }, { prefetchStill });
+    await controller.reconcile(list);
+    await vi.waitFor(() => expect(prefetchStill).toHaveBeenCalledWith("https://loomarr.test/still/ch2"));
+  });
+
+  it("carries a warmed neighbour's still in the very snapshot that starts the tune", async () => {
+    const { controller } = harness({ mint, warm });
+    await controller.reconcile(list);
+    await vi.waitFor(() => expect(controller.getSnapshot().status).not.toBe("empty"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const seen: (string | undefined)[] = [];
+    controller.subscribe((snapshot) => {
+      if (snapshot.status === "tuning") seen.push(snapshot.stillUri);
+    });
+
+    await controller.step(1);
+
+    expect(seen[0]).toBe("https://loomarr.test/still/ch2");
+  });
+
+  it("has no still for a channel that was never warmed", async () => {
+    const { controller } = harness();
+    await controller.reconcile(list);
+    await controller.step(1);
+    expect(controller.getSnapshot().stillUri).toBeUndefined();
   });
 });

@@ -38,6 +38,17 @@ const resolveStreamUrl = (
   throw new Error("This Loomarr returned no stream address for the channel.");
 };
 
+/** The still address, resolved like the stream's; undefined when the server sent none (an older server). */
+const resolveStillUrl = (
+  baseUrl: string,
+  response: Partial<Pick<PlayURLOutputBody, "relativeStillUrl" | "stillUrl">>,
+): string | undefined => {
+  if (response.relativeStillUrl?.trim()) {
+    return `${trimTrailingSlashes(baseUrl)}/${trimLeadingSlashes(response.relativeStillUrl)}`;
+  }
+  return response.stillUrl?.trim() || undefined;
+};
+
 const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptions): PlayerSourcePort => {
   const mint: PlayerSourcePort["mint"] = async (channel, profile, signal) => {
     const response = await request(getChannelPlayUrlUrl(channel.id), {
@@ -52,9 +63,11 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
     const expiry = Date.parse(body.expiresAt);
     const headerServerTime = Date.parse(response.headers.get("Date") ?? "");
     const serverTime = Number.isFinite(body.serverTimeMs) ? body.serverTimeMs : headerServerTime;
+    const stillUri = resolveStillUrl(baseUrl, body);
     return {
       expiresAt: Number.isFinite(expiry) ? expiry : undefined,
       ...(Number.isFinite(serverTime) ? { serverTimeMs: serverTime } : {}),
+      ...(stillUri ? { stillUri } : {}),
       uri: resolveStreamUrl(baseUrl, body),
     };
   };

@@ -21,6 +21,7 @@ const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
 const createPlayerController = ({
   initialTune = "first",
   onPlayerError,
+  prefetchStill,
   profile,
   recovery,
   source,
@@ -41,7 +42,7 @@ const createPlayerController = ({
     status: "empty",
   };
   const listeners = new Set<(next: PlayerSnapshot) => void>();
-  const warmer = createNeighbourWarmer({ profile, radius: warmRadius, source });
+  const warmer = createNeighbourWarmer({ prefetchStill, profile, radius: warmRadius, source });
 
   const publish = (next: PlayerSnapshot) => {
     snapshot = next;
@@ -118,6 +119,9 @@ const createPlayerController = ({
         : [...snapshot.recentChannelIds];
 
     activeRequest?.abort();
+    // Read before anything cancels or takes the warmed entry: this is what lets the switch overlay
+    // paint in the same snapshot that starts the tune, with no request.
+    const stillUri = recovering ? undefined : warmer.stillFor(channel.id);
     // A stale prediction must not compete with the channel now being tuned.
     warmer.cancel();
     const request = new AbortController();
@@ -138,6 +142,7 @@ const createPlayerController = ({
       reconnecting: recovering ? { attempt: consecutiveFailures, maxAttempts: backoffMs.length } : undefined,
       recentChannelIds,
       status: "tuning",
+      stillUri,
       tuneReason: reason,
     });
 
