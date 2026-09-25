@@ -155,6 +155,31 @@ immediately reassign the pane to a ready independent task or close it, then show
 rosters again. Repeat the audit after every accepted report, reassignment, and closure; the steady
 state is the supervisor plus active workers.
 
+### Orca
+
+[Orca](https://github.com/stablyai/orca) creates a worktree, then starts an agent in it. The
+checked-in `orca.yaml` is a thin adapter over `scripts/agent.sh`:
+
+- **setup** registers the worktree under its branch name, which allocates its ports and database,
+  then runs `make bootstrap`'s steps. Agents wait for setup (`setupAgentStartupPolicy:
+  wait-for-setup`), so none starts against a half-installed tree.
+- **archive** releases the registration when Orca removes the worktree.
+
+Registration from the hook carries no claims. Add them before editing a shared output:
+`make agent-start TASK=<branch> CLAIMS=...`.
+
+Orca keeps its settings for each repo outside the repository, so each machine needs:
+
+- **Base ref** `origin/main`: `orca repo set-base-ref --repo <id> --ref origin/main`. Otherwise a
+  new worktree branches from whatever the primary checkout has checked out.
+- **Setup command source** *shared-only*, with no local setup or archive script, in Repository
+  settings. A local script under *local-only* replaces `orca.yaml` silently.
+
+Worktrees land in Orca's workspace directory rather than beside the primary checkout. Isolation keys
+off the worktree path, so the location does not matter, and `make agent-gc` audits Orca worktrees
+like any other. Do not add a `.worktreeinclude`: Orca would copy the listed files, including
+credentials, into every worktree.
+
 ## Linux-to-Mac handoff
 
 Use the supervisor workflow's [cross-host handoff barrier](../../.agents/workflows/supervise.md#hand-off-between-linux-and-mac).

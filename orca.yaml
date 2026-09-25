@@ -1,0 +1,19 @@
+# Orca adapter (https://github.com/stablyai/orca). Optional, like every harness adapter: it only calls
+# scripts/agent.sh, so a worktree Orca creates is registered and bootstrapped exactly like one from
+# `make agent-worktree`. See docs/dev/agents.md#orca.
+
+# Agents start only after bootstrap: pnpm install and codegen racing an agent's first command leave
+# a half-installed tree and a missing generated client.
+setupAgentStartupPolicy: wait-for-setup
+
+scripts:
+  # Register first so the worktree's ports, database, and task are visible in `make agent-status`
+  # before anything is generated; a refused registration stops before bootstrap.
+  setup: |
+    cd "$ORCA_WORKTREE_PATH" || exit 1
+    task="$(git branch --show-current)"
+    ./scripts/agent.sh start "${task:-$ORCA_WORKSPACE_NAME}" && ./scripts/agent.sh bootstrap
+  # Release the registration so `make agent-status` stops listing a worktree Orca has removed.
+  archive: |
+    cd "$ORCA_WORKTREE_PATH" || exit 1
+    ./scripts/agent.sh stop
