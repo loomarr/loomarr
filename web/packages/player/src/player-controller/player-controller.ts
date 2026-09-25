@@ -142,7 +142,10 @@ const createPlayerController = ({
     });
 
     try {
-      const nextSource = await source.mint(channel, profile, request.signal);
+      // A warmed neighbour's exact signed source skips the mint round trip and keeps the asset URLs
+      // the warm already fetched. Recovery always mints fresh: the warmed one just failed.
+      const nextSource =
+        (!recovering && warmer.take(channel.id)) || (await source.mint(channel, profile, request.signal));
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       await transport.replace(nextSource, { attemptId, signal: request.signal });
       if (!isCurrentAttempt(attemptId, request.signal)) return;

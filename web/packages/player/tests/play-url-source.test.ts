@@ -145,37 +145,102 @@ describe("play URL source", () => {
 
 describe("play URL source warm", () => {
   const mintBody = JSON.stringify({
-    expiresAt: "2026-08-26T13:00:00Z",
+    expiresAt: "2999-01-01T00:00:00Z",
     relativeUrl: "/v1/playout/hls/science/master.m3u8?sig=one&plan=full",
+    serverTimeMs: 1_000_000,
     url: "",
   });
+  const manifest = [
+    "#EXTM3U",
+    '#EXT-X-MAP:URI="init-a.mp4?sig=one"',
+    "#EXTINF:4.0,",
+    "seg-1.m4s?sig=one",
+    '#EXT-X-MAP:URI="init-b.mp4?sig=one"',
+    "#EXTINF:4.0,",
+    "seg-2.m4s?sig=one",
+  ].join("\n");
+  const mint = () => new Response(mintBody, { status: 200 });
+  const paths = (request: ReturnType<typeof vi.fn>) =>
+    request.mock.calls.map(([url]) => {
+      const parsed = new URL(url as string, "http://base.test");
+      return `${parsed.pathname.split("/").pop()}${parsed.searchParams.get("mode") ? `?mode=${parsed.searchParams.get("mode")}` : ""}`;
+    });
+  const port = (request: ReturnType<typeof vi.fn>) =>
+    createPlayUrlSourcePort({
+      baseUrl: "http://living-room:8080",
+      fetch: request as unknown as typeof fetch,
+    });
 
-  it("mints then fetches the signed playlist in speculative warm mode and drains the body", async () => {
+  it("probes the prepared origin first and prefetches only the init and newest segment", async () => {
     const request = vi
       .fn()
-      .mockResolvedValueOnce(new Response(mintBody, { status: 200 }))
-      .mockResolvedValueOnce(new Response("#EXTM3U\n", { status: 200 }));
-    const source = createPlayUrlSourcePort({ baseUrl: "http://living-room:8080", fetch: request });
+      .mockResolvedValueOnce(mint())
+      .mockResolvedValueOnce(new Response(manifest, { status: 200 }))
+      .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
     const signal = new AbortController().signal;
 
-    await source.warm?.(channel, {}, signal);
+    const warmed = await port(request).warm?.(channel, {}, signal);
 
-    const [warmUrl, init] = request.mock.calls[1] ?? [];
-    const url = new URL(warmUrl);
-    expect(url.pathname).toBe("/v1/playout/hls/science/master.m3u8");
-    expect(url.searchParams.get("mode")).toBe("warm");
-    expect(url.searchParams.get("sig")).toBe("one");
-    expect(url.searchParams.get("plan")).toBe("full");
-    expect(init).toMatchObject({ method: "GET", signal });
+    expect(paths(request)).toEqual(["play-url", "master.m3u8?mode=prepared", "init-b.mp4", "seg-2.m4s"]);
+    expect(warmed?.warmed).toBe(true);
+    expect(request.mock.calls[1]?.[1]).toMatchObject({ method: "GET", signal });
   });
 
-  it("treats a busy host as a harmless miss", async () => {
+  it("falls back to a speculative live warm when nothing is prepared (204)", async () => {
     const request = vi
       .fn()
-      .mockResolvedValueOnce(new Response(mintBody, { status: 200 }))
-      .mockResolvedValueOnce(new Response("busy", { status: 503 }));
-    const source = createPlayUrlSourcePort({ baseUrl: "http://living-room:8080", fetch: request });
+      .mockResolvedValueOnce(mint())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(manifest, { status: 200 }))
+      .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
 
-    await expect(source.warm?.(channel, {}, new AbortController().signal)).resolves.toBeUndefined();
+    const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);
+
+    expect(paths(request).slice(0, 3)).toEqual([
+      "play-url",
+      "master.m3u8?mode=prepared",
+      "master.m3u8?mode=warm",
+    ]);
+    expect(warmed?.warmed).toBe(true);
+  });
+
+  it("returns the exact signed URL for the real tune, without the warm-mode hint", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(mint())
+      .mockResolvedValueOnce(new Response(manifest, { status: 200 }))
+      .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
+
+    const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);
+
+    expect(warmed?.uri).toBe("http://living-room:8080/v1/playout/hls/science/master.m3u8?sig=one&plan=full");
+    expect(warmed?.expiresAt).toBe(Date.parse("2999-01-01T00:00:00Z"));
+    expect(warmed?.serverTimeMs).toBe(1_000_000);
+  });
+
+  it("keeps the source but does not certify a warm whose assets were unavailable", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(mint())
+      .mockResolvedValueOnce(new Response(manifest, { status: 200 }))
+      .mockImplementation(() => Promise.resolve(new Response("gone", { status: 404 })));
+
+    const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);
+
+    expect(warmed?.warmed).toBe(false);
+    expect(warmed?.uri).toContain("sig=one");
+  });
+
+  it("treats a busy host as a harmless miss that still hands back the signed URL", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(mint())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response("busy", { status: 503 }));
+
+    const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);
+
+    expect(warmed?.warmed).toBe(false);
+    expect(warmed?.uri).toContain("sig=one");
   });
 });

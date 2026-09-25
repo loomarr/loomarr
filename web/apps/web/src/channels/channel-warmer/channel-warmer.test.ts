@@ -9,29 +9,9 @@ vi.mock("../channel-play-url", async (importOriginal) => ({
   mintChannelPlaySource,
 }));
 
-import { preparedURL, warmableAssets, warmChannel } from "./channel-warmer";
+import { warmChannel } from "./channel-warmer";
 
 describe("channel warmer", () => {
-  it("selects the newest fragment and the map active across its discontinuity", () => {
-    const manifest = `#EXTM3U
-#EXT-X-MAP:URI="old/init.mp4?sig=x"
-#EXTINF:2,
-old/seg.m4s?sig=x
-#EXT-X-DISCONTINUITY
-#EXT-X-MAP:URI="new/init.mp4?sig=x"
-#EXTINF:2,
-new/seg.m4s?sig=x
-`;
-    expect(warmableAssets(manifest)).toEqual(["new/init.mp4?sig=x", "new/seg.m4s?sig=x"]);
-  });
-
-  it("adds prepared mode only to the master probe", () => {
-    const got = new URL(preparedURL("/v1/playout/hls/ch-1/master.m3u8?sig=signed&plan=hevc8"));
-    expect(got.searchParams.get("mode")).toBe("prepared");
-    expect(got.searchParams.get("sig")).toBe("signed");
-    expect(got.searchParams.get("plan")).toBe("hevc8");
-  });
-
   it("fetches prepared init and media bytes while preserving the normal signed URL", async () => {
     mintChannelPlaySource.mockResolvedValue({
       url: "/v1/playout/hls/ch-2/master.m3u8?sig=signed",

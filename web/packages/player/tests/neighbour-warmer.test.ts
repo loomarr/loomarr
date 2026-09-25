@@ -1,4 +1,4 @@
-import { createNeighbourWarmer, type PlayerChannel } from "@loomarr/player";
+import { createNeighbourWarmer, type PlayerChannel, warmableAssets } from "@loomarr/player";
 import { describe, expect, it, vi } from "vitest";
 
 const catalog: PlayerChannel[] = ["a", "b", "c", "d", "e", "f"].map((id, index) => ({
@@ -21,7 +21,7 @@ const setup = (radius?: number) => {
   const warm = vi.fn((channel: PlayerChannel, _profile: unknown, signal: AbortSignal) => {
     const done = deferred();
     started.push({ id: channel.id, signal, done });
-    return done.promise;
+    return done.promise.then(() => undefined);
   });
   const warmer = createNeighbourWarmer({ profile: { maxResolution: 2160 }, radius, source: { warm } });
   return { started, warm, warmer };
@@ -102,5 +102,75 @@ describe("neighbour warmer default radius", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(ids(started).sort()).toEqual(["b", "d"]);
+  });
+});
+
+describe("neighbour warmer reuse", () => {
+  const warmedSource = (id: string, expiresAt?: number) => ({
+    expiresAt,
+    serverTimeMs: 1_000,
+    uri: `https://loomarr.test/${id}.m3u8?sig=warm`,
+    warmed: true,
+  });
+
+  it("hands back the exact warmed source once, aged so live chrome stays on server time", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(10_000);
+      const warm = vi.fn((channel: PlayerChannel) => Promise.resolve(warmedSource(channel.id, 10_000_000)));
+      const warmer = createNeighbourWarmer({ profile: {}, source: { warm } });
+      warmer.retarget(catalog, "c");
+      await vi.advanceTimersByTimeAsync(0);
+
+      vi.setSystemTime(40_000);
+      const taken = warmer.take("d");
+      expect(taken?.uri).toBe("https://loomarr.test/d.m3u8?sig=warm");
+      expect(taken?.serverTimeMs).toBe(31_000);
+      expect(warmer.take("d")).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never hands back a source that is about to expire, a non-neighbour, or an unwarmed miss", async () => {
+    const now = Date.now();
+    const warm = vi.fn((channel: PlayerChannel) =>
+      Promise.resolve(
+        channel.id === "b" ? { ...warmedSource("b", now + 10_000) } : { ...warmedSource("d"), warmed: false },
+      ),
+    );
+    const warmer = createNeighbourWarmer({ profile: {}, source: { warm } });
+    warmer.retarget(catalog, "c");
+    await vi.waitFor(() => expect(warm).toHaveBeenCalledTimes(2));
+    await Promise.resolve();
+
+    expect(warmer.take("b")).toBeUndefined();
+    expect(warmer.take("d")?.uri).toContain("sig=warm");
+    expect(warmer.take("f")).toBeUndefined();
+  });
+
+  it("drops warmed sources for channels the viewer has moved away from", async () => {
+    const warm = vi.fn((channel: PlayerChannel) => Promise.resolve(warmedSource(channel.id)));
+    const warmer = createNeighbourWarmer({ profile: {}, source: { warm } });
+    warmer.retarget(catalog, "c");
+    await vi.waitFor(() => expect(warm).toHaveBeenCalledTimes(2));
+    await Promise.resolve();
+    warmer.retarget(catalog, "f");
+    expect(warmer.take("d")).toBeUndefined();
+  });
+});
+
+describe("warmableAssets", () => {
+  it("selects the newest fragment and the map active across its discontinuity", () => {
+    const manifest = `#EXTM3U
+#EXT-X-MAP:URI="old/init.mp4?sig=x"
+#EXTINF:2,
+old/seg.m4s?sig=x
+#EXT-X-DISCONTINUITY
+#EXT-X-MAP:URI="new/init.mp4?sig=x"
+#EXTINF:2,
+new/seg.m4s?sig=x
+`;
+    expect(warmableAssets(manifest)).toEqual(["new/init.mp4?sig=x", "new/seg.m4s?sig=x"]);
   });
 });

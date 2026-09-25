@@ -2,6 +2,7 @@ import { getChannelPlayUrlUrl, getListChannelsUrl } from "@loomarr/api/endpoints
 import type { ListChannelsOutputBody } from "@loomarr/api/models/listChannelsOutputBody";
 import type { PlayURLOutputBody } from "@loomarr/api/models/playURLOutputBody";
 import type { PlayerChannel, PlayerSourcePort } from "../player-source";
+import { warmSource } from "../warm-source";
 
 interface PlayUrlSourceOptions {
   /** Normalized URL of the paired Loomarr server. */
@@ -60,15 +61,11 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
 
   return {
     mint,
-    // A `mode=warm` playlist fetch makes the server start the channel's live remux under speculative
-    // admission (it never reclaims another channel's session and answers 503 when full) and holds
-    // the response until the first segment is listed. Draining the body is what lets that finish.
+    // Warms on the exact signed URL the real tune will reuse (see warmSource for the protocol).
     warm: async (channel, profile, signal) => {
-      const { uri } = await mint(channel, profile, signal);
-      const url = new URL(uri);
-      url.searchParams.set("mode", "warm");
-      const response = await request(url.toString(), { method: "GET", signal });
-      await response.text();
+      const minted = await mint(channel, profile, signal);
+      const warmed = await warmSource(minted.uri, (url) => request(url, { method: "GET", signal }));
+      return { ...minted, warmed };
     },
   };
 };

@@ -29,4 +29,7 @@ export type {
   PlayerChannel,
   PlayerSource,
   PlayerSourcePort,
+  WarmedSource,
 } from "./src/player-source";
+export { warmSource } from "./src/warm-source";
+export { warmableAssets } from "./src/warmable-assets";
