@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -175,20 +176,39 @@ func (o *OpenAI) selfHosted() bool {
 		return true
 	}
 	u, err := url.Parse(o.baseURL)
-	if err != nil || u.Hostname() == "" {
+	if err != nil {
 		return false
 	}
-	host := strings.ToLower(u.Hostname())
-	for _, hosted := range hostedAPIHosts {
-		if host == hosted || strings.HasSuffix(host, "."+hosted) {
-			return false
-		}
-	}
-	return true
+	return isPrivateHost(u.Hostname())
 }
 
-// hostedAPIHosts are the vendor APIs that reject unknown request fields.
-var hostedAPIHosts = []string{"openai.com", "openrouter.ai", "googleapis.com", "groq.com", "together.xyz", "anthropic.com"}
+// cgnatNet is 100.64.0.0/10 (carrier-grade NAT, which Tailscale addresses come from).
+var cgnatNet = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+
+// privateHostSuffixes are the DNS suffixes only an operator's own network resolves.
+var privateHostSuffixes = []string{".local", ".lan", ".internal", ".home.arpa"}
+
+// isPrivateHost is the fail-safe direction of the self-hosted check: only a host that is clearly
+// on the operator's own network qualifies. Every other host is treated as a hosted API, which may
+// reject fields it does not know, so an unlisted public vendor never receives llama.cpp-only fields.
+func isPrivateHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	if host == "" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || cgnatNet.Contains(ip)
+	}
+	if host == "localhost" || !strings.Contains(host, ".") {
+		return true // a single-label name is a docker service or LAN host, never a public API
+	}
+	for _, suffix := range privateHostSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
 
 // --- wire types (OpenAI /v1/chat/completions) ---
 
