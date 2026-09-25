@@ -151,7 +151,16 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 			}
 			// ⚠ The DRAFT's scope era, not the saved channel's — this preview is answering
 			// "what would this policy play", and an unset filler era inherits from scope (V51f).
-			pod, err = s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(sel, draftPolicy.Scope))
+			// The lineup the derivation reads is the draft's when given, else the saved one.
+			lineup := draftLineup
+			if lineup == nil {
+				saved, gerr := s.store.GetChannel(ctx, in.ID)
+				if gerr != nil {
+					return nil, gerr
+				}
+				lineup = saved.Lineup
+			}
+			pod, err = s.pods.PreviewDraft(ctx, in.ID, fillerSelectionToDomain(sel, *draftPolicy, lineup))
 		} else {
 			pod, err = s.pods.Preview(ctx, in.ID)
 		}

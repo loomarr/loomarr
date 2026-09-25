@@ -559,7 +559,7 @@ func (e *Engine) healEntry(ctx context.Context) func(*schedule.LineupEntry) {
 // its own, the two would drift and the UI would confidently show pods the reconciler
 // never builds — the whole failure mode preview exists to prevent.
 func SelectionForChannel(ch store.Channel) filler.Selection {
-	sel := SelectionFrom(ch.Policy.Filler, ch.Policy.Scope)
+	sel := SelectionFrom(ch.Policy.Filler, ch.Policy.Scope, schedule.DeriveFiller(ch.Policy, ch.Lineup))
 	if ch.Policy.BreakDuration != nil {
 		sel.BreakDurationMs = ch.Policy.BreakDuration.Std().Milliseconds()
 	}
@@ -619,7 +619,11 @@ func BreakDurationFor(pol schedule.ChannelPolicy, global time.Duration) time.Dur
 // working the instant "explicitly any era" exists: a fallback keyed on `Era == 0` cannot tell an
 // unset era from a chosen one, so it would overwrite the operator's answer with the channel's.
 // One writer, called from every derivation, is the only version of this that stays true.
-func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy) filler.Selection {
+//
+// `derived` is what the channel's programming implies (schedule.DeriveFiller). It fills ONLY what
+// the operator left unset — an explicit audience or era, including an explicit "any" era, is never
+// overridden — and is applied live so channels created before it existed benefit too.
+func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, derived schedule.DerivedFiller) filler.Selection {
 	sel := filler.Selection{}
 	inheritEra := true
 	if f != nil {
@@ -652,7 +656,15 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy) fill
 			sel.EraWindows = rangesToFiller(windows)
 		} else if scope.Era != nil {
 			sel.Era = filler.EraRange{From: scope.Era.From, To: scope.Era.To}
+		} else if derived.Era != nil {
+			sel.Era = filler.EraRange{From: derived.Era.From, To: derived.Era.To}
 		}
+	}
+	// ⚠ An empty audience is "operator said nothing" — the string has no explicit-any value, and
+	// the seed always writes one — so it derives. A kids ceiling then reaches the ladder's
+	// fail-closed audience rules instead of the open general pool.
+	if sel.Audience == "" {
+		sel.Audience = filler.Audience(derived.Audience)
 	}
 	return sel
 }
