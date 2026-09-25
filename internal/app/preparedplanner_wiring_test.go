@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,6 +28,7 @@ type wiringPreparation struct {
 	peak     atomic.Int32
 	started  chan struct{}
 	release  chan struct{}
+	drain    time.Duration // time a cancelled publication keeps its lease tearing down
 }
 
 func (p *wiringPreparation) Prepare(ctx context.Context, _ prepared.Request) (prepared.Publication, error) {
@@ -41,6 +43,7 @@ func (p *wiringPreparation) Prepare(ctx context.Context, _ prepared.Request) (pr
 	p.started <- struct{}{}
 	select {
 	case <-ctx.Done():
+		time.Sleep(p.drain)
 		return prepared.Publication{}, ctx.Err()
 	case <-p.release:
 		return prepared.Publication{}, nil
@@ -133,5 +136,58 @@ func TestPreparedPlannerStatusReportsProgressDuringAPass(t *testing.T) {
 	if status.Readiness.ScheduledBindings != 8 || status.Readiness.QueuedPublications != 8 {
 		t.Fatalf("status mid-pass = %+v, want the resolved schedule (8 bindings, 8 queued), not zeros",
 			status.Readiness)
+	}
+}
+
+func TestPreparedPlannerLiveSessionsPreemptBackgroundInsteadOfFallingToSoftware(t *testing.T) {
+	planner, preparation, pool := productionShapedPlanner(t, 8)
+	// A real preparation keeps its lease while it tears the staging workspace down (tens of
+	// thousands of segment files); that must not count against a live session's bounded wait.
+	preparation.drain = 900 * time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- planner.Run(t.Context()) }()
+	defer func() { close(preparation.release); <-done }()
+
+	waitStarted(t, preparation, 3)
+	admitted := make(chan bool, 2)
+	var releases sync.Map
+	for i := range 2 {
+		go func() {
+			release, ok := pool.pool.AcquireForeground(t.Context())
+			if ok {
+				releases.Store(i, release)
+			}
+			admitted <- ok
+		}()
+	}
+	for range 2 {
+		if !<-admitted {
+			t.Fatal("a live session was refused a GPU slot and would fall back to software while " +
+				"three background preparations held capacity four")
+		}
+	}
+	releases.Range(func(_, release any) bool { release.(func())(); return true })
+}
+
+func TestPreparedPlannerRefillsAfterLiveSessionEndsButNotWhileItHoldsASlot(t *testing.T) {
+	planner, preparation, pool := productionShapedPlanner(t, 8)
+	done := make(chan error, 1)
+	go func() { done <- planner.Run(t.Context()) }()
+	defer func() { close(preparation.release); <-done }()
+
+	waitStarted(t, preparation, 3)
+	release, ok := pool.pool.AcquireForeground(t.Context())
+	if !ok {
+		t.Fatal("live session refused")
+	}
+	select {
+	case <-preparation.started:
+		t.Fatal("background re-grabbed a slot while a live session held one")
+	case <-time.After(500 * time.Millisecond):
+	}
+	release()
+	waitStarted(t, preparation, 3) // preempted work is requeued and the pool refills to N-1
+	if got := preparation.inFlight.Load(); got != 3 {
+		t.Fatalf("in-flight after the live session ended = %d, want 3", got)
 	}
 }

@@ -112,7 +112,7 @@ func TestPlannerFillsAndRefillsMeasuredBackgroundCapacity(t *testing.T) {
 			Request:  Request{Source: testSource(string(rune(i + 1))), Rendition: baselineRendition()},
 		}
 	}
-	started := make(chan struct{}, capacity-1)
+	started := make(chan struct{}, capacity-1+len(items)) // room for the requeued wave and refills
 	releaseFirstWave := make(chan struct{})
 	var calls atomic.Int64
 	var active atomic.Int64
@@ -220,8 +220,13 @@ func TestPlannerYieldsWhenLiveOwnsTheSpareCapacity(t *testing.T) {
 func TestPlannerTreatsForegroundPreemptionAsAYield(t *testing.T) {
 	pool := media.NewEncodePool(func() int { return 2 })
 	started := make(chan struct{})
+	var once sync.Once
 	work := &recordingPreparation{run: func(ctx context.Context, _ Request) error {
-		close(started)
+		first := false
+		once.Do(func() { first = true; close(started) })
+		if !first {
+			return nil // the requeued attempt completes once playback has yielded
+		}
 		<-ctx.Done()
 		return ctx.Err()
 	}}
@@ -250,7 +255,7 @@ func TestPlannerTreatsForegroundPreemptionAsAYield(t *testing.T) {
 	}
 }
 
-func TestPlannerForegroundPreemptionStopsRefillAcrossMeasuredCapacity(t *testing.T) {
+func TestPlannerForegroundPreemptionRequeuesAndRefillsAcrossMeasuredCapacity(t *testing.T) {
 	const capacity = 4
 	now := time.Unix(1_000, 0)
 	items := make([]Candidate, 10)
@@ -260,7 +265,7 @@ func TestPlannerForegroundPreemptionStopsRefillAcrossMeasuredCapacity(t *testing
 			Request:  Request{Source: testSource(fmt.Sprintf("%02d", i)), Rendition: baselineRendition()},
 		}
 	}
-	started := make(chan struct{}, capacity-1)
+	started := make(chan struct{}, capacity-1+len(items)) // room for the requeued wave and refills
 	finish := make(chan struct{})
 	var calls atomic.Int64
 	work := &recordingPreparation{run: func(ctx context.Context, _ Request) error {
@@ -315,8 +320,10 @@ func TestPlannerForegroundPreemptionStopsRefillAcrossMeasuredCapacity(t *testing
 	if err := <-done; err != nil {
 		t.Fatalf("preempted planner returned an operator-visible failure: %v", err)
 	}
-	if got := calls.Load(); got != capacity-1 {
-		t.Fatalf("preparation calls after live preemption = %d, want initial wave %d with no refill", got, capacity-1)
+	// The three preempted publications are requeued behind nothing (they are the most urgent) and
+	// every candidate then completes: 3 cancelled attempts + all 10 candidates.
+	if got := calls.Load(); got != int64(capacity-1+len(items)) {
+		t.Fatalf("preparation calls after live preemption = %d, want %d: the preempted wave requeued and refilled", got, capacity-1+len(items))
 	}
 }
 
