@@ -107,6 +107,9 @@ func validatedCapabilityEvidence(
 	if !validated.Works {
 		return Capacity{}, fingerprint, false
 	}
+	// The validation trial is a real encode of the chosen encoder, so its peak RSS is a current
+	// per-encode host-memory measurement; nothing about memory is persisted with the evidence.
+	capacity.EncodeHostBytes = validated.PeakRSSBytes
 	return capacity, fingerprint, true
 }
 

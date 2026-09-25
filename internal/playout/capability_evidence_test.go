@@ -24,7 +24,7 @@ func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing
 		},
 		validate: func(context.Context, string, Encoder, Profile) Capability {
 			validationCalls++
-			return Capability{Encoder: EncoderNVENC, Works: true}
+			return Capability{Encoder: EncoderNVENC, Works: true, PeakRSSBytes: 900 << 20}
 		},
 	}
 	first, reused := detectObservedWithEvidence(t.Context(), "ffmpeg", DefaultProfile(), "nvidia", root, deps)
@@ -34,6 +34,9 @@ func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing
 	second, reused := detectObservedWithEvidence(t.Context(), "ffmpeg", DefaultProfile(), "nvidia", root, deps)
 	if !reused || second.Chosen != EncoderNVENC || second.MaxChannels != 7 || detectCalls != 1 || validationCalls != 1 {
 		t.Fatalf("reused detection = %+v reused=%v detect=%d validate=%d", second, reused, detectCalls, validationCalls)
+	} // The validation trial is a real encode: its peak RSS is the host's current per-encode cost.
+	if second.EncodeHostBytes != 900<<20 {
+		t.Fatalf("reused detection EncodeHostBytes = %d, want the validation trial's 900 MiB", second.EncodeHostBytes)
 	}
 }
 

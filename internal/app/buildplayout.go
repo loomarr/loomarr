@@ -326,7 +326,12 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			log.Debug("playout: hardware encode admission", "effective_hw_slots", n)
 			return n
 		},
-	)
+	).WithMemoryGate(encodeMemoryGate(
+		media.HostMemAvailable,
+		func() int { return set.intv("playout.memory_reserve_mb") },
+		func() int { return set.intv("playout.encode_memory_mb") },
+		playoutRes.EncodeHostBytes,
+	))
 
 	// Prepared playout is persistent control-plane work feeding the SAME Origin as the live
 	// fallback. Construction may fail on an unwritable volume without taking live TV down; the
@@ -505,6 +510,37 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },
 	}, nil
+}
+
+// defaultEncodeHostBytes is the floor for one hardware encode's host memory. Real preparation
+// children held 0.8–1.4 GiB resident (0.55–1.05 GiB excluding shared driver libraries) in the
+// incident that motivated the gate, while the capability probe's synthetic trial peaked at ~0.25 GiB
+// on the same host: it encodes testsrc and decodes no real file. The probe can therefore only raise
+// the estimate, never lower it below this floor.
+const defaultEncodeHostBytes = int64(1) << 30
+
+// encodeMemoryGate bounds hardware encodes by host memory (design §9.1). The reserve and per-encode
+// settings are MiB and re-read on every lease; a zero reserve disables the gate. A positive
+// per-encode setting is used exactly; otherwise the cost is the larger of the probe's measurement
+// and defaultEncodeHostBytes.
+func encodeMemoryGate(
+	available func() (int64, bool), reserveMiB, perEncodeMiB func() int, measured func() int64,
+) media.MemoryGate {
+	return media.MemoryGate{
+		Available: func() (int64, bool) {
+			if reserveMiB() <= 0 {
+				return 0, false // disabled: report unknown so the gate stays open
+			}
+			return available()
+		},
+		Reserve: func() int64 { return int64(reserveMiB()) << 20 },
+		PerEncode: func() int64 {
+			if v := perEncodeMiB(); v > 0 {
+				return int64(v) << 20
+			}
+			return max(measured(), defaultEncodeHostBytes)
+		},
+	}
 }
 
 func newPreparedEncodePool(
