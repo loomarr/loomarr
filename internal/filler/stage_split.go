@@ -265,7 +265,7 @@ func (s *SplitStage) groundAt(ctx context.Context, c StoreClip, file string, sou
 			continue
 		}
 		prompt := splitVisionPrompt(forest)
-		resp, err := s.vision.Provider.AskAboutImages(ctx, prompt, frames)
+		resp, err := s.vision.Provider.AskAboutImages(llm.WithCallSite(ctx, "filler.split_vision"), prompt, frames)
 		if err != nil {
 			// A separately routed direct-video model may still settle the temporal role. Only a
 			// successful escalation marks the span looked; if both routes fail, the old retry

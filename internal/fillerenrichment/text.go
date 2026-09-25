@@ -346,7 +346,7 @@ The product, format, seasonal, audienceCue, and presentation values must always 
 JSON keys: kind, audience, brand, product, format, seasonal, audienceCue, presentation, confidence.`
 	user := fmt.Sprintf("Requested axes: %s\nTaxonomy:\n%s\n\nClip text:\n%s",
 		strings.Join(axisNames, ", "), forest.Vocab(), signalText(signals))
-	response, err := provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
+	response, err := provider.Chat(llm.WithCallSite(ctx, "filler.text_single"), []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
 		llm.ChatOptions{JSONMode: true, MaxTokens: textSingleMaxTokens, ReasoningEffort: "none"})
 	if err != nil {
 		return nil, err
@@ -403,7 +403,7 @@ Confidence must be an integer percentage from 0 through 80.
 The product, format, seasonal, audienceCue, and presentation values must always be JSON arrays, even for one item.
 Each item keys: id, kind, audience, brand, product, format, seasonal, audienceCue, presentation, confidence.`
 	user := fmt.Sprintf("Taxonomy:\n%s\n\nClips:\n%s", forest.Vocab(), promptJSON)
-	response, err := provider.Chat(ctx, []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
+	response, err := provider.Chat(llm.WithCallSite(ctx, "filler.text_batch"), []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
 		llm.ChatOptions{JSONMode: true, MaxTokens: textBatchMaxTokens, ReasoningEffort: "none"})
 	if err != nil {
 		return nil, nil, err

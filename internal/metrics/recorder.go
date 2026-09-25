@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -92,8 +93,17 @@ type recorderFiller struct {
 }
 
 type recorderLLM struct {
-	tokens *prometheus.CounterVec
+	tokens   *prometheus.CounterVec
+	calls    *prometheus.CounterVec
+	duration *prometheus.HistogramVec
+
+	sites *llmSiteSet
 }
+
+// maxLLMCallSites bounds the call_site label. Call sites are a code-defined set
+// (a handful of string literals), so hitting this cap means a caller is minting
+// them from data; the overflow folds into "other" rather than growing the series.
+const maxLLMCallSites = 32
 
 // New constructs an isolated generation registry with Loomarr identity and the
 // standard Go/process collectors. Building another Recorder cannot retain or
@@ -270,6 +280,16 @@ func New(options Options) *Recorder {
 			Namespace: "loomarr", Subsystem: "llm", Name: "tokens_total",
 			Help: "LLM tokens consumed by grounded generation, by kind.",
 		}, []string{"kind"}),
+		calls: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loomarr", Subsystem: "llm", Name: "calls_total",
+			Help: "LLM calls by call site and outcome (ok, http_error, first_token_timeout, idle_timeout, total_timeout, canceled, error).",
+		}, []string{"call_site", "outcome"}),
+		duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loomarr", Subsystem: "llm", Name: "call_duration_seconds",
+			Help:    "Wall-clock duration of one LLM call, request to last byte, by call site.",
+			Buckets: []float64{1, 5, 15, 30, 60, 120, 300, 600, 1200, 1800},
+		}, []string{"call_site"}),
+		sites: &llmSiteSet{seen: map[string]struct{}{}},
 	}
 	for _, result := range []string{"success", "error"} {
 		channelMetrics.reconciles.WithLabelValues(result)
@@ -286,7 +306,7 @@ func New(options Options) *Recorder {
 	for _, level := range []string{"exact", "widened", "audience", "bumper_card", "other"} {
 		fillerMetrics.pods.WithLabelValues(level)
 	}
-	for _, kind := range []string{"prompt", "completion"} {
+	for _, kind := range []string{"prompt", "cached", "completion"} {
 		llmMetrics.tokens.WithLabelValues(kind)
 	}
 	for _, repeat := range []string{"fresh", "repeat"} {
@@ -316,7 +336,8 @@ func New(options Options) *Recorder {
 		playoutMetrics.sessionsActive, playoutMetrics.sessionStarts,
 		playoutMetrics.processFailure, playoutMetrics.fallbacks,
 		channelMetrics.reconciles, channelMetrics.duration, channelMetrics.substitutions,
-		fillerMetrics.pods, fillerMetrics.airings, llmMetrics.tokens)
+		fillerMetrics.pods, fillerMetrics.airings, llmMetrics.tokens,
+		llmMetrics.calls, llmMetrics.duration)
 	if options.Store != nil {
 		now := options.Now
 		if now == nil {
@@ -586,5 +607,44 @@ func (r *Recorder) LLMTokens(promptTokens, completionTokens int) {
 	}
 	if completionTokens > 0 {
 		r.llm.tokens.WithLabelValues("completion").Add(float64(completionTokens))
+	}
+}
+
+// llmSiteSet admits at most maxLLMCallSites distinct call_site label values.
+type llmSiteSet struct {
+	mu   sync.Mutex
+	seen map[string]struct{}
+}
+
+func (s *llmSiteSet) label(site string) string {
+	if site == "" {
+		return "unknown"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.seen[site]; ok {
+		return site
+	}
+	if len(s.seen) >= maxLLMCallSites {
+		return "other"
+	}
+	s.seen[site] = struct{}{}
+	return site
+}
+
+// LLMCall records one finished LLM call: its call site, closed outcome, and
+// wall-clock duration. The outbound target=llm series only sees time to response
+// headers on a streamed call, so this is the series that shows real call latency.
+func (r *Recorder) LLMCall(site, outcome string, elapsed time.Duration) {
+	site = r.llm.sites.label(site)
+	outcome = closedLabel(outcome, "ok", "http_error", "first_token_timeout", "idle_timeout", "total_timeout", "canceled", "error")
+	r.llm.calls.WithLabelValues(site, outcome).Inc()
+	r.llm.duration.WithLabelValues(site).Observe(elapsed.Seconds())
+}
+
+// LLMCachedTokens records prompt tokens the server served from its prompt cache.
+func (r *Recorder) LLMCachedTokens(cached int) {
+	if cached > 0 {
+		r.llm.tokens.WithLabelValues("cached").Add(float64(cached))
 	}
 }

@@ -1,12 +1,11 @@
 package llm
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
@@ -36,14 +35,28 @@ type OpenAI struct {
 	http     *http.Client
 	route    *openRouterChatRoute
 	metrics  *metrics.Recorder
+	timeouts Timeouts
+	log      *slog.Logger
 }
 
 // WithMetrics binds this provider to one application generation's observations.
 func (o *OpenAI) WithMetrics(recorder *metrics.Recorder) *OpenAI {
 	o.metrics = recorder
 	if recorder != nil {
-		o.http = httpx.NewNamedObserved("llm", httpx.TimeoutLLM, recorder)
+		o.http = httpx.NewLLM(recorder)
 	}
+	return o
+}
+
+// WithTimeouts replaces the call budgets (see Timeouts); zero fields keep their defaults.
+func (o *OpenAI) WithTimeouts(t Timeouts) *OpenAI {
+	o.timeouts = t
+	return o
+}
+
+// WithLogger routes the one-line-per-call log; the default is slog.Default().
+func (o *OpenAI) WithLogger(log *slog.Logger) *OpenAI {
+	o.log = log
 	return o
 }
 
@@ -99,7 +112,8 @@ func NewOpenAIForProvider(provider, baseURL, model, apiKey string) *OpenAI {
 		apiKey:   apiKey,
 		model:    model,
 		provider: provider,
-		http:     httpx.NewNamed("llm", httpx.TimeoutLLM),
+		http:     httpx.NewLLM(nil),
+		timeouts: DefaultTimeouts(),
 	}
 }
 
@@ -159,6 +173,8 @@ type openaiChatReq struct {
 	Provider            *openRouterChatRoute `json:"provider,omitempty"`
 	ReasoningEffort     string               `json:"reasoning_effort,omitempty"`
 	Reasoning           *openRouterReasoning `json:"reasoning,omitempty"`
+	Stream              bool                 `json:"stream"`
+	StreamOptions       *streamOptions       `json:"stream_options,omitempty"`
 }
 
 type openRouterReasoning struct {
@@ -210,7 +226,8 @@ type openaiChatResp struct {
 	ID      string `json:"id"`
 	Model   string `json:"model"`
 	Choices []struct {
-		Message openaiMessage `json:"message"`
+		Message      openaiMessage `json:"message"`
+		FinishReason string        `json:"finish_reason"`
 	} `json:"choices"`
 	Error *struct {
 		Message string `json:"message"`
@@ -267,6 +284,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		TopP:        sampling.TopP,
 		MaxTokens:   opts.MaxTokens,
 		Provider:    o.route,
+		Stream:      true, StreamOptions: &streamOptions{IncludeUsage: true},
 	}
 	if sampling.CompletionLimitParameter == "max_completion_tokens" {
 		req.MaxTokens = 0
@@ -292,52 +310,20 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 	if err != nil {
 		return Response{}, fmt.Errorf("marshal openai request: %w", err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.baseURL+"/chat/completions", strings.NewReader(string(body)))
+	// A bare status hides WHY (a wrong llm.model, no credit, a slot error); exchange keeps the
+	// provider's own body in the error so it reaches logs and jobs.last_error.
+	c, status, err := o.exchange(ctx, "openai chat", body)
+	o.finishCall(ctx, "openai chat", started, c, status, err)
 	if err != nil {
 		return Response{}, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	o.addMetadataHeader(httpReq)
-	if o.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
-	}
-
-	resp, err := o.http.Do(httpReq)
-	if err != nil {
-		return Response{}, fmt.Errorf("openai chat: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// ⚠ The body carries WHY, and a bare status code hides it. On this text path the common
-		// 404 is "model not found" — an OpenAI-compatible gateway (OpenRouter, etc.) rejecting the
-		// configured `llm.model`, e.g. a slug with a `:variant` suffix the chat endpoint doesn't
-		// serve. Without the body the operator sees "status 404" and cannot tell a wrong model
-		// from a wrong URL from a dead key. The vision and audio paths already read it; this one
-		// was left bare, so a misconfigured model surfaced as an opaque failure (a channel-create
-		// "Generation failed" with nothing to act on).
-		var buf bytes.Buffer
-		_, _ = buf.ReadFrom(io.LimitReader(resp.Body, 512))
-		return Response{}, fmt.Errorf("openai chat: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
-	}
-	var out openaiChatResp
-	if err := decodeOpenAIJSON(resp, &out, "openai response"); err != nil {
-		return Response{}, err
-	}
-	if out.Error != nil {
-		return Response{}, fmt.Errorf("openai chat: %s", out.Error.Message)
-	}
-	if len(out.Choices) == 0 {
-		return Response{}, fmt.Errorf("openai chat: empty choices")
-	}
-	if o.metrics != nil {
-		o.metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
-	}
-	msg := out.Choices[0].Message
+	msg := c.Message
 	return Response{
-		Content:   msg.Content,
-		ToolCalls: unwrapOpenAIToolCalls(msg.ToolCalls, envelopes),
-		Attribution: attributionFromWire(o.provider, o.model, out.ID, out.Model, out.Usage,
-			out.OpenRouterMetadata, []string{"text"}, time.Since(started)),
+		Content:      msg.Content,
+		ToolCalls:    unwrapOpenAIToolCalls(msg.ToolCalls, envelopes),
+		FinishReason: c.FinishReason,
+		Attribution: attributionFromWire(o.provider, o.model, c.ID, c.Model, c.Usage,
+			c.Meta, []string{"text"}, time.Since(started)),
 	}, nil
 }
 
@@ -465,54 +451,24 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 	body, err := json.Marshal(visionChatReq{
 		Model:    o.model,
 		Messages: []visionMessage{{Role: "user", Content: parts}},
+		Stream:   true, StreamOptions: &streamOptions{IncludeUsage: true},
 	})
 	if err != nil {
 		return Response{}, fmt.Errorf("marshal vision request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		o.baseURL+"/chat/completions", strings.NewReader(string(body)))
+	// The body matters more here than on the text path: "this model has no image input" and
+	// "your key has no credit" are an operator's to fix and vanish behind a bare status code.
+	c, status, err := o.exchange(ctx, "vision chat", body)
+	o.finishCall(ctx, "vision chat", started, c, status, err)
 	if err != nil {
 		return Response{}, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	o.addMetadataHeader(httpReq)
-	if o.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
-	}
-
-	resp, err := o.http.Do(httpReq)
-	if err != nil {
-		return Response{}, fmt.Errorf("vision chat: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// ⚠ The body carries WHY, and it matters more here than on the text path: the common
-		// failures are "this model has no image input" and "your key has no credit", which are
-		// an operator's to fix and are indistinguishable from a bare status code (audio.go's
-		// same reasoning).
-		var buf bytes.Buffer
-		_, _ = buf.ReadFrom(io.LimitReader(resp.Body, 512))
-		return Response{}, fmt.Errorf("vision chat: status %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
-	}
-
-	var out openaiChatResp
-	if err := decodeOpenAIJSON(resp, &out, "vision response"); err != nil {
-		return Response{}, err
-	}
-	if out.Error != nil {
-		return Response{}, fmt.Errorf("vision chat: %s", out.Error.Message)
-	}
-	if len(out.Choices) == 0 {
-		return Response{}, fmt.Errorf("vision chat: no choices")
-	}
-	if o.metrics != nil {
-		o.metrics.LLMTokens(out.Usage.PromptTokens, out.Usage.CompletionTokens)
 	}
 	return Response{
-		Content: strings.TrimSpace(out.Choices[0].Message.Content),
-		Attribution: attributionFromWire(o.provider, o.model, out.ID, out.Model, out.Usage,
-			out.OpenRouterMetadata, []string{"text", "image"}, time.Since(started)),
+		Content:      strings.TrimSpace(c.Message.Content),
+		FinishReason: c.FinishReason,
+		Attribution: attributionFromWire(o.provider, o.model, c.ID, c.Model, c.Usage,
+			c.Meta, []string{"text", "image"}, time.Since(started)),
 	}, nil
 }
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -393,12 +394,12 @@ func (s *Service) runWorkflow(ctx context.Context, work WorkflowWork) {
 
 func (s *Service) failWorkflow(ctx context.Context, work WorkflowWork, cause error, measuredDuration time.Duration, measured bool) {
 	traceJSON, cause := persistedFailure(cause)
-	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), cause.Error(), traceJSON); err != nil {
+	if err := s.workflow.Fail(ctx, work, classifyFailure(cause), persistedMessage(cause), traceJSON); err != nil {
 		s.log.Info("discarding stale or undurable Proposal Job failure",
 			"job", work.JobID, "attempt", work.Attempt, "cause", cause, "err", err)
 		return
 	}
-	s.log.Error("suggestion job failed", "job", work.JobID, "attempt", work.Attempt, "err", cause)
+	s.log.Error("suggestion job failed", "job", work.JobID, "attempt", work.Attempt, "err", cause, "cause", unwrapFailure(cause))
 	if measured {
 		s.recordSuggestionQuality(ctx, work.JobID, work.Attempt, measuredDuration, Proposal{}, cause)
 	}
@@ -527,7 +528,7 @@ func (s *Service) considerAutomaticApproval(ctx context.Context, job store.Job, 
 func (s *Service) failJob(ctx context.Context, job store.Job, cause error, measuredDuration time.Duration, measured bool) {
 	traceJSON, cause := persistedFailure(cause)
 	if err := s.store.CommitSuggestionFailure(
-		ctx, job.ID, job.Attempts, cause.Error(), classifyFailure(cause), traceJSON, s.now(),
+		ctx, job.ID, job.Attempts, persistedMessage(cause), classifyFailure(cause), traceJSON, s.now(),
 	); err != nil {
 		if errors.Is(err, store.ErrJobNotRunning) {
 			s.log.Info("discarding stale suggestion failure", "job", job.ID, "attempt", job.Attempts,
@@ -538,7 +539,7 @@ func (s *Service) failJob(ctx context.Context, job store.Job, cause error, measu
 		}
 		return
 	}
-	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause)
+	s.log.Error("suggestion job failed", "job", job.ID, "attempt", job.Attempts, "err", cause, "cause", unwrapFailure(cause))
 	if measured {
 		s.recordSuggestionQuality(ctx, job.ID, job.Attempts, measuredDuration, Proposal{}, cause)
 	}
@@ -669,6 +670,35 @@ func normalizeContextFailure(cause error) error {
 	}
 	trace.Terminal = TerminalGenerationFailure
 	return NewFailure(FailureCodeGenerationFailed, trace, cause)
+}
+
+// persistedMessage is the text stored in jobs.last_error. A Failure's own Error() is
+// deliberately generic ("suggestion failed: provider failure"), which left a failed job
+// undiagnosable; for provider-caused failures the bounded, sanitized llm cause is appended
+// (status + provider message, or the fired timeout budget; never prompt/response content).
+func persistedMessage(cause error) string {
+	message := cause.Error()
+	var failure *Failure
+	if !errors.As(cause, &failure) || failure.Cause == nil {
+		return message
+	}
+	if failure.Code != FailureProvider && failure.Code != FailureCodeGenerationFailed {
+		return message
+	}
+	if detail := llm.SafeCause(failure.Cause); detail != "" {
+		return message + ": " + detail
+	}
+	return message
+}
+
+// unwrapFailure returns the underlying cause of a Failure for the log line, which the
+// generic Failure.Error() otherwise hides.
+func unwrapFailure(cause error) error {
+	var failure *Failure
+	if errors.As(cause, &failure) && failure.Cause != nil {
+		return failure.Cause
+	}
+	return cause
 }
 
 func classifyFailure(cause error) string {

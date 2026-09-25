@@ -21,6 +21,7 @@ func TestRecorderMatchesReviewedMetricManifest(t *testing.T) {
 	})
 	recorder.LoginResult(true)
 	recorder.LLMTokens(1, 1)
+	recorder.LLMCall("contract", "ok", time.Millisecond)
 	recorder.FillerPodAssembled("exact")
 	recorder.FillerRotationAired(false, false, false)
 	recorder.ChannelReconciled(time.Millisecond, true)

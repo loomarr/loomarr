@@ -487,7 +487,7 @@ func (s *Suggester) generate(ctx context.Context, messages *[]llm.Message, tools
 				return "", err
 			}
 		}
-		resp, err := s.llm.Chat(ctx, requestMessages, chatOpts(tools, temp))
+		resp, err := s.llm.Chat(llm.WithCallSite(ctx, "suggest.chat"), requestMessages, chatOpts(tools, temp))
 		if err != nil {
 			cause := err
 			if errors.Is(ctx.Err(), context.Canceled) && !errors.Is(err, context.Canceled) {
