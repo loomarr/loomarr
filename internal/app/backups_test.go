@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -184,5 +185,14 @@ func TestBackupsService_FailedWriteDeletesNothing(t *testing.T) {
 	}
 	if len(left) != 2 {
 		t.Errorf("a failed backup left %d of 2 backups — retention ran before the write", len(left))
+	}
+}
+
+// #1411: the backup took ~57s on the 1.8 GB household database — three seconds inside River's
+// inherited one-minute JobTimeout. It must declare its own ceiling.
+func TestScheduledBackupDeclaresItsOwnTimeout(t *testing.T) {
+	job := (&backupsService{}).Job(nil)
+	if job.Timeout < 10*time.Minute {
+		t.Fatalf("backup Timeout = %v; zero inherits River's 1-minute default", job.Timeout)
 	}
 }

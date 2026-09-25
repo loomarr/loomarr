@@ -132,8 +132,8 @@ func (s *processDiagnosticsSink) AppendDiagnosticEvents(_ context.Context, event
 func (*processDiagnosticsSink) ListDiagnosticRetentionCandidates(context.Context, time.Time, int) ([]diagnostics.RetentionCandidate, error) {
 	return nil, nil
 }
-func (*processDiagnosticsSink) DeleteDiagnosticEvent(context.Context, string) (bool, error) {
-	return false, nil
+func (*processDiagnosticsSink) DeleteDiagnosticEvents(context.Context, []string) (int, error) {
+	return 0, nil
 }
 func (*processDiagnosticsSink) DeleteDiagnosticProcessRun(context.Context, string) (bool, error) {
 	return false, nil

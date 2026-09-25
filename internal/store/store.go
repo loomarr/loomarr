@@ -822,7 +822,7 @@ type DiagnosticStore interface {
 	FindDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, bool, error)
 	QueryDiagnosticProcessRuns(ctx context.Context, query diagnostics.ProcessStoreQuery) ([]diagnostics.ProcessRun, error)
 	ListDiagnosticRetentionCandidates(ctx context.Context, before time.Time, limit int) ([]diagnostics.RetentionCandidate, error)
-	DeleteDiagnosticEvent(ctx context.Context, id string) (bool, error)
+	DeleteDiagnosticEvents(ctx context.Context, ids []string) (int, error)
 	DeleteDiagnosticProcessRun(ctx context.Context, id string) (bool, error)
 	DiagnosticRetainedBytes(ctx context.Context) (int64, error)
 	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)

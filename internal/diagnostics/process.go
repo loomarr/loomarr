@@ -27,6 +27,7 @@ const (
 	defaultOutputFlush     = time.Second
 	defaultProgressPeriod  = 10 * time.Second
 	defaultProcessTimeout  = 5 * time.Second
+	defaultPurgeYield      = 10 * time.Millisecond
 	maxCommandSummaryBytes = 4096
 )
 
@@ -39,7 +40,7 @@ type ProcessSink interface {
 type ProcessStore interface {
 	ProcessSink
 	ListDiagnosticRetentionCandidates(context.Context, time.Time, int) ([]RetentionCandidate, error)
-	DeleteDiagnosticEvent(context.Context, string) (bool, error)
+	DeleteDiagnosticEvents(context.Context, []string) (int, error)
 	DeleteDiagnosticProcessRun(context.Context, string) (bool, error)
 	DiagnosticRetainedBytes(context.Context) (int64, error)
 }
@@ -59,6 +60,8 @@ type ProcessOptions struct {
 	Version        func(context.Context, string) string
 	OnFailure      func(error)
 	Storage        *storagegovernor.Governor
+	// PurgeYield is the pause between retention pages (default 10ms); see ProcessManager.Purge.
+	PurgeYield time.Duration
 }
 
 // ProcessSpec is the stable correlation known when an external process starts.
@@ -142,29 +145,38 @@ func NewProcessManager(sink ProcessStore, events *Recorder, opts ProcessOptions)
 	return m
 }
 
+// purgePage is the number of candidates one Purge iteration lists and deletes. Each page's events
+// go in ONE delete statement, so this is also the bound on a single write transaction.
+const purgePage = 500
+
 // Purge removes expired evidence first, then oldest completed evidence until within maxBytes.
 // An output file is removed before its guarded Process-run row so SQL can never orphan a file.
+//
+// ⚠ It pages: one bounded delete per page, then a short yield (ProcessOptions.PurgeYield). On
+// SQLite the store has a single connection, so a purge that holds it for long starves River's
+// leader election and the health probe (#1411). A page is the unit of that hold.
 func (m *ProcessManager) Purge(ctx context.Context, before time.Time, maxBytes int64) (PurgeResult, error) {
 	if m == nil || m.sink == nil {
 		return PurgeResult{}, nil
 	}
 	result := PurgeResult{}
 	for {
-		candidates, err := m.sink.ListDiagnosticRetentionCandidates(ctx, before, 256)
+		candidates, err := m.sink.ListDiagnosticRetentionCandidates(ctx, before, purgePage)
 		if err != nil {
 			return result, err
 		}
 		if len(candidates) == 0 {
 			break
 		}
-		for _, candidate := range candidates {
-			removed, err := m.deleteCandidate(ctx, candidate)
-			if err != nil {
-				return result, err
-			}
-			if removed {
-				result.add(candidate.Kind)
-			}
+		removed, _, err := m.deletePage(ctx, candidates, &result, 0, 0)
+		if err != nil {
+			return result, err
+		}
+		if !removed {
+			break // nothing deletable came back; looping would spin.
+		}
+		if err := m.yield(ctx); err != nil {
+			return result, err
 		}
 	}
 	retained, err := m.sink.DiagnosticRetainedBytes(ctx)
@@ -172,40 +184,88 @@ func (m *ProcessManager) Purge(ctx context.Context, before time.Time, maxBytes i
 		return result, err
 	}
 	for maxBytes > 0 && retained > maxBytes {
-		candidates, listErr := m.sink.ListDiagnosticRetentionCandidates(ctx, time.Time{}, 256)
+		candidates, listErr := m.sink.ListDiagnosticRetentionCandidates(ctx, time.Time{}, purgePage)
 		if listErr != nil {
 			return result, listErr
 		}
 		if len(candidates) == 0 {
 			break
 		} // active runs may legitimately hold the install above budget.
-		removedAny := false
-		for _, candidate := range candidates {
-			if retained <= maxBytes {
-				break
-			}
-			removed, deleteErr := m.deleteCandidate(ctx, candidate)
-			if deleteErr != nil {
-				return result, deleteErr
-			}
-			if removed {
-				removedAny = true
-				retained -= candidate.SizeBytes
-				result.add(candidate.Kind)
-			}
+		removed, freed, deleteErr := m.deletePage(ctx, candidates, &result, retained, maxBytes)
+		if deleteErr != nil {
+			return result, deleteErr
 		}
-		if !removedAny {
+		retained -= freed
+		if !removed {
 			break
+		}
+		if err := m.yield(ctx); err != nil {
+			return result, err
 		}
 	}
 	result.RetainedBytes = max(0, retained)
 	return result, nil
 }
 
+// deletePage removes one page. Event rows are deleted together in one statement; Process runs go
+// one at a time because each may own an output file that must be removed first. With maxBytes > 0
+// it stops once `retained` minus the bytes freed so far is within budget. It reports whether it
+// removed anything and how many logical bytes it freed.
+func (m *ProcessManager) deletePage(
+	ctx context.Context, candidates []RetentionCandidate, result *PurgeResult, retained, maxBytes int64,
+) (removedAny bool, freed int64, err error) {
+	var eventIDs []string
+	var eventBytes int64
+	for _, candidate := range candidates {
+		if maxBytes > 0 && retained-freed-eventBytes <= maxBytes {
+			break
+		}
+		if candidate.Kind == EvidenceEvent {
+			eventIDs = append(eventIDs, candidate.ID)
+			eventBytes += candidate.SizeBytes
+			continue
+		}
+		removed, deleteErr := m.deleteCandidate(ctx, candidate)
+		if deleteErr != nil {
+			return removedAny, freed, deleteErr
+		}
+		if removed {
+			removedAny = true
+			freed += candidate.SizeBytes
+			result.add(candidate.Kind)
+		}
+	}
+	if len(eventIDs) > 0 {
+		n, deleteErr := m.sink.DeleteDiagnosticEvents(ctx, eventIDs)
+		if deleteErr != nil {
+			return removedAny, freed, deleteErr
+		}
+		if n > 0 {
+			removedAny = true
+			freed += eventBytes
+			result.Events += n
+		}
+	}
+	return removedAny, freed, nil
+}
+
+// yield pauses between pages so other work waiting for the connection is served first. It returns
+// the context's error if the run is cancelled meanwhile.
+func (m *ProcessManager) yield(ctx context.Context) error {
+	timer := time.NewTimer(m.opts.PurgeYield)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func (m *ProcessManager) deleteCandidate(ctx context.Context, candidate RetentionCandidate) (bool, error) {
 	switch candidate.Kind {
 	case EvidenceEvent:
-		return m.sink.DeleteDiagnosticEvent(ctx, candidate.ID)
+		return false, errors.New("diagnostic events are deleted in batches, not one by one")
 	case EvidenceProcessRun:
 		if candidate.OutputRef != "" {
 			if m.opts.OutputDir == "" {
@@ -640,6 +700,9 @@ func processDefaults(opts ProcessOptions) ProcessOptions {
 	}
 	if opts.ProgressPeriod <= 0 {
 		opts.ProgressPeriod = defaultProgressPeriod
+	}
+	if opts.PurgeYield <= 0 {
+		opts.PurgeYield = defaultPurgeYield
 	}
 	if opts.WriteTimeout <= 0 {
 		opts.WriteTimeout = defaultProcessTimeout

@@ -304,6 +304,58 @@ func diagnosticNullableInt(value *int) any {
 	return *value
 }
 
+// diagnosticRetentionCandidatesQuery is the page query and its arguments, split out so a test can
+// EXPLAIN exactly what production runs.
+//
+// ⚠ Each branch is ORDERED AND LIMITED INSIDE its own subquery. The first cut ordered the UNION
+// outside, which made SQLite scan and sort every diagnostic_events row to return one 256-row
+// page — on the 2.7M-row household table that is seconds per page holding the only connection,
+// repeated for every page, which is why the nightly purge never finished (#1411). Bounded per
+// branch, each side walks its own index (idx_diagnostic_events_time) and stops after `limit`
+// rows; the outer merge sorts at most 2×limit. A zero beforeMS ("everything deletable") is
+// resolved here in Go, not as an `OR ? = 0` in SQL, because that OR defeats the index range.
+func diagnosticRetentionCandidatesQuery(beforeMS int64, limit int) (string, []any) {
+	eventWhere, runWhere := "", "WHERE status <> 'running' AND ended_at > 0"
+	var eventArgs, runArgs []any
+	if beforeMS != 0 {
+		eventWhere, runWhere = "WHERE occurred_at < ?", runWhere+" AND ended_at < ?"
+		eventArgs, runArgs = []any{beforeMS}, []any{beforeMS}
+	}
+	args := append(append(append(eventArgs, limit), append(runArgs, limit)...), limit)
+	return `SELECT kind, id, at, size_bytes, output_ref FROM (
+		SELECT kind, id, at, size_bytes, output_ref FROM (
+			SELECT 'event' AS kind, id, occurred_at AS at, size_bytes, '' AS output_ref
+			FROM diagnostic_events ` + eventWhere + ` ORDER BY occurred_at, id LIMIT ?
+		) e
+		UNION ALL
+		SELECT kind, id, at, size_bytes, output_ref FROM (
+			SELECT 'process_run' AS kind, id, ended_at AS at, size_bytes, output_ref
+			FROM diagnostic_process_runs ` + runWhere + ` ORDER BY ended_at, id LIMIT ?
+		) r
+	) candidates ORDER BY at, id LIMIT ?`, args
+}
+
+// DeleteDiagnosticEvents removes one bounded batch in a single statement and reports how many
+// rows it deleted. Callers page (ListDiagnosticRetentionCandidates caps a page at 1000) and
+// yield between batches; deleting row by row cost a round trip and a full 11-index update each.
+func (s *sqlStore) DeleteDiagnosticEvents(ctx context.Context, ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	if len(ids) > diagnosticDeleteBatchMax {
+		return 0, fmt.Errorf("delete diagnostic events: batch of %d exceeds %d", len(ids), diagnosticDeleteBatchMax)
+	}
+	n, err := s.deleteByID(ctx, "diagnostic_events", ids)
+	if err != nil {
+		return 0, fmt.Errorf("delete %d diagnostic events: %w", len(ids), err)
+	}
+	return n, nil
+}
+
+// diagnosticDeleteBatchMax bounds one delete transaction. 500 rows × 11 indexes is tens of
+// milliseconds on the household disk, so any other waiter for the connection is served promptly.
+const diagnosticDeleteBatchMax = 1000
+
 // ListDiagnosticRetentionCandidates returns one oldest-first page. A zero before selects all
 // deletable evidence for the storage-budget phase; active Process runs are never candidates.
 func (s *sqlStore) ListDiagnosticRetentionCandidates(
@@ -316,15 +368,8 @@ func (s *sqlStore) ListDiagnosticRetentionCandidates(
 	if before.IsZero() {
 		beforeMS = 0
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, id, at, size_bytes, output_ref FROM (
-		SELECT 'event' AS kind, id, occurred_at AS at, size_bytes, '' AS output_ref
-		FROM diagnostic_events WHERE (CAST(? AS BIGINT) = 0 OR occurred_at < CAST(? AS BIGINT))
-		UNION ALL
-		SELECT 'process_run' AS kind, id, ended_at AS at, size_bytes, output_ref
-		FROM diagnostic_process_runs
-		WHERE status <> 'running' AND ended_at > 0
-			AND (CAST(? AS BIGINT) = 0 OR ended_at < CAST(? AS BIGINT))
-	) candidates ORDER BY at, id LIMIT ?`), beforeMS, beforeMS, beforeMS, beforeMS, limit)
+	query, args := diagnosticRetentionCandidatesQuery(beforeMS, limit)
+	rows, err := s.db.QueryContext(ctx, s.ph(query), args...)
 	if err != nil {
 		return nil, fmt.Errorf("list diagnostic retention candidates: %w", err)
 	}
@@ -338,14 +383,6 @@ func (s *sqlStore) ListDiagnosticRetentionCandidates(
 		result = append(result, candidate)
 	}
 	return result, rows.Err()
-}
-
-func (s *sqlStore) DeleteDiagnosticEvent(ctx context.Context, id string) (bool, error) {
-	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_events WHERE id = ?`), id)
-	if err != nil {
-		return false, fmt.Errorf("delete diagnostic event %s: %w", id, err)
-	}
-	return rowsAffected(result) > 0, nil
 }
 
 // DeleteDiagnosticProcessRun repeats the terminal-state guard at the destructive boundary.
@@ -368,85 +405,137 @@ func (s *sqlStore) DiagnosticRetainedBytes(ctx context.Context) (int64, error) {
 	return retained, nil
 }
 
+// diagnosticPurgeBatch is the row count of one PurgeDiagnostics delete statement.
+const diagnosticPurgeBatch = 500
+
 // PurgeDiagnostics applies the SQL-owned half of §5 retention. File-backed completed runs are
 // deliberately excluded: #512's diagnostics-owned cleaner removes their opaque output first, then
 // their row. Deleting the row here would orphan a file the store cannot resolve safely.
+//
+// ⚠ **It works in bounded batches, one statement each, and never holds a transaction across
+// batches.** It used to run as ONE transaction; on SQLite (MaxOpenConns 1) that transaction owned
+// the only connection for the entire delete, so River's leader election and the health probe
+// queued behind it and timed out (#1411). Between batches the connection returns to the pool, and
+// database/sql hands it to the longest waiter before this loop's next Exec, so other work is
+// delayed by one batch (tens of ms), not by the whole purge. The price is that a mid-purge
+// failure leaves a prefix deleted — harmless, since retention is idempotent and every batch is
+// oldest-first.
 func (s *sqlStore) PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return diagnostics.PurgeResult{}, fmt.Errorf("begin diagnostics purge: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	result := diagnostics.PurgeResult{}
-	eventResult, err := tx.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_events WHERE occurred_at < ?`), before.UnixMilli())
-	if err != nil {
-		return result, fmt.Errorf("purge expired diagnostic events: %w", err)
+	beforeMS := before.UnixMilli()
+	for {
+		if err := ctx.Err(); err != nil {
+			return result, fmt.Errorf("purge expired diagnostic events: %w", err)
+		}
+		exec, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_events WHERE id IN (
+			SELECT id FROM diagnostic_events WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT ?)`),
+			beforeMS, diagnosticPurgeBatch)
+		if err != nil {
+			return result, fmt.Errorf("purge expired diagnostic events: %w", err)
+		}
+		n := rowsAffected(exec)
+		result.Events += n
+		if n < diagnosticPurgeBatch {
+			break
+		}
 	}
-	result.Events = rowsAffected(eventResult)
-	processResult, err := tx.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_process_runs
-		WHERE status <> 'running' AND ended_at > 0 AND ended_at < ? AND output_ref = ''`), before.UnixMilli())
+	processResult, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM diagnostic_process_runs
+		WHERE status <> 'running' AND ended_at > 0 AND ended_at < ? AND output_ref = ''`), beforeMS)
 	if err != nil {
 		return result, fmt.Errorf("purge expired diagnostic process runs: %w", err)
 	}
 	result.ProcessRuns = rowsAffected(processResult)
 
-	var retained int64
-	if err := tx.QueryRowContext(ctx, `SELECT
-		COALESCE((SELECT SUM(size_bytes) FROM diagnostic_events), 0) +
-		COALESCE((SELECT SUM(size_bytes) FROM diagnostic_process_runs), 0)`).Scan(&retained); err != nil {
-		return result, fmt.Errorf("measure retained diagnostics: %w", err)
+	retained, err := s.DiagnosticRetainedBytes(ctx)
+	if err != nil {
+		return result, err
 	}
-	if maxBytes > 0 && retained > maxBytes {
-		rows, err := tx.QueryContext(ctx, `SELECT kind, id, size_bytes FROM (
-			SELECT 'event' AS kind, id, occurred_at AS at, size_bytes FROM diagnostic_events
-			UNION ALL
-			SELECT 'process' AS kind, id, started_at AS at, size_bytes FROM diagnostic_process_runs
-			WHERE status <> 'running' AND output_ref = ''
-		) retained ORDER BY at, id`)
+	for maxBytes > 0 && retained > maxBytes {
+		page, err := s.diagnosticBudgetPage(ctx, diagnosticPurgeBatch)
 		if err != nil {
-			return result, fmt.Errorf("list diagnostic budget candidates: %w", err)
+			return result, err
 		}
-		type candidate struct {
-			kind, id string
-			size     int64
+		if len(page) == 0 {
+			break // only active or file-backed evidence remains; it may hold the install above budget.
 		}
-		var candidates []candidate
-		for rows.Next() {
-			var item candidate
-			if err := rows.Scan(&item.kind, &item.id, &item.size); err != nil {
-				_ = rows.Close()
-				return result, fmt.Errorf("scan diagnostic budget candidate: %w", err)
-			}
-			candidates = append(candidates, item)
-		}
-		if err := rows.Close(); err != nil {
-			return result, fmt.Errorf("close diagnostic budget candidates: %w", err)
-		}
-		for _, item := range candidates {
+		var eventIDs, runIDs []string
+		for _, item := range page {
 			if retained <= maxBytes {
 				break
 			}
-			table := "diagnostic_events"
 			if item.kind == "process" {
-				table = "diagnostic_process_runs"
-			}
-			if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE id = ?`), item.id); err != nil {
-				return result, fmt.Errorf("purge diagnostic budget candidate %s: %w", item.id, err)
+				runIDs = append(runIDs, item.id)
+			} else {
+				eventIDs = append(eventIDs, item.id)
 			}
 			retained -= item.size
-			if item.kind == "process" {
-				result.ProcessRuns++
-			} else {
-				result.Events++
-			}
 		}
+		events, err := s.deleteByID(ctx, "diagnostic_events", eventIDs)
+		if err != nil {
+			return result, fmt.Errorf("purge diagnostic budget candidates: %w", err)
+		}
+		runs, err := s.deleteByID(ctx, "diagnostic_process_runs", runIDs)
+		if err != nil {
+			return result, fmt.Errorf("purge diagnostic budget candidates: %w", err)
+		}
+		result.Events += events
+		result.ProcessRuns += runs
 	}
 	result.RetainedBytes = max(0, retained)
-	if err := tx.Commit(); err != nil {
-		return diagnostics.PurgeResult{}, fmt.Errorf("commit diagnostics purge: %w", err)
-	}
 	return result, nil
+}
+
+type diagnosticBudgetItem struct {
+	kind, id string
+	size     int64
+}
+
+// diagnosticBudgetPage returns the oldest deletable rows, each branch bounded by its own index
+// walk for the reason diagnosticRetentionCandidatesQuery documents.
+func (s *sqlStore) diagnosticBudgetPage(ctx context.Context, limit int) ([]diagnosticBudgetItem, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT kind, id, size_bytes FROM (
+		SELECT kind, id, at, size_bytes FROM (
+			SELECT 'event' AS kind, id, occurred_at AS at, size_bytes
+			FROM diagnostic_events ORDER BY occurred_at, id LIMIT ?
+		) e
+		UNION ALL
+		SELECT kind, id, at, size_bytes FROM (
+			SELECT 'process' AS kind, id, started_at AS at, size_bytes
+			FROM diagnostic_process_runs WHERE status <> 'running' AND output_ref = ''
+			ORDER BY started_at, id LIMIT ?
+		) r
+	) retained ORDER BY at, id LIMIT ?`), limit, limit, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list diagnostic budget candidates: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var page []diagnosticBudgetItem
+	for rows.Next() {
+		var item diagnosticBudgetItem
+		if err := rows.Scan(&item.kind, &item.id, &item.size); err != nil {
+			return nil, fmt.Errorf("scan diagnostic budget candidate: %w", err)
+		}
+		page = append(page, item)
+	}
+	return page, rows.Err()
+}
+
+// deleteByID removes the named rows of one fixed table in a single statement. `table` is always a
+// literal from this file, never caller input.
+func (s *sqlStore) deleteByID(ctx context.Context, table string, ids []string) (int, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	result, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM `+table+` WHERE id IN (?`+
+		strings.Repeat(", ?", len(ids)-1)+`)`), args...)
+	if err != nil {
+		return 0, err
+	}
+	return rowsAffected(result), nil
 }
 
 func rowsAffected(result sql.Result) int {
