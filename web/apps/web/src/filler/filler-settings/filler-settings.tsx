@@ -48,8 +48,9 @@ const storagePauseMessage = (pausedBy?: FillerStorageStatusDTO["pausedBy"]): str
     case "host_reserve":
       return "New filler is paused because this drive is running low. Free some space to continue.";
     case "capacity_unavailable":
-    case "estimate_unknown":
       return "Loomarr cannot safely check this folder's available space. Check the drive or choose another folder.";
+    case "estimate_unknown":
+      return "A download could not be sized safely and was stopped. The folder is fine; Loomarr will try again.";
     default:
       return undefined;
   }

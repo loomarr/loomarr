@@ -87,3 +87,31 @@ func TestEstimateDiagnosticOutputIncludesAtomicReplacementPeak(t *testing.T) {
 		t.Fatal("invalid diagnostic bound must fail closed")
 	}
 }
+
+// Acquisition reserves what its write guard lets it write and nothing more. The previous shared
+// formula reserved ~5x the source (ceiling x4 + 64 MiB) and paused auto-fetch on library_limit.
+func TestEstimateAcquisitionReservesTheStagingCeilingNotDerivatives(t *testing.T) {
+	t.Parallel()
+	budget, ok := storagegovernor.EstimateAcquisition(storagegovernor.MediaEstimate{DeclaredBytes: 100 << 20})
+	if !ok {
+		t.Fatal("declared acquisition estimate was rejected")
+	}
+	if budget.WriteCeilingBytes != 132<<20 || budget.ReservationBytes != 132<<20 {
+		t.Fatalf("budget = %+v, want ceiling = reservation = 132 MiB (100 MiB + 32 MiB floor margin)", budget)
+	}
+	media, _ := storagegovernor.EstimateMedia(storagegovernor.MediaEstimate{DeclaredBytes: 100 << 20})
+	if media.ReservationBytes != 592<<20 {
+		t.Fatalf("EstimateMedia reservation = %d; transcode and split still need their derivative headroom", media.ReservationBytes)
+	}
+	if _, ok := storagegovernor.EstimateAcquisition(storagegovernor.MediaEstimate{}); ok {
+		t.Fatal("acquisition estimate accepted metadata with no size or duration")
+	}
+}
+
+func TestUnknownAcquisitionBudgetIsABoundedCap(t *testing.T) {
+	t.Parallel()
+	budget := storagegovernor.UnknownAcquisitionBudget()
+	if budget.WriteCeilingBytes != 512<<20 || budget.ReservationBytes != budget.WriteCeilingBytes {
+		t.Fatalf("unknown budget = %+v, want a 512 MiB cap reserved in full", budget)
+	}
+}

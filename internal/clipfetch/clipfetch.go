@@ -55,6 +55,10 @@ type Source struct {
 	Kind          Kind
 	URL           string
 	RemoteID      string
+	// DurationMS and Height are what discovery already knew about the item (0 = unknown). They only
+	// size the fallback reservation when the provider cannot report a size at download time.
+	DurationMS int64
+	Height     int
 	// PublicationDir is set only by the Ingestor while downloading into hidden staging. It lets
 	// adapters retain their provider-specific idempotency index without publishing into it.
 	PublicationDir string
@@ -178,7 +182,10 @@ type plannedSource struct {
 type Plan struct {
 	ingestor *Ingestor
 	sources  []plannedSource
-	once     sync.Once
+	// skipped counts items Prepare dropped (nothing to fetch, or their estimate failed). They are
+	// reported through Result.Skipped so the run shows them instead of failing the batch.
+	skipped int
+	once    sync.Once
 }
 
 // AcquisitionPlan is the prepared, already-reserved unit the app may durably
@@ -188,8 +195,18 @@ type AcquisitionPlan interface {
 	Release()
 }
 
-// Prepare estimates and reserves every selected item as one atomic batch from
-// the caller's perspective. Any refusal releases earlier leases.
+// Prepare estimates and reserves the selected items. Capacity is atomic from the caller's
+// perspective: any capacity refusal releases every earlier lease. An item's own size problem is
+// NOT a capacity problem and never fails the batch (#1394):
+//
+//   - nothing to fetch (ErrNothingToFetch): dropped from the plan, counted as skipped, no reservation;
+//   - size unknown (ErrEstimateUnavailable): planned with a bounded fallback — the discovery hints
+//     when the caller supplied them, else storagegovernor.UnknownAcquisitionBudget — and the write
+//     guard aborts the download if it outgrows that cap;
+//   - estimate failed for another reason (provider unreachable): dropped and logged for this pass.
+//
+// Only when every item was dropped for a failure (not "nothing to fetch") does Prepare return an
+// error, so a provider outage still backs the source off instead of queueing an empty run.
 func (i *Ingestor) Prepare(ctx context.Context, sources []Source, mode storagegovernor.Mode) (AcquisitionPlan, error) {
 	if i == nil || i.storage == nil {
 		return nil, &CapacityError{Decision: storagegovernor.Decision{
@@ -198,26 +215,23 @@ func (i *Ingestor) Prepare(ctx context.Context, sources []Source, mode storagego
 		}}
 	}
 	plan := &Plan{ingestor: i, sources: make([]plannedSource, 0, len(sources))}
+	var estimateFailures error
 	for _, source := range sources {
-		downloader := i.downloaderFor(source.Kind)
-		estimator, ok := downloader.(Estimator)
-		if !ok {
+		if err := ctx.Err(); err != nil {
 			plan.Release()
-			return nil, &CapacityError{Decision: storagegovernor.Decision{
-				Snapshot: storagegovernor.Snapshot{Domain: storagegovernor.DomainFiller, Reason: storagegovernor.ReasonEstimateUnknown},
-				Err:      ErrEstimateUnavailable,
-			}}
+			return nil, err
 		}
-		budget, err := estimator.Estimate(ctx, source)
-		if err != nil || budget.WriteCeilingBytes <= 0 || budget.ReservationBytes <= 0 {
-			plan.Release()
-			if err == nil {
-				err = ErrEstimateUnavailable
-			}
-			return nil, &CapacityError{Decision: storagegovernor.Decision{
-				Snapshot: storagegovernor.Snapshot{Domain: storagegovernor.DomainFiller, Reason: storagegovernor.ReasonEstimateUnknown},
-				Err:      err,
-			}}
+		budget, err := i.budgetFor(ctx, source)
+		if errors.Is(err, ErrNothingToFetch) {
+			i.logf("skipping %s: %v", source.URL, err)
+			plan.skipped++
+			continue
+		}
+		if err != nil {
+			i.logf("skipping %s this pass: %v", source.URL, err)
+			estimateFailures = errors.Join(estimateFailures, fmt.Errorf("estimate %s: %w", source.URL, err))
+			plan.skipped++
+			continue
 		}
 		lease, decision := i.storage.Reserve(ctx, storagegovernor.Request{
 			Path: i.dropDir, Domain: storagegovernor.DomainFiller,
@@ -231,7 +245,39 @@ func (i *Ingestor) Prepare(ctx context.Context, sources []Source, mode storagego
 		source.storageLease = lease
 		plan.sources = append(plan.sources, plannedSource{source: source, lease: lease})
 	}
+	if len(plan.sources) == 0 && estimateFailures != nil {
+		return nil, estimateFailures
+	}
 	return plan, nil
+}
+
+// budgetFor sizes one source. A provider that cannot size an item is not a storage fault, so the
+// item is capped rather than refused; see Prepare.
+func (i *Ingestor) budgetFor(ctx context.Context, source Source) (storagegovernor.MediaBudget, error) {
+	estimator, ok := i.downloaderFor(source.Kind).(Estimator)
+	if !ok {
+		return fallbackBudget(source), nil
+	}
+	budget, err := estimator.Estimate(ctx, source)
+	switch {
+	case err == nil && budget.WriteCeilingBytes > 0 && budget.ReservationBytes > 0:
+		return budget, nil
+	case err == nil || errors.Is(err, ErrEstimateUnavailable):
+		return fallbackBudget(source), nil
+	default:
+		return storagegovernor.MediaBudget{}, err
+	}
+}
+
+// fallbackBudget prefers what discovery already knew about the item (duration and height), and
+// only then the fixed cap.
+func fallbackBudget(source Source) storagegovernor.MediaBudget {
+	if budget, ok := storagegovernor.EstimateAcquisition(storagegovernor.MediaEstimate{
+		DurationMS: source.DurationMS, Height: source.Height,
+	}); ok {
+		return budget
+	}
+	return storagegovernor.UnknownAcquisitionBudget()
 }
 
 // Run consumes the plan and releases all reservations on return.
@@ -243,6 +289,7 @@ func (p *Plan) Run(ctx context.Context) Result {
 	p.once.Do(func() {
 		defer p.release()
 		result = p.ingestor.run(ctx, p.sources)
+		result.Skipped += p.skipped
 	})
 	return result
 }
@@ -286,6 +333,12 @@ func (i *Ingestor) run(ctx context.Context, sources []plannedSource) Result {
 	var res Result
 	for sourceIndex, planned := range sources {
 		src := planned.source
+		if sourceIndex > 0 {
+			// The previous item is finished on every path (success, failure, or `continue`), so
+			// its budget goes back now rather than when the whole batch ends. Release is
+			// idempotent and nil-safe; the plan's deferred release covers the final item.
+			sources[sourceIndex-1].lease.Release()
+		}
 		select {
 		case <-ctx.Done():
 			return res

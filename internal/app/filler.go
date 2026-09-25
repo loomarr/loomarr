@@ -977,6 +977,7 @@ func (a fillerServiceAdapter) IngestSourceItems(ctx context.Context, sourceID, s
 	for _, item := range items {
 		targets = append(targets, filler.AcquisitionTarget{
 			SourceID: sourceID, RemoteID: item.ID, Kind: sourceKind, URL: item.URL,
+			DurationMS: int64(item.DurationMS), Height: item.Height,
 		})
 	}
 	return a.ingest(ctx, filler.AcquisitionSource, "", targets, nil)
@@ -1052,6 +1053,7 @@ func (a fillerServiceAdapter) ingest(
 		sources = append(sources, clipfetch.Source{
 			ID: target.SourceID, AcquisitionID: jobID,
 			Kind: kind, URL: target.URL, RemoteID: target.RemoteID,
+			DurationMS: target.DurationMS, Height: target.Height,
 		})
 	}
 	sourceID := commonAcquisitionSource(targets)

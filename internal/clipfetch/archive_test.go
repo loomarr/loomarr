@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // memSink is an in-memory fileSink for testing the walk without touching disk.
@@ -209,8 +211,9 @@ func TestArchiveEstimateBudgetsTheRepresentationDownloadWillSelect(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.WriteCeilingBytes <= 246_000_000 || item.ReservationBytes <= item.WriteCeilingBytes {
-		t.Fatalf("item estimate = %+v, want original bytes plus processing headroom", item)
+	// 246 MB original plus the 25% staging margin; acquisition reserves exactly what it may write.
+	if item.WriteCeilingBytes != 246_000_000+246_000_000/4 || item.ReservationBytes != item.WriteCeilingBytes {
+		t.Fatalf("item estimate = %+v, want original bytes plus the staging margin, reserved 1:1", item)
 	}
 	collection, err := c.estimate(context.Background(), "test-collection")
 	if err != nil {
@@ -311,4 +314,94 @@ func TestArchiveIDFromURL(t *testing.T) {
 			t.Errorf("archiveIDFromURL(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+func TestArchiveEstimateItemWithNoVideoFileIsNothingToFetch(t *testing.T) {
+	t.Parallel()
+	_, err := estimateArchiveItem(metadataResp{Files: []archiveFile{{Name: "track.mp3", Format: "VBR MP3", Source: "original"}}})
+	if !errors.Is(err, ErrNothingToFetch) {
+		t.Fatalf("audio-only item estimate error = %v, want ErrNothingToFetch (downloadItem skips it)", err)
+	}
+	_, err = estimateArchiveItem(metadataResp{Files: []archiveFile{{Name: "clip.mp4", Format: "MPEG4", Source: "original"}}})
+	if !errors.Is(err, ErrEstimateUnavailable) {
+		t.Fatalf("video with no size or length error = %v, want ErrEstimateUnavailable", err)
+	}
+}
+
+// A collection mixing a sized video, an audio-only item, and an unsized video must budget what
+// Download will fetch: the audio item is free, the unsized one takes the bounded fallback.
+func TestArchiveCollectionEstimateSkipsUnfetchedItemsAndCapsUnsizedOnes(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/metadata/", func(w http.ResponseWriter, r *http.Request) {
+		switch strings.TrimPrefix(r.URL.Path, "/metadata/") {
+		case "mixed":
+			_ = json.NewEncoder(w).Encode(metadataResp{Metadata: archiveMetadata{MediaType: "collection"}})
+		case "sized":
+			_ = json.NewEncoder(w).Encode(metadataResp{Files: []archiveFile{{Name: "a.mp4", Format: "MPEG4", Size: "100000000", Source: "original"}}})
+		case "audio":
+			_ = json.NewEncoder(w).Encode(metadataResp{Files: []archiveFile{{Name: "a.mp3", Format: "VBR MP3", Source: "original"}}})
+		case "unsized":
+			_ = json.NewEncoder(w).Encode(metadataResp{Files: []archiveFile{{Name: "b.mp4", Format: "MPEG4", Source: "original"}}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	mux.HandleFunc("/advancedsearch.php", func(w http.ResponseWriter, _ *http.Request) {
+		var sr searchResp
+		sr.Response.NumFound = 3
+		sr.Response.Docs = []searchDoc{{Identifier: "sized"}, {Identifier: "audio"}, {Identifier: "unsized"}}
+		_ = json.NewEncoder(w).Encode(sr)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := newArchiveClient(srv.URL, srv.Client(), newMemSink())
+	budget, err := c.estimate(t.Context(), "mixed")
+	if err != nil {
+		t.Fatalf("one unsizable item failed the collection estimate: %v", err)
+	}
+	// 100 MB is under the 32 MiB-margin crossover, so the margin is the fixed floor.
+	want := int64(100_000_000+32<<20) + storagegovernor.UnknownAcquisitionCeilingBytes
+	if budget.WriteCeilingBytes != want || budget.ReservationBytes != want {
+		t.Fatalf("collection budget = %+v, want sized item + fallback cap = %d", budget, want)
+	}
+}
+
+// The reservation for N items is N x the documented per-item formula (source + 25% margin), and
+// completed items give it back.
+func TestPrepareReservationForNItemsMatchesTheDocumentedFormula(t *testing.T) {
+	t.Parallel()
+	c := newTestClient(t, newMemSink())
+	meter := &fakeMeter{total: 600 * storagegovernor.GiB, free: 400 * storagegovernor.GiB}
+	governor := storagegovernor.New(meter, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: 20 * storagegovernor.GiB}
+	})
+	ingestor := New(nil, &ArchiveDownloader{client: c}, "/filler", slog.New(slog.NewTextHandler(io.Discard, nil))).WithStorageGovernor(governor)
+	const items = 3
+	sources := make([]Source, items)
+	for index := range sources {
+		sources[index] = Source{Kind: Archive, URL: "https://archive.org/details/test-ad"}
+	}
+	plan, err := ingestor.Prepare(t.Context(), sources, storagegovernor.Automatic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const perItem = int64(246_000_000 + 246_000_000/4)
+	if got := governor.Snapshot(t.Context(), "/filler").Snapshot.ReservedBytes; got != items*perItem {
+		t.Fatalf("reserved for %d items = %d, want %d x %d", items, got, items, perItem)
+	}
+	plan.Release()
+	if got := governor.Snapshot(t.Context(), "/filler").Snapshot.ReservedBytes; got != 0 {
+		t.Fatalf("reserved after release = %d, want zero", got)
+	}
+}
+
+type fakeMeter struct{ total, free int64 }
+
+func (m *fakeMeter) Measure(context.Context, string) (storagegovernor.Measurement, error) {
+	return storagegovernor.Measurement{ID: "disk", TotalBytes: m.total, FreeBytes: m.free}, nil
+}
+
+func (m *fakeMeter) ManagedBytes(context.Context, string, storagegovernor.Domain) (int64, error) {
+	return 0, nil
 }

@@ -4786,6 +4786,18 @@ cancellation, or failure. The write itself has a byte ceiling: missing or dishon
 lengths cannot consume through the reservation. Overflow stops the writer and leaves only private
 staging that the existing safe-grace cleanup may later prove disposable.
 
+An acquisition lease covers exactly its staging ceiling: `source + max(source/4, 32 MiB)`, the
+same bytes the write guard enforces, so `reservation = ceiling`. Transcode, split, prepared media
+and artwork each reserve their own peak when they run, so the download does not pre-reserve their
+derivatives (the earlier shared `ceiling×4 + 64 MiB` held about 5× the source and paused
+auto-fetch on `library_limit` while the disk was mostly free). Each item's lease is released as its
+download ends, not when the whole batch does. Sizing is per item and never a batch-wide storage
+pause: an item Download would skip (an Archive item with no video file) is dropped and counted as
+skipped without a reservation; an item the provider cannot size is planned from discovery's
+duration and height when known, else a fixed 512 MiB cap, and the write guard aborts it if it
+outgrows that cap. `estimate_unknown` therefore only reports a download that overran its
+reservation, and readiness does not send it to "choose another folder".
+
 Filesystem identity, not path spelling, groups reservations. Filler, its derived media, prepared
 output, diagnostics, and staging on the same device cannot each spend the same free bytes. Hard
 reserve accounting aggregates every domain on that filesystem; managed usage and soft reservations

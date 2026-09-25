@@ -30,7 +30,11 @@ func TestProjectReadinessPrioritisesTheNextOperatorAction(t *testing.T) {
 		{"host reserve", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "host_reserve" }, filler.ReadinessFreeSpace},
 		{"library allowance", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "library_limit" }, filler.ReadinessChangeLimit},
 		{"capacity unavailable", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "capacity_unavailable" }, filler.ReadinessChooseFolder},
-		{"estimate unavailable", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "estimate_unknown" }, filler.ReadinessChooseFolder},
+		{"estimate unknown is not a folder problem", func(in *filler.ReadinessInput) { in.Storage.PausedBy = "estimate_unknown" }, filler.ReadinessNone},
+		{"estimate unknown defers to the failed acquisition", func(in *filler.ReadinessInput) {
+			in.Storage.PausedBy = "estimate_unknown"
+			in.Runs = []filler.AcquisitionRun{{Status: filler.AcquisitionError, Failed: 1}}
+		}, filler.ReadinessRetryAcquisition},
 		{"latest acquisition failed", func(in *filler.ReadinessInput) {
 			in.Runs = []filler.AcquisitionRun{{Status: filler.AcquisitionError, Failed: 2}}
 		}, filler.ReadinessRetryAcquisition},

@@ -10,6 +10,10 @@ import (
 
 var ErrEstimateUnavailable = errors.New("clipfetch: media size estimate unavailable")
 
+// ErrNothingToFetch means Download would fetch nothing for this source (for example an Archive
+// item with no video file), so it costs no storage and must not be reserved, refused, or retried.
+var ErrNothingToFetch = errors.New("clipfetch: nothing to fetch for this item")
+
 // Estimator reads provider metadata without downloading media. Implementations
 // return the governor-owned write ceiling and full processing reservation.
 type Estimator interface {
@@ -17,7 +21,7 @@ type Estimator interface {
 }
 
 func mediaBudget(declaredBytes, durationMS int64, height int) (storagegovernor.MediaBudget, error) {
-	budget, ok := storagegovernor.EstimateMedia(storagegovernor.MediaEstimate{
+	budget, ok := storagegovernor.EstimateAcquisition(storagegovernor.MediaEstimate{
 		DeclaredBytes: declaredBytes, DurationMS: durationMS, Height: height,
 	})
 	if !ok {
