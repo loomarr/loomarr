@@ -2,7 +2,7 @@ import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { unwrap } from "@loomarr/api/unwrap";
-import { useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { SlidersHorizontal, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -188,7 +188,33 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
   // re-framing controls being off-default means no.
   const atNow = dayOffset === 0 && hourShift === 0 && startHour === null;
 
-  const guide = channelsApi.useChannelGuide({ from, to }, { query: { retry: false } });
+  // `keepPreviousData`: a stepper/day/span change is a NEW query key, and without placeholder
+  // data `guide.data` goes undefined until the server answers — the grid empties and the toolbar
+  // (gated on `channels.length`) unmounts, so the operator stares at a blank page for the full
+  // server latency (#1396). The previous window stays on screen, flagged by `isPlaceholderData`.
+  const guide = channelsApi.useChannelGuide(
+    { from, to },
+    { query: { retry: false, placeholderData: keepPreviousData } },
+  );
+
+  // Warm the windows one click away — an hour either side (the stepper) and tomorrow at the same
+  // offset (the day picker's next stop) — once the CURRENT one has really loaded. Not while the
+  // displayed data is still the previous window's placeholder, or a click would fan out requests
+  // for windows the operator has already left. `prefetchQuery` honours the client's staleTime, so
+  // settling on the same window twice does not refetch.
+  const settled = guide.isSuccess && !guide.isPlaceholderData;
+  useEffect(() => {
+    if (!settled) return;
+    const neighbours = [
+      { hourShift: hourShift - 1, dayOffset },
+      { hourShift: hourShift + 1, dayOffset },
+      ...(dayOffset < FORWARD_DAYS ? [{ hourShift, dayOffset: dayOffset + 1 }] : []),
+    ];
+    for (const n of neighbours) {
+      const w = guideWindow({ at: mountedAt, windowMinutes, startHour, ...n });
+      void queryClient.prefetchQuery(channelsApi.getChannelGuideQueryOptions(w));
+    }
+  }, [settled, queryClient, mountedAt, dayOffset, hourShift, windowMinutes, startHour]);
 
   // Live update: a `channel` frame means a lineup actually changed (a reconcile completed),
   // which is the ONE thing the client cannot derive on its own. Refetching on that keeps the
@@ -561,6 +587,15 @@ const GuidePage = ({ initialIntent, initialJobId }: GuidePageProps) => {
           // The detail card floats over the grid rather than displacing it: inspecting a block
           // must not reflow the schedule under the pointer.
           <div className="relative flex min-h-0 flex-1">
+            {/* The next window is still loading and the grid below is the PREVIOUS one. An
+                overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
+            {guide.isPlaceholderData && (
+              <div
+                role="status"
+                aria-label="Loading guide"
+                className="pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-signal"
+              />
+            )}
             <GuideGrid
               channels={channels}
               fromMs={body?.fromMs ?? from}
