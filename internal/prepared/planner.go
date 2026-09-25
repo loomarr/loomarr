@@ -24,6 +24,14 @@ const preparationDrainReserve = 10 * time.Minute
 // retention a final cancellation window without detaching ordinary shutdown cancellation.
 const preparationFinalizationTimeout = 30 * time.Second
 
+// preparationAdmissionRetry is how often a pass with queued work and a refused admission looks for
+// a slot freed by finished playback while other workers are still running.
+const preparationAdmissionRetry = 200 * time.Millisecond
+
+// preparationYieldWait bounds how long an otherwise idle pass waits for playback to release the
+// pool after preempting its workers before yielding the remaining frontier to the next tick.
+const preparationYieldWait = 2 * time.Second
+
 // CandidateClass orders the bounded readiness frontier. Zero is current so older callers and test
 // fixtures that omit the class remain maximally urgent.
 type CandidateClass uint8
@@ -200,6 +208,7 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 		var resolveErr error
 		plan, resolveErr = p.resolver.Plan(ctx, now, now.Add(preparationLookahead))
 		errs = append(errs, resolveErr)
+		p.publishReadiness(plan.Summary)
 		preparationErrs := p.prepare(ctx, uniqueCandidates(plan.Candidates))
 		errs = append(errs, preparationErrs...)
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -244,6 +253,14 @@ func (p *Planner) Run(ctx context.Context) (runErr error) {
 	return runErr
 }
 
+// publishReadiness makes the resolved schedule visible while the pass is still running; the final
+// deferred write in Run replaces it with the post-work observation.
+func (p *Planner) publishReadiness(summary ReadinessSummary) {
+	p.statusMu.Lock()
+	p.status.Readiness = summary
+	p.statusMu.Unlock()
+}
+
 type preparationResult struct {
 	order     int
 	sourceID  string
@@ -252,22 +269,39 @@ type preparationResult struct {
 }
 
 // prepare keeps the pool full while useful job time remains, then drains every worker before the
-// caller observes readiness or prunes the store. One foreground preemption stops new launches for
-// this pass: the cancelled urgent frontier remains ahead of less urgent work on the next tick.
+// caller observes readiness or prunes the store. A foreground preemption is a yield, not the end of
+// the pass: the cancelled candidate returns to the queue in priority order and admission is retried
+// every preparationAdmissionRetry. The pool itself refuses background work while any live lease is
+// held or waiting and never exceeds capacity minus the reserved foreground slot, so refill cannot
+// re-grab a slot live playback is using.
 func (p *Planner) prepare(ctx context.Context, candidates []Candidate) []error {
 	results := make(chan preparationResult, len(candidates))
-	next, active := 0, 0
-	launching := true
+	queue := make([]int, len(candidates))
+	for i := range queue {
+		queue[i] = i
+	}
+	active := 0
+	running := make(map[int]context.Context)
+	var yieldUntil time.Time
 	completed := make([]preparationResult, 0)
-	for next < len(candidates) || active > 0 {
-		if launching && next < len(candidates) && usefulPreparationTime(ctx) {
-			candidate := candidates[next]
+	for len(queue) > 0 || active > 0 {
+		// Hold launches while any cancelled worker has yet to report, so a preempted wave re-enters
+		// the queue before refill chooses and the most urgent work is admitted first.
+		if len(queue) > 0 && usefulPreparationTime(ctx) && !anyCancelled(running) {
+			order := queue[0]
+			candidate := candidates[order]
 			workCtx, release, ok := p.pool.AcquireBackground(ctx, candidate.NeededAt)
 			if ok {
-				order := next
-				next++
+				queue = queue[1:]
 				active++
+				running[order] = workCtx
 				go func() {
+					// The slot is yielded the moment the lease is cancelled (a live session
+					// preempting), not after this publication finishes tearing its staging
+					// workspace down: that cleanup holds no encoder, and counting it against the live
+					// session's bounded wait sent viewers to software while preparation drained.
+					stop := context.AfterFunc(workCtx, release)
+					defer stop()
 					_, err := p.preparer.Prepare(workCtx, candidate.Request)
 					preempted := ctx.Err() == nil && errors.Is(err, context.Canceled) && workCtx.Err() != nil
 					release()
@@ -278,19 +312,25 @@ func (p *Planner) prepare(ctx context.Context, candidates []Candidate) []error {
 				}()
 				continue
 			}
+			if active == 0 && !time.Now().Before(yieldUntil) {
+				break // nothing running and admission refused: the next tick continues the frontier.
+			}
+			select {
+			case result := <-results:
+				active--
+				delete(running, result.order)
+				queue = p.settle(result, queue, &completed, &yieldUntil)
+			case <-time.After(preparationAdmissionRetry):
+			}
+			continue
 		}
 		if active == 0 {
 			break
 		}
 		result := <-results
 		active--
-		if result.preempted {
-			launching = false
-			continue
-		}
-		if result.err != nil {
-			completed = append(completed, result)
-		}
+		delete(running, result.order)
+		queue = p.settle(result, queue, &completed, &yieldUntil)
 	}
 	slices.SortFunc(completed, func(a, b preparationResult) int { return a.order - b.order })
 	errs := make([]error, 0, len(completed))
@@ -339,4 +379,31 @@ func retentionStatusFrom(result PruneResult) RetentionStatus {
 		ProtectedBytes: result.ProtectedBytes, PublicationsEvicted: result.PublicationsEvicted,
 		BytesEvicted: result.BytesEvicted, StagingRemoved: result.StagingRemoved,
 	}
+}
+
+// settle records one finished worker. A preempted candidate is requeued and opens a short window in
+// which an idle pass keeps retrying admission while playback releases the pool; a real failure is
+// logged now (the joined error only surfaces when the whole pass ends) and kept for the result.
+func (p *Planner) settle(
+	result preparationResult, queue []int, completed *[]preparationResult, yieldUntil *time.Time,
+) []int {
+	switch {
+	case result.preempted:
+		*yieldUntil = time.Now().Add(preparationYieldWait)
+		queue = append(queue, result.order)
+		slices.Sort(queue)
+	case result.err != nil:
+		p.log.Warn("prepared media publication failed", "source", result.sourceID, "err", result.err)
+		*completed = append(*completed, result)
+	}
+	return queue
+}
+
+func anyCancelled(running map[int]context.Context) bool {
+	for _, workCtx := range running {
+		if workCtx.Err() != nil {
+			return true
+		}
+	}
+	return false
 }

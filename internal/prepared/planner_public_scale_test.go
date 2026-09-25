@@ -82,7 +82,7 @@ func TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption(t *testin
 	candidates = append(candidates, duplicate)
 
 	work := &blockingScalePreparation{
-		start: make(chan string, capacity-1), canceled: make(chan string, capacity-1), release: make(chan struct{}),
+		start: make(chan string, 256), canceled: make(chan string, 256), release: make(chan struct{}),
 	}
 	pool := media.NewEncodePool(func() int { return capacity })
 	planner := prepared.NewPlanner(prepared.PlannerDependencies{
@@ -131,13 +131,31 @@ func TestPlannerPublicSeamScalesOneHundredChannelPriorityAndPreemption(t *testin
 	}
 	reserveRelease()
 	secondRelease()
+
+	// Playback yielding is not the end of the pass: the cancelled wave is requeued at the front and
+	// the same most-urgent set is re-admitted, so the pool refills to N-1 without waiting a tick.
+	restarted := make(map[string]bool, capacity-1)
+	for range capacity - 1 {
+		select {
+		case id := <-work.start:
+			restarted[id] = true
+		case <-time.After(5 * time.Second):
+			t.Fatal("planner did not refill the pool after playback released it")
+		}
+	}
+	for id := range started {
+		if !restarted[id] {
+			t.Fatalf("requeued urgent %s was not re-admitted first: %v", id, restarted)
+		}
+	}
+	close(work.release)
 	if err := <-done; err != nil {
 		t.Fatalf("foreground preemption became an operator-visible planner failure: %v", err)
 	}
 	work.mu.Lock()
 	startedCount := len(work.started)
 	work.mu.Unlock()
-	if startedCount != capacity-1 {
-		t.Fatalf("planner started %d preparations after preemption, want only initial %d", startedCount, capacity-1)
+	if want := (capacity - 1) + 100; startedCount != want {
+		t.Fatalf("planner started %d preparations, want the preempted wave plus every unique candidate = %d", startedCount, want)
 	}
 }
