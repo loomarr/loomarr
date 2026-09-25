@@ -91,6 +91,22 @@ describe("VideoPlayer", () => {
     expect(onChannelStep.mock.calls.map(([direction]) => direction)).toEqual([1, -1, 1]);
   });
 
+  // #1459: keys are handled on the player's surface, and a freshly tuned page has focus on <body>.
+  // The first channel key therefore went nowhere until something inside the player was focused. A
+  // live player with a tuner seam owns keyboard focus on mount, so the very first press tunes.
+  it("routes the first channel key after mount without any prior interaction", () => {
+    const onChannelStep = vi.fn();
+    render(<VideoPlayer src={SRC} live onChannelStep={onChannelStep} />);
+
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "ArrowUp" });
+    expect(onChannelStep).toHaveBeenCalledExactlyOnceWith(1);
+  });
+
+  it("does not take focus for a non-live player", () => {
+    render(<VideoPlayer src={SRC} />);
+    expect(document.body).toHaveFocus();
+  });
+
   it("does not steal channel-navigation keys from an interactive child", () => {
     const onChannelStep = vi.fn();
     render(
