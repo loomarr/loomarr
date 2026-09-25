@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
@@ -228,5 +229,78 @@ func TestStoreWorkflowListsCallerJourneysIncludingJobsWithoutProposal(t *testing
 	all, err := workflow.List(ctx, Viewer{UserID: "admin", Admin: true}, ListOptions{})
 	if err != nil || len(all) != 2 {
 		t.Fatalf("admin Journeys = %+v, %v", all, err)
+	}
+}
+
+// #1413 origin: approval commits the Proposal and its intent-bound Channel in one
+// transaction, so the only way an approved Proposal loses its Channel is a later
+// hard delete (DELETE /v1/channels/{id}?purge=true). One such orphan must not
+// fail the whole list, and the healthy neighbour must still be reported.
+func TestStoreWorkflowListSurvivesApprovedProposalWhoseChannelWasPurged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "orphan.db"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, time.September, 22, 3, 0, 0, 0, time.UTC)
+	workflow := New(st, func() string { return "unused" }, func() time.Time { return now })
+
+	approve := func(jobID string, number int) store.Channel {
+		t.Helper()
+		if err := st.CreateJob(ctx, store.Job{
+			ID: jobID, Kind: "suggest", Status: "queued", CreatedBy: "alice",
+			IntentJSON: `{"description":"Noir"}`, WorkflowVersion: store.ProposalWorkflowVersion,
+			Deadline: now, CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if claimed, err := st.ClaimDueJobs(ctx, now, time.Minute, 10); err != nil || len(claimed) == 0 {
+			t.Fatalf("claim %s = %+v, %v", jobID, claimed, err)
+		}
+		proposal := store.Proposal{
+			ID: "proposal-" + jobID, JobID: jobID, Status: "submitted", CreatedBy: "alice",
+			ProposalJSON: `{"lineup":[{"name":"Noir"}]}`, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := st.CommitSuggestionSuccess(ctx, jobID, 1, proposal, now); err != nil {
+			t.Fatal(err)
+		}
+		proposal.Status, proposal.ApprovedBy, proposal.ApprovedAt = "approved", "admin", now
+		ch := store.Channel{}
+		ch.ID, ch.IntentRef, ch.Name, ch.Number = "ch-"+jobID, jobID, "Channel "+jobID, number
+		ch.Strategy, ch.Status, ch.ReconcileDeadline = schedule.Sequential, schedule.StatusBuilding, now
+		if _, err := st.CommitProposalApproval(ctx, store.ProposalApproval{Proposal: proposal, Channel: ch}); err != nil {
+			t.Fatal(err)
+		}
+		created, err := st.GetChannel(ctx, ch.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return created
+	}
+	approve("job-healthy", 101)
+	orphaned := approve("job-orphaned", 102)
+	if err := st.DeleteChannel(ctx, orphaned.ID, orphaned.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	journeys, err := workflow.List(ctx, Viewer{UserID: "admin", Admin: true}, ListOptions{})
+	if err != nil {
+		t.Fatalf("List with one orphaned approved Proposal: %v", err)
+	}
+	byJob := map[string]Journey{}
+	for _, journey := range journeys {
+		byJob[journey.JobID] = journey
+	}
+	if len(byJob) != 2 {
+		t.Fatalf("Journeys = %+v, want both jobs reported", journeys)
+	}
+	if got := byJob["job-healthy"]; got.Milestone != MilestoneBuilding || got.Channel == nil {
+		t.Fatalf("healthy Journey = %+v, want building with its Channel", got)
+	}
+	if got := byJob["job-orphaned"]; got.Milestone != MilestoneFailed || got.Failure == nil || got.Channel != nil {
+		t.Fatalf("orphaned Journey = %+v, want an explained failed state", got)
 	}
 }

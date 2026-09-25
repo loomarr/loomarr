@@ -263,7 +263,11 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 			actions = []Action{ActionEdit, ActionRetry}
 		case ProposalApproved:
 			if record.Channel == nil || record.Channel.ID == "" {
-				return Journey{}, fmt.Errorf("%w: approved Proposal has no intent-bound Channel", ErrInvalidState)
+				// Approval binds the Channel in the same transaction, so this is a
+				// Channel removed after approval (a purge). Report the row rather than
+				// failing every list that contains it (#1413).
+				failure := approvedChannelMissingFailure()
+				return journeyFrom(record, MilestoneFailed, []Action{ActionRetry}, &failure), nil
 			}
 			milestone, err = approvedMilestone(record)
 			if err != nil {
@@ -296,6 +300,17 @@ func (w *Workflow) Inspect(ctx context.Context, viewer Viewer, jobID string) (Jo
 	}
 
 	return journeyFrom(record, milestone, actions, nil), nil
+}
+
+// approvedChannelMissingFailure explains an approved Proposal whose Channel no
+// longer exists. It reuses the closed generation_failed code/reason so the API
+// enums stay unchanged; the message and guidance carry the specific state.
+func approvedChannelMissingFailure() Failure {
+	return Failure{
+		Code: FailureGenerationFailed, Reason: FailureReasonGenerationFailed, RecoveryAction: RecoveryActionRetryLater,
+		Message:  "This request was approved, but its channel no longer exists.",
+		Guidance: "The channel may have been deleted. Try again to build a new channel from this request.",
+	}
 }
 
 func recoveryNeedsEdit(action RecoveryAction) bool {

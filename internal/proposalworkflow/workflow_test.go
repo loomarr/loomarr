@@ -3,6 +3,7 @@ package proposalworkflow
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -340,21 +341,33 @@ func TestWorkflowInspectApprovedTracksFirstLiveSeparatelyFromCurrentChannelStatu
 	}
 }
 
-func TestWorkflowInspectApprovedWithoutChannelFailsClosed(t *testing.T) {
+// An approved Proposal whose Channel is gone (an operator purged it, #1413) is
+// reported as its own explained state instead of failing the read: the Journey
+// stays inspectable and offers the requester a way to build the Channel again.
+func TestWorkflowInspectApprovedWithoutChannelExplainsMissingChannel(t *testing.T) {
 	t.Parallel()
 
 	workflow := newWorkflow(&recordingRepository{record: Record{
 		Version:  WorkflowVersion1,
-		JobID:    "job-corrupt",
+		JobID:    "job-orphaned",
 		OwnerID:  "member-1",
 		Status:   JobDone,
 		Attempts: []Attempt{{Version: WorkflowVersion1, Number: 1, Status: AttemptSucceeded}},
 		Proposal: &ProposalRef{ID: "proposal-approved", Status: ProposalApproved},
 	}})
 
-	_, err := workflow.Inspect(context.Background(), Viewer{UserID: "member-1"}, "job-corrupt")
-	if !errors.Is(err, ErrInvalidState) {
-		t.Fatalf("Inspect impossible approved Journey error = %v, want ErrInvalidState", err)
+	journey, err := workflow.Inspect(context.Background(), Viewer{UserID: "member-1"}, "job-orphaned")
+	if err != nil {
+		t.Fatalf("Inspect approved Journey without Channel: %v", err)
+	}
+	if journey.Milestone != MilestoneFailed || journey.Channel != nil || journey.Proposal == nil || journey.Proposal.Status != ProposalApproved {
+		t.Fatalf("Journey = %+v, want failed milestone keeping the approved Proposal and no Channel", journey)
+	}
+	if journey.Failure == nil || !strings.Contains(journey.Failure.Message, "channel") || journey.Failure.Guidance == "" {
+		t.Fatalf("Failure = %+v, want a message explaining the missing Channel", journey.Failure)
+	}
+	if len(journey.Actions) != 1 || journey.Actions[0] != ActionRetry {
+		t.Fatalf("actions = %v, want [%s]", journey.Actions, ActionRetry)
 	}
 }
 
