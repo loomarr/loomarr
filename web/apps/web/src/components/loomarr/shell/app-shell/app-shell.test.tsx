@@ -48,7 +48,7 @@ describe("AppShell", () => {
     renderShell(true);
     expect(await screen.findByRole("link", { name: /settings/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /people/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^queue$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^requests$/i })).toBeInTheDocument();
   });
 
   // §12: TWO AUTHORED NAVS, not one list filtered by role. The member's is a different
@@ -63,7 +63,7 @@ describe("AppShell", () => {
     }
   });
 
-  // The v2 mock's `navDefs` verbatim: Dashboard · Guide · Queue · Filler · People · Settings
+  // The v2 mock's `navDefs` verbatim: Dashboard · Guide · Requests · Filler · People · Settings
   // · Help. Counted, not just spot-checked, because the count IS the claim — `Channels` and
   // `Suggest` folding into `/guide` is what took this from nine to seven, and a regression
   // would most likely show up as an extra entry rather than a wrong one.
@@ -79,17 +79,41 @@ describe("AppShell", () => {
       // name ("OPOperator") and would silently stop matching if either changed.
       .filter((a) => a.getAttribute("aria-label") !== "Your account")
       .map((a) => a.textContent?.trim());
-    expect(labels).toEqual(["Dashboard", "Guide", "Queue", "Filler", "People", "Settings", "Help"]);
+    expect(labels).toEqual(["Dashboard", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
   });
 
-  // The SAME route, named for what a member is doing with it. This is the thing a role
-  // filter structurally could not do: it can hide an entry, never rename one.
-  it("renames the shared route for a member", async () => {
+  // #1405: one name for everyone. Members used to see "My requests" and admins "Queue"; the page
+  // is now the same Requests page for both, so the label no longer varies by role.
+  it("names the shared route Requests for a member and an admin alike", async () => {
     renderShell(false);
-    expect(await screen.findByRole("link", { name: "My requests" })).toHaveAttribute("href", "/queue");
-    // The admin sees the operator-facing name for that same destination.
-    renderShell(true);
-    expect(await screen.findByRole("link", { name: /^queue$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Requests" })).toHaveAttribute("href", "/requests");
+  });
+
+  it("hangs a count off the entry it is given, and nothing at zero", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell isAdmin={false} badges={{ "/requests": 3 }}>
+            content
+          </AppShell>
+        }
+      />,
+    );
+    expect(await screen.findByTestId("nav-badge-/requests")).toHaveTextContent("3");
+  });
+
+  it("shows no badge when the count is zero", async () => {
+    render(
+      <RouterHarness
+        content={
+          <AppShell isAdmin={false} badges={{ "/requests": 0 }}>
+            content
+          </AppShell>
+        }
+      />,
+    );
+    await screen.findByRole("link", { name: "Requests" });
+    expect(screen.queryByTestId("nav-badge-/requests")).not.toBeInTheDocument();
   });
 
   // `Request a channel` was a member nav entry only while `/suggest` was its own page. It

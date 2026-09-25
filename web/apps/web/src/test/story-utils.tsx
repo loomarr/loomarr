@@ -29,7 +29,7 @@ const widthFrame =
 const NAV_PATHS = [
   "/dashboard",
   "/guide",
-  "/queue",
+  "/requests",
   "/filler",
   "/filler/advanced",
   "/filler/incoming",

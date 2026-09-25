@@ -165,7 +165,10 @@ func webPushSubscriber(publicURL func() string) string {
 
 func webPushPath(link string) string {
 	parsed, err := url.Parse(link)
-	if err != nil || parsed.Path == "" || (!strings.HasPrefix(parsed.Path, "/queue/") &&
+	// /queue/ stays allowed: it redirects to /requests, and a notification stored before the rename
+	// still carries the old path.
+	if err != nil || parsed.Path == "" || (!strings.HasPrefix(parsed.Path, "/requests/") &&
+		!strings.HasPrefix(parsed.Path, "/queue/") &&
 		!strings.HasPrefix(parsed.Path, "/channels/") && parsed.Path != "/") {
 		return "/"
 	}

@@ -7,7 +7,7 @@ import type { ComponentType, ReactNode } from "react";
 type NavTo =
   | "/dashboard"
   | "/guide"
-  | "/queue"
+  | "/requests"
   | "/filler"
   | "/people"
   | "/settings"
@@ -29,6 +29,8 @@ interface AppShellProps {
   userName?: string;
   /** Server-reported build identity from GET /v1/system/version. */
   serverVersion?: string;
+  /** A count pill on a nav entry — e.g. Requests' "needs you" count. Omitted or 0 shows nothing. */
+  badges?: Partial<Record<NavTo, number>>;
   onOpenCommand?: () => void;
   onLogout?: () => void;
 }

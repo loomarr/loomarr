@@ -88,6 +88,50 @@ describe("NavTabs", () => {
     expect(inactive).not.toHaveAttribute("aria-controls");
   });
 
+  // The v2 mock's Queue tab bar: transparent tabs, a 2px bottom border in the active colour, and
+  // a 1px rule under the whole bar. Pills stay the default for every other screen.
+  describe("underline variant", () => {
+    const renderUnderline = () =>
+      render(
+        <NavTabs
+          variant="underline"
+          tabs={[
+            { id: "needs", label: "Needs you", to: "/requests/needs-you", count: 2, attention: true },
+            { id: "progress", label: "In progress", to: "/requests/in-progress", count: 0 },
+          ]}
+          activeId="needs"
+          linkComponent={anchorLink}
+          label="Requests sections"
+        />,
+      );
+
+    it("draws the active tab with a 2px signal underline and no pill fill", () => {
+      renderUnderline();
+      const active = screen.getByRole("link", { name: /Needs you/ });
+      expect(active).toHaveClass("border-b-2", "border-signal", "bg-transparent");
+      expect(active).not.toHaveClass("bg-signal-tint-15", "rounded-md");
+      expect(screen.getByRole("link", { name: /In progress/ })).toHaveClass("border-transparent");
+    });
+
+    it("rules the bar with a 1px bottom border, not the pill bar's padded one", () => {
+      renderUnderline();
+      const nav = screen.getByRole("navigation", { name: "Requests sections" });
+      expect(nav).toHaveClass("border-b");
+      expect(nav).not.toHaveClass("pb-2");
+    });
+
+    it("tints the count of a tab that needs attention", () => {
+      renderUnderline();
+      expect(screen.getByText("2")).toHaveClass("bg-suggest-tint-15", "text-suggest-300");
+      expect(screen.getByText("0")).not.toHaveClass("bg-suggest-tint-15");
+    });
+
+    it("leaves the default variant as pills", () => {
+      render(<NavTabs tabs={tabs} activeId="flight" linkComponent={anchorLink} label="Queue sections" />);
+      expect(screen.getByRole("link", { name: /In flight/ })).toHaveClass("bg-signal-tint-15", "rounded-md");
+    });
+  });
+
   it("passes search params through to the link", () => {
     render(
       <NavTabs

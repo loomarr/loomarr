@@ -115,5 +115,21 @@ const Overflowing: Story = {
   },
 };
 
+// The v2 mock's Queue tab bar, used by Requests: transparent tabs with a 2px `signal` underline
+// on the active one. The count on a tab that holds work waiting on the viewer takes the `suggest`
+// tint, as the mock's pending count does.
+const Underline: Story = {
+  args: {
+    label: "Requests sections",
+    variant: "underline",
+    activeId: "needs-you",
+    tabs: [
+      { id: "needs-you", label: "Needs you", to: "/requests/needs-you", count: 3, attention: true },
+      { id: "in-progress", label: "In progress", to: "/requests/in-progress", count: 5 },
+      { id: "done", label: "Done", to: "/requests/done", count: 12 },
+    ],
+  },
+};
+
 export default meta;
-export { ActiveWithoutCount, NoCounts, Overflowing, SingleTab, WithCounts };
+export { ActiveWithoutCount, NoCounts, Overflowing, SingleTab, Underline, WithCounts };

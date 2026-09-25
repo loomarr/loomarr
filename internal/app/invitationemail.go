@@ -410,11 +410,11 @@ func buildAccountDelivery(
 func productNotificationLink(origin string, intent notifications.Intent) string {
 	switch intent.ReferenceKind {
 	case notifications.ReferenceProposal:
-		return origin + "/queue/approval"
+		return origin + "/requests/needs-you"
 	case notifications.ReferenceChannel:
 		return origin + "/channels/" + url.PathEscape(intent.ReferenceID)
 	case notifications.ReferenceTitle:
-		return origin + "/queue/flight"
+		return origin + "/requests/in-progress"
 	default:
 		return origin
 	}

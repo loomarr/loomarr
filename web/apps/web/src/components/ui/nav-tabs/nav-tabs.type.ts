@@ -26,6 +26,11 @@ interface NavTab {
    * saying 3 above a list of 2 is worse than no count at all.
    */
   count?: number;
+  /**
+   * Tints the count pill (`suggest`) while the count is above zero: this tab holds work that is
+   * waiting on the viewer. Only the underline variant draws it — the v2 mock's Queue bar does.
+   */
+  attention?: boolean;
 }
 
 /** The shape of the router's Link, narrowed to what this component passes it. */
@@ -53,6 +58,13 @@ interface NavTabsProps {
    * generic label on a page with two tab bars tells a screen-reader user nothing.
    */
   label: string;
+  /**
+   * `pill` (default) is Settings' filled pill. `underline` is the v2 mock's Queue tab bar: a
+   * transparent tab with a 2px underline in the active colour, sitting on a 1px rule. The two
+   * exist because different screens' mocks draw different bars; pick the one the screen's mock
+   * shows rather than restyling.
+   */
+  variant?: "pill" | "underline";
   className?: string;
 }
 

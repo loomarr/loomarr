@@ -15,6 +15,7 @@ import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { LoomarrEventsProvider } from "@/events/events-provider";
 import { CommandPalette } from "@/palette/command-palette";
 import { useCommandShortcut } from "@/palette/use-command-shortcut";
+import { useNeedsYouCount } from "@/queue/use-requests";
 
 // The authenticated app layout + session gate (§11). beforeLoad ensures the me query
 // (shared meQueryOptions) before any child renders — a 401 throws a redirect to /login
@@ -39,6 +40,9 @@ const AuthedFrame = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const restartWatch = useRestartWatchContext();
+  // The Requests nav badge: what is waiting on this viewer (approvals for an admin, failed
+  // requests for anyone) — the same number as the Needs you tab.
+  const needsYouCount = useNeedsYouCount();
   // One shell-lifetime query supplies every authenticated route. About uses the same generated
   // query key, so opening it reads this cached server truth rather than inventing a second source.
   // Failure is deliberately quiet: version visibility must never hold the application shell.
@@ -69,6 +73,7 @@ const AuthedFrame = () => {
         isAdmin={isAdmin}
         userName={user?.name ?? "…"}
         serverVersion={serverVersion}
+        badges={{ "/requests": needsYouCount }}
         onOpenCommand={() => setCommandOpen(true)}
         onLogout={() => logout.mutate()}
       >

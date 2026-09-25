@@ -10,6 +10,7 @@ import {
   getGetFillerSplitMockHandler,
   getGetPlayoutStatusMockHandler,
   getGetProgrammingVocabularyMockHandler,
+  getGetProposalJobMockHandler,
   getImportCandidatesMockHandler,
   getListChannelsMockHandler,
   getListDiagnosticEventsMockHandler,
@@ -108,6 +109,17 @@ const stubReachable = () => {
     getListUserSessionsMockHandler({ sessions: [] }),
     getListUsersMockHandler({ users: [user()] }),
     getListDocsMockHandler({ docs: [{ slug: "troubleshooting", title: "Troubleshooting" }] }),
+    // /requests/$jobId is reached with the harness's placeholder param, whatever it is.
+    getGetProposalJobMockHandler({
+      version: 1,
+      jobId: "job-1",
+      milestone: "live",
+      intent: { description: "Saturday morning cartoons" },
+      attempts: [],
+      actions: [],
+      createdAt: "2026-09-24T18:00:00Z",
+      updatedAt: "2026-09-24T18:00:00Z",
+    }),
     getGetFillerSplitMockHandler({
       id: "sp-1",
       clipHash: "comp-hash",

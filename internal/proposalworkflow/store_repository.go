@@ -80,7 +80,7 @@ func (r *storeRepository) Load(ctx context.Context, jobID string) (Record, error
 		}
 		record.Proposal = &ProposalRef{
 			ID: snapshot.Proposal.ID, Status: ProposalStatus(snapshot.Proposal.Status),
-			ApprovedBy: snapshot.Proposal.ApprovedBy, DenyReason: snapshot.Proposal.DenyReason,
+			ApprovedBy: snapshot.Proposal.ApprovedBy, ApprovedAt: snapshot.Proposal.ApprovedAt, DenyReason: snapshot.Proposal.DenyReason,
 			ModSummary: snapshot.Proposal.ModSummary, Note: snapshot.Proposal.Note, Proposal: proposal,
 		}
 	}

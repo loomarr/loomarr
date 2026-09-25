@@ -345,12 +345,23 @@ describe("legacy tab links redirect to their new paths", () => {
     await waitFor(() => expect(at(router)).toBe("/channels/ch-1/filler"));
   });
 
-  // `/queue` has no legacy param to translate — it RESOLVES a default instead, which is the same
-  // promise seen from the other side: a bare link must land somewhere real.
-  it("/queue resolves to a real section", async () => {
+  // The page was Queue until #1405: a bookmark to it, or to one of its old tabs, must land on the
+  // Requests section that holds those contents, never a Not Found.
+  it("/queue resolves to a real Requests section", async () => {
     stubAuth(true);
     const router = renderApp("/queue");
-    await waitFor(() => expect(at(router)).toMatch(/^\/queue\/(approval|flight)$/));
+    await waitFor(() => expect(at(router)).toMatch(/^\/requests\/(needs-you|in-progress)$/));
+  });
+
+  it.each([
+    ["/queue/approval", "/requests/needs-you"],
+    ["/queue/flight", "/requests/in-progress"],
+    ["/queue/history", "/requests/done"],
+    ["/queue/nonsense", /^\/requests\/(needs-you|in-progress)$/],
+  ])("%s lands on %s", async (from, to) => {
+    stubAuth(true);
+    const router = renderApp(from);
+    await waitFor(() => expect(at(router)).toMatch(typeof to === "string" ? new RegExp(`^${to}$`) : to));
   });
 });
 

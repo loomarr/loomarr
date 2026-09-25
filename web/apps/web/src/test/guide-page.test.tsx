@@ -400,26 +400,11 @@ describe("Guide", () => {
   });
 });
 
-describe("Board", () => {
-  it("leads with the journey, not a table of states", async () => {
+// The Requests page's "Request a channel" action lands here (#1405).
+describe("?new=1", () => {
+  it("opens the empty describe panel", async () => {
     stubGuide();
-    renderAt("/queue");
-    // "1 of 3 have landed" — the member framing (§13).
-    expect(await screen.findByText(/1 of 3 titles have landed/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /on the way/i })).toBeInTheDocument();
-  });
-
-  it("offers a retry only for a title that gave up", async () => {
-    const { enqueued } = stubGuide();
-    renderAt("/queue");
-
-    const retries = await screen.findAllByRole("button", { name: /try again/i });
-    expect(retries).toHaveLength(1); // only the unavailable one
-    await userEvent.click(retries[0] as HTMLElement);
-
-    // Re-enqueued by identity, not by key — that is what the enqueue contract takes.
-    // ⚠ The old assertion scanned `fetchMock.mock.calls` for a POST whose url contained
-    // "/v1/titles"; landing in the handler bound to `POST /v1/titles` proves the route itself.
-    await expect.poll(() => enqueued).toEqual([expect.objectContaining({ mediaType: "movie", tmdbId: 3 })]);
+    renderAt("/guide?new=1");
+    expect(await screen.findByLabelText("Channel intent")).toHaveValue("");
   });
 });

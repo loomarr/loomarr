@@ -137,7 +137,7 @@ const DashboardScreen = () => {
           {/* Needs-you is the only card that is a CALL TO ACTION rather than a status, so it
               takes a colour only when the number is non-zero — a permanently pink zero would
               train the eye to ignore it. */}
-          <Link to="/queue/approval">
+          <Link to="/requests/needs-you">
             <StatCard
               label="Needs you"
               value={pendingCount}
@@ -145,7 +145,7 @@ const DashboardScreen = () => {
               tone={pendingCount > 0 ? "suggest" : "neutral"}
             />
           </Link>
-          <Link to="/queue/flight">
+          <Link to="/requests/in-progress">
             <StatCard label="Acquiring" value={acquiringCount} note="titles in flight" tone="tune" />
           </Link>
           <Link to="/filler">

@@ -14,11 +14,13 @@ import { defaultGuideWindow } from "@/channels/guide-window";
 interface GuideSearch {
   intent?: string;
   job?: string;
+  // `?new=1` opens the empty describe panel — the Requests page's "Request a channel" door.
+  new?: "1";
 }
 
 const GuideScreen = () => {
-  const { intent, job } = Route.useSearch();
-  return <GuidePage initialIntent={intent} initialJobId={job} />;
+  const { intent, job, new: openNew } = Route.useSearch();
+  return <GuidePage initialIntent={intent} initialJobId={job} openOnArrival={openNew === "1"} />;
 };
 
 const Route = createFileRoute("/_authed/guide")({
@@ -26,6 +28,7 @@ const Route = createFileRoute("/_authed/guide")({
   validateSearch: (search: Record<string, unknown>): GuideSearch => ({
     intent: typeof search.intent === "string" ? search.intent : undefined,
     job: typeof search.job === "string" ? search.job : undefined,
+    new: search.new === "1" || search.new === 1 ? "1" : undefined,
   }),
   // Warm the guide before the component mounts, so arriving from the nav paints rows rather
   // than a spinner. With `defaultPreload: "intent"` this runs on HOVER, which buys the whole
