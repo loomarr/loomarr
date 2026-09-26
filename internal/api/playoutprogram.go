@@ -533,11 +533,13 @@ func (s *Server) streamProgram(
 	}
 
 	// Attempt 2b — an HDR source whose GPU tone-mapper the build carries but this host cannot run
-	// (tonemap_vaapi on AMD, OpenCL without an ICD). Take the next tone-mapper in the maintainer's
-	// order — tonemap_opencl, libplacebo, then the CPU after the GPU downscale — keeping the encoder.
+	// (no OpenCL ICD for this GPU, no Vulkan device). Take the next tone-mapper in the maintainer's
+	// order — tonemap_opencl, libplacebo (NVIDIA), then the CPU after the GPU downscale — keeping the
+	// encoder. The rebuilt pipeline's fallbacks are logged so the demotion is never silent.
 	for wantsHardware && !decodeFault && spec.DemoteTonemap() {
-		s.log.Info("playout: HDR tone-map produced nothing — retrying with the next tone-mapper",
-			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder)
+		next, _ := spec.Pipeline()
+		s.log.Warn("playout: HDR tone-map produced nothing — retrying with the next tone-mapper",
+			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder, "fallbacks", next.Fallbacks)
 		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
 			s.pipeChild(w, r, channelID, what, source, c)
 			return

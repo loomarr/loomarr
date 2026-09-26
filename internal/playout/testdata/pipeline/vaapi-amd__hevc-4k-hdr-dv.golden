@@ -66,4 +66,4 @@ mpegts
 -muxpreload
 0
 pipe:1
-# fallbacks: tonemap: no tonemap_vaapi on this GPU
+# fallbacks: tonemap: no OpenCL tone-map on this GPU

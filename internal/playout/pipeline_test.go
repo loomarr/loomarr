@@ -16,9 +16,10 @@ var updatePipelineGolden = flag.Bool("update-pipeline", false, "rewrite testdata
 
 // Host profiles as data: the certified families plus each declared fallback.
 func testHosts() map[string]HostProfile {
-	arc := HostProfile{Family: FamilyVAAPI, RenderNode: "/dev/dri/renderD128", DecodeCodecs: vaapiDecodes, TonemapVAAPI: true, CPUTonemap: true}
+	arc := HostProfile{Family: FamilyVAAPI, RenderNode: "/dev/dri/renderD128", DecodeCodecs: vaapiDecodes, TonemapOpenCL: true, CPUTonemap: true}
+	// AMD (no OpenCL-VAAPI interop) and an Intel host missing the OpenCL runtime demote to this.
 	amd := arc
-	amd.TonemapVAAPI = false
+	amd.TonemapOpenCL = false
 	nv := HostProfile{Family: FamilyNVENC, DecodeCodecs: cudaDecodes, TonemapOpenCL: true, Libplacebo: true, CPUTonemap: true}
 	nvPlacebo := nv
 	nvPlacebo.TonemapOpenCL = false
@@ -134,6 +135,11 @@ func TestBuild_NoCPUFilterOnAGPUPathExceptItsDeclaredFallback(t *testing.T) {
 					onGPU = true
 				case name == "hwdownload":
 					onGPU, cpuStretch = false, true
+				case name == "hwmap":
+					// VAAPI <-> OpenCL surface mapping: GPU frames in and out, zero-copy.
+					if !onGPU {
+						t.Errorf("%s/%s: hwmap fed CPU frames in %q", hostName, srcName, p.VideoFilter)
+					}
 				case name == "libplacebo":
 					// Its own Vulkan device: CPU frames in and out.
 					if onGPU {
@@ -263,6 +269,81 @@ func TestBuild_SoftwareRefusesHDRItCannotKeepUpWith(t *testing.T) {
 	p, err := Build(testHosts()["software-hdrcapable"], testSources()["hevc-4k-hdr-dv"], testOutput)
 	if err != nil || !strings.HasPrefix(p.VideoFilter, "scale=w=1280:h=720") {
 		t.Fatalf("a capable host tone-maps at 720 lines first: %q %v", p.VideoFilter, err)
+	}
+}
+
+// TestBuild_IntelHDRUsesOpenCLNeverTonemapVAAPI (#1516): tonemap_vaapi outputs a black picture on
+// the household Arc (Y=16 on every frame, normal speed, exit 0). No host profile, source or build
+// may ever emit it; Intel HDR maps the scaled VAAPI surface into OpenCL and back, zero-copy.
+func TestBuild_IntelHDRUsesOpenCLNeverTonemapVAAPI(t *testing.T) {
+	for _, gpu := range []GPUFilters{{}, {TonemapOpenCL: true}, {Libplacebo: true}, {TonemapOpenCL: true, Libplacebo: true}} {
+		for _, enc := range h264Engines {
+			for srcName, src := range testSources() {
+				p, err := Build(HostFor(enc, true, gpu), src, testOutput)
+				if err == nil && strings.Contains(p.VideoFilter, "tonemap_vaapi") {
+					t.Errorf("%s %+v %s: tonemap_vaapi (black on the Arc, #1516): %q", enc, gpu, srcName, p.VideoFilter)
+				}
+			}
+		}
+	}
+	p, err := Build(HostFor(EncoderVAAPI, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), testSources()["hevc-4k-hdr-dv"], testOutput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010," +
+		"hwmap=derive_device=opencl," + openCLTonemap + ",hwmap=derive_device=vaapi:reverse=1,pad_vaapi=w=1920:h=1080,"
+	if !strings.HasPrefix(p.VideoFilter, want) {
+		t.Errorf("Intel HDR graph:\n got %q\nwant prefix %q", p.VideoFilter, want)
+	}
+	if len(p.Fallbacks) != 0 {
+		t.Errorf("the zero-copy OpenCL path declares no fallback, got %q", p.Fallbacks)
+	}
+}
+
+// TestBuild_OneToneCurveEverywhere (G11): every tone-mapper on every host runs the same curve.
+func TestBuild_OneToneCurveEverywhere(t *testing.T) {
+	src := testSources()["hevc-4k-hdr-dv"]
+	for hostName, host := range testHosts() {
+		p, err := Build(host, src, testOutput)
+		if errors.Is(err, ErrRefused) {
+			continue
+		}
+		var curves []string
+		for _, f := range strings.Split(p.VideoFilter, ",") {
+			_, opts, _ := strings.Cut(f, "=")
+			for _, opt := range strings.Split(opts, ":") {
+				if k, v, _ := strings.Cut(opt, "="); k == "tonemap" || k == "tonemapping" {
+					curves = append(curves, v)
+				}
+			}
+		}
+		if len(curves) != 1 || curves[0] != toneCurve {
+			t.Errorf("%s: tone curves %q, want exactly [%s]: %q", hostName, curves, toneCurve, p.VideoFilter)
+		}
+	}
+}
+
+// TestDemoteTonemap_VAAPIFallsToCPU: an Intel host without the OpenCL runtime (or AMD) fails device
+// derivation before any output; the ladder then tone-maps on the CPU after the GPU downscale.
+func TestDemoteTonemap_VAAPIFallsToCPU(t *testing.T) {
+	spec := ProgramSpec{Profile: Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderVAAPI},
+		Source: testSources()["hevc-4k-hdr-dv"], Tonemap: true, GPUTonemap: GPUFilters{TonemapOpenCL: true, Libplacebo: true}}
+	if p, _ := spec.Pipeline(); !strings.Contains(p.VideoFilter, "tonemap_opencl") {
+		t.Fatalf("first attempt must be OpenCL: %q", p.VideoFilter)
+	}
+	if !spec.DemoteTonemap() {
+		t.Fatal("OpenCL must demote")
+	}
+	p, err := spec.Pipeline()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.VideoFilter, "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010,hwdownload,format=p010le,"+hdrToSDRChain) ||
+		!slices.Equal(p.Fallbacks, []string{"tonemap: no OpenCL tone-map on this GPU"}) {
+		t.Errorf("demoted VAAPI must CPU tone-map after the GPU downscale, declared: %q %q", p.VideoFilter, p.Fallbacks)
+	}
+	if spec.DemoteTonemap() {
+		t.Error("VAAPI has no tone-mapper after OpenCL: libplacebo is not on its ladder")
 	}
 }
 

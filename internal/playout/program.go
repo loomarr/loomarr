@@ -104,8 +104,9 @@ func (s ProgramSpec) Pipeline() (Pipeline, error) {
 }
 
 // DemoteTonemap drops the GPU tone-mapper this spec's pipeline would use next, so a retry takes the
-// next one: tonemap_opencl, then libplacebo, then the CPU (maintainer order, #1512). It reports
-// false when the source is SDR or no GPU tone-mapper is left.
+// next one: on NVIDIA tonemap_opencl, then libplacebo, then the CPU (maintainer order, #1512); on
+// VAAPI tonemap_opencl, then the CPU (#1516). It reports false when the source is SDR or no GPU
+// tone-mapper is left.
 func (s *ProgramSpec) DemoteTonemap() bool {
 	if !s.Source.HDR() {
 		return false
@@ -121,8 +122,8 @@ func (s *ProgramSpec) DemoteTonemap() bool {
 			return true
 		}
 	case EncoderVAAPI:
-		if s.GPUTonemap.TonemapVAAPI {
-			s.GPUTonemap.TonemapVAAPI = false
+		if s.GPUTonemap.TonemapOpenCL {
+			s.GPUTonemap.TonemapOpenCL = false
 			return true
 		}
 	}
