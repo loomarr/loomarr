@@ -30,13 +30,14 @@ import "time"
 //     that never looks slow in any window but stalls the packager eventually.
 //   - Headroom needs CPU time. The live chain paces its input (-readrate 1.0), so a healthy
 //     encoder's speed sits at 1.0x whatever its headroom. With CPU time the monitor estimates the
-//     speed the CPU allowance would allow (speed × allowance / cores used), projects it onto the
-//     next rung up by the rungs' relative cost (rung 1 costs ~8x keyframes-only), and steps up only
-//     after UpFor above UpAbove. Without CPU time it never steps up: it holds rather than guesses.
+//     speed the CPU allowance would allow (speed × allowance / cores used). The headroom threshold
+//     is the next rung's measured cost ratio (Costs: rung 1 costs ~8x keyframes-only on 4K HDR,
+//     ~4.3x on 1080p SDR) times UpMargin (1.2x, against 0.97x down: the hysteresis), held for UpFor
+//     (60 s, the minimum dwell). Without CPU time it never steps up: it holds rather than guesses.
 //   - Rung 2 (noref) is kept only where it measurably gains: leaving it, the monitor compares its
 //     capacity with rung 1's, and a gain under NoRefGain makes the ladder skip it from then on.
 //   - A step up that is reversed within twice its wait doubles the wait (up to 8x), so a rung that
-//     does not fit is not retried every half minute.
+//     does not fit is not retried every minute.
 type RungMonitor struct {
 	cfg  RungMonitorConfig
 	rung SoftwareRung
@@ -63,22 +64,25 @@ type RungMonitorConfig struct {
 	DownBelow    float64
 	DownFor      time.Duration
 	DownLag      time.Duration
-	UpAbove      float64
-	UpFor        time.Duration
-	NoRefGain    float64
+	// Costs are the rung cost ratios of this item's class (RungCostsFor); zero takes the 4K HDR
+	// table, whose step-up bar is the higher one.
+	Costs     RungCosts
+	UpMargin  float64
+	UpFor     time.Duration
+	NoRefGain float64
 }
 
 // Defaults. DownBelow sits just under 1.0 because a paced encoder's windowed speed wobbles around
-// 1.0x; the lag rule covers what the margin lets through. UpAbove is the 1.3x headroom the brief
-// sets; UpFor is long enough that a scene change does not trigger a restart.
+// 1.0x; the lag rule covers what the margin lets through. UpMargin is the budget's per-stream 1.2x
+// bar; UpFor is the minimum dwell, long enough that a scene change does not trigger a restart.
 const (
 	defaultSettle    = 3 * time.Second
 	defaultWindow    = 4 * time.Second
 	defaultDownBelow = 0.97
 	defaultDownFor   = 8 * time.Second
 	defaultDownLag   = 3 * time.Second
-	defaultUpAbove   = 1.3
-	defaultUpFor     = 30 * time.Second
+	defaultUpMargin  = minStartSpeed
+	defaultUpFor     = 60 * time.Second
 	defaultNoRefGain = 1.15
 	maxUpBackoff     = 8
 )
@@ -130,7 +134,10 @@ func NewRungMonitor(start SoftwareRung, cfg RungMonitorConfig) *RungMonitor {
 	def(&cfg.DownLag, defaultDownLag)
 	def(&cfg.UpFor, defaultUpFor)
 	deff(&cfg.DownBelow, defaultDownBelow)
-	deff(&cfg.UpAbove, defaultUpAbove)
+	deff(&cfg.UpMargin, defaultUpMargin)
+	if cfg.Costs[RungFull] == 0 {
+		cfg.Costs = heavyRungCosts
+	}
 	deff(&cfg.NoRefGain, defaultNoRefGain)
 	return &RungMonitor{cfg: cfg, rung: start, upWait: cfg.UpFor}
 }
@@ -170,7 +177,7 @@ func (m *RungMonitor) Observe(s SpeedSample) RungDecision {
 	if m.rung == RungNoRef && m.lightCap > 0 {
 		// Rung 2's cost is measured while it runs: projecting it up to rung 1 must use the gain this
 		// source actually showed, not the prior.
-		m.noRefCap = rungCost[RungLight] * m.lightCap / (d.capSum / float64(d.capN))
+		m.noRefCap = m.cfg.Costs[RungLight] * m.lightCap / (d.capSum / float64(d.capN))
 	}
 
 	lag := s.At.Sub(d.base.At) - (s.OutTime - d.base.OutTime)
@@ -194,7 +201,7 @@ func (m *RungMonitor) Observe(s SpeedSample) RungDecision {
 	if !ok || m.cfg.CPUAllowance <= 0 || s.CPU <= 0 {
 		return RungDecision{Rung: m.rung}
 	}
-	if capacity*m.cost(m.rung)/m.cost(up) >= m.cfg.UpAbove && speed >= m.cfg.DownBelow {
+	if capacity >= m.cfg.UpMargin*m.cost(up)/m.cost(m.rung) && speed >= m.cfg.DownBelow {
 		if d.aboveSince.IsZero() {
 			d.aboveSince = s.At
 		}
@@ -245,7 +252,7 @@ func (m *RungMonitor) cost(r SoftwareRung) float64 {
 	if r == RungNoRef && m.noRefCap > 0 {
 		return m.noRefCap
 	}
-	return rungCost[r]
+	return m.cfg.Costs[r]
 }
 
 func (m *RungMonitor) step(s SpeedSample, to SoftwareRung, reason string) RungDecision {
@@ -256,7 +263,7 @@ func (m *RungMonitor) step(s SpeedSample, to SoftwareRung, reason string) RungDe
 		m.lightCap = mean
 	case m.rung == RungNoRef && m.lightCap > 0:
 		if mean >= m.lightCap*m.cfg.NoRefGain {
-			m.noRef, m.noRefCap = 1, rungCost[RungLight]*m.lightCap/mean
+			m.noRef, m.noRefCap = 1, m.cfg.Costs[RungLight]*m.lightCap/mean
 		} else {
 			m.noRef = -1
 		}

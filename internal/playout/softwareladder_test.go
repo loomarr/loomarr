@@ -163,3 +163,34 @@ func TestStartRung(t *testing.T) {
 		}
 	}
 }
+
+// TestBuild_SoftwareRungsDownscaleOnlyHeavySources (supervisor decision, #1517): rungs 1–2 take a
+// 720-line working size only for HDR or above-1080p sources. SDR up to 1080p decodes at its own
+// size with the decoder shortcuts; a 1080→720→1080 round trip measured slower than rung 0.
+func TestBuild_SoftwareRungsDownscaleOnlyHeavySources(t *testing.T) {
+	uhdSDR := MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24, PixelFormat: "yuv420p10le",
+		AudioCodec: "eac3", AudioChannels: 6, AudioSampleRate: 48000, Container: "matroska,webm"}
+	cases := []struct {
+		name    string
+		src     MediaFormat
+		rung    SoftwareRung
+		working string
+	}{
+		{"1080p SDR rung 1", testSources()["h264-1080p-sdr-25"], RungLight, "scale=w=1920:h=1080:"},
+		{"1080p SDR rung 2", testSources()["hevc10-1080p"], RungNoRef, "tpad=stop_mode=clone:stop_duration=10,scale=w=1920:h=1080:"},
+		{"1080p SDR rung 3", testSources()["hevc10-1080p"], RungKeyframes, "scale=w=852:h=480:"},
+		{"4K SDR rung 1", uhdSDR, RungLight, "scale=w=1280:h=720:"},
+		{"4K HDR rung 2", testSources()["hevc-4k-hdr-dv"], RungNoRef, "scale=w=1280:h=720:"},
+	}
+	for _, c := range cases {
+		out := testOutput
+		out.SoftwareRung = c.rung
+		p, err := Build(testHosts()["software"], c.src, out)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if !strings.HasPrefix(p.VideoFilter, c.working) {
+			t.Errorf("%s: want the graph to start %q: %q", c.name, c.working, p.VideoFilter)
+		}
+	}
+}

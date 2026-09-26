@@ -428,6 +428,11 @@ func (b *builder) fit() string {
 	return fmt.Sprintf("w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2", b.out.Width, b.out.Height)
 }
 
+// tail is every family's last hardware-agnostic step: square pixels, the channel cadence and the
+// BT.709 labels. setsar=1 is load-bearing (#1528): the fit-scale rounds the fitted height to an
+// even number and sets a SAR that keeps the display aspect (3840x1606 → 804:803 on the CPU,
+// 1080:803 through scale_cuda + pad_cuda), which the encoder writes into the SPS, so the SPS
+// differed between a 16:9 and a scope item. setsar only relabels, so it passes GPU frames through.
 func (b *builder) tail() string {
 	colour := conformColour
 	if b.out.HDR {
@@ -704,9 +709,8 @@ func (b *builder) videotoolbox() error {
 // ladder instead of refusing; only a build with no tone-mapper at all refuses HDR.
 //
 // Every rung ends in the same scale to the channel geometry, pad, SAR 1:1 and cadence, so a rung
-// restart mid-item never changes the output format. setsar=1 is load-bearing: a two-stage scale
-// rounds a 2.40:1 frame's SAR to 399:400 where a one-stage scale keeps 1:1, and x264 writes the
-// SAR into the SPS.
+// restart mid-item never changes the output format (the SAR is pinned in tail: a two-stage scale
+// rounds a scope frame's SAR differently from a one-stage one).
 func (b *builder) software() error {
 	rung := b.out.SoftwareRung
 	b.p.PreInput = append(b.p.PreInput, rung.decoderOptions()...)
@@ -714,7 +718,7 @@ func (b *builder) software() error {
 	if b.src.Interlaced {
 		f = append(f, "bwdif=mode=send_frame")
 	}
-	lines := rung.workingLines()
+	lines := rung.workingLines(heavySource(b.src))
 	if b.tonemap {
 		if !b.host.CPUTonemap {
 			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
@@ -736,7 +740,7 @@ func (b *builder) software() error {
 		f = append(f, fill)
 	}
 	f = append(f, "scale="+b.fit(), "format=yuv420p",
-		fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), "setsar=1", b.tail())
+		fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
 	return nil
 }

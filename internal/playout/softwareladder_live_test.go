@@ -306,3 +306,82 @@ func segmentLengths(t *testing.T, bin, path string) (float64, float64) {
 	}
 	return float64(frames) / 25, float64(len(pcm)/2) / 48000
 }
+
+// ONE SPS PER CHANNEL, WHATEVER THE SOURCE'S ASPECT (#1528). The fit-scale rounds a scope source's
+// fitted height to an even number and the scale filter sets a SAR to keep the display aspect
+// (3840x1606 → 804:803 on the CPU, 1080:803 through scale_cuda + pad_cuda); the encoder writes it
+// into the SPS VUI. Every family's tail pins square pixels, so a 16:9 and a 2.39:1 item must
+// produce byte-identical SPS fields. Runs each family this host can encode with.
+func TestLive_SPSIdenticalAcrossAspectRatios(t *testing.T) {
+	bin := ffmpegBin(t)
+	make := func(w, h int) string {
+		out := t.TempDir() + "/src.ts"
+		if b, err := exec.Command(bin, "-hide_banner", "-loglevel", "error", "-y",
+			"-f", "lavfi", "-i", "testsrc2=size="+strconv.Itoa(w)+"x"+strconv.Itoa(h)+":rate=25:duration=1",
+			"-f", "lavfi", "-i", "sine=sample_rate=48000:duration=1",
+			"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-f", "mpegts", out).CombinedOutput(); err != nil {
+			t.Fatalf("source %dx%d: %v %s", w, h, err, b)
+		}
+		return out
+	}
+	fact := func(w, h int) MediaFormat {
+		return MediaFormat{VideoCodec: "h264", Width: w, Height: h, FrameRate: 25, PixelFormat: "yuv420p", Container: "mpegts"}
+	}
+	wide, scope := make(1920, 1080), make(3840, 1606)
+	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 22, TargetKbps: 8000, MaxKbps: 12000, GOPSeconds: 1, AudioKbps: 128}
+	for _, enc := range []Encoder{EncoderSoftware, EncoderNVENC, EncoderVAAPI} {
+		if enc != EncoderSoftware {
+			if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
+				t.Logf("%s: not usable on this host, skipped", enc)
+				continue
+			}
+		}
+		t.Run(string(enc), func(t *testing.T) {
+			host := HostFor(enc, TonemapperFor(bin)(), GPUFiltersFor(bin)())
+			sps := func(path string, facts MediaFormat) string {
+				pipe, err := Build(host, facts, out)
+				if err != nil {
+					t.Fatal(err)
+				}
+				dst := t.TempDir() + "/o.ts"
+				if errText := encodeTo(t, bin, replaceOutput(pipe.ItemArgs(path, 0, 20, 25, 0), dst)); errText != "" {
+					t.Fatalf("encode: %s", errText)
+				}
+				return firstSPS(t, bin, dst)
+			}
+			a, b := sps(wide, fact(1920, 1080)), sps(scope, fact(3840, 1606))
+			if a == "" || a != b {
+				t.Errorf("SPS differs between a 16:9 and a 2.39:1 item:\n16:9: %s\nscope: %s", a, b)
+			}
+		})
+	}
+}
+
+// firstSPS is the first H.264 SPS's fields (name=value), from the trace_headers bitstream filter.
+func firstSPS(t *testing.T, bin, path string) string {
+	t.Helper()
+	b, _ := exec.Command(bin, "-hide_banner", "-i", path, "-map", "0:v:0", "-c", "copy", "-bsf:v", "trace_headers", "-f", "null", "-").CombinedOutput()
+	var fields []string
+	in := false
+	for _, line := range strings.Split(string(b), "\n") {
+		_, rest, ok := strings.Cut(line, "] ")
+		if !ok {
+			continue
+		}
+		switch {
+		case strings.Contains(rest, "Sequence Parameter Set"):
+			in = true
+		case in && strings.Contains(rest, "Parameter Set") || in && strings.Contains(rest, "Slice"):
+			return strings.Join(fields, " ")
+		case in:
+			f := strings.Fields(rest)
+			if len(f) >= 3 {
+				if _, err := strconv.Atoi(f[0]); err == nil {
+					fields = append(fields, f[1]+"="+f[len(f)-1])
+				}
+			}
+		}
+	}
+	t.Fatalf("no SPS in %s", path)
+	return ""
+}

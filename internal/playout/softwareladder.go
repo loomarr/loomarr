@@ -48,9 +48,17 @@ func (r SoftwareRung) String() string {
 
 // workingLines is the height the rung decodes into before the scale to the channel geometry; 0
 // means the channel's own height.
-func (r SoftwareRung) workingLines() int {
+//
+// Rungs 1–2 downscale only a heavy source (HDR or above 1080p), where the tone-map and the scale
+// cost follow the pixel count. An SDR source up to 1080p takes their decoder shortcuts at its own
+// size: a 1080→720→1080 round trip costs more than it saves (supervisor decision on the live
+// numbers, #1517: rung 1 ran 1.38x against rung 0's 2.11x on a 1080p HEVC title).
+func (r SoftwareRung) workingLines(heavy bool) int {
 	switch r {
 	case RungLight, RungNoRef:
+		if !heavy {
+			return 0
+		}
 		return 720
 	case RungKeyframes:
 		return 480
@@ -84,18 +92,43 @@ func (r SoftwareRung) tailFill() string {
 	return ""
 }
 
-// rungCost is each rung's CPU at 1x relative to rung 0: the phase 0b priors, each rounded toward
-// the more expensive side so a projection never promises headroom the rung does not have. Rung 2's
-// gain depends on the source's GOP (none on H1), so its prior is rung 1's; the monitor measures it.
-var rungCost = [...]float64{
-	RungFull:      1,
-	RungLight:     0.95, // 3.48/3.66, 3.23/3.44
-	RungNoRef:     0.95,
-	RungKeyframes: 0.12, // 480p: 0.33/3.66, 0.32/3.44; 720p: 0.41/3.66
+// heavySource is a source whose picture cost follows its pixel count on the CPU: HDR (tone-mapped)
+// or above 1080p. Unknown geometry counts as not heavy.
+func heavySource(src MediaFormat) bool {
+	return src.HDR() || src.Height > 1080 || src.Width > 1920
+}
+
+// RungCosts is each rung's CPU at 1x relative to rung 0 for one class of source. The step-up
+// threshold is their ratio (RungMonitor), and StartRung projects with them. Once the ResourceBudget's
+// class probe measures the rungs per host (#1520), its ratios replace these.
+type RungCosts [RungKeyframes + 1]float64
+
+// Measured ratios, each rounded toward the conservative side for a step up (a cheap current rung, an
+// expensive next one), so a projection never promises headroom the next rung does not have. Rung
+// 2's gain depends on the source's GOP (none on phase 0b's H1, −60% on H2), so its prior is rung 1's
+// and the monitor measures it live.
+var (
+	// heavyRungCosts: 4K HDR tone-mapped at 720 lines. Rung 1: phase 0b 3.48/3.66, 3.23/3.44
+	// (the #1517 live runs on a loaded host scattered ±40% around it). Rung 3: phase 0b 0.33/3.66,
+	// 0.32/3.44; #1517 live 0.73/4.89, 0.57/7.07.
+	heavyRungCosts = RungCosts{RungFull: 1, RungLight: 0.95, RungNoRef: 0.95, RungKeyframes: 0.12}
+	// sdrRungCosts: SDR up to 1080p, at its own size on rungs 1–2. Rung 1 keeps the phase 0b
+	// loop-filter saving (4–7%); rung 3: #1517 live 0.38/1.74 cores on 1080p HEVC 10-bit (the 3-CPU
+	// run's 0.92/1.42 is the other end; the lower one is the conservative ratio).
+	sdrRungCosts = RungCosts{RungFull: 1, RungLight: 0.95, RungNoRef: 0.95, RungKeyframes: 0.22}
+)
+
+// RungCostsFor is the rung cost table for a source's class.
+func RungCostsFor(src MediaFormat) RungCosts {
+	if heavySource(src) {
+		return heavyRungCosts
+	}
+	return sdrRungCosts
 }
 
 // minStartSpeed is the realtime multiple a start rung must be measured or projected to reach alone
-// (the budget's per-stream bar, phase 0).
+// (the budget's per-stream bar, phase 0). It is also the monitor's step-up margin over the next
+// rung's cost ratio, against 0.97 for a step down: the hysteresis between the two.
 const minStartSpeed = 1.2
 
 // RungCost is the measured cost of one stream of a class on this software host at rung 0, alone
@@ -114,13 +147,14 @@ type RungCost struct {
 // when the monitor sees headroom.
 func StartRung(src MediaFormat, cost RungCost) SoftwareRung {
 	if cost.Speed <= 0 {
-		if src.HDR() || src.Height > 1080 || src.Width > 1920 {
+		if heavySource(src) {
 			return RungKeyframes
 		}
 		return RungFull
 	}
+	costs := RungCostsFor(src)
 	for _, r := range []SoftwareRung{RungFull, RungLight} {
-		if cost.Speed/rungCost[r] >= minStartSpeed {
+		if cost.Speed/costs[r] >= minStartSpeed {
 			return r
 		}
 	}

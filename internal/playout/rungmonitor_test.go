@@ -128,7 +128,7 @@ func TestRungMonitor_SkipsNoRefWhereTheSourceDoesNotGain(t *testing.T) {
 	got := runScript(t, m,
 		phase{20 * time.Second, 0.9, 3.9},  // rung 1: slow → noref
 		phase{20 * time.Second, 0.92, 3.9}, // rung 2: no measurable gain → keyframes
-		phase{40 * time.Second, 1, 0.3},    // rung 3: 0.3 cores of 4 → room for rung 1 (up at ~74 s)
+		phase{70 * time.Second, 1, 0.3},    // rung 3: 0.3 cores of 4 → room for rung 1 (up at ~102 s, after the 60 s dwell)
 		phase{40 * time.Second, 0.9, 3.9})  // rung 1 again: slow → straight to keyframes
 	want := []SoftwareRung{RungNoRef, RungKeyframes, RungLight, RungKeyframes}
 	if len(got) != len(want) {
@@ -151,17 +151,42 @@ func TestRungMonitor_KeepsNoRefWhereTheSourceGains(t *testing.T) {
 }
 
 func TestRungMonitor_StepsUpOnlyWithHeadroomForTheNextRung(t *testing.T) {
-	// At keyframes-only, 0.4 cores of 4 is 10x headroom, but rung 1 costs ~8x as much: projected
-	// 1.26x, under the 1.3x bar. 0.3 cores projects 1.69x.
-	if got := runScript(t, testMonitor(RungKeyframes), phase{3 * time.Minute, 1, 0.4}); len(got) != 0 {
+	// 4K HDR at keyframes-only: rung 1 costs 0.95/0.12 = 7.9x as much, so the bar is 9.5x headroom
+	// (7.9 × 1.2). 0.5 cores of 4 is 8x: hold. 0.3 cores is 13.3x: up, after the 60 s dwell.
+	if got := runScript(t, testMonitor(RungKeyframes), phase{3 * time.Minute, 1, 0.5}); len(got) != 0 {
 		t.Fatalf("stepped up without headroom for the next rung: %+v", got)
 	}
 	got := runScript(t, testMonitor(RungKeyframes), phase{3 * time.Minute, 1, 0.3})
 	if len(got) == 0 || got[0].rung != RungLight {
 		t.Fatalf("want a step up to %s, got %+v", RungLight, got)
 	}
-	if got[0].at < 30*time.Second {
-		t.Errorf("stepped up at %s; want at least 30 s of headroom first", got[0].at)
+	if got[0].at < 60*time.Second {
+		t.Errorf("stepped up at %s; want the 60 s minimum dwell first", got[0].at)
+	}
+}
+
+// TestRungMonitor_StepUpBarIsTheClassCostRatio: the same 8x headroom holds a 4K HDR item on
+// keyframes-only (rung 1 costs 7.9x as much) but lifts a 1080p SDR item (4.3x: bar 5.2x).
+func TestRungMonitor_StepUpBarIsTheClassCostRatio(t *testing.T) {
+	hdr := NewRungMonitor(RungKeyframes, RungMonitorConfig{CPUAllowance: 4, Costs: RungCostsFor(testSources()["hevc-4k-hdr-dv"])})
+	if got := runScript(t, hdr, phase{3 * time.Minute, 1, 0.5}); len(got) != 0 {
+		t.Fatalf("4K HDR stepped up on 8x headroom: %+v", got)
+	}
+	sdr := NewRungMonitor(RungKeyframes, RungMonitorConfig{CPUAllowance: 4, Costs: RungCostsFor(testSources()["hevc10-1080p"])})
+	if got := runScript(t, sdr, phase{3 * time.Minute, 1, 0.5}); len(got) == 0 || got[0].rung != RungLight {
+		t.Fatalf("1080p SDR held keyframes-only on 8x headroom: %+v", got)
+	}
+}
+
+// TestRungMonitor_HysteresisAtTheBar: headroom that dips under the bar restarts the dwell, so
+// capacity hovering at the threshold never steps.
+func TestRungMonitor_HysteresisAtTheBar(t *testing.T) {
+	var ph []phase
+	for i := 0; i < 8; i++ { // 50 s above the bar (0.3 cores), 10 s under it (0.5 cores), repeated
+		ph = append(ph, phase{50 * time.Second, 1, 0.3}, phase{10 * time.Second, 1, 0.5})
+	}
+	if got := runScript(t, testMonitor(RungKeyframes), ph...); len(got) != 0 {
+		t.Fatalf("stepped up without 60 s continuously above the bar: %+v", got)
 	}
 }
 
@@ -175,9 +200,9 @@ func TestRungMonitor_NoCPUReadingNeverStepsUp(t *testing.T) {
 func TestRungMonitor_BacksOffAfterAFailedStepUp(t *testing.T) {
 	// The projection is a prior; when the upper rung proves too slow the next attempt waits longer.
 	got := runScript(t, testMonitor(RungLight),
-		phase{40 * time.Second, 1, 0.7}, // rung 1 with room → rung 0
-		phase{20 * time.Second, 0.8, 4}, // rung 0 too slow → back to 1
-		phase{50 * time.Second, 1, 0.7}) // room again, but the wait has doubled to 60 s
+		phase{70 * time.Second, 1, 0.7},  // rung 1 with room → rung 0 after the 60 s dwell
+		phase{20 * time.Second, 0.8, 4},  // rung 0 too slow → back to 1
+		phase{100 * time.Second, 1, 0.7}) // room again, but the wait has doubled to 120 s
 	want := []SoftwareRung{RungFull, RungLight}
 	if len(got) != len(want) {
 		t.Fatalf("want %v, got %+v", want, got)
