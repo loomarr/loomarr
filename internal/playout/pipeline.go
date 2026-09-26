@@ -515,6 +515,9 @@ func (b *builder) nvenc() error {
 			f = append(f, "format="+b.cpuPixelFormat(), "hwupload_cuda")
 		}
 	}
+	// pad_cuda (like overlay_cuda) takes 8-bit frames only, so an HDR10 frame must reach the encoder
+	// already at the output geometry: exactly fitted, boxed by libplacebo, or padded on the CPU.
+	fitted := b.exactFit()
 	switch {
 	case b.convert:
 		if hw {
@@ -524,7 +527,13 @@ func (b *builder) nvenc() error {
 		if err != nil {
 			return err
 		}
-		f = append(f, conv, "hwupload_cuda", "scale_cuda="+b.fit()+":format=p010le")
+		scale := "scale_cuda=" + b.fit() + ":format=p010le"
+		if box, ok := b.aspectBox(); ok {
+			// Box to the output's aspect at source size, so the GPU upscale fills the frame.
+			conv += box
+			scale, fitted = fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le", b.out.Width, b.out.Height), true
+		}
+		f = append(f, conv, "hwupload_cuda", scale)
 	case !b.tonemap:
 		f = append(f, "scale_cuda="+b.fit()+":format="+b.scaleFormat("p010le"))
 	default:
@@ -555,9 +564,40 @@ func (b *builder) nvenc() error {
 	if hw {
 		b.p.PreInput = append(b.p.PreInput, "-hwaccel", "cuda", "-hwaccel_device", "cu", "-hwaccel_output_format", "cuda")
 	}
-	f = append(f, fmt.Sprintf("pad_cuda=w=%d:h=%d:x=-1:y=-1", b.out.Width, b.out.Height), b.tail())
+	switch {
+	case !b.out.HDR:
+		f = append(f, fmt.Sprintf("pad_cuda=w=%d:h=%d:x=-1:y=-1", b.out.Width, b.out.Height))
+	case !fitted:
+		b.fallback("pad", "pad_cuda takes 8-bit frames only: the 10-bit letterbox is added on the CPU at output size")
+		f = append(f, "hwdownload", "format=p010le", fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), "hwupload_cuda")
+	}
+	f = append(f, b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
 	return nil
+}
+
+// exactFit reports whether the source, fitted to the output, fills it: no letterbox to add.
+func (b *builder) exactFit() bool {
+	w, h, ok := fitSize(b.src.Width, b.src.Height, b.out.Width, b.out.Height)
+	return ok && w == b.out.Width && h == b.out.Height
+}
+
+// aspectBox is the libplacebo options that place the source, at its own size, centred in the
+// smallest box of the output's aspect (a 1440x1080 source in 1920x1080 for a 16:9 output). ok is
+// false when the source geometry is unknown.
+func (b *builder) aspectBox() (string, bool) {
+	sw, sh := b.src.Width, b.src.Height
+	if sw <= 0 || sh <= 0 {
+		return "", false
+	}
+	bw, bh := sw, sh
+	if sw*b.out.Height > sh*b.out.Width { // wider than the output: add height
+		bh = even((sw*b.out.Height + b.out.Width - 1) / b.out.Width)
+	} else {
+		bw = even((sh*b.out.Width + b.out.Height - 1) / b.out.Height)
+	}
+	return fmt.Sprintf(":w=%d:h=%d:pos_x=%d:pos_y=%d:pos_w=%d:pos_h=%d:fillcolor=black",
+		bw, bh, even((bw-sw)/2), even((bh-sh)/2), sw, sh), true
 }
 
 // videotoolbox: VT decode and scale_vt on the GPU. VideoToolbox has no pad and no tone-map filter,

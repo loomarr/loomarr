@@ -115,7 +115,8 @@ func TestBuild_SDRToHDR10(t *testing.T) {
 			}
 			label := hostName + "/" + srcName
 			filters := strings.Split(p.VideoFilter, ",")
-			convert, upscale := slices.Index(filters, sdrToHDR10), -1
+			convert := slices.IndexFunc(filters, func(f string) bool { return strings.HasPrefix(f, sdrToHDR10) })
+			upscale := -1
 			for i, f := range filters {
 				if strings.HasPrefix(f, "scale_vaapi=") || strings.HasPrefix(f, "scale_cuda=") {
 					upscale = i
@@ -133,6 +134,23 @@ func TestBuild_SDRToHDR10(t *testing.T) {
 			}
 		}
 	}
+	// pad_cuda takes 8-bit frames only: an NVENC HDR10 graph never pads on the GPU, and a letterbox
+	// the source needs is a declared CPU fallback.
+	nv := testHosts()["nvenc-opencl"]
+	for srcName, src := range premiumSources() {
+		p, _ := Build(nv, src, out)
+		if strings.Contains(p.VideoFilter, "pad_cuda") {
+			t.Errorf("nvenc/%s: pad_cuda on 10-bit frames: %q", srcName, p.VideoFilter)
+		}
+	}
+	scope := premiumSources()["hevc-4k-hdr-dv"]
+	scope.Height = 1600
+	if p, _ := Build(nv, scope, out); !strings.Contains(p.VideoFilter, "pad=3840:2160") || !slices.ContainsFunc(p.Fallbacks, func(f string) bool {
+		return strings.HasPrefix(f, "pad:")
+	}) {
+		t.Errorf("a 3840x1600 HDR10 film needs the declared CPU letterbox: %q %q", p.VideoFilter, p.Fallbacks)
+	}
+
 	noPlacebo := testHosts()["nvenc-cputonemap"]
 	if _, err := Build(noPlacebo, premiumSources()["h264-1080p-sdr-25"], out); !errors.Is(err, ErrRefused) {
 		t.Errorf("an SDR item on an HDR10 channel without libplacebo must be refused, got %v", err)
