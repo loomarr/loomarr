@@ -41,18 +41,6 @@ interface BrowserPlaySource {
   url: string;
 }
 
-/** Marks the poster as this tune's still, so the first frame knows to clear it. */
-const tuneStillKey = "tuneStill";
-
-// A held outgoing frame (data: PNG) or this tune's still stands in until the first frame.
-const clearTunePoster = (video: HTMLVideoElement) => {
-  const still = video.dataset[tuneStillKey];
-  if (video.poster.startsWith("data:image/png;base64,") || (still && video.poster === still)) {
-    video.removeAttribute("poster");
-  }
-  delete video.dataset[tuneStillKey];
-};
-
 interface BrowserLivePlaybackTransport {
   state: LivePlaybackState;
   play: (video: HTMLVideoElement) => Promise<void> | void;
@@ -84,6 +72,8 @@ interface UseBrowserHlsPlayer {
    * attaches via native HLS or hls.js, and returns a cleanup that tears both down.
    */
   attach: (video: HTMLVideoElement) => () => void;
+  /** The tuned channel's still while its stream starts: layer it over the frame until playback. */
+  stillURL?: string;
 }
 
 let cachedHlsController: typeof Hls | undefined;
@@ -399,6 +389,9 @@ function useBrowserHlsPlayer({
   });
   const warmedPlayURL = playbackAttempt?.playURL;
   const warmedStillURL = playbackAttempt?.stillURL;
+  // The decoded still of the tune in progress; cleared by that tune's first frame.
+  const [still, setStill] = useState<{ channelId: string; url: string }>();
+  const firstFrameGenerationRef = useRef(0);
 
   const publishTransport = useCallback(
     (sampleFrame = true) => {
@@ -610,7 +603,9 @@ function useBrowserHlsPlayer({
       const onFirstFrame = () => {
         if (firstFrame) return;
         firstFrame = true;
-        clearTunePoster(video);
+        if (video.poster.startsWith("data:image/png;base64,")) video.removeAttribute("poster");
+        firstFrameGenerationRef.current = generationRef.current;
+        setStill(undefined);
         playbackAttempt?.markPhase("first-frame");
         setState({ channelId, status: "playing" });
         recordDiagnostic({ ...diagnosticBase, event: "player.ready" });
@@ -985,24 +980,20 @@ function useBrowserHlsPlayer({
       const onTimeUpdate = () => publishTransport();
       video.addEventListener("timeupdate", onTimeUpdate);
       setState({ channelId, status: "loading" });
-      // The channel's still replaces the held outgoing frame as soon as it has decoded, so the
-      // viewer sees the channel they asked for while its stream starts. Loaded off-element first:
-      // a half-loaded poster would flash, and a still arriving after video has started must not
-      // cover it.
-      let started = false;
-      const onStarted = () => {
-        started = true;
-      };
-      video.addEventListener("playing", onStarted, { once: true });
+      // The channel's still is published once it has decoded, for the surface to layer over the
+      // held outgoing frame, so the viewer sees the channel they asked for while its stream starts.
+      // Not the <video> poster: an element that still holds a transferred MediaSource keeps showing
+      // its last frame and never paints a poster. Decoded off-screen first so a half-loaded image
+      // never flashes, and never published after this tune's first frame.
+      setStill(undefined);
       let stillShown = false;
       const showStill = (stillURL: string | undefined) => {
         if (!stillURL || stillShown) return;
         stillShown = true;
         const image = new Image();
         image.onload = () => {
-          if (!current() || started) return;
-          video.poster = stillURL;
-          video.dataset[tuneStillKey] = stillURL;
+          if (!current() || firstFrameGenerationRef.current === generation) return;
+          setStill({ channelId, url: stillURL });
           playbackAttempt?.markPhase("still");
         };
         image.src = stillURL;
@@ -1059,7 +1050,6 @@ function useBrowserHlsPlayer({
 
       return () => {
         video.removeEventListener("timeupdate", onTimeUpdate);
-        video.removeEventListener("playing", onStarted);
         controller.abort();
         if (generationRef.current === generation) generationRef.current++;
         teardown?.();
@@ -1090,7 +1080,14 @@ function useBrowserHlsPlayer({
     [channelId, pauseLive, playLive, returnLive, transportState],
   );
 
-  return { status, error, playbackSessionId: playbackSessionIDRef.current, attach, liveTransport };
+  return {
+    status,
+    error,
+    playbackSessionId: playbackSessionIDRef.current,
+    attach,
+    liveTransport,
+    stillURL: still?.channelId === channelId ? still.url : undefined,
+  };
 }
 
 export type {

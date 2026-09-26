@@ -327,7 +327,18 @@ const ChannelWatch = ({
       // The tuner "acquiring signal" overlay covers the warm-up beat (cold encoder, first segment
       // not cut yet) so the viewer sees a channel tuning in, not a black frame. Only while loading —
       // an error shows its own message below, and a playing stream needs no overlay.
-      overlay={player.status === "loading" ? <TunerLoader /> : undefined}
+      // Under it, the tuned channel's still (decoded on demand for a cold channel) replaces the
+      // previous channel's held frame, so the picture already belongs to the channel being tuned.
+      overlay={
+        player.status === "loading" ? (
+          <>
+            {player.stillURL && (
+              <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
+            )}
+            <TunerLoader />
+          </>
+        ) : undefined
+      }
       attach={player.attach}
       onChannelStep={tuner?.step}
       className="overflow-hidden rounded-xl border border-border bg-black"

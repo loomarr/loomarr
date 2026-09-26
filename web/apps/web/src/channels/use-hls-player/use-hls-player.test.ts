@@ -136,8 +136,10 @@ describe("useHlsPlayer", () => {
     act(() => {
       result.current.attach(video);
     });
-    await waitFor(() => expect(video.poster).toBe("/v1/playout/still/ch-2?sig=warmed"));
+    await waitFor(() => expect(result.current.stillURL).toBe("/v1/playout/still/ch-2?sig=warmed"));
     expect(marks).toContain("loomarr:tune:request-to-still");
+    // Not the poster: an element holding a transferred MediaSource keeps painting its last frame.
+    expect(video.poster).toBe("");
 
     const listeners = vi.mocked(video.addEventListener).mock.calls;
     act(() => {
@@ -145,7 +147,7 @@ describe("useHlsPlayer", () => {
         if (type === "playing") (listener as () => void)();
       }
     });
-    expect(video.removeAttribute).toHaveBeenCalledWith("poster");
+    expect(result.current.stillURL).toBeUndefined();
     measure.mockRestore();
   });
 
