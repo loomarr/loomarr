@@ -1,6 +1,6 @@
 ## ---- build / run ---------------------------------------------------------
 
-.PHONY: build rust-build image-cert image-bench image-parallelism-bench playout-bench
+.PHONY: build rust-build image-cert image-bench image-parallelism-bench playout-bench playout-bench-corpus
 build: rust-build ## build the cgo-free Go server and required Rust image worker
 	release="$${LOOMARR_RELEASE:-dev}"; \
 	  CGO_ENABLED=0 $(GO) build \
@@ -32,6 +32,9 @@ image-bench: rust-build ## benchmark release-worker AVIF ladders; optional IMAGE
 	    --roles "$${IMAGE_BENCH_ROLES:-poster,backdrop,icon}" \
 	    --workers "$${IMAGE_BENCH_WORKERS:-1}" \
 	    --avif-threads "$${IMAGE_BENCH_AVIF_THREADS:-1}"
+
+playout-bench-corpus: ## generate the playout-bench corpus cache (keyed by recipe hash); run OUTSIDE any shared lock, then make playout-bench
+	$(GO) run ./cmd/playout-bench --corpus-only --ffmpeg "$${PLAYOUT_BENCH_FFMPEG:-ffmpeg}"
 
 playout-bench: ## run the cross-hardware playout bench on this host; PLAYOUT_BENCH_FAMILY/THRESHOLDS/HEIGHT/ACCEPT=1 (docs/dev/playout-bench.md)
 	$(GO) run ./cmd/playout-bench \

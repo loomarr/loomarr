@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/playoutbench"
 )
@@ -33,20 +34,21 @@ func run() error {
 		artifacts = filepath.Join(os.TempDir(), "loomarr-playout-bench")
 	}
 	var (
-		ffmpeg    = flag.String("ffmpeg", "ffmpeg", "ffmpeg binary (ffprobe is taken from beside it)")
-		family    = flag.String("family", "", "force a hardware family: software, vaapi, nvenc, videotoolbox (default: detect as the app does)")
-		height    = flag.Int("height", 1080, "output rung height, 1080 or 720")
-		corpus    = flag.String("corpus", filepath.Join(artifacts, "playout-bench-corpus"), "directory for the generated corpus")
-		reportDir = flag.String("report-dir", artifacts, "where the JSON and markdown reports are written")
-		baselines = flag.String("baseline-dir", "docs/engineering/playout-bench", "directory of accepted baselines, one <family>.json each")
-		mode      = flag.String("thresholds", string(playoutbench.ModeFull), "full: every beta.8 threshold; correctness: gaps, SPS, loudness only (virtualised hosts); off")
-		startRuns = flag.Int("start-runs", 20, "fresh-process start-latency runs per class")
-		maxStream = flag.Int("max-streams", 16, "highest concurrency to try")
-		tolerance = flag.Float64("tolerance", playoutbench.DefaultTolerance().Relative, "relative regression tolerance against the baseline")
-		films     = flag.String("films", "", "directory of open films fetched by scripts/playout-bench-open-films.sh (optional)")
-		noVMAF    = flag.Bool("no-vmaf", false, "skip the VMAF measurement")
-		accept    = flag.Bool("accept", false, "write this report as the family's baseline (refused if a threshold fails)")
-		commit    = flag.String("commit", "", "source commit under test (default: git HEAD)")
+		ffmpeg     = flag.String("ffmpeg", "ffmpeg", "ffmpeg binary (ffprobe is taken from beside it)")
+		family     = flag.String("family", "", "force a hardware family: software, vaapi, nvenc, videotoolbox (default: detect as the app does)")
+		height     = flag.Int("height", 1080, "output rung height, 1080 or 720")
+		corpus     = flag.String("corpus", filepath.Join(artifacts, "playout-bench-corpus"), "directory for the generated corpus")
+		reportDir  = flag.String("report-dir", artifacts, "where the JSON and markdown reports are written")
+		baselines  = flag.String("baseline-dir", "docs/engineering/playout-bench", "directory of accepted baselines, one <family>.json each")
+		mode       = flag.String("thresholds", string(playoutbench.ModeFull), "full: every beta.8 threshold; correctness: gaps, SPS, loudness only (virtualised hosts); off")
+		startRuns  = flag.Int("start-runs", 20, "fresh-process start-latency runs per class")
+		maxStream  = flag.Int("max-streams", 16, "highest concurrency to try")
+		tolerance  = flag.Float64("tolerance", playoutbench.DefaultTolerance().Relative, "relative regression tolerance against the baseline")
+		films      = flag.String("films", "", "directory of open films fetched by scripts/playout-bench-open-films.sh (optional)")
+		noVMAF     = flag.Bool("no-vmaf", false, "skip the VMAF measurement")
+		accept     = flag.Bool("accept", false, "write this report as the family's baseline (refused if a threshold fails)")
+		corpusOnly = flag.Bool("corpus-only", false, "generate the corpus cache and exit; run this outside any shared lock, before the measured run")
+		commit     = flag.String("commit", "", "source commit under test (default: git HEAD)")
 	)
 	flag.Parse()
 	if *height != 1080 && *height != 720 {
@@ -58,6 +60,20 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+
+	if *corpusOnly {
+		dir := playoutbench.CorpusDir(*corpus)
+		start := time.Now()
+		clips, skipped, err := playoutbench.Generate(ctx, *ffmpeg, dir)
+		if err != nil {
+			return err
+		}
+		for name, why := range skipped {
+			fmt.Fprintf(os.Stderr, "playout-bench: clip %s skipped: %s\n", name, why)
+		}
+		fmt.Printf("corpus %s: %d clips in %s\n", dir, len(clips), time.Since(start).Round(time.Millisecond))
+		return nil
+	}
 
 	rep, err := playoutbench.Run(ctx, playoutbench.Options{
 		FFmpeg: *ffmpeg, Dir: *corpus, Family: *family, Height: *height,

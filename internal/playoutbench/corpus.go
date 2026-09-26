@@ -2,12 +2,16 @@ package playoutbench
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // CorpusName versions the generated corpus. Changing any clip below changes it, which invalidates
@@ -143,15 +147,17 @@ func Corpus() []Clip {
 	return clips
 }
 
-// Args is the ffmpeg command that writes the clip to path.
+// Args is the ffmpeg command that writes the clip to path. -t follows every input and encode option:
+// before the first -i it would bound only that input, and the infinite lavfi audio source would then
+// keep the encode running until something killed it.
 func (c Clip) Args(path string) []string {
-	args := []string{"-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-t", strconv.Itoa(c.Seconds)}
+	args := []string{"-hide_banner", "-nostdin", "-loglevel", "error", "-y"}
 	args = append(args, c.VideoSrc...)
 	args = append(args, c.AudioSrc...)
 	args = append(args, "-map", "0:v:0", "-map", "1:a:0")
 	args = append(args, c.VideoEnc...)
 	args = append(args, c.AudioEnc...)
-	return append(args, "-f", "matroska", path)
+	return append(args, "-t", strconv.Itoa(c.Seconds), "-f", "matroska", path)
 }
 
 // Path is where the clip lives under dir.
@@ -162,8 +168,45 @@ func (c Clip) Path(dir string) string {
 	return filepath.Join(dir, c.Name+".mkv")
 }
 
+// recipeHash identifies the exact ffmpeg commands that build the corpus, so a cache directory can
+// never hold clips from a different recipe.
+func recipeHash(clips []Clip) string {
+	h := sha256.New()
+	for _, c := range clips {
+		fmt.Fprintf(h, "%q\n", c.Args(c.Name))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// CorpusDir is the cache directory for the current recipe under base. Generating it once, outside
+// any shared lock, lets the measured runs start from a warm cache.
+func CorpusDir(base string) string {
+	return filepath.Join(base, CorpusName+"-"+recipeHash(Corpus())[:12])
+}
+
+// clipTimeout bounds one clip's generation. The slowest clip (10 s of 4K HEVC) takes seconds; a
+// clip still running after this is a bug, and is reported as one rather than waited for.
+const clipTimeout = 90 * time.Second
+
+var errClipTimeout = errors.New("timed out")
+
+// generateClip encodes one clip, killing ffmpeg if it outlives timeout.
+func generateClip(ctx context.Context, ffmpeg string, c Clip, path string, timeout time.Duration) error {
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	out, err := exec.CommandContext(cctx, ffmpeg, c.Args(path)...).CombinedOutput()
+	if cctx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+		return fmt.Errorf("clip %s %w after %s (a %ds clip; check its ffmpeg arguments)", c.Name, errClipTimeout, timeout, c.Seconds)
+	}
+	if err != nil {
+		return errors.New(firstLine(string(out), err))
+	}
+	return nil
+}
+
 // Generate writes every clip under dir, skipping those already present. A clip whose encoder this
-// ffmpeg build lacks is returned in skipped with the reason rather than failing the bench.
+// ffmpeg build lacks is returned in skipped with the reason rather than failing the bench; a clip that
+// exceeds clipTimeout fails the whole generation.
 func Generate(ctx context.Context, ffmpeg, dir string) (clips []Clip, skipped map[string]string, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, nil, err
@@ -176,10 +219,12 @@ func Generate(ctx context.Context, ffmpeg, dir string) (clips []Clip, skipped ma
 			continue
 		}
 		part := path + ".part"
-		out, runErr := exec.CommandContext(ctx, ffmpeg, c.Args(part)...).CombinedOutput()
-		if runErr != nil {
+		if genErr := generateClip(ctx, ffmpeg, c, part, clipTimeout); genErr != nil {
 			_ = os.Remove(part)
-			skipped[c.Name] = firstLine(string(out), runErr)
+			if errors.Is(genErr, errClipTimeout) {
+				return nil, nil, genErr
+			}
+			skipped[c.Name] = genErr.Error()
 			continue
 		}
 		if err := os.Rename(part, path); err != nil {
@@ -189,7 +234,6 @@ func Generate(ctx context.Context, ffmpeg, dir string) (clips []Clip, skipped ma
 	}
 	return clips, skipped, nil
 }
-
 func firstLine(out string, err error) string {
 	for _, l := range strings.Split(out, "\n") {
 		if l = strings.TrimSpace(l); l != "" {

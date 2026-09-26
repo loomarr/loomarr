@@ -68,6 +68,7 @@ func Run(ctx context.Context, o Options) (*Report, error) {
 			o.FFprobe = filepath.Join(dir, "ffprobe")
 		}
 	}
+	o.Dir = CorpusDir(o.Dir)
 	r := &run{Options: o}
 	r.enc = r.chooseEncoder(ctx)
 	r.host = playout.HostFor(r.enc, playout.TonemapperFor(o.FFmpeg)(), playout.GPUFiltersFor(o.FFmpeg)())
