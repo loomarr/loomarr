@@ -131,11 +131,11 @@ type Engine struct {
 	log     *slog.Logger
 
 	policy            schedule.PendingPolicy
-	reconcileTTLFor   func() time.Duration                  // live minimum delay before the next sweep eligibility
-	breaksPerHourFor  func() int                            // live §10 commercial-break default
-	breakDurationFor  func() time.Duration                  // live §10 commercial-break length default
-	defaultWindowFor  func() time.Duration                  // live §6.5 rolling-window default
-	playoutBackendFor func(context.Context) (string, error) // durable §9.1 transition target
+	reconcileTTLFor   func() time.Duration                              // live minimum delay before the next sweep eligibility
+	breaksPerHourFor  func() int                                        // live §10 commercial-break default
+	breakDurationFor  func() time.Duration                              // live §10 commercial-break length default
+	defaultWindowFor  func() time.Duration                              // live §6.5 rolling-window default
+	playoutBackendFor func(context.Context) (string, error)             // durable §9.1 transition target
 	naturalBreaks     func(context.Context) schedule.NaturalBreakSource // §10 mid-roll candidates; nil = none
 	now               func() time.Time
 
