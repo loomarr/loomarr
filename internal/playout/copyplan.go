@@ -76,6 +76,12 @@ func (f MediaFormat) HDR() bool {
 	return t == "smpte2084" || t == "arib-std-b67"
 }
 
+// PQ reports whether the video is HDR10-style PQ (SMPTE ST 2084), including Dolby Vision's HDR10
+// base layer. An HDR10 output passes it through; HLG is converted like SDR.
+func (f MediaFormat) PQ() bool {
+	return strings.ToLower(f.ColorTransfer) == "smpte2084"
+}
+
 // FormatProber reports a source's MediaFormat. An interface so callers are testable without exec,
 // mirroring AudioProber / TrackProber. The concrete prober (FFprobeFormatNextTo) lives in probe.go.
 type FormatProber func(ctx context.Context, input string) (MediaFormat, error)
