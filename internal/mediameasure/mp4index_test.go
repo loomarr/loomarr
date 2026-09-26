@@ -14,7 +14,7 @@ func TestMP4SampleTablesMatchThePacketScanAndSkipMdat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, _ := f.Stat()
 	counted := &countingReaderAt{r: f}
 	got, ok, err := mp4Keyframes(counted, info.Size())
@@ -47,7 +47,7 @@ func TestMP4KeyframesRejectsMatroska(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, _ := f.Stat()
 	if _, ok, err := mp4Keyframes(f, info.Size()); ok || err != nil {
 		t.Fatalf("matroska reported as mp4: ok=%v err=%v", ok, err)

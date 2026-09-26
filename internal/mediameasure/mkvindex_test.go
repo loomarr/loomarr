@@ -26,7 +26,7 @@ func TestMatroskaCuesMatchThePacketScanAndReadLittle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, _ := f.Stat()
 	counted := &countingReaderAt{r: f}
 	got, ok, err := matroskaKeyframes(counted, info.Size())
@@ -60,7 +60,7 @@ func TestMatroskaKeyframesRejectsOtherContainers(t *testing.T) {
 		t.Fatal(err)
 	}
 	f, _ := os.Open(path)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, ok, err := matroskaKeyframes(f, 24); ok || err != nil {
 		t.Fatalf("mp4 reported as matroska: ok=%v err=%v", ok, err)
 	}
