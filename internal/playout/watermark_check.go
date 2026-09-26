@@ -105,7 +105,7 @@ func checkClasses(host HostProfile) []checkSource {
 		facts: MediaFormat{VideoCodec: "h264", Width: checkWidth, Height: checkHeight, FrameRate: checkFPS,
 			PixelFormat: "yuv420p", Container: "matroska,webm"},
 		make: func(ctx context.Context, ffmpeg, dir string) (string, error) {
-			return synth(ctx, ffmpeg, filepath.Join(dir, "sdr.mkv"),
+			return synthWatermarkClip(ctx, ffmpeg, filepath.Join(dir, "sdr.mkv"),
 				"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=1.2", checkWidth, checkHeight, checkFPS),
 				"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", "25")
 		},
@@ -116,7 +116,7 @@ func checkClasses(host HostProfile) []checkSource {
 			facts: MediaFormat{VideoCodec: "hevc", Width: checkWidth, Height: checkHeight, FrameRate: checkFPS,
 				PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084", Container: "matroska,webm"},
 			make: func(ctx context.Context, ffmpeg, dir string) (string, error) {
-				return synth(ctx, ffmpeg, filepath.Join(dir, "hdr.mkv"),
+				return synthWatermarkClip(ctx, ffmpeg, filepath.Join(dir, "hdr.mkv"),
 					"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=1.2", checkWidth, checkHeight, checkFPS),
 					"-vf", "zscale=tin=bt709:min=bt709:pin=bt709:rin=tv:t=smpte2084:p=bt2020:m=bt2020nc:r=tv:npl=203,format=yuv420p10le",
 					"-c:v", "libx265", "-preset", "ultrafast",
@@ -128,7 +128,7 @@ func checkClasses(host HostProfile) []checkSource {
 	return classes
 }
 
-func synth(ctx context.Context, ffmpeg, out string, args ...string) (string, error) {
+func synthWatermarkClip(ctx context.Context, ffmpeg, out string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	full := append([]string{"-hide_banner", "-nostdin", "-loglevel", "error", "-y"}, args...)
