@@ -223,3 +223,46 @@ func contains(list []string, s string) bool {
 	}
 	return false
 }
+
+// withExpectedFailures swaps the package's known-failure table for one test.
+func withExpectedFailures(t *testing.T, m map[string]string) {
+	t.Helper()
+	old := expectedFailures
+	expectedFailures = m
+	t.Cleanup(func() { expectedFailures = old })
+}
+
+func TestJudge_ExpectedFailureIsReportedNotHidden(t *testing.T) {
+	withExpectedFailures(t, map[string]string{"break/sps_variants": "phase 2 lands setsar"})
+	r := report("vaapi", hardwareGreen)
+	r.Set("break/sps_variants", 2, "count", Exact)
+	vs := Judge(r, ModeFull)
+	if f := failed(vs); len(f) != 0 {
+		t.Fatalf("a known failure must not fail the run: %v", f)
+	}
+	for _, v := range vs {
+		if v.Metric == "break/sps_variants" && !strings.Contains(v.Measured, "expected fail: phase 2 lands setsar") {
+			t.Errorf("the failure must stay visible with its reference, got %q", v.Measured)
+		}
+	}
+}
+
+func TestJudge_UnexpectedPassOfAKnownFailureFails(t *testing.T) {
+	withExpectedFailures(t, map[string]string{"break/sps_variants": "phase 2 lands setsar"})
+	r := report("vaapi", hardwareGreen) // sps_variants = 1: the fix has landed
+	if f := failed(Judge(r, ModeFull)); len(f) != 1 || f[0] != "break/sps_variants" {
+		t.Fatalf("a stale expected-fail marker must fail so it gets removed: %v", f)
+	}
+}
+
+func TestExpectedFailuresAreRealMetrics(t *testing.T) {
+	known := map[string]bool{}
+	for _, th := range append(append([]threshold{}, commonThresholds...), hardwareThresholds...) {
+		known[th.metric] = true
+	}
+	for m, why := range productionExpectedFailures {
+		if !known[m] || why == "" {
+			t.Errorf("expectedFailures[%q] = %q names no threshold or gives no reference", m, why)
+		}
+	}
+}

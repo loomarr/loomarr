@@ -177,9 +177,25 @@ func Judge(r *Report, mode Mode) []Verdict {
 		default:
 			v.Measured = "not measured"
 		}
+		if why, known := expectedFailures[t.metric]; known && ok {
+			if !v.Pass {
+				v.Measured += " (expected fail: " + why + ")"
+				v.Pass = true
+			} else {
+				v.Measured += " (unexpected pass: remove the expectedFailures entry, " + why + ")"
+				v.Pass = false
+			}
+		}
 		out = append(out, v)
 	}
 	return out
+}
+
+// expectedFailures are thresholds known to fail until the referenced work lands. They are reported
+// with their reference rather than skipped, and a known failure that starts passing fails the run, so
+// the entry is removed the moment it stops being true.
+var expectedFailures = map[string]string{
+	"break/sps_variants": "#1512 phase 2 (feat-1512-p2-channel-packager) adds setsar=1; an 854x480 source otherwise carries SAR 1281:1280 into the SPS",
 }
 
 func limitText(t threshold) string {

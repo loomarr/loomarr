@@ -59,7 +59,6 @@ const sineGain = 0.6128
 var toneChannels = map[string][]string{
 	"stereo": {"FL", "FR"},
 	"5.1":    {"FL", "FR"},
-	"7.1":    {"FL", "FR"},
 }
 
 var (
@@ -131,10 +130,11 @@ func Corpus() []Clip {
 		{Name: "hevc-4k-hdr10", Class: "hdr-4k", Seconds: 10, HDR: true,
 			VideoSrc: video(3840, 2160, "24000/1001", "format=yuv420p10le"), VideoEnc: x265(hdr10...),
 			AudioSrc: tone("5.1", ""), AudioEnc: acodec("eac3")},
-		// TrueHD-like: 7.1 through the experimental TrueHD encoder. The builder must map a lossless
+		// TrueHD: 5.1 through the experimental TrueHD encoder, which cannot emit 7.1 (asked for 7.1 it
+		// downmixes to 5.1(side) with a normalising conversion that costs 4.6 dB). The builder must map a lossless
 		// multichannel track to the stereo AAC output like any other layout.
 		{Name: "h264-1080p-truehd", Seconds: 6,
-			VideoSrc: video(1920, 1080, "25", ""), VideoEnc: x264(sdr709...), AudioSrc: tone("7.1", ""), AudioEnc: acodec("truehd", "-strict", "-2")},
+			VideoSrc: video(1920, 1080, "25", ""), VideoEnc: x264(sdr709...), AudioSrc: tone("5.1", ""), AudioEnc: acodec("truehd", "-strict", "-2")},
 	}
 	// The commercial-break sequence: four spots of different geometry, cadence, codec and audio
 	// layout, each faded in and out, all at the target loudness.

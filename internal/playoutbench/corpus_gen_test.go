@@ -84,7 +84,7 @@ func TestRecipeHashKeysTheCorpusCache(t *testing.T) {
 }
 
 // The generated tone must land on the household target AFTER the pipeline's plain `-ac 2` downmix,
-// for every layout the corpus uses. It measured -44 LUFS (7.1: -49) because lavfi's sine peaks at
+// for every layout the corpus uses. It measured -44 LUFS because lavfi's sine peaks at
 // 0.125 and a mono source upmixed by aformat loses more, so break/loudness_dev_lu failed at 25.7 LU
 // on a healthy pipeline.
 func TestToneLandsOnTargetAfterDownmix(t *testing.T) {
@@ -92,7 +92,7 @@ func TestToneLandsOnTargetAfterDownmix(t *testing.T) {
 	if err != nil {
 		t.Skip("no ffmpeg on PATH")
 	}
-	for _, layout := range []string{"stereo", "5.1", "7.1"} {
+	for _, layout := range []string{"stereo", "5.1"} {
 		// Encode exactly as the pipeline does (`-c:a aac -ac 2`): that downmix is not level-normalised, whereas
 		// a PCM downmix is, so a PCM check would pass a tone the pipeline outputs 6 LU hot.
 		m4a := filepath.Join(t.TempDir(), "tone.m4a")
