@@ -76,35 +76,47 @@ func TestPackagerHLSAssetPathServesOnlyItsOwnFiles(t *testing.T) {
 }
 
 // playout.hls_dir is disk-backed beside the database (#1512), so a crash (which skips Stop) would
-// leave its segments there for good. A new process sweeps a predecessor's scratch roots, but
-// spares one another live process is still writing, and anything that is not Loomarr's scratch.
-func TestPackagerHLSSweepsACrashedPredecessorsScratch(t *testing.T) {
+// leave its segments there for good. A new process sweeps the roots no live process owns, by the
+// owner's lock, not by age: live, a new build swept the still-serving process's root because it
+// had been idle for ten minutes, and that process's next tune failed.
+func TestNewScratchRootSweepsOnlyUnownedRoots(t *testing.T) {
 	base := t.TempDir()
-	old := time.Now().Add(-time.Hour)
-	mk := func(rel string, mtime time.Time) string {
+	mk := func(rel string, age time.Duration, lock bool) string {
 		p := filepath.Join(base, rel)
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			t.Fatal(err)
 		}
+		if lock {
+			if err := os.WriteFile(filepath.Join(p, scratchLock), nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		mtime := time.Now().Add(-age)
 		if err := os.Chtimes(p, mtime, mtime); err != nil {
 			t.Fatal(err)
 		}
 		return p
 	}
-	mk("loomarr-packager-1/ch-1", old)
-	crashed := mk("loomarr-packager-1", old)
-	mk("loomarr-packager-2/ch-1", time.Now()) // another process, still packaging
-	live := mk("loomarr-packager-2", old)
-	mk("loomarr-hls-3/seg", old)
-	remux := mk("loomarr-hls-3", old)
-	other := mk("operator-files", old)
+	crashed := mk("loomarr-packager-1", 0, true) // fresh, but its owner is gone
+	crashedRemux := mk("loomarr-hls-2", 0, true)
+	idle := mk("loomarr-packager-3", time.Hour, true) // a live process with no viewers for an hour
+	release, err := holdScratch(idle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
+	legacy := mk("loomarr-hls-4", time.Hour, false) // no lock file: spared until long quiet
+	legacyDead := mk("loomarr-hls-5", 25*time.Hour, false)
+	other := mk("operator-files", 25*time.Hour, false)
 
 	m, err := NewPackagerHLS(nil, "ffmpeg", base, time.Second, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	for p, want := range map[string]bool{crashed: false, remux: false, live: true, other: true} {
+	for p, want := range map[string]bool{
+		crashed: false, crashedRemux: false, legacyDead: false, idle: true, legacy: true, other: true, m.root: true,
+	} {
 		if _, err := os.Stat(p); (err == nil) != want {
 			t.Errorf("%s exists = %v, want %v", filepath.Base(p), err == nil, want)
 		}

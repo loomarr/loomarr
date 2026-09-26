@@ -21,6 +21,7 @@ type packagerSource struct {
 }
 
 func (s packagerSource) ItemAt(ctx context.Context, channelID string, plan playout.EncodePlan, at time.Time) (playout.PackagerItem, error) {
+	t0 := time.Now()
 	airing, streamURL, err := s.res.AiringAt(ctx, channelID, at)
 	if err != nil {
 		return playout.PackagerItem{}, err
@@ -30,8 +31,16 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, plan playo
 		return item, nil // a card slot: the packager slates it
 	}
 	item.Input, item.Seek = streamURL, airing.Offset
+	t1 := time.Now()
 	item.AudioTrack = s.res.AudioTrackFor(ctx, channelID, airing.LibraryItemID, streamURL)
+	t2 := time.Now()
 	_, item.Format = s.res.PlanFor(ctx, streamURL, plan)
+	if s.log != nil {
+		// The tune-in (G2) split's resolution half; the packager logs the encoder half.
+		s.log.Info("packager: item resolved", "channel", channelID, "item", item.Label,
+			"airing_ms", t1.Sub(t0).Milliseconds(), "audio_track_ms", t2.Sub(t1).Milliseconds(),
+			"stream_facts_ms", time.Since(t2).Milliseconds())
+	}
 	if s.targetLUFS != nil {
 		var note string
 		if item.GainDB, note = playout.FillerGain(airing, s.targetLUFS()); note != "" && s.log != nil {

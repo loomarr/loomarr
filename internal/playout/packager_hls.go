@@ -42,6 +42,7 @@ type PackagerSource interface {
 // hlsOrigin, so Origin serves it exactly as it serves the remux.
 type PackagerHLS struct {
 	ffmpeg, root string
+	unlock       func() // drops root's owner lock
 	grace        time.Duration
 	source       PackagerSource
 	log          *slog.Logger
@@ -63,70 +64,17 @@ type packagedChannel struct {
 }
 
 func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Duration, log *slog.Logger) (*PackagerHLS, error) {
-	// The same scratch rule as the remux (playout.hls_dir; empty is the OS temp dir): a private
-	// per-process root, removed by Stop.
+	// The same scratch rule as the remux (playout.hls_dir): a private, locked per-process root,
+	// removed by Stop (scratch.go).
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	if root != "" {
-		_ = os.MkdirAll(root, 0o755)
-	}
-	sweepScratch(root, log)
-	root, err := os.MkdirTemp(root, "loomarr-packager-")
+	root, unlock, err := newScratchRoot(root, "loomarr-packager-", log)
 	if err != nil {
 		return nil, fmt.Errorf("packager hls: scratch root: %w", err)
 	}
-	return &PackagerHLS{ffmpeg: ffmpeg, root: root, grace: grace, source: source, log: log,
+	return &PackagerHLS{ffmpeg: ffmpeg, root: root, unlock: unlock, grace: grace, source: source, log: log,
 		slates: map[string]*packager.Slate{}, channels: map[remuxKey]*packagedChannel{}}, nil
-}
-
-// scratchQuiet is how long a scratch root must go unwritten before a new process treats it as a
-// crashed predecessor's. A live one changes every segment (a channel directory gains and prunes
-// files each second).
-const scratchQuiet = 10 * time.Minute
-
-// sweepScratch removes the packager and remux scratch roots a previous process left under base: a
-// crash skips Stop, and base is on disk beside the database (playout.hls_dir), so nothing else
-// would ever clear them. A root written within scratchQuiet is spared, in case another process
-// shares the directory.
-func sweepScratch(base string, log *slog.Logger) {
-	if base == "" {
-		base = os.TempDir()
-	}
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return
-	}
-	cutoff := time.Now().Add(-scratchQuiet)
-	for _, e := range entries {
-		name := e.Name()
-		if !e.IsDir() || (!strings.HasPrefix(name, "loomarr-packager-") && !strings.HasPrefix(name, "loomarr-hls-")) {
-			continue
-		}
-		root := filepath.Join(base, name)
-		if writtenSince(root, cutoff) {
-			continue
-		}
-		if err := os.RemoveAll(root); err != nil {
-			log.Warn("packager hls: could not remove a previous process's scratch", "dir", root, "err", err)
-			continue
-		}
-		log.Info("packager hls: removed a previous process's scratch", "dir", root)
-	}
-}
-
-// writtenSince reports whether dir or any directory directly inside it changed after t.
-func writtenSince(dir string, t time.Time) bool {
-	if fi, err := os.Stat(dir); err != nil || fi.ModTime().After(t) {
-		return err == nil
-	}
-	children, _ := os.ReadDir(dir)
-	for _, c := range children {
-		if fi, err := c.Info(); err == nil && c.IsDir() && fi.ModTime().After(t) {
-			return true
-		}
-	}
-	return false
 }
 
 func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool) (hlsPlaylistLease, error) {
@@ -442,4 +390,7 @@ func (s switchedHLS) StopAll() {
 func (m *PackagerHLS) Stop() {
 	m.StopAll()
 	_ = os.RemoveAll(m.root)
+	if m.unlock != nil {
+		m.unlock()
+	}
 }

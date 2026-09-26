@@ -121,6 +121,8 @@ type Packager struct {
 	err      error
 	stats    Stats
 	listSkew time.Duration // test seam: none in production
+
+	readyOnce sync.Once // logs the first manifest's readiness (the end of G2)
 }
 
 // Stats counts what the packager did, for logs and tests.
@@ -270,7 +272,9 @@ func readStream(rc io.Reader) *encoderStream {
 func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline time.Time) error {
 	ictx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	openAt := p.cfg.Now()
 	rc, err := item.Open(ictx, slot)
+	openedAt := p.cfg.Now()
 	if err != nil {
 		p.cfg.Log.Warn("packager: item did not open; slate", "item", item.Label, "err", err)
 		return p.notReady(ctx, nil, slot)
@@ -318,6 +322,14 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 			"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.Init())), "item_stsd", fmt.Sprintf("%x", SampleDescriptions(stream.init)))
 		cancel()
 		return p.notReady(ctx, rc, slot)
+	}
+	if p.Stats().Items == 0 {
+		// The tune-in (G2) split's encoder half, from Run's start: resolving the item (the
+		// schedule), starting its encoder, and its first fragment.
+		epoch := p.airAt(0)
+		p.cfg.Log.Info("packager: first item producing", "item", item.Label,
+			"resolve_ms", openAt.Sub(epoch).Milliseconds(), "spawn_ms", openedAt.Sub(openAt).Milliseconds(),
+			"first_fragment_ms", p.cfg.Now().Sub(openedAt).Milliseconds())
 	}
 	p.count(func(s *Stats) { s.Items++ })
 
@@ -488,6 +500,9 @@ func (p *Packager) AwaitPlaylist(ctx context.Context) error {
 		p.mu.Unlock()
 		switch {
 		case ready:
+			p.readyOnce.Do(func() {
+				p.cfg.Log.Info("packager: first manifest ready", "since_start_ms", now.Sub(p.airAt(0)).Milliseconds())
+			})
 			return nil
 		case done && err != nil:
 			return err
