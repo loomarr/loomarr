@@ -47,9 +47,20 @@ type Clip struct {
 // TargetLUFS is the level every generated clip is built at, the household target.
 const TargetLUFS = -23.0
 
-// sineGain puts a stereo 440 Hz sine at TargetLUFS: two channels of a sine of amplitude a measure
-// 20*log10(a) - 0.7 LUFS after K-weighting.
-const sineGain = 0.0766
+// sineGain scales lavfi's sine, which peaks at 0.125, to the amplitude that measures TargetLUFS in
+// stereo: 20*log10(0.0766) - 0.7 = -23, and 0.0766 / 0.125.
+const sineGain = 0.6128
+
+// toneChannels are the channels carrying the sine; every other channel is silent. Only FL and FR:
+// the pipeline downmixes with `-ac 2` into AAC, and that path is NOT level-normalised, so FL/FR pass
+// through at unity gain and the output measures TargetLUFS. Loading every channel would sum
+// coherently into +6 LU. If the pipeline ever gains a normalising downmix, this clip class reads
+// low and break/loudness_dev_lu flags the level change.
+var toneChannels = map[string][]string{
+	"stereo": {"FL", "FR"},
+	"5.1":    {"FL", "FR"},
+	"7.1":    {"FL", "FR"},
+}
 
 var (
 	sdr709 = []string{"-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709"}
@@ -66,10 +77,15 @@ func video(w, h int, rate, vf string) []string {
 	return []string{"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%s,%s", w, h, rate, chain)}
 }
 
-// tone is a 48 kHz sine at the target loudness in the given layout; aformat pins the layout so an
-// AC-3 clip really is 5.1 whatever the generator emits.
+// tone is a 48 kHz sine at the target loudness in the given layout; pan pins the layout so an AC-3
+// clip really is 5.1 whatever the generator emits, and puts the sine in toneChannels.
 func tone(layout, af string) []string {
-	src := fmt.Sprintf("sine=frequency=440:sample_rate=48000,volume=%g,aformat=channel_layouts=%s", sineGain, layout)
+	var pan strings.Builder
+	pan.WriteString("pan=" + layout)
+	for _, ch := range toneChannels[layout] {
+		pan.WriteString("|" + ch + "=c0")
+	}
+	src := fmt.Sprintf("sine=frequency=440:sample_rate=48000,volume=%g,%s", sineGain, pan.String())
 	if af != "" {
 		src += "," + af
 	}

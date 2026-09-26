@@ -82,3 +82,34 @@ func TestRecipeHashKeysTheCorpusCache(t *testing.T) {
 		t.Errorf("CorpusDir = %s", got)
 	}
 }
+
+// The generated tone must land on the household target AFTER the pipeline's plain `-ac 2` downmix,
+// for every layout the corpus uses. It measured -44 LUFS (7.1: -49) because lavfi's sine peaks at
+// 0.125 and a mono source upmixed by aformat loses more, so break/loudness_dev_lu failed at 25.7 LU
+// on a healthy pipeline.
+func TestToneLandsOnTargetAfterDownmix(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("no ffmpeg on PATH")
+	}
+	for _, layout := range []string{"stereo", "5.1", "7.1"} {
+		// Encode exactly as the pipeline does (`-c:a aac -ac 2`): that downmix is not level-normalised, whereas
+		// a PCM downmix is, so a PCM check would pass a tone the pipeline outputs 6 LU hot.
+		m4a := filepath.Join(t.TempDir(), "tone.m4a")
+		args := append([]string{"-hide_banner", "-loglevel", "error", "-y", "-t", "5"}, tone(layout, "")...)
+		if out, err := exec.Command(ffmpeg, append(args, "-c:a", "aac", "-b:a", "160k", "-ac", "2", "-ar", "48000", m4a)...).CombinedOutput(); err != nil {
+			t.Fatalf("%s: %v\n%s", layout, err, out)
+		}
+		out, err := exec.Command(ffmpeg, "-hide_banner", "-nostats", "-i", m4a, "-af", "ebur128=peak=none", "-f", "null", "-").CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", layout, err, out)
+		}
+		lufs, err := parseIntegratedLoudness(string(out))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d := lufs - TargetLUFS; d > 0.5 || d < -0.5 {
+			t.Errorf("%s tone measures %.1f LUFS after downmix, want %.1f", layout, lufs, TargetLUFS)
+		}
+	}
+}
