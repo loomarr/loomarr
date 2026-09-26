@@ -1,0 +1,4 @@
+class,content_s,real_s,user_s,sys_s,frames
+h264,60,4.439,1.462,0.574,"frames":1798
+hevc,60,4.119,1.569,0.491,"frames":1798
+hdr,60,6.984,7.392,2.518,"frames":1798

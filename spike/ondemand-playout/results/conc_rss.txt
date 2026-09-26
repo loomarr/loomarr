@@ -1,0 +1,11 @@
+hdr=0 n=1 spikepack: n=1 avgRSS=19584kB ffmpeg: n=1 avgRSS=101856kB 
+hdr=0 n=2 spikepack: n=2 avgRSS=21672kB ffmpeg: n=2 avgRSS=93604kB 
+hdr=0 n=4 spikepack: n=4 avgRSS=17264kB ffmpeg: n=4 avgRSS=98639kB 
+hdr=0 n=6 spikepack: n=6 avgRSS=17431kB ffmpeg: n=6 avgRSS=97898kB 
+hdr=0 n=8 spikepack: n=8 avgRSS=18487kB ffmpeg: n=8 avgRSS=97946kB 
+hdr=0 n=10 spikepack: n=10 avgRSS=18737kB ffmpeg: n=10 avgRSS=97044kB 
+hdr=0 n=12 spikepack: n=12 avgRSS=18429kB ffmpeg: n=12 avgRSS=97587kB 
+hdr=0 n=16 spikepack: n=16 avgRSS=18374kB ffmpeg: n=16 avgRSS=97023kB 
+hdr=1 n=2 spikepack: n=3 avgRSS=15752kB ffmpeg: n=3 avgRSS=176914kB 
+hdr=1 n=4 spikepack: n=5 avgRSS=16128kB ffmpeg: n=5 avgRSS=144861kB 
+hdr=1 n=6 spikepack: n=7 avgRSS=17032kB ffmpeg: n=7 avgRSS=129977kB 
