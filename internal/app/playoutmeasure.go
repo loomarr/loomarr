@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
+	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/mediameasure"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // sourceMeasurer is the part of mediameasure.Measurer the resolver uses.
@@ -75,6 +77,60 @@ func (r *playoutResolver) submitAnalysis(id inventory.SourceID, revision, input 
 	if r.measurer != nil {
 		r.measurer.Submit(mediameasure.SourceRef{ID: id, Revision: revision, Path: input, Facts: facts})
 	}
+}
+
+// naturalBreakSource binds mid-roll candidate lookups (§10) to one reconcile or preview pass.
+// Nil when this install cannot answer (no inventory, analysis store or library client).
+func (r *playoutResolver) naturalBreakSource(ctx context.Context) schedule.NaturalBreakSource {
+	if r == nil || r.inventory == nil || r.analyses == nil || r.lib == nil {
+		return nil
+	}
+	return naturalBreaks{ctx: ctx, r: r}
+}
+
+type naturalBreaks struct {
+	ctx context.Context
+	r   *playoutResolver
+}
+
+// NaturalBreaks reads the scene fades Loomarr measured for a library item's local file. An item
+// with no stored analysis for its current revision is queued for measurement (one low-priority
+// worker, G7) and airs whole until a later pass finds it measured. A streamed (non-file) item
+// has none: measurement reads files directly, never through the media server.
+func (n naturalBreaks) NaturalBreaks(libraryItemID string) []schedule.BreakCandidate {
+	ctx, r := n.ctx, n.r
+	var pm library.PathMap
+	if r.pathMap != nil {
+		pm = r.pathMap()
+	}
+	input := r.lib.ResolveInput(ctx, libraryItemID, pm, library.StatReadableFile)
+	if input.Kind != library.InputFile {
+		return nil
+	}
+	origin, ok := r.ensureLocalInventorySource(ctx, input.URL)
+	if !ok {
+		return nil
+	}
+	source, found, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Now: r.inventoryNow(),
+		Kinds: []inventory.SourceKind{inventory.SourceLocalFile},
+	})
+	if err != nil || !found {
+		return nil
+	}
+	analysis, measured, err := r.analyses.InventoryAnalysis(ctx, source.ID)
+	if err != nil {
+		return nil
+	}
+	if !measured {
+		r.submitAnalysis(source.ID, source.Revision, input.URL, source.Observation.Facts)
+		return nil
+	}
+	out := make([]schedule.BreakCandidate, 0, len(analysis.Breaks))
+	for _, b := range analysis.Breaks {
+		out = append(out, schedule.BreakCandidate{AtMs: b.AtMs, Confidence: b.Confidence})
+	}
+	return out
 }
 
 func localRevisionOfPath(path string) (string, error) {

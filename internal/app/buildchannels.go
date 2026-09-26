@@ -243,6 +243,11 @@ func buildChannels(
 			// global fallback, while schedule.PlaysInternally applies a channel's policy override.
 			// This keeps ordinary reconcile aligned with the fleet barrier during a transition.
 			ResolvePlayoutBackendContext: reconcileBackendContext,
+			// Mid-roll breaks at measured scene fades (§10). The resolver is built after the
+			// engine (below), so this reads it at pass time; nil until then means none.
+			NaturalBreaks: func(ctx context.Context) schedule.NaturalBreakSource {
+				return playoutRes.naturalBreakSource(ctx)
+			},
 		}, time.Now, log).WithMetrics(metricRecorder).WithQualityRecorder(quality.NewSchedulingRecorder(st, log))
 		// Heal an entry that reached the scheduler unrated once its title is in the
 		// library (§389 amendment): without this a fail-closed audience ceiling drops

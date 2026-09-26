@@ -153,7 +153,9 @@ type playoutResolver struct {
 	// measurer records first-play stream facts and queues background analysis (keyframes, loudness,
 	// break candidates) per source revision. Nil ⇒ playout probes as before and stores nothing.
 	measurer sourceMeasurer
-	// analyses reads the measured keyframe index a still seeks with. Nil ⇒ ffmpeg's container seek.
+	// analyses reads what the measurer stored: the keyframe index a still seeks with, and the scene
+	// fades mid-roll placement uses (§10). Nil ⇒ ffmpeg's container seek, and no mid-roll breaks
+	// (every programme airs whole).
 	analyses inventory.AnalysisReader
 	// probeSource returns the shared ffprobe superset so the audio choice and durable technical
 	// observation come from one process. Nil ⇒ track 0, preserving best-effort playout.

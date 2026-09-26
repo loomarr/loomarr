@@ -554,7 +554,7 @@ func interleaveBreaks(ch Channel, slots []Slot) []Slot {
 		// each chosen fade. The runtime after the last cut is what the between-programme rule
 		// below sees, so the one cadence runs through both kinds of break.
 		var cuts []int64
-		if ch.NaturalBreaks != nil && s.LibraryItemID != "" {
+		if ch.NaturalBreaks != nil && s.LibraryItemID != "" && midRoll.IntervalMs > 0 && s.DurationMs >= midRoll.MinProgrammeMs {
 			cuts = PlaceMidRollCuts(s.DurationMs, acc, ch.NaturalBreaks.NaturalBreaks(s.LibraryItemID), midRoll)
 		}
 		if len(cuts) == 0 {

@@ -136,6 +136,7 @@ type Engine struct {
 	breakDurationFor  func() time.Duration                  // live §10 commercial-break length default
 	defaultWindowFor  func() time.Duration                  // live §6.5 rolling-window default
 	playoutBackendFor func(context.Context) (string, error) // durable §9.1 transition target
+	naturalBreaks     func(context.Context) schedule.NaturalBreakSource // §10 mid-roll candidates; nil = none
 	now               func() time.Time
 
 	mu    sync.Mutex
@@ -180,6 +181,9 @@ type Config struct {
 	// ResolvePlayoutBackendContext reads the durable transition checkpoint once per reconcile
 	// attempt so Postgres replicas observe Prepared. Nil fails closed through the empty backend.
 	ResolvePlayoutBackendContext func(context.Context) (string, error)
+	// NaturalBreaks returns the measured scene-fade source mid-roll placement reads (§10), bound
+	// to one reconcile or preview pass. Nil = no mid-roll anywhere (between-programme breaks only).
+	NaturalBreaks func(context.Context) schedule.NaturalBreakSource
 }
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
@@ -221,6 +225,7 @@ func New(st EngineStore, prog programmer.Programmer, avail Availability, guide G
 		breakDurationFor:  cfg.ResolveBreakDuration,
 		defaultWindowFor:  cfg.ResolveDefaultWindow,
 		playoutBackendFor: cfg.ResolvePlayoutBackendContext,
+		naturalBreaks:     cfg.NaturalBreaks,
 		now:               now,
 		locks:             map[string]*sync.Mutex{},
 	}

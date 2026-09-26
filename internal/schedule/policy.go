@@ -82,6 +82,13 @@ type OperatorPolicy struct {
 	// `filler.break_duration`; a present value must be at least 30s. There is no zero/off state —
 	// BreaksPerHour already owns that decision, and two switches would be ambiguous.
 	BreakDuration *Duration `json:"breakDuration,omitempty"`
+	// MidRoll is the per-channel switch for commercial breaks INSIDE long programmes, placed only
+	// at measured scene fades (§10 mid-roll). Nil inherits the default, which is ON (maintainer
+	// decision, #1512); false turns mid-roll off for this channel and keeps its between-programme
+	// breaks. A pointer because the default is on: a plain bool's zero would switch every existing
+	// channel off. It lowers nothing else: BreaksPerHour 0 (or no filler pool) still means no
+	// breaks at all, and a Tunarr channel never breaks mid-programme.
+	MidRoll *bool `json:"midRoll,omitempty"`
 	// Window is the rolling-window horizon a channel materializes (§6.5): the scheduler
 	// emits ~Window of runtime rather than the whole run, advancing across boundaries.
 	// 0 = inherit the global default (sched.window_hours, 24h); WindowFull = the whole

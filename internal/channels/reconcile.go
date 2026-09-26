@@ -241,6 +241,7 @@ func (e *Engine) reconcileOnce(
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
+	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
 	if playsInternally {
 		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
@@ -590,6 +591,22 @@ func BreaksPerHourFor(pol schedule.ChannelPolicy, hasFillerPool bool, global int
 	}
 	// A present zero (or a nonsense negative) is "no breaks on this channel".
 	return 0
+}
+
+// MidRollFor reports whether a channel breaks INSIDE long programmes (§10 mid-roll): only on
+// internal playout (Tunarr inserts filler at programme boundaries only), and on unless the
+// channel's policy switches it off. Density and the filler pool are BreaksPerHourFor's decision.
+func MidRollFor(pol schedule.ChannelPolicy, playsInternally bool) bool {
+	return playsInternally && (pol.MidRoll == nil || *pol.MidRoll)
+}
+
+// naturalBreaksFor is the scene-fade source for one scheduling pass, or nil when the channel does
+// not break mid-programme.
+func (e *Engine) naturalBreaksFor(ctx context.Context, pol schedule.ChannelPolicy, playsInternally bool) schedule.NaturalBreakSource {
+	if e.naturalBreaks == nil || !MidRollFor(pol, playsInternally) {
+		return nil
+	}
+	return e.naturalBreaks(ctx)
 }
 
 // BreakDurationFor resolves the per-channel break length against the live global setting.
