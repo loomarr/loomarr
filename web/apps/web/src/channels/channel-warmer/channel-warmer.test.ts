@@ -77,6 +77,32 @@ describe("channel warmer", () => {
     expect(mediaBytes).toHaveBeenCalledOnce();
   });
 
+  it("prefetches the neighbour's still so a surf paints it from cache", async () => {
+    mintChannelPlaySource.mockResolvedValue({
+      url: "/v1/playout/hls/ch-4/master.m3u8?sig=signed",
+      stillURL: "/v1/playout/still/ch-4?sig=signed",
+      expiresAt: Date.now() + 60_000,
+    });
+    const stills: URL[] = [];
+    server.use(
+      http.get(
+        "*/v1/playout/hls/ch-4/master.m3u8",
+        () => new HttpResponse("#EXTM3U\n#EXTINF:1,\nseg-0.m4s\n"),
+      ),
+      http.get("*/v1/playout/hls/ch-4/seg-0.m4s", () => new HttpResponse(new Uint8Array([0]))),
+      http.get("*/v1/playout/still/ch-4", ({ request }) => {
+        stills.push(new URL(request.url));
+        return new HttpResponse(new Uint8Array([0xff, 0xd8]), { headers: { "Content-Type": "image/jpeg" } });
+      }),
+    );
+
+    await expect(warmChannel("ch-4", new AbortController().signal)).resolves.toMatchObject({
+      stillURL: "/v1/playout/still/ch-4?sig=signed",
+      warmed: true,
+    });
+    expect(stills.map((url) => url.searchParams.get("sig"))).toEqual(["signed"]);
+  });
+
   it("warms the bounded live origin when durable preparation misses", async () => {
     mintChannelPlaySource.mockResolvedValue({
       url: "/v1/playout/hls/ch-3/master.m3u8?sig=signed",

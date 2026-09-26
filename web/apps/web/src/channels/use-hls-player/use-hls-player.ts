@@ -32,6 +32,7 @@ const useHlsPlayer = (channelId: string, attempt?: TuneAttempt, onManifest?: () 
         ? {
             markPhase: (phase) => markTunePhase(attempt, phase),
             playURL: attempt.playURL,
+            stillURL: attempt.stillURL,
           }
         : undefined,
     [attempt],

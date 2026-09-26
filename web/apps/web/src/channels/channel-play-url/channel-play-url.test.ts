@@ -40,4 +40,17 @@ describe("channel play URL", () => {
       { signal: controller.signal },
     );
   });
+
+  it("carries the channel's same-origin still so a tune can show it before video", async () => {
+    channelPlayUrl.mockResolvedValue({
+      relativeUrl: "/v1/playout/hls/ch-2/master.m3u8?sig=signed",
+      relativeStillUrl: "/v1/playout/still/ch-2?sig=signed",
+      stillUrl: "https://loomarr.example/v1/playout/still/ch-2?sig=signed",
+      expiresAt: "2030-01-01T00:00:00Z",
+    });
+
+    await expect(mintChannelPlaySource("ch-2", new AbortController().signal)).resolves.toMatchObject({
+      stillURL: "/v1/playout/still/ch-2?sig=signed",
+    });
+  });
 });

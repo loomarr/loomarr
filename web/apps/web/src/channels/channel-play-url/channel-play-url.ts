@@ -33,7 +33,8 @@ const mintChannelPlaySource = async (
   const body = unwrap(response);
   const url = body?.relativeUrl || body?.url;
   if (!url) return undefined;
-  return { url, expiresAt: new Date(body.expiresAt).getTime() };
+  const stillURL = body.relativeStillUrl || body.stillUrl;
+  return { url, expiresAt: new Date(body.expiresAt).getTime(), ...(stillURL ? { stillURL } : {}) };
 };
 
 export { mintChannelPlaySource, qualityHint };

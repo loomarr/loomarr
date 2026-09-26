@@ -130,7 +130,7 @@ const useChannelTuner = ({
       const target = adjacentChannel(catalog, pendingId.current, direction);
       if (!target || (catalog.length === 1 && target.id === pendingId.current)) return;
       const warm = warmed.current.get(target.id);
-      const attempt = beginTune(true, warm?.warmed, warm?.url);
+      const attempt = beginTune(true, warm?.warmed, warm?.url, warm?.stillURL);
       latestAttemptId.current = attempt.id;
       pendingId.current = target.id;
       requestedId.current = target.id;

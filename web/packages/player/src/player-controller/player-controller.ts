@@ -152,6 +152,11 @@ const createPlayerController = ({
       const nextSource =
         (!recovering && warmer.take(channel.id)) || (await source.mint(channel, profile, request.signal));
       if (!isCurrentAttempt(attemptId, request.signal)) return;
+      // A channel nobody warmed gets its picture from its own mint: the server decodes a cold
+      // channel's still on demand, so the overlay can show it while the stream starts.
+      if (!recovering && !snapshot.stillUri && nextSource.stillUri && snapshot.status === "tuning") {
+        publish({ ...snapshot, stillUri: nextSource.stillUri });
+      }
       await transport.replace(nextSource, { attemptId, signal: request.signal });
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       // The viewer's own stream is on its way; only now may neighbours start their sessions.

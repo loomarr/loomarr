@@ -25,17 +25,33 @@ import { liveHlsConfig } from "./live-hls-config";
 type BrowserPlayerStatus = "idle" | "loading" | "playing" | "error";
 const LIVE_DVR_HORIZON_MS = 15 * 60_000;
 
-type BrowserTunePhase = "first-frame" | "manifest";
+type BrowserTunePhase = "first-frame" | "manifest" | "still";
 
 interface BrowserTuneAttempt {
   markPhase: (phase: BrowserTunePhase) => void;
   playURL?: string;
+  /** The warmed neighbour's still, already prefetched: painted the moment the tune starts. */
+  stillURL?: string;
 }
 
 interface BrowserPlaySource {
   expiresAt?: number;
+  /** The channel's current frame (a cold channel's is decoded on demand), shown until video starts. */
+  stillURL?: string;
   url: string;
 }
+
+/** Marks the poster as this tune's still, so the first frame knows to clear it. */
+const tuneStillKey = "tuneStill";
+
+// A held outgoing frame (data: PNG) or this tune's still stands in until the first frame.
+const clearTunePoster = (video: HTMLVideoElement) => {
+  const still = video.dataset[tuneStillKey];
+  if (video.poster.startsWith("data:image/png;base64,") || (still && video.poster === still)) {
+    video.removeAttribute("poster");
+  }
+  delete video.dataset[tuneStillKey];
+};
 
 interface BrowserLivePlaybackTransport {
   state: LivePlaybackState;
@@ -382,6 +398,7 @@ function useBrowserHlsPlayer({
     value: liveStateAt(clockRef.current, now),
   });
   const warmedPlayURL = playbackAttempt?.playURL;
+  const warmedStillURL = playbackAttempt?.stillURL;
 
   const publishTransport = useCallback(
     (sampleFrame = true) => {
@@ -593,7 +610,7 @@ function useBrowserHlsPlayer({
       const onFirstFrame = () => {
         if (firstFrame) return;
         firstFrame = true;
-        if (video.poster.startsWith("data:image/png;base64,")) video.removeAttribute("poster");
+        clearTunePoster(video);
         playbackAttempt?.markPhase("first-frame");
         setState({ channelId, status: "playing" });
         recordDiagnostic({ ...diagnosticBase, event: "player.ready" });
@@ -968,6 +985,29 @@ function useBrowserHlsPlayer({
       const onTimeUpdate = () => publishTransport();
       video.addEventListener("timeupdate", onTimeUpdate);
       setState({ channelId, status: "loading" });
+      // The channel's still replaces the held outgoing frame as soon as it has decoded, so the
+      // viewer sees the channel they asked for while its stream starts. Loaded off-element first:
+      // a half-loaded poster would flash, and a still arriving after video has started must not
+      // cover it.
+      let started = false;
+      const onStarted = () => {
+        started = true;
+      };
+      video.addEventListener("playing", onStarted, { once: true });
+      let stillShown = false;
+      const showStill = (stillURL: string | undefined) => {
+        if (!stillURL || stillShown) return;
+        stillShown = true;
+        const image = new Image();
+        image.onload = () => {
+          if (!current() || started) return;
+          video.poster = stillURL;
+          video.dataset[tuneStillKey] = stillURL;
+          playbackAttempt?.markPhase("still");
+        };
+        image.src = stillURL;
+      };
+      showStill(warmedStillURL);
       const at = Date.now();
       clockRef.current = {
         channelId,
@@ -986,7 +1026,7 @@ function useBrowserHlsPlayer({
       let teardown: (() => void) | undefined;
       // Reuse an adjacent warmer's signed URL when present. Otherwise mint normally. Both paths
       // arrive at the same transport attachment; warming never creates a second player.
-      const source = warmedPlayURL
+      const source: Promise<BrowserPlaySource | undefined> = warmedPlayURL
         ? Promise.resolve({ url: warmedPlayURL, expiresAt: Number.POSITIVE_INFINITY })
         : mintSource(controller.signal);
       source
@@ -995,6 +1035,7 @@ function useBrowserHlsPlayer({
           // The Web adapter prefers a relative same-origin form, which avoids CORS and works when
           // server.public_url is unset.
           const src = body?.url;
+          showStill(body?.stillURL);
           if (!src) {
             setState({ channelId, status: "error", error: "Couldn't get a stream for this channel." });
             return;
@@ -1018,12 +1059,22 @@ function useBrowserHlsPlayer({
 
       return () => {
         video.removeEventListener("timeupdate", onTimeUpdate);
+        video.removeEventListener("playing", onStarted);
         controller.abort();
         if (generationRef.current === generation) generationRef.current++;
         teardown?.();
       };
     },
-    [channelId, bind, errorMessage, mintSource, publishTransport, warmedPlayURL],
+    [
+      channelId,
+      bind,
+      errorMessage,
+      mintSource,
+      playbackAttempt,
+      publishTransport,
+      warmedPlayURL,
+      warmedStillURL,
+    ],
   );
 
   const liveTransport = useMemo<BrowserLivePlaybackTransport>(
