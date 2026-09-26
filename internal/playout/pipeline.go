@@ -3,6 +3,7 @@ package playout
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -129,12 +130,16 @@ type OutputProfile struct {
 	AudioKbps  int
 }
 
-// Maintainer's output picture setting (#1512, 2026-09-26).
+// Maintainer's output picture setting (#1512, 2026-09-26). The target and cap are the 1080p budget;
+// lower rungs scale them by pixel count (outputRate).
 const (
 	outputQuality    = 22
 	outputTargetKbps = 8000
 	outputMaxKbps    = 12000
 	outputGOPSeconds = 1
+	// The floor keeps a small rung's cap above what q22 needs on busy motion.
+	outputFloorTargetKbps = 1000
+	outputFloorMaxKbps    = 1500
 )
 
 // ChannelOutput is the uniform output for a channel profile: its geometry, cadence and audio
@@ -142,10 +147,19 @@ const (
 func ChannelOutput(p Profile) OutputProfile {
 	return OutputProfile{
 		Width: p.Width, Height: p.Height, FPS: p.Framerate,
-		HEVC:    engineOf(p.Encoder) != p.Encoder,
-		Quality: outputQuality, TargetKbps: outputTargetKbps, MaxKbps: outputMaxKbps,
+		HEVC:       engineOf(p.Encoder) != p.Encoder,
+		Quality:    outputQuality,
+		TargetKbps: outputRate(outputTargetKbps, outputFloorTargetKbps, p.Width, p.Height),
+		MaxKbps:    outputRate(outputMaxKbps, outputFloorMaxKbps, p.Width, p.Height),
 		GOPSeconds: outputGOPSeconds, AudioKbps: p.AudioBitrate,
 	}
+}
+
+// outputRate scales a 1080p budget by the rung's share of 1080p's pixels, to the nearest
+// 100 kbit/s and never below floor or above the 1080p budget (720p: 8000 -> 3600).
+func outputRate(at1080p, floor, width, height int) int {
+	share := min(float64(width*height)/(1920*1080), 1)
+	return max(int(math.Round(float64(at1080p)*share/100))*100, floor)
 }
 
 func (o OutputProfile) gop() int {

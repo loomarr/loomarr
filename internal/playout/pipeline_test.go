@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -288,5 +289,45 @@ func TestDemoteTonemap_MaintainerOrder(t *testing.T) {
 	}
 	if want := []string{"opencl", "libplacebo", "cpu"}; !slices.Equal(steps, want) {
 		t.Fatalf("tone-map order %q, want %q", steps, want)
+	}
+}
+
+// TestChannelOutput_RateScalesWithRungPixels: q22 on every rung, but 8M/12M is the 1080p budget.
+// A lower rung gets the target and cap scaled by its pixel count (to 100 kbit/s, with a floor),
+// and keeps its geometry, cadence and audio.
+func TestChannelOutput_RateScalesWithRungPixels(t *testing.T) {
+	want := map[[2]int][2]int{
+		{1920, 1080}: {8000, 12000},
+		{1280, 720}:  {3600, 5300},
+		{854, 480}:   {1600, 2400},
+		{640, 360}:   {1000, 1500}, // floor
+	}
+	for geom, rate := range want {
+		p := Profile{Width: geom[0], Height: geom[1], Framerate: 25, AudioBitrate: 96, VideoBitrate: 1200, Encoder: EncoderNVENC}
+		out := ChannelOutput(p)
+		if out.TargetKbps != rate[0] || out.MaxKbps != rate[1] || out.Quality != 22 {
+			t.Errorf("%dx%d: rate q%d %d/%d, want q22 %d/%d", geom[0], geom[1], out.Quality, out.TargetKbps, out.MaxKbps, rate[0], rate[1])
+		}
+		if out.Width != geom[0] || out.Height != geom[1] || out.FPS != 25 || out.AudioKbps != 96 {
+			t.Errorf("%dx%d: rung geometry/cadence/audio changed: %+v", geom[0], geom[1], out)
+		}
+	}
+	// Every shipped rung lands on the scaled budget, and each family's encoder carries it.
+	for tier, l := range ladders {
+		for _, r := range l {
+			out := ChannelOutput(Profile{Width: r.width, Height: r.height, Framerate: r.framerate, AudioBitrate: r.audioBitrate, Encoder: EncoderNVENC})
+			if _, ok := want[[2]int{r.width, r.height}]; !ok {
+				t.Errorf("%s: rung %dx%d has no expected budget", tier, r.width, r.height)
+			}
+			for hostName, host := range testHosts() {
+				p, err := Build(host, testSources()["h264-1080p-sdr-25"], out)
+				if err != nil {
+					t.Fatalf("%s: %v", hostName, err)
+				}
+				if !slices.Contains(p.VideoEncode, strconv.Itoa(out.MaxKbps)+"k") {
+					t.Errorf("%s/%s %dx%d: encoder lacks the scaled cap %dk: %q", tier, hostName, r.width, r.height, out.MaxKbps, p.VideoEncode)
+				}
+			}
+		}
 	}
 }
