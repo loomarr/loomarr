@@ -373,6 +373,31 @@ which came from an easy sample.
 - **ffmpeg 9:** minimal probing (`probesize 32768`) cannot open TrueHD tracks ("Could not find codec
   parameters"). n8.1 opened all 20 4K HDR files in 2b. This is one more ffmpeg-9 difference, alongside the
   known concat break.
+
+## 8. Software-only host family (household host, cp2)
+
+`results/p2h.sh`, `p2h_start.csv`, `p2h_speed.csv`, `p2h_conc.csv`. Throwaway container of the production
+image with **no `/dev/dri`** and `--cpus 4`, libx264 `veryfast`, CIFS media, 30 s of content per run.
+Collected by the supervisor after the lane's cutoff.
+
+| Class | Speed alone | Cores/stream at 1x | First segment (5 runs) |
+|---|---|---|---|
+| H.264 → 1080p | 3.9x | 0.94 | 571–1243 ms |
+| H.264 → 720p | 6.0x | 0.62 | 415–837 ms |
+| HEVC → 1080p | 2.8x | 1.35 | 661–1605 ms |
+| HEVC → 720p | 4.3x | 0.87 | 495–1106 ms |
+| 4K HDR → 720p (the maintainer's "downscale, then CPU tone-map" rule) | **1.04x** | **3.7** | 2444–4008 ms |
+
+Concurrency, every stream at least 1.2x: **3 at 1080p** (4 → 1.04x) and **5 at 720p** (6 → 1.02x).
+
+- **4K HDR is not viable in software on 4 CPUs** (1.04x using the whole quota). The maintainer's rule then
+  says refuse with a clear message; the slate covers the slot.
+- **Software-only hosts need their own CPU allowance.** There the CPU *is* the encoder, so the Arc's
+  "1 core total" rule would allow about one stream. Proposal: reserve about 1 core for the app and give
+  playout the rest. On 4 CPUs that means 3 channels at 720p, or 2 at 1080p.
+- **Start is within the on-screen target** (≤ 1.5 s) for SDR at 720p. Only HEVC → 1080p's slowest runs
+  approach it.
+
 ## Production requirements found by the spike
 
 1. **Conform frame metadata in-graph:**
