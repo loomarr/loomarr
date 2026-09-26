@@ -180,13 +180,17 @@ func TestLive_SoftwareLadderRealTitles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			args := replaceOutput(pipe.ItemArgs(path, 20*time.Second, 30*25, 25, 0), os.DevNull)
+			args := append([]string{"-y"}, replaceOutput(pipe.ItemArgs(path, 20*time.Second, 30*25, 25, 0), os.DevNull)...)
 			cmd := exec.Command(bin, args...)
 			start := time.Now()
-			if b, err := cmd.CombinedOutput(); err != nil {
+			b, err := cmd.CombinedOutput()
+			if err != nil {
 				t.Fatalf("%s %s: %v %s", name, rung, err, b)
 			}
 			wall := time.Since(start).Seconds()
+			if wall < 1 {
+				t.Fatalf("%s %s: ffmpeg finished in %.3f s, so it encoded nothing: %q\n%s", name, rung, wall, args, b)
+			}
 			cpu := (cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()).Seconds()
 			t.Logf("RUNG %s %s: speed %.2fx, %.2f cores at 1x (%.2f cores busy)", name, rung, 30/wall, cpu/30, cpu/wall)
 		}
@@ -274,7 +278,15 @@ func segmentLengths(t *testing.T, bin, path string) (float64, float64) {
 	if err != nil {
 		t.Fatalf("probe %s: %v", path, err)
 	}
-	frames, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+	// MPEG-TS lists each stream twice (stream and program sections): take the first.
+	fields := strings.Fields(string(b))
+	if len(fields) == 0 {
+		t.Fatalf("probe %s: no video stream", path)
+	}
+	frames, err := strconv.Atoi(fields[0])
+	if err != nil {
+		t.Fatalf("probe %s: %v", path, err)
+	}
 	pcm, err := exec.Command(bin, "-v", "error", "-i", path, "-map", "0:a:0", "-f", "s16le", "-ac", "1", "-ar", "48000", "-").Output()
 	if err != nil {
 		t.Fatalf("decode audio %s: %v", path, err)
