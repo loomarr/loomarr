@@ -6,7 +6,7 @@
 // live HLS window with a listing gate.
 //
 // The packager knows nothing about schedules, media servers or ffmpeg arguments: the caller supplies
-// a Schedule (what airs at an instant, and how to open its encoder) and a Slate.
+// a Schedule (what airs at an instant, and how to open its encoder) and a SlateSource.
 package packager
 
 import (
@@ -105,7 +105,8 @@ func (c *Config) defaults() error {
 type Packager struct {
 	cfg      Config
 	schedule Schedule
-	slate    *Slate
+	slateSrc SlateSource
+	slate    *Slate // owned by Run: loaded on the first slot that needs it
 	frameDur int64
 
 	// Timeline counters, owned by Run: the next video tick (90 kHz) and audio sample (48 kHz).
@@ -130,7 +131,7 @@ type Stats struct {
 	Items, Slates, DecoderMismatch, ZeroFrame, Late, Trimmed int
 }
 
-func New(cfg Config, schedule Schedule, slate *Slate) (*Packager, error) {
+func New(cfg Config, schedule Schedule, slate SlateSource) (*Packager, error) {
 	if err := cfg.defaults(); err != nil {
 		return nil, err
 	}
@@ -138,7 +139,7 @@ func New(cfg Config, schedule Schedule, slate *Slate) (*Packager, error) {
 		return nil, errors.New("packager: schedule and slate are required")
 	}
 	return &Packager{
-		cfg: cfg, schedule: schedule, slate: slate, frameDur: int64(videoRate / cfg.FPS),
+		cfg: cfg, schedule: schedule, slateSrc: slate, frameDur: int64(videoRate / cfg.FPS),
 		changed: make(chan struct{}),
 	}, nil
 }

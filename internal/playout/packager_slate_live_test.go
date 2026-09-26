@@ -81,7 +81,7 @@ func TestSlateSampleDescriptionMatchesEveryItem(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(m.Stop)
-			slate, err := m.slate(context.Background(), host, out)
+			slate, err := m.slate(host, out)(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}

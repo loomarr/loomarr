@@ -92,7 +92,7 @@ func TestPackagerStitchesMixedFormatItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: segDir, RunAhead: time.Hour, FirstItemWait: 10 * time.Second,
-		SlateLead: time.Nanosecond}, sched, slate)
+		SlateLead: time.Nanosecond}, sched, packager.ReadySlate(slate))
 	if err != nil {
 		t.Fatal(err)
 	}

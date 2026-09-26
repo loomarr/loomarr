@@ -188,7 +188,7 @@ func runPlans(t *testing.T, cfg Config, plans []plan) *harness {
 			return pl.enc.encode(t, ictx, slot), nil
 		}}, nil
 	}
-	p, err := New(cfg, sched, testSlate(t))
+	p, err := New(cfg, sched, ReadySlate(testSlate(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,7 +450,7 @@ func TestFirstManifestIsHeldUntilFourSeconds(t *testing.T) {
 			return synth{label: "prog", gate: gate}.encode(t, ictx, slot), nil
 		}}, nil
 	}
-	p, err := New(Config{FPS: testFPS, Dir: dir, RunAhead: time.Hour}, sched, testSlate(t))
+	p, err := New(Config{FPS: testFPS, Dir: dir, RunAhead: time.Hour}, sched, ReadySlate(testSlate(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +479,7 @@ func TestRunAheadBackPressure(t *testing.T) {
 			return &countingReader{r: synth{label: "prog"}.encode(t, ictx, slot), n: &produced}, nil
 		}}, nil
 	}
-	p, err := New(Config{FPS: testFPS, Dir: dir, RunAhead: 2 * time.Second}, sched, testSlate(t))
+	p, err := New(Config{FPS: testFPS, Dir: dir, RunAhead: 2 * time.Second}, sched, ReadySlate(testSlate(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +621,7 @@ func testSlateWith(t testing.TB, sps []byte) *Slate {
 // refused as a mismatch).
 func TestFirstManifestWaitsForARealItem(t *testing.T) {
 	sched := func(ctx context.Context, _ time.Time) (Item, error) { return Item{}, errors.New("nothing airs") }
-	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, testSlate(t))
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, ReadySlate(testSlate(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -654,7 +654,7 @@ func TestSlateNeverDefinesTheChannelInit(t *testing.T) {
 		}}, nil
 	}
 	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour, FirstItemWait: 50 * time.Millisecond,
-		SlateRetry: time.Second}, sched, testSlateWith(t, slateSPS))
+		SlateRetry: time.Second}, sched, ReadySlate(testSlateWith(t, slateSPS)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +685,7 @@ func TestSlowTuneInItemIsWaitedFor(t *testing.T) {
 			return synth{label: "prog", blockBefore: slow}.encode(t, ictx, slot), nil
 		}}, nil
 	}
-	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, testSlate(t))
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, ReadySlate(testSlate(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,5 +697,29 @@ func TestSlowTuneInItemIsWaitedFor(t *testing.T) {
 	}
 	if s := p.Stats(); s.Slates != 0 || s.Late != 0 || opens.Load() != 1 {
 		t.Fatalf("stats %+v, opens %d: want the tune-in item waited for, once", s, opens.Load())
+	}
+}
+
+// The slate is fetched only when a slot needs it (#1512 G2): a first item that produces airs while
+// the slate is still encoding, and the packager never waits on it.
+func TestFirstItemAirsWhileTheSlateIsEncoding(t *testing.T) {
+	sched := func(ctx context.Context, _ time.Time) (Item, error) {
+		return Item{Label: "prog", Duration: time.Minute, Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+			return synth{label: "prog"}.encode(t, ictx, slot), nil
+		}}, nil
+	}
+	encoding := func(ctx context.Context) (*Slate, error) { <-ctx.Done(); return nil, ctx.Err() }
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, encoding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := start(t, p)
+	wctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := p.AwaitPlaylist(wctx); err != nil {
+		t.Fatalf("AwaitPlaylist while the slate encodes: %v", err)
+	}
+	if s := p.Stats(); s.Slates != 0 || s.Items == 0 {
+		t.Fatalf("stats %+v: want the item on air and no slate", s)
 	}
 }

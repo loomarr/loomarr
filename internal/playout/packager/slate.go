@@ -70,8 +70,34 @@ func NewSlate(stream []byte) (*Slate, error) {
 // Init is the slate encoder's init segment (ftyp+moov).
 func (s *Slate) Init() []byte { return s.init }
 
+// SlateSource returns the channel's slate, waiting while it is still being encoded. The packager
+// asks only when the timeline needs slate, so the encode is never on the tune path (#1512 G2).
+type SlateSource func(ctx context.Context) (*Slate, error)
+
+// ReadySlate is the SlateSource of a slate already in hand.
+func ReadySlate(s *Slate) SlateSource {
+	return func(context.Context) (*Slate, error) { return s, nil }
+}
+
+// loadSlate fetches the slate on first need; a failure stops the packager (its next viewer starts
+// it afresh).
+func (p *Packager) loadSlate(ctx context.Context) error {
+	if p.slate != nil {
+		return nil
+	}
+	s, err := p.slateSrc(ctx)
+	if err != nil {
+		return fmt.Errorf("packager: slate: %w", err)
+	}
+	p.slate = s
+	return nil
+}
+
 // fillSlate fills a whole slot with slate, one GOP per segment.
 func (p *Packager) fillSlate(ctx context.Context, slot Slot) error {
+	if err := p.loadSlate(ctx); err != nil {
+		return err
+	}
 	p.count(func(s *Stats) { s.Slates++ })
 	// The slate never defines the channel init; before the first item it is checked once the
 	// item's init arrives (acceptInit).

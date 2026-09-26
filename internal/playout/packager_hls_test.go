@@ -1,6 +1,7 @@
 package playout
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -166,5 +167,46 @@ func TestFillerGainIsFillerOnly(t *testing.T) {
 		if gain != tc.gain || (note != "") != tc.noted {
 			t.Errorf("%s: FillerGain = %v, %q", name, gain, note)
 		}
+	}
+}
+
+// stuckSlateSource airs nothing (a card slot), so the packager wants slate from the first instant.
+type stuckSlateSource struct{}
+
+func (stuckSlateSource) ItemAt(context.Context, string, EncodePlan, time.Time) (PackagerItem, error) {
+	return PackagerItem{Label: "card", Remaining: time.Minute}, nil
+}
+func (stuckSlateSource) Output(context.Context, string, EncodePlan) (HostProfile, OutputProfile) {
+	return HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
+}
+
+// The slate is not on the tune path (#1512 G2): live, a cold process spent 0.8 s encoding it before
+// the channel's first item even resolved, though the first manifest waits for a real item anyway.
+// A channel starts at once while the slate encodes in the background, and Stop ends that encode.
+func TestChannelStartDoesNotWaitForTheSlate(t *testing.T) {
+	stuck := filepath.Join(t.TempDir(), "ffmpeg")
+	if err := os.WriteFile(stuck, []byte("#!/bin/sh\nexec sleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewPackagerHLS(stuckSlateSource{}, stuck, t.TempDir(), time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	started := make(chan error, 1)
+	go func() {
+		lease, err := m.acquirePlaylist("ch", PlanBaseline, false)
+		if err == nil {
+			lease.release()
+		}
+		started <- err
+	}()
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the channel start waited on the slate encode")
 	}
 }

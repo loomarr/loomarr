@@ -47,8 +47,12 @@ type PackagerHLS struct {
 	source       PackagerSource
 	log          *slog.Logger
 
+	// life bounds background work that outlives a viewer (the slate encodes); Stop ends it.
+	life    context.Context
+	endLife context.CancelFunc
+
 	slateMu sync.Mutex
-	slates  map[string]*packager.Slate // keyed by the encode (host, output)
+	slates  map[string]*slateEncode // keyed by the encode (host, output)
 
 	mu       sync.Mutex
 	channels map[remuxKey]*packagedChannel
@@ -73,8 +77,10 @@ func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Durat
 	if err != nil {
 		return nil, fmt.Errorf("packager hls: scratch root: %w", err)
 	}
+	life, endLife := context.WithCancel(context.Background())
 	return &PackagerHLS{ffmpeg: ffmpeg, root: root, unlock: unlock, grace: grace, source: source, log: log,
-		slates: map[string]*packager.Slate{}, channels: map[remuxKey]*packagedChannel{}}, nil
+		life: life, endLife: endLife,
+		slates: map[string]*slateEncode{}, channels: map[remuxKey]*packagedChannel{}}, nil
 }
 
 func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool) (hlsPlaylistLease, error) {
@@ -125,15 +131,10 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 	t0 := time.Now()
 	host, out := m.source.Output(ctx, key.channel, key.plan)
 	t1 := time.Now()
-	slate, err := m.slate(ctx, host, out)
-	// The tune-in (G2) split before the packager runs: the encode profile and the slate (encoded
-	// once per host and output).
-	m.log.Info("packager hls: channel start", "channel", key.channel, "output_ms", t1.Sub(t0).Milliseconds(),
-		"slate_ms", time.Since(t1).Milliseconds())
-	if err != nil {
-		cancel()
-		return nil, err
-	}
+	// The tune-in (G2) split before the packager runs: the encode profile. The slate encodes in the
+	// background and is waited for only by a slot that needs it.
+	m.log.Info("packager hls: channel start", "channel", key.channel, "output_ms", t1.Sub(t0).Milliseconds())
+	slate := m.slate(host, out)
 	dir, err := os.MkdirTemp(m.root, "ch-")
 	if err != nil {
 		cancel()
@@ -253,23 +254,74 @@ func (m *PackagerHLS) StopAll() {
 	}
 }
 
-// slate returns the house slate for an encode, encoding it once: a black, silent source run through
-// the same builder and encoder as the items, so its sample descriptions match theirs.
-func (m *PackagerHLS) slate(ctx context.Context, host HostProfile, out OutputProfile) (*packager.Slate, error) {
+// slateEncode is one (host, output) slate, encoding or encoded; done closes when s or err is set.
+type slateEncode struct {
+	done chan struct{}
+	s    *packager.Slate
+	err  error
+}
+
+// slateEncodeTimeout bounds one slate encode (0.8 s cold on NVENC live).
+const slateEncodeTimeout = time.Minute
+
+// slate returns the house slate for an encode, starting its encode in the background the first time
+// it is asked for (#1512 G2: never on the tune path; the first manifest waits for a real item
+// anyway). Encodes are shared across channels and sessions; a failed one is forgotten, so the next
+// channel start encodes it again.
+func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateSource {
 	key := fmt.Sprintf("%+v|%+v", host, out)
 	m.slateMu.Lock()
-	defer m.slateMu.Unlock()
-	if s := m.slates[key]; s != nil {
-		return s, nil
+	e := m.slates[key]
+	if e == nil {
+		e = &slateEncode{done: make(chan struct{})}
+		m.slates[key] = e
+		go func() {
+			defer close(e.done)
+			ctx, cancel := context.WithTimeout(m.life, slateEncodeTimeout)
+			defer cancel()
+			t0 := time.Now()
+			if e.s, e.err = m.encodeSlate(ctx, host, out); e.err != nil {
+				m.log.Error("packager hls: slate encode failed", "err", e.err)
+				m.slateMu.Lock()
+				if m.slates[key] == e {
+					delete(m.slates, key)
+				}
+				m.slateMu.Unlock()
+				return
+			}
+			m.log.Info("packager hls: slate encoded", "output", fmt.Sprintf("%dx%d@%d", out.Width, out.Height, out.FPS),
+				"ms", time.Since(t0).Milliseconds())
+		}()
 	}
+	m.slateMu.Unlock()
+	return func(ctx context.Context) (*packager.Slate, error) {
+		select {
+		case <-e.done:
+			return e.s, e.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+// encodeSlate encodes a house slate: a black, silent source run through the same builder and
+// encoder as the items, so its sample descriptions match theirs.
+func (m *PackagerHLS) encodeSlate(ctx context.Context, host HostProfile, out OutputProfile) (*packager.Slate, error) {
 	src := filepath.Join(m.root, fmt.Sprintf("slate-%dx%d-%d.mkv", out.Width, out.Height, out.FPS))
 	if _, err := os.Stat(src); err != nil {
-		tmp := src + ".tmp.mkv"
+		// Two hosts with one output size may make the source at once: each writes its own temp.
+		f, err := os.CreateTemp(m.root, "slate-*.tmp.mkv")
+		if err != nil {
+			return nil, err
+		}
+		tmp := f.Name()
+		_ = f.Close()
 		cmd := exec.CommandContext(ctx, m.ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", "-y",
 			"-f", "lavfi", "-i", fmt.Sprintf("color=c=black:s=%dx%d:r=%d", out.Width, out.Height, out.FPS),
 			"-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "2",
 			"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", tmp)
 		if o, err := cmd.CombinedOutput(); err != nil {
+			_ = os.Remove(tmp)
 			return nil, fmt.Errorf("packager hls: slate source: %w: %s", err, bytes.TrimSpace(o))
 		}
 		if err := os.Rename(tmp, src); err != nil {
@@ -291,12 +343,7 @@ func (m *PackagerHLS) slate(ctx context.Context, host HostProfile, out OutputPro
 	if err != nil {
 		return nil, fmt.Errorf("packager hls: slate encode: %w: %s", err, bytes.TrimSpace(stderr.Bytes()))
 	}
-	s, err := packager.NewSlate(encoded)
-	if err != nil {
-		return nil, err
-	}
-	m.slates[key] = s
-	return s, nil
+	return packager.NewSlate(encoded)
 }
 
 const audioRateHz = 48000
@@ -394,6 +441,9 @@ func (s switchedHLS) StopAll() {
 
 // Stop ends every channel packager and removes the scratch root.
 func (m *PackagerHLS) Stop() {
+	if m.endLife != nil {
+		m.endLife()
+	}
 	m.StopAll()
 	_ = os.RemoveAll(m.root)
 	if m.unlock != nil {
