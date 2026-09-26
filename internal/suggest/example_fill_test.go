@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/catalogfixture"
@@ -176,5 +177,58 @@ func TestSuggest_ExampleAnchorsWithoutClearEraAreNotFilled(t *testing.T) {
 	}
 	if n := len(corpus.Discoveries()); n != 0 {
 		t.Errorf("ran %d discovery queries for anchors with no clear era", n)
+	}
+}
+
+// #1499 root cause on the real library: after a one-title search the model's
+// tool-free final turn tried to search the second named title as raw text. The
+// parser lifted that call's argument object, the accepted dateMeaning was added
+// to it, and it read as a valid final with no picks, so the lineup stopped at
+// the anchors without ever reaching repair. Text with no picks field is
+// malformed and must be repaired.
+func TestSuggest_LeakedToolCallFinalIsRepairedNotAnEmptyProposal(t *testing.T) {
+	corpus := exampleFillCorpus()
+	none := dateMeaningNone()
+	leaked := "<tool_call>\n<function=catalog_search>\n<parameter=input>\n" +
+		`{"dateMeaning": {"anchors": [], "axes": [], "kind": "none"}, "media_type": "movie", "query": "Gremlins"}` +
+		"\n</parameter>\n</function>\n</tool_call>"
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "Back to the Future", "media_type": "movie", "dateMeaning": none}),
+		llm.Response{Content: leaked},
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters", "Honey, I Shrunk the Kids"), none),
+	)
+	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.Calls != 3 {
+		t.Errorf("model calls = %d, want 3: the leaked tool call must be sent to repair", model.Calls)
+	}
+	if names := exampleFillNames(proposal); !slices.Contains(names, "Ghostbusters") {
+		t.Errorf("repaired lineup lost the model's on-era picks: %v", names)
+	}
+}
+
+// The counterpart: a final that HAS a picks field, even an empty array, is the
+// model's answer (nothing matched) and is not repaired. Presence of the field is
+// what separates it from a leaked tool call, which carries none.
+func TestSuggest_EmptyPicksArrayIsNotRepaired(t *testing.T) {
+	corpus := exampleFillCorpus()
+	none := dateMeaningNone()
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"query": "Back to the Future", "media_type": "movie", "dateMeaning": none}),
+		finalResponseWithDateMeaning(`{"picks":[]}`, none),
+	)
+	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.Calls != 2 {
+		t.Errorf("model calls = %d, want 2: an explicit empty picks array is a real answer", model.Calls)
+	}
+	if names := exampleFillNames(proposal); len(names) != 2 {
+		t.Errorf("empty picks should leave exactly the anchors: %v", names)
 	}
 }
