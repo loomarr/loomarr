@@ -145,9 +145,16 @@ func airRealFile(t *testing.T, bin string, title int, spec ProgramSpec) {
 		what := string(spec.ToneCurve) + " " + string(pipe.Family) + "/" + pipe.Tonemapper
 		out := t.TempDir() + "/o.ts"
 		cmd := exec.Command(bin, replaceOutput(ProgramArgs(spec), out)...)
+		// ProgramArgs reports progress on fd 3 (the production runner's pipe); discard it here.
+		devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd.ExtraFiles = []*os.File{devnull}
 		start := time.Now()
 		b, err := cmd.CombinedOutput()
 		wall := time.Since(start).Seconds()
+		_ = devnull.Close()
 		if err == nil {
 			cpu := (cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()).Seconds()
 			avg, ymax := lumaStats(t, bin, out)
