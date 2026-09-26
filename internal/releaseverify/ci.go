@@ -223,6 +223,10 @@ func VerifyCIImpactActivation(path string) error {
 			outputs:   []classifierOutput{{name: "impact_android", source: "android"}},
 			condition: "needs.changes.outputs.impact_android == 'true'",
 		},
+		"playout-bench": {
+			outputs:   []classifierOutput{{name: "impact_playout_bench", source: "playout_bench"}},
+			condition: "needs.changes.outputs.impact_playout_bench == 'true'",
+		},
 		"tuner": {
 			outputs:   []classifierOutput{{name: "impact_tuner", source: "tuner"}},
 			condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'",
@@ -301,11 +305,12 @@ func ciFamilyWorkflowAuthorities() map[string]string {
 
 		"apple-cache-validation": ".github/workflows/ci-apple-cache-validation.yml",
 
-		"playwright": ".github/workflows/ci-playwright.yml",
-		"tuner":      ".github/workflows/ci-tuner.yml",
-		"image":      ".github/workflows/ci-image.yml",
-		"docs":       ".github/workflows/ci-docs.yml",
-		"android":    ".github/workflows/ci-android.yml",
+		"playwright":    ".github/workflows/ci-playwright.yml",
+		"tuner":         ".github/workflows/ci-tuner.yml",
+		"image":         ".github/workflows/ci-image.yml",
+		"docs":          ".github/workflows/ci-docs.yml",
+		"android":       ".github/workflows/ci-android.yml",
+		"playout-bench": ".github/workflows/ci-playout-bench.yml",
 	}
 }
 

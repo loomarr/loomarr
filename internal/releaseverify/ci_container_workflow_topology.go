@@ -36,6 +36,8 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci-postgres.yml":            {jobs: map[string]int{"run": 6}},
 		"ci-rust-contracts.yml":      {jobs: map[string]int{"run": 3}},
 		"ci-tuner.yml":               {jobs: map[string]int{"run": 7}},
+		"ci-playout-bench.yml":       {jobs: map[string]int{"run": 8}},
+		"playout-bench.yml":          {jobs: map[string]int{"macos": 5, "gpu-t4": 8, "arc": 3, "geforce": 3}},
 		"codeql.yml": {jobs: map[string]int{
 			"changes": 2, "analyze-actions": 3, "analyze-go": 3,
 			"analyze-javascript-typescript": 3, "analyze-python": 3,
@@ -45,7 +47,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 			"changes": 3, "agent-harness-macos": 0, "release-candidate-scope": 1, "full-manual-scope": 1,
 			"ci-policy": 6, "rust-contracts": 0, "go-contracts": 0, "image-certification": 0, "go": 0,
 			"store-postgres": 0, "frontend": 0, "clients": 0, "apple-mobile": 0, "apple-tv": 0, "apple-cache-validation": 0, "expo-android-mobile": 0,
-			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "ci-ok": 3,
+			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "playout-bench": 0, "ci-ok": 3,
 		}},
 		"image-benchmark.yml":  {jobs: map[string]int{"benchmark": 6}},
 		"pages.yml":            {jobs: map[string]int{"build": 5, "deploy": 1}},
@@ -80,11 +82,12 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 
 		"apple-cache-validation": {name: "Apple compilation cache — supported-toolchain validation", condition: "github.event_name == 'workflow_dispatch' && inputs.scope == 'apple-cache-validation'"},
 
-		"playwright": {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
-		"tuner":      {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'", with: map[string]string{"project": "${{ inputs.project || 'all' }}", "repeat_each": "${{ inputs.repeat_each || '1' }}"}},
-		"image":      {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
-		"docs":       {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
-		"android":    {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.impact_android == 'true'"},
+		"playwright":    {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
+		"tuner":         {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'", with: map[string]string{"project": "${{ inputs.project || 'all' }}", "repeat_each": "${{ inputs.repeat_each || '1' }}"}},
+		"image":         {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
+		"docs":          {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
+		"android":       {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.impact_android == 'true'"},
+		"playout-bench": {name: "Playout bench — software-only pipeline", condition: "needs.changes.outputs.impact_playout_bench == 'true'"},
 	}
 }
 

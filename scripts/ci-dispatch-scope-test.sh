@@ -10,7 +10,7 @@ full_expected=$'go=true\nweb=true\nclients=true\nimage=true\ndocs=true\nagent=tr
 apple_cache_expected=$'go=false\nweb=false\nclients=false\nimage=false\ndocs=false\nagent=false\nandroid=false\nrelease_candidate=false'
 tuner_expected=$apple_cache_expected
 release_impact_expected='contracts,rust,image'
-full_impact_expected='contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy'
+full_impact_expected='contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench'
 apple_cache_impact_expected='policy'
 tuner_impact_expected='tuner'
 

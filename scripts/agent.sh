@@ -556,7 +556,7 @@ verify_changed() {
 			go|go_full|rust|web|clients|docs|agent|android|policy)
 				if [ -n "$local_gates" ]; then local_gates="$local_gates,$gate"; else local_gates="$gate"; fi
 				;;
-			contracts|postgres|apple_mobile|apple_tv|expo_android_mobile|expo_android_tv|visual|e2e|tuner|image)
+			contracts|postgres|apple_mobile|apple_tv|expo_android_mobile|expo_android_tv|visual|e2e|tuner|image|playout_bench)
 				if [ -n "$protected_gates" ]; then protected_gates="$protected_gates,$gate"; else protected_gates="$gate"; fi
 				;;
 			*)

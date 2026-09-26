@@ -77,12 +77,17 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 		{workflow: "ci.yml", job: "changes"}:                           {name: "What changed", runsOn: "ubuntu-latest"},
 		{workflow: "ci.yml", job: "ci-ok"}: {
 			name: "CI", runsOn: "ubuntu-latest",
-			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android"},
+			needsList: []string{"changes", "release-candidate-scope", "full-manual-scope", "ci-policy", "agent-harness-macos", "rust-contracts", "go-contracts", "image-certification", "go", "store-postgres", "frontend", "clients", "apple-mobile", "apple-tv", "apple-cache-validation", "expo-android-mobile", "playwright", "tuner", "image", "docs", "android", "playout-bench"},
 		},
 		{workflow: "image-benchmark.yml", job: "benchmark"}: {
 			name: "AVIF ladders (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}", timeoutMinutes: 30,
 			strategy: &workflowStrategyAuthority{include: []workflowMatrixEntryAuthority{{platform: "linux-amd64", runner: "ubuntu-24.04"}, {platform: "linux-arm64", runner: "ubuntu-24.04-arm"}}},
 		},
+		{workflow: "ci-playout-bench.yml", job: "run"}:        {name: "Playout bench — software-only pipeline", runsOn: "ubuntu-latest", timeoutMinutes: 25},
+		{workflow: "playout-bench.yml", job: "macos"}:         {name: "macos-15 — VideoToolbox", runsOn: "macos-15", timeoutMinutes: 40},
+		{workflow: "playout-bench.yml", job: "gpu-t4"}:        {name: "GitHub T4 GPU — NVENC", runsOn: "${{ vars.PLAYOUT_BENCH_T4_RUNNER }}", timeoutMinutes: 40},
+		{workflow: "playout-bench.yml", job: "arc"}:           {name: "Self-hosted — Intel Arc (VAAPI)", runsOn: "loomarr-playout-arc", timeoutMinutes: 60},
+		{workflow: "playout-bench.yml", job: "geforce"}:       {name: "Self-hosted — NVIDIA GeForce (NVENC)", runsOn: "loomarr-playout-geforce", timeoutMinutes: 60},
 		{workflow: "pages.yml", job: "build"}:                 {name: "Build", runsOn: "ubuntu-latest"},
 		{workflow: "pages.yml", job: "deploy"}:                {name: "Deploy", runsOn: "ubuntu-latest", needs: "build", environmentName: "github-pages", environmentURL: "${{ steps.deployment.outputs.page_url }}"},
 		{workflow: "release-notes.yml", job: "publish-notes"}: {name: "Publish GitHub Release notes", runsOn: "ubuntu-latest"},

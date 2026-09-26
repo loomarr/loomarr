@@ -9,6 +9,7 @@ cross-harness contract and points here for detail.
 | [Setup](setup.md) | Toolchain versions, getting a clean clone green |
 | [Dev loop](dev-loop.md) | Running both halves with live reload |
 | [Testing](testing.md) | The test layers and which are gates |
+| [Playout bench](playout-bench.md) | The cross-hardware playout measurement, its thresholds and CI jobs |
 | [CI](ci.md) | The jobs, path filters, and what's required |
 | [Android TV beta](android-beta.md) | Play identity, signing, testing tracks, and Shield acceptance |
 | [Codegen](codegen.md) | What's generated and what's committed |

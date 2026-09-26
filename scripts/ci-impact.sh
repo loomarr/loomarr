@@ -9,7 +9,7 @@ set -euo pipefail
 
 readonly GATES=(
   contracts go go_full rust postgres web clients apple_mobile apple_tv
-  expo_android_mobile expo_android_tv visual e2e tuner image docs agent android policy
+  expo_android_mobile expo_android_tv visual e2e tuner image docs agent android policy playout_bench
 )
 
 selected=()
@@ -71,7 +71,35 @@ classify() {
     esac
   fi
 
+
+  # The playout bench runs the real pipeline builder, so a change to the builder, the bench itself
+  # or its corpus scripts selects it. Independent of the Go gates above: a builder edit still runs
+  # those too.
   case "$path" in
+    internal/playout/*|internal/playoutbench/*|cmd/playout-bench/*)
+      select_gate playout_bench
+      ;;
+  esac
+  case "$path" in
+    scripts/playout-bench-*|docs/engineering/playout-bench/*)
+      known=true
+      select_gate playout_bench
+      select_gate docs
+      ;;
+    docs/dev/playout-bench.md)
+      known=true
+      select_gate docs
+      ;;
+    .github/workflows/ci-playout-bench.yml)
+      known=true
+      select_gate playout_bench
+      select_gate policy
+      ;;
+    .github/workflows/playout-bench.yml)
+      # Dispatch- and schedule-only; no pull request executes it, so only policy verifies it.
+      known=true
+      select_gate policy
+      ;;
     Cargo.toml|Cargo.lock|rust-toolchain.toml|deny.toml|rust/*)
       known=true
       select_gate rust
