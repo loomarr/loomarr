@@ -193,6 +193,8 @@ type playoutProgramHarnessConfig struct {
 	ReclaimVRAM func(ctx context.Context)
 	// Tonemap is whether the ffmpeg build can tone-map HDR (zscale + tonemap).
 	Tonemap bool
+	// Watermark is the channel-bug seam (#1512 phase 1d); nil for tests about anything else.
+	Watermark func(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark
 }
 
 // playoutProgramHarness owns program-stream routing and lifecycle while its
@@ -217,18 +219,19 @@ func newPlayoutProgramHarness(t *testing.T, config playoutProgramHarnessConfig) 
 			"filler.target_lufs": config.FillerTargetLUFS,
 		}
 		return api.Router(logger, api.Options{
-			Store:           defaults.Store,
-			Auth:            api.NewTokenAuthorizer(adminToken),
-			Log:             logger,
-			PlayoutResolver: config.Resolver,
-			PlayoutEncoder:  config.Encoder,
-			PlayoutObserver: config.Observer,
-			PlayoutFont:     func() string { return config.FontPath },
-			Playout:         config.Playout,
-			LiveConfig:      func(key string) string { return cfg[key] },
-			ReclaimVRAM:     config.ReclaimVRAM,
-			PlayoutSecret:   func() string { return playoutToken },
-			PlayoutTonemap:  func() bool { return config.Tonemap },
+			Store:            defaults.Store,
+			Auth:             api.NewTokenAuthorizer(adminToken),
+			Log:              logger,
+			PlayoutResolver:  config.Resolver,
+			PlayoutEncoder:   config.Encoder,
+			PlayoutObserver:  config.Observer,
+			PlayoutFont:      func() string { return config.FontPath },
+			Playout:          config.Playout,
+			LiveConfig:       func(key string) string { return cfg[key] },
+			ReclaimVRAM:      config.ReclaimVRAM,
+			PlayoutWatermark: config.Watermark,
+			PlayoutSecret:    func() string { return playoutToken },
+			PlayoutTonemap:   func() bool { return config.Tonemap },
 		})
 	})
 	return &playoutProgramHarness{apiHarness: base}
@@ -1284,6 +1287,58 @@ func TestPlayoutProgramUnsafeCopyStartUsesAtomicTranscodeAdmission(t *testing.T)
 			}
 			if response.StatusCode != http.StatusOK || !strings.Contains(strings.Join(encoder.args(), " "), want) {
 				t.Fatalf("wrong playback plan: status=%d args=%v", response.StatusCode, encoder.args())
+			}
+		})
+	}
+}
+
+// PROGRAMMES CARRY THE BUG; BREAKS NEVER DO (#1512 phase 1d). A programme whose video could have
+// been copied is transcoded instead, because a burned-in bug needs the encoder; a filler clip never
+// asks for the bug at all.
+func TestPlayoutProgram_WatermarkOnProgrammesOnly(t *testing.T) {
+	nvenc := playout.DefaultProfile()
+	nvenc.Encoder = playout.EncoderNVENC
+	bug := &playout.Watermark{Straight: "/data/wm/a.png", Premultiplied: "/data/wm/a.pm.png", Width: 144, Height: 64,
+		Corner: playout.CornerTopRight, MarginX: 96, MarginY: 54}
+	h264 := playout.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080, FrameRate: 25, PixelFormat: "yuv420p"}
+	for _, tc := range []struct {
+		name     string
+		airing   playout.Airing
+		bug      *playout.Watermark
+		wantBug  bool
+		wantAsks int
+	}{
+		{"programme", playableAiring(0, time.Hour), bug, true, 1},
+		{"programme, bug off or host failed its self-check", playableAiring(0, time.Hour), nil, false, 1},
+		{"filler clip", fillerAiring(30 * time.Second), bug, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			asks := 0
+			enc := &fakeEncoder{output: "ts"}
+			srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+				Resolver: &fakeResolver{airing: tc.airing, url: "http://emby/v/1", profile: nvenc, sourceFormat: h264,
+					plan: playout.CopyPlan{CopyVideo: true, CopyAudio: true}},
+				Encoder: enc.start,
+				Watermark: func(_ context.Context, channelID string, enc playout.Encoder, w, h int) *playout.Watermark {
+					asks++
+					if channelID != "ch1" || enc != playout.EncoderNVENC || w != nvenc.Width || h != nvenc.Height {
+						t.Errorf("asked for %s at %dx%d", channelID, w, h)
+					}
+					return tc.bug
+				},
+			}).Server
+			if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
+				t.Fatalf("status %d", resp.StatusCode)
+			}
+			joined := strings.Join(enc.args(), " ")
+			if got := strings.Contains(joined, "overlay_cuda") && strings.Contains(joined, "movie=filename=/data/wm/a.png"); got != tc.wantBug {
+				t.Errorf("bug drawn = %v, want %v; args = %s", got, tc.wantBug, joined)
+			}
+			if tc.wantBug && strings.Contains(joined, "-c:v copy") {
+				t.Errorf("a watermarked programme copied its video; args = %s", joined)
+			}
+			if asks != tc.wantAsks {
+				t.Errorf("watermark asked %d times, want %d", asks, tc.wantAsks)
 			}
 		})
 	}

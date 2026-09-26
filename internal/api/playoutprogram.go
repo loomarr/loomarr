@@ -312,6 +312,15 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// boundary — the one moment continuity is most fragile.
 	plan, source := s.playoutResolver.PlanFor(r.Context(), streamURL, encPlan)
 	plan = playout.ConformCopyPlan(source, plan, profile, broadcastCodec)
+	// The channel's bug (#1512 phase 1d), PROGRAMMES ONLY: a filler clip (Source set), bumper or ID
+	// airs without it. The resolver returns nil when the channel turned it off or this host's GPU
+	// overlay failed its self-check. Burning it in needs the video transcoded, never copied.
+	var watermark *playout.Watermark
+	if airing.Kind == schedule.SlotProgram && airing.Source == "" && s.playoutWatermark != nil {
+		if watermark = s.playoutWatermark(r.Context(), channelID, profile.Encoder, profile.Width, profile.Height); watermark != nil {
+			plan.CopyVideo = false
+		}
+	}
 	var videoCopySeek *time.Duration
 	if plan.CopyVideo {
 		seek, proven := s.playoutResolver.CopyVideoStart(r.Context(), streamURL, airing.Offset, airing.Remaining, source.FrameRate)
@@ -344,7 +353,8 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		// here means "no" — the same fail-safe direction as playoutFont: a missing filter emitted
 		// anyway fails at graph-init and kills the channel, so an unknown answer must never be
 		// optimistic.
-		Tonemap: s.playoutTonemap != nil && s.playoutTonemap(),
+		Tonemap:   s.playoutTonemap != nil && s.playoutTonemap(),
+		Watermark: watermark,
 	}
 	if s.playoutGPUTonemap != nil {
 		spec.GPUTonemap = s.playoutGPUTonemap()

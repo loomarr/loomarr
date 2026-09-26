@@ -171,6 +171,9 @@ const (
 	StartupCheckTMDB             = "tmdb"
 	StartupCheckPublicURL        = "public_url"
 	StartupCheckPlayoutTonemap   = "playout_tonemap"
+	// StartupCheckWatermark is the channel watermark's GPU overlay self-check (#1512 phase 1d):
+	// completed by the first programme on each encoder; a warning means watermarks are off here.
+	StartupCheckWatermark = "watermark"
 
 	startupCompleteEvent  = "startup.complete"
 	healthTransitionEvent = "health.transition"

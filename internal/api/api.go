@@ -87,10 +87,10 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		playout:      opts.Playout,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
 		playoutTonemap: opts.PlayoutTonemap, playoutGPUTonemap: opts.PlayoutGPUTonemap,
-		playoutToneCurve: opts.PlayoutToneCurve,
-		timelineThumbs:   opts.TimelineThumbs,
-		reclaimVRAM:      opts.ReclaimVRAM,
-		residentLLMVRAM:  opts.ResidentLLMVRAM,
+		playoutToneCurve: opts.PlayoutToneCurve, playoutWatermark: opts.PlayoutWatermark,
+		timelineThumbs:  opts.TimelineThumbs,
+		reclaimVRAM:     opts.ReclaimVRAM,
+		residentLLMVRAM: opts.ResidentLLMVRAM,
 	}
 	srv.registerMiddleware(humaAPI)
 	srv.registerTitles(humaAPI)

@@ -384,6 +384,26 @@ func (s *Service) Get(ctx context.Context, hash string) (Image, error) {
 	return s.store.GetImage(ctx, hash)
 }
 
+// Original is the path of an image's stored original bytes: the alpha-preserving source a
+// RoleWatermark image is rendered from. Only PNG and WebP originals are served here.
+func (s *Service) Original(ctx context.Context, hash string) (string, error) {
+	rec, err := s.Get(ctx, hash)
+	if err != nil {
+		return "", err
+	}
+	if rec.MIME != "image/png" && rec.MIME != "image/webp" {
+		return "", fmt.Errorf("images: %s original is %s, which has no alpha: %w", hash, rec.MIME, ErrNotFound)
+	}
+	path, err := s.blob.OriginalPath(hash, extForMIME(rec.MIME))
+	if err != nil {
+		return "", err
+	}
+	if _, exists := s.blob.Stat(path); !exists {
+		return "", ErrNotFound
+	}
+	return path, nil
+}
+
 // Rendition returns a servable file for a hash at a width in a format, generating it if needed.
 //
 // The generation split (§22): WebP and JPEG are produced here, synchronously, behind singleflight.

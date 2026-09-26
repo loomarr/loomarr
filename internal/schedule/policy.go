@@ -110,6 +110,11 @@ type OperatorPolicy struct {
 	// with no stored override follows a later global change, while an explicitly selected
 	// backend remains pinned until its own policy changes.
 	Playout *PlayoutPolicy `json:"playout,omitempty"`
+
+	// Watermark is the channel's bug, burned into its programmes (#1512 phase 1d). nil is the
+	// approved default: ON, top-right, 6% of the frame height, 65% opacity, 5% margins, and the
+	// image chosen automatically. Rides policy_json: no migration.
+	Watermark *WatermarkPolicy `json:"watermark,omitempty"`
 }
 
 // PlayoutPolicy is a channel's own answer to "who streams this" (§9.1). Deliberately a
@@ -861,6 +866,9 @@ func (p ChannelPolicy) Validate() error {
 		return fmt.Errorf("channel policy: unknown offSeason %q", p.Seasonal.OffSeason)
 	}
 	if err := p.Filler.validate(); err != nil {
+		return fmt.Errorf("channel policy: %w", err)
+	}
+	if err := p.Watermark.validate(); err != nil {
 		return fmt.Errorf("channel policy: %w", err)
 	}
 	if p.BreakDuration != nil && p.BreakDuration.Std() < 30*time.Second {

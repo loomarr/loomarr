@@ -97,6 +97,10 @@ type ProgramSpec struct {
 	// SoftwareRung is the software degradation rung this item encodes at (#1517): StartRung at the
 	// start, then whatever the RungMonitor steps it to. GPU encoders ignore it.
 	SoftwareRung SoftwareRung
+	// Watermark is the channel's bug, set only for a PROGRAMME item on a host whose GPU overlay
+	// passed its self-check (WatermarkCheck); nil for breaks, bumpers and IDs. A burned-in bug needs
+	// a video transcode, so the caller never copies video for an item that carries one.
+	Watermark *Watermark
 }
 
 // Pipeline is this program's transcode pipeline (pipeline.go), or ErrRefused. A source that faulted
@@ -106,10 +110,11 @@ func (s ProgramSpec) Pipeline() (Pipeline, error) {
 	if s.SoftwareDecode {
 		host.DecodeCodecs = nil
 	}
+	host.Overlay = s.Watermark != nil
 	out := ChannelOutput(s.Profile)
 	out.ToneCurve = s.ToneCurve
 	out.SoftwareRung = s.SoftwareRung
-	return Build(host, s.Source, out)
+	return BuildItem(host, s.Source, out, s.Watermark)
 }
 
 // DemoteTonemap drops the GPU tone-mapper this spec's pipeline uses, so a retry takes the next one
