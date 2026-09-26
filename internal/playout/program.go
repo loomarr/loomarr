@@ -94,6 +94,9 @@ type ProgramSpec struct {
 	// ToneCurve is the HDR→SDR curve, pinned by the session at its start so a Settings change
 	// never changes the look mid-stream. Empty is the default.
 	ToneCurve ToneCurve
+	// SoftwareRung is the software degradation rung this item encodes at (#1517): StartRung at the
+	// start, then whatever the RungMonitor steps it to. GPU encoders ignore it.
+	SoftwareRung SoftwareRung
 }
 
 // Pipeline is this program's transcode pipeline (pipeline.go), or ErrRefused. A source that faulted
@@ -105,6 +108,7 @@ func (s ProgramSpec) Pipeline() (Pipeline, error) {
 	}
 	out := ChannelOutput(s.Profile)
 	out.ToneCurve = s.ToneCurve
+	out.SoftwareRung = s.SoftwareRung
 	return Build(host, s.Source, out)
 }
 

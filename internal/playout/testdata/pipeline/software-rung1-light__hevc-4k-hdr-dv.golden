@@ -3,6 +3,8 @@
 -nostats
 -loglevel
 error
+-skip_loop_filter:v
+all
 -analyzeduration
 0
 -probesize

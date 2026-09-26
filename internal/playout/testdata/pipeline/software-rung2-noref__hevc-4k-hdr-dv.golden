@@ -3,6 +3,10 @@
 -nostats
 -loglevel
 error
+-skip_loop_filter:v
+all
+-skip_frame:v
+noref
 -analyzeduration
 0
 -probesize

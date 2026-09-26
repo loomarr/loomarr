@@ -56,7 +56,7 @@ func TestChannelFormats_OnHost(t *testing.T) {
 		premium FormatClass
 	}{
 		{"software drops 4K SDR", hosts["software"], ChannelFormats{FormatBaseline, Format4KSDR}, ""},
-		{"software drops 4K HDR", hosts["software-hdrcapable"], ChannelFormats{FormatBaseline, Format4KHDR}, ""},
+		{"software drops 4K HDR", hosts["software"], ChannelFormats{FormatBaseline, Format4KHDR}, ""},
 		{"generic drops premium (unverified CPU filters at 4K)", hosts["generic-qsv"], ChannelFormats{FormatBaseline, Format4KSDR}, ""},
 		{"NVENC keeps 4K HDR", hosts["nvenc-libplacebo"], ChannelFormats{FormatBaseline, Format4KHDR}, Format4KHDR},
 		{"4K HDR needs libplacebo for its SDR items", nvNoPlacebo, ChannelFormats{FormatBaseline, Format4KHDR}, ""},

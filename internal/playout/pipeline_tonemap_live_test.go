@@ -38,7 +38,7 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 	// Software: the CPU chain, which is also every GPU family's last resort after the GPU downscale.
 	t.Run("software/cpu", func(t *testing.T) {
 		out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 22, TargetKbps: 3600, MaxKbps: 5300, GOPSeconds: 1, AudioKbps: 128}
-		pipe, err := Build(HostProfile{Family: FamilySoftware, CPUTonemap: true, SoftwareHDR: true}, facts, out)
+		pipe, err := Build(HostProfile{Family: FamilySoftware, CPUTonemap: true}, facts, out)
 		if err != nil {
 			t.Fatal(err)
 		}

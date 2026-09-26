@@ -73,9 +73,6 @@ type HostProfile struct {
 	Libplacebo bool `json:"libplacebo,omitempty"`
 	// CPUTonemap: the build has zscale + tonemap, the last-resort tone-map.
 	CPUTonemap bool `json:"cpuTonemap,omitempty"`
-	// SoftwareHDR: this host's CPU keeps up with a 4K HDR source tone-mapped at 720p. Measured false
-	// on 4 CPUs (1.04x), so a software host refuses HDR unless a measurement says otherwise.
-	SoftwareHDR bool `json:"softwareHdr,omitempty"`
 }
 
 // GPUFilters is which GPU tone-mappers this ffmpeg BUILD carries (GPUFiltersFor). Whether the
@@ -139,6 +136,9 @@ type OutputProfile struct {
 	AudioKbps  int
 	// ToneCurve is the HDR→SDR curve (`playout.tone_curve`, pinned per stream); empty is the default.
 	ToneCurve ToneCurve
+	// SoftwareRung is the software family's degradation rung for this item (softwareladder.go). It
+	// changes how the item is decoded, never the output; GPU families ignore it.
+	SoftwareRung SoftwareRung
 }
 
 // Maintainer's output picture setting (#1512, 2026-09-26). The target and cap are the 1080p budget;
@@ -698,25 +698,42 @@ func (b *builder) videotoolbox() error {
 	return nil
 }
 
-// software: libx264 on the CPU. HDR is downscaled first and tone-mapped at no more than 720 lines
-// (maintainer decision), and refused when the host profile says the CPU cannot keep up.
+// software: libx264 on the CPU, at the item's degradation rung (softwareladder.go). The rung sets
+// the decoder shortcuts and a working size the picture is decoded into; HDR is tone-mapped at that
+// size, never above 720 lines (maintainer decision). A CPU too slow for the item steps down the
+// ladder instead of refusing; only a build with no tone-mapper at all refuses HDR.
+//
+// Every rung ends in the same scale to the channel geometry, pad, SAR 1:1 and cadence, so a rung
+// restart mid-item never changes the output format. setsar=1 is load-bearing: a two-stage scale
+// rounds a 2.40:1 frame's SAR to 399:400 where a one-stage scale keeps 1:1, and x264 writes the
+// SAR into the SPS.
 func (b *builder) software() error {
+	rung := b.out.SoftwareRung
+	b.p.PreInput = append(b.p.PreInput, rung.decoderOptions()...)
 	var f []string
 	if b.src.Interlaced {
 		f = append(f, "bwdif=mode=send_frame")
 	}
+	lines := rung.workingLines()
 	if b.tonemap {
-		if !b.host.SoftwareHDR || !b.host.CPUTonemap {
-			return fmt.Errorf("%w: 4K HDR tone-mapping needs more CPU than this host has", ErrRefused)
+		if !b.host.CPUTonemap {
+			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
 		}
-		w, h := b.out.Width, b.out.Height
-		if h > softwareTonemapLines {
-			w, h = even(w*softwareTonemapLines/h), softwareTonemapLines
+		if lines == 0 || lines > softwareTonemapLines {
+			lines = softwareTonemapLines
 		}
-		f = append(f, fmt.Sprintf("scale=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2", w, h), b.cpuChain())
+	}
+	lines = min(lines, b.out.Height)
+	// HDR always scales before the tone-map: tone-mapping a 4K frame costs several times more.
+	if lines > 0 && (lines < b.out.Height || b.tonemap) {
+		f = append(f, fmt.Sprintf("scale=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2",
+			even(b.out.Width*lines/b.out.Height), lines))
+	}
+	if b.tonemap {
+		f = append(f, b.cpuChain())
 	}
 	f = append(f, "scale="+b.fit(), "format=yuv420p",
-		fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), b.tail())
+		fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), "setsar=1", b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
 	return nil
 }
