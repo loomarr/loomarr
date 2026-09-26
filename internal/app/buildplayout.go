@@ -456,12 +456,15 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		log:        log,
 	}, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"), playout.DefaultGrace, log)
 	// The first tune's output profile, off the tune path (#1512 G2): the encoder evidence and four
-	// `ffmpeg -filters` probes, each once per process, were 0.2 s of a cold first tune.
-	go func() {
-		playoutRes.WarmProfile(rootCtx)
-		tonemap()
-		gpuFilters()
-	}()
+	// `ffmpeg -filters` probes, each once per process, were 0.2 s of a cold first tune. Both run
+	// FFmpeg, and idle channels start none, so the warm-up runs only for the packager it serves.
+	if set.boolv("playout.packager") {
+		go func() {
+			playoutRes.WarmProfile(rootCtx)
+			tonemap()
+			gpuFilters()
+		}()
+	}
 	if perr != nil {
 		log.Warn("internal playout: channel packager unavailable", "err", perr)
 	} else {
