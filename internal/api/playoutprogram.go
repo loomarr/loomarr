@@ -271,20 +271,32 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// builder is deliberately a pure function.
 	audioTrack := s.playoutResolver.AudioTrackFor(r.Context(), channelID, airing.LibraryItemID, streamURL)
 
-	// Loudness normalisation, FILLER ONLY (§10 V40).
+	// Loudness, FILLER ONLY: a STATIC gain from the loudness measured at ingest (#1512 G6).
 	//
-	// ⚠ `airing.Source` is the discriminator, and it needs no new plumbing: it is set for a
-	// resolved filler clip and empty for a library title (see Airing.Source). Normalising a
-	// feature film to advert loudness would flatten its dynamic range — the problem this solves is
-	// adverts recorded a decade apart at wildly different levels, measured at an 11 dB spread
-	// across real fetched clips.
+	// ⚠ `airing.Source` is the discriminator: set for a resolved filler clip, empty for a library
+	// title (see Airing.Source). Adjusting a feature film to advert loudness would flatten its
+	// dynamic range.
 	//
-	// ⚠ Read LIVE rather than captured at wiring, so `filler.target_lufs` hot-applies like every
-	// other setting (config-design §3). Empty (or no liveConfig, as in unit tests that build a
-	// bare Server) ⇒ no filter, byte-identical to what shipped before V40.
-	targetLUFS := ""
+	// ⚠ NOT a live `loudnorm`. Single-pass loudnorm re-estimates its gain from each clip's first
+	// samples, an audible swell at every break start. Ingest normalises clips to the target, so
+	// the gain here is usually 0 dB; a clip with no measurement airs at 0 dB and says so.
+	//
+	// ⚠ The target is read LIVE, so `filler.target_lufs` hot-applies (config-design §3). Empty (or
+	// no liveConfig, as in unit tests that build a bare Server) ⇒ no gain.
+	gainDB := 0.0
 	if airing.Source != "" && s.liveConfig != nil {
-		targetLUFS = s.liveConfig("filler.target_lufs")
+		if raw := s.liveConfig("filler.target_lufs"); raw != "" {
+			target, perr := strconv.ParseFloat(raw, 64)
+			switch {
+			case perr != nil:
+				s.log.Warn("playout: filler.target_lufs is not a number — airing filler at 0 dB", "value", raw)
+			case airing.MeasuredLUFS == nil:
+				s.log.Info("playout: filler clip has no ingest loudness measurement — airing at 0 dB",
+					"channel", channelID, "title", airing.Title)
+			default:
+				gainDB = playout.StaticGainDB(target, *airing.MeasuredLUFS)
+			}
+		}
 	}
 
 	// The copy/transcode plan (§9.1 direct play, V47; V50 content-driven codec): copy the video when
@@ -326,7 +338,7 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		Offset:        airing.Offset,
 		Limit:         airing.Remaining,
 		AudioTrack:    audioTrack,
-		TargetLUFS:    targetLUFS,
+		GainDB:        gainDB,
 		Plan:          plan,
 		Source:        source,
 		// Whether this BUILD can tone-map, asked once per process by the composition root. Nil

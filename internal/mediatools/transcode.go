@@ -9,15 +9,15 @@ import (
 	"math"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
+
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/proctree"
 )
 
 // Derivative transcoding (§10 V66) — source masters feed separately identified evidence and
@@ -119,7 +119,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 
 	args := transcodeArguments(req, tmp)
 
-	cmd := exec.Command(FFmpegOr(req.FFmpegPath), args...) //nolint:gosec // args are built by this package
+	cmd := bgexec.FFmpeg(ctx, FFmpegOr(req.FFmpegPath), args...)
 	var stderr boundedBytes
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
@@ -133,7 +133,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		Purpose: "filler_transcode", JobID: req.ProcessJobID, Target: req.Profile.ID(),
 		Executable: FFmpegOr(req.FFmpegPath), Args: args,
 	})
-	supervised, err := proctree.Start(ctx, cmd)
+	err = cmd.Start()
 	if err != nil {
 		_ = progress.Close()
 		_ = stderrPipe.Close()
@@ -181,15 +181,15 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		}
 	}()
 
-	runErr := supervised.Wait()
+	runErr := cmd.Wait()
 	<-progressDone
 	<-stderrDone
 	if run != nil {
 		run.Finish(diagnostics.ProcessResult{
-			Err: runErr, Cancelled: supervised.Stopped(), TerminationReason: transcodeTerminationReason(supervised.Stopped()),
+			Err: runErr, Cancelled: cmd.Stopped(), TerminationReason: transcodeTerminationReason(cmd.Stopped()),
 		})
 	}
-	if supervised.Stopped() && ctx.Err() != nil {
+	if cmd.Stopped() && ctx.Err() != nil {
 		return MediaQuality{}, fmt.Errorf("transcode %s: %w: %s", filepath.Base(req.In), ctx.Err(), stderr.String())
 	}
 	if runErr != nil {
@@ -212,6 +212,9 @@ func transcodeArguments(req TranscodeRequest, output string) []string {
 	// Detector facts share this encode. `-v info` is required because the three filters report on
 	// stderr at info level; `-nostats` keeps that capture bounded to diagnostics and measurements.
 	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info"}
+	// Background work: bound the DECODER (before -i) as well as the encoder below. See
+	// BackgroundThreads.
+	args = append(args, "-threads", strconv.Itoa(BackgroundThreads))
 	// stdout carries progress; stderr remains exclusively diagnostics and detector evidence.
 	args = append(args, "-progress", "pipe:1", "-i", req.In)
 	// One explicit A/V pair is part of the recipe identity. Metadata, chapters, subtitles and data
@@ -222,6 +225,8 @@ func transcodeArguments(req TranscodeRequest, output string) []string {
 	args = append(args,
 		"-c:v", "libx264", "-crf", strconv.Itoa(p.CRF), "-preset", p.Preset,
 		"-pix_fmt", p.PixelFormat,
+		"-threads", strconv.Itoa(BackgroundThreads), "-filter_threads", strconv.Itoa(BackgroundThreads),
+		"-x264-params", x264BackgroundParams(),
 		"-vf", qualityVideoFilters)
 	if p.KeyframeSeconds > 0 {
 		// A keyframe at frame 0 and every N seconds. `expr:gte(t,n_forced*N)` is the form that
@@ -376,4 +381,23 @@ func equivalentMediaRatio(before, after string) bool {
 	left, leftOK := parse(before)
 	right, rightOK := parse(after)
 	return leftOK && rightOK && left.Cmp(right) == 0
+}
+
+// BackgroundThreads caps every filler ffmpeg's worker threads (#1512 G5).
+//
+// ⚠ Production ran two libx264 software encodes per clip with NO thread cap and measured about
+// 350% CPU in a 4-CPU container — every page and every live stream slowed for the duration. One
+// thread per stage keeps a batch encode to roughly one core plus the muxer; it is slower per clip,
+// which is the right trade for work nobody is waiting on. Paired with proctree.LowPriority so that
+// even that core yields to playback.
+//
+// Measured on a 4-CPU pin (720p): uncapped ~393%, two threads ~196–200% (no margin, and 1080p
+// exceeds it), one thread ~135–168%.
+const BackgroundThreads = 1
+
+// x264BackgroundParams bounds libx264's own thread pool, which `-threads` alone does not: with
+// two frame threads libx264 also runs a separate lookahead thread and peaked at ~256%. One thread
+// runs the lookahead synchronously on the encoding thread, so there is nothing else to bound.
+func x264BackgroundParams() string {
+	return "threads=" + strconv.Itoa(BackgroundThreads)
 }

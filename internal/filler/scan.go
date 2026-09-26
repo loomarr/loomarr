@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
+
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
@@ -329,7 +330,7 @@ func ffprobeWith(ctx context.Context, bin, path string) (Probed, error) {
 	// needs (how long the clip occupies a break), and a stream's duration can differ from it —
 	// an audio stream running a few frames past the video is normal and would give a subtly
 	// wrong answer. Height necessarily comes from the streams, hence both sections.
-	out, err := exec.CommandContext(ctx, bin,
+	out, err := bgexec.Tool(ctx, bin,
 		"-v", "error",
 		"-show_entries", "format=duration:stream=width,height,codec_type,avg_frame_rate,sample_aspect_ratio,display_aspect_ratio,field_order,start_time,duration",
 		"-of", "json",

@@ -17,15 +17,19 @@ type processTree struct {
 	groupID uint32
 }
 
-func configureProcessTree(cmd *exec.Cmd) {
+func configureProcessTree(cmd *exec.Cmd, o options) {
+	flags := uint32(windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED)
+	if o.lowPriority {
+		flags |= windows.BELOW_NORMAL_PRIORITY_CLASS
+	}
 	// Suspension closes the cmd.Start -> AssignProcessToJobObject race: the child cannot
 	// spawn a helper until it belongs to the Job Object that descendants inherit.
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED,
+		CreationFlags: flags,
 	}
 }
 
-func attachProcessTree(cmd *exec.Cmd) (*processTree, error) {
+func attachProcessTree(cmd *exec.Cmd, _ options) (*processTree, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create job object: %w", err)

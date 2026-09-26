@@ -6,9 +6,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 // FingerprintMedia decodes one complete, duration-bounded source into the
@@ -36,7 +37,7 @@ func visualFingerprint(ctx context.Context, ffmpegPath, path string, durationMS 
 	}
 	var stdout, stderr bytes.Buffer
 	filter := "fps=2,crop=trunc(iw*0.90/2)*2:trunc(ih*0.78/2)*2,scale=9:8,format=gray"
-	cmd := exec.CommandContext(ctx, ffmpegPath, "-nostdin", "-hide_banner", "-loglevel", "error", "-i", path,
+	cmd := bgexec.FFmpeg(ctx, ffmpegPath, "-nostdin", "-hide_banner", "-loglevel", "error", "-i", path,
 		"-t", strconv.FormatFloat(float64(durationMS)/1000, 'f', 3, 64), "-an", "-vf", filter, "-pix_fmt", "gray", "-f", "rawvideo", "-")
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -71,7 +72,7 @@ func audioEnvelope(ctx context.Context, ffmpegPath, path string, durationMS int6
 		return nil, fmt.Errorf("source duration is not bounded")
 	}
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, ffmpegPath, "-nostdin", "-hide_banner", "-loglevel", "error", "-i", path,
+	cmd := bgexec.FFmpeg(ctx, ffmpegPath, "-nostdin", "-hide_banner", "-loglevel", "error", "-i", path,
 		"-t", strconv.FormatFloat(float64(durationMS)/1000, 'f', 3, 64), "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-")
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

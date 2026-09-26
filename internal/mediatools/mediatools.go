@@ -5,12 +5,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 // MediaTools is the split pipeline's exec boundary (§10 V34): everything the
@@ -96,7 +97,7 @@ func NewFFmpegTools(ffmpegPath, ffprobePath, whisperPath, whisperModel, tmpDir s
 var _ MediaTools = (*FFmpegTools)(nil)
 
 func (t *FFmpegTools) Chapters(ctx context.Context, file string) ([]Chapter, error) {
-	out, err := exec.CommandContext(ctx, t.FFprobePath,
+	out, err := bgexec.Tool(ctx, t.FFprobePath,
 		"-v", "quiet", "-print_format", "json", "-show_chapters", file).Output()
 	if err != nil {
 		return nil, fmt.Errorf("ffprobe chapters %s: %w", file, err)
@@ -113,7 +114,7 @@ func (t *FFmpegTools) Boundaries(ctx context.Context, file string, startMs, endM
 	// Both detectors report on stderr; the null muxer discards the decode. Reset timestamps so
 	// detector output is relative to this seeked span, then offset it back to the file timeline.
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, t.FFmpegPath,
+	cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
 		"-nostdin", "-hide_banner", "-nostats", "-v", "info",
 		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file,
@@ -152,7 +153,7 @@ func (t *FFmpegTools) Transcribe(ctx context.Context, file string, startMs, endM
 		return nil, err
 	}
 	base := filepath.Join(dir, "out")
-	if out, err := exec.CommandContext(ctx, t.WhisperPath,
+	if out, err := bgexec.Whisper(ctx, t.WhisperPath,
 		"-m", t.WhisperModel, "-f", wav, "-oj", "-of", base, "-np").CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("whisper-cli: %w: %s", err, out)
 	}
@@ -167,7 +168,7 @@ func (t *FFmpegTools) GrayFrames(ctx context.Context, file string, startMs, endM
 	// 1/3fps over 9x8 gray pixels: the §6.4-measured duplicate detector (mean
 	// per-frame Hamming 1.1 for a re-encoded duplicate vs 27.6–32.2 different).
 	var stdout bytes.Buffer
-	cmd := exec.CommandContext(ctx, t.FFmpegPath,
+	cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
 		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file, "-vf", "fps=1/3,scale=9:8", "-pix_fmt", "gray",
 		"-f", "rawvideo", "-")
@@ -196,7 +197,7 @@ func (t *FFmpegTools) Keyframes(ctx context.Context, file string, n int) ([][]by
 	if t.FFprobePath == "" {
 		return nil, fmt.Errorf("ffprobe is required to bound semantic frames for %s", file)
 	}
-	out, err := exec.CommandContext(ctx, t.FFprobePath,
+	out, err := bgexec.Tool(ctx, t.FFprobePath,
 		"-v", "error", "-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1", file).Output()
 	if err != nil {
@@ -259,7 +260,7 @@ func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, end
 			continue
 		}
 		var stdout bytes.Buffer
-		cmd := exec.CommandContext(ctx, t.FFmpegPath,
+		cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
 			"-nostdin",
 			"-ss", fmt.Sprintf("%.3f", float64(seekMs)/1000),
 			"-i", file,
@@ -302,7 +303,7 @@ func (t *FFmpegTools) SceneCutsIn(ctx context.Context, file string, startMs, end
 	}
 	var stderr bytes.Buffer
 	filter := fmt.Sprintf("setpts=PTS-STARTPTS,select='gt(scene,%0.3f)',showinfo", threshold)
-	cmd := exec.CommandContext(ctx, t.FFmpegPath,
+	cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
 		"-nostdin", "-hide_banner", "-nostats", "-v", "info",
 		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file, "-an", "-vf", filter, "-f", "null", "-")
@@ -343,7 +344,7 @@ func (t *FFmpegTools) FramesAt(ctx context.Context, file string, atMS []int64) (
 			return nil, fmt.Errorf("frame timestamp must be non-negative, got %d for %s", at, file)
 		}
 		var stdout, stderr bytes.Buffer
-		cmd := exec.CommandContext(ctx, t.FFmpegPath,
+		cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
 			"-nostdin", "-hide_banner", "-v", "error",
 			"-ss", msToSeconds(at), "-i", file, "-an",
 			"-vf", fmt.Sprintf("scale=w='min(iw,%d)':h=-2", SemanticFrameMaxWidth),
@@ -388,7 +389,7 @@ func (t *FFmpegTools) Cut(ctx context.Context, file string, startMs, endMs int64
 	// timestamps to zero makes the preroll visible instead: measured on a sparse-GOP compilation, a
 	// requested 31s segment became 40.683s. The next probe then persisted the inflated duration and
 	// a clip that fit a break no longer did. `TestCut_MP4DoesNotExposeKeyframePreroll` pins this.
-	if combined, err := exec.CommandContext(ctx, t.FFmpegPath,
+	if combined, err := bgexec.FFmpeg(ctx, t.FFmpegPath,
 		"-ss", msToSeconds(startMs), "-t", msToSeconds(endMs-startMs),
 		"-i", file, "-c", "copy", "-y", out).CombinedOutput(); err != nil {
 		return fmt.Errorf("ffmpeg cut %s: %w: %s", out, err, combined)

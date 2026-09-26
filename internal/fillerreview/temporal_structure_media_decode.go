@@ -5,9 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 	"sync"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const temporalStructureMediaOutputMaximumBytes = 256 << 10
@@ -19,7 +20,7 @@ func (media *FFmpegTemporalStructureMedia) Decode(ctx context.Context, path stri
 		return errors.New("temporal structure media decode requires an adapter and path")
 	}
 	output := &boundedTemporalStructureMediaOutput{}
-	command := exec.CommandContext(ctx, media.media.identity.FFmpeg.Path,
+	command := bgexec.FFmpeg(ctx, media.media.identity.FFmpeg.Path,
 		"-nostdin", "-hide_banner", "-nostats", "-v", "error", "-i", path,
 		"-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-")
 	command.Stdout, command.Stderr = output, output
@@ -60,7 +61,7 @@ func (output *boundedTemporalStructureMediaOutput) message() string {
 	return strings.TrimSpace(output.buffer.String())
 }
 
-func runTemporalStructureMediaCommand(ctx context.Context, command *exec.Cmd, output *boundedTemporalStructureMediaOutput) error {
+func runTemporalStructureMediaCommand(ctx context.Context, command *bgexec.Cmd, output *boundedTemporalStructureMediaOutput) error {
 	err := command.Run()
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr

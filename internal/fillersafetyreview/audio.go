@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
+
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
@@ -108,7 +110,7 @@ func identifyResolvedFFmpeg(ctx context.Context, path string, expected *fillersa
 	if expected != nil && (!validSHA256(expected.BinarySHA256) || digest != expected.BinarySHA256) {
 		return fillersafety.ToolIdentity{}, "", fmt.Errorf("model review ffmpeg identity changed before version probe")
 	}
-	command := exec.CommandContext(ctx, path, "-version") //nolint:gosec // operator-selected resolved regular executable
+	command := bgexec.Tool(ctx, path, "-version")
 	var stdout, stderr boundedToolBuffer
 	stdout.remaining, stderr.remaining = maximumToolOutputBytes, maximumToolOutputBytes
 	command.Stdout, command.Stderr = &stdout, &stderr

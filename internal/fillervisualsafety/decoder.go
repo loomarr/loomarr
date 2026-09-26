@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
+
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -50,7 +52,7 @@ func DecodeCoverage(ctx context.Context, source *PreparedSource, ffmpegPath stri
 
 	runCtx, cancel := context.WithTimeout(ctx, MaximumVisualDecodeWallTime)
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, resolved, visualDecodeArgs(source)...)
+	cmd := bgexec.FFmpeg(runCtx, resolved, visualDecodeArgs(source)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return CoverageEvidence{}, fmt.Errorf("visual-safety decoder stdout: %w", err)

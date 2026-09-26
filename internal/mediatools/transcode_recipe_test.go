@@ -2,6 +2,7 @@ package mediatools
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -74,4 +75,29 @@ func containsArgumentPair(args []string, first, second string) bool {
 		}
 	}
 	return false
+}
+
+// A filler encode is background batch work in a container that also serves the app and live
+// playout, so it must never fan out to every core (#1512 G5: an uncapped libx264 encode measured
+// ~350% CPU in a 4-CPU container and slowed every page).
+func TestTranscodeArgumentsCapThreads(t *testing.T) {
+	for name, profile := range map[string]MezzanineProfile{
+		"playback": DefaultMezzanine(),
+		"evidence": EvidenceDerivativeRecipe().Profile(),
+	} {
+		args := transcodeArguments(TranscodeRequest{In: "in.mkv", Out: "out.mp4", HadAudio: true, Profile: profile}, "tmp.mp4")
+		if !containsArgumentPair(args, "-threads", strconv.Itoa(BackgroundThreads)) {
+			t.Errorf("%s: no -threads %d: %v", name, BackgroundThreads, args)
+		}
+		// libx264 keeps its own thread pool (frame threads + a lookahead thread) that `-threads` does not
+		// fully bound on every build, so it is capped explicitly too.
+		if !containsArgumentPair(args, "-x264-params", "threads="+strconv.Itoa(BackgroundThreads)) {
+			t.Errorf("%s: libx264 thread pool not capped: %v", name, args)
+		}
+		// -threads is per-side: before -i it bounds the DECODER, after it the ENCODER. Both need it.
+		in, first := slices.Index(args, "-i"), slices.Index(args, "-threads")
+		if first < 0 || first > in || slices.Index(args[in:], "-threads") < 0 {
+			t.Errorf("%s: -threads must cap both the decoder (before -i) and the encoder (after): %v", name, args)
+		}
+	}
 }

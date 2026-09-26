@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const (
@@ -102,7 +103,7 @@ func VerifyDerivative(ctx context.Context, ffmpegPath, path string, durationMs i
 		return DerivativeQC{}, err
 	}
 
-	decodeArgs := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-i", path, "-map", "0:v:0"}
+	decodeArgs := []string{"-nostdin", "-threads", strconv.Itoa(BackgroundThreads), "-hide_banner", "-nostats", "-v", "info", "-i", path, "-map", "0:v:0"}
 	if hadAudio {
 		decodeArgs = append(decodeArgs, "-map", "0:a:0", "-af", "ebur128=peak=true:framelog=quiet")
 	} else {
@@ -120,7 +121,7 @@ func VerifyDerivative(ctx context.Context, ffmpegPath, path string, durationMs i
 
 	seekMs := durationMs / 2
 	seekArgs := []string{
-		"-nostdin", "-hide_banner", "-v", "error", "-ss", MsToFFmpegTime(seekMs),
+		"-nostdin", "-threads", strconv.Itoa(BackgroundThreads), "-hide_banner", "-v", "error", "-ss", MsToFFmpegTime(seekMs),
 		"-i", path, "-map", "0:v:0", "-frames:v", "1", "-f", "null", "-",
 	}
 	if _, err := runDerivativeCommand(ctx, FFmpegOr(ffmpegPath), true, seekArgs...); err != nil {
@@ -285,7 +286,7 @@ func runDerivativeCommand(ctx context.Context, executable string, combined bool,
 	if combined {
 		stderr = stdout
 	}
-	cmd := exec.CommandContext(ctx, executable, args...) //nolint:gosec // executable is the operator-configured media tool
+	cmd := bgexec.Tool(ctx, executable, args...)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	runErr := cmd.Run()
 	stdoutBytes, stdoutOverflow := stdout.result()

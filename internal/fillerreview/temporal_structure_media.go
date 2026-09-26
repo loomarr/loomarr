@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 )
@@ -74,7 +75,7 @@ func (media *FFmpegTemporalStructureMedia) Render(ctx context.Context, segments 
 		}
 		arguments := fillerstructuremedia.ConcatArguments("concat.txt", output)
 		commandOutput := &boundedTemporalStructureMediaOutput{}
-		command := exec.CommandContext(ctx, media.media.identity.FFmpeg.Path, arguments...)
+		command := bgexec.FFmpeg(ctx, media.media.identity.FFmpeg.Path, arguments...)
 		command.Dir = temporary
 		command.Stdout, command.Stderr = commandOutput, commandOutput
 		if err := runTemporalStructureMediaCommand(ctx, command, commandOutput); err != nil {
@@ -94,7 +95,7 @@ func (media *FFmpegTemporalStructureMedia) Render(ctx context.Context, segments 
 func (media *FFmpegTemporalStructureMedia) writePart(ctx context.Context, segment TemporalStructureRenderSegment, output string) (TemporalTruthVideoInfo, error) {
 	arguments := fillerstructuremedia.PartArguments(segment.SourcePath, segment.StartMS, segment.DurationMS, output)
 	commandOutput := &boundedTemporalStructureMediaOutput{}
-	command := exec.CommandContext(ctx, media.media.identity.FFmpeg.Path, arguments...)
+	command := bgexec.FFmpeg(ctx, media.media.identity.FFmpeg.Path, arguments...)
 	command.Stdout, command.Stderr = commandOutput, commandOutput
 	if err := runTemporalStructureMediaCommand(ctx, command, commandOutput); err != nil {
 		return TemporalTruthVideoInfo{}, fmt.Errorf("render normalized structure part: %w", err)

@@ -99,6 +99,9 @@ func DefaultBudget() Budget {
 // spend tracks what a single pass has used.
 type spend struct {
 	clips, transcodes, whisper, vision, splits int
+	// playbackBusy is set once a media rung has waited out its bound, so the rest of the pass does
+	// not wait it out again for every queued clip.
+	playbackBusy bool
 }
 
 // exhausted reports whether the budget for a given cost is spent.
@@ -232,6 +235,9 @@ type Pipeline struct {
 	// legacySegmentScreeningChecked gates the one-time rewind of children created before the
 	// rendered-child safety rung existed. A completed stage record is the durable migration mark.
 	legacySegmentScreeningChecked bool
+	// headroom lets media-heavy rungs yield to live playback; nil never waits.
+	headroom PlaybackHeadroom
+	yield    PlaybackYield
 }
 
 // NewPipeline builds a runner over the given stages. Stages absent from the list are treated as
@@ -781,6 +787,13 @@ func (p *Pipeline) advance(ctx context.Context, row ClipPipeline, s *spend) (Dis
 				break
 			}
 			continue
+		}
+
+		// Media-heavy rungs yield to live playback (#1512 G5): wait a bounded while, then leave
+		// the clip queued at this rung — no attempt spent, exactly as for an exhausted budget.
+		if !p.waitForHeadroom(ctx, s, row.Stage, stage.Cost()) {
+			row.Status = StatusQueued
+			return row.Disposition, p.persist(ctx, row, clip)
 		}
 
 		row.Status, row.Attempts = StatusRunning, row.Attempts+1

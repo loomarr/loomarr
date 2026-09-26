@@ -13,8 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"golang.org/x/sys/unix"
+
+	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 )
 
 const maxInspectionArtifactBytes = 64 << 20

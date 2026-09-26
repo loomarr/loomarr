@@ -7,14 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/proctree"
 )
 
 const youtubeSourceFinderTimeout = 8 * time.Second
@@ -363,16 +362,15 @@ func (f *YouTubeSourceFinder) run(ctx context.Context, args ...string) ([]byte, 
 	}
 	runCtx, cancel := context.WithTimeout(ctx, youtubeSourceFinderTimeout)
 	defer cancel()
-	cmd := exec.Command(f.ytDlpPath, args...) //nolint:gosec // resolved configured tool; arguments are separate and bounded
+	cmd := bgexec.Tool(runCtx, f.ytDlpPath, args...)
 	stdout := boundedSourceFinderOutput{limit: maxSourceFinderJSONBytes}
 	stderr := diagnosticTail{limit: ytDlpDiagnosticLimit}
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	supervisor, err := proctree.Start(runCtx, cmd)
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start yt-dlp: %w", err)
 	}
-	err = supervisor.Wait()
-	if supervisor.Stopped() && runCtx.Err() != nil {
+	err := cmd.Wait()
+	if cmd.Stopped() && runCtx.Err() != nil {
 		return nil, runCtx.Err()
 	}
 	if err != nil {

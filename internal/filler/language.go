@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/loomarr/loomarr/internal/mediatools"
 	"os"
-	"os/exec"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
+	"github.com/loomarr/loomarr/internal/mediatools"
+
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -238,7 +240,7 @@ func (w *WhisperLanguage) DetectLanguage(ctx context.Context, file string, start
 	base := filepath.Join(dir, "out")
 	// ⚠ `-l auto` is the whole point: without it whisper uses its default (English) and reports
 	// that back, so the detector would agree with itself for every clip on earth.
-	run := exec.CommandContext(ctx, w.WhisperPath,
+	run := bgexec.Whisper(ctx, w.WhisperPath,
 		"-m", w.Model, "-f", wav, "-l", "auto", "-oj", "-of", base, "-np")
 	if out, runErr := run.CombinedOutput(); runErr != nil {
 		return LangUndetermined, fmt.Errorf("whisper-cli language: %w: %s", runErr, truncate(string(out), 200))
@@ -296,7 +298,7 @@ const silenceFloorLUFS = -50.0
 // An error is reported as NOT silent: failing to measure must not become grounds for a verdict in
 // either direction, and the caller keeps the clip either way.
 func spanIsSilent(ctx context.Context, ffmpegPath, wav string) (bool, error) {
-	out, err := exec.CommandContext(ctx, mediatools.FFmpegOr(ffmpegPath),
+	out, err := bgexec.FFmpeg(ctx, mediatools.FFmpegOr(ffmpegPath),
 		"-nostdin", "-i", wav, "-af", "ebur128=framelog=quiet", "-f", "null", "-").CombinedOutput()
 	if err != nil {
 		return false, err

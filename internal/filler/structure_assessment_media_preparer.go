@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
+
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructuremedia"
 	"github.com/loomarr/loomarr/internal/mediatools"
@@ -223,7 +224,7 @@ func (w *boundedStructureAssessmentOutput) Write(data []byte) (int, error) {
 
 func runStructureAssessmentFFmpeg(ctx context.Context, executable string, arguments []string) error {
 	output := &boundedStructureAssessmentOutput{}
-	command := exec.CommandContext(ctx, executable, arguments...) //nolint:gosec // operator-configured media tool
+	command := bgexec.FFmpeg(ctx, executable, arguments...)
 	command.Stdout, command.Stderr = output, output
 	err := command.Run()
 	if ctxErr := ctx.Err(); ctxErr != nil {

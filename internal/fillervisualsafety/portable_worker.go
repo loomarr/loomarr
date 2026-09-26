@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const MaximumPortableWorkerShutdownTime = 5 * time.Second
@@ -26,7 +27,7 @@ func RunPortableCoverage(ctx context.Context, source *PreparedSource, ffmpegPath
 
 	workerCtx, cancelWorker := context.WithCancel(ctx)
 	defer cancelWorker()
-	cmd := exec.CommandContext(workerCtx, worker, "serve") //nolint:gosec // exact operator-selected executable is hashed above and below
+	cmd := bgexec.Tool(workerCtx, worker, "serve")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return PortableExecution{}, fmt.Errorf("portable visual-safety worker stdin: %w", err)
@@ -125,7 +126,7 @@ func exchangePortableFrame(ctx context.Context, cancelWorker context.CancelFunc,
 	}
 }
 
-func shutdownPortableWorker(ctx context.Context, cancelWorker context.CancelFunc, cmd *exec.Cmd, stdin io.Closer, stdout io.Reader, diagnosticsDone <-chan struct{}) error {
+func shutdownPortableWorker(ctx context.Context, cancelWorker context.CancelFunc, cmd *bgexec.Cmd, stdin io.Closer, stdout io.Reader, diagnosticsDone <-chan struct{}) error {
 	closeErr := stdin.Close()
 	type eofResult struct {
 		count int

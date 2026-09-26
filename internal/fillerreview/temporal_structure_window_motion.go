@@ -5,10 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const temporalStructureWindowMotionPrefix = "lavfi.signalstats.YAVG="
@@ -38,7 +39,7 @@ func (m *FFmpegTemporalStructureWindowMotionMeasurer) Measure(ctx context.Contex
 	if m == nil || strings.TrimSpace(m.identity.Path) == "" || strings.TrimSpace(path) == "" {
 		return TemporalStructureWindowMotionSample{}, errors.New("window motion measurer is unavailable")
 	}
-	command := exec.CommandContext(ctx, m.identity.Path,
+	command := bgexec.FFmpeg(ctx, m.identity.Path,
 		"-nostdin", "-hide_banner", "-v", "error", "-i", path,
 		"-map", "0:v:0", "-vf", "tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-",
 		"-an", "-threads", "1", "-filter_threads", "1", "-filter_complex_threads", "1", "-f", "null", "-",

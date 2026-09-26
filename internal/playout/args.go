@@ -2,6 +2,7 @@ package playout
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 )
@@ -376,33 +377,39 @@ func (p Profile) gopArgs() []string {
 
 // audioEncodeArgs is fixed AAC stereo 48kHz — see Profile.AudioBitrate.
 func (p Profile) audioEncodeArgs() []string {
-	return p.audioEncodeArgsNormalised("")
+	return p.audioEncodeArgsGain(0)
 }
 
-// audioEncodeArgsNormalised is audioEncodeArgs plus an optional loudness filter (§10 V40).
+// MaxGainDB bounds a static per-item gain. Clips are normalised to the target at ingest, so a
+// real correction is a fraction of a dB; anything past this is a bad measurement, and applying it
+// would either clip (boost) or mute (cut) a clip on the strength of a number nobody checked.
+const MaxGainDB = 6.0
+
+// StaticGainDB is the constant gain that moves a clip measured at measuredLUFS to targetLUFS,
+// clamped to ±MaxGainDB.
+func StaticGainDB(targetLUFS, measuredLUFS float64) float64 {
+	return math.Max(-MaxGainDB, math.Min(MaxGainDB, targetLUFS-measuredLUFS))
+}
+
+// gainFilter is the constant-gain audio filter for a filler clip.
 //
-// ⚠ **Normalisation happens HERE, at playout, and never rewrites the file on disk.** The clip
-// folder holds files a person put there, and Loomarr has never modified them. In-place is
-// destructive and unrepeatable: the original cannot be recovered, and a re-scan cannot tell it has
-// already happened — so a second pass would normalise an already-normalised file, and a third
-// would do it again. One filter on a stream already being encoded is reversible, and changing the
-// target later simply works.
+// ⚠ **A static `volume`, never `loudnorm`.** Single-pass `loudnorm` re-estimates its gain from the
+// first samples of every clip, so each break opened with an audible swell (#1512 G6) and the
+// filter cost a real-time analysis on the live path. The clip was already measured at ingest
+// (`DerivativeQC.Loudness`); the correction is one number, applied identically from the first
+// sample. It never rewrites the file on disk.
+func gainFilter(gainDB float64) string {
+	return "volume=" + strconv.FormatFloat(gainDB, 'f', -1, 64) + "dB"
+}
+
+// audioEncodeArgsGain is audioEncodeArgs plus an optional static gain (filler only).
 //
-// ⚠ **Single-pass `loudnorm`, deliberately, despite ffmpeg's docs preferring two.** Two-pass
-// measures the whole file first, which means reading it end-to-end BEFORE emitting a frame — fine
-// for a batch transcode, fatal for a live stream that must start now. The single-pass form is
-// approximate on the first second or so and correct thereafter, which is the right trade for a
-// 30-second advert: nobody hears the ramp, and the alternative is a stall at every break.
-//
-// `targetLUFS` empty ⇒ no filter at all, which is exactly what a library program gets: normalising
-// a feature film to advert loudness would flatten its dynamic range, and the problem this solves
-// (adverts recorded a decade apart at wildly different levels) is a FILLER problem.
-func (p Profile) audioEncodeArgsNormalised(targetLUFS string) []string {
+// `gainDB` 0 ⇒ no filter at all, which is exactly what a library program gets: adjusting a
+// feature film to advert loudness would flatten its dynamic range.
+func (p Profile) audioEncodeArgsGain(gainDB float64) []string {
 	args := []string{}
-	if targetLUFS != "" {
-		// I=integrated target, TP=true-peak ceiling, LRA=loudness range. -1 dBTP is the EBU R128
-		// ceiling and leaves headroom for the lossy encode below to overshoot without clipping.
-		args = append(args, "-af", "loudnorm=I="+targetLUFS+":TP=-1:LRA=11")
+	if gainDB != 0 {
+		args = append(args, "-af", gainFilter(gainDB))
 	}
 	return append(args,
 		"-c:a", "aac",

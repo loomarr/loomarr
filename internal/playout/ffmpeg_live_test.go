@@ -639,7 +639,7 @@ func TestLive_DirectCopyOfTrimmedMP4DoesNotExposeKeyframePreroll(t *testing.T) {
 	}
 	spec := ProgramSpec{
 		Profile: profile, Input: cut, Limit: 5 * time.Second,
-		TargetLUFS: "-16", Plan: plan, Source: sourceFormat,
+		GainDB: -3, Plan: plan, Source: sourceFormat,
 	}
 	proc, err := Start(context.Background(), bin, replaceOutput(ProgramArgs(spec), transport), nil, nil)
 	if err != nil {

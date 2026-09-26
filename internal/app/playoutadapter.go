@@ -852,6 +852,12 @@ func (r *playoutResolver) airingFiller(
 			if gap.Remaining > 0 && gap.Remaining < remaining {
 				remaining = gap.Remaining
 			}
+			// The loudness measured at ingest rides the airing so the program route can apply a
+			// static gain instead of a live loudnorm (#1512 G6). Absent ⇒ 0 dB.
+			var measured *float64
+			if lufs, ok := filler.PlaybackLoudness(full); ok {
+				measured = &lufs
+			}
 			return playout.Airing{
 				StartedAt:       now.Add(-into),
 				Identity:        e.Hash,
@@ -859,10 +865,11 @@ func (r *playoutResolver) airingFiller(
 				Kind:            schedule.SlotFiller,
 				// Source, not LibraryItemID: this is a local file, not a media-server item.
 				// Playable() checks Source for exactly this case.
-				Source:    full,
-				Title:     e.Name,
-				Offset:    into,
-				Remaining: remaining,
+				Source:       full,
+				MeasuredLUFS: measured,
+				Title:        e.Name,
+				Offset:       into,
+				Remaining:    remaining,
 			}, full, nil
 		}
 		into -= d
