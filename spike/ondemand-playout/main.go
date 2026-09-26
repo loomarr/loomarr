@@ -112,9 +112,8 @@ func encoderArgs(it Item, g int) []string {
 	case "nvenc": // full-GPU graph: decode, scale and encode stay in CUDA memory
 		hw = []string{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}
 		vf = fmt.Sprintf("scale_cuda=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2:format=nv12,fps=%d/%d,", outW, outH, fpsNum, fpsDen) + setp
-		if it.HDR { // tonemap needs Vulkan: libplacebo downscales and tone-maps in one pass
-			hw = []string{"-init_hw_device", "vulkan=vk:0", "-hwaccel", "vulkan", "-hwaccel_output_format", "vulkan", "-filter_hw_device", "vk"}
-			vf = fmt.Sprintf("libplacebo=w=%d:h=%d:force_original_aspect_ratio=decrease:normalize_sar=1:pad_crop_ratio=0:format=nv12:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390,hwdownload,format=nv12,fps=%d/%d,", outW, outH, fpsNum, fpsDen) + setp
+		if it.HDR { // libplacebo with ffmpeg's vulkan hwaccel device fails to init (ffmpeg n9, driver 615): downscale in CUDA, download p010 at 1080p, tone-map in libplacebo's own Vulkan device
+			vf = fmt.Sprintf("scale_cuda=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010le,hwdownload,format=p010le,libplacebo=w=%d:h=%d:format=nv12:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390,fps=%d/%d,", outW, outH, outW, outH, fpsNum, fpsDen) + setp
 		}
 		venc = []string{"-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-profile:v", "high", "-level", "4.1", "-bf", "0", "-g", fmt.Sprint(g),
 			"-forced-idr", "1", "-strict_gop", "1", "-no-scenecut", "1"}
