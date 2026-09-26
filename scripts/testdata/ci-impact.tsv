@@ -127,3 +127,4 @@ filler-pilot-review-command	cmd/filler-corpus-pilot-rights-review/main.go;cmd/fi
 filler-eval-doc	internal/fillereval/README.md	docs
 ci-ffmpeg-toolchain	scripts/ci-ffmpeg.sh	contracts,go,go_full,policy
 go-race-sharding	scripts/go-certification-lanes.tsv;scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-test-lane.sh;scripts/go-test-packages.sh	contracts,go,go_full,policy
+spike-throwaway	spike/4k-tonemap/README.md;spike/4k-tonemap/image/Dockerfile	docs
