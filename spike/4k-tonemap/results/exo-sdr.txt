@@ -1,0 +1,13 @@
+SPK     : t_ms=116 start url=http://10.0.2.2:8765/sdr/index.m3u8 bufferForPlaybackMs=1000
+SPK     : t_ms=178 state=2 rebuffers=0 pos_ms=0
+SPK     : t_ms=812 vdec_init OMX.google.hevc.decoder init_ms=21
+SPK     : t_ms=813 vformat 3840x2160 hvc1.1.6.L150.B0 reuse=none pos_ms=0
+SPK     : t_ms=828 adec_init OMX.google.aac.decoder
+SPK     : t_ms=828 aformat 48000 mp4a.40.2 reuse=none
+SPK     : t_ms=1376 first_frame
+SPK     : t_ms=1447 state=3 rebuffers=0 pos_ms=0
+SPK     : t_ms=34182 dropped=7
+SPK     : t_ms=34208 state=2 rebuffers=1 pos_ms=32661
+SPK     : t_ms=34325 state=3 rebuffers=1 pos_ms=32661
+SPK     : t_ms=42040 dropped=26
+SPK     : t_ms=42040 state=4 rebuffers=1 pos_ms=40356

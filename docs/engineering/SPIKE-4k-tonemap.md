@@ -86,7 +86,34 @@ table. Items marked **[maintainer]** are look or product choices that need appro
 
 ### 1b. NVENC (RTX 3080 Ti, native n9.0.2)
 
-NVENC_RESULTS
+40 s excerpts on local NVMe, same audio and fMP4 settings, under the shared GPU lock.
+
+| Graph | Start p50 (max), n = 8 | Speed | CPU at 1x | Output check |
+|---|---|---|---|---|
+| 4K HDR10 passthrough: `scale_cuda format=p010le` → `hevc_nvenc main10` | 684 ms (1,409) | 4.3x | 0.10 | mastering display + CLL side data preserved |
+| 4K SDR: `scale_cuda format=nv12` → `hevc_nvenc main` (S4) | 514 ms (578), n = 4 | 4.2x | 0.095 | n/a |
+| HDR → 1080p, `tonemap_opencl` Hable (CUDA → download → OpenCL → download → CUDA) | **578 ms** (874 cold) | 4.9x | **0.32** | YAVG 29 (not black) |
+| HDR → 1080p, libplacebo BT.2390 (phase 1a's graph) | 2,590 ms (9,610) | 1.1x | 0.41 | n/a |
+| HDR → 4K SDR, `tonemap_opencl` (the 4K SDR premium's HDR items) | 989 ms (1,693) | **0.69x ✗** | **0.95 ✗** | n/a |
+
+| Mix (30 s each) | Speeds |
+|---|---|
+| 3 × 4K HDR10 | 1.47–1.50x each (aggregate 4.5x ≈ one stream's 4.3x) |
+| 1 × 4K HDR10 + 1 × OpenCL 1080p baseline + 6 × 1080p SDR | 4K 1.51x, OpenCL 1.47x, 1080p 1.51–1.62x |
+| 4 × OpenCL 1080p baselines | 2.02–2.08x each, **0.50 cores/stream** |
+
+- **Phase 0 decision 3 is met:** `tonemap_opencl` brings the NVIDIA HDR baseline's start from libplacebo's
+  2.2–2.6 s down to 0.58 s. The price is CPU: CUDA↔OpenCL has no interop in ffmpeg, so the frames round-trip
+  through system memory. That costs 0.32 cores at 1x and 0.50 under load, which **breaks G5's 1-core total at
+  about 2–3 concurrent HDR baselines on a GeForce host.** Record: phase 2 either caps concurrent HDR baselines
+  on NVIDIA by the CPU allowance (the capacity rule already takes the min) or moves to a CUDA tone-map in the
+  contingency Rust worker.
+- **4K on NVIDIA:** three 4K HEVC encodes saturate the card (decode-bound; the aggregate doesn't grow).
+  **Count a 4K premium encode as about 4 units on NVIDIA** (as the issue proposed), versus about 2 on the Arc.
+  The unit is per family and comes from the probe.
+- **A 4K SDR premium with HDR items is not viable on NVIDIA through OpenCL** (0.69x, 0.95 cores): 4K frames
+  round-trip through the CPU twice. It needs a GPU-resident tone-map (libplacebo on the CUDA-derived Vulkan
+  device, not measured here at 4K) or the Rust-worker contingency.
 
 ### SDR → HDR10 on the GPU (SDR items on an HDR channel)
 
@@ -134,7 +161,25 @@ encoder flags, colour tags set in-graph with `setparams` (encoder colour flags b
 
 ### Playback
 
-PLAYBACK_RESULTS
+The two boundary sets above (HDR: 3 items, 30 s; SDR: 4 items, 40 s) were packaged as VOD HLS with one
+`EXT-X-MAP` init, 1 s fMP4 segments and no discontinuity tags. That is valid only because the parameter sets
+are identical.
+
+| Player | 4K HDR10 HEVC (Main10) | 4K SDR HEVC (Main) |
+|---|---|---|
+| ExoPlayer (media3 1.9.1, Android TV emulator API 30, `OMX.google.hevc.decoder`) | **decode fails at once** (`ERROR_CODE_DECODING_FAILED`): the emulator's software HEVC decoder has no Main10. HDR can't be tested on the emulator | **1 decoder init, 0 format changes across 3 boundaries** (SD-upscaled → native 4K → OpenCL-tone-mapped HDR → SD); first frame 1.38 s; 1 rebuffer and dropped-frame reports of 7 and 26 at 32.7–40 s (near the 3rd boundary, 30.0 s). Attributed to the emulator's software 4K decode, **not proven** |
+| hls.js 1.7.1, Playwright Chromium | `isTypeSupported('hvc1.2.4.L153.B0')` = false | `hvc1.1.6.L153.B0` = false |
+| hls.js, Playwright Firefox | false (and no AVC either) | false |
+| hls.js, Playwright WebKit | not measured: the browser process crashed | n/a |
+
+- **HEVC on the web isn't available in any browser we can automate here.** Chrome/Edge on Linux and Windows
+  only decode HEVC with hardware support, and Safari does natively. Phase 2's web client must feature-detect
+  (`MediaSource.isTypeSupported`) and otherwise take the H.264 baseline.
+- **HDR10 playback needs the real Shield** (Main10 hardware decode, HDMI HDR mode). Phase 2's device matching
+  must take HEVC Main10 from the device's `MediaCodecList`, not assume it from Android TV.
+- **ExoPlayer DVR delta updates: not established.** The delta run hit a stale non-skip test server (a harness
+  fault), so ExoPlayer reloaded the full 70 KB playlist. Media3 documents EXT-X-SKIP support, but that's
+  unverified here.
 
 ## 2. G11 tone-map runtime
 
@@ -166,6 +211,7 @@ so any new apt layer needs `-o Acquire::Check-Valid-Until=false` or a fresh pin.
   caches them under `~/.cache/neo_compiler_cache`. **Proposal:** the G11 startup self-check (phase 1b probe)
   runs the tone-map once at boot, which warms the cache, and phase 2 points the cache at the data volume so it
   survives restarts.
+- **Picture check (signalstats, same graphs):** `tonemap_opencl` output YAVG 30.7 / 82.1 / 46.7 on H1 / H2 / H4 and 29 on NVIDIA; `tonemap_vaapi` YMAX = 16 on every frame. Every OpenCL number above is for a real picture.
 - **The self-check must assert on pixels**, not just exit status: a luma bound on a known HDR frame (YAVG
   well above 16). `tonemap_vaapi` exits 0 with a black picture.
 - 6 concurrent OpenCL tone-maps at 2.55x each extrapolate to **about 12 HDR baselines at ≥ 1.2x**, the same
@@ -173,24 +219,45 @@ so any new apt layer needs `-o Acquire::Check-Valid-Until=false` or a fresh pin.
 
 ### NVIDIA container path
 
-NVCONTAINER_RESULTS
+Production image (beta.7) on the dev machine with `--gpus all -e NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`.
+The machine's CDI spec is stale (`/dev/dri/card1` missing), so `--device nvidia.com/gpu=all` fails; that's an
+environment issue, not an image one.
+
+| Check | Result |
+|---|---|
+| NVIDIA OpenCL library injected by the toolkit (`compute`) | yes: `libnvidia-opencl.so.1` |
+| `-init_hw_device opencl` in the production image | **fails: -1001** (no `/etc/OpenCL/vendors`, so the ICD loader finds no platform) |
+| With a one-line `/etc/OpenCL/vendors/nvidia.icd` (`libnvidia-opencl.so.1`) mounted | works |
+| `tonemap_opencl` 1080p in the container | start 595–606 ms (4,416 ms on the first spawn in a fresh container), 8.7x, 0.18 cores at 1x, YAVG 29 (not black) |
+
+**Requirement:** the image ships `/etc/OpenCL/vendors/nvidia.icd` (a few bytes, inert without the NVIDIA
+toolkit). The compose docs require `NVIDIA_DRIVER_CAPABILITIES` to include `compute`; `video` alone gives
+NVENC but not OpenCL. This is exactly why phase 1a's dev check passed natively but would silently fail in
+Docker.
 
 ### Curve side-by-side **[maintainer]**
 
-12 contact sheets (4 films × darkest/middle/brightest of five candidate timestamps), each laid out as Hable
-(`tonemap_opencl`) | BT.2390 (libplacebo) | Intel VPP, rendered on the Arc. They are in the supervisor's
-scratchpad (`tonecurves/`) and are **never committed**. The Intel VPP panel is black in every sheet (#1516),
-so the practical choice is **Hable vs BT.2390**:
+The frames are 4 films × the darkest, middle and brightest of five candidate timestamps (15–75% of runtime),
+rendered on the Arc and kept in the supervisor's scratchpad (`tonecurves/`). They are **never committed**.
+- **First set (3 panels):** Hable | BT.2390 | Intel VPP. The VPP panel is black in every sheet (#1516).
+- **Second set (`sheet6_*`, 2×3 panels):** Hable | Mobius | Reinhard (`tonemap_opencl`, zero-copy) over
+  BT.2390 | BT.2446a | Spline (libplacebo).
 
-| Curve | Intel (Arc/iGPU) | NVIDIA | Software | Apple (phase 0 note) |
-|---|---|---|---|---|
-| Hable | `tonemap_opencl`, zero-copy, 8.6x | `tonemap_opencl` | `tonemap=hable` | CPU `tonemap` |
-| BT.2390 | libplacebo CPU hop only (3.4x, 0.23 cores) | libplacebo (Vulkan init, 2.2 s start in phase 0) | libplacebo on lavapipe (not measured) | none in Homebrew's ffmpeg |
+Per-stream cost on the Arc (4K HDR10 film → 1080p SDR H.264, 20 s read from the library share):
 
-**Recommendation:** Hable. It is the only curve with a fast zero-copy path on Intel and NVIDIA and an exact
-software equivalent, so "one curve everywhere" (G11) holds on every host. BT.2390 would cost Intel about 2x
-the CPU per HDR stream and push 4K-HDR-heavy households past G5's 1-core total. (A BT.2390 `program_opencl`
-kernel is possible later.)
+| Curve | Path on the Arc | Speed | CPU at 1x | Start | NVIDIA | Software | Apple |
+|---|---|---|---|---|---|---|---|
+| Hable | `tonemap_opencl`, zero-copy | 5.5x | 0.121 | 464 ms | `tonemap_opencl` | `tonemap=hable` | CPU `tonemap` |
+| Mobius | `tonemap_opencl` | 7.6x | 0.108 | 383 ms | `tonemap_opencl` | `tonemap=mobius` | CPU |
+| Reinhard | `tonemap_opencl` | 7.8x | 0.104 | 332 ms | `tonemap_opencl` | `tonemap=reinhard` | CPU |
+| BT.2390 | libplacebo, CPU hop | 3.0x | 0.244 | 693 ms | libplacebo (2.2–2.6 s start) | libplacebo on lavapipe (not measured) | none in Homebrew's ffmpeg |
+| BT.2446a | libplacebo, CPU hop | 3.4x | 0.206 | 616 ms | libplacebo | same | none |
+| Spline | libplacebo, CPU hop | 3.3x | 0.214 | 654 ms | libplacebo | same | none |
+
+**Recommendation:** Hable (or Mobius/Reinhard if the maintainer prefers their brighter look, since cost is
+equal). These are the only curves with a fast zero-copy path on Intel and an exact CPU equivalent in ffmpeg's
+`tonemap`, so "one curve everywhere" (G11) holds on every host. The libplacebo curves cost about 2x the CPU
+per HDR stream on Intel and start slowly on NVIDIA. (A BT.2390 `program_opencl` kernel is possible later.)
 
 ## 3. CPU-only degradation ladder
 
@@ -223,12 +290,54 @@ Decode alone (null sink): 1.43x / 1.71x, **2.58 / 2.31 cores at 1x**. With `-ski
 
 ## 4. DVR playlist size
 
-DVR_RESULTS
+Synthetic live playlist (`spike/4k-tonemap/play/server.cjs`): a 900-entry window of 1 s fMP4 segments, one
+new segment per second, with `EXT-X-PROGRAM-DATE-TIME` on every entry. hls.js 1.7.1 in Playwright's Chromium,
+45 s per mode, `LEVEL_LOADED` stats per reload.
+
+| Mode | Playlist bytes | Reloads | Load (avg) | Parse (avg / max) | Playback |
+|---|---|---|---|---|---|
+| Full playlist | **70.2 KB** | 44 | 6.9 ms | 3.3 / 9.1 ms | 0 errors, 0 dropped |
+| Delta (`CAN-SKIP-UNTIL=6.0`, `_HLS_skip=YES`) | **1.1 KB** | 45 (45 of 46 requests carried `_HLS_skip=YES`) | 4.0 ms | **0.19 / 0.5 ms** | 0 errors, 0 dropped |
+
+- A full reload costs about 3 ms of main thread per second in Chromium. That isn't a stall risk on a desktop,
+  but on a TV-class CPU (roughly 5–10x slower) it becomes 15–30 ms every second, plus 70 KB/s of manifest.
+- **hls.js requests and applies delta updates without `lowLatencyMode`** once the server advertises
+  `CAN-SKIP-UNTIL`: 64x fewer bytes and 17x less parse.
+- **Recommendation:** the phase 2 origin serves `EXT-X-SERVER-CONTROL:CAN-SKIP-UNTIL=<≥ 6 × target
+  duration>` with `EXT-X-SKIP` delta playlists, and emits `EXT-X-PROGRAM-DATE-TIME` only on the first segment
+  and after discontinuities (50 of each entry's 78 bytes, about 64% of the full playlist).
+- ExoPlayer: see Playback.
 
 ## Go / no-go
 
-GONOGO
+| Item | Verdict | Condition / note |
+|---|---|---|
+| G10 4K HDR10 premium, Arc | **GO** | 0.3 s start, 5.8x, 0.07 cores; 2 units |
+| G10 4K HDR10 premium, NVENC | **GO** | 0.7 s start, 4.3x, 0.10 cores; about 4 units (3 × 4K saturates) |
+| G10 4K SDR premium, native SDR items | **GO** (both) | Arc 5.7x / NVENC 4.2x |
+| G10 4K SDR premium, HDR items tone-mapped at 4K | Arc **GO** (OpenCL 5.2x); NVIDIA **NO-GO** via OpenCL (0.69x, 0.95 cores) | NVIDIA needs a GPU-resident path (open) |
+| G10 SDR → HDR10 on an HDR stream | **GO** via libplacebo (BT.2408-correct); on the Arc through a CPU hop at 0.17–0.22 cores per converted item | Intel VPP paths wrong or refused |
+| G10 gapless SDR-converted ↔ HDR boundaries | **GO** | identical VPS/SPS/PPS; seams ≤ 1 AAC frame with phase 0's packager rules; HDR static metadata must become channel-level (proposal) |
+| G10 HEVC in hls.js | **NO-GO in the tested browsers** | Playwright's Chromium and Firefox report no HEVC; WebKit crashed; real Chrome/Edge/Safari with hardware HEVC untested. Web gets the H.264 baseline unless `isTypeSupported('hvc1…')` says otherwise |
+| G10 HEVC in ExoPlayer | see Playback | n/a |
+| G11 Intel runtime | **GO** with Intel compute-runtime (+432 MB) and `tonemap_opencl` | `tonemap_vaapi` **NO-GO: black (#1516)**; rusticl no-go; libplacebo zero-copy no-go |
+| G11 NVIDIA container runtime | **GO** with `/etc/OpenCL/vendors/nvidia.icd` in the image + `compute` capability | CPU 0.18–0.5 cores per HDR stream caps concurrency under G5 |
+| G11 startup self-check | **GO**, but it must assert luma on a real HDR frame (a clean exit proved nothing here) | it also warms the OpenCL kernel cache |
+| G11 curve | **[maintainer]**: 6-curve sheets delivered; the cost favours Hable/Mobius/Reinhard (OpenCL, 0.10–0.12 cores) over BT.2390/BT.2446a/Spline (libplacebo hop, 0.21–0.24 cores on the Arc) | recommend Hable unless the look says otherwise |
+| CPU ladder rung 1 (lighter version) | **covers 0 titles today** | needs multi-source inventory |
+| CPU ladder rungs 2–3 (skip loop filter, noref) | **NO-GO as promises** | 4–7% and source-dependent |
+| CPU ladder rung 4 (keyframes only) | **GO** as the last resort | 0.33–0.41 cores; a slideshow with continuous audio |
+| DVR 900-entry playlist | **GO with delta updates** | hls.js: 70 KB → 1.1 KB, 3.3 → 0.19 ms parse |
+
+Nothing measured invalidates G10 or G11. The one near-miss is G5 on NVIDIA HDR baselines (CPU round-trip),
+which the capacity rule absorbs.
 
 ## Not measured
 
-UNMEASURED
+- Dolby Vision profile 5 sources (none in the samples); DV RPU passthrough (neither encoder carries it).
+- SDR → HDR10 on NVIDIA (libplacebo on Vulkan is expected to work on the GPU, as phase 0's tone-map did; not timed).
+- libplacebo on the CUDA-derived Vulkan device at 4K (the candidate fix for NVIDIA's 4K SDR premium).
+- HEVC in real Chrome/Edge (hardware HEVC) and Safari; WebKit (the Playwright build crashed).
+- Real Shield / real 4K HDR TV: the emulator can't show HDR or HDMI mode switches.
+- Cold CIFS reads for 4K starts (phase 0 covered the tail on H.264).
+- Apple Silicon (needs the real Mac run).
