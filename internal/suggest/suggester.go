@@ -229,6 +229,7 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 	intent.membershipKeys = make(map[provision.Key]bool)
 	intent.membershipSources = newMembershipSourceState()
 	intent.requiredTitleKeys = make(map[string]provision.Key)
+	intent.exampleFill = nil
 	intent.networkDiscoveryComplete = false
 	allAdjacent := intent.Adjacent
 	var feedback []FeedbackSignal

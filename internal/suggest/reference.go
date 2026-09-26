@@ -164,6 +164,7 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 	}
 	wg.Wait()
 	anchored := make([]catalog.Candidate, 0, len(titles))
+	var directExamples, franchiseExamples []catalog.Candidate
 	for index, title := range titles {
 		if titleExplicitlyExcluded(*intent, title) {
 			continue
@@ -185,6 +186,7 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 				for _, member := range s.franchiseMembers(ctx, candidates, title, meaning) {
 					memberKey, _ := member.Key()
 					intent.requiredTitleKeys[normalizeTitleLabel(member.Name)] = memberKey
+					franchiseExamples = append(franchiseExamples, member)
 					anchored = append(anchored, member)
 				}
 			}
@@ -194,11 +196,21 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 		}
 		key, _ := candidate.Key()
 		intent.requiredTitleKeys[normalizeTitleLabel(candidate.Name)] = key
+		if examples[strings.ToLower(title)] {
+			directExamples = append(directExamples, candidate)
+		}
 		if requiresMembershipEvidence(*intent) {
 			intent.membershipKeys[key] = true
 		}
 		anchored = append(anchored, candidate)
 	}
+	// The era and genre of the examples, direct titles first: franchise members
+	// span decades and only stand in when no example resolved on its own.
+	eraAnchors := directExamples
+	if len(eraAnchors) == 0 {
+		eraAnchors = franchiseExamples
+	}
+	s.groundExampleFill(ctx, intent, meaning, eraAnchors)
 	return anchored, nil
 }
 
@@ -715,7 +727,10 @@ var (
 	directAndPattern     = regexp.MustCompile(`(?i:\s+and\s+)`)
 	// exampleCuePattern introduces titles the user offers as models of the
 	// channel ("adventure movies like Indiana Jones and The Goonies").
-	exampleCuePattern = regexp.MustCompile(`(?i:\b(?:like|such\s+as|similar\s+to|in\s+the\s+vein\s+of|along\s+the\s+lines\s+of|reminiscent\s+of)\b|\be\.g\.)`)
+	// RE2's \b is ASCII-only, so "à la" carries no leading boundary. "think X"
+	// is deliberately absent: TestSuggest_SoftDescriptionExampleRemainsOptional
+	// pins a trailing "Think Full House." as a soft, optional hint.
+	exampleCuePattern = regexp.MustCompile(`(?i:\b(?:like|such\s+as|similar\s+to|in\s+the\s+vein\s+of|in\s+the\s+spirit\s+of|inspired\s+by|along\s+the\s+lines\s+of|reminiscent\s+of|a\s+la)\b|à\s+la\b|\be\.g\.)`)
 )
 
 var exampleTrailerPattern = regexp.MustCompile(`(?i:\s+(?:for|from|to|that|who|which|when|where|on|but|so)\s+|\s*\()`)

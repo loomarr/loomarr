@@ -67,8 +67,11 @@ type Intent struct {
 	// explicit include. The title is only a lookup label; the bound Key is the
 	// authority used for preservation and same-name rejection.
 	requiredTitleKeys map[string]provision.Key
-	curatedTitleKey   provision.Key
-	curatedTitleSet   bool
+	// exampleFill is the era and neighbour pool derived from resolved example
+	// anchors when the request states no era (#1499). Nil when not applicable.
+	exampleFill     *exampleFill
+	curatedTitleKey provision.Key
+	curatedTitleSet bool
 	// networkDiscoveryComplete is invocation-local evidence that a network-style
 	// request actually retrieved a nonempty network-qualified Catalog pool.
 	networkDiscoveryComplete bool

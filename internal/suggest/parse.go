@@ -116,6 +116,12 @@ func parsePicks(content string) (finalOutput, error) {
 	if err := json.Unmarshal(blob, &fields); err != nil {
 		return finalOutput{}, fmt.Errorf("suggester: model final output is not an object: %w", err)
 	}
+	// The field must be present; an empty array is a real answer. Without it the text is not a
+	// final at all: a leaked tool call (#1499) carries an object with no picks, and the
+	// accepted dateMeaning added later would make it read as a valid, pick-less final.
+	if _, hasPicks := fields["picks"]; !hasPicks {
+		return finalOutput{}, fmt.Errorf("suggester: model final output has no picks field")
+	}
 	rawMeaning, ok := fields["dateMeaning"]
 	if !ok {
 		return finalOutput{}, fmt.Errorf("suggester: dateMeaning is required")
