@@ -5,8 +5,10 @@
 error
 -init_hw_device
 cuda=cu:0
+-init_hw_device
+opencl=ocl
 -filter_hw_device
-cu
+ocl
 -hwaccel
 cuda
 -hwaccel_device
@@ -30,7 +32,7 @@ cuda
 -frames:v
 753
 -vf
-scale_cuda=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010le,hwdownload,format=p010le,libplacebo=format=nv12:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=hable,hwupload_cuda,pad_cuda=w=1920:h=1080:x=-1:y=-1,fps=25,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
+scale_cuda=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010le,hwdownload,format=p010le,hwupload,tonemap_opencl=tonemap=reinhard:desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12,hwdownload,format=nv12,hwupload_cuda,pad_cuda=w=1920:h=1080:x=-1:y=-1,fps=25,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
 -c:v
 h264_nvenc
 -preset
@@ -76,4 +78,4 @@ mpegts
 -muxpreload
 0
 pipe:1
-# fallbacks: tonemap: libplacebo: the scaled frame is copied through system memory
+# fallbacks: tonemap: tonemap_opencl: the scaled frame is copied through system memory

@@ -76,4 +76,4 @@ mpegts
 -muxpreload
 0
 pipe:1
-# fallbacks: tonemap: neither tonemap_opencl nor libplacebo works on this host
+# fallbacks: tonemap: no GPU tone-mapper runs hable on this host

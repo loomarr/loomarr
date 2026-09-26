@@ -219,7 +219,8 @@ ARG WHISPER_LANG_MODEL_SHA256=be07e048e1e599ad46341c8d2a135645097a538221678b7acd
 # packages, version- and SHA256-pinned like every other download here. The four are the minimal
 # OpenCL set from Intel's install notes (no Level Zero, no ocloc). The regular packages cover Gen12
 # and newer: Tiger Lake/Alder Lake (incl. N100) iGPUs, Arc (DG2), Meteor Lake and later. Gen8-11
-# iGPUs need Intel's separate `legacy1` packages; they are not shipped and take the CPU tone-map.
+# iGPUs need Intel's separate `legacy1` packages, which bring their own IGC 1.x (measured for
+# 24.35.30872.36: ~546 MB installed), so they are not shipped and those hosts take the CPU tone-map.
 # To bump: take a newer compute-runtime release, its matching IGC and gmmlib from the release
 # notes, and the SHA256s from `wwNN.sum` and the IGC release body; rerun the Arc tone-map check.
 ARG INTEL_COMPUTE_RUNTIME_VERSION=26.35.39758.10

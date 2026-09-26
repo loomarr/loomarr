@@ -33,6 +33,28 @@ Leaving it unset is fine — the container starts normally on a host with no GPU
 Driver libraries ship in the image. QSV is amd64-only, because `intel-media-va-driver` has no
 arm64 build. VAAPI and Vulkan work on both.
 
+### HDR tone mapping on Intel
+
+An HDR film on an SDR channel is tone-mapped to SDR. On Intel that runs on the GPU through OpenCL,
+using Intel's compute runtime, which the amd64 image ships. Which GPUs get it depends on the
+generation:
+
+| Intel graphics | Examples | HDR tone mapping |
+| --- | --- | --- |
+| Gen12 and newer | Tiger Lake, Alder Lake (incl. N100/N305), Raptor Lake, Arc A-series and B-series, Meteor Lake and later | On the GPU (OpenCL) |
+| Gen8 to Gen11 | Broadwell, Skylake, Kaby Lake, Coffee Lake, Gemini Lake, Ice Lake, Elkhart Lake | On the CPU, after the GPU scales the picture down |
+| AMD (VAAPI) | Radeon | On the CPU, after the GPU scales the picture down |
+
+The CPU path produces the same curve and a correct picture, but it costs more CPU for each HDR
+stream. Gen8 to Gen11 need Intel's separate legacy runtime, which adds about 550 MB to the image,
+so it is not included. Decoding, scaling and encoding stay on the GPU on every generation above.
+
+Loomarr never uses the VAAPI tone-mapper (`tonemap_vaapi`): on Arc it produces a black picture.
+
+The first HDR stream after a container start takes about a second longer while Intel's runtime
+compiles its kernels. When the GPU tone-mapper can't start, the log line
+`HDR tone-map produced nothing — retrying with the next tone-mapper` names the fallback it took.
+
 ### Picking the right GPU on a multi-GPU host
 
 Loomarr probes the render node `/dev/dri/renderD128` by default. On a box with **more than one

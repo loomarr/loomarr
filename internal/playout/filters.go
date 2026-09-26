@@ -118,15 +118,11 @@ func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
 	}
 }
 
-// toneCurve is the ONE HDR→SDR tone curve, for every tone-mapper on every host: the CPU `tonemap`
-// here, `tonemap_opencl` and libplacebo in the pipeline builder (G11, #1512). The maintainer's final
-// choice is pending; Hable is the default because it is the only curve with a fast zero-copy GPU path
-// on Intel and NVIDIA and an exact CPU equivalent (spike 0b). All three filters spell it "hable". A
-// different curve must be checked per filter: BT.2390 is "bt2390" in tonemap_opencl, "bt.2390" in
-// libplacebo, and does not exist in the CPU tonemap.
-const toneCurve = "hable"
+// hdrToSDRChain is the HDR→SDR filter chain on the default curve (prepared media and the legacy
+// arg builder); the pipeline builder calls hdrToSDR with the operator's curve.
+var hdrToSDRChain = hdrToSDR(DefaultToneCurve)
 
-// hdrToSDRChain is the HDR→SDR filter chain.
+// hdrToSDR is the CPU HDR→SDR filter chain on one curve (a CPU curve: see ToneCurve.cpu).
 //
 // The three steps are not interchangeable and the order is the whole trick:
 //
@@ -134,7 +130,7 @@ const toneCurve = "hable"
 //     which from the stream tags, so one chain covers both) into LINEAR light. Tone-mapping any
 //     other representation compresses the wrong quantity. `npl` is the peak luminance the result
 //     is normalised against; 100 nits is the SDR reference white this output is headed for.
-//  2. `tonemap=tonemap=hable:desat=0` (toneCurve) — the actual range compression. `hable` is the filmic curve:
+//  2. `tonemap=tonemap=hable:desat=0` — the actual range compression (curve: ToneCurve). `hable` is the filmic curve:
 //     it rolls highlights off gradually instead of clipping them, which matters most on exactly
 //     the content that ships as HDR (specular highlights, skies, practical lights). `desat=0`
 //     because ffmpeg's default desaturation visibly washes skin tones out, and a flat picture is
@@ -170,6 +166,8 @@ const toneCurve = "hable"
 // It emits no pixel FORMAT either: zscale preserves bit depth, so a 10-bit source is still 10-bit
 // here. The existing `format=yuv420p` / `format=nv12,hwupload` step that follows is what takes it
 // to 8 bits, which is why this must be inserted BEFORE that step and not after.
-const hdrToSDRChain = "zscale=t=linear:npl=100," +
-	"tonemap=tonemap=" + toneCurve + ":desat=0," +
-	"zscale=p=bt709:t=bt709:m=bt709:r=tv"
+func hdrToSDR(curve ToneCurve) string {
+	return "zscale=t=linear:npl=100," +
+		"tonemap=tonemap=" + string(curve) + ":desat=0," +
+		"zscale=p=bt709:t=bt709:m=bt709:r=tv"
+}
