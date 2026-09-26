@@ -9,7 +9,7 @@ test.setTimeout(120_000);
 let startDiagnostics: StartDiagnostics | undefined;
 
 // Failure-only: explains a start that never requests a segment (#1443). Passing runs attach nothing.
-test.afterEach(async (_fixtures, testInfo) => {
+test.afterEach(async ({ page: _page }, testInfo) => {
   await startDiagnostics?.attachOnFailure(testInfo);
   startDiagnostics = undefined;
 });
