@@ -121,7 +121,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
-| `bgexec` | 9 | — |
+| `bgexec` | 10 | — |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | `storagegovernor` |
@@ -194,7 +194,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns host-wide resources shared by live and background media work.
 - **`playoutcert`** · 1 importer
   Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
-- **`proctree`** · 3 importers
+- **`proctree`** · 2 importers
   Supervises one child process and every descendant it starts.
 - **`provision`** · 22 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
@@ -233,7 +233,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
-- **`bgexec`** · 9 importers · → `proctree`
+- **`bgexec`** · 10 importers · → `proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`diagnostics`** · 8 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -328,7 +328,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 8**
 
-- **`clipfetch`** · 1 importer · → `filler`, `proctree`, `storagegovernor`
+- **`clipfetch`** · 1 importer · → `bgexec`, `filler`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillersafetyreview`** · → `bgexec`, `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
   Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
