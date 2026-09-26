@@ -48,7 +48,7 @@ func TestInternalPlayoutSessionDoesNotDependOnThePublicURL(t *testing.T) {
 	spawn := playoutSpawner(fakeFFmpeg,
 		func() string { return internalProgramBase(listen, deadPublicURL) },
 		func() string { return "token" }, nil, nil, nil,
-		func(context.Context) int { return 128 }, nil)
+		func(context.Context) int { return 128 }, nil, func() string { return "" })
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

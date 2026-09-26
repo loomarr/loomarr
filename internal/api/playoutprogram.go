@@ -73,14 +73,16 @@ const (
 	PlayoutBlockAudioHeader          = "X-Loomarr-Block-Audio"
 	PlayoutBlockAudioPCM             = "s302m-48000-stereo"
 	PlayoutBroadcastFormatQuery      = "broadcast"
-	PlayoutBroadcastFormatHeader     = "X-Loomarr-Broadcast-Format"
-	PlayoutAiringStartedAtHeader     = "X-Loomarr-Airing-Started-At"
-	PlayoutAiringEndsAtHeader        = "X-Loomarr-Airing-Ends-At"
-	PlayoutAiringKindHeader          = "X-Loomarr-Airing-Kind"
-	PlayoutAiringContentHeader       = "X-Loomarr-Airing-Content"
-	PlayoutScheduleBlockHeader       = "X-Loomarr-Schedule-Block"
-	PlayoutParentProcessRunHeader    = "X-Loomarr-Parent-Process-Run"
-	PlayoutTimelineOriginHeader      = "X-Loomarr-Timeline-Origin"
+	// PlayoutToneCurveQuery carries the session's pinned HDR tone curve (`playout.tone_curve`).
+	PlayoutToneCurveQuery         = "tonecurve"
+	PlayoutBroadcastFormatHeader  = "X-Loomarr-Broadcast-Format"
+	PlayoutAiringStartedAtHeader  = "X-Loomarr-Airing-Started-At"
+	PlayoutAiringEndsAtHeader     = "X-Loomarr-Airing-Ends-At"
+	PlayoutAiringKindHeader       = "X-Loomarr-Airing-Kind"
+	PlayoutAiringContentHeader    = "X-Loomarr-Airing-Content"
+	PlayoutScheduleBlockHeader    = "X-Loomarr-Schedule-Block"
+	PlayoutParentProcessRunHeader = "X-Loomarr-Parent-Process-Run"
+	PlayoutTimelineOriginHeader   = "X-Loomarr-Timeline-Origin"
 )
 
 func parsePlayoutTimelineOrigin(header http.Header) (time.Time, error) {
@@ -350,6 +352,13 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	if s.playoutGPUTonemap != nil {
 		spec.GPUTonemap = s.playoutGPUTonemap()
 	}
+	// The curve the session pinned when it started; a request without one (a direct caller, not
+	// a session) takes the current setting.
+	curve := r.URL.Query().Get(PlayoutToneCurveQuery)
+	if curve == "" && s.playoutToneCurve != nil {
+		curve = s.playoutToneCurve()
+	}
+	spec.ToneCurve = playout.ParseToneCurve(curve)
 	// The retry ladder (§9.1 V47) lives in streamChild: it runs the hardware encode, and only if it
 	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
 	// (not pre-built args) is what lets the ladder rebuild the SAME program with a software encoder.

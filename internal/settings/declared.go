@@ -463,6 +463,24 @@ func declared() []Setting {
 			Doc:     "The picture-versus-bandwidth target. Efficient is 720p and roughly half the bitrate — the right answer for a NAS running several channels, or for watching away from home. Balanced is 1080p and the default. Quality is 1080p at a higher frame rate and bitrate, which on grainy or dark film can be visibly cleaner but costs noticeably more bandwidth per channel. Whichever you pick, playout still steps down automatically as more channels start, so the choice is a ceiling rather than a promise.",
 		},
 		{
+			// One curve on every family (G11, #1512); playout.ToneCurve maps it to each tone-mapper.
+			// Read once when a stream starts and pinned for its life, so a change never alters the
+			// look mid-stream. Costs are the household Arc's, per HDR stream at 1080p (#1516).
+			Key: "playout.tone_curve", Label: "HDR tone curve", EnvVar: "PLAYOUT_TONE_CURVE", Group: GroupPlayout,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("hable", "Hable (filmic) — default"),
+				opt("mobius", "Mobius"),
+				opt("reinhard", "Reinhard"),
+				opt("bt2390", "BT.2390 — more CPU on Intel"),
+				opt("bt2446a", "BT.2446 Method A — more CPU on Intel"),
+				opt("spline", "Spline — more CPU on Intel"),
+			},
+			Default: "hable",
+			Doc: "How an HDR film is turned into the SDR picture a channel broadcasts. Hable (the default) rolls bright highlights off gently, like film; Mobius and Reinhard keep more of the mid-tones and highlights. These three run on the GPU on Intel and NVIDIA, about 0.1 CPU cores per HDR stream on Intel. " +
+				"BT.2390, BT.2446 Method A and Spline come from libplacebo. On Intel the picture makes a trip through system memory for them, which roughly doubles the CPU cost to about 0.25 cores per HDR stream. Where libplacebo cannot run (no Vulkan GPU, for example an NVIDIA container without NVIDIA's Vulkan driver), those three use the CPU tone-mapper's Mobius curve instead. " +
+				"Without a GPU tone-mapper at all, every curve runs on the CPU after the GPU has scaled the picture down; the picture is correct but costs more CPU. A change applies to streams that start afterwards; a channel already playing keeps its curve until it restarts.",
+		},
+		{
 			// ⚠ Still separate from ingest.ffmpeg_path, but NOT for the reason this comment
 			// used to give ("the filler sidecar bundles its own ffmpeg in a different image").
 			// There is one image now (§16), so that rationale died with the sidecar and the
