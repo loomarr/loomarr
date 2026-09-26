@@ -1565,6 +1565,11 @@ func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	return playout.Resolve(playout.TierFor(r.tier()), enc, r.capacity(), r.activeChannels())
 }
 
+// WarmProfile loads the host's persisted encoder evidence ahead of the first tune (#1512 G2: its
+// host fingerprint was 0.2 s of a cold first tune). It is cheap (one `ffmpeg -version`); the full
+// encoder measurement still starts only on the first demand.
+func (r *playoutResolver) WarmProfile(ctx context.Context) { r.reuseEncoderEvidence(ctx) }
+
 func (r *playoutResolver) reuseEncoderEvidence(ctx context.Context) {
 	r.detectEvidence.Do(func() {
 		var capacity playout.Capacity

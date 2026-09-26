@@ -454,6 +454,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		targetLUFS: func() string { return set.str("filler.target_lufs") },
 		log:        log,
 	}, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"), playout.DefaultGrace, log)
+	// The first tune's host profile, off the tune path (#1512 G2).
+	go playoutRes.WarmProfile(rootCtx)
 	if perr != nil {
 		log.Warn("internal playout: channel packager unavailable", "err", perr)
 	} else {
