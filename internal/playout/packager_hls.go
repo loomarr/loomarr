@@ -122,8 +122,14 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool)
 
 func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+	t0 := time.Now()
 	host, out := m.source.Output(ctx, key.channel, key.plan)
+	t1 := time.Now()
 	slate, err := m.slate(ctx, host, out)
+	// The tune-in (G2) split before the packager runs: the encode profile and the slate (encoded
+	// once per host and output).
+	m.log.Info("packager hls: channel start", "channel", key.channel, "output_ms", t1.Sub(t0).Milliseconds(),
+		"slate_ms", time.Since(t1).Milliseconds())
 	if err != nil {
 		cancel()
 		return nil, err
