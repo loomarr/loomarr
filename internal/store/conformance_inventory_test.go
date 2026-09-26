@@ -271,6 +271,21 @@ func testInventoryAnalysisRevision(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("analysis = %+v ok %v err %v", got, ok, err)
 	}
 
+	// An analysis written by an older schema (version 1 trusted every chapter mark) reads as absent,
+	// so the measurement job measures the source again.
+	if sql, ok := st.(*sqlStore); ok {
+		if _, err := sql.db.ExecContext(ctx, sql.ph(`UPDATE inventory_source_analysis SET schema_version = ? WHERE source_id = ?`),
+			inventory.AnalysisSchemaVersion-1, string(sourceID)); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok, err := st.InventoryAnalysis(ctx, sourceID); err != nil || ok {
+			t.Fatalf("older-schema analysis = ok %v err %v, want absent (re-measure)", ok, err)
+		}
+		if err := st.RecordInventoryAnalysis(ctx, analysis); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	snapshot.Sources[0].Revision = "rev-2"
 	snapshot.Observation.ObservedAt = at.Add(2 * time.Minute)
 	snapshot.Sources[0].Observation.ObservedAt = at.Add(2 * time.Minute)

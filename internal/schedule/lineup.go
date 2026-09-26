@@ -553,8 +553,12 @@ func interleaveBreaks(ch Channel, slots []Slot) []Slot {
 		// Mid-roll (§10): a long programme with measured scene fades airs as parts with a break at
 		// each chosen fade. The runtime after the last cut is what the between-programme rule
 		// below sees, so the one cadence runs through both kinds of break.
-		var cuts []int64
-		if ch.NaturalBreaks != nil && s.LibraryItemID != "" && midRoll.IntervalMs > 0 && s.DurationMs >= midRoll.MinProgrammeMs {
+		// An airing already on air or about to be keeps its accepted split (ch.PinnedCuts), so a
+		// fade measured mid-programme, or the switch flipping, never re-cuts what is playing.
+		cuts, pinned := ch.PinnedCuts[s.LibraryItemID]
+		if pinned {
+			cuts = validCuts(cuts, s.DurationMs)
+		} else if ch.NaturalBreaks != nil && s.LibraryItemID != "" && midRoll.IntervalMs > 0 && s.DurationMs >= midRoll.MinProgrammeMs {
 			cuts = PlaceMidRollCuts(s.DurationMs, acc, ch.NaturalBreaks.NaturalBreaks(s.LibraryItemID), midRoll)
 		}
 		if len(cuts) == 0 {

@@ -7,7 +7,7 @@ import (
 )
 
 // Only measured scene fades may become mid-roll breaks. A container chapter mark is not one:
-// measured on a Blu-ray remux (White Heat, 1949), the chapter at 904.862 s sits in a bright scene
+// measured on a 1940s crime film remux, the chapter at 904.862 s sits in a bright scene
 // (YAVG 88.8 half a second before, 93.4 after), while a real fade reads 16 (black).
 func TestFadeCandidatesDropUnmeasuredChapterMarks(t *testing.T) {
 	got := fadeCandidates([]inventory.Break{

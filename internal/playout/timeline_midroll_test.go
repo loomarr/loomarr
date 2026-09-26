@@ -103,3 +103,29 @@ func TestSegmentsBetweenKeepsEachPart(t *testing.T) {
 		t.Fatalf("got %d segments, want 7", len(all))
 	}
 }
+
+// The pins a re-schedule must honour: every programme on air or starting inside [from, to), with
+// the cuts the accepted cycle gave it (nil = whole). Later programmes are left free to re-split.
+func TestCommittedSplitsPinsWhatIsOnAirOrAboutToBe(t *testing.T) {
+	// 33 m is inside the film's part 2; the horizon to 60 m also reaches B (starts 58 m).
+	pins := CommittedSplits(midRollCycle(), midRollEpoch, at(33), at(60))
+	cuts, filmPinned := pins["film"]
+	if !filmPinned || len(cuts) != 1 || cuts[0] != (20*time.Minute).Milliseconds() {
+		t.Fatalf("film pin = %v (pinned %v), want its accepted cut at 20 m", cuts, filmPinned)
+	}
+	if bCuts, ok := pins["b"]; !ok || bCuts != nil {
+		t.Fatalf("B pin = %v (pinned %v), want pinned whole", bCuts, ok)
+	}
+	if _, ok := pins["a"]; ok {
+		t.Fatal("A airs after the horizon and must stay free to be split")
+	}
+}
+
+// A repeat of the same programme elsewhere in the cycle does not double its pinned cuts.
+func TestCommittedSplitsReadsOneAiring(t *testing.T) {
+	slots := append(midRollCycle(), midRollCycle()...)
+	pins := CommittedSplits(slots, midRollEpoch, at(33), at(34))
+	if cuts := pins["film"]; len(cuts) != 1 || cuts[0] != (20*time.Minute).Milliseconds() {
+		t.Fatalf("film pin = %v, want one cut at 20 m", cuts)
+	}
+}

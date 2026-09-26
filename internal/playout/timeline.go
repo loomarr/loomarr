@@ -323,6 +323,38 @@ func SegmentsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broadca
 	return walkBroadcasts(slots, epoch, from, to, false)
 }
 
+// CommittedSplits is what a re-schedule must not change (§10 mid-roll): every programme on air or
+// starting in [from, to) of this accepted cycle, mapped from library item id to the cuts it airs
+// with (nil = it airs whole). It walks the SAME cycle as the encoder and the guide, so a pin is
+// exactly what is playing, or about to play. The result feeds schedule.Channel.PinnedCuts.
+func CommittedSplits(slots []schedule.Slot, epoch, from, to time.Time) map[string][]int64 {
+	pins := map[string][]int64{}
+	for _, b := range BroadcastsBetween(slots, epoch, from, to) {
+		if b.Kind != schedule.SlotProgram || b.LibraryItemID == "" {
+			continue
+		}
+		if _, done := pins[b.LibraryItemID]; done {
+			continue
+		}
+		// One airing's parts are one contiguous run (part 1, then continuations); a repeat of the
+		// same item elsewhere in the cycle must not add its cuts to this one.
+		var cuts []int64
+		for i, s := range slots {
+			if s.LibraryItemID != b.LibraryItemID || s.Kind != schedule.SlotProgram || s.Segment > 1 {
+				continue
+			}
+			for j := i + 1; j < len(slots) && continuesProgramme(slots[j]); j++ {
+				if slots[j].Segment > 1 {
+					cuts = append(cuts, slots[j].SourceOffsetMs)
+				}
+			}
+			break
+		}
+		pins[b.LibraryItemID] = cuts
+	}
+	return pins
+}
+
 func walkBroadcasts(slots []schedule.Slot, epoch, from, to time.Time, mergeParts bool) []Broadcast {
 	total := cycleDuration(slots)
 	if total <= 0 || !to.After(from) {

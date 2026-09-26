@@ -1,6 +1,10 @@
 package schedule
 
-import "time"
+import (
+	"time"
+
+	"github.com/loomarr/loomarr/internal/inventory"
+)
 
 // Mid-roll: commercial breaks INSIDE a long programme, placed only at natural scene fades (§10
 // "Break placement", #1512 plan addition 1). Loomarr measures each source once for places where
@@ -35,9 +39,9 @@ type MidRollPolicy struct {
 	// MinProgrammeMs: shorter programmes are never split. A half-hour sitcom (≈22 min) airs whole
 	// and gets today's between-programme break; an hour-long drama (≈42 min) and every film split.
 	MinProgrammeMs int64
-	// ToleranceMs is how far from its due point a fade may be and still take the break. It matches
-	// the G7 targeted fade search (±3 min around every quarter hour), so every fade the measurement
-	// looked for is usable and nothing it did not look for is assumed.
+	// ToleranceMs is how far from its due point a fade may be and still take the break. It IS the
+	// G7 search window (inventory.BreakSearchHalfWindow, one shared constant), so every fade the
+	// measurement looked for is usable and nothing it did not look for is assumed.
 	ToleranceMs int64
 	// MinPartMs is the shortest part a cut may create — from the programme start, from the previous
 	// cut, and to the programme end. A fade in the cold open or the closing credits never becomes a
@@ -57,7 +61,7 @@ func DefaultMidRollPolicy(breaksPerHour int) MidRollPolicy {
 	return MidRollPolicy{
 		IntervalMs:     time.Hour.Milliseconds() / int64(breaksPerHour),
 		MinProgrammeMs: (40 * time.Minute).Milliseconds(),
-		ToleranceMs:    (3 * time.Minute).Milliseconds(),
+		ToleranceMs:    inventory.BreakSearchHalfWindow.Milliseconds(),
 		MinPartMs:      (8 * time.Minute).Milliseconds(),
 		MinConfidence:  0.25,
 	}
@@ -97,6 +101,20 @@ func PlaceMidRollCuts(durationMs, sinceBreakMs int64, candidates []BreakCandidat
 		cuts = append(cuts, best.AtMs)
 		last = best.AtMs
 		due = best.AtMs + p.IntervalMs
+	}
+	return cuts
+}
+
+// validCuts keeps a pinned split only while it still fits the programme: strictly ascending cuts
+// inside (0, durationMs). A source replaced under the pin (a different runtime) airs whole rather
+// than being cut at times measured on other bytes.
+func validCuts(cuts []int64, durationMs int64) []int64 {
+	prev := int64(0)
+	for _, c := range cuts {
+		if c <= prev || c >= durationMs {
+			return nil
+		}
+		prev = c
 	}
 	return cuts
 }

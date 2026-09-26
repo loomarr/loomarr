@@ -25,10 +25,11 @@ type Sampling struct {
 }
 
 // DefaultSampling is about twelve 20 s loudness windows and a break search every quarter hour,
-// each within 256 MiB of reads.
+// each within 256 MiB of reads. The search window is inventory.BreakSearchHalfWindow, the same
+// value mid-roll placement accepts candidates within.
 func DefaultSampling() Sampling {
 	return Sampling{LoudnessWindows: 12, LoudnessWindow: 20 * time.Second,
-		BreakEvery: 15 * time.Minute, BreakHalfWindow: 3 * time.Minute, BudgetBytes: 256 << 20}
+		BreakEvery: 15 * time.Minute, BreakHalfWindow: inventory.BreakSearchHalfWindow, BudgetBytes: 256 << 20}
 }
 
 const (
@@ -95,14 +96,33 @@ func (t Tools) SampleLoudness(ctx context.Context, path string, durationMs, size
 	return &estimate, maxPeak, nil
 }
 
-// ChapterBreaks turns the container's chapter marks (free metadata) into break candidates:
-// every chapter start except the programme start and the closing seconds.
-func (t Tools) ChapterBreaks(ctx context.Context, path string, durationMs int64, keyframes []inventory.Keyframe) ([]inventory.Break, error) {
+const (
+	// chapterBlackYAVG is the darkest a frame half a second either side of a chapter mark may be
+	// and still count as black (8-bit limited range, where black is 16). Measured on remuxes: act
+	// breaks read 16.0–20.6 on both sides; scene-selection chapters read 31.4 and brighter.
+	chapterBlackYAVG = 24
+	// chapterLoudDB rejects a mark over loud programme audio (mean over the second). It is a loose
+	// guard, not the detectors' -35 dB silence floor: real act-break fades measured -28 to -37 dB
+	// because a drama's act-out sting plays across the black, while a scene chapter in a loud
+	// scene measured -22.4 dB. The picture is what separates a fade from a scene cut.
+	chapterLoudDB = -25
+	// chapterCheckSeconds is what one check is assumed to read: the second itself plus the seek to
+	// the preceding keyframe.
+	chapterCheckSeconds = 2
+)
+
+// ChapterBreaks turns the container's chapter marks into break candidates, but only marks that sit
+// in a fade. A chapter mark is metadata, not a measurement: on a Blu-ray remux most are
+// scene-selection points in the middle of the picture, and cutting there would break mid-scene.
+// Each mark away from the edges gets one cheap check (ChapterFadeArgs: one second around it) and
+// is kept only when chapterIsFade says so. Checks stop at the break-search byte budget, spread
+// evenly over the marks. The caller runs the targeted fade search when no mark survives.
+func (t Tools) ChapterBreaks(ctx context.Context, path string, durationMs, sizeBytes int64, keyframes []inventory.Keyframe, s Sampling) ([]inventory.Break, error) {
 	stdout, stderr, err := t.Run(ctx, t.FFprobe, "-v", "error", "-show_entries", "chapter=start_time", "-of", "csv=p=0", path)
 	if err != nil {
 		return nil, fmt.Errorf("chapters: %w: %s", err, tail(stderr))
 	}
-	var out []inventory.Break
+	var marks []int64
 	for _, line := range strings.Split(string(stdout), "\n") {
 		seconds, perr := strconv.ParseFloat(strings.TrimSpace(line), 64)
 		if perr != nil || math.IsNaN(seconds) {
@@ -112,9 +132,39 @@ func (t Tools) ChapterBreaks(ctx context.Context, path string, durationMs int64,
 		if at < edgeMarginMs || at > durationMs-edgeMarginMs {
 			continue
 		}
-		out = append(out, inventory.Break{AtMs: at, KeyframeMs: keyframeAtOrAfter(keyframes, at), Source: "chapter", Confidence: 0.9})
+		marks = append(marks, at)
+	}
+	stride := 1
+	if perCheck := bytesPerSecond(sizeBytes, durationMs) * chapterCheckSeconds; perCheck > 0 && s.BudgetBytes > 0 {
+		if affordable := max(1, int(s.BudgetBytes/perCheck)); affordable < len(marks) {
+			stride = (len(marks) + affordable - 1) / affordable
+		}
+	}
+	var out []inventory.Break
+	for i := 0; i < len(marks); i += stride {
+		at := marks[i]
+		vOut, aOut, err := t.Run(ctx, t.FFmpeg, mediatools.ChapterFadeArgs(path, at)...)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if err != nil {
+			continue // an unreadable mark is not a fade
+		}
+		firstY, lastY, meanDB, ok := mediatools.ParseChapterFade(string(vOut), string(aOut))
+		if !ok || !chapterIsFade(firstY, lastY, meanDB) {
+			continue
+		}
+		// Verified black across the whole checked second: that is the measured overlap.
+		out = append(out, inventory.Break{AtMs: at, KeyframeMs: keyframeAtOrAfter(keyframes, at), Source: "chapter",
+			OverlapMs: fullConfidenceMs, Confidence: 1})
 	}
 	return out, nil
+}
+
+// chapterIsFade reports whether a chapter mark sits in a fade: black half a second before and after
+// it, with no loud programme audio across it.
+func chapterIsFade(firstY, lastY, meanDB float64) bool {
+	return firstY <= chapterBlackYAVG && lastY <= chapterBlackYAVG && meanDB <= chapterLoudDB
 }
 
 // TargetedBreaks finds fades only where a break is due: for each due point (about every

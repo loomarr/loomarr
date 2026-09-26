@@ -551,7 +551,9 @@ func (s *sqlStore) InventoryAnalysis(ctx context.Context, id inventory.SourceID)
 	if err != nil {
 		return inventory.Analysis{}, false, fmt.Errorf("read inventory analysis: %w", err)
 	}
-	if schema > inventory.AnalysisSchemaVersion || a.Revision != currentRevision {
+	// Any other schema is absent: a newer one is not guessed at, and an older one is re-measured
+	// (inventory.AnalysisSchemaVersion says what each version changed).
+	if schema != inventory.AnalysisSchemaVersion || a.Revision != currentRevision {
 		return inventory.Analysis{}, false, nil
 	}
 	if a.Keyframes, err = inventory.DecodeKeyframes(blob); err != nil {

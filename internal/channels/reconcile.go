@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -242,6 +243,7 @@ func (e *Engine) reconcileOnce(
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
+	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())
 	if playsInternally {
 		desired.Slots = capCommercialBreaks(desired.Slots, playableFillerMs)
@@ -598,6 +600,23 @@ func BreaksPerHourFor(pol schedule.ChannelPolicy, hasFillerPool bool, global int
 // channel's policy switches it off. Density and the filler pool are BreaksPerHourFor's decision.
 func MidRollFor(pol schedule.ChannelPolicy, playsInternally bool) bool {
 	return playsInternally && (pol.MidRoll == nil || *pol.MidRoll)
+}
+
+// MidRollFreezeHorizon is how far ahead of `now` a programme's accepted split is frozen: whatever is
+// on air, or starts within it, keeps the parts the encoder and the guide were given, and a new
+// fade or a flipped switch applies to later airings only. Longer than the default reconcile
+// interval (10 min), so a programme cannot go from "later" to "on air" between two passes
+// without being pinned by one of them.
+const MidRollFreezeHorizon = 30 * time.Minute
+
+// pinnedCutsAt is the split every programme on air or about to be must keep (schedule.PinnedCuts),
+// read from the accepted Desired cycle with the encoder's own arithmetic. Nil before a channel has
+// an anchored cycle, or on Tunarr, which never splits.
+func pinnedCutsAt(ch store.Channel, playsInternally bool, at time.Time) map[string][]int64 {
+	if !playsInternally || ch.PlayoutAnchor.IsZero() || len(ch.Desired) == 0 {
+		return nil
+	}
+	return playout.CommittedSplits(ch.Desired, ch.PlayoutAnchor, at, at.Add(MidRollFreezeHorizon))
 }
 
 // naturalBreaksFor is the scene-fade source for one scheduling pass, or nil when the channel does

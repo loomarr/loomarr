@@ -129,11 +129,12 @@ func (n naturalBreaks) NaturalBreaks(libraryItemID string) []schedule.BreakCandi
 	return fadeCandidates(analysis.Breaks)
 }
 
-// fadeCandidates keeps only the breaks measured as black video and silent audio coinciding
-// (OverlapMs > 0). A container chapter mark is filed as a candidate without that measurement, and
-// a chapter is not a fade: on a Blu-ray remux the chapter at 904.862 s sat in a bright scene
-// (YAVG 88.8 before, 93.4 after, where black reads 16). Cutting there would break mid-picture,
-// which the maintainer's rule forbids, so an unverified chapter is skipped, never forced (#1529).
+// fadeCandidates keeps only breaks with a measured fade (OverlapMs > 0): a black-and-silence
+// coincidence, or a chapter mark the measurement verified as sitting in one. A chapter mark alone
+// is not a fade: on a remux the chapter at 904.862 s sat in a bright scene (YAVG 88.8 before,
+// 93.4 after, where black reads 16), and cutting there would break mid-picture, which the
+// maintainer's rule forbids. mediameasure.ChapterBreaks verifies marks (#1529); this is the
+// scheduler-side guard that nothing unverified is ever cut at.
 func fadeCandidates(breaks []inventory.Break) []schedule.BreakCandidate {
 	var out []schedule.BreakCandidate
 	for _, b := range breaks {

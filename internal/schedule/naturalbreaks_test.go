@@ -67,6 +67,12 @@ func TestPlaceMidRollCuts(t *testing.T) {
 			candidates: fades(10, 25, 40), want: []float64{10, 25, 40},
 		},
 		{
+			// Measured live: an hour drama's act-break fades, 11.7 min after the previous break.
+			// A ±3 min window skipped every one of them (41 min without a break); ±5 takes two.
+			name: "act breaks off the quarter-hour grid are within the shared window", duration: 41.2 * 60_000, since: 11.7 * 60_000,
+			candidates: fades(11.23, 18.47, 28.1, 33.6, 40.56), want: []float64{11.23, 28.1},
+		},
+		{
 			name: "a faint coincidence is not a scene fade", duration: 60 * minute,
 			candidates: []BreakCandidate{{AtMs: 15 * minute, Confidence: 0.1}, {AtMs: 30 * minute, Confidence: 0.9}},
 			want:       []float64{30},
@@ -144,5 +150,38 @@ func TestInterleaveBreaksWithoutNaturalBreaksIsUnchanged(t *testing.T) {
 	got := interleaveBreaks(Channel{BreaksPerHour: 4}, slots)
 	if len(got) != 3 || got[0].Segment != 0 || got[1].Kind != SlotFiller || got[1].MidRoll {
 		t.Fatalf("slots = %+v", got)
+	}
+}
+
+// A programme already on air (or about to be) keeps the split the accepted cycle gave it: a newly
+// measured fade never re-cuts it, and switching mid-roll off never un-cuts it. New splits apply to
+// later airings only.
+func TestInterleaveBreaksKeepsPinnedAiringsAsAccepted(t *testing.T) {
+	slots := []Slot{
+		{Kind: SlotProgram, LibraryItemID: "on-air", DurationMs: 60 * minute},
+		{Kind: SlotProgram, LibraryItemID: "on-air-split", DurationMs: 60 * minute},
+		{Kind: SlotProgram, LibraryItemID: "later", DurationMs: 60 * minute},
+	}
+	ch := Channel{BreaksPerHour: 4, BreakDurationMs: 30_000,
+		NaturalBreaks: fadeMap{"on-air": fades(15, 30), "on-air-split": fades(14, 31), "later": fades(15, 30)},
+		PinnedCuts:    map[string][]int64{"on-air": nil, "on-air-split": {20 * minute}},
+	}
+	cutsOf := func(got []Slot) map[string][]float64 {
+		out := map[string][]float64{}
+		for _, s := range got {
+			if s.Segment > 1 {
+				out[s.LibraryItemID] = append(out[s.LibraryItemID], float64(s.SourceOffsetMs)/float64(minute))
+			}
+		}
+		return out
+	}
+	got := cutsOf(interleaveBreaks(ch, slots))
+	if len(got["on-air"]) != 0 || !slices.Equal(got["on-air-split"], []float64{20}) || !slices.Equal(got["later"], []float64{15, 30}) {
+		t.Fatalf("cuts = %v, want on-air whole, on-air-split at its accepted 20 min, later newly split", got)
+	}
+	ch.NaturalBreaks = nil // mid-roll switched off while a split programme is on air
+	got = cutsOf(interleaveBreaks(ch, slots))
+	if !slices.Equal(got["on-air-split"], []float64{20}) || len(got["later"]) != 0 {
+		t.Fatalf("cuts with mid-roll off = %v, want the on-air split kept and later airings whole", got)
 	}
 }
