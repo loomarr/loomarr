@@ -1,0 +1,8 @@
+[
+ {"name":"progA-h264","file":"$SAMPLE_H264_1080P","seek":120,"dur":40},
+ {"name":"clip1-360p23.976","file":"/filler/80/65/8065f2f25411fbc56ebd362c89070b4bb0e4cb538489f6ac4252b7beac299b25.mp4","dur":29.5,"gain_db":-1.4},
+ {"name":"clip2-480p29.97","file":"/filler/10/01/1001ae14ca42c99a9a82eaef9d4990a13d86bda672070a59e766b246e3331801.mp4","dur":29.5,"gain_db":8.2},
+ {"name":"clip3-480p50","file":"/filler/.loomarr-media/evidence/be/c8/4ef762a236e0c943/8c7a6582d9bb51fd9cf0bcbb3514e17df91562713824b01eceddc830df6df88c.mp4","dur":29.5,"gain_db":-1.5},
+ {"name":"clip4-720p29.97-44k","file":"/filler/3a/01/3a01548c4f56253fdd9fb1638a98bcba8ee8f2bf56e78258b11765365e24bfbe.mp4","dur":29.5,"gain_db":-6.5},
+ {"name":"progB-4khdr","file":"$SAMPLE_4K_HDR","seek":900,"dur":40,"hdr":true}
+]

@@ -1,0 +1,6 @@
+cbr5 5.07 Mbps
+vbr5 5.17 Mbps
+qvbr5 4.85 Mbps
+qvbr8 5.81 Mbps
+icq22 4.34 Mbps
+icq26 2.55 Mbps

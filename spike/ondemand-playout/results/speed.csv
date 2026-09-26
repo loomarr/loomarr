@@ -1,0 +1,6 @@
+class,mode,content_s,real_s,user_s,sys_s
+h264,unpaced,60,3.400,4.391,0.779
+hevc,unpaced,60,3.167,4.138,0.771
+hdr,unpaced,60,23.373,5.894,1.213
+h264,paced1x,60,48.001,4.149,0.733
+hdr,paced1x,60,47.997,6.140,1.369

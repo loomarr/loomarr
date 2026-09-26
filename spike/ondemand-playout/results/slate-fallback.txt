@@ -1,0 +1,12 @@
+"item":"progA-h264","pps_identical":true,"slate":false
+"ev":"slate_fallback","item":"clip1-360p23.976","stderr":"","t_ms":10069.899,"wait_ms":9207
+"item":"clip1-360p23.976","pps_identical":true,"slate":true
+"item":"clip2-480p29.97","pps_identical":true,"slate":false
+== timestamp continuity
+TS stream 0: pkts=900 off-grid-deltas=0 minDelta= maxDelta= (frame=3003 ticks) first=2.0000s
+TS stream 1: pkts=1408 off-grid-deltas=0 minDelta= maxDelta= (frame=1920 ticks) first=2.0000s
+TS end: video_end=32.0300s audio_end=32.0373s A/V drift=7.33 ms
+HLS stream 0: pkts=900 off-grid-deltas=0 minDelta= maxDelta= (frame=3003 ticks) first=2.0000s
+HLS stream 1: pkts=1408 off-grid-deltas=0 minDelta= maxDelta= (frame=1024 ticks) first=2.0000s
+HLS end: video_end=32.0300s audio_end=32.0373s A/V drift=7.33 ms
+== per-item (packager)
