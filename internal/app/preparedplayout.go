@@ -475,11 +475,13 @@ func preparedBudgetBytes(gib int) int64 {
 }
 
 // ScheduledBroadcasts is the metadata-free authoritative timeline used by preparation. Guide
-// callers use BroadcastsBetween, which enriches these rows for display.
+// callers use BroadcastsBetween, which enriches these rows for display. It walks per item
+// (SegmentsBetween): each part of a programme split at natural breaks is its own block, starting
+// where the live Airing does, so a prepared block never plays through a mid-roll break.
 func (r *playoutResolver) ScheduledBroadcasts(
 	ctx context.Context, channelID string, from, to time.Time,
 ) ([]playout.Broadcast, error) {
-	return r.segmentedBroadcasts(ctx, channelID, from, to, playout.BroadcastsBetween)
+	return r.segmentedBroadcasts(ctx, channelID, from, to, playout.SegmentsBetween)
 }
 
 // renditionFor is the canonical rendition specialised for one source: live's tone-map decision

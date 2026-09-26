@@ -144,7 +144,7 @@ func AiringAt(slots []schedule.Slot, epoch, now time.Time) Airing {
 				// and the recency signal must survive that.
 				Key:       s.Key,
 				Title:     s.Title,
-				Offset:    into,
+				Offset:    time.Duration(s.SourceOffsetMs)*time.Millisecond + into,
 				Remaining: d - into,
 			}
 		}
@@ -309,7 +309,21 @@ func (b Broadcast) Duration() time.Duration { return b.Stop.Sub(b.Start) }
 // decision #12 say the XMLTV guide must not, but the same walk serves Loomarr's own time-grid
 // (V13b), which shows breaks explicitly. Filtering here would make this function useless to one
 // of its two callers.
+//
+// A programme split at natural breaks (§10 mid-roll) is ONE entry spanning its parts and the
+// breaks between them. SegmentsBetween is the per-item walk for callers that encode each part.
 func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {
+	return walkBroadcasts(slots, epoch, from, to, true)
+}
+
+// SegmentsBetween is BroadcastsBetween with every scheduled item its own entry: each part of a
+// split programme and each mid-roll break. Its entries start where AiringAt's do, which is what
+// a caller preparing or joining per-item encodes needs.
+func SegmentsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {
+	return walkBroadcasts(slots, epoch, from, to, false)
+}
+
+func walkBroadcasts(slots []schedule.Slot, epoch, from, to time.Time, mergeParts bool) []Broadcast {
 	total := cycleDuration(slots)
 	if total <= 0 || !to.After(from) {
 		return nil
@@ -339,6 +353,10 @@ func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broad
 		cursor = cursor.Add(d)
 		idx++
 	}
+	// A window opening inside a split programme starts from its first part (one guide entry).
+	if mergeParts {
+		idx, cursor = rewindToProgrammeStart(slots, idx, cursor)
+	}
 
 	var out []Broadcast
 	// A hard cap on iterations, not on output: a lineup of very short items over a long window
@@ -356,6 +374,13 @@ func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broad
 			continue // unairable (a pending acquisition has no known duration)
 		}
 		stop := cursor.Add(d)
+		// A programme split at natural breaks is ONE entry (§10: the guide does not advertise
+		// mid-roll breaks): absorb its mid-roll breaks and later parts, even past `to`, so the
+		// entry stops when the programme really ends.
+		for mergeParts && idx+1 < len(slots) && continuesProgramme(slots[idx+1]) {
+			idx++
+			stop = stop.Add(slotDuration(slots[idx]))
+		}
 		if stop.After(from) {
 			out = append(out, Broadcast{
 				Kind: s.Kind, Title: s.Title, SeriesTitle: s.SeriesTitle,
@@ -368,6 +393,23 @@ func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broad
 		idx++
 	}
 	return out
+}
+
+// continuesProgramme reports whether a slot is a later part of the split programme before it, or
+// the mid-roll break inside it (schedule.interleaveBreaks). The encoder airs these as their own
+// items; a guide entry absorbs them into the programme they belong to.
+func continuesProgramme(s schedule.Slot) bool { return s.MidRoll || s.Segment > 1 }
+
+// rewindToProgrammeStart steps a slot index (and the wall-clock cursor at that slot's start) back
+// over continuations to the first part of a split programme, so a guide window that begins
+// mid-programme reports the programme's real start. Parts never wrap the cycle: the scheduler
+// emits them adjacent, inside one lineup.
+func rewindToProgrammeStart(slots []schedule.Slot, idx int, cursor time.Time) (int, time.Time) {
+	for idx > 0 && idx < len(slots) && continuesProgramme(slots[idx]) {
+		idx--
+		cursor = cursor.Add(-slotDuration(slots[idx]))
+	}
+	return idx, cursor
 }
 
 // NominalPendingDuration is the width a pending acquisition is DRAWN at in Loomarr's own
@@ -468,18 +510,22 @@ func startIndex(slots []schedule.Slot, epoch, from time.Time) int {
 			continue
 		}
 		if into < d {
-			return i
+			// The pending walk steps in lockstep with the guide's entries, which begin at a split
+			// programme's first part.
+			first, _ := rewindToProgrammeStart(slots, i, time.Time{})
+			return first
 		}
 		into -= d
 	}
 	return 0
 }
 
-// nextAirable is the index of the next slot that occupies real time, wrapping at the end.
+// nextAirable is the index of the next slot that occupies real time and begins a guide entry (not
+// a later part of a split programme), wrapping at the end.
 func nextAirable(slots []schedule.Slot, idx int) int {
 	for i := 1; i <= len(slots); i++ {
 		n := (idx + i) % len(slots)
-		if slotDuration(slots[n]) > 0 {
+		if slotDuration(slots[n]) > 0 && !continuesProgramme(slots[n]) {
 			return n
 		}
 	}
