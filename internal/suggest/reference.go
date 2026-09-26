@@ -128,6 +128,10 @@ func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meani
 			}
 		}
 	}
+	if intent.exampleFill != nil {
+		// Neighbours are surfaced so a pick can ground, never required.
+		explicit = append(explicit, intent.exampleFill.neighbours...)
+	}
 	result.curated, result.explicit = curated, explicit
 	state.result, state.initialized = result, true
 	return result, nil
@@ -164,6 +168,7 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 	}
 	wg.Wait()
 	anchored := make([]catalog.Candidate, 0, len(titles))
+	var directExamples, franchiseExamples []catalog.Candidate
 	for index, title := range titles {
 		if titleExplicitlyExcluded(*intent, title) {
 			continue
@@ -185,6 +190,7 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 				for _, member := range s.franchiseMembers(ctx, candidates, title, meaning) {
 					memberKey, _ := member.Key()
 					intent.requiredTitleKeys[normalizeTitleLabel(member.Name)] = memberKey
+					franchiseExamples = append(franchiseExamples, member)
 					anchored = append(anchored, member)
 				}
 			}
@@ -194,11 +200,21 @@ func (s *Suggester) groundExplicitRequiredTitles(ctx context.Context, intent *In
 		}
 		key, _ := candidate.Key()
 		intent.requiredTitleKeys[normalizeTitleLabel(candidate.Name)] = key
+		if examples[strings.ToLower(title)] {
+			directExamples = append(directExamples, candidate)
+		}
 		if requiresMembershipEvidence(*intent) {
 			intent.membershipKeys[key] = true
 		}
 		anchored = append(anchored, candidate)
 	}
+	// The era and genre of the examples, direct titles first: franchise members
+	// span decades and only stand in when no example resolved on its own.
+	eraAnchors := directExamples
+	if len(eraAnchors) == 0 {
+		eraAnchors = franchiseExamples
+	}
+	s.groundExampleFill(ctx, intent, meaning, eraAnchors)
 	return anchored, nil
 }
 

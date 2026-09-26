@@ -102,10 +102,17 @@ func TestLive_NamedTitles(t *testing.T) {
 		"Classic 1980s family adventure films",
 		"80s treasure-hunt and quest movies",
 	}
+	if d := os.Getenv("LOOMARR_LIVE_DESC"); d != "" {
+		descriptions = []string{d}
+	}
 	for _, desc := range descriptions {
 		for i := 0; i < runs; i++ {
 			rec := &recordingProvider{Provider: llm.NewOpenAI(url, os.Getenv("LOOMARR_LIVE_LLM_MODEL"), os.Getenv("LOOMARR_LIVE_LLM_KEY"))}
-			s := suggest.New(rec, catalog.New(nil, namedTitlesCorpus()), referenceExistsValidator{}, 10)
+			corpus := namedTitlesCorpus()
+			if os.Getenv("LOOMARR_LIVE_CORPUS") == "era" {
+				corpus = exampleFillCorpus() // #1499: on-era neighbours plus off-era distractors
+			}
+			s := suggest.New(rec, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
 			start := time.Now()
 			prop, err := s.Suggest(context.Background(), suggest.Intent{Description: desc})
 			var names []string
