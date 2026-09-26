@@ -34,7 +34,7 @@ func encodeInit(t testing.TB, sps []byte) []byte {
 	init := fmp4.Init{Tracks: []*fmp4.InitTrack{
 		{ID: videoTrack, TimeScale: videoRate, Codec: &codecs.H264{SPS: sps, PPS: testPPS}},
 		{ID: audioTrack, TimeScale: audioRate, Codec: &codecs.MPEG4Audio{Config: mpeg4audio.AudioSpecificConfig{
-			Type: mpeg4audio.ObjectTypeAACLC, SampleRate: audioRate, ChannelCount: 2,
+			Type: mpeg4audio.ObjectTypeAACLC, SampleRate: audioRate, ChannelConfig: 2,
 		}}},
 	}}
 	var w seekablebuffer.Buffer
@@ -69,7 +69,7 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 		frames = slot.Frames + 3
 	}
 	go func() {
-		defer pw.Close()
+		defer func() { _ = pw.Close() }()
 		if _, err := pw.Write(encodeInit(t, sps)); err != nil || s.zeroFrames {
 			return
 		}
@@ -94,9 +94,10 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 			var vs, as []*fmp4.Sample
 			for i := f; i < min(f+testFPS, frames); i++ {
 				dur := uint32(d)
-				if i == 0 {
+				switch i {
+				case 0:
 					dur = d + 1920
-				} else if i == 1 {
+				case 1:
 					dur = d - 1920
 				}
 				vs = append(vs, &fmp4.Sample{Duration: dur, IsNonSyncSample: i != f, Payload: []byte(fmt.Sprintf("%s/v%d", s.label, i))})

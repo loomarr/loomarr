@@ -65,11 +65,6 @@ func children(b []byte, off, end int, fn func(typ string, start, size int)) {
 	}
 }
 
-// fragmentCounts returns the sample count per track in a moof+mdat without changing it.
-func fragmentCounts(b []byte) (map[uint32]int64, error) {
-	return patchFragment(b, 0, nil)
-}
-
 // patchFragment rewrites mfhd.sequence_number and each traf's tfdt in place onto the channel
 // timeline (base per track id; nil leaves them) and returns the sample count per track. This is
 // the hot path: no allocation beyond the map, no re-marshal (spike cp2: 0.0017 cores per stream).
