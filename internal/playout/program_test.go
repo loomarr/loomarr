@@ -1,6 +1,8 @@
 package playout
 
 import (
+	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -191,11 +193,11 @@ func TestScaleFilter_UploadsAfterScalingWhereRequired(t *testing.T) {
 // by not reusing the prober's helper, so this pins the composition.
 func TestProgramArgs_InitialisesTheHardwareDeviceBeforeTheInput(t *testing.T) {
 	for _, enc := range encoderPreference {
-		want := deviceInitArgs(enc)
+		p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: enc}
+		want := deviceInitOf(t, p)
 		if len(want) == 0 {
 			continue // this family initialises its own context
 		}
-		p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: enc}
 		args := transcodeArgs(p, testStreamURL, 0, time.Minute)
 
 		if !strings.Contains(joined(args), joined(want)) {
@@ -233,12 +235,13 @@ func TestProgramArgs_PinsEverythingConcatDependsOn(t *testing.T) {
 		got := joined(transcodeArgs(p, testStreamURL, 0, time.Hour))
 
 		// Resolution AND the pad that preserves it: a bare aspect-preserving scale would
-		// emit 960x720 for 4:3 content and break concatenation.
-		if !strings.Contains(got, "scale=1280:720") {
+		// emit 960x720 for 4:3 content and break concatenation. The pad runs on the GPU where the
+		// family has one (pad_vaapi, pad_cuda).
+		if !strings.Contains(got, "w=1280:h=720:force_original_aspect_ratio=decrease") {
 			t.Errorf("%s: resolution not pinned: %q", enc, got)
 		}
-		if !strings.Contains(got, "pad=1280:720") {
-			t.Errorf("%s: no pad — 4:3 content would emit different dimensions", enc)
+		if !pinnedPad.MatchString(got) {
+			t.Errorf("%s: no pad — 4:3 content would emit different dimensions: %q", enc, got)
 		}
 		// Framerate: a 24fps film and a 25fps episode must not produce different rates.
 		if !strings.Contains(got, "fps=25") {
@@ -432,7 +435,7 @@ func TestProgramArgs_HardwareEncodersAlsoDecodeOnTheGPU(t *testing.T) {
 	}
 	for enc, accel := range want {
 		p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: enc}
-		args := transcodeArgs(p, testStreamURL, 0, time.Minute)
+		args := ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute, Source: measuredH264()})
 		got := joined(args)
 		if !strings.Contains(got, "-hwaccel "+accel) {
 			t.Errorf("%s: no -hwaccel %s — the decode stays on the CPU and dominates on 4K: %q",
@@ -454,8 +457,8 @@ func TestProgramArgs_SoftwareDecodeKeepsTheHardwareEncode(t *testing.T) {
 			continue
 		}
 		p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: enc}
-		hw := ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute})
-		sw := ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute, SoftwareDecode: true})
+		hw := ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute, Source: measuredH264()})
+		sw := ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute, Source: measuredH264(), SoftwareDecode: true})
 
 		if !strings.Contains(joined(hw), "-hwaccel") {
 			t.Fatalf("%s: control case has no -hwaccel, the test proves nothing: %v", enc, hw)
@@ -463,7 +466,7 @@ func TestProgramArgs_SoftwareDecodeKeepsTheHardwareEncode(t *testing.T) {
 		if strings.Contains(joined(sw), "-hwaccel") {
 			t.Errorf("%s: SoftwareDecode still passes -hwaccel: %v", enc, sw)
 		}
-		if want := deviceInitArgs(enc); len(want) > 0 && !strings.Contains(joined(sw), joined(want)) {
+		if want := deviceInitOf(t, p); len(want) > 0 && !strings.Contains(joined(sw), joined(want)) {
 			t.Errorf("%s: SoftwareDecode lost the device init %v: %v", enc, want, sw)
 		}
 		if i := argIndex(sw, "-c:v"); i < 0 || sw[i+1] != string(enc) {
@@ -481,29 +484,51 @@ func TestProgramArgs_SoftwareDoesNotHardwareDecode(t *testing.T) {
 	}
 }
 
-// ⚠ NEVER `-hwaccel_output_format`. It keeps frames in GPU memory (faster) but turns any
-// unsupported input into a HARD FAILURE instead of a silent fallback to software decode.
-// ffmpeg cannot hardware-decode every codec, and a channel must not die because one film in its
-// lineup is VC-1.
-//
-// It is ALSO what keeps the CPU scale/pad chain working: `scale_cuda` has no pad option, so 4:3
-// content through a GPU-only chain emits 1440x1080 instead of a letterboxed 1920x1080 — which
-// breaks the continuous mux's `-c copy` on any channel mixing aspect ratios (verified against
-// real ffmpeg).
-func TestProgramArgs_NoHwaccelOutputFormat(t *testing.T) {
+// `-hwaccel_output_format` keeps frames in GPU memory, and turns an input the GPU cannot decode into
+// a HARD FAILURE instead of a fallback to software decode: a channel must not die because one film
+// in its lineup is VC-1. So it is emitted only when Loomarr's facts say the GPU decodes the source;
+// an unknown or undecodable codec is decoded on the CPU and uploaded once. Either way the pad that
+// pins the output dimensions survives (pad_vaapi / pad_cuda on the GPU), so 4:3 content never
+// emits 1440x1080 and breaks the continuous mux's `-c copy`.
+func TestProgramArgs_HwaccelOutputFormatOnlyForSourcesTheGPUDecodes(t *testing.T) {
+	vc1 := measuredH264()
+	vc1.VideoCodec = "vc1"
 	for _, enc := range encoderPreference {
 		p := Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc}
-		got := joined(transcodeArgs(p, testStreamURL, 0, time.Minute))
-		if strings.Contains(got, "-hwaccel_output_format") {
-			t.Errorf("%s: -hwaccel_output_format makes an unsupported codec fatal instead of "+
-				"falling back to software decode, AND strands the CPU pad filter: %q", enc, got)
-		}
-		// The CPU scale+pad must survive, since that is what pins the output dimensions.
-		if !strings.Contains(got, "pad=1920:1080") {
-			t.Errorf("%s: lost the CPU pad — 4:3 content would emit 1440x1080 and break "+
-				"-c copy on the parent: %q", enc, got)
+		for name, src := range map[string]MediaFormat{"unknown": {}, "vc1": vc1, "h264": measuredH264()} {
+			got := joined(ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute, Source: src}))
+			host := HostFor(enc, false, GPUFilters{})
+			wantGPU := (host.Family == FamilyVAAPI || host.Family == FamilyNVENC || host.Family == FamilyVideoToolbox) &&
+				contains(host.DecodeCodecs, src.VideoCodec)
+			if strings.Contains(got, "-hwaccel_output_format") != wantGPU {
+				t.Errorf("%s/%s: -hwaccel_output_format present=%v, want %v: %q", enc, name, !wantGPU, wantGPU, got)
+			}
+			if !pinnedPad1080.MatchString(got) {
+				t.Errorf("%s/%s: lost the pad — 4:3 content would emit 1440x1080 and break -c copy on the parent: %q", enc, name, got)
+			}
 		}
 	}
+}
+
+// pinnedPad matches the pad that pins a 1280x720 output, on the CPU or the GPU.
+var (
+	pinnedPad     = regexp.MustCompile(`pad(_vaapi|_cuda)?=(w=)?1280:(h=)?720`)
+	pinnedPad1080 = regexp.MustCompile(`pad(_vaapi|_cuda)?=(w=)?1920:(h=)?1080`)
+)
+
+// deviceInitOf is the hardware device the family's pipeline initialises before the input.
+func deviceInitOf(t *testing.T, p Profile) []string {
+	t.Helper()
+	pipe, err := Build(HostFor(p.Encoder, false, GPUFilters{}), MediaFormat{}, ChannelOutput(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, a := range pipe.PreInput {
+		if a == "-init_hw_device" {
+			return pipe.PreInput[i : i+2]
+		}
+	}
+	return nil
 }
 
 // Loudness normalisation (§10 V40).
@@ -679,8 +704,10 @@ func TestScaleFilter_SDRChainIsUnchanged(t *testing.T) {
 // present or absent, and the live test (TestLive_HDRSourceIsTonemappedAndLabelledSDR) is what
 // proves the resulting file is actually tagged bt709.
 func TestProgramArgs_TonemapAppearsOnlyWhenBothConditionsHold(t *testing.T) {
+	// NVENC with no GPU tone-mapper: the CPU chain after the GPU downscale. (A software host refuses
+	// 4K HDR outright — TestBuild_SoftwareRefusesHDRItCannotKeepUpWith.)
 	base := ProgramSpec{
-		Profile: Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 5000, Encoder: EncoderSoftware},
+		Profile: Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 5000, Encoder: EncoderNVENC},
 		Input:   "/m.mkv",
 	}
 
@@ -703,12 +730,15 @@ func TestProgramArgs_TonemapAppearsOnlyWhenBothConditionsHold(t *testing.T) {
 		t.Errorf("an SDR program was tone-mapped, compressing a range that was already correct: %q", got)
 	}
 
-	// HDR on a build that cannot tone-map: no chain at all. Emitting it would fail at graph-init
-	// and take the channel with it, which is strictly worse than a flat picture.
+	// HDR on a build that cannot tone-map at all: refused, so the card covers the slot. Emitting the
+	// chain would fail at graph-init; a mislabelled, truncated picture is not the output either.
 	incapable := base
 	incapable.Source = hdrSource()
-	if got := joined(ProgramArgs(incapable)); strings.Contains(got, "zscale") {
-		t.Errorf("emitted the chain on a build without zscale — graph-init would fail: %q", got)
+	if _, err := incapable.Pipeline(); !errors.Is(err, ErrRefused) {
+		t.Errorf("want ErrRefused on a build without any tone-mapper, got %v", err)
+	}
+	if got := ProgramArgs(incapable); got != nil {
+		t.Errorf("a refused program must have no args: %q", got)
 	}
 }
 

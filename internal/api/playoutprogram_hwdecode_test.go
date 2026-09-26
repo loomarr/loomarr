@@ -71,6 +71,9 @@ func hwdecodeHarness(t *testing.T, enc *hwdecodeEncoder) *playoutProgramHarness 
 			fakeResolver: &fakeResolver{
 				airing:  playableAiring(0, time.Hour),
 				profile: playout.Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: playout.EncoderVAAPI, VideoBitrate: 4000, AudioBitrate: 128},
+				// Loomarr's inventory measurement: a codec the GPU decodes, so the first attempt
+				// hardware-decodes (the pipeline builder decodes unknown codecs on the CPU).
+				sourceFormat: playout.MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, FrameRate: 25, PixelFormat: "yuv420p"},
 			},
 			urls: map[string]string{"burns": "http://emby/v/burns", "other": "http://emby/v/other"},
 		},
@@ -130,7 +133,8 @@ func TestPlayoutProgram_DecodeFaultWithNoOutputRetriesSoftwareDecodeNotHardware(
 	h := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
 		Resolver: &fakeResolver{
 			airing: playableAiring(0, time.Hour), url: "http://emby/v/burns",
-			profile: playout.Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: playout.EncoderVAAPI, VideoBitrate: 4000, AudioBitrate: 128},
+			profile:      playout.Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: playout.EncoderVAAPI, VideoBitrate: 4000, AudioBitrate: 128},
+			sourceFormat: playout.MediaFormat{VideoCodec: "hevc", Width: 1920, Height: 1080, FrameRate: 25, PixelFormat: "yuv420p"},
 		},
 		Encoder:     enc.start,
 		ReclaimVRAM: func(context.Context) { reclaimed++ },

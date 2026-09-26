@@ -476,6 +476,7 @@ func formatOf(p probed) MediaFormat {
 				f.FrameRate = parseRational(s.AvgFrameRate)
 				f.PixelFormat = strings.ToLower(s.PixFmt)
 				f.ColorTransfer = s.ColorTransfer
+				f.Interlaced = s.FieldOrder != "" && s.FieldOrder != "progressive" && s.FieldOrder != "unknown"
 			}
 		case "audio":
 			if f.AudioCodec == "" {

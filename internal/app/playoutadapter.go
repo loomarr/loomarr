@@ -1347,6 +1347,7 @@ func playoutFormatOf(facts inventory.SourceFacts) playout.MediaFormat {
 			format.FrameRate = parseInventoryRational(stream.FrameRate)
 			format.PixelFormat = strings.ToLower(strings.TrimSpace(stream.PixelFormat))
 			format.ColorTransfer = strings.ToLower(strings.TrimSpace(stream.ColorTransfer))
+			format.Interlaced = stream.Interlaced
 		case inventory.StreamAudio:
 			if format.AudioCodec != "" {
 				continue

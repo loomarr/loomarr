@@ -695,8 +695,10 @@ func TestPlayoutProgram_PinsTheFirstBlocksBroadcastFormat(t *testing.T) {
 		t.Fatalf("second response broadcast format = %q, want pinned %q", got, format)
 	}
 	args := strings.Join(enc.args(), " ")
-	if !strings.Contains(args, "scale=1280:720") || !strings.Contains(args, "fps=25") ||
-		!strings.Contains(args, "-b:v 2500k") || !strings.Contains(args, "-b:a 128k") {
+	// Geometry, cadence and audio bitrate all differ between the two profiles. Video rate control is
+	// the uniform QVBR output (#1512), the same for every rung, so it cannot tell them apart.
+	if !strings.Contains(args, "w=1280:h=720") || !strings.Contains(args, "fps=25") ||
+		!strings.Contains(args, "-b:a 128k") {
 		t.Fatalf("second block did not retain first block profile:\n%s", args)
 	}
 }

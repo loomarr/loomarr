@@ -100,6 +100,25 @@ func TonemapperFor(ffmpegPath string) func() bool {
 	}
 }
 
+// GPUFiltersFor reports which GPU tone-mappers this ffmpeg build carries, memoised like
+// TonemapperFor. The pipeline builder picks between them per family (pipeline.go).
+func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
+	var (
+		once sync.Once
+		f    GPUFilters
+	)
+	return func() GPUFilters {
+		once.Do(func() {
+			f = GPUFilters{
+				TonemapVAAPI:  hasFilter(ffmpegPath, "tonemap_vaapi"),
+				TonemapOpenCL: hasFilter(ffmpegPath, "tonemap_opencl"),
+				Libplacebo:    hasFilter(ffmpegPath, "libplacebo"),
+			}
+		})
+		return f
+	}
+}
+
 // hdrToSDRChain is the HDR→SDR filter chain.
 //
 // The three steps are not interchangeable and the order is the whole trick:

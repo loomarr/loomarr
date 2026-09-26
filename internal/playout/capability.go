@@ -298,22 +298,24 @@ func trialEncodeObserved(ctx context.Context, ffmpegPath string, enc Encoder, p 
 	// which is exactly what a vacuous probe reports. The header comment above quotes real per-
 	// encoder results, but those were measured by running ffmpeg BY HAND — a measurement the code
 	// never reproduced.
+	// The live pipeline for a source the GPU cannot decode (MediaFormat{}: codec unknown), which is
+	// exactly what testsrc's CPU frames are: the upload, then the family's GPU scale/pad and encoder.
+	// A filter-graph mismatch (CPU frames into a GPU encoder, a GPU filter missing from the build) is
+	// one of the real cold-path failures, so the trial must exercise it. No tone-map: testsrc is SDR.
+	pipe, err := Build(HostFor(enc, false, GPUFilters{}), MediaFormat{}, ChannelOutput(probe))
+	if err != nil {
+		return Capability{Encoder: enc, Available: true, Err: err.Error()}
+	}
 	args := []string{"-hide_banner", "-loglevel", "error", "-y", "-progress", "pipe:1", "-nostats"}
-	args = append(args, deviceInitArgs(enc)...)
+	args = append(args, pipe.PreInput...)
 	// `testsrc` rather than a flat colour field: it has detail and motion, so the encoder
 	// does representative work. A flat colour compresses to nearly nothing and would
 	// report a speed no real program achieves.
 	args = append(args, "-f", "lavfi", "-i",
 		fmt.Sprintf("testsrc=duration=%d:size=%dx%d:rate=%d",
 			seconds, probe.Width, probe.Height, probe.Framerate))
-	// The SAME scale/format/upload filter the live child builds (scaleFilterArgs), not just the bare
-	// upload — a filter-graph mismatch (CPU frames into a GPU encoder) is one of the real cold-path
-	// failures, so the trial must exercise it.
-	// No tone-map: the source is a synthetic SDR `testsrc`, so there is no HDR to map and adding
-	// the step would make the trial fail on a build without zscale — which is a real, working
-	// encoder configuration for every SDR program on that box.
-	args = append(args, probe.scaleFilterArgs("")...)
-	args = append(args, probe.videoEncodeArgs()...)
+	args = append(args, "-vf", pipe.VideoFilter)
+	args = append(args, pipe.VideoEncode...)
 	// Mux to MPEG-TS exactly like the child, so an encoder that cannot feed the muxer fails HERE.
 	args = append(args, "-f", "mpegts", outPath)
 
