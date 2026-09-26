@@ -1,0 +1,1 @@
+: > ff.err; for t in vaapi_1080 ocl_hable_1080 ocl_bt2390_1080 vk_bt2390_1080 vk_dl_bt2390_1080 vaapi_4k ocl_hable_4k vk_bt2390_4k; do echo "$IMGV,$t,$(tm_run $t h1 20 3 /work/tmp/$t.mp4)"; tail -c 300 ff.err | tr '\n' ' '; : > ff.err; echo; done

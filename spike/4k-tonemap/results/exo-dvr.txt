@@ -1,0 +1,10 @@
+SPK     : t_ms=12 start url=http://10.0.2.2:8765/dvr/live.m3u8 bufferForPlaybackMs=1000
+SPK     : t_ms=14 state=2 rebuffers=0 pos_ms=0
+SPK     : t_ms=251 vdec_init OMX.google.h264.decoder init_ms=32
+SPK     : t_ms=251 vformat 640x360 avc1.42C01E reuse=none pos_ms=897000
+SPK     : t_ms=326 first_frame
+SPK     : t_ms=329 state=3 rebuffers=0 pos_ms=897001
+SPK     : t_ms=15138 state=2 rebuffers=1 pos_ms=899807
+SPK     : t_ms=15233 vdec_release OMX.google.h264.decoder
+SPK     : t_ms=15234 error ERROR_CODE_IO_UNSPECIFIED Source error
+SPK     : t_ms=15234 state=1 rebuffers=1 pos_ms=899810

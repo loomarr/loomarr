@@ -326,6 +326,12 @@ classify() {
       known=true
       select_gate docs
       ;;
+    spike/*)
+      # Throwaway measurement scripts and results behind docs/engineering/SPIKE-*.md. Nothing builds,
+      # ships or imports them (a spike's Go code is its own module, outside ./...).
+      known=true
+      select_gate docs
+      ;;
 	internal/testkit/postgresimage/image.go|internal/testkit/postgresimage/image.txt)
 		known=true
 		select_gate contracts
