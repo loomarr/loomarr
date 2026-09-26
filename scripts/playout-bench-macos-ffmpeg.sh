@@ -15,11 +15,12 @@ ffmpeg_sha256=c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924
 ffprobe_sha256=fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6
 
 mkdir -p "$bin_dir"
-for tool in ffmpeg ffprobe; do
-  want="${tool}_sha256"
+for pin in "ffmpeg:$ffmpeg_sha256" "ffprobe:$ffprobe_sha256"; do
+  tool="${pin%%:*}"
+  digest="${pin#*:}"
   curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
     --output "$bin_dir/$tool.zip" "$base/$tool.zip"
-  echo "${!want}  $bin_dir/$tool.zip" | shasum -a 256 -c -
+  echo "$digest$bin_dir/$tool.zip" | shasum -a 256 -c -
   unzip -oq "$bin_dir/$tool.zip" -d "$bin_dir"
   rm -f "$bin_dir/$tool.zip"
   chmod +x "$bin_dir/$tool"
