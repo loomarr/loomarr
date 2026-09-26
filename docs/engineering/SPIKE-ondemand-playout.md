@@ -41,7 +41,7 @@ Samples (genre only):
 - **Segment length: 1 s.** Only 1 s meets the H.264 cold-start threshold. The break and hls.js results are
   clean at 1 s. 2 s was not run through hls.js.
 - **Writer (updated at cp2):** ffmpeg muxes fMP4 and Go forwards fragments, patching `mfhd`/`tfdt` in place. mediacommon `fmp4.Parts` is used only for each item's first fragment, and `mpegts.Writer` only for the TS sink.
-- **Rate control:** QVBR, `-global_quality 22 -b:v 5M -maxrate 10M`.
+- **Rate control (revised at cp2 on a hard sample):** QVBR, `-global_quality 22 -b:v 8M -maxrate 12M`.
 
 ## 1. Cold tune → first HLS segment
 
@@ -295,6 +295,84 @@ align. `results/ratecontrol*.txt`, `rc.sh`.
   still needed to pick q. The NVENC reference on #1512 showed 5 Mbps flat costing 6.7 VMAF on hard
   content.
 
+
+
+### Checkpoint 2: a hard live-action sample
+
+`results/rc2.sh`, `rc2.csv`; 17:45 UTC.
+- **Sample:** a grain-heavy 35 mm film remux, AVC at about 34 Mbps. It is the top-bitrate tier of the
+  library's SDR 1080p remuxes, with nature/fast-motion and dark sequences.
+- **Windows:** three 15 s windows at 25/50/80% of runtime, each cut once to a lossless FFV1 reference.
+  Every mode encodes from that reference (software decode, `hwupload`, `h264_vaapi`), and VMAF compares
+  against it.
+- **Method fix:** frames are paired **by index** (`setpts=N/FRAME_RATE/TB`). Timestamp pairing slipped a
+  frame mid-window, because the MKV reference has 1 ms timestamps and the MP4 has 1/24000. That produced
+  VMAF min 0 and scores that did not change with bitrate.
+- **Alignment guard:** every row records Y-PSNR at offset 0 and at +1. Offset 0 wins by 9–13 dB in all
+  18 rows.
+
+| Mode | Mbps (3 windows) | VMAF mean: grain / mid / late | **p5**: grain / mid / late |
+|---|---|---|---|
+| CBR 5M | 5.03–5.09 | 80.0 / 96.5 / 92.7 | 55.2 / 92.3 / 89.7 |
+| VBR 5M/10M | 5.12–5.24 | 80.7 / 96.4 / 92.5 | 60.9 / 92.2 / 88.2 |
+| QVBR q22 5M/10M | 5.11–5.18 | 79.1 / 96.5 / 92.5 | 58.6 / 92.4 / 89.4 |
+| CBR 8M | 7.96–8.09 | 86.8 / 97.6 / 93.6 | 64.4 / 93.6 / 91.0 |
+| VBR 8M/12M | 8.09–8.17 | 87.7 / 97.4 / 93.6 | 69.0 / 92.6 / 91.0 |
+| **QVBR q22 8M/12M** | 7.84–8.29 | 87.1 / 97.5 / 93.5 | **72.0** / **94.1** / 90.9 |
+
+**Recommendation: QVBR, `-global_quality 22 -b:v 8M -maxrate 12M`.** This revises checkpoint 1's 5M/10M,
+which came from an easy sample.
+- **The grain window is bitrate-bound.** At 5 Mbps every mode sits at VMAF ≈ 80 with p5 55–61. The mode
+  barely matters at that rate.
+- **8 Mbps lifts the grain window by about 7 points** of VMAF mean.
+- **QVBR gives the best worst-case p5** there: 72, against 69 for VBR and 64 for CBR.
+- **QVBR costs little on easy content.** Its quality target keeps easy content well under the cap:
+  checkpoint 1's easy sample averaged **5.81 Mbps** at 8M/12M.
+- CBR spends 8 Mbps on everything, which is the worst for mixed channels.
+## 7. NVENC host family (dev machine, cp2)
+
+`results/p2g.sh`, `p2g_start.csv`, `p2g_speed.csv`, `p2g_conc.csv`.
+- **Hardware and software:** RTX 3080 Ti (GeForce), driver 615, **ffmpeg n9.0.2** (not the production n8.1
+  image), 24 threads, no CPU cap.
+- **Media:** 120 s stream-copy excerpts of the three samples on local NVMe, so start times are warm-disk,
+  not CIFS.
+- **Graph:** `-hwaccel cuda -hwaccel_output_format cuda`, `scale_cuda`, `fps`, `setparams`, then
+  `h264_nvenc -preset p4 -tune ll -bf 0 -g 30 -forced-idr 1 -strict_gop 1 -no-scenecut 1`, VBR cq 22,
+  5M/10M.
+- **HDR tone-map, what works:** `libplacebo` with ffmpeg's Vulkan hwaccel device
+  (`-init_hw_device vulkan`, `-hwaccel vulkan`) fails with "Error initializing filters" on this driver. The
+  working graph is CUDA decode, then `scale_cuda` to 1080p p010, `hwdownload`, and `libplacebo` (own Vulkan
+  device, bt.2390), then NVENC. A screenshot check showed correct tone-mapping.
+- **HDR, the CPU fallback:** the same downscale followed by `zscale`/`tonemap=hable` at 1080p costs
+  **2.9 cores** per stream at 3.1x. Do not use it.
+
+| | H.264 1080p | HEVC 1080p | 4K HDR → 1080p |
+|---|---|---|---|
+| First segment p50 / p95 (10 seeks) | 319 / 504 ms | 307 / 362 ms | **2135 / 2237 ms** |
+| Mean open (probe → moov) | 266 ms | 240 ms | 2016 ms (libplacebo Vulkan init) |
+| Speed, 60 s alone | 13.5x | 14.6x | 8.6x |
+| Cores per stream at 1x | **0.034** | 0.034 | 0.165 |
+
+| Concurrent 1080p H.264 streams | Min speed | Cores/stream | Total cores at 1x |
+|---|---|---|---|
+| 4 | 3.62x | 0.037 | 0.15 |
+| 8 | 1.82x | 0.041 | 0.33 |
+| 12 | **1.21x** | 0.044 | 0.53 |
+| 16 | 1.20x, and **4 of 16 failed `OpenEncodeSession`** | — | — |
+
+- **Capacity on GeForce: 12 streams.** The GeForce NVENC session limit fails the 13th encoder outright.
+  Both 1.2x and the session cap land at about 12. Pro/datacenter cards have no session cap. The capacity
+  rule needs a third term: `min(GPU throughput, CPU, NVENC sessions)`.
+- **Start:** the very first NVENC run after the GPU had been idle took **4.05 s** to its first segment; the
+  next five took 324–393 ms. Persistence mode is off on this machine. That the idle wake is the cause is
+  a theory, not reproduced.
+- **4K HDR start misses ≤ 1.8 s** (2.1–2.2 s). The cost is libplacebo creating its own Vulkan device on
+  every spawn.
+  - A pre-warmed device would remove it, but ffmpeg only shares a device inside one process.
+  - Fallback: tone-map in CUDA (`tonemap_cuda` is not in this build) or OpenCL (`tonemap_opencl`, untested).
+- **ffmpeg 9:** minimal probing (`probesize 32768`) cannot open TrueHD tracks ("Could not find codec
+  parameters"). n8.1 opened all 20 4K HDR files in 2b. This is one more ffmpeg-9 difference, alongside the
+  known concat break.
 ## Production requirements found by the spike
 
 1. **Conform frame metadata in-graph:**
@@ -348,14 +426,22 @@ minimal PES reader or with ffmpeg → fMP4 fragment forwarding (checkpoint 2 mea
 current path).
 
 ## What failed or is unfinished
-- The H.264 cold tune at 2 s segments misses (p95 496 ms pooled). The recorded decision is 1 s.
-- CPU: the per-stream 0.06 misses. The revised total ≤ 1 core misses at full GPU concurrency (1.41 at 16).
-  It holds by construction under the capacity rule above.
-- **Checkpoint 2:**
-  - ExoPlayer rebuffers and MediaCodec re-inits on the emulator (and the real TV box).
-  - Cold-start mitigations: cue index, read-ahead, and ffmpeg-side fMP4.
-  - NVENC and software-only host families.
-  - A harder rate-control sample.
-  - A bigger fresh-file cold-start set.
-- Single-file limits: HEVC and 4K HDR cold start were each measured on one file with 20 seeks.
-- 2 s segments were not run through hls.js.
+- **H.264 cold start is marginal.** The pooled p95 of 377 ms (n=76) passes, but checkpoint 2's fresh set
+  alone is 510 ms. The tail is CIFS seek/read.
+- **(c) Keyframe/cue index: not measured (budget).** The measurement to run next is the split of *open*
+  (probe → moov, 105 ms mean, 215–360 ms in the tail) into:
+  - the MKV Cues lookup;
+  - the data read at the target cluster.
+
+  Then compare a direct-offset start (`-ss` replaced by a byte offset from a stored index). The index
+  belongs on `inventory_source_measurements` (00091), read once per source revision.
+- **(d) Read-ahead: not measured (budget).** Prefetching 4–8 MB at the airing's seek offset is the
+  cheapest test of how much of that tail a warm start removes. The warm/cold gap on the same 50 files is
+  the upper bound: fMP4 path p95 258 ms warm against 510 ms cold.
+- **4K HDR on NVENC** misses ≤ 1.8 s (2.1–2.2 s). The cost is libplacebo's per-process Vulkan init.
+  `tonemap_opencl` is untested.
+- **The real TV box** (Shield, Android 11) was not measured. Only the emulator was.
+- **Checkpoint 1's rate-control numbers** (easy sample) used timestamp pairing. The p5 values of 89–94
+  show no slip, but they were not re-run with index pairing.
+- ffmpeg n9 (dev machine) cannot minimal-probe TrueHD. Production stays on n8.1 until this and the
+  concat break are addressed.
