@@ -20,7 +20,7 @@ for pin in "ffmpeg:$ffmpeg_sha256" "ffprobe:$ffprobe_sha256"; do
   digest="${pin#*:}"
   curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
     --output "$bin_dir/$tool.zip" "$base/$tool.zip"
-  echo "$digest$bin_dir/$tool.zip" | shasum -a 256 -c -
+  printf '%s  %s\n' "$digest" "$bin_dir/$tool.zip" | shasum -a 256 -c -
   unzip -oq "$bin_dir/$tool.zip" -d "$bin_dir"
   rm -f "$bin_dir/$tool.zip"
   chmod +x "$bin_dir/$tool"
