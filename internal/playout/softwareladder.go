@@ -73,6 +73,17 @@ func (r SoftwareRung) decoderOptions() []string {
 	return nil
 }
 
+// tailFill holds the last decoded frame to the item's end on a rung that skips frames. fps repeats
+// frames only up to the last one decoded, so keyframes-only ends the video up to one source GOP
+// before the audio (measured: 1 frame out of 50 for a 2 s single-GOP item). The clone covers GOPs
+// up to 10 s; the item's own bound (-frames:v, -t) trims the surplus.
+func (r SoftwareRung) tailFill() string {
+	if r == RungNoRef || r == RungKeyframes {
+		return "tpad=stop_mode=clone:stop_duration=10"
+	}
+	return ""
+}
+
 // rungCost is each rung's CPU at 1x relative to rung 0: the phase 0b priors, each rounded toward
 // the more expensive side so a projection never promises headroom the rung does not have. Rung 2's
 // gain depends on the source's GOP (none on H1), so its prior is rung 1's; the monitor measures it.

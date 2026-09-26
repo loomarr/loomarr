@@ -732,6 +732,9 @@ func (b *builder) software() error {
 	if b.tonemap {
 		f = append(f, b.cpuChain())
 	}
+	if fill := rung.tailFill(); fill != "" {
+		f = append(f, fill)
+	}
 	f = append(f, "scale="+b.fit(), "format=yuv420p",
 		fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), "setsar=1", b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
