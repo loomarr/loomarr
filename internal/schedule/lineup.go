@@ -34,11 +34,12 @@ type DesiredLineup struct {
 }
 
 // ProgramCount returns how many slots are real playable programs (§9: a channel
-// with zero programs must still be live via filler/flex — never dead air).
+// with zero programs must still be live via filler/flex — never dead air). A programme split at
+// natural breaks counts once: its later segments are the same airing.
 func (d DesiredLineup) ProgramCount() int {
 	n := 0
 	for _, s := range d.Slots {
-		if s.IsProgram() {
+		if s.IsProgram() && s.Segment <= 1 {
 			n++
 		}
 	}
@@ -527,6 +528,11 @@ const defaultBreakDurationMs = 30_000 // mirrors filler.break_duration
 // program runtime, and after a program that pushes the running total past the
 // next 60/BreaksPerHour-minute threshold, emit one break and reset. Never a
 // trailing break (nothing after it to return from) and never two in a row.
+//
+// With ch.NaturalBreaks set (internal playout, mid-roll on), a long programme is also split at
+// measured scene fades (PlaceMidRollCuts) into Segment slots with MidRoll breaks between them;
+// a due break with no fade near it is skipped, and the boundary rule above still applies after the
+// programme's last part.
 func interleaveBreaks(ch Channel, slots []Slot) []Slot {
 	if ch.BreaksPerHour <= 0 || len(slots) == 0 {
 		return slots
@@ -536,14 +542,37 @@ func interleaveBreaks(ch Channel, slots []Slot) []Slot {
 	if breakDurationMs < 30_000 {
 		breakDurationMs = defaultBreakDurationMs
 	}
+	midRoll := DefaultMidRollPolicy(ch.BreaksPerHour)
 	out := make([]Slot, 0, len(slots)+len(slots)/2)
 	var acc int64
 	for i, s := range slots {
-		out = append(out, s)
 		if !s.IsProgram() {
+			out = append(out, s)
 			continue // only program runtime counts toward the break cadence
 		}
-		acc += s.DurationMs
+		// Mid-roll (§10): a long programme with measured scene fades airs as parts with a break at
+		// each chosen fade. The runtime after the last cut is what the between-programme rule
+		// below sees, so the one cadence runs through both kinds of break.
+		var cuts []int64
+		if ch.NaturalBreaks != nil && s.LibraryItemID != "" {
+			cuts = PlaceMidRollCuts(s.DurationMs, acc, ch.NaturalBreaks.NaturalBreaks(s.LibraryItemID), midRoll)
+		}
+		if len(cuts) == 0 {
+			out = append(out, s)
+			acc += s.DurationMs
+		} else {
+			from := int64(0)
+			for n, cut := range append(cuts, s.DurationMs) {
+				part := s
+				part.Segment, part.SourceOffsetMs, part.DurationMs = n+1, from, cut-from
+				if n > 0 {
+					out = append(out, Slot{Kind: SlotFiller, DurationMs: breakDurationMs, MidRoll: true})
+				}
+				out = append(out, part)
+				from = cut
+			}
+			acc = s.DurationMs - cuts[len(cuts)-1]
+		}
 		// A break only makes sense between two programs — not after the last slot.
 		hasLater := false
 		for _, n := range slots[i+1:] {
