@@ -138,10 +138,11 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `invitation` | 6 | `contact` |
 | `library` | 10 | `filler`, `httpx`, `metrics` |
 | `llm` | 8 | `httpx`, `metrics` |
-| `mediatools` | 12 | `bgexec`, `diagnostics` |
+| `mediatools` | 12 | `bgexec`, `diagnostics`, `playout` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `openroutermedia` | 7 | `fillereval` |
+| `playout` | 5 | `diagnostics`, `provision`, `schedule` |
 | `provision` | 22 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
@@ -271,7 +272,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
-- **`playout`** · 4 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
+- **`playout`** · 5 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
@@ -286,6 +287,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns bounded external context lookup for publicly sourced filler.
 - **`mediatools`** · 12 importers · → `bgexec`, `diagnostics`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
+- **`playoutbench`** · → `playout`
+  Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 

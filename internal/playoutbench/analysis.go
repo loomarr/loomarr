@@ -107,7 +107,7 @@ func (r *run) packetPTS(ctx context.Context, path, stream string) ([]int64, erro
 // would: timestamps on the frame grid, audio on the AAC frame grid, SPS bytes, loudness.
 func (r *run) analyse(ctx context.Context, c Clip, pipe playout.Pipeline) (analysis, error) {
 	ts := filepath.Join(r.Dir, c.Name+".out.ts")
-	defer os.Remove(ts)
+	defer func() { _ = os.Remove(ts) }()
 	t, err := r.encodeTo(ctx, c, pipe, ts)
 	if err != nil {
 		return analysis{}, err

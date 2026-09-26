@@ -96,16 +96,16 @@ tied to the schema and corpus version; bumping either forces a re-accept.
 
 | Job | When | What |
 | --- | --- | --- |
-| `Playout bench — software-only pipeline` (`ci-playout-bench.yml`) | every PR that touches playout, the bench or its scripts (classifier gate `playout_bench`, part of `CI`) | 720p software family, pinned production FFmpeg, against `docs/engineering/playout-bench/ci/` |
+| `Playout bench — software-only pipeline` (`ci-playout-bench.yml`) | every PR that touches playout, the bench or its scripts (classifier gate `playout_bench`, part of `CI`) | 720p software family, pinned production ffmpeg, against `docs/engineering/playout-bench/ci/` |
 | `macos-15 — VideoToolbox` (`playout-bench.yml`) | `workflow_dispatch` and nightly | VideoToolbox family; correctness thresholds only, since the runner is virtualised |
 | `GitHub T4 GPU — NVENC` | `workflow_dispatch` and nightly, **only when the repository variable `PLAYOUT_BENCH_T4_RUNNER` is set** | needs a paid GPU larger runner (about $0.052/min); set the variable to its label to enable |
 | `Self-hosted — Intel Arc`, `Self-hosted — NVIDIA GeForce` | `workflow_dispatch` only | the maintainer's machines |
 
 `macos-15` arm64 runners expose VideoToolbox hardware encode; `macos-14` does not.
 
-The macOS job installs a SHA-256-pinned static arm64 FFmpeg (VideoToolbox included) with the same bounded
-retry as `scripts/ci-ffmpeg.sh`, never an unpinned Homebrew bottle. It is FFmpeg 9.0.2 because no
-older macOS arm64 build is published; that is not the production 8.1 pin. FFmpeg 9 breaks the concat
+The macOS job installs a SHA-256-pinned static arm64 ffmpeg (VideoToolbox included) with the same bounded
+retry as `scripts/ci-ffmpeg.sh`, never an unpinned Homebrew bottle. It is ffmpeg 9.0.2 because no
+older macOS arm64 build is published; that is not the production 8.1 pin. ffmpeg 9 breaks the concat
 advance over a chunked HTTP body, which the bench never exercises: it drives `playout.Build` pipelines
 and reads the output directly. The bench films are Tears of Steel 720p and 1080p only; the 4K class
 runs on generated HDR10 clips.

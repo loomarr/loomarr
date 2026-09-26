@@ -189,7 +189,7 @@ func (c Clip) Path(dir string) string {
 func recipeHash(clips []Clip) string {
 	h := sha256.New()
 	for _, c := range clips {
-		fmt.Fprintf(h, "%q\n", c.Args(c.Name))
+		_, _ = fmt.Fprintf(h, "%q\n", c.Args(c.Name))
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }

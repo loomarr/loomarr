@@ -283,8 +283,8 @@ func (r *run) measureVMAF(ctx context.Context, c Clip, pipe playout.Pipeline, fp
 	}
 	encoded := filepath.Join(r.Dir, c.Name+".vmaf.ts")
 	logPath := filepath.Join(r.Dir, c.Name+".vmaf.json")
-	defer os.Remove(encoded)
-	defer os.Remove(logPath)
+	defer func() { _ = os.Remove(encoded) }()
+	defer func() { _ = os.Remove(logPath) }()
 	if _, err := r.encodeTo(ctx, c, pipe, encoded); err != nil {
 		r.rep.Skipped[name] = "encode: " + err.Error()
 		return
@@ -316,12 +316,17 @@ func (r *run) measureVMAF(ctx context.Context, c Clip, pipe playout.Pipeline, fp
 }
 
 // encodeTo runs the clip through the pipeline to a file.
-func (r *run) encodeTo(ctx context.Context, c Clip, pipe playout.Pipeline, path string) (timed, error) {
+func (r *run) encodeTo(ctx context.Context, c Clip, pipe playout.Pipeline, path string) (t timed, err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return timed{}, err
 	}
-	defer f.Close()
+	// A failed close can mean a truncated capture, which would be analysed as if it were the output.
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
 	// ItemArgs writes MPEG-TS to stdout, which the sink captures.
 	return r.exec(ctx, pipe.ItemArgs(c.Path(r.Dir), 0, c.frames(r.out.FPS), r.out.FPS, 0), f)
 }
