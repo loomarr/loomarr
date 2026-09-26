@@ -3,8 +3,9 @@ package mediatools
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 // Shared ffmpeg invocation helpers.
@@ -46,7 +47,7 @@ func FFmpegOr(path string) string {
 // On the ~10s spans the language gate uses that is the difference between milliseconds and a
 // full decode of the clip.
 func ExtractSpanWAV(ctx context.Context, ffmpegPath, file string, startMs, endMs int64, dst string) error {
-	cut := exec.CommandContext(ctx, FFmpegOr(ffmpegPath),
+	cut := bgexec.FFmpeg(ctx, FFmpegOr(ffmpegPath),
 		"-nostdin", "-v", "error",
 		"-ss", MsToFFmpegTime(startMs), "-t", MsToFFmpegTime(endMs-startMs),
 		"-i", file, "-vn", "-ac", "1", "-ar", "16000", "-y", dst)

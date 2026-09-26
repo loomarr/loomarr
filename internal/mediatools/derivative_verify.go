@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const (
@@ -285,9 +286,9 @@ func runDerivativeCommand(ctx context.Context, executable string, combined bool,
 	if combined {
 		stderr = stdout
 	}
-	cmd := exec.Command(executable, args...) //nolint:gosec // executable is the operator-configured media tool
+	cmd := bgexec.Tool(ctx, executable, args...)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	runErr := runBackground(ctx, cmd)
+	runErr := cmd.Run()
 	stdoutBytes, stdoutOverflow := stdout.result()
 	stderrBytes, stderrOverflow := stderr.result()
 	if err := ctx.Err(); err != nil {

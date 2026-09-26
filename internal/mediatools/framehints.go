@@ -3,6 +3,7 @@ package mediatools
 import (
 	"bytes"
 	"image"
+
 	// Registers the JPEG decoder for image.Decode — Keyframes hands us JPEG bytes.
 	_ "image/jpeg"
 )

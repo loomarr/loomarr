@@ -6,7 +6,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"os/exec"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const (
@@ -42,7 +43,7 @@ func (t *FFmpegTools) HostedVideoIn(ctx context.Context, file string, startMS, e
 
 	var stdout bytes.Buffer
 	stderr := cappedDiagnostic{remaining: HostedVideoMaxDiagnosticBytes}
-	cmd := exec.CommandContext(ctx, FFmpegOr(t.FFmpegPath),
+	cmd := bgexec.FFmpeg(ctx, FFmpegOr(t.FFmpegPath),
 		"-nostdin", "-hide_banner", "-nostats", "-v", "error",
 		"-ss", msToSeconds(startMS), "-t", msToSeconds(endMS-startMS),
 		"-i", file,

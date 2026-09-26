@@ -5,13 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/proctree"
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const (
@@ -82,16 +81,16 @@ func runSherpaKeywordSpotter(ctx context.Context, proposer *sherpaProposer, wavP
 		"--keywords-threshold=" + sherpaKeywordThreshold,
 		wavPath,
 	}
-	command := exec.Command(proposer.artifacts.runtime, args...) //nolint:gosec // executable and arguments are private staged artifacts
+	command := bgexec.Tool(runCtx, proposer.artifacts.runtime, args...)
 	command.Dir = filepath.Dir(wavPath)
 	command.Env = sherpaEnvironment(proposer.artifacts.library)
 	command.Stdout = stdout
 	command.Stderr = stderr
-	supervisor, err := proctree.Start(runCtx, command)
+	err := command.Start()
 	if err != nil {
 		return nil, fmt.Errorf("start spoken-safety acoustic proposer")
 	}
-	waitErr := supervisor.Wait()
+	waitErr := command.Wait()
 	output, stdoutExceeded := stdout.result()
 	_, stderrExceeded := stderr.result()
 	if ctx.Err() != nil {
@@ -100,7 +99,7 @@ func runSherpaKeywordSpotter(ctx context.Context, proposer *sherpaProposer, wavP
 	if stdoutExceeded || stderrExceeded {
 		return nil, fmt.Errorf("spoken-safety acoustic proposer exceeded its output bound")
 	}
-	if runCtx.Err() != nil || supervisor.Stopped() {
+	if runCtx.Err() != nil || command.Stopped() {
 		return nil, fmt.Errorf("spoken-safety acoustic proposer exceeded its runtime bound")
 	}
 	if waitErr != nil {

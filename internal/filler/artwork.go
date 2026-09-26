@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
+
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
@@ -379,7 +380,7 @@ func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
 			"-q:v", fmt.Sprintf("%d", previewQuality), "-compression_level", "4", "-loop", "0",
 			"-y", animDst,
 		)
-		cmd := exec.CommandContext(ctx, bin, webpArgs...)
+		cmd := bgexec.FFmpeg(ctx, bin, webpArgs...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			// Homebrew's stock ffmpeg and other minimal builds may omit libwebp while retaining the
@@ -398,7 +399,7 @@ func FFmpegArtwork(ffmpegPath string) ArtworkRenderer {
 				"-map", "[s]", "-frames:v", "1", "-q:v", "6", "-update", "1", "-y", stillDst,
 				"-map", "[a]", "-f", "gif", "-loop", "0", "-y", animDst,
 			)
-			fallback := exec.CommandContext(ctx, bin, gifArgs...)
+			fallback := bgexec.FFmpeg(ctx, bin, gifArgs...)
 			fallbackOut, fallbackErr := fallback.CombinedOutput()
 			if fallbackErr != nil {
 				// ffmpeg's diagnostics are the only clue why a clip has no artwork; both outputs are

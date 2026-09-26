@@ -12,12 +12,13 @@ import (
 	"math"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const (
@@ -1375,10 +1376,10 @@ func runConditioningCommand(ctx context.Context, executable string, limit int, c
 	if combined {
 		stderr = stdout
 	}
-	cmd := exec.Command(executable, args...)
+	cmd := bgexec.Tool(runCtx, executable, args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	runErr := runBackground(runCtx, cmd)
+	runErr := cmd.Run()
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, fmt.Errorf("conditioning tool canceled: %w", ctxErr)
 	}

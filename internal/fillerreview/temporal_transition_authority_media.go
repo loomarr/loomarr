@@ -5,11 +5,12 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os/exec"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
@@ -50,7 +51,7 @@ func (media *ExecTemporalTransitionEvidenceMedia) measureEdge(ctx context.Contex
 	videoFilter := "scale=960:720:force_original_aspect_ratio=decrease,pad=960:720:(ow-iw)/2:(oh-ih)/2,fps=30,trim=duration=1,setpts=PTS-STARTPTS,format=yuv420p,blackdetect=d=0.040:pix_th=0.10"
 	audioFilter := "aresample=48000,aformat=channel_layouts=stereo,atrim=duration=1,asetpts=PTS-STARTPTS,silencedetect=n=-40dB:d=0.040"
 	var detector bytes.Buffer
-	command := exec.CommandContext(ctx, media.ffmpeg,
+	command := bgexec.FFmpeg(ctx, media.ffmpeg,
 		"-nostdin", "-hide_banner", "-nostats", "-v", "info",
 		"-ss", mediatools.MsToFFmpegTime(startMS), "-t", mediatools.MsToFFmpegTime(endMS-startMS), "-i", path,
 		"-vf", videoFilter, "-af", audioFilter, "-f", "null", "-")
@@ -62,7 +63,7 @@ func (media *ExecTemporalTransitionEvidenceMedia) measureEdge(ctx context.Contex
 	if err != nil {
 		return TemporalTransitionEdge{}, err
 	}
-	pcm, err := exec.CommandContext(ctx, media.ffmpeg,
+	pcm, err := bgexec.FFmpeg(ctx, media.ffmpeg,
 		"-nostdin", "-hide_banner", "-loglevel", "error",
 		"-ss", mediatools.MsToFFmpegTime(startMS), "-t", mediatools.MsToFFmpegTime(endMS-startMS), "-i", path,
 		"-vn", "-ac", "2", "-ar", "48000", "-f", "s16le", "-").Output()

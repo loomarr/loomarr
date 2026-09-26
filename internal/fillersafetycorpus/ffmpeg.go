@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
+
 	"github.com/loomarr/loomarr/internal/fillersafety"
 )
 
@@ -67,7 +69,7 @@ func (wrapper *ffmpegWrapper) Wrap(ctx context.Context, input, output string) (w
 		"-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact",
 		"-movflags", "+faststart", output,
 	}
-	command := exec.CommandContext(ctx, wrapper.ffmpeg, args...) //nolint:gosec // executable and arguments are validated private inputs
+	command := bgexec.FFmpeg(ctx, wrapper.ffmpeg, args...)
 	stdout := &boundedBuffer{remaining: maximumToolOutputBytes}
 	stderr := &boundedBuffer{remaining: maximumToolOutputBytes}
 	command.Stdout, command.Stderr = stdout, stderr
@@ -119,7 +121,7 @@ func identifyTool(ctx context.Context, path string) (fillersafety.ToolIdentity, 
 	}
 	var stdout, stderr boundedBuffer
 	stdout.remaining, stderr.remaining = maximumToolOutputBytes, maximumToolOutputBytes
-	command := exec.CommandContext(ctx, path, "-version") //nolint:gosec // resolved regular executable chosen explicitly by operator
+	command := bgexec.Tool(ctx, path, "-version")
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Run(); err != nil || stdout.overflow || stderr.overflow {
 		return fillersafety.ToolIdentity{}, fmt.Errorf("media tool version probe failed")
@@ -158,7 +160,7 @@ func hashRegularFile(path string, maximum int64) (string, int64, error) {
 }
 
 func probeCompleteAV(ctx context.Context, ffprobe, path string) (int64, error) {
-	command := exec.CommandContext(ctx, ffprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_type", "-of", "json", path) //nolint:gosec // resolved executable and private output path
+	command := bgexec.Tool(ctx, ffprobe, "-v", "error", "-show_entries", "format=duration:stream=codec_type", "-of", "json", path)
 	var stdout, stderr boundedBuffer
 	stdout.remaining, stderr.remaining = maximumToolOutputBytes, maximumToolOutputBytes
 	command.Stdout, command.Stderr = &stdout, &stderr
@@ -191,7 +193,7 @@ func probeCompleteAV(ctx context.Context, ffprobe, path string) (int64, error) {
 }
 
 func decodeCompleteAV(ctx context.Context, ffmpeg, path string) error {
-	command := exec.CommandContext(ctx, ffmpeg,
+	command := bgexec.FFmpeg(ctx, ffmpeg,
 		"-nostdin", "-hide_banner", "-nostats", "-v", "error", "-xerror", "-i", path,
 		"-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-") //nolint:gosec // resolved executable and private output path
 	stdout := &boundedBuffer{remaining: maximumToolOutputBytes}

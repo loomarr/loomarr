@@ -10,10 +10,11 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const (
@@ -100,7 +101,7 @@ func buildCandidateBlindCarrier(ctx context.Context, bundleRoot, inputDir, confi
 		"-movflags", "+faststart", "-f", "mp4", "-y", outputPath,
 	}
 	diagnostics := &portableWorkerDiagnostics{}
-	command := exec.CommandContext(runCtx, resolved, args...)
+	command := bgexec.FFmpeg(runCtx, resolved, args...)
 	command.Stdout, command.Stderr = diagnostics, diagnostics
 	if err := command.Run(); err != nil || diagnostics.Overflowed() || runCtx.Err() != nil {
 		return CandidateBlindReviewAsset{}, ToolIdentity{}, "", fmt.Errorf("build candidate-blind hosted video carrier")

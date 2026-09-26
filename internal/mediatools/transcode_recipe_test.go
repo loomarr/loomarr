@@ -91,7 +91,7 @@ func TestTranscodeArgumentsCapThreads(t *testing.T) {
 		}
 		// libx264 keeps its own thread pool (frame threads + a lookahead thread) that `-threads` does not
 		// fully bound on every build, so it is capped explicitly too.
-		if !containsArgumentPair(args, "-x264-params", "threads="+strconv.Itoa(BackgroundThreads)+":sync-lookahead=0") {
+		if !containsArgumentPair(args, "-x264-params", "threads="+strconv.Itoa(BackgroundThreads)) {
 			t.Errorf("%s: libx264 thread pool not capped: %v", name, args)
 		}
 		// -threads is per-side: before -i it bounds the DECODER, after it the ENCODER. Both need it.

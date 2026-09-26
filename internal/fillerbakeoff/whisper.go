@@ -9,9 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const (
@@ -72,7 +73,7 @@ func (w *whisperTranscriptEngine) Transcribe(ctx context.Context, audio []byte) 
 	outputBase := filepath.Join(dir, "transcript")
 	var diagnostic boundedBuffer
 	diagnostic.limit = maxWhisperDiagnosticBytes
-	command := exec.CommandContext(ctx, w.binaryPath, "-m", w.modelPath, "-f", wavPath, "-oj", "-of", outputBase, "-np")
+	command := bgexec.Whisper(ctx, w.binaryPath, "-m", w.modelPath, "-f", wavPath, "-oj", "-of", outputBase, "-np")
 	command.Stdout = &diagnostic
 	command.Stderr = &diagnostic
 	if err := command.Run(); err != nil {

@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
+
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 const (
@@ -38,9 +39,9 @@ func InspectQualityIn(ctx context.Context, ffmpegPath, file string, startMS, end
 	args = append(args, "-f", "null", "-")
 
 	var stderr bytes.Buffer
-	cmd := exec.Command(FFmpegOr(ffmpegPath), args...)
+	cmd := bgexec.FFmpeg(ctx, FFmpegOr(ffmpegPath), args...)
 	cmd.Stderr = &stderr
-	if err := runBackground(ctx, cmd); err != nil {
+	if err := cmd.Run(); err != nil {
 		return MediaQuality{}, fmt.Errorf("inspect media quality %s: %w: %s", file, err, stderr.String())
 	}
 	return qualityFromDetectorOutput(stderr.String(), durationMs), nil

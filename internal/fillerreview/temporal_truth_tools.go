@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
+
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
@@ -64,7 +66,7 @@ func (media *FFmpegTemporalTruthMedia) Analyze(ctx context.Context, path string,
 func (media *FFmpegTemporalTruthMedia) WriteReviewVideo(ctx context.Context, source string, startMS, durationMS int64, output string) (TemporalTruthVideoInfo, error) {
 	arguments := temporalTruthReviewVideoArguments(source, startMS, durationMS, output)
 	var stderr bytes.Buffer
-	command := exec.CommandContext(ctx, media.identity.FFmpeg.Path, arguments...)
+	command := bgexec.FFmpeg(ctx, media.identity.FFmpeg.Path, arguments...)
 	command.Stderr = &stderr
 	if err := command.Run(); err != nil {
 		return TemporalTruthVideoInfo{}, fmt.Errorf("ffmpeg review video: %w: %s", err, strings.TrimSpace(stderr.String()))
@@ -95,7 +97,7 @@ func (media *FFmpegTemporalTruthMedia) Frames(ctx context.Context, path string, 
 }
 
 func (media *FFmpegTemporalTruthMedia) probeReviewVideo(ctx context.Context, path string) (TemporalTruthVideoInfo, error) {
-	output, err := exec.CommandContext(ctx, media.identity.FFprobe.Path,
+	output, err := bgexec.Tool(ctx, media.identity.FFprobe.Path,
 		"-v", "error", "-show_entries", "format=duration:stream=codec_type,codec_name,width,height,pix_fmt,avg_frame_rate,sample_rate,channels",
 		"-of", "json", path).Output()
 	if err != nil {
@@ -200,7 +202,7 @@ func (ocr *ExecTemporalTruthOCR) Recognize(ctx context.Context, inputs []Tempora
 		byPath[resolved] = input
 	}
 	var stderr bytes.Buffer
-	command := exec.CommandContext(ctx, ocr.identity.Path, arguments...)
+	command := bgexec.Tool(ctx, ocr.identity.Path, arguments...)
 	command.Stderr = &stderr
 	output, err := command.Output()
 	if err != nil {
@@ -264,7 +266,7 @@ func temporalTruthExecutableIdentity(ctx context.Context, name string) (Temporal
 	if err != nil {
 		return TemporalTruthToolIdentity{}, err
 	}
-	output, err := exec.CommandContext(ctx, path, "-version").Output()
+	output, err := bgexec.Tool(ctx, path, "-version").Output()
 	if err != nil {
 		return TemporalTruthToolIdentity{}, err
 	}

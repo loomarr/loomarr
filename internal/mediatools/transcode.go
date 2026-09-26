@@ -9,15 +9,15 @@ import (
 	"math"
 	"math/big"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
+
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/proctree"
 )
 
 // Derivative transcoding (§10 V66) — source masters feed separately identified evidence and
@@ -119,7 +119,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 
 	args := transcodeArguments(req, tmp)
 
-	cmd := exec.Command(FFmpegOr(req.FFmpegPath), args...) //nolint:gosec // args are built by this package
+	cmd := bgexec.FFmpeg(ctx, FFmpegOr(req.FFmpegPath), args...)
 	var stderr boundedBytes
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
@@ -133,7 +133,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		Purpose: "filler_transcode", JobID: req.ProcessJobID, Target: req.Profile.ID(),
 		Executable: FFmpegOr(req.FFmpegPath), Args: args,
 	})
-	supervised, err := proctree.Start(ctx, cmd, proctree.LowPriority())
+	err = cmd.Start()
 	if err != nil {
 		_ = progress.Close()
 		_ = stderrPipe.Close()
@@ -181,15 +181,15 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		}
 	}()
 
-	runErr := supervised.Wait()
+	runErr := cmd.Wait()
 	<-progressDone
 	<-stderrDone
 	if run != nil {
 		run.Finish(diagnostics.ProcessResult{
-			Err: runErr, Cancelled: supervised.Stopped(), TerminationReason: transcodeTerminationReason(supervised.Stopped()),
+			Err: runErr, Cancelled: cmd.Stopped(), TerminationReason: transcodeTerminationReason(cmd.Stopped()),
 		})
 	}
-	if supervised.Stopped() && ctx.Err() != nil {
+	if cmd.Stopped() && ctx.Err() != nil {
 		return MediaQuality{}, fmt.Errorf("transcode %s: %w: %s", filepath.Base(req.In), ctx.Err(), stderr.String())
 	}
 	if runErr != nil {
@@ -386,19 +386,18 @@ func equivalentMediaRatio(before, after string) bool {
 // BackgroundThreads caps every filler ffmpeg's worker threads (#1512 G5).
 //
 // ⚠ Production ran two libx264 software encodes per clip with NO thread cap and measured about
-// 350% CPU in a 4-CPU container — every page and every live stream slowed for the duration. Two
-// threads keeps a batch encode to at most half of a small host; it is slower per clip, which is
-// the right trade for work nobody is waiting on. Paired with proctree.LowPriority so that even
-// those two threads yield to playback.
-const BackgroundThreads = 2
-
-// x264BackgroundParams bounds libx264's own thread pool.
+// 350% CPU in a 4-CPU container — every page and every live stream slowed for the duration. One
+// thread per stage keeps a batch encode to roughly one core plus the muxer; it is slower per clip,
+// which is the right trade for work nobody is waiting on. Paired with proctree.LowPriority so that
+// even that core yields to playback.
 //
-// ⚠ **`-threads` alone does not bound it, and this was measured, not assumed.** On a 4-CPU pin a
-// 720p encode with `-threads 2` still peaked at ~256% because libx264 runs a SEPARATE lookahead
-// thread on top of its frame threads. `sync-lookahead=0` folds the lookahead into the frame
-// threads; the same clip then peaked at ~196% (uncapped: ~393%). The rate-control decisions, and
-// so the output, are unchanged — only where the lookahead runs.
+// Measured on a 4-CPU pin (720p): uncapped ~393%, two threads ~196–200% (no margin, and 1080p
+// exceeds it), one thread ~135–168%.
+const BackgroundThreads = 1
+
+// x264BackgroundParams bounds libx264's own thread pool, which `-threads` alone does not: with
+// two frame threads libx264 also runs a separate lookahead thread and peaked at ~256%. One thread
+// runs the lookahead synchronously on the encoding thread, so there is nothing else to bound.
 func x264BackgroundParams() string {
-	return "threads=" + strconv.Itoa(BackgroundThreads) + ":sync-lookahead=0"
+	return "threads=" + strconv.Itoa(BackgroundThreads)
 }
