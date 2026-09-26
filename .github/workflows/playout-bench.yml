@@ -1,0 +1,173 @@
+name: Playout bench (hardware)
+
+# Cross-hardware measurement of the real playout pipeline (docs/dev/playout-bench.md).
+#
+# ⚠ NEVER add `pull_request`, `pull_request_target` or `merge_group` here. The repository is public:
+# a pull request from a fork must not be able to schedule work on the maintainer's GPU machines. The
+# self-hosted jobs run only on `workflow_dispatch`, which needs write access, and additionally check
+# the event themselves. The per-PR software bench lives in ci-playout-bench.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      run_macos:
+        description: "Run the macos-15 (VideoToolbox) job"
+        type: boolean
+        default: true
+      run_arc:
+        description: "Run on the maintainer's Intel Arc host (self-hosted, label loomarr-playout-arc)"
+        type: boolean
+        default: false
+      run_geforce:
+        description: "Run on the maintainer's NVIDIA GeForce host (self-hosted, label loomarr-playout-geforce)"
+        type: boolean
+        default: false
+      accept:
+        description: "Accept this run as the family baseline on the self-hosted jobs (uploads it; commit it from the artifact)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playout-bench-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    name: macos-15 — VideoToolbox
+    # macos-15 arm64 runners expose VideoToolbox hardware encode; macos-14 does not (#1512). The runner
+    # is virtualised, so only correctness (timestamp grid, SPS identity, loudness) is judged and the
+    # speed numbers are tracked against the ci/ baseline, never against the beta.8 thresholds.
+    if: github.event_name == 'schedule' || inputs.run_macos
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27"
+          cache: false
+      # Homebrew's ffmpeg has VideoToolbox but no VT or libplacebo tone-mapper. Its version is in
+      # every report, so a bottle change shows up as a diff rather than silently.
+      - name: Install FFmpeg
+        run: brew install ffmpeg
+      - name: Bench the VideoToolbox pipeline
+        env:
+          LOOMARR_ARTIFACT_DIR: ${{ runner.temp }}/playout-bench
+          PLAYOUT_BENCH_FAMILY: videotoolbox
+          PLAYOUT_BENCH_THRESHOLDS: correctness
+          PLAYOUT_BENCH_MAX_STREAMS: "6"
+          PLAYOUT_BENCH_BASELINE_DIR: docs/engineering/playout-bench/ci
+          PLAYOUT_BENCH_TOLERANCE: "0.4"
+        run: make playout-bench
+      - name: Keep the bench report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playout-bench-macos
+          path: |
+            ${{ runner.temp }}/playout-bench/playout-bench-*.json
+            ${{ runner.temp }}/playout-bench/playout-bench-*.md
+          if-no-files-found: ignore
+          retention-days: 30
+
+  gpu-t4:
+    name: GitHub T4 GPU — NVENC
+    # Off by default: GitHub's GPU larger runners need a paid plan (about $0.052/min). Enable by
+    # creating a T4 larger runner and setting the repository variable PLAYOUT_BENCH_T4_RUNNER to its
+    # label; leaving the variable unset skips the job.
+    if: vars.PLAYOUT_BENCH_T4_RUNNER != '' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ${{ vars.PLAYOUT_BENCH_T4_RUNNER }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27"
+          cache: false
+      - name: Resolve production FFmpeg pin
+        id: ffmpeg-pin
+        run: ./scripts/ci-ffmpeg.sh metadata >> "$GITHUB_OUTPUT"
+      - name: Cache production FFmpeg archive
+        id: ffmpeg-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/loomarr-ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg-pin.outputs.sha256 }}
+      - name: Download production FFmpeg
+        run: ./scripts/ci-ffmpeg.sh download "$HOME/.cache/loomarr-ffmpeg"
+      - name: Install production FFmpeg
+        run: |
+          ./scripts/ci-ffmpeg.sh install "$HOME/.cache/loomarr-ffmpeg" "$RUNNER_TEMP/loomarr-ffmpeg"
+          echo "$RUNNER_TEMP/loomarr-ffmpeg" >> "$GITHUB_PATH"
+      - name: Bench the NVENC pipeline
+        env:
+          LOOMARR_ARTIFACT_DIR: ${{ runner.temp }}/playout-bench
+          PLAYOUT_BENCH_FAMILY: nvenc
+          PLAYOUT_BENCH_BASELINE_DIR: docs/engineering/playout-bench/ci
+          PLAYOUT_BENCH_TOLERANCE: "0.4"
+        run: make playout-bench
+      - name: Keep the bench report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playout-bench-t4
+          path: |
+            ${{ runner.temp }}/playout-bench/playout-bench-*.json
+            ${{ runner.temp }}/playout-bench/playout-bench-*.md
+          if-no-files-found: ignore
+          retention-days: 30
+
+  arc:
+    name: Self-hosted — Intel Arc (VAAPI)
+    # The maintainer's machine. workflow_dispatch only, checked here as well as in `on:`.
+    if: github.event_name == 'workflow_dispatch' && inputs.run_arc
+    runs-on: loomarr-playout-arc
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Bench the VAAPI pipeline
+        env:
+          LOOMARR_ARTIFACT_DIR: ${{ runner.temp }}/playout-bench
+          PLAYOUT_BENCH_FAMILY: vaapi
+          PLAYOUT_BENCH_ACCEPT: ${{ inputs.accept && '1' || '' }}
+        run: make playout-bench
+      - name: Keep the bench report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playout-bench-arc
+          path: |
+            ${{ runner.temp }}/playout-bench/playout-bench-*.json
+            ${{ runner.temp }}/playout-bench/playout-bench-*.md
+            docs/engineering/playout-bench/vaapi.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  geforce:
+    name: Self-hosted — NVIDIA GeForce (NVENC)
+    if: github.event_name == 'workflow_dispatch' && inputs.run_geforce
+    runs-on: loomarr-playout-geforce
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Bench the NVENC pipeline
+        env:
+          LOOMARR_ARTIFACT_DIR: ${{ runner.temp }}/playout-bench
+          PLAYOUT_BENCH_FAMILY: nvenc
+          PLAYOUT_BENCH_ACCEPT: ${{ inputs.accept && '1' || '' }}
+        run: make playout-bench
+      - name: Keep the bench report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playout-bench-geforce
+          path: |
+            ${{ runner.temp }}/playout-bench/playout-bench-*.json
+            ${{ runner.temp }}/playout-bench/playout-bench-*.md
+            docs/engineering/playout-bench/nvenc.json
+          if-no-files-found: ignore
+          retention-days: 90

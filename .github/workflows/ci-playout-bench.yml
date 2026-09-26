@@ -1,0 +1,63 @@
+name: CI / Playout bench (software)
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Playout bench — software-only pipeline
+    runs-on: ubuntu-latest
+    # Cold start, speed and concurrency of the real builder graph on a hosted 4-vCPU runner, plus the
+    # commercial-break correctness checks (PTS grid, SPS identity, loudness). The 720p rung is what a
+    # software-only household host runs. Hosted-runner timing is noisy, so the baseline it is diffed
+    # against is the separate ci/ family and the tolerance is wide; correctness is exact.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      # The deployed media toolchain, digest-pinned, exactly as the Go test lanes install it.
+      - name: Resolve production FFmpeg pin
+        id: ffmpeg-pin
+        run: ./scripts/ci-ffmpeg.sh metadata >> "$GITHUB_OUTPUT"
+      - name: Cache production FFmpeg archive
+        id: ffmpeg-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/loomarr-ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg-pin.outputs.sha256 }}
+      - name: Download production FFmpeg
+        run: ./scripts/ci-ffmpeg.sh download "$HOME/.cache/loomarr-ffmpeg"
+      - name: Install production FFmpeg
+        run: |
+          ./scripts/ci-ffmpeg.sh install "$HOME/.cache/loomarr-ffmpeg" "$RUNNER_TEMP/loomarr-ffmpeg"
+          echo "$RUNNER_TEMP/loomarr-ffmpeg" >> "$GITHUB_PATH"
+      - name: Bench the software pipeline
+        env:
+          LOOMARR_ARTIFACT_DIR: ${{ runner.temp }}/playout-bench
+          PLAYOUT_BENCH_FAMILY: software
+          PLAYOUT_BENCH_HEIGHT: "720"
+          PLAYOUT_BENCH_START_RUNS: "8"
+          PLAYOUT_BENCH_MAX_STREAMS: "4"
+          PLAYOUT_BENCH_BASELINE_DIR: docs/engineering/playout-bench/ci
+          PLAYOUT_BENCH_TOLERANCE: "0.4"
+        run: make playout-bench
+      - name: Keep the bench report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: playout-bench-software
+          path: |
+            ${{ runner.temp }}/playout-bench/playout-bench-*.json
+            ${{ runner.temp }}/playout-bench/playout-bench-*.md
+          if-no-files-found: ignore
+          retention-days: 30

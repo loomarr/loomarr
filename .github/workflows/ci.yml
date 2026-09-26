@@ -94,6 +94,7 @@ jobs:
       impact_docs: ${{ steps.impact.outputs.docs }}
       impact_agent: ${{ steps.impact.outputs.agent }}
       impact_android: ${{ steps.impact.outputs.android }}
+      impact_playout_bench: ${{ steps.impact.outputs.playout_bench }}
       impact_policy: ${{ steps.impact.outputs.policy }}
       release_candidate: ${{ steps.filter.outputs.release_candidate }}
     steps:
@@ -450,6 +451,12 @@ jobs:
     if: needs.changes.outputs.impact_docs == 'true'
     uses: ./.github/workflows/ci-docs.yml
 
+  playout-bench:
+    name: Playout bench — software-only pipeline
+    needs: changes
+    if: needs.changes.outputs.impact_playout_bench == 'true'
+    uses: ./.github/workflows/ci-playout-bench.yml
+
   android:
     name: Android TV — React Native Play bundle
     needs: changes
@@ -467,7 +474,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, expo-android-mobile, playwright, tuner, image, docs, android]
+    needs: [changes, release-candidate-scope, full-manual-scope, ci-policy, agent-harness-macos, rust-contracts, go-contracts, image-certification, go, store-postgres, frontend, clients, apple-mobile, apple-tv, apple-cache-validation, expo-android-mobile, playwright, tuner, image, docs, android, playout-bench]
     runs-on: ubuntu-latest
     permissions:
       actions: read

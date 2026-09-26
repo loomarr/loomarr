@@ -5,3 +5,5 @@ self-hosted-runner:
   labels:
     - macos-26
     - xcode-27
+    - loomarr-playout-arc
+    - loomarr-playout-geforce

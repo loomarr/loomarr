@@ -393,6 +393,84 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			},
 		},
+		"ci-playout-bench.yml": standardRunWorkflow(map[string]workflowStepAuthority{
+			"make playout-bench": exactWorkflowStep(6, "Bench the software pipeline", workflowStepAuthority{
+				targets: []string{"playout-bench"},
+				environment: map[string]string{
+					"LOOMARR_ARTIFACT_DIR":       "${{ runner.temp }}/playout-bench",
+					"PLAYOUT_BENCH_FAMILY":       "software",
+					"PLAYOUT_BENCH_HEIGHT":       "720",
+					"PLAYOUT_BENCH_START_RUNS":   "8",
+					"PLAYOUT_BENCH_MAX_STREAMS":  "4",
+					"PLAYOUT_BENCH_BASELINE_DIR": "docs/engineering/playout-bench/ci",
+					"PLAYOUT_BENCH_TOLERANCE":    "0.4",
+				},
+			}),
+		}),
+		// The hardware bench is dispatch/schedule only and never a pull_request workflow (the repository
+		// is public; see the header of playout-bench.yml and TestPlayoutBenchWorkflowNeverRunsOnPullRequest).
+		"playout-bench.yml": {
+			permissions: standardWorkflowPermissions(),
+			jobs: map[string]workflowJobAuthority{
+				"macos": {
+					condition: "github.event_name == 'schedule' || inputs.run_macos",
+					steps: map[string]workflowStepAuthority{
+						"brew install ffmpeg": exactWorkflowStep(2, "Install FFmpeg", workflowStepAuthority{allowsAcquisition: true}),
+						"make playout-bench": exactWorkflowStep(3, "Bench the VideoToolbox pipeline", workflowStepAuthority{
+							targets: []string{"playout-bench"},
+							environment: map[string]string{
+								"LOOMARR_ARTIFACT_DIR":       "${{ runner.temp }}/playout-bench",
+								"PLAYOUT_BENCH_FAMILY":       "videotoolbox",
+								"PLAYOUT_BENCH_THRESHOLDS":   "correctness",
+								"PLAYOUT_BENCH_MAX_STREAMS":  "6",
+								"PLAYOUT_BENCH_BASELINE_DIR": "docs/engineering/playout-bench/ci",
+								"PLAYOUT_BENCH_TOLERANCE":    "0.4",
+							},
+						}),
+					},
+				},
+				"gpu-t4": {
+					condition: "vars.PLAYOUT_BENCH_T4_RUNNER != '' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
+					steps: map[string]workflowStepAuthority{
+						"make playout-bench": exactWorkflowStep(6, "Bench the NVENC pipeline", workflowStepAuthority{
+							targets: []string{"playout-bench"},
+							environment: map[string]string{
+								"LOOMARR_ARTIFACT_DIR":       "${{ runner.temp }}/playout-bench",
+								"PLAYOUT_BENCH_FAMILY":       "nvenc",
+								"PLAYOUT_BENCH_BASELINE_DIR": "docs/engineering/playout-bench/ci",
+								"PLAYOUT_BENCH_TOLERANCE":    "0.4",
+							},
+						}),
+					},
+				},
+				"arc": {
+					condition: "github.event_name == 'workflow_dispatch' && inputs.run_arc",
+					steps: map[string]workflowStepAuthority{
+						"make playout-bench": exactWorkflowStep(1, "Bench the VAAPI pipeline", workflowStepAuthority{
+							targets: []string{"playout-bench"},
+							environment: map[string]string{
+								"LOOMARR_ARTIFACT_DIR": "${{ runner.temp }}/playout-bench",
+								"PLAYOUT_BENCH_FAMILY": "vaapi",
+								"PLAYOUT_BENCH_ACCEPT": "${{ inputs.accept && '1' || '' }}",
+							},
+						}),
+					},
+				},
+				"geforce": {
+					condition: "github.event_name == 'workflow_dispatch' && inputs.run_geforce",
+					steps: map[string]workflowStepAuthority{
+						"make playout-bench": exactWorkflowStep(1, "Bench the NVENC pipeline", workflowStepAuthority{
+							targets: []string{"playout-bench"},
+							environment: map[string]string{
+								"LOOMARR_ARTIFACT_DIR": "${{ runner.temp }}/playout-bench",
+								"PLAYOUT_BENCH_FAMILY": "nvenc",
+								"PLAYOUT_BENCH_ACCEPT": "${{ inputs.accept && '1' || '' }}",
+							},
+						}),
+					},
+				},
+			},
+		},
 		"pages.yml": {
 			permissions: map[string]string{"contents": "read", "id-token": "write", "pages": "write"},
 			jobs: map[string]workflowJobAuthority{

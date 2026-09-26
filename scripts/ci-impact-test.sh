@@ -54,7 +54,7 @@ if ! grep -q 'run: make fe-codegen' <<<"$clients_workflow" ||
   exit 1
 fi
 
-all_gates='contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy'
+all_gates='contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench'
 unknown="$(selected_gates unexpected/new-runtime/file.xyz)"
 if [[ "$unknown" != "$all_gates" ]]; then
   printf 'ci-impact-test: unknown path: got %s, want %s\n' "$unknown" "$all_gates" >&2
