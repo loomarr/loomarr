@@ -33,11 +33,11 @@ Classes are `h264-1080p`, `hevc-1080p` and `hdr-4k`. A source the builder refuse
 software host that cannot tone-map 4K HDR in real time) is reported as **refused**, its metrics are
 marked skipped and it is not a failure: the slate covers that slot.
 
-**Known failure.** `break/sps_variants` currently fails on an 854×480 source, which the pipeline scales to
-SAR 1281:1280 and the encoder writes into the SPS. Phase 2 (`feat-1512-p2-channel-packager`) adds
-`setsar=1`. Until it merges the check is listed in `expectedFailures` (`internal/playoutbench/compare.go`)
-and reported as *expected fail* with that reference, never skipped. Once the fix lands the check passes,
-which the bench reports as an *unexpected pass* and fails on, so the entry is deleted in the same change.
+**Known failures.** A check that fails until referenced work lands is listed in `expectedFailures`
+(`internal/playoutbench/compare.go`) and reported as *expected fail* with that reference, never skipped.
+Once the fix lands the check passes, which the bench reports as an *unexpected pass* and fails on, so the
+entry is deleted in the same change. The list is empty: `break/sps_variants` (an 854×480 source scaled to
+SAR 1281:1280 in the SPS) passes since the packager's items encode with `setsar=1` (#1526).
 
 The software family has no GPU thresholds; it is judged on sustaining a stream at 1.2x and on
 correctness; the channel capacity it measures (`concurrency/max_streams`) is reported with every run.
