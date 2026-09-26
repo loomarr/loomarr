@@ -18,7 +18,24 @@ const (
 	FormatBaseline FormatClass = "1080p-h264-sdr"
 	Format4KSDR    FormatClass = "4k-hevc-sdr"
 	Format4KHDR    FormatClass = "4k-hevc-hdr"
+	// CostHDRConvert is not a format a channel airs: it is the budget's cost class for one item of a
+	// 4K HDR channel that is converted from SDR/HLG (libplacebo through system memory, ~0.26 cores
+	// and a ~2 s device start on NVIDIA), which costs more than a PQ item of the same format.
+	CostHDRConvert FormatClass = "4k-hevc-hdr-convert"
 )
+
+// costClass is the budget cost class of one item built for out.
+func costClass(out OutputProfile, convert bool) FormatClass {
+	switch {
+	case convert:
+		return CostHDRConvert
+	case out.HDR:
+		return Format4KHDR
+	case out.premium():
+		return Format4KSDR
+	}
+	return FormatBaseline
+}
 
 // FormatSpec is what a class puts on the wire.
 type FormatSpec struct {

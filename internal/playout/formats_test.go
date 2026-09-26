@@ -80,6 +80,39 @@ func TestChannelFormats_OnHost(t *testing.T) {
 	}
 }
 
+// TestBuild_CostClass: the budget charges a converted SDR item on an HDR10 channel as its own class
+// (maintainer, #1512), a PQ item as 4k-hevc-hdr, and the baseline as itself.
+func TestBuild_CostClass(t *testing.T) {
+	host := testHosts()["nvenc-opencl"]
+	sdr, pq, hlg := testSources()["h264-1080p-sdr-25"], testSources()["hevc-4k-hdr-dv"], premiumSources()["hevc10-1080p-hlg"]
+	hdrOut, _ := PremiumOutput(Format4KHDR, testOutput)
+	sdrOut, _ := PremiumOutput(Format4KSDR, testOutput)
+	for _, tc := range []struct {
+		name string
+		src  MediaFormat
+		out  OutputProfile
+		want FormatClass
+	}{
+		{"baseline", sdr, testOutput, FormatBaseline},
+		{"HDR baseline item still baseline", pq, testOutput, FormatBaseline},
+		{"4K SDR premium", sdr, sdrOut, Format4KSDR},
+		{"PQ item on 4K HDR", pq, hdrOut, Format4KHDR},
+		{"SDR item on 4K HDR", sdr, hdrOut, CostHDRConvert},
+		{"HLG item on 4K HDR", hlg, hdrOut, CostHDRConvert},
+	} {
+		p, err := Build(host, tc.src, tc.out)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if p.CostClass != tc.want {
+			t.Errorf("%s: cost class %q, want %q", tc.name, p.CostClass, tc.want)
+		}
+	}
+	if CostHDRConvert != "4k-hevc-hdr-convert" {
+		t.Errorf("the budget measures the class by name: %q", CostHDRConvert)
+	}
+}
+
 // TestPremiumOutput: the premium is HEVC at 3840x2160 on the channel's cadence, Main10 PQ for HDR,
 // with the spike's q22 16M/24M rate control and the baseline's closed 1 s GOP and audio.
 func TestPremiumOutput(t *testing.T) {

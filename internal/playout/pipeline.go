@@ -205,6 +205,9 @@ type Pipeline struct {
 	// Tonemapper is the tone-mapper an HDR graph uses (TonemapperOpenCL, TonemapperLibplacebo or
 	// TonemapperCPU); empty for SDR. The live ladder demotes exactly this one (DemoteTonemap).
 	Tonemapper string
+	// CostClass is what the resource budget charges for this item: the output's format class, or
+	// CostHDRConvert for an SDR/HLG item converted into an HDR10 output.
+	CostClass FormatClass
 }
 
 const (
@@ -273,6 +276,7 @@ func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, erro
 		b.p.PreInput = append(b.p.PreInput, minimalProbe...)
 	}
 	b.p.VideoEncode = videoEncoder(host, out)
+	b.p.CostClass = costClass(out, b.convert)
 	return b.p, nil
 }
 

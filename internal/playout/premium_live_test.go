@@ -5,6 +5,7 @@ package playout
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,17 +22,25 @@ import (
 //
 //	flock /tmp/loomarr-gpu.lock go test -tags ffmpeg ./internal/playout -run TestLivePremium -v
 
-// premiumHost is the NVENC host profile this build and GPU give, or a skip.
+// premiumHost is the host profile this build and GPU give for LOOMARR_PREMIUM_ENCODER: "nvenc"
+// (the default) or "vaapi" (Intel/AMD; the render node is PLAYOUT_RENDER_NODE, as in production),
+// or a skip when that encoder cannot produce HEVC Main10 here.
 func premiumHost(t *testing.T, bin string) HostProfile {
 	t.Helper()
+	enc := EncoderNVENC
+	probeArgs := []string{"-pix_fmt", "p010le", "-c:v", "hevc_nvenc", "-profile:v", "main10"}
+	if os.Getenv("LOOMARR_PREMIUM_ENCODER") == "vaapi" {
+		enc = EncoderVAAPI
+		probeArgs = []string{"-init_hw_device", "vaapi=va:" + renderNode(), "-filter_hw_device", "va",
+			"-vf", "format=p010le,hwupload", "-c:v", "hevc_vaapi", "-profile:v", "main10"}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	probe := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=256x144:r=25:d=0.2",
-		"-pix_fmt", "p010le", "-c:v", "hevc_nvenc", "-profile:v", "main10", "-f", "null", "-")
-	if out, err := probe.CombinedOutput(); err != nil {
-		t.Skipf("no working hevc_nvenc on this host: %v\n%s", err, out)
+	args := append([]string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=s=256x144:r=25:d=0.2"}, probeArgs...)
+	if out, err := exec.CommandContext(ctx, bin, append(args, "-f", "null", "-")...).CombinedOutput(); err != nil {
+		t.Skipf("no working HEVC Main10 %s encoder on this host: %v\n%s", enc, err, out)
 	}
-	host := HostFor(EncoderNVENC, TonemapperFor(bin)(), GPUFiltersFor(bin)())
+	host := HostFor(enc, TonemapperFor(bin)(), GPUFiltersFor(bin)())
 	if !host.Libplacebo {
 		t.Skip("this ffmpeg build has no libplacebo: a 4K HDR premium is not producible here")
 	}
@@ -143,6 +152,53 @@ func meanYAVG(t *testing.T, bin, path string) float64 {
 	}
 	return sum / float64(len(m))
 }
+
+// videoKbps is the output's video stream bitrate: the sum of its packets over the content length.
+func videoKbps(t *testing.T, probe, path string, seconds int) int {
+	t.Helper()
+	out, err := exec.Command(probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=size",
+		"-of", "csv=p=0", path).Output()
+	if err != nil {
+		t.Fatalf("ffprobe packets %s: %v", path, err)
+	}
+	var bytes int
+	for _, line := range strings.Fields(string(out)) {
+		n, _ := strconv.Atoi(strings.TrimSuffix(line, ","))
+		bytes += n
+	}
+	return bytes * 8 / seconds / 1000
+}
+
+var vmafRe = regexp.MustCompile(`VMAF score: ([0-9.]+)`)
+
+// vmafAgainstSource scores the output with libvmaf against the same stretch of the source, brought
+// to the output's cadence, fitted size and bit depth with a bicubic software scale.
+func vmafAgainstSource(t *testing.T, bin, output, source string, seek time.Duration, seconds int, out OutputProfile) float64 {
+	t.Helper()
+	pix := "yuv420p"
+	if out.HDR {
+		pix = "yuv420p10le"
+	}
+	ref := fmt.Sprintf("[1:v]fps=%d,scale=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=bicubic,"+
+		"pad=%d:%d:-1:-1,format=%s,setpts=PTS-STARTPTS[ref]", out.FPS, out.Width, out.Height, out.Width, out.Height, pix)
+	graph := fmt.Sprintf("[0:v]format=%s,setpts=PTS-STARTPTS[dist];%s;[dist][ref]libvmaf=n_threads=4:shortest=1", pix, ref)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+	b, err := exec.CommandContext(ctx, bin, "-hide_banner", "-nostats", "-i", output,
+		"-ss", seconds64(seek), "-t", strconv.Itoa(seconds), "-i", source,
+		"-filter_complex", graph, "-f", "null", "-").CombinedOutput()
+	if err != nil {
+		t.Fatalf("libvmaf: %v\n%s", err, b)
+	}
+	m := vmafRe.FindSubmatch(b)
+	if m == nil {
+		t.Fatalf("no VMAF score in:\n%s", b)
+	}
+	v, _ := strconv.ParseFloat(string(m[1]), 64)
+	return v
+}
+
+func seconds64(d time.Duration) string { return strconv.FormatFloat(d.Seconds(), 'f', 3, 64) }
 
 // annexB extracts a file's HEVC elementary stream (Annex B).
 func annexB(t *testing.T, bin, path string, bsf ...string) []byte {
@@ -342,7 +398,7 @@ func TestLivePremium_Measure(t *testing.T) {
 	}
 	// LOOMARR_PREMIUM_SEEK (seconds) skips studio logos so the sample is representative picture.
 	seek, _ := strconv.Atoi(os.Getenv("LOOMARR_PREMIUM_SEEK"))
-	bin := ffmpegBin(t)
+	bin, probe := ffmpegBin(t), ffprobeBin(t)
 	host := premiumHost(t, bin)
 	probeFormat := FFprobeFormatNextTo(bin)
 	for _, class := range []FormatClass{Format4KHDR, Format4KSDR} {
@@ -373,8 +429,13 @@ func TestLivePremium_Measure(t *testing.T) {
 				same = "DIFFER"
 				t.Errorf("%s/%s: parameter sets differ", class, name)
 			}
-			t.Logf("%-15s %-12s src %dx%d %s: %.2fx, %.3f cores at 1x, YAVG %.1f, param sets %s",
-				class, name, facts.Width, facts.Height, facts.ColorTransfer, stats.speed, stats.cpuAt1x, yavg, same)
+			kbps := videoKbps(t, probe, path, seconds)
+			vmaf := "n/a (SDR source, HDR10 output)"
+			if facts.PQ() == out.HDR { // same transfer: VMAF compares like with like
+				vmaf = strconv.FormatFloat(vmafAgainstSource(t, bin, path, input, time.Duration(seek)*time.Second, seconds, out), 'f', 2, 64)
+			}
+			t.Logf("%-15s %-12s src %dx%d %s: %.2fx, %.3f cores at 1x, YAVG %.1f, video %d kbit/s, VMAF %s, param sets %s",
+				class, name, facts.Width, facts.Height, facts.ColorTransfer, stats.speed, stats.cpuAt1x, yavg, kbps, vmaf, same)
 		}
 	}
 }
