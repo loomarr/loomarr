@@ -16,6 +16,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/media"
+	"github.com/loomarr/loomarr/internal/mediameasure"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/prepared"
@@ -250,6 +251,14 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// the resolver, so the resolver simply had to be built AFTER it.
 		activeChannels: playoutMgr.ActiveCount,
 	}
+	// Loomarr measures each source itself, once per revision, so playout never asks the media
+	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to
+	// the app's lifetime; sources are read directly through the path map, never through Emby.
+	ffmpegBin := set.str("playout.ffmpeg_path")
+	measurer := playoutRes.newMeasurer(
+		mediameasure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
+	playoutRes.measurer = measurer
+	go measurer.Run(rootCtx)
 	// A channel starting or stopping is a STRUCTURAL change the dashboard should see
 	// immediately, so it rides the SSE bus (§8: the frame is the latency path, GET
 	// /v1/playout/sessions is truth). Deliberately NOT fired per ffmpeg progress sample —

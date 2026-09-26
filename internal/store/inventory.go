@@ -133,6 +133,9 @@ func (s *sqlStore) applyInventorySource(
 		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM inventory_source_measurements WHERE source_id = ?`), string(sourceID)); err != nil {
 			return fmt.Errorf("invalidate inventory source measurement: %w", err)
 		}
+		if _, err := tx.ExecContext(ctx, s.ph(`DELETE FROM inventory_source_analysis WHERE source_id = ?`), string(sourceID)); err != nil {
+			return fmt.Errorf("invalidate inventory source analysis: %w", err)
+		}
 	}
 	locatorJSON, err := json.Marshal(source.Locator)
 	if err != nil {
@@ -476,4 +479,93 @@ func stableInventoryID(parts ...string) string {
 		_, _ = hash.Write([]byte{0})
 	}
 	return hex.EncodeToString(hash.Sum(nil)[:16])
+}
+
+// RecordInventoryAnalysis stores the keyframe index, loudness and break candidates measured for
+// one source revision. It fails with ErrSourceRevisionGone when the source has since moved on, so a
+// slow measurement of a replaced file can never be attributed to its successor.
+func (s *sqlStore) RecordInventoryAnalysis(ctx context.Context, analysis inventory.Analysis) error {
+	clean, err := inventory.ValidateAnalysis(analysis)
+	if err != nil {
+		return err
+	}
+	breaks, err := json.Marshal(append([]inventory.Break{}, clean.Breaks...))
+	if err != nil {
+		return fmt.Errorf("marshal inventory analysis breaks: %w", err)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin inventory analysis: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var revision string
+	err = tx.QueryRowContext(ctx, s.ph(`SELECT revision FROM inventory_sources WHERE id = ?`), string(clean.SourceID)).Scan(&revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read analysed inventory source: %w", err)
+	}
+	if revision != clean.Revision {
+		return inventory.ErrSourceRevisionGone
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(`
+		INSERT INTO inventory_source_analysis (source_id, source_revision, schema_version, keyframes,
+		  keyframe_count, integrated_lufs, true_peak_dbtp, breaks_json, analyzed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(source_id) DO UPDATE SET source_revision=excluded.source_revision,
+		  schema_version=excluded.schema_version, keyframes=excluded.keyframes,
+		  keyframe_count=excluded.keyframe_count, integrated_lufs=excluded.integrated_lufs,
+		  true_peak_dbtp=excluded.true_peak_dbtp, breaks_json=excluded.breaks_json,
+		  analyzed_at=excluded.analyzed_at`), string(clean.SourceID), clean.Revision,
+		inventory.AnalysisSchemaVersion, inventory.EncodeKeyframes(clean.Keyframes), len(clean.Keyframes),
+		clean.IntegratedLUFS, clean.TruePeakDBTP, string(breaks), epoch(clean.AnalyzedAt)); err != nil {
+		return fmt.Errorf("upsert inventory analysis: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit inventory analysis: %w", err)
+	}
+	return nil
+}
+
+// InventoryAnalysis returns the stored analysis of a source, or false when it has none for the
+// current revision (never measured, revision changed, or written by a newer schema).
+func (s *sqlStore) InventoryAnalysis(ctx context.Context, id inventory.SourceID) (inventory.Analysis, bool, error) {
+	var (
+		a               = inventory.Analysis{SourceID: id}
+		schema          int
+		blob            []byte
+		lufs, peak      sql.NullFloat64
+		breaksJSON      string
+		analyzedAt      int64
+		currentRevision string
+	)
+	err := s.db.QueryRowContext(ctx, s.ph(`
+		SELECT a.source_revision, a.schema_version, a.keyframes, a.integrated_lufs, a.true_peak_dbtp,
+		  a.breaks_json, a.analyzed_at, s.revision
+		FROM inventory_source_analysis a JOIN inventory_sources s ON s.id = a.source_id
+		WHERE a.source_id = ?`), string(id)).Scan(&a.Revision, &schema, &blob, &lufs, &peak, &breaksJSON, &analyzedAt, &currentRevision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return inventory.Analysis{}, false, nil
+	}
+	if err != nil {
+		return inventory.Analysis{}, false, fmt.Errorf("read inventory analysis: %w", err)
+	}
+	if schema > inventory.AnalysisSchemaVersion || a.Revision != currentRevision {
+		return inventory.Analysis{}, false, nil
+	}
+	if a.Keyframes, err = inventory.DecodeKeyframes(blob); err != nil {
+		return inventory.Analysis{}, false, fmt.Errorf("decode inventory keyframes: %w", err)
+	}
+	if err := json.Unmarshal([]byte(breaksJSON), &a.Breaks); err != nil {
+		return inventory.Analysis{}, false, fmt.Errorf("decode inventory breaks: %w", err)
+	}
+	if lufs.Valid {
+		a.IntegratedLUFS = &lufs.Float64
+	}
+	if peak.Valid {
+		a.TruePeakDBTP = &peak.Float64
+	}
+	a.AnalyzedAt = fromEpoch(analyzedAt)
+	return a, true, nil
 }

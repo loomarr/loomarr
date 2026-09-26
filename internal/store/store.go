@@ -912,6 +912,7 @@ type CountStore interface {
 // InventoryStore persists provider-neutral Media Inventory aggregates (§5 V66). The methods are
 // aggregate-shaped so no consumer can partially update the normalized six-table representation.
 type InventoryStore interface {
+	inventory.AnalysisStore
 	ApplyInventorySnapshot(ctx context.Context, snapshot inventory.Snapshot) (inventory.ItemID, error)
 	InventoryItem(ctx context.Context, ref inventory.ItemRef) (inventory.Item, bool, error)
 	RecordInventoryMeasurement(ctx context.Context, measurement inventory.Measurement) error
