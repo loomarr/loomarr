@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -584,5 +586,44 @@ func TestPlayoutResolver_UnmeasurableSourceKeepsFullProbe(t *testing.T) {
 	pipe, err := playout.Build(playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
 	if err != nil || len(pipe.MissingFacts) == 0 || slices.Contains(pipe.PreInput, "-fpsprobesize") {
 		t.Fatalf("pipeline without facts = %+v, err %v; want no minimal probe", pipe, err)
+	}
+}
+
+// Real ffprobe, real store: a Matroska file's measured facts must be complete enough that the
+// builder activates minimal probing, and the background analysis must then land in the store.
+func TestPlayoutResolver_FirstPlayWithRealFFprobeActivatesMinimalProbeAndStoresAnalysis(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	path := filepath.Join(t.TempDir(), "clip.mkv")
+	if out, err := exec.Command(ffmpeg, "-nostdin", "-v", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=4", "-f", "lavfi", "-i", "sine=f=440:r=48000:d=4",
+		"-c:v", "mpeg4", "-g", "25", "-c:a", "aac", path).CombinedOutput(); err != nil {
+		t.Fatalf("fixture: %v: %s", err, out)
+	}
+	st := testkit.MigratedSQLiteStore(t)
+	r := &playoutResolver{inventory: inventory.New(st), now: time.Now,
+		probeSource: playout.FFprobeSourceNextTo(ffmpeg)}
+	m := r.newMeasurer(mediameasure.DefaultTools(ffmpeg, playout.FFprobeBeside(ffmpeg)), st)
+	r.measurer = m
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go m.Run(ctx)
+
+	_, format := r.PlanFor(ctx, path, playout.PlanFull)
+	pipe, err := playout.Build(playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
+	if err != nil || len(pipe.MissingFacts) != 0 || !slices.Contains(pipe.PreInput, "-fpsprobesize") {
+		t.Fatalf("real-ffprobe facts %+v left MissingFacts %v (err %v)", format, pipe.MissingFacts, err)
+	}
+	m.Drain()
+	origin, _ := r.ensureLocalInventorySource(ctx, path)
+	item, ok, err := st.InventoryItem(ctx, inventory.ItemRef{Origin: &origin})
+	if err != nil || !ok {
+		t.Fatalf("item: ok %v err %v", ok, err)
+	}
+	a, ok, err := st.InventoryAnalysis(ctx, item.Sources[0].ID)
+	if err != nil || !ok || len(a.Keyframes) != 4 || a.IntegratedLUFS == nil {
+		t.Fatalf("stored analysis = %+v ok %v err %v; want 4 keyframes and loudness", a, ok, err)
 	}
 }
