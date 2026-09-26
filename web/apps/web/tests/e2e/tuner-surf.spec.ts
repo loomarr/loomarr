@@ -2,8 +2,17 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { adjacentWarmMarkName } from "../../src/channels/tuner-timing";
 import { channelId, installTunerBackend, tunerManifest } from "./tuner-backend";
+import { installStartDiagnostics, type StartDiagnostics } from "./tuner-diagnostics";
 
 test.setTimeout(120_000);
+
+let startDiagnostics: StartDiagnostics | undefined;
+
+// Failure-only: explains a start that never requests a segment (#1443). Passing runs attach nothing.
+test.afterEach(async (_fixtures, testInfo) => {
+  await startDiagnostics?.attachOnFailure(testInfo);
+  startDiagnostics = undefined;
+});
 
 const TARGET_PLAYING_TIMEOUT_MS = 250;
 
@@ -425,6 +434,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-ENDLIST");
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-PLAYLIST-TYPE:VOD");
   expect(tunerManifest("live", 4).match(/segment-\d+\.m4s/g)).toHaveLength(3);
+  startDiagnostics = await installStartDiagnostics(page);
   await installFrameClock(page);
   const backend = await installTunerBackend(page);
   const freshMediaSourceBaseline = await measureFreshMediaSourceBaseline(page);

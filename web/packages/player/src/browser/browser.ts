@@ -260,8 +260,45 @@ const discardTransferredMedia = (
   if (objectURL?.startsWith("blob:")) URL.revokeObjectURL(objectURL);
 };
 
-const createHlsController = (HlsController: typeof Hls): Hls =>
-  new HlsController({
+// Test-only seam: the tuner e2e harness installs `window.__loomarrHlsDebug` before the app loads so a
+// stalled start can explain which hls.js component declined to request a fragment and what state it
+// was waiting in. Production pages never define it, so hls.js keeps its logger disabled.
+interface HlsDebugSink {
+  push(controller: number, level: string, args: unknown[]): void;
+}
+
+let hlsControllerSeq = 0;
+const hlsControllerIds = new WeakMap<Hls, number>();
+
+const hlsDebugSink = () => (window as Window & { __loomarrHlsDebug?: HlsDebugSink }).__loomarrHlsDebug;
+
+// Marks the player's own handoff steps (load source, attach, start) in the same timeline as hls.js's
+// internal log, so a missing fragment request can be placed relative to what the player asked for.
+const hlsDebugMark = (hls: Hls, step: string) => {
+  const controller = hlsControllerIds.get(hls);
+  if (controller !== undefined) hlsDebugSink()?.push(controller, "player", [step]);
+};
+
+const hlsDebugLogger = (sink: HlsDebugSink | undefined, controller: number) => {
+  if (!sink) return false;
+  const at =
+    (level: string) =>
+    (...args: unknown[]) =>
+      sink.push(controller, level, args);
+  return {
+    trace: at("trace"),
+    debug: at("debug"),
+    log: at("log"),
+    info: at("info"),
+    warn: at("warn"),
+    error: at("error"),
+  };
+};
+
+const createHlsController = (HlsController: typeof Hls): Hls => {
+  const controller = ++hlsControllerSeq;
+  const hls = new HlsController({
+    debug: hlsDebugLogger(hlsDebugSink(), controller),
     // A source-scoped controller stays empty until its transferred MediaSource is attached. The
     // handoff below then loads the source and performs one explicit media start.
     autoStartLoad: false,
@@ -290,6 +327,9 @@ const createHlsController = (HlsController: typeof Hls): Hls =>
     maxBufferLength: 60,
     backBufferLength: 900,
   });
+  hlsControllerIds.set(hls, controller);
+  return hls;
+};
 
 interface ManifestLoadFailure {
   details?: string;
@@ -887,6 +927,7 @@ function useBrowserHlsPlayer({
           // A fresh controller has no SourceBuffers to adopt, so manifest parsing can overlap its
           // MediaSource attachment safely. autoStartLoad remains false: init/media bytes still wait
           // for attachment and the generation-scoped start below.
+          hlsDebugMark(hls, "loadSource (fresh, before attach)");
           hls.loadSource(url);
           sourceLoaded = true;
         }
@@ -895,6 +936,7 @@ function useBrowserHlsPlayer({
         // multi-second stall. Rewind only after updateend releases the outgoing bytes, and only
         // while this generation still owns the element.
         if (transferred) video.currentTime = 0;
+        hlsDebugMark(hls, transferred ? "attachMedia (transferred)" : "attachMedia (video)");
         if (transferred) hls.attachMedia(transferred);
         else hls.attachMedia(video);
         // Attachment is the first point where a frame callback can only belong to this source:
@@ -907,11 +949,15 @@ function useBrowserHlsPlayer({
         // controller can fetch its init segment before the transferred SourceBuffers are adopted;
         // WebKit can then strand that controller without ever requesting the media fragment. The
         // fresh branch above has no transferred buffers and deliberately overlaps manifest parse.
-        if (!sourceLoaded) hls.loadSource(url);
+        if (!sourceLoaded) {
+          hlsDebugMark(hls, "loadSource (after attach)");
+          hls.loadSource(url);
+        }
         // Queue the target join before any media bytes can arrive. WebKit can decode a cached first
         // append before MANIFEST_PARSED is delivered; waiting for that event leaves a real target
         // frame paused. Later event joins remain necessary because loadstart can reset the element.
         playReplacement();
+        hlsDebugMark(hls, `startLoad (manifestParsed=${manifestParsed})`);
         hls.startLoad();
         if (manifestParsed) playReplacement();
         return () => {
