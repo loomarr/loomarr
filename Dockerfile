@@ -206,6 +206,31 @@ ARG WHISPER_MODEL_SHA256=c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1b
 # Measured 2026-08-03: 77,691,713 bytes, sha256 be07e048… (verified by download, not
 # copied from a listing).
 ARG WHISPER_LANG_MODEL_SHA256=be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+# INTEL'S OpenCL RUNTIME, for HDR tone-mapping on Intel GPUs (#1516, G11). amd64 only.
+#
+# The playout builder tone-maps Intel HDR with `tonemap_opencl`, mapping the VAAPI surface into
+# OpenCL and back without a copy. `tonemap_vaapi` is NOT an option: on the household Arc it outputs
+# an all-black picture at normal speed with no error. Measured there (spike 0b): 8.6x at 1080p and
+# 0.11 cores per stream with this runtime. Without it the OpenCL device cannot be created, the
+# encode fails before any output, and the live ladder falls back to the CPU tone-map (0.4+ cores).
+#
+# `intel-opencl-icd` is not in Debian trixie, and Mesa's rusticl (`mesa-opencl-icd`) cannot share
+# surfaces with VAAPI (measured: `opencl@va` derivation fails), so these are Intel's own release
+# packages, version- and SHA256-pinned like every other download here. The four are the minimal
+# OpenCL set from Intel's install notes (no Level Zero, no ocloc). The regular packages cover Gen12
+# and newer: Tiger Lake/Alder Lake (incl. N100) iGPUs, Arc (DG2), Meteor Lake and later. Gen8-11
+# iGPUs need Intel's separate `legacy1` packages, which bring their own IGC 1.x (measured for
+# 24.35.30872.36: ~546 MB installed), so they are not shipped and those hosts take the CPU tone-map.
+# To bump: take a newer compute-runtime release, its matching IGC and gmmlib from the release
+# notes, and the SHA256s from `wwNN.sum` and the IGC release body; rerun the Arc tone-map check.
+ARG INTEL_COMPUTE_RUNTIME_VERSION=26.35.39758.10
+ARG INTEL_IGC_VERSION=2.41.5
+ARG INTEL_IGC_BUILD=22716
+ARG INTEL_GMMLIB_VERSION=22.10.0
+ARG INTEL_IGC_CORE_SHA256=0a6e64a663ae65a0fa02d6912ae3b6b37cf85b90c21cc423fd9fef70aaf4f628
+ARG INTEL_IGC_OPENCL_SHA256=779e1b9e88098eb25711e9a8f67c2752665bad22f134aa40ed5649f6e1b87058
+ARG INTEL_OPENCL_ICD_SHA256=61712caaddeba3d38e4f79e2a0fb23fea25596ca2d72c3144c6eea2331ec4301
+ARG INTEL_GMMLIB_SHA256=6031a63d6e8a12ce61c14efc15f2c8e727061286e3820b8594e6d00615e04d54
 RUN set -eux; \
     case "$TARGETARCH" in \
       amd64) YTDLP_ASSET=yt-dlp_linux;         YTDLP_SHA256="$YTDLP_AMD64_SHA256"; DENO_ARCH=x86_64;  DENO_SHA256="$DENO_AMD64_SHA256"; FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"; WHISPER_ARCH=x64;   WHISPER_SHA256="$WHISPER_AMD64_SHA256" ;; \
@@ -286,7 +311,33 @@ RUN set -eux; \
       libgomp1; \
     if [ "$TARGETARCH" = "amd64" ]; then \
       apt-get install -y --no-install-recommends intel-media-va-driver; \
+      install -d /tmp/intel-opencl; \
+      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+        -o /tmp/intel-opencl/intel-igc-core-2.deb \
+        "https://github.com/intel/intel-graphics-compiler/releases/download/v${INTEL_IGC_VERSION}/intel-igc-core-2_${INTEL_IGC_VERSION}+${INTEL_IGC_BUILD}_amd64.deb"; \
+      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+        -o /tmp/intel-opencl/intel-igc-opencl-2.deb \
+        "https://github.com/intel/intel-graphics-compiler/releases/download/v${INTEL_IGC_VERSION}/intel-igc-opencl-2_${INTEL_IGC_VERSION}+${INTEL_IGC_BUILD}_amd64.deb"; \
+      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+        -o /tmp/intel-opencl/intel-opencl-icd.deb \
+        "https://github.com/intel/compute-runtime/releases/download/${INTEL_COMPUTE_RUNTIME_VERSION}/intel-opencl-icd_${INTEL_COMPUTE_RUNTIME_VERSION}-0_amd64.deb"; \
+      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+        -o /tmp/intel-opencl/libigdgmm12.deb \
+        "https://github.com/intel/compute-runtime/releases/download/${INTEL_COMPUTE_RUNTIME_VERSION}/libigdgmm12_${INTEL_GMMLIB_VERSION}_amd64.deb"; \
+      printf '%s  %s\n' \
+        "$INTEL_IGC_CORE_SHA256" /tmp/intel-opencl/intel-igc-core-2.deb \
+        "$INTEL_IGC_OPENCL_SHA256" /tmp/intel-opencl/intel-igc-opencl-2.deb \
+        "$INTEL_OPENCL_ICD_SHA256" /tmp/intel-opencl/intel-opencl-icd.deb \
+        "$INTEL_GMMLIB_SHA256" /tmp/intel-opencl/libigdgmm12.deb | sha256sum -c -; \
+      apt-get install -y --no-install-recommends /tmp/intel-opencl/*.deb; \
+      rm -rf /tmp/intel-opencl; \
     fi; \
+    # NVIDIA's OpenCL ICD entry. The NVIDIA container runtime injects libnvidia-opencl.so.1 (with
+    # the `compute` driver capability) but not the ICD file that tells the OpenCL loader to use
+    # it, so NVENC's first-choice tone-map (tonemap_opencl) needs this one line. Harmless on
+    # other hosts: the loader skips a vendor whose library is absent. Architecture-neutral.
+    install -d /etc/OpenCL/vendors; \
+    echo libnvidia-opencl.so.1 > /etc/OpenCL/vendors/nvidia.icd; \
     useradd -u 65532 -m -s /usr/sbin/nologin nonroot; \
     curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
       -o /usr/local/bin/yt-dlp \

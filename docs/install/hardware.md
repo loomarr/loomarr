@@ -33,6 +33,28 @@ Leaving it unset is fine — the container starts normally on a host with no GPU
 Driver libraries ship in the image. QSV is amd64-only, because `intel-media-va-driver` has no
 arm64 build. VAAPI and Vulkan work on both.
 
+### HDR tone mapping on Intel
+
+An HDR film on an SDR channel is tone-mapped to SDR. On Intel that runs on the GPU through OpenCL,
+using Intel's compute runtime, which the amd64 image ships. Which GPUs get it depends on the
+generation:
+
+| Intel graphics | Examples | HDR tone mapping |
+| --- | --- | --- |
+| Gen12 and newer | Tiger Lake, Alder Lake (incl. N100/N305), Raptor Lake, Arc A-series and B-series, Meteor Lake and later | On the GPU (OpenCL) |
+| Gen8 to Gen11 | Broadwell, Skylake, Kaby Lake, Coffee Lake, Gemini Lake, Ice Lake, Elkhart Lake | On the CPU, after the GPU scales the picture down |
+| AMD (VAAPI) | Radeon | Tries libplacebo (Vulkan) through system memory, then the CPU (not yet measured on AMD) |
+
+The CPU path produces the same curve and a correct picture, but it costs more CPU for each HDR
+stream. Gen8 to Gen11 need Intel's separate legacy runtime, which adds about 550 MB to the image,
+so it is not included. Decoding, scaling and encoding stay on the GPU on every generation above.
+
+Loomarr never uses the VAAPI tone-mapper (`tonemap_vaapi`): on Arc it produces a black picture.
+
+The first HDR stream after a container start takes about a second longer while Intel's runtime
+compiles its kernels. When the GPU tone-mapper can't start, the log line
+`HDR tone-map produced nothing — retrying with the next tone-mapper` names the fallback it took.
+
 ### Picking the right GPU on a multi-GPU host
 
 Loomarr probes the render node `/dev/dri/renderD128` by default. On a box with **more than one
@@ -67,6 +89,26 @@ docker compose -f docker/compose.yaml -f docker/compose.nvidia.yaml --profile sq
 
 The overlay requests `capabilities: [gpu, video]`. **Both are needed** — with only `gpu`, the
 container sees the card but every NVENC trial fails.
+
+HDR tone mapping on NVIDIA runs through OpenCL. The overlay's `compute` driver capability brings
+NVIDIA's OpenCL library into the container. The image ships the small `nvidia.icd` file that points
+the OpenCL loader at it; the NVIDIA container runtime does not provide that file. The libplacebo
+curves (see below) need NVIDIA's Vulkan driver, which the container runtime does not currently
+provide, so on NVIDIA they fall back to the CPU tone-mapper.
+
+## HDR tone curve
+
+`playout.tone_curve` (Settings → Playback) picks the curve every HDR film is tone-mapped with. A
+change applies to streams that start afterwards.
+
+| Curve | Intel | NVIDIA | No GPU tone-mapper |
+| --- | --- | --- | --- |
+| Hable (default), Mobius, Reinhard | GPU, no copy (about 0.1 cores per HDR stream) | GPU (OpenCL) | CPU, same curve |
+| BT.2390, BT.2446 Method A, Spline | libplacebo, through system memory (about 0.25 cores per HDR stream) | CPU, Mobius curve | CPU, Mobius curve |
+
+The CPU tone-mapper has no BT.2390, BT.2446 Method A or Spline, so it uses Mobius, which, like those
+three, keeps the normal range linear and only rolls off the highlights. The log says so when it
+happens. Every path produces a picture: when one tone-mapper can't start, the next one takes over.
 
 ## Concurrent channels
 

@@ -110,7 +110,6 @@ func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
 	return func() GPUFilters {
 		once.Do(func() {
 			f = GPUFilters{
-				TonemapVAAPI:  hasFilter(ffmpegPath, "tonemap_vaapi"),
 				TonemapOpenCL: hasFilter(ffmpegPath, "tonemap_opencl"),
 				Libplacebo:    hasFilter(ffmpegPath, "libplacebo"),
 			}
@@ -119,7 +118,11 @@ func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
 	}
 }
 
-// hdrToSDRChain is the HDR→SDR filter chain.
+// hdrToSDRChain is the HDR→SDR filter chain on the default curve (prepared media and the legacy
+// arg builder); the pipeline builder calls hdrToSDR with the operator's curve.
+var hdrToSDRChain = hdrToSDR(DefaultToneCurve)
+
+// hdrToSDR is the CPU HDR→SDR filter chain on one curve (a CPU curve: see ToneCurve.cpu).
 //
 // The three steps are not interchangeable and the order is the whole trick:
 //
@@ -127,7 +130,7 @@ func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
 //     which from the stream tags, so one chain covers both) into LINEAR light. Tone-mapping any
 //     other representation compresses the wrong quantity. `npl` is the peak luminance the result
 //     is normalised against; 100 nits is the SDR reference white this output is headed for.
-//  2. `tonemap=tonemap=hable:desat=0` — the actual range compression. `hable` is the filmic curve:
+//  2. `tonemap=tonemap=hable:desat=0` — the actual range compression (curve: ToneCurve). `hable` is the filmic curve:
 //     it rolls highlights off gradually instead of clipping them, which matters most on exactly
 //     the content that ships as HDR (specular highlights, skies, practical lights). `desat=0`
 //     because ffmpeg's default desaturation visibly washes skin tones out, and a flat picture is
@@ -163,6 +166,8 @@ func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
 // It emits no pixel FORMAT either: zscale preserves bit depth, so a 10-bit source is still 10-bit
 // here. The existing `format=yuv420p` / `format=nv12,hwupload` step that follows is what takes it
 // to 8 bits, which is why this must be inserted BEFORE that step and not after.
-const hdrToSDRChain = "zscale=t=linear:npl=100," +
-	"tonemap=tonemap=hable:desat=0," +
-	"zscale=p=bt709:t=bt709:m=bt709:r=tv"
+func hdrToSDR(curve ToneCurve) string {
+	return "zscale=t=linear:npl=100," +
+		"tonemap=tonemap=" + string(curve) + ":desat=0," +
+		"zscale=p=bt709:t=bt709:m=bt709:r=tv"
+}

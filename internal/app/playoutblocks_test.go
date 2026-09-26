@@ -31,6 +31,11 @@ func TestPlayoutBlockSourcePinsTheFirstBroadcastFormat(t *testing.T) {
 		if got := r.URL.Query().Get("plan"); got != "full" {
 			t.Errorf("request %d plan = %q, want full", requests, got)
 		}
+		// The stream's tone curve rides every block request, so a Settings change mid-stream never
+		// changes the look at the next programme boundary.
+		if got := r.URL.Query().Get(api.PlayoutToneCurveQuery); got != "bt2390" {
+			t.Errorf("request %d tone curve = %q, want the stream's bt2390", requests, got)
+		}
 		if got := r.URL.Query().Get(api.PlayoutBroadcastFormatQuery); requests == 1 && got != "" {
 			t.Errorf("first request broadcast = %q, want empty", got)
 		} else if requests == 2 && got != format {
@@ -46,7 +51,7 @@ func TestPlayoutBlockSourcePinsTheFirstBroadcastFormat(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), nil)
+	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), nil, playout.ToneCurveBT2390)
 	if _, err := source(t.Context(), playout.BlockRequest{ChannelID: "channel/one", Plan: playout.PlanFull, AiringAt: origin.Add(time.Second)}); !errors.Is(err, playout.ErrPreparedUnavailable) || requests != 0 {
 		t.Fatalf("prospective lookup without prepared source: err=%v HTTP=%d", err, requests)
 	}
@@ -77,7 +82,7 @@ func TestPlayoutBlockSourceRejectsAFormatChange(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), nil)
+	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), nil, playout.DefaultToneCurve)
 	first, err := source(context.Background(), playout.BlockRequest{ChannelID: "channel", Plan: playout.PlanBaseline})
 	if err != nil {
 		t.Fatal(err)
@@ -125,7 +130,7 @@ func TestPlayoutBlockSourceUsesPreparedThenPinsLiveFallback(t *testing.T) {
 			},
 		}, nil
 	})
-	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), prepared)
+	source := playoutBlockSource(srv.URL, func() string { return "secret" }, srv.Client(), prepared, playout.DefaultToneCurve)
 
 	first, err := source(t.Context(), playout.BlockRequest{ChannelID: "channel", Plan: playout.PlanFull})
 	if err != nil {
@@ -168,7 +173,7 @@ func TestPlayoutBlockSourceRejectsIncompatibleSessionAudio(t *testing.T) {
 				_, _ = io.WriteString(w, "incompatible child")
 			}))
 			t.Cleanup(srv.Close)
-			source := playoutBlockSource(srv.URL, func() string { return "token" }, srv.Client(), nil)
+			source := playoutBlockSource(srv.URL, func() string { return "token" }, srv.Client(), nil, playout.DefaultToneCurve)
 			block, err := source(t.Context(), playout.BlockRequest{ChannelID: "channel", TimelineOrigin: time.Unix(1, 0), AudioBitrate: 128})
 			if err == nil || block.Content != nil {
 				t.Fatalf("incompatible audio entered session: block=%+v err=%v", block, err)

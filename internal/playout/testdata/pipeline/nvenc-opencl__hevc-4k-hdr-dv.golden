@@ -78,4 +78,4 @@ mpegts
 -muxpreload
 0
 pipe:1
-# fallbacks: tonemap: tonemap_opencl: the 1080p frame is copied through system memory
+# fallbacks: tonemap: tonemap_opencl: the scaled frame is copied through system memory

@@ -1642,6 +1642,7 @@ func playoutSpawner(
 	ffmpegBin string, programBase func() string, token func() string, log *slog.Logger,
 	processDiagnostics *diagnostics.ProcessManager, preparedSource func() playout.BlockSource,
 	audioBitrate func(context.Context) int, preparedReady func(context.Context, string, playout.EncodePlan) bool,
+	toneCurve func() string,
 ) playout.Spawner {
 	return func(ctx context.Context, channelID string, target playout.EncodePlan) (*playout.Process, error) {
 		base := programBase()
@@ -1652,7 +1653,9 @@ func playoutSpawner(
 		if preparedSource != nil {
 			prepared = preparedSource()
 		}
-		source := playoutBlockSource(base, token, http.DefaultClient, prepared)
+		// The session's tone curve, read once here and pinned for its life (`playout.tone_curve`
+		// applies to streams that start after a change, never mid-stream).
+		source := playoutBlockSource(base, token, http.DefaultClient, prepared, playout.ParseToneCurve(toneCurve()))
 		profile := playout.BlockProfile{AudioBitrate: audioBitrate(ctx), PreparedStart: preparedReady != nil && preparedReady(ctx, channelID, target)}
 		return playout.BlockSpawner(ffmpegBin, profile, source, log, processDiagnostics)(ctx, channelID, target)
 	}
@@ -1675,6 +1678,7 @@ func internalProgramBase(listenAddr, publicURL string) string {
 // before its bytes can enter the long-lived mux.
 func playoutBlockSource(
 	base string, token func() string, client *http.Client, preparedSource playout.BlockSource,
+	toneCurve playout.ToneCurve,
 ) playout.BlockSource {
 	var broadcast string
 	return func(blockCtx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
@@ -1700,8 +1704,9 @@ func playoutBlockSource(
 			return playout.Block{}, playout.ErrPreparedUnavailable
 		}
 		query := url.Values{
-			"token": []string{token()},
-			"plan":  []string{blockPlan.String()},
+			"token":                   []string{token()},
+			"plan":                    []string{blockPlan.String()},
+			api.PlayoutToneCurveQuery: []string{string(toneCurve)},
 		}
 		if broadcast != "" {
 			query.Set(api.PlayoutBroadcastFormatQuery, broadcast)

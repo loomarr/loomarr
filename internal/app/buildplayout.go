@@ -161,7 +161,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			func(ctx context.Context) int { return playoutRes.Profile(ctx).AudioBitrate },
 			func(ctx context.Context, channelID string, plan playout.EncodePlan) bool {
 				return preparedMPEGTSReady != nil && preparedMPEGTSReady(ctx, channelID, plan)
-			}),
+			},
+			func() string { return set.str("playout.tone_curve") }),
 		playoutBudget,
 		playout.DefaultGrace,
 		log,

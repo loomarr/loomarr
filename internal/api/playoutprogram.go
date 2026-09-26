@@ -73,14 +73,16 @@ const (
 	PlayoutBlockAudioHeader          = "X-Loomarr-Block-Audio"
 	PlayoutBlockAudioPCM             = "s302m-48000-stereo"
 	PlayoutBroadcastFormatQuery      = "broadcast"
-	PlayoutBroadcastFormatHeader     = "X-Loomarr-Broadcast-Format"
-	PlayoutAiringStartedAtHeader     = "X-Loomarr-Airing-Started-At"
-	PlayoutAiringEndsAtHeader        = "X-Loomarr-Airing-Ends-At"
-	PlayoutAiringKindHeader          = "X-Loomarr-Airing-Kind"
-	PlayoutAiringContentHeader       = "X-Loomarr-Airing-Content"
-	PlayoutScheduleBlockHeader       = "X-Loomarr-Schedule-Block"
-	PlayoutParentProcessRunHeader    = "X-Loomarr-Parent-Process-Run"
-	PlayoutTimelineOriginHeader      = "X-Loomarr-Timeline-Origin"
+	// PlayoutToneCurveQuery carries the session's pinned HDR tone curve (`playout.tone_curve`).
+	PlayoutToneCurveQuery         = "tonecurve"
+	PlayoutBroadcastFormatHeader  = "X-Loomarr-Broadcast-Format"
+	PlayoutAiringStartedAtHeader  = "X-Loomarr-Airing-Started-At"
+	PlayoutAiringEndsAtHeader     = "X-Loomarr-Airing-Ends-At"
+	PlayoutAiringKindHeader       = "X-Loomarr-Airing-Kind"
+	PlayoutAiringContentHeader    = "X-Loomarr-Airing-Content"
+	PlayoutScheduleBlockHeader    = "X-Loomarr-Schedule-Block"
+	PlayoutParentProcessRunHeader = "X-Loomarr-Parent-Process-Run"
+	PlayoutTimelineOriginHeader   = "X-Loomarr-Timeline-Origin"
 )
 
 func parsePlayoutTimelineOrigin(header http.Header) (time.Time, error) {
@@ -350,6 +352,13 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	if s.playoutGPUTonemap != nil {
 		spec.GPUTonemap = s.playoutGPUTonemap()
 	}
+	// The curve the session pinned when it started; a request without one (a direct caller, not
+	// a session) takes the current setting.
+	curve := r.URL.Query().Get(PlayoutToneCurveQuery)
+	if curve == "" && s.playoutToneCurve != nil {
+		curve = s.playoutToneCurve()
+	}
+	spec.ToneCurve = playout.ParseToneCurve(curve)
 	// The retry ladder (§9.1 V47) lives in streamChild: it runs the hardware encode, and only if it
 	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
 	// (not pre-built args) is what lets the ladder rebuild the SAME program with a software encoder.
@@ -533,11 +542,13 @@ func (s *Server) streamProgram(
 	}
 
 	// Attempt 2b — an HDR source whose GPU tone-mapper the build carries but this host cannot run
-	// (tonemap_vaapi on AMD, OpenCL without an ICD). Take the next tone-mapper in the maintainer's
-	// order — tonemap_opencl, libplacebo, then the CPU after the GPU downscale — keeping the encoder.
+	// (no OpenCL ICD for this GPU, no Vulkan device). Take the next tone-mapper in the maintainer's
+	// order — tonemap_opencl, libplacebo (NVIDIA), then the CPU after the GPU downscale — keeping the
+	// encoder. The rebuilt pipeline's fallbacks are logged so the demotion is never silent.
 	for wantsHardware && !decodeFault && spec.DemoteTonemap() {
-		s.log.Info("playout: HDR tone-map produced nothing — retrying with the next tone-mapper",
-			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder)
+		next, _ := spec.Pipeline()
+		s.log.Warn("playout: HDR tone-map produced nothing — retrying with the next tone-mapper",
+			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder, "fallbacks", next.Fallbacks)
 		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
 			s.pipeChild(w, r, channelID, what, source, c)
 			return

@@ -26,7 +26,7 @@ const PlaybackSettings = () => {
           title: "Picture and sound",
           description:
             "Defaults for Loomarr's internal playback. Individual channels can still choose their own audio language.",
-          keys: ["playout.quality_tier", "playout.audio_language"],
+          keys: ["playout.quality_tier", "playout.audio_language", "playout.tone_curve"],
         },
         {
           group: "playout",

@@ -91,6 +91,9 @@ type ProgramSpec struct {
 	// GPUTonemap is which GPU tone-mappers the build carries (GPUFiltersFor). With Tonemap and the
 	// encoder it makes the host profile (HostFor).
 	GPUTonemap GPUFilters
+	// ToneCurve is the HDR→SDR curve, pinned by the session at its start so a Settings change
+	// never changes the look mid-stream. Empty is the default.
+	ToneCurve ToneCurve
 }
 
 // Pipeline is this program's transcode pipeline (pipeline.go), or ErrRefused. A source that faulted
@@ -100,33 +103,29 @@ func (s ProgramSpec) Pipeline() (Pipeline, error) {
 	if s.SoftwareDecode {
 		host.DecodeCodecs = nil
 	}
-	return Build(host, s.Source, ChannelOutput(s.Profile))
+	out := ChannelOutput(s.Profile)
+	out.ToneCurve = s.ToneCurve
+	return Build(host, s.Source, out)
 }
 
-// DemoteTonemap drops the GPU tone-mapper this spec's pipeline would use next, so a retry takes the
-// next one: tonemap_opencl, then libplacebo, then the CPU (maintainer order, #1512). It reports
-// false when the source is SDR or no GPU tone-mapper is left.
+// DemoteTonemap drops the GPU tone-mapper this spec's pipeline uses, so a retry takes the next one
+// for the curve: its preferred GPU tone-mapper, the other one, then the CPU (ToneCurve; for Hable
+// that is tonemap_opencl, libplacebo, the CPU — the maintainer order, #1512). It reports false when
+// the source is SDR or the pipeline already tone-maps on the CPU.
 func (s *ProgramSpec) DemoteTonemap() bool {
-	if !s.Source.HDR() {
+	p, err := s.Pipeline()
+	if err != nil {
 		return false
 	}
-	switch engineOf(s.Profile.Encoder) {
-	case EncoderNVENC:
-		if s.GPUTonemap.TonemapOpenCL {
-			s.GPUTonemap.TonemapOpenCL = false
-			return true
-		}
-		if s.GPUTonemap.Libplacebo {
-			s.GPUTonemap.Libplacebo = false
-			return true
-		}
-	case EncoderVAAPI:
-		if s.GPUTonemap.TonemapVAAPI {
-			s.GPUTonemap.TonemapVAAPI = false
-			return true
-		}
+	switch p.Tonemapper {
+	case TonemapperOpenCL:
+		s.GPUTonemap.TonemapOpenCL = false
+	case TonemapperLibplacebo:
+		s.GPUTonemap.Libplacebo = false
+	default:
+		return false
 	}
-	return false
+	return true
 }
 
 // tonemapStep returns the HDR→SDR filter chain for this program, or "" when it should not run.

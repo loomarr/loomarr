@@ -63,11 +63,12 @@ type HostProfile struct {
 	// DecodeCodecs are the source codecs the GPU decodes, lowercased as ffprobe names them. A codec
 	// outside the set takes the decode fallback. Empty means the GPU decodes nothing.
 	DecodeCodecs []string `json:"decodeCodecs,omitempty"`
-	// TonemapVAAPI: tonemap_vaapi works (Intel; AMD's driver lacks the HDR VPP).
-	TonemapVAAPI bool `json:"tonemapVaapi,omitempty"`
-	// TonemapOpenCL: tonemap_opencl works (NVIDIA's first choice, maintainer decision).
+	// TonemapOpenCL: tonemap_opencl works. The first choice on Intel (zero-copy from VAAPI) and
+	// NVIDIA (maintainer decision). There is no tonemap_vaapi: on the household Arc it outputs a
+	// black picture at normal speed with no error (#1516), so it is never emitted.
 	TonemapOpenCL bool `json:"tonemapOpencl,omitempty"`
-	// Libplacebo: libplacebo on its own Vulkan device works (NVIDIA's second choice).
+	// Libplacebo: libplacebo on its own Vulkan device works: the first choice for the curves only it
+	// has (ToneCurve), otherwise the second GPU choice. Always through system memory.
 	Libplacebo bool `json:"libplacebo,omitempty"`
 	// CPUTonemap: the build has zscale + tonemap, the last-resort tone-map.
 	CPUTonemap bool `json:"cpuTonemap,omitempty"`
@@ -77,10 +78,10 @@ type HostProfile struct {
 }
 
 // GPUFilters is which GPU tone-mappers this ffmpeg BUILD carries (GPUFiltersFor). Whether the
-// driver can run them is the host profile's business: tonemap_vaapi is compiled in everywhere
-// but only Intel's driver implements it.
+// host can run them is a runtime fact: tonemap_opencl needs an OpenCL ICD for the GPU (the image
+// ships Intel's; NVIDIA's comes from the container runtime), libplacebo a Vulkan device.
 type GPUFilters struct {
-	TonemapVAAPI, TonemapOpenCL, Libplacebo bool
+	TonemapOpenCL, Libplacebo bool
 }
 
 // Hardware decode sets per family: the codecs the certified hardware decodes. Anything else takes
@@ -96,14 +97,15 @@ var (
 )
 
 // HostFor is the host profile for the chosen encoder on this build. A GPU tone-mapper the build
-// carries but the driver cannot run (tonemap_vaapi on AMD, OpenCL without an ICD) fails the first
-// start; the live ladder then demotes it and retries (ProgramSpec.DemoteTonemap).
+// carries but the host cannot run (no OpenCL ICD for this GPU, e.g. AMD or a missing runtime; no
+// Vulkan device) fails at device creation, before any output; the live ladder then demotes it and
+// retries with the next one, ending at the CPU tone-map (ProgramSpec.DemoteTonemap).
 func HostFor(enc Encoder, cpuTonemap bool, gpu GPUFilters) HostProfile {
 	h := HostProfile{Encoder: engineOf(enc), CPUTonemap: cpuTonemap}
 	switch h.Encoder {
 	case EncoderVAAPI:
 		h.Family, h.RenderNode, h.DecodeCodecs = FamilyVAAPI, renderNode(), vaapiDecodes
-		h.TonemapVAAPI = gpu.TonemapVAAPI
+		h.TonemapOpenCL, h.Libplacebo = gpu.TonemapOpenCL, gpu.Libplacebo
 	case EncoderNVENC:
 		h.Family, h.DecodeCodecs = FamilyNVENC, cudaDecodes
 		h.TonemapOpenCL, h.Libplacebo = gpu.TonemapOpenCL, gpu.Libplacebo
@@ -128,6 +130,8 @@ type OutputProfile struct {
 	// GOPSeconds is the closed-GOP length, equal to the segment length: an IDR at every segment cut.
 	GOPSeconds int
 	AudioKbps  int
+	// ToneCurve is the HDR→SDR curve (`playout.tone_curve`, pinned per stream); empty is the default.
+	ToneCurve ToneCurve
 }
 
 // Maintainer's output picture setting (#1512, 2026-09-26). The target and cap are the 1080p budget;
@@ -191,7 +195,16 @@ type Pipeline struct {
 	// MissingFacts lists the stream facts Loomarr did not supply; non-empty means ffmpeg probes the
 	// source itself (today's behaviour) instead of the minimal probe.
 	MissingFacts []string
+	// Tonemapper is the tone-mapper an HDR graph uses (TonemapperOpenCL, TonemapperLibplacebo or
+	// TonemapperCPU); empty for SDR. The live ladder demotes exactly this one (DemoteTonemap).
+	Tonemapper string
 }
+
+const (
+	TonemapperOpenCL     = "opencl"
+	TonemapperLibplacebo = "libplacebo"
+	TonemapperCPU        = "cpu"
+)
 
 // minimalProbe is the spike's cold-start win (p95 448 → 348 ms), valid only when Loomarr supplies
 // the stream facts ffmpeg would otherwise probe for.
@@ -306,14 +319,59 @@ func (b *builder) tail() string {
 	return fmt.Sprintf("fps=%d,%s", b.out.FPS, conformColour)
 }
 
+func (b *builder) curve() ToneCurve { return ParseToneCurve(string(b.out.ToneCurve)) }
+
+// gpuTonemapper is the GPU tone-mapper for the curve on this host: the curve's preferred one, then
+// the other one that has the curve, or "" when neither does (the CPU tone-map follows). The live
+// ladder demotes a tone-mapper that fails to start, so each retry lands on the next.
+func (b *builder) gpuTonemapper() string {
+	c := b.curve()
+	opencl := b.host.TonemapOpenCL && c.openCL() != ""
+	switch {
+	case c.placeboFirst() && b.host.Libplacebo:
+		return TonemapperLibplacebo
+	case opencl:
+		return TonemapperOpenCL
+	case b.host.Libplacebo:
+		return TonemapperLibplacebo
+	}
+	return ""
+}
+
+// openCLTonemap is tonemap_opencl to 8-bit BT.709 limited range on the curve.
+func (b *builder) openCLTonemap() string {
+	b.p.Tonemapper = TonemapperOpenCL
+	return "tonemap_opencl=tonemap=" + b.curve().openCL() + ":desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12"
+}
+
+// placeboTonemap is libplacebo (its own Vulkan device, CPU frames in and out) to 8-bit BT.709
+// limited range on the curve. Declared: the frame crosses system memory both ways.
+func (b *builder) placeboTonemap(size string) string {
+	b.p.Tonemapper = TonemapperLibplacebo
+	b.fallback("tonemap", "libplacebo: the "+size+" frame is copied through system memory")
+	return "libplacebo=format=nv12:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=" + b.curve().placebo()
+}
+
+// cpuChain is the CPU tone-map on the curve, or on its closest CPU curve (declared) when the CPU
+// tone-mapper lacks it.
+func (b *builder) cpuChain() string {
+	b.p.Tonemapper = TonemapperCPU
+	c, exact := b.curve().cpu()
+	if !exact {
+		b.fallback("tonemap", "the CPU tone-mapper has no "+string(b.curve())+"; "+string(c)+" instead")
+	}
+	return hdrToSDR(c)
+}
+
 // cpuTonemap is the declared tone-map fallback for a GPU family: download the already-downscaled
 // 10-bit frame, tone-map it on the CPU, convert to 8-bit. The caller re-uploads.
-func (b *builder) cpuTonemap(why string) (string, error) {
+func (b *builder) cpuTonemap() (string, error) {
+	why := "no GPU tone-mapper runs " + string(b.curve()) + " on this host"
 	if !b.host.CPUTonemap {
 		return "", fmt.Errorf("%w: HDR source and no tone-mapper (%s)", ErrRefused, why)
 	}
 	b.fallback("tonemap", why)
-	return "hwdownload,format=p010le," + hdrToSDRChain + ",format=nv12", nil
+	return "hwdownload,format=p010le," + b.cpuChain() + ",format=nv12", nil
 }
 
 func (b *builder) vaapi() error {
@@ -334,18 +392,27 @@ func (b *builder) vaapi() error {
 		}
 		f = append(f, "format="+b.cpuPixelFormat(), "hwupload")
 	}
-	switch {
-	case !b.hdr:
+	if !b.hdr {
 		f = append(f, "scale_vaapi="+b.fit()+":format=nv12")
-	case b.host.TonemapVAAPI:
-		// Scale BEFORE the tone-map: tone-mapping at 4K runs 0.7x on the A380, at 1080p 2.6x.
-		f = append(f, "scale_vaapi="+b.fit()+":format=p010", "tonemap_vaapi=format=nv12:t=bt709:m=bt709:p=bt709")
-	default:
-		tm, err := b.cpuTonemap("no tonemap_vaapi on this GPU")
-		if err != nil {
-			return err
+	} else {
+		// Scale BEFORE the tone-map: 4K tone-mapping is several times slower.
+		f = append(f, "scale_vaapi="+b.fit()+":format=p010")
+		switch b.gpuTonemapper() {
+		case TonemapperOpenCL:
+			// Map the VAAPI surface into OpenCL and back: zero-copy with Intel's compute-runtime
+			// ICD. Measured on the household Arc (spike 0b): 8.6x at 1080p, 0.11 cores. With no ICD
+			// for this GPU the device derivation fails before any output and the ladder demotes.
+			f = append(f, "hwmap=derive_device=opencl", b.openCLTonemap(), "hwmap=derive_device=vaapi:reverse=1")
+		case TonemapperLibplacebo:
+			// No zero-copy path (ANV cannot import P010 surfaces, spike 0b): 3.4x, 0.23 cores.
+			f = append(f, "hwdownload", "format=p010le", b.placeboTonemap("scaled"), "hwupload")
+		default:
+			tm, err := b.cpuTonemap()
+			if err != nil {
+				return err
+			}
+			f = append(f, tm, "hwupload")
 		}
-		f = append(f, "scale_vaapi="+b.fit()+":format=p010", tm, "hwupload")
 	}
 	f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d", b.out.Width, b.out.Height), b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
@@ -372,25 +439,21 @@ func (b *builder) nvenc() error {
 	} else {
 		// Every HDR path scales in CUDA first and tone-maps the 1080p 10-bit frame.
 		f = append(f, "scale_cuda="+b.fit()+":format=p010le")
-		switch {
-		case b.host.TonemapOpenCL:
+		switch b.gpuTonemapper() {
+		case TonemapperOpenCL:
 			// ffmpeg cannot map CUDA frames to OpenCL, so the downscaled frame hops through system
 			// memory both ways. Measured on the dev GeForce: see the PR's numbers.
-			b.fallback("tonemap", "tonemap_opencl: the 1080p frame is copied through system memory")
+			b.fallback("tonemap", "tonemap_opencl: the scaled frame is copied through system memory")
 			filterDevice = "ocl"
 			b.p.PreInput = append(b.p.PreInput, "-init_hw_device", "opencl=ocl")
-			f = append(f, "hwdownload", "format=p010le", "hwupload",
-				"tonemap_opencl=tonemap=hable:desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12",
+			f = append(f, "hwdownload", "format=p010le", "hwupload", b.openCLTonemap(),
 				"hwdownload", "format=nv12", "hwupload_cuda")
-		case b.host.Libplacebo:
+		case TonemapperLibplacebo:
 			// libplacebo on its own Vulkan device: ffmpeg's Vulkan hwaccel device fails to init
 			// with it on the dev GeForce, and the per-spawn device costs ~2 s of start (spike §7).
-			b.fallback("tonemap", "libplacebo: the 1080p frame is copied through system memory")
-			f = append(f, "hwdownload", "format=p010le",
-				"libplacebo=format=nv12:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390",
-				"hwupload_cuda")
+			f = append(f, "hwdownload", "format=p010le", b.placeboTonemap("scaled"), "hwupload_cuda")
 		default:
-			tm, err := b.cpuTonemap("neither tonemap_opencl nor libplacebo works on this host")
+			tm, err := b.cpuTonemap()
 			if err != nil {
 				return err
 			}
@@ -433,7 +496,7 @@ func (b *builder) videotoolbox() error {
 			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
 		}
 		b.fallback("tonemap", "VideoToolbox has no tone-map filter")
-		f = append(f, "format=p010le", hdrToSDRChain)
+		f = append(f, "format=p010le", b.cpuChain())
 	}
 	f = append(f, "format=nv12", fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
@@ -455,7 +518,7 @@ func (b *builder) software() error {
 		if h > softwareTonemapLines {
 			w, h = even(w*softwareTonemapLines/h), softwareTonemapLines
 		}
-		f = append(f, fmt.Sprintf("scale=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2", w, h), hdrToSDRChain)
+		f = append(f, fmt.Sprintf("scale=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2", w, h), b.cpuChain())
 	}
 	f = append(f, "scale="+b.fit(), "format=yuv420p",
 		fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), b.tail())
@@ -484,7 +547,7 @@ func (b *builder) generic() error {
 		if !b.host.CPUTonemap {
 			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
 		}
-		f = append(f, hdrToSDRChain)
+		f = append(f, b.cpuChain())
 	}
 	f = append(f, b.tail())
 	if up := hardwareUploadFilter(enc); up != "" {

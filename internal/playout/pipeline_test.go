@@ -16,9 +16,12 @@ var updatePipelineGolden = flag.Bool("update-pipeline", false, "rewrite testdata
 
 // Host profiles as data: the certified families plus each declared fallback.
 func testHosts() map[string]HostProfile {
-	arc := HostProfile{Family: FamilyVAAPI, RenderNode: "/dev/dri/renderD128", DecodeCodecs: vaapiDecodes, TonemapVAAPI: true, CPUTonemap: true}
+	arc := HostProfile{Family: FamilyVAAPI, RenderNode: "/dev/dri/renderD128", DecodeCodecs: vaapiDecodes, TonemapOpenCL: true, Libplacebo: true, CPUTonemap: true}
+	// AMD (no OpenCL-VAAPI interop) and an Intel host missing the OpenCL runtime demote to this.
 	amd := arc
-	amd.TonemapVAAPI = false
+	amd.TonemapOpenCL = false
+	vaCPU := amd
+	vaCPU.Libplacebo = false
 	nv := HostProfile{Family: FamilyNVENC, DecodeCodecs: cudaDecodes, TonemapOpenCL: true, Libplacebo: true, CPUTonemap: true}
 	nvPlacebo := nv
 	nvPlacebo.TonemapOpenCL = false
@@ -28,7 +31,7 @@ func testHosts() map[string]HostProfile {
 	swHDR := sw
 	swHDR.SoftwareHDR = true
 	return map[string]HostProfile{
-		"vaapi-intel": arc, "vaapi-amd": amd,
+		"vaapi-intel": arc, "vaapi-amd": amd, "vaapi-cputonemap": vaCPU,
 		"nvenc-opencl": nv, "nvenc-libplacebo": nvPlacebo, "nvenc-cputonemap": nvCPU,
 		"software": sw, "software-hdrcapable": swHDR,
 		"videotoolbox": {Family: FamilyVideoToolbox, DecodeCodecs: vtDecodes, CPUTonemap: true},
@@ -65,39 +68,46 @@ func TestBuild_Golden(t *testing.T) {
 	for hostName, host := range testHosts() {
 		for srcName, src := range testSources() {
 			name := hostName + "__" + srcName
-			t.Run(name, func(t *testing.T) {
-				var got string
-				p, err := Build(host, src, testOutput)
-				if err != nil {
-					got = "REFUSED: " + err.Error() + "\n"
-				} else {
-					got = strings.Join(p.ItemArgs("/media/source.mkv", 90*time.Second, 750, testOutput.FPS, 1), "\n") + "\n"
-					if len(p.Fallbacks) > 0 {
-						got += "# fallbacks: " + strings.Join(p.Fallbacks, "; ") + "\n"
-					}
-					if len(p.MissingFacts) > 0 {
-						got += "# missing facts: " + strings.Join(p.MissingFacts, ", ") + "\n"
-					}
-				}
-				path := filepath.Join("testdata", "pipeline", name+".golden")
-				if *updatePipelineGolden {
-					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-						t.Fatal(err)
-					}
-					if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-						t.Fatal(err)
-					}
-					return
-				}
-				want, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatalf("missing golden (run with -update-pipeline): %v", err)
-				}
-				if got != string(want) {
-					t.Errorf("argv drifted from %s\n--- got\n%s--- want\n%s", path, got, want)
-				}
-			})
+			t.Run(name, func(t *testing.T) { checkGolden(t, name, buildGolden(host, src, testOutput)) })
 		}
+	}
+}
+
+// buildGolden is one item's argv plus its declared fallbacks and missing facts, or the refusal.
+func buildGolden(host HostProfile, src MediaFormat, out OutputProfile) string {
+	p, err := Build(host, src, out)
+	if err != nil {
+		return "REFUSED: " + err.Error() + "\n"
+	}
+	got := strings.Join(p.ItemArgs("/media/source.mkv", 90*time.Second, 750, out.FPS, 1), "\n") + "\n"
+	if len(p.Fallbacks) > 0 {
+		got += "# fallbacks: " + strings.Join(p.Fallbacks, "; ") + "\n"
+	}
+	if len(p.MissingFacts) > 0 {
+		got += "# missing facts: " + strings.Join(p.MissingFacts, ", ") + "\n"
+	}
+	return got
+}
+
+// checkGolden compares got with testdata/pipeline/<name>.golden, or rewrites it with -update-pipeline.
+func checkGolden(t *testing.T, name, got string) {
+	t.Helper()
+	path := filepath.Join("testdata", "pipeline", name+".golden")
+	if *updatePipelineGolden {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("missing golden (run with -update-pipeline): %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("argv drifted from %s\n--- got\n%s--- want\n%s", path, got, want)
 	}
 }
 
@@ -134,6 +144,11 @@ func TestBuild_NoCPUFilterOnAGPUPathExceptItsDeclaredFallback(t *testing.T) {
 					onGPU = true
 				case name == "hwdownload":
 					onGPU, cpuStretch = false, true
+				case name == "hwmap":
+					// VAAPI <-> OpenCL surface mapping: GPU frames in and out, zero-copy.
+					if !onGPU {
+						t.Errorf("%s/%s: hwmap fed CPU frames in %q", hostName, srcName, p.VideoFilter)
+					}
 				case name == "libplacebo":
 					// Its own Vulkan device: CPU frames in and out.
 					if onGPU {
@@ -266,29 +281,174 @@ func TestBuild_SoftwareRefusesHDRItCannotKeepUpWith(t *testing.T) {
 	}
 }
 
-func TestDemoteTonemap_MaintainerOrder(t *testing.T) {
-	spec := ProgramSpec{Profile: Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderNVENC},
-		Source: testSources()["hevc-4k-hdr-dv"], Tonemap: true, GPUTonemap: GPUFilters{TonemapOpenCL: true, Libplacebo: true}}
-	var steps []string
-	for {
-		p, err := spec.Pipeline()
-		if err != nil {
-			t.Fatal(err)
-		}
-		switch {
-		case strings.Contains(p.VideoFilter, "tonemap_opencl"):
-			steps = append(steps, "opencl")
-		case strings.Contains(p.VideoFilter, "libplacebo"):
-			steps = append(steps, "libplacebo")
-		default:
-			steps = append(steps, "cpu")
-		}
-		if !spec.DemoteTonemap() {
-			break
+// TestBuild_IntelHDRUsesOpenCLNeverTonemapVAAPI (#1516): tonemap_vaapi outputs a black picture on
+// the household Arc (Y=16 on every frame, normal speed, exit 0). No host profile, source or build
+// may ever emit it; Intel HDR maps the scaled VAAPI surface into OpenCL and back, zero-copy.
+func TestBuild_IntelHDRUsesOpenCLNeverTonemapVAAPI(t *testing.T) {
+	for _, gpu := range []GPUFilters{{}, {TonemapOpenCL: true}, {Libplacebo: true}, {TonemapOpenCL: true, Libplacebo: true}} {
+		for _, enc := range h264Engines {
+			for srcName, src := range testSources() {
+				p, err := Build(HostFor(enc, true, gpu), src, testOutput)
+				if err == nil && strings.Contains(p.VideoFilter, "tonemap_vaapi") {
+					t.Errorf("%s %+v %s: tonemap_vaapi (black on the Arc, #1516): %q", enc, gpu, srcName, p.VideoFilter)
+				}
+			}
 		}
 	}
-	if want := []string{"opencl", "libplacebo", "cpu"}; !slices.Equal(steps, want) {
-		t.Fatalf("tone-map order %q, want %q", steps, want)
+	p, err := Build(HostFor(EncoderVAAPI, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), testSources()["hevc-4k-hdr-dv"], testOutput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010," +
+		"hwmap=derive_device=opencl,tonemap_opencl=tonemap=hable:desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12," +
+		"hwmap=derive_device=vaapi:reverse=1,pad_vaapi=w=1920:h=1080,"
+	if !strings.HasPrefix(p.VideoFilter, want) {
+		t.Errorf("Intel HDR graph:\n got %q\nwant prefix %q", p.VideoFilter, want)
+	}
+	if len(p.Fallbacks) != 0 {
+		t.Errorf("the zero-copy OpenCL path declares no fallback, got %q", p.Fallbacks)
+	}
+}
+
+// TestBuild_OneToneCurveEverywhere (G11): for every curve on every host, the graph has exactly one
+// tone-mapper and it runs that curve in its own spelling; the CPU tone-mapper, which lacks the three
+// libplacebo curves, substitutes Mobius and declares it.
+func TestBuild_OneToneCurveEverywhere(t *testing.T) {
+	src := testSources()["hevc-4k-hdr-dv"]
+	for _, c := range ToneCurves {
+		out := testOutput
+		out.ToneCurve = c
+		for hostName, host := range testHosts() {
+			p, err := Build(host, src, out)
+			if errors.Is(err, ErrRefused) {
+				continue
+			}
+			var got []string
+			for _, f := range strings.Split(p.VideoFilter, ",") {
+				name, opts, _ := strings.Cut(f, "=")
+				for _, opt := range strings.Split(opts, ":") {
+					if k, v, _ := strings.Cut(opt, "="); k == "tonemap" || k == "tonemapping" {
+						got = append(got, name+"="+v)
+					}
+				}
+			}
+			cpu, exact := c.cpu()
+			want := map[string]string{
+				TonemapperOpenCL:     "tonemap_opencl=" + c.openCL(),
+				TonemapperLibplacebo: "libplacebo=" + c.placebo(),
+				TonemapperCPU:        "tonemap=" + string(cpu),
+			}[p.Tonemapper]
+			if len(got) != 1 || got[0] != want {
+				t.Errorf("%s/%s: tone curves %q, want exactly [%s]: %q", c, hostName, got, want, p.VideoFilter)
+			}
+			declared := slices.Contains(p.Fallbacks, "tonemap: the CPU tone-mapper has no "+string(c)+"; mobius instead")
+			if substituted := p.Tonemapper == TonemapperCPU && !exact; declared != substituted {
+				t.Errorf("%s/%s: CPU substitute declared=%v, substituted=%v: %q", c, hostName, declared, substituted, p.Fallbacks)
+			}
+		}
+	}
+}
+
+// TestToneCurve_SpellingsExistInEachFilter: each curve name the builder emits is one the filter
+// accepts, per `ffmpeg -h filter=<name>` on the pinned n8.1 build. A name a filter lacks fails the
+// spawn ("Invalid argument"): the ladder rescues it, but every program pays a failed start. That is
+// how bt2390 on tonemap_opencl was caught (live test, dev GeForce).
+func TestToneCurve_SpellingsExistInEachFilter(t *testing.T) {
+	cpuAndOpenCL := []string{"none", "linear", "gamma", "clip", "reinhard", "hable", "mobius"}
+	placebo := []string{"auto", "clip", "st2094-40", "st2094-10", "bt.2390", "bt.2446a", "spline", "reinhard", "mobius", "hable", "gamma", "linear"}
+	for _, c := range ToneCurves {
+		if o := c.openCL(); o != "" && !slices.Contains(cpuAndOpenCL, o) {
+			t.Errorf("%s: tonemap_opencl has no %q", c, o)
+		}
+		if !slices.Contains(placebo, c.placebo()) {
+			t.Errorf("%s: libplacebo has no %q", c, c.placebo())
+		}
+		if cpu, _ := c.cpu(); !slices.Contains(cpuAndOpenCL, string(cpu)) {
+			t.Errorf("%s: tonemap has no %q", c, cpu)
+		}
+		if ParseToneCurve(string(c)) != c {
+			t.Errorf("%s does not round-trip", c)
+		}
+	}
+	if ParseToneCurve("") != DefaultToneCurve || ParseToneCurve("nonsense") != DefaultToneCurve {
+		t.Error("an empty or unknown curve must be the default")
+	}
+}
+
+// TestBuild_GoldenToneCurves pins the HDR graph of every host for every non-default curve.
+func TestBuild_GoldenToneCurves(t *testing.T) {
+	for _, c := range ToneCurves[1:] {
+		out := testOutput
+		out.ToneCurve = c
+		for hostName, host := range testHosts() {
+			t.Run(string(c)+"__"+hostName, func(t *testing.T) {
+				checkGolden(t, "curve-"+string(c)+"__"+hostName, buildGolden(host, testSources()["hevc-4k-hdr-dv"], out))
+			})
+		}
+	}
+}
+
+// TestDemoteTonemap_VAAPIFallsToCPU: an Intel host without the OpenCL runtime (or AMD) on a build
+// without libplacebo fails device derivation before any output; the ladder then tone-maps on the CPU
+// after the GPU downscale.
+func TestDemoteTonemap_VAAPIFallsToCPU(t *testing.T) {
+	spec := ProgramSpec{Profile: Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: EncoderVAAPI},
+		Source: testSources()["hevc-4k-hdr-dv"], Tonemap: true, GPUTonemap: GPUFilters{TonemapOpenCL: true}}
+	if p, _ := spec.Pipeline(); !strings.Contains(p.VideoFilter, "tonemap_opencl") {
+		t.Fatalf("first attempt must be OpenCL: %q", p.VideoFilter)
+	}
+	if !spec.DemoteTonemap() {
+		t.Fatal("OpenCL must demote")
+	}
+	p, err := spec.Pipeline()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.VideoFilter, "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010,hwdownload,format=p010le,"+hdrToSDRChain) ||
+		!slices.Equal(p.Fallbacks, []string{"tonemap: no GPU tone-mapper runs hable on this host"}) {
+		t.Errorf("demoted VAAPI must CPU tone-map after the GPU downscale, declared: %q %q", p.VideoFilter, p.Fallbacks)
+	}
+	if spec.DemoteTonemap() {
+		t.Error("the CPU tone-map is the end of the ladder")
+	}
+}
+
+// TestDemoteTonemap_OrderPerCurve: each family walks the curve's preferred GPU tone-mapper, the other
+// one that has the curve, then the CPU. Hable is the maintainer order (#1512).
+func TestDemoteTonemap_OrderPerCurve(t *testing.T) {
+	want := map[ToneCurve][]string{
+		ToneCurveHable:    {TonemapperOpenCL, TonemapperLibplacebo, TonemapperCPU},
+		ToneCurveMobius:   {TonemapperOpenCL, TonemapperLibplacebo, TonemapperCPU},
+		ToneCurveReinhard: {TonemapperOpenCL, TonemapperLibplacebo, TonemapperCPU},
+		ToneCurveBT2390:   {TonemapperLibplacebo, TonemapperCPU},
+		ToneCurveBT2446a:  {TonemapperLibplacebo, TonemapperCPU},
+		ToneCurveSpline:   {TonemapperLibplacebo, TonemapperCPU},
+	}
+	for _, enc := range []Encoder{EncoderVAAPI, EncoderNVENC} {
+		for _, c := range ToneCurves {
+			spec := ProgramSpec{Profile: Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc},
+				Source: testSources()["hevc-4k-hdr-dv"], Tonemap: true, ToneCurve: c,
+				GPUTonemap: GPUFilters{TonemapOpenCL: true, Libplacebo: true}}
+			var steps []string
+			for {
+				p, err := spec.Pipeline()
+				if err != nil {
+					t.Fatal(err)
+				}
+				steps = append(steps, p.Tonemapper)
+				if !spec.DemoteTonemap() {
+					break
+				}
+			}
+			if !slices.Equal(steps, want[c]) {
+				t.Errorf("%s/%s: tone-map order %q, want %q", enc, c, steps, want[c])
+			}
+		}
+	}
+	sdr := ProgramSpec{Profile: Profile{Encoder: EncoderVAAPI, Width: 1920, Height: 1080, Framerate: 25},
+		Source: testSources()["h264-1080p-sdr-25"], GPUTonemap: GPUFilters{TonemapOpenCL: true}}
+	if sdr.DemoteTonemap() {
+		t.Error("an SDR source has no tone-mapper to demote")
 	}
 }
 
