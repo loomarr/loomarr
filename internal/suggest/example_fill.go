@@ -13,9 +13,10 @@ import (
 // by except the titles' words, so its retrieval pool was title-word noise (Sister
 // Act 2: Back in the Habit, To Be or Not to Be) and the lineup either stopped at
 // the anchors or filled with off-era picks. The era and genre are still there:
-// the resolved anchors carry them. This derives both deterministically, runs one
-// in-library discovery with no LLM call, drops off-era non-anchor picks and tops
-// the lineup up from the neighbours.
+// the resolved anchors carry them. This derives both deterministically and runs one
+// in-library discovery (no LLM call) whose on-era neighbours join the retrieval
+// result as ordinary tool evidence. The model still chooses; nothing is dropped
+// or padded server-side (design §8).
 
 const (
 	// maxExampleEraSpan is the widest spread of anchor release years that still
@@ -128,48 +129,24 @@ func sharedAnchorGenre(anchors []catalog.Candidate) string {
 	return best
 }
 
-// completeExampleSelection drops non-anchor picks outside the anchors' era and
-// tops the lineup up to the pick target from the era's neighbours. Required
-// anchors are never dropped.
-func completeExampleSelection(intent Intent, picks []pick, surfaced map[provision.Key]catalog.Candidate) []pick {
-	fill := intent.exampleFill
-	if fill == nil {
-		return picks
+// withExampleNeighbours adds the era's neighbours to a retrieval result so the
+// model sees them as ordinary tool evidence and chooses among them itself.
+func withExampleNeighbours(cands []catalog.Candidate, fill *exampleFill) []catalog.Candidate {
+	if fill == nil || len(fill.neighbours) == 0 {
+		return cands
 	}
-	required := make(map[provision.Key]bool, len(intent.requiredTitleKeys))
-	for _, key := range intent.requiredTitleKeys {
-		required[key] = true
-	}
-	kept := make([]pick, 0, maxFinalSelectionPicks)
-	chosen := make(map[provision.Key]bool, maxFinalSelectionPicks)
-	for _, proposed := range picks {
-		key := provision.Key(proposed.key())
-		candidate, found := surfaced[key]
-		// A pick the retrieval never surfaced cannot ground later, so it must not hold a slot.
-		if !found || !required[key] && candidate.Year > 0 && (candidate.Year < fill.from || candidate.Year > fill.to) {
-			continue
-		}
-		if len(kept) < maxFinalSelectionPicks {
-			kept = append(kept, proposed)
-			chosen[key] = true
+	seen := make(map[provision.Key]bool, len(cands))
+	for _, candidate := range cands {
+		if key, err := candidate.Key(); err == nil {
+			seen[key] = true
 		}
 	}
+	out := append([]catalog.Candidate(nil), cands...)
 	for _, candidate := range fill.neighbours {
-		if len(kept) == maxFinalSelectionPicks {
-			break
+		if key, err := candidate.Key(); err == nil && !seen[key] {
+			seen[key] = true
+			out = append(out, candidate)
 		}
-		key, err := candidate.Key()
-		if err != nil || chosen[key] {
-			continue
-		}
-		if _, found := surfaced[key]; !found {
-			continue
-		}
-		kept = append(kept, pick{
-			MediaType: string(candidate.MediaType), Key: string(key), Name: candidate.Name,
-			Year: candidate.Year, Confidence: 0.6,
-		})
-		chosen[key] = true
 	}
-	return kept
+	return out
 }

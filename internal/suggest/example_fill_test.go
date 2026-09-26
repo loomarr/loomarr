@@ -96,14 +96,6 @@ func exampleFillNames(p suggest.Proposal) []string {
 	return names
 }
 
-func exampleFillYears(p suggest.Proposal) map[string]int {
-	years := map[string]int{}
-	for _, item := range append(append([]suggest.ProposalItem(nil), p.Lineup...), p.Acquisitions...) {
-		years[item.Name] = item.Year
-	}
-	return years
-}
-
 func pickJSON(corpus *catalogfixture.Corpus, names ...string) string {
 	var picks []string
 	for _, name := range names {
@@ -116,54 +108,35 @@ func pickJSON(corpus *catalogfixture.Corpus, names ...string) string {
 	return `{"picks":[` + strings.Join(picks, ",") + `]}`
 }
 
-// #1499, off-era fill: the request names two 1980s titles and no era. The
-// model's title-word search surfaced Sister Act 2 (1993) and To Be or Not to Be
-// (1942) and it picked them. Off-era picks are dropped and the lineup is
-// filled from on-era neighbours of the anchors, up to the 8-pick target.
-func TestSuggest_ExampleAnchorsFillOnEraAndOnGenre(t *testing.T) {
+// #1499: the request names two 1980s titles and no era. The model's title-word
+// search only reaches noise (Sister Act 2 1993), so the anchors' era and genre
+// must feed a discovery whose on-era neighbours reach the model as ordinary tool
+// evidence. The model still chooses: nothing is dropped or padded server-side.
+func TestSuggest_ExampleAnchorsSurfaceOnEraNeighboursToModel(t *testing.T) {
 	corpus := exampleFillCorpus()
 	none := dateMeaningNone()
 	model := testkit.NewLLM(
 		catalogSearchResponse(map[string]any{"query": "back", "media_type": "movie", "dateMeaning": none}),
-		finalResponseWithDateMeaning(pickJSON(corpus, "Sister Act 2: Back in the Habit", "To Be or Not to Be"), none),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters", "Honey, I Shrunk the Kids"), none),
 	)
 	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
 	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	names, years := exampleFillNames(proposal), exampleFillYears(proposal)
-	for _, want := range []string{"Back to the Future", "Gremlins"} {
-		if !slices.Contains(names, want) {
-			t.Errorf("named anchor %q dropped: %v", want, names)
+	prompt := model.Prompt()
+	for _, neighbour := range []string{"Ghostbusters", "Honey, I Shrunk the Kids", "Beetlejuice", "Big"} {
+		if !strings.Contains(prompt, neighbour) {
+			t.Errorf("on-era neighbour %q never reached the model as tool evidence", neighbour)
 		}
 	}
-	for name, year := range years {
-		if year < 1979 || year > 1990 {
-			t.Errorf("%q (%d) is outside the anchors' era: %v", name, year, names)
+	for _, offEra := range []string{"To Be or Not to Be", "Harry Potter", "Your Name."} {
+		if strings.Contains(prompt, offEra) {
+			t.Errorf("off-era %q reached the model", offEra)
 		}
 	}
-	if len(names) != 8 {
-		t.Errorf("lineup has %d titles, want the 8-pick target: %v", len(names), names)
-	}
-}
-
-// #1499, thin fill: the model finalizes with only the anchors. The lineup is
-// topped up the same way.
-func TestSuggest_ExampleAnchorsOnlyFinalIsToppedUp(t *testing.T) {
-	corpus := exampleFillCorpus()
-	none := dateMeaningNone()
-	model := testkit.NewLLM(
-		catalogSearchResponse(map[string]any{"query": "back", "media_type": "movie", "dateMeaning": none}),
-		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins"), none),
-	)
-	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
-	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if names := exampleFillNames(proposal); len(names) != 8 {
-		t.Fatalf("lineup has %d titles, want the 8-pick target: %v", len(names), names)
+	if names := exampleFillNames(proposal); len(names) != 4 {
+		t.Errorf("the model's 4 picks were changed server-side: %v", names)
 	}
 }
 

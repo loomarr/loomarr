@@ -128,10 +128,6 @@ func (s *Suggester) initializeSources(ctx context.Context, intent *Intent, meani
 			}
 		}
 	}
-	if intent.exampleFill != nil {
-		// Neighbours are surfaced so a pick can ground, never required.
-		explicit = append(explicit, intent.exampleFill.neighbours...)
-	}
 	result.curated, result.explicit = curated, explicit
 	state.result, state.initialized = result, true
 	return result, nil

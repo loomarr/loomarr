@@ -204,6 +204,7 @@ func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedTo
 	if mtArg != "" {
 		cands = filterByMediaType(cands, mtArg) // narrow to the requested type
 	}
+	cands = withExampleNeighbours(cands, intent.exampleFill)
 	ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), cands, feedback)
 	ranked.Trace.WindowsCompleted = union.WindowsCompleted
 	ranked.Trace.SourceQueriesDispatched = union.SourceQueriesDispatched

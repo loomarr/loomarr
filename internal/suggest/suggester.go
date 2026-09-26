@@ -406,7 +406,6 @@ func (s *Suggester) Suggest(ctx context.Context, intent Intent) (Proposal, error
 			}
 			out.Picks = preserveRequiredTitles(intent, out.Picks, surfaced)
 			out.Picks = completeNamedSourceSelection(intent, out.Picks, surfaced, *acceptedMeaning)
-			out.Picks = completeExampleSelection(intent, out.Picks, surfaced)
 			if len(surfaced) == 0 && len(out.Picks) > 0 {
 				out.Picks, out.nameGroundingIncomplete, err = s.groundPickNames(ctx, intent, feedback, out.Picks, surfaced, &trace)
 				if err != nil {
@@ -486,7 +485,7 @@ func (s *Suggester) buildRequiredNamedFallback(
 	out := finalOutput{
 		ChannelName: name,
 		Rationale:   "Built from the independently grounded titles you requested.",
-		Picks:       completeExampleSelection(intent, preserveRequiredTitles(intent, nil, surfaced), surfaced),
+		Picks:       preserveRequiredTitles(intent, nil, surfaced),
 	}
 	prop, err := s.buildProposal(ctx, intent, out, surfaced, trace, *meaning)
 	if err != nil {
