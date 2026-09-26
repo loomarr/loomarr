@@ -742,8 +742,9 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, rel, asset.Modified, asset.Content)
 }
 
-// stillHandler serves a channel's latest frame for the channel-switch overlay. The frame is
-// decoded at most once per segment (playout.Origin.Still), so this never transcodes per request.
+// stillHandler serves a channel's current frame for the channel-switch overlay. The frame is
+// decoded at most once per segment (warm) or per airing (cold, from the source; playout.Origin.Still),
+// so this never transcodes per request.
 // Every failure — no provider, no segment, a failed decode — is the same 404: the client's answer
 // to all of them is "show the card on the plain background", and a broken image is worse.
 func (s *Server) stillHandler(w http.ResponseWriter, r *http.Request) {
@@ -819,7 +820,9 @@ func (s *Server) registerPlayout(api huma.API) {
 	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-still", Method: http.MethodGet, Path: "/v1/playout/still/{id}",
 		Summary: "Channel latest still frame (signed-URL authed)", Tags: []string{"playout"},
-	}, "The newest decoded frame of the channel, at most one segment old; 404 when none is available.",
+	}, "One frame of what the channel airs now: a warm channel's newest segment (at most one segment old), "+
+		"else decoded on demand from the current programme's source and cached for that airing. "+
+		"404 when neither is available (nothing airing, a break, an unreadable source).",
 		"image/jpeg"), s.stillHandler)
 
 	// The in-app browser/native HLS surface (§9.1 Watch). Master playlist + its segments, authed by

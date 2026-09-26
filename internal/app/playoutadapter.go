@@ -280,6 +280,66 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 	return airing, src.URL, nil
 }
 
+// StillAiring is the cold-channel still's view of the schedule (playout.StillAiringResolver): the
+// programme on now, with its source resolved lazily. Unlike AiringNow it writes nothing (no airing
+// history, no filler pick), because showing a picture is not airing it. It runs on every still
+// request, so it reads only the accepted cycle; the source lookup, which can cost a media-server
+// round trip, runs once per airing on the still cache's miss. A break has no still: resolving its
+// clip would pick, and count, filler.
+func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (playout.StillAiring, bool, error) {
+	slots, epoch, err := r.acceptedCycle(ctx, channelID)
+	if err != nil {
+		return playout.StillAiring{}, false, err
+	}
+	airing := playout.AiringAt(slots, epoch, r.now())
+	if airing.Kind == schedule.SlotFiller || !airing.Playable() || r.lib == nil {
+		return playout.StillAiring{}, false, nil
+	}
+	itemID := airing.LibraryItemID
+	return playout.StillAiring{
+		Key:    playout.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity),
+		Offset: airing.Offset,
+		At:     airing.StartedAt,
+		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
+			var pm library.PathMap
+			if r.pathMap != nil {
+				pm = r.pathMap()
+			}
+			src := r.lib.ResolveInput(ctx, itemID, pm, library.StatReadableFile)
+			if src.URL == "" {
+				return playout.StillSource{}, false, nil
+			}
+			return playout.StillSource{Input: src.URL, HDR: r.inventoryHDR(ctx, itemID)}, true, nil
+		},
+	}, true, nil
+}
+
+// inventoryHDR reports whether the item's library source is HDR, from Loomarr's own inventory only
+// (never the media server, never ffprobe). Unknown is false: an untone-mapped still is dim, not
+// broken.
+func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string) bool {
+	if r.inventory == nil || r.lib == nil {
+		return false
+	}
+	origin, err := r.lib.InventoryOrigin(libraryItemID)
+	if err != nil {
+		return false
+	}
+	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Kinds: []inventory.SourceKind{inventory.SourceLibraryOriginal},
+		RequiredCoverage: []string{"videoStreams"},
+	})
+	if err != nil || !ok {
+		return false
+	}
+	for _, stream := range source.Observation.Facts.Streams {
+		if stream.Kind == inventory.StreamVideo && stream.HDR {
+			return true
+		}
+	}
+	return false
+}
+
 // acceptedCycle is the broadcast commit boundary. Reconciliation owns the write; the encoder and
 // current guide own reads. Keeping the seam here makes it impossible for a programme boundary to
 // accidentally call the mutable authoring preview again.

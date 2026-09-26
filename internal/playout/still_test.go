@@ -110,22 +110,6 @@ func TestOriginStill_NoExtractorMeansNoStills(t *testing.T) {
 	}
 }
 
-func TestSegmentAtEdge_PicksTheSegmentHoldingTheOffset(t *testing.T) {
-	media := preparedMedia{segments: []preparedSegment{
-		{duration: 4 * time.Second, uri: "a"}, {duration: 4 * time.Second, uri: "b"}, {duration: 4 * time.Second, uri: "c"},
-	}}
-	for offset, want := range map[time.Duration]string{0: "a", 3999 * time.Millisecond: "a", 4 * time.Second: "b", 11 * time.Second: "c"} {
-		media.airing.Offset = offset
-		if got, ok := segmentAtEdge(media); !ok || got.uri != want {
-			t.Errorf("offset %v → %q ok=%v, want %q", offset, got.uri, ok, want)
-		}
-	}
-	media.airing.Offset = 12 * time.Second
-	if _, ok := segmentAtEdge(media); ok {
-		t.Error("an offset past the media must be a miss, not the last segment")
-	}
-}
-
 func TestHLSStill_NewestCompletedSegmentPlusInit(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, body string) {

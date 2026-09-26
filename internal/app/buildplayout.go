@@ -452,6 +452,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		Eligible: durablePlayoutEligibility,
 		Observer: deps.metrics,
 		Still:    playout.FFmpegStill(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		// A cold channel's still: one frame of the airing on now, decoded from its source (#1512).
+		StillAiring: playoutRes.StillAiring,
+		SourceStill: playout.FFmpegSourceStill(set.str("playout.ffmpeg_path"),
+			playout.TonemapperFor(set.str("playout.ffmpeg_path")), deps.processDiagnostics),
 	})
 	owner.addQuiesce(func(context.Context) error {
 		origin.Quiesce()

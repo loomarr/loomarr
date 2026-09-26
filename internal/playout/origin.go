@@ -157,9 +157,13 @@ type OriginDependencies struct {
 	// Nil preserves the SQLite single-replica path's existing local lifecycle behavior.
 	Eligible func(context.Context, string) (bool, error)
 	Observer OriginObserver
-	// Still decodes one frame of a segment for the channel-switch overlay. Nil disables stills
-	// (Origin.Still reports a clean miss) — used where no ffmpeg is wired.
+	// Still decodes one frame of a warm channel's live segment for the channel-switch overlay. Nil
+	// disables segment stills — used where no ffmpeg is wired.
 	Still StillExtractor
+	// StillAiring and SourceStill give a cold channel its still: one frame of the airing on now,
+	// decoded from the source on demand. Either nil disables source stills.
+	StillAiring StillAiringResolver
+	SourceStill SourceStillExtractor
 }
 
 // OriginObserver receives bounded fallback transitions without Channel identity.
@@ -188,11 +192,13 @@ func NewOrigin(deps OriginDependencies) *Origin {
 	o.eligible = deps.Eligible
 	o.observer = deps.Observer
 	o.stillExtractor = deps.Still
-	if deps.Prepared != nil {
-		o.stillSources = append(o.stillSources, deps.Prepared)
-	}
+	// A warm channel's newest segment first (fresher, and already decoded media), then the cold
+	// channel's source file. Prepared publications no longer supply stills (#1512 withdrew them).
 	if deps.LiveHLS != nil {
 		o.stillSources = append(o.stillSources, deps.LiveHLS)
+	}
+	if deps.StillAiring != nil && deps.SourceStill != nil {
+		o.stillSources = append(o.stillSources, airingStillSource{resolve: deps.StillAiring, extract: deps.SourceStill})
 	}
 	return o
 }
