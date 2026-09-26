@@ -259,6 +259,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	measurer := playoutRes.newMeasurer(
 		mediameasure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
 	playoutRes.measurer = measurer
+	playoutRes.analyses = st
 	go measurer.Run(rootCtx)
 	// A channel starting or stopping is a STRUCTURAL change the dashboard should see
 	// immediately, so it rides the SSE bus (§8: the frame is the latency path, GET

@@ -83,6 +83,23 @@ func TestOriginStill_ColdChannelDecodesOneFrameFromTheSourcePerAiring(t *testing
 	}
 }
 
+func TestOriginStill_SeeksToTheIndexedKeyframe(t *testing.T) {
+	airing := StillAiring{Key: "airing-1", Offset: 73 * time.Second, At: time.Unix(1000, 0),
+		Source: func(context.Context) (StillSource, bool, error) {
+			return StillSource{Input: "/media/film.mkv", Keyframe: 70 * time.Second, Indexed: true}, true, nil
+		}}
+	var calls sourceCalls
+	o := NewOrigin(OriginDependencies{
+		StillAiring: func(context.Context, string) (StillAiring, bool, error) { return airing, true, nil },
+		SourceStill: calls.extract,
+	})
+
+	got, ok, err := o.Still(context.Background(), "ch1", PlanBaseline)
+	if err != nil || !ok || string(got.JPEG) != "jpeg:/media/film.mkv@1m10s" {
+		t.Fatalf("Still = %q ok=%v err=%v, want the frame at the keyframe before now (70 s)", got.JPEG, ok, err)
+	}
+}
+
 func TestOriginStill_WarmChannelShowsItsNewestSegmentNotTheSource(t *testing.T) {
 	airings := &fakeAirings{}
 	airings.set(airingOf("airing-1", "/media/film.mkv", 0, time.Unix(1000, 0), nil))

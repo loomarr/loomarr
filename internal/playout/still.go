@@ -54,6 +54,11 @@ type StillSource struct {
 	Input string
 	// HDR marks a PQ/HLG source, whose frame must be tone-mapped to look right as a JPEG.
 	HDR bool
+	// Keyframe is the source's last keyframe at or before the airing's offset, from Loomarr's
+	// measured keyframe index; Indexed says it is known. The still seeks straight to it. Without an
+	// index, ffmpeg's container seek finds the same keyframe where the container has an index.
+	Keyframe time.Duration
+	Indexed  bool
 }
 
 // StillAiringResolver reports the channel's current airing, cheaply and without side effects: it
@@ -371,7 +376,11 @@ func (s airingStillSource) newestStillSegment(ctx context.Context, channelID str
 			if !ok || source.Input == "" {
 				return nil, errors.New("the airing has no readable source")
 			}
-			return s.extract(ctx, source, airing.Offset)
+			seek := airing.Offset
+			if source.Indexed {
+				seek = source.Keyframe
+			}
+			return s.extract(ctx, source, seek)
 		},
 		wait: true,
 	}, true, nil
