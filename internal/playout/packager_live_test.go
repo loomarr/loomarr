@@ -28,8 +28,8 @@ func TestPackagerStitchesMixedFormatItems(t *testing.T) {
 	host := HostFor(EncoderSoftware, true, GPUFilters{})
 	type src struct {
 		name, lavfi string
-		w, h, fps  int
-		rate       int
+		w, h, fps   int
+		rate        int
 	}
 	sources := []src{
 		{"prog", "testsrc2=s=1280x720:r=25", 1280, 720, 25, 44100},
