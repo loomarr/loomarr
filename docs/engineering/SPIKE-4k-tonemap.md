@@ -332,12 +332,41 @@ new segment per second, with `EXT-X-PROGRAM-DATE-TIME` on every entry. hls.js 1.
 Nothing measured invalidates G10 or G11. The one near-miss is G5 on NVIDIA HDR baselines (CPU round-trip),
 which the capacity rule absorbs.
 
-## Not measured
+## Decisions (supervisor/maintainer, 2026-09-26)
 
-- Dolby Vision profile 5 sources (none in the samples); DV RPU passthrough (neither encoder carries it).
-- SDR → HDR10 on NVIDIA (libplacebo on Vulkan is expected to work on the GPU, as phase 0's tone-map did; not timed).
-- libplacebo on the CUDA-derived Vulkan device at 4K (the candidate fix for NVIDIA's 4K SDR premium).
-- HEVC in real Chrome/Edge (hardware HEVC) and Safari; WebKit (the Playwright build crashed).
-- Real Shield / real 4K HDR TV: the emulator can't show HDR or HDMI mode switches.
-- Cold CIFS reads for 4K starts (phase 0 covered the tail on H.264).
-- Apple Silicon (needs the real Mac run).
+These settle the five open questions above. Where they differ from a proposal earlier in this doc, the
+decision wins.
+
+1. **Tone curve:** Hable is the default, and all six curves (Hable, Mobius, Reinhard, BT.2390, BT.2446a, Spline)
+   are selectable (maintainer decision, implemented in #1522). The per-curve cost table in §2 is what a
+   non-default choice costs.
+2. **HDR10 metadata:** the packager/encoder writes **static, channel-level** HDR10 SEI and strips per-item HDR
+   SEI, so the TV never re-evaluates mid-stream:
+   - `mdcv`: BT.2020 primaries, D65 white point, max 1000 nits, min 0.0001 nits.
+   - `clli`: MaxCLL 1000, MaxFALL 400.
+   This replaces the "P3-D65" example in §1's proposal.
+3. **Software ladder:** the "lighter version" rung is **dropped** (0 items have one). The rungs are:
+   1. 720p with `-skip_loop_filter all`;
+   2. `-skip_frame noref`, **only where the source measurably gains**, otherwise skipped;
+   3. keyframes-only at 480p.
+   Software hosts never produce a premium format, and audio never degrades.
+4. **4K capacity unit:** not a constant. The 1b resource budget **measures the 4K class per host at boot**.
+   This spike's Arc ≈ 2 and NVENC ≈ 4 are documented priors and fallbacks only.
+5. **4K SDR premium with HDR items: moot by design.** Dynamic range is derived independently from the lineup,
+   so any HDR item makes the premium format 4K HDR, and its SDR items are converted. A 4K SDR premium never
+   carries HDR items, so there's no 4K tone-map on NVIDIA and no Rust-worker contingency for it. The
+   "NVIDIA NO-GO" row in Go / no-go is therefore not a gap. SDR→HDR timing on NVIDIA moves to the G10 lane.
+
+## Carry-overs (G10 lane / certification)
+
+Not measured here; each has an owner:
+
+| Item | Owner |
+|---|---|
+| SDR → HDR10 conversion timing on NVIDIA (libplacebo on Vulkan, expected to run on the GPU) | G10 lane |
+| ExoPlayer EXT-X-SKIP delta updates (this run hit a stale test server, a harness fault) | G10 lane |
+| HDR10 through ExoPlayer on a real Shield (Main10 hardware decode, HDMI HDR mode; the emulator can't) | certification |
+| HEVC in real Chrome/Edge (hardware HEVC) and Safari; WebKit (the Playwright build crashed) | certification |
+| Dolby Vision profile 5 sources (none in the samples); DV RPU passthrough (neither encoder carries it) | G10 lane |
+| Cold CIFS reads for 4K starts (phase 0 covered the tail on H.264) | G10 lane |
+| Apple Silicon (needs the real Mac run) | certification |
