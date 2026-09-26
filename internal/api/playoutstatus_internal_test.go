@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -20,9 +21,16 @@ type idlePlayoutObserver struct{ fixedPlayoutCapability }
 
 func (idlePlayoutObserver) Stats(time.Time) []playout.SessionStat { return nil }
 func (idlePlayoutObserver) Capacity() int                         { return 0 }
-func (idlePlayoutObserver) ReportProgram(string, playout.EncodePlan, playout.Encoder, bool, playout.Progress) {
+func (idlePlayoutObserver) ObserveProgramCost(string, playout.EncodePlan, playout.StreamClass, time.Duration, time.Duration) {
 }
-func (idlePlayoutObserver) AdmitProgram(string, playout.EncodePlan, bool) bool { return true }
+
+func (idlePlayoutObserver) ReportProgram(string, playout.EncodePlan, playout.Encoder, playout.StreamClass, playout.Progress) {
+}
+func (idlePlayoutObserver) AdmitProgram(context.Context, string, playout.EncodePlan, playout.StreamClass) bool {
+	return true
+}
+func (idlePlayoutObserver) SessionRung(string, playout.EncodePlan) (int, bool) { return 0, false }
+func (idlePlayoutObserver) Budget() playout.BudgetSnapshot                     { return playout.BudgetSnapshot{} }
 
 // An idle host has no session row to infer its encoder from. Its retained, measured capability is
 // still operational truth: VAAPI/QSV is hardware even when NVIDIA-only VRAM telemetry is unknown.

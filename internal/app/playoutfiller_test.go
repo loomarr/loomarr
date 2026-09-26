@@ -76,15 +76,13 @@ func fillerResolver(t *testing.T, dir string, pod filler.Pod) *playoutResolver {
 	accepted.ch.Desired = slots
 	return &playoutResolver{
 		// A break gap FIRST, so a clock at the epoch lands inside it.
-		engine:         stubCycle{slots: slots},
-		channels:       accepted,
-		now:            func() time.Time { return testPlayoutAnchor() },
-		tier:           func() string { return "balanced" },
-		encoder:        func() string { return "" },
-		capacity:       func() int { return 4 },
-		activeChannels: func() int { return 0 },
-		pods:           stubPods{pod: pod},
-		fillerDir:      dir,
+		engine:    stubCycle{slots: slots},
+		channels:  accepted,
+		now:       func() time.Time { return testPlayoutAnchor() },
+		tier:      func() string { return "balanced" },
+		encoder:   func() string { return "" },
+		pods:      stubPods{pod: pod},
+		fillerDir: dir,
 	}
 }
 
@@ -308,7 +306,7 @@ func TestProfile_OperatorOverrideSkipsTheProbe(t *testing.T) {
 	r.encoder = func() string { return "h264_nvenc" }
 	r.ffmpegPath = func() string { probed = true; return "/nonexistent/ffmpeg" }
 
-	p := r.Profile(context.Background())
+	p := r.Profile(context.Background(), 0)
 	if p.Encoder != "h264_nvenc" {
 		t.Errorf("encoder = %q, want the operator's override", p.Encoder)
 	}
@@ -331,7 +329,7 @@ func TestProfile_NoOverrideProbesAndFallsBackSafely(t *testing.T) {
 	r.ffmpegPath = func() string { return "/nonexistent/ffmpeg" }
 
 	_ = r.detectedEncoder(context.Background())
-	p := r.Profile(context.Background())
+	p := r.Profile(context.Background(), 0)
 	if p.Encoder != playout.EncoderSoftware {
 		t.Errorf("encoder = %q, want the software fallback when nothing probes clean", p.Encoder)
 	}
@@ -355,7 +353,7 @@ func TestProfile_NoOverrideDoesNotWaitForProbe(t *testing.T) {
 	}
 
 	before := time.Now()
-	p := r.Profile(context.Background())
+	p := r.Profile(context.Background(), 0)
 	if elapsed := time.Since(before); elapsed > 100*time.Millisecond {
 		t.Errorf("Profile waited %s for capability detection", elapsed)
 	}

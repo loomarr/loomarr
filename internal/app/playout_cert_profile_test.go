@@ -13,7 +13,7 @@ func TestCertificationDeclaredTierUsesProductionPolicy(t *testing.T) {
 		if err := config.validateTier(); err != nil {
 			t.Fatal(err)
 		}
-		if config.rendition() != playout.CanonicalPreparedRendition(tier) || config.sourceProfile() != playout.Resolve(tier, playout.EncoderSoftware, 2, 0) {
+		if config.rendition() != playout.CanonicalPreparedRendition(tier) || config.sourceProfile() != playout.Resolve(tier, playout.EncoderSoftware, 0) {
 			t.Fatalf("declared tier %s diverges from production policy", tier)
 		}
 	}
@@ -22,16 +22,14 @@ func TestCertificationDeclaredTierUsesProductionPolicy(t *testing.T) {
 	}
 }
 
-func TestCertificationLiveProfileRespondsToLoad(t *testing.T) {
-	active := 0
-	resolver := syntheticLiveResolver{profile: func() playout.Profile {
-		return playout.Resolve(playout.TierBalanced, playout.EncoderVAAPI, 12, active)
+func TestCertificationLiveProfileFollowsTheAdmittedRung(t *testing.T) {
+	resolver := syntheticLiveResolver{profile: func(rung int) playout.Profile {
+		return playout.Resolve(playout.TierBalanced, playout.EncoderVAAPI, rung)
 	}}
-	initial := resolver.Profile(context.Background())
-	active = 10
-	loaded := resolver.Profile(context.Background())
-	if initial.Height != 1080 || loaded.Height != 720 || initial.Encoder != playout.EncoderVAAPI || loaded.Encoder != initial.Encoder {
-		t.Fatalf("load policy did not reach encoder: initial=%+v loaded=%+v", initial, loaded)
+	initial := resolver.Profile(context.Background(), 0)
+	dropped := resolver.Profile(context.Background(), 2)
+	if initial.Height != 1080 || dropped.Height != 720 || initial.Encoder != playout.EncoderVAAPI || dropped.Encoder != initial.Encoder {
+		t.Fatalf("rung did not reach encoder: initial=%+v dropped=%+v", initial, dropped)
 	}
 }
 

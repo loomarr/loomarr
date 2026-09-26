@@ -674,17 +674,60 @@ func TestAdmitProgram_BoundsPreparedSessionsThatFallBackToTranscoding(t *testing
 		}
 	}
 
-	if !m.AdmitProgram("ch1", PlanFull, true) {
+	ctx := t.Context()
+	if !m.AdmitProgram(ctx, "ch1", PlanFull, ClassSDR) {
 		t.Fatal("first prepared-to-live transcode was refused with an empty budget")
 	}
-	if m.AdmitProgram("ch2", PlanFull, true) {
+	if m.AdmitProgram(ctx, "ch2", PlanFull, ClassSDR) {
 		t.Fatal("second prepared-to-live transcode oversubscribed the one-slot budget")
 	}
-	if !m.AdmitProgram("ch1", PlanFull, false) {
+	if !m.AdmitProgram(ctx, "ch1", PlanFull, ClassCopy) {
 		t.Fatal("returning to a prepared copy block did not release capacity")
 	}
-	if !m.AdmitProgram("ch2", PlanFull, true) {
+	if !m.AdmitProgram(ctx, "ch2", PlanFull, ClassSDR) {
 		t.Fatal("released transcode capacity was not reusable by the waiting session")
+	}
+}
+
+// A real viewer beats a speculative pre-warm (supervisor, #1512): when the top rung no longer fits,
+// the budget reclaims idle warm work first, then drops a rung, then refuses. Before this ordering the
+// viewer silently took the lower rung while an unwatched channel kept the top-rung capacity.
+func TestAttach_ReclaimsIdleWarmBeforeDroppingARung(t *testing.T) {
+	spawn, encoder := newFakeSpawner(t)
+	// 1080p costs 0.4 of the GPU, 720p 0.2: two sessions fill 0.8, so a third fits only at 720p.
+	facts := BudgetFacts{Hardware: true, Rungs: []int{1080, 720}, Costs: map[CostKey]ClassCost{
+		{Class: ClassSDR, Height: 1080}: {Speed: 3}, {Class: ClassSDR, Height: 720}: {Speed: 6},
+	}}
+	m := testManager(t, spawn, 0, time.Minute).WithBudget(NewResourceBudget(func() BudgetFacts { return facts }))
+
+	idle, detachIdle, err := m.Attach(t.Context(), "ch1", PlanFull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warmSession(t, idle, encoder("ch1"))
+	detachIdle()
+	if _, _, err := m.Attach(t.Context(), "ch2", PlanFull); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := m.Attach(t.Context(), "ch3", PlanFull); err != nil {
+		t.Fatalf("foreground tune refused: %v", err)
+	}
+	select {
+	case <-encoder("ch1").stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("idle warm session kept its capacity while a real viewer was dropped a rung")
+	}
+	if rung, _ := m.SessionRung("ch3", PlanFull); rung != 0 {
+		t.Fatalf("foreground session admitted at rung %d, want the top rung after reclaiming idle work", rung)
+	}
+
+	// With nothing idle left to reclaim, the next viewer drops a rung before it is refused.
+	if _, _, err := m.Attach(t.Context(), "ch4", PlanFull); err != nil {
+		t.Fatalf("viewer refused while a lower rung fits: %v", err)
+	}
+	if rung, _ := m.SessionRung("ch4", PlanFull); rung != 1 {
+		t.Fatalf("second foreground session at rung %d, want 1", rung)
 	}
 }
 
@@ -740,7 +783,7 @@ func TestAttach_CopySessionsDoNotConsumeBudget(t *testing.T) {
 	if _, _, err := m.Attach(context.Background(), "ch1", PlanHEVC8); err != nil {
 		t.Fatal(err)
 	}
-	m.ReportProgram("ch1", PlanHEVC8, EncoderSoftwareHEVC, false, Progress{})
+	m.ReportProgram("ch1", PlanHEVC8, EncoderSoftwareHEVC, ClassCopy, Progress{})
 	// Its released slot admits one real baseline transcode, while a third cold session is refused.
 	if _, _, err := m.Attach(context.Background(), "ch2", PlanBaseline); err != nil {
 		t.Errorf("copy session retained a transcode slot: %v", err)
@@ -766,7 +809,7 @@ func TestWarmIdleHotSetBoundsFiftyChannelSurf(t *testing.T) {
 			t.Fatalf("attach %s: %v", channelID, err)
 		}
 		warmSession(t, viewer, encoder(channelID))
-		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, ClassCopy, Progress{})
 		if previousDetach != nil {
 			previousDetach()
 		}
@@ -829,7 +872,7 @@ func TestWarmIdleHotSetIncludesCopyAndTranscodeSessions(t *testing.T) {
 	spawn, encoder := newFakeSpawner(t)
 	m := testManager(t, spawn, 0, time.Minute)
 
-	for i, transcoding := range []bool{false, true, false} {
+	for i, transcoding := range []StreamClass{ClassCopy, ClassSDR, ClassCopy} {
 		channelID := fmt.Sprintf("ch-%d", i)
 		viewer, detach, err := m.Attach(t.Context(), channelID, PlanFull)
 		if err != nil {
@@ -861,7 +904,7 @@ func TestWarmIdleHotSetUsesMostRecentViewNotOriginalStart(t *testing.T) {
 			t.Fatal(err)
 		}
 		warmSession(t, viewer, encoder(channelID))
-		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, ClassCopy, Progress{})
 		detach()
 		time.Sleep(time.Millisecond)
 	}
@@ -883,7 +926,7 @@ func TestWarmIdleHotSetUsesMostRecentViewNotOriginalStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	warmSession(t, viewer3, encoder("ch3"))
-	m.ReportProgram("ch3", PlanFull, EncoderSoftware, false, Progress{})
+	m.ReportProgram("ch3", PlanFull, EncoderSoftware, ClassCopy, Progress{})
 	detach3()
 
 	select {
@@ -965,7 +1008,7 @@ func TestWarmIdleHotSetConcurrentDetachesRemainBounded(t *testing.T) {
 			t.Fatal(err)
 		}
 		warmSession(t, viewer, encoder(channelID))
-		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, ClassCopy, Progress{})
 		detaches = append(detaches, detach)
 	}
 
@@ -1000,7 +1043,7 @@ func TestWarmIdleHotSetNeverEvictsActiveViewers(t *testing.T) {
 			t.Fatal(err)
 		}
 		warmSession(t, viewer, encoder(channelID))
-		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, ClassCopy, Progress{})
 	}
 	for i := range 3 {
 		channelID := fmt.Sprintf("idle-%d", i)
@@ -1009,7 +1052,7 @@ func TestWarmIdleHotSetNeverEvictsActiveViewers(t *testing.T) {
 			t.Fatal(err)
 		}
 		warmSession(t, viewer, encoder(channelID))
-		m.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		m.ReportProgram(channelID, PlanFull, EncoderSoftware, ClassCopy, Progress{})
 		detach()
 	}
 

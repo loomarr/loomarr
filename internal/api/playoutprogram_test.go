@@ -74,7 +74,7 @@ func (f *fakeResolver) AiringNow(ctx context.Context, _ string) (playout.Airing,
 	return f.airing, f.url, f.err
 }
 
-func (f *fakeResolver) Profile(context.Context) playout.Profile {
+func (f *fakeResolver) Profile(context.Context, int) playout.Profile {
 	if f.profile.Width == 0 {
 		return playout.DefaultProfile()
 	}

@@ -10,7 +10,7 @@ func TestCanonicalPreparedRenditionUsesTheTierTopRung(t *testing.T) {
 	for _, tier := range []Tier{TierEfficient, TierBalanced, TierQuality} {
 		t.Run(string(tier), func(t *testing.T) {
 			got := CanonicalPreparedRendition(tier)
-			wantProfile := Resolve(tier, EncoderSoftware, 2, 0)
+			wantProfile := Resolve(tier, EncoderSoftware, 0)
 			if got.Width != wantProfile.Width || got.Height != wantProfile.Height ||
 				got.FrameRate != wantProfile.Framerate ||
 				got.VideoBitrateKbps != wantProfile.VideoBitrate ||

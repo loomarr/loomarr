@@ -49,10 +49,12 @@ type fakePlayoutSessions struct {
 	admitErr     error
 	denyProgram  bool
 	programCosts []bool
-	still        playout.Still
-	stillOK      bool
-	stillErr     error
-	stillAsked   []string
+	// observedCosts records ObserveProgramCost: the class and media of each finished live programme.
+	observedCosts []observedProgramCost
+	still         playout.Still
+	stillOK       bool
+	stillErr      error
+	stillAsked    []string
 }
 
 // attachRecord is one Attach call — its channel and codec target.
@@ -83,18 +85,22 @@ func (f *fakePlayoutSessions) Capacity() int {
 	return f.capacity
 }
 
-func (f *fakePlayoutSessions) ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, p playout.Progress) {
+func (f *fakePlayoutSessions) ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, class playout.StreamClass, p playout.Progress) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.reported = append(f.reported, reportedProgram{channelID: channelID, target: target, encoder: enc, transcoding: transcoding, progress: p})
+	f.reported = append(f.reported, reportedProgram{channelID: channelID, target: target, encoder: enc, transcoding: class != playout.ClassCopy, progress: p})
 }
 
-func (f *fakePlayoutSessions) AdmitProgram(_ string, _ playout.EncodePlan, transcoding bool) bool {
+func (f *fakePlayoutSessions) AdmitProgram(_ context.Context, _ string, _ playout.EncodePlan, class playout.StreamClass) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.programCosts = append(f.programCosts, transcoding)
+	f.programCosts = append(f.programCosts, class != playout.ClassCopy)
 	return !f.denyProgram
 }
+
+func (f *fakePlayoutSessions) SessionRung(string, playout.EncodePlan) (int, bool) { return 0, false }
+
+func (f *fakePlayoutSessions) Budget() playout.BudgetSnapshot { return playout.BudgetSnapshot{} }
 
 func (f *fakePlayoutSessions) Attach(_ context.Context, channelID string, target playout.EncodePlan) (<-chan []byte, func(), error) {
 	f.mu.Lock()
@@ -899,4 +905,15 @@ func TestPlayoutStill_RejectsMissingOrWrongToken(t *testing.T) {
 	if len(f.stillAsked) != 0 {
 		t.Fatal("an unauthorized request reached the still provider")
 	}
+}
+
+type observedProgramCost struct {
+	class      playout.StreamClass
+	cpu, media time.Duration
+}
+
+func (f *fakePlayoutSessions) ObserveProgramCost(_ string, _ playout.EncodePlan, class playout.StreamClass, cpu, media time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.observedCosts = append(f.observedCosts, observedProgramCost{class: class, cpu: cpu, media: media})
 }

@@ -89,7 +89,7 @@ func (s *Server) channelFormats(ctx context.Context, in *channelIDInput) (*chann
 	}
 	derived := playout.DeriveChannelFormats(lineup)
 	out.Body.LineupPremium = string(derived.Premium)
-	host := playout.HostFor(s.playoutResolver.Profile(ctx).Encoder,
+	host := playout.HostFor(s.playoutResolver.Profile(ctx, 0).Encoder,
 		s.playoutTonemap != nil && s.playoutTonemap(), s.gpuTonemapFilters())
 	aired, why := derived.OnHost(host)
 	out.Body.PremiumDropped = why

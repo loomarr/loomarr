@@ -150,6 +150,11 @@ func loadCapabilityEvidence(root, fingerprint string, now time.Time) (capability
 }
 
 func storeCapabilityEvidence(root string, evidence capabilityEvidence) error {
+	return writeEvidence(root, capabilityEvidenceName, evidence)
+}
+
+// writeEvidence publishes one host-measurement file atomically: temp file, fsync, rename, dir fsync.
+func writeEvidence(root, name string, v any) error {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		return fmt.Errorf("playout: empty capability evidence root")
@@ -157,7 +162,7 @@ func storeCapabilityEvidence(root string, evidence capabilityEvidence) error {
 	if err := os.MkdirAll(root, 0o750); err != nil {
 		return fmt.Errorf("playout: create capability evidence root: %w", err)
 	}
-	body, err := json.Marshal(evidence)
+	body, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("playout: encode capability evidence: %w", err)
 	}
@@ -185,7 +190,7 @@ func storeCapabilityEvidence(root string, evidence capabilityEvidence) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpPath, filepath.Join(root, capabilityEvidenceName)); err != nil {
+	if err := os.Rename(tmpPath, filepath.Join(root, name)); err != nil {
 		return fmt.Errorf("playout: publish capability evidence: %w", err)
 	}
 	committed = true

@@ -603,7 +603,7 @@ func TestHLSManager_SpeculativeWarmDoesNotReclaimAtLaterProgramBoundary(t *testi
 		t.Fatalf("copy-only speculative warm should use spare capacity: %v", err)
 	}
 	defer detachWarm()
-	if sessions.AdmitProgram("adjacent", PlanFull, true) {
+	if sessions.AdmitProgram(t.Context(), "adjacent", PlanFull, ClassSDR) {
 		t.Fatal("speculative warm reclaimed foreground capacity when its next programme needed a transcode")
 	}
 	select {
@@ -676,7 +676,7 @@ func TestHLSManager_WarmIdleHotSetEvictionRetiresRemuxAssets(t *testing.T) {
 		if _, err := encoder(channelID).w.Write([]byte("transport")); err != nil {
 			t.Fatal(err)
 		}
-		sessions.ReportProgram(channelID, PlanFull, EncoderSoftware, false, Progress{})
+		sessions.ReportProgram(channelID, PlanFull, EncoderSoftware, ClassCopy, Progress{})
 		// The fan-out pump is asynchronous; allow it to publish the byte before release makes the
 		// HLS sink idle. This mirrors the established capacity-reclamation test above.
 		time.Sleep(20 * time.Millisecond)

@@ -9,9 +9,9 @@ const preparedSegmentDurationMS = 2_000
 // while fixing the codec contract to the baseline every supported client can decode. A future
 // richer rendition is another contract selected by capability, never a platform-named cache.
 func CanonicalPreparedRendition(tier Tier) prepared.RenditionContract {
-	// Capacity 2 with no active work selects the tier's top rung. Encoder is irrelevant to the
-	// returned media identity: software and hardware implementations must produce the same contract.
-	profile := Resolve(tier, EncoderSoftware, 2, 0)
+	// The tier's top rung. Encoder is irrelevant to the returned media identity: software and
+	// hardware implementations must produce the same contract.
+	profile := Resolve(tier, EncoderSoftware, 0)
 	return prepared.RenditionContract{
 		VideoCodec:        "h264",
 		VideoProfile:      "high",

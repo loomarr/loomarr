@@ -1,6 +1,9 @@
 package playout
 
-import "strconv"
+import (
+	"sort"
+	"strconv"
+)
 
 // Quality selection (§9.1). The policy is "best picture the hardware sustains, then adapt
 // as channels are added" — so quality is a RUNTIME property derived from
@@ -77,86 +80,34 @@ func TierFor(s string) Tier {
 	}
 }
 
-// Resolve picks the profile a channel should encode at right now.
-//
-//	tier     — what the operator asked for
-//	enc      — the encoder Detect chose (or an operator override)
-//	capacity — measured concurrent-channel headroom for this box
-//	active   — channels already encoding, NOT counting this one
-//
-// The step-down is proportional to how much of the measured capacity is already committed,
-// so a box that measured 9 channels degrades later than one that measured 2. Capacity of 0
-// or 1 means "we could not measure, or this box barely manages one" — take the bottom rung
-// and stop guessing.
-func Resolve(tier Tier, enc Encoder, capacity, active int) Profile {
-	l := ladders[tier]
-	if len(l) == 0 {
-		l = ladders[DefaultTier]
+func ladderFor(tier Tier) []rung {
+	if l := ladders[tier]; len(l) > 0 {
+		return l
 	}
+	return ladders[DefaultTier]
+}
 
-	idx := 0
-	switch {
-	case capacity <= 1:
-		// Unmeasured or genuinely tiny. The bottom rung is the honest answer.
-		idx = len(l) - 1
-	default:
-		// Committed fraction of capacity → position on the ladder. At <50% committed we
-		// stay on the best rung; each further quarter steps down one.
-		//
-		// `active` counts channels ALREADY running, so the first channel on an idle box
-		// always gets the top rung — which is the "best picture" half of the policy.
-		used := float64(active) / float64(capacity)
-		switch {
-		case used < 0.5:
-			idx = 0
-		case used < 0.75:
-			idx = 1
-		case used < 1.0:
-			idx = 2
-		default:
-			idx = len(l) - 1
-		}
+// LadderHeights are the tier's rung output heights, best first: the ResourceBudget's rungs.
+func LadderHeights(tier Tier) []int {
+	l := ladderFor(tier)
+	out := make([]int, len(l))
+	for i, r := range l {
+		out[i] = r.height
 	}
-	if idx >= len(l) {
-		idx = len(l) - 1
-	}
+	return out
+}
 
-	r := l[idx]
+// Resolve is the profile at a ladder rung. The rung is the one the ResourceBudget admitted the
+// session at (the best that fits; it drops a rung before refusing) and stays pinned for the
+// session's lifetime. A rung past the bottom clamps to the bottom.
+func Resolve(tier Tier, enc Encoder, rungIndex int) Profile {
+	l := ladderFor(tier)
+	r := l[min(max(rungIndex, 0), len(l)-1)]
 	return Profile{
 		Width: r.width, Height: r.height, Framerate: r.framerate,
 		VideoBitrate: r.videoBitrate, AudioBitrate: r.audioBitrate,
 		Encoder: enc,
 	}
-}
-
-// Admit reports whether a new session may start, given a COST-AWARE budget (§9.1 V49).
-//
-// The bound is not "how many sessions" but "how many concurrent TRANSCODES the box can sustain",
-// because the transcode is what consumes the GPU. A `-c copy` session (an h264 channel, or an HEVC
-// channel to an HEVC-capable client) costs ~nothing and is ALWAYS admitted — it never blocks another
-// channel. Only a session that re-encodes video counts against `budget`.
-//
-// This is what makes a channel watched at two plans (baseline + hevc8) cost ONE, not two: the hevc8
-// copy is free, only the baseline transcode counts. And `budget` is the box's MEASURED capacity
-// (Detect), optionally shaded by live VRAM headroom, not a static magic number.
-//
-//   - newCost is the incoming session's estimated cost (1 if it will transcode video, else 0).
-//   - committed is the summed cost of sessions already running.
-//   - budget <= 0 means "unmeasured/unconfigured" — do not block playout on a missing number.
-//
-// Refusing is deliberate and is the one place this policy says no. Admitting an N+1th transcode that
-// makes all N stutter is worse than declining it: the operator sees a clear "at capacity" message and
-// can raise the cap or lower the tier, whereas universal stutter presents as "playout is broken".
-// (This is the bound viewra lacked — its manager EVICTED sessions to make room, which for playout
-// would mean one viewer tuning in kills someone else's channel.)
-func Admit(budget, committed, newCost int) bool {
-	if budget <= 0 {
-		return true // unmeasured: never block playout on a missing/zero capacity
-	}
-	if newCost <= 0 {
-		return true // a copy costs ~no GPU — always admit, it cannot starve a transcode
-	}
-	return committed+newCost <= budget
 }
 
 // qualityArgs returns rate-control args for software encoders, which do better with a
@@ -196,4 +147,25 @@ func (p Profile) qualityArgs() []string {
 		crf = 26
 	}
 	return []string{"-crf", strconv.Itoa(crf)}
+}
+
+// ProbeOutputs are the outputs the class probe measures: every rung height any tier uses, tallest
+// first, each at the highest frame rate a tier gives it, so a tier change never meets an
+// unmeasured height and no rung is costed below what it runs at.
+func ProbeOutputs(enc Encoder) []Profile {
+	best := map[int]rung{}
+	for _, l := range ladders {
+		for _, r := range l {
+			if b, ok := best[r.height]; !ok || r.framerate > b.framerate {
+				best[r.height] = r
+			}
+		}
+	}
+	out := make([]Profile, 0, len(best))
+	for _, r := range best {
+		out = append(out, Profile{Width: r.width, Height: r.height, Framerate: r.framerate,
+			VideoBitrate: r.videoBitrate, AudioBitrate: r.audioBitrate, Encoder: enc})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Height > out[j].Height })
+	return out
 }

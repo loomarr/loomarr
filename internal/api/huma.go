@@ -18,7 +18,6 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/invitation"
-	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/playout"
@@ -256,9 +255,6 @@ type Server struct {
 	// replacing an on-disk-size estimate that misreported an unloaded model as resident. Returns
 	// (0, "") when nothing is resident or the provider is hosted; nil ⇒ the doctor omits the header.
 	residentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// encodePool is the one host-wide hardware-encode admission boundary shared with preparation.
-	// Nil preserves the pre-gate behavior for tests and installs without a capability probe.
-	encodePool *media.EncodePool
 	// schemaOnly is set ONLY by ExportOpenAPI (§7.1): it makes the register* funcs
 	// emit every operation's SCHEMA into the spec even when its live service is nil,
 	// so the exported `api/openapi.yaml` is complete (auth, bootstrap, import, sync)
@@ -1143,9 +1139,6 @@ type Options struct {
 	// /api/ps probe (§9.1 V47 doctor). Powers the doctor's TRUE contention header. Nil for a hosted
 	// provider or an install without a local LLM; the composition root wires it to llm ListResident.
 	ResidentLLMVRAM func(ctx context.Context) (gib float64, model string)
-	// EncodePool is the one host-wide hardware-encode admission boundary. Live playout uses
-	// foreground leases; the readiness planner uses its preemptible background lease.
-	EncodePool *media.EncodePool
 	// LiveConfig reads a setting's live resolved value so feature routes gate on the
 	// CURRENT config (a saved connection enables the route with no restart, §8.1).
 	// The composition root passes settings.Service.String; unit tests omit it.

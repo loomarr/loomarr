@@ -111,8 +111,8 @@ func TestLive_EveryLadderRungEncodes(t *testing.T) {
 	t.Logf("verifying ladders against %s", enc)
 
 	for _, tier := range []Tier{TierQuality, TierBalanced, TierEfficient} {
-		for active := 0; active <= 8; active++ {
-			p := Resolve(tier, enc, 8, active)
+		for rung := range LadderHeights(tier) {
+			p := Resolve(tier, enc, rung)
 			args := []string{"-hide_banner", "-loglevel", "error"}
 			args = append(args, deviceInitArgs(enc)...)
 			args = append(args, "-f", "lavfi", "-i",
@@ -127,8 +127,8 @@ func TestLive_EveryLadderRungEncodes(t *testing.T) {
 			b, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
 			cancel()
 			if err != nil {
-				t.Errorf("%s active=%d (%dx%d @%dk) does not encode: %v\n%s",
-					tier, active, p.Width, p.Height, p.VideoBitrate, err, b)
+				t.Errorf("%s rung=%d (%dx%d @%dk) does not encode: %v\n%s",
+					tier, rung, p.Width, p.Height, p.VideoBitrate, err, b)
 			}
 		}
 	}

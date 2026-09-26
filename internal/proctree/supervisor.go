@@ -116,3 +116,17 @@ type Option func(*options)
 // equivalent and is inherited by descendants). For batch media work that must never compete
 // with playback or the app for CPU.
 func LowPriority() Option { return func(o *options) { o.lowPriority = true } }
+
+// CPUTime is the exited command's user+system CPU time. ok is false until Wait has reaped it.
+func (s *Supervisor) CPUTime() (cpu time.Duration, ok bool) {
+	select {
+	case <-s.exited:
+	default:
+		return 0, false
+	}
+	state := s.cmd.ProcessState
+	if state == nil {
+		return 0, false
+	}
+	return state.UserTime() + state.SystemTime(), true
+}

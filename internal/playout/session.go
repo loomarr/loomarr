@@ -57,12 +57,11 @@ type Session struct {
 	// the dashboard shows which audience an encoder serves.
 	Plan EncodePlan
 
-	// cost is this session's contribution to the manager's committedCost — 1 if it TRANSCODES video,
-	// 0 if it `-c copy`s (§9.1 V49 admission). It starts from the tune-time estimate and transitions
-	// atomically to each real program's cost before that child starts; progress reports repeat the
-	// transition idempotently for legacy callers.
-	// Read/written under Manager.mu (the manager owns the budget accounting), not the session mu.
-	cost int
+	// lease is this session's admission in the ResourceBudget (#1512 G5): its stream class (copy or a
+	// transcode class) and the quality rung it was admitted at, pinned for the session's lifetime. It
+	// starts from the tune-time estimate and is reclassed to each real program's class before that
+	// child starts. Set under Manager.mu before the session is published; released on teardown.
+	lease *Lease
 
 	// cancel stops the encoder. The context IS the lifetime (process.go) — there is no
 	// separate "stop the ffmpeg" path that could disagree with it. nil until the spawn completes
@@ -198,20 +197,14 @@ type Manager struct {
 
 	// grace is how long a channel keeps encoding after its last viewer leaves.
 	grace time.Duration
-	// budget returns the CURRENT admission budget: how many concurrent VIDEO TRANSCODES this box can
-	// sustain right now (§9.1 V49). A func, not a fixed int, because it is DYNAMIC — the measured
-	// encoder capacity (Detect) shaded by live VRAM headroom (a resident LLM leaves room for fewer
-	// hardware encodes) and capped by any operator override. Re-read on every admission so a settings
-	// change or a model loading/unloading re-applies without a restart. <=0 ⇒ unmeasured, never block.
-	budget func() int
+	// budget is the one admission ledger (#1512 G5, #1505): session attach and every program start
+	// consult it, and so does the hardware encode pool through it. Its facts are re-read on every
+	// admission, so a settings change, a cgroup change or a re-measurement applies without a restart.
+	budget *ResourceBudget
 	// estimateCost may prove a cold session will begin from an already prepared copy-only block.
 	// It runs outside mu so independent Channel lookups remain parallel. Nil keeps the conservative
-	// one-slot reservation until the first live program report.
+	// one-transcode reservation until the first live program report.
 	estimateCost func(context.Context, string, EncodePlan) int
-	// committedCost is the summed admission cost of live sessions — the number of them currently
-	// TRANSCODING video (a `-c copy` session costs 0). Compared against budget() to admit. Guarded by
-	// mu; each session's contribution is tracked on the Session (cost) so a report/teardown adjusts it.
-	committedCost int
 
 	// onChange fires after the live-session set changes — a channel starting or stopping.
 	// The composition root uses it to publish an SSE `playout` frame so the dashboard learns
@@ -295,18 +288,44 @@ type Spawner func(ctx context.Context, channelID string, plan EncodePlan) (*Proc
 // budget returns the CURRENT admission budget (concurrent video transcodes this box can sustain);
 // see the field doc. A nil budget means "unmeasured" — admission never blocks (Admit's budget<=0
 // path), which is the safe default for a unit Manager built without capacity wiring.
-func NewManager(spawn Spawner, budget func() int, grace time.Duration, log *slog.Logger) *Manager {
+//
+// capacity is a whole-transcode budget (<=0: unmeasured, never block) for callers without measured
+// per-class costs; WithBudget replaces it with the host's ResourceBudget.
+func NewManager(spawn Spawner, capacity func() int, grace time.Duration, log *slog.Logger) *Manager {
 	if grace <= 0 {
 		grace = DefaultGrace
 	}
-	if budget == nil {
-		budget = func() int { return 0 }
+	if capacity == nil {
+		capacity = func() int { return 0 }
 	}
 	return &Manager{
 		spawn:  spawn,
-		budget: budget, grace: grace, log: log,
+		budget: NewResourceBudget(func() BudgetFacts { return BudgetFacts{MeasuredCapacity: capacity()} }),
+		grace:  grace, log: log,
 		sessions: map[sessionKey]*Session{},
 	}
+}
+
+// WithBudget makes budget the manager's admission ledger. Call before the manager is shared.
+func (m *Manager) WithBudget(budget *ResourceBudget) *Manager {
+	m.budget = budget
+	return m
+}
+
+// Ledger is the manager's admission ledger.
+func (m *Manager) Ledger() *ResourceBudget { return m.budget }
+
+// Budget snapshots the admission ledger for the status endpoint.
+func (m *Manager) Budget() BudgetSnapshot { return m.budget.Snapshot() }
+
+// SessionRung is the ladder rung a live session was admitted at; it never changes for the
+// session's lifetime, so every program of the session encodes the same geometry.
+func (m *Manager) SessionRung(channelID string, plan EncodePlan) (int, bool) {
+	s := m.session(channelID, plan)
+	if s == nil || s.lease == nil {
+		return 0, false
+	}
+	return s.lease.Rung(), true
 }
 
 // DefaultGrace is how long an encoder survives its last viewer.
@@ -398,6 +417,13 @@ func (l sinkLease) SetActive(active bool) bool {
 // outside this method so byte-channel viewers and the in-process HLS sink share all admission,
 // spawn-race, grace, and failure handling rather than growing two subtly different managers.
 func (m *Manager) acquire(ctx context.Context, key sessionKey, reclaimIdle bool) (*Session, error) {
+	// A speculative warm cannot reclaim, so it may drop a rung at once. Real demand first reclaims
+	// idle warm work at its top rung and drops a rung only when nothing is left to reclaim.
+	return m.acquireAt(ctx, key, reclaimIdle, !reclaimIdle)
+}
+
+// acquireAt is acquire with dropRung: whether the budget may admit below the first rung.
+func (m *Manager) acquireAt(ctx context.Context, key sessionKey, reclaimIdle, dropRung bool) (*Session, error) {
 
 	// ⚠ **The find-or-create is atomic, but the SPAWN is not held under m.mu.** The lock protects
 	// only the map decision (reuse an existing session, or reserve a placeholder for a new one);
@@ -418,7 +444,7 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey, reclaimIdle bool)
 		<-s.ready
 		if s.initErr != nil {
 			m.discardFailed(key, s)
-			return m.acquire(ctx, key, reclaimIdle)
+			return m.acquireAt(ctx, key, reclaimIdle, dropRung)
 		}
 		return s, nil
 	}
@@ -427,9 +453,11 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey, reclaimIdle bool)
 	// A prepared lookup can prove this exact cold start is copy-only before admission. Keep it
 	// outside the Manager lock: the lookup reads durable schedule/readiness state, and serializing
 	// unrelated Channels behind that I/O would recreate the multi-Channel cold-start convoy.
-	newCost := key.plan.EstimatedCost()
-	if m.estimateCost != nil && m.estimateCost(ctx, key.channel, key.plan) == 0 {
-		newCost = 0
+	// The first program's real class is unknown until it is resolved; a transcode reserves the
+	// cheapest transcode class and each program start reclasses the lease (AdmitProgram).
+	class := ClassSDR
+	if key.plan.EstimatedCost() == 0 || (m.estimateCost != nil && m.estimateCost(ctx, key.channel, key.plan) == 0) {
+		class = ClassCopy
 	}
 
 	// Another caller may have reserved this key while the estimate ran. Join its placeholder rather
@@ -443,7 +471,7 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey, reclaimIdle bool)
 		<-s.ready
 		if s.initErr != nil {
 			m.discardFailed(key, s)
-			return m.acquire(ctx, key, reclaimIdle)
+			return m.acquireAt(ctx, key, reclaimIdle, dropRung)
 		}
 		return s, nil
 	}
@@ -451,20 +479,24 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey, reclaimIdle bool)
 	// not sessions: a `-c copy` session (an h264 channel, or HEVC to an HEVC-capable client) costs 0
 	// and is always admitted, so a channel watched at two plans (baseline + hevc8) costs ONE (the
 	// baseline transcode), not two — the plan-split no longer halves capacity. The incoming cost is
-	// estimated here and atomically transitioned to the real cost before each program child starts.
-	// Checked under the lock against the live committedCost so parallel starts cannot
-	// overshoot the budget. A full budget may reclaim proven-warm work with zero viewer demand, but
-	// never an actively watched session.
-	if !Admit(m.budget(), m.committedCost, newCost) {
+	// estimated here and reclassed to the real class before each program child starts. Reserved under
+	// the lock, atomically with the placeholder, so parallel starts cannot overshoot the budget; the
+	// order is fixed (#1512): a real viewer reclaims proven-warm work with zero viewer demand first
+	// (never an actively watched session), then drops a rung, then is refused.
+	lease, err := m.budget.Reserve(AdmitRequest{Class: class, NoRungDrop: !dropRung})
+	if err != nil {
 		candidates := make([]idleCandidate, 0, len(m.sessions))
 		for candidateKey, candidateSession := range m.sessions {
-			if candidateSession.cost > 0 {
+			if candidateSession.lease.Transcoding() {
 				candidates = append(candidates, idleCandidate{key: candidateKey, session: candidateSession})
 			}
 		}
 		m.mu.Unlock()
 		if reclaimIdle && reclaimOldestIdle(candidates) {
-			return m.acquire(ctx, key, reclaimIdle)
+			return m.acquireAt(ctx, key, reclaimIdle, dropRung)
+		}
+		if !dropRung {
+			return m.acquireAt(ctx, key, reclaimIdle, true)
 		}
 		if m.observer != nil {
 			m.observer.PlayoutSessionStarted("capacity")
@@ -473,26 +505,33 @@ func (m *Manager) acquire(ctx context.Context, key sessionKey, reclaimIdle bool)
 	}
 	// Reserve the slot with a not-yet-spawned placeholder, then spawn outside the lock.
 	s := m.newPlaceholder(key.channel, key.plan, reclaimIdle)
-	s.cost = newCost
-	m.committedCost += newCost
+	s.lease = lease
 	m.sessions[key] = s
 	m.mu.Unlock()
 
-	m.spawnPlaceholder(ctx, s)
+	// The encode-pool slot (preparation preemption, host-memory gate) may wait, so it is taken
+	// outside the lock; same-key callers wait on s.ready meanwhile.
+	if lease.Hold(ctx) {
+		m.spawnPlaceholder(ctx, s)
+	} else {
+		s.initErr = ErrAtCapacity
+		close(s.ready)
+	}
 	<-s.ready
 	if s.initErr != nil {
-		// Spawn failed: drop the placeholder so the next viewer starts fresh, and RELEASE its cost
-		// reservation (§9.1 V49) — a session that never started must not hold a transcode slot.
+		// Spawn failed: drop the placeholder so the next viewer starts fresh, and RELEASE its lease
+		// (§9.1 V49) — a session that never started must not hold a transcode slot.
 		m.mu.Lock()
 		if m.sessions[key] == s {
 			delete(m.sessions, key)
-			m.committedCost -= s.cost
-			s.cost = 0
 		}
 		m.mu.Unlock()
+		lease.Release()
 		if m.observer != nil {
 			result := "spawn_error"
-			if errors.Is(s.initErr, context.Canceled) {
+			if errors.Is(s.initErr, ErrAtCapacity) {
+				result = "capacity"
+			} else if errors.Is(s.initErr, context.Canceled) {
 				result = "canceled"
 			} else {
 				m.observer.PlayoutProcessFailure("parent")
@@ -588,8 +627,7 @@ func (m *Manager) discardFailed(key sessionKey, s *Session) {
 	m.mu.Lock()
 	if m.sessions[key] == s {
 		delete(m.sessions, key)
-		m.committedCost -= s.cost
-		s.cost = 0
+		s.lease.Release()
 	}
 	m.mu.Unlock()
 }
@@ -598,8 +636,7 @@ func (m *Manager) discardClosed(key sessionKey, s *Session) {
 	m.mu.Lock()
 	if m.sessions[key] == s {
 		delete(m.sessions, key)
-		m.committedCost -= s.cost
-		s.cost = 0
+		s.lease.Release()
 	}
 	m.mu.Unlock()
 }
@@ -1080,8 +1117,7 @@ func (m *Manager) forget(key sessionKey, closing *Session) {
 	m.mu.Lock()
 	removed := false
 	if m.sessions[key] == closing {
-		m.committedCost -= closing.cost
-		closing.cost = 0
+		closing.lease.Release()
 		delete(m.sessions, key)
 		removed = true
 	}
@@ -1110,10 +1146,10 @@ func (m *Manager) ActiveCount() int {
 // Capacity reports the current admission budget — how many concurrent VIDEO TRANSCODES the box can
 // sustain right now (§9.1 V49), the denominator in the dashboard's "2 / 4" load line. It is the
 // measured/live budget, not a static setting, so the dashboard shows real headroom (which shrinks
-// when a model goes resident and grows when it unloads). Read outside m.mu — budget() is its own
-// source of truth and takes no manager lock.
+// when a model goes resident and grows when it unloads). It is the budget's 1080p SDR capacity at
+// the top rung; 0 means unmeasured. The budget takes no manager lock.
 func (m *Manager) Capacity() int {
-	return m.budget()
+	return m.budget.Capacity()
 }
 
 // Stats snapshots every live encoder for the dashboard (§12, V16).
@@ -1133,7 +1169,7 @@ func (m *Manager) Stats(now time.Time) []SessionStat {
 	m.mu.Lock()
 	sessions := make([]candidate, 0, len(m.sessions))
 	for _, s := range m.sessions {
-		sessions = append(sessions, candidate{session: s, transcodeCost: s.cost})
+		sessions = append(sessions, candidate{session: s, transcodeCost: s.lease.cost()})
 	}
 	m.mu.Unlock()
 
@@ -1207,7 +1243,7 @@ func (s *Session) statIfLive(now time.Time, transcodeCost int) (SessionStat, boo
 //
 // Progress samples are a LATENCY signal, never load-bearing (§8) — the same discipline the SSE
 // bus documents. Dropping one costs a stale number for a second, nothing more.
-func (m *Manager) ReportProgram(channelID string, plan EncodePlan, enc Encoder, transcoding bool, p Progress) {
+func (m *Manager) ReportProgram(channelID string, plan EncodePlan, enc Encoder, class StreamClass, p Progress) {
 	s := m.session(channelID, plan)
 	if s == nil {
 		return
@@ -1216,54 +1252,39 @@ func (m *Manager) ReportProgram(channelID string, plan EncodePlan, enc Encoder, 
 	s.encoder = enc
 	s.last = p
 	s.mu.Unlock()
-	// startChild admitted this real cost before spawning. Calling the same transition here keeps
+	// startChild admitted this real class before spawning. Calling the same transition here keeps
 	// legacy/report-only callers correct and is idempotent for the production progress path.
-	_ = m.AdmitProgram(channelID, plan, transcoding)
+	_ = m.AdmitProgram(context.Background(), channelID, plan, class)
 }
 
-// AdmitProgram atomically transitions an existing session between copy and video-transcode cost.
-// A prepared session starts at zero, but a later prepared miss must earn capacity before its live
-// child starts; otherwise many cheap sessions could all cross an Airing boundary and oversubscribe
-// the measured encoder budget together.
-func (m *Manager) AdmitProgram(channelID string, plan EncodePlan, transcoding bool) bool {
+// AdmitProgram reclasses an existing session's lease to the class of the program about to start
+// (ClassCopy for a copy). A prepared or copy session starts free, but a later transcode must earn
+// capacity before its live child starts; otherwise many cheap sessions could all cross an Airing
+// boundary and oversubscribe the budget together. A session already transcoding always moves to
+// the next program's class (see Lease.Reclass): a watched channel never stops at a boundary.
+func (m *Manager) AdmitProgram(ctx context.Context, channelID string, plan EncodePlan, class StreamClass) bool {
 	key := sessionKey{channel: channelID, plan: plan}
-	desiredCost := 0
-	if transcoding {
-		desiredCost = 1
-	}
 	for {
 		m.mu.Lock()
 		s := m.sessions[key]
+		m.mu.Unlock()
 		if s == nil {
-			m.mu.Unlock()
 			return false
 		}
-		if s.cost == desiredCost {
-			m.mu.Unlock()
-			return true
-		}
-		if desiredCost == 0 {
-			m.committedCost -= s.cost
-			s.cost = 0
-			m.mu.Unlock()
-			m.notifyChange()
-			return true
-		}
-		incoming := desiredCost - s.cost
-		if Admit(m.budget(), m.committedCost, incoming) {
-			m.committedCost += incoming
-			s.cost = desiredCost
-			m.mu.Unlock()
-			m.notifyChange()
+		before := s.lease.Class()
+		if s.lease.Reclass(ctx, class) {
+			if before != class {
+				m.notifyChange()
+			}
 			return true
 		}
 		if !s.reclaimIdle.Load() {
-			m.mu.Unlock()
 			return false
 		}
+		m.mu.Lock()
 		candidates := make([]idleCandidate, 0, len(m.sessions))
 		for candidateKey, candidateSession := range m.sessions {
-			if candidateKey != key && candidateSession.cost > 0 {
+			if candidateKey != key && candidateSession.lease.Transcoding() {
 				candidates = append(candidates, idleCandidate{key: candidateKey, session: candidateSession})
 			}
 		}
@@ -1271,5 +1292,13 @@ func (m *Manager) AdmitProgram(channelID string, plan EncodePlan, transcoding bo
 		if !reclaimOldestIdle(candidates) {
 			return false
 		}
+	}
+}
+
+// ObserveProgramCost refines the session lease's class cost from a finished live programme
+// (Lease.ObserveCPU). A programme that outlived its session is dropped, like ReportProgram.
+func (m *Manager) ObserveProgramCost(channelID string, plan EncodePlan, class StreamClass, cpu, media time.Duration) {
+	if s := m.session(channelID, plan); s != nil {
+		s.lease.ObserveCPU(class, cpu, media)
 	}
 }

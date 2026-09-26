@@ -274,12 +274,8 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 
 	var manager *playout.Manager
 	if config.QualityTier != "" {
-		liveResolver.profile = func() playout.Profile {
-			active := 0
-			if manager != nil {
-				active = manager.ActiveCount()
-			}
-			return playout.Resolve(config.QualityTier, target.encoder, config.Capacity, active)
+		liveResolver.profile = func(rung int) playout.Profile {
+			return playout.Resolve(config.QualityTier, target.encoder, rung)
 		}
 	}
 	spawner := func(spawnCtx context.Context, channelID string, plan playout.EncodePlan) (*playout.Process, error) {
@@ -298,7 +294,7 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 		}
 		var spawnErr error
 		preparedStart, _ := preparedOrigin.MPEGTSReady(spawnCtx, channelID, plan)
-		process, spawnErr = playout.BlockSpawner(ffmpeg, playout.BlockProfile{AudioBitrate: liveResolver.Profile(spawnCtx).AudioBitrate, PreparedStart: preparedStart}, clockedSource, logger, processManager)(spawnCtx, channelID, plan)
+		process, spawnErr = playout.BlockSpawner(ffmpeg, playout.BlockProfile{AudioBitrate: liveResolver.Profile(spawnCtx, 0).AudioBitrate, PreparedStart: preparedStart}, clockedSource, logger, processManager)(spawnCtx, channelID, plan)
 		if spawnErr != nil {
 			return nil, spawnErr
 		}
@@ -332,8 +328,8 @@ func NewPlayoutCertificationTarget(ctx context.Context, config PlayoutCertificat
 	handler := api.Router(logger, api.Options{
 		Store: st, Auth: api.NewTokenAuthorizer(admin), Log: logger, Metrics: recorder, MetricsToken: metricsToken,
 		PlayoutSecret: func() string { return device }, Playout: origin, PlayoutObserver: manager,
-		PreparedObserver: preparedObserver, EncodePool: target.encodePool,
-		PlayoutResolver: liveResolver,
+		PreparedObserver: preparedObserver,
+		PlayoutResolver:  liveResolver,
 		PlayoutEncoder: func(encodeCtx context.Context, args []string, progress func(playout.Progress)) (*playout.Process, error) {
 			spec, _ := diagnostics.ProcessSpecFromContext(encodeCtx)
 			process, spawnErr := playout.StartObserved(encodeCtx, ffmpeg, args, logger, progress, processManager, spec)
@@ -840,7 +836,7 @@ type syntheticLiveResolver struct {
 	tracks    map[string]playout.MediaTracks
 	schedule  syntheticProgrammeSchedule
 	now       func() time.Time
-	profile   func() playout.Profile
+	profile   func(rung int) playout.Profile
 }
 
 func (r syntheticLiveResolver) AiringNow(_ context.Context, channelID string) (playout.Airing, string, error) {
@@ -858,9 +854,9 @@ func (r syntheticLiveResolver) currentTime() time.Time {
 	}
 	return time.Now().UTC()
 }
-func (r syntheticLiveResolver) Profile(context.Context) playout.Profile {
+func (r syntheticLiveResolver) Profile(_ context.Context, rung int) playout.Profile {
 	if r.profile != nil {
-		return r.profile()
+		return r.profile(rung)
 	}
 	return certificationFixtureProfile()
 }
@@ -906,7 +902,7 @@ func syntheticBlockSource(base, device string, preparedSource playout.BlockSourc
 		if preparedSource != nil {
 			block, err := preparedSource(ctx, blockRequest)
 			if err == nil && block.Content != nil {
-				if manager != nil && !manager.AdmitProgram(channelID, plan, false) {
+				if manager != nil && !manager.AdmitProgram(ctx, channelID, plan, playout.ClassCopy) {
 					_ = block.Content.Close()
 					return playout.Block{}, playout.ErrAtCapacity
 				}

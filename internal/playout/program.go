@@ -121,11 +121,18 @@ func (s *ProgramSpec) DemoteTonemap() bool {
 	if err != nil {
 		return false
 	}
-	switch p.Tonemapper {
+	return demoteTonemapper(&s.GPUTonemap, p.Tonemapper)
+}
+
+// demoteTonemapper drops the GPU tone-mapper a graph used, so the next build takes the next one;
+// false when it used none. The capacity probe's tone-map self-check walks the same order, so the
+// startup check and the live ladder cannot disagree.
+func demoteTonemapper(g *GPUFilters, used string) bool {
+	switch used {
 	case TonemapperOpenCL:
-		s.GPUTonemap.TonemapOpenCL = false
+		g.TonemapOpenCL = false
 	case TonemapperLibplacebo:
-		s.GPUTonemap.Libplacebo = false
+		g.Libplacebo = false
 	default:
 		return false
 	}

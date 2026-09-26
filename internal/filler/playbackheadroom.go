@@ -11,30 +11,11 @@ import (
 // Filler media work is background batch work in the same container as the app and the live
 // streams. A transcode that starts while a channel is playing competes with that stream for CPU,
 // so the pipeline asks before starting one and yields. The interface is deliberately one method:
-// today's implementation counts active playout sessions; the ResourceBudget (phase 1b) will
-// answer from real capacity without this package changing.
+// the playout ResourceBudget implements it, busy while a live transcode holds a lease.
 type PlaybackHeadroom interface {
 	// PlaybackBusy reports whether media work should wait, with a short operator-facing reason
 	// for the log line.
 	PlaybackBusy() (busy bool, reason string)
-}
-
-// ActiveSessionHeadroom is the default PlaybackHeadroom: playback is busy while more than Allowed
-// channels are being served. Active is read on every question, so a session that starts a second
-// after the pipeline began is seen at the next poll.
-type ActiveSessionHeadroom struct {
-	Active  func() int
-	Allowed int
-}
-
-func (h ActiveSessionHeadroom) PlaybackBusy() (bool, string) {
-	if h.Active == nil {
-		return false, ""
-	}
-	if n := h.Active(); n > h.Allowed {
-		return true, "live playout is running"
-	}
-	return false, ""
 }
 
 // PlaybackYield bounds how long a media rung waits for playback to clear.

@@ -521,6 +521,14 @@ func declared() []Setting {
 			Doc: "Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults to a directory beside the database (/data in the container) so the database's own volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart.",
 		},
 		{
+			// Host measurements outlive prepared media (#1512 phase 4 removes it), so they get their
+			// own small root: the capability evidence, the per-class cost table and the synthetic
+			// probe clips. Read once at composition, like prepared_dir.
+			Key: "playout.state_dir", Label: "Playout host measurements", EnvVar: "PLAYOUT_STATE_DIR", Group: GroupPlayout,
+			Kind: KindString, Presentation: PresentationPath, DataSubdir: "playout-state", Advanced: true,
+			Doc: "Where Loomarr keeps what it measured about this server's transcoding: the chosen encoder, the cost of each kind of stream and a few seconds of generated test video (about 20 MB). Defaults to a directory beside the database (/data in the container). Deleting it makes Loomarr measure again at the next start. Changing it takes effect after restart.",
+		},
+		{
 			// A soft cap rather than a quota: active HLS publications win when their protected
 			// bytes exceed it. Hot-applied because it changes only the next retention decision;
 			// publication identity and keyed asset paths do not move.
@@ -545,6 +553,18 @@ func declared() []Setting {
 			Key: "playout.encode_memory_mb", Label: "Host memory per encode", EnvVar: "PLAYOUT_ENCODE_MEMORY_MB", Group: GroupPlayout,
 			Kind: KindInt, Default: "0", Advanced: true, Validate: nonNegativeWholeNumber,
 			Doc: "Host memory, in MiB, one hardware encode is expected to use. Leave at 0 to use 1024 MiB, or more if the encoder capability check measured more on this machine; set it when real encodes here use more, for example 4K or HDR tone mapping. Changes apply to the next encode without restart.",
+		},
+		{
+			// The ResourceBudget's CPU term (#1512 G5): total playout CPU at full GPU capacity.
+			// Hot-applied because the budget re-reads its facts on every admission.
+			Key: "playout.gpu_cpu_millicores", Label: "Playout CPU on GPU hosts", EnvVar: "PLAYOUT_GPU_CPU_MILLICORES", Group: GroupPlayout,
+			Kind: KindInt, Default: "1000", Advanced: true, Validate: positiveWholeNumber,
+			Doc: "On a host that encodes on its GPU, the CPU all live channels together may use, in thousandths of a core (1000 = one core). Loomarr admits no more channels than fit this allowance at each channel's measured CPU cost. Never more than the container's CPU limit. Changes apply to the next channel start without restart.",
+		},
+		{
+			Key: "playout.app_reserve_millicores", Label: "CPU kept for the app on software hosts", EnvVar: "PLAYOUT_APP_RESERVE_MILLICORES", Group: GroupPlayout,
+			Kind: KindInt, Default: "1000", Advanced: true, Validate: nonNegativeWholeNumber,
+			Doc: "On a host with no hardware encoder, the CPU kept free for the rest of Loomarr, in thousandths of a core (1000 = one core). Live channels may use the container's CPU limit (or the CPU count) minus this reserve. Changes apply to the next channel start without restart.",
 		},
 
 		{

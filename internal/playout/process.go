@@ -503,3 +503,12 @@ func (p *Process) finish(err error) {
 		p.run.Finish(diagnostics.ProcessResult{Err: err, Cancelled: cancelled, TerminationReason: reason})
 	})
 }
+
+// CPUTime is the exited encoder's CPU time; ok is false until Wait or Stop has reaped it. The
+// ResourceBudget refines a class's measured CPU cost from it (ResourceBudget.ObserveCPU).
+func (p *Process) CPUTime() (time.Duration, bool) {
+	if p == nil || p.proc == nil {
+		return 0, false
+	}
+	return p.proc.CPUTime()
+}

@@ -62,7 +62,7 @@ GO_TEST_LANE ?=
 # BOTH directions (a tag in the tree but not here, and one here that no build constraint uses)
 # and runs as part of `check`, so the list can neither miss coverage nor overstate it.
 CUSTOM_TAGS   := ffmpeg eval integration
-PLATFORM_TAGS := windows
+PLATFORM_TAGS := linux windows
 TAGS          := $(CUSTOM_TAGS) $(PLATFORM_TAGS)
 SHELL_SCRIPTS := $(sort $(wildcard scripts/*.sh) $(wildcard web/scripts/*.sh))
 comma     := ,

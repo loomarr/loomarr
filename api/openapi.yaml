@@ -564,6 +564,65 @@ components:
         - name
         - role
       type: object
+    BudgetSnapshot:
+      additionalProperties: false
+      properties:
+        classes:
+          additionalProperties:
+            $ref: "#/components/schemas/ClassBudget"
+          type: object
+        cpuAllowance:
+          description: Cores playout may use
+          format: double
+          type: number
+        cpuSource:
+          description: cgroup-v2 | cgroup-v1 | cpu-count
+          type: string
+        hardware:
+          type: boolean
+        inUse:
+          $ref: "#/components/schemas/BudgetUse"
+        operatorCap:
+          description: playout.max_channels (0 = none)
+          format: int64
+          type: integer
+        sessionLimit:
+          description: Encoder session limit (0 = none known)
+          format: int64
+          type: integer
+      required:
+        - hardware
+        - cpuAllowance
+        - sessionLimit
+        - operatorCap
+        - classes
+        - inUse
+      type: object
+    BudgetUse:
+      additionalProperties: false
+      properties:
+        cpuCores:
+          description: Measured CPU cores the admitted streams use
+          format: double
+          type: number
+        gpuShare:
+          description: Fraction of measured GPU throughput in use (1 = full)
+          format: double
+          type: number
+        sessions:
+          description: Admitted sessions, copies included
+          format: int64
+          type: integer
+        transcodes:
+          description: Sessions holding an encoder
+          format: int64
+          type: integer
+      required:
+        - sessions
+        - transcodes
+        - gpuShare
+        - cpuCores
+      type: object
     BulkApproveInputBody:
       additionalProperties: false
       properties:
@@ -1265,6 +1324,35 @@ components:
       required:
         - audio
         - subtitles
+      type: object
+    ClassBudget:
+      additionalProperties: false
+      properties:
+        capacity:
+          description: Streams of this class that fit an idle host (0 = none or unbounded)
+          format: int64
+          type: integer
+        cpuCores:
+          description: Measured CPU cores one stream uses at 1x
+          format: double
+          type: number
+        measured:
+          description: Whether this host measured the class
+          type: boolean
+        speed:
+          description: Measured realtime multiple of one stream alone
+          format: double
+          type: number
+        units:
+          description: Cost relative to one 1080p SDR stream
+          format: double
+          type: number
+      required:
+        - measured
+        - speed
+        - cpuCores
+        - units
+        - capacity
       type: object
     ClearDiscoveryFeedbackInputBody:
       additionalProperties: false
@@ -6952,6 +7040,8 @@ components:
           format: uri
           readOnly: true
           type: string
+        budget:
+          $ref: "#/components/schemas/BudgetSnapshot"
         capability:
           $ref: "#/components/schemas/PlayoutCapability"
         channels:
@@ -6971,6 +7061,7 @@ components:
         - gpu
         - channels
         - prepared
+        - budget
       type: object
     PlayoutTelemetry:
       additionalProperties: false
