@@ -1,7 +1,7 @@
 # Design: one continuous tuner stream per device (#1460)
 
 Status: **proposal for maintainer review. Nothing here is built.** Owner issue: #1460 (piece 5 of
-#1418). Measured at `55086406` (beta.7). Spike code: [`spike/continuous-tuner/`](../../spike/continuous-tuner/)
+#1418). Measured at `55086406` (beta.7). Spike code: [`docs/engineering/spike-continuous-tuner/`](spike-continuous-tuner/)
 (throwaway, its own Go module, not part of any production build).
 
 ## 1. Recommendation
@@ -45,8 +45,8 @@ Two synthetic "channels" were packaged with the exact prepared v3 arguments
 h264 High 4.1, yuv420p, 1280x720 at 30 fps), then copy-remuxed to 200 ms fragments. A page feeds
 channel A's fragments into one `SourceBuffer` (`mode: segments`), then at a control point appends
 channel B's init segment and fragments into the same buffer.
-Harness: `spike/continuous-tuner/{make-media.sh,splice.html,run.mjs,run-firefox-bidi.mjs}`;
-raw output: `spike/continuous-tuner/RESULTS.txt`.
+Harness: `spike-continuous-tuner/{make-media.sh,splice.html,run.mjs,run-firefox-bidi.mjs}`;
+raw output: `spike-continuous-tuner/RESULTS.txt`.
 
 Presented frames come from `requestVideoFrameCallback`; each frame is classified A/B by pixel mean.
 "Splice window" is the worst (wall delta minus media delta) over the 15 frames either side of the
@@ -164,7 +164,7 @@ existing ffmpeg child seeks to the same points, but it also has to start.
 
 ### 4.3 Copy-only in-process splice: feasible, measured
 
-`spike/continuous-tuner/splicecut/` parses a v3 segment (`styp`, `sidx`, one `moof` with video and
+`spike-continuous-tuner/splicecut/` parses a v3 segment (`styp`, `sidx`, one `moof` with video and
 audio `traf`), finds video sync samples, and writes new `moof+mdat` fragments per access point with
 `tfdt` rewritten and audio cut to the same instant. It only copies sample bytes.
 
