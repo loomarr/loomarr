@@ -38,7 +38,6 @@ import (
 
 // House format: 1080p29.97 H.264 High, AAC-LC stereo 48 kHz.
 const (
-	outW, outH  = 1920, 1080
 	fpsNum      = 30000
 	fpsDen      = 1001
 	frameDur    = 90000 * fpsDen / fpsNum // 3003 ticks
@@ -72,6 +71,10 @@ var (
 	flagRC        = flag.String("rc", "-rc_mode QVBR -b:v 8M -maxrate 12M -global_quality 22", "h264_vaapi rate control args")
 	flagInOpts    = flag.String("inopts", "", "extra ffmpeg input options (before -i)")
 	flagCPUProf   = flag.String("cpuprofile", "", "write a CPU profile of the packager")
+	flagMode      = flag.String("mode", "ts", "ts: demux ffmpeg TS and repack in Go; fmp4: ffmpeg muxes fMP4, Go forwards fragments")
+	flagHWAccel   = flag.String("hw", "vaapi", "vaapi | nvenc | sw")
+	flagRes       = flag.Int("res", 1080, "output height: 1080 or 720")
+	outW, outH    = 1920, 1080
 )
 
 var (
@@ -100,25 +103,53 @@ func encoderArgs(it Item, g int) []string {
 		// Scale BEFORE tonemap: tone-mapping at 4K runs 0.7x on the A380.
 		fmtIn, tm = "p010", ",tonemap_vaapi=format=nv12:t=bt709:m=bt709:p=bt709"
 	}
-	vf := fmt.Sprintf("scale_vaapi=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2:format=%s%s,pad_vaapi=w=%d:h=%d,fps=%d/%d,"+
-		"setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left",
+	setp := "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left"
+	vf := fmt.Sprintf("scale_vaapi=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2:format=%s%s,pad_vaapi=w=%d:h=%d,fps=%d/%d,"+setp,
 		outW, outH, fmtIn, tm, outW, outH, fpsNum, fpsDen)
+	hw := []string{"-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128", "-hwaccel_output_format", "vaapi"}
+	venc := []string{"-c:v", "h264_vaapi", "-profile:v", "high", "-level", "4.1", "-bf", "0", "-g", fmt.Sprint(g), "-sei", "0"}
+	switch *flagHWAccel {
+	case "nvenc": // full-GPU graph: decode, scale and encode stay in CUDA memory
+		hw = []string{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"}
+		vf = fmt.Sprintf("scale_cuda=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2:format=nv12,fps=%d/%d,", outW, outH, fpsNum, fpsDen) + setp
+		if it.HDR { // tonemap needs Vulkan: libplacebo downscales and tone-maps in one pass
+			hw = []string{"-init_hw_device", "vulkan=vk:0", "-hwaccel", "vulkan", "-hwaccel_output_format", "vulkan", "-filter_hw_device", "vk"}
+			vf = fmt.Sprintf("libplacebo=w=%d:h=%d:force_original_aspect_ratio=decrease:normalize_sar=1:pad_crop_ratio=0:format=nv12:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=bt.2390,hwdownload,format=nv12,fps=%d/%d,", outW, outH, fpsNum, fpsDen) + setp
+		}
+		venc = []string{"-c:v", "h264_nvenc", "-preset", "p4", "-tune", "ll", "-profile:v", "high", "-level", "4.1", "-bf", "0", "-g", fmt.Sprint(g),
+			"-forced-idr", "1", "-strict_gop", "1", "-no-scenecut", "1"}
+	case "sw": // no GPU: CPU decode, scale (and for HDR, downscale first then tone-map at output size), libx264
+		hw = nil
+		pre := ""
+		if it.HDR {
+			pre = fmt.Sprintf("zscale=w=%d:h=%d:filter=bilinear,zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,", outW, outH)
+		}
+		vf = pre + fmt.Sprintf("scale=w=%d:h=%d:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=%d:%d:-1:-1,format=yuv420p,fps=%d/%d,", outW, outH, outW, outH, fpsNum, fpsDen) + setp
+		venc = []string{"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-level", "4.1", "-bf", "0", "-g", fmt.Sprint(g),
+			"-keyint_min", fmt.Sprint(g), "-sc_threshold", "0", "-x264-params", "open-gop=0"}
+	}
 	af := "aresample=48000,aformat=channel_layouts=stereo"
 	if it.GainDB != 0 {
 		af += fmt.Sprintf(",volume=%.2fdB", it.GainDB)
 	}
 	af += ",apad"
-	args := []string{"-hide_banner", "-nostdin", "-nostats", "-loglevel", "info",
-		"-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128", "-hwaccel_output_format", "vaapi"}
+	args := append([]string{"-hide_banner", "-nostdin", "-nostats", "-loglevel", "info"}, hw...)
 	if it.Seek > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.3f", it.Seek))
 	}
 	args = append(args, strings.Fields(*flagInOpts)...)
 	args = append(args, "-i", it.File, "-map", "0:v:0", "-map", "0:a:0",
 		"-t", fmt.Sprintf("%.3f", it.Dur+0.1), // a little over; the packager trims to the exact frame count
-		"-vf", vf,
-		"-c:v", "h264_vaapi", "-profile:v", "high", "-level", "4.1", "-bf", "0", "-g", fmt.Sprint(g), "-sei", "0")
-	args = append(args, strings.Fields(*flagRC)...)
+		"-vf", vf)
+	args = append(args, venc...)
+	switch *flagHWAccel {
+	case "vaapi":
+		args = append(args, strings.Fields(*flagRC)...)
+	case "nvenc":
+		args = append(args, "-rc", "vbr", "-cq", "22", "-b:v", "5M", "-maxrate", "10M", "-bufsize", "10M")
+	case "sw":
+		args = append(args, "-crf", "22", "-maxrate", "10M", "-bufsize", "10M")
+	}
 	args = append(args, "-af", af, "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
 		"-f", "mpegts", "-muxdelay", "0", "-muxpreload", "0", "pipe:1")
 	return args
@@ -492,6 +523,9 @@ func (p *packager) playlist(w io.Writer, limit float64) int {
 
 func main() {
 	flag.Parse()
+	if *flagRes == 720 {
+		outW, outH = 1280, 720
+	}
 	if *flagCPUProf != "" {
 		f, _ := os.Create(*flagCPUProf)
 		pprof.StartCPUProfile(f)
@@ -537,50 +571,54 @@ func main() {
 	ev("start", map[string]any{"seg": *flagSeg, "g": g, "runahead": *flagRunahead, "items": len(items)})
 	// Item encoders are started back-to-back: the next spawns once the current one's slot is packaged,
 	// which (with run-ahead) is ~runahead seconds before its air time.
-	next := startSource(items[0], g, false)
-	var srcs []*source
-	for i, it := range items {
-		s := next
-		air := t0.Add(time.Duration(p.chanSeconds(p.vNext) * float64(time.Second)))
-		wait := time.Until(air.Add(-2 * time.Second))
-		slate := false
-		if *flagSlate != "" && i > 0 {
-			select {
-			case <-s.firstAU:
-			case <-s.done:
-			case <-time.After(max(wait, 0)):
-			}
-			select {
-			case <-s.firstAU:
-			default: // not ready by air-2s, or the encoder died before its first frame
-				{
-					<-time.After(50 * time.Millisecond)
-					ev("slate_fallback", map[string]any{"item": it.Name, "wait_ms": wait.Milliseconds(), "stderr": s.stderr.String(), "err": fmt.Sprint(s.err)})
-					if s.cmd != nil && s.cmd.Process != nil {
-						s.cmd.Process.Kill()
+	if *flagMode == "fmp4" {
+		runFMP4(items, g, p)
+	} else {
+		next := startSource(items[0], g, false)
+		var srcs []*source
+		for i, it := range items {
+			s := next
+			air := t0.Add(time.Duration(p.chanSeconds(p.vNext) * float64(time.Second)))
+			wait := time.Until(air.Add(-2 * time.Second))
+			slate := false
+			if *flagSlate != "" && i > 0 {
+				select {
+				case <-s.firstAU:
+				case <-s.done:
+				case <-time.After(max(wait, 0)):
+				}
+				select {
+				case <-s.firstAU:
+				default: // not ready by air-2s, or the encoder died before its first frame
+					{
+						<-time.After(50 * time.Millisecond)
+						ev("slate_fallback", map[string]any{"item": it.Name, "wait_ms": wait.Milliseconds(), "stderr": s.stderr.String(), "err": fmt.Sprint(s.err)})
+						if s.cmd != nil && s.cmd.Process != nil {
+							s.cmd.Process.Kill()
+						}
+						s, slate = startSource(Item{}, g, true), true
 					}
-					s, slate = startSource(Item{}, g, true), true
 				}
 			}
+			p.play(it, s, slate)
+			srcs = append(srcs, s)
+			if i+1 < len(items) {
+				next = startSource(items[i+1], g, false)
+			}
 		}
-		p.play(it, s, slate)
-		srcs = append(srcs, s)
-		if i+1 < len(items) {
-			next = startSource(items[i+1], g, false)
+		p.flush()
+		if p.ts != nil {
+			p.ts.W.(*bufio.Writer).Flush()
 		}
-	}
-	p.flush()
-	if p.ts != nil {
-		p.ts.W.(*bufio.Writer).Flush()
+		for _, s := range srcs {
+			<-s.done // so every encoder's CPU lands in our rusage
+		}
 	}
 	f, _ := os.Create(filepath.Join(*flagOut, "vod.m3u8"))
 	p.playlist(f, -1)
 	f.Close()
 	sj, _ := json.MarshalIndent(p.segs, "", " ")
 	os.WriteFile(filepath.Join(*flagOut, "segments.json"), sj, 0o644)
-	for _, s := range srcs {
-		<-s.done // so every encoder's CPU lands in our rusage
-	}
 	ev("done", map[string]any{"segments": len(p.segs), "channel_s": p.chanSeconds(p.vNext)})
 	time.Sleep(*flagLinger)
 }

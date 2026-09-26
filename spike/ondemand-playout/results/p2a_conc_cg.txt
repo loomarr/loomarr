@@ -1,0 +1,3 @@
+n=12 wall= cpu_s=64 total_cores_at_1x= nr_throttled 2 throttled_usec 271049 
+n=16 wall= cpu_s=84 total_cores_at_1x= nr_throttled 5 throttled_usec 607924 
+n=20 wall= cpu_s=106 total_cores_at_1x= nr_throttled 8 throttled_usec 721261 
