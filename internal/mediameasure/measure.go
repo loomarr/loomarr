@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/mediatools"
 )
@@ -30,7 +30,7 @@ type Tools struct {
 	Run             Runner
 }
 
-// DefaultTools resolves tools from PATH (or the given paths) and runs them with os/exec.
+// DefaultTools resolves tools from PATH (or the given paths) and runs them through bgexec.
 func DefaultTools(ffmpeg, ffprobe string) Tools {
 	if ffmpeg == "" {
 		ffmpeg = "ffmpeg"
@@ -38,20 +38,24 @@ func DefaultTools(ffmpeg, ffprobe string) Tools {
 	if ffprobe == "" {
 		ffprobe = "ffprobe"
 	}
-	return Tools{FFmpeg: ffmpeg, FFprobe: ffprobe, Run: execRunner}
+	return Tools{FFmpeg: ffmpeg, FFprobe: ffprobe, Run: bgRunner(ffmpeg)}
 }
 
-// execRunner runs the tool at background priority. It is the interim equivalent of filler's bgexec
-// runner (#1514); the composition root can swap it by setting Tools.Run.
-func execRunner(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
-	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // operator-resolved media tools
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := lowPriority(cmd)
-	if err == nil {
-		err = cmd.Wait()
+// bgRunner runs every tool through bgexec, the one background runner media work shares with filler:
+// nice 10, the whole process tree stopped with the context, and ffmpeg worker threads capped.
+func bgRunner(ffmpeg string) Runner {
+	return func(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+		var stdout, stderr bytes.Buffer
+		var cmd *bgexec.Cmd
+		if name == ffmpeg {
+			cmd = bgexec.FFmpeg(ctx, name, args...)
+		} else {
+			cmd = bgexec.Tool(ctx, name, args...)
+		}
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		err := cmd.Run()
+		return stdout.Bytes(), stderr.Bytes(), err
 	}
-	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 // scanKeyframes indexes every video sync packet with ffprobe. It demuxes the WHOLE file, so it is

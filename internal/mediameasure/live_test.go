@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"time"
 )
@@ -46,9 +46,9 @@ func TestLive_MeasureFile(t *testing.T) {
 	var childBytes atomic.Int64
 	tools.Run = func(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
 		var stdout, stderr bytes.Buffer
-		cmd := exec.CommandContext(ctx, name, args...)
+		cmd := bgexec.Tool(ctx, name, args...)
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		if err := lowPriority(cmd); err != nil {
+		if err := cmd.Start(); err != nil {
 			return nil, nil, err
 		}
 		done := make(chan struct{})
