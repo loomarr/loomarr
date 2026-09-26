@@ -89,6 +89,69 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 	t.Logf("tone-mappers that produced a picture: %v", keys(ran))
 }
 
+// TestLive_HDRTonemapRealFiles runs the same production ladder on real films: set
+// PLAYOUT_TEST_HDR_LIST to a file with one source path per line (HDR10, Dolby Vision profile 7/8).
+// For each GPU family on this host it airs 30 s from 20 minutes in through the first tone-mapper
+// that produces output, and reports luma, speed and CPU per stream. Films are dark, so only black
+// (every frame at YMAX 16) fails. PLAYOUT_TEST_FRAME_DIR, if set, receives one PNG per title (never
+// commit them).
+func TestLive_HDRTonemapRealFiles(t *testing.T) {
+	list := os.Getenv("PLAYOUT_TEST_HDR_LIST")
+	if list == "" {
+		t.Skip("set PLAYOUT_TEST_HDR_LIST to a file of real HDR source paths to run this")
+	}
+	bin := ffmpegBin(t)
+	raw, err := os.ReadFile(list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probe := FFprobeFormatNextTo(bin)
+	for i, path := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		facts, err := probe(context.Background(), path)
+		if err != nil || !facts.HDR() {
+			t.Errorf("%d: not a probed HDR source (%v, %q)", i, err, facts.ColorTransfer)
+			continue
+		}
+		for _, enc := range []Encoder{EncoderVAAPI, EncoderNVENC} {
+			if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
+				continue
+			}
+			p := DefaultProfile()
+			p.Encoder, p.Width, p.Height = enc, 1920, 1080
+			spec := ProgramSpec{Profile: p, Input: path, Offset: 20 * time.Minute, Limit: 30 * time.Second,
+				Source: facts, Tonemap: true, GPUTonemap: GPUFiltersFor(bin)()}
+			for {
+				pipe, _ := spec.Pipeline()
+				out := t.TempDir() + "/o.ts"
+				cmd := exec.Command(bin, replaceOutput(ProgramArgs(spec), out)...)
+				start := time.Now()
+				b, err := cmd.CombinedOutput()
+				wall := time.Since(start).Seconds()
+				if err == nil {
+					cpu := (cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()).Seconds()
+					avg, ymax := lumaStats(t, bin, out)
+					t.Logf("title %d %s %s/%s: YAVG %.1f, lowest YMAX %d, speed %.2fx, %.3f cores per stream at 1x, fallbacks %q",
+						i, facts.VideoCodec+"/"+facts.PixelFormat, pipe.Family, tonemapperIn(pipe.VideoFilter), avg, ymax,
+						30/wall, cpu/30, pipe.Fallbacks)
+					if ymax <= 16 {
+						t.Errorf("title %d: black picture through %s", i, tonemapperIn(pipe.VideoFilter))
+					}
+					if dir := os.Getenv("PLAYOUT_TEST_FRAME_DIR"); dir != "" {
+						png := dir + "/title" + strconv.Itoa(i) + "_" + string(pipe.Family) + "_" + tonemapperIn(pipe.VideoFilter) + ".png"
+						_ = exec.Command(bin, "-v", "error", "-y", "-ss", "15", "-i", out, "-frames:v", "1", png).Run()
+					}
+					break
+				}
+				t.Logf("title %d %s/%s did not start (demoting): %s", i, pipe.Family, tonemapperIn(pipe.VideoFilter), firstLine(string(b)))
+				if !spec.DemoteTonemap() {
+					t.Errorf("title %d: no tone-mapper produced output on %s", i, enc)
+					break
+				}
+			}
+		}
+	}
+}
+
 // tonemapperIn names the tone-mapper a built graph uses.
 func tonemapperIn(vf string) string {
 	for _, f := range []string{"tonemap_vaapi", "tonemap_opencl", "libplacebo"} {
