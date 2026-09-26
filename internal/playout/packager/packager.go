@@ -161,9 +161,16 @@ func (p *Packager) Run(ctx context.Context) error {
 }
 
 func (p *Packager) run(ctx context.Context) error {
-	for first := true; ctx.Err() == nil; first = false {
+	var lookAt time.Time // set when the last lookup's airing had no whole frame left
+	tuneIn := true       // until the first slot airs: an item then gets FirstItemWait, not a lead
+	for ctx.Err() == nil {
 		airAt := p.airAt(p.v)
-		item, err := p.schedule(ctx, airAt)
+		at := airAt
+		if lookAt.After(at) {
+			at = lookAt
+		}
+		lookAt = time.Time{}
+		item, err := p.schedule(ctx, at)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -176,6 +183,7 @@ func (p *Packager) run(ctx context.Context) error {
 			} else {
 				p.cfg.Log.Warn("packager: nothing to air; slate", "at", airAt, "err", err)
 			}
+			tuneIn = false
 			if err := p.fillSlate(ctx, p.slotFor(airAt, d)); err != nil {
 				return err
 			}
@@ -183,11 +191,10 @@ func (p *Packager) run(ctx context.Context) error {
 		}
 		slot := p.slotFor(airAt, item.Duration)
 		if slot.Frames <= 0 {
-			// Less than a frame left in this airing: step one frame so the next lookup moves on.
-			slot = p.slotFor(airAt, time.Second/time.Duration(p.cfg.FPS))
-			if err := p.fillSlate(ctx, slot); err != nil {
-				return err
-			}
+			// Less than half a frame of this airing is left: the previous slot's rounding already
+			// covered it. Ask what airs at its end, on the same timeline position (a frame of slate
+			// here was a black frame at every boundary whose rounding fell short).
+			lookAt = at.Add(item.Duration)
 			continue
 		}
 		// An item must be producing SlateLead before it airs. When the timeline leads by less than
@@ -195,11 +202,12 @@ func (p *Packager) run(ctx context.Context) error {
 		// tune-in, which has no lead at all, it gets FirstItemWait.
 		now := p.cfg.Now()
 		deadline := airAt.Add(-p.cfg.SlateLead)
-		if first {
+		if tuneIn {
 			deadline = now.Add(p.cfg.FirstItemWait)
 		} else if deadline.Before(now) {
 			deadline = airAt
 		}
+		tuneIn = false
 		if err := p.airItem(ctx, item, slot, deadline); err != nil {
 			return err
 		}

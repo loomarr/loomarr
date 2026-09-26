@@ -751,3 +751,67 @@ func TestAudioSamplesAreOneAACFrameEach(t *testing.T) {
 		}
 	}
 }
+
+// An airing's rounded slot can end up to half a frame before the schedule's boundary; the lookup at
+// the timeline's end then finds the same airing with no whole frame left. Live (boundary harness,
+// 60 s items), that aired one frame of slate, in its own 848-byte segment, at every boundary. The
+// packager asks for what airs at the airing's end instead.
+func TestSubFrameRemainderRollsIntoTheNextItem(t *testing.T) {
+	t0 := time.Unix(1_000_000, 0)
+	boundary := t0.Add(1010 * time.Millisecond) // 25.25 frames: the first slot rounds to 25
+	sched := func(ctx context.Context, at time.Time) (Item, error) {
+		label, d := "b", time.Hour
+		if at.Before(boundary) {
+			label, d = "a", boundary.Sub(at)
+		}
+		return Item{Label: label, Duration: d, Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+			return synth{label: label}.encode(t, ictx, slot), nil
+		}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour, Now: func() time.Time { return t0 }},
+		sched, ReadySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start(t, p)
+	deadline := time.Now().Add(3 * time.Second)
+	for p.Stats().Items < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if s := p.Stats(); s.Items < 2 || s.Slates != 0 {
+		t.Fatalf("stats %+v: want both items aired back to back, no slate frame between them", s)
+	}
+}
+
+// A tune-in that lands in an airing's last half frame skips it without airing anything, so the next
+// item is still the tune-in item: it gets FirstItemWait, not the lead a later item needs.
+func TestTuneInOnASubFrameRemainderKeepsTheTuneInWait(t *testing.T) {
+	t0 := time.Now()
+	boundary := t0.Add(10 * time.Millisecond) // under half a frame at testFPS
+	slow := make(chan struct{})
+	time.AfterFunc(300*time.Millisecond, func() { close(slow) })
+	sched := func(ctx context.Context, at time.Time) (Item, error) {
+		if at.Before(boundary) {
+			return Item{Label: "a", Duration: boundary.Sub(at), Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+				return synth{label: "a"}.encode(t, ictx, slot), nil
+			}}, nil
+		}
+		return Item{Label: "b", Duration: time.Hour, Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+			return synth{label: "b", blockBefore: slow}.encode(t, ictx, slot), nil
+		}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour, Now: func() time.Time { return t0 }},
+		sched, ReadySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := start(t, p)
+	wctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	if err := p.AwaitPlaylist(wctx); err != nil {
+		t.Fatal(err)
+	}
+	if s := p.Stats(); s.Slates != 0 || s.Late != 0 {
+		t.Fatalf("stats %+v: want the slow item after the skipped remainder waited for, not slated", s)
+	}
+}
