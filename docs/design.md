@@ -562,6 +562,16 @@ The first store shape has six structures, written atomically per imported snapsh
    observation/coverage, and presence state.
 6. `inventory_source_measurements` — measured technical facts bound to one exact source revision.
 
+A seventh table sits beside them (beta.8 G7, migration 00123): `inventory_source_analysis` holds what
+Loomarr's own background job measures once per source revision beyond stream facts — a varint-packed
+keyframe index (byte offset + PTS), EBU R128 integrated loudness and true peak, and natural break
+candidates (black video and silent audio coinciding away from the opening and closing seconds, each
+with a confidence and the keyframe to cut at). It is read through `inventory.AnalysisReader`, is
+deleted when the source revision changes, and rejects a write for a superseded revision. Playout
+never asks the media server or re-probes a file at airtime: an unmeasured source gets one synchronous
+stream-facts probe on first play (which activates the builder's minimal-probe flags), and the rest is
+measured by a single low-priority worker.
+
 The service surface stays small:
 
 ```go

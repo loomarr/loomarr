@@ -52,8 +52,8 @@ type Analysis struct {
 // AnalysisStore is the durable seam for Analysis. It is separate from Repository so the six-table
 // inventory aggregate and its fakes stay unchanged.
 type AnalysisStore interface {
+	AnalysisReader
 	RecordInventoryAnalysis(context.Context, Analysis) error
-	InventoryAnalysis(context.Context, SourceID) (Analysis, bool, error)
 }
 
 // ErrKeyframeEncoding reports a keyframe blob that does not decode.
