@@ -193,6 +193,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Keeps a repeating per-item condition from flooding the log.
 - **`media`** · 3 importers
   Owns host-wide resources shared by live and background media work.
+- **`playout/packager`** · 1 importer
+  Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
 - **`playoutcert`** · 1 importer
   Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
 - **`proctree`** · 2 importers
@@ -272,7 +274,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
-- **`playout`** · 5 importers · → `diagnostics`, `prepared`, `proctree`, `provision`, `schedule`
+- **`playout`** · 5 importers · → `diagnostics`, `playout/packager`, `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
