@@ -113,6 +113,8 @@ type playoutResolver struct {
 	// here in a way it would not be for one long-lived encode.
 	tier    func() string
 	encoder func() string
+	// toneCurve is playout.tone_curve: the budget prices HDR by it and the probe measures it.
+	toneCurve func() string
 
 	// pods assembles the channel's commercial break (§10). The SAME PodPreviewer the API and
 	// the reconciler use, so the ad that plays is the one the channel page previewed — §10's

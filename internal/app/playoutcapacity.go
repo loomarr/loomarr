@@ -102,9 +102,14 @@ func (r *playoutResolver) CostsFor(enc playout.Encoder) *playout.MeasuredCosts {
 }
 
 // ToneCurve is the curve the live chain maps HDR with (playout.ToneCurveSource): the probe keys its
-// HDR measurement by it and the budget picks the HDR cells by it. Hable until #1516's
-// playout.tone_curve setting lands and answers here. Nil-safe.
-func (r *playoutResolver) ToneCurve() playout.ToneCurve { return playout.DefaultToneCurve }
+// HDR measurement by it and the budget picks the HDR cells by it. It is the live playout.tone_curve
+// setting, the same one the spawner maps with. Nil-safe.
+func (r *playoutResolver) ToneCurve() playout.ToneCurve {
+	if r == nil || r.toneCurve == nil {
+		return playout.DefaultToneCurve
+	}
+	return playout.ParseToneCurve(r.toneCurve())
+}
 
 func costsForLog(costs map[playout.CostKey]playout.ClassCost) map[string]playout.ClassCost {
 	out := make(map[string]playout.ClassCost, len(costs))

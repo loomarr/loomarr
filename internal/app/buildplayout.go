@@ -244,6 +244,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		cycles:  newCycleCache(time.Now),
 		tier:    func() string { return set.str("playout.quality_tier") },
 		encoder: func() string { return set.str("playout.encoder") },
+		// The operator's HDR curve: the probe measures it and the budget prices HDR by it.
+		toneCurve: func() string { return set.str("playout.tone_curve") },
 		// fillerDir belongs to the immutable generation layout. Changing storage roots
 		// is applied only after the generation drains and rebuilds (§10); `pods` is
 		// assigned after the pod adapter is built further down.
