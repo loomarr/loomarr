@@ -40,6 +40,8 @@ type MediaFormat struct {
 	// edit. MPEG-TS cannot carry that edit safely, so live playout must decode from the true start
 	// instead of copying the hidden preceding GOP into the channel.
 	VideoPreroll bool
+	// Interlaced is the inventory measurement's field-order fact; the transcode deinterlaces it.
+	Interlaced bool
 
 	// Audio (the first/primary track — track SELECTION is a separate concern, see audio.go).
 	AudioCodec      string // e.g. "aac", "eac3", "ac3" — lowercased; empty when no audio

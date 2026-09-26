@@ -88,6 +88,45 @@ type ProgramSpec struct {
 	// of the INSTALL, and both must hold. See filters.go for why a missing filter is fatal rather
 	// than degrading if emitted anyway.
 	Tonemap bool
+	// GPUTonemap is which GPU tone-mappers the build carries (GPUFiltersFor). With Tonemap and the
+	// encoder it makes the host profile (HostFor).
+	GPUTonemap GPUFilters
+}
+
+// Pipeline is this program's transcode pipeline (pipeline.go), or ErrRefused. A source that faulted
+// the GPU decoder (SoftwareDecode) is built as if the GPU decoded nothing.
+func (s ProgramSpec) Pipeline() (Pipeline, error) {
+	host := HostFor(s.Profile.Encoder, s.Tonemap, s.GPUTonemap)
+	if s.SoftwareDecode {
+		host.DecodeCodecs = nil
+	}
+	return Build(host, s.Source, ChannelOutput(s.Profile))
+}
+
+// DemoteTonemap drops the GPU tone-mapper this spec's pipeline would use next, so a retry takes the
+// next one: tonemap_opencl, then libplacebo, then the CPU (maintainer order, #1512). It reports
+// false when the source is SDR or no GPU tone-mapper is left.
+func (s *ProgramSpec) DemoteTonemap() bool {
+	if !s.Source.HDR() {
+		return false
+	}
+	switch engineOf(s.Profile.Encoder) {
+	case EncoderNVENC:
+		if s.GPUTonemap.TonemapOpenCL {
+			s.GPUTonemap.TonemapOpenCL = false
+			return true
+		}
+		if s.GPUTonemap.Libplacebo {
+			s.GPUTonemap.Libplacebo = false
+			return true
+		}
+	case EncoderVAAPI:
+		if s.GPUTonemap.TonemapVAAPI {
+			s.GPUTonemap.TonemapVAAPI = false
+			return true
+		}
+	}
+	return false
 }
 
 // tonemapStep returns the HDR→SDR filter chain for this program, or "" when it should not run.
@@ -140,17 +179,18 @@ func ProgramArgs(spec ProgramSpec) []string {
 	// Hardware setup is a TRANSCODE concern: a video copy neither decodes nor encodes, so it needs
 	// no device and no hardware decoder. Emitting them for a copy is not just wasteful — a device
 	// init that fails (no /dev/dri in a container) would kill a program that could have copied fine.
+	//
+	// The transcode is the pipeline builder's (pipeline.go): device setup, full-GPU decode and
+	// probing go before everything (global/input options; after `-i` they apply to nothing), and
+	// its filter graph and encoder replace the old CPU scale + upload chain. A refused source has no
+	// args at all; the caller checks spec.Pipeline() first and shows the card.
+	var pipe Pipeline
 	if !spec.Plan.CopyVideo {
-		// HARDWARE DEVICE SETUP, before everything — it is a global option; after `-i` it silently
-		// applies to nothing. Reused from the capability prober (per-encoder correct: QSV needs an
-		// explicit render node, Vulkan names its device differently).
-		args = append(args, deviceInitArgs(spec.Profile.Encoder)...)
-		// HARDWARE DECODE. Measured on a 4K 10-bit HEVC film with an RTX 3080 Ti: the child went
-		// from 341% CPU to ~0%, the GPU decoder taking it instead. For 4K sources the decode
-		// dominates, so moving only the encode to the GPU barely helped.
-		if !spec.SoftwareDecode {
-			args = append(args, hardwareDecodeArgs(spec.Profile.Encoder)...)
+		var err error
+		if pipe, err = spec.Pipeline(); err != nil {
+			return nil
 		}
+		args = append(args, pipe.PreInput...)
 	}
 
 	// --- Input options (before -i, so they apply to THIS input) ---
@@ -253,14 +293,9 @@ func ProgramArgs(spec ProgramSpec) []string {
 		// re-encode.
 		args = append(args, "-c:v", "copy")
 	} else {
-		// The tone-map carries its own output labelling — its final zscale rewrites the frames'
-		// colour properties and ffmpeg propagates them, so no `-colorspace`/`-color_trc` flags
-		// are added here. See hdrToSDRChain: they were measured to be redundant.
-		args = append(args, p.scaleFilterArgs(spec.tonemapStep())...)
-		args = append(args, p.videoEncodeArgs()...)
-		if spec.SessionAudio {
-			args = append(args, "-bf", "0")
-		}
+		// Colour labels are conformed in the graph (setparams), never by output -color_* flags.
+		args = append(args, "-vf", pipe.VideoFilter)
+		args = append(args, pipe.VideoEncode...)
 	}
 
 	// AUDIO: copy when the target plays it, else transcode ONLY the audio (cheap) to AAC. The

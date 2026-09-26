@@ -243,7 +243,8 @@ type Server struct {
 	// playoutTonemap reports whether this ffmpeg build can tone-map HDR→SDR; nil ⇒ no, so an HDR
 	// source transcodes untone-mapped rather than emitting a filter the build would reject at
 	// graph-init. Same fail-safe direction as playoutFont, for the same reason.
-	playoutTonemap func() bool
+	playoutTonemap    func() bool
+	playoutGPUTonemap func() playout.GPUFilters
 	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
 	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
@@ -1124,9 +1125,11 @@ type Options struct {
 	PlayoutFont func() string
 	// PlayoutTonemap reports whether this ffmpeg build carries the HDR→SDR filters (zscale +
 	// tonemap). A property of the BUILD, so it is injected here rather than probed in the handler,
-	// which keeps ProgramArgs a pure function. Nil ⇒ no tone-mapping: an HDR source still plays,
-	// flat rather than dead. See playout.TonemapperFor.
+	// which keeps ProgramArgs a pure function. Nil ⇒ no CPU tone-mapping. See playout.TonemapperFor.
 	PlayoutTonemap func() bool
+	// PlayoutGPUTonemap reports which GPU tone-mappers the build carries (playout.GPUFiltersFor).
+	// Nil ⇒ none: HDR then tone-maps on the CPU after the GPU downscale.
+	PlayoutGPUTonemap func() playout.GPUFilters
 	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
 	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder

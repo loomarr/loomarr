@@ -335,6 +335,9 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		// optimistic.
 		Tonemap: s.playoutTonemap != nil && s.playoutTonemap(),
 	}
+	if s.playoutGPUTonemap != nil {
+		spec.GPUTonemap = s.playoutGPUTonemap()
+	}
 	// The retry ladder (§9.1 V47) lives in streamChild: it runs the hardware encode, and only if it
 	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
 	// (not pre-built args) is what lets the ladder rebuild the SAME program with a software encoder.
@@ -472,6 +475,23 @@ func (s *Server) streamProgram(
 		}
 	}
 
+	// The pipeline builder (#1512): a source this host cannot transcode in real time (4K HDR on a
+	// software host) is refused, and the card covers the slot. Missing stream facts and stages that
+	// left the GPU are logged, since each costs start latency or CPU.
+	if transcoding {
+		pipe, err := spec.Pipeline()
+		if err != nil {
+			s.log.Warn("playout: this host cannot transcode the program in real time — showing the card",
+				"channel", channelID, "program", what, "encoder", spec.Profile.Encoder, "err", err)
+			s.cardOrFail(w, r, channelID, target, spec.Profile, what, "this server cannot transcode the program in real time")
+			return
+		}
+		if len(pipe.MissingFacts) > 0 || len(pipe.Fallbacks) > 0 {
+			s.log.Info("playout: transcode pipeline", "channel", channelID, "program", what, "family", pipe.Family,
+				"missing_facts", pipe.MissingFacts, "fallbacks", pipe.Fallbacks)
+		}
+	}
+
 	// Attempt 1: as resolved (hardware when a slot was granted, else software).
 	c, decodeFault := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec))
 	if c != nil {
@@ -500,6 +520,18 @@ func (s *Server) streamProgram(
 		}
 	}
 
+	// Attempt 2b — an HDR source whose GPU tone-mapper the build carries but this host cannot run
+	// (tonemap_vaapi on AMD, OpenCL without an ICD). Take the next tone-mapper in the maintainer's
+	// order — tonemap_opencl, libplacebo, then the CPU after the GPU downscale — keeping the encoder.
+	for wantsHardware && !decodeFault && spec.DemoteTonemap() {
+		s.log.Info("playout: HDR tone-map produced nothing — retrying with the next tone-mapper",
+			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder)
+		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
+			s.pipeChild(w, r, channelID, what, source, c)
+			return
+		}
+	}
+
 	// Attempt 2 — the SAFETY NET (§9.1 V47). We got here despite holding a GPU slot (wantsHardware),
 	// so this is not saturation — the admission gate already routes saturation to software up front.
 	// It is the rarer case: a slot-holder's hardware encode produced nothing, usually because the
@@ -520,9 +552,9 @@ func (s *Server) streamProgram(
 	// Attempt 3: codec-preserving software fallback. An HEVC session uses libx265 and an H.264
 	// session uses libx264; changing codec here would poison the pinned parent stream even if this
 	// individual child successfully produced bytes.
-	if spec.Profile.Encoder != softwareEncoder {
-		softSpec := spec
-		softSpec.Profile.Encoder = softwareEncoder
+	softSpec := spec
+	softSpec.Profile.Encoder = softwareEncoder
+	if _, refused := softSpec.Pipeline(); spec.Profile.Encoder != softwareEncoder && refused == nil {
 		s.log.Warn("playout: falling back to software encoding for this program",
 			"channel", channelID, "program", what, "from", spec.Profile.Encoder, "to", softwareEncoder)
 		if c, _ := s.startChild(r.Context(), channelID, target, softwareEncoder, transcoding, playout.ProgramArgs(softSpec)); c != nil {

@@ -86,7 +86,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		playoutResolver: opts.PlayoutResolver, playoutEncoder: opts.PlayoutEncoder,
 		playout:      opts.Playout,
 		playoutGuide: opts.PlayoutGuide, playoutFont: opts.PlayoutFont,
-		playoutTonemap:  opts.PlayoutTonemap,
+		playoutTonemap: opts.PlayoutTonemap, playoutGPUTonemap: opts.PlayoutGPUTonemap,
 		timelineThumbs:  opts.TimelineThumbs,
 		reclaimVRAM:     opts.ReclaimVRAM,
 		residentLLMVRAM: opts.ResidentLLMVRAM,
