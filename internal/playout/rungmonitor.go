@@ -12,7 +12,9 @@ import "time"
 // of the block and, when the platform can read it, the encoder process's CPU time (user+sys). When
 // Observe returns a Step, the monitor has already moved to the new rung. The caller then:
 //
-//  1. stops the item encoder;
+//  1. stops the item encoder and discards anything it writes past the cut: a stopped encoder
+//     flushes, and on rungs 2–3 the flush includes the tail fill (up to 10 s of repeated frames,
+//     measured 10.2 s on a real 4K title), which must not reach the channel;
 //  2. restarts it at the item position the channel has reached (the packager's own clock, not the
 //     encoder's out_time) with ProgramSpec.SoftwareRung set to the decision's rung. Every rung
 //     produces identical output parameters, so the packager splices it like any other restart;

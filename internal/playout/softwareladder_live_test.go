@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -209,7 +210,7 @@ func driveLadder(t *testing.T, bin, path, name string, facts MediaFormat, host H
 	m := NewRungMonitor(start, RungMonitorConfig{CPUAllowance: cpus})
 	pos, rung := 5*time.Second, start
 	deadline := time.Now().Add(dur)
-	var totalV, totalA float64
+	var spliced, missingA, missingV float64
 	for seg := 0; time.Now().Before(deadline); seg++ {
 		o := out
 		o.SoftwareRung = rung
@@ -230,11 +231,17 @@ func driveLadder(t *testing.T, bin, path, name string, facts MediaFormat, host H
 		}
 		_ = pw.Close()
 		var once sync.Once
-		stop := func() { once.Do(func() { _ = cmd.Process.Signal(os.Interrupt) }) }
+		var stopped atomic.Bool
+		stop := func() { once.Do(func() { stopped.Store(true); _ = cmd.Process.Signal(os.Interrupt) }) }
 		timer := time.AfterFunc(time.Until(deadline), stop)
 		next, why := rung, "deadline"
+		var cut time.Duration // the splice point: out_time when the monitor (or the deadline) stopped it
 		ReadProgress(pr, func(p Progress) {
-			d := m.Observe(SpeedSample{At: time.Now(), OutTime: time.Duration(p.OutTimeMS) * time.Millisecond, CPU: procCPU(cmd.Process.Pid)})
+			at := time.Duration(p.OutTimeMS) * time.Millisecond
+			if !stopped.Load() {
+				cut = at
+			}
+			d := m.Observe(SpeedSample{At: time.Now(), OutTime: at, CPU: procCPU(cmd.Process.Pid)})
 			if d.Step {
 				next, why = d.Rung, d.Reason
 				stop()
@@ -242,15 +249,21 @@ func driveLadder(t *testing.T, bin, path, name string, facts MediaFormat, host H
 		})
 		_ = cmd.Wait()
 		timer.Stop()
+		// The packager keeps [0, cut) of each segment and discards what the stopped encoder flushes
+		// after it. Continuity holds when every segment has audio and video up to its cut.
 		v, a := segmentLengths(t, bin, dst)
-		totalV += v
-		totalA += a
-		t.Logf("LADDER %s start=%s seg %d at %s on %s: video %.3f s, audio %.3f s (audio-video %+.0f ms); then %s (%s)",
-			name, start, seg, pos, rung, v, a, (a-v)*1000, next, why)
-		pos += time.Duration(v * float64(time.Second))
+		c := cut.Seconds()
+		missingA, missingV = missingA+max(0, c-a), missingV+max(0, c-v)
+		spliced += c
+		t.Logf("LADDER %s start=%s seg %d at %s on %s: cut at %.3f s; produced video %.3f s, audio %.3f s (short of the cut: audio %.0f ms, video %.0f ms); then %s (%s)",
+			name, start, seg, pos, rung, c, v, a, max(0, c-a)*1000, max(0, c-v)*1000, next, why)
+		pos += cut
 		rung = next
 	}
-	t.Logf("LADDER %s start=%s total: video %.3f s, audio %.3f s, drift %+.0f ms", name, start, totalV, totalA, (totalA-totalV)*1000)
+	t.Logf("LADDER %s start=%s spliced %.3f s: audio missing %.0f ms, video missing %.0f ms", name, start, spliced, missingA*1000, missingV*1000)
+	if missingA > 0.05 {
+		t.Errorf("%s: audio discontinuity across rung changes: %.0f ms missing", name, missingA*1000)
+	}
 }
 
 // procCPU is a process's CPU time (user+sys, all threads) from /proc; 0 when unreadable.
