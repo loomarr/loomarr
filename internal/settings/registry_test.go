@@ -452,7 +452,7 @@ func TestRegistry_GuideSettingsAreDiscoverable(t *testing.T) {
 
 func TestRegistry_PlaybackProgressiveDisclosure(t *testing.T) {
 	r := NewRegistry()
-	for _, key := range []string{"playout.backend", "playout.quality_tier", "playout.audio_language", "playout.max_channels"} {
+	for _, key := range []string{"playout.backend", "playout.quality_tier", "playout.audio_language", "playout.tone_curve", "playout.max_channels"} {
 		s, ok := r.Get(key)
 		if !ok {
 			t.Fatalf("%s not declared", key)
