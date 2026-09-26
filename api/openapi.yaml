@@ -1070,6 +1070,57 @@ components:
         - pinned
         - excluded
       type: object
+    ChannelFormatsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ChannelFormatsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        baseline:
+          $ref: "#/components/schemas/FormatDTO"
+          description: The 1080p SDR H.264 baseline every channel airs
+        hdrTitles:
+          description: Measured programmes with an HDR transfer (PQ or HLG)
+          format: int64
+          type: integer
+        lineupPremium:
+          description: The premium the lineup warrants before host limits; empty when none
+          enum:
+            - ""
+            - 4k-hevc-sdr
+            - 4k-hevc-hdr
+          type: string
+        measuredTitles:
+          description: Programmes with inventory stream facts; unmeasured ones cannot warrant a premium
+          format: int64
+          type: integer
+        premium:
+          $ref: "#/components/schemas/FormatDTO"
+          description: The premium format this server airs for the channel; null when none
+        premiumDropped:
+          description: Why this server does not air the premium the lineup warrants
+          type: string
+        titles:
+          description: Distinct programmes in the lineup
+          format: int64
+          type: integer
+        uhdTitles:
+          description: Measured programmes larger than 2560x1440
+          format: int64
+          type: integer
+      required:
+        - baseline
+        - premium
+        - lineupPremium
+        - titles
+        - measuredTitles
+        - uhdTitles
+        - hdrTitles
+      type: object
     ChannelHealth:
       additionalProperties: false
       properties:
@@ -4385,6 +4436,43 @@ components:
         - sourcesTotal
         - clips
         - held
+      type: object
+    FormatDTO:
+      additionalProperties: false
+      properties:
+        class:
+          description: Format class; the premium names are the capacity classes the resource budget measures
+          enum:
+            - 1080p-h264-sdr
+            - 4k-hevc-sdr
+            - 4k-hevc-hdr
+          type: string
+        codec:
+          description: Video codec
+          enum:
+            - h264
+            - hevc
+          type: string
+        dynamicRange:
+          description: sdr (BT.709) or hdr10 (BT.2020 PQ with static channel-level metadata)
+          enum:
+            - sdr
+            - hdr10
+          type: string
+        height:
+          description: Frame height in pixels
+          format: int64
+          type: integer
+        width:
+          description: Frame width in pixels
+          format: int64
+          type: integer
+      required:
+        - class
+        - codec
+        - width
+        - height
+        - dynamicRange
       type: object
     GenreFilter:
       additionalProperties: false
@@ -11565,6 +11653,34 @@ paths:
       tags:
         - channels
         - filler
+  /v1/channels/{id}/formats:
+    get:
+      description: "Any signed-in user. Every channel airs a 1080p SDR H.264 baseline. When its lineup has 4K titles it also airs one premium HEVC format: 4K HDR10 if any title is HDR, otherwise 4K SDR. Derived from Loomarr's media inventory, never a setting. `lineupPremium` is what the lineup warrants; `premium` is what this server produces, and `premiumDropped` says why they differ (software-only hosts never produce a premium)."
+      operationId: channel-formats
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChannelFormatsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Output formats this channel airs
+      tags:
+        - channels
   /v1/channels/{id}/icon:
     post:
       description: Admin only. A raster image under 2 MB in the `file` field (PNG, JPEG, WebP, GIF — SVG is refused because the serve half is public and an SVG can carry script). Ingests the bytes into the image service (§22), points the channel's logo at the content-addressed URL, and reconciles so Tunarr picks it up. Re-uploading the same image yields the same URL; a different image yields a different one, so no cache-bust is needed.

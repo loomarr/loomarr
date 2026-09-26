@@ -146,6 +146,7 @@ func (s *Server) registerChannels(api huma.API) {
 	// The Watch surface's play-url op (§9.1). Mounted here so both the live router and the
 	// OpenAPI-export parity path (export.go) pick it up from one call, never a hand-kept list.
 	s.registerChannelPlayURL(api)
+	s.registerChannelFormats(api)
 }
 
 type channelIDInput struct {

@@ -20,6 +20,27 @@ const (
 	Format4KHDR    FormatClass = "4k-hevc-hdr"
 )
 
+// FormatSpec is what a class puts on the wire.
+type FormatSpec struct {
+	Codec         string // "h264" or "hevc"
+	Width, Height int
+	// DynamicRange is "sdr" or "hdr10".
+	DynamicRange string
+}
+
+// Spec is the class's codec, geometry and dynamic range; ok is false for an unknown class.
+func (c FormatClass) Spec() (FormatSpec, bool) {
+	switch c {
+	case FormatBaseline:
+		return FormatSpec{Codec: "h264", Width: 1920, Height: 1080, DynamicRange: "sdr"}, true
+	case Format4KSDR:
+		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: premiumHeight, DynamicRange: "sdr"}, true
+	case Format4KHDR:
+		return FormatSpec{Codec: "hevc", Width: premiumWidth, Height: premiumHeight, DynamicRange: "hdr10"}, true
+	}
+	return FormatSpec{}, false
+}
+
 // ChannelFormats is what one channel airs. Premium is empty when the channel has none.
 type ChannelFormats struct {
 	Baseline FormatClass

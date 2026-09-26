@@ -63,6 +63,9 @@ type PlayoutResolver interface {
 	// ChannelCodec returns the persisted codec the Channel's live timeline normalizes to. It is
 	// needed only to turn the broad tuner capability plan into one stable output codec.
 	ChannelCodec(ctx context.Context, channelID string) string
+	// LineupFormats returns the inventory stream facts of each distinct programme in the channel's
+	// lineup (zero for an unmeasured item), from which the channel's formats are derived (#1512 G10).
+	LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error)
 }
 
 // The block supervisor pins the first child's output format and returns it on every later internal
