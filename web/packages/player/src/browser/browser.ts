@@ -2,6 +2,7 @@ import type { ClientObservation as BrowserClientObservation } from "@loomarr/cor
 import type Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LivePlaybackState } from "../player-controller";
+import { liveHlsConfig } from "./live-hls-config";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
 //
@@ -260,36 +261,7 @@ const discardTransferredMedia = (
   if (objectURL?.startsWith("blob:")) URL.revokeObjectURL(objectURL);
 };
 
-const createHlsController = (HlsController: typeof Hls): Hls =>
-  new HlsController({
-    // A source-scoped controller stays empty until its transferred MediaSource is attached. The
-    // handoff below then loads the source and performs one explicit media start.
-    autoStartLoad: false,
-    capLevelToPlayerSize: true,
-    // Baseline HLS is MPEG-TS. Keep its transmux off the UI thread; hls.js shares and reference-
-    // counts this worker across the bounded source-scoped controller pair.
-    enableWorker: true,
-    // Live channel: keep chasing the live edge, and be patient while it warms up. A channel takes a
-    // few seconds to produce its first segment (the encoder spins up), during which the playlist
-    // may briefly have no media — hls.js must RETRY, not give up.
-    liveDurationInfinity: true,
-    manifestLoadingMaxRetry: 8,
-    manifestLoadingRetryDelay: 1000,
-    levelLoadingMaxRetry: 8,
-    fragLoadingMaxRetry: 8,
-    // ⚠ Start ~TWO segments from the live edge — the balance between fast first-paint and a
-    // survivable buffer (both measured in-browser). hls.js's default is 3 (~12s at our 4s
-    // segments); 1 sits at the live edge and leaves transcodes no cushion against a realtime dip.
-    liveSyncDurationCount: 2,
-    // Keep corrective live-edge seeks well above the sync target so a slow transcode can drift and
-    // let its buffer absorb a dip rather than causing another visible stall.
-    // The shared DVR window, not hls.js's latency correction, decides when an intentional pause
-    // expires. Keep this above the complete fifteen-minute server horizon.
-    liveMaxLatencyDurationCount: 10_000,
-    // Build a forward cushion after fast start and retain the complete shared DVR horizon.
-    maxBufferLength: 60,
-    backBufferLength: 900,
-  });
+const createHlsController = (HlsController: typeof Hls): Hls => new HlsController({ ...liveHlsConfig });
 
 interface ManifestLoadFailure {
   details?: string;
@@ -1080,4 +1052,4 @@ export type {
   BrowserTunePhase,
   UseBrowserHlsPlayer,
 };
-export { useBrowserHlsPlayer };
+export { liveHlsConfig, useBrowserHlsPlayer };

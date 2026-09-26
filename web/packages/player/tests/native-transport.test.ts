@@ -57,6 +57,14 @@ describe("Expo video transport", () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => vi.useRealTimers());
 
+  it("starts playback after one 1 s segment", () => {
+    const initial = nativePlayer();
+    createNativePlayerTransport(initial.player);
+
+    // The packager cuts 1 s segments; ExoPlayer's 2 s default would hold a surf for a second one.
+    expect(initial.raw).toMatchObject({ bufferOptions: { minBufferForPlayback: 1 } });
+  });
+
   it("configures foreground HLS playback and emits native state", async () => {
     const { emit, player, raw } = nativePlayer();
     const transport = createNativePlayerTransport(player);
