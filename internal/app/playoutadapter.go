@@ -379,6 +379,58 @@ func (r *playoutResolver) ChannelCodec(ctx context.Context, channelID string) st
 	return ch.BroadcastCodec
 }
 
+// LineupFormats returns the stream facts of each distinct programme in the channel's cycle, the
+// input to playout.DeriveChannelFormats (#1512 G10). The facts come from Loomarr's inventory; an
+// item it has not observed yet is imported once from the library's own media information, never
+// probed. An item with no facts either way is the zero MediaFormat, which the derivation ignores.
+func (r *playoutResolver) LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error) {
+	_, slots, _, _, err := r.engine.CyclePreview(ctx, channelID, r.now())
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var formats []playout.MediaFormat
+	for _, sl := range slots {
+		// Filler and pending acquisitions are SDR and file-less; only landed programmes can warrant 4K/HDR.
+		if sl.Kind != schedule.SlotProgram || sl.LibraryItemID == "" || seen[sl.LibraryItemID] {
+			continue
+		}
+		seen[sl.LibraryItemID] = true
+		formats = append(formats, r.inventoryFormat(ctx, sl.LibraryItemID))
+	}
+	return formats, nil
+}
+
+// inventoryFormat is one library item's stream facts from the inventory, importing the library's
+// snapshot on a miss (as inventoryAudioTracks does). The zero MediaFormat means unknown.
+func (r *playoutResolver) inventoryFormat(ctx context.Context, libraryItemID string) playout.MediaFormat {
+	if r.inventory == nil || r.lib == nil {
+		return playout.MediaFormat{}
+	}
+	origin, err := r.lib.InventoryOrigin(libraryItemID)
+	if err != nil {
+		return playout.MediaFormat{}
+	}
+	request := inventory.SourceRequest{Item: inventory.ItemRef{Origin: &origin}, RequiredCoverage: []string{"streams"}}
+	if source, ok, err := r.inventory.ResolveSource(ctx, request); err == nil && ok {
+		return playoutFormatOf(source.Observation.Facts)
+	}
+	snapshot, present, err := r.lib.InventorySnapshot(ctx, libraryItemID)
+	if err != nil || !present {
+		return playout.MediaFormat{}
+	}
+	if _, err := r.inventory.ApplySnapshot(ctx, snapshot); err != nil {
+		if r.log != nil {
+			r.log.Debug("formats: library media observation not persisted", "item", libraryItemID, "err", err)
+		}
+		return playout.MediaFormat{}
+	}
+	if source, ok, err := r.inventory.ResolveSource(ctx, request); err == nil && ok {
+		return playoutFormatOf(source.Observation.Facts)
+	}
+	return playout.MediaFormat{}
+}
+
 // maxCodecProbes bounds how many program files ComputeChannelCodec probes to decide the majority.
 //
 // Curation is a human-triggered action, not a hot loop, but a household lineup can still be scores

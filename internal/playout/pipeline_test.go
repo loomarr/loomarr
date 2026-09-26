@@ -34,7 +34,7 @@ func testHosts() map[string]HostProfile {
 		"vaapi-intel": arc, "vaapi-amd": amd, "vaapi-cputonemap": vaCPU,
 		"nvenc-opencl": nv, "nvenc-libplacebo": nvPlacebo, "nvenc-cputonemap": nvCPU,
 		"software": sw, "software-hdrcapable": swHDR,
-		"videotoolbox": {Family: FamilyVideoToolbox, DecodeCodecs: vtDecodes, CPUTonemap: true},
+		"videotoolbox": {Family: FamilyVideoToolbox, DecodeCodecs: vtDecodes, Libplacebo: true, CPUTonemap: true},
 		"generic-qsv":  {Family: FamilyGeneric, Encoder: EncoderQSV, DecodeCodecs: anyCodec, CPUTonemap: true},
 	}
 }
@@ -117,7 +117,7 @@ func gpuFilter(name string) bool {
 		strings.HasSuffix(name, "_opencl") || strings.HasSuffix(name, "_vt") || strings.HasSuffix(name, "_videotoolbox")
 }
 
-func hwAgnostic(name string) bool { return name == "fps" || name == "setparams" }
+func hwAgnostic(name string) bool { return name == "fps" || name == "setparams" || name == "sidedata" }
 
 // TestBuild_NoCPUFilterOnAGPUPathExceptItsDeclaredFallback walks each GPU family's graph tracking
 // where the frames are. A CPU filter may only run on downloaded (or CPU-decoded) frames, and every
@@ -132,46 +132,52 @@ func TestBuild_NoCPUFilterOnAGPUPathExceptItsDeclaredFallback(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s/%s: a GPU family with a CPU tone-mapper must not refuse: %v", hostName, srcName, err)
 			}
-			onGPU := slices.Contains(p.PreInput, "-hwaccel_output_format")
-			if !onGPU && len(p.Fallbacks) == 0 {
-				t.Errorf("%s/%s: CPU decode without a declared decode fallback", hostName, srcName)
-			}
-			cpuStretch := !onGPU
-			for _, f := range strings.Split(p.VideoFilter, ",") {
-				name, _, _ := strings.Cut(f, "=")
-				switch {
-				case name == "hwupload" || name == "hwupload_cuda":
-					onGPU = true
-				case name == "hwdownload":
-					onGPU, cpuStretch = false, true
-				case name == "hwmap":
-					// VAAPI <-> OpenCL surface mapping: GPU frames in and out, zero-copy.
-					if !onGPU {
-						t.Errorf("%s/%s: hwmap fed CPU frames in %q", hostName, srcName, p.VideoFilter)
-					}
-				case name == "libplacebo":
-					// Its own Vulkan device: CPU frames in and out.
-					if onGPU {
-						t.Errorf("%s/%s: libplacebo fed GPU frames in %q", hostName, srcName, p.VideoFilter)
-					}
-				case gpuFilter(name):
-					if !onGPU {
-						t.Errorf("%s/%s: GPU filter %s on CPU frames in %q", hostName, srcName, name, p.VideoFilter)
-					}
-				case hwAgnostic(name):
-				default:
-					if onGPU {
-						t.Errorf("%s/%s: CPU filter %q on GPU frames in %q", hostName, srcName, f, p.VideoFilter)
-					}
-				}
-			}
-			if cpuStretch && len(p.Fallbacks) == 0 {
-				t.Errorf("%s/%s: frames left the GPU without a declared fallback: %q", hostName, srcName, p.VideoFilter)
-			}
+			checkGPUResidency(t, hostName+"/"+srcName, p)
+		}
+	}
+}
+
+// checkGPUResidency walks a GPU family's graph tracking where the frames are.
+func checkGPUResidency(t *testing.T, label string, p Pipeline) {
+	t.Helper()
+	onGPU := slices.Contains(p.PreInput, "-hwaccel_output_format")
+	if !onGPU && len(p.Fallbacks) == 0 {
+		t.Errorf("%s: CPU decode without a declared decode fallback", label)
+	}
+	cpuStretch := !onGPU
+	for _, f := range strings.Split(p.VideoFilter, ",") {
+		name, _, _ := strings.Cut(f, "=")
+		switch {
+		case name == "hwupload" || name == "hwupload_cuda":
+			onGPU = true
+		case name == "hwdownload":
+			onGPU, cpuStretch = false, true
+		case name == "hwmap":
+			// VAAPI <-> OpenCL surface mapping: GPU frames in and out, zero-copy.
 			if !onGPU {
-				t.Errorf("%s/%s: the encoder must receive GPU frames: %q", hostName, srcName, p.VideoFilter)
+				t.Errorf("%s: hwmap fed CPU frames in %q", label, p.VideoFilter)
+			}
+		case name == "libplacebo":
+			// Its own Vulkan device: CPU frames in and out.
+			if onGPU {
+				t.Errorf("%s: libplacebo fed GPU frames in %q", label, p.VideoFilter)
+			}
+		case gpuFilter(name):
+			if !onGPU {
+				t.Errorf("%s: GPU filter %s on CPU frames in %q", label, name, p.VideoFilter)
+			}
+		case hwAgnostic(name):
+		default:
+			if onGPU {
+				t.Errorf("%s: CPU filter %q on GPU frames in %q", label, f, p.VideoFilter)
 			}
 		}
+	}
+	if cpuStretch && len(p.Fallbacks) == 0 {
+		t.Errorf("%s: frames left the GPU without a declared fallback: %q", label, p.VideoFilter)
+	}
+	if !onGPU {
+		t.Errorf("%s: the encoder must receive GPU frames: %q", label, p.VideoFilter)
 	}
 }
 

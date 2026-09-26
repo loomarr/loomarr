@@ -886,6 +886,11 @@ func (r syntheticLiveResolver) ChannelCodec(ctx context.Context, channelID strin
 	return (&playoutResolver{channels: r.channels}).ChannelCodec(ctx, channelID)
 }
 
+// LineupFormats: generated certification channels carry no inventory, so they are baseline only.
+func (r syntheticLiveResolver) LineupFormats(context.Context, string) ([]playout.MediaFormat, error) {
+	return nil, nil
+}
+
 func (r syntheticLiveResolver) CopyVideoStart(ctx context.Context, input string, offset, limit time.Duration, fps float64) (time.Duration, bool) {
 	if r.copyStart == nil {
 		return 0, false

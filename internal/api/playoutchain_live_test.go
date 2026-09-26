@@ -348,6 +348,9 @@ func (c *chainResolver) PlanFor(context.Context, string, playout.EncodePlan) (pl
 	return playout.CopyPlan{}, playout.MediaFormat{}
 }
 func (c *chainResolver) ChannelCodec(context.Context, string) string { return "h264" }
+func (c *chainResolver) LineupFormats(context.Context, string) ([]playout.MediaFormat, error) {
+	return nil, nil
+}
 
 func (c *chainResolver) CopyVideoStart(context.Context, string, time.Duration, time.Duration, float64) (time.Duration, bool) {
 	return 0, false // This fixture always transcodes.

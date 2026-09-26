@@ -47,8 +47,10 @@ type fakeResolver struct {
 	// channelCodec is the persisted codec of the live Channel. Empty keeps the historical h264
 	// default used by the program-path tests; HEVC fallback tests set it explicitly.
 	channelCodec string
-	calls        int
-	mu           sync.Mutex
+	// lineup is the channel's programme facts LineupFormats returns (empty: baseline only).
+	lineup []playout.MediaFormat
+	calls  int
+	mu     sync.Mutex
 	// airingEntered/airingRelease form a deterministic barrier for lifecycle races. When both
 	// are set, AiringNow announces that resolution began and waits until either the request is
 	// cancelled or the test releases it.
@@ -109,6 +111,10 @@ func (f *fakeResolver) ChannelCodec(context.Context, string) string {
 		return "h264"
 	}
 	return f.channelCodec
+}
+
+func (f *fakeResolver) LineupFormats(context.Context, string) ([]playout.MediaFormat, error) {
+	return f.lineup, nil
 }
 
 func (f *fakeResolver) callCount() int {

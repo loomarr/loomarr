@@ -68,7 +68,8 @@ type HostProfile struct {
 	// black picture at normal speed with no error (#1516), so it is never emitted.
 	TonemapOpenCL bool `json:"tonemapOpencl,omitempty"`
 	// Libplacebo: libplacebo on its own Vulkan device works: the first choice for the curves only it
-	// has (ToneCurve), otherwise the second GPU choice. Always through system memory.
+	// has (ToneCurve), otherwise the second GPU choice, and on every GPU family the only correct
+	// SDR→HDR10 conversion (4K HDR premium). Always through system memory.
 	Libplacebo bool `json:"libplacebo,omitempty"`
 	// CPUTonemap: the build has zscale + tonemap, the last-resort tone-map.
 	CPUTonemap bool `json:"cpuTonemap,omitempty"`
@@ -111,6 +112,7 @@ func HostFor(enc Encoder, cpuTonemap bool, gpu GPUFilters) HostProfile {
 		h.TonemapOpenCL, h.Libplacebo = gpu.TonemapOpenCL, gpu.Libplacebo
 	case EncoderVideoToolbox:
 		h.Family, h.DecodeCodecs = FamilyVideoToolbox, vtDecodes
+		h.Libplacebo = gpu.Libplacebo
 	case EncoderSoftware:
 		h.Family = FamilySoftware
 	default:
@@ -122,8 +124,13 @@ func HostFor(enc Encoder, cpuTonemap bool, gpu GPUFilters) HostProfile {
 // OutputProfile is the channel's uniform output (maintainer decisions, #1512).
 type OutputProfile struct {
 	Width, Height, FPS int
-	// HEVC keeps today's HEVC-plan sessions uniformly HEVC (§9.1 V49). The beta.8 output is H.264.
+	// HEVC keeps today's HEVC-plan sessions uniformly HEVC (§9.1 V49), and is the premium format's
+	// codec (formats.go). The beta.8 baseline is H.264.
 	HEVC bool
+	// HDR is an HDR10 output: HEVC Main10, BT.2020 PQ. PQ sources pass through; SDR and HLG sources
+	// are converted (sdrToHDR10). Per-item HDR metadata is stripped; the channel's static HDR10 SEI
+	// (hdr10.go) is the only one the stream carries.
+	HDR bool
 	// Quality is the QVBR quality target; TargetKbps and MaxKbps its average and cap. Each family maps
 	// them to its closest equivalent (see videoEncoder).
 	Quality, TargetKbps, MaxKbps int
@@ -198,6 +205,9 @@ type Pipeline struct {
 	// Tonemapper is the tone-mapper an HDR graph uses (TonemapperOpenCL, TonemapperLibplacebo or
 	// TonemapperCPU); empty for SDR. The live ladder demotes exactly this one (DemoteTonemap).
 	Tonemapper string
+	// CostClass is what the resource budget charges for this item: the output's format class, or
+	// CostHDRConvert for an SDR/HLG item converted into an HDR10 output.
+	CostClass FormatClass
 }
 
 const (
@@ -216,10 +226,34 @@ var minimalProbe = []string{"-analyzeduration", "0", "-probesize", "32768", "-fp
 // software auto_scale that fails the VAAPI HDR graph (spike #1513).
 const conformColour = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left"
 
+// conformHDR10 is conformColour for an HDR10 output: BT.2020 non-constant luminance, PQ.
+const conformHDR10 = "setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left"
+
+// stripSideData deletes every frame's side data before an HEVC encode. The encoders copy a frame's
+// mastering display and light level into per-item SEI (and DV/HDR10+ metadata where they can), so
+// items would differ at every seam; the channel's static HDR10 SEI replaces them (hdr10.go).
+const stripSideData = "sidedata=mode=delete"
+
+// sdrToHDR10 converts an SDR (or HLG) frame to HDR10 at its own size. libplacebo maps SDR reference
+// white to BT.2408's 203 nits (10-bit PQ code 573, spike 0b). No inverse tone-map: it expands
+// highlights, and commercials would glare. The Intel VPP conversion (scale_vaapi to PQ) puts white
+// at ~2,600 nits and is never used.
+const sdrToHDR10 = "libplacebo=format=p010le:colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv"
+
 // Build returns the pipeline for one source on one host, or ErrRefused.
 func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, error) {
-	b := builder{host: host, src: src, out: out, hdr: src.HDR()}
+	b := builder{host: host, src: src, out: out, tonemap: src.HDR() && !out.HDR, convert: out.HDR && !src.PQ()}
 	b.p.Family = host.Family
+	if out.premium() {
+		switch {
+		case host.Family == FamilySoftware || host.Family == FamilyGeneric:
+			return Pipeline{}, fmt.Errorf("%w: a premium format needs a GPU family (%s)", ErrRefused, host.Family)
+		case b.tonemap:
+			// Derivation never pairs a 4K SDR premium with an HDR item; tone-mapping at 4K runs 0.69x
+			// on NVIDIA (spike 0b). Seeing one means the channel's formats are stale.
+			return Pipeline{}, fmt.Errorf("%w: an SDR premium never carries an HDR item (re-derive the channel's formats)", ErrRefused)
+		}
+	}
 	b.p.AudioEncode = []string{"-c:a", "aac", "-profile:a", "aac_low", "-b:a", strconv.Itoa(out.AudioKbps) + "k", "-ac", "2", "-ar", "48000"}
 	var err error
 	switch host.Family {
@@ -242,6 +276,7 @@ func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, erro
 		b.p.PreInput = append(b.p.PreInput, minimalProbe...)
 	}
 	b.p.VideoEncode = videoEncoder(host, out)
+	b.p.CostClass = costClass(out, b.convert)
 	return b.p, nil
 }
 
@@ -268,8 +303,9 @@ type builder struct {
 	host HostProfile
 	src  MediaFormat
 	out  OutputProfile
-	hdr  bool
-	p    Pipeline
+	// tonemap: an HDR source into an SDR output. convert: an SDR or HLG source into an HDR10 output.
+	tonemap, convert bool
+	p                Pipeline
 }
 
 func (b *builder) fallback(stage, why string) { b.p.Fallbacks = append(b.p.Fallbacks, stage+": "+why) }
@@ -303,12 +339,39 @@ func chroma420(pixfmt string) bool {
 }
 
 // cpuPixelFormat is what a CPU-decoded frame is converted to before it is uploaded: 10-bit stays
-// 10-bit for an HDR source so the tone-map sees the full range.
+// 10-bit for an HDR source so the tone-map sees the full range, and for an HDR10 output.
 func (b *builder) cpuPixelFormat() string {
-	if b.hdr {
+	if b.tonemap || b.out.HDR {
 		return "p010le"
 	}
 	return "nv12"
+}
+
+// decodedPixelFormat is the software format of a GPU-decoded frame, for hwdownload.
+func (b *builder) decodedPixelFormat() string {
+	if b.src.TenBit() {
+		return "p010le"
+	}
+	return "nv12"
+}
+
+// scaleFormat is the GPU scaler's output format: 10-bit for HDR10, else 8-bit.
+func (b *builder) scaleFormat(p010 string) string {
+	if b.out.HDR {
+		return p010
+	}
+	return "nv12"
+}
+
+// hdr10Convert is the declared SDR→HDR10 stage: libplacebo on its own Vulkan device, so the frame
+// passes through system memory at SOURCE size; the GPU upscales it afterwards (spike 0b: 3.9-4.5x
+// on the Arc against 2.2x converting at 4K).
+func (b *builder) hdr10Convert() (string, error) {
+	if !b.host.Libplacebo {
+		return "", fmt.Errorf("%w: an SDR item on an HDR10 channel needs libplacebo", ErrRefused)
+	}
+	b.fallback("hdr", "libplacebo converts SDR to HDR10 through system memory")
+	return sdrToHDR10, nil
 }
 
 func (b *builder) fit() string {
@@ -316,7 +379,14 @@ func (b *builder) fit() string {
 }
 
 func (b *builder) tail() string {
-	return fmt.Sprintf("fps=%d,%s", b.out.FPS, conformColour)
+	colour := conformColour
+	if b.out.HDR {
+		colour = conformHDR10
+	}
+	if b.out.HEVC {
+		colour = stripSideData + "," + colour
+	}
+	return fmt.Sprintf("fps=%d,%s", b.out.FPS, colour)
 }
 
 func (b *builder) curve() ToneCurve { return ParseToneCurve(string(b.out.ToneCurve)) }
@@ -381,7 +451,8 @@ func (b *builder) vaapi() error {
 	}
 	b.p.PreInput = []string{"-init_hw_device", "vaapi=va:" + node, "-filter_hw_device", "va"}
 	var f []string
-	if b.hardwareDecodes() {
+	hw := b.hardwareDecodes()
+	if hw {
 		b.p.PreInput = append(b.p.PreInput, "-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi")
 		if b.src.Interlaced {
 			f = append(f, "deinterlace_vaapi")
@@ -390,11 +461,23 @@ func (b *builder) vaapi() error {
 		if b.src.Interlaced {
 			f = append(f, "bwdif=mode=send_frame")
 		}
-		f = append(f, "format="+b.cpuPixelFormat(), "hwupload")
+		if !b.convert {
+			f = append(f, "format="+b.cpuPixelFormat(), "hwupload")
+		}
 	}
-	if !b.hdr {
-		f = append(f, "scale_vaapi="+b.fit()+":format=nv12")
-	} else {
+	switch {
+	case b.convert:
+		if hw {
+			f = append(f, "hwdownload", "format="+b.decodedPixelFormat())
+		}
+		conv, err := b.hdr10Convert()
+		if err != nil {
+			return err
+		}
+		f = append(f, conv, "hwupload", "scale_vaapi="+b.fit()+":format=p010")
+	case !b.tonemap:
+		f = append(f, "scale_vaapi="+b.fit()+":format="+b.scaleFormat("p010"))
+	default:
 		// Scale BEFORE the tone-map: 4K tone-mapping is several times slower.
 		f = append(f, "scale_vaapi="+b.fit()+":format=p010")
 		switch b.gpuTonemapper() {
@@ -432,11 +515,32 @@ func (b *builder) nvenc() error {
 		if b.src.Interlaced {
 			f = append(f, "bwdif=mode=send_frame")
 		}
-		f = append(f, "format="+b.cpuPixelFormat(), "hwupload_cuda")
+		if !b.convert {
+			f = append(f, "format="+b.cpuPixelFormat(), "hwupload_cuda")
+		}
 	}
-	if !b.hdr {
-		f = append(f, "scale_cuda="+b.fit()+":format=nv12")
-	} else {
+	// pad_cuda (like overlay_cuda) takes 8-bit frames only, so an HDR10 frame must reach the encoder
+	// already at the output geometry: exactly fitted, boxed by libplacebo, or padded on the CPU.
+	fitted := b.exactFit()
+	switch {
+	case b.convert:
+		if hw {
+			f = append(f, "hwdownload", "format="+b.decodedPixelFormat())
+		}
+		conv, err := b.hdr10Convert()
+		if err != nil {
+			return err
+		}
+		scale := "scale_cuda=" + b.fit() + ":format=p010le"
+		if box, ok := b.aspectBox(); ok {
+			// Box to the output's aspect at source size, so the GPU upscale fills the frame.
+			conv += box
+			scale, fitted = fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le", b.out.Width, b.out.Height), true
+		}
+		f = append(f, conv, "hwupload_cuda", scale)
+	case !b.tonemap:
+		f = append(f, "scale_cuda="+b.fit()+":format="+b.scaleFormat("p010le"))
+	default:
 		// Every HDR path scales in CUDA first and tone-maps the 1080p 10-bit frame.
 		f = append(f, "scale_cuda="+b.fit()+":format=p010le")
 		switch b.gpuTonemapper() {
@@ -464,9 +568,40 @@ func (b *builder) nvenc() error {
 	if hw {
 		b.p.PreInput = append(b.p.PreInput, "-hwaccel", "cuda", "-hwaccel_device", "cu", "-hwaccel_output_format", "cuda")
 	}
-	f = append(f, fmt.Sprintf("pad_cuda=w=%d:h=%d:x=-1:y=-1", b.out.Width, b.out.Height), b.tail())
+	switch {
+	case !b.out.HDR:
+		f = append(f, fmt.Sprintf("pad_cuda=w=%d:h=%d:x=-1:y=-1", b.out.Width, b.out.Height))
+	case !fitted:
+		b.fallback("pad", "pad_cuda takes 8-bit frames only: the 10-bit letterbox is added on the CPU at output size")
+		f = append(f, "hwdownload", "format=p010le", fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), "hwupload_cuda")
+	}
+	f = append(f, b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
 	return nil
+}
+
+// exactFit reports whether the source, fitted to the output, fills it: no letterbox to add.
+func (b *builder) exactFit() bool {
+	w, h, ok := fitSize(b.src.Width, b.src.Height, b.out.Width, b.out.Height)
+	return ok && w == b.out.Width && h == b.out.Height
+}
+
+// aspectBox is the libplacebo options that place the source, at its own size, centred in the
+// smallest box of the output's aspect (a 1440x1080 source in 1920x1080 for a 16:9 output). ok is
+// false when the source geometry is unknown.
+func (b *builder) aspectBox() (string, bool) {
+	sw, sh := b.src.Width, b.src.Height
+	if sw <= 0 || sh <= 0 {
+		return "", false
+	}
+	bw, bh := sw, sh
+	if sw*b.out.Height > sh*b.out.Width { // wider than the output: add height
+		bh = even((sw*b.out.Height + b.out.Width - 1) / b.out.Width)
+	} else {
+		bw = even((sh*b.out.Width + b.out.Height - 1) / b.out.Height)
+	}
+	return fmt.Sprintf(":w=%d:h=%d:pos_x=%d:pos_y=%d:pos_w=%d:pos_h=%d:fillcolor=black",
+		bw, bh, even((bw-sw)/2), even((bh-sh)/2), sw, sh), true
 }
 
 // videotoolbox: VT decode and scale_vt on the GPU. VideoToolbox has no pad and no tone-map filter,
@@ -491,14 +626,22 @@ func (b *builder) videotoolbox() error {
 		}
 		f = append(f, "scale="+b.fit())
 	}
-	if b.hdr {
+	switch {
+	case b.convert:
+		// At output size: VideoToolbox scales before the download, so there is no source-size stage.
+		conv, err := b.hdr10Convert()
+		if err != nil {
+			return err
+		}
+		f = append(f, conv)
+	case b.tonemap:
 		if !b.host.CPUTonemap {
 			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
 		}
 		b.fallback("tonemap", "VideoToolbox has no tone-map filter")
 		f = append(f, "format=p010le", b.cpuChain())
 	}
-	f = append(f, "format=nv12", fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), b.tail())
+	f = append(f, "format="+b.scaleFormat("p010le"), fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
 	return nil
 }
@@ -510,7 +653,7 @@ func (b *builder) software() error {
 	if b.src.Interlaced {
 		f = append(f, "bwdif=mode=send_frame")
 	}
-	if b.hdr {
+	if b.tonemap {
 		if !b.host.SoftwareHDR || !b.host.CPUTonemap {
 			return fmt.Errorf("%w: 4K HDR tone-mapping needs more CPU than this host has", ErrRefused)
 		}
@@ -543,7 +686,7 @@ func (b *builder) generic() error {
 		f = append(f, "bwdif=mode=send_frame")
 	}
 	f = append(f, "scale="+b.fit(), fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height))
-	if b.hdr {
+	if b.tonemap {
 		if !b.host.CPUTonemap {
 			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
 		}
@@ -574,7 +717,10 @@ func videoEncoder(host HostProfile, out OutputProfile) []string {
 	target, maxrate := strconv.Itoa(out.TargetKbps)+"k", strconv.Itoa(out.MaxKbps)+"k"
 	q := strconv.Itoa(out.Quality)
 	profile := "high"
-	if out.HEVC {
+	switch {
+	case out.HDR:
+		profile = "main10"
+	case out.HEVC:
 		profile = "main"
 	}
 	enc := func(h264 Encoder) string {
