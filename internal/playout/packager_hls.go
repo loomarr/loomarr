@@ -131,8 +131,8 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 	t0 := time.Now()
 	host, out := m.source.Output(ctx, key.channel, key.plan)
 	t1 := time.Now()
-	// The tune-in (G2) split before the packager runs: the encode profile. The slate encodes in the
-	// background and is waited for only by a slot that needs it.
+	// The tune-in (G2) split before the packager runs: the encode profile. The slate is waited for
+	// only by a slot that needs it.
 	m.log.Info("packager hls: channel start", "channel", key.channel, "output_ms", t1.Sub(t0).Milliseconds())
 	slate := m.slate(host, out)
 	dir, err := os.MkdirTemp(m.root, "ch-")
@@ -154,6 +154,12 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 			log.Error("packager hls: channel packager stopped", "err", err)
 		}
 		_ = os.RemoveAll(dir)
+	}()
+	go func() {
+		// Prewarm the slate once the channel is on air, not beside the tune-in item's encoder.
+		if p.AwaitPlaylist(ctx) == nil {
+			m.slateEncodeFor(host, out)
+		}
 	}()
 	log.Info("packager hls: started", "dir", dir, "output", fmt.Sprintf("%dx%d@%d", out.Width, out.Height, out.FPS))
 	return c, nil
@@ -264,11 +270,25 @@ type slateEncode struct {
 // slateEncodeTimeout bounds one slate encode (0.8 s cold on NVENC live).
 const slateEncodeTimeout = time.Minute
 
-// slate returns the house slate for an encode, starting its encode in the background the first time
-// it is asked for (#1512 G2: never on the tune path; the first manifest waits for a real item
-// anyway). Encodes are shared across channels and sessions; a failed one is forgotten, so the next
-// channel start encodes it again.
+// slate returns the house slate for an encode as a SlateSource: the packager waits on it only when a
+// slot needs slate (#1512 G2: never on the tune path; the first manifest waits for a real item
+// anyway). The encode starts on that first need or, when prewarmed, once the channel is on air.
 func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateSource {
+	return func(ctx context.Context) (*packager.Slate, error) {
+		e := m.slateEncodeFor(host, out)
+		select {
+		case <-e.done:
+			return e.s, e.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+// slateEncodeFor returns the (host, output) slate encode, starting it in the background if none is
+// running or done. Encodes are shared across channels and sessions; a failed one is forgotten, so
+// the next need encodes it again.
+func (m *PackagerHLS) slateEncodeFor(host HostProfile, out OutputProfile) *slateEncode {
 	key := fmt.Sprintf("%+v|%+v", host, out)
 	m.slateMu.Lock()
 	e := m.slates[key]
@@ -294,14 +314,7 @@ func (m *PackagerHLS) slate(host HostProfile, out OutputProfile) packager.SlateS
 		}()
 	}
 	m.slateMu.Unlock()
-	return func(ctx context.Context) (*packager.Slate, error) {
-		select {
-		case <-e.done:
-			return e.s, e.err
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
+	return e
 }
 
 // encodeSlate encodes a house slate: a black, silent source run through the same builder and

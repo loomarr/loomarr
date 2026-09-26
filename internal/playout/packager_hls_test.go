@@ -210,3 +210,39 @@ func TestChannelStartDoesNotWaitForTheSlate(t *testing.T) {
 		t.Fatal("the channel start waited on the slate encode")
 	}
 }
+
+// slowItemSource airs one real item, whose encoder is still starting.
+type slowItemSource struct{ stuckSlateSource }
+
+func (slowItemSource) ItemAt(context.Context, string, EncodePlan, time.Time) (PackagerItem, error) {
+	return PackagerItem{Label: "prog", Remaining: time.Hour, Input: "movie.mkv", Format: MediaFormat{
+		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
+		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}, nil
+}
+
+// Off the tune path means off the tune-in's encoder too (#1512 G2): live, a cold tune's first
+// fragment took ~0.25 s longer while the slate encoded beside it. The slate waits until the first
+// item is on air, or until a slot needs it.
+func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
+	dir := t.TempDir()
+	mark := filepath.Join(dir, "slate-started")
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	script := "#!/bin/sh\ncase \"$*\" in *lavfi*) touch " + mark + ";; esac\nexec sleep 5\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewPackagerHLS(slowItemSource{}, ffmpeg, t.TempDir(), time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	lease, err := m.acquirePlaylist("ch", PlanBaseline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.release()
+	time.Sleep(time.Second)
+	if _, err := os.Stat(mark); err == nil {
+		t.Fatal("the slate encode started beside the tune-in item's encoder")
+	}
+}
