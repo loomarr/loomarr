@@ -727,7 +727,10 @@ var (
 	directAndPattern     = regexp.MustCompile(`(?i:\s+and\s+)`)
 	// exampleCuePattern introduces titles the user offers as models of the
 	// channel ("adventure movies like Indiana Jones and The Goonies").
-	exampleCuePattern = regexp.MustCompile(`(?i:\b(?:like|such\s+as|similar\s+to|in\s+the\s+vein\s+of|along\s+the\s+lines\s+of|reminiscent\s+of)\b|\be\.g\.)`)
+	// RE2's \b is ASCII-only, so "à la" carries no leading boundary. "think X"
+	// is deliberately absent: TestSuggest_SoftDescriptionExampleRemainsOptional
+	// pins a trailing "Think Full House." as a soft, optional hint.
+	exampleCuePattern = regexp.MustCompile(`(?i:\b(?:like|such\s+as|similar\s+to|in\s+the\s+vein\s+of|in\s+the\s+spirit\s+of|inspired\s+by|along\s+the\s+lines\s+of|reminiscent\s+of|a\s+la)\b|à\s+la\b|\be\.g\.)`)
 )
 
 var exampleTrailerPattern = regexp.MustCompile(`(?i:\s+(?:for|from|to|that|who|which|when|where|on|but|so)\s+|\s*\()`)

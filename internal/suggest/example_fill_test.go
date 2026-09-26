@@ -232,3 +232,100 @@ func TestSuggest_EmptyPicksArrayIsNotRepaired(t *testing.T) {
 		t.Errorf("empty picks should leave exactly the anchors: %v", names)
 	}
 }
+
+// #1499 cause 1: "in the spirit of" (and its siblings; not "think X", see reference.go) offer example titles
+// exactly like "like" does, so the anchors are required. The model here drops
+// Gremlins; the required-title check must bring it back for every phrasing.
+func TestSuggest_ExampleCuePhrasingsRequireTheAnchors(t *testing.T) {
+	for _, phrase := range []string{
+		"in the spirit of", "inspired by", "a la", "à la",
+	} {
+		t.Run(phrase, func(t *testing.T) {
+			corpus := exampleFillCorpus()
+			none := dateMeaningNone()
+			model := testkit.NewLLM(
+				catalogSearchResponse(map[string]any{"query": "Back to the Future", "media_type": "movie", "dateMeaning": none}),
+				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Ghostbusters", "Big"), none),
+				finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters", "Big"), none),
+			)
+			s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+			proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies " + phrase + " Back to the Future and Gremlins for a family night"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if names := exampleFillNames(proposal); !slices.Contains(names, "Gremlins") || !slices.Contains(names, "Back to the Future") {
+				t.Errorf("%q did not require its anchors: %v", phrase, names)
+			}
+		})
+	}
+}
+
+// #1499 cause 2: when the model spends its tool call on mode=collection for the
+// named titles, the era neighbours must still reach it as evidence.
+func TestSuggest_CollectionCallForExampleTitlesSurfacesNeighbours(t *testing.T) {
+	corpus := exampleFillCorpus()
+	none := dateMeaningNone()
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Future", "Gremlins"}, "dateMeaning": none}),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters", "Big"), none),
+	)
+	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := model.Prompt()
+	for _, neighbour := range []string{"Ghostbusters", "Honey, I Shrunk the Kids", "Big"} {
+		if !strings.Contains(prompt, neighbour) {
+			t.Errorf("collection result never surfaced on-era neighbour %q", neighbour)
+		}
+	}
+	if strings.Contains(prompt, "To Be or Not to Be") {
+		t.Error("off-era title reached the model")
+	}
+	if names := exampleFillNames(proposal); len(names) != 4 {
+		t.Errorf("model's picks were changed server-side: %v", names)
+	}
+}
+
+// Control: a collection intent (a named franchise, not examples) gets no era
+// neighbours; membership evidence stays exact.
+func TestSuggest_CollectionCallForFranchiseGetsNoNeighbours(t *testing.T) {
+	corpus := exampleFillCorpus()
+	none := dateMeaningNone()
+	model := testkit.NewLLM(
+		catalogSearchResponse(map[string]any{"mode": "collection", "media_type": "movie", "titles": []any{"Back to the Future", "Gremlins"}, "dateMeaning": none}),
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins"), none),
+	)
+	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	if _, err := s.Suggest(context.Background(), suggest.Intent{Description: "A channel of the Back to the Future and Gremlins movies"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(model.Prompt(), "Ghostbusters") {
+		t.Error("a non-example request got era neighbours")
+	}
+}
+
+// #1499 cause 3: a catalog_search carrying titles but no mode used to be
+// rejected on every round until the rounds ran out (hard failure). It is read as
+// a collection lookup, so the model gets its titles back and can finish.
+func TestSuggest_TitlesWithoutModeAreACollectionLookupNotADeadEnd(t *testing.T) {
+	corpus := exampleFillCorpus()
+	none := dateMeaningNone()
+	call := catalogSearchResponse(map[string]any{"media_type": "movie", "titles": []any{"Back to the Future", "Gremlins"}, "dateMeaning": none})
+	model := testkit.NewLLM(
+		call, call, call, call, call, call, call,
+		finalResponseWithDateMeaning(pickJSON(corpus, "Back to the Future", "Gremlins", "Ghostbusters"), none),
+	)
+	s := suggest.New(model, catalog.New(nil, corpus), referenceExistsValidator{}, 10)
+	proposal, err := s.Suggest(context.Background(), suggest.Intent{Description: "Movies like Back to the Future and Gremlins for a family night"})
+	if err != nil {
+		t.Fatalf("titles without mode exhausted the rounds: %v", err)
+	}
+	if !strings.Contains(model.Prompt(), "Ghostbusters") {
+		t.Error("the titles call produced no evidence for the model")
+	}
+	if names := exampleFillNames(proposal); !slices.Contains(names, "Gremlins") {
+		t.Errorf("lineup = %v", names)
+	}
+}

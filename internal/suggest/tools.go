@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"strings"
 
@@ -62,7 +63,17 @@ func prepareToolCall(tc llm.ToolCall, intent Intent, accepted *ValidatedDateMean
 	if meaning.DateMeaning().Kind == DateMeaningAmbiguous {
 		return preparedToolCall{meaning: meaning}, `{"error":"clarify_dates"}`, DecisionTrace{}, true
 	}
-	if rawMode, present := arguments["mode"]; present {
+	rawMode, present := arguments["mode"]
+	if !present {
+		if _, hasTitles := arguments["titles"]; hasTitles && onlyCollectionKeys(arguments) {
+			// Weaker models send exact titles without mode=collection and were
+			// rejected every round until the budget ran out (#1499).
+			arguments = maps.Clone(arguments)
+			arguments["mode"] = "collection"
+			rawMode, present = "collection", true
+		}
+	}
+	if present {
 		if networkStyleRequest(intent) && !requiresMembershipEvidence(intent) {
 			return preparedToolCall{}, `{"error":"network programming identity requires network discovery, not a guessed collection roster"}`, DecisionTrace{}, false
 		}
@@ -170,7 +181,16 @@ func stringSliceAsAny(values []string) []any {
 
 func (s *Suggester) executePreparedTool(ctx context.Context, prepared preparedToolCall, intent Intent, feedback []FeedbackSignal) (string, []catalog.Candidate, DecisionTrace, bool) {
 	if prepared.collection {
-		return s.runCollectionTool(ctx, prepared.arguments, intent, feedback)
+		blob, cands, trace, ok := s.runCollectionTool(ctx, prepared.arguments, intent, feedback)
+		if !ok || len(cands) == 0 || intent.exampleFill == nil || stringArg(prepared.arguments["media_type"]) != string(provision.Movie) {
+			return blob, cands, trace, ok
+		}
+		// The titles are examples (the fill exists only for resolved example
+		// anchors), so the era neighbours are evidence here too; membership
+		// stays exact for genuine collection intents, which have no fill.
+		ranked := rankGroundedCandidatesWithTrace(decisionRankQuery(intent), withExampleNeighbours(cands, intent.exampleFill), feedback)
+		encoded, _ := json.Marshal(toolResult(ranked.Candidates))
+		return string(encoded), ranked.Candidates, ranked.Trace, true
 	}
 	arguments, discoveryMode := prepared.arguments, prepared.discoveryMode
 	mtArg, _ := arguments["media_type"].(string)
@@ -901,4 +921,15 @@ func adjacentVotesOf(intent Intent, key provision.Key) int {
 		}
 	}
 	return 0
+}
+
+// onlyCollectionKeys reports whether every argument is one collection mode
+// accepts, so titles with a discovery filter are never silently narrowed.
+func onlyCollectionKeys(arguments map[string]any) bool {
+	for key := range arguments {
+		if key != "mode" && key != "media_type" && key != "titles" && key != "dateMeaning" {
+			return false
+		}
+	}
+	return true
 }
