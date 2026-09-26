@@ -73,6 +73,9 @@ type HostProfile struct {
 	Libplacebo bool `json:"libplacebo,omitempty"`
 	// CPUTonemap: the build has zscale + tonemap, the last-resort tone-map.
 	CPUTonemap bool `json:"cpuTonemap,omitempty"`
+	// Overlay: this host's GPU overlay passed the boot self-check (WatermarkCheck), which asserts the
+	// picture, not the exit code. False keeps every programme bug-free (watermark.go).
+	Overlay bool `json:"overlay,omitempty"`
 }
 
 // GPUFilters is which GPU tone-mappers this ffmpeg BUILD carries (GPUFiltersFor). Whether the
@@ -210,6 +213,8 @@ type Pipeline struct {
 	// CostClass is what the resource budget charges for this item: the output's format class, or
 	// CostHDRConvert for an SDR/HLG item converted into an HDR10 output.
 	CostClass FormatClass
+	// Watermark: the graph burns in the channel's bug (BuildItem).
+	Watermark bool
 }
 
 const (
@@ -253,9 +258,17 @@ const sdrToHDR10 = "libplacebo=format=p010le:colorspace=bt2020nc:color_primaries
 // HEVC outputs strip all side data instead (stripSideData).
 const conformHDRMetadata = "sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL"
 
-// Build returns the pipeline for one source on one host, or ErrRefused.
+// Build returns the pipeline for one source on one host, or ErrRefused. It never draws a watermark:
+// breaks are built with it.
 func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, error) {
-	b := builder{host: host, src: src, out: out, tonemap: src.HDR() && !out.HDR, convert: out.HDR && !src.PQ()}
+	return BuildItem(host, src, out, nil)
+}
+
+// BuildItem is Build for a programme item that carries the channel's bug when wm is non-nil. A host
+// that cannot draw it on the GPU gets the bug-free pipeline with the reason in Fallbacks; the bug
+// never refuses a programme.
+func BuildItem(host HostProfile, src MediaFormat, out OutputProfile, wm *Watermark) (Pipeline, error) {
+	b := builder{host: host, src: src, out: out, tonemap: src.HDR() && !out.HDR, convert: out.HDR && !src.PQ(), wm: wm}
 	b.p.Family = host.Family
 	if out.premium() {
 		switch {
@@ -268,6 +281,9 @@ func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, erro
 		}
 	}
 	b.p.AudioEncode = []string{"-c:a", "aac", "-profile:a", "aac_low", "-b:a", strconv.Itoa(out.AudioKbps) + "k", "-ac", "2", "-ar", "48000"}
+	if host.Family != FamilyVAAPI && host.Family != FamilyNVENC {
+		b.overlay() // no GPU overlay graph: declares the disabled bug
+	}
 	var err error
 	switch host.Family {
 	case FamilyVAAPI:
@@ -355,6 +371,7 @@ type builder struct {
 	out  OutputProfile
 	// tonemap: an HDR source into an SDR output. convert: an SDR or HLG source into an HDR10 output.
 	tonemap, convert bool
+	wm               *Watermark
 	p                Pipeline
 }
 
@@ -554,8 +571,15 @@ func (b *builder) vaapi() error {
 			f = append(f, tm, "hwupload")
 		}
 	}
-	f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d", b.out.Width, b.out.Height), b.tail())
-	b.p.VideoFilter = strings.Join(f, ",")
+	// pad_vaapi places the picture at x=0:y=0 unless told to centre it.
+	f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2", b.out.Width, b.out.Height))
+	if b.overlay() {
+		b.p.Watermark = true
+		b.p.VideoFilter = overlaid(f, "movie=filename="+b.wm.Premultiplied+",format=bgra,hwupload",
+			"overlay_vaapi="+b.bugPosition(), b.tail())
+		return nil
+	}
+	b.p.VideoFilter = strings.Join(append(f, b.tail()), ",")
 	return nil
 }
 
@@ -563,6 +587,12 @@ func (b *builder) nvenc() error {
 	b.p.PreInput = []string{"-init_hw_device", "cuda=cu:0"}
 	filterDevice := "cu"
 	hw := b.hardwareDecodes()
+	// overlay_cuda blends alpha only onto a yuv420p main (watermark.go).
+	bug := b.overlay()
+	mainFormat := "nv12"
+	if bug {
+		mainFormat = "yuv420p"
+	}
 	var f []string
 	if hw {
 		if b.src.Interlaced {
@@ -595,6 +625,8 @@ func (b *builder) nvenc() error {
 			scale, fitted = fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le", b.out.Width, b.out.Height), true
 		}
 		f = append(f, conv, "hwupload_cuda", scale)
+	case !b.tonemap && bug:
+		f = append(f, "scale_cuda="+b.fit()+":format="+mainFormat)
 	case !b.tonemap:
 		f = append(f, "scale_cuda="+b.fit()+":format="+b.scaleFormat("p010le"))
 	default:
@@ -625,6 +657,9 @@ func (b *builder) nvenc() error {
 	if hw {
 		b.p.PreInput = append(b.p.PreInput, "-hwaccel", "cuda", "-hwaccel_device", "cu", "-hwaccel_output_format", "cuda")
 	}
+	if bug && b.tonemap {
+		f = append(f, "scale_cuda=format="+mainFormat)
+	}
 	switch {
 	case !b.out.HDR:
 		f = append(f, fmt.Sprintf("pad_cuda=w=%d:h=%d:x=-1:y=-1", b.out.Width, b.out.Height))
@@ -632,8 +667,16 @@ func (b *builder) nvenc() error {
 		b.fallback("pad", "pad_cuda takes 8-bit frames only: the 10-bit letterbox is added on the CPU at output size")
 		f = append(f, "hwdownload", "format=p010le", fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), "hwupload_cuda")
 	}
-	f = append(f, b.tail())
-	b.p.VideoFilter = strings.Join(f, ",")
+	if bug {
+		// overlay_cuda outputs the aligned surface (1088 lines at 1080p); passthrough=0 makes the
+		// scale a real pass that restores the output geometry and a bug-off-identical SPS.
+		b.p.Watermark = true
+		b.p.VideoFilter = overlaid(f, "movie=filename="+b.wm.Straight+",format=yuva420p,hwupload_cuda",
+			"overlay_cuda="+b.bugPosition(),
+			fmt.Sprintf("scale_cuda=w=%d:h=%d:format=yuv420p:passthrough=0", b.out.Width, b.out.Height), b.tail())
+		return nil
+	}
+	b.p.VideoFilter = strings.Join(append(f, b.tail()), ",")
 	return nil
 }
 
