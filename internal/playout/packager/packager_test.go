@@ -56,6 +56,8 @@ type synth struct {
 	blockBefore <-chan struct{} // hold the first fragment until closed (or ctx ends)
 	gate        chan struct{}   // if set, each fragment waits for one receive
 	wrote       *atomic.Int64   // counts fragments written
+	// audioJitter stamps AAC frames ±16 around 1024 samples (a Matroska-timed DTS source, live).
+	audioJitter bool
 }
 
 func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadCloser {
@@ -108,13 +110,19 @@ func (s synth) encode(t testing.TB, ctx context.Context, slot Slot) io.ReadClose
 				owed += s.extraAudio
 			}
 			for ; a < owed; a++ {
-				as = append(as, &fmp4.Sample{Duration: aacFrame, Payload: []byte(fmt.Sprintf("%s/a%d", s.label, a))})
+				dur := uint32(aacFrame)
+				if s.audioJitter {
+					dur = uint32(aacFrame - 16 + 32*(a%2))
+				}
+				as = append(as, &fmp4.Sample{Duration: dur, Payload: []byte(fmt.Sprintf("%s/a%d", s.label, a))})
 			}
 			part := fmp4.Part{SequenceNumber: uint32(f), Tracks: []*fmp4.PartTrack{
 				{ID: videoTrack, BaseTime: vBase + uint64(f*d), Samples: vs},
 				{ID: audioTrack, BaseTime: aBase, Samples: as},
 			}}
-			aBase += uint64(len(as)) * aacFrame
+			for _, smp := range as {
+				aBase += uint64(smp.Duration)
+			}
 			var w seekablebuffer.Buffer
 			if err := part.Marshal(&w); err != nil {
 				pw.CloseWithError(err)
@@ -721,5 +729,25 @@ func TestFirstItemAirsWhileTheSlateIsEncoding(t *testing.T) {
 	}
 	if s := p.Stats(); s.Slates != 0 || s.Items == 0 {
 		t.Fatalf("stats %+v: want the item on air and no slate", s)
+	}
+}
+
+// Every AAC frame is 1024 samples, and the packager's audio timeline counts them so (tfdt steps by
+// aacFrame). Live, an encoder fed a Matroska-timed DTS source stamped its frames 1008..1080 apart:
+// forwarded as-is, each fragment's sample durations disagreed with its own tfdt grid (ffprobe:
+// ~20 of 47 audio DTS deltas per segment were not 1024).
+func TestAudioSamplesAreOneAACFrameEach(t *testing.T) {
+	h := runPlans(t, Config{}, []plan{
+		{"dts", 2500 * time.Millisecond, synth{label: "dts", audioJitter: true}},
+		{"next", time.Second, synth{label: "next", audioJitter: true}},
+	})
+	assertGapless(t, h)
+	_, audio, _ := h.segments()
+	for i, tr := range audio {
+		for j, s := range tr.samples {
+			if s.Duration != aacFrame {
+				t.Fatalf("audio fragment %d sample %d lasts %d, want one AAC frame (%d)", i, j, s.Duration, aacFrame)
+			}
+		}
 	}
 }

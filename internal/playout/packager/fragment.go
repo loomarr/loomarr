@@ -94,6 +94,9 @@ func patchFragment(b []byte, seq uint32, base map[uint32]uint64) (map[uint32]int
 						return
 					}
 					id = binary.BigEndian.Uint32(b[cs+12:])
+					if base != nil && id == audioTrack && !frameDurations(b, cs, csz, true) {
+						bad = true
+					}
 				case "tfdt":
 					if base == nil {
 						return
@@ -112,6 +115,9 @@ func patchFragment(b []byte, seq uint32, base map[uint32]uint64) (map[uint32]int
 						return
 					}
 					counts[id] += int64(binary.BigEndian.Uint32(b[cs+12:]))
+					if base != nil && id == audioTrack && !frameDurations(b, cs, csz, false) {
+						bad = true
+					}
 				}
 			})
 		}
@@ -120,6 +126,56 @@ func patchFragment(b []byte, seq uint32, base map[uint32]uint64) (map[uint32]int
 		return nil, fmt.Errorf("%w: short tfhd/tfdt/trun", errBadBox)
 	}
 	return counts, nil
+}
+
+// frameDurations sets the audio durations in a tfhd (its default sample duration) or a trun (each
+// sample's) to one AAC frame, in place. Every AAC frame is 1024 samples and the channel's audio
+// timeline counts them so; an encoder's durations carry its input's timestamp rounding instead
+// (live: a Matroska-timed DTS source, 1008..1080). It reports false on a box too short for its
+// flags.
+func frameDurations(b []byte, s, sz int, tfhd bool) bool {
+	flags := binary.BigEndian.Uint32(b[s+8:]) & 0xffffff
+	if tfhd {
+		if flags&0x08 == 0 {
+			return true
+		}
+		off := s + 16
+		if flags&0x01 != 0 {
+			off += 8
+		}
+		if flags&0x02 != 0 {
+			off += 4
+		}
+		if off+4 > s+sz {
+			return false
+		}
+		binary.BigEndian.PutUint32(b[off:], aacFrame)
+		return true
+	}
+	if flags&0x100 == 0 {
+		return true
+	}
+	n := int(binary.BigEndian.Uint32(b[s+12:]))
+	off := s + 16
+	if flags&trunDataOffset != 0 {
+		off += 4
+	}
+	if flags&trunFirstSampleFlags != 0 {
+		off += 4
+	}
+	entry := 0
+	for _, f := range []uint32{0x100, 0x200, 0x400, 0x800} {
+		if flags&f != 0 {
+			entry += 4
+		}
+	}
+	if n < 0 || off+n*entry > s+sz {
+		return false
+	}
+	for i := range n {
+		binary.BigEndian.PutUint32(b[off+i*entry:], aacFrame)
+	}
+	return true
 }
 
 // rewriteFragment re-marshals a fragment through mediacommon, used only where samples must change:
@@ -142,6 +198,11 @@ func rewriteFragment(b []byte, seq uint32, base map[uint32]uint64, first bool, f
 			id := uint32(tr.ID)
 			if first && id == audioTrack && len(tr.Samples) > 0 {
 				tr.Samples = tr.Samples[1:]
+			}
+			if id == audioTrack {
+				for _, s := range tr.Samples {
+					s.Duration = aacFrame // see frameDurations
+				}
 			}
 			if first && id == videoTrack {
 				for _, s := range tr.Samples {
