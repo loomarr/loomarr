@@ -57,26 +57,28 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 		}
 		p := DefaultProfile()
 		p.Encoder = enc
-		spec := ProgramSpec{Profile: p, Input: src, Limit: 2 * time.Second, Source: facts,
-			Tonemap: true, GPUTonemap: GPUFiltersFor(bin)()}
-		for {
-			pipe, err := spec.Pipeline()
-			if err != nil {
-				t.Fatalf("%s: %v", enc, err)
-			}
-			name := string(pipe.Family) + "/" + tonemapperIn(pipe.VideoFilter)
-			t.Run(name, func(t *testing.T) {
-				out := t.TempDir() + "/o.ts"
-				if errText := encodeTo(t, bin, replaceOutput(ProgramArgs(spec), out)); errText != "" {
-					// The live chain demotes on this (no output); a missing runtime is not a picture defect.
-					t.Logf("%s did not start (the ladder demotes): %s", name, errText)
-					return
+		for _, curve := range ToneCurves {
+			spec := ProgramSpec{Profile: p, Input: src, Limit: 2 * time.Second, Source: facts,
+				Tonemap: true, GPUTonemap: GPUFiltersFor(bin)(), ToneCurve: curve}
+			for {
+				pipe, err := spec.Pipeline()
+				if err != nil {
+					t.Fatalf("%s: %v", enc, err)
 				}
-				assertPicture(t, bin, out)
-				ran[name] = !t.Failed()
-			})
-			if !spec.DemoteTonemap() {
-				break
+				name := string(pipe.Family) + "/" + pipe.Tonemapper
+				t.Run(string(curve)+"/"+name, func(t *testing.T) {
+					out := t.TempDir() + "/o.ts"
+					if errText := encodeTo(t, bin, replaceOutput(ProgramArgs(spec), out)); errText != "" {
+						// The live chain demotes on this (no output); a missing runtime is not a picture defect.
+						t.Logf("%s did not start (the ladder demotes): %s", name, errText)
+						return
+					}
+					assertPicture(t, bin, out)
+					ran[name] = ran[name] || !t.Failed()
+				})
+				if !spec.DemoteTonemap() {
+					break
+				}
 			}
 		}
 	}
@@ -106,6 +108,13 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := FFprobeFormatNextTo(bin)
+	curves := []ToneCurve{DefaultToneCurve}
+	if s := os.Getenv("PLAYOUT_TEST_TONE_CURVES"); s != "" {
+		curves = nil
+		for _, c := range strings.Split(s, ",") {
+			curves = append(curves, ToneCurve(strings.TrimSpace(c)))
+		}
+	}
 	for i, path := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
 		facts, err := probe(context.Background(), path)
 		if err != nil || !facts.HDR() {
@@ -118,48 +127,47 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 			}
 			p := DefaultProfile()
 			p.Encoder, p.Width, p.Height = enc, 1920, 1080
-			spec := ProgramSpec{Profile: p, Input: path, Offset: 20 * time.Minute, Limit: 30 * time.Second,
-				Source: facts, Tonemap: true, GPUTonemap: GPUFiltersFor(bin)()}
-			for {
-				pipe, _ := spec.Pipeline()
-				out := t.TempDir() + "/o.ts"
-				cmd := exec.Command(bin, replaceOutput(ProgramArgs(spec), out)...)
-				start := time.Now()
-				b, err := cmd.CombinedOutput()
-				wall := time.Since(start).Seconds()
-				if err == nil {
-					cpu := (cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()).Seconds()
-					avg, ymax := lumaStats(t, bin, out)
-					t.Logf("title %d %s %s/%s: YAVG %.1f, lowest YMAX %d, speed %.2fx, %.3f cores per stream at 1x, fallbacks %q",
-						i, facts.VideoCodec+"/"+facts.PixelFormat, pipe.Family, tonemapperIn(pipe.VideoFilter), avg, ymax,
-						30/wall, cpu/30, pipe.Fallbacks)
-					if ymax <= 16 {
-						t.Errorf("title %d: black picture through %s", i, tonemapperIn(pipe.VideoFilter))
-					}
-					if dir := os.Getenv("PLAYOUT_TEST_FRAME_DIR"); dir != "" {
-						png := dir + "/title" + strconv.Itoa(i) + "_" + string(pipe.Family) + "_" + tonemapperIn(pipe.VideoFilter) + ".png"
-						_ = exec.Command(bin, "-v", "error", "-y", "-ss", "15", "-i", out, "-frames:v", "1", png).Run()
-					}
-					break
-				}
-				t.Logf("title %d %s/%s did not start (demoting): %s", i, pipe.Family, tonemapperIn(pipe.VideoFilter), firstLine(string(b)))
-				if !spec.DemoteTonemap() {
-					t.Errorf("title %d: no tone-mapper produced output on %s", i, enc)
-					break
-				}
+			for _, curve := range curves {
+				spec := ProgramSpec{Profile: p, Input: path, Offset: 20 * time.Minute, Limit: 30 * time.Second,
+					Source: facts, Tonemap: true, GPUTonemap: GPUFiltersFor(bin)(), ToneCurve: curve}
+				airRealFile(t, bin, i, spec)
 			}
 		}
 	}
 }
 
-// tonemapperIn names the tone-mapper a built graph uses.
-func tonemapperIn(vf string) string {
-	for _, f := range []string{"tonemap_vaapi", "tonemap_opencl", "libplacebo"} {
-		if strings.Contains(vf, f+"=") {
-			return strings.TrimPrefix(f, "tonemap_")
+// airRealFile airs one real title through the ladder: the first tone-mapper that produces output,
+// its luma, speed and CPU per stream, and one PNG into PLAYOUT_TEST_FRAME_DIR when set.
+func airRealFile(t *testing.T, bin string, title int, spec ProgramSpec) {
+	t.Helper()
+	for {
+		pipe, _ := spec.Pipeline()
+		what := string(spec.ToneCurve) + " " + string(pipe.Family) + "/" + pipe.Tonemapper
+		out := t.TempDir() + "/o.ts"
+		cmd := exec.Command(bin, replaceOutput(ProgramArgs(spec), out)...)
+		start := time.Now()
+		b, err := cmd.CombinedOutput()
+		wall := time.Since(start).Seconds()
+		if err == nil {
+			cpu := (cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()).Seconds()
+			avg, ymax := lumaStats(t, bin, out)
+			t.Logf("title %d %s/%s %s: YAVG %.1f, lowest YMAX %d, speed %.2fx, %.3f cores per stream at 1x, fallbacks %q",
+				title, spec.Source.VideoCodec, spec.Source.PixelFormat, what, avg, ymax, 30/wall, cpu/30, pipe.Fallbacks)
+			if ymax <= 16 {
+				t.Errorf("title %d: black picture through %s", title, what)
+			}
+			if dir := os.Getenv("PLAYOUT_TEST_FRAME_DIR"); dir != "" {
+				png := dir + "/title" + strconv.Itoa(title) + "_" + strings.ReplaceAll(what, "/", "_") + ".png"
+				_ = exec.Command(bin, "-v", "error", "-y", "-ss", "15", "-i", out, "-frames:v", "1", strings.ReplaceAll(png, " ", "_")).Run()
+			}
+			return
+		}
+		t.Logf("title %d %s did not start (demoting): %s", title, what, firstLine(string(b)))
+		if !spec.DemoteTonemap() {
+			t.Errorf("title %d: no tone-mapper produced output for %s", title, what)
+			return
 		}
 	}
-	return "cpu"
 }
 
 // makePQSource is a REAL HDR10 signal, not SDR pixels tagged PQ: testsrc2 converted into PQ/BT.2020

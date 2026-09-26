@@ -349,6 +349,32 @@ func TestBuild_OneToneCurveEverywhere(t *testing.T) {
 	}
 }
 
+// TestToneCurve_SpellingsExistInEachFilter: each curve name the builder emits is one the filter
+// accepts, per `ffmpeg -h filter=<name>` on the pinned n8.1 build. A name a filter lacks fails the
+// spawn ("Invalid argument"): the ladder rescues it, but every program pays a failed start. That is
+// how bt2390 on tonemap_opencl was caught (live test, dev GeForce).
+func TestToneCurve_SpellingsExistInEachFilter(t *testing.T) {
+	cpuAndOpenCL := []string{"none", "linear", "gamma", "clip", "reinhard", "hable", "mobius"}
+	placebo := []string{"auto", "clip", "st2094-40", "st2094-10", "bt.2390", "bt.2446a", "spline", "reinhard", "mobius", "hable", "gamma", "linear"}
+	for _, c := range ToneCurves {
+		if o := c.openCL(); o != "" && !slices.Contains(cpuAndOpenCL, o) {
+			t.Errorf("%s: tonemap_opencl has no %q", c, o)
+		}
+		if !slices.Contains(placebo, c.placebo()) {
+			t.Errorf("%s: libplacebo has no %q", c, c.placebo())
+		}
+		if cpu, _ := c.cpu(); !slices.Contains(cpuAndOpenCL, string(cpu)) {
+			t.Errorf("%s: tonemap has no %q", c, cpu)
+		}
+		if ParseToneCurve(string(c)) != c {
+			t.Errorf("%s does not round-trip", c)
+		}
+	}
+	if ParseToneCurve("") != DefaultToneCurve || ParseToneCurve("nonsense") != DefaultToneCurve {
+		t.Error("an empty or unknown curve must be the default")
+	}
+}
+
 // TestBuild_GoldenToneCurves pins the HDR graph of every host for every non-default curve.
 func TestBuild_GoldenToneCurves(t *testing.T) {
 	for _, c := range ToneCurves[1:] {
@@ -394,7 +420,7 @@ func TestDemoteTonemap_OrderPerCurve(t *testing.T) {
 		ToneCurveHable:    {TonemapperOpenCL, TonemapperLibplacebo, TonemapperCPU},
 		ToneCurveMobius:   {TonemapperOpenCL, TonemapperLibplacebo, TonemapperCPU},
 		ToneCurveReinhard: {TonemapperOpenCL, TonemapperLibplacebo, TonemapperCPU},
-		ToneCurveBT2390:   {TonemapperLibplacebo, TonemapperOpenCL, TonemapperCPU},
+		ToneCurveBT2390:   {TonemapperLibplacebo, TonemapperCPU},
 		ToneCurveBT2446a:  {TonemapperLibplacebo, TonemapperCPU},
 		ToneCurveSpline:   {TonemapperLibplacebo, TonemapperCPU},
 	}

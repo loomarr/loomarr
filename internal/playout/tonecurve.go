@@ -11,12 +11,13 @@ import "strings"
 //	hable    hable            hable        hable                tonemap_opencl (Intel: zero-copy)
 //	mobius   mobius           mobius       mobius               tonemap_opencl
 //	reinhard reinhard         reinhard     reinhard             tonemap_opencl
-//	bt2390   bt2390           bt.2390      mobius (substitute)  libplacebo (Intel: CPU hop)
+//	bt2390   (none)           bt.2390      mobius (substitute)  libplacebo (Intel: CPU hop)
 //	bt2446a  (none)           bt.2446a     mobius (substitute)  libplacebo
 //	spline   (none)           spline       mobius (substitute)  libplacebo
 //
 // Mobius is the CPU substitute for the three libplacebo curves because, like them, it keeps the
-// in-range picture linear and only rolls the highlights off.
+// in-range picture linear and only rolls the highlights off. tonemap_opencl has no BT.2390 in the
+// pinned ffmpeg 8.1 (its curves are the CPU tonemap's), measured: "tonemap=bt2390" fails to start.
 type ToneCurve string
 
 const (
@@ -46,16 +47,15 @@ func ParseToneCurve(s string) ToneCurve {
 	return DefaultToneCurve
 }
 
-// placeboFirst: the curve exists only (or first) in libplacebo, so libplacebo is its preferred GPU
-// tone-mapper even where that costs a CPU hop (Intel).
+// placeboFirst: the curve exists only in libplacebo, so libplacebo is its GPU tone-mapper even
+// where that costs a CPU hop (Intel).
 func (c ToneCurve) placeboFirst() bool {
 	return c == ToneCurveBT2390 || c == ToneCurveBT2446a || c == ToneCurveSpline
 }
 
 // openCL is the curve's tonemap_opencl name, "" when tonemap_opencl lacks it.
 func (c ToneCurve) openCL() string {
-	switch c {
-	case ToneCurveBT2446a, ToneCurveSpline:
+	if c.placeboFirst() {
 		return ""
 	}
 	return string(c)
