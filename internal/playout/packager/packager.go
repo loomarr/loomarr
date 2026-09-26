@@ -312,7 +312,8 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	}
 	if !p.acceptInit(stream.init) {
 		p.count(func(s *Stats) { s.DecoderMismatch++ })
-		p.cfg.Log.Error("packager: item's decoder configuration differs from the channel's; slate", "item", item.Label)
+		p.cfg.Log.Error("packager: item's decoder configuration differs from the channel's; slate", "item", item.Label,
+			"channel_stsd", fmt.Sprintf("%x", sampleDescriptions(p.Init())), "item_stsd", fmt.Sprintf("%x", sampleDescriptions(stream.init)))
 		cancel()
 		return p.notReady(ctx, rc, slot)
 	}
