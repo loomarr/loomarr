@@ -153,11 +153,11 @@ func (p *Preparer) Prepare(ctx context.Context, request Request) (Publication, e
 			EstimatedBytes: reservation, Mode: storagegovernor.Automatic,
 		})
 		if lease == nil {
-			return Publication{}, preparedStorageError(decision)
+			return Publication{}, preparedStorageError(decision, reservation)
 		}
 		defer lease.Release()
 		if decision = lease.Revalidate(ctx, 0); !decision.Allowed {
-			return Publication{}, preparedStorageError(decision)
+			return Publication{}, preparedStorageError(decision, reservation)
 		}
 	}
 	return p.library.Publish(ctx, spec, func(ctx context.Context, workspace string) (Output, error) {
@@ -188,11 +188,25 @@ func (p *Preparer) Prepare(ctx context.Context, request Request) (Publication, e
 	})
 }
 
-func preparedStorageError(decision storagegovernor.Decision) error {
-	if decision.Err != nil {
-		return fmt.Errorf("prepared storage paused (%s): %w", decision.Snapshot.Reason, decision.Err)
+// StoragePausedError is the governor refusing a publication's reservation. NeededBytes is what the
+// publication asked for, so the planner can free exactly that much cold media instead of guessing.
+type StoragePausedError struct {
+	Reason      storagegovernor.Reason
+	NeededBytes int64
+	Err         error
+}
+
+func (e *StoragePausedError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("prepared storage paused (%s): %v", e.Reason, e.Err)
 	}
-	return fmt.Errorf("prepared storage paused (%s)", decision.Snapshot.Reason)
+	return fmt.Sprintf("prepared storage paused (%s)", e.Reason)
+}
+
+func (e *StoragePausedError) Unwrap() error { return e.Err }
+
+func preparedStorageError(decision storagegovernor.Decision, needed int64) error {
+	return &StoragePausedError{Reason: decision.Snapshot.Reason, NeededBytes: needed, Err: decision.Err}
 }
 
 func specificationFor(request Request) (Specification, error) {

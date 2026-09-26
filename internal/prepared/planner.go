@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/media"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 const preparationLookahead = 6 * time.Hour
@@ -145,6 +146,9 @@ type Planner struct {
 	failures  []error
 	failedAt  map[Request]time.Time
 	retaining bool
+	// refused holds, per request, the bytes a publication needed when the governor refused its
+	// reservation for the library budget. The next retention sweep consumes it as headroom.
+	refused map[Request]int64
 }
 
 func NewPlanner(deps PlannerDependencies) *Planner {
@@ -164,7 +168,7 @@ func NewPlanner(deps PlannerDependencies) *Planner {
 	}
 	return &Planner{
 		lifecycle: deps.Lifecycle, workers: make(map[Request]context.Context),
-		failedAt: make(map[Request]time.Time),
+		failedAt: make(map[Request]time.Time), refused: make(map[Request]int64),
 		resolver: deps.Resolver, preparer: deps.Preparation, pool: deps.Pool,
 		retainer: deps.Retainer, budget: deps.BudgetBytes, now: deps.Now, log: deps.Log,
 		status: PlannerStatus{Available: available, UnavailableReason: reason},
@@ -265,11 +269,16 @@ func (p *Planner) startRetention(budget int64, protected []Specification) {
 		return
 	}
 	p.retaining = true
+	headroom := p.takeRefusedHeadroomLocked(budget)
 	p.workerMu.Unlock()
 	p.workerWG.Add(1)
 	go func() {
 		defer p.workerWG.Done()
-		result, err := p.retainer.Prune(p.lifecycle, budget, protected)
+		// The governor refuses a reservation that does not fit under the soft budget, so staying at
+		// the budget is not enough: sweep down to budget-headroom to leave room for the work that
+		// was just refused. Scheduled and recently used publications stay protected either way.
+		result, err := p.retainer.Prune(p.lifecycle, budget-headroom, protected)
+		result.BudgetBytes = budget
 		p.workerMu.Lock()
 		p.retaining = false
 		p.workerMu.Unlock()
@@ -293,6 +302,23 @@ func (p *Planner) startRetention(budget int64, protected []Specification) {
 			p.log.Info("prepared media retention pass", fields...)
 		}
 	}()
+}
+
+// takeRefusedHeadroomLocked consumes the reservations the governor refused since the last sweep. Only
+// publications that reached a worker can be refused, so the total is bounded by admitted work and
+// nothing is evicted for a candidate that would not have run this pass. A reservation larger than the
+// whole budget can never fit, so it asks for nothing rather than emptying the store for it. The
+// result leaves at least one byte of target so the sweep never degenerates to "no budget".
+// Callers hold workerMu.
+func (p *Planner) takeRefusedHeadroomLocked(budget int64) int64 {
+	var headroom int64
+	for request, needed := range p.refused {
+		if needed > 0 && needed <= budget {
+			headroom += needed
+		}
+		delete(p.refused, request)
+	}
+	return min(headroom, max(budget-1, 0))
 }
 
 // publishReadiness makes the resolved schedule visible while the pass is still running; the final
@@ -351,7 +377,14 @@ func (p *Planner) start(workCtx context.Context, release func(), request Request
 		delete(p.workers, request)
 		if err != nil && !preempted && p.lifecycle.Err() == nil {
 			p.failures = append(p.failures, fmt.Errorf("prepare source %q: %w", request.Source.SourceID, err))
-			p.failedAt[request] = p.now()
+			var paused *StoragePausedError
+			if errors.As(err, &paused) && paused.Reason == storagegovernor.ReasonLibraryLimit {
+				// A full store is not a broken source: skip the retry backoff so the pass after
+				// retention makes room can publish it, and tell retention how much room it needs.
+				p.refused[request] = paused.NeededBytes
+			} else {
+				p.failedAt[request] = p.now()
+			}
 		}
 		p.workerMu.Unlock()
 		if err != nil && !preempted && p.lifecycle.Err() == nil {
