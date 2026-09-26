@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +70,8 @@ var (
 	flagFirstSeg  = flag.Bool("first-segment-exit", false, "exit as soon as the first segment is written")
 	flagLinger    = flag.Duration("linger", 0, "keep serving after the schedule ends")
 	flagRC        = flag.String("rc", "-rc_mode QVBR -b:v 8M -maxrate 12M -global_quality 22", "h264_vaapi rate control args")
+	flagInOpts    = flag.String("inopts", "", "extra ffmpeg input options (before -i)")
+	flagCPUProf   = flag.String("cpuprofile", "", "write a CPU profile of the packager")
 )
 
 var (
@@ -105,11 +108,12 @@ func encoderArgs(it Item, g int) []string {
 		af += fmt.Sprintf(",volume=%.2fdB", it.GainDB)
 	}
 	af += ",apad"
-	args := []string{"-hide_banner", "-nostdin", "-loglevel", "error",
+	args := []string{"-hide_banner", "-nostdin", "-nostats", "-loglevel", "info",
 		"-hwaccel", "vaapi", "-hwaccel_device", "/dev/dri/renderD128", "-hwaccel_output_format", "vaapi"}
 	if it.Seek > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.3f", it.Seek))
 	}
+	args = append(args, strings.Fields(*flagInOpts)...)
 	args = append(args, "-i", it.File, "-map", "0:v:0", "-map", "0:a:0",
 		"-t", fmt.Sprintf("%.3f", it.Dur+0.1), // a little over; the packager trims to the exact frame count
 		"-vf", vf,
@@ -161,7 +165,19 @@ func startSource(it Item, g int, slate bool) *source {
 			r = f
 		} else {
 			s.cmd = exec.Command("ffmpeg", encoderArgs(it, g)...)
-			s.cmd.Stderr = &s.stderr
+			errPipe, _ := s.cmd.StderrPipe()
+			go func() {
+				sc := bufio.NewScanner(errPipe)
+				for sc.Scan() {
+					l := sc.Text()
+					if strings.HasPrefix(l, "Input #0") { // printed after open + probe + seek
+						ev("probe_done", map[string]any{"item": it.Name, "since_spawn_ms": float64(time.Since(s.spawnedAt).Microseconds()) / 1000})
+					}
+					if !strings.HasPrefix(l, " ") {
+						s.stderr.WriteString(l + "\n")
+					}
+				}
+			}()
 			out, _ := s.cmd.StdoutPipe()
 			if err := s.cmd.Start(); err != nil {
 				s.err = err
@@ -349,6 +365,7 @@ func (p *packager) play(it Item, s *source, slate bool) {
 		if a.video {
 			if firstPkt < 0 {
 				firstPkt = float64(time.Since(s.spawnedAt).Microseconds()) / 1000
+				ev("first_video", map[string]any{"item": it.Name, "since_spawn_ms": firstPkt})
 			}
 			if firstSrcV >= 0 && a.pts-firstSrcV != (nv-int64(0))*frameDur && !slate {
 				gaps++
@@ -475,6 +492,11 @@ func (p *packager) playlist(w io.Writer, limit float64) int {
 
 func main() {
 	flag.Parse()
+	if *flagCPUProf != "" {
+		f, _ := os.Create(*flagCPUProf)
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
 	os.MkdirAll(*flagOut, 0o755)
 	evFile, _ = os.Create(filepath.Join(*flagOut, "events.jsonl"))
 	var items []Item
@@ -516,6 +538,7 @@ func main() {
 	// Item encoders are started back-to-back: the next spawns once the current one's slot is packaged,
 	// which (with run-ahead) is ~runahead seconds before its air time.
 	next := startSource(items[0], g, false)
+	var srcs []*source
 	for i, it := range items {
 		s := next
 		air := t0.Add(time.Duration(p.chanSeconds(p.vNext) * float64(time.Second)))
@@ -541,6 +564,7 @@ func main() {
 			}
 		}
 		p.play(it, s, slate)
+		srcs = append(srcs, s)
 		if i+1 < len(items) {
 			next = startSource(items[i+1], g, false)
 		}
@@ -554,6 +578,9 @@ func main() {
 	f.Close()
 	sj, _ := json.MarshalIndent(p.segs, "", " ")
 	os.WriteFile(filepath.Join(*flagOut, "segments.json"), sj, 0o644)
+	for _, s := range srcs {
+		<-s.done // so every encoder's CPU lands in our rusage
+	}
 	ev("done", map[string]any{"segments": len(p.segs), "channel_s": p.chanSeconds(p.vNext)})
 	time.Sleep(*flagLinger)
 }

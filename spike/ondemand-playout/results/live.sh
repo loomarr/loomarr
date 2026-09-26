@@ -1,0 +1,1 @@
+cd /work && rm -rf live1 && ./spikepack -schedule break.json -out live1 -seg 1 -runahead 12 -listahead 6 -http :8990 -slate slate.ts -inopts "-analyzeduration 0 -probesize 32768 -fpsprobesize 0" -linger 20s 2>/dev/null; echo done
