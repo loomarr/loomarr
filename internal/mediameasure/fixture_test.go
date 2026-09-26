@@ -30,3 +30,22 @@ func fadeFixture(t *testing.T) string {
 	}
 	return path
 }
+
+// bigFixture is a ~10 MB Matroska file with Cues at the end (ffmpeg's default), larger than the
+// index reader's head window, so a test can tell "read the index" from "read the file".
+func bigFixture(t *testing.T) string {
+	t.Helper()
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	path := filepath.Join(t.TempDir(), "big.mkv")
+	out, err := exec.Command(ffmpeg, "-nostdin", "-v", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc2=s=640x480:r=25:d=40",
+		"-f", "lavfi", "-i", "sine=f=440:r=48000:d=40",
+		"-c:v", "mpeg4", "-b:v", "2M", "-g", "50", "-keyint_min", "50", "-c:a", "aac", path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("fixture: %v: %s", err, out)
+	}
+	return path
+}
