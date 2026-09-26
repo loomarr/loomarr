@@ -93,12 +93,20 @@ type encodeStats struct {
 // encodeItem runs one item's Build argv for seconds of content into an MPEG-TS file.
 func encodeItem(t *testing.T, bin string, host HostProfile, it premiumItem, out OutputProfile, seconds int) (string, encodeStats) {
 	t.Helper()
+	return encodeItemAt(t, bin, host, it, out, 0, seconds)
+}
+
+func encodeItemAt(t *testing.T, bin string, host HostProfile, it premiumItem, out OutputProfile, seek time.Duration, seconds int) (string, encodeStats) {
+	t.Helper()
 	p, err := Build(host, it.facts, out)
 	if err != nil {
 		t.Fatalf("%s: Build: %v", it.name, err)
 	}
+	if len(p.Fallbacks) > 0 {
+		t.Logf("%s: fallbacks %q", it.name, p.Fallbacks)
+	}
 	dst := filepath.Join(t.TempDir(), it.name+".ts")
-	args := replaceOutput(p.ItemArgs(it.path, 0, seconds*out.FPS, out.FPS, 0), "-y", dst)
+	args := replaceOutput(p.ItemArgs(it.path, seek, seconds*out.FPS, out.FPS, 0), "-y", dst)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -332,15 +340,14 @@ func TestLivePremium_Measure(t *testing.T) {
 	if s, err := strconv.Atoi(os.Getenv("LOOMARR_PREMIUM_SECONDS")); err == nil && s > 0 {
 		seconds = s
 	}
+	// LOOMARR_PREMIUM_SEEK (seconds) skips studio logos so the sample is representative picture.
+	seek, _ := strconv.Atoi(os.Getenv("LOOMARR_PREMIUM_SEEK"))
 	bin := ffmpegBin(t)
 	host := premiumHost(t, bin)
 	probeFormat := FFprobeFormatNextTo(bin)
-	for _, class := range []FormatClass{Format4KHDR, Format4KSDR, FormatBaseline} {
+	for _, class := range []FormatClass{Format4KHDR, Format4KSDR} {
 		base := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 24, AudioBitrate: 192, Encoder: EncoderNVENC})
-		out, ok := PremiumOutput(class, base)
-		if !ok {
-			out = base
-		}
+		out, _ := PremiumOutput(class, base)
 		var first [][]byte
 		for _, input := range []string{hdrSrc, sdrSrc} {
 			facts, err := probeFormat(context.Background(), input)
@@ -354,7 +361,7 @@ func TestLivePremium_Measure(t *testing.T) {
 			if input == sdrSrc {
 				name = "sdr-episode"
 			}
-			path, stats := encodeItem(t, bin, host, premiumItem{name, input, facts}, out, seconds)
+			path, stats := encodeItemAt(t, bin, host, premiumItem{name, input, facts}, out, time.Duration(seek)*time.Second, seconds)
 			yavg := meanYAVG(t, bin, path)
 			sets := parameterSets(t, bin, path)
 			same := "first"
