@@ -1,6 +1,6 @@
 # Design: one continuous tuner stream per device (#1460)
 
-Status: **proposal for maintainer review. Nothing here is built.** Owner issue: #1460 (piece 5 of
+Status: **approved design (maintainer, 2026-09-26; decisions in section 10). Nothing here is built.** Owner issue: #1460 (piece 5 of
 #1418). Measured at `55086406` (beta.7). Spike code: [`docs/engineering/spike-continuous-tuner/`](spike-continuous-tuner/)
 (throwaway, its own Go module, not part of any production build).
 
@@ -25,7 +25,7 @@ Build it, in this shape:
    from #1458 unchanged). The continuous stream is an additive fast path per device, not a
    replacement of `/v1/.../play-url`. It is switched off per device, so the risk is bounded.
 6. **WebKit/Safari is out of the first phase.** It was not measurable here (section 2.3) and the
-   repo already routes it to native HLS. It keeps the current path until measured on a Mac.
+   repo already routes it to native HLS. It keeps the current path until measured on the macOS CI runner (phase 0).
 
 The measured facts that make this credible: same-format splice needs no decoder reset in two
 engines; the cut is about **2 ms of CPU for 8.6 s of media** in Go against **42 to 61 ms** to start
@@ -97,7 +97,7 @@ DVR/pause, which need the shared window (`docs/design.md`, prepared HLS window).
 build has no H.264, so Firefox was driven as the *system* Firefox over WebDriver BiDi
 (`run-firefox-bidi.mjs`). For WebKit there is only a desk finding: `browser.ts:229` routes Safari to
 native HLS because of MediaSource replacement problems, and iPhone Safari only has
-`ManagedMediaSource`. **Open item: someone with a Mac runs `node run.mjs webkit`.**
+`ManagedMediaSource`. **Decided: WebKit is measured in phase 0 on the macOS CI runner** (`node run.mjs webkit`).
 
 ## 3. TV (Android, Media3 through expo-video)
 
@@ -268,7 +268,7 @@ about 1.3 s at 1 s dwell) after pre-warm; MISS 3.2 to 5.8 s (web) and 6.6 to 8.0
 
 | Phase | Deliverable | Acceptance measurement |
 | --- | --- | --- |
-| 0. Measure the unknowns | WebKit run on a Mac; a hand-fed progressive fMP4 into `expo-video` on the emulator (endless response, `minBufferForPlayback` at 250 ms, splice between two clips) | WebKit gap and reset behaviour reported; TV: decoder does not restart, first frame after a splice below 800 ms; if it fails, TV keeps HLS and this design ships Web-only |
+| 0. Measure the unknowns | WebKit run (`spike-continuous-tuner/run.mjs webkit`) on the **macOS CI runner**; a hand-fed progressive fMP4 into `expo-video` on the emulator (endless response, `minBufferForPlayback` at 250 ms, splice between two clips) | WebKit gap and reset behaviour reported; TV: decoder does not restart, first frame after a splice below 800 ms; if it fails, TV keeps HLS and this design ships Web-only |
 | 1. Server prepared splice | Box parser, re-fragmenter, `TunerStream`, `GET stream`, `POST tune`, `seq`, fuzz target, `409` fallback | Cut is bit-exact on a real publication set; 100+ channel surf produces zero decode errors; p95 splice CPU under 5 ms |
 | 2. Web client | Feeder + SourceBuffer, `flushFrom`, fallback to hls.js | Chromium and Firefox: click to first new frame **at most 0.3 s (Chromium) / 0.5 s (Firefox) median on prepared, 1 s dwell, 4 channels**, no `waiting` at the splice, no memory growth over 200 surfs |
 | 3. TV client | Progressive source, `bufferOptions` | Key press to `player.ready` **median at most 0.8 s, worst at most 1.2 s** on the same emulator run as #1418 (its 1.77 s worst is the number to beat) |
@@ -283,11 +283,10 @@ this design is removing the misses and the per-tune round trips, not beating 0.3
 Continuous live transcoding of every channel, WebRTC, LL-HLS alone (all from #1460); custom
 `DataSource` on TV; per-track independent timestamp rebasing; a WebSocket control channel.
 
-## 10. Open questions for the maintainer
+## 10. Recorded decisions (maintainer, 2026-09-26, posted on #1460)
 
-1. **Ship Web first?** Web is measured and TV is not. Recommendation: yes, with TV gated on phase 0.
-2. **Opt-in per device, or default on?** Recommendation: per-device flag through beta.8, default on
-   only after the certification run.
-3. **Is `409 needs-fallback` acceptable UX** for a miss, with the still-frame overlay covering the gap,
-   or should phase 4 (live join) be required before the feature is on?
-4. **WebKit on a Mac**: who runs it, and is Safari a supported target for beta.8?
+1. **Order:** phase 0 first, then Web. TV is gated on phase 0. WebKit is measured on the macOS CI
+   runner.
+2. **Unprepared channel:** `409 needs-fallback` with the still-frame overlay (#1458). Live join
+   (phase 4) is not required before the feature is on.
+3. **Rollout:** per-device opt-in through beta.8; default on only after the #1037 certification.
