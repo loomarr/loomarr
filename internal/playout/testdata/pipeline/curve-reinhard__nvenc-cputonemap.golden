@@ -30,7 +30,7 @@ cuda
 -frames:v
 753
 -vf
-scale_cuda=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010le,hwdownload,format=p010le,zscale=t=linear:npl=100,tonemap=tonemap=reinhard:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,format=nv12,hwupload_cuda,pad_cuda=w=1920:h=1080:x=-1:y=-1,fps=25,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
+scale_cuda=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010le,hwdownload,format=p010le,zscale=t=linear:npl=100,tonemap=tonemap=reinhard:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,format=nv12,hwupload_cuda,pad_cuda=w=1920:h=1080:x=-1:y=-1,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
 -c:v
 h264_nvenc
 -preset

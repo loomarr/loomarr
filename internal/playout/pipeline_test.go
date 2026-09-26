@@ -117,7 +117,9 @@ func gpuFilter(name string) bool {
 		strings.HasSuffix(name, "_opencl") || strings.HasSuffix(name, "_vt") || strings.HasSuffix(name, "_videotoolbox")
 }
 
-func hwAgnostic(name string) bool { return name == "fps" || name == "setparams" || name == "sidedata" }
+func hwAgnostic(name string) bool {
+	return name == "fps" || name == "setsar" || name == "setparams" || name == "sidedata"
+}
 
 // TestBuild_NoCPUFilterOnAGPUPathExceptItsDeclaredFallback walks each GPU family's graph tracking
 // where the frames are. A CPU filter may only run on downloaded (or CPU-decoded) frames, and every
@@ -245,8 +247,8 @@ func TestBuild_UniformOutput(t *testing.T) {
 				end, _, _ = strings.Cut(end, conformColour)
 				end += conformColour
 			}
-			if !strings.HasSuffix(end, ",fps=25,"+conformColour) {
-				t.Errorf("%s/%s: graph must end fps=25 + setparams: %q", hostName, srcName, p.VideoFilter)
+			if !strings.HasSuffix(end, ",fps=25,"+conformSAR+","+conformColour) {
+				t.Errorf("%s/%s: graph must end fps=25 + setsar + setparams: %q", hostName, srcName, p.VideoFilter)
 			}
 			if !strings.Contains(p.VideoFilter, "1920") {
 				t.Errorf("%s/%s: graph never pads to 1920x1080: %q", hostName, srcName, p.VideoFilter)

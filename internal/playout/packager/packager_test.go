@@ -551,3 +551,33 @@ func start(t *testing.T, p *Packager) context.Context {
 	t.Cleanup(func() { stop(); <-done })
 	return ctx
 }
+
+// testdata/ffmpeg-fragmented.mp4 is real ffmpeg output (-movflags
+// empty_moov+default_base_moof+frag_keyframe, 33 frames of libx264 + AAC). ffmpeg flags the IDR
+// only through trun's first_sample_flags over a non-sync tfhd default, which mediacommon's
+// unmarshal ignores: every re-marshalled item start would go out labelled non-sync.
+func TestRewriteKeepsFFmpegIDRSync(t *testing.T) {
+	raw, err := os.ReadFile("testdata/ffmpeg-fragmented.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSlate(raw); err != nil {
+		t.Fatalf("slate from real ffmpeg output: %v", err)
+	}
+	stream := readStream(bytes.NewReader(raw))
+	frag := <-stream.frags
+	out, c, err := rewriteFragment(frag, 7, map[uint32]uint64{videoTrack: 0, audioTrack: 0}, true, 3000,
+		map[uint32]int64{videoTrack: 1 << 20, audioTrack: 1 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parts fmp4.Parts
+	if err := parts.Unmarshal(out); err != nil {
+		t.Fatal(err)
+	}
+	v := parts[0].Tracks[0]
+	if c[videoTrack] != 30 || v.Samples[0].IsNonSyncSample || !v.Samples[1].IsNonSyncSample {
+		t.Fatalf("re-marshalled first fragment: %d frames, sample 0 non-sync %v, sample 1 non-sync %v",
+			c[videoTrack], v.Samples[0].IsNonSyncSample, v.Samples[1].IsNonSyncSample)
+	}
+}

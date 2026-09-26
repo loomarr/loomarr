@@ -24,7 +24,7 @@ videotoolbox_vld
 -frames:v
 753
 -vf
-scale_vt=w=1920:h=1080,hwdownload,format=p010le,zscale=t=linear:npl=100,tonemap=tonemap=mobius:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,format=nv12,pad=1920:1080:-1:-1,fps=25,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
+scale_vt=w=1920:h=1080,hwdownload,format=p010le,zscale=t=linear:npl=100,tonemap=tonemap=mobius:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,format=nv12,pad=1920:1080:-1:-1,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
 -c:v
 h264_videotoolbox
 -profile:v

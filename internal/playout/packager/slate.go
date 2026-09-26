@@ -42,9 +42,9 @@ func NewSlate(stream []byte) (*Slate, error) {
 		case "moof":
 			moof = b
 		case "mdat":
-			var parts fmp4.Parts
-			if err := parts.Unmarshal(append(moof, b...)); err != nil {
-				return nil, fmt.Errorf("packager: slate fragment: %w", err)
+			parts, err := unmarshalFragment(append(moof, b...))
+			if err != nil {
+				return nil, fmt.Errorf("packager: slate: %w", err)
 			}
 			for _, part := range parts {
 				for _, tr := range part.Tracks {

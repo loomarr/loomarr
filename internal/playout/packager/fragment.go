@@ -135,9 +135,9 @@ func patchFragment(b []byte, seq uint32, base map[uint32]uint64) (map[uint32]int
 func rewriteFragment(b []byte, seq uint32, base map[uint32]uint64, first bool, frameDur uint32,
 	keep map[uint32]int64,
 ) ([]byte, map[uint32]int64, error) {
-	var parts fmp4.Parts
-	if err := parts.Unmarshal(b); err != nil {
-		return nil, nil, fmt.Errorf("packager: unmarshal fragment: %w", err)
+	parts, err := unmarshalFragment(b)
+	if err != nil {
+		return nil, nil, err
 	}
 	step := map[uint32]uint64{videoTrack: uint64(frameDur), audioTrack: aacFrame}
 	counts := map[uint32]int64{}
@@ -165,6 +165,56 @@ func rewriteFragment(b []byte, seq uint32, base map[uint32]uint64, first bool, f
 		return nil, nil, fmt.Errorf("packager: marshal fragment: %w", err)
 	}
 	return w.Bytes(), counts, nil
+}
+
+const (
+	trunDataOffset       = 0x001
+	trunFirstSampleFlags = 0x004
+	sampleNonSync        = 1 << 16
+)
+
+// unmarshalFragment parses a moof+mdat, restoring what mediacommon v2.9.5 drops: trun's
+// first_sample_flags. ffmpeg marks each fragment's IDR only there, over a non-sync tfhd default,
+// so without this every re-marshalled item start would be labelled non-sync and an MSE player
+// would discard it as not a random-access point.
+func unmarshalFragment(b []byte) (fmp4.Parts, error) {
+	var parts fmp4.Parts
+	if err := parts.Unmarshal(b); err != nil {
+		return nil, fmt.Errorf("packager: unmarshal fragment: %w", err)
+	}
+	sync := map[uint32]bool{}
+	if len(b) >= minBoxHeader {
+		moofSize := min(int(binary.BigEndian.Uint32(b)), len(b))
+		children(b, 8, moofSize, func(typ string, s, sz int) {
+			if typ != "traf" {
+				return
+			}
+			var id uint32
+			children(b, s+8, s+sz, func(t string, cs, csz int) {
+				switch {
+				case t == "tfhd" && csz >= 16:
+					id = binary.BigEndian.Uint32(b[cs+12:])
+				case t == "trun" && csz >= 16:
+					flags := binary.BigEndian.Uint32(b[cs+8:]) & 0xffffff
+					off := cs + 16
+					if flags&trunDataOffset != 0 {
+						off += 4
+					}
+					if flags&trunFirstSampleFlags != 0 && off+4 <= cs+csz {
+						sync[id] = binary.BigEndian.Uint32(b[off:])&sampleNonSync == 0
+					}
+				}
+			})
+		})
+	}
+	for _, part := range parts {
+		for _, tr := range part.Tracks {
+			if sync[uint32(tr.ID)] && len(tr.Samples) > 0 {
+				tr.Samples[0].IsNonSyncSample = false
+			}
+		}
+	}
+	return parts, nil
 }
 
 // sampleDescriptions returns every trak's stsd box. A later item joins the channel's init segment

@@ -20,7 +20,7 @@ error
 -frames:v
 753
 -vf
-scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p,pad=1920:1080:-1:-1,fps=25,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
+scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p,pad=1920:1080:-1:-1,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
 -c:v
 libx264
 -preset
