@@ -601,3 +601,101 @@ func TestLateLongProgrammeRejoinsAfterOneRetry(t *testing.T) {
 		t.Errorf("rejoined at %v, want the retry's end (3 s)", v.(Slot).Offset)
 	}
 }
+
+func testSlateWith(t testing.TB, sps []byte) *Slate {
+	t.Helper()
+	b, err := io.ReadAll(synth{label: "slate", sps: sps, frames: testFPS}.encode(t, context.Background(), Slot{Frames: testFPS}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewSlate(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// A channel that slates at tune-in (nothing airs, or the first item is late) must not publish the
+// slate's decoder configuration as the channel's: only a real item defines the init, and the first
+// manifest waits for it (live, a slate init became the channel's and every item after it was
+// refused as a mismatch).
+func TestFirstManifestWaitsForARealItem(t *testing.T) {
+	sched := func(ctx context.Context, _ time.Time) (Item, error) { return Item{}, errors.New("nothing airs") }
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, testSlate(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := start(t, p)
+	wctx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	if err := p.AwaitPlaylist(wctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("AwaitPlaylist with only slate = %v, want held", err)
+	}
+	if p.Stats().Slates == 0 {
+		t.Fatal("the packager never slated")
+	}
+	if p.Init() != nil {
+		t.Fatal("the slate defined the channel init")
+	}
+}
+
+func TestSlateNeverDefinesTheChannelInit(t *testing.T) {
+	slateSPS := append([]byte(nil), testSPS...)
+	slateSPS[3] = 0x1e
+	late := make(chan struct{})
+	var calls atomic.Int32
+	sched := func(ctx context.Context, _ time.Time) (Item, error) {
+		enc := synth{label: "prog"}
+		if calls.Add(1) == 1 {
+			enc.blockBefore = late // the tune-in item misses FirstItemWait: slate first
+		}
+		return Item{Label: "prog", Duration: time.Minute, Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+			return enc.encode(t, ictx, slot), nil
+		}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour, FirstItemWait: 50 * time.Millisecond,
+		SlateRetry: time.Second}, sched, testSlateWith(t, slateSPS))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := start(t, p)
+	wctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if err := p.AwaitPlaylist(wctx); err != nil {
+		t.Fatalf("AwaitPlaylist: %v", err)
+	}
+	if !SameDecoderConfig(p.Init(), encodeInit(t, testSPS)) {
+		t.Fatal("the channel init is not the first real item's")
+	}
+	if s := p.Stats(); s.Items == 0 || s.Slates == 0 {
+		t.Fatalf("stats %+v: want a tune-in slate, then the item on air", s)
+	}
+}
+
+// With the slate barred from the init, a tune-in slate only delays the first manifest: a first item
+// that is slow to produce (a cold HDR tone-map took over 3 s live) is waited for, not slated,
+// re-resolved and re-spawned.
+func TestSlowTuneInItemIsWaitedFor(t *testing.T) {
+	slow := make(chan struct{})
+	time.AfterFunc(3500*time.Millisecond, func() { close(slow) })
+	var opens atomic.Int32
+	sched := func(ctx context.Context, _ time.Time) (Item, error) {
+		return Item{Label: "prog", Duration: time.Minute, Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+			opens.Add(1)
+			return synth{label: "prog", blockBefore: slow}.encode(t, ictx, slot), nil
+		}}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, testSlate(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := start(t, p)
+	wctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	if err := p.AwaitPlaylist(wctx); err != nil {
+		t.Fatal(err)
+	}
+	if s := p.Stats(); s.Slates != 0 || s.Late != 0 || opens.Load() != 1 {
+		t.Fatalf("stats %+v, opens %d: want the tune-in item waited for, once", s, opens.Load())
+	}
+}

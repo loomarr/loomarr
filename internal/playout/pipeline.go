@@ -195,6 +195,8 @@ type Pipeline struct {
 	VideoFilter string
 	// VideoEncode is the encoder and its rate control and GOP.
 	VideoEncode []string
+	// AudioFilter is the -af graph: a filler clip's static loudness gain (WithGain), else empty.
+	AudioFilter string
 	// AudioEncode is AAC-LC stereo 48 kHz.
 	AudioEncode []string
 	// Fallbacks names each stage that left the GPU and why ("decode: …", "tonemap: …").
@@ -244,6 +246,12 @@ const stripSideData = "sidedata=mode=delete"
 // highlights, and commercials would glare. The Intel VPP conversion (scale_vaapi to PQ) puts white
 // at ~2,600 nits and is never used.
 const sdrToHDR10 = "libplacebo=format=p010le:colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv"
+
+// conformHDRMetadata drops an HDR source's static metadata after the baseline's tone-map. It rides
+// the frames as side data through every family's graph, and the mp4 muxer writes it into the sample
+// entry (mdcv/clli), so a tone-mapped film's stsd differed from every SDR item's and the slate's.
+// HEVC outputs strip all side data instead (stripSideData).
+const conformHDRMetadata = "sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL"
 
 // Build returns the pipeline for one source on one host, or ErrRefused.
 func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, error) {
@@ -317,13 +325,28 @@ func (p Pipeline) itemInput(input string, seek time.Duration, audioTrack int) []
 	if seek > 0 {
 		args = append(args, "-ss", seconds(seek))
 	}
-	return append(args, "-i", input, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack))
+	// No chapters: the mp4 muxer writes a film's chapters as a text track, a third track no other
+	// item (or the slate) has.
+	return append(args, "-i", input, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack), "-map_chapters", "-1")
 }
 
 func (p Pipeline) itemEncode(args []string) []string {
 	args = append(args, "-vf", p.VideoFilter)
 	args = append(args, p.VideoEncode...)
+	if p.AudioFilter != "" {
+		args = append(args, "-af", p.AudioFilter)
+	}
 	return append(args, p.AudioEncode...)
+}
+
+// WithGain applies a filler clip's static loudness gain (FillerGain) in the audio stage; 0 dB adds
+// no filter, which is what a library title gets.
+func (p Pipeline) WithGain(gainDB float64) Pipeline {
+	p.AudioFilter = ""
+	if gainDB != 0 {
+		p.AudioFilter = gainFilter(gainDB)
+	}
+	return p
 }
 
 type builder struct {
@@ -412,6 +435,8 @@ func (b *builder) tail() string {
 	}
 	if b.out.HEVC {
 		colour = stripSideData + "," + colour
+	} else {
+		colour += "," + conformHDRMetadata
 	}
 	return fmt.Sprintf("fps=%d,%s,%s", b.out.FPS, conformSAR, colour)
 }

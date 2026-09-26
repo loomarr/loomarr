@@ -26,6 +26,8 @@ type PackagerItem struct {
 	Remaining  time.Duration
 	AudioTrack int
 	Format     MediaFormat
+	// GainDB is a filler clip's static loudness gain (FillerGain); 0 for a library title.
+	GainDB float64
 }
 
 // PackagerSource is the application's side of the channel packager (#1512 phase 2): the schedule,
@@ -63,18 +65,68 @@ type packagedChannel struct {
 func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Duration, log *slog.Logger) (*PackagerHLS, error) {
 	// The same scratch rule as the remux (playout.hls_dir; empty is the OS temp dir): a private
 	// per-process root, removed by Stop.
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	if root != "" {
 		_ = os.MkdirAll(root, 0o755)
 	}
+	sweepScratch(root, log)
 	root, err := os.MkdirTemp(root, "loomarr-packager-")
 	if err != nil {
 		return nil, fmt.Errorf("packager hls: scratch root: %w", err)
 	}
-	if log == nil {
-		log = slog.New(slog.DiscardHandler)
-	}
 	return &PackagerHLS{ffmpeg: ffmpeg, root: root, grace: grace, source: source, log: log,
 		slates: map[string]*packager.Slate{}, channels: map[remuxKey]*packagedChannel{}}, nil
+}
+
+// scratchQuiet is how long a scratch root must go unwritten before a new process treats it as a
+// crashed predecessor's. A live one changes every segment (a channel directory gains and prunes
+// files each second).
+const scratchQuiet = 10 * time.Minute
+
+// sweepScratch removes the packager and remux scratch roots a previous process left under base: a
+// crash skips Stop, and base is on disk beside the database (playout.hls_dir), so nothing else
+// would ever clear them. A root written within scratchQuiet is spared, in case another process
+// shares the directory.
+func sweepScratch(base string, log *slog.Logger) {
+	if base == "" {
+		base = os.TempDir()
+	}
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-scratchQuiet)
+	for _, e := range entries {
+		name := e.Name()
+		if !e.IsDir() || (!strings.HasPrefix(name, "loomarr-packager-") && !strings.HasPrefix(name, "loomarr-hls-")) {
+			continue
+		}
+		root := filepath.Join(base, name)
+		if writtenSince(root, cutoff) {
+			continue
+		}
+		if err := os.RemoveAll(root); err != nil {
+			log.Warn("packager hls: could not remove a previous process's scratch", "dir", root, "err", err)
+			continue
+		}
+		log.Info("packager hls: removed a previous process's scratch", "dir", root)
+	}
+}
+
+// writtenSince reports whether dir or any directory directly inside it changed after t.
+func writtenSince(dir string, t time.Time) bool {
+	if fi, err := os.Stat(dir); err != nil || fi.ModTime().After(t) {
+		return err == nil
+	}
+	children, _ := os.ReadDir(dir)
+	for _, c := range children {
+		if fi, err := c.Info(); err == nil && c.IsDir() && fi.ModTime().After(t) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool) (hlsPlaylistLease, error) {
@@ -165,18 +217,28 @@ func (m *PackagerHLS) schedule(key remuxKey, host HostProfile, out OutputProfile
 			return item, nil
 		}
 		item.Open = func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
-			pl, err := Build(host, it.Format, out)
+			pl, args, err := packagerItemArgs(host, out, it, slot)
 			if err != nil {
 				return nil, err
 			}
 			if len(pl.Fallbacks) > 0 {
 				log.Info("packager hls: item leaves the GPU", "item", it.Label, "fallbacks", strings.Join(pl.Fallbacks, "; "))
 			}
-			args := pl.FragmentArgs(it.Input, it.Seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS, it.AudioTrack)
 			return startFragmentEncoder(ctx, m.ffmpeg, args, log.With("item", it.Label))
 		}
 		return item, nil
 	}
+}
+
+// packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline,
+// the filler gain in its audio stage, fMP4 out.
+func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, slot packager.Slot) (Pipeline, []string, error) {
+	pl, err := Build(host, it.Format, out)
+	if err != nil {
+		return Pipeline{}, nil, err
+	}
+	pl = pl.WithGain(it.GainDB)
+	return pl, pl.FragmentArgs(it.Input, it.Seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS, it.AudioTrack), nil
 }
 
 func (m *PackagerHLS) release(key remuxKey, c *packagedChannel) {

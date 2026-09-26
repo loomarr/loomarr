@@ -212,9 +212,9 @@ func unmarshalFragment(b []byte) (fmp4.Parts, error) {
 	return parts, nil
 }
 
-// sampleDescriptions returns every trak's stsd box. A later item joins the channel's init segment
+// SampleDescriptions returns every trak's stsd box. A later item joins the channel's init segment
 // only if these match byte for byte; otherwise a player would have to re-initialise its decoder.
-func sampleDescriptions(init []byte) [][]byte {
+func SampleDescriptions(init []byte) [][]byte {
 	var out [][]byte
 	var walk func(off, end int)
 	walk = func(off, end int) {
@@ -231,9 +231,10 @@ func sampleDescriptions(init []byte) [][]byte {
 	return out
 }
 
-// sameDecoderConfig reports whether two init segments describe identical sample entries.
-func sameDecoderConfig(a, b []byte) bool {
-	sa, sb := sampleDescriptions(a), sampleDescriptions(b)
+// SameDecoderConfig reports whether two init segments describe identical sample entries: the
+// same tracks, each with a byte-identical stsd.
+func SameDecoderConfig(a, b []byte) bool {
+	sa, sb := SampleDescriptions(a), SampleDescriptions(b)
 	if len(sa) == 0 || len(sa) != len(sb) {
 		return false
 	}

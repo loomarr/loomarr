@@ -11,10 +11,12 @@ error
 0:v:0
 -map
 0:a:1
+-map_chapters
+-1
 -frames:v
 753
 -vf
-bwdif=mode=send_frame,scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2,format=nv12,pad=1920:1080:-1:-1,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
+bwdif=mode=send_frame,scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2,format=nv12,pad=1920:1080:-1:-1,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL
 -c:v
 h264_videotoolbox
 -profile:v

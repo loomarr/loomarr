@@ -450,6 +450,9 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		res:     playoutRes,
 		tonemap: playout.TonemapperFor(set.str("playout.ffmpeg_path")),
 		gpu:     playout.GPUFiltersFor(set.str("playout.ffmpeg_path")),
+		// Filler loudness (#1512 G6), read live like the /program handler's.
+		targetLUFS: func() string { return set.str("filler.target_lufs") },
+		log:        log,
 	}, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"), playout.DefaultGrace, log)
 	if perr != nil {
 		log.Warn("internal playout: channel packager unavailable", "err", perr)

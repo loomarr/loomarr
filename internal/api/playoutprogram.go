@@ -276,31 +276,20 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// builder is deliberately a pure function.
 	audioTrack := s.playoutResolver.AudioTrackFor(r.Context(), channelID, airing.LibraryItemID, streamURL)
 
-	// Loudness, FILLER ONLY: a STATIC gain from the loudness measured at ingest (#1512 G6).
-	//
-	// ⚠ `airing.Source` is the discriminator: set for a resolved filler clip, empty for a library
-	// title (see Airing.Source). Adjusting a feature film to advert loudness would flatten its
-	// dynamic range.
+	// Loudness, FILLER ONLY: a STATIC gain from the loudness measured at ingest (#1512 G6); see
+	// playout.FillerGain.
 	//
 	// ⚠ NOT a live `loudnorm`. Single-pass loudnorm re-estimates its gain from each clip's first
 	// samples, an audible swell at every break start. Ingest normalises clips to the target, so
 	// the gain here is usually 0 dB; a clip with no measurement airs at 0 dB and says so.
 	//
-	// ⚠ The target is read LIVE, so `filler.target_lufs` hot-applies (config-design §3). Empty (or
-	// no liveConfig, as in unit tests that build a bare Server) ⇒ no gain.
+	// ⚠ The target is read LIVE, so `filler.target_lufs` hot-applies (config-design §3). No
+	// liveConfig (unit tests that build a bare Server) ⇒ no gain.
 	gainDB := 0.0
-	if airing.Source != "" && s.liveConfig != nil {
-		if raw := s.liveConfig("filler.target_lufs"); raw != "" {
-			target, perr := strconv.ParseFloat(raw, 64)
-			switch {
-			case perr != nil:
-				s.log.Warn("playout: filler.target_lufs is not a number — airing filler at 0 dB", "value", raw)
-			case airing.MeasuredLUFS == nil:
-				s.log.Info("playout: filler clip has no ingest loudness measurement — airing at 0 dB",
-					"channel", channelID, "title", airing.Title)
-			default:
-				gainDB = playout.StaticGainDB(target, *airing.MeasuredLUFS)
-			}
+	if s.liveConfig != nil {
+		var note string
+		if gainDB, note = playout.FillerGain(airing, s.liveConfig("filler.target_lufs")); note != "" {
+			s.log.Info("playout: "+note+" — airing filler at 0 dB", "channel", channelID, "title", airing.Title)
 		}
 	}
 

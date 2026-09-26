@@ -27,10 +27,12 @@ vaapi
 0:v:0
 -map
 0:a:1
+-map_chapters
+-1
 -frames:v
 753
 -vf
-scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010,hwmap=derive_device=opencl,tonemap_opencl=tonemap=hable:desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12,hwmap=derive_device=vaapi:reverse=1,pad_vaapi=w=1920:h=1080,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
+scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010,hwmap=derive_device=opencl,tonemap_opencl=tonemap=hable:desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12,hwmap=derive_device=vaapi:reverse=1,pad_vaapi=w=1920:h=1080,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL
 -c:v
 h264_vaapi
 -profile:v

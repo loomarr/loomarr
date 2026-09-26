@@ -11,10 +11,12 @@ import (
 // storageKeys are the directories whose defaults live under the database's data directory.
 var storageKeys = map[string]string{
 	"playout.prepared_dir": "prepared",
-	"backup.dir":           "backups",
-	"images.dir":           "images",
-	"filler.dir":           "filler",
-	"diagnostics.dir":      "diagnostics",
+	// Not tmpfs (#1512 spike requirement 8): the channel packager keeps a DVR window per channel.
+	"playout.hls_dir": "hls",
+	"backup.dir":      "backups",
+	"images.dir":      "images",
+	"filler.dir":      "filler",
+	"diagnostics.dir": "diagnostics",
 }
 
 func newDataDirService(t *testing.T, databaseURL string, env, db map[string]string) *Service {

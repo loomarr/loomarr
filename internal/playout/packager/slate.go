@@ -61,18 +61,22 @@ func NewSlate(stream []byte) (*Slate, error) {
 			}
 		}
 	}
-	if len(sampleDescriptions(s.init)) == 0 || len(s.video) == 0 || len(s.audio) == 0 || s.video[0].IsNonSyncSample {
+	if len(SampleDescriptions(s.init)) == 0 || len(s.video) == 0 || len(s.audio) == 0 || s.video[0].IsNonSyncSample {
 		return nil, errors.New("packager: slate needs an init, an IDR-led GOP and audio")
 	}
 	return s, nil
 }
 
+// Init is the slate encoder's init segment (ftyp+moov).
+func (s *Slate) Init() []byte { return s.init }
+
 // fillSlate fills a whole slot with slate, one GOP per segment.
 func (p *Packager) fillSlate(ctx context.Context, slot Slot) error {
 	p.count(func(s *Stats) { s.Slates++ })
-	if !p.acceptInit(p.slate.init) {
-		p.count(func(s *Stats) { s.DecoderMismatch++ })
-		p.cfg.Log.Error("packager: slate's decoder configuration differs from the channel's")
+	// The slate never defines the channel init; before the first item it is checked once the
+	// item's init arrives (acceptInit).
+	if init := p.Init(); init != nil && !SameDecoderConfig(init, p.slate.init) {
+		p.slateMismatch()
 	}
 	var nv, na int64
 	for nv < slot.Frames && ctx.Err() == nil {

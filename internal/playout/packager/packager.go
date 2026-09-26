@@ -62,7 +62,9 @@ type Config struct {
 	DVR time.Duration
 	// SlateLead is how long before air time an item must be producing (default 2 s).
 	SlateLead time.Duration
-	// FirstItemWait is the tune-in item's deadline, which has no run-ahead to spend (default 3 s).
+	// FirstItemWait is the tune-in item's deadline, which has no run-ahead to spend (default 10 s).
+	// The first manifest waits for a real item anyway (the slate never defines the init), so a
+	// tune-in slate would only add a retry, a second resolution and a second encoder start.
 	FirstItemWait time.Duration
 	// SlateRetry is how much slate fills a failed schedule lookup (default 10 s).
 	SlateRetry time.Duration
@@ -88,7 +90,7 @@ func (c *Config) defaults() error {
 	def(&c.FirstManifest, 4*time.Second)
 	def(&c.DVR, 15*time.Minute)
 	def(&c.SlateLead, 2*time.Second)
-	def(&c.FirstItemWait, 3*time.Second)
+	def(&c.FirstItemWait, 10*time.Second)
 	def(&c.SlateRetry, 10*time.Second)
 	if c.Log == nil {
 		c.Log = slog.New(slog.DiscardHandler)
@@ -313,7 +315,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	if !p.acceptInit(stream.init) {
 		p.count(func(s *Stats) { s.DecoderMismatch++ })
 		p.cfg.Log.Error("packager: item's decoder configuration differs from the channel's; slate", "item", item.Label,
-			"channel_stsd", fmt.Sprintf("%x", sampleDescriptions(p.Init())), "item_stsd", fmt.Sprintf("%x", sampleDescriptions(stream.init)))
+			"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.Init())), "item_stsd", fmt.Sprintf("%x", SampleDescriptions(stream.init)))
 		cancel()
 		return p.notReady(ctx, rc, slot)
 	}
@@ -362,22 +364,38 @@ func (p *Packager) notReady(ctx context.Context, rc io.Closer, slot Slot) error 
 	return p.fillSlate(ctx, p.slotFor(slot.AirAt, d))
 }
 
-// acceptInit makes the first producing encoder's init the channel's, and admits a later encoder
-// only if its sample descriptions match byte for byte.
+// acceptInit makes the first producing item's init the channel's, and admits a later item only if
+// its sample descriptions match byte for byte. Only an item defines the init, never the slate: the
+// slate is encoded by the channel's own pipeline, so it matches (a tune-in slate already in the
+// window is checked here).
 func (p *Packager) acceptInit(init []byte) bool {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.init == nil {
-		if len(sampleDescriptions(init)) == 0 {
-			return false
-		}
-		p.init = init
-		if err := os.WriteFile(filepath.Join(p.cfg.Dir, InitName), init, 0o600); err != nil {
-			p.cfg.Log.Error("packager: write init", "err", err)
-		}
-		return true
+	if p.init != nil {
+		defer p.mu.Unlock()
+		return SameDecoderConfig(p.init, init)
 	}
-	return sameDecoderConfig(p.init, init)
+	if len(SampleDescriptions(init)) == 0 {
+		p.mu.Unlock()
+		return false
+	}
+	p.init = init
+	slated := p.stats.Slates > 0
+	p.mu.Unlock()
+	if err := os.WriteFile(filepath.Join(p.cfg.Dir, InitName), init, 0o600); err != nil {
+		p.cfg.Log.Error("packager: write init", "err", err)
+	}
+	if slated && !SameDecoderConfig(init, p.slate.init) {
+		p.slateMismatch()
+	}
+	return true
+}
+
+// slateMismatch reports a slate the channel's decoders cannot play: a defect in how the slate was
+// encoded, since it runs through the channel's own pipeline.
+func (p *Packager) slateMismatch() {
+	p.count(func(s *Stats) { s.DecoderMismatch++ })
+	p.cfg.Log.Error("packager: slate's decoder configuration differs from the channel's",
+		"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.Init())), "slate_stsd", fmt.Sprintf("%x", SampleDescriptions(p.slate.init)))
 }
 
 // forward stamps one encoder fragment onto the timeline, trimming to keep, and appends it.
