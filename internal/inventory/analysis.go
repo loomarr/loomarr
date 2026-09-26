@@ -27,7 +27,9 @@ type Keyframe struct {
 // nearest keyframe at or after it (0 when the source has no keyframe index), which is where a
 // packager can cut without re-encoding. Confidence is in (0, 1].
 type Break struct {
-	AtMs       int64   `json:"atMs"`
+	AtMs int64 `json:"atMs"`
+	// Source is "chapter" (the container names it) or "fade" (black video and silent audio coincide).
+	Source     string  `json:"source,omitempty"`
 	KeyframeMs int64   `json:"keyframeMs,omitempty"`
 	OverlapMs  int64   `json:"overlapMs"`
 	Confidence float64 `json:"confidence"`

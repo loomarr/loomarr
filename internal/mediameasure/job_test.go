@@ -63,6 +63,8 @@ func newTestMeasurer(t *testing.T, sink *fakeSink) *Measurer {
 				{Index: 0, Kind: inventory.StreamVideo}, {Index: 1, Kind: inventory.StreamAudio}}}, nil
 		},
 		Now: func() time.Time { return time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC) },
+		Sampling: Sampling{LoudnessWindows: 4, LoudnessWindow: 1500 * time.Millisecond, BreakEvery: 3500 * time.Millisecond,
+			BreakHalfWindow: 1500 * time.Millisecond, BudgetBytes: 256 << 20},
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -113,8 +115,8 @@ func TestJob_DiscardsAMeasurementOfAFileThatChangedMidRun(t *testing.T) {
 	inner := tools.Run
 	tools.Run = func(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
 		out, errOut, err := inner(ctx, name, args...)
-		// The file is replaced just after the decode pass finished reading it.
-		if name == tools.FFmpeg {
+		// The file is replaced right after the last read of it.
+		if name == tools.FFprobe {
 			_ = os.WriteFile(path+".x", []byte("longer replacement"), 0o644)
 			_ = os.Rename(path+".x", path)
 		}

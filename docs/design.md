@@ -565,8 +565,12 @@ The first store shape has six structures, written atomically per imported snapsh
 A seventh table sits beside them (beta.8 G7, migration 00123): `inventory_source_analysis` holds what
 Loomarr's own background job measures once per source revision beyond stream facts — a varint-packed
 keyframe index (byte offset + PTS), EBU R128 integrated loudness and true peak, and natural break
-candidates (black video and silent audio coinciding away from the opening and closing seconds, each
-with a confidence and the keyframe to cut at). It is read through `inventory.AnalysisReader`, is
+candidates (container chapters first; otherwise black video and silent audio coinciding near each
+quarter-hour due point, away from the opening and closing seconds, each with a confidence and the
+keyframe to cut at). Nothing decodes a whole file: the keyframe index comes from the container's own
+index (Matroska Cues, MP4 sample tables), loudness is an estimate from about twelve short audio
+windows, and every sampled read is capped by a byte budget scaled to the file's bitrate, so a
+multi-gigabyte remux costs a few hundred megabytes at most. It is read through `inventory.AnalysisReader`, is
 deleted when the source revision changes, and rejects a write for a superseded revision. Playout
 never asks the media server or re-probes a file at airtime: an unmeasured source gets one synchronous
 stream-facts probe on first play (which activates the builder's minimal-probe flags), and the rest is

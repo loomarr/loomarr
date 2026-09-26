@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/inventory"
-	"github.com/loomarr/loomarr/internal/mediatools"
 )
 
 // DefaultTimeout bounds one source's whole analysis (keyframe index plus decode pass).
@@ -47,6 +47,8 @@ type Deps struct {
 	Revision func(path string) (string, error)
 	Now      func() time.Time
 	Timeout  time.Duration
+	// Sampling bounds the reads; the zero value means DefaultSampling.
+	Sampling Sampling
 	Log      *slog.Logger
 }
 
@@ -64,6 +66,9 @@ type Measurer struct {
 func New(deps Deps) *Measurer {
 	if deps.Timeout <= 0 {
 		deps.Timeout = DefaultTimeout
+	}
+	if deps.Sampling == (Sampling{}) {
+		deps.Sampling = DefaultSampling()
 	}
 	if deps.Now == nil {
 		deps.Now = time.Now
@@ -180,9 +185,25 @@ func (m *Measurer) analyse(ctx context.Context, ref SourceRef) error {
 			return err
 		}
 	}
-	quality, loudness, err := m.deps.Tools.Decode(ctx, ref.Path, facts.DurationMillis, hasVideo, hasAudio)
+	info, err := os.Stat(ref.Path)
+	if err != nil {
+		return fmt.Errorf("stat source: %w", err)
+	}
+	var lufs, peak *float64
+	if hasAudio {
+		if lufs, peak, err = m.deps.Tools.SampleLoudness(ctx, ref.Path, facts.DurationMillis, info.Size(), m.deps.Sampling); err != nil {
+			return err
+		}
+	}
+	// Chapters are free metadata; only a file without them pays for targeted windows.
+	breaks, err := m.deps.Tools.ChapterBreaks(ctx, ref.Path, facts.DurationMillis, keyframes)
 	if err != nil {
 		return err
+	}
+	if len(breaks) == 0 && hasAudio && hasVideo {
+		if breaks, err = m.deps.Tools.TargetedBreaks(ctx, ref.Path, facts.DurationMillis, info.Size(), keyframes, m.deps.Sampling); err != nil {
+			return err
+		}
 	}
 	// The file may have been replaced while it was read; a measurement of the old bytes must not
 	// be filed under the new revision, or under any revision.
@@ -191,15 +212,7 @@ func (m *Measurer) analyse(ctx context.Context, ref SourceRef) error {
 	}
 	analysis := inventory.Analysis{
 		SourceID: ref.ID, Revision: ref.Revision, Keyframes: keyframes, AnalyzedAt: m.deps.Now(),
-		Breaks: BreakCandidates(quality.Black, quality.Silence, keyframes, facts.DurationMillis),
-	}
-	if loudness.Available {
-		lufs := loudness.IntegratedLUFS
-		analysis.IntegratedLUFS = &lufs
-		if loudness.TruePeak.State == mediatools.TruePeakFinite {
-			peak := loudness.TruePeak.DBTP
-			analysis.TruePeakDBTP = &peak
-		}
+		IntegratedLUFS: lufs, TruePeakDBTP: peak, Breaks: breaks,
 	}
 	if err := m.deps.Sink.RecordInventoryAnalysis(ctx, analysis); err != nil && !errors.Is(err, inventory.ErrSourceRevisionGone) {
 		return fmt.Errorf("store analysis: %w", err)

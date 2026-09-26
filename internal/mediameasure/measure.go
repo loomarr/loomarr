@@ -86,17 +86,6 @@ func parseKeyframes(csv string) []inventory.Keyframe {
 	return frames
 }
 
-// Decode runs the one full-decode pass: black and silent spans plus EBU R128 integrated loudness
-// and true peak. durationMs bounds the returned spans.
-func (t Tools) Decode(ctx context.Context, path string, durationMs int64, hasVideo, hasAudio bool) (mediatools.MediaQuality, mediatools.ConditioningLoudness, error) {
-	args := append([]string{"-threads", "2", "-filter_threads", "2"}, mediatools.DecodeMeasurementArgs(path, hasVideo, hasAudio)...)
-	_, stderr, err := t.Run(ctx, t.FFmpeg, args...)
-	if err != nil {
-		return mediatools.MediaQuality{}, mediatools.ConditioningLoudness{}, fmt.Errorf("decode measurement: %w: %s", err, tail(stderr))
-	}
-	return mediatools.ParseDecodeMeasurement(string(stderr), durationMs)
-}
-
 func tail(b []byte) string {
 	s := strings.TrimSpace(string(b))
 	if len(s) > 400 {
@@ -151,7 +140,7 @@ func keyframeAtOrAfter(frames []inventory.Keyframe, atMs int64) int64 {
 // rather than a full read.
 const scanLimitBytes = 1 << 30
 
-// Keyframes returns the video keyframe index, read from the container's own index (Matroska Cues)
+// Keyframes returns the video keyframe index, read from the container's own index (Matroska Cues, MP4 sample tables)
 // so a large file over a network mount costs kilobytes. A file whose index Loomarr cannot read is
 // scanned only up to scanLimitBytes; above that the result is empty and no bytes are wasted.
 func (t Tools) Keyframes(ctx context.Context, path string) ([]inventory.Keyframe, error) {
@@ -165,6 +154,9 @@ func (t Tools) Keyframes(ctx context.Context, path string) ([]inventory.Keyframe
 		return nil, fmt.Errorf("keyframe index: %w", err)
 	}
 	frames, ok, err := matroskaKeyframes(f, info.Size())
+	if !ok && err == nil {
+		frames, ok, err = mp4Keyframes(f, info.Size())
+	}
 	_ = f.Close()
 	if err != nil {
 		return nil, err

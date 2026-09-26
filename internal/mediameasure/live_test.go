@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/loomarr/loomarr/internal/inventory"
 	"time"
 )
 
@@ -97,20 +99,39 @@ func TestLive_MeasureFile(t *testing.T) {
 	t.Logf("keyframes: %d in %s, %d KiB read (%.4f%% of the file)", len(frames),
 		time.Since(start).Round(time.Millisecond), read>>10, 100*float64(read)/float64(info.Size()))
 
-	if os.Getenv("MEDIAMEASURE_SKIP_DECODE") != "" {
-		return
+	sampling := DefaultSampling()
+	step := func(name string, fn func() string) {
+		childBytes.Store(0)
+		start := time.Now()
+		summary := fn()
+		t.Logf("%s: %s, %.1f MiB read (%.4f%% of the file); %s", name, time.Since(start).Round(time.Millisecond),
+			float64(childBytes.Load())/(1<<20), 100*float64(childBytes.Load())/float64(info.Size()), summary)
 	}
-	childBytes.Store(0)
-	start = time.Now()
-	quality, loudness, err := tools.Decode(ctx, path, durationMs, true, true)
-	if err != nil {
-		t.Fatal(err)
+	step("loudness (sampled)", func() string {
+		l, p, err := tools.SampleLoudness(ctx, path, durationMs, info.Size(), sampling)
+		if err != nil || l == nil {
+			return fmt.Sprintf("unavailable (%v)", err)
+		}
+		pk := "n/a"
+		if p != nil {
+			pk = fmt.Sprintf("%.1f dBTP", *p)
+		}
+		return fmt.Sprintf("%.1f LUFS, true peak %s", *l, pk)
+	})
+	var breaks []inventory.Break
+	step("chapters", func() string {
+		var err error
+		breaks, err = tools.ChapterBreaks(ctx, path, durationMs, frames)
+		return fmt.Sprintf("%d chapter breaks (err %v)", len(breaks), err)
+	})
+	if len(breaks) == 0 {
+		step("targeted fade search", func() string {
+			var err error
+			breaks, err = tools.TargetedBreaks(ctx, path, durationMs, info.Size(), frames, sampling)
+			return fmt.Sprintf("%d fade breaks (err %v)", len(breaks), err)
+		})
 	}
-	breaks := BreakCandidates(quality.Black, quality.Silence, frames, durationMs)
-	t.Logf("decode pass: %s for %.0f s of media, %d MiB read; black %d, silence %d; %.1f LUFS, true peak %+v",
-		time.Since(start).Round(time.Millisecond), seconds, childBytes.Load()>>20,
-		len(quality.Black), len(quality.Silence), loudness.IntegratedLUFS, loudness.TruePeak)
 	for _, b := range breaks {
-		t.Logf("break candidate: at %d ms, keyframe %d ms, overlap %d ms, confidence %.2f", b.AtMs, b.KeyframeMs, b.OverlapMs, b.Confidence)
+		t.Logf("break candidate: %s at %d ms, keyframe %d ms, overlap %d ms, confidence %.2f", b.Source, b.AtMs, b.KeyframeMs, b.OverlapMs, b.Confidence)
 	}
 }

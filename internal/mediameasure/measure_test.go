@@ -2,7 +2,6 @@ package mediameasure
 
 import (
 	"context"
-	"math"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -27,26 +26,6 @@ func TestKeyframes_IndexesEverySyncPacketWithPositions(t *testing.T) {
 		if i > 0 && (frame.PTSMs <= frames[i-1].PTSMs || frame.Offset <= frames[i-1].Offset) {
 			t.Errorf("keyframe %d is not after keyframe %d: %v", i, i-1, frames)
 		}
-	}
-}
-
-func TestDecodePass_MeasuresSpansAndLoudness(t *testing.T) {
-	quality, loudness, err := DefaultTools("", "").Decode(context.Background(), fadeFixture(t), 7000, true, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(quality.Black) != 1 || quality.Black[0].StartMs < 2900 || quality.Black[0].StartMs > 3100 {
-		t.Fatalf("black spans = %v, want one starting ~3000 ms", quality.Black)
-	}
-	if len(quality.Silence) != 1 || quality.Silence[0].StartMs < 2900 || quality.Silence[0].StartMs > 3150 {
-		t.Fatalf("silence spans = %v, want one starting ~3000 ms", quality.Silence)
-	}
-	if !loudness.Available || loudness.IntegratedLUFS > -10 || loudness.IntegratedLUFS < -60 ||
-		math.IsNaN(loudness.IntegratedLUFS) {
-		t.Fatalf("loudness = %+v, want a finite integrated LUFS for a tone", loudness)
-	}
-	if loudness.TruePeak.State != mediatools.TruePeakFinite {
-		t.Fatalf("true peak = %+v, want finite", loudness.TruePeak)
 	}
 }
 

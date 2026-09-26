@@ -1,38 +1,47 @@
 package mediatools
 
-import "fmt"
+// Windowed measurement helpers (beta.8 G7). Loomarr never decodes a whole file to measure it: it
+// seeks (through the container index) to a short window and reads only that. Each helper returns
+// ffmpeg arguments; the caller runs them and hands ffmpeg's stderr to the matching parser. Spans
+// the detectors report are relative to the window start.
 
-// measureVideoPrefix shrinks frames before detection: blackdetect only needs luma statistics, and
-// a 4K HEVC decode is the cost that matters when a whole library is measured in the background.
-const measureVideoPrefix = "scale=w=320:h=-2:flags=fast_bilinear,setpts=PTS-STARTPTS,"
-
-// DecodeMeasurementArgs is the one full-decode pass that yields the black and silent spans plus
-// integrated loudness and true peak (EBU R128), with the same detector thresholds the filler
-// pipeline uses. The caller runs it and passes ffmpeg's stderr to ParseDecodeMeasurement.
-func DecodeMeasurementArgs(file string, hasVideo, hasAudio bool) []string {
-	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-i", file}
-	if hasVideo {
-		args = append(args, "-map", "0:v:0", "-vf", measureVideoPrefix+qualityBlackFilter)
-	} else {
-		args = append(args, "-vn")
-	}
-	if hasAudio {
-		args = append(args, "-map", "0:a:0", "-af", "asetpts=PTS-STARTPTS,"+qualityAudioFilter+",ebur128=peak=true:framelog=quiet")
-	} else {
-		args = append(args, "-an")
-	}
-	return append(args, "-f", "null", "-")
+func windowArgs(file string, startMs, lenMs int64) []string {
+	return []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info",
+		"-ss", msToSeconds(startMs), "-t", msToSeconds(lenMs), "-i", file}
 }
 
-// ParseDecodeMeasurement reads the black and silence spans and the loudness summary out of the
-// stderr of a DecodeMeasurementArgs run. Loudness.Available is false when there was no audio.
-func ParseDecodeMeasurement(stderr string, durationMs int64) (MediaQuality, ConditioningLoudness, error) {
-	if durationMs <= 0 {
-		return MediaQuality{}, ConditioningLoudness{}, fmt.Errorf("parse decode measurement: duration must be positive")
-	}
-	loudness, err := parseConditioningLoudness(stderr)
-	if err != nil {
-		return MediaQuality{}, ConditioningLoudness{}, err
-	}
-	return qualityFromDetectorOutput(stderr, durationMs), loudness, nil
+// LoudnessWindowArgs reads lenMs of the first audio stream from startMs and measures EBU R128
+// integrated loudness and true peak. Video is never demuxed into a decoder.
+func LoudnessWindowArgs(file string, startMs, lenMs int64) []string {
+	return append(windowArgs(file, startMs, lenMs), "-vn", "-map", "0:a:0",
+		"-af", "asetpts=PTS-STARTPTS,ebur128=peak=true:framelog=quiet", "-f", "null", "-")
+}
+
+// SilenceWindowArgs reads lenMs of audio from startMs and reports silent spans with the same
+// threshold the filler detectors use.
+func SilenceWindowArgs(file string, startMs, lenMs int64) []string {
+	return append(windowArgs(file, startMs, lenMs), "-vn", "-map", "0:a:0",
+		"-af", "asetpts=PTS-STARTPTS,"+qualityAudioFilter, "-f", "null", "-")
+}
+
+// BlackWindowArgs decodes lenMs of the first video stream from startMs, downscaled, and reports
+// black spans with the same threshold the filler detectors use. It is meant for a second or two
+// around a silence point, not for scanning.
+func BlackWindowArgs(file string, startMs, lenMs int64) []string {
+	return append(windowArgs(file, startMs, lenMs), "-an", "-map", "0:v:0",
+		"-vf", measureVideoPrefix+qualityBlackFilter, "-f", "null", "-")
+}
+
+// measureVideoPrefix shrinks frames before detection: blackdetect only needs luma statistics.
+const measureVideoPrefix = "scale=w=160:h=-2:flags=fast_bilinear,setpts=PTS-STARTPTS,"
+
+// ParseWindowSpans returns the black and silent spans a window run reported, clamped to lenMs.
+func ParseWindowSpans(stderr string, lenMs int64) (black, silence []Interval) {
+	q := qualityFromDetectorOutput(stderr, lenMs)
+	return q.Black, q.Silence
+}
+
+// ParseLoudnessSummary reads the EBU R128 summary a LoudnessWindowArgs run printed.
+func ParseLoudnessSummary(stderr string) (ConditioningLoudness, error) {
+	return parseConditioningLoudness(stderr)
 }
