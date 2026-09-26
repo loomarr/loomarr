@@ -1,0 +1,65 @@
+<!doctype html><meta charset=utf-8><title>splice spike</title>
+<video id=v muted playsinline width=320 height=180></video><canvas id=c width=16 height=16></canvas>
+<script>
+// SPIKE (#1460): one MediaSource + one SourceBuffer; channel A's 200 ms fragments, then a splice
+// to channel B (or C) appended into the SAME SourceBuffer. Not production code.
+const box=(b,o)=>{const dv=new DataView(b.buffer,b.byteOffset+o);return{size:dv.getUint32(0),type:String.fromCharCode(...b.slice(o+4+0,o+8))}};
+const parse=(buf)=>{ // -> {init, frags:[{video:{t,ts}|null, audio, bytes}]}
+  const b=new Uint8Array(buf);let o=0,init=[],frags=[],cur=null;const tracks={};
+  const kids=(s,e,f)=>{while(s<e){const bx=box(b,s);f(bx,s);s+=bx.size}};
+  while(o<b.length){const bx=box(b,o);
+    if(bx.type==='ftyp'||bx.type==='moov'){init.push(b.subarray(o,o+bx.size));
+      if(bx.type==='moov')kids(o+8,o+bx.size,(x,s)=>{if(x.type==='trak'){let id,ts,h;
+        kids(s+8,s+x.size,(y,t)=>{if(y.type==='tkhd')id=new DataView(b.buffer,b.byteOffset+t+8+(b[t+8]===1?20:12)).getUint32(0);
+          if(y.type==='mdia')kids(t+8,t+y.size,(z,u)=>{if(z.type==='mdhd')ts=new DataView(b.buffer,b.byteOffset+u+8+(b[u+8]===1?20:12)).getUint32(0);
+            if(z.type==='hdlr')h=String.fromCharCode(...b.slice(u+16,u+20))})});tracks[id]={ts,kind:h==='vide'?'video':'audio'}}})}
+    else if(bx.type==='moof'){let tid,t;kids(o+8,o+bx.size,(x,s)=>{if(x.type==='traf'&&tid===undefined)kids(s+8,s+x.size,(y,u)=>{
+        if(y.type==='tfhd')tid=new DataView(b.buffer,b.byteOffset+u+12).getUint32(0);
+        if(y.type==='tfdt'){const dv=new DataView(b.buffer,b.byteOffset+u+8);t=dv.getUint8(0)===1?Number(dv.getBigUint64(4)):dv.getUint32(4)}})});
+      cur={kind:tracks[tid].kind,t:t/tracks[tid].ts,start:o};}
+    else if(bx.type==='mdat'&&cur){cur.bytes=b.subarray(cur.start,o+bx.size);frags.push(cur);cur=null}
+    o+=bx.size}
+  return{init:Buffer_concat(init),frags,tracks}};
+const Buffer_concat=(a)=>{const n=a.reduce((s,x)=>s+x.length,0),r=new Uint8Array(n);let o=0;for(const x of a){r.set(x,o);o+=x.length}return r};
+const load=async(n)=>parse(await (await fetch(`/out/${n}.frag.mp4`)).arrayBuffer());
+async function run(cfg){ // cfg: {to:'B'|'C', mode:'queue'|'flush'|'naive', ahead:s, switchAt:s, codecs}
+  const v=document.getElementById('v'),ctx=document.getElementById('c').getContext('2d',{willReadFrequently:true});
+  const log={frames:[],events:[],cfg};const t0=performance.now(),now=()=>performance.now()-t0;
+  for(const e of['waiting','stalled','error','emptied','seeking','seeked','resize','playing'])v.addEventListener(e,()=>log.events.push({e,at:now(),ct:v.currentTime}));
+  const A=await load('A'),X=await load(cfg.to);
+  const ms=new MediaSource();v.src=URL.createObjectURL(ms);await new Promise(r=>ms.addEventListener('sourceopen',r,{once:true}));
+  const sb=ms.addSourceBuffer(cfg.codecs);
+  // one operation at a time: every append/remove resolves on 'updateend' (or rejects on 'error')
+  let chain=Promise.resolve();
+  const enq=(fn)=>chain=chain.then(()=>new Promise((res,rej)=>{
+    const off=()=>{sb.removeEventListener('updateend',ok);sb.removeEventListener('error',bad)};
+    const ok=()=>{off();res()};
+    const bad=()=>{off();log.events.push({e:'sbError',at:now()});rej(new Error('sb error'))};
+    sb.addEventListener('updateend',ok);sb.addEventListener('error',bad);
+    try{fn();if(!sb.updating)ok()}catch(e){log.events.push({e:'appendError',msg:String(e),at:now()});off();rej(e)}}));
+  const app=(u8)=>enq(()=>sb.appendBuffer(u8));
+  const vBuf=()=>{const b=v.buffered;return b.length?b.end(b.length-1):0};
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+  v.requestVideoFrameCallback(function cb(t,m){ctx.drawImage(v,0,0,16,16);const d=ctx.getImageData(0,0,16,16).data;let r=0,g=0,bl=0;for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];bl+=d[i+2]}
+    log.frames.push({w:now(),mt:m.mediaTime,pf:m.presentedFrames,rgb:[r,g,bl].map(x=>Math.round(x/256))});v.requestVideoFrameCallback(cb)});
+  await app(A.init);ms.duration&&0;
+  const feed=async(list)=>{for(const f of list){let spin=0;while(vBuf()-v.currentTime>cfg.ahead){await sleep(20);if(++spin>1500)throw new Error('stalled feeding: ct='+v.currentTime+' paused='+v.paused+' rs='+v.readyState)}await app(f.bytes)}};
+  // A up to the cut: first video access point at/after switchAt; audio fragments up to the same time.
+  const cut=A.frags.find(f=>f.kind==='video'&&f.t>=cfg.switchAt).t;
+  const aPart=A.frags.filter(f=>f.t<cut);
+  v.play().catch(()=>{});
+  const feedA=feed(aPart);await feedA;
+  // === the splice: a control message would arrive here ===
+  const tCtl=now();let offset=cut-X.frags.find(f=>f.kind==='video').t;
+  if(cfg.mode==='naive')offset=0;
+  if(cfg.mode==='flush'){const ct=v.currentTime+0.25;const rmStart=ct;await enq(()=>sb.remove(rmStart,Infinity));offset=rmStart-X.frags.find(f=>f.kind==='video').t;}
+  log.tCtl=tCtl;log.cut=cut;log.offset=offset;
+  await enq(()=>{sb.timestampOffset=offset});
+  await app(X.init);
+  await feed(X.frags.filter(f=>f.t<cfg.playB));
+  await sleep(600);
+  log.finalBuffered=[...Array(v.buffered.length).keys()].map(i=>[v.buffered.start(i),v.buffered.end(i)]);
+  log.q=v.getVideoPlaybackQuality?.();log.quality=log.q&&{dropped:log.q.droppedVideoFrames,total:log.q.totalVideoFrames,corrupted:log.q.corruptedVideoFrames};delete log.q;log.ended=v.ended;log.ct=v.currentTime;
+  return log}
+window.run=run;
+</script>
