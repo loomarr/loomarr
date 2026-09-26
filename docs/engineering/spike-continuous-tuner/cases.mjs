@@ -19,3 +19,19 @@ export const summarise=(browser,c,r)=>{
     events:r.events.filter(e=>!['playing','waiting','resize'].includes(e.e)||(e.e!=='playing'&&e.at>500&&(k<0||e.at<F[k+15]?.w+50))).map(e=>e.e+'@'+Math.round(e.at)).join(',')||'none',
     buffered:r.finalBuffered.map(x=>x.map(y=>+y.toFixed(2))),quality:r.quality});
 };
+
+// Static files the harness page may fetch: an explicit allowlist, never a path built from the URL.
+const FILES = new Map([
+  ['/', ['splice.html', 'text/html']],
+  ['/out/A.frag.mp4', ['out/A.frag.mp4', 'video/mp4']],
+  ['/out/B.frag.mp4', ['out/B.frag.mp4', 'video/mp4']],
+  ['/out/C.frag.mp4', ['out/C.frag.mp4', 'video/mp4']],
+]);
+export const staticHandler = (fs, path, here) => (q, r) => {
+  const hit = FILES.get(String(q.url).split('?')[0]);
+  if (!hit) { r.writeHead(404); r.end(); return; }
+  fs.readFile(path.join(here, hit[0]), (e, d) => {
+    if (e) { r.writeHead(404); r.end(); return; }
+    r.writeHead(200, { 'content-type': hit[1] }); r.end(d);
+  });
+};
