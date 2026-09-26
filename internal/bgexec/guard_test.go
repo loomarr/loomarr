@@ -11,12 +11,12 @@ import (
 )
 
 // fillerOwned reports whether a package directory (relative to the repo root) is filler-owned:
-// the filler pipeline itself, every fillerXXX package and command, and mediatools, whose ffmpeg
-// wrappers the pipeline calls.
+// the filler pipeline itself, every fillerXXX package and command, mediatools and clipfetch, whose ffmpeg
+// wrappers the pipeline calls and whose yt-dlp spawns ffmpeg.
 func fillerOwned(dir string) bool {
 	dir = filepath.ToSlash(dir)
 	switch {
-	case dir == "internal/mediatools":
+	case dir == "internal/mediatools", dir == "internal/clipfetch":
 		return true
 	case strings.HasPrefix(dir, "internal/filler"):
 		return true

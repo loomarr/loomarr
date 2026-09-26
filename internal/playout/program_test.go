@@ -768,3 +768,29 @@ func TestProgramArgs_CopyIsNeverTonemapped(t *testing.T) {
 		t.Errorf("a video copy grew a filter chain: %q", got)
 	}
 }
+
+// A filler item takes the SAME path as a library program: the family builder owns the video graph
+// and the static gain lives in the audio stage. Every encoder family must carry both, and none may
+// fall back to a live loudnorm.
+func TestProgramArgs_FillerThroughBuilderGetsVolumeAndNoLoudnorm(t *testing.T) {
+	for _, enc := range encoderPreference {
+		p := Profile{Width: 1280, Height: 720, Framerate: 25, Encoder: enc}
+		args := ProgramArgs(ProgramSpec{Profile: p, Input: testStreamURL, Limit: time.Minute, GainDB: -2, Source: measuredH264()})
+		got := joined(args)
+
+		pipe, err := Build(HostFor(enc, false, GPUFilters{}), measuredH264(), ChannelOutput(p))
+		if err != nil {
+			t.Fatalf("%s: %v", enc, err)
+		}
+		if i := argIndex(args, "-vf"); i < 0 || args[i+1] != pipe.VideoFilter {
+			t.Errorf("%s: video graph is not the builder's: %v", enc, args)
+		}
+		af := argIndex(args, "-af")
+		if af < 0 || args[af+1] != "volume=-2dB" {
+			t.Errorf("%s: audio stage lacks volume=-2dB: %q", enc, got)
+		}
+		if strings.Contains(got, "loudnorm") {
+			t.Errorf("%s: live loudnorm on a filler item: %q", enc, got)
+		}
+	}
+}

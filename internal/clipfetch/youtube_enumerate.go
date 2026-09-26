@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
+	"github.com/loomarr/loomarr/internal/bgexec"
 )
 
 // EnumeratedItem is one video listed from an operator-authorized YouTube target.
@@ -50,7 +50,7 @@ func (e *YouTubeEnumerator) Enumerate(ctx context.Context, target string, limit 
 		"--no-config", "--flat-playlist", "--skip-download", "--dump-single-json",
 		"--playlist-end", fmt.Sprint(limit), target,
 	}
-	out, err := exec.CommandContext(ctx, e.ytDlpPath, args...).Output()
+	out, err := bgexec.Tool(ctx, e.ytDlpPath, args...).Output()
 	if err != nil {
 		return nil, 0, fmt.Errorf("yt-dlp list %s: %w", target, err)
 	}

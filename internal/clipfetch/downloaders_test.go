@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/proctree"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -523,5 +525,39 @@ func TestStampFetchedRejectsFinalSymlinkAndOpenedFilePathMismatch(t *testing.T) 
 		if _, stamped := readSidecar(t, path)[filler.SidecarLoomarrKey()]; stamped {
 			t.Fatalf("path replacement stamped %q", path)
 		}
+	}
+}
+
+// #1512 G5: yt-dlp's merge/remux ffmpeg children run niced (they inherit yt-dlp's priority) and
+// thread-capped, so a background acquisition never competes with playback for the CPU.
+func TestYtDlpDownloader_BackgroundPriorityAndFFmpegThreadCap(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("nice values are Unix-only")
+	}
+	dir := t.TempDir()
+	argsFile, niceFile := filepath.Join(dir, "args"), filepath.Join(dir, "nice")
+	executable := testkit.Executable(t, "fake-yt-dlp", fmt.Sprintf(`#!/bin/sh
+printf '%%s\n' "$@" > %q
+ps -o ni= -p $$ > %q
+`, argsFile, niceFile))
+
+	// The fake yields no result file, so Download reports an error; only what it saw matters.
+	_, _ = NewYtDlpDownloader(executable, "ffmpeg").Download(context.Background(), Source{
+		ID: "source-1", Kind: YouTube, URL: "https://example.invalid/playlist",
+	}, dir)
+
+	args, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), "--postprocessor-args\nffmpeg:-threads 1\n") {
+		t.Errorf("yt-dlp's ffmpeg is not thread-capped: %q", args)
+	}
+	nice, err := os.ReadFile(niceFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(nice)); got != strconv.Itoa(proctree.BackgroundNice) {
+		t.Errorf("yt-dlp nice = %q, want %d", got, proctree.BackgroundNice)
 	}
 }

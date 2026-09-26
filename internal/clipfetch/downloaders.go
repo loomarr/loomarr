@@ -9,15 +9,14 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/bgexec"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/proctree"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -85,18 +84,17 @@ func (d *YtDlpDownloader) Estimate(ctx context.Context, src Source) (storagegove
 	if d.ytDlpPath == "" {
 		return storagegovernor.MediaBudget{}, ErrEstimateUnavailable
 	}
-	cmd := exec.Command(d.ytDlpPath,
+	cmd := bgexec.Tool(ctx, d.ytDlpPath,
 		"--no-config", "--simulate", "--dump-single-json", "--playlist-end", "1", src.URL,
-	) //nolint:gosec // configured executable; arguments are separate
+	)
 	stdout := boundedSourceFinderOutput{limit: maxSourceFinderJSONBytes}
 	stderr := diagnosticTail{limit: ytDlpDiagnosticLimit}
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	supervisor, err := proctree.Start(ctx, cmd)
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		return storagegovernor.MediaBudget{}, fmt.Errorf("start yt-dlp estimate: %w", err)
 	}
-	err = supervisor.Wait()
-	if supervisor.Stopped() && ctx.Err() != nil {
+	err := cmd.Wait()
+	if cmd.Stopped() && ctx.Err() != nil {
 		return storagegovernor.MediaBudget{}, ctx.Err()
 	}
 	if err != nil {
@@ -187,6 +185,8 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		"--write-info-json",
 		"--download-archive", archiveFile,
 		"--ffmpeg-location", d.ffmpegPath,
+		// yt-dlp's merge/remux ffmpeg children inherit the niced yt-dlp; this caps their threads.
+		"--postprocessor-args", "ffmpeg:-threads " + strconv.Itoa(bgexec.Threads),
 		"-o", filepath.Join(absDropDir, "%(title)s [%(id)s].%(ext)s"),
 		"--print-to-file", "after_move:%(id)s\t%(filepath)j", resultPath,
 		src.URL,
@@ -197,17 +197,16 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 	runCtx, stop := context.WithCancelCause(ctx)
 	monitorDone := make(chan error, 1)
 	go monitorStaging(runCtx, absDropDir, baselineBytes, guard, stop, monitorDone)
-	cmd := exec.Command(d.ytDlpPath, args...) //nolint:gosec // configured executable; arguments are separate
+	cmd := bgexec.Tool(runCtx, d.ytDlpPath, args...)
 	out := diagnosticTail{limit: ytDlpDiagnosticLimit}
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	supervisor, err := proctree.Start(runCtx, cmd)
-	if err != nil {
+	if err := cmd.Start(); err != nil {
 		stop(nil)
 		<-monitorDone
 		return DownloadResult{}, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, err, out.String())
 	}
-	err = supervisor.Wait()
+	err = cmd.Wait()
 	if currentBytes, sizeErr := stagingBytes(absDropDir); sizeErr != nil {
 		stop(sizeErr)
 	} else if currentBytes > baselineBytes {
@@ -223,7 +222,7 @@ func (d *YtDlpDownloader) Download(ctx context.Context, src Source, dropDir stri
 		cleanupUnsafeStaging(src, absDropDir)
 		return DownloadResult{}, fmt.Errorf("yt-dlp %s storage guard: %w", src.URL, monitorErr)
 	}
-	if supervisor.Stopped() {
+	if cmd.Stopped() {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return DownloadResult{}, fmt.Errorf("yt-dlp %s: %w: %s", src.URL, ctxErr, out.String())
 		}
