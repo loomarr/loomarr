@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import os from "node:os";
 import type { Page, TestInfo } from "@playwright/test";
 
@@ -148,10 +149,11 @@ const installStartDiagnostics = async (page: Page): Promise<StartDiagnostics> =>
         network,
         console: consoleLines,
       };
-      await testInfo.attach("start-diagnostics.json", {
-        body: JSON.stringify(report, null, 2),
-        contentType: "application/json",
-      });
+      // Attach by path: with the CI `github` reporter a body-only attachment is never written under
+      // test-results/, so the uploaded artifact would carry the failure without its evidence.
+      const path = testInfo.outputPath("start-diagnostics.json");
+      await writeFile(path, JSON.stringify(report, null, 2));
+      await testInfo.attach("start-diagnostics.json", { path, contentType: "application/json" });
     },
   };
 };
