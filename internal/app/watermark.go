@@ -44,7 +44,9 @@ type channelWatermarks struct {
 	originals interface {
 		Original(context.Context, string) (string, error)
 	}
-	startup  *diagnostics.Startup
+	events interface {
+		Record(context.Context, diagnostics.Event)
+	}
 	log      *slog.Logger
 	lifetime context.Context
 
@@ -64,10 +66,13 @@ func newChannelWatermarks(deps httpBuild, set resolved, imgs *images.Service) *c
 		tonemap:  playout.TonemapperFor(ffmpeg),
 		gpu:      playout.GPUFiltersFor(ffmpeg),
 		dir:      filepath.Join(filepath.Dir(filepath.Clean(set.str("images.dir"))), "watermarks"),
-		channels: deps.store, startup: deps.foundation.startup, log: deps.log, lifetime: deps.rootCtx,
+		channels: deps.store, log: deps.log, lifetime: deps.rootCtx,
 	}
 	if imgs != nil {
 		c.originals = imgs
+	}
+	if deps.foundation.diagnostics != nil {
+		c.events = deps.foundation.diagnostics
 	}
 	return c
 }
@@ -222,17 +227,20 @@ func (c *channelWatermarks) check(enc playout.Encoder, g *watermarkGate) {
 	r := playout.WatermarkCheck(c.lifetime, c.ffmpeg(), host, dir)
 	_ = os.RemoveAll(dir)
 	g.works.Store(r.Works)
-	status, detail := diagnostics.StartupPassed, "GPU overlay verified on "+string(enc)+": "+r.Detail
+	level, name, msg := diagnostics.LevelInfo, "watermark.overlay_verified", "Channel watermark GPU overlay verified on "+string(enc)
 	if !r.Works {
-		status = diagnostics.StartupWarning
-		detail = "Channel watermarks are off on this host (" + string(enc) + "): " + r.Detail +
+		level, name = diagnostics.LevelWarn, "watermark.disabled"
+		msg = "Channel watermarks are off on this host (" + string(enc) + "): " + r.Detail +
 			". Watermarks are drawn only by a GPU overlay that passes its picture check, never on the CPU."
 		c.log.Warn("watermark: disabled on this host", "encoder", enc, "reason", r.Detail)
 	} else {
 		c.log.Info("watermark: GPU overlay verified", "encoder", enc, "detail", r.Detail)
 	}
-	if c.startup != nil {
-		c.startup.Complete(diagnostics.StartupCheckWatermark, status, detail, "/settings/system/playback", "")
+	// A Diagnostics event, not a startup check: the check runs when an encoder first airs a
+	// programme, and the append-only startup report must complete on a host that never does.
+	if c.events != nil {
+		c.events.Record(c.lifetime, diagnostics.Event{Level: level, Source: diagnostics.SourceServer, Subsystem: "playout",
+			Name: name, Message: msg, Attributes: map[string]any{"encoder": string(enc), "detail": r.Detail}})
 	}
 }
 

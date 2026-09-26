@@ -133,8 +133,6 @@ func newGenerationHealth(processStarted time.Time, generation int) *diagnostics.
 		// it never goes stale.
 		{Key: diagnostics.StartupCheckPlayoutTonemap, Label: "HDR tone mapping", Required: false,
 			Mode: diagnostics.HealthCheckContinuous, RemediationRoute: "/settings/system/playback"},
-		{Key: diagnostics.StartupCheckWatermark, Label: "Channel watermark GPU overlay", Required: false,
-			RemediationRoute: "/settings/system/playback"},
 	}, time.Now)
 }
 
