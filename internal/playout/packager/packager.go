@@ -163,8 +163,15 @@ func (p *Packager) run(ctx context.Context) error {
 			return nil
 		}
 		if err != nil || item.Duration <= 0 || item.Open == nil {
-			p.cfg.Log.Warn("packager: nothing to air; slate", "at", airAt, "err", err)
-			if err := p.fillSlate(ctx, p.slotFor(airAt, p.cfg.SlateRetry)); err != nil {
+			// Nothing playable (an empty lineup, a card slot) slates for that slot's length, and a
+			// failed lookup for SlateRetry; either way the schedule is asked again at most that late.
+			d := p.cfg.SlateRetry
+			if err == nil && item.Duration > 0 {
+				d = min(item.Duration, d)
+			} else {
+				p.cfg.Log.Warn("packager: nothing to air; slate", "at", airAt, "err", err)
+			}
+			if err := p.fillSlate(ctx, p.slotFor(airAt, d)); err != nil {
 				return err
 			}
 			continue
@@ -299,6 +306,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 			// frame) is "not ready", never an empty slot.
 			p.count(func(s *Stats) { s.ZeroFrame++ })
 			p.cfg.Log.Warn("packager: item ended without a frame; slate", "item", item.Label, "err", stream.err)
+			_ = rc.Close() // reap the encoder (and surface why it failed) before the slot's slate
 			return p.fillSlate(ctx, slot)
 		}
 		frag = f

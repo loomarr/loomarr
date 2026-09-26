@@ -211,8 +211,12 @@ type playoutResolver struct {
 // survive a process restart; the deterministic channel epoch supplies the matching wall-clock
 // position.
 func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (playout.Airing, string, error) {
-	now := r.now()
+	return r.AiringAt(ctx, channelID, r.now())
+}
 
+// AiringAt is AiringNow at a given instant. The channel packager asks for the item that airs at
+// its timeline's end, up to its run-ahead (~12 s) after now.
+func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now time.Time) (playout.Airing, string, error) {
 	slots, epoch, err := r.acceptedCycle(ctx, channelID)
 	if err != nil {
 		return playout.Airing{}, "", err

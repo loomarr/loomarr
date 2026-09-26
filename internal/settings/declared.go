@@ -443,6 +443,11 @@ func declared() []Setting {
 			Doc:     "Who streams a channel. Internal playout is required for mid-roll breaks (§10) and reports real transcode telemetry. Tunarr remains fully supported — the right answer for hardware that cannot transcode, or an install that already works. Overridable per channel.",
 		},
 		{
+			Key: "playout.packager", Label: "Channel packager (preview)", EnvVar: "PLAYOUT_PACKAGER", Group: GroupPlayout,
+			Kind: KindBool, Default: false, Advanced: true,
+			Doc: "Serve browser playback from the channel packager: one encoder per scheduled item stitched in-process into gapless fMP4 HLS, instead of the continuous transcode and remux. A preview while it is measured; new tunes use the choice, channels already playing keep theirs until they stop.",
+		},
+		{
 			Key: "playout.encoder", Label: "Encoder override", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",

@@ -149,6 +149,10 @@ type OriginDependencies struct {
 	Prepared     *PreparedOrigin
 	LiveSessions *Manager
 	LiveHLS      *HLSManager
+	// PackagedHLS is the channel packager (#1512 phase 2). With it, UsePackager chooses per new
+	// tune between it and LiveHLS (nil UsePackager: always the packager).
+	PackagedHLS *PackagerHLS
+	UsePackager func() bool
 	// Available is a fail-closed admission gate. Nil means always available (the SQLite
 	// single-replica path); Postgres supplies a gate tied to its durable invalidation listener.
 	Available func() bool
@@ -182,6 +186,13 @@ func NewOrigin(deps OriginDependencies) *Origin {
 	var hls hlsOrigin
 	if deps.LiveHLS != nil {
 		hls = deps.LiveHLS
+	}
+	if deps.PackagedHLS != nil {
+		use := deps.UsePackager
+		if use == nil {
+			use = func() bool { return true }
+		}
+		hls = switchedHLS{remux: hls, packaged: deps.PackagedHLS, usePackager: use}
 	}
 	o := newOrigin(prepared, sessions, hls)
 	o.available = deps.Available
