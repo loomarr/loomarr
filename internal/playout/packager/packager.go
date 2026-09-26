@@ -271,7 +271,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	rc, err := item.Open(ictx, slot)
 	if err != nil {
 		p.cfg.Log.Warn("packager: item did not open; slate", "item", item.Label, "err", err)
-		return p.fillSlate(ctx, slot)
+		return p.notReady(ctx, nil, slot)
 	}
 	defer func() { _ = rc.Close() }()
 	stream := readStream(rc)
@@ -290,7 +290,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 				break
 			}
 			p.count(func(s *Stats) { s.ZeroFrame++ })
-			return p.fillSlate(ctx, slot)
+			return p.notReady(ctx, rc, slot)
 		default:
 		}
 		if frag != nil {
@@ -299,15 +299,14 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		p.count(func(s *Stats) { s.Late++ })
 		p.cfg.Log.Warn("packager: item not producing by its deadline; slate", "item", item.Label)
 		cancel()
-		return p.fillSlate(ctx, slot)
+		return p.notReady(ctx, rc, slot)
 	case f, ok := <-stream.frags:
 		if !ok {
 			// A zero-frame EOF (a seek at or past the end, an encoder that exits 0 without a
 			// frame) is "not ready", never an empty slot.
 			p.count(func(s *Stats) { s.ZeroFrame++ })
 			p.cfg.Log.Warn("packager: item ended without a frame; slate", "item", item.Label, "err", stream.err)
-			_ = rc.Close() // reap the encoder (and surface why it failed) before the slot's slate
-			return p.fillSlate(ctx, slot)
+			return p.notReady(ctx, rc, slot)
 		}
 		frag = f
 	}
@@ -315,7 +314,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		p.count(func(s *Stats) { s.DecoderMismatch++ })
 		p.cfg.Log.Error("packager: item's decoder configuration differs from the channel's; slate", "item", item.Label)
 		cancel()
-		return p.fillSlate(ctx, slot)
+		return p.notReady(ctx, rc, slot)
 	}
 	p.count(func(s *Stats) { s.Items++ })
 
@@ -343,10 +342,23 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 		frag = f
 	}
 	cancel()
-	if nv < slot.Frames && stream.err != nil {
+	if nv < slot.Frames && stream.err != nil && ctx.Err() == nil {
 		p.cfg.Log.Warn("packager: item ended early", "item", item.Label, "frames", nv, "want", slot.Frames, "err", stream.err)
 	}
 	return nil
+}
+
+// notReady handles an item that is not producing: it reaps the encoder (so its failure is logged
+// and no process lingers) and slates the item's slot, but for at most SlateRetry. The schedule is
+// then asked again, so a programme whose encoder was slow or failed once rejoins in progress at
+// the right offset instead of losing its whole slot; a commercial no longer than SlateRetry is
+// slated whole.
+func (p *Packager) notReady(ctx context.Context, rc io.Closer, slot Slot) error {
+	if rc != nil {
+		_ = rc.Close()
+	}
+	d := min(time.Duration(slot.Frames)*time.Second/time.Duration(p.cfg.FPS), p.cfg.SlateRetry)
+	return p.fillSlate(ctx, p.slotFor(slot.AirAt, d))
 }
 
 // acceptInit makes the first producing encoder's init the channel's, and admits a later encoder

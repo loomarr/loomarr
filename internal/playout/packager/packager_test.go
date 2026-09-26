@@ -393,7 +393,7 @@ func TestDecoderMismatchIsSlated(t *testing.T) {
 }
 
 func TestLongSlateKeepsAudioInSync(t *testing.T) {
-	h := runPlans(t, Config{}, []plan{
+	h := runPlans(t, Config{SlateRetry: 2 * time.Minute}, []plan{
 		{"pastend", 95 * time.Second, synth{label: "pastend", zeroFrames: true}},
 	})
 	payloads, _ := assertGapless(t, h) // asserts audio within half a frame of video
@@ -580,5 +580,24 @@ func TestRewriteKeepsFFmpegIDRSync(t *testing.T) {
 	if c[videoTrack] != 30 || v.Samples[0].IsNonSyncSample || !v.Samples[1].IsNonSyncSample {
 		t.Fatalf("re-marshalled first fragment: %d frames, sample 0 non-sync %v, sample 1 non-sync %v",
 			c[videoTrack], v.Samples[0].IsNonSyncSample, v.Samples[1].IsNonSyncSample)
+	}
+}
+
+// A programme whose encoder is late is slated for one retry, not its whole slot: the schedule is
+// asked again and the programme rejoins in progress (live, a 3 s slow start blanked a 2.5 h film).
+func TestLateLongProgrammeRejoinsAfterOneRetry(t *testing.T) {
+	never := make(chan struct{})
+	h := runPlans(t, Config{SlateRetry: 2 * time.Second, SlateLead: 1500 * time.Millisecond}, []plan{
+		{"prog", time.Second, synth{label: "prog"}},
+		{"film", 2 * time.Hour, synth{label: "film", blockBefore: never}},
+		{"film-rejoined", 3 * time.Second, synth{label: "rejoined"}},
+	})
+	payloads, _ := assertGapless(t, h)
+	if countPrefix(payloads, "slate") != 60 || countPrefix(payloads, "rejoined") != 90 {
+		t.Fatalf("slate %d rejoined %d: a late programme must slate one retry, then rejoin",
+			countPrefix(payloads, "slate"), countPrefix(payloads, "rejoined"))
+	}
+	if v, _ := h.opened.Load("film-rejoined"); v.(Slot).Offset != 3*time.Second {
+		t.Errorf("rejoined at %v, want the retry's end (3 s)", v.(Slot).Offset)
 	}
 }
