@@ -21,10 +21,12 @@ videotoolbox_vld
 0:v:0
 -map
 0:a:1
+-map_chapters
+-1
 -frames:v
 753
 -vf
-scale_vt=w=3840:h=2160,hwdownload,format=nv12,pad=3840:2160:-1:-1,fps=25,sidedata=mode=delete,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
+scale_vt=w=3840:h=2160,hwdownload,format=nv12,pad=3840:2160:-1:-1,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
 -c:v
 hevc_videotoolbox
 -profile:v

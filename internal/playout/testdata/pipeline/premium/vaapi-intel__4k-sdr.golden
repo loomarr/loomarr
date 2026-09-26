@@ -27,10 +27,12 @@ vaapi
 0:v:0
 -map
 0:a:1
+-map_chapters
+-1
 -frames:v
 753
 -vf
-scale_vaapi=w=3840:h=2160:force_original_aspect_ratio=decrease:force_divisible_by=2:format=nv12,pad_vaapi=w=3840:h=2160,fps=25,sidedata=mode=delete,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
+scale_vaapi=w=3840:h=2160:force_original_aspect_ratio=decrease:force_divisible_by=2:format=nv12,pad_vaapi=w=3840:h=2160,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left
 -c:v
 hevc_vaapi
 -profile:v

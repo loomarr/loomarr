@@ -60,9 +60,9 @@ func TestBuild_PremiumUniformOutput(t *testing.T) {
 		host := testHosts()[hostName]
 		for _, class := range []FormatClass{Format4KSDR, Format4KHDR} {
 			out := premiumOutput(t, class)
-			wantEnd, wantProfile := ",fps=25,"+stripSideData+","+conformColour, "main"
+			wantEnd, wantProfile := ",fps=25,"+conformSAR+","+stripSideData+","+conformColour, "main"
 			if out.HDR {
-				wantEnd, wantProfile = ",fps=25,"+stripSideData+","+conformHDR10, "main10"
+				wantEnd, wantProfile = ",fps=25,"+conformSAR+","+stripSideData+","+conformHDR10, "main10"
 			}
 			var encode []string
 			built := 0
