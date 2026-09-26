@@ -36,6 +36,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("RoundTripAndIdempotency", func(t *testing.T) { testInventoryRoundTrip(t, newStore) })
 		t.Run("GroundedIdentityOnly", func(t *testing.T) { testInventoryGroundedIdentity(t, newStore) })
 		t.Run("MeasurementRevision", func(t *testing.T) { testInventoryMeasurementRevision(t, newStore) })
+		t.Run("AnalysisRevision", func(t *testing.T) { testInventoryAnalysisRevision(t, newStore) })
 		t.Run("ExplicitMissing", func(t *testing.T) { testInventoryExplicitMissing(t, newStore) })
 		t.Run("MalformedRejected", func(t *testing.T) { testInventoryMalformedRejected(t, newStore) })
 		t.Run("BoundsRejected", func(t *testing.T) { testInventoryBoundsRejected(t, newStore) })

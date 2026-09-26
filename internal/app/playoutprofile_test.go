@@ -3,10 +3,14 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/mediameasure"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -518,5 +523,107 @@ func TestBuild_WiresEveryLadderInput(t *testing.T) {
 			t.Errorf("Build left %s unset — Profile calls it unguarded, so a viewer "+
 				"tuning in would panic", tc.name)
 		}
+	}
+}
+
+// A source that has never been measured is probed ONCE at first play, its facts are recorded, and
+// the builder then receives them: the minimal probe flags appear only because facts exist. The
+// second tune reads the stored facts and asks nothing of ffprobe.
+func TestPlayoutResolver_FirstPlayMeasuresFactsOnceAndActivatesMinimalProbe(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	path := t.TempDir() + "/movie.mkv"
+	if err := os.WriteFile(path, []byte("one stable local revision"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sourceProbes, formatProbes := 0, 0
+	r := &playoutResolver{
+		inventory: inventory.New(st), now: time.Now,
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
+			sourceProbes++
+			return playout.SourceObservation{
+				Container: "matroska,webm", DurationMillis: 90_000,
+				Streams: []playout.ObservedStream{
+					{Index: 0, Kind: "video", Codec: "h264", Width: 1920, Height: 1080, FrameRate: "25/1", PixelFormat: "yuv420p"},
+					{Index: 1, Kind: "audio", Codec: "aac", Channels: 2, SampleRate: 48_000},
+				},
+			}, nil
+		},
+		probeFormat: func(context.Context, string) (playout.MediaFormat, error) {
+			formatProbes++
+			return playout.MediaFormat{}, nil
+		},
+	}
+	r.measurer = r.newMeasurer(mediameasure.Tools{}, st)
+
+	_, format := r.PlanFor(t.Context(), path, playout.PlanFull)
+	pipe, err := playout.Build(playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
+	if err != nil || len(pipe.MissingFacts) != 0 || !slices.Contains(pipe.PreInput, "-fpsprobesize") {
+		t.Fatalf("first-play pipeline = %+v, err %v; want measured facts to activate the minimal probe", pipe, err)
+	}
+	if sourceProbes != 1 || formatProbes != 0 {
+		t.Fatalf("first play probes = source %d, format %d; want exactly one source probe", sourceProbes, formatProbes)
+	}
+	if _, format2 := r.PlanFor(t.Context(), path, playout.PlanFull); format2.VideoCodec != "h264" || sourceProbes != 1 || formatProbes != 0 {
+		t.Fatalf("second tune: format %+v, probes source %d format %d; want stored facts and no probe", format2, sourceProbes, formatProbes)
+	}
+}
+
+func TestPlayoutResolver_UnmeasurableSourceKeepsFullProbe(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	path := t.TempDir() + "/movie.ts"
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := &playoutResolver{
+		inventory: inventory.New(st), now: time.Now,
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
+			return playout.SourceObservation{}, errors.New("unreadable")
+		},
+		probeFormat: func(context.Context, string) (playout.MediaFormat, error) { return playout.MediaFormat{}, nil },
+	}
+	r.measurer = r.newMeasurer(mediameasure.Tools{}, st)
+	_, format := r.PlanFor(t.Context(), path, playout.PlanFull)
+	pipe, err := playout.Build(playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
+	if err != nil || len(pipe.MissingFacts) == 0 || slices.Contains(pipe.PreInput, "-fpsprobesize") {
+		t.Fatalf("pipeline without facts = %+v, err %v; want no minimal probe", pipe, err)
+	}
+}
+
+// Real ffprobe, real store: a Matroska file's measured facts must be complete enough that the
+// builder activates minimal probing, and the background analysis must then land in the store.
+func TestPlayoutResolver_FirstPlayWithRealFFprobeActivatesMinimalProbeAndStoresAnalysis(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	path := filepath.Join(t.TempDir(), "clip.mkv")
+	if out, err := exec.Command(ffmpeg, "-nostdin", "-v", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc2=s=320x240:r=25:d=4", "-f", "lavfi", "-i", "sine=f=440:r=48000:d=4",
+		"-c:v", "mpeg4", "-g", "25", "-c:a", "aac", path).CombinedOutput(); err != nil {
+		t.Fatalf("fixture: %v: %s", err, out)
+	}
+	st := testkit.MigratedSQLiteStore(t)
+	r := &playoutResolver{inventory: inventory.New(st), now: time.Now,
+		probeSource: playout.FFprobeSourceNextTo(ffmpeg)}
+	m := r.newMeasurer(mediameasure.DefaultTools(ffmpeg, playout.FFprobeBeside(ffmpeg)), st)
+	r.measurer = m
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go m.Run(ctx)
+
+	_, format := r.PlanFor(ctx, path, playout.PlanFull)
+	pipe, err := playout.Build(playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{}), format, playout.ChannelOutput(playout.DefaultProfile()))
+	if err != nil || len(pipe.MissingFacts) != 0 || !slices.Contains(pipe.PreInput, "-fpsprobesize") {
+		t.Fatalf("real-ffprobe facts %+v left MissingFacts %v (err %v)", format, pipe.MissingFacts, err)
+	}
+	m.Drain()
+	origin, _ := r.ensureLocalInventorySource(ctx, path)
+	item, ok, err := st.InventoryItem(ctx, inventory.ItemRef{Origin: &origin})
+	if err != nil || !ok {
+		t.Fatalf("item: ok %v err %v", ok, err)
+	}
+	a, ok, err := st.InventoryAnalysis(ctx, item.Sources[0].ID)
+	if err != nil || !ok || len(a.Keyframes) != 4 || a.IntegratedLUFS == nil {
+		t.Fatalf("stored analysis = %+v ok %v err %v; want 4 keyframes and loudness", a, ok, err)
 	}
 }

@@ -121,7 +121,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
-| `bgexec` | 10 | — |
+| `bgexec` | 11 | — |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 8 | `storagegovernor` |
@@ -138,7 +138,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `invitation` | 6 | `contact` |
 | `library` | 10 | `filler`, `httpx`, `metrics` |
 | `llm` | 8 | `httpx`, `metrics` |
-| `mediatools` | 11 | `bgexec`, `diagnostics` |
+| `mediatools` | 12 | `bgexec`, `diagnostics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `openroutermedia` | 7 | `fillereval` |
@@ -184,7 +184,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Concrete adapter for Loomarr's required Rust image worker (§22).
 - **`installationlocation`** · 1 importer
   Owns Loomarr's offline place search and location resolution.
-- **`inventory`** · 3 importers
+- **`inventory`** · 4 importers
   Owns Loomarr's durable, provider-neutral understanding of media (design §5, V66).
 - **`landiscovery`**
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
@@ -233,7 +233,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 1**
 
-- **`bgexec`** · 10 importers · → `proctree`
+- **`bgexec`** · 11 importers · → `proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`diagnostics`** · 8 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -284,7 +284,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns progressive descriptive understanding for filler clips.
 - **`fillerresearch`** · 3 importers · → `llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`mediatools`** · 11 importers · → `bgexec`, `diagnostics`, `playout`
+- **`mediatools`** · 12 importers · → `bgexec`, `diagnostics`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
@@ -299,6 +299,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`fillervisualsafety`** · 6 importers · → `bgexec`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`, `openroutermedia`
   Owns complete-source visual-sensitive-content evidence.
+- **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediatools`
+  Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
 
 **Layer 6**
 
@@ -423,7 +425,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 15**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -561,6 +563,20 @@ The first store shape has six structures, written atomically per imported snapsh
 5. `inventory_source_origins` — authority + external item/source identity, protected locator,
    observation/coverage, and presence state.
 6. `inventory_source_measurements` — measured technical facts bound to one exact source revision.
+
+A seventh table sits beside them (beta.8 G7, migration 00123): `inventory_source_analysis` holds what
+Loomarr's own background job measures once per source revision beyond stream facts — a varint-packed
+keyframe index (byte offset + PTS), EBU R128 integrated loudness and true peak, and natural break
+candidates (container chapters first; otherwise black video and silent audio coinciding near each
+quarter-hour due point, away from the opening and closing seconds, each with a confidence and the
+keyframe to cut at). Nothing decodes a whole file: the keyframe index comes from the container's own
+index (Matroska Cues, MP4 sample tables), loudness is an estimate from about twelve short audio
+windows, and every sampled read is capped by a byte budget scaled to the file's bitrate, so a
+multi-gigabyte remux costs a few hundred megabytes at most. It is read through `inventory.AnalysisReader`, is
+deleted when the source revision changes, and rejects a write for a superseded revision. Playout
+never asks the media server or re-probes a file at airtime: an unmeasured source gets one synchronous
+stream-facts probe on first play (which activates the builder's minimal-probe flags), and the rest is
+measured by a single low-priority worker.
 
 The service surface stays small:
 

@@ -363,6 +363,9 @@ func parseProbeJSON(raw []byte) (probed, error) {
 //
 // `playout.ffmpeg_path` is the only path setting operators have, and the two binaries ship
 // together — a second setting would be a knob whose only correct value is derivable from the first.
+// FFprobeBeside is the ffprobe that ships beside the given ffmpeg.
+func FFprobeBeside(ffmpegPath string) string { return ffprobeBesideFFmpeg(ffmpegPath) }
+
 func ffprobeBesideFFmpeg(ffmpegPath string) string {
 	if ffmpegPath == "" || ffmpegPath == "ffmpeg" {
 		return "ffprobe"

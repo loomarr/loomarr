@@ -236,3 +236,51 @@ func testInventoryBoundsRejected(t *testing.T, newStore NewStoreFunc) {
 		})
 	}
 }
+
+func testInventoryAnalysisRevision(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	snapshot := inventorySnapshot("library-a", "item-1", "source-1", "rev-1", "Pilot", at)
+	itemID, err := st.ApplyInventorySnapshot(ctx, snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, _, err := st.InventoryItem(ctx, inventory.ItemRef{ID: itemID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceID := item.Sources[0].ID
+	if _, ok, err := st.InventoryAnalysis(ctx, sourceID); err != nil || ok {
+		t.Fatalf("unmeasured source analysis = ok %v err %v, want absent", ok, err)
+	}
+	lufs, peak := -23.4, -1.2
+	analysis := inventory.Analysis{
+		SourceID: sourceID, Revision: "rev-1", AnalyzedAt: at.Add(time.Minute),
+		Keyframes:      []inventory.Keyframe{{PTSMs: 0, Offset: 48}, {PTSMs: 2000, Offset: 90_000}},
+		IntegratedLUFS: &lufs, TruePeakDBTP: &peak,
+		Breaks: []inventory.Break{{AtMs: 3500, KeyframeMs: 4000, OverlapMs: 900, Confidence: 0.9}},
+	}
+	if err := st.RecordInventoryAnalysis(ctx, analysis); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := st.InventoryAnalysis(ctx, sourceID)
+	if err != nil || !ok || len(got.Keyframes) != 2 || got.Keyframes[1].Offset != 90_000 ||
+		got.IntegratedLUFS == nil || *got.IntegratedLUFS != lufs || len(got.Breaks) != 1 || got.Revision != "rev-1" {
+		t.Fatalf("analysis = %+v ok %v err %v", got, ok, err)
+	}
+
+	snapshot.Sources[0].Revision = "rev-2"
+	snapshot.Observation.ObservedAt = at.Add(2 * time.Minute)
+	snapshot.Sources[0].Observation.ObservedAt = at.Add(2 * time.Minute)
+	if _, err := st.ApplyInventorySnapshot(ctx, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := st.InventoryAnalysis(ctx, sourceID); err != nil || ok {
+		t.Fatalf("changed source kept a stale analysis: ok %v err %v", ok, err)
+	}
+	if err := st.RecordInventoryAnalysis(ctx, analysis); !errors.Is(err, inventory.ErrSourceRevisionGone) {
+		t.Fatalf("old-revision analysis error = %v, want ErrSourceRevisionGone", err)
+	}
+}

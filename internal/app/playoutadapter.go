@@ -150,6 +150,9 @@ type playoutResolver struct {
 	// read live like every other setting. Empty ⇒ the file's first track, which is what playout
 	// did before this existed — and is how a channel played a film in Russian.
 	audioLanguage func() string
+	// measurer records first-play stream facts and queues background analysis (keyframes, loudness,
+	// break candidates) per source revision. Nil ⇒ playout probes as before and stores nothing.
+	measurer sourceMeasurer
 	// probeSource returns the shared ffprobe superset so the audio choice and durable technical
 	// observation come from one process. Nil ⇒ track 0, preserving best-effort playout.
 	probeSource playout.SourceProber
@@ -1454,6 +1457,10 @@ func (r *playoutResolver) PlanFor(
 			})
 			if err == nil && found {
 				format := playoutFormatOf(source.Observation.Facts)
+				r.submitAnalysis(source.ID, source.Revision, input, source.Observation.Facts)
+				return playout.PlanCopy(format, target), format
+			}
+			if format, ok := r.measureFirstPlay(ctx, origin, input); ok {
 				return playout.PlanCopy(format, target), format
 			}
 		}

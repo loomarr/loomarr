@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	qualityVideoFilters = "blackdetect=d=0.1:pix_th=0.20,freezedetect=n=-60dB:d=2"
+	qualityBlackFilter  = "blackdetect=d=0.1:pix_th=0.20"
+	qualityVideoFilters = qualityBlackFilter + ",freezedetect=n=-60dB:d=2"
 	qualityAudioFilter  = "silencedetect=n=-35dB:d=0.3"
 )
 
