@@ -18,7 +18,7 @@ job on the host makes the numbers meaningless.
 
 | Metric | How | Threshold (hardware families) |
 | --- | --- | --- |
-| `start_p95_ms/<class>` | fresh process per run, seeking to a different second, until the first second of media (one segment) is produced. Time to media, never bytes. | H.264 1080p ≤ 400 ms, HEVC 1080p ≤ 500 ms, 4K HDR ≤ 1800 ms |
+| `start_p95_ms/<class>` | **encoder start (warm)**: fresh process per run, seeking to a different second, until the first second of media (one segment) is produced. Time to media, never bytes. Source files are page-cached, so cold network-share reads are excluded; those are host-specific and belong to supervised household runs, not CI. | H.264 1080p ≤ 400 ms, HEVC 1080p ≤ 500 ms, 4K HDR ≤ 1800 ms |
 | `speed_x/<class>` | one whole clip, unpaced | ≥ 15x (1080p), ≥ 2x (4K HDR) |
 | `cores_per_stream/<class>` | child CPU time (rusage) per second of media, so the cores one stream costs at 1x | reported |
 | `concurrency/max_streams` | largest number of simultaneous 1080p H.264 streams that each hold ≥ 1.2x | ≥ 1 (every family) |
@@ -34,7 +34,8 @@ software host that cannot tone-map 4K HDR in real time) is reported as **refused
 marked skipped and it is not a failure: the slate covers that slot.
 
 The software family has no GPU thresholds; it is judged on sustaining a stream at 1.2x and on
-correctness. `PLAYOUT_BENCH_THRESHOLDS=correctness` judges only the exact checks (gaps, SPS,
+correctness; the channel capacity it measures (`concurrency/max_streams`) is reported with every run.
+`PLAYOUT_BENCH_THRESHOLDS=correctness` judges only the exact checks (gaps, SPS,
 loudness). CI uses it on the virtualised macOS runner. `off` skips judging.
 
 ## The corpus
@@ -49,7 +50,7 @@ For realistic content, fetch Blender's *Tears of Steel* (CC BY 3.0) with a pinne
 directory in. Household media must never enter the bench.
 
 ```sh
-scripts/playout-bench-open-films.sh "$LOOMARR_ARTIFACT_DIR/films" 720p    # add 1080p or 4k
+scripts/playout-bench-open-films.sh "$LOOMARR_ARTIFACT_DIR/films" 720p    # add 1080p
 PLAYOUT_BENCH_FILMS="$LOOMARR_ARTIFACT_DIR/films" make playout-bench
 ```
 
@@ -95,6 +96,13 @@ tied to the schema and corpus version; bumping either forces a re-accept.
 | `Self-hosted — Intel Arc`, `Self-hosted — NVIDIA GeForce` | `workflow_dispatch` only | the maintainer's machines |
 
 `macos-15` arm64 runners expose VideoToolbox hardware encode; `macos-14` does not.
+
+The macOS job installs a SHA-256-pinned static arm64 FFmpeg (VideoToolbox included) with the same bounded
+retry as `scripts/ci-ffmpeg.sh`, never an unpinned Homebrew bottle. It is FFmpeg 9.0.2 because no
+older macOS arm64 build is published; that is not the production 8.1 pin. FFmpeg 9 breaks the concat
+advance over a chunked HTTP body, which the bench never exercises: it drives `playout.Build` pipelines
+and reads the output directly. The bench films are Tears of Steel 720p and 1080p only; the 4K class
+runs on generated HDR10 clips.
 
 ### Self-hosted runners
 

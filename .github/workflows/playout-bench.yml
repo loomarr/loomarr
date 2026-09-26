@@ -50,10 +50,28 @@ jobs:
         with:
           go-version: "1.27"
           cache: false
-      # Homebrew's ffmpeg has VideoToolbox but no VT or libplacebo tone-mapper. Its version is in
-      # every report, so a bottle change shows up as a diff rather than silently.
+      # A static arm64 build with VideoToolbox, pinned by SHA-256 and fetched with the same bounded retry
+      # as scripts/ci-ffmpeg.sh, so a rebuilt upstream asset fails the job instead of moving the numbers.
+      # This is FFmpeg 9, not the production 8.1 pin: the bench drives the transcode builders, never the
+      # concat advance that 9 breaks (see the ffmpeg-9 note in docs/dev/playout-bench.md).
       - name: Install FFmpeg
-        run: brew install ffmpeg
+        env:
+          FFMPEG_MACOS_BASE: https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2
+          FFMPEG_MACOS_SHA256: c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924
+          FFPROBE_MACOS_SHA256: fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6
+        run: |
+          bin="$RUNNER_TEMP/loomarr-ffmpeg"
+          mkdir -p "$bin"
+          for tool in ffmpeg ffprobe; do
+            want="FFMPEG_MACOS_SHA256"; [ "$tool" = ffprobe ] && want="FFPROBE_MACOS_SHA256"
+            curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
+              --output "$bin/$tool.zip" "$FFMPEG_MACOS_BASE/$tool.zip"
+            echo "${!want}  $bin/$tool.zip" | shasum -a 256 -c -
+            unzip -oq "$bin/$tool.zip" -d "$bin"
+            rm -f "$bin/$tool.zip"
+          done
+          chmod +x "$bin/ffmpeg" "$bin/ffprobe"
+          echo "$bin" >> "$GITHUB_PATH"
       - name: Bench the VideoToolbox pipeline
         env:
           LOOMARR_ARTIFACT_DIR: ${{ runner.temp }}/playout-bench

@@ -3,11 +3,11 @@
 # SHA-256. The films are Blender Foundation productions released under CC BY 3.0; they are
 # redistributable, unlike household media, which must never enter the bench.
 #
-#   scripts/playout-bench-open-films.sh [DIR] [720p|1080p|4k ...]
+#   scripts/playout-bench-open-films.sh [DIR] [720p|1080p ...]
 #
 # DIR defaults to $LOOMARR_ARTIFACT_DIR/playout-bench-films. Pass it to the bench as
-# PLAYOUT_BENCH_FILMS=DIR. With no size arguments only Tears of Steel 720p (372 MB) is fetched; 4k
-# is a 6.7 GB archive.
+# PLAYOUT_BENCH_FILMS=DIR. With no size arguments only Tears of Steel 720p (372 MB) is fetched. There is no
+# 4K film: the 4K HDR class runs on generated HDR10 clips, so no unpinned 6.7 GB archive is trusted.
 set -eu
 
 base=https://download.blender.org/demo/movies/ToS
@@ -50,9 +50,8 @@ for size in "$@"; do
   case "$size" in
     720p) fetch tears_of_steel_720p.mov efa9062d9cdb7a338e40ad530dfdf234806743f29ae6a1a136b97ece4e588e8f ;;
     1080p) fetch tears_of_steel_1080p.mov.zip d87a41de040d3814dbde143e9ab85ef122caf22265f660b0bebf476cd8b357a5 unzip ;;
-    4k) fetch tearsofsteel_4k.mov.zip __4K_SHA__ unzip ;;
     *)
-      echo "playout-bench-open-films: unknown size $size (720p, 1080p, 4k)" >&2
+      echo "playout-bench-open-films: unknown size $size (720p, 1080p)" >&2
       exit 2
       ;;
   esac

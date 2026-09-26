@@ -483,6 +483,15 @@ useful for ordinary failures but is not guaranteed after timeout.
 It exists because a Dockerfile that could never build for arm64 sat undetected. Build both
 platforms or it can't catch that.
 
+## Playout bench
+
+`ci-playout-bench.yml` runs the software-only playout bench on every pull request that touches playout,
+the bench or its scripts. It is selected by the `playout_bench` classifier gate and is part of `CI`, so
+it is covered by `ci-ok`. The hardware runs live in `playout-bench.yml`, which is `workflow_dispatch`
+and nightly only and must never gain a `pull_request`, `pull_request_target` or `merge_group` trigger:
+the repository is public and a pull request must not schedule work on the maintainer's GPU machines.
+[Playout bench](playout-bench.md) has the metrics, thresholds and baselines.
+
 ## Manual scopes are explicit
 
 Manual CI defaults to `release-candidate`. That scope is for certifying an exact `main` commit before
