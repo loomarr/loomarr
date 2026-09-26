@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -687,4 +688,19 @@ func SidecarLicense(fsys fs.FS, mediaPath string) string {
 		return ""
 	}
 	return strings.TrimSpace(info.License)
+}
+
+// PlaybackLoudness is the integrated loudness measured for the clip's playback rendition at
+// ingest, read from its sidecar. ok is false when the clip has no sidecar, no playback
+// derivative, or no audio measurement — the caller then applies no gain (#1512 G6).
+func PlaybackLoudness(mediaPath string) (lufs float64, ok bool) {
+	tags, valid := ReadSidecarTags(mediaPath)
+	if !valid || tags.MediaAssets == nil || tags.MediaAssets.Playback == nil {
+		return 0, false
+	}
+	loudness := tags.MediaAssets.Playback.QC.Loudness
+	if !loudness.Available || math.IsNaN(loudness.IntegratedLUFS) || math.IsInf(loudness.IntegratedLUFS, 0) {
+		return 0, false
+	}
+	return loudness.IntegratedLUFS, true
 }

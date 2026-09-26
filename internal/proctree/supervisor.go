@@ -28,16 +28,20 @@ type Supervisor struct {
 
 // Start configures cmd for platform tree ownership, starts it, attaches its process tree,
 // and binds the tree lifetime to ctx. Callers must configure stdio pipes before calling Start.
-func Start(ctx context.Context, cmd *exec.Cmd) (*Supervisor, error) {
+func Start(ctx context.Context, cmd *exec.Cmd, opts ...Option) (*Supervisor, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	configureProcessTree(cmd)
+	configureProcessTree(cmd, o)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 
-	tree, err := attachProcessTree(cmd)
+	tree, err := attachProcessTree(cmd, o)
 	if err != nil {
 		// On Windows the process is still suspended if attachment failed, so parent-only
 		// termination is sufficient. If the Job Object was already attached, its failed-path
@@ -97,3 +101,18 @@ func (s *Supervisor) Wait() error {
 
 // Stopped reports whether teardown was requested through Stop, including context cancellation.
 func (s *Supervisor) Stopped() bool { return s.stopping.Load() }
+
+// BackgroundNice is the Unix nice value LowPriority applies: enough that a saturated host serves
+// interactive work and live playout first, without starving the background job outright.
+const BackgroundNice = 10
+
+type options struct{ lowPriority bool }
+
+// Option adjusts how Start runs the command.
+type Option func(*options)
+
+// LowPriority runs the whole process tree at background scheduling priority — nice 10 on Linux
+// and macOS, BELOW_NORMAL_PRIORITY_CLASS on Windows (which has no nice; the class is the
+// equivalent and is inherited by descendants). For batch media work that must never compete
+// with playback or the app for CPU.
+func LowPriority() Option { return func(o *options) { o.lowPriority = true } }

@@ -755,7 +755,7 @@ func conditioningDecodedStreamEOF(kind StreamKind, index int, sampleRateRaw stri
 }
 
 func (t *FFmpegTools) conditioningDetectorOutput(ctx context.Context, path string, streams conditioningDetectorStreams) (string, error) {
-	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-i", path}
+	args := []string{"-nostdin", "-threads", strconv.Itoa(BackgroundThreads), "-hide_banner", "-nostats", "-v", "info", "-i", path}
 	if streams.video != nil {
 		// One black frame followed by one white frame guarantees a change regardless of the final
 		// artifact pixels. Evidence is clamped to the selected video's exact decoded EOF, so these
@@ -1375,10 +1375,10 @@ func runConditioningCommand(ctx context.Context, executable string, limit int, c
 	if combined {
 		stderr = stdout
 	}
-	cmd := exec.CommandContext(runCtx, executable, args...)
+	cmd := exec.Command(executable, args...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	runErr := cmd.Run()
+	runErr := runBackground(runCtx, cmd)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, fmt.Errorf("conditioning tool canceled: %w", ctxErr)
 	}

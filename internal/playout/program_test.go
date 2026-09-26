@@ -2,6 +2,7 @@ package playout
 
 import (
 	"errors"
+	"math"
 	"regexp"
 	"strings"
 	"testing"
@@ -17,9 +18,9 @@ func transcodeArgs(p Profile, input string, offset, limit time.Duration) []strin
 	return ProgramArgs(ProgramSpec{Profile: p, Input: input, Offset: offset, Limit: limit})
 }
 
-// transcodeArgsLUFS is transcodeArgs with a loudness target (the filler path).
-func transcodeArgsLUFS(p Profile, input string, offset, limit time.Duration, lufs string) []string {
-	return ProgramArgs(ProgramSpec{Profile: p, Input: input, Offset: offset, Limit: limit, TargetLUFS: lufs})
+// transcodeArgsGain is transcodeArgs with a static per-item gain (the filler path).
+func transcodeArgsGain(p Profile, input string, offset, limit time.Duration, gainDB float64) []string {
+	return ProgramArgs(ProgramSpec{Profile: p, Input: input, Offset: offset, Limit: limit, GainDB: gainDB})
 }
 
 // transcodeArgsAudio is transcodeArgs with an explicit audio track index.
@@ -531,48 +532,47 @@ func deviceInitOf(t *testing.T, p Profile) []string {
 	return nil
 }
 
-// Loudness normalisation (§10 V40).
+// Filler loudness is a STATIC per-item gain measured at ingest (#1512 G6), never a live filter.
 //
-// ⚠ **The default path must be byte-identical to what shipped before V40.** A feature film
-// normalised to advert loudness loses its dynamic range, and the problem being solved — adverts
-// recorded a decade apart at wildly different levels, measured at an 11 dB spread across real
-// fetched clips — is a FILLER problem. So no target means no filter at all, not a filter with a
-// neutral value.
-func TestProgramArgs_NoLoudnessFilterWithoutATarget(t *testing.T) {
+// ⚠ Single-pass `loudnorm` ramps its gain at the start of every clip — audible as a swell at
+// each break — and is what the earlier live path applied. A clip normalised at ingest needs
+// nothing more than a constant `volume`, which cannot ramp.
+func TestProgramArgs_NoLoudnessFilterWithoutAGain(t *testing.T) {
 	args := transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Minute)
 
 	if i := argIndex(args, "-af"); i != -1 {
-		t.Errorf("an audio filter was added with no target: %v", args[i:i+2])
-	}
-	if strings.Contains(strings.Join(args, " "), "loudnorm") {
-		t.Error("loudnorm reached a library program; only filler is normalised")
+		t.Errorf("an audio filter was added with no gain: %v", args[i:i+2])
 	}
 }
 
-// A filler clip gets the filter, at the requested target.
-func TestProgramArgs_NormalisesFillerToTheTarget(t *testing.T) {
-	args := transcodeArgsLUFS(DefaultProfile(), testStreamURL, 0, time.Minute, "-23")
+func TestProgramArgs_FillerGainIsStaticVolumeNeverLoudnorm(t *testing.T) {
+	for name, args := range map[string][]string{
+		"transcoded audio": transcodeArgsGain(DefaultProfile(), testStreamURL, 0, time.Minute, 3),
+		"session audio": ProgramArgs(ProgramSpec{
+			Profile: DefaultProfile(), Input: testStreamURL, Limit: time.Minute, GainDB: 3, SessionAudio: true,
+		}),
+	} {
+		joined := strings.Join(args, " ")
+		if strings.Contains(joined, "loudnorm") {
+			t.Errorf("%s: live loudnorm reached the filler path: %v", name, args)
+		}
+		if !strings.Contains(joined, "volume=3dB") {
+			t.Errorf("%s: no static gain in %v", name, args)
+		}
+	}
+}
 
-	i := argIndex(args, "-af")
-	if i == -1 {
-		t.Fatalf("no audio filter for a normalised clip: %v", args)
-	}
-	filter := args[i+1]
-	if !strings.Contains(filter, "loudnorm") || !strings.Contains(filter, "I=-23") {
-		t.Errorf("filter = %q, want loudnorm at I=-23", filter)
-	}
-	// ⚠ A true-peak ceiling is not optional: `loudnorm` raising a quiet clip toward the target
-	// can push transients past 0 dBFS, and the lossy AAC encode below overshoots further. -1 dBTP
-	// is the EBU R128 ceiling and leaves that headroom.
-	if !strings.Contains(filter, "TP=-1") {
-		t.Errorf("filter = %q, want a true-peak ceiling — normalising up can clip", filter)
+func TestProgramArgs_ZeroGainAddsNoFilter(t *testing.T) {
+	args := transcodeArgsGain(DefaultProfile(), testStreamURL, 0, time.Minute, 0)
+	if i := argIndex(args, "-af"); i != -1 {
+		t.Errorf("0 dB gain still added a filter: %v", args[i:i+2])
 	}
 }
 
 // ⚠ The filter must precede the CODEC it feeds. ffmpeg is order-sensitive in ways that fail
 // silently: `-af` after `-c:a` is accepted and applies to nothing.
-func TestProgramArgs_LoudnessFilterComesBeforeTheAudioCodec(t *testing.T) {
-	args := transcodeArgsLUFS(DefaultProfile(), testStreamURL, 0, time.Minute, "-23")
+func TestProgramArgs_GainFilterComesBeforeTheAudioCodec(t *testing.T) {
+	args := transcodeArgsGain(DefaultProfile(), testStreamURL, 0, time.Minute, -2.5)
 
 	af, codec := argIndex(args, "-af"), argIndex(args, "-c:a")
 	if af == -1 || codec == -1 {
@@ -581,15 +581,26 @@ func TestProgramArgs_LoudnessFilterComesBeforeTheAudioCodec(t *testing.T) {
 	if af > codec {
 		t.Errorf("-af at %d comes after -c:a at %d; it would apply to nothing", af, codec)
 	}
+	if args[af+1] != "volume=-2.5dB" {
+		t.Errorf("filter = %q, want volume=-2.5dB", args[af+1])
+	}
 }
 
-// The single-pass form, deliberately. Two-pass loudnorm measures the whole file before emitting a
-// frame — fine for a batch transcode, fatal for a live stream that must start now.
-func TestProgramArgs_LoudnessIsSinglePass(t *testing.T) {
-	args := transcodeArgsLUFS(DefaultProfile(), testStreamURL, 0, time.Minute, "-23")
-
-	if joined := strings.Join(args, " "); strings.Contains(joined, "measured_I") {
-		t.Error("two-pass loudnorm would stall the stream until the whole clip was read")
+func TestStaticGainDB(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		target, measured float64
+		want             float64
+	}{
+		{"already at target", -23, -23.1, 0.1},
+		{"quiet clip comes up", -23, -26, 3},
+		{"loud clip goes down", -23, -20, -3},
+		{"absurd boost is clamped", -23, -60, MaxGainDB},
+		{"absurd cut is clamped", -23, 10, -MaxGainDB},
+	} {
+		if got := StaticGainDB(tc.target, tc.measured); math.Abs(got-tc.want) > 1e-9 {
+			t.Errorf("%s: StaticGainDB(%v, %v) = %v, want %v", tc.name, tc.target, tc.measured, got, tc.want)
+		}
 	}
 }
 

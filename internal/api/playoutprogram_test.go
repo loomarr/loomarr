@@ -1081,11 +1081,36 @@ func fillerAiring(remaining time.Duration) playout.Airing {
 	}
 }
 
-// Loudness normalisation, FILLER ONLY (§10 V40).
+// Filler loudness is a STATIC gain from the ingest measurement (#1512 G6), never a live filter.
 //
 // Measured across real fetched clips the spread was -21.8 to -32.6 LUFS — about 11 dB of
-// clip-to-clip jump, which is what an operator hears as "some of these are too quiet".
-func TestPlayoutProgram_NormalisesFillerLoudness(t *testing.T) {
+// clip-to-clip jump. Ingest now normalises to the target, so the live path only trims the
+// residual: a constant `volume`, because single-pass `loudnorm` ramps at every clip start.
+func TestPlayoutProgram_FillerGetsStaticGainFromIngestMeasurement(t *testing.T) {
+	measured := -26.0
+	airing := fillerAiring(30 * time.Second)
+	airing.MeasuredLUFS = &measured
+	enc := &fakeEncoder{output: "ts"}
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
+		Resolver:         &fakeResolver{airing: airing, url: "http://emby/v/1"},
+		Encoder:          enc.start,
+		FillerTargetLUFS: "-23",
+	}).Server
+
+	if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	joined := strings.Join(enc.args(), " ")
+	if strings.Contains(joined, "loudnorm") {
+		t.Errorf("live loudnorm reached filler; args = %v", enc.args())
+	}
+	if !strings.Contains(joined, "volume=3dB") {
+		t.Errorf("no static +3 dB gain for a -26 LUFS clip at a -23 target; args = %v", enc.args())
+	}
+}
+
+// No measurement ⇒ 0 dB: an unmeasured clip airs as recorded rather than on a guessed gain.
+func TestPlayoutProgram_UnmeasuredFillerIsLeftAtZeroGain(t *testing.T) {
 	enc := &fakeEncoder{output: "ts"}
 	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{
 		Resolver:         &fakeResolver{airing: fillerAiring(30 * time.Second), url: "http://emby/v/1"},
@@ -1096,8 +1121,8 @@ func TestPlayoutProgram_NormalisesFillerLoudness(t *testing.T) {
 	if resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken); resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	if joined := strings.Join(enc.args(), " "); !strings.Contains(joined, "loudnorm=I=-23") {
-		t.Errorf("filler was not normalised; args = %v", enc.args())
+	if joined := strings.Join(enc.args(), " "); strings.Contains(joined, "loudnorm") || strings.Contains(joined, "volume=") {
+		t.Errorf("an unmeasured clip was filtered; args = %v", enc.args())
 	}
 }
 

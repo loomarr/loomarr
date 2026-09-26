@@ -1153,7 +1153,7 @@ func declared() []Setting {
 			// clip-to-clip jump. -23 is the broadcast target.
 			Key: "filler.target_lufs", Label: "Playback loudness target (LUFS)", EnvVar: "FILLER_TARGET_LUFS", Group: GroupFiller,
 			Kind: KindString, Default: "-23", Advanced: true,
-			Doc: "Loudness every filler clip is normalised to at playout, in LUFS (-23 is the broadcast standard). Empty disables normalisation and clips play at whatever level they were recorded.",
+			Doc: "Loudness every filler clip is normalised to, in LUFS (-23 is the broadcast standard). Clips are measured at ingest; at playout a clip that misses the target gets a small constant gain (never a live filter, so no volume swell at clip starts). Empty disables it and clips play at whatever level they were recorded.",
 		},
 		{
 			// ⚠ A clip with NO speech is always kept — a wordless visual spot has no language, and

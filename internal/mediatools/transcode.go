@@ -133,7 +133,7 @@ func Transcode(ctx context.Context, req TranscodeRequest, onProgress func(percen
 		Purpose: "filler_transcode", JobID: req.ProcessJobID, Target: req.Profile.ID(),
 		Executable: FFmpegOr(req.FFmpegPath), Args: args,
 	})
-	supervised, err := proctree.Start(ctx, cmd)
+	supervised, err := proctree.Start(ctx, cmd, proctree.LowPriority())
 	if err != nil {
 		_ = progress.Close()
 		_ = stderrPipe.Close()
@@ -212,6 +212,9 @@ func transcodeArguments(req TranscodeRequest, output string) []string {
 	// Detector facts share this encode. `-v info` is required because the three filters report on
 	// stderr at info level; `-nostats` keeps that capture bounded to diagnostics and measurements.
 	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info"}
+	// Background work: bound the DECODER (before -i) as well as the encoder below. See
+	// BackgroundThreads.
+	args = append(args, "-threads", strconv.Itoa(BackgroundThreads))
 	// stdout carries progress; stderr remains exclusively diagnostics and detector evidence.
 	args = append(args, "-progress", "pipe:1", "-i", req.In)
 	// One explicit A/V pair is part of the recipe identity. Metadata, chapters, subtitles and data
@@ -222,6 +225,8 @@ func transcodeArguments(req TranscodeRequest, output string) []string {
 	args = append(args,
 		"-c:v", "libx264", "-crf", strconv.Itoa(p.CRF), "-preset", p.Preset,
 		"-pix_fmt", p.PixelFormat,
+		"-threads", strconv.Itoa(BackgroundThreads), "-filter_threads", strconv.Itoa(BackgroundThreads),
+		"-x264-params", x264BackgroundParams(),
 		"-vf", qualityVideoFilters)
 	if p.KeyframeSeconds > 0 {
 		// A keyframe at frame 0 and every N seconds. `expr:gte(t,n_forced*N)` is the form that
@@ -376,4 +381,24 @@ func equivalentMediaRatio(before, after string) bool {
 	left, leftOK := parse(before)
 	right, rightOK := parse(after)
 	return leftOK && rightOK && left.Cmp(right) == 0
+}
+
+// BackgroundThreads caps every filler ffmpeg's worker threads (#1512 G5).
+//
+// ⚠ Production ran two libx264 software encodes per clip with NO thread cap and measured about
+// 350% CPU in a 4-CPU container — every page and every live stream slowed for the duration. Two
+// threads keeps a batch encode to at most half of a small host; it is slower per clip, which is
+// the right trade for work nobody is waiting on. Paired with proctree.LowPriority so that even
+// those two threads yield to playback.
+const BackgroundThreads = 2
+
+// x264BackgroundParams bounds libx264's own thread pool.
+//
+// ⚠ **`-threads` alone does not bound it, and this was measured, not assumed.** On a 4-CPU pin a
+// 720p encode with `-threads 2` still peaked at ~256% because libx264 runs a SEPARATE lookahead
+// thread on top of its frame threads. `sync-lookahead=0` folds the lookahead into the frame
+// threads; the same clip then peaked at ~196% (uncapped: ~393%). The rate-control decisions, and
+// so the output, are unchanged — only where the lookahead runs.
+func x264BackgroundParams() string {
+	return "threads=" + strconv.Itoa(BackgroundThreads) + ":sync-lookahead=0"
 }

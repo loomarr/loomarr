@@ -54,7 +54,7 @@ type ProgramSpec struct {
 	Input         string
 	Offset, Limit time.Duration
 	AudioTrack    int      // the N in -map 0:a:N (PickAudioTrack); 0 = the file's first track
-	TargetLUFS    string   // filler loudness normalisation (§10 V40); "" = none (library titles)
+	GainDB        float64  // static per-item loudness gain (#1512 G6), measured at ingest; 0 = none
 	Plan          CopyPlan // per-stream copy/transcode decision (PlanCopy); zero value = transcode both
 	// UnpacedInput is reserved for immutable prepared media whose downstream Channel mux is the
 	// wall-clock pacing authority. Leaving read-rate on this child would pace the authoritative
@@ -194,7 +194,7 @@ func ProgramArgs(spec ProgramSpec) []string {
 	}
 
 	// --- Input options (before -i, so they apply to THIS input) ---
-	p, streamURL, offset, limit, audioTrack, targetLUFS := spec.Profile, spec.Input, spec.Offset, spec.Limit, spec.AudioTrack, spec.TargetLUFS
+	p, streamURL, offset, limit, audioTrack, gainDB := spec.Profile, spec.Input, spec.Offset, spec.Limit, spec.AudioTrack, spec.GainDB
 
 	// Reconnect flags, CHILD tier — and ONLY for an http input. See isHTTP.
 	//
@@ -306,14 +306,14 @@ func ProgramArgs(spec ProgramSpec) []string {
 		if limit > 0 {
 			trim += ":end=" + seconds(offset+limit)
 		}
-		if targetLUFS != "" && !spec.Plan.CopyAudio {
-			trim += ",loudnorm=I=" + targetLUFS + ":TP=-1:LRA=11"
+		if gainDB != 0 && !spec.Plan.CopyAudio {
+			trim += "," + gainFilter(gainDB)
 		}
 		args = append(args, "-af", trim, "-c:a", "s302m", "-strict", "-2", "-ac", "2", "-ar", "48000")
 	} else if spec.Plan.CopyAudio {
 		args = append(args, "-c:a", "copy")
 	} else {
-		args = append(args, p.audioEncodeArgsNormalised(targetLUFS)...)
+		args = append(args, p.audioEncodeArgsGain(gainDB)...)
 	}
 
 	// `+initial_discontinuity` tells the downstream demuxer the first timestamps are not

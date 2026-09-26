@@ -50,6 +50,7 @@ func buildFillerSubsystem(
 	storageGovernor *storagegovernor.Governor,
 	metricRecorder *metrics.Recorder,
 	imageService *images.Service,
+	playbackHeadroom filler.PlaybackHeadroom,
 	owner *generationLifecycle,
 ) fillerBuild {
 	var result fillerBuild
@@ -145,7 +146,7 @@ func buildFillerSubsystem(
 	log.Info("filler catalog sync registered", "dir", layout.ClipDir(),
 		"every", set.dur("filler.sync_every"))
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
-		processDiagnostics, storageGovernor, metricRecorder)
+		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom)
 	enrichmentSignals := fillerEnrichmentSignals{
 		store: st, files: layout.FS(),
 		home: func() filler.Geography {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"sort"
+	"strconv"
 )
 
 const (
@@ -27,7 +28,7 @@ func InspectQualityIn(ctx context.Context, ffmpegPath, file string, startMS, end
 		return MediaQuality{}, fmt.Errorf("inspect media quality requires a positive bounded span")
 	}
 	durationMs := endMS - startMS
-	args := []string{"-nostdin", "-hide_banner", "-nostats", "-v", "info", "-ss", msToSeconds(startMS), "-t", msToSeconds(durationMs), "-i", file,
+	args := []string{"-nostdin", "-threads", strconv.Itoa(BackgroundThreads), "-hide_banner", "-nostats", "-v", "info", "-ss", msToSeconds(startMS), "-t", msToSeconds(durationMs), "-i", file,
 		"-vf", "setpts=PTS-STARTPTS," + qualityVideoFilters}
 	if hadAudio {
 		args = append(args, "-af", "asetpts=PTS-STARTPTS,"+qualityAudioFilter)
@@ -37,9 +38,9 @@ func InspectQualityIn(ctx context.Context, ffmpegPath, file string, startMS, end
 	args = append(args, "-f", "null", "-")
 
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, FFmpegOr(ffmpegPath), args...)
+	cmd := exec.Command(FFmpegOr(ffmpegPath), args...)
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := runBackground(ctx, cmd); err != nil {
 		return MediaQuality{}, fmt.Errorf("inspect media quality %s: %w: %s", file, err, stderr.String())
 	}
 	return qualityFromDetectorOutput(stderr.String(), durationMs), nil

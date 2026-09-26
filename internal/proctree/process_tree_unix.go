@@ -9,11 +9,17 @@ import (
 
 type processTree struct{ pgid int }
 
-func configureProcessTree(cmd *exec.Cmd) {
+func configureProcessTree(cmd *exec.Cmd, _ options) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
-func attachProcessTree(cmd *exec.Cmd) (*processTree, error) {
+func attachProcessTree(cmd *exec.Cmd, o options) (*processTree, error) {
+	if o.lowPriority {
+		// PRIO_PGRP covers every thread of every process already in the group; anything spawned
+		// later inherits. Best effort: an unprivileged process may always RAISE its niceness, so a
+		// failure here is not expected, and running at normal priority beats not running.
+		_ = syscall.Setpriority(syscall.PRIO_PGRP, cmd.Process.Pid, BackgroundNice)
+	}
 	return &processTree{pgid: cmd.Process.Pid}, nil
 }
 

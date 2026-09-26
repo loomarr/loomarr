@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/mediatools"
 
+	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -209,7 +210,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
-	recorder *metrics.Recorder) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
+	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {
 	// The language gate (§10 V40). Registered unconditionally: `filler.language` empty makes
 	// Run a no-op, so an install that has not opted in pays nothing and the Tasks row still
 	// exists to be seen and paused.
@@ -419,6 +420,10 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 		},
 		emitter.FillerClipStage, time.Now, log).
 		WithRewind(fillerRewindAdapter{st}, clipDir)
+	if headroom != nil {
+		// Media rungs yield to live playback instead of competing with it for CPU (#1512 G5).
+		fillerPipeline.WithPlaybackHeadroom(headroom, filler.DefaultPlaybackYield())
+	}
 	log.Info("filler ingest pipeline registered",
 		"stages", len(pipelineStages), "language", set.str("filler.language"),
 		"transcribe", set.boolv("filler.transcribe.enabled"),
@@ -635,4 +640,14 @@ func (h *hotVisionProvider) reconcileModel(v visionWiring) visionWiring {
 	}
 	v.model = main.Model
 	return v
+}
+
+// playbackHeadroomFor is the default filler PlaybackHeadroom: playback is busy while ANY channel
+// is being served (#1512 G5). nil when there is no live playout, so the pipeline never waits.
+// Phase 1b's ResourceBudget replaces this with a capacity-based answer.
+func playbackHeadroomFor(observer api.PlayoutObserver) filler.PlaybackHeadroom {
+	if observer == nil {
+		return nil
+	}
+	return filler.ActiveSessionHeadroom{Active: func() int { return len(observer.Stats(time.Now())) }}
 }
