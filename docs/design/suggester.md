@@ -183,7 +183,7 @@ Loading a local model dominates latency (measured about 9 s cold against 0.5 s w
 - Every Ollama call carries `keep_alive` (`llm.keep_alive`, default `2m`, `0` disables). The default is
   short because the GPU is shared with playout: a resident 8B model holds about 6 GB, and an encoder
   that cannot allocate its context fails.
-- When a hardware encode fails, playout evicts the model (`keep_alive: 0`) and retries before falling
-  back. Eviction is reactive only. `ErrNothingToEvict` is a declined outcome, not a failure.
+- Reactive eviction on a failed hardware encode retired with the beta.7 playout chain; the channel
+  packager has no eviction step ([`playout.md`](playout.md#the-channel-packager)).
 - Boot and every model selection warm the model in the background, best-effort. With no configured
   model the warm-up is declined (`ErrNothingToWarm`), not attempted against a fallback tag.
