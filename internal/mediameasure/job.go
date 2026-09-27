@@ -170,7 +170,11 @@ func (m *Measurer) analyse(ctx context.Context, ref SourceRef) error {
 		}
 	}
 	hasVideo, hasAudio := false, false
+	var width, height int
 	for _, s := range facts.Streams {
+		if s.Kind == inventory.StreamVideo && !hasVideo {
+			width, height = s.Width, s.Height
+		}
 		hasVideo = hasVideo || s.Kind == inventory.StreamVideo
 		hasAudio = hasAudio || s.Kind == inventory.StreamAudio
 	}
@@ -205,6 +209,13 @@ func (m *Measurer) analyse(ctx context.Context, ref SourceRef) error {
 			return err
 		}
 	}
+	// The watermark's anchor: sampled, and unknown (nil) rather than an error when no sample lit.
+	var active *inventory.PictureArea
+	if hasVideo {
+		if box, ok := m.deps.Tools.ActivePicture(ctx, ref.Path, facts.DurationMillis, width, height, DefaultActiveSampling()); ok {
+			active = &inventory.PictureArea{X: box.X, Y: box.Y, W: box.W, H: box.H}
+		}
+	}
 	// The file may have been replaced while it was read; a measurement of the old bytes must not
 	// be filed under the new revision, or under any revision.
 	if err := m.unchanged(ref); err != nil {
@@ -212,7 +223,7 @@ func (m *Measurer) analyse(ctx context.Context, ref SourceRef) error {
 	}
 	analysis := inventory.Analysis{
 		SourceID: ref.ID, Revision: ref.Revision, Keyframes: keyframes, AnalyzedAt: m.deps.Now(),
-		IntegratedLUFS: lufs, TruePeakDBTP: peak, Breaks: breaks,
+		IntegratedLUFS: lufs, TruePeakDBTP: peak, Breaks: breaks, ActivePicture: active,
 	}
 	if err := m.deps.Sink.RecordInventoryAnalysis(ctx, analysis); err != nil && !errors.Is(err, inventory.ErrSourceRevisionGone) {
 		return fmt.Errorf("store analysis: %w", err)

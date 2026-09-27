@@ -260,14 +260,16 @@ func testInventoryAnalysisRevision(t *testing.T, newStore NewStoreFunc) {
 		SourceID: sourceID, Revision: "rev-1", AnalyzedAt: at.Add(time.Minute),
 		Keyframes:      []inventory.Keyframe{{PTSMs: 0, Offset: 48}, {PTSMs: 2000, Offset: 90_000}},
 		IntegratedLUFS: &lufs, TruePeakDBTP: &peak,
-		Breaks: []inventory.Break{{AtMs: 3500, KeyframeMs: 4000, OverlapMs: 900, Confidence: 0.9}},
+		Breaks:        []inventory.Break{{AtMs: 3500, KeyframeMs: 4000, OverlapMs: 900, Confidence: 0.9}},
+		ActivePicture: &inventory.PictureArea{X: 0, Y: 140, W: 1920, H: 800},
 	}
 	if err := st.RecordInventoryAnalysis(ctx, analysis); err != nil {
 		t.Fatal(err)
 	}
 	got, ok, err := st.InventoryAnalysis(ctx, sourceID)
 	if err != nil || !ok || len(got.Keyframes) != 2 || got.Keyframes[1].Offset != 90_000 ||
-		got.IntegratedLUFS == nil || *got.IntegratedLUFS != lufs || len(got.Breaks) != 1 || got.Revision != "rev-1" {
+		got.IntegratedLUFS == nil || *got.IntegratedLUFS != lufs || len(got.Breaks) != 1 || got.Revision != "rev-1" ||
+		got.ActivePicture == nil || *got.ActivePicture != *analysis.ActivePicture {
 		t.Fatalf("analysis = %+v ok %v err %v", got, ok, err)
 	}
 

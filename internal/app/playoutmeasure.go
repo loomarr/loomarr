@@ -72,6 +72,20 @@ func (r *playoutResolver) measureFirstPlay(ctx context.Context, origin inventory
 	return playoutFormatOf(facts), true
 }
 
+// activePicture is the source's measured picture area for the channel watermark's anchor, from
+// the stored analysis of its current revision; the zero Rect (unknown) before it is measured.
+func (r *playoutResolver) activePicture(ctx context.Context, id inventory.SourceID) playout.Rect {
+	if r.analyses == nil {
+		return playout.Rect{}
+	}
+	a, ok, err := r.analyses.InventoryAnalysis(ctx, id)
+	if err != nil || !ok || a.ActivePicture == nil {
+		return playout.Rect{}
+	}
+	p := a.ActivePicture
+	return playout.Rect{X: p.X, Y: p.Y, W: p.W, H: p.H}
+}
+
 // submitAnalysis queues background analysis for a source whose stream facts are already stored.
 func (r *playoutResolver) submitAnalysis(id inventory.SourceID, revision, input string, facts inventory.SourceFacts) {
 	if r.measurer != nil {

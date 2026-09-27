@@ -16,7 +16,8 @@ import (
 //
 // 2: chapter marks are break candidates only when a fade check verifies them (OverlapMs set).
 // Version 1 stored every chapter mark, including scene-selection marks in the middle of a picture.
-const AnalysisSchemaVersion = 2
+// 3: the active picture (letterbox and pillarbox bars excluded) for the channel watermark.
+const AnalysisSchemaVersion = 3
 
 // BreakSearchHalfWindow is how far either side of a due break a natural break may be. It is ONE
 // value for both ends of the pipeline: the measurement searches for fades this far around each
@@ -57,10 +58,22 @@ type Analysis struct {
 	// Keyframes is ordered by PTSMs.
 	Keyframes []Keyframe `json:"-"`
 	// IntegratedLUFS and TruePeakDBTP are nil when the source has no audio (or peak was -inf).
-	IntegratedLUFS *float64  `json:"integratedLufs,omitempty"`
-	TruePeakDBTP   *float64  `json:"truePeakDbtp,omitempty"`
-	Breaks         []Break   `json:"breaks,omitempty"`
-	AnalyzedAt     time.Time `json:"analyzedAt"`
+	IntegratedLUFS *float64 `json:"integratedLufs,omitempty"`
+	TruePeakDBTP   *float64 `json:"truePeakDbtp,omitempty"`
+	Breaks         []Break  `json:"breaks,omitempty"`
+	// ActivePicture is the part of the coded frame that is picture (letterbox and pillarbox bars
+	// excluded), in source pixels; the channel watermark anchors to its corner. Nil when unknown:
+	// no video, or every sampled frame was black.
+	ActivePicture *PictureArea `json:"activePicture,omitempty"`
+	AnalyzedAt    time.Time    `json:"analyzedAt"`
+}
+
+// PictureArea is a rectangle in source pixels.
+type PictureArea struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	W int `json:"w"`
+	H int `json:"h"`
 }
 
 // AnalysisStore is the durable seam for Analysis. It is separate from Repository so the six-table
@@ -153,6 +166,9 @@ func ValidateAnalysis(a Analysis) (Analysis, error) {
 		if b.AtMs < 0 || b.Confidence <= 0 || b.Confidence > 1 {
 			return Analysis{}, ErrInvalid
 		}
+	}
+	if p := a.ActivePicture; p != nil && (p.X < 0 || p.Y < 0 || p.W <= 0 || p.H <= 0) {
+		return Analysis{}, ErrInvalid
 	}
 	return a, nil
 }
