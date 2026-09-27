@@ -43,7 +43,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [auth](auth.md) | identity, credentials, invitations, notifications, devices, roles, route authorization, SSO | 11 | here |
 | web-ui | navigation, first-run wizard, cross-view rules | 12, 13 | `design.md` |
 | [deployment](deployment.md) | restart in place, the image, Compose, upgrades, the job scheduler | 9.2, 16, 18.1 | here |
-| observability | diagnostics, correlation, health, metrics | 17 | `design.md` |
+| [observability](observability.md) | activity, diagnostics, correlation, client events, health, reports, metrics, discovery quality | 5 (activity, diagnostics tables), 17 | here |
 | [images](images.md) | the image service | 22 | here |
 | filler | catalog, lifecycle, gates, sources, pulls, clip identity | 10 | `design.md` |
 | filler-pipeline | the ingest pipeline and its budgets | 10 (V51) | `design.md` |
