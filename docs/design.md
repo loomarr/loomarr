@@ -2683,44 +2683,174 @@ So the poke is **operation-specific**: a reconcile that **added or removed a cha
 > workarounds were accumulating faster than the feature they avoided. The cost is real and stated
 > below — this is not a free win, and it is not reversible cheaply.
 
-### The channel packager is the live path (#1512 phase 2)
+### Internal playout is on demand: one packager per (channel, format) (#1512, beta.8)
 
-Internal playout has one live path: **one channel packager per (Channel, format)**
-(`playout/packager`, driven by `PackagerHLS`).
+A channel encodes only while someone watches it. Nothing is encoded ahead of time, and with no
+viewer no encoder process runs. Each channel and format has one long-lived Go **packager**
+(`PackagerHLS` in `internal/playout`, the timeline core in `internal/playout/packager`) that owns the
+channel's segment timeline. It starts on the first tune and stops `DefaultGrace` (30 s) after the last
+viewer leaves. There is no boot warm-up, and the channel packager is the only live path.
 
-- **Items, not a session.** Each scheduled item gets its own ffmpeg, built by the pipeline builder
-  (`Build`, then `FragmentArgs`). It emits fMP4 fragments already on the channel's timeline, and the
-  packager forwards them into one gapless media playlist: 1 s closed-GOP segments and a 15-minute
-  window (`DVRHorizon`). An item that is not producing by its deadline is slated for at most
-  `SlateRetry`, then the schedule is asked again, so the programme rejoins in progress.
-- **Two audiences, one timeline.** The browser tunes a master playlist naming its variant. A media
-  server's tuner reads the same timeline as one continuous MPEG-TS (the packager's TS writer).
-- **No FFmpeg without a viewer.** A packager starts on the first tune and stops `DefaultGrace` (30 s)
-  after its last viewer. There is no boot warm-up, so the first tune after a restart pays ~0.2 s of
-  encoder-evidence and filter probes; #1520's persisted probe evidence removes that cost.
-- **Admission.** Each packager is one video encode: cost 1 against the transcode budget through
-  `Admit` (§9.1 V49). An unmeasured budget never refuses, and a full one answers `ErrAtCapacity`
-  (503). #1520's ResourceBudget ledger replaces the budget function.
-- **The retry ladder.** An encode that fails before any output proves something about its source on
-  this host, and the next attempt at that source demotes the failing stage:
-  - a GPU decode fault (`IsHardwareDecodeFault`) → a CPU decode into the same encoder;
-  - a failed GPU tone-mapper → the next tone-mapper for the curve, ending at the CPU.
+**The pipeline.**
 
-  The encoder never changes, because every item must match the channel's init.
-- **The software rung.** A software host starts each item on `StartRung` (#1517): full quality up to
-  1080p SDR, keyframes-only for 4K or HDR until #1520 measures the class cost. Stepping mid-item
-  (`RungMonitor`) is not wired yet.
-- **Stills.** A warm channel's still is its newest listed segment behind its init. A cold channel's
-  still comes from the source file.
+- **One encoder per item.** Each scheduled item (a programme part, a break clip or a card) gets its own
+  ffmpeg, built by the pipeline builder (`Build` and `BuildItem`, then `FragmentArgs`). The encoder
+  emits fMP4 fragments already placed on the channel's timeline, and the packager forwards them into
+  one gapless playlist: one init, 1 s closed-GOP segments and a `DVRHorizon` (15 min) window. Segments
+  live on disk under `playout.hls_dir` (default `<data dir>/hls`, never tmpfs). Each process's scratch
+  root is owned by a `flock`, and a later process sweeps only roots whose lock it can take.
+- **Uniform output, always transcoded.** Every item is transcoded into the format's fixed geometry,
+  frame rate, codec profile, colour labels and AAC-LC stereo 48 kHz, with identical encoder arguments
+  per class. No boundary changes decoder state, so a programme-to-break handoff needs no decoder reset.
+  Item commands drop source metadata and chapters (`-map_metadata -1`, `-map_chapters -1`) so the init
+  never inherits a source's tags. The builder sets a square sample aspect ratio (`setsar=1`) so a
+  scope film and a 16:9 episode write identical SPS fields. There is no live loudness filter; filler
+  clips get one static gain (`FillerGain`).
+- **Run-ahead and the listing gate.** The encoded timeline may lead the wall clock by at most
+  `RunAhead` (12 s), enforced by back-pressure. The next item's encoder must be producing `SlateLead`
+  (2 s) before its air time. The playlist lists media only up to now + `ListAhead` (6 s), which is also
+  its `HOLD-BACK`. The first manifest waits until `FirstManifest` (4 s) of media is listable and a real
+  item has defined the init; the tune-in item gets `FirstItemWait` (10 s). Web clients set
+  `liveSyncDuration` to the same 6 s, so the playhead lands on the wall clock.
+- **Slate and rejoin.** An empty slot, a failed schedule lookup or an item that is not producing by its
+  deadline is filled with house-format slate. The slate is shared per (host, output) and starts only
+  when needed, never beside the tune-in encoder. It **never defines the channel init**, because it goes
+  through the same builder tail as items and so matches their sample descriptions. After at most
+  `SlateRetry` (10 s) the schedule is asked again and the programme rejoins in progress at the right
+  offset. A decoder-configuration mismatch between items is logged with both sample descriptions.
+- **Two audiences, one timeline.** A browser tunes a **master playlist** naming a `<format>.m3u8`
+  variant, with `BANDWIDTH`, `CODECS` (read from the channel init), `RESOLUTION` and `FRAME-RATE`.
+  Asset names are flat: `<format>-init.mp4` and `<format>-segNNNNNNNN.m4s`. A media server's tuner
+  reads the same timeline as one continuous MPEG-TS from the packager's TS writer (`Attach`), which
+  joins each tuner at the segment airing now and keeps its own continuity counters. A channel watched
+  in a browser and on a TV is one encode. A 376 s tuner read across six item boundaries, measured
+  live, had no continuity breaks on any PID, video timestamp steps of exactly one frame and audio
+  steps of exactly one AAC frame, and no decode errors.
+- **Stills.** A warm channel's still is decoded once per segment from its newest listed segment. A cold
+  channel gets one CPU-decoded frame of the airing on now, read from the source file and cached per
+  airing; nothing is pre-encoded, and a break has no still. The channel-switch overlay shows it before
+  video plays.
 
-**Retired with phase 2c:**
-- the per-programme chain: `/v1/playout/program`, the shared Channel session (`Manager`), the
-  MPEG-TS block mux, the HLS remux (`HLSManager`) and the loopback self-reach over `LISTEN_ADDR`;
-- load certification (`playout-load-cert`, `internal/playoutcert`);
-- the `playout.packager` preview switch.
+**Formats.** Every channel airs a baseline of 1080p SDR H.264 (High profile) for every device.
+`DeriveChannelFormats` derives one optional **premium HEVC format** from the lineup's measured
+inventory facts. Top resolution and dynamic range are derived independently: any 4K item together with
+any HDR item gives `4k-hevc-hdr` (Main10, BT.2020, PQ), 4K items without HDR give `4k-hevc-sdr`, and
+anything else gets the baseline alone. A channel therefore costs at most two encodes, and its dynamic
+range never changes mid-stream: on an HDR stream, SDR and HLG items are converted on the GPU
+(libplacebo, no inverse tone-map) and the channel's static HDR10 SEI is the packager's to write. A host
+drops a premium format, and says why, when it is software-only, when its encoder has no GPU graph
+(QSV, AMF and other generic families) or, for HDR, when libplacebo is missing. `GET
+/v1/channels/{id}/formats` reports the baseline, what this host airs, what the lineup would warrant and
+any drop reason. ⚠ **Today the packager serves only the baseline.** A premium variant waits for a
+client opt-in.
 
-Subsections below that describe those mechanisms are history until this section is rewritten around
-the packager.
+**One builder, full-GPU graphs per hardware family.** `playout.Build` takes a host profile, a source
+and an output, and returns the ffmpeg pieces. Frames stay on the GPU from decode to encode, and a stage
+leaves it only through a declared fallback recorded in `Pipeline.Fallbacks`. Scaling comes **before**
+tone-mapping, and padding stays on the GPU.
+
+| Family | Graph | Status |
+| --- | --- | --- |
+| VAAPI (Intel iGPU and Arc) | decode, `scale_vaapi`, OpenCL tone-map, `pad_vaapi`, `h264_vaapi` or `hevc_vaapi` | measured on an Arc |
+| VAAPI (AMD) | same, with the CPU tone-map after the GPU downscale | unverified at runtime |
+| NVENC | CUDA decode, `scale_cuda`, tone-map, `pad_cuda`, `h264_nvenc` or `hevc_nvenc` | measured on a GeForce |
+| Software | libx264 `veryfast`, on a degradation ladder (below) | measured |
+| VideoToolbox | `scale_vt` and `h264_videotoolbox`, HDR tone-mapped on the CPU | unverified: no Mac has run it |
+| Generic (QSV, Vulkan, AMF, RKMPP, V4L2M2M) | CPU filters and the encoder's own upload | unverified fallback |
+
+Rate control is quality-based VBR at quality 22 on every rung. The 1080p budget is an 8 Mbit/s target
+with a 12 Mbit/s cap, and lower rungs scale both by pixel count (720p 3.6/5.3 Mbit/s, 480p 1.6/2.4,
+floor 1.0/1.5). Host capability profiles are data, so every family is golden-tested on any machine.
+
+**Tone mapping is a given, never black and never silent.** Every HDR source is tone-mapped on every
+SDR output. `playout.tone_curve` picks the one curve (`hable` by default; `mobius`, `reinhard`,
+`bt2390`, `bt2446a`, `spline`), and each tone-mapper spells it its own way. `tonemap_opencl` has no BT.2390, so the three
+libplacebo-only curves run libplacebo and then the CPU with a declared Mobius substitute.
+
+- Intel HDR maps the surface into OpenCL (`tonemap_opencl`) and back, zero-copy. `tonemap_vaapi` is
+  banned from every path after it aired an all-black picture. The image ships Intel's compute runtime
+  and an NVIDIA OpenCL ICD file; Intel Gen8–11 iGPUs would need a legacy runtime too large to ship, so
+  they use the CPU tone-map (`docs/install/hardware.md`).
+- NVENC tries `tonemap_opencl`, then `libplacebo` on its own Vulkan device, then the CPU.
+- A tone-mapper whose runtime is missing fails before any output, and the retry ladder demotes exactly
+  that tone-mapper.
+- A boot self-check encodes a few HDR frames through the live builder and reads them back with
+  `signalstats`. The darkest frame's maximum luma must exceed 64 and the mean must sit within 24–220 of
+  the 16–235 scale. A black picture is a red Diagnostics failure and is not demoted, because the ladder
+  demotes only on errors and would air it; HDR is then dropped from the budget, so HDR channels show a
+  card instead of black.
+
+**The software ladder: never refuse for speed.** On a CPU-only host a heavy title degrades instead of
+being refused. Rung 0 is full quality. Rung 1 skips the loop filter (with a 720-line working size only
+for HDR or above-1080p sources). Rung 2 also skips non-reference frames. Rung 3 decodes keyframes only
+at 480 lines. Every rung ends in the same scale, pad and colour labels, so the output format stays
+constant, and audio never degrades. `StartRung` picks the best rung projected to reach 1.2× from the
+measured cost: SDR up to 1080p starts at full quality, and 4K or HDR starts keyframes-only when nothing
+is measured. `RungMonitor` steps down after 8 s below 0.97× (or 3 s of accumulated lag) and steps up
+only after a 60 s dwell with headroom of the next rung's measured cost ratio times 1.2. ⚠ **The live
+step is not wired yet:** `RungMonitor` returns decisions only, and nothing in the packager drives it.
+
+**The retry ladder.** An item whose encoder fails before any output proves something about its source
+on this host, and the next attempt demotes the failing stage: a GPU decode fault
+(`IsHardwareDecodeFault`) retries with a CPU decode into the same encoder, and a failed GPU tone-mapper
+retries with the next tone-mapper for the curve, ending at the CPU. **The encoder never changes**,
+because every item must match the channel's init. A slow item cancelled at its deadline is not a fault
+and demotes nothing. ⚠ The chain's reactive step of evicting the resident suggester model when a
+hardware encode produced nothing (§8.2) left with the chain: the packager's ladder has no eviction
+step, and `internal/playout` no longer references the evictor.
+
+**Direct files, Loomarr-owned facts.** Playout reads the media file directly: the library item's path
+mapped through `library.path_map` (§15), with the media server's HTTP stream only as the fallback when
+no mapping resolves a readable file. Stream facts, the keyframe index, loudness and break candidates
+come from Loomarr's own per-source measurements (inventory, `inventory_source_analysis`), never from the
+media server at airtime. An unmeasured local source gets one synchronous probe recorded against its
+revision; without facts, ffmpeg probes and the gap is logged. Background analysis runs one source at a
+time at low priority, reads only a bounded sample of each file (a 95 GiB remux costs about 34 MiB) and
+never decodes a whole file. Audio selection follows `playout.audio_language`, described below.
+
+**Natural mid-programme breaks.** Programmes of 40 minutes or more are split at measured scene fades,
+placed by `schedule.PlaceMidRollCuts`. A break is due about every `60 / breaksPerHour` minutes of
+runtime since the last break, carried across programmes. Each part is at least 8 minutes. The cut is the
+nearest fade within ±3 minutes of the due point with confidence of at least 0.25, and **a break with no
+fade in its window is skipped, never forced**. Candidates are measured fades only. It is on by default
+for internal-playout channels, with the per-channel switch `policy.midRoll` (`false` = off), and Tunarr
+channels never get it. A part resumes at its cut through the packager item's `Seek`, and a split
+programme is one Guide and XMLTV entry whose stop includes its breaks. An unmeasured upcoming programme
+is queued for analysis and airs whole until a later pass finds it measured.
+
+**Watermarks.** Every programme carries a burned-in channel bug by default, drawn by the GPU overlay
+(`overlay_cuda` on NVENC, `overlay_vaapi` on VAAPI) and hidden during filler, bumpers and IDs. Software,
+generic, VideoToolbox and HDR10 premium outputs never draw it, the programme still airs, and the
+pipeline says why in `Fallbacks`. `policy.watermark` holds `{enabled, corner, opacity, size, margin,
+image, callsign}`, and a nil field means the default (on, top-right, opacity 0.65). `POST
+/v1/channels/{id}/watermark` uploads a custom PNG or WebP. Placement anchors to the measured active
+picture, so a letterboxed film gets the bug inside its picture. A self-check encodes a clip with and
+without the bug and asserts that the programme is unchanged outside it, that the bug's blend is 65%
+white over the measured background in coded (limited-range) luma, and that the SPS and PPS are
+byte-identical. If it fails the watermark is off on that host and a `watermark.disabled` Diagnostics
+event says so.
+
+**Admission is one ledger.** See "Admission is one measured ledger" below.
+
+**What this replaced.** Beta.7 and earlier ran a three-process live chain per channel, and beta.8
+development briefly built a second one to serve it:
+
+- The **per-programme chain** (a shared channel session, an MPEG-TS block mux, an HLS remux and a
+  loopback self-reach) is **SUPERSEDED** (retired 2026-09-27, #1542). It paid 15–20 s to first frame at
+  worst and could not hold a decoder steady across a boundary.
+- **Prepared media** (pre-encoding channels ahead of time, V55–V56, with its adjacent warm probe and
+  readiness planner) is **SUPERSEDED**. The maintainer ruled it the wrong architecture on 2026-09-26,
+  after it starved a household server's CPU and wedged its store, and withdrew it (#1509, #1510) along
+  with the continuous-stream design (#1460, #1507). Its code is removed by phase 4 of #1512; until that
+  merges it can still be in the tree, but nothing here depends on it.
+- **Load certification** (`playout-load-cert`, `internal/playoutcert`) retired with the chain.
+- **Per-client `EncodePlan` sessions**, direct-play stream copy and the HEVC-follows-content rule
+  (V47, V48, V50) are **SUPERSEDED** by the uniform-output packager above: a channel's format follows
+  its lineup, never the watching device, and there is no copy path.
+
+The exit criteria (G1–G11) live in #1512.
+
+### Which backend plays a channel
 
 **A channel names its backend.** `playout.backend` is a registry setting (§15) with a **per-channel
 override**. A channel set to “Follow the default” resolves the live global value; a channel pinned to
@@ -2772,171 +2902,28 @@ still useful for direct/in-app internal playback and controlled backend migratio
 not imply that a mixed media-server guide is already wired.
 
 **A committed internal schedule change is a playout cutover.** Reconciliation persists the new
-`Desired` cycle before retiring any process-local encoder that may still be reading the previous
+`Desired` cycle before retiring any process-local packager that may still be reading the previous
 cycle; the next viewer request starts at the new cycle's current wall-clock offset. An unchanged
-reconcile leaves the shared encoder alone. In Postgres deployments the channel invalidation carries
-a compact fingerprint of the accepted cycle, so every replica retires its stale session—not only
+reconcile leaves the running packager alone. In Postgres deployments the channel invalidation carries
+a compact fingerprint of the accepted cycle, so every replica retires its stale packager—not only
 the replica that performed the reconcile. This ordering keeps the Guide and pixels on the same
 committed cycle without interrupting playback for deadline-only reconcile writes.
 
-### How internal playout reads media — DIRECT PLAY is the default (V47)
-
-**Playout reads the FILE and copies it; it transcodes only when it must.** This reverses the
-original design, which read the media server's HTTP stream (`GET /Videos/{id}/stream`) and
-re-encoded *every* program through one normalized profile. That was wrong on two counts: it paid a
-transcode (and an HTTP round-trip through the media server's streaming layer) on content that is
-usually already a playable codec, and it made first-frame latency 15–20s (encoder spin-up + HTTP
-seek + realtime pacing) — which is what made the in-app Watch player (§12) unwatchable.
-
-The mechanism, the way every mature media server (Plex/Emby/Jellyfin) does it:
-
-1. **Resolve the real file.** Fetch the item's `Path` from the library and apply `library.path_map`
-   (§15) — a prefix substitution translating the media server's view of the filesystem
-   (`/data/tv/…`) to the local mount (`/cifs/fictionalserver/tv/…`). If the mapped file is readable,
-   that is the ffmpeg input. **HTTP is the fallback** only when no mapping resolves a local file (a
-   media server on another host, no shared mount) — so a zero-config install still works.
-2. **Measured source facts decide copy/transcode; durable Inventory decides audio when fresh.** The
-   resolved input is probed for its real video/audio codec. `playout.PlanCopy` answers "can this be
-   copied as-is?" against the resolved **EncodePlan**'s copy sets (see "A session's identity is
-   `(channel, encode-plan)`" below):
-   `baseline` = h264+aac; `hevc8`/`hevc10` add HEVC (and, for `hevc10`, 10-bit + surround); a
-   media-server tuner resolves to the broadest, `full`. Preferred-audio selection first reads a
-   fresh V66 observation for the exact resolved input. A readable local file is keyed by its current
-   size + modification time and is probed immediately on a changed/missing revision; an HTTP input
-   refreshes through the Library importer before probing only when that metadata remains incomplete or
-   unavailable. One fallback probe persists the shared stream/format superset against the exact source
-   revision. Every failure still maps audio ordinal zero, so metadata can never dead-air a programme.
-3. **Direct-play (`-c copy`) when compatible — the common case, near-instant, no GPU. Transcode only
-   when the codec genuinely is not playable by the plan** (e.g. HEVC to a `baseline` client, or
-   10-bit to an 8-bit-only one).
-
-Direct play also requires a **decoder-safe first video packet**. A stream-copy cut can store packets
-from the preceding GOP at negative timestamps and use an MP4 edit list to hide them. Re-muxing that
-file into the live MPEG-TS stream discards the edit list and visibly replays the outgoing material at
-the next block boundary. The source probe therefore treats a negative video packet marked discard as
-preroll and forces that clip through the video transcode path, which creates a keyframe at its actual
-start. Compatible whole files still direct-play; output-side seeking alone is not a substitute because
-it can leave the new stream undecodable until its next keyframe, making the player hold the old frame.
-
-Ordinary source video also needs a bounded seek-local random-access proof before copying. The
-shared ffprobe adapter inspects at most 256 video packets around the requested offset, within a
-one-second context and 1 MiB output limit. Copy is eligible only when a non-discard keyframe lies within
-one source-frame duration of the requested point and before the finite programme end. A keyframe
-whose frame covers a sub-frame initial offset may remain; this never admits a preceding GOP.
-The proven output seek keeps that opening frame and preserves the shared timestamp shift. Missing,
-malformed, cancelled or out-of-range proof requires video encoding through the existing atomic
-admission gate, even when codecs and geometry match. Audio compatibility remains independent.
-This request-specific proof is separate from the cached source-format observation; a format cache
-cannot establish the keyframe at a later seek. Immutable prepared-publication playback retains its
-existing qualified copy path. Caller role labels cannot supply a random-access proof.
-Standalone ordinary-source requests use the same proven trim with a zero output origin; they do
-not reintroduce the preceding GOP merely because they have no parent timeline header.
-
-**A transcode has a retry ladder, because hardware encoding can fail silently (V47).** When a program
-must transcode, it uses the box's detected hardware encoder (nvenc/vulkan/qsv/…). But a hardware
-encode can fail to start for a reason that produces **no error and no output** — most commonly the GPU
-is out of VRAM (the shared-GPU case: the suggester's model is resident, §8.2), where the encoder
-cannot allocate its device context and simply emits zero frames. A silent zero-byte encode is a black
-channel. So a transcode that produces **no output** does not give up — it climbs a ladder:
-
-1. **Hardware encode.** Output? Done — the fast path, unchanged.
-2. **Zero output ⇒ reclaim VRAM and retry hardware.** The zero-byte result *is* the "VRAM tight"
-   signal — no polling, no guessing. Playout **evicts the local LLM** (§8.2 `Evictor`) to free its
-   VRAM, then retries the same program on hardware. A live stream preempts a resident suggestion:
-   the stream is latency-critical, the suggestion can afford a cold reload.
-3. **Still zero ⇒ codec-matching software fallback.** If even the freed GPU will not encode it, the
-   program re-runs on **libx264 for an H.264 broadcast or libx265 for an HEVC broadcast**. That may be
-   slower, but it preserves the format pinned for the session instead of changing decoder state at
-   the next Airing boundary. Naming an encoder is not proof that the local ffmpeg can use it: the
-   child earns success only after it emits transport bytes. Software is the floor, never the silent
-   failure.
-
-This ladder only applies to a **transcode** — a `-c copy` that produces nothing is a bad source file,
-which no encoder change fixes, so that child fails straight through. And it fires **only on the
-failure**: the common case (hardware works first try) pays nothing, and the eviction in step 2 happens
-only when an encode genuinely could not fit.
-
-The raw media-server tuner has one outer recovery because its broad `full` plan may fail before the
-first child proves whether it was copying or transcoding. The handler gives that preferred plan five
-seconds to emit a non-empty transport chunk. If it closes or stays silent, Loomarr releases the
-zero-byte session immediately — it has never been warm and receives no idle grace or retained
-admission cost — then retunes the same Channel as `baseline` (H.264/AAC). Baseline gets the ordinary
-15-second startup bound. The HTTP response becomes `200 video/mp2t` only after one of those attempts
-has produced transport; otherwise it fails before response commitment. Once any bytes are committed,
-the format never switches underneath that viewer. This is deliberately a tuner-boundary recovery,
-not another encoder rung: it can recover both an unusable HEVC software encoder and a silent direct
-copy while keeping the stable-format invariant above.
-
-All children entering a shared session use zero video decoder reordering, matching prepared
-packaging's no-reordering contract. The existing bounded copy-start probe must positively observe zero
-`has_b_frames`; missing or nonzero observations require the ordinary admitted video transcode.
-Session video transcodes and generated cards explicitly set zero B-frames. This prevents a
-card/prepared-to-live handoff from forcing the parent to rewrite copied decode timestamps.
-
-Raw/live sessions own one continuous AAC encoder and the final input pacing clock. Only a session whose initial prepared readiness lookup succeeds uses a one-time
-two-second parent startup burst. It covers the portable prepared rendition's keyframe interval so a
-mid-fragment tune does not wait at real-time speed for its first decodable copied frame.
-That prepared-start proof also bounds the parent transport probe to 32 KiB: the validated child
-already supplies the broadcast video and private PCM stream shape, so a short valid programme tail
-must not wait for its successor merely to fill a 256 KiB probe. Ordinary live starts retain the
-256 KiB probe. Neither path changes source timestamps, stream mapping or decoded-frame qualification.
-Ordinary live starts use a one-microsecond burst so short sources do not run ahead and then stall
-waiting for the next scheduled Airing. Finite live,
-prepared and fallback-card children decode selected audio to a private 48 kHz stereo SMPTE 302M
-PCM stream; the parent copies video and encodes that PCM to AAC once for all viewers. A child's
-source-offset/end trim selects decoded samples explicitly. Children feeding that parent are
-unpaced so two independent read-rate clocks cannot create a handoff stall. Standalone programme
-responses retain their own pacing and public audio format. Their long mid-programme tune-in burst
-remains ten seconds; short/boundary starts explicitly use `0.000001` seconds to avoid FFmpeg's
-implicit half-second default.
-
-The session pins its audio bitrate from the existing playout profile before starting the parent.
-Every finite block receives that bitrate on the private hop and acknowledges the same viewer
-broadcast format. A separate fixed private-audio marker identifies SMPTE 302M/48 kHz/stereo;
-AAC broadcast metadata must not describe the private child payload. The parent explicitly selects
-the SMPTE 302M decoder and cannot silently accept independently encoded AAC children. Missing
-codec support fails startup through the existing process-error path; there is no legacy audio join.
-The parent process diagnostics retain its actual AAC encoding arguments. Audio encoding consumes
-CPU and remains one per shared session, including prepared MPEG-TS; video capacity accounting still
-counts only video encoding. Certification must measure the resulting CPU/latency/cleanup cost,
-retain complete copied video and compare selected decoded audio against independent reference
-encoding across seeks, programme ends and mixed live/prepared/card boundaries. The unchanged
-private programme-signature/late-progress checks remain the boundary acceptance gate.
-
-**A live session has one stable broadcast format across every Airing boundary.** Codec compatibility
-alone is not enough to direct-copy a source into that session: resolution, frame rate, pixel format,
-audio codec and channel layout are decoder state too. A programme, Clip or fallback card may copy a
-stream only when every known property matches the session's broadcast format; an unknown or mismatched
-property fails safe toward transcoding. This keeps programme → programme, programme → Pod, Clip → Clip
-and Pod → programme handoffs on one monotonic decoder timeline. It deliberately spends an encode when
-the alternative is an in-stream format change that makes a browser or media-server tuner stall.
-
-An Airing boundary remains explicit inside playout even when no transport reset is necessary. The
-session supervisor opens one finite block at a time and owns the handoff; it does not reduce the
-schedule to an anonymous infinite `ffconcat` byte source. A continuous live mux does not force an HLS
-discontinuity merely because the title changed. A packager MUST emit `#EXT-X-DISCONTINUITY`, the new
-init map where applicable, `#EXT-X-PROGRAM-DATE-TIME`, and the matching discontinuity sequence when
-timestamps, track identity, codec configuration, packaging, or a mux restart actually changes. The
-prepared origin necessarily does so between immutable publications because each publication has its
-own timestamps and init data. The "one encode/repackage per channel, N refcounted viewers" invariant,
-wall-clock epoch, accepted cycle, admission gate, and filler fallback remain unchanged.
-
 ### What internal playout serves
 
-- **Segments** over **both HLS and MPEG-TS**. Both, because media servers differ in what they accept
-  and the compatibility matrix is not ours to police — MPEG-TS matches Tunarr's existing shape and
-  keeps latency low; HLS survives proxies. The MPEG-TS stream (`/playout/stream/{id}`) is what a
-  media server or ffmpeg pulls. The **HLS pair** (`/playout/hls/{id}.m3u8` + its segments) is what a
-  **browser or a native app** plays — a `<video>` element cannot consume raw MPEG-TS, so the same
-  channel is *repackaged*, not re-encoded: a `-c copy` remux hangs off the channel encoder and fans
-  its already-keyframe-aligned bytes into a rolling playlist.
+- **Segments** over **both HLS and MPEG-TS**, from the one packager timeline. Both, because media
+  servers differ in what they accept and the compatibility matrix is not ours to police. The MPEG-TS
+  stream (`/playout/stream/{id}`) is what a media server or ffmpeg pulls. The **HLS pair** (a master
+  playlist, then `<format>.m3u8` and its init and segment files) is what a **browser or a native app**
+  plays, because a `<video>` element cannot consume raw MPEG-TS. Both read the same fMP4 segments, so
+  a channel is one encode however many people and devices watch it.
 - **A channel still** (`GET /playout/still/{id}`, signed like the HLS pair; the play-url carries its
-  signed URL) is one JPEG frame decoded from the newest segment Loomarr already holds for the
-  channel — the prepared publication at the live edge, else the live remux — so it is never older
-  than one segment (4 s). It is decoded at most once per segment and cached, so a request never
-  decodes and no encoder is added. It exists so the channel-switch overlay (#1458) has a picture to
-  show before video plays; a channel with no segment yet answers 404 and the overlay shows its card
-  on the plain background.
+  signed URL) is one JPEG frame. A warm channel's still comes from its newest listed segment, so it is
+  never older than one segment. A cold channel's still is one frame of the airing on now, decoded from
+  the source on the CPU and cached per airing (HDR sources are tone-mapped with the CPU after a
+  960-pixel downscale). A request never starts an encoder. It exists so the channel-switch overlay
+  (#1458) has a picture to show before video plays; a break has no still and answers 404, and the
+  overlay then shows its card on the plain background.
 - **Scheduled break fallback is not an empty Channel.** If a filler pod has no playable clip, the
   synthetic card says “We'll be right back,” preserves the break's wall-clock identity, and is
   bounded by the time remaining in that break so it cannot cover the next programme. “Nothing
@@ -2953,8 +2940,8 @@ detached, and empty channels remain visible in
 Loomarr's own Guide as channel rows for diagnosis and control, but their now/next and upcoming
 programme answers are empty; they are absent from M3U/XMLTV and direct internal tune requests return
 404. When an internal channel leaves this catalog through a lifecycle write (pause, detach, purge,
-or an effective-backend change), the committed write immediately stops every live MPEG-TS session
-and HLS remux for that channel and re-scans the media-server tuner. Reconciliation from live to empty
+or an effective-backend change), the committed write immediately stops every packager
+of that channel and re-scans the media-server tuner. Reconciliation from live to empty
 also re-scans so the dead channel is removed. Additions re-scan too: a transition from empty to its
 first playable programme changes the tuner channel list and cannot use only an EPG refresh.
 
@@ -2962,7 +2949,7 @@ On Postgres that stop is cross-replica and commit-ordered. Lifecycle-sensitive c
 the system-owned backend-publication checkpoint emit a `LISTEN/NOTIFY` invalidation from the same
 database statement or transaction as the durable write; Postgres delivers it only after commit.
 Every replica holds a dedicated listener, applies each committed stop transition to its process-local
-MPEG-TS sessions and HLS remuxes, and performs a full durable reconciliation after subscribing or
+packagers, and performs a full durable reconciliation after subscribing or
 re-subscribing. A listener disconnect or a durable reconciliation/read failure closes new playout
 admission and retires every local live delivery before reconnecting, so a missed notification cannot
 leave an encoder running or admit a replacement session. Admission reopens only after `LISTEN` is
@@ -2981,343 +2968,6 @@ Pause is local ownership state in v1. Loomarr stops its own playout and guide an
 managed Tunarr projection keeps playing its last lineup; detach and internal/Tunarr transitions
 likewise preserve that historical projection until explicit purge. Making a remote Tunarr projection
 durably off-air requires persisted projection lifecycle state and retry, not a one-shot lineup clear.
-
-### One playout module, prepared first — not a second playback stack (V55–V56)
-
-The route layer must not choose between a live session, a live HLS remux, and prepared media. That
-choice is playout behavior, and exposing each mechanism gives every caller enough knowledge to make
-them drift. The production seam is therefore one deep **Playout** module. A client asks it to tune a
-`(Channel, EncodePlan, Delivery)` and receives a presentation; immutable follow-up resources are
-opened through the same module. The interface includes the ordering and lifetime rules callers need,
-but no encoder, scratch-directory, preparation-job, or cache-layout concepts.
-
-Inside that module, one deterministic timeline maps Channel plus wall clock to Airings. The guide,
-readiness planner, prepared origin, and live fallback all consume that same answer; none may maintain
-a private schedule. A tune resolves in this order:
-
-1. Resolve the authoritative Airing window and the client's canonical EncodePlan.
-2. Look up a complete prepared publication by `(source fingerprint, rendition contract, packaging
-   version)`. Tune-time lookup may use only a fingerprint warmed by the readiness control plane; it
-   must never hash source media or start preparation on demand. A publication is visible only after
-   all of its immutable fragments and metadata have validated and been atomically committed.
-3. On a hit, adapt the shared publication to the requested Delivery. HLS renders the short
-   wall-clock manifest over immutable fMP4 fragments. MPEG-TS opens the current publication at the
-   authoritative Airing offset through a finite fMP4-to-TS child that copies video and decodes
-   selected audio to the private PCM contract. It reads only the prepared publication and feeds
-   the shared session audio encoder; it never acquires an original media-server source or writes
-   publication bytes. Every viewer of the Manager's `(Channel, EncodePlan)` session shares these
-   processes. Prepared HLS still starts no media process; neither path starts a second packager.
-   The prepared child does not pace its immutable input; the long-lived Channel mux is the sole
-   wall-clock pacing authority. Applying input read-rate before the child's authoritative seek would
-   turn its distance from the preceding segment boundary into viewer-visible cold-start latency.
-   The outer pacing also bounds any whole-segment demux burst from fMP4/HLS before it reaches the raw
-   viewer's finite queue; a copy must not disconnect a healthy television before its first frame
-   merely because it can read immutable bytes faster than live.
-   EOF on a prepared remux child's output is successful completion only after its natural process
-   exit succeeds. A nonzero exit after a nonempty prefix remains a block read failure, so the
-   supervisor resolves the current Airing without waiting for the failed block's scheduled end.
-   Explicit close and cancellation still terminate and reap the child tree.
-   Clean completion and adjacent Airing identities do not by themselves authorize restarting the
-   next programme from zero. An overdue handoff retains the resolver's current Airing offset. This
-   applies both when the outgoing child finishes late and when it finishes on time but subsequent
-   source resolution is delayed; checking only the predecessor's completion time is insufficient.
-   Empty output, a schedule gap, or a missed Airing likewise cannot create a continuation from an
-   earlier programme's boundary. A common transport timestamp domain is not proof of timely
-   wall-clock delivery.
-   The finite-block request carries the Channel, EncodePlan, one session media-clock origin, and
-   an optional prospective schedule instant. These are internal playout coordinates, not client
-   tuning controls or context-local flags. After nonempty successful completion before EndsAt, the
-   supervisor may request the prepared Airing at EndsAt through the same source composition. The
-   prepared resolver reads that instant from the accepted schedule; the result must start exactly
-   there with offset zero and match the pinned broadcast format. A prospective miss must not call
-   the live resolver, which records airing history and selects filler. It waits for the boundary
-   and resolves the current Airing normally. Gaps, changed boundaries, errors, empty bodies and late
-   openings never contribute speculative bytes to the Channel mux.
-   The outgoing EndsAt bounds both source lookup and the successor's first read. A separate startup
-   timer cancels and closes a late attempt. Successful startup disarms that timer; the child then
-   follows the session lifetime and is not cancelled at its own start. The first read retains at
-   most one 188-byte transport prefix, preserving it in order for the parent. This proves startup,
-   not uninterrupted delivery of all later media. Current-time retries acquire a fresh seek; they
-   never reuse a prospective target or erase its elapsed offset. Existing admission, format checks
-   and instrumentation apply to every prospective opening as they do to an ordinary opening.
-   Prepared packaging version 3 establishes a no-reordering video contract for continuous copied
-   handoffs. The packager applies zero B-frames after either software or injected encoder arguments,
-   then probes the local output before publication and requires exactly one video stream with
-   explicitly zero decoder reordering. Missing, failed or nonzero observations reject preparation;
-   the bounded probe uses ffprobe beside the configured ffmpeg, with no original-source access.
-   Prepared random access is independent of HLS segment duration: consecutive video access points
-   are at most 200 ms apart, including the interval from the last access point to video EOF. The
-   packager applies this cadence after software or hardware encoder arguments while retaining the
-   rendition's HLS segment duration and bitrate policy. A bounded, streaming packet inspection of
-   the newly packaged local output verifies increasing video timestamps, an initial access point,
-   and the access-point/tail bound before publication. A missing or violated observation rejects
-   preparation. This background inspection never opens the original source on the tune path.
-   A seek in the last partial GOP may have no remaining video access point; the existing adjacent
-   Airing handoff supplies the next programme at its actual boundary. Arbitrarily trimmed Airings
-   obey the same 200 ms bound without duration-specific encodes or preceding-GOP replay. The
-   unchanged 500 ms decoded-frame qualification includes process startup and this boundary wait;
-   a short GOP alone is not certification. More frequent keyframes trade compression efficiency
-   for bounded random access, so declared-hardware evidence includes output size and picture-quality
-   comparison as well as startup and preparation capacity.
-   Version 1 and 2 publications cannot satisfy a version 3 readiness binding and must be prepared
-   again by the ordinary control plane.
-   The prepared child preserves source timestamps, applies its Airing start relative to the shared
-   session origin equally to audio and video, and ends at the absolute source offset plus remaining
-   duration. For a positive seek that copies either stream, an output seek also discards copied
-   packets before the requested position; the clock compensates for FFmpeg subtracting that output
-   seek from both timestamps. Video copy may start at the next decodable keyframe, never replay the
-   preceding GOP as current content. A zero source offset omits seeking entirely. The parent video-copy/audio-encode mux flushes without an
-   extra mux delay. The internal live-child hop carries the same origin, including generated cards;
-   media clocks must not reset when the source changes between prepared and live delivery. The
-   parent and ordinary HLS remux retain those source coordinates rather than choosing another zero
-   at tune-in. MPEG-TS preserves the exact packet PTS/DTS; fMP4 may only round to its stream timebase.
-   The live fMP4 movie clock uses the 90 kHz transport timescale so edit-list offsets do not round
-   the audio origin to milliseconds.
-   Qualification binds the retained coordinates to the owning session origin, never to FFmpeg's
-   generated programme-date-time. Resetting each child's input clock is outside this shared-clock
-   contract; the parent does not infer programme offsets from concatenation order.
-   The live child's finite HTTP response follows the same completion rule: natural process exit
-   must succeed before the response completes. A child failure after headers or programme bytes
-   have been sent aborts the response body, so the block supervisor observes an incomplete read and
-   resolves the current Airing. It must not append a retry or an unavailable card to that response.
-   The first prepared block pins video to the publication's codec, dimensions, frame rate,
-   and video bitrate; the session retains its pinned AAC bitrate. Every later prepared block must match that format, while a prepared miss opens the
-   ordinary live child constrained to the same format, so an Airing boundary cannot change decoder
-   state inside the continuous transport stream.
-4. On a miss, use the bounded live implementation as an internal fallback. A miss never changes the
-   accepted Lineup, `AiringAt`, or guide.
-
-The rendered manifest derives its media sequence from the Airing start, segment cadence, and current
-offset, so repeated polls advance on the Channel's wall clock rather than restarting the asset. Its
-live edge is the segment containing that offset: the short window carries prior segments and the
-current segment, never future media. At an Airing boundary it carries the previous publication's
-tail, `EXT-X-DISCONTINUITY`, the new init map, and `EXT-X-PROGRAM-DATE-TIME`. Historical segments
-must fit wholly before the Airing's scheduled end and the next Airing's start. A source file that
-outlasts its slot cannot contribute unscheduled media to DVR history. A fragment straddling that
-end is omitted from history; its immutable bytes and `EXTINF` are never shortened or relabelled
-as the next programme. This is the exact shape
-the V55 Chromium/Firefox spike validated. Every init/segment URI is namespaced by the immutable
-publication key. Follow-up requests therefore stay bound to the publication that authored the
-manifest even when the Channel crosses a programme boundary; there is no mutable per-Channel
-“current directory” for prepared media.
-
-Preparation is a separate control-plane module because it has a different caller and lifetime, not
-because it is a second playout. Its small interface accepts a source plus rendition contract and
-returns the resulting publication. It hides probing, copy-versus-transcode, staging paths, fragment
-validation, retries, and atomic rename. The readiness planner submits work from the accepted schedule;
-it cannot write that schedule. Prepared identity is transport-independent: codec/profile/level,
-pixel format/HDR, audio codec/layout, dimensions, frame rate, video/audio bitrate, segment cadence,
-and packaging version are data. Changing any output property produces a different publication key.
-There are no Chrome, Safari, Android TV, Roku, or Apple TV columns. Platform adapters choose among
-compatible renditions and render/fetch their transport; they do not redefine preparation identity.
-
-The first production contract is one **portable baseline rendition**, derived from the TOP rung of
-the existing `playout.quality_tier` ladder: H.264 High 4.1, 8-bit SDR `yuv420p`, AAC stereo, and
-two-second fMP4 fragments. Width, height, frame rate, and bitrate come from that ladder rather than a
-second preparation-only quality table. This is deliberately a media contract, not a promise that
-every device gets only one rendition forever: Web (Safari/Firefox/Chrome), Android TV, Roku, and
-Apple TV can all consume it, while a later capable-client adapter may select an additional HEVC
-publication without changing the identity or scheduler model. A tier change creates a different
-immutable publication; it never rewrites bytes under an existing key.
-
-Hardware encoding is a **host-wide resource**, not private state inside live playout or preparation.
-One encode pool admits both classes using the effective capacity after the measured limit, operator
-`playout.max_channels` safety cap, and resident-VRAM shading are applied. Live program children take
-foreground leases and may use every effective slot. With no foreground lease, the readiness planner
-may fill at most `effective capacity - 1` background leases, leaving one separate slot for a cold
-live tune. Every background lease is independently cancellable and carries the publication's need
-time.
-
-The first foreground arrival cancels every background lease and receives a short bounded opportunity
-for them to drain before it starts. No new background lease is admitted while any foreground lease
-is held. This is required even when the numeric reserve has space: accelerated preparation runs as
-fast as possible, while the measured channel count is derived from one synthetic encoder's peak
-speed; three unpaced real-file decodes beside one live encode were observed to reduce a nominal
-four-slot host to 0.33× realtime. Multiple foreground children may still share every effective slot.
-If cancelled workers do not release in time, the live child takes the existing software fallback
-rather than waiting behind maintenance work. Unknown, software-only, or one-slot capacity disables
-hardware preparation — it does not guess and it does not consume the only live slot. This priority
-contract is shared code; adding a second semaphore around ffmpeg is forbidden.
-
-The shared pool re-reads effective capacity for every lease attempt. A lowered operator cap or newly
-resident model therefore blocks new work immediately; existing leases finish or yield through the
-same foreground-preemption contract, while capacity becomes available again after the limit grows.
-Before the first background admission, preparation completes the memoized hardware measurement and
-then applies the current cap and VRAM shading. The conservative pre-measurement floor must not become
-a process-lifetime preparation limit.
-
-**Host memory is a per-lease gate, not a capacity term.** Each hardware encode also holds host RAM —
-its device context's pinned and shared buffers plus the decode and filter pipeline. Three accelerated
-preparation encodes held 0.8–1.4 GiB resident each (0.55–1.05 GiB excluding shared driver libraries)
-on a 31 GiB workstation with no swap, enough to push the host into memory reclaim. Available memory
-already excludes what running encodes hold, so a capacity derived from it would let running
-preparation refuse live playback. The pool instead asks one question per lease: does available
-memory, less `playout.memory_reserve_mb` and the cost of encodes that are still running and were
-admitted within the last 30 seconds (a new encoder's allocation is not yet visible, and preparation
-admits in bursts), still cover one encode? A released or preempted encode stops counting at once. The per-encode cost is `playout.encode_memory_mb` when set; otherwise the larger of 1 GiB
-and the capability trial's measured peak RSS. The synthetic trial encodes `testsrc` and decodes no
-real file, so it under-reads real encodes (≈0.25 GiB against ≈1 GiB measured) and may only raise the
-estimate. A background lease that fails the check is not admitted. A foreground lease that fails it
-treats the shortfall like a slot shortfall: it cancels background leases through the same
-preemption contract, re-checks as they exit, and takes the software fallback only when no
-background lease remains. Unknown host memory (a platform without `MemAvailable`) or a zero reserve
-leaves the gate open, matching unmeasured capacity. The check lives inside the shared pool; it is
-not a second semaphore.
-
-A session whose current block is prepared or direct-copy holds zero transcode capacity, but that is
-not a promise about its next Airing. Immediately before any later live child starts a video
-transcode, the Manager atomically raises that session's cost under the same measured admission gate
-used at tune-in; if no slot can be reclaimed, the child does not start and the block retry waits for
-capacity. Returning to a prepared/copy block releases the cost. Thus many prepared sessions may be
-served concurrently without reserving imaginary encoders, while simultaneous prepared misses can
-never convert them into unbounded live transcodes.
-
-The full host capability benchmark is control-plane warming, never tune-time work. With no explicit
-encoder override, the first actual media demand checks the persisted evidence against the current
-FFmpeg/GPU/profile fingerprint. Both external identity commands have short bounded deadlines and a
-timeout is a miss, so this check cannot recreate the old one-second tune floor. A fresh exact match
-makes that previously verified encoder available to the first live child immediately, while its
-bounded real validation runs in the background. An
-absent, expired, mismatched, or malformed record starts the full benchmark in the background and
-playback proceeds with the software fallback until a safe result is ready. Failed revalidation also
-runs the full benchmark; any meanwhile-failed hardware child uses the existing software fallback
-ladder. Merely configuring Channels starts no media processes. A successful hardware result and
-measured capacity are written as versioned, bounded evidence beneath the persistent prepared root;
-the record includes an FFmpeg-build fingerprint, GPU identity, profile identity, and observation time.
-The prepared-library layout owns the capability record filename and atomic-write temporary prefix.
-Retention recognizes only regular files at those declared control paths: it preserves the committed
-record and fresh workspaces, and removes abandoned workspaces only after the existing staging grace.
-Unknown files, directories at control-file paths, and symlinks remain errors rather than being
-silently ignored or deleted. The capability writer reuses the same layout identifiers.
-
-On restart Loomarr may publish that result only after the fingerprints match and the evidence is
-still within its bounded freshness window, then a short real keyframe-bearing MPEG-TS trial revalidates
-the chosen encoder asynchronously. A mismatch, expiry, malformed record, or failed validation falls
-back to the full benchmark and replaces the evidence atomically on success. Software-only and explicit
-operator choices are not reused as hardware evidence. This turns a normal restart into one bounded
-validation rather than re-running every multi-second candidate and warm-capacity trial, without
-trusting an encoder merely because FFmpeg lists it. A viewer may not inherit either benchmark.
-
-Prepared bytes live under `playout.prepared_dir` (default `/data/prepared`), a persistent root that
-is intentionally separate from `playout.hls_dir` scratch. The `playout-prepare` scheduler job runs
-once a minute by default with the long media timeout and looks six hours ahead across Channels whose
-effective backend is internal. Its readiness frontier has three explicit classes: the currently
-airing programme on every Channel is urgent; the next programme per Channel is guaranteed when the
-prepared-media budget can retain it; and the rest of the six-hour horizon is opportunistic. Within a
-class, earlier need wins. Publication identity remains source/rendition based, so two Channels
-scheduling one movie submit one preparation and the strongest class wins.
-
-A pass may resolve up to 128 current/next bindings absent from the durable readiness index, enough
-to expose the complete current hot set of a 100-Channel installation without an artificial sixteen-
-Channel floor. It separately exposes at most sixteen optional six-hour misses. Existing readiness
-bindings and provider-neutral Inventory observations are inspected without an external refresh;
-only the still-unresolved part of that larger bounded frontier may perform media-server path/source
-refresh or source-backed audio probing. Tune never performs either kind of work. Completed warmed
-publications are skipped on the next pass, so the frontier advances.
-
-Only one planner pass executes at a time; overlapping scheduled or manual calls coalesce rather
-than preparing the same frontier twice. It stable-sorts and deduplicates the plan, fills every spare
-background lease admitted by the measured pool, and refills released slots while useful job time
-remains. Once the River deadline enters a fixed drain/observation/retention reserve, it starts no new
-publication: active workers drain or observe cancellation, then one lookup-only observation pass
-recomputes resulting readiness, retention runs, and the job returns. Foreground preemption is a
-normal yield and the cancelled candidate remains ahead of less urgent work on a later opportunity;
-source failures remain independent errors and do not starve the rest of the admitted wave. Planner
-status is published from that post-work observation, never merely from the pre-work snapshot.
-
-Preparation consumes Loomarr's provider-neutral Media Inventory. A readable local source remains
-the preferred input, but an installation without a shared media mount may prepare the Library's
-authenticated original-file HTTP source; that is still Loomarr's FFmpeg encode, not a media-server
-transcode. Durable preparation identity is the Inventory item/source id, source revision, selected
-audio track, rendition contract, and packaging version. Immediately before background packaging, a
-Source Access adapter validates that exact revision and opens either the protected local path or a
-freshly authenticated Library URL. The resulting input is transient: URLs, tokens, and paths never
-enter prepared bindings, publication metadata, logs, or diagnostics.
-
-The planner owns bounded Inventory import/selection, path mapping, preferred-audio probing, and
-FFmpeg. Each pass writes one atomic, versioned readiness index under the persistent prepared root.
-The index binds a Channel, library item, active source policy, stable source id/revision, selected
-audio track, and rendition; startup loads it into memory before the minute scheduler runs. Tune reads
-that memory index and `Preparer.Lookup` only. An absent entry, changed tier, audio preference, path
-map, source revision, or publication is an immediate prepared miss. Tune never opens the original
-source, contacts the media server, probes audio, hashes bytes, encodes, or waits for the scheduler.
-An MPEG-TS prepared hit may start only the video-copy/private-PCM child described above; an HLS
-prepared-only probe remains process-free.
-
-Publication readiness permits concurrent metadata lookups and asset opens: ordinary viewer reads
-must not turn a complete publication into a prepared miss. Publication and eviction retain exclusive
-ownership of that key; a readiness probe never waits behind either operation. Concurrent readers
-preserve the latest playback-use timestamp when populating the shared metadata cache.
-
-The accelerated packaging driver reuses the live playout encoder's device setup, hardware decode and
-upload, filter, preset, rate-control, and GOP builders. Its driver contract separates pre-input
-arguments from output arguments because ffmpeg hardware-device setup placed after `-i` silently
-applies to nothing. Software-only or explicitly-software installs do not run background preparation,
-because spare CPU capacity is not measured and guessing would move the cold start from the viewer to
-every other subsystem. Both cases keep the live fallback.
-
-The same `playout-prepare` pass owns the prepared store's lifecycle; retention is not a second task
-that can race preparation or silently stop running. After readiness work it enforces the hot-applied
-`playout.prepared_budget_gb` soft cap (default 512 GiB) over complete publication bytes, evicting
-whole immutable publications oldest-use first. Ready current and next publications are the schedule-
-protected hot set; later six-hour lookahead is opportunistic and therefore remains evictable. When
-one publication serves several Channels or readiness classes, its strongest current/next claim wins.
-This bounds schedule protection to at most two unique publications per Channel instead of retaining
-an arbitrarily large six-hour aggregate ahead of what a viewer can surf to. `Lookup` and asset
-delivery touch use in memory, so segment traffic does not turn into database or per-request
-filesystem writes. A publication used in the last fifteen minutes is protected, and every
-publication is protected for the first thirty minutes after process start so a restart cannot
-immediately collect current programmes before the schedule frontier has been rebuilt. If the
-current/next and recent-use protected bytes alone exceed the budget, playback wins: the pass leaves
-the store over its soft cap and logs the exact byte totals rather than breaking an active HLS
-manifest. A later pass converges after the grace expires or the hot set moves.
-
-Eviction serializes only with the individual publication key it is deleting; a whole-store scan may
-not take a lock that blocks unrelated tunes. It deletes only complete directories whose names are
-valid content keys and whose metadata validates, plus Loomarr-owned `.staging-*` workspaces abandoned
-for more than a day. Unknown files and directories are reported through the pass error and left
-untouched. Logical file bytes define the budget (rather than filesystem allocation blocks), making
-the setting stable across ext4, ZFS, APFS, and network mounts. At the balanced 5.16 Mbit/s contract,
-512 GiB holds roughly 220 hours of unique programming; installs whose currently airing hot set is
-larger raise the cap without restart or accept live fallback for evicted cold programmes.
-
-Readiness identity survives process restarts in a versioned `.readiness.json` control file inside
-the prepared root. It records one regenerable index: `(Channel, library item, global source policy,
-Channel audio policy) -> Inventory item/source id + source revision + selected audio + rendition`.
-The scheduler is the only writer. It snapshots updates under a short memory lock, writes a private
-temporary file, fsyncs it, atomically renames it, and fsyncs the root; tune reads the in-memory
-snapshot loaded at boot and never waits on that write. The source revision incorporates local
-size/mtime or the Library's upstream revision, so a changed source produces a new publication
-identity when the control plane observes it. Source Access validates that revision immediately
-before and after packaging; `Preparer.Lookup` remains source-I/O-free. A corrupt or older-version
-index is a visible warning and a clean live fallback, not a boot failure; the next successful
-control-plane resolution replaces it. The index contains no credentials, operational locators, or
-irreplaceable state and is excluded from the media-byte budget.
-
-The planner resolves a full readiness plan rather than a bare work queue. Every ready current/next
-publication is passed to retention as protected; ready later-horizon publications remain visible to
-readiness but evictable. Readiness probes use a non-touching library lookup: only a successful
-publication build, manifest load, or asset open advances playback LRU. This separation is load-
-bearing. Treating the minute-level schedule scan as viewer use would make every scheduled
-publication permanently hot; protecting the whole horizon would exceed the default budget at 50–100
-Channels and turn nominal retention into an unbounded soft-cap exception. When the current/next hot
-set itself is larger than the cap, Loomarr keeps it and reports the soft-cap overage; publications
-outside that hot set remain eligible oldest-playback-use first.
-
-**V56 is a replacement phase, with a deletion map.** First, characterization tests pin tune behavior
-at the new interface. Then the current `Manager` and `HLSManager` move behind the module as the live
-adapter and every HTTP caller crosses the new seam. The old route-facing `PlayoutSessions` and
-`PlayoutHLS` interfaces are deleted in that cutover, not deprecated. The disposable
-`prototype_prepared` implementation is deleted after its wall-clock, reuse, discontinuity, and
-encoder-free contracts exist at the production seam. The live adapter and its per-Channel HLS scratch
-layout are removed when representative-media coverage meets the tune-time gate and the tuner path has
-a replacement; until then their names and removal conditions stay in the phase record.
-
-The V56 gate is: existing MPEG-TS and HLS route behavior passes through the one Playout interface;
-two Channels resolving one source/rendition reuse one publication; incomplete or stale publications
-are unreachable; a failed publish leaves the previous complete publication readable; and comprehensive verification
-plus store conformance remain green. Safari Web activation and later native-TV adapters are later
-delivery gates and do not change this module shape.
 
 ### Tuning is a latest-request-wins state machine, not route churn (V57)
 
@@ -3357,40 +3007,21 @@ metadata gaps and advances it only as the media element's decoded position advan
 therefore freezes the visible playhead and programme context; it MUST NOT fall forward to `Date.now()`
 and claim that a commercial has begun while the preceding programme is still on screen.
 
-Adjacent warming begins with a **prepared-only probe**. The client keeps signed play URLs for the
-previous and next surfable Channels, then fetches each HLS master with `mode=prepared`. That mode is a
-least-privilege hint on the existing signed HLS route: `Playout.Tune` may return a prepared
-presentation, but on a miss the handler returns `204 No Content` and MUST NOT attach a live session,
-start an encoder, or enqueue preparation. It is safe for the parameter to remain unsigned because it
-can only remove the live fallback. This is not a second endpoint, task, or cache.
+Adjacent warming is **still-first, and never encodes ahead**. The client keeps signed play URLs for the
+previous and next surfable Channels and prefetches each one's still (`GET /playout/still/{id}`). A tune
+paints that still as the poster once decoded, replacing the held outgoing frame, and the first decoded
+frame clears it. A channel nobody has warmed gets its still from its own play-url mint. Warming
+creates no packager, no encoder, no browser player, `MediaSource` or decoder, so a 100-Channel catalog
+creates no work: only `current - 1`, `current` and `current + 1` are requested. **The current Channel
+wins the network:** adjacent warming begins only after its first decoded frame, and a replacement tune
+aborts the previous warmers before attaching its source. The Watch screen also defers source-backed
+track probing until the first decoded frame so optional work cannot contend with the active Channel's
+cold open. The `mode=prepared` and `mode=warm` HLS probes of the earlier design are retired with
+prepared media (phase 4 of #1512 removes the last client remnant).
 
-On a prepared hit, the Web adapter parses the short manifest and fetches its init map (when present)
-plus the first useful media fragment. Prepared assets are publication-keyed immutable files, so they
-may be served `private, max-age=31536000, immutable`; live-remux assets remain `no-store`. The
-prepared-only flag is omitted from asset URLs in the returned manifest while the signature, plan,
-and quality remain, making the warmed asset URL byte-identical to the subsequent real tune. The
-manifest itself remains `no-store` because its media sequence and live edge follow wall clock.
-Prepared manifests name every immutable file with one opaque URL-safe `{asset}` path segment. The
-token binds the publication key and validated relative filename; its visible suffix retains the
-correct media content type. The Origin decodes that token and still applies the publication
-library's declared-file and containment checks before opening bytes.
-
-Adjacent warming is **prepared-first, bounded-live on a miss**. The controller first performs the
-read-only prepared probe described above. A hit warms its immutable init/media bytes. A `204` miss
-then fetches one HLS snapshot marked `mode=warm` for only the previous and next surfable Channels.
-`warm` is a least-privilege admission hint: it may join or establish the existing bounded live
-Origin, but it MUST NOT reclaim another Channel's grace-idle session to do so. The mode is removed
-from returned asset URLs and from the signed URL retained for a real tune, so a later foreground
-request is admitted normally. That snapshot may establish the existing live Origin and its normal
-grace lease, but it never
-creates a browser player, MediaSource, or decoder; live admission remains authoritative and a
-capacity rejection is a harmless cold miss. This is the immediate hot-set path while whole-program
-preparation catches up: catalog size does not create work because only `current - 1`, `current`, and
-`current + 1` are requested. **The current Channel wins the network:** adjacent warming begins only
-after its first decoded frame, and a replacement tune aborts the previous warmers before attaching
-its source. A real tune reuses the exact signed URL and the already-ready remux. The Watch screen
-also defers source-backed track probing until the first decoded frame so optional work cannot
-contend with the active Channel's cold open and seek.
+The Web player configures hls.js for the packager: `lowLatencyMode: false` (the packager serves no
+parts), `liveSyncDuration: 6` (the packager's `HOLD-BACK`), `startFragPrefetch: true`, and
+`liveMaxLatencyDuration` in seconds. The TV player sets `minBufferForPlayback: 1`, one 1 s segment.
 
 Safari-family WebKit prefers the platform's native HLS capability before importing hls.js, even
 when Media Source Extensions are also present. A MIME-type answer alone is insufficient because
@@ -3448,7 +3079,7 @@ keeps first-frame latency at that callback and separately requires the same targ
 unpaused `playing` state within 250 ms, with no retry. In particular, the metadata join occurs after
 WebKit's queued source reset and before its target is ready to play. The browser fixture first proves
 one genuinely ended publication can hand off, then serves replacement publications with the same
-open, no-`ENDLIST` manifest contract PreparedOrigin emits; declaring every live replacement as VOD
+open, no-`ENDLIST` manifest contract the packager emits; declaring every live replacement as VOD
 would force hls.js to end each MediaSource immediately after append and certify a transport Loomarr
 does not serve.
 Controllers remain source-scoped: after the target's first decoded frame, the detached old active is
@@ -3456,49 +3087,14 @@ destroyed and a new unused standby is constructed off the measured tune path. A 
 before that frame retires the detached controller before creating its one-source replacement, so no
 more than two controllers are live even during a burst. Source metadata may be parsed while detached,
 but no init or media fragment can enter a detached state. hls.js's reference-counted worker remains
-enabled and shared across those controllers because the baseline HLS rendition carries MPEG-TS; its
-transmux therefore stays off the UI thread rather than trading controller setup time for stalled
-controls. If the source is closed or cannot be cleared, replacement falls back to a full MediaSource
+enabled and shared across those controllers so its parsing stays off the UI thread rather than
+trading controller setup time for stalled controls. If the source is closed or cannot be cleared, replacement falls back to a full MediaSource
 reset. It never retains old media bytes, re-resolves the cached hls.js module, or allocates a second
 player.
 Replacement playback starts only after that handoff attaches, and the target's first `loadeddata`
 joins playback again after any queued element reset. A synchronous replacement cancels the outgoing
 controller's zero-delay disposal; leaving Watch lets that disposal destroy it. Native-HLS clients
 keep the equivalent one-element source swap.
-
-The live HLS remux is an in-process sink of the shared Channel session, not an ordinary network
-viewer. Each ordinary raw viewer has a lossless FIFO capped at 512 KiB of queued transport bytes,
-matching the former eight maximum-size 64 KiB reads. The bound counts bytes rather than incidental
-pipe-read fragments: an ordinary small-write startup burst cannot disconnect a reader merely for
-containing more than eight chunks. An offer that exceeds the byte bound drops only that viewer;
-the shared producer never waits for a consumer and never discards bytes from an otherwise connected
-stream. Queued bytes retain their order through natural producer EOF. Explicit release discards
-unread bytes and wakes a pending read; request cancellation and startup deadlines bound the read
-itself, without a forwarding goroutine. The HTTP adapter consumes this stream through a cancellable
-read contract, so neither a channel adapter nor a second staging buffer bypasses the bound. The HLS sink
-instead preserves the finite encoder startup burst in a lossless queue capped at 128 MiB; exceeding
-that bound fails and rebuilds only the remux rather than discarding MPEG-TS packets or growing
-without limit. Only the current and two adjacent hot-set Channels create these queues, so the memory
-bound is independent of the full Guide size.
-
-The HLS remux bounds stream analysis to one four-second segment cadence while retaining the
-normal input byte-probe budget. Naming MPEG-TS alone does not bound stream analysis. Both normalized
-video and audio streams are mandatory: early publication must not silently omit delayed audio.
-A complete segment must become available while the live input remains open, without waiting for
-source EOF. Regression coverage includes a large initial video packet and audio starting three
-seconds after video, in addition to aligned H.264 MPEG-TS and HEVC fMP4. This does not shorten the
-segment cadence or alter copied media. FFmpeg's generated programme-date-time is not proof of the
-original schedule timestamp. Before a live manifest crosses the Playout interface, the live HLS
-origin probes the first published video timestamp once and maps it through the session's schedule
-origin. It replaces FFmpeg's wall-clock-at-segment-write programme dates with that authoritative
-media-clock mapping for every segment in the snapshot. This correction belongs to the shared
-backend presentation: Web, native HLS, and future clients consume the same schedule-correct clock
-and never estimate encoder or segmenter latency themselves.
-
-The MPEG-TS HLS remux preserves packet payloads and the source audio/video timestamps, including
-spacing across source gaps. It flushes transport output without mux delay so an AAC payload group
-cannot interpolate new-programme packets across an earlier gap. This preserves source timing; it
-does not fill gaps caused by late child startup or certify uninterrupted playback.
 
 The controller publishes User Timing measures with one attempt id: request-to-OSD-paint,
 request-to-manifest, and request-to-first-decoded-frame (`requestVideoFrameCallback`, with the media
@@ -3507,27 +3103,29 @@ whether its assets were warmed, and whether an older attempt was cancelled. Chan
 names are not placed in measure names. The product gates on a 100-Channel catalog are:
 
 - OSD acknowledgement p95 below **100 ms**.
-- prepared adjacent request-to-first-frame p95 below **750 ms**.
-- prepared arbitrary request-to-first-frame p95 below **1.5 s**.
-- prepared manifest response p95 below **50 ms** on the local server.
-- a burst of twenty mixed Up/Down requests plays only the final target and leaves one video element;
-  durable prepared hits start no live fallback, while a prepared miss may create only the bounded
-  adjacent live hot set through the same Origin and admission policy as a real tune.
+- warm channel change (a channel whose packager is running) p95 below **600 ms**, with the held frame
+  or OSD within **100 ms**.
+- cold tune to first frame p50 at most **1.0 s** and p95 at most **1.5 s** for SDR (p95 at most **2.5 s**
+  for 4K HDR); server-side, the first segment within **400 ms** p95 on fresh files (#1512 G2–G3).
+- a burst of twenty mixed Up/Down requests plays only the final target and leaves one video element,
+  and no adjacent warm request starts an encoder.
 
-V57 ships in reviewable checkpoints: first the controller, cancellation, controls, OSD, and timing;
-then the prepared-only server/cache contract and adjacent warmer; finally the 100-Channel
-Playwright surf gate. No checkpoint adds a second player stack or a platform-named backend type.
+⚠ **These are the #1512 exit criteria, not yet all measured.** The packager PR recorded a cold
+tune-to-first-manifest median of 1.27 s over five runs on a GeForce host, with one 2.98 s outlier and
+the cause not established. The real Shield and the 24 h soak remain to be run (#1037).
+
+No checkpoint adds a second player stack or a platform-named backend type.
 
 ### Browser and real-runtime certification is layered (V58)
 
 V57 proves the controller contract against deterministic browser-owned HLS bytes. It does not claim
-that a real Loomarr process can prepare those bytes on every development host, that Linux Playwright
+that a real Loomarr process can package those bytes on every development host, that Linux Playwright
 WebKit is Safari, or that 100 surfable Channels means 100 simultaneous encoders. V58 keeps those
 claims separate so one green test cannot silently stand in for another.
 
 The **controller matrix** runs the same 100-Channel catalog through Playwright Chromium, Firefox,
 and WebKit. Every engine must preserve latest-request-wins, one video element, exact warmed-URL reuse,
-prepared-only adjacent probes, and a genuinely decoded H.264 frame. Chromium and Firefox enforce
+still-only adjacent warming, and a genuinely decoded H.264 frame. Chromium and Firefox enforce
 the absolute media first-frame budgets per engine rather than pooling their samples. Playwright
 WebKit records those two percentiles as diagnostics while retaining every correctness, OSD, manifest,
 and raw-runner gate: it cannot exercise branded Safari's native-HLS route and instead measures the
@@ -3554,12 +3152,11 @@ than Safari performance certification; only a run on shipping Safari may certify
 latency budgets.
 
 The **real-runtime gate** starts the real composition root over an isolated SQLite store, the real
-prepared library and HLS origin, and real ffmpeg/ffprobe. Only true external systems (the media-server
+channel packager and HLS origin, and real ffmpeg/ffprobe. Only true external systems (the media-server
 API and its library) may be test doubles, and they serve pinned representative media rather than
 prebuilt HLS responses. The browser must bootstrap/authenticate through the real API, tune a real
 Channel, receive an HLS manifest produced by Loomarr, and report a decoded frame. A process restart
-then repeats the tune from the durable readiness index, proving cold boot and prepared reuse rather
-than only a warm in-process path. A secondary worktree overrides `server.public_url` to its own
+then repeats the tune, proving a cold boot rather than only a warm in-process packager. A secondary worktree overrides `server.public_url` to its own
 isolated backend after sourcing shared integration credentials; otherwise the parent ffmpeg re-opens
 the primary port, emits zero bytes, and every HLS request hides that routing error behind its
 45-second readiness timeout. Missing and corrupt representative inputs must reach the designed
@@ -3568,7 +3165,7 @@ offline/retry state instead of an unexplained black frame.
 The **shipping-browser and hardware soak** is maintainer-run evidence: current Chrome, Firefox, and
 Safari against the isolated Loomarr runtime, with representative H.264, HEVC/10-bit, multichannel
 audio, and corrupt/missing inputs while GPU capacity is contended. It records boot-to-ready and
-request-to-first-decoded-frame timings plus the resolved copy/transcode plan. It never drives the
+request-to-first-decoded-frame timings plus the channel's format and pipeline. It never drives the
 maintainer's normal database or media-server configuration, and no agent invokes the `make smoke*`
 targets. Android TV, Roku, and Apple TV remain later adapters over the same controller vocabulary.
 
@@ -3864,203 +3461,62 @@ transport to live; the bounded fresh-standby handoff above may join replacement 
 manifest, fragment, or `loadeddata`, but those callbacks must never resume a viewer who deliberately
 paused the active Channel.
 
-The history is shared media, never per-viewer encoding. Live HLS keeps one rolling fifteen-minute
-segment window on the existing remux keyed by `(Channel, EncodePlan)`, adds
-`EXT-X-PROGRAM-DATE-TIME`, and removes media older than that bound. Its refcount, grace lease, and
-admission stay unchanged: pausing ten viewers does not create ten remuxes, and a 100-Channel Guide
-does not keep 100 encoders alive. Only an active or adjacent-warmed hot-set Channel owns live
-scratch; its bounded history disappears with that remux after the existing grace.
-
-Prepared playback exposes the same wall-clock horizon without copying or repackaging bytes. The
-Origin renders a rolling manifest over immutable publication-keyed fragments from the current and
-as many prior prepared Airings as intersect the fifteen-minute lookbehind, inserting a
-discontinuity and each publication's init map at every Airing boundary. The prepared resolver asks
-the authoritative schedule for that same lookbehind; missing prior publications shorten available
-history but never start tune-time preparation or force a live encoder. The current Airing must still
-be a prepared hit for this path to win.
+The history is shared media, never per-viewer encoding. Each channel packager keeps one rolling
+fifteen-minute window (`DVRHorizon`) of segments on disk, lists them with `EXT-X-PROGRAM-DATE-TIME`
+mapped from the channel's media clock, and removes media older than that bound. A reader that falls
+behind the window gets `ErrSegmentGone`. Its viewer count, grace period and admission are unchanged:
+pausing ten viewers does not create ten packagers, and a 100-Channel Guide does not keep 100 encoders
+alive. Only a channel with a viewer owns segments on disk, and they are removed after its grace.
 
 The Watch Channel timeline asks for the same fifteen minutes behind the Channel wall clock plus its
 existing three-hour future, so programme names, episode context, and break blocks follow a delayed
 viewer instead of disappearing at the live boundary. The exported playout DVR horizon is the one
-server constant used by live HLS, prepared manifests, prepared resolution, and this Watch projection;
+server constant used by the packager and this Watch projection;
 it is a product contract, not a setting or platform-specific policy.
 
-The V60 server gate proves: live ffmpeg arguments retain exactly the bounded shared horizon and emit
-programme date-time; a prepared manifest reaches the same wall-clock cutoff across multiple Airings
-without creating media; the resolver requests that lookbehind; the Watch timeline includes it; and
-the existing shared-remux identity remains `(Channel, EncodePlan)`. Web, Safari-native HLS, and later
+The V60 server gate proves: the packager's window is the bounded shared horizon and carries
+programme date-time; the Watch timeline includes the lookbehind; and the shared identity is one
+packager per (Channel, format). Web, Safari-native HLS, and later
 native-TV transports consume this one history through their platform player adapters. The Web gate
 proves exact pause-point resume, wall-clock lag, expiry fallback and notice, explicit Go Live, and
 that tuner replacement callbacks cannot override an intentional pause.
 
-### A session's identity is `(channel, encode-plan)` — one encoder per codec audience (V47, V48)
+### Admission is one measured ledger (`ResourceBudget`)
 
-The consumers above do **not** have the same codec tolerance, and pretending they do is a black
-frame. A **media-server tuner** (Emby/Jellyfin) ingests HEVC/AC3 over IPTV and re-transcodes per
-client downstream, so for it HEVC is a direct-copy — best quality, least work on our box. A **plain
-browser** `<video>`/MSE decodes only h264+aac; HEVC copied to it produces zero frames (verified live:
-hls.js fetches segments, the decoder emits nothing, `readyState` stuck at 0). But "browser" is not
-one capability: a browser *with* a hardware HEVC decoder plays HEVC (hls.js ≥1.6 transmuxes HEVC-in-
-MPEG-TS for MSE), and a **native app** (AVPlayer/ExoPlayer, a future TV app) plays HEVC, surround
-audio, and 10-bit directly. So a channel does not have *a* stream, nor even two — it has a stream per
-**codec audience**, and the copy/transcode plan differs between them.
+One ledger, `playout.ResourceBudget`, admits every stream against what this host **measured**, not a
+static number. A packager takes one lease when it starts, and a stream is admitted against
+`min(GPU throughput at 1.2×, CPU allowance ÷ measured CPU per stream, encoder sessions)`, per stream
+class and ladder rung. The classes are 8-bit SDR up to 1080p, 10-bit up to 1080p, and 4K or HDR with
+tone-mapping. A new stream **drops a rung before it is refused**, and a live session is never evicted.
 
-**V48 makes the client's capability first-class, and separates it from what we encode.** These are
-two different things — *what the client can play* (a property of the device) and *what we encode* (a
-property of the session) — and fusing them (a fixed "browser = h264/aac" target, or a `?hevc=1`
-boolean bolted onto it) is what did not scale. The model is two types with a pure resolver between:
+- **Measured capacity.** A boot class probe runs synthetic clips per class through the live builder's
+  real graphs and stores the result under `playout.state_dir`, keyed to the FFmpeg, GPU and encoder
+  fingerprint. The HDR class is re-measured at every start, because a driver update can break a
+  tone-mapper without changing the fingerprint. Live encodes refine the **CPU** term within bounds;
+  speed cannot be observed at 1× pacing.
+- **The probe is background work.** It runs at nice 19 and yields the moment a live transcode is
+  admitted (`BackgroundContext` is cancelled inside `Reserve`), so a tune never waits on it. An
+  interrupted measurement is discarded and rerun once playback is idle, never taken for a failed
+  tone-mapper.
+- **Encoder sessions are capacity.** The probe records `opened + in use` NVIDIA encoder sessions, so
+  sessions held by another application count against the cap.
+- **Operator cap.** `playout.max_channels` can only lower the result, never raise it.
+- **Priced by the first item.** Starting a packager resolves the item airing now and books that item's
+  class, so a heavy first item on a nearly full host is demoted or refused (503) before any encoder
+  starts. A card slot or a failed lookup books SDR until a real item re-prices the lease. The
+  schedule reuses the resolved item, so it is not resolved twice.
+- **The CPU-only case.** On a software host, admission picks the best software rung whose measured CPU
+  cost fits the allowance. A class measured below 1.2× is never refused for speed and degrades
+  instead. Admission refuses only when even keyframes-only does not fit, and the viewer gets a 503.
+- **Live steps re-price the lease** (`Lease.StepSoftware`): a step down always applies and releases the
+  CPU, and a step up applies only if it fits beside the other leases.
+- **CPU cost is learned from delivered media.** An item's encoder CPU is divided by the frames it put on
+  the timeline, not by its slot, so an early close cannot over-count.
+- **Background media work yields to playback.** While any live transcode runs
+  (`PlaybackNeedsHeadroom`), capped background work such as filler processing waits.
 
-- **`DeviceProfile`** — client-authored, sent as a JSON body on `POST /v1/channels/{id}/play-url`:
-  `video[]`/`audio[]` (codecs it can decode; h264/aac always implied), `video10bit`, `hdr`,
-  `maxResolution`. A browser fills it from `MediaSource.isTypeSupported(…)`; a native app from its
-  known decoder set. **Absent or empty ⇒ the safe h264/aac baseline** — a client that does not prove
-  a capability never receives it.
-- **`EncodePlan`** — the small, server-defined, canonical bucket the session is actually keyed on and
-  encoded for. The closed set: `baseline` (h264/aac — the old `browser`), `hevc8` (HEVC 8-bit + aac),
-  `hevc10` (HEVC 10-bit + surround), `full` (the old `mediaserver`/tuner set).
-- **`resolve(profile) → EncodePlan`** — pure and total; picks the **richest bucket the profile fully
-  satisfies** and rounds **down** when a profile sits between buckets. Never returns a bucket that
-  claims a capability the client did not advertise (the black-frame guard). This is the ONE place
-  bucketing lives.
-
-Therefore the session's identity is **`(channelID, EncodePlan)`**, not `channelID` alone, and not a
-device target — many DeviceProfiles bucket into few EncodePlans, so encoder fan-out is bounded by the
-(small, fixed) bucket count, never by the number of distinct devices. It threads the whole chain: a
-viewer attaches *with* a plan; the session key carries it; the block supervisor requests
-`/playout/program/{id}?plan=P`; each finite child plans its copy against `P` and acknowledges the
-session's pinned broadcast format. The tuner path (`/playout/stream`) sends no
-profile and resolves to `full`; the HLS/Watch remux resolves the client's profile to its plan.
-
-⚠ **`?plan=` replaces `?target=` (V48).** The old `browser`/`mediaserver` token is retired; the
-retired identifier lives in `scripts/check-retired.sh`. `browser`→`baseline`, `mediaserver`→`full`.
-The read side (`clientPlan`) defaults an absent/unknown `?plan=` to `baseline`, **never** `full` — so
-only an explicit, recognized plan token unlocks richer copy. Two independent guards (`resolve` rounds
-down at mint; `clientPlan` defaults safe at read) ensure a client that did not prove HEVC never gets
-it. `maxResolution`/`hdr` drive the rendition ladder and tone-map decision, NOT the copy-codec
-bucket, so they do not multiply the bucket count.
-
-**One encoder per `(channel, plan)` — and the cost of the split is bounded by the copy plan, not the
-plan count.** For the common case — an h264 channel — *every* plan's copy is `-c copy`, so a browser
-or native session is also just a remux (near-zero GPU), and the only duplication for a channel watched
-across audiences is a second cheap `-c copy` pipeline, not a second encode. A real second encode
-happens **only** for genuinely incompatible content (e.g. HEVC to a `baseline` browser, or 10-bit to
-an 8-bit-only client) — exactly the content that *has* to be transcoded to show anything. §9.1's cost
-argument is intact: cost scales with *codec audiences actually being watched*, never with viewers.
-Truly merging plans into one process when their copy sets coincide would require the long-lived parent
-to introspect each program and re-key mid-stream — complexity that buys one avoided remux, so we do
-not; the copy plan already makes the compatible case cheap.
-
-### The broadcast codec follows the CONTENT, not the client (V50)
-
-V48 let the *client* pick the plan: a HEVC-capable browser got `hevc8`, so a channel's stream codec
-was whatever the watching device could take. That is wrong for two reasons the live smoke exposed.
-First, **HEVC HLS must be fMP4** (Apple spec — HEVC-in-MPEG-TS black-screens even on HEVC-capable
-browsers), and **fMP4 binds one decoder from its init segment: it cannot survive a mid-stream codec
-change.** A channel whose *content* mixes codecs (an HEVC show, then a VP9/h264/theora commercial —
-the filler dir is a zoo) black-screens at the commercial on the fMP4 path. Second, letting the client
-pick meant the same channel had no single truth about what codec it *is*.
-
-**V50 inverts it: a channel has ONE uniform broadcast codec, derived from its library CONTENT, and the
-client capability only gates how that one codec is delivered.** Two independent axes:
-
-- **Channel codec** — `channels.broadcast_codec` (`h264` | `hevc`), the **majority** of its titles'
-  probed video codecs, computed at **curation** (when the binder writes the lineup) and stored, not
-  probed at runtime. An even split (or an un-measurable lineup) defaults to `h264` — the maximally
-  compatible floor. This is the codec the whole timeline **normalizes to**: the matching show `-c
-  copy`s; a minority-codec title and *all filler* transcode to it, so the stream stays single-codec
-  and therefore fMP4-legal. Everything non-HEVC (vp9/mpeg2/…) counts as `h264` for the majority vote.
-  Derived state: an ADD COLUMN migration defaults every existing channel to `h264`, a one-time async
-  boot pass backfills the real value (a data migration can't probe — no library access), and each
-  re-curation recomputes it.
-- **Client `DeviceProfile`** (the V48 type, **reused**) — now a **yes/no gate** on whether the client
-  can decode the channel's native codec, *not* a plan picker. `ServedPlan(channelCodec, profile)`:
-  - h264 channel → `baseline` (h264/TS) for **everyone** — no client can promote it, the timeline
-    isn't HEVC to begin with.
-  - HEVC channel + HEVC-capable client → `hevc8`/`hevc10` (fMP4, `-c copy` the show; richness picks 8-
-    vs 10-bit as before).
-  - HEVC channel + incapable client → `baseline`: the **whole channel down-converts** to h264/TS for
-    that client (its own session, keyed on the plan).
-
-The V48 `EncodePlan` enum, the `?plan=` URL/session key, the fMP4-vs-TS container branch, and the HEVC
-transcode-target swap (`WantsHEVCOutput`) are all **unchanged** — but the plan now means *how this
-channel is served*, so `hevc8`/`hevc10` arise **only for an HEVC channel** and the "normalize a
-transcoded program to HEVC" wiring becomes exactly "match the channel codec." `resolve(profile)`
-survives as the pure profile-richness helper `ServedPlan` composes. Drop the profile and you either
-black-screen incapable clients or transcode-for-everyone and lose the copy win for capable ones —
-neither axis replaces the other.
-
-### Admission is cost-aware, against measured capacity (V49)
-
-The admission gate bounds *what saturates the box*, which is the **video transcode**, not the number
-of sessions. A proven `-c copy` session — an h264 channel at any plan, or an HEVC channel to an
-HEVC-capable client — costs ≈0 GPU; only a session that *re-encodes video* remains counted. This
-is what stops the plan-split from halving capacity: a channel watched at `baseline` + `hevc8` costs
-**one** (the baseline transcode), not two, because the hevc8 copy is free. (`playout.Admit` /
-`CopyPlan.Cost` / `EncodePlan.EstimatedCost`.)
-
-The cost is not known at attach — the source is probed later, per program child, and even a supported
-codec may require conformance for geometry or decoder state. Every cold session therefore reserves
-one transcode slot and is **corrected to the truth** on the first program report
-(`ReportProgram(..., transcoding)` adjusts the committed sum by the delta). A proven copy releases
-the reservation immediately. The conservative cold estimate may briefly refuse a new copy session;
-it never over-admits work the measured encoder cannot sustain.
-
-The budget is **not a static magic number**. It is `playout.Manager`'s injected `budget func() int`,
-re-read on every admission, composed from three live sources:
-
-1. **Measured capacity** — what `Detect`'s representative encoder trial found this box sustains (not a
-   guess; the automatic default uses this live result directly). Before measurement completes, or if
-   it is unavailable, the conservative budget is one transcode — never unlimited.
-2. **Operator safety cap** — `playout.max_channels`, applied as a **hard cap** (`min`): an operator may
-   only *lower* below the measurement (a safety throttle), never claim more than the hardware proved.
-3. **VRAM shading** — a resident LLM steals the VRAM each hardware encode needs for its device context
-   (the original black-screen incident was an encoder that could not allocate under a resident model),
-   so the budget is shaded down by the encodes that VRAM can no longer host (~one per few GiB held),
-   and grows back when the model evicts. Reactive, from the true `/api/ps` residency reading (the same
-   source the doctor's GPU header uses), never a fixed estimate.
-
-Refusing an over-budget transcode is deliberate — the operator gets an actionable "at capacity" 503,
-not universal stutter. A proven-warm session with zero viewers is different from active work: it is
-retained only to make a likely bounce-back cheap. Before returning 503, admission reclaims the
-**least-recently-viewed grace-idle session whose nonzero cost can free the needed slot** and retries;
-sessions with viewers are never eviction candidates. A speculative adjacent warm request never
-performs this reclamation: an existing or newly tuned foreground Channel wins the capacity race,
-while a real foreground tune retains the normal idle-reclamation behavior needed for Channel
-surfing. Copy-only idle sessions do not consume the
-transcode budget and are therefore not evicted merely to satisfy that budget. An HLS remux's session
-lease marks its internal sink inactive when the last manifest request releases, so session admission
-and viewer telemetry see real demand while bytes continue feeding the warm remux. Evicting that idle
-session closes the sink and tears down its remux; an HLS remux with a live manifest request marks the
-lease active and remains protected.
-
-The transcode budget and total retained-session footprint are separate limits. Process-wide,
-`playout.Manager` retains at most **two proven-warm grace-idle sessions** across every EncodePlan,
-including video-copy sessions whose transcode cost is zero. Two matches the only speculative demand
-the Watch controller creates—the previous and next Channels beside the active one—and is a fixed
-lifecycle invariant rather than an operator setting. Configured Channel and guide counts never create
-sessions by themselves.
-
-Every transition into proven-warm idle re-evaluates that hot set. When it exceeds two, the Manager
-closes the least-recently-viewed session at the exact snapshotted idle generation; a concurrent
-reattach makes that close harmlessly fail, and the Manager re-snapshots until the invariant holds.
-Viewer-active sessions are never candidates. Closing an idle parent also closes its internal sinks,
-so its HLS remux, file descriptors, and scratch assets retire together. Immediate same-session
-reattach remains warm whenever that session is one of the two retained entries.
-
-Grace begins only after the parent has emitted transport. The last viewer leaving records one idle
-generation and its timestamp; reattachment invalidates that generation, and a later detach creates a
-new one. Both the grace callback and capacity reclamation close a session only when that exact idle
-generation is still current. This prevents an older timer from shortening a newer grace period after
-an attach/detach ABA cycle. A zero-byte session is not warm and closes immediately, releasing its
-conservative reservation.
-
-The dashboard reports the complete live-session count (`active`) for compatibility and exposes
-viewer-active and grace-idle session counts separately; their sum is `active`. `transcodeCost` is the
-sum of the live sessions' current video-transcode admission cost, so copy sessions remain visible in
-the total without pretending to consume an encode slot. Its `capacity` denominator remains the live
-transcode budget, shrinking when a model goes resident and growing when it unloads. Viewer-demand
-transitions publish the same full `playout` snapshot over SSE, so the live panel does not wait for a
-later session start or stop to learn that a warm channel became idle.
+The dashboard's `capacity` and the status endpoint's `budget` read this ledger. The ledger still has a
+`copy` class that costs nothing, but packager items are always transcoded, so it is unused there.
 
 **Watching from Loomarr's own UI (V46).** The Web UI plays a channel in the browser directly — a
 **Watch** sub-section on the channel-detail page (§12), also reachable from the guide's per-row menu.
@@ -4139,8 +3595,8 @@ crucially *realtime speed*, where a sustained value **below 1.0×** is the stutt
 
 - A **GPU/VRAM header** — total and used VRAM, encoder-engine utilisation, and the resident LLM's
   footprint — because the shared-GPU contention (§8.2) is invisible from the encoder rows alone.
-- One **health row per (channel, target)**: its encoder + hardware/software, its **mode**
-  (`direct-play` / `transcode`), its speed, and a verdict — **`ok`** (comfortably ≥1.0×),
+- One **health row per running (channel, format)**: its encoder + hardware/software, its speed, and a
+  verdict — **`ok`** (comfortably ≥1.0×),
   **`degraded`** (near 1.0×, at risk), or **`stalled`** (below 1.0× — the channel is losing to
   wall-clock and will buffer) — each with a one-line reason an operator can act on.
 
@@ -4150,17 +3606,6 @@ safe to poll and safe to hand a support request. It is the in-app twin of `scrip
 `GET /v1/playout/sessions` reports raw per-encoder telemetry, the doctor adds the *verdict and the
 context* — the GPU/LLM picture and the ok/degraded/stalled judgement — so "why is it black?" has an
 answer without shelling into the box.
-
-The same response includes one **prepared-readiness summary** from the readiness planner; this is
-not a parallel endpoint, task, or cache. It reports whether preparation is available, whether a pass
-is currently running, the last completed pass time and error, Channels and scheduled bindings ready
-within the accepted six-hour window, work still warming, and the prepared store's remaining,
-protected, and budgeted bytes. Counts describe the most recently resolved accepted schedule window;
-an absent completion time means **the planner has not completed a pass**, not that all Channels are
-ready. The existing live encoder rows remain the immediate fallback-demand signal: a prepared HLS
-hit creates no live encoder row. System > Playback renders both halves together so an operator can
-distinguish an unprepared frontier from an encoder that is already failing to keep up. The API only
-projects a planner-owned snapshot; it never rescans schedules or the filesystem on request.
 
 ### Consequences recorded honestly
 
@@ -4228,8 +3673,8 @@ projects a planner-owned snapshot; it never rescans schedules or the filesystem 
    now provides: *"3 channels Loomarr is streaming will drop for a few seconds; Tunarr-backed
    channels keep playing."*
 
-   **Tree ownership is one process primitive, not a playout-only convention.** The channel
-   encoder, its HLS remux, and filler's bounded ffmpeg transcodes all enter the same supervisor;
+   **Tree ownership is one process primitive, not a playout-only convention.** Every item
+   encoder, and filler's bounded ffmpeg transcodes, enter the same supervisor;
    cancellation, a natural parent crash, and in-process restart therefore sweep descendants with
    the same Unix-process-group guarantee. A direct `exec.CommandContext` around a
    lifecycle-owned encoder or ingest transcode is a violation because it kills only the immediate
@@ -4245,8 +3690,8 @@ Same PID, no re-exec, **no supervisor required**.
 **A generation drains in two application phases around the HTTP wait.** First, it closes
 generation admission, cancels generation-owned work and event streams, and synchronously
 **quiesces network-facing resources whose active responses cannot finish by themselves**. Internal
-MPEG-TS sessions and live HLS remuxes are the canonical quiescers: an endless tuned response exits
-only when its session closes, while `http.Server.Shutdown` waits for that response. Quiescence must
+Channel packagers are the canonical quiescers: an endless tuned MPEG-TS response exits
+only when its packager closes, while `http.Server.Shutdown` waits for that response. Quiescence must
 therefore precede HTTP drain or the two sides wait on each other until the shared deadline. After
 HTTP has drained, the application **finalizes** schedulers, diagnostics, workers, scratch roots and
 other owned resources in reverse construction order while their dependencies and the store remain
