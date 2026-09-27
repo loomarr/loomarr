@@ -49,6 +49,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 			"store-postgres": 0, "frontend": 0, "clients": 0, "apple-mobile": 0, "apple-tv": 0, "apple-cache-validation": 0, "expo-android-mobile": 0,
 			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "playout-bench": 0, "ci-ok": 3,
 		}},
+		"deadcode.yml":         {jobs: map[string]int{"report": 3}},
 		"image-benchmark.yml":  {jobs: map[string]int{"benchmark": 6}},
 		"pages.yml":            {jobs: map[string]int{"build": 5, "deploy": 1}},
 		"release-notes.yml":    {jobs: map[string]int{"publish-notes": 4}},

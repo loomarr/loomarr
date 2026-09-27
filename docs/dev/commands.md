@@ -69,6 +69,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make vet-tags` |  | go vet over custom-tagged sources |
 | `make tags-verify` |  | the Makefile's TAGS list matches every //go:build tag in the tree, both ways |
 | `make lint` |  | golangci-lint v2 (run via `go run` so no global install needed) |
+| `make deadcode` |  | functions no ./cmd binary reaches, per package (report only; not a PR gate) |
+| `make deadcode-baseline` |  | rewrite the committed deadcode baseline the monthly report compares against |
 | `make test` | ✅ | unit tests; unsharded runs include Rust worker and eval contracts (never network — §19) |
 | `make go-shard-verify` | ✅ | Go test lanes must cover every package within their latency and balance budgets |
 | `make go-race-verify` |  | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
@@ -218,8 +220,9 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make fe-codegen` | ✅ | regenerate tokens + orval api client from api/openapi.yaml |
 | `make fe-api-codegen` |  | regenerate only the orval api client from api/openapi.yaml |
 | `make fe-lint` |  | Biome lint + format check (web/) |
+| `make knip` |  | unused files, exports and dependencies in web/ (config: web/knip.ts) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
-| `make fe` | ✅ | biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery |
+| `make fe` | ✅ | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery |
 | `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `brand-assets-verify` |
 | `make client-android-debug` | ✅ | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload` |  | build and inspect a signed permanent-identity Shield APK (SHIELD_VERSION=x.y.z) <br>*runs:* `fe-api-codegen` |

@@ -11,6 +11,7 @@ cross-harness contract and points here for detail.
 | [Testing](testing.md) | The test layers and which are gates |
 | [Playout bench](playout-bench.md) | The cross-hardware playout measurement, its thresholds and CI jobs |
 | [CI](ci.md) | The jobs, path filters, and what's required |
+| [Code hygiene](code-hygiene.md) | Finding unused code: the knip gate and the monthly Go deadcode report |
 | [Android TV beta](android-beta.md) | Play identity, signing, testing tracks, and Shield acceptance |
 | [Codegen](codegen.md) | What's generated and what's committed |
 | [Commands](commands.md) | Every `make` target — generated, don't hand-edit |

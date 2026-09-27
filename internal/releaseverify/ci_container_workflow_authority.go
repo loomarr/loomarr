@@ -471,6 +471,20 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			},
 		},
+		"deadcode.yml": {
+			environment: map[string]string{"GO_VERSION": "1.27"},
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"report": {
+					permissions: map[string]string{"contents": "read", "issues": "write"},
+					steps: map[string]workflowStepAuthority{
+						"./scripts/deadcode.sh track docs/engineering/evidence/deadcode-baseline.txt": exactWorkflowStep(2, "Count unreachable functions and track growth", workflowStepAuthority{environment: map[string]string{
+							"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
+						}}),
+					},
+				},
+			},
+		},
 		"pages.yml": {
 			permissions: map[string]string{"contents": "read", "id-token": "write", "pages": "write"},
 			jobs: map[string]workflowJobAuthority{

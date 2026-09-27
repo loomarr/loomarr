@@ -76,6 +76,14 @@ tags-verify: ## the Makefile's TAGS list matches every //go:build tag in the tre
 lint: ## golangci-lint v2 (run via `go run` so no global install needed)
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --build-tags '$(TAGS_CSV)' $(PKG)
 
+.PHONY: deadcode
+deadcode: ## functions no ./cmd binary reaches, per package (report only; not a PR gate)
+	./scripts/deadcode.sh report
+
+.PHONY: deadcode-baseline
+deadcode-baseline: ## rewrite the committed deadcode baseline the monthly report compares against
+	./scripts/deadcode.sh report > docs/engineering/evidence/deadcode-baseline.txt
+
 .PHONY: test
 # Local `make test` retains both explicit prerequisites. CI's lane-scoped invocations omit them
 # because `go-contracts` runs eval-contract exactly once and composition packages acquire the real
