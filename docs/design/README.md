@@ -40,7 +40,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [scheduling](scheduling.md) | channels, lineups, strategies, reconcile and backfill, guide freshness, airing history, breaks, pods and mid-programme breaks | 5 (airing history), 9, 10 (breaks) | here |
 | [playout](playout.md) | the channel packager, backends, what is served, admission, playout status, Tunarr, Live TV wiring | 6 (Tunarr, Live TV), 9.1 | here |
 | [playback-clients](playback-clients.md) | tuning, pause, Android TV | 9.1 (clients) | here |
-| auth | identity, credentials, invitations, SSO, roles, route authorization | 11 | `design.md` |
+| [auth](auth.md) | identity, credentials, invitations, notifications, devices, roles, route authorization, SSO | 11 | here |
 | web-ui | navigation, first-run wizard, cross-view rules | 12, 13 | `design.md` |
 | deployment | image, Compose, restart in place, the job scheduler | 9.2, 16, 18.1 | `design.md` |
 | observability | diagnostics, correlation, health, metrics | 17 | `design.md` |
@@ -66,7 +66,10 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0003](decisions/0003-federated-search.md) | 2026-07-13 | Search is federated; Loomarr builds no index |
 | [0004](decisions/0004-grounding.md) | 2026-07-13 | The LLM never supplies trusted identity |
 | [0005](decisions/0005-human-approval.md) | 2026-07-13 | Proposals need human approval by default |
+| [0007](decisions/0007-loomarr-owns-identity.md) | 2026-07-13 | Loomarr owns identity; every credential path lands on one users table |
 | [0009](decisions/0009-loomarr-plays-out.md) | 2026-07-25 | Loomarr plays out its own streams |
+| [0011](decisions/0011-sso-is-a-credential-path.md) | 2026-07-30 | SSO is a credential path, not a provisioning path |
+| [0012](decisions/0012-routes-declare-their-role.md) | 2026-07-30 | Every route declares its role; anonymous is denied by default |
 | [0020](decisions/0020-one-image-service.md) | 2026-08-09 | One content-addressed image service |
 | [0021](decisions/0021-tuning-state-machine.md) | 2026-08-15 | Tuning is a latest-request-wins state machine |
 | [0022](decisions/0022-pause-is-shared-time-shift.md) | 2026-08-17 | Pause is shared time-shift |

@@ -20,7 +20,7 @@ Emby and Jellyfin share one adapter; `library.flavor` selects the auth header, n
   returned by Emby and is optional. Real libraries hold hundreds of collections, most of them
   tool-generated one-per-franchise groupings, so any picker must rank hand-made ones first.
 - **Users:** `POST /Users/AuthenticateByName` checks credentials and `GET /Users` with the admin
-  `library.token` lists accounts for import ([`design.md` §11](../design.md#11-users-authentication--permissions)).
+  `library.token` lists accounts for import ([`auth.md`](auth.md#import-and-sync)).
 - **Configuration is read per operation.** Each public operation resolves `{flavor, url, token}`
   from one settings snapshot and carries it through every nested request, so a save takes effect on
   the next operation without a restart and can never send one server's token to another.
