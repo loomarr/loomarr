@@ -357,4 +357,4 @@ const SupportBundle = ({
   );
 };
 
-export { formatBytes, SupportBundle };
+export { SupportBundle };

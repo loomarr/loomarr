@@ -162,4 +162,4 @@ const BrandLockup = ({
 };
 
 export type { BrandLockupProps, BrandMarkProps, BrandSize, BrandTone, BrandWordmarkProps };
-export { BrandLockup, BrandMark, BrandWordmark, brandChroma };
+export { BrandLockup, BrandMark, BrandWordmark };

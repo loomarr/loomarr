@@ -767,6 +767,12 @@ Don't — a warning printed by a job that exits 0 is one nobody reads.
 The CI path filter includes `scripts/`, so a PR editing only a guard still runs the job that
 executes it.
 
+## Scheduled Go dead code report
+
+`deadcode.yml` is also outside the required PR gate. On the first of each month, and on manual
+dispatch, it counts Go functions no `./cmd` binary reaches and opens or updates one tracking issue
+when the total exceeds the committed baseline. See [Code hygiene](code-hygiene.md).
+
 ## Scheduled Rust maintenance
 
 `rust-maintenance.yml` is intentionally outside the required PR gate. Every Monday, and on manual

@@ -1,0 +1,39 @@
+name: Go dead code report
+
+# Monthly, never on pull requests: deadcode cannot see code reached only from build-tagged
+# tests, so it reports rather than gates. When the count grows past the committed baseline
+# (docs/engineering/evidence/deadcode-baseline.txt), it opens or updates one tracking issue.
+on:
+  schedule:
+    - cron: "23 7 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deadcode-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27"
+
+jobs:
+  report:
+    name: Unreachable functions against the baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      # The same report `make deadcode` prints, compared against the committed baseline.
+      - name: Count unreachable functions and track growth
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/deadcode.sh track docs/engineering/evidence/deadcode-baseline.txt

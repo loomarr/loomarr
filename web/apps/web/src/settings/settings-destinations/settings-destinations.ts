@@ -247,11 +247,5 @@ const destinationForOwner = (owner: string): SettingsDestination | undefined =>
 const canVisitDestination = (item: SettingsDestination, isAdmin: boolean): boolean =>
   item.role === "all" || isAdmin;
 
-export type {
-  FillerSettingsSection,
-  SettingsDestination,
-  SettingsDestinationPath,
-  SettingsRole,
-  SettingsTaskGroup,
-};
+export type { SettingsDestination, SettingsDestinationPath, SettingsRole, SettingsTaskGroup };
 export { canVisitDestination, destinationForOwner, SETTINGS_DESTINATIONS, SETTINGS_TASK_GROUPS };

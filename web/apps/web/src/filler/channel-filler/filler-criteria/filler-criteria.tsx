@@ -671,4 +671,4 @@ const FillerCriteria = ({
   );
 };
 
-export { AUDIENCE_LABEL, FillerCriteria, KIND_LABEL, toggle };
+export { FillerCriteria };

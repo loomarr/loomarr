@@ -165,10 +165,4 @@ const restoreSurfSelection = (
   );
 };
 
-export {
-  restoreSurfSelection,
-  surfChannelData,
-  surfGroupsFromGuide,
-  surfPreviousChannel,
-  watchingScheduleFromGuide,
-};
+export { restoreSurfSelection, surfGroupsFromGuide, surfPreviousChannel, watchingScheduleFromGuide };

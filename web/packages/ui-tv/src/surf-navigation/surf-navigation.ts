@@ -37,4 +37,4 @@ const activateTvSurfSelection = (selection: SurfSelection): TvSurfActivation => 
   kind: "tune",
 });
 
-export { activateTvSurfSelection, moveTvSurfSelection, restoreTvSurfSelection, surfSelections };
+export { activateTvSurfSelection, moveTvSurfSelection, restoreTvSurfSelection };

@@ -21,6 +21,7 @@
     "dev": "pnpm --filter @loomarr/web dev",
     "lint": "biome check && pnpm imports:check && pnpm lint:boundaries",
     "lint:boundaries": "depcruise apps/web/src apps/mobile/app apps/tv/src packages/*/*.ts packages/*/src packages/*/tests",
+    "knip": "knip --no-progress",
     "imports:check": "node --test scripts/*.test.mjs scripts/*.test.cjs && node scripts/check-imports.mjs",
     "lint:fix": "biome check --write",
     "format": "biome format --write"
@@ -33,6 +34,7 @@
     "@types/node": "26.4.0",
     "@types/react": "19.2.18",
     "dependency-cruiser": "18.2.0",
+    "knip": "6.38.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "npm:react-native-tvos@0.86.2-0",

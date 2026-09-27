@@ -51,10 +51,6 @@ const wizardSteps = (backend: PlayoutBackend): WizardStep[] => {
   ];
 };
 
-// The default-path step list, for callers with no backend in hand (stories, the rail's
-// static shape). Prefer wizardSteps(backend) anywhere the operator's choice is known.
-const WIZARD_STEPS: WizardStep[] = wizardSteps(PLAYOUT_INTERNAL);
-
 // The shortest honest path to a live channel (config-design §6 "defaults philosophy"), which
 // since §9.1 depends on WHO IS STREAMING: the media server alone when Loomarr plays the
 // channels, plus Tunarr when Tunarr does. Seerr/LLM/TMDB/filler are feature-gating, not
@@ -65,9 +61,6 @@ const WIZARD_STEPS: WizardStep[] = wizardSteps(PLAYOUT_INTERNAL);
 // requiring it stranded the operator on that screen with no way around it.
 const requiredChecks = (backend: PlayoutBackend): string[] =>
   backend === PLAYOUT_TUNARR ? ["media_server", "tunarr"] : ["media_server"];
-
-// The default-path blocking set, for callers with no backend in hand.
-const REQUIRED_CHECKS = requiredChecks(PLAYOUT_INTERNAL);
 
 // The wiring checks each own a later step, so the Connections step doesn't double-count
 // them (§6 step→group mapping). `livetv` has no step of its own — it's auto-wired on the
@@ -177,9 +170,7 @@ export {
   isStepDone,
   PLAYOUT_INTERNAL,
   PLAYOUT_TUNARR,
-  REQUIRED_CHECKS,
   requiredChecks,
   resolveStep,
-  WIZARD_STEPS,
   wizardSteps,
 };

@@ -181,4 +181,4 @@ const SurfRail = ({
   );
 };
 
-export { findSurfChannel, SurfRail, surfRailWidth };
+export { SurfRail };

@@ -185,6 +185,11 @@ classify() {
       select_gate tuner
       select_gate android
       ;;
+    web/knip.ts)
+      # knip runs inside `make fe` (the web gate) and nowhere else.
+      known=true
+      select_gate web
+      ;;
     web/.dependency-cruiser.cjs|web/turbo.json|web/.rnstorybook/*|web/apps/web/client-platform-proof.html|web/apps/web/src/client-platform-proof/*|web/apps/web/tests/client-platform-proof.*|web/apps/web/vite.client-platform.config.ts)
       known=true
       select_gate clients
@@ -274,7 +279,7 @@ classify() {
           select_gate e2e
           select_gate tuner
           ;;
-        web/apps/web/components.json|web/apps/web/drive.mjs|web/apps/web/index.html|web/apps/web/tsconfig.json|web/apps/web/tsr.config.json|web/apps/web/vite.config.ts)
+        web/apps/web/components.json|web/apps/web/index.html|web/apps/web/tsconfig.json|web/apps/web/tsr.config.json|web/apps/web/vite.config.ts)
           select_gate visual
           select_gate e2e
           select_gate tuner

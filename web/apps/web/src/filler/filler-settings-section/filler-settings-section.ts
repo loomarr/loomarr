@@ -72,10 +72,9 @@ const SETTINGS_SECTIONS = [
 ] as const;
 
 type FillerSettingsSection = (typeof SETTINGS_SECTIONS)[number]["id"];
-type FillerSettingsGroup = (typeof SETTINGS_SECTIONS)[number]["group"];
 
 const parseFillerSettingsSection = (value: unknown): FillerSettingsSection | undefined =>
   SETTINGS_SECTIONS.find((item) => item.id === value)?.id;
 
-export type { FillerSettingsGroup, FillerSettingsSection };
+export type { FillerSettingsSection };
 export { parseFillerSettingsSection, SETTINGS_SECTIONS };

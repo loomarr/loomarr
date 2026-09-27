@@ -1,7 +1,6 @@
 import { toProblem } from "@loomarr/api/mutator";
 import {
   type BrowserHlsPlayerOptions,
-  type BrowserPlayerStatus,
   type UseBrowserHlsPlayer,
   useBrowserHlsPlayer,
 } from "@loomarr/player/browser";
@@ -10,7 +9,6 @@ import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { mintChannelPlaySource } from "../channel-play-url";
 import { markTunePhase, type TuneAttempt } from "../tuner-timing";
 
-type PlayerStatus = BrowserPlayerStatus;
 type UseHlsPlayer = UseBrowserHlsPlayer;
 
 const useHlsPlayer = (channelId: string, attempt?: TuneAttempt, onManifest?: () => void): UseHlsPlayer => {
@@ -48,5 +46,5 @@ const useHlsPlayer = (channelId: string, attempt?: TuneAttempt, onManifest?: () 
   });
 };
 
-export type { PlayerStatus, UseHlsPlayer };
+export type { UseHlsPlayer };
 export { useHlsPlayer };
