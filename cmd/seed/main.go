@@ -35,6 +35,7 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/demolibrary"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -165,31 +166,32 @@ func seedMember(ctx context.Context, st store.Store, usrID func() string) error 
 func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) error {
 	now := time.Now()
 
-	// A believable 90s-action lineup. In-library picks become available programs;
-	// the acquisitions are missing titles the provisioner chases. Runtime rides on
-	// the local `pick` (ProposalItem has no duration field) so the channel's slots
-	// carry real durations. durMs is 0 for acquisitions (unknown until in-library).
+	// A believable 90s movie-night lineup from the invented demo catalogue (the repo is
+	// public: no real titles, #1587). In-library picks become available programs; the
+	// acquisitions are missing titles the provisioner chases. Runtime rides on the local
+	// `pick` (ProposalItem has no duration field) so the channel's slots carry real,
+	// distinct durations. durMs is 0 for acquisitions (unknown until in-library).
 	picks := []pick{
-		{libItem("movie", 603, "The Matrix", 1999, "lib-matrix"), 8160000},                        // 136m
-		{libItem("movie", 165, "Terminator 2: Judgment Day", 1991, "lib-t2"), 8520000},            // 142m
-		{libItem("movie", 100, "Lock, Stock and Two Smoking Barrels", 1998, "lib-lock"), 6420000}, // 107m
-		{libItem("movie", 524, "Point Break", 1991, "lib-pb"), 7440000},                           // 124m
+		libPick("demo-film-10", 8160000), // 136m
+		libPick("demo-film-14", 8520000), // 142m
+		libPick("demo-film-22", 6420000), // 107m
+		libPick("demo-film-27", 7440000), // 124m
 	}
 	lineup := items(picks)
 	acquisitions := []suggest.ProposalItem{
-		acqItem("movie", 78, "Blade", 1998),
-		acqItem("movie", 9738, "Face/Off", 1997),
-		acqItem("movie", 8009, "Con Air", 1997),
+		acqItem("demo-film-08"),
+		acqItem("demo-film-26"),
+		acqItem("demo-film-29"),
 	}
 
 	jobID := newID("job")()
-	intentJSON := `{"description":"90s action movies — high-energy, R-rated"}`
+	intentJSON := `{"description":"90s movie night — mysteries, comedies and a little sci-fi"}`
 	if err := st.CreateJob(ctx, store.Job{
 		ID:         jobID,
 		Kind:       "suggest",
 		Status:     "done",
 		IntentJSON: intentJSON,
-		IntentHash: "seed-90s-action",
+		IntentHash: "seed-90s-movie-night",
 		CreatedBy:  adminID,
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -220,7 +222,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	}
 
 	prop := suggest.Proposal{
-		Intent:       suggest.Intent{Description: "90s action movies — high-energy, R-rated", Era: "1990s"},
+		Intent:       suggest.Intent{Description: "90s movie night — mysteries, comedies and a little sci-fi", Era: "1990s"},
 		Lineup:       lineup,
 		Acquisitions: acquisitions,
 		Policy:       policy,
@@ -264,7 +266,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	if err := advance(ctx, st, acquisitions[0], provision.Grabbed, ""); err != nil { // → downloading
 		return err
 	}
-	if err := advance(ctx, st, acquisitions[1], provision.LibraryConfirmed, "lib-faceoff"); err != nil { // → available
+	if err := advance(ctx, st, acquisitions[1], provision.LibraryConfirmed, "demo-film-26"); err != nil { // → available
 		return err
 	}
 	// acquisitions[2] stays `wanted` — a title still queued, so the Board's "Waiting"
@@ -309,7 +311,7 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 		return fmt.Errorf("get approved channel: %w", err)
 	}
 	dom := ch.Channel
-	dom.Name = "90s Action"
+	dom.Name = "90s Movie Night"
 	dom.Number = 42
 	dom.Group = "Loomarr"
 	dom.Strategy = schedule.Sequential
@@ -341,7 +343,7 @@ func seedChannel(ctx context.Context, st store.Store, channelID string, picks []
 			entries[i].Title = it.Name
 			entries[i].DurationMs = p.durMs
 			entries[i].Year = it.Year
-			entries[i].OfficialRating = schedule.Rating("R")
+			entries[i].OfficialRating = schedule.Rating(p.rating)
 		}
 		avail[key] = resolved{libID: it.LibraryItemID, dur: p.durMs, title: it.Name}
 	}
@@ -381,10 +383,11 @@ func seedClips(ctx context.Context, st store.Store) error {
 		tags []string
 	}
 	clips := []seededClip{
-		{clip("clip-frostedflakes", "Frosted Flakes — They're Grrreat!", filler.Commercial, 1992, filler.Kids, "cereal", "Kellogg's", 30000), []string{"cereal"}},
-		{clip("clip-supernintendo", "Super Nintendo — Now You're Playing", filler.Commercial, 1993, filler.Kids, "toys", "Nintendo", 30000), []string{"toys", "kids-cue"}},
-		{clip("clip-nike", "Nike — Just Do It", filler.Commercial, 1994, filler.General, "apparel", "Nike", 30000), []string{"apparel"}},
-		{clip("clip-bumper-nite", "You're watching 90s Action", filler.Bumper, 0, filler.General, "", "", 8000), []string{"bumper"}},
+		// Invented products and brands (the repo is public, #1587).
+		{clip("clip-starbit-crunch", "Starbit Crunch — Breakfast from Orbit!", filler.Commercial, 1992, filler.Kids, "cereal", "Starbit Foods", 30000), []string{"cereal"}},
+		{clip("clip-blipotron", "Blip-o-Tron — Now You're Blipping", filler.Commercial, 1993, filler.Kids, "toys", "Blipco", 30000), []string{"toys", "kids-cue"}},
+		{clip("clip-loopstep", "Loopstep — Go One More Block", filler.Commercial, 1994, filler.General, "apparel", "Loopstep", 30000), []string{"apparel"}},
+		{clip("clip-bumper-nite", "You're watching 90s Movie Night", filler.Bumper, 0, filler.General, "", "", 8000), []string{"bumper"}},
 	}
 	now := time.Now()
 	for _, seeded := range clips {
@@ -427,8 +430,9 @@ func (a seedAvailability) ResolveEpisodes(provision.Key) schedule.EpisodeResolut
 // pick pairs an in-library ProposalItem with its runtime, which ProposalItem itself
 // doesn't carry — the channel's slots need a real duration (Tunarr rejects <= 0).
 type pick struct {
-	item  suggest.ProposalItem
-	durMs int64
+	item   suggest.ProposalItem
+	durMs  int64
+	rating string
 }
 
 // items projects the proposal-item view out of the picks (for the proposal body).
@@ -440,16 +444,28 @@ func items(ps []pick) []suggest.ProposalItem {
 	return out
 }
 
-func libItem(mt string, tmdb int, name string, year int, libID string) suggest.ProposalItem {
-	return suggest.ProposalItem{
-		MediaType: provision.MediaType(mt), TMDBID: tmdb, Name: name, Year: year,
-		InLibrary: true, LibraryItemID: libID,
+// demoFilm is a film from the invented demo catalogue, keyed on its demo TMDB id. Its library
+// item id is the stand-in media server's (`make demo-library`), so the two line up.
+func demoFilm(id string) demolibrary.Title {
+	t, ok := demolibrary.ByID(id)
+	if !ok || t.Kind != demolibrary.Movie {
+		panic("seed: unknown demo film " + id)
 	}
+	return t
 }
 
-func acqItem(mt string, tmdb int, name string, year int) suggest.ProposalItem {
+func libPick(id string, durMs int64) pick {
+	t := demoFilm(id)
+	return pick{item: suggest.ProposalItem{
+		MediaType: provision.Movie, TMDBID: t.ProviderID(), Name: t.Name, Year: t.Year,
+		InLibrary: true, LibraryItemID: t.ID(),
+	}, durMs: durMs, rating: t.Rating}
+}
+
+func acqItem(id string) suggest.ProposalItem {
+	t := demoFilm(id)
 	return suggest.ProposalItem{
-		MediaType: provision.MediaType(mt), TMDBID: tmdb, Name: name, Year: year,
+		MediaType: provision.Movie, TMDBID: t.ProviderID(), Name: t.Name, Year: t.Year,
 		InLibrary: false,
 	}
 }

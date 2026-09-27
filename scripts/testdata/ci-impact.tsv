@@ -20,7 +20,7 @@ generic-web	web/apps/web/src/diagnostics/client-reporter/client-reporter.ts	web,
 web-unit-test	web/apps/web/src/filler/filler-settings-section/filler-settings-section.test.ts	web,image
 web-knip-config	web/knip.ts	web
 web-unit-test-tsx	web/apps/web/src/diagnostics/application-diagnostics/application-diagnostics.test.tsx	web,image
-web-story-only	web/apps/web/src/design/typography/typography.stories.tsx	web,visual,image
+web-story-only	web/apps/web/src/design/typography/typography.stories.tsx	contracts,web,visual,image
 web-runtime-tokens	web/packages/tokens/src/tokens/tokens.ts	web,visual,tuner,image
 mobile-client	web/apps/mobile/app/index.tsx	clients,apple_mobile,expo_android_mobile
 tv-client	web/apps/tv/src/app.tsx	clients,apple_tv,expo_android_tv,android
@@ -29,8 +29,16 @@ shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof
 shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigation.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-api	web/packages/api/src/unwrap/unwrap.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 shared-client-core	web/packages/core/src/guide/guide.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
-shared-client-fixtures	web/packages/fixtures/src/index.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
-web-testcard-fixtures	web/packages/fixtures/src/testcard/testcard.ts	web,visual,image
+shared-client-fixtures	web/packages/fixtures/src/index.ts	contracts,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
+web-testcard-fixtures	web/packages/fixtures/src/testcard/testcard.ts	contracts,web,visual,image
+demo-titles-seed	cmd/seed/library.go	contracts,go,postgres,image
+demo-titles-demo-seed	cmd/demo-library/seed.go	contracts,go,postgres,image
+demo-titles-catalogue	internal/demolibrary/catalog.go	contracts,go,postgres,image
+demo-titles-web-story	web/apps/web/src/components/ui/caption/caption.stories.tsx	contracts,web,visual,image
+demo-titles-native-story	web/native-stories/identity.stories.tsx	contracts,web,visual,image
+demo-titles-web-fixture	web/packages/fixtures/src/client-platform/surf/surf.ts	contracts,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
+demo-titles-e2e-mock	web/apps/web/tests/e2e/mock-backend.ts	contracts,web,e2e,image
+demo-titles-tv-emulator	web/scripts/tv-emulator-fixture-server.mjs	contracts,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,android
 shared-player-browser	web/packages/player/src/browser/browser.ts	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,tuner,image,android
 shared-player-native	web/packages/player/src/native/native.tsx	web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,tuner,image,android
 client-tooling	web/turbo.json	clients

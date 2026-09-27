@@ -50,6 +50,20 @@ classify() {
   local path="$1"
   local known=false
 
+  # The public repo's real-titles guard (make demo-titles-verify, run by privacy-verify in the
+  # Go contracts job) scans these seeds, fixtures and the demo catalogue. It adds the gate
+  # without claiming the path, so each path's own classification below still applies. Keep in
+  # step with isFixture and guarded in internal/demolibrary/guard_test.go; a test there fails
+  # when a scanned path would skip this gate (#1587).
+  case "$path" in
+    cmd/seed/*|cmd/demo-library/*|internal/demolibrary/*|web/*.stories.tsx|web/apps/web/tests/e2e/mock-backend.ts|web/scripts/tv-emulator-fixture-server.mjs)
+      select_gate contracts
+      ;;
+    web/packages/fixtures/src/*)
+      [[ "$path" == *.test.* ]] || select_gate contracts
+      ;;
+  esac
+
   # Product Go. Release images compile and embed these source families.
   if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/releaseverify/* ]]; then
     known=true

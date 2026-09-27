@@ -63,6 +63,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Loads Loomarr's ENV-ONLY BOOTSTRAP configuration (config-design §1): the handful of keys needed before the database opens or that describe process topology.
 - **`contact`** · 5 importers
   Owns person contact-address identity and normalization (§11).
+- **`demolibrary`**
+  Loomarr's demo library: an invented catalogue, the artwork and video generated for it, and an Emby-compatible stand-in media server that serves both (#1587).
 - **`episodeevidence`** · 3 importers
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers

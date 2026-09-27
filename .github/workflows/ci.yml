@@ -348,7 +348,6 @@ jobs:
         run: make agent-harness-test shellcheck
       - name: Documentation contracts read by Go
         run: go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify
-
   rust-contracts:
     name: Rust — repository contracts
     needs: changes

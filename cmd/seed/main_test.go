@@ -63,9 +63,8 @@ func TestSeedApprovalPreservesPendingAcquisitionsInChannel(t *testing.T) {
 	for _, entry := range channels[0].Lineup {
 		got[entry.Key] = true
 	}
-	for _, key := range []provision.Key{
-		"movie:tmdb:78", "movie:tmdb:9738", "movie:tmdb:8009",
-	} {
+	for _, id := range []string{"demo-film-08", "demo-film-26", "demo-film-29"} {
+		key := provision.Key(demoFilm(id).Key())
 		if !got[key] {
 			t.Errorf("approved acquisition %s was stripped from the seeded channel", key)
 		}

@@ -12,6 +12,7 @@ import (
 )
 
 var aggregateStoreExceptions = map[string]string{
+	modulePath + "/cmd/demo-library": "is an explicit whole-database development command (make demo-seed)",
 	modulePath + "/cmd/loomarr":      "owns the process-lifetime store and its shutdown",
 	modulePath + "/cmd/seed":         "is an explicit whole-database development command",
 	modulePath + "/internal/api":     "retains complete HTTP dependency assembly outside this refactor",
