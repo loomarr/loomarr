@@ -17,25 +17,23 @@ import (
 )
 
 func testWatermarks(t *testing.T, ch store.Channel, gatePassed bool) *channelWatermarks {
+	return testWatermarksWith(t, visionSet(t, nil), ch, gatePassed)
+}
+
+// testWatermarksWith reads the install-wide opacity from set, a live settings service over the
+// declared registry, the way the build wires it.
+func testWatermarksWith(t *testing.T, set resolved, ch store.Channel, gatePassed bool) *channelWatermarks {
 	g := &watermarkGate{}
 	g.works.Store(gatePassed)
 	return &channelWatermarks{dir: t.TempDir(), channels: staticChannelReader{channel: ch}, log: slog.New(slog.DiscardHandler),
-		gates: map[playout.Encoder]*watermarkGate{playout.EncoderNVENC: g}}
+		opacity: watermarkOpacity(set), gates: map[playout.Encoder]*watermarkGate{playout.EncoderNVENC: g}}
 }
 
-// ON BY DEFAULT: a channel with no watermark policy gets the Plate bug at the approved placement.
-func TestChannelWatermarks_DefaultPlateBug(t *testing.T) {
-	c := testWatermarks(t, store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
-	wm := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
-	if wm == nil {
-		t.Fatal("no bug for a channel on the defaults")
-	}
-	if wm.Corner != playout.CornerTopRight || wm.MarginX != 96 || wm.MarginY != 54 || wm.Width%2 != 0 || wm.Height%2 != 0 {
-		t.Errorf("placement %+v", wm)
-	}
-	// The approved opacity, 40% (#1617), baked into the aired PNG: the plate's peak premultiplied
-	// white (the shadow beneath adds alpha, not light).
-	f, err := os.Open(wm.Straight)
+// peakWhite is a rendered bug's peak premultiplied white out of 255: its opacity (the shadow beneath
+// adds alpha, not light).
+func peakWhite(t *testing.T, path string) uint32 {
+	t.Helper()
+	f, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("rendered file missing: %v", err)
 	}
@@ -51,7 +49,51 @@ func TestChannelWatermarks_DefaultPlateBug(t *testing.T) {
 			peak = max(peak, (uint32(c.R)*uint32(c.A)+127)/255)
 		}
 	}
-	if want := uint32(102); peak < want-1 || peak > want+1 { // 0.40 × 255
+	return peak
+}
+
+// THE INSTALL SETTING (#1617): playout.watermark_opacity_pct is every channel's opacity unless the
+// channel overrides it, and a change applies to the next bug asked for, without a restart.
+func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
+	set := visionSet(t, map[string]string{"playout.watermark_opacity_pct": "55"})
+	c := testWatermarksWith(t, set, store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
+	wm := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
+	if wm == nil {
+		t.Fatal("no bug")
+	}
+	if got, want := peakWhite(t, wm.Straight), uint32(140); got < want-1 || got > want+1 { // 0.55 × 255
+		t.Errorf("bug peaks at %d/255, want %d (the install setting, 55%%)", got, want)
+	}
+	set.svc.SetDB(map[string]string{"playout.watermark_opacity_pct": "70"})
+	again := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
+	if again == nil || again.Straight == wm.Straight {
+		t.Fatalf("a changed setting did not re-render the bug: %+v", again)
+	}
+	if got, want := peakWhite(t, again.Straight), uint32(179); got < want-1 || got > want+1 { // 0.70 × 255
+		t.Errorf("after the change the bug peaks at %d/255, want %d", got, want)
+	}
+	// The channel's own opacity overrides the install setting.
+	own := 0.25
+	ch := store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}
+	ch.Policy.Watermark = &schedule.WatermarkPolicy{Opacity: &own}
+	over := testWatermarksWith(t, set, ch, true).For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
+	if got, want := peakWhite(t, over.Straight), uint32(64); got < want-1 || got > want+1 { // 0.25 × 255
+		t.Errorf("channel override: bug peaks at %d/255, want %d", got, want)
+	}
+}
+
+// ON BY DEFAULT: a channel with no watermark policy gets the Plate bug at the approved placement.
+func TestChannelWatermarks_DefaultPlateBug(t *testing.T) {
+	c := testWatermarks(t, store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
+	wm := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
+	if wm == nil {
+		t.Fatal("no bug for a channel on the defaults")
+	}
+	if wm.Corner != playout.CornerTopRight || wm.MarginX != 96 || wm.MarginY != 54 || wm.Width%2 != 0 || wm.Height%2 != 0 {
+		t.Errorf("placement %+v", wm)
+	}
+	// The install setting's default, 40% (#1617), baked into the aired PNG.
+	if peak, want := peakWhite(t, wm.Straight), uint32(102); peak < want-1 || peak > want+1 { // 0.40 × 255
 		t.Errorf("default bug peaks at %d/255, want %d (opacity 0.40)", peak, want)
 	}
 	// Cached: the second ask returns the same files without re-rendering.

@@ -34,10 +34,12 @@ import (
 // the check passes, programmes air WITHOUT the bug (the safe direction: a bug never costs the
 // picture). A failed check disables the watermark on the host and says so in Diagnostics.
 type channelWatermarks struct {
-	ffmpeg   func() string
-	tonemap  func() bool
-	gpu      func() playout.GPUFilters
-	dir      string
+	ffmpeg  func() string
+	tonemap func() bool
+	gpu     func() playout.GPUFilters
+	dir     string
+	// opacity is the live install-wide opacity (watermarkOpacity), read on every For.
+	opacity  func() float64
 	channels interface {
 		GetChannel(context.Context, string) (store.Channel, error)
 	}
@@ -84,12 +86,20 @@ func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved,
 		tonemap:  playout.TonemapperFor(ffmpeg),
 		gpu:      playout.GPUFiltersFor(ffmpeg),
 		dir:      filepath.Join(filepath.Dir(filepath.Clean(set.str("images.dir"))), "watermarks"),
+		opacity:  watermarkOpacity(set),
 		channels: st, log: log, lifetime: rootCtx,
 	}
 	if events != nil {
 		c.events = events
 	}
 	return c
+}
+
+// watermarkOpacity is the install-wide bug opacity, playout.watermark_opacity_pct as a fraction,
+// resolved per call so a change applies to the next programme item without a restart (the
+// rendered-bug cache is keyed by opacity, so the new value re-renders).
+func watermarkOpacity(set resolved) func() float64 {
+	return func() float64 { return float64(set.intv("playout.watermark_opacity_pct")) / 100 }
 }
 
 // withOriginals binds the image service a custom upload is read from. The build calls it before the
@@ -112,7 +122,7 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 	if err != nil {
 		return nil
 	}
-	res := schedule.ResolveWatermark(ch.Policy.Watermark)
+	res := schedule.ResolveWatermark(ch.Policy.Watermark, c.opacity())
 	if !res.Enabled {
 		return nil
 	}

@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -469,6 +470,31 @@ func TestRegistry_PlaybackProgressiveDisclosure(t *testing.T) {
 		}
 		if !s.Advanced {
 			t.Errorf("%s should stay behind Advanced", key)
+		}
+	}
+}
+
+// The install-wide bug opacity (#1617): a percent, 10–100, default 40, on the Playback page. A
+// channel's policy.watermark.opacity overrides it.
+func TestRegistry_WatermarkOpacity(t *testing.T) {
+	s, ok := NewRegistry().Get("playout.watermark_opacity_pct")
+	if !ok {
+		t.Fatal("playout.watermark_opacity_pct not declared")
+	}
+	if s.Kind != KindInt || s.EnvVar != "PLAYOUT_WATERMARK_OPACITY_PCT" || s.Group != GroupPlayout || s.Advanced || s.Label == "" {
+		t.Errorf("declaration %+v", s)
+	}
+	if got, err := s.parse(fmt.Sprint(s.Default)); err != nil || got != 40 {
+		t.Errorf("default %#v (%v), want 40", got, err)
+	}
+	for _, raw := range []string{"9", "101", "0"} {
+		if _, err := s.parse(raw); err == nil {
+			t.Errorf("accepted %s", raw)
+		}
+	}
+	for _, raw := range []string{"10", "100"} {
+		if _, err := s.parse(raw); err != nil {
+			t.Errorf("rejected %s: %v", raw, err)
 		}
 	}
 }
