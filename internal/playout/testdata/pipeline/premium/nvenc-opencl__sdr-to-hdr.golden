@@ -27,10 +27,12 @@ cuda
 0:v:0
 -map
 0:a:1
+-map_chapters
+-1
 -frames:v
 753
 -vf
-hwdownload,format=nv12,libplacebo=format=p010le:colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv:w=1920:h=1080:pos_x=0:pos_y=0:pos_w=1920:pos_h=1080:fillcolor=black,hwupload_cuda,scale_cuda=w=3840:h=2160:format=p010le,fps=25,sidedata=mode=delete,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left
+hwdownload,format=nv12,libplacebo=format=p010le:colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv:w=1920:h=1080:pos_x=0:pos_y=0:pos_w=1920:pos_h=1080:fillcolor=black,hwupload_cuda,scale_cuda=w=3840:h=2160:format=p010le,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left
 -c:v
 hevc_nvenc
 -preset

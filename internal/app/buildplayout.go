@@ -444,8 +444,39 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	if store.DialectOf(st) == store.DialectPostgres {
 		lifecycleGate = &playoutAdmissionGate{}
 	}
+	// The channel packager (#1512 phase 2) serves browser HLS instead of the remux while
+	// playout.packager is on; the choice is read per new tune.
+	tonemap, gpuFilters := playout.TonemapperFor(set.str("playout.ffmpeg_path")), playout.GPUFiltersFor(set.str("playout.ffmpeg_path"))
+	packagedHLS, perr := playout.NewPackagerHLS(packagerSource{
+		res:     playoutRes,
+		tonemap: tonemap,
+		gpu:     gpuFilters,
+		// Filler loudness (#1512 G6), read live like the /program handler's.
+		targetLUFS: func() string { return set.str("filler.target_lufs") },
+		log:        log,
+	}, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"), playout.DefaultGrace, log)
+	// The first tune's output profile, off the tune path (#1512 G2): the encoder evidence and four
+	// `ffmpeg -filters` probes, each once per process, were 0.2 s of a cold first tune. Both run
+	// FFmpeg, and idle channels start none, so the warm-up runs only for the packager it serves.
+	if set.boolv("playout.packager") {
+		go func() {
+			playoutRes.WarmProfile(rootCtx)
+			tonemap()
+			gpuFilters()
+		}()
+	}
+	if perr != nil {
+		log.Warn("internal playout: channel packager unavailable", "err", perr)
+	} else {
+		owner.addStop(func(context.Context) error {
+			packagedHLS.Stop()
+			return nil
+		})
+	}
 	origin := playout.NewOrigin(playout.OriginDependencies{
 		Prepared: preparedOrigin, LiveSessions: playoutMgr, LiveHLS: liveHLS,
+		PackagedHLS: packagedHLS,
+		UsePackager: func() bool { return set.boolv("playout.packager") },
 		Available: func() bool {
 			return lifecycleGate == nil || lifecycleGate.Available()
 		},

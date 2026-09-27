@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -626,4 +627,33 @@ func TestPlayoutResolver_FirstPlayWithRealFFprobeActivatesMinimalProbeAndStoresA
 	if err != nil || !ok || len(a.Keyframes) != 4 || a.IntegratedLUFS == nil {
 		t.Fatalf("stored analysis = %+v ok %v err %v; want 4 keyframes and loudness", a, ok, err)
 	}
+}
+
+// The host fingerprint behind the persisted encoder evidence cost a cold first tune 0.2 s live
+// (#1512 G2). Warmed at boot, the first Profile reads the loaded evidence and loads nothing.
+func TestPlayoutResolver_WarmProfileTakesTheEvidenceOffTheFirstTune(t *testing.T) {
+	var loadCalls atomic.Int32
+	r := &playoutResolver{
+		tier: func() string { return "balanced" }, encoder: func() string { return "" },
+		capacity: func() int { return 4 }, activeChannels: func() int { return 0 },
+		detectContext: t.Context(),
+		loadCapabilityEvidence: func(context.Context) (playout.Capacity, bool) {
+			loadCalls.Add(1)
+			time.Sleep(200 * time.Millisecond)
+			return playout.Capacity{Chosen: playout.EncoderNVENC, MaxChannels: 4}, true
+		},
+		ffmpegPath: func() string { return "/nonexistent/ffmpeg" },
+	}
+	r.WarmProfile(t.Context())
+
+	before := time.Now()
+	profile := r.Profile(t.Context())
+	if elapsed := time.Since(before); elapsed > 50*time.Millisecond || loadCalls.Load() != 1 {
+		t.Fatalf("first Profile after WarmProfile took %s with %d evidence loads; want no load on the tune",
+			elapsed, loadCalls.Load())
+	}
+	if profile.Encoder != playout.EncoderNVENC {
+		t.Fatalf("first Profile encoder %q, want the warmed NVENC evidence", profile.Encoder)
+	}
+	_ = r.detectedEncoder(t.Context())
 }

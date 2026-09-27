@@ -391,6 +391,27 @@ func StaticGainDB(targetLUFS, measuredLUFS float64) float64 {
 	return math.Max(-MaxGainDB, math.Min(MaxGainDB, targetLUFS-measuredLUFS))
 }
 
+// FillerGain is the static loudness gain an airing gets (#1512 G6): FILLER ONLY, from the loudness
+// measured at ingest against the live `filler.target_lufs`. A library title is never adjusted
+// (advert loudness would flatten a film's dynamic range) and gets 0 dB with no note. A filler clip
+// that cannot be corrected airs at 0 dB, and note says why, for the caller to log.
+//
+// ⚠ `a.Source` is the discriminator: set for a resolved filler clip, empty for a library title.
+// An empty target means no gain.
+func FillerGain(a Airing, targetLUFS string) (gainDB float64, note string) {
+	if a.Source == "" || targetLUFS == "" {
+		return 0, ""
+	}
+	target, err := strconv.ParseFloat(targetLUFS, 64)
+	switch {
+	case err != nil:
+		return 0, "filler.target_lufs is not a number"
+	case a.MeasuredLUFS == nil:
+		return 0, "filler clip has no ingest loudness measurement"
+	}
+	return StaticGainDB(target, *a.MeasuredLUFS), ""
+}
+
 // gainFilter is the constant-gain audio filter for a filler clip.
 //
 // ⚠ **A static `volume`, never `loudnorm`.** Single-pass `loudnorm` re-estimates its gain from the

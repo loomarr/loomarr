@@ -195,6 +195,8 @@ type Pipeline struct {
 	VideoFilter string
 	// VideoEncode is the encoder and its rate control and GOP.
 	VideoEncode []string
+	// AudioFilter is the -af graph: a filler clip's static loudness gain (WithGain), else empty.
+	AudioFilter string
 	// AudioEncode is AAC-LC stereo 48 kHz.
 	AudioEncode []string
 	// Fallbacks names each stage that left the GPU and why ("decode: …", "tonemap: …").
@@ -224,6 +226,11 @@ var minimalProbe = []string{"-analyzeduration", "0", "-probesize", "32768", "-fp
 // the SPS VUI mirrors each source's colour description and the SPS differs between items. Output
 // -color_* flags must not be used instead: on ffmpeg 8 they join format negotiation and insert a
 // software auto_scale that fails the VAAPI HDR graph (spike #1513).
+// conformSAR squares the pixel aspect ratio. scale with force_original_aspect_ratio leaves a
+// residual SAR when the source aspect is not exactly the output's (854x480 into 640x360 gives
+// 1281:1280); it lands in the SPS VUI, and a different SPS is a decoder re-init at the item boundary.
+const conformSAR = "setsar=1"
+
 const conformColour = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left"
 
 // conformHDR10 is conformColour for an HDR10 output: BT.2020 non-constant luminance, PQ.
@@ -239,6 +246,12 @@ const stripSideData = "sidedata=mode=delete"
 // highlights, and commercials would glare. The Intel VPP conversion (scale_vaapi to PQ) puts white
 // at ~2,600 nits and is never used.
 const sdrToHDR10 = "libplacebo=format=p010le:colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv"
+
+// conformHDRMetadata drops an HDR source's static metadata after the baseline's tone-map. It rides
+// the frames as side data through every family's graph, and the mp4 muxer writes it into the sample
+// entry (mdcv/clli), so a tone-mapped film's stsd differed from every SDR item's and the slate's.
+// HEVC outputs strip all side data instead (stripSideData).
+const conformHDRMetadata = "sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL"
 
 // Build returns the pipeline for one source on one host, or ErrRefused.
 func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, error) {
@@ -284,19 +297,56 @@ func Build(host HostProfile, src MediaFormat, out OutputProfile) (Pipeline, erro
 // by a tenth of a second (ffmpeg's -frames is not exact; the consumer trims), first video plus the
 // chosen audio track, MPEG-TS to stdout.
 func (p Pipeline) ItemArgs(input string, seek time.Duration, frames, fps, audioTrack int) []string {
+	args := p.itemInput(input, seek, audioTrack)
+	if frames > 0 {
+		args = append(args, "-frames:v", strconv.Itoa(frames+(fps+9)/10))
+	}
+	args = p.itemEncode(args)
+	return append(args, "-f", "mpegts", "-muxdelay", "0", "-muxpreload", "0", "pipe:1")
+}
+
+// FragmentArgs is the channel packager's command for one slot: fragmented MP4 to stdout, one
+// fragment per closed GOP (one segment), video on a 90 kHz timescale, the slot's channel offset
+// applied. Frames and audio frames are over-asked (ffmpeg's -frames is not exact, spike #1513);
+// the packager trims each track to the slot.
+func (p Pipeline) FragmentArgs(input string, seek, offset time.Duration, frames, audioFrames int64, fps, audioTrack int) []string {
+	args := p.itemInput(input, seek, audioTrack)
+	args = append(args,
+		"-frames:v", strconv.FormatInt(frames+int64((fps+9)/10), 10),
+		"-frames:a", strconv.FormatInt(audioFrames+4, 10))
+	args = p.itemEncode(args)
+	return append(args, "-video_track_timescale", "90000", "-output_ts_offset", seconds(offset),
+		"-f", "mp4", "-movflags", "empty_moov+default_base_moof+frag_keyframe", "pipe:1")
+}
+
+func (p Pipeline) itemInput(input string, seek time.Duration, audioTrack int) []string {
 	args := []string{"-hide_banner", "-nostdin", "-nostats", "-loglevel", "error"}
 	args = append(args, p.PreInput...)
 	if seek > 0 {
 		args = append(args, "-ss", seconds(seek))
 	}
-	args = append(args, "-i", input, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack))
-	if frames > 0 {
-		args = append(args, "-frames:v", strconv.Itoa(frames+(fps+9)/10))
-	}
+	// No chapters: the mp4 muxer writes a film's chapters as a text track, a third track no other
+	// item (or the slate) has.
+	return append(args, "-i", input, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack), "-map_chapters", "-1")
+}
+
+func (p Pipeline) itemEncode(args []string) []string {
 	args = append(args, "-vf", p.VideoFilter)
 	args = append(args, p.VideoEncode...)
-	args = append(args, p.AudioEncode...)
-	return append(args, "-f", "mpegts", "-muxdelay", "0", "-muxpreload", "0", "pipe:1")
+	if p.AudioFilter != "" {
+		args = append(args, "-af", p.AudioFilter)
+	}
+	return append(args, p.AudioEncode...)
+}
+
+// WithGain applies a filler clip's static loudness gain (FillerGain) in the audio stage; 0 dB adds
+// no filter, which is what a library title gets.
+func (p Pipeline) WithGain(gainDB float64) Pipeline {
+	p.AudioFilter = ""
+	if gainDB != 0 {
+		p.AudioFilter = gainFilter(gainDB)
+	}
+	return p
 }
 
 type builder struct {
@@ -385,8 +435,10 @@ func (b *builder) tail() string {
 	}
 	if b.out.HEVC {
 		colour = stripSideData + "," + colour
+	} else {
+		colour += "," + conformHDRMetadata
 	}
-	return fmt.Sprintf("fps=%d,%s", b.out.FPS, colour)
+	return fmt.Sprintf("fps=%d,%s,%s", b.out.FPS, conformSAR, colour)
 }
 
 func (b *builder) curve() ToneCurve { return ParseToneCurve(string(b.out.ToneCurve)) }

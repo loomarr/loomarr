@@ -23,10 +23,12 @@ vaapi
 0:v:0
 -map
 0:a:1
+-map_chapters
+-1
 -frames:v
 753
 -vf
-scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1920:1080:-1:-1,zscale=t=linear:npl=100,tonemap=tonemap=reinhard:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,fps=25,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left,format=nv12,hwupload=extra_hw_frames=64
+scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1920:1080:-1:-1,zscale=t=linear:npl=100,tonemap=tonemap=reinhard:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL,format=nv12,hwupload=extra_hw_frames=64
 -c:v
 h264_qsv
 -b:v

@@ -211,8 +211,12 @@ type playoutResolver struct {
 // survive a process restart; the deterministic channel epoch supplies the matching wall-clock
 // position.
 func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (playout.Airing, string, error) {
-	now := r.now()
+	return r.AiringAt(ctx, channelID, r.now())
+}
 
+// AiringAt is AiringNow at a given instant. The channel packager asks for the item that airs at
+// its timeline's end, up to its run-ahead (~12 s) after now.
+func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now time.Time) (playout.Airing, string, error) {
 	slots, epoch, err := r.acceptedCycle(ctx, channelID)
 	if err != nil {
 		return playout.Airing{}, "", err
@@ -1560,6 +1564,11 @@ func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 	}
 	return playout.Resolve(playout.TierFor(r.tier()), enc, r.capacity(), r.activeChannels())
 }
+
+// WarmProfile loads the host's persisted encoder evidence ahead of the first tune (#1512 G2: its
+// host fingerprint was 0.2 s of a cold first tune). It is cheap (one `ffmpeg -version`); the full
+// encoder measurement still starts only on the first demand.
+func (r *playoutResolver) WarmProfile(ctx context.Context) { r.reuseEncoderEvidence(ctx) }
 
 func (r *playoutResolver) reuseEncoderEvidence(ctx context.Context) {
 	r.detectEvidence.Do(func() {

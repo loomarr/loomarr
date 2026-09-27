@@ -194,9 +194,7 @@ func Judge(r *Report, mode Mode) []Verdict {
 // expectedFailures are thresholds known to fail until the referenced work lands. They are reported
 // with their reference rather than skipped, and a known failure that starts passing fails the run, so
 // the entry is removed the moment it stops being true.
-var expectedFailures = map[string]string{
-	"break/sps_variants": "#1512 phase 2 (feat-1512-p2-channel-packager) adds setsar=1; an 854x480 source otherwise carries SAR 1281:1280 into the SPS",
-}
+var expectedFailures = map[string]string{}
 
 func limitText(t threshold) string {
 	if t.max {

@@ -121,6 +121,8 @@ type HLSManager struct {
 
 	// root is the base temp directory; each remux gets a subdir under it. Removed on Stop.
 	root string
+	// release drops root's owner lock (scratch.go).
+	release func()
 
 	mu sync.Mutex
 	// Keyed by (channel, plan): a baseline (h264) remux and an HEVC-capable remux of the SAME channel
@@ -153,16 +155,10 @@ func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Dura
 	if grace <= 0 {
 		grace = DefaultGrace
 	}
-	// A configured base must exist and be writable; MkdirTemp under it both creates our own
-	// isolated subdir AND proves the base is usable, failing loudly at boot rather than at the
-	// first viewer if the operator pointed it somewhere unwritable. Empty baseDir → the OS temp
-	// dir (MkdirTemp's own default), which is the documented default.
-	if baseDir != "" {
-		// Ensure the operator's chosen directory exists — a fresh install or a tmpfs path may
-		// not yet. Best-effort: MkdirTemp below is the real check and reports the true error.
-		_ = os.MkdirAll(baseDir, 0o755)
-	}
-	root, err := os.MkdirTemp(baseDir, "loomarr-hls-")
+	// A configured base must exist and be writable; creating our own isolated, locked subdir under
+	// it (scratch.go) proves the base is usable, failing loudly at boot rather than at the first
+	// viewer if the operator pointed it somewhere unwritable.
+	root, release, err := newScratchRoot(baseDir, "loomarr-hls-", log)
 	if err != nil {
 		return nil, fmt.Errorf("hls: segment root under %q: %w", baseDir, err)
 	}
@@ -182,6 +178,7 @@ func NewHLSManager(attacher HLSAttacher, ffmpeg, baseDir string, grace time.Dura
 			return probeHLSFirstVideoPTS(ctx, ffmpeg, playlist, observer)
 		},
 		root:    root,
+		release: release,
 		remuxes: map[remuxKey]*hlsRemux{},
 	}, nil
 }
@@ -436,6 +433,9 @@ func (m *HLSManager) StopAll() {
 func (m *HLSManager) Stop() {
 	m.StopAll()
 	_ = os.RemoveAll(m.root)
+	if m.release != nil {
+		m.release()
+	}
 }
 
 // hlsPlaylistName is the live media playlist ffmpeg writes and clients load — a rolling window of

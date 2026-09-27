@@ -443,6 +443,11 @@ func declared() []Setting {
 			Doc:     "Who streams a channel. Internal playout is required for mid-roll breaks (§10) and reports real transcode telemetry. Tunarr remains fully supported — the right answer for hardware that cannot transcode, or an install that already works. Overridable per channel.",
 		},
 		{
+			Key: "playout.packager", Label: "Channel packager (preview)", EnvVar: "PLAYOUT_PACKAGER", Group: GroupPlayout,
+			Kind: KindBool, Default: false, Advanced: true,
+			Doc: "Serve browser playback from the channel packager: one encoder per scheduled item stitched in-process into gapless fMP4 HLS, instead of the continuous transcode and remux. A preview while it is measured; new tunes use the choice, channels already playing keep theirs until they stop.",
+		},
+		{
 			Key: "playout.encoder", Label: "Encoder override", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,
 			Kind: KindString, Default: "", Advanced: true,
 			Doc: "ffmpeg encoder for internal playout (e.g. libx264, h264_vaapi, h264_nvenc). Empty = pick the best one the transcode check found. Set it only to override that choice.",
@@ -495,16 +500,16 @@ func declared() []Setting {
 			Doc: "Where the ffmpeg program lives. The default works whenever ffmpeg is on the system PATH; set it only if yours is somewhere unusual.",
 		},
 		{
-			// Where the in-app HLS player's segments are written (§9.1 Watch, V46). Empty =
-			// the OS temp dir, which is the right default for most installs. An operator points
-			// it at a fast disk or a tmpfs when playing several channels to browsers, or away
-			// from a small root filesystem — the footprint is a rolling window of a few segments
-			// per watched channel, cleaned up when the last viewer leaves. Advanced: a wrong
-			// value degrades in-app playback, never the media-server streams (those never touch
-			// this dir).
+			// Where the in-app HLS player's segments are written (§9.1 Watch, V46). Disk-backed
+			// beside the database by default, NOT the OS temp dir (#1512 spike requirement 8):
+			// the channel packager keeps a DVR window per watched channel (~8 Mbit/s × 15 min,
+			// about 1 GB), which a RAM-backed /tmp would hold in memory. Each process removes its
+			// own scratch root when it stops and sweeps a crashed predecessor's at start.
+			// Advanced: a wrong value degrades in-app playback, never the media-server streams
+			// (those never touch this dir).
 			Key: "playout.hls_dir", Label: "Browser playback cache", EnvVar: "PLAYOUT_HLS_DIR", Group: GroupPlayout,
-			Kind: KindString, Presentation: PresentationPath, Default: "", Advanced: true,
-			Doc: "Directory where in-app browser playback writes its temporary HLS segments (§9.1). Empty uses the system temp directory. Point it at a fast disk (SSD or a RAM-backed tmpfs like /dev/shm) if you watch several channels in the browser at once, or away from a small root filesystem. Only affects in-app playback; your media server's streams never use it. The space used is a few short segments per channel being watched, deleted when you stop watching.",
+			Kind: KindString, Presentation: PresentationPath, DataSubdir: "hls", Advanced: true,
+			Doc: "Directory where in-app browser playback writes its temporary HLS segments (§9.1). Defaults to a directory beside the database (/data/hls in the container). Each channel being watched keeps up to 15 minutes of video here (about 1 GB), deleted when you stop watching, so use a disk, not a RAM-backed tmpfs like /dev/shm. Only affects in-app playback; your media server's streams never use it. Changing it takes effect after restart.",
 		},
 		{
 			// Persistent and deliberately separate from playout.hls_dir: those live fragments are
