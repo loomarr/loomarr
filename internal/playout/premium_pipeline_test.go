@@ -162,7 +162,7 @@ func TestBuild_SDRToHDR10(t *testing.T) {
 func TestBuild_PremiumRefusals(t *testing.T) {
 	hosts := testHosts()
 	sdr := premiumSources()["h264-1080p-sdr-25"]
-	for _, hostName := range []string{"software", "software-hdrcapable", "generic-qsv"} {
+	for _, hostName := range []string{"software", "generic-qsv"} {
 		for _, class := range []FormatClass{Format4KSDR, Format4KHDR} {
 			if _, err := Build(hosts[hostName], sdr, premiumOutput(t, class)); !errors.Is(err, ErrRefused) {
 				t.Errorf("%s/%s: want ErrRefused, got %v", hostName, class, err)

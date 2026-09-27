@@ -351,6 +351,12 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 		curve = s.playoutToneCurve()
 	}
 	spec.ToneCurve = playout.ParseToneCurve(curve)
+	// The software degradation rung this item starts on (#1517): a CPU too slow for the source
+	// degrades the picture instead of refusing it. GPU encoders ignore it; it is set regardless so a
+	// software fallback below inherits it. Until the ResourceBudget's measured software cost lands
+	// (#1520: its ClassCost for the source's class at this output height), this is the unmeasured
+	// start: full quality up to 1080p SDR, keyframes-only for 4K or HDR.
+	spec.SoftwareRung = playout.StartRung(source, playout.RungCost{})
 	// The retry ladder (§9.1 V47) lives in streamChild: it runs the hardware encode, and only if it
 	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
 	// (not pre-built args) is what lets the ladder rebuild the SAME program with a software encoder.
@@ -488,15 +494,16 @@ func (s *Server) streamProgram(
 		}
 	}
 
-	// The pipeline builder (#1512): a source this host cannot transcode in real time (4K HDR on a
-	// software host) is refused, and the card covers the slot. Missing stream facts and stages that
-	// left the GPU are logged, since each costs start latency or CPU.
+	// The pipeline builder (#1512): a source this build cannot produce at all (HDR with no
+	// tone-mapper) is refused, and the card covers the slot; a CPU that is merely too slow degrades
+	// down the software ladder instead (#1517). Missing stream facts and stages that left the GPU are
+	// logged, since each costs start latency or CPU.
 	if transcoding {
 		pipe, err := spec.Pipeline()
 		if err != nil {
-			s.log.Warn("playout: this host cannot transcode the program in real time — showing the card",
+			s.log.Warn("playout: this host cannot transcode the program — showing the card",
 				"channel", channelID, "program", what, "encoder", spec.Profile.Encoder, "err", err)
-			s.cardOrFail(w, r, channelID, target, spec.Profile, what, "this server cannot transcode the program in real time")
+			s.cardOrFail(w, r, channelID, target, spec.Profile, what, "this server cannot transcode the program")
 			return
 		}
 		if len(pipe.MissingFacts) > 0 || len(pipe.Fallbacks) > 0 {

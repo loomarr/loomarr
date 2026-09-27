@@ -191,6 +191,8 @@ type playoutProgramHarnessConfig struct {
 	// reclaimVRAM is the LLM-eviction seam the retry ladder calls (§9.1 V47) — set by ladder tests
 	// to observe that eviction fired; nil for every other test (the ladder then skips that step).
 	ReclaimVRAM func(ctx context.Context)
+	// Tonemap is whether the ffmpeg build can tone-map HDR (zscale + tonemap).
+	Tonemap bool
 }
 
 // playoutProgramHarness owns program-stream routing and lifecycle while its
@@ -226,9 +228,36 @@ func newPlayoutProgramHarness(t *testing.T, config playoutProgramHarnessConfig) 
 			LiveConfig:      func(key string) string { return cfg[key] },
 			ReclaimVRAM:     config.ReclaimVRAM,
 			PlayoutSecret:   func() string { return playoutToken },
+			PlayoutTonemap:  func() bool { return config.Tonemap },
 		})
 	})
 	return &playoutProgramHarness{apiHarness: base}
+}
+
+// A software host airing 4K HDR degrades instead of refusing (#1517): the program streams on the
+// keyframes-only rung, never the card.
+func TestPlayoutProgram_SoftwareHostDegradesHDRInsteadOfShowingTheCard(t *testing.T) {
+	res := &fakeResolver{
+		airing:  playableAiring(0, time.Minute),
+		url:     "http://emby/v/4k-hdr",
+		profile: playout.Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: playout.EncoderSoftware, VideoBitrate: 8000, AudioBitrate: 160},
+		sourceFormat: playout.MediaFormat{VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24000.0 / 1001,
+			PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084", AudioCodec: "eac3", AudioChannels: 6,
+			AudioSampleRate: 48000, Container: "matroska,webm"},
+	}
+	enc := &fakeEncoder{output: "chunk"}
+	srv := newPlayoutProgramHarness(t, playoutProgramHarnessConfig{Resolver: res, Encoder: enc.start, Tonemap: true}).Server
+	resp := getPlayout(t, srv, "/v1/playout/program/ch1?token="+playoutToken)
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	args := strings.Join(enc.args(), " ")
+	if strings.Contains(args, "color=c=black") || !strings.Contains(args, "-i http://emby/v/4k-hdr") {
+		t.Fatalf("a software host showed the card for 4K HDR instead of degrading:\n%s", args)
+	}
+	if !strings.Contains(args, "-skip_frame:v nokey") || !strings.Contains(args, "tonemap") {
+		t.Errorf("unmeasured 4K HDR on software must start keyframes-only, tone-mapped:\n%s", args)
+	}
 }
 
 func TestPlayoutProgramAdmissionFailureDoesNoResolverOrEncoderWork(t *testing.T) {

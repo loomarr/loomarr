@@ -3,6 +3,10 @@
 -nostats
 -loglevel
 error
+-skip_loop_filter:v
+all
+-skip_frame:v
+noref
 -ss
 90.000
 -i
@@ -16,7 +20,7 @@ error
 -frames:v
 753
 -vf
-bwdif=mode=send_frame,scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p,pad=1920:1080:-1:-1,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL
+bwdif=mode=send_frame,tpad=stop_mode=clone:stop_duration=10,scale=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p,pad=1920:1080:-1:-1,fps=25,setsar=1,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL
 -c:v
 libx264
 -preset

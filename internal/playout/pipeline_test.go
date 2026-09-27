@@ -28,12 +28,10 @@ func testHosts() map[string]HostProfile {
 	nvCPU := nvPlacebo
 	nvCPU.Libplacebo = false
 	sw := HostProfile{Family: FamilySoftware, CPUTonemap: true}
-	swHDR := sw
-	swHDR.SoftwareHDR = true
 	return map[string]HostProfile{
 		"vaapi-intel": arc, "vaapi-amd": amd, "vaapi-cputonemap": vaCPU,
 		"nvenc-opencl": nv, "nvenc-libplacebo": nvPlacebo, "nvenc-cputonemap": nvCPU,
-		"software": sw, "software-hdrcapable": swHDR,
+		"software":     sw,
 		"videotoolbox": {Family: FamilyVideoToolbox, DecodeCodecs: vtDecodes, Libplacebo: true, CPUTonemap: true},
 		"generic-qsv":  {Family: FamilyGeneric, Encoder: EncoderQSV, DecodeCodecs: anyCodec, CPUTonemap: true},
 	}
@@ -276,18 +274,6 @@ func TestBuild_MinimalProbeOnlyWithFacts(t *testing.T) {
 	p, _ := Build(host, MediaFormat{}, testOutput)
 	if slices.Contains(p.PreInput, "-probesize") {
 		t.Error("an unmeasured source must keep ffmpeg's probe")
-	}
-}
-
-// TestBuild_SoftwareRefusesHDRItCannotKeepUpWith: 4K HDR on 4 CPUs ran 1.04x (spike §8).
-func TestBuild_SoftwareRefusesHDRItCannotKeepUpWith(t *testing.T) {
-	_, err := Build(testHosts()["software"], testSources()["hevc-4k-hdr-dv"], testOutput)
-	if !errors.Is(err, ErrRefused) {
-		t.Fatalf("want ErrRefused, got %v", err)
-	}
-	p, err := Build(testHosts()["software-hdrcapable"], testSources()["hevc-4k-hdr-dv"], testOutput)
-	if err != nil || !strings.HasPrefix(p.VideoFilter, "scale=w=1280:h=720") {
-		t.Fatalf("a capable host tone-maps at 720 lines first: %q %v", p.VideoFilter, err)
 	}
 }
 
