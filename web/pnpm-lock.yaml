@@ -482,6 +482,9 @@ importers:
       react-native:
         specifier: npm:react-native-tvos@0.86.2-0
         version: react-native-tvos@0.86.2-0(patch_hash=afaab095bfa4adc1b01becc48d211daafeb2f07a5d6e07f8db1d0d581951a028)(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react-native-tvos@0.86.2-0)(react@19.2.3)
+      react-native-web:
+        specifier: 0.21.2
+        version: 0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       typescript:
         specifier: 7.0.2
         version: 7.0.2

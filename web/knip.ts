@@ -85,6 +85,10 @@ const config: KnipConfig = {
       ignoreDependencies: ["@faker-js/faker", "@tanstack/react-query", "@types/react", "msw", "react", "zod"],
     },
     "packages/design-system": {
+      // The Storybook build (apps/web `build-storybook`) resolves `react-native` from this
+      // package's own node_modules. Without its react-native-web the build parses
+      // react-native-tvos' Flow source and fails; no TypeScript import shows that.
+      ignoreDependencies: ["react-native-web"],
       // vitest.config.ts re-exports vitest.universal.config.ts, which has no `test` block, so
       // knip's Vitest plugin adds no test entries; vitest itself runs its default include.
       entry: ["tests/**/*.test.{ts,tsx}"],
