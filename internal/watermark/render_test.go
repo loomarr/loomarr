@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +36,7 @@ func TestSizeFor_EqualArea(t *testing.T) {
 }
 
 func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
-	mask, err := PlateMask("RETRO")
+	mask, err := CallsignMask("RETRO", StylePlate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,6 +80,74 @@ func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
 	again := Render(mask, 1080, testLook)
 	if !bytes.Equal(again.Straight.Pix, bug.Straight.Pix) {
 		t.Error("rendering is not deterministic")
+	}
+}
+
+// THE FOUR STYLES (#1617) share the Plate's geometry, so each is the Plate's letters at the Plate's
+// size and position: Text is the knockout drawn positive with no plate, Outline is Text hollowed
+// to a stroke around each letter, and Small Plate draws the Plate itself.
+func TestCallsignMask_StylesShareThePlatesLetters(t *testing.T) {
+	masks := map[Style]*image.Alpha{}
+	for _, s := range Styles {
+		var err error
+		if masks[s], err = CallsignMask("RETRO", s); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+	plate := masks[StylePlate]
+	for s, m := range masks {
+		if m.Rect != plate.Rect {
+			t.Errorf("%s: %v, want the Plate's %v", s, m.Rect, plate.Rect)
+		}
+	}
+	if !bytes.Equal(masks[StyleSmallPlate].Pix, plate.Pix) {
+		t.Error("Small Plate does not draw the Plate")
+	}
+	if _, err := CallsignMask("RETRO", "fancy"); err == nil {
+		t.Error("an unknown style rendered")
+	}
+	text, outline := masks[StyleText], masks[StyleOutline]
+	var knocked, drawn, inside, hollow, stroke int
+	for i := range plate.Pix {
+		if plate.Pix[i] < 40 && i%plate.Stride > plate.Stride/10 && i%plate.Stride < plate.Stride*9/10 {
+			knocked++ // a letter pixel, inside the plate's padding
+			if text.Pix[i] > 215 {
+				drawn++
+			}
+		}
+		if text.Pix[i] == 255 {
+			inside++
+			if outline.Pix[i] == 0 {
+				hollow++
+			}
+		} else if text.Pix[i] == 0 && outline.Pix[i] > 200 {
+			stroke++
+		}
+	}
+	if knocked == 0 || drawn < knocked*95/100 {
+		t.Errorf("Text draws %d of the Plate's %d knocked-out letter pixels", drawn, knocked)
+	}
+	if mid := text.Pix[text.PixOffset(text.Rect.Dx()/20, text.Rect.Dy()/2)]; mid != 0 {
+		t.Errorf("Text has a plate: alpha %d in its padding", mid)
+	}
+	// The stroke is centred on the letter's edge, so it covers the outer half-stroke of each letter
+	// (~half its pixels at Geist Bold's stem width) and as much again outside.
+	if inside == 0 || hollow < inside/3 || stroke == 0 {
+		t.Errorf("Outline is not a hollow stroke: %d of %d letter pixels hollow, %d stroke pixels outside", hollow, inside, stroke)
+	}
+}
+
+// Small Plate is the Plate at 75% of the channel's size with no shadow (the maintainer's pick,
+// #1617); the other styles keep the channel's look with the soft shadow.
+func TestStyle_AdjustsTheChannelsLook(t *testing.T) {
+	channel := Look{Size: 0.08, Opacity: 0.55, Shadow: true}
+	for _, s := range []Style{StylePlate, StyleText, StyleOutline} {
+		if got := s.Adjust(channel); got != channel {
+			t.Errorf("%s: %+v, want the channel's %+v", s, got, channel)
+		}
+	}
+	if got, want := StyleSmallPlate.Adjust(channel), (Look{Size: 0.06, Opacity: 0.55}); math.Abs(got.Size-want.Size) > 1e-9 || got.Opacity != want.Opacity || got.Shadow {
+		t.Errorf("small-plate: %+v, want %+v", got, want)
 	}
 }
 
