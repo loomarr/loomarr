@@ -31,10 +31,10 @@ type PackagerItem struct {
 }
 
 // PackagerSource is the application's side of the channel packager (#1512 phase 2): the schedule,
-// and the host and output a (channel, plan) encodes with.
+// and the host and output a (channel, plan) encodes with at an output ladder rung (the lease's).
 type PackagerSource interface {
 	ItemAt(ctx context.Context, channelID string, plan EncodePlan, at time.Time) (PackagerItem, error)
-	Output(ctx context.Context, channelID string, plan EncodePlan) (HostProfile, OutputProfile)
+	Output(ctx context.Context, channelID string, plan EncodePlan, rung int) (HostProfile, OutputProfile)
 }
 
 // PackagerHLS serves in-app HLS from one channel packager per (channel, plan): one encoder per
@@ -46,6 +46,9 @@ type PackagerHLS struct {
 	grace        time.Duration
 	source       PackagerSource
 	log          *slog.Logger
+	// budget is the one admission ledger (#1520): one lease per running (channel, plan) packager.
+	// Nil admits everything (tests, builds without internal playout).
+	budget *ResourceBudget
 
 	// life bounds background work that outlives a viewer (the slate encodes); Stop ends it.
 	life    context.Context
@@ -81,6 +84,13 @@ func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Durat
 	return &PackagerHLS{ffmpeg: ffmpeg, root: root, unlock: unlock, grace: grace, source: source, log: log,
 		life: life, endLife: endLife,
 		slates: map[string]*slateEncode{}, channels: map[remuxKey]*packagedChannel{}}, nil
+}
+
+// WithBudget admits every channel packager through the ResourceBudget. Call before the packager
+// serves.
+func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
+	m.budget = budget
+	return m
 }
 
 func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool) (hlsPlaylistLease, error) {
@@ -128,8 +138,23 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool)
 
 func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+	// Admission (#1520): the packager always transcodes, so it books one transcode now, as SDR
+	// (its first item is not resolved until it runs), and each item reclasses the lease to its own
+	// class. ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
+	var lease *Lease
+	if m.budget != nil {
+		var err error
+		if lease, err = m.budget.Admit(ctx, AdmitRequest{Class: ClassSDR}); err != nil {
+			cancel()
+			return nil, err
+		}
+	}
+	rung := 0
+	if lease != nil {
+		rung = lease.Rung()
+	}
 	t0 := time.Now()
-	host, out := m.source.Output(ctx, key.channel, key.plan)
+	host, out := m.source.Output(ctx, key.channel, key.plan, rung)
 	t1 := time.Now()
 	// The tune-in (G2) split before the packager runs: the encode profile. The slate is waited for
 	// only by a slot that needs it.
@@ -138,18 +163,21 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 	dir, err := os.MkdirTemp(m.root, "ch-")
 	if err != nil {
 		cancel()
+		lease.Release()
 		return nil, fmt.Errorf("packager hls: channel dir: %w", err)
 	}
 	log := m.log.With("channel", key.channel, "plan", key.plan.String())
-	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, Log: log}, m.schedule(key, host, out, log), slate)
+	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, Log: log}, m.schedule(key, host, out, lease, log), slate)
 	if err != nil {
 		cancel()
+		lease.Release()
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
 	c := &packagedChannel{p: p, dir: dir, cancel: cancel, done: make(chan struct{})}
 	go func() {
 		defer close(c.done)
+		defer lease.Release() // before done: a restart must not count this run
 		if err := p.Run(ctx); err != nil {
 			log.Error("packager hls: channel packager stopped", "err", err)
 		}
@@ -166,8 +194,9 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 }
 
 // schedule adapts the application's items to the packager: each Open builds the item's command
-// with the phase-1a builder and starts its encoder.
-func (m *PackagerHLS) schedule(key remuxKey, host HostProfile, out OutputProfile, log *slog.Logger) packager.Schedule {
+// with the phase-1a builder and starts its encoder. Each item moves the channel's lease to its
+// class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520).
+func (m *PackagerHLS) schedule(key remuxKey, host HostProfile, out OutputProfile, lease *Lease, log *slog.Logger) packager.Schedule {
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, err := m.source.ItemAt(ctx, key.channel, key.plan, at)
 		if err != nil {
@@ -177,8 +206,15 @@ func (m *PackagerHLS) schedule(key remuxKey, host HostProfile, out OutputProfile
 		if it.Input == "" {
 			return item, nil
 		}
+		itemOut := out
+		if lease != nil {
+			lease.ReclassItem(ctx, ClassOf(it.Format)) // a transcoding lease always moves
+			itemOut.SoftwareRung = lease.SoftwareRung()
+		} else {
+			itemOut.SoftwareRung = StartRung(it.Format, RungCost{})
+		}
 		item.Open = func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
-			pl, args, err := packagerItemArgs(host, out, it, slot)
+			pl, args, err := packagerItemArgs(host, itemOut, it, slot)
 			if err != nil {
 				return nil, err
 			}

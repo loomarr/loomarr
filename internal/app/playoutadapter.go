@@ -111,14 +111,10 @@ type playoutResolver struct {
 	// NEXT program rather than requiring a restart. Each program is a fresh child process, so
 	// "the next program" is at most one program away — which makes hot-apply genuinely cheap
 	// here in a way it would not be for one long-lived encode.
-	tier     func() string
-	encoder  func() string
-	capacity func() int
-	// activeChannels is how many channels are encoding right now, for the load-aware quality
-	// ladder. A FUNC because the session manager and this resolver need each other: the manager
-	// spawns encodes that ask the resolver for a profile, and the profile depends on how many
-	// the manager is running. A func breaks the cycle that a struct field could not.
-	activeChannels func() int
+	tier    func() string
+	encoder func() string
+	// toneCurve is playout.tone_curve: the budget prices HDR by it and the probe measures it.
+	toneCurve func() string
 
 	// pods assembles the channel's commercial break (§10). The SAME PodPreviewer the API and
 	// the reconciler use, so the ad that plays is the one the channel page previewed — §10's
@@ -205,6 +201,10 @@ type playoutResolver struct {
 	// Test seam for the cheap persisted-evidence identity check. Nil fingerprints the real
 	// FFmpeg/GPU/profile and reads the evidence; it starts no encoder trial or full benchmark.
 	loadCapabilityEvidence func(context.Context) (playout.Capacity, bool)
+	// measuredCosts is the class probe's published cost table (probeCapacity); onTonemap receives its
+	// tone-map self-check.
+	measuredCosts atomic.Pointer[playout.MeasuredCosts]
+	onTonemap     func(playout.TonemapCheck)
 }
 
 // AiringNow resolves the channel's current program and its ffmpeg input URL.
@@ -1654,7 +1654,7 @@ func (r *playoutResolver) CopyVideoStart(ctx context.Context, input string, offs
 	return r.probeCopyStart(ctx, input, offset, limit, fps)
 }
 
-func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
+func (r *playoutResolver) Profile(ctx context.Context, rung int) playout.Profile {
 	enc := playout.Encoder(r.encoder())
 	if enc == "" {
 		// A matching persisted result is available to this first tune after only its host fingerprint
@@ -1675,7 +1675,7 @@ func (r *playoutResolver) Profile(ctx context.Context) playout.Profile {
 		}
 		r.warmEncoderDetection(ctx)
 	}
-	return playout.Resolve(playout.TierFor(r.tier()), enc, r.capacity(), r.activeChannels())
+	return playout.Resolve(playout.TierFor(r.tier()), enc, rung)
 }
 
 // WarmProfile loads the host's persisted encoder evidence ahead of the first tune (#1512 G2: its

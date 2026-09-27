@@ -275,7 +275,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
-- **`playout`** · 6 importers · → `diagnostics`, `playout/packager`, `prepared`, `proctree`, `provision`, `schedule`
+- **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `prepared`, `proctree`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
@@ -426,7 +426,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 14**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `images`, `installationlocation`, `invitation`, `media`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 15**
@@ -569,20 +569,6 @@ The first store shape has six structures, written atomically per imported snapsh
 5. `inventory_source_origins` — authority + external item/source identity, protected locator,
    observation/coverage, and presence state.
 6. `inventory_source_measurements` — measured technical facts bound to one exact source revision.
-
-A seventh table sits beside them (beta.8 G7, migration 00123): `inventory_source_analysis` holds what
-Loomarr's own background job measures once per source revision beyond stream facts — a varint-packed
-keyframe index (byte offset + PTS), EBU R128 integrated loudness and true peak, and natural break
-candidates (container chapters first; otherwise black video and silent audio coinciding near each
-quarter-hour due point, away from the opening and closing seconds, each with a confidence and the
-keyframe to cut at). Nothing decodes a whole file: the keyframe index comes from the container's own
-index (Matroska Cues, MP4 sample tables), loudness is an estimate from about twelve short audio
-windows, and every sampled read is capped by a byte budget scaled to the file's bitrate, so a
-multi-gigabyte remux costs a few hundred megabytes at most. It is read through `inventory.AnalysisReader`, is
-deleted when the source revision changes, and rejects a write for a superseded revision. Playout
-never asks the media server or re-probes a file at airtime: an unmeasured source gets one synchronous
-stream-facts probe on first play (which activates the builder's minimal-probe flags), and the rest is
-measured by a single low-priority worker.
 
 The service surface stays small:
 
@@ -10698,10 +10684,8 @@ Loomarr drives Tunarr's **Flex** (time between programs) + **Filler lists**. A c
 
 **Mid-roll is therefore in scope for internal-playout channels** (it was previously out of scope everywhere, because Tunarr was the only backend — see the §20 note struck alongside this change). It carries its own costs, decided deliberately:
 
-- ~~**Detection is opt-in per channel, not library-wide.**~~ **Superseded (beta.8, #1512; maintainer decision 2026-09-26): mid-roll is ON by default on internal-playout channels, with a per-channel off switch, `policy.midRoll` (absent = inherit on, `false` = off).** Detection no longer decodes whole files: G7 measures each source once per revision (container chapters first, else a targeted black-and-silence search around each quarter hour, §5 `inventory_source_analysis`). A scheduling pass that finds an upcoming long programme unmeasured queues it on the one low-priority measurement worker and airs it whole until a later pass finds it measured.
-- **Placement never cuts mid-scene** (`schedule.PlaceMidRollCuts`, pure). The one breaks-per-hour cadence runs through mid-roll and between-programme breaks: a break falls due every `60 / breaksPerHour` minutes of programme runtime since the last break, carried across programme boundaries. Only programmes of 40 minutes or more split (a half-hour sitcom airs whole; an hour drama and every film split). Only **measured** fades are candidates (`OverlapMs > 0`). A container chapter mark is not one by itself: live, a scene-selection chapter sat in a bright picture (YAVG 88.8/93.4 either side, where black reads 16). So G7 keeps a chapter mark only when a one-second check around it (`mediatools.ChapterFadeArgs`) reads black on both sides (YAVG ≤ 24 on 8-bit limited range; measured act breaks read 16.0–20.6, scene chapters 31.4 and up) with no loud programme audio (mean ≤ −25 dB). That audio guard is loose on purpose: real act-break fades measured −28 to −37 dB because an act-out sting plays across the black, so the −35 dB silence floor would reject most of them. A file with chapters of which none pass gets the targeted fade search, like a chapterless file (#1529). Analyses written before this (schema 1) are re-measured. A due break takes the measured fade (confidence ≥ 0.25) nearest its due point within ±5 minutes (`inventory.BreakSearchHalfWindow`, the one constant G7's targeted search also uses, so the two cannot drift), and never leaves a part shorter than 8 minutes, so a fade in the cold open or the closing credits is never used. **A due break with no fade in its window is skipped, never forced;** the next falls due one interval later, and the between-programme rule still applies after the programme's last part. `breaksPerHour = 0`, no filler pool, or a marathon rule (`NoBreaks`) means no mid-roll either.
-- **A split programme airs as parts.** The scheduler emits `Segment` slots (1, 2, …) with `MidRoll` breaks between them; each later part carries `SourceOffsetMs`, the cut. `AiringAt` adds it to `Airing.Offset`, which is the seek both the live chain (`-ss` before `-i`) and the channel packager (`PackagerItem.Seek`) already read, so a part resumes at the exact cut and its encode ends at the next one. Preparation walks per item (`playout.SegmentsBetween`), so a prepared block never plays through a mid-roll break. **A programme is never re-split on air:** every programme on air, or starting within `channels.MidRollFreezeHorizon` (30 min, longer than the 10 min default reconcile interval), keeps the split the accepted cycle gave it (`playout.CommittedSplits` → `schedule.Channel.PinnedCuts`), whether that is whole or in parts. A fade measured mid-programme, or the switch flipping, applies to later airings only.
-- **The guide does not advertise mid-roll breaks.** Breaks stay an internal scheduling detail; a break rendering as its own EPG entry is confusing in the family's TV guide, and empty breaks have already caused exactly that (a bare channel name between episodes). A split programme is therefore **one** entry in the grid, XMLTV and now/next (`playout.BroadcastsBetween`), from its first part's start to its last part's stop. Its stop honestly includes the breaks inside it, as a broadcast EPG's does.
+- **Detection is opt-in per channel, not library-wide.** Finding cut points means decoding the file, which is minutes per title; running it across a whole library to serve a handful of channels is waste. Detect only for titles on channels with mid-roll enabled.
+- **The guide does not advertise mid-roll breaks.** Breaks stay an internal scheduling detail; a break rendering as its own EPG entry is confusing in the family's TV guide, and empty breaks have already caused exactly that (a bare channel name between episodes).
 - **Everything else is unchanged.** Pod assembly, the relaxation ladder, determinism and the shared assembler (below) are backend-agnostic — a mid-roll pod is assembled by the same code, from the same catalog, with the same seed, as a between-program one.
 
 ### AI assist (optional, opt-in)

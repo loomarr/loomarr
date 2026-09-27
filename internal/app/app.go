@@ -51,6 +51,10 @@ type Overrides struct {
 	// reason: run() sets it from LOOMARR_PPROF, and a test can build a handler either way
 	// through the real composition root.
 	Pprof bool
+	// CapacityProbe runs the boot-time playout capacity probe and tone-map self-check (#1512): it
+	// generates test clips and runs ffmpeg for about half a minute. run() sets it; composition tests
+	// leave it off so building an app never starts encoders.
+	CapacityProbe bool
 	// MetricsToken is the Prometheus scrape bearer for /metrics (§7). run() sets it from
 	// LOOMARR_METRICS_TOKEN[_FILE]; empty ⇒ the endpoint refuses (fail closed).
 	MetricsToken string
@@ -184,7 +188,7 @@ func buildHandler(
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,
-		playbackHeadroomFor(channelsBuilt.playoutObserver), owner,
+		playbackHeadroomFor(channelsBuilt.resourceBudget), owner,
 	)
 	healthProbes := connectionTests(set, libraryClient, tmdbClient)
 	// Not a setup connection test: the public address is checked only as a health fact.

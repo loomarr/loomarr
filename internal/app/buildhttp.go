@@ -56,7 +56,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 	playoutObserver, preparedObserver := deps.channels.playoutObserver, deps.channels.preparedObserver
 	playoutCapability := deps.channels.playoutCapability
 	playoutSvc, playoutResolverSvc := deps.channels.playout, deps.channels.playoutResolverService
-	playoutGuideSvc, encodePool := deps.channels.playoutGuide, deps.channels.encodePool
+	playoutGuideSvc := deps.channels.playoutGuide
 	proposalApprover, chBinder := deps.approval.approver, deps.approval.binder
 	var proposalOutlook api.ProposalOutlook
 	if preview, ok := channelSvc.(proposaloutlook.Preview); ok && chBinder != nil && deps.foundation.libraryClient != nil {
@@ -202,6 +202,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		PlayoutTonemap:    playout.TonemapperFor(set.str("playout.ffmpeg_path")),
 		PlayoutGPUTonemap: playout.GPUFiltersFor(set.str("playout.ffmpeg_path")),
 		PlayoutToneCurve:  func() string { return set.str("playout.tone_curve") },
+		// Measured, not a build property: the boot class probe publishes it (probeCapacity).
 		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
 		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction
 		// always targets whatever model is currently resident. Only the local ollama provider holds
@@ -211,9 +212,6 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLM.probe,
-		// The same pool is consumed by live playout here and by the prepared-media planner. Live work
-		// has foreground priority; preparation is cancellable and cannot consume the final slot.
-		EncodePool: encodePool,
 		PlayoutEncoder: func(
 			ctx context.Context, args []string, onProgress func(playout.Progress),
 		) (*playout.Process, error) {

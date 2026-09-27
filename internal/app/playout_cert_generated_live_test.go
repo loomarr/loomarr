@@ -50,7 +50,7 @@ func TestGeneratedCopySourcesKeepTranscodeLaneCold(t *testing.T) {
 				}
 				continue
 			}
-			plan = playout.ConformCopyPlan(format, plan, resolver.Profile(ctx), "h264")
+			plan = playout.ConformCopyPlan(format, plan, resolver.Profile(ctx, 0), "h264")
 			if !plan.CopyVideo || !plan.CopyAudio || format.VideoCodec != "h264" || format.AudioCodec != "aac" || format.AudioChannels != 2 || len(sources.tracks[source].Audio) != 1 {
 				t.Fatalf("generated copy profile not measured/conformant: %+v %+v", plan, format)
 			}

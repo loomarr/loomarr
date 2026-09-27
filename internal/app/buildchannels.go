@@ -45,6 +45,7 @@ type channelBuild struct {
 	playout                api.Playout
 	playoutResolverService api.PlayoutResolver
 	encodePool             *media.EncodePool
+	resourceBudget         *playout.ResourceBudget // nil without internal playout
 	playoutGuide           api.PlayoutGuide
 	playoutResolver        *playoutResolver
 	setResidentVRAM        func(func(context.Context) (float64, string))
@@ -132,6 +133,7 @@ func buildChannels(
 	// media. It is created beside the resolver that owns capability detection, then handed to both
 	// consumers; neither may maintain a private GPU counter.
 	var encodePool *media.EncodePool
+	var resourceBudget *playout.ResourceBudget
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
 	// not play.
@@ -288,6 +290,8 @@ func buildChannels(
 			processDiagnostics: processDiagnostics,
 			storageGovernor:    storageGovernor,
 			metrics:            metricRecorder,
+			capacityProbe:      ov.CapacityProbe,
+			startup:            ov.Startup,
 		})
 		if err != nil {
 			return channelBuild{}, err
@@ -296,6 +300,7 @@ func buildChannels(
 		playoutCapability = playoutBuilt.capability
 		playoutSvc, playoutResolverSvc = playoutBuilt.service, playoutBuilt.resolverService
 		encodePool, playoutGuideSvc = playoutBuilt.encodePool, playoutBuilt.guide
+		resourceBudget = playoutBuilt.budget
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
 		setResidentVRAM = playoutBuilt.setResidentVRAM
 		chEvery := set.dur("channel.reconcile_every")
@@ -316,7 +321,7 @@ func buildChannels(
 		playoutObserver:   playoutObserver,
 		playoutCapability: playoutCapability,
 		preparedObserver:  preparedObserver, playout: playoutSvc,
-		playoutResolverService: playoutResolverSvc, encodePool: encodePool,
+		playoutResolverService: playoutResolverSvc, encodePool: encodePool, resourceBudget: resourceBudget,
 		playoutGuide: playoutGuideSvc, playoutResolver: playoutRes,
 		setResidentVRAM: setResidentVRAM,
 		channelNumbers:  chanNumbers,

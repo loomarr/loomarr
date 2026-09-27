@@ -117,11 +117,20 @@ type PlayoutObserver interface {
 	// Reported from the per-program path rather than captured at session start, because the
 	// session's own ffmpeg is the `-c copy` parent and never encodes: its speed would measure
 	// remuxing and its encoder would be copy. Encoding happens in the per-program children,
-	// and the load-aware Resolve can legitimately pick differently between programs.
-	ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, p playout.Progress)
-	// AdmitProgram changes the live session's real transcode cost before a child starts. It
-	// prevents zero-cost prepared sessions from oversubscribing when they later fall back live.
-	AdmitProgram(channelID string, target playout.EncodePlan, transcoding bool) bool
+	// and a session can move between copy and transcode programs.
+	ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, class playout.StreamClass, p playout.Progress)
+	// ObserveProgramCost reports a finished live programme: its encoder CPU time over the media it
+	// produced refines the class's measured CPU cost in the ResourceBudget (#1512).
+	ObserveProgramCost(channelID string, target playout.EncodePlan, class playout.StreamClass, cpu, media time.Duration)
+	// AdmitProgram reclasses the live session's budget lease to the program's stream class
+	// (playout.ClassCopy for a copy) before a child starts. It prevents zero-cost prepared sessions
+	// from oversubscribing when they later fall back live.
+	AdmitProgram(ctx context.Context, channelID string, target playout.EncodePlan, class playout.StreamClass) bool
+	// SessionRung is the quality rung the session was admitted at, pinned for its lifetime (#1512);
+	// false when the session does not exist.
+	SessionRung(channelID string, target playout.EncodePlan) (int, bool)
+	// Budget snapshots the ResourceBudget: capacity terms, per-class costs and what is in use.
+	Budget() playout.BudgetSnapshot
 }
 
 // authorizePlayout checks the device token, writing a response and returning false on failure.

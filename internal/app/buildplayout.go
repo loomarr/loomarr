@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"runtime"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
@@ -40,6 +42,8 @@ type playoutBuild struct {
 	resolver          *playoutResolver
 	backendController *backendtransition.Controller
 	setResidentVRAM   func(func(context.Context) (float64, string))
+	// budget is the one admission ledger; filler's media work waits on it (playbackHeadroomFor).
+	budget *playout.ResourceBudget
 }
 
 type playoutDeps struct {
@@ -68,6 +72,10 @@ type playoutDeps struct {
 	processDiagnostics *diagnostics.ProcessManager
 	storageGovernor    *storagegovernor.Governor
 	metrics            *metrics.Recorder
+	// capacityProbe starts the boot capacity probe (Overrides.CapacityProbe); startup receives its
+	// tone-map self-check.
+	capacityProbe bool
+	startup       *diagnostics.Startup
 }
 
 // programBase is the session parent's own-programme address, read live so a hot-applied
@@ -154,12 +162,34 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		}
 		return effectivePlayoutCapacity(measured)
 	}
+	// The ResourceBudget (#1512 G5) is the one admission ledger for sessions, programs and the
+	// prepared pool. Its facts are re-read per admission: the cgroup quota or CPU count, the CPU
+	// allowance settings, and the measured capacity above (operator cap and VRAM shading included).
+	resourceBudget := playout.NewResourceBudget(func() playout.BudgetFacts {
+		hardware := playoutRes != nil && playoutRes.detectReady.Load() &&
+			!playout.IsSoftwareEncoder(playoutRes.publishedEncoder())
+		var costs *playout.MeasuredCosts
+		if playoutRes != nil {
+			enc := playout.Encoder(set.str("playout.encoder"))
+			if enc == "" {
+				enc = playoutRes.publishedEncoder()
+			}
+			costs = playoutRes.CostsFor(enc)
+		}
+		facts := playoutBudgetFacts(
+			playout.ReadHostCPU(os.DirFS("/"), runtime.NumCPU()), hardware, playoutBudget(), costs,
+			effectivePlayoutCapacity, playout.TierFor(set.str("playout.quality_tier")),
+			set.intv("playout.gpu_cpu_millicores"), set.intv("playout.app_reserve_millicores"),
+		)
+		facts.ToneCurve = playoutRes.ToneCurve() // HDR capacity follows the operator's curve
+		return facts
+	}).WithLog(log)
 	playoutMgr := playout.NewManager(
 		playoutSpawner(set.str("playout.ffmpeg_path"),
 			deps.programBase(set),
 			playoutTokenFn, log, deps.processDiagnostics,
 			func() playout.BlockSource { return preparedBlockSource },
-			func(ctx context.Context) int { return playoutRes.Profile(ctx).AudioBitrate },
+			func(ctx context.Context) int { return playoutRes.Profile(ctx, 0).AudioBitrate },
 			func(ctx context.Context, channelID string, plan playout.EncodePlan) bool {
 				return preparedMPEGTSReady != nil && preparedMPEGTSReady(ctx, channelID, plan)
 			},
@@ -167,7 +197,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		playoutBudget,
 		playout.DefaultGrace,
 		log,
-	).WithObserver(deps.metrics).WithCostEstimator(func(
+	).WithBudget(resourceBudget).WithObserver(deps.metrics).WithCostEstimator(func(
 		ctx context.Context, channelID string, plan playout.EncodePlan,
 	) int {
 		if preparedMPEGTSReady != nil && preparedMPEGTSReady(ctx, channelID, plan) {
@@ -179,6 +209,14 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// previous cycle. The next tune starts from the new wall-clock position; peer
 	// Postgres replicas receive the same cutover through durable invalidations.
 	channelEngine.WithScheduleInvalidator(playoutMgr)
+	// Host measurements live in playout.state_dir; the encoder evidence moves there from the prepared
+	// library once (#1512), so an upgrade reuses its verified measurement instead of re-benchmarking.
+	stateDir := set.str("playout.state_dir")
+	if moved, merr := playout.MigrateCapabilityEvidence(set.str("playout.prepared_dir"), stateDir); merr != nil {
+		log.Warn("playout: could not move the encoder measurement to the state directory; it will be re-measured", "err", merr)
+	} else if moved {
+		log.Info("playout: moved the encoder measurement to the state directory", "dir", stateDir)
+	}
 	playoutRes = &playoutResolver{
 		// The library client with the server-path cache (#1456): airtime input resolution reads
 		// the remembered path locally and only asks the media server on a cold or stale entry.
@@ -202,11 +240,12 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		channels: st,
 		// The store, narrowed to the single derived-column write ComputeChannelCodec makes
 		// (§9.1 V50): persist the majority broadcast codec measured from the channel's content.
-		codecs:   st,
-		cycles:   newCycleCache(time.Now),
-		tier:     func() string { return set.str("playout.quality_tier") },
-		encoder:  func() string { return set.str("playout.encoder") },
-		capacity: playoutBudget,
+		codecs:  st,
+		cycles:  newCycleCache(time.Now),
+		tier:    func() string { return set.str("playout.quality_tier") },
+		encoder: func() string { return set.str("playout.encoder") },
+		// The operator's HDR curve: the probe measures it and the budget prices HDR by it.
+		toneCurve: func() string { return set.str("playout.tone_curve") },
 		// fillerDir belongs to the immutable generation layout. Changing storage roots
 		// is applied only after the generation drains and rebuilds (§10); `pods` is
 		// assigned after the pod adapter is built further down.
@@ -214,10 +253,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// The capability probe runs lazily on the first program that needs it, when
 		// playout.encoder is unset — so a box with a working GPU uses it instead of
 		// silently falling back to software.
-		ffmpegPath: func() string { return set.str("playout.ffmpeg_path") },
-		capabilityRoot: func() string {
-			return set.str("playout.prepared_dir")
-		},
+		ffmpegPath:     func() string { return set.str("playout.ffmpeg_path") },
+		capabilityRoot: func() string { return stateDir },
 		// GPU name for the encoder chooser's vendor-native hint (Detect). Read via the LLM
 		// package's thin nvidia-smi wrapper — the same GPU signal the rest of the app probes —
 		// so playout picks NVENC on an NVIDIA card rather than young cross-vendor Vulkan. Called
@@ -242,15 +279,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// applies without a restart — the same hot-apply posture as audioLanguage.
 		pathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
 		log:     log,
-		// ⚠ Set HERE, in the literal, rather than back-patched after the manager exists.
-		// It is called UNGUARDED (playout.Resolve → r.activeChannels()), so a missing
-		// assignment is a nil-func panic on the quality-ladder path — i.e. when a viewer
-		// tunes in, which is the worst place to discover it. Verified: dropping the old
-		// back-patch broke no test.
-		//
-		// There was never a construction cycle to break: the manager does not reference
-		// the resolver, so the resolver simply had to be built AFTER it.
-		activeChannels: playoutMgr.ActiveCount,
 	}
 	// Loomarr measures each source itself, once per revision, so playout never asks the media
 	// server or re-probes a file at airtime (beta.8 G7). One worker, background priority, tied to
@@ -331,11 +359,13 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 
 	encodePool = newPreparedEncodePool(
 		func() playout.Encoder { return playout.Encoder(set.str("playout.encoder")) },
-		func() int { return playoutRes.HWEncodeSlots(rootCtx) },
+		func() int { return playoutRes.HWEncodeSlots(rootCtx) }, // runs the lazy capability probe
 		func(measured int) int {
-			n := effectivePlayoutCapacity(measured)
-			log.Debug("playout: hardware encode admission", "effective_hw_slots", n)
-			return n
+			if measured <= 0 {
+				return 0
+			}
+			// The pool is the budget's lowest-priority client: its capacity is the budget's.
+			return resourceBudget.BackgroundSlots()
 		},
 	).WithMemoryGate(encodeMemoryGate(
 		media.HostMemAvailable,
@@ -343,6 +373,24 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		func() int { return set.intv("playout.encode_memory_mb") },
 		playoutRes.EncodeHostBytes,
 	))
+	resourceBudget.WithEncodePool(encodePool)
+
+	// The capacity probe (#1512 G5/G11) runs at boot, off the critical path: until it publishes, the
+	// budget keeps the whole-stream measurement. Its tone-map self-check reports to Current Health.
+	if deps.capacityProbe {
+		playoutRes.onTonemap = func(check playout.TonemapCheck) {
+			if obs, ok := tonemapObservation(check); ok {
+				deps.startup.Observe(diagnostics.StartupCheckPlayoutTonemap, obs)
+			}
+		}
+		deps.startup.Complete(diagnostics.StartupCheckPlayoutTonemap, diagnostics.StartupSkipped,
+			"checked by Current Health once the capacity probe finishes", "/settings/system/playback", "")
+		// Background work: the probe yields to a viewer the moment a live transcode is admitted.
+		owner.goRun(func(ctx context.Context) { playoutRes.probeCapacity(ctx, resourceBudget) })
+	} else {
+		deps.startup.Complete(diagnostics.StartupCheckPlayoutTonemap, diagnostics.StartupSkipped,
+			"capacity probe disabled", "", "")
+	}
 
 	// Prepared playout is persistent control-plane work feeding the SAME Origin as the live
 	// fallback. Construction may fail on an unwritable volume without taking live TV down; the
@@ -423,7 +471,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			channelID := blockRequest.ChannelID
 			plan := blockRequest.Plan
 			block, err := rawPreparedBlockSource(ctx, blockRequest)
-			if err == nil && block.Content != nil && !playoutMgr.AdmitProgram(channelID, plan, false) {
+			if err == nil && block.Content != nil && !playoutMgr.AdmitProgram(ctx, channelID, plan, playout.ClassCopy) {
 				_ = block.Content.Close()
 				return playout.Block{}, playout.ErrAtCapacity
 			}
@@ -469,6 +517,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	if perr != nil {
 		log.Warn("internal playout: channel packager unavailable", "err", perr)
 	} else {
+		packagedHLS.WithBudget(resourceBudget) // one lease per running channel packager (#1520)
 		owner.addStop(func(context.Context) error {
 			packagedHLS.Stop()
 			return nil
@@ -525,8 +574,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			return playoutBuild{}, fmt.Errorf("start postgres playout lifecycle: %w", err)
 		}
 	}
-	// The ladder inputs (tier/encoder/capacity/activeChannels) are called UNGUARDED by
-	// Profile, so leaving one unset is a panic when a viewer tunes in. `Profile` is
+	// The ladder inputs (tier/encoder) are called UNGUARDED by Profile, so leaving one
+	// unset is a panic when a viewer tunes in. `Profile` is
 	// invoked by the spawner rather than over HTTP. Build captures the concrete resolver
 	// on the returned generation, which lets package tests assert the real wiring without
 	// mutable package state crossing concurrent builds.
@@ -557,6 +606,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		resolverService: playoutResolverSvc, encodePool: encodePool, guide: playoutGuideSvc,
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },
+		budget:          resourceBudget,
 	}, nil
 }
 
@@ -589,6 +639,36 @@ func encodeMemoryGate(
 			return max(measured(), defaultEncodeHostBytes)
 		},
 	}
+}
+
+// playoutBudgetFacts composes one admission's facts. Once the class probe has measured this host
+// (costs), admission is per class and rung, capped by the probed encoder session limit, and the
+// operator cap and VRAM shading apply to the measured ceiling. Until then each transcode costs one
+// of the measured whole-stream capacity (operator cap and VRAM shading included), and a host that
+// measured at most one stream starts sessions on the bottom rung.
+func playoutBudgetFacts(
+	host playout.HostCPU, hardware bool, measured int, costs *playout.MeasuredCosts, effective func(int) int,
+	tier playout.Tier, gpuMillicores, appReserveMillicores int,
+) playout.BudgetFacts {
+	rungs := playout.LadderHeights(tier)
+	facts := playout.BudgetFacts{
+		Hardware:         hardware,
+		CPUAllowance:     playout.PlayoutCPUAllowance(host, hardware, gpuMillicores, appReserveMillicores),
+		CPUSource:        host.Source,
+		Rungs:            rungs,
+		MeasuredCapacity: measured,
+	}
+	if costs != nil && len(costs.Costs) > 0 {
+		facts.Costs, facts.SessionLimit = costs.Costs, costs.SessionLimit
+		if ceiling := facts.Ceiling(); ceiling > 0 && effective != nil {
+			facts.OperatorCap = effective(ceiling)
+		}
+		return facts
+	}
+	if measured <= 1 {
+		facts.FirstRung = len(rungs) - 1
+	}
+	return facts
 }
 
 func newPreparedEncodePool(

@@ -170,6 +170,7 @@ const (
 	StartupCheckLLM              = "llm"
 	StartupCheckTMDB             = "tmdb"
 	StartupCheckPublicURL        = "public_url"
+	StartupCheckPlayoutTonemap   = "playout_tonemap"
 
 	startupCompleteEvent  = "startup.complete"
 	healthTransitionEvent = "health.transition"

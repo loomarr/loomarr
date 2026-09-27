@@ -76,13 +76,6 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 	if telemetry.Capacity != 3 {
 		t.Errorf("admission capacity = %d, want measured capacity 3", telemetry.Capacity)
 	}
-
-	// Three committed transcodes on a measured-three box take Balanced's safe bottom rung.
-	// If Profile reads the configured 9 instead, it incorrectly selects the top 5000 kbit/s rung.
-	r.activeChannels = func() int { return 3 }
-	if got := r.Profile(context.Background()).VideoBitrate; got != 1800 {
-		t.Errorf("full-box profile bitrate = %d, want bottom-rung 1800", got)
-	}
 }
 
 func TestPreparedEncodePoolUsesEffectiveCapacity(t *testing.T) {
@@ -167,7 +160,6 @@ func TestPlayoutResolver_ProfileUsesMatchingEvidenceBeforeAsyncValidation(t *tes
 	validationRelease := make(chan struct{})
 	r := &playoutResolver{
 		tier: func() string { return "balanced" }, encoder: func() string { return "" },
-		capacity: func() int { return 4 }, activeChannels: func() int { return 0 },
 		loadCapabilityEvidence: func(context.Context) (playout.Capacity, bool) {
 			loadCalls++
 			return playout.Capacity{Chosen: playout.EncoderNVENC, MaxChannels: 4}, true
@@ -180,7 +172,7 @@ func TestPlayoutResolver_ProfileUsesMatchingEvidenceBeforeAsyncValidation(t *tes
 	}
 
 	before := time.Now()
-	profile := r.Profile(t.Context())
+	profile := r.Profile(t.Context(), 0)
 	if elapsed := time.Since(before); elapsed > 100*time.Millisecond {
 		t.Fatalf("Profile waited %s for asynchronous capability validation", elapsed)
 	}
@@ -432,27 +424,21 @@ func newTestLibraryClient(server *testkit.MediaServer) *library.Client {
 
 // ⚠ **THE QUALITY LADDER'S DEPENDENCIES ARE CALLED UNGUARDED.**
 //
-// `Profile` reaches `r.tier()`, `r.encoder()`, `r.capacity()` and `r.activeChannels()` with
-// no nil checks, so any one of them missing is a panic on the LIVE playout path — when a
-// viewer tunes in, which is the worst place to find out.
-//
-// That was not hypothetical: `activeChannels` used to be back-patched onto the resolver
-// after construction, and deleting the assignment broke NO test. It is now set in the
-// constructor literal, and this is the test that notices if it stops being.
+// `Profile` reaches `r.tier()` and `r.encoder()` with no nil checks, so either one missing is
+// a panic on the LIVE playout path — when a viewer tunes in, which is the worst place to find
+// out. (The rung is the session's ResourceBudget lease, passed in; it has no resolver input.)
 func TestPlayoutResolver_ProfileNeedsEveryLadderInput(t *testing.T) {
 	// A resolver wired the way Build wires it — every ladder input present.
 	full := func() *playoutResolver {
 		return &playoutResolver{
-			tier:           func() string { return "720p" },
-			encoder:        func() string { return "libx264" },
-			capacity:       func() int { return 4 },
-			activeChannels: func() int { return 1 },
+			tier:    func() string { return "720p" },
+			encoder: func() string { return "libx264" },
 		}
 	}
 
 	// The positive case first, so the negatives below are proven to be panics rather than a
 	// resolver that never works.
-	if got := full().Profile(context.Background()); got.Encoder == "" {
+	if got := full().Profile(context.Background(), 0); got.Encoder == "" {
 		t.Fatalf("Profile with every input wired returned %+v, want a usable profile", got)
 	}
 
@@ -463,8 +449,6 @@ func TestPlayoutResolver_ProfileNeedsEveryLadderInput(t *testing.T) {
 		name string
 		bust func(*playoutResolver)
 	}{
-		{"activeChannels", func(r *playoutResolver) { r.activeChannels = nil }},
-		{"capacity", func(r *playoutResolver) { r.capacity = nil }},
 		{"tier", func(r *playoutResolver) { r.tier = nil }},
 		{"encoder", func(r *playoutResolver) { r.encoder = nil }},
 	} {
@@ -478,7 +462,7 @@ func TestPlayoutResolver_ProfileNeedsEveryLadderInput(t *testing.T) {
 						tc.name)
 				}
 			}()
-			_ = r.Profile(context.Background())
+			_ = r.Profile(context.Background(), 0)
 		})
 	}
 }
@@ -517,8 +501,6 @@ func TestBuild_WiresEveryLadderInput(t *testing.T) {
 	}{
 		{"tier", r.tier != nil},
 		{"encoder", r.encoder != nil},
-		{"capacity", r.capacity != nil},
-		{"activeChannels", r.activeChannels != nil},
 	} {
 		if !tc.set {
 			t.Errorf("Build left %s unset — Profile calls it unguarded, so a viewer "+
@@ -635,7 +617,6 @@ func TestPlayoutResolver_WarmProfileTakesTheEvidenceOffTheFirstTune(t *testing.T
 	var loadCalls atomic.Int32
 	r := &playoutResolver{
 		tier: func() string { return "balanced" }, encoder: func() string { return "" },
-		capacity: func() int { return 4 }, activeChannels: func() int { return 0 },
 		detectContext: t.Context(),
 		loadCapabilityEvidence: func(context.Context) (playout.Capacity, bool) {
 			loadCalls.Add(1)
@@ -647,7 +628,7 @@ func TestPlayoutResolver_WarmProfileTakesTheEvidenceOffTheFirstTune(t *testing.T
 	r.WarmProfile(t.Context())
 
 	before := time.Now()
-	profile := r.Profile(t.Context())
+	profile := r.Profile(t.Context(), 0)
 	if elapsed := time.Since(before); elapsed > 50*time.Millisecond || loadCalls.Load() != 1 {
 		t.Fatalf("first Profile after WarmProfile took %s with %d evidence loads; want no load on the tune",
 			elapsed, loadCalls.Load())

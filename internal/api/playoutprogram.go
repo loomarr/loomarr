@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
@@ -37,9 +38,9 @@ type PlayoutResolver interface {
 	// "nothing is airing" — an empty lineup, or one where nothing has landed yet — which the
 	// caller renders as the offline card rather than as an error.
 	AiringNow(ctx context.Context, channelID string) (playout.Airing, string, error)
-	// Profile is the encode profile to normalize this program to, resolved against measured
-	// capacity and current load (§9.1 quality ladder).
-	Profile(ctx context.Context) playout.Profile
+	// Profile is the encode profile to normalize this program to at a quality-ladder rung: the rung
+	// the session's ResourceBudget lease was admitted at (#1512), pinned for the session.
+	Profile(ctx context.Context, rung int) playout.Profile
 	// AudioTrackFor picks which audio track to play from a source — the `N` in `-map 0:a:N`,
 	// honouring the operator's preferred language (§9.1). Best-effort: 0 (the file's first
 	// track) whenever the preference cannot be resolved, so a probe failure costs the language
@@ -181,7 +182,11 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	// canonical token (safe PlanBaseline default on absent). Parsed once here so the offline-card path
 	// (which also spawns a child) carries it too.
 	encPlan := playout.ParseEncodePlan(r.URL.Query().Get(playoutPlanParam))
-	profile := s.playoutResolver.Profile(r.Context())
+	rung := 0
+	if s.playoutObserver != nil {
+		rung, _ = s.playoutObserver.SessionRung(channelID, encPlan)
+	}
+	profile := s.playoutResolver.Profile(r.Context(), rung)
 	broadcastCodec := playout.BroadcastVideoCodec(encPlan, s.playoutResolver.ChannelCodec(r.Context(), channelID))
 	if pinned, ok := playout.ParseBroadcastFormat(r.URL.Query().Get(PlayoutBroadcastFormatQuery)); ok {
 		profile = pinned.Apply(profile)
@@ -353,9 +358,9 @@ func (s *Server) programHandler(w http.ResponseWriter, r *http.Request) {
 	spec.ToneCurve = playout.ParseToneCurve(curve)
 	// The software degradation rung this item starts on (#1517): a CPU too slow for the source
 	// degrades the picture instead of refusing it. GPU encoders ignore it; it is set regardless so a
-	// software fallback below inherits it. Until the ResourceBudget's measured software cost lands
-	// (#1520: its ClassCost for the source's class at this output height), this is the unmeasured
-	// start: full quality up to 1080p SDR, keyframes-only for 4K or HDR.
+	// software fallback below inherits it. This route keeps the unmeasured start (full quality up to
+	// 1080p SDR, keyframes-only for 4K or HDR); the channel packager takes the ResourceBudget's
+	// measured rung instead (Lease.SoftwareRung, #1520).
 	spec.SoftwareRung = playout.StartRung(source, playout.RungCost{})
 	// The retry ladder (§9.1 V47) lives in streamChild: it runs the hardware encode, and only if it
 	// produces NO output does it reclaim VRAM + retry, then fall back to software. Passing the spec
@@ -434,13 +439,13 @@ func (s *Server) serveCard(
 		// Keep fallback cards unlabelled until a real name/number is explicitly supplied.
 		return playout.OfflineCardArgs(p, font, title, "", duration, clock)
 	}
-	if c, _ := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, true, card(profile.Encoder)); c != nil {
+	if c, _ := s.startChild(r.Context(), channelID, encPlan, profile.Encoder, playout.ClassSDR, card(profile.Encoder)); c != nil {
 		s.pipeChild(w, r, channelID, "offline card", "", c)
 		return true
 	}
 	softwareEncoder := playout.SoftwareEncoderFor(profile.Encoder)
 	if profile.Encoder != softwareEncoder {
-		if c, _ := s.startChild(r.Context(), channelID, encPlan, softwareEncoder, true, card(softwareEncoder)); c != nil {
+		if c, _ := s.startChild(r.Context(), channelID, encPlan, softwareEncoder, playout.ClassSDR, card(softwareEncoder)); c != nil {
 			s.pipeChild(w, r, channelID, "offline card", "", c)
 			return true
 		}
@@ -477,21 +482,12 @@ func (s *Server) streamProgram(
 	}
 	softwareEncoder := playout.SoftwareEncoderFor(spec.Profile.Encoder)
 	wantsHardware := transcoding && !playout.IsSoftwareEncoder(spec.Profile.Encoder)
-
-	// ADMISSION, up front (§9.1 V47). A hardware transcode must hold a GPU slot; when the encoder is
-	// saturated we choose software NOW rather than piling on and stalling. A copy needs no slot (it
-	// does no encoding); a box with no hardware encoder reports zero slots and always lands here on
-	// software. The reactive evict-and-retry below stays only as a safety net for a slot-holder whose
-	// hardware encode still fails.
-	if wantsHardware && s.encodePool != nil {
-		if release, ok := s.encodePool.AcquireForeground(r.Context()); ok {
-			defer release()
-		} else {
-			s.log.Info("playout: GPU encode slots full — using software for this program",
-				"channel", channelID, "program", what, "wanted", spec.Profile.Encoder)
-			spec.Profile.Encoder = softwareEncoder
-			wantsHardware = false
-		}
+	// ADMISSION is the session's ResourceBudget lease (#1512, #1505): startChild reclasses it to this
+	// program's stream class, and a hardware lease already holds the GPU encode-pool slot. There is
+	// no second counter here that could disagree with the session's admission.
+	class := playout.ClassCopy
+	if transcoding {
+		class = playout.ClassOf(spec.Source)
 	}
 
 	// The pipeline builder (#1512): a source this build cannot produce at all (HDR with no
@@ -513,7 +509,7 @@ func (s *Server) streamProgram(
 	}
 
 	// Attempt 1: as resolved (hardware when a slot was granted, else software).
-	c, decodeFault := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec))
+	c, decodeFault := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, class, playout.ProgramArgs(spec))
 	if c != nil {
 		s.pipeChild(w, r, channelID, what, source, c)
 		return
@@ -534,7 +530,7 @@ func (s *Server) streamProgram(
 	if decodeFault && wantsHardware && !spec.SoftwareDecode {
 		s.rememberDecodeFault(channelID, what, source)
 		spec.SoftwareDecode = true
-		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
+		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, class, playout.ProgramArgs(spec)); c != nil {
 			s.pipeChild(w, r, channelID, what, source, c)
 			return
 		}
@@ -548,7 +544,7 @@ func (s *Server) streamProgram(
 		next, _ := spec.Pipeline()
 		s.log.Warn("playout: HDR tone-map produced nothing — retrying with the next tone-mapper",
 			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder, "fallbacks", next.Fallbacks)
-		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
+		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, class, playout.ProgramArgs(spec)); c != nil {
 			s.pipeChild(w, r, channelID, what, source, c)
 			return
 		}
@@ -565,7 +561,7 @@ func (s *Server) streamProgram(
 		s.log.Info("playout: hardware encode produced nothing despite a free slot — reclaiming GPU memory and retrying",
 			"channel", channelID, "program", what, "encoder", spec.Profile.Encoder)
 		s.reclaimVRAM(r.Context())
-		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, transcoding, playout.ProgramArgs(spec)); c != nil {
+		if c, _ := s.startChild(r.Context(), channelID, target, spec.Profile.Encoder, class, playout.ProgramArgs(spec)); c != nil {
 			s.pipeChild(w, r, channelID, what, source, c)
 			return
 		}
@@ -579,7 +575,7 @@ func (s *Server) streamProgram(
 	if _, refused := softSpec.Pipeline(); spec.Profile.Encoder != softwareEncoder && refused == nil {
 		s.log.Warn("playout: falling back to software encoding for this program",
 			"channel", channelID, "program", what, "from", spec.Profile.Encoder, "to", softwareEncoder)
-		if c, _ := s.startChild(r.Context(), channelID, target, softwareEncoder, transcoding, playout.ProgramArgs(softSpec)); c != nil {
+		if c, _ := s.startChild(r.Context(), channelID, target, softwareEncoder, class, playout.ProgramArgs(softSpec)); c != nil {
 			s.pipeChild(w, r, channelID, what, source, c)
 			return
 		}
@@ -612,10 +608,12 @@ func (s *Server) cardOrFail(
 // the HTTP response knowing bytes will flow.
 type liveChild struct {
 	proc   *playout.Process
-	first  []byte             // the first chunk, already read — must be written before draining proc
-	enc    playout.Encoder    // for telemetry
-	target playout.EncodePlan // for telemetry
-	cancel context.CancelFunc // ties the child to the request; pipeChild owns calling it
+	first  []byte              // the first chunk, already read — must be written before draining proc
+	enc    playout.Encoder     // for telemetry
+	target playout.EncodePlan  // for telemetry
+	cancel context.CancelFunc  // ties the child to the request; pipeChild owns calling it
+	class  playout.StreamClass // the programme's cost class, for live cost refinement
+	media  *atomic.Int64       // output produced so far (ms), from ffmpeg progress
 }
 
 // startChild spawns one encoder and PEEKS its first chunk to prove it produces output before any
@@ -624,12 +622,12 @@ type liveChild struct {
 // through the session Manager: this is one private child per demuxer request whose whole job is to
 // END so the parent advances (routing it through the session map would collide on the channel key).
 func (s *Server) startChild(
-	ctx context.Context, channelID string, target playout.EncodePlan, enc playout.Encoder, transcoding bool, args []string,
+	ctx context.Context, channelID string, target playout.EncodePlan, enc playout.Encoder, class playout.StreamClass, args []string,
 ) (c *liveChild, decodeFault bool) {
 	if ctx.Err() != nil {
 		return nil, false
 	}
-	if s.playoutObserver != nil && !s.playoutObserver.AdmitProgram(channelID, target, transcoding) {
+	if s.playoutObserver != nil && !s.playoutObserver.AdmitProgram(ctx, channelID, target, class) {
 		s.log.Info("playout: program waiting for transcode capacity", "channel", channelID, "target", target.String())
 		return nil, false
 	}
@@ -644,11 +642,13 @@ func (s *Server) startChild(
 	cctx = diagnostics.WithProcessSpec(cctx, processSpec)
 
 	enc2 := enc // capture for the progress closure
+	media := new(atomic.Int64)
 	onProgress := func(p playout.Progress) {
+		media.Store(p.OutTimeMS)
 		if s.playoutObserver != nil {
 			// Admission already transitioned to this real cost before spawn. Reporting repeats that
 			// transition idempotently while recording the child encoder and progress (§9.1 V49).
-			s.playoutObserver.ReportProgram(channelID, target, enc2, transcoding, p)
+			s.playoutObserver.ReportProgram(channelID, target, enc2, class, p)
 		}
 	}
 	proc, err := s.playoutEncoder(cctx, args, onProgress)
@@ -674,7 +674,7 @@ func (s *Server) startChild(
 	}
 	first := make([]byte, n)
 	copy(first, buf[:n])
-	return &liveChild{proc: proc, first: first, enc: enc, target: target, cancel: cancel}, false
+	return &liveChild{proc: proc, first: first, enc: enc, target: target, cancel: cancel, class: class, media: media}, false
 }
 
 // pipeChild commits the HTTP response and streams the live child to it: the peeked first chunk, then
@@ -686,6 +686,11 @@ func (s *Server) pipeChild(w http.ResponseWriter, r *http.Request, channelID, wh
 	defer func() {
 		c.cancel()
 		_ = c.proc.Wait()
+		// Real content corrects the probe's synthetic cost estimate (#1512); the budget bounds it. A
+		// synthetic card (source "") is not content: its cheap still would drag the SDR cost down.
+		if cpu, ok := c.proc.CPUTime(); ok && source != "" && c.class != playout.ClassCopy && s.playoutObserver != nil {
+			s.playoutObserver.ObserveProgramCost(channelID, c.target, c.class, cpu, time.Duration(c.media.Load())*time.Millisecond)
+		}
 	}()
 
 	flusher, _ := w.(http.Flusher)

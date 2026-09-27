@@ -12,7 +12,6 @@ import (
 
 	"github.com/loomarr/loomarr/internal/mediatools"
 
-	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
@@ -20,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
@@ -642,12 +642,12 @@ func (h *hotVisionProvider) reconcileModel(v visionWiring) visionWiring {
 	return v
 }
 
-// playbackHeadroomFor is the default filler PlaybackHeadroom: playback is busy while ANY channel
-// is being served (#1512 G5). nil when there is no live playout, so the pipeline never waits.
-// Phase 1b's ResourceBudget replaces this with a capacity-based answer.
-func playbackHeadroomFor(observer api.PlayoutObserver) filler.PlaybackHeadroom {
-	if observer == nil {
+// playbackHeadroomFor is filler's PlaybackHeadroom: the ResourceBudget, the one admission ledger
+// (#1512 G5), so filler waits exactly while a live transcode holds a lease. nil when there is no
+// internal playout, so the pipeline never waits.
+func playbackHeadroomFor(budget *playout.ResourceBudget) filler.PlaybackHeadroom {
+	if budget == nil {
 		return nil
 	}
-	return filler.ActiveSessionHeadroom{Active: func() int { return len(observer.Stats(time.Now())) }}
+	return budget
 }

@@ -289,6 +289,14 @@ const stubReachable = () => {
     getGetPlayoutStatusMockHandler({
       running: false,
       capability: { encoder: "", hardware: false, maxChannels: 0 },
+      budget: {
+        hardware: false,
+        cpuAllowance: 0,
+        sessionLimit: 0,
+        operatorCap: 0,
+        classes: {},
+        inUse: { sessions: 0, transcodes: 0, gpuShare: 0, cpuCores: 0 },
+      },
       channels: [],
       gpu: { contended: false },
       prepared: {

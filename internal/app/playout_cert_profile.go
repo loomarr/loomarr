@@ -61,7 +61,7 @@ func (c PlayoutCertificationConfig) sourceProfile() playout.Profile {
 	if c.QualityTier == "" {
 		return certificationFixtureProfile()
 	}
-	return playout.Resolve(c.QualityTier, playout.EncoderSoftware, 2, 0)
+	return playout.Resolve(c.QualityTier, playout.EncoderSoftware, 0)
 }
 
 func (t *PlayoutCertificationTarget) measureProfile(ctx context.Context, config *PlayoutCertificationConfig, ffmpeg string) error {

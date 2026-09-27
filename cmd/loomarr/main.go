@@ -129,6 +129,10 @@ func newGenerationHealth(processStarted time.Time, generation int) *diagnostics.
 		{Key: diagnostics.StartupCheckPublicURL, Label: "Public address", Required: false,
 			Mode: diagnostics.HealthCheckContinuous, FreshFor: 3 * time.Minute,
 			RemediationRoute: "/settings/system/playback"},
+		// The boot capacity probe's HDR tone-map self-check (#1512 G11). Observed once per start, so
+		// it never goes stale.
+		{Key: diagnostics.StartupCheckPlayoutTonemap, Label: "HDR tone mapping", Required: false,
+			Mode: diagnostics.HealthCheckContinuous, RemediationRoute: "/settings/system/playback"},
 	}, time.Now)
 }
 
@@ -243,6 +247,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 		DataDir:                config.DataDirFor(cfg.DatabaseURL),
 		DevLogin:               cfg.DevLogin,
 		Pprof:                  cfg.Pprof,
+		CapacityProbe:          true,
 		MetricsToken:           cfg.MetricsToken,
 		Restart:                lifecycle.RequestRestart,
 		DatabaseMigration:      lifecycle.RequestMigration,

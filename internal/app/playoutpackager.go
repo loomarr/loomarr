@@ -50,8 +50,8 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, plan playo
 	return item, nil
 }
 
-func (s packagerSource) Output(ctx context.Context, _ string, _ playout.EncodePlan) (playout.HostProfile, playout.OutputProfile) {
-	profile := s.res.Profile(ctx)
+func (s packagerSource) Output(ctx context.Context, _ string, _ playout.EncodePlan, rung int) (playout.HostProfile, playout.OutputProfile) {
+	profile := s.res.Profile(ctx, rung)
 	var gpu playout.GPUFilters
 	if s.gpu != nil {
 		gpu = s.gpu()

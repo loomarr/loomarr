@@ -5,67 +5,23 @@ import (
 	"testing"
 )
 
-// The policy under test: "best picture the hardware sustains, then adapt as channels are
-// added." These assert the two halves separately, because they fail in different ways — a
-// broken "best" is a permanently soft picture, a broken "adapt" is universal stutter.
-
-// Half one: the FIRST channel on an idle box gets the top rung. If this regresses, every
-// install quietly delivers reduced quality and nobody can tell why.
-func TestResolve_FirstChannelOnAnIdleBoxGetsTheBestRung(t *testing.T) {
+// Resolve is the profile at the rung the ResourceBudget admitted; the rung choice itself is
+// tested in budget_test.go. Rung 0 is the top rung, and a rung past the bottom clamps.
+func TestResolve_RungIndexesTheLadder(t *testing.T) {
 	for _, tier := range []Tier{TierEfficient, TierBalanced, TierQuality} {
-		got := Resolve(tier, EncoderNVENC, 9, 0)
-		best := ladders[tier][0]
-		if got.Width != best.width || got.VideoBitrate != best.videoBitrate {
-			t.Errorf("%s: first channel got %dx%d @%dk, want the top rung %dx%d @%dk",
-				tier, got.Width, got.Height, got.VideoBitrate,
-				best.width, best.height, best.videoBitrate)
+		l := ladders[tier]
+		for i, want := range l {
+			got := Resolve(tier, EncoderNVENC, i)
+			if got.Width != want.width || got.Height != want.height || got.VideoBitrate != want.videoBitrate {
+				t.Errorf("%s rung %d = %dx%d @%dk, want %dx%d @%dk", tier, i,
+					got.Width, got.Height, got.VideoBitrate, want.width, want.height, want.videoBitrate)
+			}
 		}
-	}
-}
-
-// Half two: quality steps DOWN as capacity fills, and never up.
-func TestResolve_DegradesMonotonicallyAsLoadRises(t *testing.T) {
-	const capacity = 8
-	var lastBitrate int
-	for active := 0; active <= capacity; active++ {
-		got := Resolve(TierBalanced, EncoderNVENC, capacity, active)
-		if active > 0 && got.VideoBitrate > lastBitrate {
-			t.Errorf("active=%d: bitrate went UP (%dk after %dk) — degradation must be monotonic",
-				active, got.VideoBitrate, lastBitrate)
+		if got, bottom := Resolve(tier, EncoderNVENC, 99), l[len(l)-1]; got.VideoBitrate != bottom.videoBitrate {
+			t.Errorf("%s: rung past the bottom = %dk, want the bottom rung", tier, got.VideoBitrate)
 		}
-		lastBitrate = got.VideoBitrate
-	}
-	// And the last one must genuinely be lower than the first, or "adapt" does nothing.
-	first := Resolve(TierBalanced, EncoderNVENC, capacity, 0)
-	full := Resolve(TierBalanced, EncoderNVENC, capacity, capacity)
-	if full.VideoBitrate >= first.VideoBitrate {
-		t.Errorf("a full box (%dk) must encode below an idle one (%dk)",
-			full.VideoBitrate, first.VideoBitrate)
-	}
-}
-
-// A bigger box degrades LATER. The step-down is proportional to committed capacity, so a
-// machine that measured 12 channels should still be on the top rung where a 2-channel
-// machine has already stepped down.
-func TestResolve_LargerCapacityHoldsQualityLonger(t *testing.T) {
-	small := Resolve(TierBalanced, EncoderNVENC, 2, 2)
-	large := Resolve(TierBalanced, EncoderNVENC, 12, 2)
-	if large.VideoBitrate <= small.VideoBitrate {
-		t.Errorf("with 2 active: big box %dk should beat small box %dk",
-			large.VideoBitrate, small.VideoBitrate)
-	}
-}
-
-// Unmeasured capacity must not be read as "unlimited". 0 or 1 means we could not measure,
-// or the box barely manages one channel — either way the bottom rung is the honest answer,
-// not the top.
-func TestResolve_UnmeasuredCapacityTakesTheBottomRung(t *testing.T) {
-	for _, capacity := range []int{0, 1} {
-		got := Resolve(TierBalanced, EncoderNVENC, capacity, 0)
-		bottom := ladders[TierBalanced][len(ladders[TierBalanced])-1]
-		if got.VideoBitrate != bottom.videoBitrate {
-			t.Errorf("capacity=%d gave %dk, want the bottom rung %dk — an unmeasured box must not be treated as unlimited",
-				capacity, got.VideoBitrate, bottom.videoBitrate)
+		if heights := LadderHeights(tier); len(heights) != len(l) || heights[0] != l[0].height {
+			t.Errorf("%s: LadderHeights = %v", tier, heights)
 		}
 	}
 }
@@ -102,35 +58,6 @@ func TestLadders_BitrateFallsBeforeResolution(t *testing.T) {
 			t.Errorf("%s: the first step changes resolution (%dx%d → %dx%d); it should drop bitrate first",
 				tier, l[0].width, l[0].height, l[1].width, l[1].height)
 		}
-	}
-}
-
-// THE refusal, now COST-AWARE (§9.1 V49). Admit counts concurrent TRANSCODES against a budget: a
-// new transcode is refused when the budget is full, but a COPY (cost 0) is ALWAYS admitted — that is
-// what stops the plan-double from halving capacity. This is the admission bound viewra lacked, where
-// a new session EVICTED others.
-func TestAdmit_CostAware(t *testing.T) {
-	// A transcode (cost 1) against a budget of 4:
-	if !Admit(4, 3, 1) {
-		t.Error("a 4th transcode (3 committed) must be admitted")
-	}
-	if Admit(4, 4, 1) {
-		t.Error("a 5th transcode (4 committed, budget 4) must be REFUSED")
-	}
-	if Admit(4, 5, 1) {
-		t.Error("over budget must be refused")
-	}
-	// ⚠ A COPY (cost 0) is ALWAYS admitted, even at/over budget — it costs ~no GPU and cannot starve
-	// a transcode. This is the plan-double fix: an hevc copy never blocks a channel.
-	if !Admit(4, 4, 0) {
-		t.Error("a copy (cost 0) must be admitted even when the transcode budget is full")
-	}
-	if !Admit(1, 99, 0) {
-		t.Error("a copy must be admitted regardless of committed transcodes")
-	}
-	// An unmeasured/zero budget must not block playout entirely.
-	if !Admit(0, 99, 1) {
-		t.Error("an unmeasured (<=0) budget must not refuse everything")
 	}
 }
 
@@ -184,7 +111,7 @@ func TestQualityArgs_CrfIsSoftwareOnly(t *testing.T) {
 // The resolved profile must carry the chosen encoder through — a ladder that silently reset
 // it to software would undo the whole detection step.
 func TestResolve_KeepsTheChosenEncoder(t *testing.T) {
-	got := Resolve(TierBalanced, EncoderVulkan, 8, 0)
+	got := Resolve(TierBalanced, EncoderVulkan, 0)
 	if got.Encoder != EncoderVulkan {
 		t.Errorf("Resolve dropped the encoder: %q", got.Encoder)
 	}

@@ -125,6 +125,8 @@ type PlayoutStatus struct {
 	GPU        PlayoutGPU        `json:"gpu"`
 	Channels   []ChannelHealth   `json:"channels"`
 	Prepared   PreparedReadiness `json:"prepared"`
+	// Budget is the ResourceBudget (#1512 G5): capacity terms, per-class costs and what is in use.
+	Budget playout.BudgetSnapshot `json:"budget"`
 }
 
 type playoutStatusOutput struct {
@@ -151,7 +153,10 @@ func (s *Server) getPlayoutStatus(ctx context.Context, _ *struct{}) (*playoutSta
 // probe that fails degrades to an empty header, never a failed request, because the channel health
 // (the load-bearing part) does not depend on it.
 func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus {
-	status := PlayoutStatus{Channels: []ChannelHealth{}, Prepared: preparedReadinessFrom(s.preparedObserver)}
+	status := PlayoutStatus{
+		Channels: []ChannelHealth{}, Prepared: preparedReadinessFrom(s.preparedObserver),
+		Budget: playout.BudgetSnapshot{Classes: map[playout.StreamClass]playout.ClassBudget{}},
+	}
 	if s.playoutObserver == nil {
 		return status // Tunarr-only: not our job
 	}
@@ -191,6 +196,9 @@ func (s *Server) playoutStatus(ctx context.Context, now time.Time) PlayoutStatus
 	}
 
 	status.Running, status.Capability, status.GPU, status.Channels = true, capability, gpu, channels
+	if budget := s.playoutObserver.Budget(); budget.Classes != nil {
+		status.Budget = budget
+	}
 	return status
 }
 

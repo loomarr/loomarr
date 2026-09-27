@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -176,7 +177,7 @@ type stuckSlateSource struct{}
 func (stuckSlateSource) ItemAt(context.Context, string, EncodePlan, time.Time) (PackagerItem, error) {
 	return PackagerItem{Label: "card", Remaining: time.Minute}, nil
 }
-func (stuckSlateSource) Output(context.Context, string, EncodePlan) (HostProfile, OutputProfile) {
+func (stuckSlateSource) Output(context.Context, string, EncodePlan, int) (HostProfile, OutputProfile) {
 	return HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
@@ -244,5 +245,67 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 	time.Sleep(time.Second)
 	if _, err := os.Stat(mark); err == nil {
 		t.Fatal("the slate encode started beside the tune-in item's encoder")
+	}
+}
+
+// hdrItemSource airs one 4K HDR title on a CPU-only host that can tone-map.
+type hdrItemSource struct{}
+
+func (hdrItemSource) ItemAt(context.Context, string, EncodePlan, time.Time) (PackagerItem, error) {
+	return PackagerItem{Label: "hdr", Remaining: time.Hour, Input: "hdr.mkv", Format: MediaFormat{
+		VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24, PixelFormat: "yuv420p10le",
+		ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}, nil
+}
+
+func (hdrItemSource) Output(context.Context, string, EncodePlan, int) (HostProfile, OutputProfile) {
+	return HostFor(EncoderSoftware, true, GPUFilters{}), OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
+}
+
+// The channel packager is admitted by the ResourceBudget (#1520): one lease per running (channel,
+// plan), its item encoding at the software rung the ledger picked, a second channel that does not fit
+// even keyframes-only refused, and the lease returned when the packager stops.
+func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "item-args")
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	script := "#!/bin/sh\ncase \"$*\" in *hdr.mkv*) echo \"$*\" > " + argsFile + ";; esac\nexec sleep 5\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	budget := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(3.5) })
+	m, err := NewPackagerHLS(hdrItemSource{}, ffmpeg, t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.WithBudget(budget)
+	t.Cleanup(m.Stop)
+
+	lease, err := m.acquirePlaylist("ch1", PlanBaseline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.release()
+	var args []byte
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if args, err = os.ReadFile(argsFile); err == nil && len(args) > 0 {
+			break
+		}
+	}
+	// 3.6 cores at full does not fit 3.5; rung 1 (3.42) does.
+	if got := string(args); !strings.Contains(got, "-skip_loop_filter:v all") || strings.Contains(got, "-skip_frame:v") {
+		t.Fatalf("item did not encode at the ledger's rung 1:\n%s", got)
+	}
+	if use := budget.Snapshot().InUse; use.Transcodes != 1 || use.CPUCores < 3.4 {
+		t.Fatalf("ledger = %+v, want one HDR transcode at rung 1", use)
+	}
+	// A second channel: even SDR keyframes-only (0.297) does not fit beside 3.42 on 3.5.
+	if _, err := m.acquirePlaylist("ch2", PlanBaseline, false); !errors.Is(err, ErrAtCapacity) {
+		t.Fatalf("second channel: err = %v, want ErrAtCapacity", err)
+	}
+	m.StopChannel("ch1")
+	for deadline := time.Now().Add(5 * time.Second); budget.Snapshot().InUse.Sessions != 0; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the stopped packager kept its lease: %+v", budget.Snapshot().InUse)
+		}
 	}
 }
