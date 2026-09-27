@@ -4,7 +4,6 @@ package playout
 
 import (
 	"context"
-	"io"
 	"os"
 	"os/exec"
 	"slices"
@@ -19,7 +18,7 @@ import (
 // tonemap_vaapi on the household Arc exits 0 at normal speed with every frame at Y=16: black. Speed,
 // start time and exit status all passed on it, twice. So this test asserts the PICTURE: signalstats
 // luma of the encoded output, on a real PQ source, for each family this host has and each tone-mapper
-// the production ladder (ProgramSpec.DemoteTonemap) would try on it.
+// the packager's retry ladder (itemFaults) would try on it.
 //
 // A tone-mapper whose runtime is missing (no OpenCL ICD, no Vulkan device) fails to start, which the
 // live chain answers by demoting; the test logs it and moves down the ladder. Set
@@ -55,28 +54,29 @@ func TestLive_HDRTonemapProducesAPicture(t *testing.T) {
 			t.Logf("%s: not usable on this host, skipped (%s)", enc, firstLine(c.Err))
 			continue
 		}
-		p := DefaultProfile()
-		p.Encoder = enc
+		host := HostFor(enc, true, GPUFiltersFor(bin)())
 		for _, curve := range ToneCurves {
-			spec := ProgramSpec{Profile: p, Input: src, Limit: 2 * time.Second, Source: facts,
-				Tonemap: true, GPUTonemap: GPUFiltersFor(bin)(), ToneCurve: curve}
+			out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 22, TargetKbps: 3600, MaxKbps: 5300, GOPSeconds: 1, AudioKbps: 128, ToneCurve: curve}
+			// The packager's retry ladder (itemFaults): a tone-mapper that fails before any output is
+			// dropped for this source and the next attempt takes the next one for the curve.
+			faults := &itemFaults{by: map[string]itemFault{}}
 			for {
-				pipe, err := spec.Pipeline()
+				pipe, err := Build(faults.get(src).apply(host), facts, out)
 				if err != nil {
 					t.Fatalf("%s: %v", enc, err)
 				}
 				name := string(pipe.Family) + "/" + pipe.Tonemapper
 				t.Run(string(curve)+"/"+name, func(t *testing.T) {
-					out := t.TempDir() + "/o.ts"
-					if errText := encodeTo(t, bin, replaceOutput(ProgramArgs(spec), out)); errText != "" {
-						// The live chain demotes on this (no output); a missing runtime is not a picture defect.
+					o := t.TempDir() + "/o.ts"
+					if errText := encodeTo(t, bin, replaceOutput(pipe.ItemArgs(src, 0, 50, 25, 0), o)); errText != "" {
+						// The packager demotes on this (no output); a missing runtime is not a picture defect.
 						t.Logf("%s did not start (the ladder demotes): %s", name, errText)
 						return
 					}
-					assertPicture(t, bin, out)
+					assertPicture(t, bin, o)
 					ran[name] = ran[name] || !t.Failed()
 				})
-				if !spec.DemoteTonemap() {
+				if !faults.record(src, pipe, false) {
 					break
 				}
 			}
@@ -125,12 +125,11 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 			if c := trialEncodeObserved(context.Background(), bin, enc, DefaultProfile(), 1, nil); !c.Works {
 				continue
 			}
-			p := DefaultProfile()
-			p.Encoder, p.Width, p.Height = enc, 1920, 1080
+			host := HostFor(enc, true, GPUFiltersFor(bin)())
 			for _, curve := range curves {
-				spec := ProgramSpec{Profile: p, Input: path, Offset: 20 * time.Minute, Limit: 30 * time.Second,
-					Source: facts, Tonemap: true, GPUTonemap: GPUFiltersFor(bin)(), ToneCurve: curve}
-				airRealFile(t, bin, i, spec)
+				out := ChannelOutput(Profile{Width: 1920, Height: 1080, Framerate: 25, Encoder: enc})
+				out.ToneCurve = curve
+				airRealFile(t, bin, i, host, facts, out, path)
 			}
 		}
 	}
@@ -138,28 +137,25 @@ func TestLive_HDRTonemapRealFiles(t *testing.T) {
 
 // airRealFile airs one real title through the ladder: the first tone-mapper that produces output,
 // its luma, speed and CPU per stream, and one PNG into PLAYOUT_TEST_FRAME_DIR when set.
-func airRealFile(t *testing.T, bin string, title int, spec ProgramSpec) {
+func airRealFile(t *testing.T, bin string, title int, host HostProfile, facts MediaFormat, profile OutputProfile, input string) {
 	t.Helper()
+	faults := &itemFaults{by: map[string]itemFault{}}
 	for {
-		pipe, _ := spec.Pipeline()
-		what := string(spec.ToneCurve) + " " + string(pipe.Family) + "/" + pipe.Tonemapper
-		out := t.TempDir() + "/o.ts"
-		cmd := exec.Command(bin, replaceOutput(ProgramArgs(spec), out)...)
-		// ProgramArgs reports progress on fd 3 (the production runner's pipe); discard it here.
-		devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+		pipe, err := Build(faults.get(input).apply(host), facts, profile)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("title %d: %v", title, err)
 		}
-		cmd.ExtraFiles = []*os.File{devnull}
+		what := string(profile.ToneCurve) + " " + string(pipe.Family) + "/" + pipe.Tonemapper
+		out := t.TempDir() + "/o.ts"
+		cmd := exec.Command(bin, replaceOutput(pipe.ItemArgs(input, 20*time.Minute, 30*profile.FPS, profile.FPS, 0), out)...)
 		start := time.Now()
 		b, err := cmd.CombinedOutput()
 		wall := time.Since(start).Seconds()
-		_ = devnull.Close()
 		if err == nil {
 			cpu := (cmd.ProcessState.UserTime() + cmd.ProcessState.SystemTime()).Seconds()
 			avg, ymax := lumaStats(t, bin, out)
 			t.Logf("title %d %s/%s %s: YAVG %.1f, lowest YMAX %d, speed %.2fx, %.3f cores per stream at 1x, fallbacks %q",
-				title, spec.Source.VideoCodec, spec.Source.PixelFormat, what, avg, ymax, 30/wall, cpu/30, pipe.Fallbacks)
+				title, facts.VideoCodec, facts.PixelFormat, what, avg, ymax, 30/wall, cpu/30, pipe.Fallbacks)
 			if ymax <= 16 {
 				t.Errorf("title %d: black picture through %s", title, what)
 			}
@@ -170,7 +166,7 @@ func airRealFile(t *testing.T, bin string, title int, spec ProgramSpec) {
 			return
 		}
 		t.Logf("title %d %s did not start (demoting): %s", title, what, firstLine(string(b)))
-		if !spec.DemoteTonemap() {
+		if !faults.record(input, pipe, IsHardwareDecodeFault(string(b))) {
 			t.Errorf("title %d: no tone-mapper produced output for %s", title, what)
 			return
 		}
@@ -210,13 +206,8 @@ func encodeTo(t *testing.T, bin string, args []string) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	proc, err := Start(ctx, bin, args, nil, nil)
-	if err != nil {
-		return err.Error()
-	}
-	go func() { _, _ = io.Copy(io.Discard, proc.Stdout) }()
-	if err := proc.Wait(); err != nil {
-		return err.Error() + ": " + proc.LastError()
+	if b, err := exec.CommandContext(ctx, bin, args...).CombinedOutput(); err != nil {
+		return err.Error() + ": " + firstLine(string(b))
 	}
 	return ""
 }

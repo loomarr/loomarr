@@ -24,38 +24,6 @@ func argsAfter(args []string, flag string) (string, bool) {
 
 func joined(args []string) string { return strings.Join(args, " ") }
 
-// The three details Tunarr's card taught us, asserted so a future "simplification"
-// cannot quietly remove them (prior-art §5a).
-func TestTestCardArgs_CarriesTheThreeLoadBearingFlags(t *testing.T) {
-	got := joined(TestCardArgs(DefaultProfile(), "/f.ttf", "CH 1", ""))
-
-	// A video-only MPEG-TS is a classic cause of a player refusing to play or showing
-	// no timeline. The silent track is not optional.
-	if !strings.Contains(got, "anullsrc") {
-		t.Error("no anullsrc — a video-only MPEG-TS will not play reliably")
-	}
-	// Without -re, lavfi generates as fast as the CPU allows and floods the pipe.
-	if !strings.Contains(got, "-re ") {
-		t.Error("no -re — the synthetic source would race ahead of wall-clock")
-	}
-	// A generated source that EOFs ends the channel.
-	if !strings.Contains(got, "-stream_loop -1") {
-		t.Error("no -stream_loop -1 — the card would end")
-	}
-}
-
-// Progress must use the platform's structured line protocol, never stdout where it would
-// corrupt the MPEG-TS.
-func TestTestCardArgs_ProgressIsStructured(t *testing.T) {
-	args := TestCardArgs(DefaultProfile(), "", "", "")
-	if v, ok := argsAfter(args, "-progress"); !ok || !strings.HasPrefix(v, "pipe:") {
-		t.Errorf("-progress = %q, want the platform's structured pipe", v)
-	}
-	if !strings.Contains(joined(args), "-nostats") {
-		t.Error("want -nostats so the only progress output is the structured stream")
-	}
-}
-
 // Every segment boundary must land on a keyframe, and segment durations must not vary —
 // a TARGETDURATION that lies is a player error, not a warning.
 func TestGopArgs_PinKeyframesAndDisableSceneDetection(t *testing.T) {
@@ -66,17 +34,6 @@ func TestGopArgs_PinKeyframesAndDisableSceneDetection(t *testing.T) {
 	gop := strconv.Itoa(p.Framerate * gopKeyframeSeconds)
 	got := joined(p.videoEncodeArgs())
 	for _, want := range []string{"-g " + gop, "-keyint_min " + gop, "-sc_threshold 0"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("missing %q in %q", want, got)
-		}
-	}
-}
-
-// Audio is fixed AAC stereo 48k. A varying audio layout across programs breaks `-c copy`
-// on the parent exactly like video does.
-func TestAudioEncodeArgs_FixedStereo48k(t *testing.T) {
-	got := joined(DefaultProfile().audioEncodeArgs())
-	for _, want := range []string{"-c:a aac", "-ac 2", "-ar 48000"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
@@ -141,38 +98,6 @@ func TestVideoEncodeArgs_EveryFamilyGetsRateControl(t *testing.T) {
 		if !strings.Contains(got, "-g 50") {
 			t.Errorf("%s: no pinned GOP — segment boundaries need keyframes: %q", enc, got)
 		}
-	}
-}
-
-// A channel name comes from the database and is operator-supplied. An unescaped
-// apostrophe breaks the filter graph; an unescaped colon silently introduces ANOTHER
-// filter option, which is worse than broken.
-func TestDrawTextFilter_EscapesOperatorText(t *testing.T) {
-	got := drawTextFilter("/f.ttf", "Bob's 90s: Movies", "", 720)
-	if strings.Contains(got, "text='Bob's") {
-		t.Errorf("apostrophe not escaped — broken filter graph: %q", got)
-	}
-	if !strings.Contains(got, `Bob\'s`) {
-		t.Errorf("want an escaped apostrophe, got %q", got)
-	}
-	if !strings.Contains(got, `90s\: Movies`) {
-		t.Errorf("want an escaped colon (it introduces a filter option), got %q", got)
-	}
-}
-
-// No font ⇒ no drawtext. drawtext without a fontfile fails at INIT on a minimal image,
-// so a missing font must degrade to a plain colour field rather than kill the channel.
-func TestDrawTextFilter_MissingFontDegradesInsteadOfFailing(t *testing.T) {
-	if got := drawTextFilter("", "CH 1", "", 720); got != "" {
-		t.Errorf("no font must yield no filter, got %q", got)
-	}
-	args := TestCardArgs(DefaultProfile(), "", "CH 1", "")
-	if strings.Contains(joined(args), "drawtext") {
-		t.Error("args carry drawtext with no font — ffmpeg would fail at init")
-	}
-	// …but the card itself must still be produced.
-	if !strings.Contains(joined(args), "color=c=black") {
-		t.Error("the colour field must survive a missing font")
 	}
 }
 
@@ -279,27 +204,6 @@ func TestHardwarePlumbing_HevcMatchesItsH264Sibling(t *testing.T) {
 		}
 		if want, got := hardwareDecodeArgs(base), hardwareDecodeArgs(hevc); !slices.Equal(want, got) {
 			t.Errorf("%s decode args = %v, want %v (same engine as %s)", hevc, got, want, base)
-		}
-	}
-}
-
-func TestSoftwareEncoderForPreservesTheOutputCodec(t *testing.T) {
-	for _, tc := range []struct {
-		preferred Encoder
-		want      Encoder
-	}{
-		{EncoderVideoToolbox, EncoderSoftware},
-		{EncoderVTHEVC, EncoderSoftwareHEVC},
-		{EncoderNVENC, EncoderSoftware},
-		{EncoderNVENCHEVC, EncoderSoftwareHEVC},
-		{EncoderSoftware, EncoderSoftware},
-		{EncoderSoftwareHEVC, EncoderSoftwareHEVC},
-	} {
-		if got := SoftwareEncoderFor(tc.preferred); got != tc.want {
-			t.Errorf("SoftwareEncoderFor(%q) = %q, want %q", tc.preferred, got, tc.want)
-		}
-		if !IsSoftwareEncoder(tc.want) {
-			t.Errorf("IsSoftwareEncoder(%q) = false", tc.want)
 		}
 	}
 }

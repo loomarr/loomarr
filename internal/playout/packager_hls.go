@@ -3,6 +3,7 @@ package playout
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/playout/packager"
@@ -69,17 +71,30 @@ type PackagerHLS struct {
 
 	mu       sync.Mutex
 	channels map[packagedKey]*packagedChannel
+
+	// observer and onChange see packagers start and stop. Both are set before the first tune.
+	observer SessionObserver
+	onChange func()
 }
 
 type packagedChannel struct {
 	p       *packager.Packager
+	host    HostProfile
 	out     OutputProfile
+	started time.Time
 	dir     string
 	cancel  context.CancelFunc
 	done    chan struct{}
 	viewers int
 	idle    *time.Timer
 }
+
+// DefaultGrace is how long a channel packager survives its last viewer.
+//
+// Long enough to absorb channel surfing and a client reconnecting after a network blip, both
+// common on a TV, which would otherwise pay a cold start again. Short enough that a genuinely
+// abandoned channel stops burning an encoder promptly.
+const DefaultGrace = 30 * time.Second
 
 func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Duration, log *slog.Logger) (*PackagerHLS, error) {
 	// The same scratch rule as the remux (playout.hls_dir): a private, locked per-process root,
@@ -155,8 +170,15 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass) (*packagedCha
 	}
 	m.mu.Unlock()
 	if c == nil {
+		// Admission is the ledger's (#1520): start books the packager's lease, and a full host
+		// refuses it with ErrAtCapacity. Viewers of a running packager never count against it.
 		var err error
 		if c, err = m.start(key); err != nil {
+			result := "spawn_error"
+			if errors.Is(err, ErrAtCapacity) {
+				result = "capacity"
+			}
+			m.observe(func(o SessionObserver) { o.PlayoutSessionStarted(result) })
 			return nil, nil, err
 		}
 	}
@@ -167,6 +189,8 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass) (*packagedCha
 			c = cur
 		} else {
 			m.channels[key] = c
+			m.observe(func(o SessionObserver) { o.PlayoutSessionStarted("success"); o.PlayoutSessionActive(1) })
+			m.changed()
 		}
 	}
 	c.viewers++
@@ -221,7 +245,7 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 		return nil, fmt.Errorf("packager hls: channel dir: %w", err)
 	}
 	log := m.log.With("channel", key.channel, "format", string(key.format))
-	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, URIPrefix: string(key.format) + "-", Log: log},
+	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, DVR: DVRHorizon, URIPrefix: string(key.format) + "-", Log: log},
 		m.schedule(key, host, out, lease, pre, log), slate)
 	if err != nil {
 		cancel()
@@ -229,12 +253,13 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
-	c := &packagedChannel{p: p, out: out, dir: dir, cancel: cancel, done: make(chan struct{})}
+	c := &packagedChannel{p: p, host: host, out: out, started: t0, dir: dir, cancel: cancel, done: make(chan struct{})}
 	go func() {
 		defer close(c.done)
 		defer lease.Release() // before done: a restart must not count this run
 		if err := p.Run(ctx); err != nil {
 			log.Error("packager hls: channel packager stopped", "err", err)
+			m.observe(func(o SessionObserver) { o.PlayoutProcessFailure("parent") })
 		}
 		_ = os.RemoveAll(dir)
 	}()
@@ -254,6 +279,7 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 func (m *PackagerHLS) schedule(
 	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
+	faults := &itemFaults{by: map[string]itemFault{}}
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
 		if !ok {
@@ -266,6 +292,9 @@ func (m *PackagerHLS) schedule(
 		if it.Input == "" {
 			return item, nil
 		}
+		// A CPU too slow for the source degrades the picture instead of refusing it (#1517): the
+		// ledger picks the item's software rung (GPU families ignore it); with no ledger, the
+		// unmeasured start (full quality up to 1080p SDR, keyframes-only for 4K or HDR).
 		itemOut := out
 		if lease != nil {
 			lease.ReclassItem(ctx, ClassOf(it.Format)) // a transcoding lease always moves
@@ -273,15 +302,31 @@ func (m *PackagerHLS) schedule(
 		} else {
 			itemOut.SoftwareRung = StartRung(it.Format, RungCost{})
 		}
+		// TODO(#1512 RungMonitor): the live rung step (rungmonitor.go's caller contract) hooks in
+		// here. A software item encoder feeds its -progress to one monitor per item; on a Step the
+		// packager ends this slot's encoder and re-opens the item at its own clock with the new
+		// rung (itemOut.SoftwareRung), as it already re-opens one after a GPU fault.
 		item.Open = func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
-			pl, args, err := packagerItemArgs(host, itemOut, it, slot)
+			pl, args, err := packagerItemArgs(host, itemOut, it, slot, faults.get(it.Input))
 			if err != nil {
 				return nil, err
 			}
 			if len(pl.Fallbacks) > 0 {
 				log.Info("packager hls: item leaves the GPU", "item", it.Label, "fallbacks", strings.Join(pl.Fallbacks, "; "))
 			}
-			return startFragmentEncoder(ctx, m.ffmpeg, args, log.With("item", it.Label))
+			return startFragmentEncoder(ctx, m.ffmpeg, args, log.With("item", it.Label), func(decodeFault bool) {
+				if faults.record(it.Input, pl, decodeFault) {
+					log.Warn("packager hls: item failed on the GPU; its next attempt demotes the failing stage",
+						"item", it.Label, "decode_fault", decodeFault, "tonemapper", pl.Tonemapper)
+				}
+			}, func(cpu time.Duration) {
+				// The ledger learns the class's real CPU cost from delivered items (#1520), as it
+				// did from the retired chain's finished programmes.
+				if itemOut.FPS > 0 {
+					media := time.Duration(slot.Frames) * time.Second / time.Duration(itemOut.FPS)
+					lease.ObserveCPU(ClassOf(it.Format), cpu, media)
+				}
+			})
 		}
 		return item, nil
 	}
@@ -314,10 +359,65 @@ func (p *prefetchedItem) take(at time.Time) (PackagerItem, bool) {
 	return it, true
 }
 
-// packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline,
-// the filler gain in its audio stage, fMP4 out.
-func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, slot packager.Slot) (Pipeline, []string, error) {
-	pl, err := Build(host, it.Format, out)
+// itemFault is what a failed encode of one source proved about this host. After a failed item the
+// packager asks the schedule again, so the next attempt at the same source builds without the stage
+// that failed, as the retired chain's retry ladder did (§9.1 V47). The encoder never changes: the
+// channel's init must still match.
+type itemFault struct {
+	// cpuDecode: the GPU decoder faulted on this source (IsHardwareDecodeFault); retrying the same
+	// -hwaccel path fails identically.
+	cpuDecode bool
+	// noOpenCL, noLibplacebo: that GPU tone-mapper failed this source, so the next one for the
+	// curve is taken, ending at the CPU (the maintainer order, #1512).
+	noOpenCL, noLibplacebo bool
+}
+
+func (f itemFault) apply(h HostProfile) HostProfile {
+	if f.cpuDecode {
+		h.DecodeCodecs = nil
+	}
+	h.TonemapOpenCL = h.TonemapOpenCL && !f.noOpenCL
+	h.Libplacebo = h.Libplacebo && !f.noLibplacebo
+	return h
+}
+
+// itemFaults holds one channel packager's faults by source, for its life. Only a failure adds one.
+type itemFaults struct {
+	mu sync.Mutex
+	by map[string]itemFault
+}
+
+func (f *itemFaults) get(input string) itemFault {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.by[input]
+}
+
+// record demotes one stage for an encode that failed before its first output: the decode on a GPU
+// decode fault, otherwise the GPU tone-mapper the pipeline used. It reports false when there is
+// nothing left to demote, so the item keeps failing into slate rather than retrying blindly.
+func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cur := f.by[input]
+	switch {
+	case decodeFault && !cur.cpuDecode:
+		cur.cpuDecode = true
+	case pl.Tonemapper == TonemapperOpenCL:
+		cur.noOpenCL = true
+	case pl.Tonemapper == TonemapperLibplacebo:
+		cur.noLibplacebo = true
+	default:
+		return false
+	}
+	f.by[input] = cur
+	return true
+}
+
+// packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline on
+// the host less any stage this source faulted, the filler gain in its audio stage, fMP4 out.
+func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
+	pl, err := Build(fault.apply(host), it.Format, out)
 	if err != nil {
 		return Pipeline{}, nil, err
 	}
@@ -344,6 +444,8 @@ func (m *PackagerHLS) release(key packagedKey, c *packagedChannel) {
 func (m *PackagerHLS) removeLocked(key packagedKey, c *packagedChannel) {
 	if m.channels[key] == c {
 		delete(m.channels, key)
+		m.observe(func(o SessionObserver) { o.PlayoutSessionActive(-1) })
+		m.changed()
 	}
 	if c.idle != nil {
 		c.idle.Stop()
@@ -495,11 +597,15 @@ const audioRateHz = 48000
 
 // startFragmentEncoder runs one item's ffmpeg and returns its stdout. Close (or cancelling ctx)
 // stops it; a failure that was not a stop is logged with ffmpeg's last words.
-func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log *slog.Logger) (io.ReadCloser, error) {
+// startFragmentEncoder starts one item's encoder. failed, when set, hears an encoder that exited
+// on its own with an error before any output: a fault of this source on this host, not a slow
+// start (a late item's context is cancelled first) and not an item the packager finished.
+func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log *slog.Logger, failed func(decodeFault bool), done func(cpu time.Duration)) (io.ReadCloser, error) {
 	cmd := exec.CommandContext(ctx, ffmpeg, args...)
 	cmd.WaitDelay = 2 * time.Second
 	var stderr bytes.Buffer
-	cmd.Stderr = &limitedWriter{w: &stderr, n: 4096}
+	watch := &limitedWriter{w: &stderr, n: 4096}
+	cmd.Stderr = watch
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -507,7 +613,7 @@ func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	return &encoderOutput{ReadCloser: stdout, ctx: ctx, cmd: cmd, stderr: &stderr, log: log}, nil
+	return &encoderOutput{ReadCloser: stdout, ctx: ctx, cmd: cmd, stderr: &stderr, watch: watch, failed: failed, done: done, log: log}, nil
 }
 
 type encoderOutput struct {
@@ -515,8 +621,22 @@ type encoderOutput struct {
 	ctx    context.Context
 	cmd    *exec.Cmd
 	stderr *bytes.Buffer
-	log    *slog.Logger
-	once   sync.Once
+	watch  *limitedWriter
+	failed func(decodeFault bool)
+	// done receives the CPU time of an encoder that delivered its slot, for the ledger's measured
+	// class cost (Lease.ObserveCPU, #1520).
+	done     func(cpu time.Duration)
+	produced bool // read on the packager's reader goroutine, then by Close after it
+	log      *slog.Logger
+	once     sync.Once
+}
+
+func (e *encoderOutput) Read(p []byte) (int, error) {
+	n, err := e.ReadCloser.Read(p)
+	if n > 0 {
+		e.produced = true
+	}
+	return n, err
 }
 
 func (e *encoderOutput) Close() error {
@@ -525,72 +645,59 @@ func (e *encoderOutput) Close() error {
 		if e.cmd.Process != nil {
 			_ = e.cmd.Process.Kill() // the packager is done with this item, finished or not
 		}
-		if err := e.cmd.Wait(); err != nil && e.ctx.Err() == nil && e.stderr.Len() > 0 {
+		err := e.cmd.Wait()
+		if e.ctx.Err() != nil {
+			return // the channel stopped mid-item: neither a failure nor a cost sample
+		}
+		// The packager asks for more frames than the slot and kills the encoder once it has them, so
+		// an encoder it killed after output delivered the slot; one that exited on its own with an
+		// error did not.
+		if e.produced && e.done != nil && e.cmd.ProcessState != nil && (err == nil || killedByUs(err)) {
+			e.done(e.cmd.ProcessState.UserTime() + e.cmd.ProcessState.SystemTime())
+		}
+		if err == nil {
+			return
+		}
+		if e.stderr.Len() > 0 {
 			e.log.Warn("packager hls: item encoder failed", "err", err, "stderr", strings.TrimSpace(e.stderr.String()))
+		}
+		if !e.produced && e.failed != nil {
+			e.failed(e.watch.decodeFault)
 		}
 	})
 	return nil
 }
 
+// killedByUs reports an encoder that ended on SIGKILL: Close kills every item encoder once the
+// packager is done with it.
+func killedByUs(err error) bool {
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return false
+	}
+	status, ok := exit.Sys().(syscall.WaitStatus)
+	return ok && status.Signaled() && status.Signal() == syscall.SIGKILL
+}
+
+// limitedWriter keeps the first n bytes of an encoder's stderr for its failure log, and notes a GPU
+// decode fault anywhere in it. ffmpeg writes one log line per write, so a line is never split.
+// The fault is read only after cmd.Wait, which waits for the copy into this writer.
 type limitedWriter struct {
-	w io.Writer
-	n int
+	w           io.Writer
+	n           int
+	decodeFault bool
 }
 
 func (l *limitedWriter) Write(b []byte) (int, error) {
+	if !l.decodeFault && IsHardwareDecodeFault(string(b)) {
+		l.decodeFault = true
+	}
 	if l.n > 0 {
 		k := min(len(b), l.n)
 		_, _ = l.w.Write(b[:k])
 		l.n -= k
 	}
 	return len(b), nil
-}
-
-// switchedHLS picks the channel packager or the remux per new tune, by a live setting. Assets and
-// stops go to both, so a channel keeps its origin until it stops even if the setting flips.
-type switchedHLS struct {
-	remux, packaged hlsOrigin
-	usePackager     func() bool
-}
-
-func (s switchedHLS) acquirePlaylist(channelID string, plan EncodePlan, speculative bool) (hlsPlaylistLease, error) {
-	if s.remux == nil || s.usePackager() {
-		return s.packaged.acquirePlaylist(channelID, plan, speculative)
-	}
-	return s.remux.acquirePlaylist(channelID, plan, speculative)
-}
-
-func (s switchedHLS) AssetPath(channelID string, plan EncodePlan, rel string) (string, bool) {
-	if p, ok := s.packaged.AssetPath(channelID, plan, rel); ok {
-		return p, true
-	}
-	if s.remux == nil {
-		return "", false
-	}
-	return s.remux.AssetPath(channelID, plan, rel)
-}
-
-func (s switchedHLS) StopChannel(channelID string) {
-	s.packaged.StopChannel(channelID)
-	if s.remux != nil {
-		s.remux.StopChannel(channelID)
-	}
-}
-
-func (s switchedHLS) StopAll() {
-	s.packaged.StopAll()
-	if s.remux != nil {
-		s.remux.StopAll()
-	}
-}
-
-// MediaPlaylist forwards a variant playlist request to the packager; the remux has none (its
-// playlist is the one Tune returns).
-func (s switchedHLS) MediaPlaylist(ctx context.Context, channelID string, plan EncodePlan, rel string) ([]byte, bool, error) {
-	if mp, ok := s.packaged.(mediaPlaylister); ok {
-		return mp.MediaPlaylist(ctx, channelID, plan, rel)
-	}
-	return nil, false, nil
 }
 
 // mediaPlaylister is an hlsOrigin whose Tune answer is a master playlist: its variant playlists are

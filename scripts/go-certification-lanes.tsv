@@ -3,7 +3,7 @@
 # package concurrency inside either certification group.
 1	internal/app
 1	internal/prepared
-1	internal/testkit/playoutcertfixture
-2	cmd/playout-load-cert
+# internal/api serves the channel packager's HLS and MPEG-TS (#1512 phase 2c) and balances lane 2 now
+# that the load-certification packages are retired.
+2	internal/api
 2	internal/playout
-2	internal/playoutcert

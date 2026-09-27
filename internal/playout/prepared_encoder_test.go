@@ -55,15 +55,10 @@ func TestPreparedVideoArgsRejectsAContractItCannotProduce(t *testing.T) {
 }
 
 // A prepared publication of an HDR source must carry exactly the chain live emits for the same
-// source and build, in the same place. Building the live expectation from ProgramSpec keeps the
-// test tied to the live decision rather than to a second copy of the string.
+// source and build, in the same place.
 func TestPreparedVideoArgsToneMapMatchesLiveChain(t *testing.T) {
 	r := CanonicalPreparedRendition(TierBalanced)
 	r.ToneMap = true
-	live := ProgramSpec{Source: MediaFormat{ColorTransfer: "smpte2084"}, Tonemap: true}
-	if live.tonemapStep() == "" {
-		t.Fatal("live playout does not tone-map a PQ source on a capable build; fixture is wrong")
-	}
 	for _, encoder := range []Encoder{EncoderNVENC, EncoderQSV, EncoderVAAPI, EncoderVulkan} {
 		plan, err := PreparedVideoArgs(encoder, r)
 		if err != nil {
@@ -72,7 +67,7 @@ func TestPreparedVideoArgsToneMapMatchesLiveChain(t *testing.T) {
 		profile := Profile{
 			Width: r.Width, Height: r.Height, Framerate: r.FrameRate, Encoder: encoder,
 		}
-		want := profile.scaleFilterArgs(live.tonemapStep())
+		want := profile.scaleFilterArgs(hdrToSDRChain)
 		if !slices.Equal(plan.OutputArgs[:len(want)], want) {
 			t.Errorf("%s: prepared filter = %v, want live's %v", encoder, plan.OutputArgs[:len(want)], want)
 		}

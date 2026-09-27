@@ -15549,37 +15549,6 @@ paths:
       summary: Channel HLS segment or media playlist (signed-URL authed)
       tags:
         - playout
-  /v1/playout/program/{id}:
-    get:
-      operationId: playout-program
-      parameters:
-        - description: Loomarr channel id
-          in: path
-          name: id
-          required: true
-          schema:
-            description: Loomarr channel id
-            examples:
-              - ch_abc123
-            type: string
-      responses:
-        "200":
-          content:
-            video/mp2t:
-              schema:
-                contentMediaType: application/octet-stream
-                format: binary
-                type: string
-          description: One finite transport block; the channel supervisor re-opens this at each airing boundary.
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: One program's MPEG-TS (device-authed)
-      tags:
-        - playout
   /v1/playout/sessions:
     get:
       description: "Per-channel encoder state for the dashboard: viewers, resolved encoder, realtime speed and buffer-ahead. Admin only. The `playout` SSE frame carries the same snapshot for liveness; this endpoint is the source of truth on reconnect."

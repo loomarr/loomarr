@@ -220,15 +220,9 @@ type Server struct {
 	// request security boundaries so a rotation handled by another process invalidates the
 	// old token and admits the new one immediately. Tests and SQLite use playoutSecret.
 	playoutSecretCurrent func(context.Context) (string, error)
-	// playoutResolver answers "what is airing now" for /playout/program (§9.1) — the
-	// finite-block layer the Go supervisor re-opens per program. nil ⇒ the route 501s.
+	// playoutResolver describes channels for the formats, play-url and filler handlers. Nil ⇒ those
+	// report playout as not configured.
 	playoutResolver PlayoutResolver
-	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
-	// testable without executing a binary; the composition root passes playout.Start.
-	playoutEncoder PlayoutEncoder
-	// decodeFaults remembers sources the GPU decoder failed on, so their next program decodes in
-	// software with the encode kept on hardware (#1401).
-	decodeFaults decodeFaultSet
 	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
 	playout Playout
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
@@ -1105,10 +1099,8 @@ type Options struct {
 	// PlayoutSecretCurrent reads the durable token at a request boundary. Production wires
 	// this for Postgres replica coherence; nil preserves the local/SQLite seam above.
 	PlayoutSecretCurrent func(context.Context) (string, error)
-	// PlayoutResolver answers "what is airing now" for /playout/program (§9.1). Nil ⇒ 501.
+	// PlayoutResolver describes channels for the formats, play-url and filler handlers.
 	PlayoutResolver PlayoutResolver
-	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
-	PlayoutEncoder PlayoutEncoder
 	// Playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
 	Playout Playout
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.

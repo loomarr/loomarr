@@ -8,7 +8,6 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/config"
-	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/proposaloutlook"
 	"github.com/loomarr/loomarr/internal/store"
@@ -213,15 +212,5 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// The doctor's TRUE resident-VRAM reading (§9.1 V47), extracted to residentLLMVRAMFn above so
 		// the admission budget's VRAM shading (V49) shares the exact same source.
 		ResidentLLMVRAM: residentLLM.probe,
-		PlayoutEncoder: func(
-			ctx context.Context, args []string, onProgress func(playout.Progress),
-		) (*playout.Process, error) {
-			// `onProgress` was nil here since the supervisor was written, so ffmpeg's parsed
-			// progress samples were discarded every time. Passing it through is what makes the
-			// dashboard's encoder speed measured rather than invented (V16).
-			spec, _ := diagnostics.ProcessSpecFromContext(ctx)
-			return playout.StartObserved(ctx, set.str("playout.ffmpeg_path"), args, log, onProgress,
-				deps.foundation.processDiagnostics, spec)
-		},
 	})
 }

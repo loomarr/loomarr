@@ -25,11 +25,6 @@ type Overrides struct {
 	// DataDir is the boot-configured data directory (config.DataDirFor): where the generated
 	// installation key lives and what the storage-directory settings default beneath.
 	DataDir string
-	// ListenAddr is the address run() binds (LISTEN_ADDR). Internal playout's own block fetches go
-	// there over loopback rather than through server.public_url, which only external consumers
-	// (a media server, Tunarr) need. Empty (embedded builds without a listener) falls back to
-	// server.public_url.
-	ListenAddr string
 	// Startup is the process-owned report for this application generation. nil creates a minimal
 	// embedded-build report so /readyz still derives from the same state object in tests.
 	Startup    *diagnostics.Startup

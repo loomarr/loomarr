@@ -3,22 +3,23 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/playout/packager"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -193,9 +194,6 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	last := playout.Airing{StartedAt: epoch.Add(5 * time.Second), Kind: schedule.SlotProgram, Remaining: 2 * time.Second}
 	fillerSource := mezzanine
 
-	profile := playout.DefaultProfile()
-	profile.Width, profile.Height, profile.Framerate = 320, 180, 30
-	profile.Encoder = playout.EncoderSoftware
 	airings := []struct {
 		airing playout.Airing
 		input  string
@@ -204,54 +202,65 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		{airing: fillerAiring, input: fillerSource},
 		{airing: last, input: fixtures.WhiteFrozen},
 	}
-	var transport bytes.Buffer
-	for i, block := range airings {
-		args := playout.ProgramArgs(playout.ProgramSpec{
-			SessionAudio: true, Clock: playout.ProgramClock{Origin: epoch, StartedAt: block.airing.StartedAt},
-			Profile: profile, Input: block.input,
-			Offset: block.airing.Offset, Limit: block.airing.Remaining,
-		})
-		proc, err := playout.Start(ctx, ffmpeg, args, nil, nil)
-		if err != nil {
-			t.Fatalf("production block %d: %v", i, err)
+	// Air the three through the channel packager, as a live channel does: each item's encoder is
+	// the production pipeline (Build, FragmentArgs) and the packager joins them into one fMP4
+	// timeline. After them the schedule has a card, whose slate this fixture cannot load, so the
+	// packager stops there with everything aired on disk.
+	host := playout.HostFor(playout.EncoderSoftware, false, playout.GPUFilters{})
+	out := playout.OutputProfile{Width: 320, Height: 180, FPS: 30, Quality: 23, TargetKbps: 600, MaxKbps: 900, GOPSeconds: 1, AudioKbps: 128}
+	formatOf := playout.FFprobeFormatNextTo(ffmpeg)
+	airDir := t.TempDir()
+	onAir := time.Now()
+	sched := func(ctx context.Context, at time.Time) (packager.Item, error) {
+		elapsed := at.Sub(onAir)
+		for _, a := range airings {
+			slotStart := a.airing.StartedAt.Sub(epoch)
+			if elapsed >= slotStart+a.airing.Remaining {
+				continue
+			}
+			into := max(elapsed-slotStart, 0)
+			input, seek := a.input, a.airing.Offset+into
+			facts, err := formatOf(ctx, input)
+			if err != nil {
+				return packager.Item{}, err
+			}
+			pl, err := playout.Build(host, facts, out)
+			if err != nil {
+				return packager.Item{}, err
+			}
+			return packager.Item{Label: string(a.airing.Kind), Duration: a.airing.Remaining - into,
+				Open: func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
+					cmd := exec.CommandContext(ctx, ffmpeg, pl.FragmentArgs(input, seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS, 0)...)
+					stdout, err := cmd.StdoutPipe()
+					if err != nil {
+						return nil, err
+					}
+					if err := cmd.Start(); err != nil {
+						return nil, err
+					}
+					return itemEncoder{ReadCloser: stdout, cmd: cmd}, nil
+				}}, nil
 		}
-		encoded, readErr := io.ReadAll(proc.Stdout)
-		waitErr := proc.Wait()
-		if readErr != nil || waitErr != nil {
-			t.Fatalf("production block %d: read=%v wait=%v detail=%s", i, readErr, waitErr, proc.LastError())
-		}
-		transport.Write(encoded)
+		return packager.Item{Label: "card", Duration: time.Hour}, nil
 	}
-	mux, err := playout.StartPipedObserved(ctx, ffmpeg, playout.BlockMuxArgs(playout.BlockProfile{AudioBitrate: 128}), nil, nil, nil, diagnostics.ProcessSpec{})
+	noSlate := func(context.Context) (*packager.Slate, error) { return nil, errors.New("no slate in this fixture") }
+	pk, err := packager.New(packager.Config{FPS: out.FPS, Dir: airDir}, sched, noSlate)
 	if err != nil {
 		t.Fatal(err)
 	}
-	muxRead := make(chan struct {
-		body []byte
-		err  error
-	}, 1)
-	go func() {
-		body, readErr := io.ReadAll(mux.Stdout)
-		muxRead <- struct {
-			body []byte
-			err  error
-		}{body: body, err: readErr}
-	}()
-	if _, err := io.Copy(mux.Stdin, bytes.NewReader(transport.Bytes())); err != nil {
-		t.Fatal(err)
+	if err := pk.Run(ctx); err == nil || !strings.Contains(err.Error(), "no slate in this fixture") {
+		t.Fatalf("packager stopped with %v, want it to stop at the card after the three airings", err)
 	}
-	if err := mux.Stdin.Close(); err != nil {
-		t.Fatal(err)
+	segments, _ := filepath.Glob(filepath.Join(airDir, "seg*.m4s"))
+	var joinedBytes []byte
+	for _, name := range append([]string{filepath.Join(airDir, packager.InitName)}, segments...) {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		joinedBytes = append(joinedBytes, b...)
 	}
-	muxed := <-muxRead
-	if muxed.err != nil {
-		t.Fatal(muxed.err)
-	}
-	if err := mux.Wait(); err != nil {
-		t.Fatalf("production block mux: %v: %s", err, mux.LastError())
-	}
-	joinedBytes := muxed.body
-	joined := filepath.Join(dir, "program-filler-program.ts")
+	joined := filepath.Join(dir, "program-filler-program.mp4")
 	if err := os.WriteFile(joined, joinedBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -343,4 +352,18 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		t.Fatalf("mid-break frame did not come from child offset 5s: joined %.3f source %.3f program %.3f",
 			fillerAtMidBreak, fillerAtSourceOffset, programBefore)
 	}
+}
+
+// itemEncoder is one aired item's ffmpeg: the packager reads its stdout and closes it when the
+// item is done, which reaps the process.
+type itemEncoder struct {
+	io.ReadCloser
+	cmd *exec.Cmd
+}
+
+func (e itemEncoder) Close() error {
+	_ = e.ReadCloser.Close()
+	_ = e.cmd.Process.Kill()
+	_ = e.cmd.Wait()
+	return nil
 }

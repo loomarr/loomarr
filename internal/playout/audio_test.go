@@ -4,7 +4,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/loomarr/loomarr/internal/playout/packager"
 )
 
 // The bug this file exists for, stated as a test: a release whose Russian dub is written before
@@ -58,11 +59,24 @@ func TestPickAudioTrack_EmptyTrackListIsZero(t *testing.T) {
 	}
 }
 
-// The invariant the parent's `-c copy` depends on, and the reason the selection could not be
-// expressed as two ffmpeg maps: EXACTLY ONE audio track, whatever was chosen.
-func TestProgramArgsWithAudio_MapsExactlyOneAudioTrack(t *testing.T) {
+// itemArgsWithTrack is one packaged item's encoder args with an explicit audio track.
+func itemArgsWithTrack(t *testing.T, track int) []string {
+	t.Helper()
+	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
+	_, args, err := packagerItemArgs(HostFor(EncoderSoftware, true, GPUFilters{}), out,
+		PackagerItem{Input: "http://library.invalid/stream", Format: testSources()["h264-1080p-sdr-25"], AudioTrack: track},
+		packager.Slot{Frames: 250, AudioFrames: 469}, itemFault{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return args
+}
+
+// The invariant the channel's single audio track depends on, and the reason the selection could
+// not be expressed as two ffmpeg maps: EXACTLY ONE audio track, whatever was chosen.
+func TestItemArgsWithAudio_MapsExactlyOneAudioTrack(t *testing.T) {
 	for _, track := range []int{0, 1, 3} {
-		args := transcodeArgsAudio(DefaultProfile(), testStreamURL, 0, time.Hour, track)
+		args := itemArgsWithTrack(t, track)
 
 		var audioMaps []string
 		for i, a := range args {
@@ -81,18 +95,18 @@ func TestProgramArgsWithAudio_MapsExactlyOneAudioTrack(t *testing.T) {
 	}
 }
 
-// The wrapper must keep the pre-existing behaviour for every caller that has no preference.
-func TestProgramArgs_DefaultsToTheFirstAudioTrack(t *testing.T) {
-	args := transcodeArgs(DefaultProfile(), testStreamURL, 0, time.Hour)
+// An item with no preference maps the first track.
+func TestItemArgs_DefaultsToTheFirstAudioTrack(t *testing.T) {
+	args := itemArgsWithTrack(t, 0)
 	if !containsPair(args, "-map", "0:a:0") {
-		t.Fatalf("ProgramArgs did not map 0:a:0; args=%v", args)
+		t.Fatalf("item args did not map 0:a:0; args=%v", args)
 	}
 }
 
 // Video mapping is untouched by the audio work — the one thing most likely to be broken by a
 // careless edit to the same line.
-func TestProgramArgsWithAudio_StillMapsTheFirstVideoStream(t *testing.T) {
-	args := transcodeArgsAudio(DefaultProfile(), testStreamURL, 0, time.Hour, 2)
+func TestItemArgsWithAudio_StillMapsTheFirstVideoStream(t *testing.T) {
+	args := itemArgsWithTrack(t, 2)
 	if !containsPair(args, "-map", "0:v:0") {
 		t.Fatalf("video map missing or changed; args=%v", args)
 	}

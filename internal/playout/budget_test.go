@@ -157,35 +157,42 @@ func TestResourceBudget_ReclassFromCopyMustFitButATranscodeNeverStops(t *testing
 }
 
 // #1505: session admission and the hardware encode pool counted separately, so a session could pass
-// admission and then find the pool full (its programme dropped to software). Sessions now hold the
-// pool slot their lease admitted, so the pool is full exactly when the budget is.
-func TestManager_SessionAdmissionAndEncodePoolAgree(t *testing.T) {
+// admission and then find the pool full (its programme dropped to software). A channel packager
+// holds the pool slot its lease admitted, so the pool is full exactly when the budget is, and a
+// stopped packager returns its slot.
+func TestPackagerAdmissionAndEncodePoolAgree(t *testing.T) {
 	facts := nvencFacts()
 	facts.OperatorCap = 2
 	budget := NewResourceBudget(func() BudgetFacts { return facts })
 	pool := media.NewDynamicEncodePool(budget.BackgroundSlots)
 	budget.WithEncodePool(pool)
-	spawn, _ := newFakeSpawner(t)
-	m := testManager(t, spawn, 0, time.Minute).WithBudget(budget)
+	m := newTestPackagerHLS(t, slowItemSource{}, time.Hour)
+	m.WithBudget(budget)
 
 	for _, ch := range []string{"a", "b"} {
-		if _, _, err := m.Attach(t.Context(), ch, PlanFull); err != nil {
-			t.Fatalf("attach %s: %v", ch, err)
+		c, release, err := m.acquire(ch, FormatBaseline)
+		if err != nil || c == nil {
+			t.Fatalf("acquire %s: %v", ch, err)
 		}
+		defer release()
 	}
-	if _, _, err := m.Attach(t.Context(), "c", PlanFull); !errors.Is(err, ErrAtCapacity) {
+	if _, _, err := m.acquire("c", FormatBaseline); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("third transcode: err = %v, want ErrAtCapacity", err)
 	}
 	if release, ok := pool.AcquireForeground(t.Context()); ok {
 		release()
-		t.Fatal("the encode pool granted a hardware slot the budget had already given to sessions")
+		t.Fatal("the encode pool granted a hardware slot the budget had already given to packagers")
 	}
 	m.StopChannel("a")
-	release, ok := pool.AcquireForeground(t.Context())
-	if !ok {
-		t.Fatal("a stopped session did not return its pool slot")
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if release, ok := pool.AcquireForeground(t.Context()); ok {
+			release()
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a stopped packager did not return its pool slot")
+		}
 	}
-	release()
 }
 
 func TestResourceBudget_LegacyUnitsWithoutMeasurements(t *testing.T) {

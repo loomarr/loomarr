@@ -5,111 +5,27 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"testing/synctest"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/prepared"
-	"github.com/loomarr/loomarr/internal/testkit/playoutprocessfixture"
 )
 
-func TestPreparedBlockContentReportsNaturalExit(t *testing.T) {
-	for _, mode := range []string{"prepared-success", "prepared-failure"} {
-		t.Run(mode, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-			defer cancel()
-			content := startPreparedBlockHelper(t, ctx, mode)
-			got, err := io.ReadAll(content)
-			if string(got) != playoutprocessfixture.PreparedPrefix {
-				t.Fatalf("forwarded output = %q", got)
-			}
-			if mode == "prepared-failure" {
-				var exitErr *exec.ExitError
-				if !errors.As(err, &exitErr) || exitErr.ExitCode() != 7 {
-					t.Fatalf("read error = %v; want child exit status 7", err)
-				}
-			} else if err != nil {
-				t.Fatalf("successful child: %v", err)
-			}
-			if err := content.Close(); err != nil {
-				t.Fatalf("close after natural exit: %v", err)
-			}
-		})
-	}
-}
-
-func TestPreparedBlockFailureResolvesBeforeScheduledEnd(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	content := startPreparedBlockHelper(t, ctx, "prepared-failure")
-	calls := 0
-	source := BlockSource(func(_ context.Context, blockRequest BlockRequest) (Block, error) {
-		calls++
-		if calls > 1 {
-			cancel()
-			return Block{}, context.Canceled
-		}
-		return Block{Content: content, Identity: AiringIdentity{
-			ContentID: "failed-programme", EndsAt: time.Now().Add(time.Hour),
-		}}, nil
-	})
-	var output writeCloser
-	pumpBlocks(ctx, &output, source, "channel", PlanBaseline, time.Time{}, nil)
-	if calls != 2 {
-		t.Fatalf("source calls = %d; partial child failure waited for scheduled end instead of resolving again", calls)
-	}
-	if output.String() != playoutprocessfixture.PreparedPrefix {
-		t.Fatalf("forwarded prefix = %q", output.String())
-	}
-}
-
-func TestPreparedBlockContentStopsAfterStdoutCloses(t *testing.T) {
-	for _, stop := range []string{"cancel", "close"} {
-		t.Run(stop, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-			defer cancel()
-			content := startPreparedBlockHelper(t, ctx, "prepared-stalled")
-			prefix := make([]byte, len(playoutprocessfixture.PreparedPrefix))
-			if _, err := io.ReadFull(content, prefix); err != nil {
-				t.Fatal(err)
-			}
-			done := make(chan struct{})
-			go func() {
-				_, _ = io.Copy(io.Discard, content)
-				close(done)
-			}()
-			if stop == "cancel" {
-				cancel()
-			} else {
-				_ = content.Close()
-			}
-			select {
-			case <-done:
-			case <-time.After(5 * time.Second):
-				t.Fatal("read did not finish after stopping the child")
-			}
-			if err := content.process.Wait(); err != nil {
-				t.Fatalf("cancelled child was not reaped cleanly: %v", err)
-			}
-		})
-	}
-}
-
-func startPreparedBlockHelper(t *testing.T, ctx context.Context, mode string) *processBlockContent {
+func assertMetricsContain(t *testing.T, recorder *metrics.Recorder, wants ...string) {
 	t.Helper()
-	proc, err := Start(ctx, os.Args[0], []string{"-test.run=^TestProcessTreeHelper$", "--", mode}, nil, nil)
-	if err != nil {
-		t.Fatal(err)
+	response := httptest.NewRecorder()
+	recorder.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	for _, want := range wants {
+		if !strings.Contains(response.Body.String(), want) {
+			t.Errorf("metrics scrape does not contain %q", want)
+		}
 	}
-	content := &processBlockContent{reader: proc.Stdout, process: proc}
-	t.Cleanup(func() { _ = content.Close() })
-	return content
 }
 
 type fixedPreparedResolver struct {
@@ -275,84 +191,6 @@ func TestPreparedOriginRendersAKeyedWallClockManifest(t *testing.T) {
 	}
 	if _, ok, err := preparedOrigin.OpenAsset("ch-one", PlanBaseline, seg2+".ts"); err != nil || ok {
 		t.Fatalf("asset with a forged content-type suffix = (_, %v, %v), want miss", ok, err)
-	}
-}
-
-func TestPreparedMPEGTSBlockCopiesVideoAndDecodesPublicationAudioAtAiringOffset(t *testing.T) {
-	t.Parallel()
-	lib, err := prepared.NewLibrary(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	spec := preparedSpec("source-a")
-	pub := publishHLS(t, lib, spec)
-	started := time.Unix(1_000, 0).UTC()
-	identity := AiringIdentity{
-		StartedAt: started, EndsAt: started.Add(8 * time.Minute), Kind: "program",
-		ContentID: "movie:tmdb:1", ScheduleBlockID: "block-one",
-	}
-	origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
-		Current: PreparedAiring{
-			Specification: spec, StartedAt: started, Offset: 75 * time.Second, Identity: identity,
-		},
-	}})
-	var gotArgs []string
-	var gotSpec diagnostics.ProcessSpec
-	source := newPreparedMPEGTSBlockSource(origin, func(
-		_ context.Context, args []string, processSpec diagnostics.ProcessSpec,
-	) (*Process, error) {
-		gotArgs = append([]string(nil), args...)
-		gotSpec = processSpec
-		return &Process{Stdout: io.NopCloser(strings.NewReader("prepared-ts"))}, nil
-	})
-
-	block, err := source(t.Context(), BlockRequest{ChannelID: "ch-one", Plan: PlanFull, TimelineOrigin: started.Add(75 * time.Second), AudioBitrate: 128})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = block.Content.Close() }()
-	body, err := io.ReadAll(block.Content)
-	if err != nil || string(body) != "prepared-ts" {
-		t.Fatalf("block body = %q, err=%v", body, err)
-	}
-	if block.Identity != identity {
-		t.Fatalf("block identity = %+v, want %+v", block.Identity, identity)
-	}
-	wantFormat := BroadcastFormat{
-		VideoCodec: "h264", Width: 1920, Height: 1080, Framerate: 25,
-		VideoBitrate: 5000, AudioBitrate: 128,
-	}
-	if block.Format != wantFormat {
-		t.Fatalf("block format = %+v, want %+v", block.Format, wantFormat)
-	}
-	joined := strings.Join(gotArgs, " ")
-	for _, want := range []string{
-		"-ss 75.000", "-to 480.000", "-c:v copy", "-c:a s302m", "-af atrim=start=75.000:end=480.000", "-f mpegts",
-		filepath.Join(pub.Directory, prepared.MediaManifestName),
-	} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("prepared remux args missing %q: %s", want, joined)
-		}
-	}
-	if strings.Contains(joined, "-readrate") {
-		t.Fatalf("prepared copy remux must leave pacing to the Channel mux: %s", joined)
-	}
-	if gotSpec.Purpose != "playout_prepared_remux" || gotSpec.ChannelID != "ch-one" ||
-		gotSpec.ScheduleBlockID != "block-one" || strings.Contains(strings.Join(gotSpec.Args, " "), pub.Directory) {
-		t.Fatalf("diagnostic process spec = %+v, want correlated and path-redacted", gotSpec)
-	}
-}
-
-func TestPreparedMPEGTSRejectsUnsupportedPublicationFormat(t *testing.T) {
-	contract := preparedSpec("source-a").Rendition
-	contract.VideoCodec = "vp9"
-	if _, ok := preparedBroadcastFormat(contract); ok {
-		t.Fatal("raw prepared delivery accepted an unsupported video codec")
-	}
-	contract.VideoCodec = "h264"
-	contract.AudioLayout = "5.1"
-	if _, ok := preparedBroadcastFormat(contract); ok {
-		t.Fatal("raw prepared delivery accepted audio that violates the stable stereo session shape")
 	}
 }
 
@@ -575,90 +413,5 @@ func TestPreparedManifestOmitsDiscontinuitySequenceAtTheStartOfAChannel(t *testi
 	}
 	if manifest := string(presentation.Manifest); strings.Contains(manifest, "#EXT-X-DISCONTINUITY-SEQUENCE") {
 		t.Errorf("unstarted Channel should omit the tag:\n%s", manifest)
-	}
-}
-
-// A completed predecessor can be observed after the next programme has already
-// started. Exercise the actual block loop and prepared adapter together: clean
-// EOF alone must not replace the resolver's current position with offset zero.
-func TestPumpBlocksLatePreparedHandoffRetainsCurrentPosition(t *testing.T) {
-	for _, tc := range []struct {
-		name           string
-		predecessorGap time.Duration
-		body           string
-		slowLookup     bool
-	}{
-		{name: "clean_adjacent", body: "previous-tail"},
-		{name: "clean_early_slow_lookup", body: "previous-tail", slowLookup: true},
-		{name: "clean_after_gap", predecessorGap: time.Second, body: "previous-tail"},
-		{name: "clean_after_missed_airing", predecessorGap: 8 * time.Second, body: "previous-tail"},
-		{name: "empty_adjacent"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				lib, err := prepared.NewLibrary(t.TempDir())
-				if err != nil {
-					t.Fatal(err)
-				}
-				spec := preparedSpec("late-handoff")
-				publishHLS(t, lib, spec)
-				started := time.Now().UTC().Add(-5 * time.Second)
-				if tc.slowLookup {
-					started = time.Now().UTC().Add(10 * time.Millisecond)
-				}
-				current := AiringIdentity{StartedAt: started, EndsAt: started.Add(8 * time.Second),
-					Kind: "program", ContentID: "current", ScheduleBlockID: "current-block"}
-				previousEnd := started.Add(-tc.predecessorGap)
-				previous := AiringIdentity{StartedAt: previousEnd.Add(-8 * time.Second), EndsAt: previousEnd,
-					Kind: "program", ContentID: "previous", ScheduleBlockID: "previous-block"}
-				origin := newPreparedOrigin(lib, fixedPreparedResolver{ok: true, window: PreparedWindow{
-					Current: PreparedAiring{Specification: spec, StartedAt: started,
-						Offset: 5 * time.Second, Identity: current},
-				}})
-				ctx, cancel := context.WithCancel(t.Context())
-				defer cancel()
-				var gotArgs []string
-				preparedSource := newPreparedMPEGTSBlockSource(origin, func(
-					_ context.Context, args []string, _ diagnostics.ProcessSpec,
-				) (*Process, error) {
-					gotArgs = append([]string(nil), args...)
-					cancel()
-					return nil, errors.New("captured current-airing process request")
-				})
-				calls := 0
-				source := BlockSource(func(ctx context.Context, blockRequest BlockRequest) (Block, error) {
-					calls++
-					if calls == 1 {
-						return Block{Content: io.NopCloser(strings.NewReader(tc.body)), Identity: previous}, nil
-					}
-					if tc.slowLookup {
-						timer := time.NewTimer(time.Until(started.Add(5 * time.Second)))
-						defer timer.Stop()
-						select {
-						case <-ctx.Done():
-							return Block{}, ctx.Err()
-						case <-timer.C:
-						}
-					}
-					return preparedSource(ctx, blockRequest)
-				})
-				var output writeCloser
-				pumpBlocks(ctx, &output, source, "channel", PlanBaseline, time.Time{}, nil)
-				wantCalls := 2
-				if tc.slowLookup {
-					wantCalls = 3
-				}
-				if calls != wantCalls {
-					t.Fatalf("source calls = %d, want %d", calls, wantCalls)
-				}
-				if output.String() != tc.body {
-					t.Fatalf("predecessor output = %q", output.String())
-				}
-				joined := strings.Join(gotArgs, " ")
-				if !strings.Contains(joined, "-ss 5.000 ") {
-					t.Fatalf("resolved five-second offset discarded after %s: %s", tc.name, joined)
-				}
-			})
-		})
 	}
 }

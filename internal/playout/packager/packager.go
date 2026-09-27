@@ -127,6 +127,7 @@ type Packager struct {
 	listSkew time.Duration // test seam: none in production
 
 	readyOnce sync.Once // logs the first manifest's readiness (the end of G2)
+	readyAt   time.Time // when the first manifest was ready; zero before
 }
 
 // Stats counts what the packager did, for logs and tests.
@@ -513,6 +514,9 @@ func (p *Packager) AwaitPlaylist(ctx context.Context) error {
 		switch {
 		case ready:
 			p.readyOnce.Do(func() {
+				p.mu.Lock()
+				p.readyAt = now
+				p.mu.Unlock()
 				p.cfg.Log.Info("packager: first manifest ready", "since_start_ms", now.Sub(p.airAt(0)).Milliseconds())
 			})
 			return nil
@@ -604,4 +608,36 @@ func (p *Packager) Init() []byte {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.init
+}
+
+// Lead is how far the encoded timeline runs ahead of now: the run-ahead, or, negative, how far the
+// channel has fallen behind the wall clock. It is zero before the first segment.
+func (p *Packager) Lead(now time.Time) time.Duration {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.window.segs) == 0 {
+		return 0
+	}
+	last := p.window.segs[len(p.window.segs)-1]
+	return p.epoch.Add(ticks(last.start + last.dur)).Sub(now)
+}
+
+// ReadyAt is when the first manifest became ready (the end of the tune-in), or zero before.
+func (p *Packager) ReadyAt() time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.readyAt
+}
+
+// Newest names the newest listed segment file in Dir and when it airs; ok is false before any.
+func (p *Packager) Newest(now time.Time) (name string, at time.Time, ok bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	edge := p.listEdgeLocked(now)
+	for i := len(p.window.segs) - 1; i >= 0; i-- {
+		if s := p.window.segs[i]; s.start+s.dur <= edge {
+			return s.name, p.epoch.Add(ticks(s.start)), true
+		}
+	}
+	return "", time.Time{}, false
 }

@@ -591,7 +591,7 @@ func lastSpeedObserved(r interface{ Read([]byte) (int, error) }, run *diagnostic
 	var current Progress
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		_, complete := consumeProgressLine(strings.TrimSpace(scanner.Text()), &current)
+		complete := consumeProgressLine(strings.TrimSpace(scanner.Text()), &current)
 		if current.Speed > speed {
 			speed = current.Speed
 		}
