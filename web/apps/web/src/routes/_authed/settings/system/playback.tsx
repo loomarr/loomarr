@@ -30,6 +30,7 @@ const PlaybackSettings = () => {
             "playout.quality_tier",
             "playout.audio_language",
             "playout.tone_curve",
+            "playout.watermark_look",
             "playout.watermark_opacity_pct",
           ],
         },

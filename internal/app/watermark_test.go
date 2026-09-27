@@ -1,19 +1,26 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/watermark"
 )
 
 func testWatermarks(t *testing.T, ch store.Channel, gatePassed bool) *channelWatermarks {
@@ -26,7 +33,82 @@ func testWatermarksWith(t *testing.T, set resolved, ch store.Channel, gatePassed
 	g := &watermarkGate{}
 	g.works.Store(gatePassed)
 	return &channelWatermarks{dir: t.TempDir(), channels: staticChannelReader{channel: ch}, log: slog.New(slog.DiscardHandler),
-		opacity: watermarkOpacity(set), gates: map[playout.Encoder]*watermarkGate{playout.EncoderNVENC: g}}
+		install: watermarkInstall(set), gates: map[playout.Encoder]*watermarkGate{playout.EncoderNVENC: g}}
+}
+
+// sameBug fails unless the aired PNG at path is exactly the renderer's bug for the callsign in the
+// style at 1080 lines, the default size and opacity.
+func sameBug(t *testing.T, path, callsign string, style watermark.Style, opacity float64) {
+	t.Helper()
+	mask, err := watermark.CallsignMask(callsign, style)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := watermark.Render(mask, 1080, style.Adjust(watermark.Look{Size: schedule.WatermarkDefaultSize, Opacity: opacity, Shadow: true})).Straight
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := png.Decode(f)
+	_ = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := image.NewNRGBA(img.Bounds())
+	draw.Draw(got, got.Rect, img, img.Bounds().Min, draw.Src)
+	if got.Rect.Size() != want.Rect.Size() || !bytes.Equal(got.Pix, want.Pix) {
+		t.Errorf("aired bug %v is not the %s bug %v", got.Rect.Size(), style, want.Rect.Size())
+	}
+}
+
+// THE LOOK (#1617): playout.watermark_look (Text by default) styles every channel's generated bug
+// unless the channel overrides it, and a change applies to the next bug asked for.
+func TestChannelWatermarks_LookFollowsTheInstallSettingLive(t *testing.T) {
+	name, number := "Retro Cartoons", 7
+	call := deriveCallsign(name, number)
+	set := visionSet(t, nil)
+	c := testWatermarksWith(t, set, store.Channel{Channel: schedule.Channel{Name: name, Number: number}}, true)
+	wm := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
+	if wm == nil {
+		t.Fatal("no bug")
+	}
+	sameBug(t, wm.Straight, call, watermark.StyleText, 0.40)
+
+	set.svc.SetDB(map[string]string{"playout.watermark_look": "plate"})
+	again := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
+	if again == nil || again.Straight == wm.Straight {
+		t.Fatalf("a changed look did not re-render the bug: %+v", again)
+	}
+	sameBug(t, again.Straight, call, watermark.StylePlate, 0.40)
+
+	ch := store.Channel{Channel: schedule.Channel{Name: name, Number: number}}
+	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "small-plate"}
+	over := testWatermarksWith(t, set, ch, true).For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
+	sameBug(t, over.Straight, call, watermark.StyleSmallPlate, 0.40)
+}
+
+// ONE LIST, THREE COPIES: the renderer's styles, the policy's looks and the setting's options are
+// declared in three packages that must not import each other; this pins them equal.
+func TestWatermarkLooks_AgreeAcrossRendererPolicyAndSetting(t *testing.T) {
+	var styles []string
+	for _, s := range watermark.Styles {
+		styles = append(styles, string(s))
+	}
+	s, ok := settings.NewRegistry().Get("playout.watermark_look")
+	if !ok {
+		t.Fatal("playout.watermark_look not declared")
+	}
+	var options []string
+	for _, o := range s.Enum {
+		options = append(options, o.Value)
+	}
+	if !slices.Equal(styles, schedule.WatermarkLooks) || !slices.Equal(options, schedule.WatermarkLooks) {
+		t.Errorf("renderer %v, policy %v, setting %v", styles, schedule.WatermarkLooks, options)
+	}
+	field, _ := reflect.TypeFor[schedule.WatermarkPolicy]().FieldByName("Look")
+	if tag := field.Tag.Get("enum"); tag != strings.Join(schedule.WatermarkLooks, ",") {
+		t.Errorf("policy enum tag %q, want %v", tag, schedule.WatermarkLooks)
+	}
 }
 
 // peakWhite is a rendered bug's peak premultiplied white out of 255: its opacity (the shadow beneath
@@ -82,8 +164,8 @@ func TestChannelWatermarks_OpacityFollowsTheInstallSettingLive(t *testing.T) {
 	}
 }
 
-// ON BY DEFAULT: a channel with no watermark policy gets the Plate bug at the approved placement.
-func TestChannelWatermarks_DefaultPlateBug(t *testing.T) {
+// ON BY DEFAULT: a channel with no watermark policy gets the generated bug at the approved placement.
+func TestChannelWatermarks_DefaultBug(t *testing.T) {
 	c := testWatermarks(t, store.Channel{Channel: schedule.Channel{Name: "Retro Cartoons", Number: 7}}, true)
 	wm := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)
 	if wm == nil {

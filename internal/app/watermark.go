@@ -38,8 +38,8 @@ type channelWatermarks struct {
 	tonemap func() bool
 	gpu     func() playout.GPUFilters
 	dir     string
-	// opacity is the live install-wide opacity (watermarkOpacity), read on every For.
-	opacity  func() float64
+	// install is the live install-wide opacity and look (watermarkInstall), read on every For.
+	install  func() schedule.WatermarkInstall
 	channels interface {
 		GetChannel(context.Context, string) (store.Channel, error)
 	}
@@ -86,7 +86,7 @@ func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved,
 		tonemap:  playout.TonemapperFor(ffmpeg),
 		gpu:      playout.GPUFiltersFor(ffmpeg),
 		dir:      filepath.Join(filepath.Dir(filepath.Clean(set.str("images.dir"))), "watermarks"),
-		opacity:  watermarkOpacity(set),
+		install:  watermarkInstall(set),
 		channels: st, log: log, lifetime: rootCtx,
 	}
 	if events != nil {
@@ -95,11 +95,14 @@ func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved,
 	return c
 }
 
-// watermarkOpacity is the install-wide bug opacity, playout.watermark_opacity_pct as a fraction,
-// resolved per call so a change applies to the next programme item without a restart (the
-// rendered-bug cache is keyed by opacity, so the new value re-renders).
-func watermarkOpacity(set resolved) func() float64 {
-	return func() float64 { return float64(set.intv("playout.watermark_opacity_pct")) / 100 }
+// watermarkInstall is the install-wide bug settings: playout.watermark_opacity_pct as a fraction
+// and playout.watermark_look, resolved per call so a change applies to the next programme item
+// without a restart (the rendered-bug cache is keyed by both, so a new value re-renders).
+func watermarkInstall(set resolved) func() schedule.WatermarkInstall {
+	return func() schedule.WatermarkInstall {
+		return schedule.WatermarkInstall{Opacity: float64(set.intv("playout.watermark_opacity_pct")) / 100,
+			Look: set.str("playout.watermark_look")}
+	}
 }
 
 // withOriginals binds the image service a custom upload is read from. The build calls it before the
@@ -122,7 +125,7 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 	if err != nil {
 		return nil
 	}
-	res := schedule.ResolveWatermark(ch.Policy.Watermark, c.opacity())
+	res := schedule.ResolveWatermark(ch.Policy.Watermark, c.install())
 	if !res.Enabled {
 		return nil
 	}
@@ -146,8 +149,9 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 
 type bugRenderer func(frameHeight int, look watermark.Look) (watermark.Bug, error)
 
-// source picks the bug's image: a custom upload, else the generated Plate. The automatic TMDB
-// network logo (between the two in the maintainer's order) is not wired yet.
+// source picks the bug's image: a custom upload (its own shape; the look does not apply), else the
+// generated callsign bug in the resolved look. The automatic TMDB network logo (between the two in
+// the maintainer's order) is not wired yet.
 func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res schedule.ResolvedWatermark) (string, func() (bugRenderer, error)) {
 	if res.Image != "" && c.originals != nil {
 		return "image:" + res.Image, func() (bugRenderer, error) {
@@ -171,12 +175,15 @@ func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res sc
 	if call == "" {
 		call = deriveCallsign(ch.Name, ch.Number)
 	}
-	return "plate:" + call, func() (bugRenderer, error) {
-		mask, err := watermark.PlateMask(call)
+	style := watermark.Style(res.Look)
+	return "callsign:" + res.Look + ":" + call, func() (bugRenderer, error) {
+		mask, err := watermark.CallsignMask(call, style)
 		if err != nil {
 			return nil, err
 		}
-		return func(h int, look watermark.Look) (watermark.Bug, error) { return watermark.Render(mask, h, look), nil }, nil
+		return func(h int, look watermark.Look) (watermark.Bug, error) {
+			return watermark.Render(mask, h, style.Adjust(look)), nil
+		}, nil
 	}
 }
 

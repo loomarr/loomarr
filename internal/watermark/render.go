@@ -15,16 +15,20 @@
 //   - the look's opacity baked into alpha, over a soft black drop shadow at 35% of that opacity,
 //     offset H/40 and blurred H/30, on a canvas padded 12% of the mark's height.
 //
-// The look's values come from the channel's policy; internal/schedule (watermark_policy.go) owns
-// the approved defaults, so this package holds none.
+// A generated callsign bug comes in four styles (Style, #1617): the Plate, and Text, Outline and
+// Small Plate drawn on the Plate's canvas. The look's values come from the channel's policy and
+// the install settings; internal/schedule (watermark_policy.go) and the settings registry own the
+// defaults, so this package holds none.
 package watermark
 
 import (
 	_ "embed"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"strings"
 
 	xdraw "golang.org/x/image/draw"
@@ -58,12 +62,48 @@ type Look struct {
 // ErrEmpty means the source image has no visible pixels.
 var ErrEmpty = errors.New("watermark: the image has no visible shape")
 
-// PlateMask is the "Plate" typographic bug: the callsign knocked out of a rounded plate.
-func PlateMask(callsign string) (*image.Alpha, error) {
+// Style is the generated callsign bug's look, the maintainer's four (#1617, picked from real-frame
+// previews): which mask it draws, and how it adjusts the channel's size and shadow (Adjust).
+type Style string
+
+const (
+	StylePlate      Style = "plate"       // the callsign knocked out of a rounded plate
+	StyleText       Style = "text"        // the Plate's letters with no plate (the default)
+	StyleOutline    Style = "outline"     // the Plate's letters as a hollow stroke
+	StyleSmallPlate Style = "small-plate" // the Plate at 75% of the channel's size, no shadow
+)
+
+// Styles is every style, in the order the API lists them.
+var Styles = []Style{StylePlate, StyleText, StyleOutline, StyleSmallPlate}
+
+// smallPlateScale is Small Plate's share of the channel's size.
+const smallPlateScale = 0.75
+
+// Adjust applies the style to the channel's look: Small Plate is 75% of the size with no shadow,
+// the others keep the look as it is.
+func (s Style) Adjust(l Look) Look {
+	if s == StyleSmallPlate {
+		l.Size *= smallPlateScale
+		l.Shadow = false
+	}
+	return l
+}
+
+// outlineStroke is Outline's stroke width as a share of the canvas height: ~2 px at 1080p.
+const outlineStroke = 0.05
+
+// CallsignMask is the typographic bug for a callsign in a style. Every style draws on the Plate's
+// canvas, so the letters keep the Plate's size and position and the equal-area rule sizes every
+// style alike.
+func CallsignMask(callsign string, s Style) (*image.Alpha, error) {
 	callsign = strings.TrimSpace(callsign)
 	if callsign == "" {
 		return nil, errors.New("watermark: empty callsign")
 	}
+	if !slices.Contains(Styles, s) {
+		return nil, fmt.Errorf("watermark: unknown style %q", s)
+	}
+	plate := s == StylePlate || s == StyleSmallPlate
 	h := 100 * supersample
 	txt, err := textMask(callsign, float64(h)*0.52)
 	if err != nil {
@@ -72,16 +112,41 @@ func PlateMask(callsign string) (*image.Alpha, error) {
 	padX := int(float64(h) * 0.30)
 	w := txt.Rect.Dx() + 2*padX
 	m := image.NewAlpha(image.Rect(0, 0, w, h))
-	fillRoundedRect(m, float64(h)*0.22)
+	if plate {
+		fillRoundedRect(m, float64(h)*0.22)
+	}
 	ox, oy := padX, (h-txt.Rect.Dy())/2
 	for y := 0; y < txt.Rect.Dy(); y++ {
 		for x := 0; x < txt.Rect.Dx(); x++ {
 			k := int(txt.AlphaAt(x, y).A)
 			i := m.PixOffset(ox+x, oy+y)
-			m.Pix[i] = uint8(int(m.Pix[i]) * (255 - k) / 255)
+			if plate {
+				m.Pix[i] = uint8(int(m.Pix[i]) * (255 - k) / 255)
+			} else {
+				m.Pix[i] = uint8(k)
+			}
 		}
 	}
+	if s == StyleOutline {
+		hollow(m, float64(h)*outlineStroke)
+	}
 	return m, nil
+}
+
+// hollow turns a filled shape into a stroke of width s centred on its edge. A blur of standard
+// deviation σ puts a straight edge's signed distance x at Φ(x/σ), so the band ±s/2 is where the
+// blurred value lies between Φ(∓1.645) = 0.05 and 0.95; the ramps anti-alias it.
+func hollow(m *image.Alpha, s float64) {
+	w, h := m.Rect.Dx(), m.Rect.Dy()
+	p := make([]float64, w*h)
+	for i := range p {
+		p[i] = float64(m.Pix[i]) / 255
+	}
+	gaussianBlur(p, w, h, s/2/1.645)
+	ramp := func(v, lo, hi float64) float64 { return math.Max(0, math.Min(1, (v-lo)/(hi-lo))) }
+	for i, v := range p {
+		m.Pix[i] = u8(255 * ramp(v, 0.03, 0.07) * (1 - ramp(v, 0.93, 0.97)))
+	}
 }
 
 // LogoMask is a logo's silhouette: its own alpha, trimmed to the visible shape.

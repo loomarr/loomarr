@@ -502,6 +502,21 @@ func declared() []Setting {
 			Doc: "How solid the channel logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own watermark opacity keeps it. A change shows from each channel's next programme.",
 		},
 		{
+			// The maintainer's four styles (#1617, picked from real-frame previews), Text by default;
+			// the middle tier of channel policy.watermark.look > this > built-in. Values match
+			// schedule.WatermarkLooks and watermark.Styles (pinned by an internal/app test). Read per
+			// programme item; the rendered-bug cache is keyed by look, so a change re-renders.
+			Key: "playout.watermark_look", Label: "Channel logo style", EnvVar: "PLAYOUT_WATERMARK_LOOK", Group: GroupPlayout,
+			Kind: KindEnum, Enum: []EnumOption{
+				opt("plate", "Plate — the name cut out of a rounded badge"),
+				opt("text", "Text — the name alone, with a soft shadow"),
+				opt("outline", "Outline — the name as hollow letters"),
+				opt("small-plate", "Small plate — a smaller badge with no shadow"),
+			},
+			Default: "text",
+			Doc:     "How the channel logo Loomarr draws from a channel's name looks. A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel's next programme.",
+		},
+		{
 			// ⚠ Still separate from ingest.ffmpeg_path, but NOT for the reason this comment
 			// used to give ("the filler sidecar bundles its own ffmpeg in a different image").
 			// There is one image now (§16), so that rationale died with the sidecar and the
