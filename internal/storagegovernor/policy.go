@@ -15,7 +15,6 @@ type Domain string
 
 const (
 	DomainFiller      Domain = "filler"
-	DomainPrepared    Domain = "prepared"
 	DomainDiagnostics Domain = "diagnostics"
 )
 
@@ -75,7 +74,7 @@ func normalizeDomain(domain Domain) Domain {
 
 func validDomain(domain Domain) bool {
 	switch domain {
-	case DomainFiller, DomainPrepared, DomainDiagnostics:
+	case DomainFiller, DomainDiagnostics:
 		return true
 	default:
 		return false

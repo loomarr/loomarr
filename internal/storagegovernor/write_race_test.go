@@ -26,7 +26,7 @@ func TestMonitorPathIgnoresAFileRemovedBetweenListingAndStat(t *testing.T) {
 		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
 	})
 	lease, _ := governor.Reserve(t.Context(), storagegovernor.Request{
-		Path: root, Domain: storagegovernor.DomainPrepared, EstimatedBytes: 100,
+		Path: root, Domain: storagegovernor.DomainDiagnostics, EstimatedBytes: 100,
 	})
 	defer lease.Release()
 	restore := storagegovernor.SetWalkStatHooks(nil, func(path string) (fs.FileInfo, error) {
@@ -53,7 +53,7 @@ func TestFilesystemMeterIgnoresAnEntryRemovedByConcurrentStagingCleanup(t *testi
 		t.Fatal(err)
 	}
 	governor := newFilesystemGovernor(t,
-		[]storagegovernor.ManagedRoot{{Path: root, Domain: storagegovernor.DomainPrepared}},
+		[]storagegovernor.ManagedRoot{{Path: root, Domain: storagegovernor.DomainDiagnostics}},
 		func(storagegovernor.Domain) storagegovernor.Policy {
 			return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
 		})
@@ -66,7 +66,7 @@ func TestFilesystemMeterIgnoresAnEntryRemovedByConcurrentStagingCleanup(t *testi
 	defer restore()
 
 	lease, decision := governor.Reserve(context.Background(), storagegovernor.Request{
-		Path: root, Domain: storagegovernor.DomainPrepared, EstimatedBytes: 10, Mode: storagegovernor.Automatic,
+		Path: root, Domain: storagegovernor.DomainDiagnostics, EstimatedBytes: 10, Mode: storagegovernor.Automatic,
 	})
 	if lease != nil {
 		defer lease.Release()
@@ -83,7 +83,7 @@ func TestMonitorGrowingPathExtendsTheReservationInsteadOfDiscardingNearlyFinishe
 		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
 	})
 	lease, _ := governor.Reserve(t.Context(), storagegovernor.Request{
-		Path: root, Domain: storagegovernor.DomainPrepared, EstimatedBytes: 10,
+		Path: root, Domain: storagegovernor.DomainDiagnostics, EstimatedBytes: 10,
 	})
 	defer lease.Release()
 	if err := os.WriteFile(filepath.Join(root, "segment.m4s"), make([]byte, 11), 0o600); err != nil {
@@ -115,7 +115,7 @@ func TestMonitorGrowingPathStillStopsWhenTheHostCannotTakeTheExtension(t *testin
 		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
 	})
 	lease, decision := governor.Reserve(t.Context(), storagegovernor.Request{
-		Path: root, Domain: storagegovernor.DomainPrepared, EstimatedBytes: 10,
+		Path: root, Domain: storagegovernor.DomainDiagnostics, EstimatedBytes: 10,
 	})
 	if lease == nil {
 		t.Fatalf("reservation refused: %+v", decision)

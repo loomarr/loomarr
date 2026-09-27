@@ -1,8 +1,7 @@
 import type { ChannelHealth } from "@loomarr/api/models/channelHealth";
 import type { PlayoutCapability } from "@loomarr/api/models/playoutCapability";
 import type { PlayoutGPU } from "@loomarr/api/models/playoutGPU";
-import type { PreparedReadiness } from "@loomarr/api/models/preparedReadiness";
-import { formatBytes, formatRelative, pluralize } from "@loomarr/core/format";
+import { pluralize } from "@loomarr/core/format";
 import { Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -77,67 +76,6 @@ const EncoderRow = ({ capability, gpu }: { capability: PlayoutCapability; gpu: P
       {/* The whole reason the GPU header exists: a resident LLM sharing VRAM with the encoders is a
           real, silent cause of stutter, and nothing else on the dashboard says so. */}
       {gpu.contended && <Badge variant="caution">LLM sharing VRAM</Badge>}
-    </div>
-  );
-};
-
-const PreparedRow = ({ prepared }: { prepared?: PreparedReadiness }) => {
-  if (!prepared?.available) {
-    return (
-      <div className="border-border border-b px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="font-medium text-sm">Prepared playback unavailable</p>
-          <Badge variant="caution">Live fallback only</Badge>
-        </div>
-        <p className="mt-1 text-muted-foreground text-xs">
-          {prepared?.unavailableReason ?? "The readiness planner is not wired."}
-        </p>
-      </div>
-    );
-  }
-
-  if (!prepared.lastRunAt) {
-    return (
-      <div className="border-border border-b px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="font-medium text-sm">Prepared playback</p>
-          {prepared.running && <Badge variant="neutral">Warming</Badge>}
-        </div>
-        <p className="mt-1 text-muted-foreground text-xs">
-          {prepared.running ? "The first readiness pass is running…" : "Readiness pass hasn’t run yet."}
-        </p>
-      </div>
-    );
-  }
-
-  const allReady = prepared.readyChannels === prepared.channels;
-  return (
-    <div className="border-border border-b px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">
-            Prepared playback
-          </p>
-          <p className="mt-0.5 font-medium text-sm">
-            {prepared.channels === 0
-              ? "No scheduled channels in this window"
-              : `${prepared.readyChannels} of ${prepared.channels} channels ready`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {prepared.running && <Badge variant="neutral">Pass running</Badge>}
-          <Badge variant={allReady ? "lock" : "caution"}>{allReady ? "Ready" : "Warming"}</Badge>
-        </div>
-      </div>
-      <p className="mt-1.5 text-muted-foreground text-xs">
-        {pluralize(prepared.missingBindings, "scheduled binding")} unprepared ·{" "}
-        {pluralize(prepared.queuedPublications, "publication")} warming
-      </p>
-      <p className="mt-1 text-muted-foreground text-xs">
-        {formatBytes(prepared.remainingBytes)} of {formatBytes(prepared.budgetBytes)} used ·{" "}
-        {formatBytes(prepared.protectedBytes)} protected · updated {formatRelative(prepared.lastRunAt)}
-      </p>
-      {prepared.lastError && <p className="mt-1 text-caution text-xs">Last pass: {prepared.lastError}</p>}
     </div>
   );
 };
@@ -229,12 +167,8 @@ const PlayoutPanel = ({ status, loading, title = "Playout", className }: Playout
 
       {!loading && status?.running && <EncoderRow capability={status.capability} gpu={status.gpu} />}
 
-      {!loading && status?.running && <PreparedRow prepared={status.prepared} />}
-
       {!loading && status?.running && channels.length === 0 && (
-        <p className="px-4 py-6 text-muted-foreground text-sm">
-          No live fallback encoders are active. Prepared viewers do not create a row here.
-        </p>
+        <p className="px-4 py-6 text-muted-foreground text-sm">No channels are streaming right now.</p>
       )}
 
       {status?.running && channels.length > 0 && (

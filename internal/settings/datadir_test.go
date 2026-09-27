@@ -10,7 +10,6 @@ import (
 
 // storageKeys are the directories whose defaults live under the database's data directory.
 var storageKeys = map[string]string{
-	"playout.prepared_dir": "prepared",
 	// Not tmpfs (#1512 spike requirement 8): the channel packager keeps a DVR window per channel.
 	"playout.hls_dir": "hls",
 	"backup.dir":      "backups",

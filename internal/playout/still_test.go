@@ -46,7 +46,7 @@ func countingExtractor(calls *atomic.Int32) StillExtractor {
 func TestOriginStill_DecodesOncePerSegmentAndTracksTheLiveEdge(t *testing.T) {
 	var calls atomic.Int32
 	src := &fakeStillSource{ok: true, seg: segment("seg-1", "one", time.Unix(100, 0))}
-	o := newOrigin(nil, nil, nil)
+	o := newOrigin(nil, nil)
 	o.stillSources = []stillSource{src}
 	o.stillExtractor = countingExtractor(&calls)
 
@@ -73,7 +73,7 @@ func TestOriginStill_DecodesOncePerSegmentAndTracksTheLiveEdge(t *testing.T) {
 
 func TestOriginStill_NoSegmentIsAMissNotAnError(t *testing.T) {
 	var calls atomic.Int32
-	o := newOrigin(nil, nil, nil)
+	o := newOrigin(nil, nil)
 	o.stillSources = []stillSource{&fakeStillSource{ok: false}}
 	o.stillExtractor = countingExtractor(&calls)
 
@@ -87,7 +87,7 @@ func TestOriginStill_NoSegmentIsAMissNotAnError(t *testing.T) {
 
 func TestOriginStill_FallsThroughToTheNextSource(t *testing.T) {
 	var calls atomic.Int32
-	o := newOrigin(nil, nil, nil)
+	o := newOrigin(nil, nil)
 	o.stillSources = []stillSource{
 		&fakeStillSource{err: errors.New("prepared broke")},
 		&fakeStillSource{ok: true, seg: segment("live-1", "live", time.Unix(1, 0))},
@@ -101,7 +101,7 @@ func TestOriginStill_FallsThroughToTheNextSource(t *testing.T) {
 }
 
 func TestOriginStill_NoExtractorMeansNoStills(t *testing.T) {
-	o := newOrigin(nil, nil, nil)
+	o := newOrigin(nil, nil)
 	o.stillSources = []stillSource{&fakeStillSource{ok: true, seg: segment("s", "x", time.Now())}}
 	if _, ok, err := o.Still(context.Background(), "ch1", PlanBaseline); ok || err != nil {
 		t.Fatalf("ok=%v err=%v, want a clean miss when ffmpeg is not wired", ok, err)
@@ -169,7 +169,7 @@ func (g *gatedExtractor) extract(_ context.Context, media io.Reader) ([]byte, er
 
 func TestOriginStill_ConcurrentMissesShareOneDecode(t *testing.T) {
 	gate := newGatedExtractor()
-	o := newOrigin(nil, nil, nil)
+	o := newOrigin(nil, nil)
 	o.stillSources = []stillSource{&fakeStillSource{ok: true, seg: segment("seg-1", "one", time.Unix(100, 0))}}
 	o.stillExtractor = gate.extract
 
@@ -205,7 +205,7 @@ func TestOriginStill_ConcurrentMissesShareOneDecode(t *testing.T) {
 func TestOriginStill_DecodeBoundNeverQueuesAPileOfFFmpeg(t *testing.T) {
 	gate := newGatedExtractor()
 	now := time.Unix(1_000, 0)
-	o := newOrigin(nil, nil, nil)
+	o := newOrigin(nil, nil)
 	o.stillExtractor = gate.extract
 	o.stillClock = func() time.Time { return now }
 

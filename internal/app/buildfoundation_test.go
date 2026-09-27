@@ -26,16 +26,14 @@ func testFoundationStorageBudgetAndProjectionSurviveRestart(t *testing.T, st sto
 	root := t.TempDir()
 	fillerDir := filepath.Join(root, "filler")
 	watchDir := filepath.Join(fillerDir, "_watch")
-	preparedDir := filepath.Join(root, "prepared")
 	diagnosticsDir := filepath.Join(root, "diagnostics")
-	for _, dir := range []string{fillerDir, watchDir, preparedDir, diagnosticsDir} {
+	for _, dir := range []string{fillerDir, watchDir, diagnosticsDir} {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("FILLER_DIR", fillerDir)
 	t.Setenv("FILLER_WATCH_DIR", watchDir)
-	t.Setenv("PLAYOUT_PREPARED_DIR", preparedDir)
 	t.Setenv("DIAGNOSTICS_DIR", diagnosticsDir)
 	if err := st.SetSetting(t.Context(), "filler.storage.library_budget_gb", "7"); err != nil {
 		t.Fatal(err)
@@ -78,14 +76,10 @@ func TestFoundationRecomputesStorageForChangedFillerPathAfterRestart(t *testing.
 			t.Fatal(err)
 		}
 	}
-	preparedDir := filepath.Join(root, "prepared")
 	diagnosticsDir := filepath.Join(root, "diagnostics")
-	for _, dir := range []string{preparedDir, diagnosticsDir} {
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.MkdirAll(diagnosticsDir, 0o750); err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("PLAYOUT_PREPARED_DIR", preparedDir)
 	t.Setenv("DIAGNOSTICS_DIR", diagnosticsDir)
 	overrides := Overrides{DataDir: filepath.Join(root, "encryption")}
 	project := func(wantPath string, wantManaged int64) {

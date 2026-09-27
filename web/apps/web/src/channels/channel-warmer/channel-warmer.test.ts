@@ -12,7 +12,7 @@ vi.mock("../channel-play-url", async (importOriginal) => ({
 import { warmChannel } from "./channel-warmer";
 
 describe("channel warmer", () => {
-  it("fetches prepared init and media bytes while preserving the normal signed URL", async () => {
+  it("warms live, then fetches init and media bytes while preserving the normal signed URL", async () => {
     mintChannelPlaySource.mockResolvedValue({
       url: "/v1/playout/hls/ch-2/master.m3u8?sig=signed",
       expiresAt: Date.now() + 60_000,
@@ -44,7 +44,7 @@ describe("channel warmer", () => {
       }),
     );
     expect(requests).toHaveLength(3);
-    expect(requests[0]?.searchParams.get("mode")).toBe("prepared");
+    expect(requests[0]?.searchParams.get("mode")).toBe("warm");
     expect(requests.slice(1).every((request) => !request.searchParams.has("mode"))).toBe(true);
   });
 
@@ -59,7 +59,7 @@ describe("channel warmer", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        url: "http://localhost/v1/playout/hls/ch-2/master.m3u8?sig=signed&mode=prepared",
+        url: "http://localhost/v1/playout/hls/ch-2/master.m3u8?sig=signed&mode=warm",
         text: vi
           .fn()
           .mockResolvedValue(
@@ -101,34 +101,5 @@ describe("channel warmer", () => {
       warmed: true,
     });
     expect(stills.map((url) => url.searchParams.get("sig"))).toEqual(["signed"]);
-  });
-
-  it("warms the bounded live origin when durable preparation misses", async () => {
-    mintChannelPlaySource.mockResolvedValue({
-      url: "/v1/playout/hls/ch-3/master.m3u8?sig=signed",
-      expiresAt: Date.now() + 60_000,
-    });
-    const requests: URL[] = [];
-    server.use(
-      http.get("*/v1/playout/hls/ch-3/master.m3u8", ({ request }) => {
-        requests.push(new URL(request.url));
-        if (new URL(request.url).searchParams.get("mode") === "prepared") {
-          return new HttpResponse(null, { status: 204 });
-        }
-        return new HttpResponse("#EXTM3U\n#EXTINF:4,\nseg-0.ts?sig=signed\n");
-      }),
-      http.get("*/v1/playout/hls/ch-3/seg-0.ts", ({ request }) => {
-        requests.push(new URL(request.url));
-        return new HttpResponse(new Uint8Array([0]));
-      }),
-    );
-
-    await expect(warmChannel("ch-3", new AbortController().signal)).resolves.toEqual(
-      expect.objectContaining({ warmed: true }),
-    );
-    expect(requests).toHaveLength(3);
-    expect(requests[0]?.searchParams.get("mode")).toBe("prepared");
-    expect(requests[1]?.searchParams.get("mode")).toBe("warm");
-    expect(requests[2]?.searchParams.has("mode")).toBe(false);
   });
 });

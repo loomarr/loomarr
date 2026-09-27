@@ -8,7 +8,7 @@ const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disable
 
 // Moving 160x90 H.264 CMAF keeps decoded frames observable. Channel 1 uses a one-second VOD so
 // initial playback reaches ended and certifies disposal of an ended MediaSource. Replacement
-// Channels use a three-segment OPEN live window, matching PreparedOrigin's deliberate no-ENDLIST
+// Channels use a three-segment OPEN live window, matching the channel packager's no-ENDLIST
 // contract and its real multi-segment sliding window. hls.js starts two segments behind the live
 // edge; a one-segment open fixture is below that contract and intermittently leaves WebKit playing
 // without a paintable frame.
@@ -81,7 +81,7 @@ interface TunerBackend {
     assetCompletions: string[];
     assetRequests: string[];
     playURLMints: string[];
-    preparedProbes: string[];
+    warmProbes: string[];
   };
 }
 
@@ -91,7 +91,7 @@ const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
     assetCompletions: [] as string[],
     assetRequests: [] as string[],
     playURLMints: [] as string[],
-    preparedProbes: [] as string[],
+    warmProbes: [] as string[],
   };
   page.on("request", (request) => {
     const url = new URL(request.url());
@@ -99,7 +99,7 @@ const installTunerBackend = async (page: Page): Promise<TunerBackend> => {
     const master = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/master\.m3u8$/);
     if (master) {
       const id = master[1] ?? "";
-      if (url.searchParams.get("mode") === "prepared") state.preparedProbes.push(id);
+      if (url.searchParams.get("mode") === "warm") state.warmProbes.push(id);
       else state.activeManifests.push(id);
     }
     const asset = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/(init\.mp4|segment\.m4s|segment-[1-3]\.m4s)$/);
@@ -187,7 +187,7 @@ const startTunerServer = () => {
       const master = path.match(/^\/v1\/playout\/hls\/(ch-\d+)\/master\.m3u8$/);
       if (master) {
         const id = master[1] ?? "";
-        if (url.searchParams.get("mode") !== "prepared") {
+        if (url.searchParams.get("mode") !== "warm") {
           const delay = activeManifestDelays.get(id);
           if (delay) {
             activeManifestDelays.delete(id);

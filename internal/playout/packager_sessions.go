@@ -28,6 +28,9 @@ type SessionObserver interface {
 	PlayoutSessionStarted(result string)
 	PlayoutSessionActive(delta int)
 	PlayoutProcessFailure(stage string)
+	// PlayoutFallback counts a degradation: "hardware_to_software" when an item's retry moves a
+	// failed GPU stage onto the CPU.
+	PlayoutFallback(reason string)
 }
 
 // SessionStat is a snapshot of one running channel packager, for the dashboard (§12, V16).

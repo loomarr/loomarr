@@ -507,29 +507,11 @@ func declared() []Setting {
 			Doc: "Directory where in-app browser playback writes its temporary HLS segments (§9.1). Defaults to a directory beside the database (/data/hls in the container). Each channel being watched keeps up to 15 minutes of video here (about 1 GB), deleted when you stop watching, so use a disk, not a RAM-backed tmpfs like /dev/shm. Only affects in-app playback; your media server's streams never use it. Changing it takes effect after restart.",
 		},
 		{
-			// Persistent and deliberately separate from playout.hls_dir: those live fragments are
-			// scratch bytes deleted when viewing stops; these publications are reusable across channels
-			// and restarts. Read once at composition because moving an active publication library while
-			// clients hold keyed asset URLs would split one origin across two roots.
-			Key: "playout.prepared_dir", Label: "Prepared media library", EnvVar: "PLAYOUT_PREPARED_DIR", Group: GroupPlayout,
-			Kind: KindString, Presentation: PresentationPath, DataSubdir: "prepared", Advanced: true,
-			Doc: "Where Loomarr stores reusable prepared programmes for instant channel changes. Defaults to a directory beside the database (/data in the container) so the database's own volume carries it across restarts. This can grow with the unique programmes scheduled across channels; put it on persistent fast storage, not a RAM disk. Changing it takes effect after restart.",
-		},
-		{
-			// Host measurements outlive prepared media (#1512 phase 4 removes it), so they get their
-			// own small root: the capability evidence, the per-class cost table and the synthetic
-			// probe clips. Read once at composition, like prepared_dir.
+			// Host measurements get their own small root: the capability evidence, the per-class cost
+			// table and the synthetic probe clips. Read once at composition.
 			Key: "playout.state_dir", Label: "Playout host measurements", EnvVar: "PLAYOUT_STATE_DIR", Group: GroupPlayout,
 			Kind: KindString, Presentation: PresentationPath, DataSubdir: "playout-state", Advanced: true,
 			Doc: "Where Loomarr keeps what it measured about this server's transcoding: the chosen encoder, the cost of each kind of stream and a few seconds of generated test video (about 20 MB). Defaults to a directory beside the database (/data in the container). Deleting it makes Loomarr measure again at the next start. Changing it takes effect after restart.",
-		},
-		{
-			// A soft cap rather than a quota: active HLS publications win when their protected
-			// bytes exceed it. Hot-applied because it changes only the next retention decision;
-			// publication identity and keyed asset paths do not move.
-			Key: "playout.prepared_budget_gb", Label: "Prepared media budget", EnvVar: "PLAYOUT_PREPARED_BUDGET_GB", Group: GroupPlayout,
-			Kind: KindInt, Default: 512, Advanced: true, Validate: positiveWholeNumber,
-			Doc: "Soft storage cap in GiB for reusable prepared programmes. Loomarr evicts the least recently used whole programmes after preparation runs, while anything played in the last fifteen minutes stays protected. The 512 GiB default holds roughly 220 hours at Balanced quality. Changes apply to the next pass without restart.",
 		},
 		{
 			Key: "playout.max_channels", Label: "Live transcode safety cap", EnvVar: "PLAYOUT_MAX_CHANNELS", Group: GroupPlayout,
@@ -1333,11 +1315,6 @@ func declared() []Setting {
 			Key: "job.channel_maintenance.schedule", EnvVar: "JOB_CHANNEL_MAINTENANCE_SCHEDULE", Group: GroupAdvanced,
 			Kind: KindCron, Default: "0 */10 * * * *",
 			Doc: "How often Loomarr refreshes series episodes and reconciles live channels with Tunarr (cron).",
-		},
-		{
-			Key: "job.playout_prepare.schedule", EnvVar: "JOB_PLAYOUT_PREPARE_SCHEDULE", Group: GroupAdvanced,
-			Kind: KindCron, Default: "0 * * * * *", Advanced: true,
-			Doc: "How often Loomarr looks ahead in accepted channel schedules and prepares the nearest programmes while spare hardware is available.",
 		},
 		{
 			Key: "job.filler_sync.schedule", EnvVar: "JOB_FILLER_SYNC_SCHEDULE", Group: GroupAdvanced,

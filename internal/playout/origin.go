@@ -29,9 +29,6 @@ var (
 	// ErrIneligible is the clean lifecycle miss for a channel outside the transport-published
 	// internal catalog (paused, detached, empty, or effectively Tunarr-backed).
 	ErrIneligible = errors.New("playout: channel is not eligible for internal transport")
-	// ErrPreparedUnavailable is a clean prepared-only miss. Callers use it to warm only media that
-	// already exists without falling through to the live remux/encoder path.
-	ErrPreparedUnavailable = errors.New("playout: prepared presentation unavailable")
 )
 
 // TuneRequest is everything a transport adapter must prove to tune a Channel. It deliberately
@@ -40,9 +37,6 @@ type TuneRequest struct {
 	ChannelID string
 	Plan      EncodePlan
 	Delivery  Delivery
-	// PreparedOnly forbids live fallback. It is a read-only probe for media already published by
-	// the readiness control plane and must never create an encoder/remux session on a miss.
-	PreparedOnly bool
 	// Speculative permits bounded live fallback but must not reclaim another Channel's retained
 	// session. Adjacent Watch warming uses it so optional work cannot displace foreground playback.
 	Speculative bool
@@ -99,12 +93,11 @@ type readSeekCloser interface {
 	io.Closer
 }
 
-// Asset is an opened follow-up resource. Callers know its bytes and modification time, never its
-// live or prepared filesystem layout.
+// Asset is an opened follow-up resource. Callers know its bytes and modification time, never the
+// packager's filesystem layout.
 type Asset struct {
-	Content   readSeekCloser
-	Modified  time.Time
-	Immutable bool
+	Content  readSeekCloser
+	Modified time.Time
 	// Playlist marks a live media playlist (a packager variant, #1512 phase 2b): its URIs are bare
 	// asset names the transport must make self-authenticating, as it does for the Tune manifest.
 	Playlist bool
@@ -123,18 +116,11 @@ type hlsOrigin interface {
 	StopAll()
 }
 
-type preparedDelivery interface {
-	Tune(context.Context, TuneRequest) (Presentation, bool, error)
-	OpenAsset(string, EncodePlan, string) (Asset, bool, error)
-}
-
-// Origin is the one playout seam used by transport adapters. The current live implementations are
-// hidden behind it; prepared delivery can replace their selection without changing callers.
+// Origin is the one playout seam used by transport adapters: the channel packager serves every
+// delivery behind it (#1512 phase 2), and callers never see its layout.
 type Origin struct {
-	prepared preparedDelivery
 	sessions sessionAttacher
 	hls      hlsOrigin
-	observer OriginObserver
 
 	// lifecycleMu orders admission plus attachment against fail-closed StopAll. The atomic
 	// availability callback alone is insufficient: a tune could observe true, then attach after
@@ -152,9 +138,7 @@ type Origin struct {
 }
 
 // OriginDependencies are the implementations hidden behind the one production playout seam.
-// Prepared is consulted first; the bounded live implementations remain internal fallbacks.
 type OriginDependencies struct {
-	Prepared *PreparedOrigin
 	// Packager is live playout (#1512 phase 2): one channel packager per watched channel serves
 	// the browser's HLS and every media-server tuner's MPEG-TS. Nil leaves live playout off.
 	Packager *PackagerHLS
@@ -165,7 +149,6 @@ type OriginDependencies struct {
 	// an HTTP request admitted just before a remote commit cannot attach after that commit's stop.
 	// Nil preserves the SQLite single-replica path's existing local lifecycle behavior.
 	Eligible func(context.Context, string) (bool, error)
-	Observer OriginObserver
 	// Still decodes one frame of a warm channel's live segment for the channel-switch overlay. Nil
 	// disables segment stills — used where no ffmpeg is wired.
 	Still StillExtractor
@@ -175,31 +158,21 @@ type OriginDependencies struct {
 	SourceStill SourceStillExtractor
 }
 
-// OriginObserver receives bounded fallback transitions without Channel identity.
-type OriginObserver interface {
-	PlayoutFallback(reason string)
-}
-
-// NewOrigin assembles prepared delivery and the current bounded live fallback behind one seam.
+// NewOrigin assembles live playout behind one seam.
 func NewOrigin(deps OriginDependencies) *Origin {
 	// A nil concrete pointer stored directly in an interface is non-nil. Normalize every optional
 	// implementation here so degraded construction cannot call through a typed-nil dependency.
-	var prepared preparedDelivery
-	if deps.Prepared != nil {
-		prepared = deps.Prepared
-	}
 	var sessions sessionAttacher
 	var hls hlsOrigin
 	if deps.Packager != nil {
 		sessions, hls = packagedTuners{deps.Packager}, deps.Packager
 	}
-	o := newOrigin(prepared, sessions, hls)
+	o := newOrigin(sessions, hls)
 	o.available = deps.Available
 	o.eligible = deps.Eligible
-	o.observer = deps.Observer
 	o.stillExtractor = deps.Still
 	// A warm channel's newest segment first (fresher, and already decoded media), then the cold
-	// channel's source file. Prepared publications no longer supply stills (#1512 withdrew them).
+	// channel's source file.
 	if deps.Packager != nil {
 		o.stillSources = append(o.stillSources, deps.Packager)
 	}
@@ -209,8 +182,8 @@ func NewOrigin(deps OriginDependencies) *Origin {
 	return o
 }
 
-func newOrigin(prepared preparedDelivery, sessions sessionAttacher, hls hlsOrigin) *Origin {
-	return &Origin{prepared: prepared, sessions: sessions, hls: hls}
+func newOrigin(sessions sessionAttacher, hls hlsOrigin) *Origin {
+	return &Origin{sessions: sessions, hls: hls}
 }
 
 func (o *Origin) checkAdmissionLocked(ctx context.Context, channelID string) error {
@@ -246,9 +219,6 @@ func (o *Origin) Tune(ctx context.Context, request TuneRequest) (Presentation, e
 	if err != nil {
 		return Presentation{}, err
 	}
-	if o.prepared != nil && o.observer != nil {
-		o.observer.PlayoutFallback("prepared_to_live")
-	}
 	return Presentation{Manifest: manifest, Release: release}, nil
 }
 
@@ -257,20 +227,6 @@ func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presenta
 	defer o.lifecycleMu.RUnlock()
 	if err := o.checkAdmissionLocked(ctx, request.ChannelID); err != nil {
 		return Presentation{}, nil, err
-	}
-	var preparedErr error
-	if request.Delivery == DeliveryHLS && o.prepared != nil {
-		presentation, hit, err := o.prepared.Tune(ctx, request)
-		if err == nil && hit {
-			return presentation, nil, nil
-		}
-		preparedErr = err
-	}
-	if request.Delivery == DeliveryHLS && request.PreparedOnly {
-		if preparedErr != nil {
-			return Presentation{}, nil, preparedErr
-		}
-		return Presentation{}, nil, ErrPreparedUnavailable
 	}
 	switch request.Delivery {
 	case DeliveryMPEGTS:
@@ -281,9 +237,6 @@ func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presenta
 		return Presentation{Stream: stream, Release: release}, nil, err
 	case DeliveryHLS:
 		if o.hls == nil {
-			if preparedErr != nil {
-				return Presentation{}, nil, preparedErr
-			}
 			return Presentation{}, nil, ErrUnsupportedDelivery
 		}
 		lease, err := o.hls.acquirePlaylist(request.ChannelID, request.Plan, request.Speculative)
@@ -299,12 +252,6 @@ func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePla
 	defer o.lifecycleMu.RUnlock()
 	if err := o.checkAdmissionLocked(ctx, channelID); err != nil {
 		return Asset{}, false, err
-	}
-	if o.prepared != nil {
-		asset, ok, err := o.prepared.OpenAsset(channelID, plan, rel)
-		if err != nil || ok {
-			return asset, ok, err
-		}
 	}
 	if o.hls == nil {
 		return Asset{}, false, nil
@@ -334,8 +281,7 @@ func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePla
 
 // StopChannel retires every live delivery path for one channel. HLS is stopped first so it
 // releases its session references and removes segment lookup state; the session manager then
-// disconnects MPEG-TS viewers and kills any remaining encoder plans. Prepared assets are
-// immutable cache entries, not live sessions, and remain available for later resume.
+// disconnects MPEG-TS viewers and kills any remaining encoder plans.
 func (o *Origin) StopChannel(channelID string) {
 	o.lifecycleMu.Lock()
 	defer o.lifecycleMu.Unlock()
