@@ -3,8 +3,8 @@
 Formerly `design.md` §10's V67 structure assessment, V45's composites and splitting, V34's detector
 and V51a's identity rule. A long recording may hold one advert, a break of many, programme material
 with spots, or nothing usable. This doc covers how Loomarr decides which, cuts children, and keeps
-the parent. Child screening and tagging are in `filler-classification.md` (still in `design.md`
-§10 until it moves); the per-clip pipeline is in [filler-pipeline](filler-pipeline.md), and child
+the parent. Child screening and tagging are in
+[filler-classification](filler-classification.md); the per-clip pipeline is in [filler-pipeline](filler-pipeline.md), and child
 conditioning evidence is in [filler](filler.md#conditioning-evidence-for-split-children).
 
 ## Long sources are quarantined at intake
