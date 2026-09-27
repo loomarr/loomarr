@@ -118,7 +118,13 @@ func gpuFilter(name string) bool {
 // hwAgnostic filters touch only timestamps or frame metadata, never pixels, so they run on GPU
 // frames (sidedata on CUDA frames: TestSlateSampleDescriptionMatchesEveryItem/nvenc).
 func hwAgnostic(name string) bool {
-	return name == "fps" || name == "setsar" || name == "setparams" || name == "sidedata"
+	return name == "fps" || name == "setsar" || name == "setparams" || name == "sidedata" || name == "settb"
+}
+
+// hwFormat is a format constraint naming a hardware frame type, as after a reverse hwmap: it
+// negotiates, it never converts.
+func hwFormat(f string) bool {
+	return f == "format=vaapi" || f == "format=opencl" || f == "format=cuda"
 }
 
 // TestBuild_NoCPUFilterOnAGPUPathExceptItsDeclaredFallback walks each GPU family's graph tracking
@@ -169,6 +175,10 @@ func checkGPUResidency(t *testing.T, label string, p Pipeline) {
 				t.Errorf("%s: GPU filter %s on CPU frames in %q", label, name, p.VideoFilter)
 			}
 		case hwAgnostic(name):
+		case hwFormat(f):
+			if !onGPU {
+				t.Errorf("%s: %s on CPU frames in %q", label, f, p.VideoFilter)
+			}
 		default:
 			if onGPU {
 				t.Errorf("%s: CPU filter %q on GPU frames in %q", label, f, p.VideoFilter)

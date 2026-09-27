@@ -29,15 +29,18 @@ import (
 //   - the programme survives: outside the bug, the bug-on frame matches the bug-off frame;
 //   - the bug is present, where placement says, at the expected blend: 65% white over the measured
 //     background, which also proves the host blends the bug as straight alpha (a premultiplied
-//     reading, as ffmpeg flags it for VAAPI, lands far from the expected luma);
+//     reading lands far from the expected luma);
+//   - the bug's colour is right: a white bug's U and V blend toward neutral 128 (bugChroma), since a
+//     blend can get luma exact and still tint the bug, as stock overlay_opencl did over NV12 (#1595);
 //   - the bug-on SPS and PPS are byte-identical to the bug-off ones, because breaks air bug-off in
 //     the same channel stream and a parameter-set change there resets decoders;
 //   - and, only once the picture is right, the overlay keeps pace (overlaySpeed): on the household
 //     Arc, overlay_vaapi drew a correct bug at 1.25x realtime, which made a cold tune's first
 //     manifest ~3.4 s (#1595). Speed is a gate here, never the only one.
 //
-// Any failure disables the watermark on the host (HostProfile.Overlay false). It is never moved to
-// the CPU.
+// Any failure disables the watermark on the host (HostProfile.Overlay false), including a VAAPI host
+// whose GPU has no OpenCL runtime: the kernel graph fails at the device derivation. It is never
+// moved to the CPU.
 
 // WatermarkCheckResult is the self-check's verdict and what it measured.
 type WatermarkCheckResult struct {
@@ -204,16 +207,18 @@ func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts Medi
 	if err := sameParameterSets(offRaw, onRaw); err != nil {
 		return "", err
 	}
-	offY, err := decodeLuma(ctx, ffmpeg, off, checkFrame)
+	offYUV, err := decodeFrame(ctx, ffmpeg, off, checkFrame)
 	if err != nil {
 		return "", err
 	}
-	onY, err := decodeLuma(ctx, ffmpeg, on, checkFrame)
+	onYUV, err := decodeFrame(ctx, ffmpeg, on, checkFrame)
 	if err != nil {
 		return "", err
 	}
 	x, y := wm.position(facts, out)
-	m := compareBug(offY, onY, checkWidth, Rect{X: x, Y: y, W: wm.Width, H: wm.Height})
+	bug := Rect{X: x, Y: y, W: wm.Width, H: wm.Height}
+	luma := checkWidth * checkHeight
+	m := compareBug(offYUV[:luma], onYUV[:luma], checkWidth, bug)
 	switch {
 	case m.pictureMean < 16.5:
 		return "", fmt.Errorf("the bug-off picture is black (YAVG %.1f): the fixture or the graph is broken", m.pictureMean)
@@ -222,6 +227,9 @@ func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts Medi
 			m.pictureDiff, m.onMean, m.pictureMean)
 	case math.Abs(m.bugLuma-m.bugWant) > bugTolerance:
 		return "", fmt.Errorf("the bug is wrong: luma %.1f where a 65%% white blend is %.1f (background %.1f)", m.bugLuma, m.bugWant, m.bugBackground)
+	}
+	if err := bugChroma(offYUV, onYUV, bug); err != nil {
+		return "", err
 	}
 	if err := overlaySpeed(offTook, onTook, checkFrames); err != nil {
 		return "", err
@@ -251,6 +259,11 @@ func writeCheckBug(dir string) (*Watermark, error) {
 	if err := os.WriteFile(wm.Straight, buf.Bytes(), 0o644); err != nil {
 		return nil, err
 	}
+	kernel, err := WriteBlendKernel(dir)
+	if err != nil {
+		return nil, err
+	}
+	wm.Kernel = kernel
 	if !safeGraphPath.MatchString(wm.Straight) {
 		return nil, errors.New("scratch directory path needs escaping: " + dir)
 	}
@@ -263,6 +276,15 @@ func writeCheckBug(dir string) (*Watermark, error) {
 // where Y is 170), so the expectation, a 65% blend of limited-range 235, was in the wrong space
 // (#1541).
 func decodeLuma(ctx context.Context, ffmpeg, path string, n int) ([]byte, error) {
+	yuv, err := decodeFrame(ctx, ffmpeg, path, n)
+	if err != nil {
+		return nil, err
+	}
+	return yuv[:checkWidth*checkHeight], nil
+}
+
+// decodeFrame decodes frame n of an H.264 elementary stream to its coded yuv420p planes.
+func decodeFrame(ctx context.Context, ffmpeg, path string, n int) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var stderr bytes.Buffer
@@ -276,7 +298,7 @@ func decodeLuma(ctx context.Context, ffmpeg, path string, n int) ([]byte, error)
 	if len(yuv) != checkWidth*checkHeight*3/2 {
 		return nil, fmt.Errorf("decode %s: %d yuv420p bytes, want %dx%d", filepath.Base(path), len(yuv), checkWidth, checkHeight)
 	}
-	return yuv[:checkWidth*checkHeight], nil
+	return yuv, nil
 }
 
 type bugMeasure struct {
@@ -316,6 +338,29 @@ func compareBug(off, on []byte, width int, bug Rect) bugMeasure {
 	m.bugWant /= nIn
 	m.bugBackground /= nIn
 	return m
+}
+
+// bugChroma checks the bug's colour in two decoded yuv420p frames: inside the bug, U and V are the
+// white bug's neutral 128 blended at the check alpha over the bug-off chroma. The luma assertion
+// cannot see a cast: stock overlay_opencl over NV12 got luma exact and pulled V toward 0 (#1595).
+func bugChroma(off, on []byte, bug Rect) error {
+	const inset = 4 // chroma samples in from the bug's edge, past the 2x2 alpha blending and coding bleed
+	cw, ch := checkWidth/2, checkHeight/2
+	for p, name := range []string{"U", "V"} {
+		base := checkWidth*checkHeight + p*cw*ch
+		var got, want, n float64
+		for y := bug.Y/2 + inset; y < (bug.Y+bug.H)/2-inset; y++ {
+			for x := bug.X/2 + inset; x < (bug.X+bug.W)/2-inset; x++ {
+				got += float64(on[base+y*cw+x])
+				want += checkAlpha*128 + (1-checkAlpha)*float64(off[base+y*cw+x])
+				n++
+			}
+		}
+		if got, want = got/n, want/n; math.Abs(got-want) > bugTolerance {
+			return fmt.Errorf("the bug's colour is wrong: %s %.1f where a white blend is %.1f", name, got, want)
+		}
+	}
+	return nil
 }
 
 // sameParameterSets compares the first SPS and PPS of two H.264 elementary streams.
