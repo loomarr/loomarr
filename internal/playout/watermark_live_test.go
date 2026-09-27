@@ -4,7 +4,9 @@ package playout
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -40,6 +42,27 @@ func TestLive_WatermarkCheck(t *testing.T) {
 		if w != "" && w != verdict {
 			t.Errorf("%s: watermark %s, expected %s", host.Family, verdict, w)
 		}
+	}
+}
+
+// The self-check measures CODED luma (#1541): its expectation is a 65% blend of limited-range white
+// 235, so the decode must return Y as coded. -pix_fmt gray is a full-range grey conversion instead
+// (a neutral Y 171 reads 180), which put the expectation in the wrong space.
+func TestDecodeLuma_ReadsCodedLimitedRangeLuma(t *testing.T) {
+	bin := ffmpegBin(t)
+	path := t.TempDir() + "/grey.h264"
+	// RGB 180 grey in BT.709 limited range is Y 16+219·180/255 = 170.6.
+	if out, err := exec.Command(bin, "-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+		fmt.Sprintf("color=c=0xB4B4B4:s=%dx%d:r=%d:d=1", checkWidth, checkHeight, checkFPS),
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-f", "h264", path).CombinedOutput(); err != nil {
+		t.Fatalf("fixture: %v: %s", err, out)
+	}
+	y, err := decodeLuma(context.Background(), bin, path, checkFrame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := y[len(y)/2]; got < 170 || got > 172 {
+		t.Fatalf("luma %d, want the coded 171 (180 is the full-range gray reading)", got)
 	}
 }
 

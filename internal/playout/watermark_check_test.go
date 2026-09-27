@@ -33,7 +33,9 @@ func TestCompareBug_SeesTheLostProgramme(t *testing.T) {
 		t.Errorf("all-green programme passes: ΔY %.1f", green.pictureDiff)
 	}
 	// A straight bug through a premultiplied blend (or the reverse) misses the expected luma.
-	for _, wrong := range []byte{235, byte(math.Round(checkAlpha*checkAlpha*235 + (1-checkAlpha)*120))} {
+	// So does a full-range white (#1541): 255 where limited-range white is 235, off by 0.651×20 ≈ 13.
+	for _, wrong := range []byte{235, byte(math.Round(checkAlpha*checkAlpha*235 + (1-checkAlpha)*120)),
+		byte(math.Round(checkAlpha*255 + (1-checkAlpha)*120))} {
 		m := compareBug(frame(120, Rect{}, 0), frame(120, bug, wrong), checkWidth, bug)
 		if math.Abs(m.bugLuma-m.bugWant) <= bugTolerance {
 			t.Errorf("bug luma %d passes against %.1f", wrong, m.bugWant)

@@ -53,9 +53,10 @@ const (
 	// pictureTolerance is the mean absolute luma difference allowed outside the bug: two encodes
 	// of the same picture differ by rate control, not by picture.
 	pictureTolerance = 3.0
-	// bugTolerance is the allowed distance from the expected blend. A wrong alpha convention misses
-	// by 50+ luma levels; chroma subsampling and coding cost a few.
-	bugTolerance = 14.0
+	// bugTolerance is the allowed distance from the expected blend, in coded luma. A wrong alpha
+	// convention misses by 50+ levels and a full-range white by 0.651×20 ≈ 13 (#1541); a correct
+	// blend measured within 1 (NVENC, SDR and tone-mapped HDR, scripts/watermark-overlay-matrix.sh).
+	bugTolerance = 6.0
 )
 
 // WatermarkCheck runs the self-check for host's family in dir (scratch space it may fill).
@@ -229,22 +230,26 @@ func writeCheckBug(dir string) (*Watermark, error) {
 	return wm, nil
 }
 
-// decodeLuma decodes frame n of an H.264 elementary stream to 8-bit luma.
+// decodeLuma decodes frame n of an H.264 elementary stream to its CODED 8-bit luma: the Y plane of
+// yuv420p, in the stream's own limited range. Never -pix_fmt gray: swscale converts to full-range
+// grey rather than copying Y (a neutral Y 171 reads 180; the check's coloured fixture reads 163
+// where Y is 170), so the expectation, a 65% blend of limited-range 235, was in the wrong space
+// (#1541).
 func decodeLuma(ctx context.Context, ffmpeg, path string, n int) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", "-i", path,
-		"-vf", "select=eq(n\\,"+strconv.Itoa(n)+")", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1")
+		"-vf", "select=eq(n\\,"+strconv.Itoa(n)+")", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1")
 	cmd.Stderr = &stderr
-	y, err := cmd.Output()
+	yuv, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("decode %s: %w: %s", filepath.Base(path), err, firstLine(stderr.String()))
 	}
-	if len(y) != checkWidth*checkHeight {
-		return nil, fmt.Errorf("decode %s: %d luma bytes, want %dx%d", filepath.Base(path), len(y), checkWidth, checkHeight)
+	if len(yuv) != checkWidth*checkHeight*3/2 {
+		return nil, fmt.Errorf("decode %s: %d yuv420p bytes, want %dx%d", filepath.Base(path), len(yuv), checkWidth, checkHeight)
 	}
-	return y, nil
+	return yuv[:checkWidth*checkHeight], nil
 }
 
 type bugMeasure struct {
