@@ -346,7 +346,7 @@ func TestBuild_OneToneCurveEverywhere(t *testing.T) {
 }
 
 // TestToneCurve_SpellingsExistInEachFilter: each curve name the builder emits is one the filter
-// accepts, per `ffmpeg -h filter=<name>` on the pinned n8.1 build. A name a filter lacks fails the
+// accepts, per `ffmpeg -h filter=<name>` on the pinned build (n8.1, re-read unchanged on n9.0). A name a filter lacks fails the
 // spawn ("Invalid argument"): the ladder rescues it, but every program pays a failed start. That is
 // how bt2390 on tonemap_opencl was caught (live test, dev GeForce).
 func TestToneCurve_SpellingsExistInEachFilter(t *testing.T) {

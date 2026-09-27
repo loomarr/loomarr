@@ -25,7 +25,7 @@ func TestVerifyRedistributionManifest(t *testing.T) {
 	}
 	mutations := map[string]struct{ path, text string }{
 		"missing architecture":                 {manifestPath, strings.Replace(string(manifest), `"architecture": "arm64"`, `"architecture": "removed"`, 1)},
-		"checksum drift":                       {manifestPath, strings.Replace(string(manifest), "c733b4b2951e5957e15505f788b2c65a7a41b6da4b289e295852cc38079b4d2b", strings.Repeat("0", 64), 1)},
+		"checksum drift":                       {manifestPath, strings.Replace(string(manifest), "182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a", strings.Repeat("0", 64), 1)},
 		"release commit drift":                 {manifestPath, strings.Replace(string(manifest), "8267213e26c1031621e6e1210fe3aa4867214f6a", "8267213e26c1031621e6e1210fe3aa4867214f60", 1)},
 		"retained monthly policy removed":      {manifestPath, strings.Replace(string(manifest), `"retention_class": "monthly"`, `"retention_class": "daily"`, 1)},
 		"retention policy revision drift":      {manifestPath, strings.Replace(string(manifest), `"retention_policy_revision": "8267213e26c1031621e6e1210fe3aa4867214f6a"`, `"retention_policy_revision": "8267213e26c1031621e6e1210fe3aa4867214f60"`, 1)},
@@ -40,7 +40,7 @@ func TestVerifyRedistributionManifest(t *testing.T) {
 		"inline comment checksum bypass":       {dockerfilePath, strings.Replace(string(dockerfile), `echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -`, `echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" # echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -`, 1)},
 		"comment cannot satisfy active recipe": {dockerfilePath, strings.Replace(string(dockerfile), `"https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"`, `"https://example.invalid/alternate"`, 1) + "\n# original recipe retained only in this comment: https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}\n"},
 		"FFmpeg architecture mapping drift":    {dockerfilePath, strings.Replace(string(dockerfile), `FFMPEG_ARCH=linux64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"`, `FFMPEG_ARCH=linuxarm64;    FFMPEG_SHA256="$FFMPEG_AMD64_SHA256"`, 1)},
-		"Dockerfile version drift":             {dockerfilePath, strings.Replace(string(dockerfile), "ARG FFMPEG_BUILD_ID=n8.1.2-50-g1a748fe2cd", "ARG FFMPEG_BUILD_ID=n8.1.2-50-g1a748fe2ce", 1)},
+		"Dockerfile version drift":             {dockerfilePath, strings.Replace(string(dockerfile), "ARG FFMPEG_BUILD_ID=n9.0.1-11-ge47273f4d9", "ARG FFMPEG_BUILD_ID=n9.0.1-11-ge47273f4d8", 1)},
 	}
 	for name, mutation := range mutations {
 		t.Run(name, func(t *testing.T) {

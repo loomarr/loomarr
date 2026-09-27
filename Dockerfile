@@ -137,35 +137,17 @@ ARG YTDLP_AMD64_SHA256=58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46
 ARG YTDLP_ARM64_SHA256=b16e4dab368a816cd05d477d698a605a6ae87ccee1c8ffd38fa21d7254141fcc
 ARG DENO_AMD64_SHA256=394f07f4da2bebe6ce6f1e7ce0fa16429b29b08c35e3fac3fe25972676dff4b2
 ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c712721c046e
-# ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AGAINST THE NEW BUILD.
+# ⚠⚠ DO NOT BUMP THIS WITHOUT RUNNING `make test-ffmpeg` AND THE PICTURE CHECKS AGAINST THE NEW BUILD.
 #
-# **ffmpeg n9 BREAKS INTERNAL PLAYOUT ENTIRELY** (§9.1), so this pin has a CEILING, not just a
-# floor. n9's HTTP protocol treats a response with no Content-Length as having length UINT64_MAX,
-# so when the body ends it reports
+# A GPU filter that silently produces nothing is fast and exits 0 (#1516: tonemap_vaapi aired black;
+# #1532: overlay_cuda on n8.1.2 aired all-green under NVDEC). A bump is verified by picture content
+# (the watermark self-check, the tone-map luma checks, scripts/watermark-overlay-matrix.sh on Intel),
+# never by speed or exit status.
 #
-#   [http] Stream ends prematurely at 85916, should be 18446744073709551615
-#   [in#0/concat] Error during demuxing: Input/output error
-#
-# and the concat demuxer STOPS instead of opening the next playlist entry.
-# `/v1/playout/program/{id}` streams a live encode and therefore can NEVER send a Content-Length,
-# so on n9 every internal-playout channel plays one programme and then repeats it forever.
-#
-# Measured 2026-08-09, identical harness, chunked entry:
-#
-#   n7.1.5 → 5 entry fetches, advances ✓
-#   n8.1.2 → 5 entry fetches, advances ✓   ← this pin
-#   n9.0   → 1 fetch, 3× EIO            ✗
-#
-# Mitigations that do NOT work on n9 (all tested — do not spend time re-trying): dropping the
-# -reconnect flags, -reconnect_streamed, -seekable 0/1, connection-close (HTTP/1.0) framing,
-# -ignore_io_errors (HLS-only, not a concat option), -multiple_requests (hangs). n9's concat
-# demuxer exposes no error-tolerance option at all. Getting onto n9 needs an ARCHITECTURE change
-# — the parent must stop consuming a chunked HTTP stream — not a flag.
-#
-# `TestLive_ConcatAdvancesPastAChunkedHTTPEntry` is the guard and runs in under a second. Nothing
-# else catches this: `-stream_loop -1` masks it by replaying the buffered programme, so the parent
-# still emits continuous output and exits 0, and the failure presents as "the channel repeats one
-# show" rather than as an error.
+# The n8.1 ceiling is gone. ffmpeg >= 9 could not advance a concat demuxer past a chunked HTTP entry,
+# which the per-programme chain relied on; #1542 removed that chain (the channel packager feeds files
+# and pipes, never a concat of HTTP entries), so nothing in playout depends on that behaviour now.
+# n9 is also what fixes overlay_cuda after NVDEC, so the NVENC watermark self-check passes (#1549).
 #
 # ffmpeg is pinned to a RETAINED MONTHLY BtbN release + per-arch SHA256, exactly like yt-dlp, deno,
 # and whisper below — a redistributed image must be reproducible and its GPL corresponding-source
@@ -174,18 +156,16 @@ ARG DENO_ARM64_SHA256=9a46afc6c392c7cd2ff71a31558935545b46408d0e87f7a86908c71272
 # 24 months. An arbitrary dated release is therefore NOT immutable. The evidence manifest binds the
 # pin to the exact upstream pruning-policy revision that classifies this archive as monthly-retained.
 #
-# ⚠ STAY ON THE n8.1 SERIES. ffmpeg >= 9 cannot advance a concat demuxer past a chunked entry, which
-# is load-bearing for playout (a channel would freeze on the first commercial-broken programme). This
-# pin is `n8.1.2-50-g1a748fe2cd` from the retained monthly release below; the `make test-ffmpeg`
-# playout suite is green against the n8.1 series. To bump: choose BtbN's retained monthly release
+# This pin is `n9.0.1-11-ge47273f4d9`, the n9.0 GPL build in the retained monthly release below (the
+# same release that carried the previous n8.1 pin). To bump: choose BtbN's retained monthly release
 # for a completed month (normally its final autobuild), confirm the pinned `util/prunetags.sh` policy
-# still keeps it, take its exact n8.1 GPL asset filename, download both architecture archives, and
-# update FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s + redistribution evidence together — never
-# choose an ordinary daily archive or point any value at `latest`.
+# still keeps it, take its exact GPL asset filename for the series, download both architecture
+# archives, and update FFMPEG_RELEASE / FFMPEG_BUILD_ID / both SHA256s + redistribution evidence
+# together — never choose an ordinary daily archive or point any value at `latest`.
 ARG FFMPEG_RELEASE=autobuild-2026-08-31-13-27
-ARG FFMPEG_BUILD_ID=n8.1.2-50-g1a748fe2cd
-ARG FFMPEG_AMD64_SHA256=c733b4b2951e5957e15505f788b2c65a7a41b6da4b289e295852cc38079b4d2b
-ARG FFMPEG_ARM64_SHA256=ae5da4f51b9052390f414005f8ab26c1eed1268f327cce7cb79aa076b29bd66e
+ARG FFMPEG_BUILD_ID=n9.0.1-11-ge47273f4d9
+ARG FFMPEG_AMD64_SHA256=182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a
+ARG FFMPEG_ARM64_SHA256=e2dd447c8a47849c5812d87e54a47b20ae0f3603d38989440f4a5fe1af8755b1
 ARG WHISPER_VERSION=v1.9.1
 ARG WHISPER_AMD64_SHA256=f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5
 ARG WHISPER_ARM64_SHA256=e0b66cd551ff6f2a28fabe3c6e89691eea037bb76833493abb9a71ca788994b3
@@ -238,10 +218,10 @@ RUN set -eux; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
     # BtbN's immutable asset name embeds the build id and repeats the version series in the SUFFIX
-    # (ffmpeg-n8.1.2-44-g7c533d0f86-linux64-gpl-8.1.tar.xz — build id `n8.1.2-44-g7c533d0f86`,
-    # suffix `8.1`). The suffix is the MAJOR.MINOR of the build id, DERIVED so a bump changes
+    # (ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz — build id `n9.0.1-11-ge47273f4d9`,
+    # suffix `9.0`). The suffix is the MAJOR.MINOR of the build id, DERIVED so a bump changes
     # FFMPEG_BUILD_ID in ONE place; a mismatch 404s at build time instead of fetching a different
-    # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (8, 1).
+    # ffmpeg. Strip the leading `n`, then take the first two dot-separated fields (9, 0).
     FFMPEG_VER="${FFMPEG_BUILD_ID#n}"; \
     FFMPEG_SUFFIX="$(printf '%s' "$FFMPEG_VER" | cut -d. -f1).$(printf '%s' "$FFMPEG_VER" | cut -d. -f2)"; \
     FFMPEG_BUILD="ffmpeg-${FFMPEG_BUILD_ID}-${FFMPEG_ARCH}-gpl-${FFMPEG_SUFFIX}"; \

@@ -21,6 +21,26 @@ The [release manifest](redistribution-manifest-v1.json) binds the binary filenam
 source commits and pruning policy to the active Dockerfile inputs. The retained policy keeps
 14 daily builds and one build per month for 24 months; this tag is August's final build.
 
+## n9.0 pin from the same release (#1549)
+
+The Dockerfile now takes the release's n9.0 GPL build instead of its n8.1 one. The n8.1 ceiling
+(the concat advance) went with the per-programme chain in #1542. The table above stays as the
+record of the n8.1 archives and the published source.
+
+| Artifact | Immutable identity | SHA256 |
+| --- | --- | --- |
+| Linux amd64 binary archive | `autobuild-2026-08-31-13-27`, `n9.0.1-11-ge47273f4d9` | `182c1b509720e939bb47bfb47dc29cc0c298640401128e3dce8627d10707eb5a` |
+| Linux arm64 binary archive | Same release/build | `e2dd447c8a47849c5812d87e54a47b20ae0f3603d38989440f4a5fe1af8755b1` |
+| FFmpeg source revision | `e47273f4d9227152dcbf543cebaf9e2430ddbcc4` | not yet archived |
+
+Both digests were computed locally from the downloaded archives and match the release's
+`checksums.sha256`. The BtbN build recipe and retention policy are the same
+`8267213e26c1031621e6e1210fe3aa4867214f6a`.
+
+⚠ Remaining before an n9.0 image is redistributed: publish the FFmpeg source at `e47273f4d9` in
+the third-party source release and record its archive digest here. Whether the n9.0 variant used the
+same dependency cache as the n8.1 variant (run `33390969643`) is not established.
+
 ## Original dependency identities
 
 The following commits were read from `.git/HEAD` inside the original upstream cache archives.

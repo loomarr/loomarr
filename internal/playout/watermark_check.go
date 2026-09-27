@@ -20,7 +20,7 @@ import (
 // The watermark self-check (#1512 phase 1d): does THIS host's GPU overlay draw the bug AND keep
 // the programme?
 //
-// A speed or exit-code gate is worthless here. On the image's ffmpeg n8.1.2, overlay_cuda after
+// A speed or exit-code gate is worthless here. On ffmpeg n8.1.2 (the image's build until #1549), overlay_cuda after
 // NVDEC airs an all-green picture with only the bug drawn, at full speed, exit 0, with a correct SPS
 // (spike #1532, finding 4) — the same class as tonemap_vaapi's black picture (#1516). So the check
 // runs the production graph (BuildItem, the family's real decode, filters and encoder) on a

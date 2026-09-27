@@ -17,7 +17,7 @@ import "strings"
 //
 // Mobius is the CPU substitute for the three libplacebo curves because, like them, it keeps the
 // in-range picture linear and only rolls the highlights off. tonemap_opencl has no BT.2390 in the
-// pinned ffmpeg 8.1 (its curves are the CPU tonemap's), measured: "tonemap=bt2390" fails to start.
+// pinned ffmpeg (8.1 and 9.0; its curves are the CPU tonemap's), measured: "tonemap=bt2390" fails to start.
 type ToneCurve string
 
 const (

@@ -148,9 +148,9 @@ in the public domain. The image satisfies the license's notice condition by reta
 
 ### GPL source distribution (ffmpeg)
 
-The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n8.1` series. The
+The `ffmpeg` binary is a **GPL-3.0-or-later** BtbN build from the `n9.0` series. The
 [`Dockerfile`](Dockerfile) pins it to a **retained monthly** archive — release
-`autobuild-2026-08-31-13-27`, build `n8.1.2-50-g1a748fe2cd`, verified by per-architecture SHA256
+`autobuild-2026-08-31-13-27`, build `n9.0.1-11-ge47273f4d9`, verified by per-architecture SHA256
 (`FFMPEG_AMD64_SHA256` / `FFMPEG_ARM64_SHA256`) exactly as yt-dlp, deno, and whisper are — so the
 bytes in the image are now identified by digest rather than by BtbN's mutable `latest` release.
 The evidence manifest also binds BtbN's pruning policy at the release commit: ordinary daily
@@ -159,6 +159,10 @@ archives expire after the newest 14, while one archive per month is retained for
 The August build replaces July because its original upstream dependency download cache and build
 logs were retained before expiry. The [retention record](docs/engineering/evidence/ffmpeg-august-source-retention.md)
 binds those archives to the new pins and records the remaining distribution and validation work.
+The n9.0 build (#1549) comes from the same release, the same BtbN build scripts and the same
+retention policy; only the FFmpeg source commit differs: `e47273f4d9227152dcbf543cebaf9e2430ddbcc4`.
+⚠ The published source release below carries the n8.1 commit. An image with the n9.0 build must not
+be redistributed until that release also carries the n9.0 FFmpeg source (see the retention record).
 
 The source release retains the exact FFmpeg commit `1a748fe2cd43e3ead22fafb1b5b7d77f153898a8`,
 BtbN build scripts at `8267213e26c1031621e6e1210fe3aa4867214f6a`, the original dependency source
