@@ -27,12 +27,14 @@ const (
 	// ClassHDR4K is anything above 1080p or HDR: a 4K decode, a downscale and (for HDR) the tone-map
 	// stage. 4K SDR shares the class because its decode, not the tone-map, dominates.
 	ClassHDR4K StreamClass = "uhd_hdr_tonemap"
-	// ClassPremium4K is G10's premium 4K encode. Phase 0b has not measured it, so it is never
-	// admitted on measured costs until the probe measures it.
+	// ClassPremium4K is G10's premium 4K encode: one channel's premium packager, priced for its
+	// whole lineup. The probe measures it on GPU hosts at 2160p (measurePremium); a measured host
+	// that has no premium cell never admits it.
 	ClassPremium4K StreamClass = "premium_4k"
 )
 
-// TranscodeClasses are the classes the capability probe measures, cheapest first.
+// TranscodeClasses are the source classes the capability probe measures at each output rung,
+// cheapest first. It also measures ClassPremium4K, once, at the premium's own height.
 var TranscodeClasses = []StreamClass{ClassSDR, ClassHEVC10, ClassHDR4K}
 
 // ClassOf is the cost class of a source.
@@ -433,24 +435,40 @@ func (b *ResourceBudget) Reserve(req AdmitRequest) (*Lease, error) {
 	facts := b.currentFacts()
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	rung, d, sw, ok := b.placeLocked(facts, req)
+	if !ok {
+		return nil, ErrAtCapacity
+	}
+	l := &Lease{b: b, rung: rung, software: sw, class: req.Class, demand: d}
+	b.leases[l] = struct{}{}
+	if req.Class != ClassCopy {
+		b.yieldLocked()
+	}
+	return l, nil
+}
+
+// Fits reports whether req would be admitted now, without booking it or pausing background work.
+func (b *ResourceBudget) Fits(req AdmitRequest) bool {
+	facts := b.currentFacts()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, _, _, ok := b.placeLocked(facts, req)
+	return ok
+}
+
+// placeLocked is the best output rung and software rung at which req fits the ledger.
+func (b *ResourceBudget) placeLocked(facts BudgetFacts, req AdmitRequest) (int, demand, SoftwareRung, bool) {
 	first := min(max(facts.FirstRung, 0), max(len(facts.Rungs)-1, 0))
 	last := max(len(facts.Rungs), 1)
 	if req.NoRungDrop {
 		last = first + 1
 	}
 	for rung := first; rung < last; rung++ {
-		d, sw, ok := b.pickLocked(facts, req.Class, rung, nil, req.NoRungDrop)
-		if !ok {
-			continue
+		if d, sw, ok := b.pickLocked(facts, req.Class, rung, nil, req.NoRungDrop); ok {
+			return rung, d, sw, true
 		}
-		l := &Lease{b: b, rung: rung, software: sw, class: req.Class, demand: d}
-		b.leases[l] = struct{}{}
-		if req.Class != ClassCopy {
-			b.yieldLocked()
-		}
-		return l, nil
 	}
-	return nil, ErrAtCapacity
+	return 0, demand{}, RungFull, false
 }
 
 // Hold takes a reserved hardware transcode's encode-pool slot: preparation is preempted (waiting

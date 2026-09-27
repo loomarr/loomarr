@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -336,6 +337,8 @@ type stuckSlateSource struct{}
 func (stuckSlateSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
 	return PackagerItem{Label: "card", Remaining: time.Minute}, nil
 }
+func (stuckSlateSource) Premium(context.Context, string) FormatClass { return "" }
+
 func (stuckSlateSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
 	return HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
@@ -415,6 +418,8 @@ func (hdrItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, e
 		VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24, PixelFormat: "yuv420p10le",
 		ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}, nil
 }
+
+func (hdrItemSource) Premium(context.Context, string) FormatClass { return "" }
 
 func (hdrItemSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
 	return HostFor(EncoderSoftware, true, GPUFilters{}), OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
@@ -639,9 +644,180 @@ func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
 	}
 }
 
-func TestPackagerHLSMediaPlaylistServesOnlyTheBaseline(t *testing.T) {
-	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{}}
-	for _, rel := range []string{"4k-hevc-sdr.m3u8", "../1080p-h264-sdr.m3u8", "live.m3u8"} {
+// premiumSource is a GPU channel whose lineup warrants premium (4K HDR10 unless set), airing a 4K
+// HDR programme. The encoder is whatever ffmpeg the test gives the packager.
+type premiumSource struct {
+	hdrItemSource
+	premium FormatClass
+	lookups atomic.Int32 // Premium calls
+}
+
+func (s *premiumSource) Premium(context.Context, string) FormatClass {
+	s.lookups.Add(1)
+	return s.premium
+}
+
+func (s *premiumSource) Output(_ context.Context, _ string, class FormatClass, _ int) (HostProfile, OutputProfile) {
+	base := OutputProfile{Width: 1920, Height: 1080, FPS: 25, GOPSeconds: 2, TargetKbps: 8000, MaxKbps: 12000, AudioKbps: 160}
+	out := base
+	if class != FormatBaseline {
+		out, _ = PremiumOutput(class, base)
+	}
+	return HostFor(EncoderNVENC, false, GPUFilters{Libplacebo: true}), out
+}
+
+// premiumFacts is a measured NVENC host: SDR 1080p at 6x, 4K HDR tone-map at 2.4x, and the premium
+// class at 2.4x (a 0.5 GPU share); premium is left unmeasured when measured is false.
+func premiumFacts(measured bool) BudgetFacts {
+	f := BudgetFacts{Hardware: true, SessionLimit: 12, CPUAllowance: 8, Rungs: []int{1080}, Costs: map[CostKey]ClassCost{
+		{Class: ClassSDR, Height: 1080}:                {Speed: 6, CPUCores: 0.2},
+		HDRKey(ClassHDR4K, 1080, DefaultToneCurve):     {Speed: 2.4, CPUCores: 0.4},
+		{Class: ClassPremium4K, Height: premiumHeight}: {Speed: 2.4, CPUCores: 0.5},
+	}}
+	if !measured {
+		delete(f.Costs, CostKey{Class: ClassPremium4K, Height: premiumHeight})
+	}
+	return f
+}
+
+func sleepingFFmpeg(t *testing.T) string {
+	t.Helper()
+	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\nexec sleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return ffmpeg
+}
+
+// A premium variant waits for a client opt-in (#1512 G10): the master names it beside the baseline,
+// from its output alone (HEVC Main 10 CODECS, 3840x2160, VIDEO-RANGE=PQ), so a baseline viewer
+// never starts the premium encode.
+func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
+	source := &premiumSource{premium: Format4KHDR}
+	m, err := NewPackagerHLS(source, sleepingFFmpeg(t), t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := NewResourceBudget(func() BudgetFacts { return premiumFacts(true) })
+	m.WithBudget(budget)
+	t.Cleanup(m.Stop)
+
+	lease, err := m.acquirePlaylist("ch", PlanBaseline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.release()
+	body, err := lease.snapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	master := string(body)
+	for _, want := range []string{
+		",RESOLUTION=1920x1080,FRAME-RATE=25.000,VIDEO-RANGE=SDR\n1080p-h264-sdr.m3u8\n",
+		`#EXT-X-STREAM-INF:BANDWIDTH=24160000,AVERAGE-BANDWIDTH=16160000,CODECS="hvc1.2.4.L150.90,mp4a.40.2",RESOLUTION=3840x2160,FRAME-RATE=25.000,VIDEO-RANGE=PQ` + "\n4k-hevc-hdr.m3u8\n",
+	} {
+		if !strings.Contains(master, want) {
+			t.Errorf("master lacks %q:\n%s", want, master)
+		}
+	}
+	m.mu.Lock()
+	keys := len(m.channels)
+	_, premiumRunning := m.channels[packagedKey{channel: "ch", format: Format4KHDR}]
+	m.mu.Unlock()
+	if keys != 1 || premiumRunning {
+		t.Fatalf("a baseline tune started %d packagers (premium running: %v); want the baseline only", keys, premiumRunning)
+	}
+	if use := budget.Snapshot().InUse; use.Transcodes != 1 {
+		t.Fatalf("ledger after a baseline tune = %+v, want one transcode", use)
+	}
+}
+
+// Playing the premium variant starts the channel's second packager, admitted at the premium class's
+// own measured price (NVENC 2.4x = a 0.5 GPU share, 0.5 cores), never the item's; a premium the
+// channel does not air is not served and starts nothing.
+func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
+	source := &premiumSource{premium: Format4KHDR}
+	m, err := NewPackagerHLS(source, sleepingFFmpeg(t), t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := NewResourceBudget(func() BudgetFacts { return premiumFacts(true) })
+	m.WithBudget(budget)
+	t.Cleanup(m.Stop)
+
+	if _, ok, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-sdr.m3u8"); ok || err != nil {
+		t.Fatalf("4k-hevc-sdr on a 4K HDR channel = %v, %v; want not found", ok, err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	defer cancel()
+	if _, _, err := m.MediaPlaylist(ctx, "ch", PlanBaseline, "4k-hevc-hdr.m3u8"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("premium playlist err = %v, want the wait for its first segment", err)
+	}
+	m.mu.Lock()
+	c := m.channels[packagedKey{channel: "ch", format: Format4KHDR}]
+	keys := len(m.channels)
+	m.mu.Unlock()
+	if c == nil || keys != 1 {
+		t.Fatalf("premium play started %d packagers (premium: %v); want the premium only", keys, c != nil)
+	}
+	if !c.out.HDR || c.out.Height != premiumHeight {
+		t.Fatalf("premium packager encodes %+v, want 4K HDR10", c.out)
+	}
+	use := budget.Snapshot().InUse
+	if use.Transcodes != 1 || math.Abs(use.GPUShare-0.5) > 1e-9 || math.Abs(use.CPUCores-0.5) > 1e-9 {
+		t.Fatalf("ledger = %+v, want one premium lease at 0.5 GPU and 0.5 cores", use)
+	}
+}
+
+// Premium is admitted only on its own measurement (#1520): a measured host that has not measured
+// premium drops it from the master and refuses a premium play (503) before any encoder runs; so does
+// a host with no room left for it.
+func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		measured bool
+		held     int // SDR leases already running
+	}{
+		{"premium unmeasured", false, 0},
+		{"no room", true, 4}, // 0.8 of the GPU held; premium needs 0.5
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			ran := filepath.Join(dir, "ran")
+			ffmpeg := filepath.Join(dir, "ffmpeg")
+			if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\ntouch "+ran+"\nexec sleep 5\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			budget := NewResourceBudget(func() BudgetFacts { return premiumFacts(tc.measured) })
+			for range tc.held {
+				if _, err := budget.Admit(t.Context(), AdmitRequest{Class: ClassSDR}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			m, err := NewPackagerHLS(&premiumSource{premium: Format4KHDR}, ffmpeg, t.TempDir(), time.Hour, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.WithBudget(budget)
+			t.Cleanup(m.Stop)
+
+			if _, _, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8"); !errors.Is(err, ErrAtCapacity) {
+				t.Fatalf("premium play err = %v, want ErrAtCapacity", err)
+			}
+			time.Sleep(200 * time.Millisecond)
+			if _, err := os.Stat(ran); err == nil {
+				t.Fatal("an encoder started for a refused premium")
+			}
+			if v := m.premiumVariant(t.Context(), "ch"); v != nil {
+				t.Fatalf("master offers %+v, want the premium dropped", *v)
+			}
+		})
+	}
+}
+
+func TestPackagerHLSMediaPlaylistServesOnlyTheChannelsFormats(t *testing.T) {
+	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{}, source: &premiumSource{}}
+	for _, rel := range []string{"4k-hevc-sdr.m3u8", "4k-hevc-hdr.m3u8", "../1080p-h264-sdr.m3u8", "live.m3u8", "1080p-h264-sdr"} {
 		if _, ok, err := m.MediaPlaylist(context.Background(), "ch", PlanBaseline, rel); ok || err != nil {
 			t.Errorf("MediaPlaylist(%q) = %v, %v; want not found, without starting a packager", rel, ok, err)
 		}

@@ -52,6 +52,28 @@ func TestBuild_PremiumGolden(t *testing.T) {
 	}
 }
 
+// Apple's HLS authoring spec requires HEVC in fMP4 to be tagged hvc1 (parameter sets in the sample
+// entry); ffmpeg's mp4 muxer writes hev1 unless told. Every family's HEVC encode is tagged, so the
+// premium items and the premium slate share one sample entry type; H.264 is never tagged.
+func TestBuild_HEVCIsTaggedHvc1(t *testing.T) {
+	src := premiumSources()["h264-1080p-sdr-25"]
+	for _, hostName := range []string{"vaapi-intel", "nvenc-opencl", "videotoolbox", "software", "generic-qsv"} {
+		host := testHosts()[hostName]
+		for _, class := range []FormatClass{Format4KSDR, Format4KHDR} {
+			p, err := Build(host, src, premiumOutput(t, class))
+			if err != nil {
+				continue // a family that refuses this premium has no encode to tag
+			}
+			if i := slices.Index(p.VideoEncode, "-tag:v"); i < 0 || i+1 >= len(p.VideoEncode) || p.VideoEncode[i+1] != "hvc1" {
+				t.Errorf("%s %s: video encode %v is not tagged hvc1", hostName, class, p.VideoEncode)
+			}
+		}
+		if p, err := Build(host, src, testOutput); err == nil && slices.Contains(p.VideoEncode, "-tag:v") {
+			t.Errorf("%s baseline: H.264 encode is tagged: %v", hostName, p.VideoEncode)
+		}
+	}
+}
+
 // TestBuild_PremiumUniformOutput: within a family and premium class every source gets the same
 // encoder arguments and ends in the same cadence, side-data strip and colour labels, so no seam
 // changes the VPS/SPS/PPS or the HDR metadata (the live test checks the bytes).

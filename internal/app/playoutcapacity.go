@@ -35,6 +35,14 @@ func (r *playoutResolver) probeCapacity(ctx context.Context, foreground playout.
 	if reused {
 		r.measuredCosts.Store(&stored)
 		cfg.Classes, cfg.Outputs = []playout.StreamClass{playout.ClassHDR4K}, cfg.Outputs[:1]
+		// A table stored before the probe measured premium (#1512 G10) measures it now, not in a week.
+		premium := false
+		for k := range stored.Costs {
+			premium = premium || k.Class == playout.ClassPremium4K
+		}
+		if !premium {
+			cfg.Classes = append(cfg.Classes, playout.ClassPremium4K)
+		}
 	}
 	res := playout.ProbeClassCosts(ctx, cfg)
 	if ctx.Err() != nil {

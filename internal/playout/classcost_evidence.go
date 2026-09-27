@@ -77,7 +77,7 @@ func LoadClassCosts(root, fingerprint string, enc Encoder, now time.Time) (Measu
 func StoreClassCosts(root, fingerprint string, m MeasuredCosts) error {
 	e := classCostEvidence{Version: classCostEvidenceVersion, Fingerprint: fingerprint, Encoder: m.Encoder,
 		SessionLimit: m.SessionLimit, ObservedAt: m.ObservedAt.UTC()}
-	for _, class := range TranscodeClasses {
+	for _, class := range append(TranscodeClasses, ClassPremium4K) {
 		for k, c := range m.Costs {
 			if k.Class == class {
 				e.Costs = append(e.Costs, classCostCell{Class: k.Class, Height: k.Height, Curve: k.Curve, Speed: c.Speed, CPUCores: c.CPUCores})

@@ -30,6 +30,8 @@ func (s ladderSource) ItemAt(_ context.Context, _ string, at time.Time) (Package
 	return PackagerItem{Label: "uhd-hdr", Input: s.path, Format: s.facts, Seek: 5*time.Second + in, Remaining: 10*time.Minute - in}, nil
 }
 
+func (ladderSource) Premium(context.Context, string) FormatClass { return "" }
+
 func (s ladderSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
 	return s.host, s.out
 }
