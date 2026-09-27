@@ -20,7 +20,7 @@ Two different things share the word:
 | `.claude/commands/` | Claude Code | Thin adapters to `.agents/workflows/` |
 | `CONTEXT.md` | everyone | The glossary — what each word means |
 
-`docs/design.md` wins on behaviour, `CONTEXT.md` on vocabulary, `PROGRESS.md` on phase status.
+`docs/design.md` wins on behavior, `CONTEXT.md` on vocabulary, `PROGRESS.md` on phase status.
 
 ### Why the rules are strict
 
@@ -46,7 +46,7 @@ that had never been implemented. When a comment and the code disagree, the comme
 `scripts/check-retired.sh` in the same PR — the help pages ship in the binary and are read as
 instructions.
 
-**Claims about behaviour belong next to a test.** `docs/claims_test.go` asserts the help pages
+**Claims about behavior belong next to a test.** `docs/claims_test.go` asserts the help pages
 don't contradict the code, after three of them spent months saying Tunarr did the streaming.
 
 ### Contributing with AI assistance

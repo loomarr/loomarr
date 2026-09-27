@@ -44,7 +44,7 @@ Check the highest number on `main` first.
 **Names and types, not rules.** The generated zod schemas give you wire field names; bounds,
 messages and trims stay hand-authored. Deriving the names is still what matters — a hand-mirrored
 schema once said `maxAcquire` where the wire says `maxAcquisitions`, so a user's setting
-serialised into JSON the server ignored.
+serialized into JSON the server ignored.
 
 **Trustworthy wiring, untrustworthy data.** Generated MSW mocks emit optional fields as
 `arrayElement([value, undefined])`, so presence varies per call. Pass explicit overrides from the

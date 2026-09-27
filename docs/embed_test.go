@@ -105,6 +105,25 @@ func TestEmbeddedPagesLinkOnlyToEmbeddedPages(t *testing.T) {
 	}
 }
 
+// Every page opens by naming its reader and its outcome (docs/contributing/docs.md), so a
+// household admin landing from a red setup check knows at once whether it is their page.
+func TestEveryHelpPageOpensWithForAndYoullGet(t *testing.T) {
+	for _, p := range docs.Pages() {
+		var lines []string
+		for _, line := range strings.Split(p.Markdown, "\n") {
+			if trimmed := strings.TrimSpace(line); trimmed != "" && !strings.HasPrefix(trimmed, "# ") {
+				lines = append(lines, trimmed)
+			}
+			if len(lines) == 2 {
+				break
+			}
+		}
+		if len(lines) < 2 || !strings.HasPrefix(lines[0], "**For:**") || !strings.HasPrefix(lines[1], "**You'll get:**") {
+			t.Errorf("docs/%s must open with a **For:** line and a **You'll get:** line after its title", p.Path)
+		}
+	}
+}
+
 // A slug is a file's base name, whichever folder it sits in, so two pages with one name
 // would make one of them unreachable in the app.
 func TestHelpSlugsAreUnique(t *testing.T) {

@@ -1,81 +1,98 @@
-# Quickstart
+# Get started
 
-Get a channel playing in about ten minutes.
+**For:** anyone installing Loomarr for the first time.
+**You'll get:** Loomarr running, and one channel of your own playing in your media server's
+Live TV guide. It takes about 10 minutes.
 
 ## Before you start
 
-You need **Emby or Jellyfin** running and reachable. The wizard lets an instance start with only
-that connection, but making the first channel from a sentence also requires **TMDB** and an
-**LLM**. They are prerequisites for this quickstart, not optional polish.
+You need three things running or ready:
 
-Have these ready:
+- **Emby or Jellyfin**, with an admin API key.
+- **A TMDB API key.** It's free: [get one from TMDB](https://www.themoviedb.org/settings/api).
+- **An LLM that supports tool calling.** A local Ollama works, and so does any
+  OpenAI-compatible provider.
 
-- **TMDB API key** — [get one here](https://www.themoviedb.org/settings/api).
-- **An LLM** — local Ollama or any OpenAI-compatible provider.
+You also need Docker, on Linux or on Docker Desktop for macOS.
 
-Add these when you're ready — the wizard shows what each one unlocks:
+> [!NOTE]
+> Downloading missing titles (Seerr, or Sonarr and Radarr), commercials between shows and
+> hardware encoding are all optional. You can add them later from **Settings**.
 
-- **Seerr**, or Sonarr and Radarr — to download what you're missing.
-- **A filler folder** — for commercials between programmes.
-- **Tunarr** — only if you want it to stream your channels instead of Loomarr.
+## 1. Start Loomarr
 
-## 1. Start it
-
-Clone an exact version from GitHub Releases, copy `.env.example` to `.env`, and set
-`SERVER_PUBLIC_URL`. This example uses `0.1.0-beta.8`; keep your chosen version pinned.
+Download the release you want to run and start it. This example uses `0.2.0-beta.7`; check
+[Releases](https://github.com/loomarr/loomarr/releases) for a newer one, and keep the version
+you choose pinned.
 
 ```bash
-VERSION=0.1.0-beta.8
-git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr.git
+VERSION=0.2.0-beta.7
+git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr
 cd loomarr
-cp .env.example .env                     # set SERVER_PUBLIC_URL to this host's reachable URL
+cp .env.example .env
+```
+
+Open `.env` and set one value: the address your media server will use to reach Loomarr.
+
+```bash
+SERVER_PUBLIC_URL=http://192.168.1.10:8080
+```
+
+Use your computer's LAN address, not `localhost`. Inside Docker, `localhost` means the
+container itself, so your media server couldn't reach it.
+
+Then start it:
+
+```bash
 LOOMARR_VERSION="$VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-For Postgres, add `-f docker/compose.postgres.yaml --profile postgres`. Add `--profile ai` to
-either database command to run a local Ollama alongside it.
+When this prints `ready`, Loomarr is up:
 
-The SQLite command does not export `DATABASE_URL`; Loomarr still defaults to `/data/loomarr.db`.
-That omission is what keeps the in-app SQLite-to-Postgres migration able to persist its selection
-and restart onto PostgreSQL. An explicit environment value remains authoritative and disables that
-in-app switchover.
+```bash
+curl -fsS http://localhost:8080/v1/readyz && echo ready
+```
 
-> Inside Docker, `localhost` means the container. Reach other services by name
-> (`http://emby:8096`) or your host's LAN IP.
->
-> Set `SERVER_PUBLIC_URL` to the address your media server can reach Loomarr on. Stream URLs handed
-> to your media server are built from it, so a wrong value shows up as channels that never play
-> there. Playing in the Loomarr app does not depend on it, and Current Health flags an address this
-> server cannot reach.
+Want Postgres instead of SQLite, or a different port? See [Install with Docker](guides/install-docker.md).
 
-## 2. Run the wizard
+## 2. Run the setup wizard
 
-Open the `SERVER_PUBLIC_URL` you set. Traefik listens on host port 8080 by default and routes to
-Loomarr's private port 8080. A fresh install goes straight to setup:
+Open the address you set in `SERVER_PUBLIC_URL`. The wizard walks you through six steps:
 
-1. **Admin** — create the account that owns this instance.
-2. **Playout** — who streams your channels: **Loomarr** (default) or **Tunarr**. This changes
-   the rest of the wizard, so it comes early.
-3. **Connections** — Loomarr tests each one. Only the media server has to be green.
-4. **Library** *(Tunarr only)* — one click to point Tunarr at your media server.
-5. **Users** *(optional)* — pick who else can sign in.
-6. **First channel**.
+1. **Admin:** create your admin account.
+2. **Playout:** choose who streams your channels. Keep **Loomarr**, the default.
+3. **Location:** pick the country where you watch. Loomarr uses it for channels and
+   commercials.
+4. **Connections:** enter your media server, TMDB and LLM. Each one is tested as you go.
+5. **Users** (optional): choose who else can sign in.
+6. **First channel:** go on to the next step of this guide.
 
-You can leave and come back. The wizard reads its position from the server.
+> [!TIP]
+> If a connection turns red, the message links to the fix. You can leave the wizard and
+> come back later; it remembers where you were.
 
-## 3. Make a channel
+## 3. Describe your first channel
 
-On the **Suggest** page, describe one:
+Type what you want to watch, as you'd say it to a friend:
 
 > 90s Saturday morning cartoons for the kids
 
-Loomarr proposes a lineup from your library plus anything missing. Click **Approve** — that's
-the step that starts downloads and creates the channel. It's live within a minute and fills in
-as titles arrive.
+Loomarr searches your library and TMDB, then shows a **proposal**: the lineup it would
+play, and anything you don't have yet. Every title in it is real. The model can't invent one.
 
-## Upgrading
+Choose **Approve**. That creates the channel.
 
-Migrations only run forward, so back up first. SQLite backups come from `GET /v1/backup`; for
-Postgres create a custom archive with `umask 077; pg_dump --format=custom`. Database credentials are
-encrypted, but a restore also needs the installation key kept outside that backup. Keep both safe
-and separate. The [upgrade guide](guides/upgrade.md) has the restore procedure.
+## 4. Watch it
+
+Open your media server's **Live TV** guide. Your channel appears within a minute. Pick it, and
+it starts playing.
+
+Loomarr encodes a channel only while someone is watching it, so the first picture takes a few
+seconds.
+
+## What's next
+
+- [Back up before you upgrade](guides/upgrade.md): migrations only run forward.
+- [Add hardware encoding](guides/hardware-encoding.md) to run more channels at once.
+- [Add commercials between shows](guides/filler.md).
+- [How Loomarr works](explanation/how-loomarr-works.md): channels, proposals and curation.

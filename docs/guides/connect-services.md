@@ -1,4 +1,7 @@
-# Integrations
+# Connect your services
+
+**For:** household admins filling in **Settings → Connections**.
+**You'll get:** what each service needs, and how to tell it's working.
 
 What to enter for each service. Every setting is an environment variable that's also
 editable in **Settings** — an env-set value wins and shows as locked. Red checks link to

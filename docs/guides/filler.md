@@ -1,4 +1,7 @@
-# Filler guide
+# Set up filler
+
+**For:** household admins who want commercials, bumpers or station IDs between shows.
+**You'll get:** a filler library that Loomarr checks, trims and places at breaks.
 
 Filler is what plays between programs — commercials, bumpers, station IDs. It's optional:
 without it, channels just leave the gaps empty and play fine.

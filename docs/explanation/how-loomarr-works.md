@@ -1,6 +1,7 @@
-# Concepts
+# How Loomarr works
 
-The short version of how Loomarr thinks.
+**For:** anyone who wants the mental model before (or after) making a channel.
+**You'll get:** who does what, and how a sentence becomes a channel that's always on.
 
 ## Who does what
 
@@ -35,16 +36,16 @@ admins approve.
 
 Titles move **wanted → downloading → available**. A channel is built from what's available now;
 anything missing becomes a **pending** slot filled with commercials, and swaps to the real
-programme the moment it lands.
+program the moment it lands.
 
 ## Series
 
-A movie is one programme. A **series** expands into one programme per episode you actually have,
+A movie is one program. A **series** expands into one program per episode you actually have,
 in the channel's order. New episodes join on the next refresh.
 
 ## Filler and pods
 
-Between programmes, Loomarr inserts **pods** — short runs of bumpers and commercials from your
+Between programs, Loomarr inserts **pods** — short runs of bumpers and commercials from your
 [filler](../guides/filler.md) folder, matched to the channel. No filler just means no commercials.
 
 ## Policy

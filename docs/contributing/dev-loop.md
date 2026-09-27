@@ -61,4 +61,4 @@ when working on the Tunarr backend. `make dev-gpu` adds the NVIDIA overlay.
 make seed
 ```
 
-Populates a store through the real domain paths, honouring the approval gate.
+Populates a store through the real domain paths, honoring the approval gate.

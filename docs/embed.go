@@ -37,7 +37,12 @@ var movedPages = map[string]string{
 // movedSections maps an old "slug#anchor" whose heading was renamed or moved to another
 // page. Pages keep their headings where they can; TestPreMoveHelpLinksStillLand fails for
 // every pre-move link that lands nowhere, and the fix is an entry here.
-var movedSections = map[string]string{}
+var movedSections = map[string]string{
+	"quickstart#1-start-it":       "get-started#1-start-loomarr",
+	"quickstart#2-run-the-wizard": "get-started#2-run-the-setup-wizard",
+	"quickstart#3-make-a-channel": "get-started#3-describe-your-first-channel",
+	"quickstart#upgrading":        "upgrade",
+}
 
 // Page is one help document.
 type Page struct {

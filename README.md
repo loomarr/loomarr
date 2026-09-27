@@ -27,7 +27,7 @@ Choose an exact version from [GitHub Releases](https://github.com/loomarr/loomar
 example below uses one published beta; keep the version pinned when you upgrade.
 
 ```bash
-VERSION=0.1.0-beta.8
+VERSION=0.2.0-beta.7
 git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr && cd loomarr
 cp .env.example .env                     # set SERVER_PUBLIC_URL to this host's reachable URL
 LOOMARR_VERSION="$VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d

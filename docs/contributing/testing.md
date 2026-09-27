@@ -42,10 +42,10 @@ generated from the Makefile so it cannot drift. Enumerating them here could, and
 ### `make vet-tags` isn't redundant
 
 Files behind `//go:build ffmpeg|eval|integration` are invisible to plain `go vet ./...` and to
-golangci-lint — both ask the build system which files exist, and it honours the constraint.
+golangci-lint — both ask the build system which files exist, and it honors the constraint.
 
 That blind spot ran for months: `go vet ./...` exited 0 while the tagged run exited 1, and the
-one test proving programmes sequence hadn't compiled in several releases. A tagged `go build`
+one test proving programs sequence hadn't compiled in several releases. A tagged `go build`
 wouldn't catch it either, since `go build` skips `_test.go` and most tagged files are tests.
 
 ## The layers
@@ -59,14 +59,14 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 | Frontend units | `make fe` | Components and domain logic | CI |
 | Visual + a11y | `make fe-visual` | Every story, two viewports, pixel + axe | CI |
 | e2e | `make e2e` | The embedded SPA through first-run | CI |
-| ffmpeg | `make test-ffmpeg` | Programmes sequence through real ffmpeg | manual |
+| ffmpeg | `make test-ffmpeg` | Programs sequence through real ffmpeg | manual |
 | LLM eval | `make eval` | Real intents against a real model | manual |
 | LLM certification | `make eval-cert` | Exact starter/adversarial corpus executed with a versioned scorecard | release/manual |
 | LLM matrix | `make eval-matrix` | Same corpus on local and OpenRouter generation, judged through OpenRouter | release/manual |
 | Channel recommendation | `make channel-recommend-cert` | Inert Channel Concepts on a digest-pinned synthetic holdout | release/manual |
 | Hosted filler bakeoff | `make filler-bakeoff-openrouter` | Locked label-blind filler packets through one pinned paid route profile | release/manual |
 | Local filler bakeoff | `make filler-bakeoff-ollama` | Same locked packets through one digest-pinned loopback model | release/manual |
-| Rust supply chain | `make rust-audit` | Cargo advisories, licences, and sources | weekly + manual |
+| Rust supply chain | `make rust-audit` | Cargo advisories, licenses, and sources | weekly + manual |
 | Rust fuzz | `make rust-fuzz` | Bounded worker protocol and decoder do not crash | weekly + manual |
 | SSO | `make test-sso` | OIDC against real Authelia + Authentik | manual |
 | Maintainer smoke | `make smoke` | The real stack end to end | manual |
@@ -84,7 +84,7 @@ Scorecard schema v7 records its schema/corpus version, separate requested genera
 provider/model identities, trial profile, and bounded structural observations—never credentials or
 ambiguous top-level provider/model compatibility fields. Hard predicates cover
 exact named includes/excludes, holiday policy, rating limits, ownership mix, and concrete scheduled
-programme identities/order; a non-empty Proposal or favorable judge paragraph cannot substitute for
+program identities/order; a non-empty Proposal or favorable judge paragraph cannot substitute for
 one. `RequireTitles` and `ForbidTitles` compare normalized whole titles in the case's explicit
 `grounded` or `scheduled` evidence scope. Normalization trims, folds case, and collapses internal
 whitespace; it never turns a substring or near title into a match. `ForbidTitleTerms` is the distinct
