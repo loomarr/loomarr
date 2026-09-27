@@ -361,7 +361,7 @@ func (m *PackagerHLS) schedule(
 			if len(pl.Fallbacks) > 0 {
 				log.Info("packager hls: item leaves the GPU", "item", it.Label, "fallbacks", strings.Join(pl.Fallbacks, "; "))
 			}
-			return startWatchedEncoder(ctx, m.ffmpeg, args, log.With("item", it.Label), func(decodeFault bool) {
+			return startFragmentEncoder(ctx, m.ffmpeg, args, log.With("item", it.Label), func(decodeFault bool) {
 				if faults.record(it.Input, pl, decodeFault) {
 					log.Warn("packager hls: item failed on the GPU; its next attempt demotes the failing stage",
 						"item", it.Label, "decode_fault", decodeFault, "tonemapper", pl.Tonemapper)
@@ -713,16 +713,13 @@ const audioRateHz = 48000
 // startFragmentEncoder starts one item's encoder. failed, when set, hears an encoder that exited
 // on its own with an error before any output: a fault of this source on this host, not a slow
 // start (a late item's context is cancelled first) and not an item the packager finished.
-func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log *slog.Logger, failed func(decodeFault bool), done func(cpu time.Duration)) (io.ReadCloser, error) {
-	return startWatchedEncoder(ctx, ffmpeg, args, log, failed, done, nil)
-}
-
-// startWatchedEncoder is startFragmentEncoder with the encoder's -progress fed to watch, one
-// SpeedSample per block with the process's CPU time (RungMonitor, #1517). When watch returns true
-// the stream ends cleanly at the next top-level box, so the packager takes the fragments produced
-// so far and none of what the killed encoder had in flight (#1533's contract: no flush reaches the
-// channel); the schedule then resumes the item on the new rung.
-func startWatchedEncoder(ctx context.Context, ffmpeg string, args []string, log *slog.Logger,
+//
+// watch, when set, is fed the encoder's -progress, one SpeedSample per block with the process's
+// CPU time (RungMonitor, #1517). When it returns true the stream ends cleanly at the next top-level
+// box, so the packager takes the fragments produced so far and none of what the killed encoder had
+// in flight (#1533's contract: no flush reaches the channel); the schedule then resumes the item on
+// the new rung.
+func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log *slog.Logger,
 	failed func(decodeFault bool), done func(cpu time.Duration), watch func(SpeedSample) bool,
 ) (io.ReadCloser, error) {
 	var progress, progressW *os.File
