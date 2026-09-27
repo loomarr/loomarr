@@ -22,9 +22,9 @@ const (
 	// always had, so an install that already measured its host reads the same file.
 	capabilityEvidenceName       = ".host-capability-v1.json"
 	capabilityEvidenceTempPrefix = ".host-capability-"
-	capabilityEvidenceMaxAge  = 7 * 24 * time.Hour
-	capabilityValidationSecs  = 1
-	capabilityIdentityTimeout = 250 * time.Millisecond
+	capabilityEvidenceMaxAge     = 7 * 24 * time.Hour
+	capabilityValidationSecs     = 1
+	capabilityIdentityTimeout    = 250 * time.Millisecond
 )
 
 type capabilityEvidence struct {

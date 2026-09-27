@@ -81,7 +81,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		approver:        opts.Approver,
 		binder:          opts.Binder,
 		playoutObserver: opts.PlayoutObserver, playoutCapability: opts.PlayoutCapability,
-		playoutSecret:    opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
+		playoutSecret: opts.PlayoutSecret, playoutSecretCurrent: opts.PlayoutSecretCurrent,
 		playoutResolver: opts.PlayoutResolver,
 		playout:         opts.Playout,
 		playoutGuide:    opts.PlayoutGuide, playoutFont: opts.PlayoutFont,

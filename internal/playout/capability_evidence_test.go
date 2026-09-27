@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"testing"
 	"time"
-
 )
 
 func TestDetectObservedWithEvidenceValidatesAndReusesHardwareCapacity(t *testing.T) {

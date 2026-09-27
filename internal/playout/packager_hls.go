@@ -333,7 +333,11 @@ func (m *PackagerHLS) schedule(
 				log.Info("packager hls: item leaves the GPU", "item", it.Label, "fallbacks", strings.Join(pl.Fallbacks, "; "))
 			}
 			return startFragmentEncoder(ctx, m.ffmpeg, args, log.With("item", it.Label), func(decodeFault bool) {
+				before := faults.get(it.Input)
 				if faults.record(it.Input, pl, decodeFault) {
+					if leftTheGPU(before, faults.get(it.Input), host) {
+						m.observe(func(o SessionObserver) { o.PlayoutFallback("hardware_to_software") })
+					}
 					log.Warn("packager hls: item failed on the GPU; its next attempt demotes the failing stage",
 						"item", it.Label, "decode_fault", decodeFault, "tonemapper", pl.Tonemapper)
 				}
@@ -399,6 +403,17 @@ func (f itemFault) apply(h HostProfile) HostProfile {
 	h.TonemapOpenCL = h.TonemapOpenCL && !f.noOpenCL
 	h.Libplacebo = h.Libplacebo && !f.noLibplacebo
 	return h
+}
+
+// leftTheGPU reports a demotion that moved a stage onto the CPU, the live hardware→software fallback
+// the metrics count: the decode, or the tone-map once no GPU tone-mapper is left on this host.
+// OpenCL → libplacebo stays on the GPU and is not one.
+func leftTheGPU(before, after itemFault, host HostProfile) bool {
+	if after.cpuDecode && !before.cpuDecode {
+		return true
+	}
+	h := after.apply(host) // any other change demoted a GPU tone-mapper
+	return after != before && !h.TonemapOpenCL && !h.Libplacebo
 }
 
 // itemFaults holds one channel packager's faults by source, for its life. Only a failure adds one.
