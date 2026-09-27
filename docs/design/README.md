@@ -47,7 +47,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [images](images.md) | the image service | 22 | here |
 | [filler](filler.md) | catalog, sources, fetching, storage, pulls, lifecycle, media gates, media roles, conditioning, acquisition runs | 10 | here |
 | [filler-pipeline](filler-pipeline.md) | the ingest pipeline, budgets, enrichment, Incoming, the catalog listing | 10 (V51b, V51d, V51e, V51g) | here |
-| filler-structure | compilation structure, splitting, composites | 10 (V34, V45, V67) | `design.md` |
+| [filler-structure](filler-structure.md) | long-source quarantine, structure assessment, detection, auto-split, split review, composites | 10 (V34, V45, V51a, V67) | here |
 | filler-classification | tagging, confidence, readiness | 10 (V38, V44, V61–V63) | `design.md` |
 
 Settings (§15) belong to [`config-design.md`](../config-design.md). Scheduling heuristics belong to
@@ -77,6 +77,7 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0014](decisions/0014-sources-are-one-flat-list.md) | 2026-08-03 | Filler sources are one flat list, any number of folders and libraries |
 | [0015](decisions/0015-sources-fetch-on-their-own.md) | 2026-08-03 | Filler sources fetch on their own |
 | [0016](decisions/0016-clip-identity-is-a-content-hash.md) | 2026-08-03 | Clip identity is a content hash |
+| [0017](decisions/0017-composites-keep-the-parent.md) | 2026-08-07 | Composites keep the parent; lineage is first-class |
 | [0018](decisions/0018-one-ingest-pipeline.md) | 2026-08-09 | Ingest is one ordered, watchable pipeline |
 | [0019](decisions/0019-stage-budget-is-per-clip-rate.md) | 2026-08-09 | A stage's budget is a per-clip rate |
 | [0020](decisions/0020-one-image-service.md) | 2026-08-09 | One content-addressed image service |
@@ -88,6 +89,7 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0026](decisions/0026-specialized-local-model.md) | 2026-09-02 | A specialized local model is an optional Suggester optimisation |
 | [0027](decisions/0027-loomarr-owned-media-inventory.md) | 2026-09-05 | Loomarr owns its media inventory; the library is an importer |
 | [0028](decisions/0028-source-evidence-and-playable-media.md) | 2026-09-06 | Source evidence and playable media are separate assets |
+| [0029](decisions/0029-structure-before-children.md) | 2026-09-06 | Compilation structure is assessed before children are materialized |
 | [0031](decisions/0031-tone-curve.md) | 2026-09-26 | Tone curve: one default plus six selectable curves |
 | [0032](decisions/0032-4k-and-dynamic-range.md) | 2026-09-26 | 4K is a given; dynamic range is independent of resolution |
 | [0033](decisions/0033-measured-admission.md) | 2026-09-27 | Admission is one measured ledger |
