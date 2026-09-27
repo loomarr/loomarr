@@ -46,11 +46,13 @@ vi.mock("../use-hls-player", () => ({
   },
 }));
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: diagnosticsRecord } }));
-const switchSound = vi.hoisted(() => vi.fn(() => true));
-vi.mock("../switch-sound", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../switch-sound")>()),
-  playChannelSwitchSound: switchSound,
-}));
+const staticLock = vi.hoisted(() => vi.fn());
+const switchSound = vi.hoisted(() =>
+  vi.fn<(video: HTMLVideoElement, options: { enabled: boolean }) => { lock: () => void } | undefined>(() => ({
+    lock: staticLock,
+  })),
+);
+vi.mock("../switch-sound", () => ({ startChannelSwitchSound: switchSound }));
 
 const makeWrapper = () => {
   const client = new QueryClient({
@@ -330,6 +332,7 @@ describe("ChannelWatch switch readout", () => {
   beforeEach(() => {
     stubTracks();
     switchSound.mockClear();
+    staticLock.mockClear();
     localStorage.clear();
   });
 
@@ -342,10 +345,29 @@ describe("ChannelWatch switch readout", () => {
     await waitFor(() => expect(visibleNames("Saturday Cartoons")).toHaveLength(1));
   });
 
-  it("plays the channel-change sound once when a switch begins, on the player's own element", async () => {
+  it("starts the dial set once when a switch begins, on the player's own element", async () => {
     await switchTo(next);
     expect(switchSound).toHaveBeenCalledTimes(1);
     expect(switchSound).toHaveBeenCalledWith(expect.any(HTMLVideoElement), { enabled: true });
+  });
+
+  it("mutes the programme under the static, then cuts the static and restores it when the picture locks", async () => {
+    const view = await switchTo(next);
+    const video = document.querySelector("video") as HTMLVideoElement;
+    expect(video.muted).toBe(true);
+    expect(staticLock).not.toHaveBeenCalled();
+
+    hls.status = "playing";
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />);
+    await waitFor(() => expect(staticLock).toHaveBeenCalledTimes(1));
+    expect(video.muted).toBe(false);
+  });
+
+  it("leaves the programme alone when the sound is off", async () => {
+    localStorage.setItem("loomarr.player.channel-change-sound", "off");
+    switchSound.mockReturnValueOnce(undefined);
+    await switchTo(next);
+    expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(false);
   });
 
   it("stays silent on a cold start", async () => {

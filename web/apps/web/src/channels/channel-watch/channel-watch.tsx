@@ -14,8 +14,9 @@ import { VideoPlayer } from "@/components/ui/video-player";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
-import { playChannelSwitchSound, useSwitchSoundPreference } from "../switch-sound";
+import { type SwitchSound, startChannelSwitchSound } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
+import { useSwitchSoundPreference } from "../use-switch-sound-preference";
 import type { TuneAttempt } from "../tuner-timing";
 import type { TuneDirection } from "../use-channel-tuner";
 import { languageLabel } from "./language-label";
@@ -282,17 +283,42 @@ const ChannelWatch = ({
   const osdChannel = tuner?.requestedChannel ?? channel;
   const tuning = player.status === "loading";
 
-  // The channel-change sound (#1620): once per switch, as the tuned channel changes — the moment the
-  // viewer asks, not when transport catches up. Only once a picture has played here: a cold start is
-  // not a channel change, and an autoplayed first tune has had no gesture. The module owns the rest
-  // of the gate (the viewer's preference, the player's mute and volume, the page's user activation).
+  // The channel-change sound (#1620), a dial set: a clunk, then static until the new channel's first
+  // frame, cut at lock. It starts as the tuned channel changes — the moment the viewer asks, not when
+  // transport catches up — and only once a picture has played here: a cold start is not a channel
+  // change, and an autoplayed first tune has had no gesture. The module owns the rest of the gate
+  // (the viewer's preference, the player's mute and volume, the page's user activation).
+  //
+  // While the static plays, the programme's own audio is muted, as a set's is; it comes back at lock.
+  // That is a mute of the element alone: the player's own mute state is untouched, so its button
+  // still shows the viewer's choice, and the element is only unmuted again if the static muted it.
   const [switchSoundOn, setSwitchSoundOn] = useSwitchSoundPreference();
   const soundedChannelRef = useRef(osdChannel.id);
+  const switchSoundRef = useRef<{ sound: SwitchSound; programmeMuted: boolean } | undefined>(undefined);
+  const endSwitchSound = useCallback(() => {
+    const running = switchSoundRef.current;
+    if (!running) return;
+    switchSoundRef.current = undefined;
+    running.sound.lock();
+    if (videoRef.current?.muted) videoRef.current.muted = running.programmeMuted;
+  }, []);
   useEffect(() => {
     if (soundedChannelRef.current === osdChannel.id) return;
     soundedChannelRef.current = osdChannel.id;
-    if (heldFrame && videoRef.current) playChannelSwitchSound(videoRef.current, { enabled: switchSoundOn });
-  }, [osdChannel.id, heldFrame, switchSoundOn]);
+    const video = videoRef.current;
+    if (!heldFrame || !video) return;
+    // Surfing on while the static still runs: that one ends, and the new clunk takes over.
+    endSwitchSound();
+    const sound = startChannelSwitchSound(video, { enabled: switchSoundOn });
+    if (!sound) return;
+    switchSoundRef.current = { sound, programmeMuted: video.muted };
+    video.muted = true;
+  }, [osdChannel.id, heldFrame, switchSoundOn, endSwitchSound]);
+  // Lock: the first frame has decoded (or the tune failed), so the static cuts off.
+  useEffect(() => {
+    if (!tuning) endSwitchSound();
+  }, [tuning, endSwitchSound]);
+  useEffect(() => endSwitchSound, [endSwitchSound]);
 
   // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
   // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
