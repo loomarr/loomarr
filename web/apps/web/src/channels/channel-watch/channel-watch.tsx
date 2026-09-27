@@ -14,6 +14,7 @@ import { VideoPlayer } from "@/components/ui/video-player";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
+import { playChannelSwitchSound, useSwitchSoundPreference } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
 import type { TuneAttempt } from "../tuner-timing";
 import type { TuneDirection } from "../use-channel-tuner";
@@ -129,6 +130,17 @@ const ChannelWatch = ({
   // manifest and first segments (#1484). It is still well ahead of the first frame.
   const onManifest = useCallback(() => tunerReady?.(channel.id), [channel.id, tunerReady]);
   const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest);
+  // The player's own <video>, caught at the attach seam, so the channel-change sound can follow the
+  // player's volume and mute without VideoPlayer knowing about it.
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerAttach = player.attach;
+  const attach = useCallback(
+    (el: HTMLVideoElement) => {
+      videoRef.current = el;
+      return playerAttach(el);
+    },
+    [playerAttach],
+  );
   const expiryNoticeRef = useRef({ channelId: channel.id, revision: 0 });
   useEffect(() => {
     if (expiryNoticeRef.current.channelId !== channel.id) {
@@ -270,6 +282,18 @@ const ChannelWatch = ({
   const osdChannel = tuner?.requestedChannel ?? channel;
   const tuning = player.status === "loading";
 
+  // The channel-change sound (#1620): once per switch, as the tuned channel changes — the moment the
+  // viewer asks, not when transport catches up. Only once a picture has played here: a cold start is
+  // not a channel change, and an autoplayed first tune has had no gesture. The module owns the rest
+  // of the gate (the viewer's preference, the player's mute and volume, the page's user activation).
+  const [switchSoundOn, setSwitchSoundOn] = useSwitchSoundPreference();
+  const soundedChannelRef = useRef(osdChannel.id);
+  useEffect(() => {
+    if (soundedChannelRef.current === osdChannel.id) return;
+    soundedChannelRef.current = osdChannel.id;
+    if (heldFrame && videoRef.current) playChannelSwitchSound(videoRef.current, { enabled: switchSoundOn });
+  }, [osdChannel.id, heldFrame, switchSoundOn]);
+
   // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
   // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
   // fetched here; the channel identity is what a viewer needs.
@@ -319,6 +343,9 @@ const ChannelWatch = ({
         value={audioValue || AUTO_SENTINEL}
         onChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
         readOnly={!isAdmin}
+        toggles={[
+          { label: "Channel-change sound", checked: switchSoundOn, onCheckedChange: setSwitchSoundOn },
+        ]}
       />
     </>
   );
@@ -331,7 +358,8 @@ const ChannelWatch = ({
       live
       liveTransport={player.liveTransport}
       scrubber={scrubber}
-      topBar={topBar}
+      // While the wash is up its readout names the channel; the title returns with the picture.
+      topBar={tuning ? undefined : topBar}
       timeLeft={timeLeft}
       barControls={barControls}
       // The tuner "acquiring signal" overlay covers the warm-up beat (cold encoder, first segment
@@ -351,7 +379,7 @@ const ChannelWatch = ({
           </>
         ) : undefined
       }
-      attach={player.attach}
+      attach={attach}
       onChannelStep={tuner?.step}
       className="overflow-hidden rounded-xl border border-border bg-black"
     />

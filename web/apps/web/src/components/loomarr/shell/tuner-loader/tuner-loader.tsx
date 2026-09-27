@@ -48,8 +48,9 @@ const TunerLoader = ({ label = "TUNING IN", channel, heldFrame = false, classNam
       )}
     />
 
-    {/* The CRT ground: dense, soft snow + scanlines; still (not absent) under reduced motion. */}
-    <TvStatic variant="wash" />
+    {/* The CRT ground: analog snow under a dark layer + scanlines; still (not absent) under reduced
+        motion. On a switch it thickens in over the draining frame. */}
+    <TvStatic variant="wash" className={cn(heldFrame && "motion-safe:animate-wash-thicken")} />
 
     <div className="relative z-[1] flex size-full flex-col items-center justify-center gap-3 px-4 text-center">
       {/* Phosphor bars. Fixed-height rail so the jittering bar heights have room; items-end so they

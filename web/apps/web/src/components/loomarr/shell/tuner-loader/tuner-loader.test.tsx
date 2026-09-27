@@ -46,6 +46,14 @@ describe("TunerLoader", () => {
     const { container } = render(<TunerLoader heldFrame />);
     expect(wash(container)).toHaveAttribute("data-wash", "draining");
     expect(wash(container)?.className).toContain("motion-safe:animate-held-drain");
+    // …while the snow thickens in over it; a cold start shows the snow at once.
+    const snow = () => container.querySelector<HTMLElement>("[data-snow='wash']");
+    expect(snow()?.className).toContain("motion-safe:animate-wash-thicken");
+  });
+
+  it("shows the snow at once on a cold start", () => {
+    const { container } = render(<TunerLoader />);
+    expect(container.querySelector("[data-snow='wash']")?.className).not.toContain("animate-wash-thicken");
   });
 
   it("sits the wash at rest on a cold start, with nothing to drain", () => {

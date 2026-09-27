@@ -19,6 +19,15 @@ interface TrackSelectMenuProps {
   /** Read-only: a member sees the current track but cannot change it — audio/subtitles are
    *  admin-scoped and channel-wide (§9.1), so a non-admin's menu is disabled with a note. */
   readOnly?: boolean;
+  /** Per-viewer on/off settings shown under the options (e.g. the channel-change sound). They are the
+   *  viewer's own, so `readOnly` never disables them. */
+  toggles?: TrackToggle[];
 }
 
-export type { TrackOption, TrackSelectMenuProps };
+interface TrackToggle {
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}
+
+export type { TrackOption, TrackSelectMenuProps, TrackToggle };

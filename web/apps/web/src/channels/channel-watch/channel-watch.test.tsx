@@ -46,6 +46,11 @@ vi.mock("../use-hls-player", () => ({
   },
 }));
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: diagnosticsRecord } }));
+const switchSound = vi.hoisted(() => vi.fn(() => true));
+vi.mock("../switch-sound", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../switch-sound")>()),
+  playChannelSwitchSound: switchSound,
+}));
 
 const makeWrapper = () => {
   const client = new QueryClient({
@@ -300,9 +305,75 @@ describe("ChannelWatch switch readout", () => {
     retry: vi.fn(),
   });
   const wash = () => document.querySelector<HTMLElement>("[data-wash]");
+  // Every VISIBLE place the channel is named: not the decorative readout, not the SR-only OSD.
+  const visibleNames = (name: string) =>
+    screen
+      .queryAllByText(name)
+      .filter((el) => !el.closest("[aria-hidden='true']") && !el.closest("[role='status']"));
+  const switchTo = async (target: typeof next) => {
+    hls.status = "playing";
+    const view = render(
+      <ChannelWatch channel={live} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />,
+      {
+        wrapper: makeWrapper(),
+      },
+    );
+    await screen.findByRole("button", { name: "Audio" });
+    hls.status = "loading";
+    view.rerender(
+      <ChannelWatch channel={target} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor(target)} />,
+    );
+    await waitFor(() => expect(wash()).not.toBeNull());
+    return view;
+  };
 
   beforeEach(() => {
     stubTracks();
+    switchSound.mockClear();
+    localStorage.clear();
+  });
+
+  it("hides the player's channel title while the readout names the channel, and restores it with the picture", async () => {
+    const view = await switchTo(next);
+    expect(visibleNames("Saturday Cartoons")).toEqual([]);
+
+    hls.status = "playing";
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />);
+    await waitFor(() => expect(visibleNames("Saturday Cartoons")).toHaveLength(1));
+  });
+
+  it("plays the channel-change sound once when a switch begins, on the player's own element", async () => {
+    await switchTo(next);
+    expect(switchSound).toHaveBeenCalledTimes(1);
+    expect(switchSound).toHaveBeenCalledWith(expect.any(HTMLVideoElement), { enabled: true });
+  });
+
+  it("stays silent on a cold start", async () => {
+    hls.status = "loading";
+    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+      wrapper: makeWrapper(),
+    });
+    await screen.findByText("Tuning in…");
+    expect(switchSound).not.toHaveBeenCalled();
+  });
+
+  it("lets any viewer turn the sound off from the Audio menu, and remembers it", async () => {
+    hls.status = "playing";
+    render(<ChannelWatch channel={live} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />, {
+      wrapper: makeWrapper(),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
+    const toggle = await screen.findByRole("menuitemcheckbox", { name: "Channel-change sound" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(toggle).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(toggle);
+    expect(localStorage.getItem("loomarr.player.channel-change-sound")).toBe("off");
+  });
+
+  it("passes the preference through when the viewer has turned the sound off", async () => {
+    localStorage.setItem("loomarr.player.channel-change-sound", "off");
+    await switchTo(next);
+    expect(switchSound).toHaveBeenCalledWith(expect.any(HTMLVideoElement), { enabled: false });
   });
 
   it("drains the held frame when switching from a channel that played", async () => {
