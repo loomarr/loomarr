@@ -19,7 +19,7 @@ moved, its section in [`design.md`](../design.md) is still the source of truth.
 - **Plans live in issues and milestones**, not here. Link the issue instead of describing the plan.
 - **Generated facts stay generated.** The HTTP API reference is the OpenAPI spec
   (`api/openapi.yaml`, served at `/docs`), settings are in
-  [`configuration.md`](../configuration.md), and the package inventory is
+  [`reference/settings.md`](../reference/settings.md), and the package inventory is
   [`package-map.md`](package-map.md). Do not restate them in prose.
 - Vocabulary is defined in [`CONTEXT.md`](../../CONTEXT.md). Work status lives in GitHub issues.
 
