@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // rotatingCycle mimics the real scheduler: it returns a DIFFERENT arrangement per rolling window,
@@ -182,4 +183,50 @@ func TestSegmentedBroadcasts_CurrentWindowUsesThePersistedAcceptedCycle(t *testi
 	if len(bs) == 0 || bs[0].Title != "accepted broadcast" {
 		t.Fatalf("current guide = %+v, want the persisted accepted broadcast", bs)
 	}
+}
+
+// #1630: a channel that has never gone live has no playout anchor BY DESIGN — reconcile stamps it
+// only when the first playable deck goes live. The guide read it as corrupt state and logged a
+// warning for that channel on every guide read. It has no timeline yet, and that is an honest
+// empty row, not an error. A live channel with no anchor is still refused.
+//
+// ⚠ Not stubChannels: that stub stamps an anchor onto any row that lacks one, so it can never
+// present the state this test is about.
+func TestSegmentedBroadcasts_UnanchoredUntilFirstLive(t *testing.T) {
+	t.Parallel()
+	from := time.Now().Truncate(time.Hour)
+	to := from.Add(6 * time.Hour)
+	projections := map[string]func([]schedule.Slot, time.Time, time.Time, time.Time) []playout.Broadcast{
+		"xmltv": playout.BroadcastsBetween, "grid": playout.BroadcastsWithPending,
+	}
+	for _, status := range []schedule.ChannelStatus{schedule.StatusEmpty, schedule.StatusBuilding} {
+		for name, project := range projections {
+			t.Run(string(status)+"/"+name, func(t *testing.T) {
+				eng := &rotatingCycle{window: 24 * time.Hour}
+				r := &playoutResolver{engine: eng, channels: unanchoredChannel(status), now: time.Now}
+
+				bs, err := r.segmentedBroadcasts(context.Background(), "ch1", from, to, project)
+				if err != nil {
+					t.Fatalf("segmentedBroadcasts on a %s channel: %v, want an empty timeline", status, err)
+				}
+				if len(bs) != 0 || eng.asks() != 0 {
+					t.Fatalf("got %d broadcasts from %d cycle reads, want none: nothing airs before the anchor", len(bs), eng.asks())
+				}
+			})
+		}
+	}
+
+	for _, status := range []schedule.ChannelStatus{schedule.StatusLive, schedule.StatusDrifted} {
+		r := &playoutResolver{engine: &rotatingCycle{window: 24 * time.Hour}, channels: unanchoredChannel(status), now: time.Now}
+		if _, err := r.segmentedBroadcasts(context.Background(), "ch1", from, to, playout.BroadcastsBetween); err == nil {
+			t.Fatalf("a %s channel with no anchor laid out a timeline; it is corrupt state and must be refused", status)
+		}
+	}
+}
+
+// unanchoredChannel reads back one channel row exactly as stored, with no playout anchor.
+type unanchoredChannel schedule.ChannelStatus
+
+func (s unanchoredChannel) GetChannel(_ context.Context, id string) (store.Channel, error) {
+	return store.Channel{Channel: schedule.Channel{ID: id, Status: schedule.ChannelStatus(s)}}, nil
 }

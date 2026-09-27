@@ -740,6 +740,12 @@ func (r *playoutResolver) segmentedBroadcasts(
 	if err != nil {
 		return nil, fmt.Errorf("read channel playout anchor %s: %w", channelID, err)
 	}
+	// Reconcile stamps the anchor when the channel's first playable deck goes live, so a channel
+	// that has never been live has no timeline yet: an empty row, not corrupt state (#1630, which
+	// logged a failure for it on every guide read). Live and drifted keep the refusal below.
+	if ch.PlayoutAnchor.IsZero() && ch.Status != schedule.StatusLive && ch.Status != schedule.StatusDrifted {
+		return nil, nil
+	}
 	epoch, err := effectivePlayoutAnchor(ch)
 	if err != nil {
 		return nil, err
