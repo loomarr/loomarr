@@ -27,12 +27,12 @@ unknown_count="$($SELECTOR unexpected/new-runtime/file.xyz 2>/dev/null | wc -l)"
   exit 1
 }
 
-[[ -z "$($SELECTOR docs/dev/testing.md)" ]] || {
+[[ -z "$($SELECTOR docs/contributing/testing.md)" ]] || {
   echo 'go-impact-test: docs-only change selected Go packages' >&2
   exit 1
 }
 
-stdin="$({ printf '%s\n' internal/suggest/ground.go docs/dev/testing.md; } | "$SELECTOR")"
+stdin="$({ printf '%s\n' internal/suggest/ground.go docs/contributing/testing.md; } | "$SELECTOR")"
 [[ "$stdin" == "$leaf" ]] || {
   echo 'go-impact-test: stdin and argument interfaces disagree' >&2
   exit 1

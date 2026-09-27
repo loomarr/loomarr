@@ -34,9 +34,14 @@ const anchorOf = (heading: string): string => {
 // slug. §13 promises "every red check deep-links to its section"; that only holds if the
 // link is turned into { page, section } and routed. A leading "#" (a same-page anchor)
 // yields no page and is left to the browser.
+//
+// Pages link each other as relative files ("../guides/filler.md#pipeline") so one link works
+// on GitHub, the docs site and here. The page slug is the file's base name, which
+// docs/embed.go keeps unique across the embedded folders.
 const parseDocHref = (href: string): { page?: string; section?: string } => {
   if (href.startsWith("#")) return { section: href.slice(1) || undefined };
-  const [page, section] = href.split("#", 2);
+  const [path, section] = href.split("#", 2);
+  const page = path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, "");
   return { page: page || undefined, section: section || undefined };
 };
 

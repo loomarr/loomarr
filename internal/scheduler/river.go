@@ -34,7 +34,7 @@ import (
 // every schedule Loomarr has is six-field seconds-leading (`0 */5 * * * *`, Overseerr-shaped).
 // Those values are operator-editable settings already in the database, so following the
 // documented example would reject every saved schedule at boot on installs that were working
-// fine. Verified in docs/engineering/FINDINGS-river-spike-2026-07-30.md.
+// fine. Verified in the River spike findings (git history before #1572).
 var cronParser = cron.NewParser(
 	cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow,
 )

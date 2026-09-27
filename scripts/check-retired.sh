@@ -384,7 +384,7 @@ RETIRED=(
 # be annotated out of the way. The migration that DROPS it has to name it too. Neither is an
 # instruction to an operator, which is what this ban protects; both are the historical record the
 # forward-only rule exists to keep.
-ALLOW_PATH='^(PROGRESS\.md|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/|internal/store/migrations/)'
+ALLOW_PATH='^(PROGRESS\.md|project/|docs/engineering/|scripts/check-retired\.sh|internal/web/dist/|internal/store/migrations/)'
 # A line may name a retired identifier when it is EXPLAINING that it is retired — that is how
 # §10's "keeps being re-decided" history survives, and how a corrective comment ("this used to
 # say X") points at the thing it corrects.

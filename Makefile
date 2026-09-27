@@ -4,7 +4,7 @@
 # ⚠ DO NOT restate the target list or the CI set in prose — here or anywhere else.
 # This header used to end "CI mirrors: check + openapi-verify + test-pg + fe + e2e",
 # which omitted six gates CI actually runs, and four other files carried their own
-# disagreeing copies. `docs/dev/commands.md` is GENERATED from the `## ` comments in this
+# disagreeing copies. `docs/reference/make.md` is GENERATED from the `## ` comments in this
 # interface and its ordered `mk/*.mk` modules plus the `make` invocations in .github/workflows;
 # `make dev-docs-verify` fails the
 # build on drift. Describe a target once, in its `## ` comment, and let the page follow.
@@ -16,10 +16,10 @@ PKG     := ./...
 BIN_DIR := bin
 
 # STYLE is checked only on what ships to a reader. design.md, PROGRESS.md and
-# docs/engineering/ are long-form internal records whose house style predates any linter, and
+# project/ are long-form internal records whose house style predates any linter, and
 # whose volume would bury every real finding. docs/design/ is the design being rewritten out of
 # design.md (#779) and is linted from its first page, so it never accumulates that backlog.
-DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev docs/design
+DOC_GLOBS := README.md CONTRIBUTING.md docs/README.md docs/get-started.md docs/guides docs/explanation docs/contributing docs/design
 
 # LINKS are checked far wider, and the difference is deliberate: a broken link is objectively
 # wrong everywhere, while a style rule is a preference that only earns its place in prose
@@ -29,7 +29,7 @@ DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev docs/desi
 # into docs/engineering/archive/ left nine dangling references — in PROGRESS.md, in two
 # agent workflows, design/, and two Go doc comments — none of which the style set
 # covers. Anything that can hold a relative link to a doc belongs here.
-LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs 'design/*.md' .agents .claude
+LINK_GLOBS := README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md docs project 'design/*.md' .agents .claude
 
 # CI-only lane passthrough for `make test` (1/2, 2/2, or certification-1/2..2/2). Empty by default —
 # see the note on the `test` target. The visual suite's separate environment-only shard input is documented

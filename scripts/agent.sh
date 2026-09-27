@@ -584,7 +584,7 @@ EOF
 		if printf '%s\n' "$changed" | grep -qE '^scripts/.*\.sh$'; then
 			make -C "$ROOT" shellcheck
 		fi
-		if printf '%s\n' "$changed" | grep -q '^docs/help/'; then
+		if printf '%s\n' "$changed" | grep -qE '^docs/(get-started\.md|guides/|explanation/)'; then
 			make -C "$ROOT" retired-verify
 		fi
 		if printf '%s\n' "$changed" | grep -qE '^observability/|^scripts/verify-observability\.sh$|^mk/check\.mk$'; then

@@ -11,7 +11,7 @@ Claude Code conveniences are optional adapters:
 - Create worktrees with `make agent-worktree TOPIC=...`; do not rely on `--worktree`, `EnterWorktree`,
   `.worktreeinclude`, or implicit secret copying.
 - `.claude/skills/` points to the curated `.agents/skills/` bodies; the catalog and invocation
-  guidance live in [`docs/dev/skills.md`](docs/dev/skills.md).
+  guidance live in [`docs/agents/skills.md`](docs/agents/skills.md).
 - `.claude/commands/` contains thin adapters to the canonical `.agents/workflows/` instructions.
 - Frontend packages are deep modules — see [`web/packages/README.md`](web/packages/README.md) before
   adding one or importing from one.

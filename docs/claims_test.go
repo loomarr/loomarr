@@ -63,9 +63,9 @@ func TestHelpDoesNotContradictPlayoutDefault(t *testing.T) {
 	for _, page := range docs.Pages() {
 		for _, phrase := range contradictsInternalPlayout {
 			if strings.Contains(page.Markdown, phrase) {
-				t.Errorf("docs/help/%s.md says %q, but playout.backend defaults to %q.\n"+
+				t.Errorf("docs/%s says %q, but playout.backend defaults to %q.\n"+
 					"  Loomarr serves its own streams on the default path (§9.1); Tunarr is an "+
-					"alternative backend, not the streamer.", page.Slug, phrase, backend.Default)
+					"alternative backend, not the streamer.", page.Path, phrase, backend.Default)
 			}
 		}
 	}
@@ -143,7 +143,7 @@ func TestHelpEnvVarsExist(t *testing.T) {
 	var checked int
 
 	for _, page := range docs.Pages() {
-		checked += scanEnvVars(t, "docs/help/"+page.Slug+".md", page.Markdown, valid)
+		checked += scanEnvVars(t, "docs/"+page.Path, page.Markdown, valid)
 	}
 
 	// Without this, a broken regex scans nothing and reports success — the failure mode that
@@ -203,8 +203,8 @@ func TestHelpComposeCommandsResolve(t *testing.T) {
 			path := m[1]
 			checked++
 			if _, err := os.Stat(filepath.Join(root, path)); err != nil {
-				t.Errorf("docs/help/%s.md runs `docker compose -f %s`, which does not exist.\n"+
-					"  A copy-pasted quickstart command would fail on the first line.", page.Slug, path)
+				t.Errorf("docs/%s runs `docker compose -f %s`, which does not exist.\n"+
+					"  A copy-pasted quickstart command would fail on the first line.", page.Path, path)
 			}
 		}
 	}
@@ -220,33 +220,26 @@ func TestHelpComposeCommandsResolve(t *testing.T) {
 // Claim 4: the install set, which is read BEFORE the binary is running
 // ---------------------------------------------------------------------------
 
-// The help set had a guard because it ships inside the binary. docs/install/ does not ship, and
-// was therefore unguarded — but it is what an operator follows to get a container up, before any
-// of the in-app help is reachable. A pin that does not exist costs MORE here: there is no running
+// The install pages are what an operator follows to get a container up, before any of the
+// in-app help is reachable. A pin that does not exist costs MORE here: there is no running
 // Settings page to contradict it, and the symptom is a container that starts and misbehaves.
-//
-// Not embedded, so there is no docs.Pages() to walk; these are read from disk.
+// They were unembedded under docs/install/ until #1572 moved them into guides/.
 //
 // README.md is included: it is the most-read file in the repo and its Quickstart carries the
 // first `docker compose` command anyone runs. A wrong path there is the worst placed of all.
 func operatorEntryPages(t *testing.T) map[string]string {
 	t.Helper()
-	matches, err := filepath.Glob(filepath.Join("install", "*.md"))
-	if err != nil {
-		t.Fatalf("glob docs/install: %v", err)
-	}
+	// #1572 moved the install pages into guides/, which is embedded, so the embedded set is
+	// now the install set too. Its install pages are named so that a move that drops them
+	// from the embed fails here rather than silently checking less.
 	out := map[string]string{}
-	for _, path := range matches {
-		body, err := os.ReadFile(path) //nolint:gosec // repo-relative test fixture
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		out[filepath.ToSlash(filepath.Join("docs", path))] = string(body)
+	for _, p := range docs.Pages() {
+		out["docs/"+p.Path] = p.Markdown
 	}
-	// The install directory is the whole point of the branch that added it; an empty glob means
-	// the path moved and every assertion below silently stopped running.
-	if len(out) == 0 {
-		t.Fatal("no pages found under docs/install/ — this guard would pass against nothing")
+	for _, want := range []string{"docs/get-started.md", "docs/guides/install-docker.md", "docs/guides/upgrade.md"} {
+		if _, ok := out[want]; !ok {
+			t.Fatalf("%s is not embedded; the install guards would pass against less than they claim", want)
+		}
 	}
 
 	readme, err := os.ReadFile(filepath.Join("..", "README.md")) //nolint:gosec // repo-relative
@@ -337,7 +330,7 @@ func TestClaimsCoverEveryHelpPage(t *testing.T) {
 	// Fail if a page is empty: an empty file satisfies every "must not contain" check.
 	for _, p := range pages {
 		if len(strings.TrimSpace(p.Markdown)) < 100 {
-			t.Errorf("docs/help/%s.md is nearly empty; it would satisfy every guard here vacuously", p.Slug)
+			t.Errorf("docs/%s is nearly empty; it would satisfy every guard here vacuously", p.Path)
 		}
 	}
 }

@@ -1,6 +1,6 @@
 // Structural markdown rules for the prose that ships to a reader.
 //
-// SCOPE is deliberate. design.md, PROGRESS.md and docs/engineering/ are long-form internal
+// SCOPE is deliberate. design.md, PROGRESS.md and project/ are long-form internal
 // records — thousands of lines written over months, in a house style that predates any linter.
 // Running these rules over them produces findings in the hundreds and buries the handful that
 // matter, which is how a gate stops being read. What a user or contributor actually opens is
@@ -10,16 +10,14 @@
   "globs": [
     "README.md",
     "CONTRIBUTING.md",
-    "docs/help/**/*.md",
-    "docs/design/**/*.md",
-    "docs/install/**/*.md",
-    "docs/dev/**/*.md"
+    "docs/README.md",
+    "docs/get-started.md",
+    "docs/guides/**/*.md",
+    "docs/explanation/**/*.md",
+    "docs/contributing/**/*.md",
+    "docs/design/**/*.md"
   ],
   "ignores": [
-    // GENERATED — `make dev-docs` owns its formatting, and a lint rule the generator does not
-    // know about would make `make dev-docs-verify` unfixable: regenerating would reintroduce
-    // the finding every time.
-    "docs/dev/commands.md",
     "**/node_modules/**"
   ],
   "config": {

@@ -8,7 +8,7 @@ import "strconv"
 // geometry, SAR, pixel format and cadence stay the channel's on every rung (pad/scale up, repeated
 // frames), so the packager never sees a format change across a rung restart.
 //
-// The rungs are the maintainer's Decision 3 (docs/engineering/SPIKE-4k-tonemap.md), on the phase 0b
+// The rungs are the maintainer's Decision 3 (project/SPIKE-4k-tonemap.md), on the phase 0b
 // measurements (4 CPUs, no GPU, 4K HEVC 10-bit HDR, tone-mapped):
 //
 //	rung 0  full: every frame decoded; HDR tone-maps at no more than 720 lines   3.4–3.7 cores at 1x

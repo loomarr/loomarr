@@ -6,25 +6,47 @@
 // package directory, so the embed must sit beside the markdown. The alternative — moving
 // the pages under internal/ — would contradict §13's statement that docs live in docs/,
 // and would separate the operator-facing pages from the rest of the documentation set.
-// Only help/ is embedded; the design docs beside it are internal and deliberately not
-// shipped to users.
+// Only the household pages are embedded (Get started, Guides, Explanation); reference,
+// contributing and design docs beside them are for the site and the repo, not the app.
 package docs
 
 import (
 	"embed"
 	"io/fs"
+	"path"
 	"sort"
 	"strings"
 )
 
-//go:embed help/*.md
+//go:embed get-started.md guides/*.md explanation/*.md
 var helpFS embed.FS
+
+// helpDirs are the embedded folders, "." being docs/ itself (get-started.md).
+var helpDirs = []string{".", "guides", "explanation"}
+
+// movedPages maps a slug from before #1572's restructure to the page that now holds its
+// content. An older build, a bookmark or a support answer can still carry the old one.
+var movedPages = map[string]string{
+	"quickstart":   "get-started",
+	"concepts":     "how-loomarr-works",
+	"programming":  "curation",
+	"member-guide": "add-a-channel",
+	"integrations": "connect-services",
+}
+
+// movedSections maps an old "slug#anchor" whose heading was renamed or moved to another
+// page. Pages keep their headings where they can; TestPreMoveHelpLinksStillLand fails for
+// every pre-move link that lands nowhere, and the fix is an entry here.
+var movedSections = map[string]string{}
 
 // Page is one help document.
 type Page struct {
-	// Slug is the URL-facing id ("troubleshooting"). It is the first half of the
-	// `docHref` values the API emits on setup checks, e.g. "troubleshooting#tunarr".
+	// Slug is the URL-facing id ("troubleshooting"): the file's base name, whichever
+	// folder it sits in. It is the first half of the `docHref` values the API emits on
+	// setup checks, e.g. "troubleshooting#tunarr".
 	Slug string
+	// Path is the file under docs/ ("guides/troubleshooting.md"), for messages.
+	Path string
 	// Title is the page's first H1, falling back to the slug.
 	Title string
 	// Markdown is the raw source. Rendering is the frontend's job — the backend ships
@@ -35,34 +57,57 @@ type Page struct {
 // Pages returns every embedded help page, ordered by slug so the Help nav and its
 // manifest are stable across builds.
 func Pages() []Page {
-	entries, err := fs.ReadDir(helpFS, "help")
-	if err != nil {
-		return nil
-	}
-	out := make([]Page, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		body, err := fs.ReadFile(helpFS, "help/"+e.Name())
+	var out []Page
+	for _, dir := range helpDirs {
+		entries, err := fs.ReadDir(helpFS, dir)
 		if err != nil {
 			continue
 		}
-		slug := strings.TrimSuffix(e.Name(), ".md")
-		out = append(out, Page{Slug: slug, Title: titleOf(string(body), slug), Markdown: string(body)})
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			file := path.Join(dir, e.Name())
+			body, err := fs.ReadFile(helpFS, file)
+			if err != nil {
+				continue
+			}
+			slug := strings.TrimSuffix(e.Name(), ".md")
+			out = append(out, Page{Slug: slug, Path: file, Title: titleOf(string(body), slug), Markdown: string(body)})
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Slug < out[j].Slug })
 	return out
 }
 
-// Get returns one page by slug.
+// Get returns one page by slug, following movedPages so a pre-restructure slug still
+// opens the page that now holds its content.
 func Get(slug string) (Page, bool) {
+	if moved, ok := movedPages[slug]; ok {
+		slug = moved
+	}
 	for _, p := range Pages() {
 		if p.Slug == slug {
 			return p, true
 		}
 	}
 	return Page{}, false
+}
+
+// Resolve maps a help href ("concepts#who-does-what") to where that content lives now
+// ("how-loomarr-works#who-does-what"). An href that never moved comes back unchanged.
+func Resolve(href string) string {
+	if moved, ok := movedSections[href]; ok {
+		return moved
+	}
+	slug, fragment, hasFragment := strings.Cut(href, "#")
+	if moved, ok := movedPages[slug]; ok {
+		slug = moved
+	}
+	if !hasFragment {
+		return slug
+	}
+	return slug + "#" + fragment
 }
 
 // titleOf reads the first H1 as the page title. A page without one falls back to its

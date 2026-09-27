@@ -17,7 +17,7 @@ fixture="$($SELECTOR internal/recommend/testdata/channel-recommendation-snapshot
 	exit 1
 }
 
-stdin="$(printf '%s\n' internal/suggest/ground.go docs/dev/testing.md | "$SELECTOR")"
+stdin="$(printf '%s\n' internal/suggest/ground.go docs/contributing/testing.md | "$SELECTOR")"
 [[ "$stdin" == "$got" ]] || {
 	echo 'go-direct-impact-test: stdin and argument interfaces disagree' >&2
 	exit 1

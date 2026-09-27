@@ -164,7 +164,7 @@ the gate machinery/classifier, or needs to diagnose a boundary. One exact focuse
 go test -race -run TestName ./internal/<pkg>/
 ```
 
-The complete, generated target reference is `docs/dev/commands.md`. Fix a Makefile `##` description
+The complete, generated target reference is `docs/reference/make.md`. Fix a Makefile `##` description
 and run `make dev-docs`; never copy target lists into prose.
 
 Useful local interfaces:
@@ -186,8 +186,8 @@ Air run at pinned versions from the harness.
 ## Generated files
 
 - `api/openapi.yaml` → `make openapi`; verify with `make openapi-verify`
-- `docs/configuration.md` → `make config-docs`
-- `docs/dev/commands.md` → `make dev-docs`
+- `docs/reference/settings.md` → `make config-docs`
+- `docs/reference/make.md` → `make dev-docs`
 - `docs/design/package-map.md` → `make arch-docs`
 - `web/packages/tokens/generated/` → `make fe-tokens`
 - `web/packages/api/generated/` and `web/apps/web/src/routeTree.gen.ts` → `make fe-codegen`; both are
@@ -231,7 +231,7 @@ Preservation is not a retirement plan; closing a pane or completing a goal does 
 Orca creates worktrees itself, under its own workspace directory. The checked-in `orca.yaml` runs the
 same registration and bootstrap from Orca's setup hook, so an Orca worktree is registered without
 claims: run `make agent-start TASK=<branch> CLAIMS=...` before touching a shared output. See
-[`docs/dev/agents.md`](docs/dev/agents.md#orca).
+[`docs/agents/harness.md`](docs/agents/harness.md#orca).
 
 Develop against the URL printed by `make dev-fe`; the backend URL serves the last embedded SPA build and
 can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child; use `make dev-be`.
@@ -268,6 +268,6 @@ feature.
 One worktree owns implementation and delivery. Use subagents for independent research, competing
 designs, and fresh-context review; they report to the owner unless a separate editing worktree has a
 clear file seam, interface seam, claim set, and merge order. For dependent branches, record
-`DEPENDS_ON` and stack with `BASE=<dependency-branch>`. See `docs/dev/agents.md` and the curated
-catalog in `docs/dev/skills.md`. When asked to supervise or coordinate multiple agents, follow
+`DEPENDS_ON` and stack with `BASE=<dependency-branch>`. See `docs/agents/harness.md` and the curated
+catalog in `docs/agents/skills.md`. When asked to supervise or coordinate multiple agents, follow
 `.agents/workflows/supervise.md`.

@@ -48,7 +48,7 @@ describe("anchorOf", () => {
   // side validated the same anchors with ITS function. A dangling deep-link is worse than
   // none — it promises help and delivers a blank page at the moment the operator is stuck.
   it("resolves every docHref the API emits, against the real troubleshooting page", () => {
-    const markdown = readFileSync(join(repoRoot, "docs/help/troubleshooting.md"), "utf8");
+    const markdown = readFileSync(join(repoRoot, "docs/guides/troubleshooting.md"), "utf8");
     const anchors = new Set(headingsOf(markdown).map(anchorOf));
 
     for (const href of DOC_HREFS) {
@@ -71,6 +71,13 @@ describe("parseDocHref", () => {
   });
   it("treats a leading # as a same-page anchor (no page)", () => {
     expect(parseDocHref("#approval-the-one-gate")).toEqual({ section: "approval-the-one-gate" });
+  });
+  // #1572: help pages sit in several folders and link each other as real relative files, so
+  // the same link works on GitHub, on the docs site and here. The slug is the base name.
+  it("reduces a relative .md link to its page slug", () => {
+    expect(parseDocHref("../guides/filler.md#pipeline")).toEqual({ page: "filler", section: "pipeline" });
+    expect(parseDocHref("get-started.md")).toEqual({ page: "get-started", section: undefined });
+    expect(parseDocHref("./curation.md")).toEqual({ page: "curation", section: undefined });
   });
   it("keeps a hyphenated slug and anchor intact", () => {
     expect(parseDocHref("member-guide#reading-channel-status")).toEqual({

@@ -8,7 +8,7 @@ import (
 
 // beginMarker/endMarker delimit the generated block inside docs/design/package-map.md.
 //
-// A marker pair rather than whole-file generation (which is how docs/configuration.md
+// A marker pair rather than whole-file generation (which is how docs/reference/settings.md
 // works): the page's heading and introduction are hand-written, so this tool owns one
 // block inside it and must not be able to touch a word outside that block.
 const (

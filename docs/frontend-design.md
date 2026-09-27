@@ -11,7 +11,7 @@ design system based on **Tamagui Core**, Expo, and `react-native-tvos`. Loomarr'
 identity is the visual foundation: its chroma bar, calibrated broadcast palette, Geist typography,
 and broadcast-console character are preserved. The complete target interfaces, acceptance evidence,
 delivery sequence, and retirement contract live in
-[`engineering/plans/shared-client-platform.md`](engineering/plans/shared-client-platform.md).
+[`project/plans/shared-client-platform.md`](../project/plans/shared-client-platform.md).
 
 The sections below describe the **shipping legacy implementation** until each surface migrates. They
 remain binding for code that still uses Tailwind/shadcn or Compose and are parity evidence. New shared design work follows the
@@ -416,7 +416,7 @@ These suites join **phase 13's gate** in the main doc's build plan.
 ## 7. Deliverables & integration with the build plan
 
 - **Shared-client migration P0-P8:** the authoritative sequence and adoption evidence are in
-  [`engineering/plans/shared-client-platform.md`](engineering/plans/shared-client-platform.md).
+  [`project/plans/shared-client-platform.md`](../project/plans/shared-client-platform.md).
   The 2026-09-03 maintainer decision authorizes Shield and Web parity migration under #970. Web
   route cohorts may run while physical Shield acceptance is pending once shared interfaces are
   stable; visual refinements and the other native clients remain later work.

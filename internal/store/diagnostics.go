@@ -432,7 +432,7 @@ func (s *sqlStore) ListDiagnosticRetentionCandidates(
 // Left alone it is never purged (retention skips running rows).
 //
 // ASSUMPTION: Loomarr supports exactly one process per database (see
-// docs/engineering/plans/multi-replica-readiness.md), so matching on instance_id alone cannot
+// project/plans/multi-replica-readiness.md), so matching on instance_id alone cannot
 // finalize a live sibling's runs. Multi-replica support must scope this by process liveness.
 func (s *sqlStore) FinalizeStaleDiagnosticProcessRuns(ctx context.Context, instanceID string, now time.Time) (int, error) {
 	ms := now.UnixMilli()

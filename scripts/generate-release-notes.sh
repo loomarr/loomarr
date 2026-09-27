@@ -14,7 +14,7 @@ fi
 gh api "${args[@]}" --jq .body >"${tmp_dir}/github.md"
 
 command=(go run ./cmd/release-notes --input "${tmp_dir}/github.md" --output "$output")
-header="docs/release/${tag}.md"
+header="project/release/${tag}.md"
 if [ -f "$header" ]; then
   command+=(--header "$header")
 fi

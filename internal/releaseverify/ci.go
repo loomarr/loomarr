@@ -26,7 +26,7 @@ var requiredImageInputs = []string{
 	"internal/app/app.go",
 	"go.mod",
 	"go.sum",
-	"docs/help/release-probe.md",
+	"docs/guides/release-probe.md",
 	"web/apps/web/src/main.tsx",
 	"api/openapi.yaml",
 	"scripts/check-fe-bundle.mjs",

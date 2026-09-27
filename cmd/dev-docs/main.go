@@ -1,8 +1,8 @@
-// Command dev-docs generates docs/dev/commands.md from the Make interface's own `## ` doc
+// Command dev-docs generates docs/reference/make.md from the Make interface's own `## ` doc
 // comments (including its ordered modules) and CI workflows' `make` invocations.
 // `make dev-docs` runs it; `make dev-docs-verify` diffs the result so the tree goes red
 // when they drift — the
-// same committed-artifact discipline as api/openapi.yaml and docs/configuration.md.
+// same committed-artifact discipline as api/openapi.yaml and docs/reference/settings.md.
 //
 // WHY THIS EXISTS. The command contract was restated by hand in four files — README.md,
 // contributor and agent entrypoints — and they disagreed with each other and with
@@ -55,7 +55,7 @@ var (
 )
 
 func main() {
-	out := "docs/dev/commands.md"
+	out := "docs/reference/make.md"
 	if len(os.Args) > 1 {
 		out = os.Args[1]
 	}

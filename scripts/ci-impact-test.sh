@@ -61,7 +61,7 @@ if [[ "$unknown" != "$all_gates" ]]; then
   exit 1
 fi
 
-stdin_output="$(printf '%s\n' internal/suggest/score.go docs/dev/testing.md | "$CLASSIFIER")"
+stdin_output="$(printf '%s\n' internal/suggest/score.go docs/contributing/testing.md | "$CLASSIFIER")"
 stdin_selected="$(awk -F= '$2 == "true" { if (selected != "") selected = selected ","; selected = selected $1 } END { print selected }' <<<"$stdin_output")"
 if [[ "$stdin_selected" != 'contracts,go,postgres,image,docs' ]]; then
   printf 'ci-impact-test: stdin paths: got %s, want contracts,go,postgres,image,docs\n' "$stdin_selected" >&2

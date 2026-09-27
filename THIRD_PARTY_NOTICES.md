@@ -102,7 +102,7 @@ published image must also satisfy every redistributed component's terms. This in
 make a legal conclusion about aggregation or derivative-work status; that conclusion belongs to the
 final redistribution review recorded below.
 
-The versioned [`redistribution-manifest-v1.json`](docs/engineering/evidence/redistribution-manifest-v1.json)
+The versioned [`redistribution-manifest-v1.json`](project/evidence/redistribution-manifest-v1.json)
 binds the pinned FFmpeg and yt-dlp asset identities to upstream release, source/build, and license
 references. It is traceability evidence only: it does not retain corresponding source or provide
 source-retention, distribution, or legal clearance.
@@ -115,8 +115,8 @@ carries yt-dlp, the retained dependency and runtime sources and license texts: d
 `source-materials.tar.gz` and `ffmpeg-original-download-cache.zip`. Verify every download against its
 release's `SHA256SUMS`. Each `README.txt` explains the contents; the August
 `source-package-inventory.json` records all 490 source/license file hashes. The distribution records
-([n9.0](docs/engineering/evidence/source-distribution-2026-09-27.json),
-[August](docs/engineering/evidence/source-distribution-2026-08-31.json)) bind public asset URLs, sizes
+([n9.0](project/evidence/source-distribution-2026-09-27.json),
+[August](project/evidence/source-distribution-2026-08-31.json)) bind public asset URLs, sizes
 and SHA256 digests to the accepted dependency pins. These directions
 ship in the image at `/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md`. Application release notes link
 the same source location alongside the image and bind the exact application commit/image separately.
@@ -162,7 +162,7 @@ The evidence manifest also binds BtbN's pruning policy at the release commit: or
 archives expire after the newest 14, while one archive per month is retained for 24 months.
 
 The August build replaces July because its original upstream dependency download cache and build
-logs were retained before expiry. The [retention record](docs/engineering/evidence/ffmpeg-august-source-retention.md)
+logs were retained before expiry. The [retention record](project/evidence/ffmpeg-august-source-retention.md)
 binds those archives to the new pins and records the remaining distribution and validation work.
 The n9.0 build (#1549) comes from the same release, the same BtbN build scripts and the same
 retention policy; only the FFmpeg source commit differs: `e47273f4d9227152dcbf543cebaf9e2430ddbcc4`.

@@ -42,7 +42,7 @@ services:
   # This is a deliberately dedicated HTTP edge for the beta. It health-checks
   # Loomarr and owns the host port, but one Loomarr replica remains the supported
   # topology until shared jobs, schedulers, playout, and file state pass the scale
-  # investigation archived in docs/engineering/archive/first-beta-readiness.md.
+  # investigation in project/plans/multi-replica-readiness.md.
   traefik:
     image: traefik:v3.7.1@sha256:6b9cbca6fac42ab0075f5437d8dc1685cfd188626d8d515839ea94f8b6271c42
     command:
@@ -147,7 +147,7 @@ services:
       PLAYOUT_QUALITY_TIER: ${PLAYOUT_QUALITY_TIER:-}
       # Which DRM render node the encoder probes. Empty ⇒ /dev/dri/renderD128. Set this on a
       # MULTI-GPU host (a discrete Intel Arc alongside an iGPU, or an Arc next to NVIDIA) where the
-      # card you want is renderD129 or higher — see docs/install/hardware.md.
+      # card you want is renderD129 or higher — see docs/guides/hardware-encoding.md.
       PLAYOUT_RENDER_NODE: ${PLAYOUT_RENDER_NODE:-}
       AUTO_MIGRATE: "true"
     expose: ["8080"]

@@ -1,26 +1,54 @@
 ---
-// The site root.
-//
-// Starlight builds `/` from an `index` entry in the docs collection, and this collection is
-// loaded from the repository's docs/ tree — which deliberately has no top-level index page,
-// because docs/README.md is a map written for people browsing the repo on GitHub, not a
-// landing page. Rather than invent a file in docs/ purely to satisfy the site (the same
-// content-shaped-by-its-renderer problem the in-place loader exists to avoid), the root
-// redirects to where a first-time reader should actually start.
+// The site's front door. It lives here rather than in docs/ because it is the one page that
+// only the site has: GitHub shows docs/README.md for the folder and the app opens Help on
+// Get started, so neither needs a landing page, and splash frontmatter would print as a table
+// on GitHub.
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-const target = `${base}/install/`;
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="refresh" content={`0; url=${target}`} />
-    <link rel="canonical" href={target} />
-    <!-- Not a content page: keep it out of the search index. -->
-    <meta name="robots" content="noindex" />
-    <title>Loomarr documentation</title>
-  </head>
-  <body data-pagefind-ignore>
-    <p>Redirecting to the <a href={target}>Loomarr installation guide</a>.</p>
-  </body>
-</html>
+<StarlightPage
+  frontmatter={{
+    title: "Loomarr",
+    description: "Always something on. Loomarr turns your media library into live TV channels.",
+    template: "splash",
+    hero: {
+      tagline:
+        "Always something on. Describe a channel in a sentence; Loomarr fills it from your library, plays it as live TV and keeps it running.",
+      actions: [
+        { text: "Get started", link: `${base}/get-started/`, icon: "right-arrow" },
+        {
+          text: "View on GitHub",
+          link: "https://github.com/loomarr/loomarr",
+          icon: "external",
+          variant: "minimal",
+        },
+      ],
+    },
+  }}
+>
+  <!-- HERO ART SLOT (#1572): the approved hero is an AI scene over the vector test card, made
+       with the household image service once it ships. Until then the page has no hero image
+       on purpose; do not fill this slot with a placeholder. -->
+  <CardGrid>
+    <Card title="Get started" icon="rocket">
+      Install Loomarr with Docker, connect your media server and put your first channel on air.
+    </Card>
+    <Card title="Guides" icon="list-format">
+      Step-by-step tasks: add a channel, set up filler, hardware encoding, backups and upgrades.
+    </Card>
+    <Card title="Reference" icon="setting">
+      Every setting and command, generated from the code so it can't drift.
+    </Card>
+    <Card title="Explanation" icon="information">
+      How Loomarr works: channels, proposals, curation and what leaves your network.
+    </Card>
+  </CardGrid>
+  <LinkCard
+    title="Contributing"
+    description="Set up a dev loop, run the tests and learn how CI and releases work."
+    href={`${base}/contributing/`}
+  />
+</StarlightPage>

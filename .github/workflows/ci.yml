@@ -136,7 +136,7 @@ jobs:
           # ⚠ `scripts/` is here because the Go job RUNS scripts from it — `make retired-verify`
           # is `./scripts/check-retired.sh`, and `make tags-verify` is `./scripts/check-tags.sh`.
           # Without it a PR that edited only a guard script skipped the one job that executes
-          # it, so a broken guard merged unproven. `docs/help/` was already listed for being
+          # it, so a broken guard merged unproven. The help set was already listed for being
           # retired-verify's INPUT; the script itself was the gap — the guard was covered
           # against the thing it reads but not against itself.
           #
@@ -148,11 +148,14 @@ jobs:
           # `scripts/` omission above: the guard was covered against its code input but not
           # against the document it reads.
           #
-          # ⚠ `docs/dev/commands.md` is here for the same reason, one generator over:
-          # it is GENERATED and the Go job verifies it (`make dev-docs-verify`). Its inputs —
-          # the Makefile and this workflow — already trigger the job, but a hand-edit to the
-          # generated file itself would otherwise sail past the only check that reads it.
-          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|^observability/|^docs/help/|^docs/design\.md$|^docs/dev/commands\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
+          # ⚠ `docs/reference/` is here for the same reason, one generator over: its pages
+          # are GENERATED and the Go job verifies them (`make dev-docs-verify`,
+          # `make config-docs-verify`). Their inputs already trigger the job, but a hand-edit
+          # to a generated file would otherwise sail past the only check that reads it.
+          #
+          # The embedded help set (`docs/get-started.md`, `docs/guides/`, `docs/explanation/`,
+          # frozen links in `docs/testdata/`) was `docs/help/` until #1572.
+          if echo "$changed" | grep -qE '\.go$|^go\.(mod|sum)$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|^observability/|^docs/(get-started\.md|guides/|explanation/|testdata/|reference/)|^docs/design\.md$|^scripts/|^Makefile$|^\.github/workflows/'; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
@@ -171,7 +174,7 @@ jobs:
           # The tool-neutral harness has a small macOS contract test below. Linux is already
           # exercised by comprehensive verification; this output prevents unrelated product changes from
           # spending a macOS runner while keeping every harness input covered.
-          if echo "$changed" | grep -qE '^scripts/|^Makefile$|^AGENTS\.md$|^CLAUDE\.md$|^\.agents/|^\.claude/|^\.node-version$|^docker/compose\.dev|^web/package\.json$|^web/apps/web/vite\.config\.ts$|^docs/dev/'; then
+          if echo "$changed" | grep -qE '^scripts/|^Makefile$|^AGENTS\.md$|^CLAUDE\.md$|^\.agents/|^\.claude/|^\.node-version$|^docker/compose\.dev|^web/package\.json$|^web/apps/web/vite\.config\.ts$|^docs/agents/'; then
             echo "agent=true" >> "$GITHUB_OUTPUT"
           else
             echo "agent=false" >> "$GITHUB_OUTPUT"
@@ -224,11 +227,11 @@ jobs:
           # push, which is correct — skipping would leave the PR's own change unproven.
           #
           # Match every source family the Dockerfile consumes. The Go stage copies the
-          # repository and embeds docs/help; the frontend stage copies web, OpenAPI, and
+          # repository and embeds the help pages; the frontend stage copies web, OpenAPI, and
           # the bundle guard. Restricting this to Dockerfile/Rust changes allowed a Go,
           # frontend, or embedded-help change to reach a tag before the production image
           # containing it had ever been built.
-          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|\.go$|^go\.(mod|sum)$|^docs/help/|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
+          if echo "$changed" | grep -qE '^Dockerfile$|^\.dockerignore$|^LICENSE$|^THIRD_PARTY_NOTICES\.md$|^Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^rust/|^internal/store/migrations/|^internal/installationlocation/|\.go$|^go\.(mod|sum)$|^docs/(get-started\.md|guides/|explanation/)|^web/(apps/web/|packages/(api|core|fixtures|player|tokens)/|scripts/)|^web/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.gitignore|biome\.json|tsconfig\.base\.json|\.dependency-cruiser\.cjs)$|^api/openapi\.yaml$|^scripts/check-fe-bundle\.mjs$'; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"

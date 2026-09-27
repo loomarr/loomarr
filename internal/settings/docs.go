@@ -39,7 +39,7 @@ var ownerTitles = map[Owner]string{
 	OwnerFillerLimits: "Filler — Processing limits", OwnerFillerTools: "Filler — Processing tools",
 }
 
-// Markdown renders the registry as docs/configuration.md (config-design §2: the
+// Markdown renders the registry as docs/reference/settings.md (config-design §2: the
 // generated contract, mirrored by design.md §15). Deterministic — groups in
 // declaration order, keys in declaration order — so the CI drift check is stable.
 // A blank line at EOF keeps the file gofmt-of-markdown clean.

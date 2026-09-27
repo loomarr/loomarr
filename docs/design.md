@@ -5,7 +5,7 @@ A section that has moved is replaced by a pointer; every section still here rema
 source of truth. Amend it in the same PR before behavior changes.
 
 **Audience:** Builders and coding agents. User-facing instructions live under
-[`docs/help/`](help/quickstart.md).
+[Get started](get-started.md) and [`docs/guides/`](guides/install-docker.md).
 
 Read the section your task cites rather than loading this document end to end. `CONTEXT.md` owns
 vocabulary, `PROGRESS.md` owns work status, and the companion design documents own programming,
