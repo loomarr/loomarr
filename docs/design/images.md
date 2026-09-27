@@ -90,54 +90,29 @@ produces different but contract-equivalent bytes.
 
 ### Required renderer protocol and limits
 
-At boot the Go composition root runs `loomarr-image capabilities --protocol 1 --self-test`. The exact
-Loomarr release, protocol, recipe identifier, required formats, and embedded static-plus-animation probe
-must agree before readiness. The production command `loomarr-image generate --protocol 1` reads one
-bounded JSON request from stdin, writes one bounded result to stdout, and uses stderr only for bounded
-diagnostics. The request names a content-addressed source, its expected SHA-256, a private staging
-directory, explicit format/width/motion targets, and resource limits. Rust writes only complete safe
-relative files inside that staging directory and returns their metadata and SHA-256 values. Go
-validates the exact target set, containment, regular-file type, signatures, sizes, and hashes before
-publication. Every missing AVIF ladder is one worker request. Go atomically renames each verified
-file, then commits the complete derivative-row set in one Store transaction; any file or Store
-failure removes every file promoted by that request, so a partial ladder is never servable. Rust
-never sees the Store or canonical publication paths.
+- **Boot self-test.** `loomarr-image capabilities --protocol 1 --self-test` must agree on release,
+  protocol, recipe, formats and an embedded static-plus-animation probe before readiness.
+- **One request, one staging directory.** `loomarr-image generate --protocol 1` reads one bounded JSON
+  request on stdin (a content-addressed source and its SHA-256, a private staging directory, targets
+  and limits) and writes one bounded result on stdout; stderr is bounded diagnostics. Rust writes only
+  complete relative files in staging and never sees the Store or publication paths.
+- **Go publishes all or nothing.** Go checks the exact target set, containment, file type,
+  signatures, sizes and hashes, renames each file, then commits every derivative row in one
+  transaction. Any failure removes every file the request promoted, so a partial ladder is never
+  servable.
+- **Hard ceilings:** 8 MiB compressed input, 16,384 px per side, 40 MP canvas, 600 frames, 60 s of
+  animation, 600 million decoded frame-pixels, 16 targets, 64 MiB output. Lowering them is allowed
+  before release; raising them is a design change. Rust checks them before and during allocation.
+- **Capacity.** Go owns worker slots and cancellation. Inspection and lazy JPEG/WebP are interactive;
+  scheduled AVIF is background and may use at most all-but-one slot, so interactive work always has
+  one. Refusals carry stable machine codes, and nothing falls back to Go pixel processing.
+- `--benchmark-avif-threads` exists only for measurement; benchmarks are evidence, never a gate.
 
-The opt-in benchmark command may append `--benchmark-avif-threads 1..8`; it is deliberately absent
-from application composition and exists only to measure the fixed production decision through the
-same executable and manifest validation. Benchmark reports record the CPU profile, concurrent
-processes, encoder threads, throughput, worker duration, output bytes, and aggregate child peak RSS.
-They are evidence, never a timing gate.
-
-The initial hard ceilings are an 8 MiB compressed input, 16,384 pixels per dimension, a 40-megapixel
-canvas, 600 frames, 60 seconds of animation, 600 million cumulative decoded frame-pixels, 16 targets,
-and 64 MiB of output. The fixture corpus may lower them before release; raising them is a design
-change. Rust checks limits before large allocations and while streaming frames. Go owns the global
-worker capacity and cancellation: it terminates on context cancellation and removes the private
-staging directory. Inspection plus lazy JPEG/WebP work is **interactive**; scheduled AVIF work is
-**background**. Background processes may occupy at most one fewer than the total capacity whenever
-the host has at least two slots, leaving one slot immediately available to interactive work. On a
-single-slot host the running process cannot be preempted, but an interactive waiter wins the next
-admission before another background Image starts. Queue-wait metrics carry that two-value class so
-operators can distinguish request pressure from an AVIF drain. Corrupt, unsupported, source-changed,
-limit, decode, encode, I/O, and internal worker refusals have stable machine codes. None invokes Go
-pixel processing.
-
-⚠ **The JPEG floor is a deliberate Loomarr-specific call, not caution for its own sake.** AVIF is at
-~95% and WebP ~97% global support, and a general web app could reasonably drop the fallback. The
-missing few percent are concentrated in old iOS and legacy Android WebViews — which is precisely the
-population of a self-hosted media server's clients: televisions, ageing tablets, embedded browsers.
-
-Selection is by **`<picture>` with `type=`, over distinct per-format URLs** — deliberately *not*
-`Accept` + `Vary: Accept`. The wider industry has moved toward `Accept` negotiation on coverage
-grounds (a `<picture>` element only helps `<img>` tags you author, so CSS backgrounds and third-party
-embeds keep receiving JPEG). That argument does not bind here: this design removes the app's only CSS
-`background-image` image consumer, and distinct URLs keep every artifact independently cacheable and
-genuinely immutable, which `Vary: Accept` does not. Revisit only if a non-`<img>` consumer appears.
-
-**JPEG XL is deliberately not supported.** It returned to active development in 2026 — Chrome shipped
-a Rust decoder, Firefox compiled one in — but **both are disabled by default**, leaving Safari as the
-only default-on implementation. Track it; ship nothing.
+**Format choices.** A JPEG fallback stays because the few percent of browsers without AVIF or WebP
+are exactly a media server's clients (televisions, old tablets, embedded WebViews). Selection uses
+`<picture>` with `type=` over distinct per-format URLs, not `Accept` negotiation, so every artifact
+stays independently cacheable and immutable. JPEG XL is not supported while browsers ship it
+disabled by default.
 
 ### Serving and cache policy
 
@@ -206,53 +181,19 @@ the database only.
 
 ### TMDB compliance
 
-⚠ **TMDB's API terms permit caching but cap it at six months.** Caching is otherwise encouraged — TMDB
-staff recommend serving posters from your own cache, and the terms' "excessive bandwidth" restriction
-makes a local cache the *compliant* posture. But the ceiling is real, and it interacts with the
-permanently-immutable cache headers above.
-
-The resolution: the immutable header applies to **our** content-addressed derivative URLs, which are
-served from our own disk. Alongside it, the GC job expires any TMDB-origin image older than the
-configured TTL, keyed on `origin_fetched_at`. Because URLs are content-addressed, a re-fetch
-yielding identical bytes produces an identical URL, so revalidation is invisible downstream.
-
-⚠ **Expiry means the bytes are DELETED and the row is requeued, not refreshed in place** (V52 phase
-3b). The GC removes the original and every derivative, clears `origin_fetched_at`, and leaves the
-row on `images-fetch`'s work list — which runs every minute, so the operator-visible cost is a
-placeholder for well under a minute per image, once every six months.
-
-The alternative — re-fetch first and delete only if it fails — reads as strictly nicer and is
-wrong for a specific reason: it puts the compliance question inside an error branch. TMDB being
-unreachable for a day would silently keep serving expired bytes, and the ceiling would then be
-enforced by nothing. A ceiling that holds only while the network is up is not a ceiling. Deleting
-unconditionally means no cached TMDB byte outlives the TTL regardless of what upstream is doing,
-which is the only property the licence term actually asks for.
-
-⚠ **The GC collects orphans BEFORE it expires**, because both sweeps can select the same row: an
-image that is both past its TTL and no longer referenced. Expiring first would purge its bytes and
-queue a fresh download moments before the orphan sweep deleted it — and if that delete failed, a
-download instruction for an image no surface will ever show is what would survive.
-
-⚠ **This must exist from the first migration.** Retrofitting expiry into a content-addressed store is
-painful, and a store that has already accumulated a year of artwork cannot be brought into compliance
-by adding a column.
-
-Two further obligations:
-
-- **Attribution is mandatory and specific.** The TMDB logo must be shown, must be *less prominent*
-  than Loomarr's own branding, and this notice must appear prominently: *"This product uses TMDB and
-  the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB."* This is a UI
-  deliverable, not a comment.
-- **Concurrency is capped at 20 simultaneous connections per IP** by TMDB. The fetcher stays
-  comfortably below it and backs off with jitter on 429/5xx.
-
-**Fetch `original` once and generate the ladder locally.** One origin request per artwork instead of
-one per width: far below the connection cap, full control of resampling quality, and the periodic
-re-fetch touches one file per image rather than the whole ladder.
-
-⚠ Two TMDB API details the ladder code must not assume away: `profile` sizes use a **height** token
-(`h632`), so size parsing cannot assume a `w` prefix; and **SVG assets are only offered at
-`original`** — TMDB does not resize them.
+- **Six-month cache ceiling.** TMDB's terms encourage caching but cap it. Immutable headers apply to
+  Loomarr's own content-addressed URLs; the GC job expires TMDB-origin images older than the TTL by
+  `origin_fetched_at`.
+- **Expiry deletes, then requeues.** The original and every derivative are deleted and the row goes
+  back on `images-fetch`'s list (every minute). Re-fetching first would put compliance inside an error
+  branch: an unreachable TMDB would keep expired bytes forever.
+- **Orphans are collected before expiry,** so an unreferenced expired image is never queued for a
+  pointless download.
+- **Attribution:** the TMDB logo, less prominent than Loomarr's branding, with the notice "This
+  product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB."
+- **Connections:** well under TMDB's 20 per IP, with jittered backoff on 429 and 5xx.
+- **Fetch `original` once** and build the ladder locally: one origin request per artwork. `profile`
+  sizes use a height token (`h632`), and SVG assets exist only at `original`.
 
 ### Metadata
 
