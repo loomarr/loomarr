@@ -105,3 +105,14 @@ Loomarr builds no search index (decision [0003](decisions/0003-federated-search.
 - `GET /v1/movie-collections` expands up to 24 movie keys into their TMDB collection rosters for review;
   it never builds a lineup by itself.
 - Channel, proposal and help filtering stay client-side at household scale.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **Library conformance:** Emby and Jellyfin flavors with a mock transport, each sending its correct
+  auth header. Deleting a scheduled item from the mock library makes the sweep flag drift and
+  substitute.
+- **Search:** `/v1/search` fans out to the mock media server, mock TMDB and the clip store;
+  `in_library` flags are correct; a member can search, but adding a missing title still routes
+  through submit and approve; scope filters are honoured.

@@ -1,7 +1,7 @@
 # Loomarr Configuration — Subsystem Design
 
 **Status:** Living companion to `design.md`; the settings subsystem is implemented.
-**Precedence:** the main doc (§13, §15) is authoritative for the *decision* — settings live in the app, the environment pins, `env > database > default`. This doc is authoritative for the configuration subsystem's *design*: the registry, resolution semantics, secrets lifecycle, Settings UI, and onboarding integration. Conflicts → main doc wins on policy, this doc on mechanics; fix the loser in the same PR.
+**Precedence:** decision [0008](design/decisions/0008-settings-live-in-the-app.md) is authoritative for the *decision* — settings live in the app, the environment pins, `env > database > default`. `design.md` §15 moved here (§12 below), and its settings table was retired in favour of the generated [settings reference](reference/settings.md). This doc is authoritative for the configuration subsystem's *design*: the registry, resolution semantics, secrets lifecycle, Settings UI, and onboarding integration. Conflicts → main doc wins on policy, this doc on mechanics; fix the loser in the same PR.
 
 ---
 
@@ -629,3 +629,29 @@ does not exist.
 - **Phase 9:** generated API/playout tokens + rotation side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
 - This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/configuration.md` is the *generated* reference beside it.
+
+## 12. Rules carried from the former `design.md` §15
+
+`design.md` §15 repeated the registry as a hand-written table. The generated
+[settings reference](reference/settings.md) is the key reference; these rules lived only in that table
+and stay here.
+
+- **Zero required environment for a SQLite first run.** `docker run -v loomarr-data:/data loomarr`
+  reaches the wizard; `DATABASE_URL` defaults to SQLite under `/data`.
+- **Route-mounting switches are bootstrap-tier.** `LOOMARR_DEV_LOGIN`, `LOOMARR_PPROF` and
+  `LOOMARR_METRICS_TOKEN[_FILE]` decide which routes exist or gate an unauthenticated surface, so
+  they are read at boot and never registry keys an admin session could flip at runtime. Boot warns
+  while dev login or pprof is on. An unset metrics token refuses `/v1/metrics` (fail closed), and
+  the metrics credential is deliberately separate from `API_TOKEN`.
+- **`LLM_*` environment values are initial defaults** when no in-app selection exists; an in-app
+  provider selection (`llm.provider`, `llm.url`, `llm.model`, `llm.api_key.<provider>`) overrides
+  them and hot-swaps the running suggester.
+- **Pipeline budgets: zero means none.** For the filler pipeline's per-run budgets, `0` is a distinct
+  "never do this work on this box" state, not "use the default".
+- **One-time SMTP upgrade input.** The legacy `NOTIFICATIONS_EMAIL_*` and `NOTIFICATIONS_SMTP_*`
+  variables are read only for the one upgrade inspection described in
+  [auth](design/auth.md); they never pin, recreate or update a provider afterwards. New installs
+  configure SMTP only in Settings → Notifications.
+- **Secrets** are stored in the database like the rest of the *arr ecosystem, masked after save
+  (replace-only), never logged, excluded from `/v1/setup/status`, and may come from `<VAR>_FILE`;
+  they are never baked into the image (§4).

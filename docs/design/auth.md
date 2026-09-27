@@ -182,3 +182,36 @@ OIDC is a credential path, not a provisioning path (decision [0011](decisions/00
 
 **Only a 401 signs a user out.** The web auth guard rethrows any other failure of the identity
 query, so a restart or proxy error never looks like a logout.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **Auth and roles:** bootstrap creates the first local admin exactly once (a second call 409s); a
+  local user logs in against Argon2id (a verified legacy bcrypt row upgrades in the same login); an
+  imported media-server user prefers provider auth and falls back only while the provider is
+  unavailable, never after a rejection; an un-imported media-server user or an SSO identity with no
+  allowlist row is rejected even with valid credentials, and no login path creates a row; import is
+  admin-only and sync never adds; `member` gets 403 on approve, admin routes and `POST /v1/titles`;
+  disabling a user revokes their sessions; `API_TOKEN` grants break-glass admin; plaintext
+  passwords and media-server tokens are never persisted.
+- **Invitation and contact store conformance** runs one suite over SQLite and Postgres: normalized
+  contact uniqueness, reserved identity collisions, lifecycle transitions, regeneration and
+  revocation, expiry, verified-contact replacement, grant hashes never yielding a bearer, and two
+  concurrent redemptions producing exactly one user and session.
+- **Access security negatives:** members get 403 on every Invitation, contact and delivery admin
+  mutation; anonymous callers cannot inspect reservations or delivery; disabled users lose
+  sessions; unlisted library accounts look like bad credentials; imported recovery never sends or
+  resets; public recovery does not enumerate eligibility; provider rejection during imported
+  redemption never falls back; and no password, token, SMTP credential or plaintext grant appears
+  in fixtures, logs, metrics, diagnostics, activity, problem bodies, browser storage or examples.
+- **Notification certification:** a deterministic delivery adapter pins intent idempotency, retry
+  timing, suppression, retention and ambiguous acceptance without a network. SMTP runs against an
+  in-process server: unauthenticated and authenticated submission, STARTTLS, implicit TLS,
+  certificate rejection, text plus HTML MIME, permanent rejection, transient retry, disconnect after
+  `DATA`, cancellation and redaction.
+- **Contract and frontend:** OpenAPI and orval types cover every route and lifecycle shape. Stories
+  use synthetic grants and cover email configured or not, delivery states, local and imported
+  Invitations, invalid grants, recovery and QR/copy at desktop and mobile widths. Vitest pins URL
+  cleanup and zero browser persistence; Playwright pins explicit-consent redemption, focus return,
+  the shared live region, forced colors, axe and visual baselines.

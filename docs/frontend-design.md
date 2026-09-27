@@ -433,3 +433,32 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - **Makefile additions:** `fe-tokens`, `storybook`, `storybook-build`, `fe-visual`, `fe-visual-update` (join the AGENTS.md command contract).
 - This doc is a **seed doc**: incorporate as `docs/frontend-design.md` during phase 14; the palette table also feeds the docs site's own styling.
 - **Visual reference (authoritative for look):** the Claude Design prototypes ship in-repo at `design/loomarr-prototype-desktop.dc.html` and `design/loomarr-prototype-mobile.dc.html` — recreate them pixel-perfectly per the handoff README (match visual output, not internal structure). Two reconciliation deltas apply on top of the prototypes: badge text on tints uses the `-300` stops (the prototypes predate the contrast calibration), and `static-500` text is demoted to disabled/decorative. Gallery baselines (§5) are judged against the prototypes-plus-deltas.
+
+## 8. The Image primitive (formerly `design.md` §22's frontend contract)
+
+The image service is described in [`design/images.md`](design/images.md). One Layer-1 `Image`
+primitive consumes it; no surface hand-writes an `<img>` against the service. Beyond
+`<picture>`/`srcset`, three properties are required:
+
+- **Explicit `width` and `height`**, so browsers derive `aspect-ratio` and layout shift is zero. The
+  API returns real dimensions and each role has a fixed aspect.
+- **A `priority` mode.** Lazy-loading the LCP image is the most common self-inflicted image
+  regression. `priority` means eager loading, high fetch priority and **no async decoding**; the
+  default is lazy, async and low priority. The first row of any poster grid is `priority`.
+- **A built-in error fallback**, because `logo` values can be operator-pasted URLs.
+
+Ship explicit `sizes`; do not use `sizes="auto"`, which Safari does not support in any version.
+Revisit when Interop 2026 lands it.
+
+**A resource that stores a URL carries the record beside it.** `Image` takes the whole image record
+(dimensions, ThumbHash, srcsets), not a hash. `ChannelDTO` has `logo` (the URL, unchanged) and an
+optional `logoImage` present only when the logo resolves to one of this instance's images.
+
+- **Enrichment, never replacement.** A pasted external logo is supported, has no `logoImage`, and
+  renders as a plain `<img>`.
+- **The URL-to-record lookup validates.** The field is operator-writable, so only a full
+  64-character lowercase hex hash is looked up; anything else is an external URL. Extracting "the
+  segment after `/v1/images/`" without validation forwards traversal.
+- **Resolve the page's distinct hashes before mapping rows**, never inside the per-row mapper (an
+  N+1). A failed lookup is an absent record, never an error, so a channel still renders when its
+  image row is gone.

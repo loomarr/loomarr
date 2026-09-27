@@ -103,3 +103,22 @@ is supported; going back is the backup file plus reverting one setting.
 - **Restore is a CLI operation**, with Loomarr stopped: it replaces the store the app runs on, including
   the sessions that would authorize an in-app button. `make backup-restore-verify` (SQLite) and
   `make backup-restore-drill` (PostgreSQL) prove the procedure in isolation.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **Store conformance:** one suite runs against SQLite (private temp-file clones of a migrated,
+  boot-seeded template) and Postgres (testcontainers, private database clones), including
+  `ClaimDue` concurrency (no record claimed twice). Each clone opens through its production adapter
+  without replaying migrations; dedicated migration and lifecycle tests use fresh databases. The
+  race-enabled integration target carries an explicit 20-minute package timeout.
+- **Database lifecycle certification:** `make test-db-lifecycle` runs the Postgres gate, then drives
+  the shipped image through Compose and Traefik: a fresh PostgreSQL install writes and restarts; a
+  populated SQLite install preflights, backs up, drains, copies, verifies, switches, restarts,
+  keeps auth and reads, accepts PostgreSQL writes and rolls back; target failures and a killed
+  mid-copy recover on SQLite; an in-flight write drains into the snapshot. Direct SQL is limited to
+  fixture setup and independent fidelity checks.
+- **Lifecycle:** the downgrade guard refuses a newer-schema database; the janitor purges expired
+  sessions and old jobs; `GET /v1/backup` on SQLite yields a snapshot that restores to a working
+  instance.
