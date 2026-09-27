@@ -151,3 +151,33 @@ func TestHLSAssetQueryDropsOnlyTheMasterMode(t *testing.T) {
 		t.Fatalf("hlsAssetQuery() = %q", got)
 	}
 }
+
+type stringAsset struct{ *strings.Reader }
+
+func (stringAsset) Close() error { return nil }
+
+// A packager variant playlist (#1512 phase 2b) is fetched as an asset of the master. Its URIs are
+// bare, so without the rewrite a native player's init and segment fetches carry no credential.
+func TestHLSVariantPlaylistAssetIsAuthRewritten(t *testing.T) {
+	body := "#EXTM3U\n#EXT-X-MAP:URI=\"1080p-h264-sdr-init.mp4\"\n#EXTINF:1.00000,\n1080p-h264-sdr-seg00000001.m4s\n"
+	probe := &preparedProbePlayout{asset: playout.Asset{
+		Content: stringAsset{strings.NewReader(body)}, Modified: time.Unix(1_000, 0), Playlist: true,
+	}, assetOK: true}
+	s := &Server{playout: probe}
+	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/1080p-h264-sdr.m3u8?sig=abc", nil)
+	req.SetPathValue("id", "ch-one")
+	req.SetPathValue("asset", "1080p-h264-sdr.m3u8")
+	w := httptest.NewRecorder()
+
+	s.hlsAssetHandler(w, req)
+
+	got := w.Body.String()
+	for _, want := range []string{`URI="1080p-h264-sdr-init.mp4?sig=abc"`, "\n1080p-h264-sdr-seg00000001.m4s?sig=abc\n"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("playlist lacks %q:\n%s", want, got)
+		}
+	}
+	if ct, cc := w.Header().Get("Content-Type"), w.Header().Get("Cache-Control"); ct != "application/vnd.apple.mpegurl" || cc != "no-store" {
+		t.Fatalf("Content-Type %q, Cache-Control %q", ct, cc)
+	}
+}

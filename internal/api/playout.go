@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -731,6 +732,18 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = asset.Content.Close() }()
+	if asset.Playlist {
+		// A packager variant playlist names bare assets: authenticate them like the Tune manifest's.
+		body, err := io.ReadAll(asset.Content)
+		if err != nil {
+			http.Error(w, "playlist unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(rewritePlaylistAuth(body, hlsAssetQuery(r.URL.Query())))
+		return
+	}
 	// Content type by suffix — the only discriminator the asset carries. MPEG-TS segments (.ts) are
 	// the baseline plan; fMP4 segments (.m4s) and their init segment (init.mp4) are the HEVC plans
 	// (§9.1 V48 — HEVC HLS must be fMP4). An unknown suffix falls through to the TS default, harmless

@@ -815,3 +815,41 @@ func TestTuneInOnASubFrameRemainderKeepsTheTuneInWait(t *testing.T) {
 		t.Fatalf("stats %+v: want the slow item after the skipped remainder waited for, not slated", s)
 	}
 }
+
+// A channel's formats share one flat asset namespace (#1512 phase 2b: one packager per format), so
+// each packager's playlist names its files with its format's prefix; the files keep bare names.
+func TestPlaylistURIsCarryThePrefix(t *testing.T) {
+	h := runPlans(t, Config{URIPrefix: "1080p-h264-sdr-", ListAhead: time.Hour}, []plan{
+		{"prog", 2 * time.Second, synth{label: "prog"}},
+	})
+	pl := string(h.p.Playlist())
+	if !strings.Contains(pl, `#EXT-X-MAP:URI="1080p-h264-sdr-init.mp4"`) {
+		t.Fatalf("init URI not prefixed:\n%s", pl)
+	}
+	segs := 0
+	for _, line := range strings.Split(pl, "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if !strings.HasPrefix(line, "1080p-h264-sdr-seg") {
+			t.Fatalf("segment URI %q not prefixed", line)
+		}
+		if _, err := os.Stat(filepath.Join(h.dir, strings.TrimPrefix(line, "1080p-h264-sdr-"))); err != nil {
+			t.Fatalf("segment file: %v", err)
+		}
+		segs++
+	}
+	if segs == 0 {
+		t.Fatalf("no segments listed:\n%s", pl)
+	}
+}
+
+func TestCodecsAttrReadsTheInit(t *testing.T) {
+	want := fmt.Sprintf("avc1.%02x%02x%02x,mp4a.40.2", testSPS[1], testSPS[2], testSPS[3])
+	if got := CodecsAttr(encodeInit(t, testSPS)); got != want {
+		t.Fatalf("CodecsAttr = %q, want %q", got, want)
+	}
+	if got := CodecsAttr([]byte("not an init")); got != "" {
+		t.Fatalf("CodecsAttr of junk = %q, want empty", got)
+	}
+}

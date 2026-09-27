@@ -38,6 +38,8 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/abema/go-mp4 v1.7.3 // indirect
+	github.com/asticode/go-astikit v0.30.0 // indirect
+	github.com/asticode/go-astits v1.16.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bluenviron/mediacommon/v2 v2.9.5 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect

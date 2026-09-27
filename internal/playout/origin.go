@@ -1,11 +1,13 @@
 package playout
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -66,6 +68,9 @@ type Asset struct {
 	Content   readSeekCloser
 	Modified  time.Time
 	Immutable bool
+	// Playlist marks a live media playlist (a packager variant, #1512 phase 2b): its URIs are bare
+	// asset names the transport must make self-authenticating, as it does for the Tune manifest.
+	Playlist bool
 }
 
 // Admission is a tracked raw-transport operation. Context is cancelled when the request ends or
@@ -197,6 +202,8 @@ func NewOrigin(deps OriginDependencies) *Origin {
 			use = func() bool { return true }
 		}
 		hls = switchedHLS{remux: hls, packaged: deps.PackagedHLS, usePackager: use}
+		// Media-server tuners read the same channel packager as the browser (#1512 phase 2b).
+		sessions = switchedSessions{live: sessions, packaged: deps.PackagedHLS, usePackager: use}
 	}
 	o := newOrigin(prepared, sessions, hls)
 	o.available = deps.Available
@@ -337,6 +344,13 @@ func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePla
 	if o.hls == nil {
 		return Asset{}, false, nil
 	}
+	if mp, ok := o.hls.(mediaPlaylister); ok && strings.HasSuffix(rel, ".m3u8") {
+		body, ok, err := mp.MediaPlaylist(ctx, channelID, plan, rel)
+		if err != nil || !ok {
+			return Asset{}, false, err
+		}
+		return Asset{Content: nopSeekCloser{bytes.NewReader(body)}, Modified: time.Now(), Playlist: true}, true, nil
+	}
 	path, ok := o.hls.AssetPath(channelID, plan, rel)
 	if !ok {
 		return Asset{}, false, nil
@@ -413,3 +427,8 @@ func (o *Origin) cancelAdmissions(channelID string) {
 		}
 	}
 }
+
+// nopSeekCloser is an in-memory Asset body.
+type nopSeekCloser struct{ *bytes.Reader }
+
+func (nopSeekCloser) Close() error { return nil }

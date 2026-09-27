@@ -20,7 +20,7 @@ type packagerSource struct {
 	log        *slog.Logger
 }
 
-func (s packagerSource) ItemAt(ctx context.Context, channelID string, plan playout.EncodePlan, at time.Time) (playout.PackagerItem, error) {
+func (s packagerSource) ItemAt(ctx context.Context, channelID string, at time.Time) (playout.PackagerItem, error) {
 	t0 := time.Now()
 	airing, streamURL, err := s.res.AiringAt(ctx, channelID, at)
 	if err != nil {
@@ -34,7 +34,7 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, plan playo
 	t1 := time.Now()
 	item.AudioTrack = s.res.AudioTrackFor(ctx, channelID, airing.LibraryItemID, streamURL)
 	t2 := time.Now()
-	_, item.Format = s.res.PlanFor(ctx, streamURL, plan)
+	_, item.Format = s.res.PlanFor(ctx, streamURL, playout.PlanBaseline)
 	if s.log != nil {
 		// The tune-in (G2) split's resolution half; the packager logs the encoder half.
 		s.log.Info("packager: item resolved", "channel", channelID, "item", item.Label,
@@ -50,11 +50,21 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, plan playo
 	return item, nil
 }
 
-func (s packagerSource) Output(ctx context.Context, _ string, _ playout.EncodePlan, rung int) (playout.HostProfile, playout.OutputProfile) {
+// Output is the host and the output profile a channel's format encodes with at the lease's output
+// ladder rung (#1520). The packager asks only for formats it serves; an unknown class gets the
+// baseline, logged.
+func (s packagerSource) Output(ctx context.Context, channelID string, class playout.FormatClass, rung int) (playout.HostProfile, playout.OutputProfile) {
 	profile := s.res.Profile(ctx, rung)
 	var gpu playout.GPUFilters
 	if s.gpu != nil {
 		gpu = s.gpu()
 	}
-	return playout.HostFor(profile.Encoder, s.tonemap != nil && s.tonemap(), gpu), playout.ChannelOutput(profile)
+	out, ok := playout.FormatOutput(class, profile)
+	if !ok {
+		if s.log != nil {
+			s.log.Warn("packager: unknown output format; encoding the baseline", "channel", channelID, "format", string(class))
+		}
+		out, _ = playout.FormatOutput(playout.FormatBaseline, profile)
+	}
+	return playout.HostFor(profile.Encoder, s.tonemap != nil && s.tonemap(), gpu), out
 }
