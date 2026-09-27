@@ -3,6 +3,7 @@ import type Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LivePlaybackState } from "../player-controller";
 import { liveHlsConfig } from "./live-hls-config";
+import { type LiveLevel, selectLiveLevel } from "./live-level";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
 //
@@ -737,6 +738,15 @@ function useBrowserHlsPlayer({
         };
         const onManifestParsed = () => {
           manifestParsed = true;
+          // One level for the whole tune (#1512 G10): the premium only when this browser decodes
+          // its exact CODECS, else the baseline. Manual, so ABR and player-size capping never move
+          // it onto a codec it cannot play or a 4K encode it did not choose.
+          const level = selectLiveLevel(
+            hls.levels.map((l) => ({ codecs: l.attrs.CODECS, height: l.height, videoRange: l.videoRange })),
+            (mime) => typeof MediaSource !== "undefined" && MediaSource.isTypeSupported(mime),
+          );
+          hls.startLevel = level;
+          hls.loadLevel = level;
           playbackAttempt?.markPhase("manifest");
           onManifestRef.current?.();
           joinTransferredLiveSync();
@@ -1098,6 +1108,7 @@ export type {
   BrowserPlaySource,
   BrowserTuneAttempt,
   BrowserTunePhase,
+  LiveLevel,
   UseBrowserHlsPlayer,
 };
-export { liveHlsConfig, useBrowserHlsPlayer };
+export { liveHlsConfig, selectLiveLevel, useBrowserHlsPlayer };
