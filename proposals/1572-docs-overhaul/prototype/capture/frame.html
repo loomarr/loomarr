@@ -1,0 +1,27 @@
+<!doctype html>
+<!-- Browser-window frame for docs screenshots: token colours, Geist. ?src=<png>&w=<css width> -->
+<meta charset="utf-8">
+<style>
+  :root { --canvas: #F7F8FA; --chrome: #E7EAF0; --edge: #D2D6DE; --dot: #8B93A3; --url: #FFFFFF; --ink: #515866; }
+  @media (prefers-color-scheme: dark) {
+    :root { --canvas: #0B0C0E; --chrome: #1B1E24; --edge: #2A2E37; --dot: #5A6170; --url: #131519; --ink: #8B93A3; }
+  }
+  html, body { margin: 0; background: transparent; }
+  .pad { padding: 32px; background: var(--canvas); display: inline-block; }
+  .win { border: 1px solid var(--edge); border-radius: 12px; overflow: hidden; box-shadow: 0 12px 32px rgb(0 0 0 / 0.18); }
+  .bar { height: 36px; background: var(--chrome); display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid var(--edge); }
+  .bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--dot); display: block; }
+  .bar span { margin-left: 16px; flex: 0 1 420px; height: 22px; border-radius: 6px; background: var(--url); color: var(--ink);
+    font: 12px/22px 'Geist Mono', ui-monospace, monospace; padding: 0 10px; }
+  img { display: block; }
+</style>
+<div class="pad"><div class="win">
+  <div class="bar"><i></i><i></i><i></i><span id="u">loomarr.local</span></div>
+  <img id="i">
+</div></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const i = document.getElementById("i");
+  i.src = q.get("src"); i.style.width = (q.get("w") || 1280) + "px";
+  document.getElementById("u").textContent = "loomarr.local" + (q.get("path") || "");
+</script>

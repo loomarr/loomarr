@@ -1,29 +1,27 @@
 # Question: what happens when someone tunes a channel?
+# Reads top to bottom: a tune goes in at the top, one timeline serves every viewer at the bottom.
 ...@system/theme
 
 direction: down
 
-viewer: Someone tunes in {class: audience}
-file: Your media file\nread directly {class: service}
+viewer: Someone tunes in {class: audience; icon: icons/audience-users.svg}
+file: Your media file {class: service; icon: icons/service-file-video-camera.svg}
 
 packager: Channel packager {
   class: boundary
-  schedule: Schedule\nwhat airs now? {class: loomarr}
-  encoder: ffmpeg\none process per item {class: loomarr}
-  slate: Slate\nif an item is late {class: service}
-  timeline: Timeline\n1 s segments, 15 min window {class: loomarr}
-  schedule -> encoder: next item {class: hot}
-  encoder -> timeline: fragments {class: hot}
-  slate -> timeline {class: flow}
+  schedule: Schedule {class: loomarr; icon: icons/loomarr-calendar-clock.svg}
+  encoder: ffmpeg, per item {class: loomarr; icon: icons/loomarr-cpu.svg}
+  slate: Slate {class: service; icon: icons/service-presentation.svg}
+  timeline: Timeline {class: loomarr; icon: icons/loomarr-list-video.svg}
 }
 
-out: One encode, two outputs {
-  class: zone
-  hls: HLS\nbrowsers, TV app {class: audience}
-  ts: MPEG-TS\nEmby or Jellyfin tuner {class: audience}
-}
+hls: Browsers, TV app {class: audience; icon: icons/audience-monitor-play.svg}
+ts: Emby or Jellyfin {class: audience; icon: icons/audience-tv.svg}
 
-viewer -> packager.schedule: first tune starts it {class: hot}
+viewer -> packager.schedule: first tune {class: hot}
+packager.schedule -> packager.encoder {class: hot}
 file -> packager.encoder {class: flow}
-packager.timeline -> out.hls {class: hot}
-packager.timeline -> out.ts {class: hot}
+packager.encoder -> packager.timeline {class: hot}
+packager.slate -> packager.timeline: if late {class: flow}
+packager.timeline -> hls: HLS {class: hot}
+packager.timeline -> ts: MPEG-TS {class: hot}

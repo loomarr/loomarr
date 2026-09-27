@@ -28,7 +28,12 @@ vars: {
 
 classes: {
   # Loomarr's own parts: amber, the brand colour.
+  # Every node is the same size so rows line up; the icon sits left of the label.
   loomarr: {
+    width: 240
+    height: 52
+    icon.near: center-left
+    label.near: center-center
     style: {
       fill: "#FFF3D6" # surface.focus | dark: signal 12% over canvas
       stroke: "#795000" # action.primary
@@ -40,6 +45,10 @@ classes: {
   }
   # Things you run beside Loomarr: neutral.
   service: {
+    width: 240
+    height: 52
+    icon.near: center-left
+    label.near: center-center
     style: {
       fill: "#E7EAF0" # surface.elevated
       stroke: "#747C8B" # border.control
@@ -51,6 +60,10 @@ classes: {
   }
   # People and screens: cyan, the "tune" colour.
   audience: {
+    width: 240
+    height: 52
+    icon.near: center-left
+    label.near: center-center
     style: {
       fill: "#DAE8EB" # stateSurface.info
       stroke: "#08657A" # state.info
@@ -71,8 +84,10 @@ classes: {
     }
   }
   # A boundary is one running thing (a container, a process).
+  # Its label sits top-right, clear of edges that enter from above (ELK routes them left of
+  # centre); keep it to one or two words.
   boundary: {
-    label.near: top-left
+    label.near: top-right
     style: {
       fill: "#F7F8FA" # surface.canvas
       stroke: "#795000"

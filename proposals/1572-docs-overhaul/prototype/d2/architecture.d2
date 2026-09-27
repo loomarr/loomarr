@@ -1,49 +1,36 @@
 # Question: what are Loomarr's parts, and what does it talk to?
+# Reads top to bottom: a sentence goes in at the top, a channel comes out at the bottom.
 # Every part keeps its state in the one database, so the container label names it instead of
 # drawing an edge from every part.
 ...@system/theme
 
-grid-rows: 4
-vertical-gap: 56
+direction: down
 
-people: People: describe a channel, approve it {class: audience}
+people: People {class: audience; icon: icons/audience-users.svg}
+tmdb: TMDB {class: service; icon: icons/service-film.svg}
+llm: LLM {class: service; icon: icons/service-brain.svg}
 
-loomarr: Loomarr: one container, one database (SQLite or Postgres) {
+loomarr: Loomarr {
   class: boundary
-  grid-rows: 2
-  grid-columns: 4
-  horizontal-gap: 40
-  vertical-gap: 40
-  suggest: Suggester {class: loomarr}
-  build: Channel builder {class: loomarr}
-  schedule: Scheduler {class: loomarr}
-  playout: Playout {class: loomarr}
-  gap1: spacer {style.opacity: 0}
-  gap: spacer {style.opacity: 0}
-  filler: Filler {class: loomarr}
-  gap2: spacer {style.opacity: 0}
+  suggest: Suggester {class: loomarr; icon: icons/loomarr-sparkles.svg}
+  build: Channel builder {class: loomarr; icon: icons/loomarr-list-plus.svg}
+  filler: Filler {class: loomarr; icon: icons/loomarr-clapperboard.svg}
+  schedule: Scheduler {class: loomarr; icon: icons/loomarr-calendar-clock.svg}
+  playout: Playout {class: loomarr; icon: icons/loomarr-radio-tower.svg}
 }
 
-services: What you already run {
-  class: zone
-  grid-columns: 4
-  horizontal-gap: 40
-  tmdb: TMDB {class: service}
-  llm: LLM {class: service}
-  req: Seerr or *arr {class: service}
-  media: Emby or Jellyfin {class: service}
-}
-
-screens: TVs and browsers: watch {class: audience}
+req: Seerr or *arr {class: service; icon: icons/service-download.svg}
+media: Emby or Jellyfin {class: service; icon: icons/service-server.svg}
+screens: TVs and browsers {class: audience; icon: icons/audience-tv.svg}
 
 people -> loomarr.suggest {class: hot}
+tmdb -> loomarr.suggest {class: flow}
+llm -> loomarr.suggest {class: flow}
 loomarr.suggest -> loomarr.build {class: hot}
 loomarr.build -> loomarr.schedule {class: hot}
-loomarr.schedule -> loomarr.playout {class: hot}
 loomarr.filler -> loomarr.schedule {class: flow}
-loomarr.playout -> services.media: Live TV {class: hot}
-services.media -> screens {class: hot}
-
-loomarr.suggest -> services.tmdb {class: flow}
-loomarr.suggest -> services.llm {class: flow}
-loomarr.build -> services.req {class: flow}
+loomarr.schedule -> loomarr.playout {class: hot}
+loomarr.build -> req {class: flow}
+req -> media: new titles {class: flow}
+loomarr.playout -> media: Live TV {class: hot}
+media -> screens {class: hot}
