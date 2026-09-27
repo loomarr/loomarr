@@ -3,7 +3,7 @@
 Formerly `design.md` §8, §8.1 and §8.2, and §6's reference source. The Suggester turns a channel
 **Intent** into a **Proposal**: a lineup of library titles, an acquisition list for what is missing,
 more suggestions, and a ChannelPolicy. How a Proposal is executed, approved and traced is in
-[`design.md` §8](../design.md#8-suggester-ai-suggestion-engine); the scheduling heuristics are in
+[`proposal-workflow.md`](proposal-workflow.md); the scheduling heuristics are in
 [`programming-design.md`](../programming-design.md).
 
 ![The suggester grounds intent in catalog candidates before model selection and deterministic validation](../diagrams/generated/suggester.svg)
