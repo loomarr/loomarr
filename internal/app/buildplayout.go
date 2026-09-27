@@ -22,7 +22,6 @@ import (
 	"github.com/loomarr/loomarr/internal/mediameasure"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
@@ -55,7 +54,6 @@ type playoutDeps struct {
 	secrets               *settings.Secrets
 	readSecret            func(context.Context, settings.GeneratedSecret) (string, error)
 	events                *events.Bus
-	jobs                  *scheduler.Registry
 	layout                filler.Layout
 	channels              *channels.Engine
 	liveTVConnector       *setup.LiveTVConnector
@@ -78,7 +76,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	owner, capturePlayoutResolver := deps.owner, deps.captureResolver
 	libraryClient, readGeneratedSecret := deps.library, deps.readSecret
 	lib := libraryClient
-	eventBus, jobReg, fillerLayout := deps.events, deps.jobs, deps.layout
+	eventBus, fillerLayout := deps.events, deps.layout
 	channelEngine, liveTVConnector := deps.channels, deps.liveTVConnector
 	backendView, resolveDesiredBackend, log := deps.backendView, deps.resolveDesiredBackend, deps.log
 	var playoutObserver api.PlayoutObserver
@@ -416,7 +414,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 
 	return playoutBuild{
 		observer: playoutObserver, capability: playoutRes.PublishedCapability,
-		service: playoutSvc,
+		service:         playoutSvc,
 		resolverService: playoutResolverSvc, encodePool: encodePool, guide: playoutGuideSvc,
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },

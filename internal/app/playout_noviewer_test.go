@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,9 @@ func TestNoFFmpegRunsUntilAViewerTunes(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PLAYOUT_FFMPEG_PATH", ffmpeg)
+	// Writable roots: the channel packager cannot start on the conventional /data in a test.
+	t.Setenv("PLAYOUT_HLS_DIR", filepath.Join(dir, "hls"))
+	t.Setenv("PLAYOUT_STATE_DIR", filepath.Join(dir, "state"))
 
 	st := testkit.MigratedSQLiteStore(t)
 	for i := range 8 {
@@ -56,7 +60,8 @@ func TestNoFFmpegRunsUntilAViewerTunes(t *testing.T) {
 		t.Fatalf("FFmpeg ran with no viewer: %q (err %v)", b, err)
 	}
 
-	mint := httptest.NewRequest(http.MethodPost, "/v1/channels/g1-0/play-url", nil)
+	mint := httptest.NewRequest(http.MethodPost, "/v1/channels/g1-0/play-url", strings.NewReader("{}"))
+	mint.Header.Set("Content-Type", "application/json")
 	mint.Header.Set("Authorization", "Bearer g1-token")
 	mint.Header.Set("X-Loomarr-Csrf", "1")
 	minted := httptest.NewRecorder()
@@ -64,8 +69,9 @@ func TestNoFFmpegRunsUntilAViewerTunes(t *testing.T) {
 	var play struct {
 		RelativeURL string `json:"relativeUrl"`
 	}
-	if err := json.NewDecoder(minted.Body).Decode(&play); err != nil || play.RelativeURL == "" {
-		t.Fatalf("play-url = %d %v", minted.Code, err)
+	body := minted.Body.String()
+	if err := json.Unmarshal([]byte(body), &play); err != nil || play.RelativeURL == "" {
+		t.Fatalf("play-url = %d %v: %s", minted.Code, err, body)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
