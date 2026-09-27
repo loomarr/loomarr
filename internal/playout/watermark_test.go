@@ -136,9 +136,8 @@ func TestBuildItem_NilWatermarkIsBuild(t *testing.T) {
 		for srcName, src := range testSources() {
 			want := buildGolden(overlayHost(host), src, testOutput)
 			p, err := BuildItem(overlayHost(host), src, testOutput, nil)
-			got := "REFUSED"
 			if err == nil {
-				got = strings.Join(p.ItemArgs("/media/source.mkv", 0, 0, 25, 0), " ")
+				got := strings.Join(p.ItemArgs("/media/source.mkv", 0, 0, 25, 0), " ")
 				want2, _ := Build(overlayHost(host), src, testOutput)
 				if strings.Join(want2.ItemArgs("/media/source.mkv", 0, 0, 25, 0), " ") != got || p.Watermark || hasFallback(p, "watermark") {
 					t.Errorf("%s/%s: a nil watermark changed the pipeline", hostName, srcName)

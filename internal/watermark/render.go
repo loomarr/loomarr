@@ -233,7 +233,7 @@ func textMask(text string, px float64) (*image.Alpha, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer face.Close()
+	defer func() { _ = face.Close() }()
 	bounds, _ := font.BoundString(face, text)
 	w := (bounds.Max.X - bounds.Min.X).Ceil() + 4
 	h := (bounds.Max.Y - bounds.Min.Y).Ceil() + 4

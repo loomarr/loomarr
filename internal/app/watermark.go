@@ -126,7 +126,7 @@ func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res sc
 			if err != nil {
 				return nil, err
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			img, _, err := image.Decode(f)
 			if err != nil {
 				return nil, err
