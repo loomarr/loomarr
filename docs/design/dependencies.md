@@ -37,7 +37,7 @@ passes the same consumer tests.
 | Model providers | hand-written clients over plain `net/http` for the Ollama API and OpenAI-compatible endpoints | one compatible client covers hosted providers and local servers; no vendor SDK |
 | Web references, release notes, model discovery | plain `net/http` | public page evidence for Intents; release-note classification; Hugging Face model listing; no SDKs |
 | TMDB, Seerr, media server, Tunarr | hand-written thin clients | each uses a handful of endpoints; generating from full upstream specs couples us to their churn |
-| Image rendering | required Rust `loomarr-image` worker over a versioned manifest protocol | contains decoder crashes and memory outside the Go process without cgo ([images](../design.md#22-image-service--one-pipeline-for-every-image)) |
+| Image rendering | required Rust `loomarr-image` worker over a versioned manifest protocol | contains decoder crashes and memory outside the Go process without cgo ([images](images.md)) |
 | Rust image crates | `serde`, `sha2`, `base64`, `thumbhash`, `image`, `fast_image_resize`, `webp`, `webp-animation`, `ravif` (via `image`) | bounded protocol, content identity, placeholders, static and animated decode/encode; locked by `Cargo.lock`, fuzz graph separate |
 | Backend tests | stdlib `testing`, `testcontainers-go` | Postgres conformance |
 
