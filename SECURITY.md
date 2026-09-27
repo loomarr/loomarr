@@ -41,7 +41,7 @@ window to ship a fix before any public write-up.
   independent of `API_TOKEN` and of user sessions, is compared in constant time and
   is never logged. Metrics still expose aggregate operational state and the default
   listener is plain HTTP, so keep it on a private scrape network or add TLS at an
-  operator-managed edge. See [Monitoring Loomarr](docs/install/monitoring.md).
+  operator-managed edge. See [Monitor Loomarr](docs/guides/monitoring.md).
 - The published image bundles third-party binaries (`yt-dlp`, `ffmpeg`, `ffprobe`, `deno`, and
   `whisper-cli` with its shared libraries and model data) pinned by the `Dockerfile`;
   vulnerabilities in those upstreams are best

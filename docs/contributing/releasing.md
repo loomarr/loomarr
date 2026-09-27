@@ -28,7 +28,7 @@ make release-notes-preview TAG=v0.2.0 PREVIOUS_TAG=v0.1.0-beta.1
 
 The default output is `.artifacts/release-notes-v0.2.0.md`. Set `OUTPUT=/path/to/notes.md` to choose
 another destination. Do not commit or paste the key. A tag-specific
-`docs/release/<tag>.md` file, when present, is prepended for human-authored framing and known
+`project/release/<tag>.md` file, when present, is prepended for human-authored framing and known
 limitations.
 
 ## What the model can and cannot do

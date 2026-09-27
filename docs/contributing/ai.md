@@ -43,7 +43,7 @@ go red. Gates that exited 0 while proving nothing, here:
 that had never been implemented. When a comment and the code disagree, the comment is the bug.
 
 **Retire identifiers explicitly.** When a PR removes a capability, its name goes into
-`scripts/check-retired.sh` in the same PR — `docs/help/` ships in the binary and is read as
+`scripts/check-retired.sh` in the same PR — the help pages ship in the binary and are read as
 instructions.
 
 **Claims about behaviour belong next to a test.** `docs/claims_test.go` asserts the help pages

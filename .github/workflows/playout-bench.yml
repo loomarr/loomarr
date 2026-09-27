@@ -1,6 +1,6 @@
 name: Playout bench (hardware)
 
-# Cross-hardware measurement of the real playout pipeline (docs/dev/playout-bench.md).
+# Cross-hardware measurement of the real playout pipeline (docs/contributing/playout-bench.md).
 #
 # ⚠ NEVER add `pull_request`, `pull_request_target` or `merge_group` here. The repository is public:
 # a pull request from a fork must not be able to schedule work on the maintainer's GPU machines. The

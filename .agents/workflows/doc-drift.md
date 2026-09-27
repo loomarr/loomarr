@@ -66,5 +66,5 @@ UNDOCUMENTED
   <file:line>  <capability with no doc coverage>
 ```
 
-Order findings by blast radius: anything shipped to users (`docs/help/` is embedded in the
-binary), error copy, onboarding first; internal design docs second.
+Order findings by blast radius: anything shipped to users (`docs/get-started.md`, `docs/guides/`
+and `docs/explanation/` are embedded in the binary), error copy, onboarding first; internal design docs second.
