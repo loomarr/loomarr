@@ -107,6 +107,17 @@ type Channel struct {
 	// BreakDurationMs is the target duration of each inserted filler slot. Resolved from the
 	// per-channel override or live global setting before this pure scheduler runs.
 	BreakDurationMs int64
+	// NaturalBreaks supplies the measured scene fades a long programme may break at (§10
+	// mid-roll). Transient like BreaksPerHour: reconcile sets it for an internal-playout channel
+	// whose policy leaves mid-roll on, and leaves it nil otherwise (Tunarr cannot cut inside a
+	// programme), so nil = between-programme breaks only.
+	NaturalBreaks NaturalBreakSource `json:"-"`
+	// PinnedCuts freezes the split of every programme already on air or about to be (§10 mid-roll):
+	// library item id → the cuts the accepted cycle gave it (nil = it airs whole). A pinned item is
+	// split exactly so, whatever the fades or the switch now say, so the encoder and the guide never
+	// see a programme re-cut under them; new splits apply to later airings. Transient: reconcile
+	// derives it from the accepted Desired cycle (playout.CommittedSplits).
+	PinnedCuts map[string][]int64 `json:"-"`
 	// LastAired is when each key last aired on THIS channel (§3.1) — the recency signal
 	// placement biases on, loaded from the airings table by the caller.
 	//
@@ -200,6 +211,16 @@ type Slot struct {
 	// every episode as an unrelated programme: a media server groups and searches by `<title>`,
 	// so "Life on the Fast Lane" appears with no indication it is The Simpsons.
 	SeriesTitle string
+	// Segment marks one part of a programme split at natural breaks (§10 mid-roll): 1 for the
+	// first part, 2 for the next, and so on. The parts of one airing are adjacent, separated only
+	// by MidRoll breaks, and together cover the whole source. 0 = the programme airs whole.
+	Segment int
+	// SourceOffsetMs is where in the source this segment begins: the cut it resumes from. Playout
+	// seeks there (Airing.Offset includes it). 0 for a whole programme and for segment 1.
+	SourceOffsetMs int64
+	// MidRoll marks a commercial break (keyless SlotFiller) placed INSIDE a programme, between two
+	// of its segments, rather than between two programmes. The guide does not advertise it (§10).
+	MidRoll bool
 }
 
 // IsProgram reports whether this slot is a real, playable program (not pending,

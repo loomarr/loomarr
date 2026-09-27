@@ -32,14 +32,17 @@ func TestSampleWindow_ShrinksToTheByteBudget(t *testing.T) {
 	}
 }
 
-func TestChapters_AreBreaksAwayFromTheEdges(t *testing.T) {
+// The fixture's chapter marks (4 s and 7 s) sit in a bright test pattern over a steady tone. A real
+// ffmpeg check of each mark must find no fade, so neither becomes a break (a chapter mark alone is
+// not evidence of one).
+func TestChapters_MarksInsideAScreenfulOfPictureAreNotBreaks(t *testing.T) {
 	tools := DefaultTools("", "")
-	got, err := tools.ChapterBreaks(context.Background(), chapterFixture(t), 10_000, nil)
+	got, err := tools.ChapterBreaks(context.Background(), chapterFixture(t), 10_000, 0, nil, DefaultSampling())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].AtMs != 4000 || got[1].AtMs != 7000 || got[0].Source != "chapter" {
-		t.Fatalf("chapter breaks = %+v, want 4000 and 7000 (chapter 0 is the programme start)", got)
+	if len(got) != 0 {
+		t.Fatalf("chapter breaks = %+v, want none: both marks are mid-picture", got)
 	}
 }
 

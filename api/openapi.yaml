@@ -1217,6 +1217,8 @@ components:
           type: integer
         filler:
           $ref: "#/components/schemas/FillerSelection"
+        midRoll:
+          type: boolean
         operatorSet:
           items:
             type: string

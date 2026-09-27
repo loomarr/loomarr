@@ -196,7 +196,7 @@ func (m *Measurer) analyse(ctx context.Context, ref SourceRef) error {
 		}
 	}
 	// Chapters are free metadata; only a file without them pays for targeted windows.
-	breaks, err := m.deps.Tools.ChapterBreaks(ctx, ref.Path, facts.DurationMillis, keyframes)
+	breaks, err := m.deps.Tools.ChapterBreaks(ctx, ref.Path, facts.DurationMillis, info.Size(), keyframes, m.deps.Sampling)
 	if err != nil {
 		return err
 	}

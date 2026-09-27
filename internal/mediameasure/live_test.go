@@ -121,7 +121,7 @@ func TestLive_MeasureFile(t *testing.T) {
 	var breaks []inventory.Break
 	step("chapters", func() string {
 		var err error
-		breaks, err = tools.ChapterBreaks(ctx, path, durationMs, frames)
+		breaks, err = tools.ChapterBreaks(ctx, path, durationMs, info.Size(), frames, DefaultSampling())
 		return fmt.Sprintf("%d chapter breaks (err %v)", len(breaks), err)
 	})
 	if len(breaks) == 0 {

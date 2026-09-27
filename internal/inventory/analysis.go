@@ -11,8 +11,20 @@ import (
 )
 
 // AnalysisSchemaVersion is the version of the durable source analysis encoding below. A reader that
-// sees a newer version treats the analysis as absent rather than guessing.
-const AnalysisSchemaVersion = 1
+// sees any other version treats the analysis as absent: a newer one rather than guessing, and an
+// older one so the measurement job measures the source again.
+//
+// 2: chapter marks are break candidates only when a fade check verifies them (OverlapMs set).
+// Version 1 stored every chapter mark, including scene-selection marks in the middle of a picture.
+const AnalysisSchemaVersion = 2
+
+// BreakSearchHalfWindow is how far either side of a due break a natural break may be. It is ONE
+// value for both ends of the pipeline: the measurement searches for fades this far around each
+// due point, and mid-roll placement accepts a candidate only this far from its due point, so the
+// two cannot drift apart (a narrower search would starve placement; a wider placement window
+// would trust places nothing measured). ±5 min: live, a drama's act breaks sat up to ~4 min off
+// the quarter-hour grid, and ±3 min skipped them all.
+const BreakSearchHalfWindow = 5 * time.Minute
 
 // Keyframe is one seekable video sync point: presentation time and the byte offset of its packet.
 // Offset is -1 when the container does not expose packet positions (some MPEG-TS and fragmented

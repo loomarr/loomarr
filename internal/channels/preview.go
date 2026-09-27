@@ -133,6 +133,8 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor()
+	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
+	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, at)
 
 	// Resolve every movie's runtime in ONE media-server call before the layout asks for them one
 	// at a time. ComputeDesiredAt calls Availability.Resolve per key (and walks the lineup several
