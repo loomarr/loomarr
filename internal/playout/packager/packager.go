@@ -347,7 +347,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	if !p.acceptInit(stream.init) {
 		p.count(func(s *Stats) { s.DecoderMismatch++ })
 		p.cfg.Log.Error("packager: item's decoder configuration differs from the channel's; slate", "item", item.Label,
-			"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.Init())), "item_stsd", fmt.Sprintf("%x", SampleDescriptions(stream.init)))
+			"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.encoderInit())), "item_stsd", fmt.Sprintf("%x", SampleDescriptions(stream.init)))
 		cancel()
 		return p.notReady(ctx, rc, slot)
 	}
@@ -449,7 +449,15 @@ func (p *Packager) acceptInit(init []byte) bool {
 func (p *Packager) slateMismatch() {
 	p.count(func(s *Stats) { s.DecoderMismatch++ })
 	p.cfg.Log.Error("packager: slate's decoder configuration differs from the channel's",
-		"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.Init())), "slate_stsd", fmt.Sprintf("%x", SampleDescriptions(p.slate.init)))
+		"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.encoderInit())), "slate_stsd", fmt.Sprintf("%x", SampleDescriptions(p.slate.init)))
+}
+
+// encoderInit is the channel init as the first item's encoder wrote it: what every later item's and
+// the slate's decoder configuration is compared against.
+func (p *Packager) encoderInit() []byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.init
 }
 
 // forward stamps one encoder fragment onto the timeline, trimming to keep, and appends it.

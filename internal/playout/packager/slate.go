@@ -100,8 +100,9 @@ func (p *Packager) fillSlate(ctx context.Context, slot Slot) error {
 	}
 	p.count(func(s *Stats) { s.Slates++ })
 	// The slate never defines the channel init; before the first item it is checked once the
-	// item's init arrives (acceptInit).
-	if init := p.Init(); init != nil && !SameDecoderConfig(init, p.slate.init) {
+	// item's init arrives (acceptInit). The encoder's own init, never the served one: an HDR10
+	// format's served init carries the packager's static boxes, which no encoder writes.
+	if init := p.encoderInit(); init != nil && !SameDecoderConfig(init, p.slate.init) {
 		p.slateMismatch()
 	}
 	var nv, na int64

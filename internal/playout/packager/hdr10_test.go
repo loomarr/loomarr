@@ -199,6 +199,29 @@ func TestWithPrefixSEIPlacement(t *testing.T) {
 
 // A packager configured for HDR10 serves the boxed init and writes every segment with the SEI;
 // its decoder comparison still reads the encoder's own init, so the next item's raw init joins.
+// The HDR10 boxes are the packager's, not the encoder's: a slate from the channel's own pipeline
+// has the encoder's raw init, so it is compared against that, never against the served init. Live
+// on NVENC every slate of a 4K HDR channel counted as a decoder mismatch before this.
+func TestHDR10SlateMatchesTheEncodersInit(t *testing.T) {
+	init, _ := hevcFixture(t)
+	slate := &Slate{init: append([]byte(nil), init...)} // the check precedes any sample
+	idle := func(context.Context, time.Time) (Item, error) { return Item{}, nil }
+	p, err := New(Config{FPS: 25, Dir: t.TempDir(), HDR10: testHDR10}, idle, ReadySlate(slate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.acceptInit(init) {
+		t.Fatal("the encoder's init was refused")
+	}
+	p.epoch = time.Now()
+	if err := p.fillSlate(t.Context(), Slot{}); err != nil {
+		t.Fatal(err)
+	}
+	if s := p.Stats(); s.Slates != 1 || s.DecoderMismatch != 0 {
+		t.Fatalf("stats %+v: want one slate that matches the channel", s)
+	}
+}
+
 func TestPackagerWritesHDR10IntoInitAndSegments(t *testing.T) {
 	init, frags := hevcFixture(t)
 	dir := t.TempDir()
