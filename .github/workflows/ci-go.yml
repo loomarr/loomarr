@@ -14,8 +14,9 @@ jobs:
   run:
     name: Go — race-policy tests (${{ matrix.lane }})
     runs-on: ubuntu-latest
-    # The weighted package plan reserves nine minutes for tests and six for setup/compilation.
-    # Crossing the operator-facing 15-minute budget fails loud instead of delaying the queue.
+    # The weighted package plan budgets each lane's test step from #1570's ten-minute Go-only queue
+    # target (`scripts/go-shard.sh --budgets`). This timeout is the backstop: crossing the
+    # operator-facing 15-minute budget fails loud instead of delaying the queue.
     timeout-minutes: 15
     # This job is test-only. Repository-wide contracts run once in `go-contracts`, in parallel;
     # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every lane spent
@@ -23,10 +24,10 @@ jobs:
     #
     # TWO measured-weight ordinary lanes plus two serial media-certification lanes. Merge-group run
     # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
-    # a 31m10s critical path. The reviewed
-    # weights in scripts/go-race-weights.tsv and longest-processing-time assignment model the
-    # current tree at 921/920 aggregate package-seconds per ordinary lane before bounded `-p=4`
-    # overlap and 244/231-second worker makespans. The sharder emits that measured order and the
+    # a 31m10s critical path. The weights in scripts/go-race-weights.tsv are measured seconds
+    # regenerated from hosted runs (`make go-race-weights`); longest-processing-time assignment
+    # models the current tree at 1796/1796 aggregate package-seconds per ordinary lane and
+    # 517/450-second worker makespans (#1570). The sharder emits that measured order and the
     # race-policy filter preserves it; restoring lexical order made heavy packages start more than
     # six minutes late in merge-group run 35510845578. `make go-shard-verify` rejects coverage,
     # bounded-worker latency, or balance drift and proves the four lanes remain an exact partition.

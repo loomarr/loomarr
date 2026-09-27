@@ -10883,14 +10883,19 @@ All recurring background work runs under **one scheduler** (`internal/scheduler`
   Go workflow admits only the four literal lane identities; `scripts/go-test-lane.sh` owns their
   exact `-p=4` ordinary and `-p=1` certification execution policy and rejects lane-scoped `GOFLAGS`
   overrides. Go package shards use
-  longest-processing-time assignment over the reviewed material package timings in
-  `scripts/go-race-weights.tsv`; unlisted packages receive a conservative one-second planning
-  floor, so additions remain covered before their first hosted measurement. The two ordinary-shard
-  plan rejects more than 1,200 aggregate package-seconds per lane and a slowest lane more than 25%
-  above the lightest. A second model mirrors the runner's sequential race/non-race groups and
-  bounded `-p=4` package workers; it reserves at most nine modeled test minutes per lane and applies
-  the same 25% balance bound. Each serial certification lane has that nine-minute modeled ceiling,
-  and the two certification groups may not differ by more than 25%. The
+  longest-processing-time assignment over the measured package seconds in
+  `scripts/go-race-weights.tsv`, regenerated from hosted merge-group runs by
+  `make go-race-weights`; unlisted packages receive a conservative one-second planning
+  floor, so additions remain covered before their first hosted measurement. Every budget derives
+  from #1570's ten-minute Go-only merge-queue target minus the measured queue overhead outside a
+  lane's test step (`go-shard.sh --budgets`). The two ordinary-shard plan rejects aggregate
+  package-seconds above four `-p=4` workers' share of that test step and a slowest lane more than
+  25% above the lightest. A second model mirrors the runner's sequential race/non-race groups and
+  bounded `-p=4` package workers; its makespan must fit the test step, with the same 25% balance
+  bound. Each serial certification lane must fit the test step too, and the two certification
+  groups may not differ by more than 25%. A per-package cap bounds any single package; it sits
+  temporarily at `internal/store`'s measured time plus 10% because that package alone exceeds a
+  lane's test step (#1570), and only a lane holding such a package is judged against the cap. The
   workflow independently caps every lane job at 15 wall-clock minutes,
   preserving six minutes for setup, compilation, and cache variance while making latency
   regressions fail loud. `go-shard-verify` proves the two ordinary shards plus both certification

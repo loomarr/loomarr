@@ -134,6 +134,13 @@ go-shard-verify: ## Go test lanes must cover every package within their latency 
 # identities plus its two certification identities, so execution and coverage authority cannot drift.
 	@./scripts/go-shard.sh --verify $(or $(SHARDS),2)
 
+.PHONY: go-race-weights
+go-race-weights: ## regenerate the race-lane package weights from hosted merge-group runs (RUNS="run-id ...")
+	@test -n "$(RUNS)" || { echo 'usage: make go-race-weights RUNS="merge-group run ids"' >&2; exit 2; }
+	@./scripts/go-race-weights-refresh.sh $(RUNS) > scripts/go-race-weights.tsv.tmp
+	@mv scripts/go-race-weights.tsv.tmp scripts/go-race-weights.tsv
+	@./scripts/go-shard.sh --verify 2
+
 .PHONY: go-race-verify
 go-race-verify: ## every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package
 # ⚠ A GUARD, not decoration. The opt-out list is FAIL-SAFE by construction — race stays ON for

@@ -264,21 +264,32 @@ func TestGoShardVerificationRejectsAggregateAndWorkerLatencyDrift(t *testing.T) 
 
 	bin := t.TempDir()
 	fakeGo := filepath.Join(bin, "go")
+	// internal/config is on the race policy's opt-out list, so it runs in the plain group after the
+	// race group and adds to the lane's makespan.
 	const packages = `example.invalid/a
 example.invalid/b
+example.invalid/c
+example.invalid/d
+example.invalid/internal/config
 example.invalid/cert-one
+example.invalid/cert-three
 example.invalid/cert-two`
 	if err := os.WriteFile(fakeGo, []byte("#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"$*\" == \"list -m\" ]]; then echo example.invalid; exit; fi\n[[ \"$*\" == \"list ./...\" ]]\nprintf '%s\\n' '"+strings.ReplaceAll(packages, "\n", "' '")+"'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	weights := filepath.Join(t.TempDir(), "weights.tsv")
 	certification := filepath.Join(t.TempDir(), "certification.tsv")
-	if err := os.WriteFile(certification, []byte("1 cert-one\n2 cert-two\n"), 0o600); err != nil {
+	if err := os.WriteFile(certification, []byte("1 cert-one\n1 cert-three\n2 cert-two\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	root := filepath.Clean(filepath.Join("..", ".."))
-	run := func(weightRows, want string) {
+	budgets := goShardBudgets(t)
+	lane, capSeconds, aggregate := budgets["lane_test"], budgets["max_package"], budgets["ordinary_aggregate"]
+	if lane >= capSeconds || aggregate/4+1 > capSeconds {
+		t.Fatalf("fixture assumes lane_test < max_package and a quarter-aggregate package under the cap: %v", budgets)
+	}
+	verify := func(t *testing.T, weightRows string) (string, error) {
 		t.Helper()
+		weights := filepath.Join(t.TempDir(), "weights.tsv")
 		if err := os.WriteFile(weights, []byte(weightRows), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -290,16 +301,92 @@ example.invalid/cert-two`
 			"GO_SHARD_CERTIFICATION="+certification,
 		)
 		output, err := cmd.CombinedOutput()
-		if err == nil {
-			t.Fatalf("go shard verification accepted %s drift:\n%s", want, output)
-		}
-		if !strings.Contains(string(output), want) {
-			t.Fatalf("go shard verification failure =\n%s\nwant %q", output, want)
-		}
+		return string(output), err
 	}
+	certs := "cert-one 1\ncert-three 1\ncert-two 2\n"
 
-	run("a 601\nb 600\ncert-one 1\ncert-two 1\n", "modeled aggregate split exceeds")
-	run("a 550\nb 1\ncert-one 1\ncert-two 1\n", "modeled bounded-worker split exceeds")
+	rejected := []struct{ name, weights, want string }{
+		{"package over the cap", fmt.Sprintf("a %d\n%s", capSeconds+1, certs),
+			fmt.Sprintf("exceeds the %ds per-package cap", capSeconds)},
+		{"aggregate over four workers' lane budget", fmt.Sprintf("a %[1]d\nb %[1]d\nc %[1]d\nd %[1]d\n%[2]s", aggregate/4+1, certs),
+			"modeled aggregate split exceeds"},
+		{"plain group pushes a lane past the lane budget", fmt.Sprintf("a %d\ninternal/config 20\n%s", lane-10, certs),
+			fmt.Sprintf("shard 1: %ds (budget %ds)", lane+10, lane)},
+		// The oversized package is not exempt: its lane is held to the cap, not waved through.
+		{"oversized package's lane past the cap", fmt.Sprintf("a %d\ninternal/config %d\n%s", lane+1, capSeconds-lane, certs),
+			fmt.Sprintf("shard 1: %ds (budget %ds)", capSeconds+1, capSeconds)},
+		{"serial certification lane past the lane budget", fmt.Sprintf("cert-one %[1]d\ncert-three %[1]d\ncert-two %[2]d\n", lane/2+10, 2*(lane/2+10)),
+			fmt.Sprintf("certification lane 1/2: %ds (budget %ds)", 2*(lane/2+10), lane)},
+	}
+	for _, tc := range rejected {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			output, err := verify(t, tc.weights)
+			if err == nil {
+				t.Fatalf("go shard verification accepted %s:\n%s", tc.name, output)
+			}
+			if !strings.Contains(output, tc.want) {
+				t.Fatalf("go shard verification failure =\n%s\nwant %q", output, tc.want)
+			}
+		})
+	}
+	t.Run("oversized package within the temporary cap", func(t *testing.T) {
+		t.Parallel()
+		output, err := verify(t, fmt.Sprintf("a %d\n%s", lane+1, certs))
+		if err != nil {
+			t.Fatalf("go shard verification rejected a package inside the cap: %v\n%s", err, output)
+		}
+		// +1: internal/config's one-second floor runs in the plain group after the race group.
+		if want := fmt.Sprintf("bounded-worker makespan = %ds (budget %ds)", lane+2, capSeconds); !strings.Contains(output, want) {
+			t.Fatalf("verification output =\n%s\nwant %q", output, want)
+		}
+	})
+}
+
+// The budgets are derived from #1570's ten-minute Go-only queue target, not free constants:
+// the lane test step is the target minus the measured queue overhead, and four workers share it.
+func TestGoShardBudgetsDeriveFromTheQueueTarget(t *testing.T) {
+	t.Parallel()
+
+	b := goShardBudgets(t)
+	if b["target_queue"] != 600 {
+		t.Fatalf("target_queue = %d, want #1570's 600s Go-only merge-queue target", b["target_queue"])
+	}
+	if b["queue_overhead"] <= 0 || b["lane_test"] != b["target_queue"]-b["queue_overhead"] {
+		t.Fatalf("lane_test = %d, want target_queue - queue_overhead (%d - %d)", b["lane_test"], b["target_queue"], b["queue_overhead"])
+	}
+	if b["ordinary_aggregate"] != 4*b["lane_test"] {
+		t.Fatalf("ordinary_aggregate = %d, want four -p=4 workers x lane_test %d", b["ordinary_aggregate"], b["lane_test"])
+	}
+	// The per-package cap may exceed the lane only while a measured package forces it (#1570).
+	weights := readGoRaceWeights(t, filepath.Join("..", "..", "scripts", "go-race-weights.tsv"))
+	heaviest := 0
+	for _, seconds := range weights {
+		heaviest = max(heaviest, seconds)
+	}
+	if b["max_package"] > b["lane_test"] && b["max_package"] > heaviest*110/100+1 {
+		t.Fatalf("max_package = %d exceeds lane_test %d by more than the heaviest measured package %ds + 10%%; lower it", b["max_package"], b["lane_test"], heaviest)
+	}
+}
+
+func goShardBudgets(t *testing.T) map[string]int {
+	t.Helper()
+	cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--budgets")
+	cmd.Dir = filepath.Clean(filepath.Join("..", ".."))
+	output, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("go shard budgets: %v", err)
+	}
+	budgets := make(map[string]int)
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		fields := strings.Fields(line)
+		seconds, convErr := strconv.Atoi(fields[len(fields)-1])
+		if len(fields) != 2 || convErr != nil {
+			t.Fatalf("invalid budget row %q", line)
+		}
+		budgets[fields[0]] = seconds
+	}
+	return budgets
 }
 
 // A dropped package is the failure every lane reports as green, so --verify must name it, and must
@@ -446,12 +533,13 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 		}
 	}
 
+	budgets := goShardBudgets(t)
 	minLoad, maxLoad := loads[0], loads[0]
 	for _, load := range loads[1:] {
 		minLoad = min(minLoad, load)
 		maxLoad = max(maxLoad, load)
 	}
-	if maxLoad > 1200 {
+	if maxLoad > budgets["ordinary_aggregate"] {
 		t.Fatalf("modeled ordinary shard exceeds aggregate package-work budget: loads=%v", loads)
 	}
 	if maxLoad*100 > minLoad*125 {
@@ -481,14 +569,18 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 		minWorkerLoad = min(minWorkerLoad, load)
 		maxWorkerLoad = max(maxWorkerLoad, load)
 	}
-	if maxWorkerLoad > 540 {
-		t.Fatalf("modeled bounded-worker shard exceeds nine test minutes: loads=%v", workerLoads)
+	// A lane may pass the lane budget only up to the explicit per-package cap (#1570).
+	if maxWorkerLoad > max(budgets["lane_test"], budgets["max_package"]) {
+		t.Fatalf("modeled bounded-worker shard exceeds its test-step budget: loads=%v budgets=%v", workerLoads, budgets)
+	}
+	if minWorkerLoad > budgets["lane_test"] {
+		t.Fatalf("every modeled bounded-worker shard exceeds the %ds lane budget: loads=%v", budgets["lane_test"], workerLoads)
 	}
 	if maxWorkerLoad*100 > minWorkerLoad*125 {
 		t.Fatalf("modeled bounded-worker shards differ by more than 25%%: loads=%v", workerLoads)
 	}
-	if max(certificationLoads[0], certificationLoads[1]) > 540 {
-		t.Fatalf("modeled certification lane exceeds nine test minutes: loads=%v", certificationLoads)
+	if max(certificationLoads[0], certificationLoads[1]) > budgets["lane_test"] {
+		t.Fatalf("modeled certification lane exceeds the %ds lane budget: loads=%v", budgets["lane_test"], certificationLoads)
 	}
 	if max(certificationLoads[0], certificationLoads[1])*100 > min(certificationLoads[0], certificationLoads[1])*125 {
 		t.Fatalf("modeled certification lanes differ by more than 25%%: loads=%v", certificationLoads)
@@ -653,4 +745,76 @@ func readGoRaceWeights(t *testing.T, path string) map[string]int {
 		t.Fatal(err)
 	}
 	return weights
+}
+
+// The weight file is regenerated from hosted runs, never hand-kept: the median of each package's
+// `ok` time over successful race-lane jobs, rounded up, with sub-five-second packages left to the
+// sharder's floor. Failed lanes and other Go jobs must not contribute samples.
+func TestGoRaceWeightsRefreshTakesMedianOfSuccessfulLaneJobs(t *testing.T) {
+	t.Parallel()
+
+	fixtures := t.TempDir()
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(fixtures, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lane := func(name string) string { return "Go — race-policy tests / Go — race-policy tests (" + name + ")" }
+	ok := func(job, pkg, seconds string) string {
+		return job + "\tUNKNOWN STEP\t2026-09-27T16:36:20.2344716Z ok  \tgithub.com/loomarr/loomarr/" + pkg + "\t" + seconds + "\n"
+	}
+	write("11.jobs", "101\tsuccess\t"+lane("1/2")+"\n102\tfailure\t"+lane("2/2")+"\n103\tsuccess\tGo — repository contracts / Go — repository contracts\n")
+	write("22.jobs", "201\tsuccess\t"+lane("certification-1/2")+"\n202\tsuccess\t"+lane("2/2")+"\n")
+	write("33.jobs", "301\tsuccess\t"+lane("1/2")+"\n")
+	write("101.log", ok("j", "internal/store", "100.1s")+ok("j", "internal/small", "3.0s")+ok("j", "internal/alpha", "10.000s")+
+		"j\tUNKNOWN STEP\t2026-09-27T16:36:20Z ok  \tgithub.com/loomarr/loomarr/internal/cachedpkg\t(cached)\n")
+	write("102.log", ok("j", "internal/store", "999s"))
+	write("103.log", ok("j", "internal/store", "999s"))
+	write("201.log", ok("j", "internal/app", "50.2s"))
+	write("202.log", ok("j", "internal/store", "90s"))
+	write("301.log", ok("j", "internal/store", "120.5s")+ok("j", "internal/alpha", "11s"))
+
+	bin := t.TempDir()
+	fakeGh := "#!/usr/bin/env bash\nset -euo pipefail\n[[ \"$1 $2\" == \"run view\" ]]\n" +
+		"if [[ \"$4\" == --json ]]; then cat '" + fixtures + "'/\"$3\".jobs; exit; fi\n" +
+		"[[ \"$4 $6\" == \"--job --log\" ]]\ncat '" + fixtures + "'/\"$5\".log\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(fakeGh), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Clean(filepath.Join("..", ".."))
+	refresh := func(runs ...string) (string, error) {
+		cmd := exec.Command("bash", append([]string{filepath.Join("scripts", "go-race-weights-refresh.sh")}, runs...)...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GO_RACE_WEIGHTS_GH="+filepath.Join(bin, "gh"))
+		output, err := cmd.CombinedOutput()
+		return string(output), err
+	}
+
+	output, err := refresh("11", "22", "33")
+	if err != nil {
+		t.Fatalf("refresh: %v\n%s", err, output)
+	}
+	var rows []string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if !strings.HasPrefix(line, "#") {
+			rows = append(rows, line)
+		}
+	}
+	// store: median(100.1, 90, 120.5) = 100.1 -> 101; alpha: median(10, 11) = 10.5 -> 11.
+	want := []string{"internal/store\t101", "internal/app\t51", "internal/alpha\t11"}
+	if strings.Join(rows, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("weights =\n%s\nwant\n%s", strings.Join(rows, "\n"), strings.Join(want, "\n"))
+	}
+	if !strings.Contains(output, "merge-group runs 11 22 33") {
+		t.Fatalf("header does not name its source runs:\n%s", output)
+	}
+
+	if output, err := refresh("33x"); err == nil {
+		t.Fatalf("refresh accepted an invalid run id:\n%s", output)
+	}
+	write("44.jobs", "401\tfailure\t"+lane("1/2")+"\n")
+	if output, err := refresh("44"); err == nil || !strings.Contains(output, "no successful race-policy lane timings") {
+		t.Fatalf("refresh with no successful lane = %v, want a loud failure:\n%s", err, output)
+	}
 }

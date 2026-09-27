@@ -1,45 +1,46 @@
-# Conservative `go test -race` package seconds from authoritative merge-group run 35504999984,
-# rounded up with 10% headroom. The four packages parallelized in #1347 scale that hosted baseline
-# by their same-machine `-parallel=4` / `-parallel=1` race-test ratios; refresh all four from the
-# next authoritative hosted run. Do not retain pre-refactor costs as current weights.
-# Packages below five seconds use the conservative one-second floor in go-shard.sh.
-# Keep only material weights here: the CI summary identifies entries that need refreshing.
-internal/suggest	40
-internal/auth	26
-internal/fillerreview	95
-internal/store	242
-internal/backendtransition	122
-internal/app	186
-internal/api	213
-internal/recurate	103
-internal/integration	111
-internal/reconcile	143
-internal/binder	85
-internal/clipfetch	82
-internal/releaseverify	43
-internal/images	40
-internal/fillersafetyreview	27
-internal/fillerreference	25
-internal/schedule	28
-internal/secretprotection	26
-internal/channels	16
-internal/fillervisualsafety	17
-internal/playout	15
-internal/notifications	18
-internal/proposalworkflow	13
-cmd/seed	17
-internal/fillereval	13
-cmd/image-cert	11
-internal/filler	11
-internal/scheduler	12
-internal	8
-internal/fillersafetycert	10
-internal/fillersafetycorpus	11
-internal/fillerstructurewindowcert	8
-internal/installationlocation	9
-cmd/filler-reference-audit	7
-internal/devbootstrap	10
-internal/inventory	8
-internal/invitation	9
-internal/mediatools	6
-internal/proposaloutlook	7
+# Measured `go test` seconds per package in the Go race-policy lanes: the median over successful
+# lane jobs of merge-group runs 36330002206 36330402570 36330935829 36331908558 36333318208, rounded up. Regenerate with
+# `make go-race-weights RUNS="..."` (scripts/go-race-weights-refresh.sh); never edit by hand.
+# Packages below five seconds use the one-second floor in go-shard.sh.
+internal/store	516
+internal/integration	355
+internal/reconcile	349
+internal/backendtransition	308
+internal/clipfetch	277
+internal/fillerreview	260
+internal/app	207
+internal/recurate	192
+internal/binder	173
+internal/api	169
+internal/images	148
+internal/releaseverify	121
+internal/suggest	75
+internal/fillersafetyreview	48
+internal/secretprotection	48
+internal/fillerreference	47
+internal/filler	43
+internal/auth	41
+internal/proposalworkflow	38
+internal/schedule	37
+internal/notifications	30
+internal/fillervisualsafety	29
+internal/channels	28
+internal/fillereval	26
+cmd/seed	22
+internal/playout	22
+internal/fillersafetycorpus	20
+internal/scheduler	19
+cmd/image-cert	18
+internal/fillersafetycert	18
+internal	15
+internal/fillerstructurewindowcert	14
+internal/devbootstrap	12
+internal/installationlocation	12
+internal/inventory	12
+internal/invitation	12
+cmd/filler-reference-audit	11
+internal/mediatools	10
+internal/playout/packager	9
+internal/proposaloutlook	9
+internal/watermark	7
+internal/mediameasure	6
