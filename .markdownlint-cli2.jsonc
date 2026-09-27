@@ -4,12 +4,14 @@
 // records — thousands of lines written over months, in a house style that predates any linter.
 // Running these rules over them produces findings in the hundreds and buries the handful that
 // matter, which is how a gate stops being read. What a user or contributor actually opens is
-// linted; the build team's own notes are not.
+// linted; the build team's own notes are not. docs/design/ replaces design.md (#779) and is
+// linted from its first page, so it never builds that backlog.
 {
   "globs": [
     "README.md",
     "CONTRIBUTING.md",
     "docs/help/**/*.md",
+    "docs/design/**/*.md",
     "docs/install/**/*.md",
     "docs/dev/**/*.md"
   ],

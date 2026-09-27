@@ -24,23 +24,23 @@ config-docs: ## generate docs/configuration.md from the settings registry
 config-docs-verify: config-docs ## regenerated config docs must match committed (CI red on drift)
 	@git diff --exit-code docs/configuration.md
 
-## ---- architecture map (design.md §2) -------------------------------------
+## ---- architecture map (docs/design/package-map.md) -----------------------
 # The same discipline as config-docs, applied to the one section a newcomer reads first.
 # §2's diagram had omitted `filler` (explicitly, "to keep the diagram legible") and `playout`
 # (which arrived later as §9.1) — between them two of the five largest packages. A hand-kept
 # architecture map is the same shape as scripts/check-retired.sh and the TAGS list: a list
 # that drifts. This one is derived from each package's own doc comment and its imports.
 #
-# ⚠ Writes ONE marker-delimited block inside design.md and refuses to run over a malformed
-# marker pair — the rest of the file is hand-written and authoritative (AGENTS.md doc-first).
+# ⚠ Writes ONE marker-delimited block inside the page and refuses to run over a malformed
+# marker pair — the page's heading and introduction are hand-written.
 
 .PHONY: arch-docs
-arch-docs: ## regenerate the §2 package map in docs/design.md from the code
-	$(GO) run ./cmd/arch-docs docs/design.md internal
+arch-docs: ## regenerate the package map in docs/design/package-map.md from the code
+	$(GO) run ./cmd/arch-docs docs/design/package-map.md internal
 
 .PHONY: arch-docs-verify
 arch-docs-verify: arch-docs ## regenerated package map must match committed (CI red on drift)
-	@git diff --exit-code docs/design.md
+	@git diff --exit-code docs/design/package-map.md
 
 ## ---- dev docs (the command contract) ------------------------------------
 

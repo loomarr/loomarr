@@ -7,8 +7,10 @@ converges it on Loomarr's internal playout or an optional Tunarr backend.
 This file is a **glossary and nothing else** — what each word *means*. It deliberately holds
 no behavior, no endpoints, and no decisions.
 
-⚠ **`docs/design.md` remains the single source of truth** for how the system behaves, and
-its numbered sections (`§7`, `§11`, …) are cited from ~2,600 places in the code. Where a
+⚠ **The design docs remain the single source of truth** for how the system behaves:
+`docs/design/`, plus the `docs/design.md` sections not yet moved there. Their old numbered
+sections (`§7`, `§11`, …) are cited from thousands of places in the code, and the
+`docs/design/` index maps each number to the doc that now owns it. Where a
 term's *behavior* matters, the § reference next to it is the authority. This file provides one
 place to look up a term without loading the much larger behavior specification.
 

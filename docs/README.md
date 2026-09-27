@@ -1,7 +1,7 @@
 # Loomarr documentation
 
 The docs are organized by reader and authority. Start with the page for the job you are doing;
-do not read the 7,000-line design document as onboarding.
+do not read the design documents end to end as onboarding.
 
 ## Find the right document
 
@@ -10,7 +10,7 @@ do not read the 7,000-line design document as onboarding.
 | Install or operate Loomarr | [`install/`](install/index.md) | Supported deployment and operations |
 | Use Loomarr | [`help/`](help/quickstart.md) | Viewer- and admin-facing product behavior |
 | Build and test Loomarr | [`dev/`](dev/index.md) | Contributor workflow and gates |
-| Understand current behavior | [`design.md`](design.md) | Canonical system behavior |
+| Understand current behavior | [`design/`](design/README.md) and [`design.md`](design.md) | Canonical system behavior, moving section by section into `design/` |
 | Use domain terminology | [`../CONTEXT.md`](../CONTEXT.md) | Canonical vocabulary |
 | Check active or shipped work | [`../PROGRESS.md`](../PROGRESS.md) | Work status and gate evidence |
 | Read current plans and evidence | [`engineering/`](engineering/README.md) | Dated planning and supporting evidence |
@@ -32,7 +32,7 @@ setting defaults in hand-written pages.
 
 ## Design authority
 
-`design.md` owns product behavior. Companion documents own detail within their named domains:
+`design/` and the not-yet-moved sections of `design.md` own product behavior. Companion documents own detail within their named domains:
 
 - [`programming-design.md`](programming-design.md) — Channel Policy and scheduling heuristics;
 - [`config-design.md`](config-design.md) — settings information architecture and persistence;
@@ -67,7 +67,7 @@ Never edit these by hand:
 | --- | --- | --- |
 | `configuration.md` | Settings registry | `make config-docs` |
 | `dev/commands.md` | Makefile and CI workflows | `make dev-docs` |
-| `design.md` §2 package map | Go package docs and imports | `make arch-docs` |
+| `design/package-map.md` | Go package docs and imports | `make arch-docs` |
 | `diagrams/generated/*.svg` | `diagrams/*.d2` | `make diagrams` |
 | `../api/openapi.yaml` | Huma route definitions | `make openapi` |
 

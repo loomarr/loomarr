@@ -16,7 +16,8 @@ be restated here and in three other files, and the copies drifted apart. One hom
 
 ## Ground rules
 
-- **`docs/design.md` is the single source of truth.** If a change needs to deviate, update the
+- **The design docs are the single source of truth**: [`docs/design/`](docs/design/README.md),
+  plus the `docs/design.md` sections not yet moved there. If a change needs to deviate, update the
   doc in the *same PR, before the code*. Doc and code must never disagree silently.
 - **Gates are hard.** Never weaken, skip or stub a selected local or CI gate to make it pass — if a
   gate can't pass, the design or the code is wrong. Fix one of them.

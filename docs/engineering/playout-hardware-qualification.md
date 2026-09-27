@@ -1,7 +1,9 @@
 # Declared-profile playout qualification
 
 This procedure supplies the declared-profile portion of [#1037](https://github.com/loomarr/loomarr/issues/1037).
-The [design contract](../design.md#production-path-playout-load-certification-1037) owns the thresholds.
+The design contract that owned the thresholds, production-path load certification,
+[retired with the per-programme chain](../design.md#internal-playout-is-on-demand-one-packager-per-channel-format-1512-beta8)
+in #1542.
 Readiness lifecycle acceptance remains tracked in [#1097](https://github.com/loomarr/loomarr/issues/1097).
 
 Build the command from a clean, committed checkout on the candidate's target platform. Its embedded
