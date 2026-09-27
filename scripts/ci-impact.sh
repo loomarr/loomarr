@@ -425,6 +425,14 @@ classify() {
       select_gate go
       select_gate image
       ;;
+    internal/playout/*.cl)
+      # OpenCL kernels embedded by the pipeline builder (watermark.go) and run by ffmpeg's
+      # program_opencl in the playout graph. The playout bench is selected above.
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate image
+      ;;
     internal/fillereval/*.md)
       known=true
       select_gate docs

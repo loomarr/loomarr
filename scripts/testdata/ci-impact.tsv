@@ -10,6 +10,7 @@ ryuk-test-image-authority	internal/testkit/ryukimage/image.txt	postgres,policy
 composition-go	internal/app/application.go	contracts,go,go_full,postgres,image
 backend-transition-go	internal/backendtransition/controller.go	contracts,go,postgres,image
 playout-go	internal/playout/packager_hls.go	contracts,go,postgres,image,playout_bench
+playout-opencl-kernel	internal/playout/watermark.cl	contracts,go,image,playout_bench
 rust-worker	rust/loomarr-image/src/lib.rs	rust,image
 migration	internal/store/migrations/sqlite/00001_init.sql	contracts,go,go_full,postgres,image
 filler-download-backend	internal/filler/fetch.go	contracts,go,postgres,image
