@@ -13,21 +13,18 @@ import (
 	"testing"
 )
 
-// candidates are the bug looks offered for the maintainer's pick (#1617), all at the approved
-// opacity: the approved Plate as the control and three alternatives. None is selectable by a
-// channel until one is approved.
+// candidates are the four styles (#1617) at the default size and opacity.
 var candidates = []struct {
 	name, label string
-	design      Design
-	look        Look
+	style       Style
 }{
-	{"a-plate", "A · Plate (approved look, the control)", DesignPlate, Look{Size: 0.06, Opacity: 0.40, Shadow: true}},
-	{"b-text", "B · Text: the Plate's letters, no plate, soft shadow", DesignText, Look{Size: 0.06, Opacity: 0.40, Shadow: true}},
-	{"c-outline", "C · Outline: the Plate's letters as a hollow stroke, soft shadow", DesignOutline, Look{Size: 0.06, Opacity: 0.40, Shadow: true}},
-	{"d-small-plate", "D · Small Plate: 75% size (0.045), no shadow", DesignPlate, Look{Size: 0.045, Opacity: 0.40, Shadow: false}},
+	{"a-plate", "A · Plate", StylePlate},
+	{"b-text", "B · Text: the Plate's letters, no plate, soft shadow (the default)", StyleText},
+	{"c-outline", "C · Outline: the Plate's letters as a hollow stroke, soft shadow", StyleOutline},
+	{"d-small-plate", "D · Small Plate: 75% size, no shadow", StyleSmallPlate},
 }
 
-// Design review sheets for the candidates. Set WATERMARK_PREVIEW_DIR to write, per candidate, the
+// Review sheets for the styles. Set WATERMARK_PREVIEW_DIR to write, per style, the
 // aired bug PNGs (1080 and 2160 lines) and the bug composited over synthetic bright, dark and busy
 // frames (corner crops at 1:1, 1080p full frames), with index.html. WATERMARK_PREVIEW_CALLSIGN
 // sets the text (default RETRO). The composite is a straight-alpha blend in RGB, the blend every
@@ -63,8 +60,8 @@ func TestPreviewCandidates(t *testing.T) {
 <style>body{font:14px system-ui;margin:16px;background:#222;color:#eee}img{display:block;max-width:100%%}
 .chk{background:repeating-conic-gradient(#888 0 25%%,#bbb 0 50%%) 0 0/16px 16px;display:inline-block}
 td{vertical-align:top;padding:4px}h2{margin-top:32px}small{color:#aaa}</style>
-<h1>Bug look candidates (#1617): for the maintainer's approval</h1>
-<p>CANDIDATES, not a decision. Callsign %q, opacity 0.40, rendered by internal/watermark; composited in RGB over
+<h1>Bug looks (#1617)</h1>
+<p>Callsign %q, size 0.06, opacity 0.40, rendered by internal/watermark; composited in RGB over
 synthetic frames at the default placement (top-right, margin 0.05). Crops are 1:1 pixels of the frame's top-right third.</p>`,
 		callsign)
 	for _, res := range []int{1080, 2160} {
@@ -79,11 +76,11 @@ synthetic frames at the default placement (top-right, margin 0.05). Crops are 1:
 		}
 		idx.WriteString("</tr>")
 		for _, c := range candidates {
-			mask, err := CallsignMask(callsign, c.design)
+			mask, err := CallsignMask(callsign, c.style)
 			if err != nil {
 				t.Fatal(err)
 			}
-			bug := Render(mask, res, c.look)
+			bug := Render(mask, res, c.style.Adjust(Look{Size: 0.06, Opacity: 0.40, Shadow: true}))
 			bw, bh := bug.Size()
 			bugName := fmt.Sprintf("bug-%s-%d.png", c.name, res)
 			write(bugName, bug.Straight)

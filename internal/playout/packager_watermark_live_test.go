@@ -22,7 +22,20 @@ import (
 // under the GPU lock; it skips where NVENC cannot encode. FFMPEG_PATH picks the build: n9 (native
 // or the image's, since #1549) draws the bug, while n8.1.2 loses the picture under NVDEC (the
 // self-check disables the watermark there, so production never airs this graph on it).
-func TestLive_PackagerWatermarkKeepsTheParameterSets(t *testing.T) {
+// livePackager is the packager's item command on this host's NVENC over a synthetic 1080p
+// programme (testsrc2), in dir.
+type livePackager struct {
+	t        *testing.T
+	ctx      context.Context
+	bin, src string
+	dir      string
+	host     HostProfile
+	out      OutputProfile
+	facts    MediaFormat
+}
+
+// newLivePackager skips where NVENC cannot encode.
+func newLivePackager(t *testing.T) *livePackager {
 	bin := ffmpegBin(t)
 	ctx := context.Background()
 	if c := trialEncodeObserved(ctx, bin, EncoderNVENC, DefaultProfile(), 1, nil); !c.Works {
@@ -42,30 +55,39 @@ func TestLive_PackagerWatermarkKeepsTheParameterSets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wm, err := writeCheckBug(dir)
+	return &livePackager{t: t, ctx: ctx, bin: bin, src: src, dir: dir, host: host, out: out, facts: checkClasses(host)[0].facts}
+}
+
+// encode runs one item, with bug or without (nil), and returns its H.264 elementary stream.
+func (p *livePackager) encode(bug *Watermark, name string) (string, Pipeline) {
+	t := p.t
+	t.Helper()
+	it := PackagerItem{Label: name, Input: p.src, Remaining: time.Second, Format: p.facts}
+	pl, args, err := packagerItemArgs(p.host, p.out, it, bug, packager.Slot{Frames: checkFrames, AudioFrames: 47}, itemFault{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	facts := checkClasses(host)[0].facts
-	encode := func(bug *Watermark, name string) (string, Pipeline) {
-		t.Helper()
-		it := PackagerItem{Label: name, Input: src, Remaining: time.Second, Format: facts}
-		pl, args, err := packagerItemArgs(host, out, it, bug, packager.Slot{Frames: checkFrames, AudioFrames: 47}, itemFault{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		fragments := filepath.Join(dir, name+".mp4")
-		args[len(args)-1] = fragments // pipe:1 in production
-		if b, err := exec.CommandContext(ctx, bin, append([]string{"-y"}, args...)...).CombinedOutput(); err != nil {
-			t.Fatalf("%s: encode: %v: %s", name, err, b)
-		}
-		annexB := filepath.Join(dir, name+".h264")
-		if b, err := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error", "-y", "-i", fragments,
-			"-map", "0:v:0", "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "h264", annexB).CombinedOutput(); err != nil {
-			t.Fatalf("%s: remux: %v: %s", name, err, b)
-		}
-		return annexB, pl
+	fragments := filepath.Join(p.dir, name+".mp4")
+	args[len(args)-1] = fragments // pipe:1 in production
+	if b, err := exec.CommandContext(p.ctx, p.bin, append([]string{"-y"}, args...)...).CombinedOutput(); err != nil {
+		t.Fatalf("%s: encode: %v: %s", name, err, b)
 	}
+	annexB := filepath.Join(p.dir, name+".h264")
+	if b, err := exec.CommandContext(p.ctx, p.bin, "-hide_banner", "-loglevel", "error", "-y", "-i", fragments,
+		"-map", "0:v:0", "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "h264", annexB).CombinedOutput(); err != nil {
+		t.Fatalf("%s: remux: %v: %s", name, err, b)
+	}
+	return annexB, pl
+}
+
+func TestLive_PackagerWatermarkKeepsTheParameterSets(t *testing.T) {
+	p := newLivePackager(t)
+	ctx, bin, host, out, facts := p.ctx, p.bin, p.host, p.out, p.facts
+	wm, err := writeCheckBug(p.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encode := p.encode
 	programme, pl := encode(wm, "programme")
 	if !pl.Watermark {
 		t.Fatalf("the programme item carries no overlay: %v", pl.Fallbacks)

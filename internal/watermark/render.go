@@ -15,8 +15,10 @@
 //   - the look's opacity baked into alpha, over a soft black drop shadow at 35% of that opacity,
 //     offset H/40 and blurred H/30, on a canvas padded 12% of the mark's height.
 //
-// The look's values come from the channel's policy; internal/schedule (watermark_policy.go) owns
-// the approved defaults, so this package holds none.
+// A generated callsign bug comes in four styles (Style, #1617): the Plate, and Text, Outline and
+// Small Plate drawn on the Plate's canvas. The look's values come from the channel's policy and
+// the install settings; internal/schedule (watermark_policy.go) and the settings registry own the
+// defaults, so this package holds none.
 package watermark
 
 import (
@@ -26,6 +28,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"strings"
 
 	xdraw "golang.org/x/image/draw"
@@ -59,33 +62,48 @@ type Look struct {
 // ErrEmpty means the source image has no visible pixels.
 var ErrEmpty = errors.New("watermark: the image has no visible shape")
 
-// Design is a typographic bug's design. DesignPlate is the approved look. DesignText and
-// DesignOutline are CANDIDATES for the maintainer's review (#1617): no policy field selects them
-// until one is approved.
-type Design string
+// Style is the generated callsign bug's look, the maintainer's four (#1617, picked from real-frame
+// previews): which mask it draws, and how it adjusts the channel's size and shadow (Adjust).
+type Style string
 
 const (
-	DesignPlate   Design = "plate"   // the callsign knocked out of a rounded plate (approved)
-	DesignText    Design = "text"    // candidate: the Plate's letters with no plate
-	DesignOutline Design = "outline" // candidate: the Plate's letters as a hollow stroke
+	StylePlate      Style = "plate"       // the callsign knocked out of a rounded plate
+	StyleText       Style = "text"        // the Plate's letters with no plate (the default)
+	StyleOutline    Style = "outline"     // the Plate's letters as a hollow stroke
+	StyleSmallPlate Style = "small-plate" // the Plate at 75% of the channel's size, no shadow
 )
 
-// outlineStroke is DesignOutline's stroke width as a share of the canvas height: ~2 px at 1080p.
+// Styles is every style, in the order the API lists them.
+var Styles = []Style{StylePlate, StyleText, StyleOutline, StyleSmallPlate}
+
+// smallPlateScale is Small Plate's share of the channel's size.
+const smallPlateScale = 0.75
+
+// Adjust applies the style to the channel's look: Small Plate is 75% of the size with no shadow,
+// the others keep the look as it is.
+func (s Style) Adjust(l Look) Look {
+	if s == StyleSmallPlate {
+		l.Size *= smallPlateScale
+		l.Shadow = false
+	}
+	return l
+}
+
+// outlineStroke is Outline's stroke width as a share of the canvas height: ~2 px at 1080p.
 const outlineStroke = 0.05
 
-// PlateMask is the "Plate" typographic bug: the callsign knocked out of a rounded plate.
-func PlateMask(callsign string) (*image.Alpha, error) { return CallsignMask(callsign, DesignPlate) }
-
-// CallsignMask is a typographic bug in a design. Every design draws on the Plate's canvas, so the
-// letters keep the Plate's size and position and the equal-area rule sizes every design alike.
-func CallsignMask(callsign string, d Design) (*image.Alpha, error) {
+// CallsignMask is the typographic bug for a callsign in a style. Every style draws on the Plate's
+// canvas, so the letters keep the Plate's size and position and the equal-area rule sizes every
+// style alike.
+func CallsignMask(callsign string, s Style) (*image.Alpha, error) {
 	callsign = strings.TrimSpace(callsign)
 	if callsign == "" {
 		return nil, errors.New("watermark: empty callsign")
 	}
-	if d != DesignPlate && d != DesignText && d != DesignOutline {
-		return nil, fmt.Errorf("watermark: unknown design %q", d)
+	if !slices.Contains(Styles, s) {
+		return nil, fmt.Errorf("watermark: unknown style %q", s)
 	}
+	plate := s == StylePlate || s == StyleSmallPlate
 	h := 100 * supersample
 	txt, err := textMask(callsign, float64(h)*0.52)
 	if err != nil {
@@ -94,7 +112,7 @@ func CallsignMask(callsign string, d Design) (*image.Alpha, error) {
 	padX := int(float64(h) * 0.30)
 	w := txt.Rect.Dx() + 2*padX
 	m := image.NewAlpha(image.Rect(0, 0, w, h))
-	if d == DesignPlate {
+	if plate {
 		fillRoundedRect(m, float64(h)*0.22)
 	}
 	ox, oy := padX, (h-txt.Rect.Dy())/2
@@ -102,14 +120,14 @@ func CallsignMask(callsign string, d Design) (*image.Alpha, error) {
 		for x := 0; x < txt.Rect.Dx(); x++ {
 			k := int(txt.AlphaAt(x, y).A)
 			i := m.PixOffset(ox+x, oy+y)
-			if d == DesignPlate {
+			if plate {
 				m.Pix[i] = uint8(int(m.Pix[i]) * (255 - k) / 255)
 			} else {
 				m.Pix[i] = uint8(k)
 			}
 		}
 	}
-	if d == DesignOutline {
+	if s == StyleOutline {
 		hollow(m, float64(h)*outlineStroke)
 	}
 	return m, nil

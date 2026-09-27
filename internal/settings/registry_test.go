@@ -499,6 +499,28 @@ func TestRegistry_WatermarkOpacity(t *testing.T) {
 	}
 }
 
+// The install-wide bug look (#1617): the maintainer's four, Text by default, on the Playback page.
+// A channel's policy.watermark.look overrides it.
+func TestRegistry_WatermarkLook(t *testing.T) {
+	s, ok := NewRegistry().Get("playout.watermark_look")
+	if !ok {
+		t.Fatal("playout.watermark_look not declared")
+	}
+	if s.Kind != KindEnum || s.EnvVar != "PLAYOUT_WATERMARK_LOOK" || s.Group != GroupPlayout || s.Advanced || s.Label == "" || s.Default != "text" {
+		t.Errorf("declaration %+v", s)
+	}
+	var values []string
+	for _, o := range s.Enum {
+		values = append(values, o.Value)
+	}
+	if !slices.Equal(values, []string{"plate", "text", "outline", "small-plate"}) {
+		t.Errorf("options %v", values)
+	}
+	if _, err := s.parse("fancy"); err == nil {
+		t.Error("accepted fancy")
+	}
+}
+
 func TestRegistry_ConnectionAndSecurityOverridesStayAdvanced(t *testing.T) {
 	r := NewRegistry()
 	for _, key := range []string{

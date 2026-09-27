@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,7 +36,7 @@ func TestSizeFor_EqualArea(t *testing.T) {
 }
 
 func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
-	mask, err := PlateMask("RETRO")
+	mask, err := CallsignMask("RETRO", StylePlate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,27 +83,30 @@ func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
 	}
 }
 
-// THE CANDIDATE DESIGNS (#1617) share the Plate's geometry, so each is the Plate's letters at the
-// Plate's size and position: Text is the knockout drawn positive with no plate, Outline is Text
-// hollowed to a stroke around each letter.
-func TestCallsignMask_CandidatesShareThePlatesLetters(t *testing.T) {
-	plate, err := PlateMask("RETRO")
-	if err != nil {
-		t.Fatal(err)
-	}
-	masks := map[Design]*image.Alpha{}
-	for _, d := range []Design{DesignPlate, DesignText, DesignOutline} {
-		if masks[d], err = CallsignMask("RETRO", d); err != nil {
-			t.Fatalf("%s: %v", d, err)
-		}
-		if masks[d].Rect != plate.Rect {
-			t.Errorf("%s: %v, want the Plate's %v", d, masks[d].Rect, plate.Rect)
+// THE FOUR STYLES (#1617) share the Plate's geometry, so each is the Plate's letters at the Plate's
+// size and position: Text is the knockout drawn positive with no plate, Outline is Text hollowed
+// to a stroke around each letter, and Small Plate draws the Plate itself.
+func TestCallsignMask_StylesShareThePlatesLetters(t *testing.T) {
+	masks := map[Style]*image.Alpha{}
+	for _, s := range Styles {
+		var err error
+		if masks[s], err = CallsignMask("RETRO", s); err != nil {
+			t.Fatalf("%s: %v", s, err)
 		}
 	}
-	if !bytes.Equal(masks[DesignPlate].Pix, plate.Pix) {
-		t.Error("DesignPlate is not the Plate")
+	plate := masks[StylePlate]
+	for s, m := range masks {
+		if m.Rect != plate.Rect {
+			t.Errorf("%s: %v, want the Plate's %v", s, m.Rect, plate.Rect)
+		}
 	}
-	text, outline := masks[DesignText], masks[DesignOutline]
+	if !bytes.Equal(masks[StyleSmallPlate].Pix, plate.Pix) {
+		t.Error("Small Plate does not draw the Plate")
+	}
+	if _, err := CallsignMask("RETRO", "fancy"); err == nil {
+		t.Error("an unknown style rendered")
+	}
+	text, outline := masks[StyleText], masks[StyleOutline]
 	var knocked, drawn, inside, hollow, stroke int
 	for i := range plate.Pix {
 		if plate.Pix[i] < 40 && i%plate.Stride > plate.Stride/10 && i%plate.Stride < plate.Stride*9/10 {
@@ -130,6 +134,20 @@ func TestCallsignMask_CandidatesShareThePlatesLetters(t *testing.T) {
 	// (~half its pixels at Geist Bold's stem width) and as much again outside.
 	if inside == 0 || hollow < inside/3 || stroke == 0 {
 		t.Errorf("Outline is not a hollow stroke: %d of %d letter pixels hollow, %d stroke pixels outside", hollow, inside, stroke)
+	}
+}
+
+// Small Plate is the Plate at 75% of the channel's size with no shadow (the maintainer's pick,
+// #1617); the other styles keep the channel's look with the soft shadow.
+func TestStyle_AdjustsTheChannelsLook(t *testing.T) {
+	channel := Look{Size: 0.08, Opacity: 0.55, Shadow: true}
+	for _, s := range []Style{StylePlate, StyleText, StyleOutline} {
+		if got := s.Adjust(channel); got != channel {
+			t.Errorf("%s: %+v, want the channel's %+v", s, got, channel)
+		}
+	}
+	if got, want := StyleSmallPlate.Adjust(channel), (Look{Size: 0.06, Opacity: 0.55}); math.Abs(got.Size-want.Size) > 1e-9 || got.Opacity != want.Opacity || got.Shadow {
+		t.Errorf("small-plate: %+v, want %+v", got, want)
 	}
 }
 

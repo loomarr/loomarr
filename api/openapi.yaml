@@ -11066,6 +11066,14 @@ components:
         image:
           description: Custom bug image hash (upload with role watermark); omitted is automatic
           type: string
+        look:
+          description: "Style of the generated callsign bug: plate, text (the Plate's letters, no plate), outline (hollow letters) or small-plate (75% size, no shadow); omitted is the install setting playout.watermark_look (default text)"
+          enum:
+            - plate
+            - text
+            - outline
+            - small-plate
+          type: string
         margin:
           description: Inset from the picture edges as a share of the frame width and height, 0-0.2; omitted is 0.05
           format: double
