@@ -29,7 +29,7 @@ func (s *tuneSessions) Stop()                      { s.stopped = "*" }
 
 func TestOriginTuneReportsUnavailableDelivery(t *testing.T) {
 	t.Parallel()
-	origin := newOrigin(nil, &tuneSessions{}, nil)
+	origin := newOrigin(&tuneSessions{}, nil)
 	_, err := origin.Tune(context.Background(), TuneRequest{
 		ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS,
 	})
@@ -67,7 +67,7 @@ func TestOriginTuneHidesLiveDeliveryMechanisms(t *testing.T) {
 		t.Fatal(err)
 	}
 	hls := &tuneHLS{path: manifestPath}
-	origin := newOrigin(nil, sessions, hls)
+	origin := newOrigin(sessions, hls)
 
 	stream, err := origin.Tune(context.Background(), TuneRequest{
 		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
@@ -138,7 +138,7 @@ func (s *quiescingSessions) Stop()            { s.once.Do(func() { close(s.strea
 func TestOriginQuiesceEndsActiveStreamAndPermanentlyClosesAdmission(t *testing.T) {
 	t.Parallel()
 	sessions := &quiescingSessions{stream: make(chan []byte)}
-	origin := newOrigin(nil, sessions, nil)
+	origin := newOrigin(sessions, nil)
 
 	presentation, err := origin.Tune(context.Background(), TuneRequest{
 		ChannelID: "ch-one", Plan: PlanFull, Delivery: DeliveryMPEGTS,
@@ -229,7 +229,7 @@ func TestOriginStopAllOrdersAgainstTuneAdmission(t *testing.T) {
 	available := atomic.Bool{}
 	available.Store(true)
 	sessions := &blockingTuneSessions{entered: make(chan struct{}), release: make(chan struct{})}
-	origin := newOrigin(nil, sessions, nil)
+	origin := newOrigin(sessions, nil)
 	origin.available = available.Load
 	tuned := make(chan error, 1)
 	go func() {

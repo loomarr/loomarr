@@ -14,12 +14,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/prepared"
 )
 
 const (
 	capabilityEvidenceVersion = 1
-	capabilityEvidenceName    = prepared.CapabilityEvidenceFile
+	// capabilityEvidenceName and capabilityEvidenceTempPrefix keep the file names the evidence has
+	// always had, so an install that already measured its host reads the same file.
+	capabilityEvidenceName       = ".host-capability-v1.json"
+	capabilityEvidenceTempPrefix = ".host-capability-"
 	capabilityEvidenceMaxAge  = 7 * 24 * time.Hour
 	capabilityValidationSecs  = 1
 	capabilityIdentityTimeout = 250 * time.Millisecond
@@ -166,7 +168,7 @@ func writeEvidence(root, name string, v any) error {
 	if err != nil {
 		return fmt.Errorf("playout: encode capability evidence: %w", err)
 	}
-	tmp, err := os.CreateTemp(root, prepared.CapabilityEvidenceTempPrefix+"*")
+	tmp, err := os.CreateTemp(root, capabilityEvidenceTempPrefix+"*")
 	if err != nil {
 		return fmt.Errorf("playout: create capability evidence: %w", err)
 	}

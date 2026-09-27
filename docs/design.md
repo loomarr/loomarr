@@ -124,8 +124,8 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `bgexec` | 11 | — |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
-| `diagnostics` | 8 | `storagegovernor` |
-| `filler` | 11 | `bgexec`, `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `storagegovernor`, `taxonomy` |
+| `diagnostics` | 7 | — |
+| `filler` | 11 | `bgexec`, `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
 | `filleradmission` | 7 | — |
 | `fillerbakeoff` | 9 | `bgexec`, `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
 | `fillercorpus` | 7 | — |
@@ -149,7 +149,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 18 | `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
-| `storagegovernor` | 5 | — |
 | `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 6 | — |
@@ -192,7 +191,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Advertises a running Loomarr HTTP listener to unpaired local TV clients.
 - **`logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
-- **`media`** · 3 importers
+- **`media`** · 2 importers
   Owns host-wide resources shared by live and background media work.
 - **`playout/packager`** · 1 importer
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
@@ -210,7 +209,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Validates the repository's release publication policy.
 - **`secretprotection`** · 3 importers
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
-- **`storagegovernor`** · 5 importers
+- **`storagegovernor`** · 4 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
 - **`taxonomy`** · 6 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
@@ -237,7 +236,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`bgexec`** · 11 importers · → `proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
-- **`diagnostics`** · 8 importers · → `storagegovernor`
+- **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
 - **`fillerdecision`** · 4 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
@@ -258,8 +257,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`plannerreference`** · → `quality`
   Binds a planner scorecard to the exact local model, runtime, host, and cold/warm protocol used to produce it.
-- **`prepared`** · 4 importers · → `diagnostics`, `media`, `storagegovernor`
-  Owns immutable, reusable playout publications.
 - **`schedule`** · 18 importers · → `holidayvocab`, `inventory`, `provision`
   Scheduler domain (design §9): the Channel identity, the DesiredLineup / Slot model, and the *pure* computation that turns an approved lineup plus live availability into ordered desired programming.
 
@@ -271,7 +268,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
-- **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `prepared`, `provision`, `schedule`
+- **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
@@ -393,7 +390,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 - **`fillercandidatepool/build`** · → `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerquarantine`, `fillerreview`
   Composes the independent corpus, quarantine, review, and prior-exposure authorities into one replacement candidate pool.
-- **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `prepared`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+- **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/moviecollectionsfixture`** · → `moviecollections`
   The shared deterministic source for movie-collection resolver tests.
@@ -422,12 +419,12 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 14**
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `prepared`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 **Layer 15**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -622,24 +619,9 @@ stale stream ordering cannot authorize an audio map that could dead-air playout.
 only when their source revision still matches; changed bytes reject the stale measurement.
 
 Inventory owns what a source is, not credentials for opening it. `ResolveSource` returns stable source
-identity/revision, safe observations, and a protected locator. Prepared output uses a separate
-application adapter that opens a durable provider-neutral selection just in time:
-
-```go
-type SourceAccess interface {
-    OpenInput(context.Context, prepared.Source) (prepared.Input, error)
-}
-```
-
-`prepared.Source` stores only the stable Inventory item/source identity, observed revision, selected
-audio track, and rendition. Source Access resolves that identity against the latest Inventory
-observation before every background package attempt. For a Library origin it constructs a fresh
-authenticated original-stream request; for a local origin it validates the protected path against its
-revision facts. The resulting `prepared.Input` is transient and rejects serialization. Prepared
-readiness stores only the durable selection and publication identity. Its control-plane planner
-invalidates a binding when Inventory has observed a different revision, while tune-time lookup performs
-no Library request, source probe, hashing, or FFmpeg startup. A missing or stale inventory/prepared
-result remains an immediate live-playout fallback.
+identity/revision, safe observations, and a protected locator. (Prepared media's background source
+adapter, `SourceAccess.OpenInput`, was retired with prepared media in #1512 phase 4: every tune is
+served live by the channel packager.)
 
 ### Cached series episodes (§9 series expansion)
 
@@ -11526,8 +11508,8 @@ Notifications → Add provider**.
 | `PLAYOUT_AUDIO_LANGUAGE` | `eng` (default) — ISO 639-2 code for the preferred audio track. A **preference**: an optional map plus a first-track fallback, so a file with no track in that language still gets audio rather than failing to encode. Empty ⇒ ffmpeg's own choice, which picks the track with the **most channels** and ignores language entirely — that is how a 5.1 Russian dub beats a 2.0 English track (§9.1). |
 | `PLAYOUT_FFMPEG_PATH` | `ffmpeg` — the binary playout executes. Deliberately **separate from `INGEST_FFMPEG_PATH`**, though ⚠ **not for the reason this row used to give** (it cited the filler sidecar bundling its own ffmpeg in a different image — there is one image now, §16, so that rationale died with the sidecar). The live reason is that the two fail differently: playout's ffmpeg is a runtime dependency of a channel that is **on air**, ingest's is a dependency of a download nobody is watching, so repointing one must not be able to break the other. Advanced; the default is right whenever ffmpeg is on `PATH`. |
 | `PLAYOUT_QUALITY_TIER` | `balanced` (default) / `efficient` / `quality` — the picture-vs-channel-count target. Resolved at each program boundary against measured capacity and current load, so quality adapts as channels come and go rather than being fixed per channel (§9.1). |
-| `PLAYOUT_PREPARED_DIR` | `/data/prepared` — persistent immutable prepared publications shared across Channels and restarts. Separate from `PLAYOUT_HLS_DIR`, which is viewer-scoped scratch. Read at construction; changing it requires restart so keyed assets cannot split across roots. |
-| `PLAYOUT_PREPARED_BUDGET_GB` | `512` — soft cap for complete prepared publications. The minute-level preparation pass evicts cold whole publications after readiness work; anything used in the last fifteen minutes remains protected even when that leaves the store temporarily over budget. Hot-applies without restart (§9.1 V56). |
+| `PLAYOUT_PREPARED_DIR` | **Retired (#1512 phase 4)** with prepared media; ignored if still set. |
+| `PLAYOUT_PREPARED_BUDGET_GB` | **Retired (#1512 phase 4)** with prepared media; ignored if still set. |
 | `PLAYOUT_MAX_CHANNELS` | `0` (automatic) — use the encoder trial's measured concurrent-transcode capacity. A positive value is an optional safety cap and may only lower that measurement, never raise it. A test pattern encodes cheaper than film grain, so lower the cap if real content cannot sustain the measured budget. |
 | `PLAYOUT_TOKEN` | **Generated secret** (§11 device auth), viewable because it must be pasted into a tuner/listings URL by hand. Signs every segment request so only your media server can pull a stream. Distinct from `API_TOKEN`: that is break-glass **admin** with full authority; this grants nothing beyond reading streams. |
 

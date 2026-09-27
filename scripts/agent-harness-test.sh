@@ -70,10 +70,8 @@ printf '%s\n' "$primary" | grep -q 'grafana.*http://localhost:3000'
 secondary="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" show)"
 printf '%s\n' "$secondary" | grep -q 'database override.*\.agent-data/loomarr.db'
 printf '%s\n' "$secondary" | grep -q 'images override.*\.agent-data/images'
-printf '%s\n' "$secondary" | grep -q 'prepared override.*\.agent-data/prepared'
 printf '%s\n' "$secondary" | grep -q 'public URL override.*http://localhost:'
 secondary_exports="$(LOOMARR_REPO_ROOT="$TMP-wt" "$SCRIPT_DIR/dev-env.sh" export)"
-printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PREPARED_DIR=.*\.agent-data/prepared"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_IMAGES_DIR=.*\.agent-data/images"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_DIAGNOSTICS_DIR=.*\.agent-data/diagnostics"
 printf '%s\n' "$secondary_exports" | grep -q "LOOMARR_AGENT_PUBLIC_URL=.*http://localhost:"
@@ -90,7 +88,6 @@ if printf '%s\n' "$(LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/dev-env.sh" export)" |
 	echo 'agent-harness-test: primary worktree enabled automatic dev login' >&2
 	exit 1
 fi
-grep -q 'PLAYOUT_PREPARED_DIR=.*LOOMARR_AGENT_PREPARED_DIR' "$SCRIPT_DIR/../.air.toml"
 grep -q 'IMAGES_DIR=.*LOOMARR_AGENT_IMAGES_DIR' "$SCRIPT_DIR/../.air.toml"
 grep -q 'DIAGNOSTICS_DIR=.*LOOMARR_AGENT_DIAGNOSTICS_DIR' "$SCRIPT_DIR/../.air.toml"
 grep -q 'SERVER_PUBLIC_URL=.*LOOMARR_AGENT_PUBLIC_URL' "$SCRIPT_DIR/../.air.toml"

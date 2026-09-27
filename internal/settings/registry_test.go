@@ -462,7 +462,7 @@ func TestRegistry_PlaybackProgressiveDisclosure(t *testing.T) {
 		}
 	}
 
-	for _, key := range []string{"playout.encoder", "playout.ffmpeg_path", "playout.hls_dir", "playout.prepared_dir", "playout.prepared_budget_gb"} {
+	for _, key := range []string{"playout.encoder", "playout.ffmpeg_path", "playout.hls_dir"} {
 		s, ok := r.Get(key)
 		if !ok {
 			t.Fatalf("%s not declared", key)

@@ -41,7 +41,6 @@ type channelBuild struct {
 	checkpoint             func(context.Context) (backendtransition.Snapshot, error)
 	playoutObserver        api.PlayoutObserver
 	playoutCapability      func() playout.Capacity
-	preparedObserver       api.PreparedObserver
 	playout                api.Playout
 	playoutResolverService api.PlayoutResolver
 	encodePool             *media.EncodePool
@@ -123,8 +122,6 @@ func buildChannels(
 	// running" rather than half-serving when there is no store or no media server.
 	var playoutObserver api.PlayoutObserver
 	var playoutCapability func() playout.Capacity
-	// Prepared readiness is observed through the planner itself; the API only snapshots it.
-	var preparedObserver api.PreparedObserver
 	// The in-app HLS repackager (§9.1 Watch, V46). Built beside the session manager below; nil
 	// until then so the /playout/hls routes report "not running" on an unwired install.
 	var playoutSvc api.Playout
@@ -285,8 +282,7 @@ func buildChannels(
 			captureResolver: capturePlayoutResolver, library: libraryClient, secrets: secrets,
 			readSecret: readGeneratedSecret, events: eventBus, jobs: jobReg, layout: fillerLayout,
 			channels: channelEngine, liveTVConnector: liveTVConnector, backendView: backendView,
-			resolveDesiredBackend: resolveDesiredBackend, appliedBackend: appliedBackendContext,
-			transportBackend: transportBackendContext, log: log,
+			resolveDesiredBackend: resolveDesiredBackend, log: log,
 			processDiagnostics: processDiagnostics,
 			storageGovernor:    storageGovernor,
 			metrics:            metricRecorder,
@@ -297,7 +293,7 @@ func buildChannels(
 		if err != nil {
 			return channelBuild{}, err
 		}
-		playoutObserver, preparedObserver = playoutBuilt.observer, playoutBuilt.preparedObserver
+		playoutObserver = playoutBuilt.observer
 		playoutCapability = playoutBuilt.capability
 		playoutSvc, playoutResolverSvc = playoutBuilt.service, playoutBuilt.resolverService
 		encodePool, playoutGuideSvc = playoutBuilt.encodePool, playoutBuilt.guide
@@ -321,7 +317,7 @@ func buildChannels(
 		appliedBackend: appliedBackendContext, checkpoint: checkpointSnapshot,
 		playoutObserver:   playoutObserver,
 		playoutCapability: playoutCapability,
-		preparedObserver:  preparedObserver, playout: playoutSvc,
+		playout:           playoutSvc,
 		playoutResolverService: playoutResolverSvc, encodePool: encodePool, resourceBudget: resourceBudget,
 		playoutGuide: playoutGuideSvc, playoutResolver: playoutRes,
 		setResidentVRAM: setResidentVRAM,

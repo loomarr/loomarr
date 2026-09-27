@@ -52,7 +52,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 	backendController := deps.channels.backendController
 	refreshBackendSettings, desiredBackend := deps.channels.refreshBackendSettings, deps.channels.desiredBackend
 	checkpointSnapshot := deps.channels.checkpoint
-	playoutObserver, preparedObserver := deps.channels.playoutObserver, deps.channels.preparedObserver
+	playoutObserver := deps.channels.playoutObserver
 	playoutCapability := deps.channels.playoutCapability
 	playoutSvc, playoutResolverSvc := deps.channels.playout, deps.channels.playoutResolverService
 	playoutGuideSvc := deps.channels.playoutGuide
@@ -185,7 +185,6 @@ func buildHTTP(deps httpBuild) http.Handler {
 		// effect without a restart (§11 rotation).
 		PlayoutObserver:   playoutObserver,
 		PlayoutCapability: playoutCapability,
-		PreparedObserver:  preparedObserver,
 		// The in-app HLS repackager for the Watch surface (§9.1, V46). Nil ⇒ /playout/hls 501s.
 		Playout:         playoutSvc,
 		PlayoutResolver: playoutResolverSvc,

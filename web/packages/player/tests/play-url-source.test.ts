@@ -171,7 +171,9 @@ describe("play URL source warm", () => {
       fetch: request as unknown as typeof fetch,
     });
 
-  it("probes the prepared origin first and prefetches only the init and newest segment", async () => {
+  // Prepared media is retired (#1512 phase 4): the warm is one speculative live start, never a
+  // prepared probe first.
+  it("warms live under speculative admission and prefetches only the init and newest segment", async () => {
     const request = vi
       .fn()
       .mockResolvedValueOnce(mint())
@@ -181,27 +183,9 @@ describe("play URL source warm", () => {
 
     const warmed = await port(request).warm?.(channel, {}, signal);
 
-    expect(paths(request)).toEqual(["play-url", "master.m3u8?mode=prepared", "init-b.mp4", "seg-2.m4s"]);
+    expect(paths(request)).toEqual(["play-url", "master.m3u8?mode=warm", "init-b.mp4", "seg-2.m4s"]);
     expect(warmed?.warmed).toBe(true);
     expect(request.mock.calls[1]?.[1]).toMatchObject({ method: "GET", signal });
-  });
-
-  it("falls back to a speculative live warm when nothing is prepared (204)", async () => {
-    const request = vi
-      .fn()
-      .mockResolvedValueOnce(mint())
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(new Response(manifest, { status: 200 }))
-      .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
-
-    const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);
-
-    expect(paths(request).slice(0, 3)).toEqual([
-      "play-url",
-      "master.m3u8?mode=prepared",
-      "master.m3u8?mode=warm",
-    ]);
-    expect(warmed?.warmed).toBe(true);
   });
 
   it("returns the exact signed URL for the real tune, without the warm-mode hint", async () => {
@@ -235,7 +219,6 @@ describe("play URL source warm", () => {
     const request = vi
       .fn()
       .mockResolvedValueOnce(mint())
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response("busy", { status: 503 }));
 
     const warmed = await port(request).warm?.(channel, {}, new AbortController().signal);

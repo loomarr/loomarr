@@ -604,7 +604,7 @@ func (f *fakeVariantOrigin) MediaPlaylist(_ context.Context, _ string, _ EncodeP
 // transport authenticates its URIs, and never looks for it on disk. Other assets are still files.
 func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
 	pk := &fakeVariantOrigin{fakeHLSOrigin: fakeHLSOrigin{assets: map[string]string{}}}
-	o := newOrigin(nil, nil, pk)
+	o := newOrigin(nil, pk)
 
 	asset, ok, err := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr.m3u8")
 	if err != nil || !ok || !asset.Playlist {

@@ -378,37 +378,37 @@ func TestPlayout_UnknownPathDoesNotServeTheSPA(t *testing.T) {
 	}
 }
 
-// Prepared publications identify an immutable asset with one opaque path segment. Exercise the
-// real router here: a handler-only test can inject a slash into PathValue manually even though the
-// registered `{asset}` route would never match that URL, which is how the black-screen bug escaped.
-func TestPlayoutHLS_PreparedAssetMatchesTheRegisteredRoute(t *testing.T) {
-	file, err := os.CreateTemp(t.TempDir(), "prepared-*.mp4")
+// A packager asset is one path segment beside the master. Exercise the real router here: a
+// handler-only test can inject a slash into PathValue manually even though the registered
+// `{asset}` route would never match that URL, which is how a black-screen bug once escaped.
+func TestPlayoutHLS_PackagerAssetMatchesTheRegisteredRoute(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "init-*.mp4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := file.WriteString("prepared init"); err != nil {
+	if _, err := file.WriteString("packager init"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := file.Seek(0, 0); err != nil {
 		t.Fatal(err)
 	}
 	f := &fakePlayoutSessions{
-		asset:   playout.Asset{Content: file, Modified: time.Unix(1_000, 0), Immutable: true},
+		asset:   playout.Asset{Content: file, Modified: time.Unix(1_000, 0)},
 		assetOK: true,
 	}
 	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
 	srv, _ := harness.Server, harness.Store
-	const token = "p-aGVsbG8.mp4"
+	const token = "1080p-h264-sdr-init.mp4"
 
 	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/"+token+"?token="+playoutToken)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200 from the registered single-segment asset route", resp.StatusCode)
 	}
 	if got := resp.Header.Get("Content-Type"); got != "video/mp4" {
-		t.Fatalf("Content-Type = %q, want video/mp4 retained by the opaque token suffix", got)
+		t.Fatalf("Content-Type = %q, want video/mp4 from the init suffix", got)
 	}
 	body, err := io.ReadAll(resp.Body)
-	if err != nil || string(body) != "prepared init" {
+	if err != nil || string(body) != "packager init" {
 		t.Fatalf("body = %q, err=%v", body, err)
 	}
 	f.mu.Lock()
@@ -431,6 +431,27 @@ func TestPlayoutHLS_WarmModePassesRegisteredRouteValidation(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, want 200 from registered warm route: %s", resp.StatusCode, body)
+	}
+}
+
+// The retired prepared mode stays in the route contract (#1512 phase 4): a client built before the
+// retirement still probes with it, and a 422 from the enum would read as a failure, not "nothing
+// prepared". Through the registered route it answers 204 and starts nothing.
+func TestPlayoutHLS_RetiredPreparedModeAnswersNoContent(t *testing.T) {
+	f := &fakePlayoutSessions{}
+	harness := newPlayoutHarness(t, playoutHarnessConfig{Sessions: f})
+	srv, st := harness.Server, harness.Store
+	seedChannel(t, st, "ch1", "Channel One", 1, "internal")
+
+	resp := getPlayout(t, srv, "/v1/playout/hls/ch1/master.m3u8?token="+playoutToken+"&mode=prepared")
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 204 from the retired prepared mode: %s", resp.StatusCode, body)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.tunes != 0 {
+		t.Fatalf("mode=prepared tuned the channel %d times", f.tunes)
 	}
 }
 

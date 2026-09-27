@@ -366,6 +366,16 @@ RETIRED=(
   # to choose between. A persisted row is harmless legacy data.
   'PLAYOUT_PACKAGER|#1512 2c: the channel packager is the only live playout path'
   '"playout.packager"|#1512 2c: the channel packager is the only live playout path'
+  # #1512 phase 4: prepared media is retired. Every tune is live, so nothing is prepared ahead of a
+  # viewer and there is no library to place or bound. Persisted rows are harmless legacy data.
+  'PLAYOUT_PREPARED_DIR|#1512 4: prepared media is retired'
+  '"playout.prepared_dir"|#1512 4: prepared media is retired'
+  'PLAYOUT_PREPARED_BUDGET_GB|#1512 4: prepared media is retired'
+  '"playout.prepared_budget_gb"|#1512 4: prepared media is retired'
+  '"playout-prepare"|#1512 4: prepared media is retired; the job is gone'
+  'JOB_PLAYOUT_PREPARE_SCHEDULE|#1512 4: prepared media is retired; the job is gone'
+  '"job.playout_prepare.schedule"|#1512 4: prepared media is retired; the job is gone'
+  'LOOMARR_AGENT_PREPARED_DIR|#1512 4: prepared media is retired; lanes have no prepared library'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than

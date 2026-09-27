@@ -101,7 +101,7 @@ describe("channel tuner", () => {
     expect(result.current.currentTitle).toBe("The First Feature");
   });
 
-  it("reuses the exact signed URL and warmed state when tuning to a prepared neighbor", async () => {
+  it("reuses the exact signed URL and warmed state when tuning to a warmed neighbor", async () => {
     const mark = vi.spyOn(performance, "mark");
     const warmChannel = vi.fn().mockResolvedValue({
       url: "/v1/playout/hls/ch-30/master.m3u8?sig=one",

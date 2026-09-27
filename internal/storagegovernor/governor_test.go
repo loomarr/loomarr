@@ -199,12 +199,12 @@ func TestDomainsShareHostReservationsWithoutSharingSoftUsage(t *testing.T) {
 			"/prepared": {ID: "disk-a", TotalBytes: 128 * storagegovernor.GiB, FreeBytes: 30 * storagegovernor.GiB},
 		},
 		managed: map[string]map[storagegovernor.Domain]int64{
-			"disk-a": {storagegovernor.DomainFiller: storagegovernor.GiB, storagegovernor.DomainPrepared: 9 * storagegovernor.GiB},
+			"disk-a": {storagegovernor.DomainFiller: storagegovernor.GiB, storagegovernor.DomainDiagnostics: 9 * storagegovernor.GiB},
 		},
 	}
 	governor := storagegovernor.New(m, fillerPolicy(10*storagegovernor.GiB))
 	prepared, decision := governor.Reserve(context.Background(), storagegovernor.Request{
-		Path: "/prepared", Domain: storagegovernor.DomainPrepared, EstimatedBytes: 10 * storagegovernor.GiB,
+		Path: "/prepared", Domain: storagegovernor.DomainDiagnostics, EstimatedBytes: 10 * storagegovernor.GiB,
 	})
 	if prepared == nil || !decision.Allowed {
 		t.Fatalf("prepared reserve = %+v", decision)

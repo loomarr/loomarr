@@ -302,7 +302,7 @@ func New(options Options) *Recorder {
 	for _, stage := range []string{"parent", "program", "filler", "hls", "probe", "other"} {
 		playoutMetrics.processFailure.WithLabelValues(stage)
 	}
-	for _, reason := range []string{"hardware_to_software", "prepared_to_live", "file_to_stream", "other"} {
+	for _, reason := range []string{"hardware_to_software", "file_to_stream", "other"} {
 		playoutMetrics.fallbacks.WithLabelValues(reason)
 	}
 	for _, level := range []string{"exact", "widened", "audience", "bumper_card", "other"} {
@@ -567,7 +567,7 @@ func (r *Recorder) PlayoutProcessFailure(stage string) {
 
 // PlayoutFallback records one bounded degradation transition.
 func (r *Recorder) PlayoutFallback(reason string) {
-	reason = closedLabel(reason, "hardware_to_software", "prepared_to_live", "file_to_stream")
+	reason = closedLabel(reason, "hardware_to_software", "file_to_stream")
 	r.playout.fallbacks.WithLabelValues(reason).Inc()
 }
 
