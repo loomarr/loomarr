@@ -126,3 +126,18 @@ dev-fe: ## frontend with HMR on this worktree's isolated port, proxying its back
 .PHONY: seed
 seed: ## populate a dev store via the real domain paths (approval gate honored — AGENTS.md)
 	DATABASE_URL=$${DATABASE_URL:-sqlite://./loomarr-dev.db} go run ./cmd/seed
+
+# The demo library (#1587): invented titles, generated art and video, no real media anywhere.
+# Its stand-in media server listens on 22000 + this worktree's slot, beside the other dev ports.
+DEMO_LIBRARY_ENV = eval "$$(./scripts/dev-env.sh export)"; \
+	  export DEMO_LIBRARY_ADDR=$${DEMO_LIBRARY_ADDR:-127.0.0.1:$$((22000 + $${LOOMARR_AGENT_SLOT:-0}))}
+
+.PHONY: demo-library
+demo-library: ## serve the demo library's Emby-compatible stand-in (generates its clips and art on first run)
+	@$(DEMO_LIBRARY_ENV); go run ./cmd/demo-library serve
+
+.PHONY: demo-seed
+demo-seed: ## point this worktree's backend at the running demo library and create the demo channels (idempotent)
+	@$(DEMO_LIBRARY_ENV); \
+	  BASE=$${BASE:-$$LOOMARR_API} DEMO_WEB_URL=$${DEMO_WEB_URL:-http://localhost:$$LOOMARR_FE_PORT} \
+	  DATABASE_URL=$${DATABASE_URL:-$$LOOMARR_AGENT_DATABASE_URL} go run ./cmd/demo-library seed

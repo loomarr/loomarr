@@ -159,6 +159,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make dev-gpu` |  | dev compose stack with NVIDIA transcode overlay (Linux + nvidia-container-toolkit) |
 | `make dev-fe` |  | frontend with HMR on this worktree's isolated port, proxying its backend |
 | `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
+| `make demo-library` |  | serve the demo library's Emby-compatible stand-in (generates its clips and art on first run) |
+| `make demo-seed` |  | point this worktree's backend at the running demo library and create the demo channels (idempotent) |
 
 ## Store conformance (Phase 3/4)
 
