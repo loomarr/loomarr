@@ -45,10 +45,10 @@ func TestWatermarkHasAVisibleShape(t *testing.T) {
 	b := img.Bounds()
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			switch _, _, _, a := img.At(x, y).RGBA(); {
-			case a == 0xffff:
+			switch _, _, _, a := img.At(x, y).RGBA(); a {
+			case 0xffff:
 				opaque++
-			case a == 0:
+			case 0:
 				clear++
 			}
 		}
