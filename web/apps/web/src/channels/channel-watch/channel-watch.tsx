@@ -154,6 +154,15 @@ const ChannelWatch = ({
   // play at all, rather than something waiting for permission to start.
   const [active, setActive] = useState(true);
 
+  // Whether the player holds a picture: once any channel has played here, a switch leaves its last
+  // frame held in the <video> while the next one loads (VideoPlayer's held poster), and the tuner's
+  // wash drains it. ChannelWatch stays mounted across a switch, so this outlives the channel prop.
+  // Before the first frame (a cold start) there is nothing under the loader to drain.
+  const [heldFrame, setHeldFrame] = useState(false);
+  useEffect(() => {
+    if (player.status === "playing") setHeldFrame(true);
+  }, [player.status]);
+
   const paused = channel.status === "paused" || channel.status === "detached";
 
   // The pickers' options are the tracks the airing programme actually carries — fetched, never
@@ -259,6 +268,7 @@ const ChannelWatch = ({
   // the schedule (the player has no source for programme time, so channel-watch derives it).
   const timeLeft = programmeTime(airings, player.liveTransport.state.viewerTimeMs);
   const osdChannel = tuner?.requestedChannel ?? channel;
+  const tuning = player.status === "loading";
 
   // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
   // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
@@ -329,13 +339,15 @@ const ChannelWatch = ({
       // an error shows its own message below, and a playing stream needs no overlay.
       // Under it, the tuned channel's still (decoded on demand for a cold channel) replaces the
       // previous channel's held frame, so the picture already belongs to the channel being tuned.
+      // The loader's wash covers both (#1620): it drains a held frame on a switch, and a still that
+      // lands later arrives already under the snow, so the readout never sits on a picture.
       overlay={
-        player.status === "loading" ? (
+        tuning ? (
           <>
             {player.stillURL && (
               <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
             )}
-            <TunerLoader />
+            <TunerLoader channel={osdChannel} heldFrame={heldFrame} />
           </>
         ) : undefined
       }
@@ -357,12 +369,14 @@ const ChannelWatch = ({
           <div className="flex flex-col gap-3 p-3">
             <div className="relative">
               {playerEl}
-              {(player.status === "loading" || tuner?.acknowledging) && tuner && (
+              {/* While the wash is up, its centred channel line is the visible readout, so the OSD
+                  card would only repeat it; it stays as the screen-reader announcement. */}
+              {(tuning || tuner?.acknowledging) && tuner && (
                 <TunerOSD
                   number={osdChannel.number}
                   name={osdChannel.name}
                   currentTitle={tuner.currentTitle}
-                  className="absolute top-4 left-4 z-[2]"
+                  className={tuning ? "sr-only" : "absolute top-4 left-4 z-[2]"}
                 />
               )}
             </div>

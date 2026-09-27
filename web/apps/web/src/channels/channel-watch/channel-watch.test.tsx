@@ -287,3 +287,58 @@ describe("ChannelWatch — Open in media server hand-off", () => {
     expect(screen.queryByRole("button", { name: /Open in/ })).not.toBeInTheDocument();
   });
 });
+
+// The switch readout (#1620 B4). The wash drains the picture under the loader only when there IS one:
+// the previous channel's held frame. A cold start has nothing to drain.
+describe("ChannelWatch switch readout", () => {
+  const next = channel({ id: "ch-2", name: "Saturday Cartoons", number: 12, status: "live" });
+  const tunerFor = (requestedChannel?: typeof next) => ({
+    canSurf: true,
+    requestedChannel,
+    ready: vi.fn(),
+    step: vi.fn(),
+    retry: vi.fn(),
+  });
+  const wash = () => document.querySelector<HTMLElement>("[data-wash]");
+
+  beforeEach(() => {
+    stubTracks();
+  });
+
+  it("drains the held frame when switching from a channel that played", async () => {
+    hls.status = "playing";
+    const { rerender } = render(
+      <ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor()} />,
+      { wrapper: makeWrapper() },
+    );
+    await screen.findByRole("button", { name: "Audio" });
+
+    hls.status = "loading";
+    rerender(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />);
+
+    await waitFor(() => expect(wash()).toHaveAttribute("data-wash", "draining"));
+  });
+
+  it("does not drain on a cold start, where no frame is held", async () => {
+    hls.status = "loading";
+    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+      wrapper: makeWrapper(),
+    });
+
+    await screen.findByText("Tuning in…");
+    expect(wash()).toHaveAttribute("data-wash", "rest");
+  });
+
+  it("names the channel in the readout and keeps the OSD for screen readers only", async () => {
+    hls.status = "loading";
+    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+      wrapper: makeWrapper(),
+    });
+
+    const osd = await screen.findByRole("status");
+    expect(osd).toHaveTextContent("CH 12");
+    // The wash's centred channel line is the visible readout; the card would repeat it on screen.
+    expect(osd).toHaveClass("sr-only");
+    expect(wash()?.closest("[aria-hidden]")).toHaveTextContent("CH 12Saturday Cartoons");
+  });
+});

@@ -18,4 +18,12 @@ describe("TvStatic", () => {
     expect(layer.className).toContain("hidden");
     expect(layer.className).toContain("motion-safe:block");
   });
+
+  it("keeps the switch wash as still snow under reduced motion; only its flicker is gated", () => {
+    const { container } = render(<TvStatic variant="wash" />);
+    const layer = container.firstElementChild as HTMLElement;
+    expect(layer).toHaveAttribute("aria-hidden", "true");
+    expect(layer.classList.contains("hidden")).toBe(false);
+    expect(container.querySelector("svg")?.getAttribute("class")).toContain("motion-safe:animate-tv-snow");
+  });
 });
