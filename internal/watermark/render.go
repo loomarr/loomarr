@@ -22,6 +22,7 @@ package watermark
 import (
 	_ "embed"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"math"
@@ -58,11 +59,32 @@ type Look struct {
 // ErrEmpty means the source image has no visible pixels.
 var ErrEmpty = errors.New("watermark: the image has no visible shape")
 
+// Design is a typographic bug's design. DesignPlate is the approved look. DesignText and
+// DesignOutline are CANDIDATES for the maintainer's review (#1617): no policy field selects them
+// until one is approved.
+type Design string
+
+const (
+	DesignPlate   Design = "plate"   // the callsign knocked out of a rounded plate (approved)
+	DesignText    Design = "text"    // candidate: the Plate's letters with no plate
+	DesignOutline Design = "outline" // candidate: the Plate's letters as a hollow stroke
+)
+
+// outlineStroke is DesignOutline's stroke width as a share of the canvas height: ~2 px at 1080p.
+const outlineStroke = 0.05
+
 // PlateMask is the "Plate" typographic bug: the callsign knocked out of a rounded plate.
-func PlateMask(callsign string) (*image.Alpha, error) {
+func PlateMask(callsign string) (*image.Alpha, error) { return CallsignMask(callsign, DesignPlate) }
+
+// CallsignMask is a typographic bug in a design. Every design draws on the Plate's canvas, so the
+// letters keep the Plate's size and position and the equal-area rule sizes every design alike.
+func CallsignMask(callsign string, d Design) (*image.Alpha, error) {
 	callsign = strings.TrimSpace(callsign)
 	if callsign == "" {
 		return nil, errors.New("watermark: empty callsign")
+	}
+	if d != DesignPlate && d != DesignText && d != DesignOutline {
+		return nil, fmt.Errorf("watermark: unknown design %q", d)
 	}
 	h := 100 * supersample
 	txt, err := textMask(callsign, float64(h)*0.52)
@@ -72,16 +94,41 @@ func PlateMask(callsign string) (*image.Alpha, error) {
 	padX := int(float64(h) * 0.30)
 	w := txt.Rect.Dx() + 2*padX
 	m := image.NewAlpha(image.Rect(0, 0, w, h))
-	fillRoundedRect(m, float64(h)*0.22)
+	if d == DesignPlate {
+		fillRoundedRect(m, float64(h)*0.22)
+	}
 	ox, oy := padX, (h-txt.Rect.Dy())/2
 	for y := 0; y < txt.Rect.Dy(); y++ {
 		for x := 0; x < txt.Rect.Dx(); x++ {
 			k := int(txt.AlphaAt(x, y).A)
 			i := m.PixOffset(ox+x, oy+y)
-			m.Pix[i] = uint8(int(m.Pix[i]) * (255 - k) / 255)
+			if d == DesignPlate {
+				m.Pix[i] = uint8(int(m.Pix[i]) * (255 - k) / 255)
+			} else {
+				m.Pix[i] = uint8(k)
+			}
 		}
 	}
+	if d == DesignOutline {
+		hollow(m, float64(h)*outlineStroke)
+	}
 	return m, nil
+}
+
+// hollow turns a filled shape into a stroke of width s centred on its edge. A blur of standard
+// deviation σ puts a straight edge's signed distance x at Φ(x/σ), so the band ±s/2 is where the
+// blurred value lies between Φ(∓1.645) = 0.05 and 0.95; the ramps anti-alias it.
+func hollow(m *image.Alpha, s float64) {
+	w, h := m.Rect.Dx(), m.Rect.Dy()
+	p := make([]float64, w*h)
+	for i := range p {
+		p[i] = float64(m.Pix[i]) / 255
+	}
+	gaussianBlur(p, w, h, s/2/1.645)
+	ramp := func(v, lo, hi float64) float64 { return math.Max(0, math.Min(1, (v-lo)/(hi-lo))) }
+	for i, v := range p {
+		m.Pix[i] = u8(255 * ramp(v, 0.03, 0.07) * (1 - ramp(v, 0.93, 0.97)))
+	}
 }
 
 // LogoMask is a logo's silhouette: its own alpha, trimmed to the visible shape.
