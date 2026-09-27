@@ -82,6 +82,57 @@ func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
 	}
 }
 
+// THE CANDIDATE DESIGNS (#1617) share the Plate's geometry, so each is the Plate's letters at the
+// Plate's size and position: Text is the knockout drawn positive with no plate, Outline is Text
+// hollowed to a stroke around each letter.
+func TestCallsignMask_CandidatesShareThePlatesLetters(t *testing.T) {
+	plate, err := PlateMask("RETRO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	masks := map[Design]*image.Alpha{}
+	for _, d := range []Design{DesignPlate, DesignText, DesignOutline} {
+		if masks[d], err = CallsignMask("RETRO", d); err != nil {
+			t.Fatalf("%s: %v", d, err)
+		}
+		if masks[d].Rect != plate.Rect {
+			t.Errorf("%s: %v, want the Plate's %v", d, masks[d].Rect, plate.Rect)
+		}
+	}
+	if !bytes.Equal(masks[DesignPlate].Pix, plate.Pix) {
+		t.Error("DesignPlate is not the Plate")
+	}
+	text, outline := masks[DesignText], masks[DesignOutline]
+	var knocked, drawn, inside, hollow, stroke int
+	for i := range plate.Pix {
+		if plate.Pix[i] < 40 && i%plate.Stride > plate.Stride/10 && i%plate.Stride < plate.Stride*9/10 {
+			knocked++ // a letter pixel, inside the plate's padding
+			if text.Pix[i] > 215 {
+				drawn++
+			}
+		}
+		if text.Pix[i] == 255 {
+			inside++
+			if outline.Pix[i] == 0 {
+				hollow++
+			}
+		} else if text.Pix[i] == 0 && outline.Pix[i] > 200 {
+			stroke++
+		}
+	}
+	if knocked == 0 || drawn < knocked*95/100 {
+		t.Errorf("Text draws %d of the Plate's %d knocked-out letter pixels", drawn, knocked)
+	}
+	if mid := text.Pix[text.PixOffset(text.Rect.Dx()/20, text.Rect.Dy()/2)]; mid != 0 {
+		t.Errorf("Text has a plate: alpha %d in its padding", mid)
+	}
+	// The stroke is centred on the letter's edge, so it covers the outer half-stroke of each letter
+	// (~half its pixels at Geist Bold's stem width) and as much again outside.
+	if inside == 0 || hollow < inside/3 || stroke == 0 {
+		t.Errorf("Outline is not a hollow stroke: %d of %d letter pixels hollow, %d stroke pixels outside", hollow, inside, stroke)
+	}
+}
+
 // stroke draws a ring of the given stroke width (at supersampled scale) or a filled disc.
 func strokeLogo(size, stroke int) *image.NRGBA {
 	img := image.NewNRGBA(image.Rect(0, 0, size*3, size))
