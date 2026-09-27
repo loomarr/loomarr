@@ -362,6 +362,35 @@ func (l *Lease) SoftwareRung() SoftwareRung {
 	return l.software
 }
 
+// StepSoftware re-prices the lease for a live ladder step (RungMonitorConfig.Reprice): a step down
+// always applies and releases the CPU it no longer needs; a step up applies only if the rung's
+// demand fits the ledger beside the other leases, else the lease and the encoder stay.
+func (l *Lease) StepSoftware(to SoftwareRung) bool {
+	b := l.b
+	facts := b.currentFacts()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if l.released || l.class == ClassCopy {
+		return false
+	}
+	d, ok := facts.demandAt(l.class, facts.rungHeight(l.rung), to)
+	if !ok || (to < l.software && !b.fitsLocked(facts, d, l)) {
+		return false
+	}
+	l.software, l.demand = to, d
+	return true
+}
+
+// NewRungMonitor is the live ladder monitor for this lease's current item, bound to the lease: it
+// starts on the admitted rung, with the class's rung costs, and every step re-prices the lease.
+func (l *Lease) NewRungMonitor(cfg RungMonitorConfig) *RungMonitor {
+	if cfg.Costs[RungFull] == 0 {
+		cfg.Costs = rungCostsOf(l.Class())
+	}
+	cfg.Reprice = l.StepSoftware
+	return NewRungMonitor(l.SoftwareRung(), cfg)
+}
+
 // Class is the lease's current stream class; a nil lease is a copy.
 func (l *Lease) Class() StreamClass {
 	if l == nil {

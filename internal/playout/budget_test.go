@@ -412,3 +412,42 @@ func TestResourceBudget_SoftwareHostRefusesOnlyWhenKeyframesDoNotFit(t *testing.
 		t.Fatalf("an item on an idle host stayed on rung %s, want full", sdr.SoftwareRung())
 	}
 }
+
+// The ladder's live steps re-price the lease (#1520 follow-up). A step down releases the CPU the
+// rung no longer needs. A step up must fit the ledger beside the other leases, else the encoder and
+// the lease stay where they are; once it fits, the same headroom steps up, and the lease follows.
+func TestLease_LiveLadderStepsRepriceTheLease(t *testing.T) {
+	b := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(4.1) })
+	cores := func() float64 { return b.Snapshot().InUse.CPUCores }
+	near := func(got, want float64) bool { return got > want-1e-9 && got < want+1e-9 }
+
+	full := admitN(t, b, ClassHDR4K, 1)[0] // 3.6 cores at full
+	if full.SoftwareRung() != RungFull {
+		t.Fatalf("first HDR stream on 4.1 cores: rung %s, want full", full.SoftwareRung())
+	}
+	// Sustained below realtime: the monitor steps full down to rung 1, and the lease follows.
+	got := runScript(t, full.NewRungMonitor(RungMonitorConfig{CPUAllowance: 4}), phase{20 * time.Second, 0.85, 0})
+	if len(got) == 0 || got[0].rung != RungLight || full.SoftwareRung() != RungLight || !near(cores(), 3.42) {
+		t.Fatalf("step down: decisions %+v, lease %s, ledger %.3f cores; want rung 1 at 3.42", got, full.SoftwareRung(), cores())
+	}
+
+	small := admitN(t, b, ClassHDR4K, 1)[0] // 0.68 left: keyframes-only (0.432)
+	if small.SoftwareRung() != RungKeyframes {
+		t.Fatalf("second HDR stream: rung %s, want keyframes-only", small.SoftwareRung())
+	}
+	// The encoder has headroom for rung 1 (0.3 of its 4 cores) but the ledger does not (3.42 held).
+	if got := runScript(t, small.NewRungMonitor(RungMonitorConfig{CPUAllowance: 4}), phase{3 * time.Minute, 1, 0.3}); len(got) != 0 {
+		t.Fatalf("stepped up past the ledger: %+v", got)
+	}
+	if small.SoftwareRung() != RungKeyframes || !near(cores(), 3.42+0.432) {
+		t.Fatalf("refused step up moved the lease: %s, %.3f cores", small.SoftwareRung(), cores())
+	}
+	full.Release()
+	got = runScript(t, small.NewRungMonitor(RungMonitorConfig{CPUAllowance: 4}), phase{3 * time.Minute, 1, 0.3})
+	if len(got) == 0 || got[0].rung != RungLight {
+		t.Fatalf("step up with room: decisions %+v, want rung 1 first", got)
+	}
+	if last := got[len(got)-1].rung; small.SoftwareRung() != last || !near(cores(), 3.6*heavyRungCosts[last]) {
+		t.Fatalf("lease %s at %.3f cores, want it to follow the last step (%s)", small.SoftwareRung(), cores(), last)
+	}
+}

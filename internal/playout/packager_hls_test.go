@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -307,5 +308,72 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("the stopped packager kept its lease: %+v", budget.Snapshot().InUse)
 		}
+	}
+}
+
+// countingHDRSource is hdrItemSource counting its lookups.
+type countingHDRSource struct {
+	hdrItemSource
+	calls atomic.Int32
+}
+
+func (s *countingHDRSource) ItemAt(ctx context.Context, ch string, plan EncodePlan, at time.Time) (PackagerItem, error) {
+	s.calls.Add(1)
+	return s.hdrItemSource.ItemAt(ctx, ch, plan, at)
+}
+
+// Admission is priced for the first item, resolved before any encoder starts (#1520 follow-up). On
+// 0.8 cores with 0.432 held, SDR keyframes-only (0.297) would fit but the 4K HDR item airing now
+// (0.432) does not: the channel is refused and no ffmpeg ever runs. With room, the lease holds the
+// HDR price from the start, and the schedule reuses the resolved item instead of looking it up again.
+func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
+	dir := t.TempDir()
+	ran := filepath.Join(dir, "ran")
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\ntouch "+ran+"\nexec sleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	allowance := 0.8
+	budget := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(allowance) })
+	held, err := budget.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := &countingHDRSource{}
+	m, err := NewPackagerHLS(source, ffmpeg, t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.WithBudget(budget)
+	t.Cleanup(m.Stop)
+
+	if _, err := m.acquirePlaylist("ch", PlanBaseline, false); !errors.Is(err, ErrAtCapacity) {
+		t.Fatalf("4K HDR first item on a nearly full host: err = %v, want ErrAtCapacity", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if _, err := os.Stat(ran); err == nil {
+		t.Fatal("an encoder started for a refused channel")
+	}
+
+	held.Release()
+	allowance = 3.5
+	lease, err := m.acquirePlaylist("ch", PlanBaseline, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.release()
+	if use := budget.Snapshot().InUse; use.CPUCores < 3.42-1e-9 || use.CPUCores > 3.42+1e-9 {
+		t.Fatalf("ledger at admission = %+v, want the HDR item's rung-1 price (3.42) before it encodes", use)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(ran); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the admitted channel never started its item encoder")
+		}
+	}
+	if n := source.calls.Load(); n != 2 { // one per start; the schedule reused the second
+		t.Errorf("item lookups = %d, want 2 (the schedule must reuse the admission's lookup)", n)
 	}
 }

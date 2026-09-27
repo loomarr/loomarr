@@ -138,13 +138,25 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool)
 
 func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	// Admission (#1520): the packager always transcodes, so it books one transcode now, as SDR
-	// (its first item is not resolved until it runs), and each item reclasses the lease to its own
-	// class. ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
+	// Admission (#1520) is priced for the item airing now: the first manifest waits for the first
+	// real item anyway, so resolving it here costs the tune nothing, and the schedule's first lookup
+	// reuses it. A 4K HDR first item on a nearly full host is demoted or refused before any encoder
+	// starts; a card slot or a failed lookup books SDR until a real item reclasses the lease.
+	// ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
+	resolvedAt := time.Now()
+	first, ferr := m.source.ItemAt(ctx, key.channel, key.plan, resolvedAt)
+	class := ClassSDR
+	if ferr == nil && first.Input != "" {
+		class = ClassOf(first.Format)
+	}
+	var pre *prefetchedItem
+	if ferr == nil {
+		pre = &prefetchedItem{at: resolvedAt, item: first}
+	}
 	var lease *Lease
 	if m.budget != nil {
 		var err error
-		if lease, err = m.budget.Admit(ctx, AdmitRequest{Class: ClassSDR}); err != nil {
+		if lease, err = m.budget.Admit(ctx, AdmitRequest{Class: class}); err != nil {
 			cancel()
 			return nil, err
 		}
@@ -167,7 +179,7 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 		return nil, fmt.Errorf("packager hls: channel dir: %w", err)
 	}
 	log := m.log.With("channel", key.channel, "plan", key.plan.String())
-	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, Log: log}, m.schedule(key, host, out, lease, log), slate)
+	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, Log: log}, m.schedule(key, host, out, lease, pre, log), slate)
 	if err != nil {
 		cancel()
 		lease.Release()
@@ -196,11 +208,16 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 // schedule adapts the application's items to the packager: each Open builds the item's command
 // with the phase-1a builder and starts its encoder. Each item moves the channel's lease to its
 // class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520).
-func (m *PackagerHLS) schedule(key remuxKey, host HostProfile, out OutputProfile, lease *Lease, log *slog.Logger) packager.Schedule {
+func (m *PackagerHLS) schedule(
+	key remuxKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
+) packager.Schedule {
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
-		it, err := m.source.ItemAt(ctx, key.channel, key.plan, at)
-		if err != nil {
-			return packager.Item{}, err
+		it, ok := pre.take(at)
+		if !ok {
+			var err error
+			if it, err = m.source.ItemAt(ctx, key.channel, key.plan, at); err != nil {
+				return packager.Item{}, err
+			}
 		}
 		item := packager.Item{Label: it.Label, Duration: it.Remaining}
 		if it.Input == "" {
@@ -225,6 +242,33 @@ func (m *PackagerHLS) schedule(key remuxKey, host HostProfile, out OutputProfile
 		}
 		return item, nil
 	}
+}
+
+// prefetchedItem is the item the channel start resolved for admission, handed to the schedule's
+// first lookup so it is not resolved twice. The schedule runs on one goroutine.
+type prefetchedItem struct {
+	at   time.Time
+	item PackagerItem
+	used bool
+}
+
+// take is the prefetched item as it airs at at, advanced by the time since it was resolved; false
+// once taken, or when at is outside that airing.
+func (p *prefetchedItem) take(at time.Time) (PackagerItem, bool) {
+	if p == nil || p.used {
+		return PackagerItem{}, false
+	}
+	p.used = true
+	d := at.Sub(p.at)
+	if d < 0 || d >= p.item.Remaining {
+		return PackagerItem{}, false
+	}
+	it := p.item
+	it.Remaining -= d
+	if it.Input != "" {
+		it.Seek += d
+	}
+	return it, true
 }
 
 // packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline,
