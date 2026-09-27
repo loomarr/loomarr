@@ -57,7 +57,7 @@ separately. An impossible combination fails the read closed and is recorded for 
   transition path but never reinterpret stored state. Upgrade fixtures prove it.
 
 Proposal Jobs keep their own leased executor because their history is business state. River runs
-named recurring operator tasks ([`design.md` §18.1](../design.md#181-the-job-scheduler--named-tunable-on-demand-background-work)).
+named recurring operator tasks ([`deployment.md`](deployment.md#the-job-scheduler)).
 
 | Activity | Contract |
 | --- | --- |

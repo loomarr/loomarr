@@ -42,7 +42,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [playback-clients](playback-clients.md) | tuning, pause, Android TV | 9.1 (clients) | here |
 | [auth](auth.md) | identity, credentials, invitations, notifications, devices, roles, route authorization, SSO | 11 | here |
 | web-ui | navigation, first-run wizard, cross-view rules | 12, 13 | `design.md` |
-| deployment | image, Compose, restart in place, the job scheduler | 9.2, 16, 18.1 | `design.md` |
+| [deployment](deployment.md) | restart in place, the image, Compose, upgrades, the job scheduler | 9.2, 16, 18.1 | here |
 | observability | diagnostics, correlation, health, metrics | 17 | `design.md` |
 | [images](images.md) | the image service | 22 | here |
 | filler | catalog, lifecycle, gates, sources, pulls, clip identity | 10 | `design.md` |
@@ -68,6 +68,7 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0005](decisions/0005-human-approval.md) | 2026-07-13 | Proposals need human approval by default |
 | [0007](decisions/0007-loomarr-owns-identity.md) | 2026-07-13 | Loomarr owns identity; every credential path lands on one users table |
 | [0009](decisions/0009-loomarr-plays-out.md) | 2026-07-25 | Loomarr plays out its own streams |
+| [0010](decisions/0010-restart-in-process.md) | 2026-07-29 | Restart rebuilds in process, never exits |
 | [0011](decisions/0011-sso-is-a-credential-path.md) | 2026-07-30 | SSO is a credential path, not a provisioning path |
 | [0012](decisions/0012-routes-declare-their-role.md) | 2026-07-30 | Every route declares its role; anonymous is denied by default |
 | [0020](decisions/0020-one-image-service.md) | 2026-08-09 | One content-addressed image service |
