@@ -45,7 +45,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [deployment](deployment.md) | restart in place, the image, Compose, upgrades, the job scheduler | 9.2, 16, 18.1 | here |
 | [observability](observability.md) | activity, diagnostics, correlation, client events, health, reports, metrics, discovery quality | 5 (activity, diagnostics tables), 17 | here |
 | [images](images.md) | the image service | 22 | here |
-| filler | catalog, lifecycle, gates, sources, pulls, clip identity | 10 | `design.md` |
+| [filler](filler.md) | catalog, sources, fetching, storage, pulls, lifecycle, media gates, media roles, conditioning, acquisition runs | 10 | here |
 | [filler-pipeline](filler-pipeline.md) | the ingest pipeline, budgets, enrichment, Incoming, the catalog listing | 10 (V51b, V51d, V51e, V51g) | here |
 | filler-structure | compilation structure, splitting, composites | 10 (V34, V45, V67) | `design.md` |
 | filler-classification | tagging, confidence, readiness | 10 (V38, V44, V61–V63) | `design.md` |
@@ -66,12 +66,17 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0003](decisions/0003-federated-search.md) | 2026-07-13 | Search is federated; Loomarr builds no index |
 | [0004](decisions/0004-grounding.md) | 2026-07-13 | The LLM never supplies trusted identity |
 | [0005](decisions/0005-human-approval.md) | 2026-07-13 | Proposals need human approval by default |
+| [0006](decisions/0006-filler-is-its-own-pipeline.md) | 2026-07-13 | Filler is its own pipeline, not the *arr path |
 | [0007](decisions/0007-loomarr-owns-identity.md) | 2026-07-13 | Loomarr owns identity; every credential path lands on one users table |
 | [0008](decisions/0008-settings-live-in-the-app.md) | 2026-07-14 | Settings live in the app; the environment pins |
 | [0009](decisions/0009-loomarr-plays-out.md) | 2026-07-25 | Loomarr plays out its own streams |
 | [0010](decisions/0010-restart-in-process.md) | 2026-07-29 | Restart rebuilds in process, never exits |
 | [0011](decisions/0011-sso-is-a-credential-path.md) | 2026-07-30 | SSO is a credential path, not a provisioning path |
 | [0012](decisions/0012-routes-declare-their-role.md) | 2026-07-30 | Every route declares its role; anonymous is denied by default |
+| [0013](decisions/0013-filler-pulls-and-tombstones.md) | 2026-08-02 | Filler pulls are the approval gate; removal is a tombstone |
+| [0014](decisions/0014-sources-are-one-flat-list.md) | 2026-08-03 | Filler sources are one flat list, any number of folders and libraries |
+| [0015](decisions/0015-sources-fetch-on-their-own.md) | 2026-08-03 | Filler sources fetch on their own |
+| [0016](decisions/0016-clip-identity-is-a-content-hash.md) | 2026-08-03 | Clip identity is a content hash |
 | [0018](decisions/0018-one-ingest-pipeline.md) | 2026-08-09 | Ingest is one ordered, watchable pipeline |
 | [0019](decisions/0019-stage-budget-is-per-clip-rate.md) | 2026-08-09 | A stage's budget is a per-clip rate |
 | [0020](decisions/0020-one-image-service.md) | 2026-08-09 | One content-addressed image service |
@@ -82,6 +87,7 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0025](decisions/0025-three-ai-pillars.md) | 2026-09-02 | Three independently certified AI pillars |
 | [0026](decisions/0026-specialized-local-model.md) | 2026-09-02 | A specialized local model is an optional Suggester optimisation |
 | [0027](decisions/0027-loomarr-owned-media-inventory.md) | 2026-09-05 | Loomarr owns its media inventory; the library is an importer |
+| [0028](decisions/0028-source-evidence-and-playable-media.md) | 2026-09-06 | Source evidence and playable media are separate assets |
 | [0031](decisions/0031-tone-curve.md) | 2026-09-26 | Tone curve: one default plus six selectable curves |
 | [0032](decisions/0032-4k-and-dynamic-range.md) | 2026-09-26 | 4K is a given; dynamic range is independent of resolution |
 | [0033](decisions/0033-measured-admission.md) | 2026-09-27 | Admission is one measured ledger |
