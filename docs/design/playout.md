@@ -5,7 +5,7 @@ Formerly `design.md` §9.1 (playout backends, the channel packager, admission, p
 [0009](decisions/0009-loomarr-plays-out.md)); Tunarr remains a supported alternative backend. What
 plays and when is decided by the scheduler ([`scheduling.md`](scheduling.md)); a backend decides only
 how the bytes reach the television. Tuning, pause and the Android TV client are in
-[`playback-clients.md`](../design.md#91-playout-backends--loomarr-serves-its-own-streams) until they move.
+[`playback-clients.md`](playback-clients.md).
 
 The decisions behind the beta.8 packager are records 0031–0033 and 0035–0041 in the
 [index](README.md#decisions).
