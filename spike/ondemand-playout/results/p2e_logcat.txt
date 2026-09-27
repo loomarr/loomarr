@@ -1,0 +1,27 @@
+--------- beginning of system
+--------- beginning of main
+--------- beginning of kernel
+09-26 13:12:17.667  4964  4964 I SPK     : t_ms=17 start url=http://$HOST:18999/live.m3u8 bufferForPlaybackMs=1000
+09-26 13:12:17.669  4964  4964 I SPK     : t_ms=19 state=2 rebuffers=0 pos_ms=0
+09-26 13:12:24.931  4964  4964 I SPK     : t_ms=7281 vdec_init OMX.android.goldfish.h264.decoder init_ms=13
+09-26 13:12:24.931  4964  4964 I SPK     : t_ms=7282 vformat 1920x1080 avc1.640C29 reuse=none pos_ms=7007
+09-26 13:12:25.066  4964  4964 I SPK     : t_ms=7417 adec_init c2.android.aac.decoder
+09-26 13:12:25.067  4964  4964 I SPK     : t_ms=7417 aformat 48000 mp4a.40.2 reuse=none
+09-26 13:12:25.102  4964  4964 I SPK     : t_ms=7453 first_frame
+09-26 13:12:25.129  4964  4964 I SPK     : t_ms=7480 state=3 rebuffers=0 pos_ms=7061
+09-26 13:15:35.027  4964  4964 I SPK     : t_ms=197377 dropped=3
+09-26 13:15:35.029  4964  4964 I SPK     : t_ms=197380 state=2 rebuffers=1 pos_ms=197635
+09-26 13:15:35.421  4964  4964 I SPK     : t_ms=197771 state=3 rebuffers=1 pos_ms=197636
+09-26 13:15:35.432  4964  4964 I SPK     : t_ms=197782 dropped=1
+09-26 13:15:35.644  4964  4964 I SPK     : t_ms=197994 vdec_release OMX.android.goldfish.h264.decoder
+09-26 13:15:35.644  4964  4964 I SPK     : t_ms=197995 adec_release c2.android.aac.decoder
+09-26 13:15:35.645  4964  4964 I SPK     : t_ms=197996 error ERROR_CODE_IO_UNSPECIFIED Source error
+09-26 13:15:35.645  4964  4964 I SPK     : t_ms=197996 state=1 rebuffers=1 pos_ms=197797
+09-26 13:16:19.798  5036  5036 I SPK     : t_ms=22 start url=http://$HOST:18999/live.m3u8 bufferForPlaybackMs=1000
+09-26 13:16:19.800  5036  5036 I SPK     : t_ms=24 state=2 rebuffers=0 pos_ms=0
+09-26 13:16:20.936  5036  5036 I SPK     : t_ms=1161 vdec_init OMX.android.goldfish.h264.decoder init_ms=10
+09-26 13:16:20.936  5036  5036 I SPK     : t_ms=1161 vformat 1920x1080 avc1.640C29 reuse=none pos_ms=0
+09-26 13:16:20.945  5036  5036 I SPK     : t_ms=1169 adec_init c2.android.aac.decoder
+09-26 13:16:21.039  5036  5036 I SPK     : t_ms=1264 aformat 48000 mp4a.40.2 reuse=none
+09-26 13:16:21.096  5036  5036 I SPK     : t_ms=1321 first_frame
+09-26 13:16:21.099  5036  5036 I SPK     : t_ms=1323 state=3 rebuffers=0 pos_ms=0

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,12 +19,7 @@ import (
 
 func openRetentionStore(t *testing.T) Store {
 	t.Helper()
-	st, err := Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return newSQLiteStore(t)
 }
 
 // seedDiagnosticEvents appends n events, one per second ending at `newest`, in writer-sized

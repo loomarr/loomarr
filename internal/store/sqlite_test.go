@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -28,18 +29,68 @@ func (a cachedEpisodeAvailability) ResolveEpisodes(provision.Key) schedule.Episo
 	return schedule.EpisodeResolution{Programs: a}
 }
 
-// newSQLiteStore builds a fresh migrated SQLite store in a temp file per test.
-// A file (not :memory:) is used because WAL + the single-conn model is what
-// production runs; t.TempDir cleans it up.
+// newSQLiteStore gives each test a private, migrated, boot-seeded SQLite store in a temp file.
+// A file (not :memory:) is used because WAL + the single-conn model is what production runs;
+// t.TempDir cleans it up.
+//
+// The store is a byte-for-byte copy of one template migrated once per test process: under -race
+// every replay of the migration history costs ~3s, and ~40 behaviour tests used to pay it each
+// (#1570). TestSQLiteStoreCloneMatchesFreshReplay proves a copy equals a fresh replay. Tests of
+// migration, boot seeding, or startup healing must call Open(..., true) themselves.
 func newSQLiteStore(t *testing.T) Store {
 	t.Helper()
-	dsn := "sqlite://" + filepath.Join(t.TempDir(), "test.db")
-	s, err := Open(context.Background(), dsn, true)
+	path := filepath.Join(t.TempDir(), "test.db")
+	if err := os.WriteFile(path, sharedSQLiteTemplate(t), 0o600); err != nil {
+		t.Fatalf("clone sqlite template: %v", err)
+	}
+	s, err := Open(context.Background(), "sqlite://"+path, false)
 	if err != nil {
 		t.Fatalf("open sqlite store: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
+}
+
+var (
+	sqliteTemplateOnce   sync.Once
+	sqliteTemplateBytes  []byte
+	sqliteTemplateErr    error
+	sqliteTemplateBuilds atomic.Int64
+)
+
+func sharedSQLiteTemplate(t *testing.T) []byte {
+	t.Helper()
+	sqliteTemplateOnce.Do(func() {
+		sqliteTemplateBuilds.Add(1)
+		dir, err := os.MkdirTemp("", "loomarr-sqlite-template-")
+		if err != nil {
+			sqliteTemplateErr = err
+			return
+		}
+		defer func() { _ = os.RemoveAll(dir) }()
+		sqliteTemplateBytes, sqliteTemplateErr = buildSQLiteTemplate(context.Background(), Open, filepath.Join(dir, "template.db"))
+	})
+	if sqliteTemplateErr != nil {
+		t.Fatalf("create migrated sqlite template: %v", sqliteTemplateErr)
+	}
+	return sqliteTemplateBytes
+}
+
+// buildSQLiteTemplate migrates and boot-seeds one database, folds its WAL into the main file, and
+// returns the file's bytes: a complete, closed database that any number of copies can start from.
+func buildSQLiteTemplate(ctx context.Context, open sqliteConformanceOpenFunc, path string) ([]byte, error) {
+	template, err := open(ctx, "sqlite://"+path, true)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := template.(*sqlStore).db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		_ = template.Close()
+		return nil, fmt.Errorf("checkpoint: %w", err)
+	}
+	if err := template.Close(); err != nil {
+		return nil, fmt.Errorf("close: %w", err)
+	}
+	return os.ReadFile(path)
 }
 
 type sqliteConformanceOpenFunc func(context.Context, string, bool) (Store, error)
@@ -60,22 +111,9 @@ func newSQLiteConformanceStoreFactoryWithOpen(t *testing.T, open sqliteConforman
 	t.Helper()
 	ctx := context.Background()
 	dir := t.TempDir()
-	templatePath := filepath.Join(dir, "conformance-template.db")
-	template, err := open(ctx, "sqlite://"+templatePath, true)
+	templateBytes, err := buildSQLiteTemplate(ctx, open, filepath.Join(dir, "conformance-template.db"))
 	if err != nil {
 		t.Fatalf("create sqlite conformance template: %v", err)
-	}
-	templateSQL := template.(*sqlStore)
-	if _, err := templateSQL.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-		_ = template.Close()
-		t.Fatalf("checkpoint sqlite conformance template: %v", err)
-	}
-	if err := template.Close(); err != nil {
-		t.Fatalf("close sqlite conformance template: %v", err)
-	}
-	templateBytes, err := os.ReadFile(templatePath)
-	if err != nil {
-		t.Fatalf("read sqlite conformance template: %v", err)
 	}
 
 	var sequence atomic.Uint64
