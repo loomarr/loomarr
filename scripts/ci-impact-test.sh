@@ -55,11 +55,21 @@ if ! grep -q 'run: make fe-codegen' <<<"$clients_workflow" ||
 fi
 
 all_gates='contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench'
-unknown="$(selected_gates unexpected/new-runtime/file.xyz)"
-if [[ "$unknown" != "$all_gates" ]]; then
-  printf 'ci-impact-test: unknown path: got %s, want %s\n' "$unknown" "$all_gates" >&2
-  exit 1
-fi
+# Shared build inputs fail closed too: a script, workflow or Make module that no explicit rule
+# names selects every gate until someone classifies it (#1570). The directory catch-alls used to
+# claim new files as contracts-only or policy-only, so a new helper any gate invoked went unrun.
+for unknown_path in unexpected/new-runtime/file.xyz scripts/unclassified-helper.sh \
+  scripts/unclassified-helper.mjs .github/workflows/unclassified.yml mk/unclassified.mk; do
+  unknown="$(selected_gates "$unknown_path" 2>/dev/null)"
+  if [[ "$unknown" != "$all_gates" ]]; then
+    printf 'ci-impact-test: unknown path %s: got %s, want %s\n' "$unknown_path" "$unknown" "$all_gates" >&2
+    exit 1
+  fi
+  if "$CLASSIFIER" --check-known "$unknown_path" >/dev/null 2>&1; then
+    printf 'ci-impact-test: --check-known accepted unclassified %s\n' "$unknown_path" >&2
+    exit 1
+  fi
+done
 
 stdin_output="$(printf '%s\n' internal/suggest/score.go docs/contributing/testing.md | "$CLASSIFIER")"
 stdin_selected="$(awk -F= '$2 == "true" { if (selected != "") selected = selected ","; selected = selected $1 } END { print selected }' <<<"$stdin_output")"

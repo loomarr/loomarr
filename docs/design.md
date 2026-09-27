@@ -484,7 +484,8 @@ testing docs under #1572 and stays here until then.
   root Make interface selects every gate because it can alter every included command; changing the
   root CI orchestrator selects policy, whose structural verifier rejects changed admission,
   aggregation, or family wiring without rebuilding unchanged products. Unknown paths still select
-  everything. Generated docs, action pinning, impact fixtures, and the release verifier reject an
+  everything, including a script under `scripts/` or a workflow that no rule names: neither
+  directory has a narrowing catch-all, so a new shared input runs every gate until it is classified. Generated docs, action pinning, impact fixtures, and the release verifier reject an
   orphaned module or a caller whose reusable implementation is not covered by its owning decision.
 
 ---
