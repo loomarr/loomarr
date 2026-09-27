@@ -1,7 +1,7 @@
 # Loomarr Client Platform — Architecture & Design System
 
 **Status:** P3.5 shared system complete; Shield and Web parity migration active under #970 · companion to [`design.md`](design.md)
-**Precedence:** the main design doc is authoritative for *behavior* (endpoints, flows, auth, phases). This doc is authoritative for *how the frontend looks and is built*. Conflicts → main doc wins on what, this doc wins on how; fix the loser in the same PR.
+**Precedence:** the subsystem docs under [`design/`](design/README.md) are authoritative for *behavior* (endpoints, flows, auth, phases). This doc is authoritative for *how the frontend looks and is built*. Conflicts → the design docs win on what, this doc wins on how; fix the loser in the same PR.
 **Language policy (main doc §14) applies:** the web implementation compiles to static assets embedded in the Go binary; Expo and React Native are the approved client build/runtime exception and do not add an application backend.
 
 ## 0. Refinement authority and migration state

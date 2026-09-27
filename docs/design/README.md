@@ -6,8 +6,10 @@ missing → build the schedule → play it out → keep it filled**, sized for o
 library items, up to 50 channels, 20 users, 10k filler clips and one media server.
 
 This directory describes **how the system works now** and **why the lasting decisions were made**.
-It is replacing the single `docs/design.md`, one subsystem at a time (#779). Until a subsystem has
-moved, its section in [`design.md`](../design.md) is still the source of truth.
+It replaced the single [`docs/design.md`](../design.md) (#779), which is now a pointer file; its
+[last full version](https://github.com/loomarr/loomarr/blob/8031a52fe007992666c1dfcea28e8adc294f2620/docs/design.md)
+stays readable by permalink. Three release and testing passages stay in `design.md` until #1572
+moves them to `docs/dev/`.
 
 ## How to use these docs
 
