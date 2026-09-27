@@ -8,10 +8,23 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
+
+// reportCorrectnessLimits are the design limits with duration ceilings a stalled runner cannot
+// trip. These tests drive the unoptimized debug worker while Go packages run in parallel; a 4 KB
+// JPEG that normally renders in under 2s once took 10.1s and failed the static ceiling (#1511).
+// They own report correctness. The release-profile `make image-cert` job owns the design's
+// duration ceilings, and TestCertifyFailsACaseOverItsDurationCeiling proves they are enforced.
+func reportCorrectnessLimits() images.CertificationLimits {
+	limits := images.DefaultCertificationLimits()
+	limits.StaticMaxDuration = time.Minute
+	limits.AnimatedMaxDuration = 3 * time.Minute
+	return limits
+}
 
 func TestRunWritesTheRepositoryCertificationReport(t *testing.T) {
 	worker, err := testkit.RustImageWorker()
@@ -20,10 +33,10 @@ func TestRunWritesTheRepositoryCertificationReport(t *testing.T) {
 	}
 	reportPath := filepath.Join(t.TempDir(), "image-certification.json")
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), []string{
+	code := runWithLimits(context.Background(), []string{
 		"--worker", worker,
 		"--report", reportPath,
-	}, &stdout, &stderr)
+	}, reportCorrectnessLimits(), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run = %d; stderr = %s", code, stderr.String())
 	}
@@ -51,7 +64,7 @@ func TestRepositoryCertificationCorpusCoversStaticAnimationAndLimits(t *testing.
 	}
 	report, err := images.Certify(context.Background(), images.CertificationOptions{
 		CorpusDir: corpus, Renderer: testkit.RustImageRenderer(t),
-		Limits: images.DefaultCertificationLimits(), ExpectedRefusals: manifest.ExpectedRefusals,
+		Limits: reportCorrectnessLimits(), ExpectedRefusals: manifest.ExpectedRefusals,
 		BoundaryCases: manifest.BoundaryCases,
 	})
 	if err != nil {

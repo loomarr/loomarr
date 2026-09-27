@@ -11,6 +11,31 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
+// TestCertifyFailsACaseOverItsDurationCeiling proves the ceiling without depending on runner
+// speed (#1511): every worker call counts at least 1ms, so a 1ms ceiling is always exceeded,
+// while the animated ceiling stays out of the way to show the static one is the one applied.
+func TestCertifyFailsACaseOverItsDurationCeiling(t *testing.T) {
+	corpus := t.TempDir()
+	if err := os.WriteFile(filepath.Join(corpus, "opaque-landscape.png"), pngBytes(t, testImage(64, 36)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	limits := DefaultCertificationLimits()
+	limits.StaticMaxDuration = time.Millisecond
+	limits.AnimatedMaxDuration = time.Minute
+	report, err := Certify(context.Background(), CertificationOptions{
+		CorpusDir: corpus, Renderer: testkit.RustImageRenderer(t), Limits: limits,
+	})
+	if err == nil || report.Passed {
+		t.Fatalf("Certify passed a case over its duration ceiling: err = %v, report = %+v", err, report.Summary)
+	}
+	if len(report.Cases) != 1 {
+		t.Fatalf("cases = %d, want 1", len(report.Cases))
+	}
+	if got := report.Cases[0]; got.Outcome != "failed" || got.ErrorCode != "duration_limit" || got.WallTimeMS < 2 {
+		t.Fatalf("case = %+v, want failed/duration_limit after two observed worker calls", got)
+	}
+}
+
 func TestCertifyReportsARealStaticLadder(t *testing.T) {
 	corpus := t.TempDir()
 	data := pngBytes(t, testImage(640, 360))

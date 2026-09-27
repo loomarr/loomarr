@@ -21,6 +21,13 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return runWithLimits(ctx, args, images.DefaultCertificationLimits(), stdout, stderr)
+}
+
+// runWithLimits is run with the certification ceilings as a parameter. The command always certifies
+// against the design's fixed limits; tests of report plumbing pass looser duration ceilings because
+// they drive the unoptimized debug worker on shared runners (#1511).
+func runWithLimits(ctx context.Context, args []string, limits images.CertificationLimits, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("image-cert", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	corpus := flags.String("corpus", os.Getenv("IMAGE_CERT_CORPUS"), "absolute read-only raster corpus directory")
@@ -80,7 +87,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	certCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	report, certErr := images.Certify(certCtx, images.CertificationOptions{
-		CorpusDir: *corpus, Renderer: renderer, Limits: images.DefaultCertificationLimits(),
+		CorpusDir: *corpus, Renderer: renderer, Limits: limits,
 		ExpectedRefusals: expected,
 		BoundaryCases:    boundaries,
 	})
