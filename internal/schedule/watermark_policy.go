@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -16,6 +17,9 @@ type WatermarkPolicy struct {
 	Corner string `json:"corner,omitempty" enum:"top-right,top-left,bottom-right,bottom-left" doc:"Corner of the active picture; omitted is top-right"`
 	// Opacity is 0.1–1; nil is the install setting (playout.watermark_opacity_pct, default 40%).
 	Opacity *float64 `json:"opacity,omitempty" minimum:"0.1" maximum:"1" doc:"Bug opacity, 0.1-1; omitted is the install setting playout.watermark_opacity_pct (default 40%)"`
+	// Look is the generated callsign bug's style (WatermarkLooks); "" is the install setting
+	// (playout.watermark_look, default text). A custom image keeps its own shape.
+	Look string `json:"look,omitempty" enum:"plate,text,outline,small-plate" doc:"Style of the generated callsign bug: plate, text (the Plate's letters, no plate), outline (hollow letters) or small-plate (75% size, no shadow); omitted is the install setting playout.watermark_look (default text)"`
 	// Size is the bug's height as a share of the frame height (a square bug's; wider marks keep the
 	// same area), 0.02–0.15; nil is 0.06.
 	Size *float64 `json:"size,omitempty" minimum:"0.02" maximum:"0.15" doc:"Bug height as a share of the frame height, 0.02-0.15; omitted is 0.06"`
@@ -29,8 +33,8 @@ type WatermarkPolicy struct {
 	Callsign string `json:"callsign,omitempty" maxLength:"12" doc:"Text of the generated Plate bug; omitted derives it from the channel name"`
 }
 
-// Watermark defaults: the maintainer-approved look (2026-09-26, PR #1532). The default opacity is
-// the install setting's (playout.watermark_opacity_pct, #1617), passed to ResolveWatermark.
+// Watermark defaults: the maintainer-approved look (2026-09-26, PR #1532). The default opacity and
+// look are the install settings' (#1617), passed to ResolveWatermark.
 const (
 	WatermarkDefaultCorner = "top-right"
 	WatermarkDefaultSize   = 0.06
@@ -38,19 +42,32 @@ const (
 	watermarkMaxCallsign   = 12
 )
 
-// ResolvedWatermark is a channel's effective bug settings.
-type ResolvedWatermark struct {
-	Enabled               bool
-	Corner                string
-	Opacity, Size, Margin float64
-	Image, Callsign       string
+// WatermarkLooks is every generated-bug style, in the order the API lists them: the renderer's
+// watermark.Styles and the playout.watermark_look options, pinned equal by an internal/app test.
+var WatermarkLooks = []string{"plate", "text", "outline", "small-plate"}
+
+// WatermarkInstall is the install-wide watermark settings, resolved by the caller:
+// playout.watermark_opacity_pct as a fraction, and playout.watermark_look.
+type WatermarkInstall struct {
+	Opacity float64
+	Look    string
 }
 
-// ResolveWatermark applies the defaults to a channel's (possibly nil) policy. installOpacity is
-// the resolved playout.watermark_opacity_pct as a fraction: the channel's own opacity wins over it.
-// Callers pass it rather than this package reading settings, like ResolveAudioLanguage.
-func ResolveWatermark(p *WatermarkPolicy, installOpacity float64) ResolvedWatermark {
-	r := ResolvedWatermark{Enabled: true, Corner: WatermarkDefaultCorner, Opacity: installOpacity,
+// ResolvedWatermark is a channel's effective bug settings.
+type ResolvedWatermark struct {
+	Enabled         bool
+	Corner          string
+	Opacity         float64
+	Look            string
+	Size, Margin    float64
+	Image, Callsign string
+}
+
+// ResolveWatermark applies the defaults to a channel's (possibly nil) policy. The channel's own
+// opacity and look win over the install settings. Callers pass those rather than this package
+// reading settings, like ResolveAudioLanguage.
+func ResolveWatermark(p *WatermarkPolicy, install WatermarkInstall) ResolvedWatermark {
+	r := ResolvedWatermark{Enabled: true, Corner: WatermarkDefaultCorner, Opacity: install.Opacity, Look: install.Look,
 		Size: WatermarkDefaultSize, Margin: WatermarkDefaultMargin}
 	if p == nil {
 		return r
@@ -63,6 +80,9 @@ func ResolveWatermark(p *WatermarkPolicy, installOpacity float64) ResolvedWaterm
 	}
 	if p.Opacity != nil {
 		r.Opacity = *p.Opacity
+	}
+	if p.Look != "" {
+		r.Look = p.Look
 	}
 	if p.Size != nil {
 		r.Size = *p.Size
@@ -82,6 +102,9 @@ func (p *WatermarkPolicy) validate() error {
 	case "", "top-right", "top-left", "bottom-right", "bottom-left":
 	default:
 		return fmt.Errorf("watermark.corner %q is not a corner", p.Corner)
+	}
+	if p.Look != "" && !slices.Contains(WatermarkLooks, p.Look) {
+		return fmt.Errorf("watermark.look %q is not one of %v", p.Look, WatermarkLooks)
 	}
 	for _, f := range []struct {
 		name     string
