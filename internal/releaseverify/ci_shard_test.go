@@ -302,6 +302,80 @@ example.invalid/cert-two`
 	run("a 550\nb 1\ncert-one 1\ncert-two 1\n", "modeled bounded-worker split exceeds")
 }
 
+// A dropped package is the failure every lane reports as green, so --verify must name it, and must
+// name a package scheduled twice. Both are injected from outside the script: a manifest that lists
+// one package in both certification lanes, and a `go list` that reports a package the sharder never
+// sees (its first call is the verifier's own inventory; later calls feed the ordinary slices).
+func TestGoShardVerificationRejectsPackagesInNoLaneOrTwoLanes(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	weights := filepath.Join(t.TempDir(), "weights.tsv")
+	if err := os.WriteFile(weights, []byte("a 1\nb 1\ncert 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	verify := func(t *testing.T, fakeGo, certificationRows string) string {
+		t.Helper()
+		bin := t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "go"), []byte(fakeGo), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		certification := filepath.Join(t.TempDir(), "certification.tsv")
+		if err := os.WriteFile(certification, []byte(certificationRows), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--verify", "2")
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(),
+			"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"GO_SHARD_WEIGHTS="+weights,
+			"GO_SHARD_CERTIFICATION="+certification,
+			"GO_SHARD_TEST_STATE="+filepath.Join(t.TempDir(), "listed"),
+		)
+		output, err := cmd.CombinedOutput()
+		if err == nil {
+			t.Fatalf("go shard verification accepted a broken partition:\n%s", output)
+		}
+		return string(output)
+	}
+	// section returns the package lines under one --verify report header.
+	section := func(output, header string) string {
+		_, after, found := strings.Cut(output, header)
+		if !found {
+			t.Fatalf("verification output lacks %q:\n%s", header, output)
+		}
+		before, _, _ := strings.Cut(after, "\n---")
+		return strings.TrimSpace(before)
+	}
+	const missingHeader = "packages missing from every shard (these would go UNTESTED, green) ---"
+	const duplicateHeader = "packages appearing more than once across shards (wasted, not unsafe) ---"
+
+	t.Run("package in two lanes", func(t *testing.T) {
+		t.Parallel()
+		output := verify(t,
+			"#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"$*\" == \"list -m\" ]]; then echo example.invalid; exit; fi\n[[ \"$*\" == \"list ./...\" ]]\nprintf '%s\\n' example.invalid/a example.invalid/b example.invalid/cert\n",
+			"1 cert\n2 cert\n")
+		if got := section(output, duplicateHeader); got != "example.invalid/cert" {
+			t.Fatalf("duplicated packages = %q, want example.invalid/cert:\n%s", got, output)
+		}
+		if got := section(output, missingHeader); got != "" {
+			t.Fatalf("missing packages = %q, want none:\n%s", got, output)
+		}
+	})
+	t.Run("package in no lane", func(t *testing.T) {
+		t.Parallel()
+		output := verify(t,
+			"#!/usr/bin/env bash\nset -euo pipefail\nif [[ \"$*\" == \"list -m\" ]]; then echo example.invalid; exit; fi\n[[ \"$*\" == \"list ./...\" ]]\nprintf '%s\\n' example.invalid/a example.invalid/b example.invalid/cert\nif [[ ! -e \"$GO_SHARD_TEST_STATE\" ]]; then : > \"$GO_SHARD_TEST_STATE\"; echo example.invalid/unplaced; fi\n",
+			"1 cert\n")
+		if got := section(output, missingHeader); got != "example.invalid/unplaced" {
+			t.Fatalf("missing packages = %q, want example.invalid/unplaced:\n%s", got, output)
+		}
+		if got := section(output, duplicateHeader); got != "" {
+			t.Fatalf("duplicated packages = %q, want none:\n%s", got, output)
+		}
+	})
+}
+
 func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	t.Parallel()
 
