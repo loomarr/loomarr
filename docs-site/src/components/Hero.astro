@@ -1,0 +1,202 @@
+---
+// The landing page's hero (#1572), overriding Starlight's. Starlight's hero puts a small image
+// beside a large text title; this one is the approved drawing, full width, and the drawing
+// already carries the LOOMARR wordmark and tagline, so the text title is kept for screen
+// readers only.
+//
+// The drawing is the maintainer-approved hero (2026-09-27), drawn from the design-system tokens:
+// a raised card with an outline, a screen of static with the seven brand bars across it, and the
+// hero lockup underneath. Its colours come from the --art-* variables in styles/custom.css, so it
+// follows the site's light and dark themes. The bars are the brand chroma, the same in both.
+import { LinkButton } from "@astrojs/starlight/components";
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, actions = [] } = data.hero || {};
+
+// Starlight's page-title id (constants.ts, not exported). Skip links and aria-labelledby point here.
+const PAGE_TITLE_ID = "_top";
+
+// Brand chroma in its fixed order: signal, caution, lock, tune, suggest, on-air, static
+// (web/packages/design-system/src/tokens/brand-contract.json).
+const bars = [
+  { x: 0, w: 33, fill: "#FFB020" },
+  { x: 33, w: 32, fill: "#F5D90A" },
+  { x: 65, w: 33, fill: "#3DD68C" },
+  { x: 98, w: 32, fill: "#4CC9E8" },
+  { x: 130, w: 33, fill: "#D6409F" },
+  { x: 163, w: 32, fill: "#E5484D" },
+  { x: 195, w: 33, fill: "#8B93A3" },
+];
+---
+
+<div class="lm-hero">
+  <h1 id={PAGE_TITLE_ID} data-page-title class="sr-only" set:html={title} />
+  <svg
+    class="lm-hero-art"
+    viewBox="0 10 1040 520"
+    role="img"
+    aria-label="Loomarr: a simple television outline whose screen shows light static and the seven Loomarr colour bars, above the LOOMARR wordmark and the tagline always something on"
+  >
+    <defs>
+      <radialGradient id="lm-hero-halo" cx="50%" cy="45%" r="50%">
+        <stop offset="0" stop-color="var(--art-glow)" stop-opacity=".16" />
+        <stop offset="1" stop-color="var(--art-glow)" stop-opacity="0" />
+      </radialGradient>
+      <clipPath id="lm-hero-tube"><rect x="382" y="150" width="228" height="170" rx="10" /></clipPath>
+      <filter id="lm-hero-snow" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+        <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="1" seed="4">
+          <animate attributeName="seed" values="4;9;13;21;27;33" dur="0.42s" calcMode="discrete" repeatCount="indefinite" />
+        </feTurbulence>
+        <!-- Grayscale speckle in the static-400 range: dark ground, light grain. -->
+        <feColorMatrix type="matrix" values="0 0 0 1.6 -.36  0 0 0 1.6 -.34  0 0 0 1.6 -.30  0 0 0 0 1" />
+      </filter>
+    </defs>
+
+    <ellipse cx="520" cy="250" rx="360" ry="220" fill="url(#lm-hero-halo)" />
+
+    <!-- Antenna: two strokes in the control outline colour. -->
+    <g stroke="var(--art-control)" stroke-width="4" stroke-linecap="round">
+      <line x1="508" y1="118" x2="444" y2="48" />
+      <line x1="532" y1="118" x2="602" y2="56" />
+    </g>
+    <rect x="496" y="112" width="48" height="10" rx="5" fill="var(--art-control)" />
+
+    <!-- Set: a raised card (radius 16) with an outline; screen inset at the control radius. -->
+    <rect x="352" y="122" width="336" height="228" rx="16" fill="var(--art-raised)" stroke="var(--art-outline)" stroke-width="2" />
+    <rect x="374" y="142" width="244" height="186" rx="12" fill="var(--art-ground)" stroke="var(--art-outline)" stroke-width="2" />
+
+    <!-- Screen: static above and below, the brand strip across the middle. -->
+    <g clip-path="url(#lm-hero-tube)">
+      <rect x="382" y="150" width="228" height="170" fill="var(--art-ground)" />
+      <rect x="382" y="150" width="228" height="170" filter="url(#lm-hero-snow)" opacity=".9" />
+      <g transform="translate(382 214)">
+        {bars.map((bar, i) => (
+          <rect class="lm-bar" style={`animation-delay:${(i * 0.28).toFixed(2)}s`} x={bar.x} width={bar.w} height="42" fill={bar.fill} />
+        ))}
+      </g>
+    </g>
+
+    <!-- Controls: two knobs and the on-air light. -->
+    <circle cx="654" cy="176" r="14" fill="var(--art-elevated)" stroke="var(--art-outline)" stroke-width="2" />
+    <line x1="654" y1="176" x2="654" y2="166" stroke="var(--art-ink-2)" stroke-width="2.5" stroke-linecap="round" />
+    <circle cx="654" cy="222" r="10" fill="var(--art-elevated)" stroke="var(--art-outline)" stroke-width="2" />
+    <line x1="654" y1="222" x2="660" y2="216" stroke="var(--art-ink-2)" stroke-width="2" stroke-linecap="round" />
+    <g fill="var(--art-outline)">
+      <rect x="640" y="252" width="28" height="3" rx="1.5" /><rect x="640" y="260" width="28" height="3" rx="1.5" />
+      <rect x="640" y="268" width="28" height="3" rx="1.5" /><rect x="640" y="276" width="28" height="3" rx="1.5" />
+    </g>
+    <circle cx="654" cy="310" r="4" fill="#E5484D" />
+
+    <!-- Feet. -->
+    <rect x="392" y="350" width="36" height="8" rx="4" fill="var(--art-outline)" />
+    <rect x="612" y="350" width="36" height="8" rx="4" fill="var(--art-outline)" />
+
+    <!-- Lockup: wordmark and tagline, as the app's hero lockup sets them. -->
+    <text class="lm-wordmark" x="520" y="440" font-size="44" text-anchor="middle" fill="var(--art-ink)">LOOMARR</text>
+    <text class="lm-tagline" x="520" y="478" font-size="16" text-anchor="middle" fill="var(--art-ink-2)">always something on</text>
+  </svg>
+
+  {tagline && <p class="lm-hero-lede" set:html={tagline} />}
+  {
+    actions.length > 0 && (
+      <div class="lm-hero-actions">
+        {actions.map(({ attrs: { class: className, ...attrs } = {}, icon, link: href, text, variant }) => (
+          <LinkButton {href} {variant} icon={icon?.name} class:list={[className]} {...attrs}>
+            {text}
+            {icon?.html && <Fragment set:html={icon.html} />}
+          </LinkButton>
+        ))}
+      </div>
+    )
+  }
+</div>
+
+<script>
+  // The snow is a SMIL animation, which CSS can't stop, so reduced motion pauses it here.
+  const svg = document.querySelector<SVGSVGElement>(".lm-hero-art");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  const apply = () => (reduce.matches ? svg?.pauseAnimations() : svg?.unpauseAnimations());
+  apply();
+  reduce.addEventListener("change", apply);
+</script>
+
+<style>
+  .lm-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    padding-block: 1rem 2rem;
+    text-align: center;
+  }
+
+  .lm-hero-art {
+    display: block;
+    width: 100%;
+    max-width: 52rem;
+    height: auto;
+  }
+
+  /* The drawing fills only the middle third of its canvas; the rest is the halo fading out.
+     On a phone that would shrink the tagline to a few pixels, so the canvas is drawn wider
+     than the column and its empty sides are clipped at the screen edge (not the column's, where
+     the cut halo would show as a tinted box). */
+  @media (max-width: 40rem) {
+    .lm-hero {
+      overflow: hidden;
+      margin-inline: calc(-1 * var(--sl-content-pad-x));
+      padding-inline: var(--sl-content-pad-x);
+    }
+
+    .lm-hero-art {
+      width: 220%;
+      max-width: none;
+    }
+  }
+
+  .lm-wordmark {
+    font-family: var(--sl-font);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
+
+  .lm-tagline {
+    font-family: var(--sl-font-mono);
+    font-weight: 500;
+  }
+
+  /* The brand strip's own motion: bar-breathe, staggered 0.28 s so the shimmer travels. */
+  .lm-bar {
+    animation: lm-breathe 4s ease-in-out infinite;
+  }
+
+  @keyframes lm-breathe {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.72;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lm-bar {
+      animation: none;
+    }
+  }
+
+  .lm-hero-lede {
+    max-width: 50ch;
+    margin: 0;
+    font-size: clamp(var(--sl-text-base), calc(0.0625rem + 2vw), var(--sl-text-xl));
+    color: var(--sl-color-gray-2);
+  }
+
+  .lm-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem 2rem;
+  }
+</style>

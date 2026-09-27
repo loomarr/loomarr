@@ -5,6 +5,7 @@
 // on GitHub.
 import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+import SpotArt from "../components/SpotArt.astro";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
@@ -15,8 +16,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     description: "Always something on. Loomarr turns your media library into live TV channels.",
     template: "splash",
     hero: {
+      // The drawing already says "always something on", so the lede starts after it.
       tagline:
-        "Always something on. Describe a channel in a sentence; Loomarr fills it from your library, plays it as live TV and keeps it running.",
+        "Describe a channel in a sentence; Loomarr fills it from your library, plays it as live TV and keeps it running.",
       actions: [
         { text: "Get started", link: `${base}/get-started/`, icon: "right-arrow" },
         {
@@ -29,26 +31,59 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     },
   }}
 >
-  <!-- HERO ART SLOT (#1572): the approved hero is an AI scene over the vector test card, made
-       with the household image service once it ships. Until then the page has no hero image
-       on purpose; do not fill this slot with a placeholder. -->
   <CardGrid>
-    <Card title="Get started" icon="rocket">
+    <Card title="Get started">
+      <SpotArt name="get-started" />
       Install Loomarr with Docker, connect your media server and put your first channel on air.
     </Card>
-    <Card title="Guides" icon="list-format">
+    <Card title="Guides">
+      <SpotArt name="guides" />
       Step-by-step tasks: add a channel, set up filler, hardware encoding, backups and upgrades.
     </Card>
-    <Card title="Reference" icon="setting">
+    <Card title="Reference">
+      <SpotArt name="reference" />
       Every setting and command, generated from the code so it can't drift.
     </Card>
-    <Card title="Explanation" icon="information">
+    <Card title="Explanation">
+      <SpotArt name="explanation" />
       How Loomarr works: channels, proposals, curation and what leaves your network.
     </Card>
   </CardGrid>
-  <LinkCard
-    title="Contributing"
-    description="Set up a dev loop, run the tests and learn how CI and releases work."
-    href={`${base}/contributing/`}
-  />
+  <div class="lm-contributing">
+    <SpotArt name="contributing" />
+    <LinkCard
+      title="Contributing"
+      description="Set up a dev loop, run the tests and learn how CI and releases work."
+      href={`${base}/contributing/`}
+    />
+  </div>
 </StarlightPage>
+
+<style>
+  .lm-contributing {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .lm-contributing > :global(.sl-link-card) {
+    flex: 1;
+  }
+
+  .lm-contributing > :global(.lm-spot) {
+    width: 8rem;
+    flex: none;
+  }
+
+  @media (max-width: 40rem) {
+    .lm-contributing {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .lm-contributing > :global(.lm-spot) {
+      align-self: center;
+    }
+  }
+</style>
