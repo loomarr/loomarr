@@ -70,6 +70,9 @@ type RungMonitorConfig struct {
 	UpMargin  float64
 	UpFor     time.Duration
 	NoRefGain float64
+	// Reprice, when set, is offered every step before it is taken (Lease.StepSoftware): a step down
+	// always applies; a step up it refuses does not happen, and backs off like a reversed step.
+	Reprice func(to SoftwareRung) bool
 }
 
 // Defaults. DownBelow sits just under 1.0 because a paced encoder's windowed speed wobbles around
@@ -206,6 +209,12 @@ func (m *RungMonitor) Observe(s SpeedSample) RungDecision {
 			d.aboveSince = s.At
 		}
 		if s.At.Sub(d.aboveSince) >= m.upWait {
+			if m.cfg.Reprice != nil && !m.cfg.Reprice(up) {
+				// The CPU is headroom this encoder has but the ledger has promised elsewhere.
+				d.aboveSince = time.Time{}
+				m.upWait = min(2*m.upWait, maxUpBackoff*m.cfg.UpFor)
+				return RungDecision{Rung: m.rung}
+			}
 			m.upAt = s.At
 			return m.step(s, up, "headroom")
 		}
@@ -269,6 +278,9 @@ func (m *RungMonitor) step(s SpeedSample, to SoftwareRung, reason string) RungDe
 		}
 	}
 	if to > m.rung { // a step down
+		if m.cfg.Reprice != nil {
+			m.cfg.Reprice(to) // releases CPU; never refused
+		}
 		if !m.upAt.IsZero() && s.At.Sub(m.upAt) < 2*m.upWait {
 			// The rung stepped up to did not fit: wait longer before trying again.
 			m.upWait = min(2*m.upWait, maxUpBackoff*m.cfg.UpFor)
