@@ -32,9 +32,9 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [overview](overview.md) | scope, design envelope, ports, package-name traps, backend structure rules, HTTP API rules, concurrency rules | 1, 2, 7, 7.1, 14.1, 18 | here |
 | [dependencies](dependencies.md) | every dependency and bundled tool, with its reason | 14 | here |
 | [package-map](package-map.md) | generated package inventory | 2 (map), 14.2 | here |
-| acquisition | title identity, provisioning state machine, requester, adapter resilience | 3, 4, 6 | `design.md` |
-| library | media inventory, series episode cache, media-server contract, search | 5 (inventory), 6, 7.2 | `design.md` |
-| storage | one store with two backends, retention, Postgres concurrency, backup | 5, 16 (backup) | `design.md` |
+| [acquisition](acquisition.md) | title identity, provisioning state machine, requesters, outbound client rules | 3, 4, 6 | here |
+| [library](library.md) | media-server contract, media inventory, series episode cache, search | 5 (inventory), 6, 7.2 | here |
+| [storage](storage.md) | one store with two backends, Postgres concurrency, retention, backup | 5, 16 (backup) | here |
 | suggester | grounding, model identity, reference-backed Intent, providers, model selection and residency | 8, 8.1, 8.2 | `design.md` |
 | proposal-workflow | Proposal Job execution, decision traces | 8 (execution) | `design.md` |
 | scheduling | channels, lineups, strategies, airing history, breaks and pods | 9, 10 (breaks) | `design.md` |
@@ -61,7 +61,10 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 
 | # | Date | Decision |
 | --- | --- | --- |
+| [0001](decisions/0001-postgres-and-sqlite.md) | 2026-07-13 | PostgreSQL and SQLite are both first-class stores |
 | [0002](decisions/0002-code-first-openapi.md) | 2026-07-13 | Code-first OpenAPI with Huma v2 |
+| [0003](decisions/0003-federated-search.md) | 2026-07-13 | Search is federated; Loomarr builds no index |
 | [0024](decisions/0024-react-native-clients.md) | 2026-08-23 | React Native and Expo for client binaries |
+| [0027](decisions/0027-loomarr-owned-media-inventory.md) | 2026-09-05 | Loomarr owns its media inventory; the library is an importer |
 
 Future work that used to live in `design.md` §20 is tracked in #1576.
