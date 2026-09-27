@@ -4,8 +4,11 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -48,6 +51,39 @@ func TestChannelWatermarks_OffOrUnverifiedMeansNoBug(t *testing.T) {
 	ch.Policy.Watermark = nil
 	if wm := testWatermarks(t, ch, false).For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080); wm != nil {
 		t.Error("a host whose overlay has not passed its self-check got a bug")
+	}
+}
+
+type recordedEvents struct{ got []diagnostics.Event }
+
+func (r *recordedEvents) Record(_ context.Context, e diagnostics.Event) { r.got = append(r.got, e) }
+
+// NO SILENT DROP (#1595): a host whose overlay fails its self-check (a wrong picture, or too slow
+// to air) keeps every programme bug-free, and the Diagnostics event says so with the check's own
+// reason, which is where the UI shows it.
+func TestChannelWatermarks_FailedCheckIsAWarningWithItsReason(t *testing.T) {
+	ffmpeg := filepath.Join(t.TempDir(), "ffmpeg")
+	if err := os.WriteFile(ffmpeg, []byte("#!/bin/sh\necho 'no such encoder' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	events := &recordedEvents{}
+	c := &channelWatermarks{dir: t.TempDir(), channels: staticChannelReader{channel: store.Channel{}}, log: slog.New(slog.DiscardHandler),
+		ffmpeg: func() string { return ffmpeg }, tonemap: func() bool { return false }, gpu: func() playout.GPUFilters { return playout.GPUFilters{} },
+		events: events, lifetime: t.Context()}
+	g := &watermarkGate{}
+	c.check(playout.EncoderVAAPI, g)
+
+	if g.works.Load() {
+		t.Fatal("a failed self-check left the watermark on")
+	}
+	if len(events.got) != 1 {
+		t.Fatalf("%d Diagnostics events, want 1: %+v", len(events.got), events.got)
+	}
+	e := events.got[0]
+	detail, _ := e.Attributes["detail"].(string)
+	if e.Level != diagnostics.LevelWarn || e.Name != "watermark.disabled" || !strings.Contains(detail, "no such encoder") ||
+		!strings.Contains(e.Message, detail) || e.Attributes["encoder"] != string(playout.EncoderVAAPI) {
+		t.Errorf("the event does not say why the watermark is off: %+v", e)
 	}
 }
 

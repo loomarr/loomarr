@@ -50,11 +50,14 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	item.AudioTrack = s.res.AudioTrackFor(ctx, channelID, airing.LibraryItemID, streamURL)
 	t2 := time.Now()
 	_, item.Format = s.res.PlanFor(ctx, streamURL, playout.PlanBaseline)
+	t3 := time.Now()
+	// A tune-in seeks from here rather than decoding up to a source GOP to reach the offset (#1595).
+	item.Keyframe, item.KeyframeIndexed = s.res.indexedKeyframe(ctx, streamURL, airing.Offset)
 	if s.log != nil {
 		// The tune-in (G2) split's resolution half; the packager logs the encoder half.
 		s.log.Info("packager: item resolved", "channel", channelID, "item", item.Label,
 			"airing_ms", t1.Sub(t0).Milliseconds(), "audio_track_ms", t2.Sub(t1).Milliseconds(),
-			"stream_facts_ms", time.Since(t2).Milliseconds())
+			"stream_facts_ms", t3.Sub(t2).Milliseconds(), "keyframe_ms", time.Since(t3).Milliseconds())
 	}
 	if s.targetLUFS != nil {
 		var note string

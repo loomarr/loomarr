@@ -315,16 +315,17 @@ func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (pl
 				return playout.StillSource{}, false, nil
 			}
 			source := playout.StillSource{Input: src.URL, HDR: r.inventoryHDR(ctx, itemID)}
-			source.Keyframe, source.Indexed = r.stillKeyframe(ctx, src.URL, airing.Offset)
+			source.Keyframe, source.Indexed = r.indexedKeyframe(ctx, src.URL, airing.Offset)
 			return source, true, nil
 		},
 	}, true, nil
 }
 
-// stillKeyframe is the direct file's last keyframe at or before offset, from the keyframe index
+// indexedKeyframe is the direct file's last keyframe at or before offset, from the keyframe index
 // Loomarr measured for the file's current bytes. ok=false for a stream URL, an unmeasured file, or
-// an index from older bytes; the still then relies on ffmpeg's container seek.
-func (r *playoutResolver) stillKeyframe(ctx context.Context, input string, offset time.Duration) (time.Duration, bool) {
+// an index from older bytes; a still then relies on ffmpeg's container seek, and a packager
+// tune-in on its accurate seek from the exact offset.
+func (r *playoutResolver) indexedKeyframe(ctx context.Context, input string, offset time.Duration) (time.Duration, bool) {
 	if r.analyses == nil {
 		return 0, false
 	}

@@ -31,7 +31,10 @@ import (
 //     background, which also proves the host blends the bug as straight alpha (a premultiplied
 //     reading, as ffmpeg flags it for VAAPI, lands far from the expected luma);
 //   - the bug-on SPS and PPS are byte-identical to the bug-off ones, because breaks air bug-off in
-//     the same channel stream and a parameter-set change there resets decoders.
+//     the same channel stream and a parameter-set change there resets decoders;
+//   - and, only once the picture is right, the overlay keeps pace (overlaySpeed): on the household
+//     Arc, overlay_vaapi drew a correct bug at 1.25x realtime, which made a cold tune's first
+//     manifest ~3.4 s (#1595). Speed is a gate here, never the only one.
 //
 // Any failure disables the watermark on the host (HostProfile.Overlay false). It is never moved to
 // the CPU.
@@ -45,9 +48,12 @@ type WatermarkCheckResult struct {
 
 const (
 	checkWidth, checkHeight, checkFPS = 1920, 1080, 25
-	checkFrames                       = 25
-	checkBug                          = 64 // the test bug: a white square
-	checkAlpha                        = 166.0 / 255
+	// checkFrames is how many frames each check encode runs: enough that the overlay's per-frame
+	// cost, not process start-up, dominates the timing (overlaySpeed).
+	checkFrames      = 100
+	checkClipSeconds = float64(checkFrames)/checkFPS + 0.2 // a few frames over: -frames:v must be reachable
+	checkBug         = 64                                  // the test bug: a white square
+	checkAlpha       = 166.0 / 255
 	// checkFrame is the decoded frame compared; past the first so the overlay has settled.
 	checkFrame = 12
 	// pictureTolerance is the mean absolute luma difference allowed outside the bug: two encodes
@@ -57,7 +63,21 @@ const (
 	// convention misses by 50+ levels and a full-range white by 0.651×20 ≈ 13 (#1541); a correct
 	// blend measured within 1 (NVENC, SDR and tone-mapped HDR, scripts/watermark-overlay-matrix.sh).
 	bugTolerance = 6.0
+	// overlayFrameBudget is the most the overlay may add per frame over the bug-off graph (#1595):
+	// NVENC's overlay_cuda measured 2.2-2.9 ms, the household Arc's overlay_vaapi ~32 ms. At 24 fps
+	// the budget bounds the overlay's share of a cold tune's 4 s first-manifest burst to ~1 s.
+	overlayFrameBudget = 10 * time.Millisecond
 )
+
+// overlaySpeed fails an overlay that adds more than overlayFrameBudget per frame to the bug-off
+// graph's encode of the same frames.
+func overlaySpeed(off, on time.Duration, frames int) error {
+	if added := (on - off) / time.Duration(frames); added > overlayFrameBudget {
+		return fmt.Errorf("the overlay is too slow to air: +%.1f ms per frame over the bug-off graph (budget %v; %d frames in %v with the bug, %v without)",
+			float64(added.Microseconds())/1000, overlayFrameBudget, frames, on.Round(time.Millisecond), off.Round(time.Millisecond))
+	}
+	return nil
+}
 
 // WatermarkCheck runs the self-check for host's family in dir (scratch space it may fill).
 func WatermarkCheck(ctx context.Context, ffmpeg string, host HostProfile, dir string) WatermarkCheckResult {
@@ -108,7 +128,7 @@ func checkClasses(host HostProfile) []checkSource {
 			PixelFormat: "yuv420p", Container: "matroska,webm"},
 		make: func(ctx context.Context, ffmpeg, dir string) (string, error) {
 			return synthWatermarkClip(ctx, ffmpeg, filepath.Join(dir, "sdr.mkv"),
-				"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=1.2", checkWidth, checkHeight, checkFPS),
+				"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=%.1f", checkWidth, checkHeight, checkFPS, checkClipSeconds),
 				"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", "25")
 		},
 	}}
@@ -119,7 +139,7 @@ func checkClasses(host HostProfile) []checkSource {
 				PixelFormat: "yuv420p10le", ColorTransfer: "smpte2084", Container: "matroska,webm"},
 			make: func(ctx context.Context, ffmpeg, dir string) (string, error) {
 				return synthWatermarkClip(ctx, ffmpeg, filepath.Join(dir, "hdr.mkv"),
-					"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=1.2", checkWidth, checkHeight, checkFPS),
+					"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%dx%d:rate=%d:duration=%.1f", checkWidth, checkHeight, checkFPS, checkClipSeconds),
 					"-vf", "zscale=tin=bt709:min=bt709:pin=bt709:rin=tv:t=smpte2084:p=bt2020:m=bt2020nc:r=tv:npl=203,format=yuv420p10le",
 					"-c:v", "libx265", "-preset", "ultrafast",
 					"-x265-params", "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc",
@@ -144,29 +164,33 @@ func synthWatermarkClip(ctx context.Context, ffmpeg, out string, args ...string)
 func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts MediaFormat, src string, wm *Watermark, prefix string) (string, error) {
 	out := OutputProfile{Width: checkWidth, Height: checkHeight, FPS: checkFPS, Quality: outputQuality,
 		TargetKbps: outputTargetKbps, MaxKbps: outputMaxKbps, GOPSeconds: outputGOPSeconds, AudioKbps: 128}
-	encode := func(bug *Watermark, path string) error {
+	// encode runs the graph over checkFrames and returns its wall time, which overlaySpeed compares.
+	encode := func(bug *Watermark, path string) (time.Duration, error) {
 		p, err := BuildItem(host, facts, out, bug)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if bug != nil && !p.Watermark {
-			return fmt.Errorf("the graph has no overlay: %s", strings.Join(p.Fallbacks, "; "))
+			return 0, fmt.Errorf("the graph has no overlay: %s", strings.Join(p.Fallbacks, "; "))
 		}
 		args := append([]string{"-hide_banner", "-nostdin", "-loglevel", "error", "-y"}, p.PreInput...)
 		args = append(args, "-i", src, "-map", "0:v:0", "-frames:v", strconv.Itoa(checkFrames), "-vf", p.VideoFilter)
 		args = append(append(args, p.VideoEncode...), "-f", "h264", path)
 		ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
+		start := time.Now()
 		if b, err := exec.CommandContext(ctx, ffmpeg, args...).CombinedOutput(); err != nil {
-			return fmt.Errorf("encode: %w: %s", err, firstLine(string(bytes.TrimSpace(b))))
+			return 0, fmt.Errorf("encode: %w: %s", err, firstLine(string(bytes.TrimSpace(b))))
 		}
-		return nil
+		return time.Since(start), nil
 	}
 	off, on := prefix+"-off.h264", prefix+"-on.h264"
-	if err := encode(nil, off); err != nil {
+	offTook, err := encode(nil, off)
+	if err != nil {
 		return "", fmt.Errorf("bug off: %w", err)
 	}
-	if err := encode(wm, on); err != nil {
+	onTook, err := encode(wm, on)
+	if err != nil {
 		return "", fmt.Errorf("bug on: %w", err)
 	}
 	offRaw, err := os.ReadFile(off)
@@ -199,8 +223,11 @@ func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts Medi
 	case math.Abs(m.bugLuma-m.bugWant) > bugTolerance:
 		return "", fmt.Errorf("the bug is wrong: luma %.1f where a 65%% white blend is %.1f (background %.1f)", m.bugLuma, m.bugWant, m.bugBackground)
 	}
-	return fmt.Sprintf("picture ΔY %.2f, bug luma %.1f (want %.1f over %.1f), SPS/PPS identical",
-		m.pictureDiff, m.bugLuma, m.bugWant, m.bugBackground), nil
+	if err := overlaySpeed(offTook, onTook, checkFrames); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("picture ΔY %.2f, bug luma %.1f (want %.1f over %.1f), SPS/PPS identical, %d frames in %v with the bug, %v without",
+		m.pictureDiff, m.bugLuma, m.bugWant, m.bugBackground, checkFrames, onTook.Round(time.Millisecond), offTook.Round(time.Millisecond)), nil
 }
 
 // writeCheckBug writes the test bug, a white square at the check alpha (straight).
