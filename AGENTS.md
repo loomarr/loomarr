@@ -135,9 +135,10 @@ different delivery path.
 1. Gates are hard. Never stub, skip, delete, or weaken a test to make a gate green.
 2. Never weaken grounding, the approval gate, authorization, or forward-only migrations, including in
    tests and seed data.
-3. New dependencies require a design §14 amendment with a one-line rationale in the same PR.
+3. New dependencies require a row in `docs/design/dependencies.md` with a one-line rationale in the
+   same PR.
 4. Application code is Go except for the frontend build, the vendored `yt-dlp` executable, and the
-   required `loomarr-image` Rust worker documented in design §14 and §22. Do not introduce another
+   required `loomarr-image` Rust worker documented in `docs/design/dependencies.md` and design §22. Do not introduce another
    application runtime.
 5. Unit tests never touch the network. Extend `internal/testkit`; do not create private service mocks.
 6. Store conformance remains one suite over SQLite and Postgres.

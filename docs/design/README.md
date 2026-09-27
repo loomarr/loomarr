@@ -29,7 +29,8 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 
 | Doc | Owns | Old § | Now in |
 | --- | --- | --- | --- |
-| overview | scope, design envelope, ports, package-name traps, layering rules, stack, concurrency rules | 1, 2, 7.1, 14, 14.1, 18 | `design.md` |
+| [overview](overview.md) | scope, design envelope, ports, package-name traps, backend structure rules, HTTP API rules, concurrency rules | 1, 2, 7, 7.1, 14.1, 18 | here |
+| [dependencies](dependencies.md) | every dependency and bundled tool, with its reason | 14 | here |
 | [package-map](package-map.md) | generated package inventory | 2 (map), 14.2 | here |
 | acquisition | title identity, provisioning state machine, requester, adapter resilience | 3, 4, 6 | `design.md` |
 | library | media inventory, series episode cache, media-server contract, search | 5 (inventory), 6, 7.2 | `design.md` |
@@ -55,4 +56,12 @@ Settings (§15) belong to [`config-design.md`](../config-design.md). Scheduling 
 
 ## Decisions
 
-Records are added under `decisions/` as each subsystem moves.
+Records are added under `decisions/` as each subsystem moves. Numbers were assigned in date order
+when the map was approved on #779, so gaps close as the remaining records are written.
+
+| # | Date | Decision |
+| --- | --- | --- |
+| [0002](decisions/0002-code-first-openapi.md) | 2026-07-13 | Code-first OpenAPI with Huma v2 |
+| [0024](decisions/0024-react-native-clients.md) | 2026-08-23 | React Native and Expo for client binaries |
+
+Future work that used to live in `design.md` §20 is tracked in #1576.

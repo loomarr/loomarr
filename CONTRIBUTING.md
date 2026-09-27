@@ -21,8 +21,8 @@ be restated here and in three other files, and the copies drifted apart. One hom
   doc in the *same PR, before the code*. Doc and code must never disagree silently.
 - **Gates are hard.** Never weaken, skip or stub a selected local or CI gate to make it pass — if a
   gate can't pass, the design or the code is wrong. Fix one of them.
-- **New dependencies are fine when they genuinely help** — add a row to `docs/design.md` §14 in
-  the same PR with a one-line rationale. Prefer something already in the tree, and a focused
+- **New dependencies are fine when they genuinely help** — add a row to
+  [`docs/design/dependencies.md`](docs/design/dependencies.md) in the same PR with a one-line rationale. Prefer something already in the tree, and a focused
   library over a framework.
 - **Generated files are never hand-edited.** See [codegen](docs/dev/codegen.md). Migrations are
   forward-only: add a new one, never edit an applied one.
