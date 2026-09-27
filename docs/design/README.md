@@ -41,7 +41,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [playout](playout.md) | the channel packager, backends, what is served, admission, playout status, Tunarr, Live TV wiring | 6 (Tunarr, Live TV), 9.1 | here |
 | [playback-clients](playback-clients.md) | tuning, pause, Android TV | 9.1 (clients) | here |
 | [auth](auth.md) | identity, credentials, invitations, notifications, devices, roles, route authorization, SSO | 11 | here |
-| web-ui | navigation, first-run wizard, cross-view rules | 12, 13 | `design.md` |
+| [web-ui](web-ui.md) | delivery, navigation, cross-view rules, the settings decision, first-run wizard, member first run | 12, 13 | here |
 | [deployment](deployment.md) | restart in place, the image, Compose, upgrades, the job scheduler | 9.2, 16, 18.1 | here |
 | [observability](observability.md) | activity, diagnostics, correlation, client events, health, reports, metrics, discovery quality | 5 (activity, diagnostics tables), 17 | here |
 | [images](images.md) | the image service | 22 | here |
@@ -67,6 +67,7 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0004](decisions/0004-grounding.md) | 2026-07-13 | The LLM never supplies trusted identity |
 | [0005](decisions/0005-human-approval.md) | 2026-07-13 | Proposals need human approval by default |
 | [0007](decisions/0007-loomarr-owns-identity.md) | 2026-07-13 | Loomarr owns identity; every credential path lands on one users table |
+| [0008](decisions/0008-settings-live-in-the-app.md) | 2026-07-14 | Settings live in the app; the environment pins |
 | [0009](decisions/0009-loomarr-plays-out.md) | 2026-07-25 | Loomarr plays out its own streams |
 | [0010](decisions/0010-restart-in-process.md) | 2026-07-29 | Restart rebuilds in process, never exits |
 | [0011](decisions/0011-sso-is-a-credential-path.md) | 2026-07-30 | SSO is a credential path, not a provisioning path |
