@@ -412,6 +412,14 @@ classify() {
       select_gate go
       select_gate image
       ;;
+    internal/watermark/fonts/*)
+      # The Plate bug's typeface and its licence, embedded by render.go. They change the rendered
+      # watermark and the production image, but no native client reads them.
+      known=true
+      select_gate contracts
+      select_gate go
+      select_gate image
+      ;;
     internal/fillereval/*.md)
       known=true
       select_gate docs

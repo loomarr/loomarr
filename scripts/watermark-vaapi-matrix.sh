@@ -35,7 +35,11 @@ set -u
 NODE="${RENDER_NODE:-/dev/dri/renderD128}"
 FF="${FFMPEG:-ffmpeg}"
 W="$(mktemp -d)"
-[ "${KEEP:-}" = 1 ] && echo "scratch: $W" || trap 'rm -rf "$W"' EXIT
+if [ "${KEEP:-}" = 1 ]; then
+	echo "scratch: $W"
+else
+	trap 'rm -rf "$W"' EXIT
+fi
 
 X=1760 Y=54 B=64 INSET=6 FRAME=12
 ALPHA=0.651 # 166/255, baked into the test bug
@@ -100,9 +104,11 @@ fi
 PATCH="drawbox=x=1700:y=0:w=220:h=200:color=0x404040:t=fill"
 
 # The test bug: a 64x64 white square at 65% alpha, straight and premultiplied.
-"$FF" -hide_banner -nostdin -loglevel error -y -f lavfi -i "color=c=0xFFFFFFA6:s=${B}x${B},format=rgba" -frames:v 1 "$W/bug.png" &&
-	"$FF" -hide_banner -nostdin -loglevel error -y -f lavfi -i "color=c=0xA6A6A6A6:s=${B}x${B},format=rgba" -frames:v 1 "$W/bug.pm.png" ||
-	{ echo "cannot write the test bug"; exit 1; }
+if ! "$FF" -hide_banner -nostdin -loglevel error -y -f lavfi -i "color=c=0xFFFFFFA6:s=${B}x${B},format=rgba" -frames:v 1 "$W/bug.png" ||
+	! "$FF" -hide_banner -nostdin -loglevel error -y -f lavfi -i "color=c=0xA6A6A6A6:s=${B}x${B},format=rgba" -frames:v 1 "$W/bug.pm.png"; then
+	echo "cannot write the test bug"
+	exit 1
+fi
 printf 'bug pixel (RGBA): straight %s, premultiplied %s\n' \
 	"$("$FF" -loglevel error -i "$W/bug.png" -f rawvideo -pix_fmt rgba -frames:v 1 - | od -An -tu1 -N4 | xargs)" \
 	"$("$FF" -loglevel error -i "$W/bug.pm.png" -f rawvideo -pix_fmt rgba -frames:v 1 - | od -An -tu1 -N4 | xargs)"
@@ -170,7 +176,7 @@ for class in sdr hdr; do
 			OFF[$off]=1
 		fi
 		on="$W/$class-$name.h264"
-		if ! err="$(encode "$src" "$main[main];$bug[wm];[main][wm]$(join "$blend" "$after" "$TAIL")" "$on")"; then
+		if ! err="$(encode "$src" "${main}[main];${bug}[wm];[main][wm]$(join "$blend" "$after" "$TAIL")" "$on")"; then
 			printf '%-22s %-14s %s\n' "$name" FAILED "$err"
 			continue
 		fi
