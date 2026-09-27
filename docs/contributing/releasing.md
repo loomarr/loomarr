@@ -1,5 +1,8 @@
 # Publishing a release
 
+**For:** maintainers cutting a release.
+**You'll get:** what a `v*` tag publishes, and which workflow owns each part.
+
 Server image publication and GitHub Release publication intentionally run in separate workflows from
 the same `v*` tag. The image workflow owns package write and keyless-signing permissions. The release
 notes workflow owns only `contents: write`; it cannot build, sign, or promote an image.

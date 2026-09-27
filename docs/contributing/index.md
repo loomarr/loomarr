@@ -1,7 +1,10 @@
 # Developing Loomarr
 
+**For:** anyone changing Loomarr's code or docs.
+**You'll get:** where to start, and a map of the contributor pages.
+
 This directory is the single source for how to build, run and test Loomarr. `README.md`,
-`README.md`, `CONTRIBUTING.md`, and agent-specific adapters link here. `AGENTS.md` keeps the concise
+`CONTRIBUTING.md`, and agent-specific adapters link here. `AGENTS.md` keeps the concise
 cross-harness contract and points here for detail.
 
 | Page | Answers |

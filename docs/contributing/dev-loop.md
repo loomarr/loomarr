@@ -1,5 +1,8 @@
 # The dev loop
 
+**For:** contributors running Loomarr from source.
+**You'll get:** a backend and frontend that reload as you edit, and which URL to use.
+
 Two processes, each with live reload. Run them in separate terminals; the harness assigns stable,
 worktree-specific ports and prints both URLs.
 

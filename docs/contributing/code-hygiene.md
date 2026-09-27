@@ -1,5 +1,8 @@
 # Code hygiene: unused code
 
+**For:** contributors removing code, or told by CI that something is unused.
+**You'll get:** the two tools that find dead code, and which one blocks a merge.
+
 Two tools find code nothing uses. One is a gate; the other is a report.
 
 | Tool | Scope | Run it | In CI |

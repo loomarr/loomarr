@@ -1,5 +1,8 @@
 # Playout bench
 
+**For:** contributors changing playout, or checking a new host's encoder.
+**You'll get:** how to run the bench, and whether this host still meets the playout numbers.
+
 The playout bench answers one question on any host: **does Loomarr's real playout pipeline still meet
 the beta.8 numbers here?** It runs a generated, redistributable corpus through `playout.Build`, the
 same pipeline builder the live chain uses, measures it, judges the result against the thresholds and

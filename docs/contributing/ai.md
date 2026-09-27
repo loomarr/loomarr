@@ -1,5 +1,8 @@
 # AI in this project
 
+**For:** contributors working on the suggester or with coding agents.
+**You'll get:** which "AI" is which, and the rules for each.
+
 Two different things share the word:
 
 1. **AI as a feature** — Loomarr uses an LLM to turn your sentence into a lineup.
