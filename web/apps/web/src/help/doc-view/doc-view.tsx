@@ -12,6 +12,15 @@ import type { DocViewProps } from "./doc-view.type";
 const isInternal = (href?: string): href is string =>
   !!href && !/^[a-z]+:\/\//i.test(href) && !href.startsWith("#") && !href.startsWith("/");
 
+// A page shows a diagram by its repo path ("../diagrams/generated/architecture.svg") so it
+// renders on GitHub and the docs site too. In the app the same file ships inside the binary,
+// at /v1/docs/diagrams/<name>, so Help's diagrams work air-gapped. docs/embed_test.go checks
+// every diagram a page shows is embedded.
+const diagramSrc = (src?: string): string | undefined => {
+  const name = src?.match(/(?:^|\/)diagrams\/generated\/([a-z0-9-]+\.svg)$/)?.[1];
+  return name ? `/v1/docs/diagrams/${name}` : undefined;
+};
+
 // Heading ids are a CONTRACT, not decoration. The API emits `troubleshooting#tunarr`-style
 // deep-links on every failed setup check (§13: "every red check deep-links to its
 // section"), and a Go test asserts each anchor resolves to a real heading. That guarantee
@@ -91,6 +100,17 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
               {children}
             </a>
           ),
+        // Diagrams load only through <img>, where an SVG can't run script (the route also
+        // serves them sandboxed). Any other image would be a fetch out of the household's
+        // network, so it shows as its alt text instead.
+        img: ({ src, alt }) => {
+          const diagram = diagramSrc(src);
+          return diagram ? (
+            <img src={diagram} alt={alt ?? ""} className="my-2 h-auto max-w-full" loading="lazy" />
+          ) : (
+            <span className="text-muted-foreground">{alt}</span>
+          );
+        },
         table: ({ children }) => (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">{children}</table>

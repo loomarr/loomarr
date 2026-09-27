@@ -86,10 +86,12 @@ func TestPreMoveHelpLinksStillLand(t *testing.T) {
 // link from an embedded page to anything that is not embedded (the settings reference, a
 // compose file) opens "Help page not found". Those links must be absolute URLs.
 func TestEmbeddedPagesLinkOnlyToEmbeddedPages(t *testing.T) {
-	link := regexp.MustCompile(`\]\(([^)\s]+)\)`)
 	for _, p := range docs.Pages() {
-		for _, m := range link.FindAllStringSubmatch(p.Markdown, -1) {
-			href := m[1]
+		for _, m := range mdTarget.FindAllStringSubmatch(p.Markdown, -1) {
+			if strings.HasPrefix(m[1], "!") {
+				continue // an image: TestEmbeddedPagesShowOnlyEmbeddedDiagrams checks those
+			}
+			href := m[2]
 			if strings.Contains(href, "://") || strings.HasPrefix(href, "#") || strings.HasPrefix(href, "mailto:") {
 				continue
 			}
@@ -101,6 +103,46 @@ func TestEmbeddedPagesLinkOnlyToEmbeddedPages(t *testing.T) {
 				t.Errorf("docs/%s links to %q, which the app cannot open; link an embedded page "+
 					"by its relative .md path, or anything else by its absolute URL", p.Path, href)
 			}
+		}
+	}
+}
+
+// mdTarget matches a Markdown link or image target. Group 1 starts with "!" for an image;
+// group 2 is the target.
+var mdTarget = regexp.MustCompile(`(!\[[^\]]*\]|\])\(([^)\s]+)\)`)
+
+// Help shows a page's diagrams from the binary (GET /v1/docs/diagrams/{name}) so it works
+// air-gapped, and it shows nothing else: a remote image would call out of the household's
+// network. So every image on an embedded page must be a generated diagram that is embedded
+// too, or Help shows a broken image.
+func TestEmbeddedPagesShowOnlyEmbeddedDiagrams(t *testing.T) {
+	for _, p := range docs.Pages() {
+		for _, m := range mdTarget.FindAllStringSubmatch(p.Markdown, -1) {
+			if !strings.HasPrefix(m[1], "!") {
+				continue
+			}
+			src := m[2]
+			name, isDiagram := strings.CutPrefix(path.Join(path.Dir(p.Path), src), "diagrams/generated/")
+			if !isDiagram || strings.Contains(name, "/") || path.Ext(name) != ".svg" {
+				t.Errorf("docs/%s shows image %q; Help can show only diagrams from "+
+					"docs/diagrams/generated/, by their relative path", p.Path, src)
+				continue
+			}
+			if _, found := docs.Diagram(name); !found {
+				t.Errorf("docs/%s shows diagram %q, which is not embedded; run make diagrams", p.Path, src)
+			}
+		}
+	}
+}
+
+// Diagram is the only file the diagram route reads, and the name comes from the URL.
+func TestDiagramServesOnlyGeneratedSVGs(t *testing.T) {
+	if _, found := docs.Diagram("ci.svg"); !found {
+		t.Fatal(`Diagram("ci.svg") not found; the generated diagrams are not embedded`)
+	}
+	for _, name := range []string{"", ".", "..", "../get-started.md", "generated/ci.svg", "ci.d2", "ci", "/ci.svg"} {
+		if _, found := docs.Diagram(name); found {
+			t.Errorf("Diagram(%q) returned a file; only a generated diagram's base name may", name)
 		}
 	}
 }

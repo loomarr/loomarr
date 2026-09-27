@@ -318,3 +318,43 @@ func TestOpsProbeAliasesAgreeWithTheCanonicalPaths(t *testing.T) {
 			"explain itself is the thing §17 added it for", body)
 	}
 }
+
+// Help shows a page's diagrams from the binary, as images. The headers are the safety
+// contract: an SVG opened on its own is a document that could run script, so the route pins
+// the type (nosniff) and sandboxes it (CSP), and Help only ever loads it through <img>.
+func TestHelp_ServesDiagramAsSandboxedImage(t *testing.T) {
+	srv := newHelpServer(t, nil)
+	resp := do(t, srv, http.MethodGet, "/v1/docs/diagrams/ci.svg", memberToken, "")
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("diagram → %d, want 200 for a member", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "image/svg+xml" {
+		t.Errorf("Content-Type = %q, want image/svg+xml", got)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	csp := resp.Header.Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'none'", "sandbox"} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("Content-Security-Policy = %q, want it to contain %q", csp, want)
+		}
+	}
+	if !strings.Contains(body, "<svg") {
+		t.Errorf("body is not the diagram: %.80q", body)
+	}
+
+	for _, path := range []string{
+		"/v1/docs/diagrams/missing.svg",
+		"/v1/docs/diagrams/ci.d2",
+		"/v1/docs/diagrams/..%2Fget-started.md",
+	} {
+		if resp := do(t, srv, http.MethodGet, path, memberToken, ""); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s → %d, want 404", path, resp.StatusCode)
+		}
+	}
+	if resp := do(t, srv, http.MethodGet, "/v1/docs/diagrams/ci.svg", "", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("anonymous diagram → %d, want 401: Help is for signed-in users", resp.StatusCode)
+	}
+}

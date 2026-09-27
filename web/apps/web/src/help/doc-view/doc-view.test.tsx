@@ -29,3 +29,23 @@ describe("DocView links", () => {
     expect(document.getElementById("media-server")).not.toBeNull();
   });
 });
+
+describe("DocView images", () => {
+  it("shows a page's diagram as an <img> from the binary, not the repo path", () => {
+    render(<DocView markdown="![How it flows](../diagrams/generated/architecture.svg)" />);
+    const img = screen.getByRole("img", { name: "How it flows" });
+    expect(img.tagName).toBe("IMG");
+    expect(img).toHaveAttribute("src", "/v1/docs/diagrams/architecture.svg");
+  });
+
+  it("never fetches any other image: Help works air-gapped", () => {
+    render(<DocView markdown="![A remote picture](https://example.com/x.png)" />);
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("A remote picture")).toBeInTheDocument();
+  });
+
+  it("never renders inline SVG from the Markdown", () => {
+    const { container } = render(<DocView markdown={"<svg><script>alert(1)</script></svg>\n\ntext"} />);
+    expect(container.querySelector("svg, script")).toBeNull();
+  });
+});

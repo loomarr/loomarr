@@ -21,6 +21,12 @@ import (
 //go:embed get-started.md guides/*.md explanation/*.md
 var helpFS embed.FS
 
+// The generated diagrams ride along so Help can show a page's diagrams air-gapped. Only the
+// rendered SVGs: their D2 sources and the diagram system stay in the repo.
+//
+//go:embed diagrams/generated/*.svg
+var diagramFS embed.FS
+
 // helpDirs are the embedded folders, "." being docs/ itself (get-started.md).
 var helpDirs = []string{".", "guides", "explanation"}
 
@@ -97,6 +103,20 @@ func Get(slug string) (Page, bool) {
 		}
 	}
 	return Page{}, false
+}
+
+// Diagram returns one generated diagram by its file name ("architecture.svg"), as a page
+// references it (../diagrams/generated/architecture.svg). The name comes from a URL, so
+// anything but a plain base name ending in .svg is refused before the embed is read.
+func Diagram(name string) ([]byte, bool) {
+	if name != path.Base(name) || path.Ext(name) != ".svg" || strings.HasPrefix(name, ".") {
+		return nil, false
+	}
+	body, err := fs.ReadFile(diagramFS, "diagrams/generated/"+name)
+	if err != nil {
+		return nil, false
+	}
+	return body, true
 }
 
 // Resolve maps a help href ("concepts#who-does-what") to where that content lives now
