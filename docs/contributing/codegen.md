@@ -1,5 +1,8 @@
 # Code generation
 
+**For:** contributors who changed an API, a setting, a schema or a diagram.
+**You'll get:** the command that regenerates each file, and the check that catches drift.
+
 Generated files are never hand-edited. Each has a command that produces it, and where it's
 committed, a `*-verify` target that fails CI on drift.
 

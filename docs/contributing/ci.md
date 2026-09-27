@@ -1,6 +1,9 @@
 # CI
 
-![The CI classifier selects specialized gates which converge on one required aggregate](../diagrams/generated/ci.svg)
+**For:** contributors whose pull request is waiting on checks.
+**You'll get:** how CI picks what to run, and the one check that gates main.
+
+![A pull request enters ci.yml: the path classifier picks the affected families, the PR run or merge queue admits them, the family workflows run only what changed, and every result goes to one required check that gates main](../diagrams/generated/ci.svg)
 
 *[D2 source](../diagrams/ci.d2)*
 

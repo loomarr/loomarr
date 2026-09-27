@@ -44,6 +44,8 @@ export default defineConfig({
       title: "Loomarr",
       description: "Always something on. Describe a TV channel in a sentence; Loomarr builds it, plays it, and keeps it running.",
       social: [{ icon: "github", label: "GitHub", href: repoUrl }],
+      // Only the landing page has a hero; its drawing replaces Starlight's image-beside-title.
+      components: { Hero: "./src/components/Hero.astro" },
       customCss: [
         "@fontsource-variable/geist",
         "@fontsource-variable/geist-mono",

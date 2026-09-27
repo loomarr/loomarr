@@ -1,0 +1,146 @@
+---
+// Section spot art for the landing page (#1572): one small idea per section, drawn from the
+// hero's parts (raised card with outline, the screen, a knob, the on-air light, static and the
+// seven brand bars in their fixed order) and, for Contributing, a branch-and-merge line in the
+// same surface colours. The maintainer approves each drawing. Colours come from the --art-*
+// variables in styles/custom.css so each drawing follows the site theme; the bars and dots are
+// the brand chroma.
+// Decorative: each sits beside a heading that already says what the section is.
+interface Props {
+  name: "get-started" | "guides" | "reference" | "explanation" | "contributing";
+}
+const { name } = Astro.props;
+
+// signal, caution, lock, tune, suggest, on-air, static
+// (web/packages/design-system/src/tokens/brand-contract.json).
+const chroma = ["#FFB020", "#F5D90A", "#3DD68C", "#4CC9E8", "#D6409F", "#E5484D", "#8B93A3"];
+// Per-instance ids, so two drawings on one page never share a filter, mask or clip.
+const snowId = `lm-spot-snow-${name}`;
+const fadeId = `lm-spot-fade-${name}`;
+const maskId = `lm-spot-mask-${name}`;
+const clipId = `lm-spot-clip-${name}`;
+// E1's bar edges, exactly as approved (152 / 7 rounded to 21.72).
+const e1BarX = [24, 45.72, 67.44, 89.16, 110.88, 132.6, 154.32];
+---
+
+<svg class="lm-spot" viewBox="0 0 200 120" aria-hidden="true" focusable="false">
+  {
+    name === "get-started" && (
+      // On air: the set from the hero, bars across its screen and the on-air light lit.
+      <g>
+        <rect x="38" y="14" width="124" height="86" rx="16" fill="var(--art-raised)" stroke="var(--art-outline)" stroke-width="2" />
+        <rect x="48" y="23" width="86" height="68" rx="10" fill="var(--art-ground)" />
+        <g>
+          {chroma.map((fill, i) => (
+            <rect x={52 + i * 11.4} y="27" width="11.4" height="60" fill={fill} />
+          ))}
+        </g>
+        <circle cx="148" cy="38" r="6" fill="var(--art-elevated)" stroke="var(--art-outline)" stroke-width="1.5" />
+        <line x1="148" y1="38" x2="148" y2="33.5" stroke="var(--art-ink-2)" stroke-width="1.5" stroke-linecap="round" />
+        <circle cx="148" cy="82" r="3" fill="#E5484D" />
+        <rect x="54" y="100" width="18" height="5" rx="2.5" fill="var(--art-outline)" />
+        <rect x="128" y="100" width="18" height="5" rx="2.5" fill="var(--art-outline)" />
+      </g>
+    )
+  }
+  {
+    name === "guides" && (
+      // Steps: three cards, each one further along, the last one on air.
+      <g>
+        <rect x="20" y="16" width="64" height="40" rx="10" fill="var(--art-raised)" stroke="var(--art-outline)" stroke-width="2" />
+        <rect x="30" y="28" width="36" height="4" rx="2" fill="var(--art-ink-2)" />
+        <rect x="30" y="38" width="24" height="4" rx="2" fill="var(--art-outline)" />
+        <rect x="68" y="44" width="64" height="40" rx="10" fill="var(--art-raised)" stroke="var(--art-outline)" stroke-width="2" />
+        <rect x="78" y="56" width="36" height="4" rx="2" fill="var(--art-ink-2)" />
+        <rect x="78" y="66" width="24" height="4" rx="2" fill="var(--art-outline)" />
+        <rect x="116" y="72" width="64" height="40" rx="10" fill="var(--art-ground)" stroke="var(--art-outline)" stroke-width="2" />
+        <g>
+          {chroma.map((fill, i) => (
+            <rect x={124 + i * 6.86} y="84" width="6.86" height="16" fill={fill} />
+          ))}
+        </g>
+      </g>
+    )
+  }
+  {
+    name === "reference" && (
+      // Every setting: a raised card of rows, each with its control; one found and on.
+      <g>
+        <rect x="36" y="10" width="128" height="100" rx="16" fill="var(--art-raised)" stroke="var(--art-outline)" stroke-width="2" />
+        {[0, 1, 2, 3].map((row) => (
+          <g transform={`translate(0 ${row * 22})`}>
+            <rect x="50" y="26" width={[54, 40, 60, 46][row]} height="4" rx="2" fill={row === 2 ? "var(--art-ink)" : "var(--art-ink-2)"} />
+            <rect x="126" y="21" width="24" height="14" rx="7" fill={row === 2 ? "var(--art-glow)" : "var(--art-elevated)"} stroke={row === 2 ? "none" : "var(--art-outline)"} stroke-width="1.5" />
+            <circle cx={row === 2 ? 143 : 133} cy="28" r="4.5" fill={row === 2 ? "var(--art-raised)" : "var(--art-control)"} />
+          </g>
+        ))}
+      </g>
+    )
+  }
+  {
+    name === "explanation" && (
+      // E1, static becoming signal (maintainer-approved, 2026-09-27): crisp TV snow (dense
+      // two-octave noise in full greyscale, with faint horizontal streaks over it) fading on a
+      // long eased mask into the seven bars, all clipped to the screen.
+      <g>
+        <defs>
+          <filter id={snowId} x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+            <feTurbulence type="fractalNoise" baseFrequency="1.6 2.8" numOctaves="2" seed="4" result="g" />
+            <feColorMatrix in="g" type="matrix" values="2.6 0 0 0 -.82  2.6 0 0 0 -.82  2.6 0 0 0 -.8  0 0 0 0 1" result="snow" />
+            <feTurbulence type="fractalNoise" baseFrequency="0.004 0.9" numOctaves="1" seed="11" result="s" />
+            <feColorMatrix in="s" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.4 0 0 0 -.62" result="streak" />
+            <feComposite in="streak" in2="snow" operator="over" />
+          </filter>
+          <linearGradient id={fadeId} x1="0" x2="0" y1="0" y2="1">
+            <stop offset=".12" stop-color="#fff" stop-opacity="0" />
+            <stop offset=".35" stop-color="#fff" stop-opacity=".12" />
+            <stop offset=".55" stop-color="#fff" stop-opacity=".55" />
+            <stop offset=".75" stop-color="#fff" stop-opacity=".92" />
+            <stop offset=".9" stop-color="#fff" stop-opacity="1" />
+          </linearGradient>
+          <mask id={maskId}>
+            <rect x="24" y="18" width="152" height="84" fill={`url(#${fadeId})`} />
+          </mask>
+          <clipPath id={clipId}>
+            <rect x="24" y="18" width="152" height="84" rx="12" />
+          </clipPath>
+        </defs>
+        <rect x="20" y="14" width="160" height="92" rx="16" fill="var(--art-ground)" stroke="var(--art-outline)" stroke-width="2" />
+        <g clip-path={`url(#${clipId})`}>
+          <rect x="24" y="18" width="152" height="84" filter={`url(#${snowId})`} shape-rendering="crispEdges" />
+          <g mask={`url(#${maskId})`}>
+            {chroma.map((fill, i) => (
+              <rect x={e1BarX[i]} y="18" width="21.72" height="84" fill={fill} />
+            ))}
+          </g>
+        </g>
+      </g>
+    )
+  }
+  {
+    name === "contributing" && (
+      // K2, merge a branch (maintainer-approved, 2026-09-27): the main line in the outline
+      // colour, a branch leaving and merging back in the control colour, commits as brand-colour
+      // dots, and the merge commit larger with a ring in the raised colour.
+      <g>
+        <path d="M24 84 H176" stroke="var(--art-outline)" stroke-width="4" stroke-linecap="round" />
+        <path d="M62 84 C 62 44, 86 38, 100 38 H118 C 134 38, 138 60, 138 84" fill="none" stroke="var(--art-control)" stroke-width="4" stroke-linecap="round" />
+        <circle cx="40" cy="84" r="8" fill={chroma[6]} />
+        <circle cx="62" cy="84" r="8" fill={chroma[0]} />
+        <circle cx="92" cy="38" r="8" fill={chroma[2]} />
+        <circle cx="118" cy="38" r="8" fill={chroma[3]} />
+        <circle cx="138" cy="84" r="10" fill={chroma[4]} stroke="var(--art-raised)" stroke-width="3" />
+        <circle cx="162" cy="84" r="8" fill={chroma[6]} opacity=".6" />
+      </g>
+    )
+  }
+</svg>
+
+<style>
+  .lm-spot {
+    display: block;
+    width: 100%;
+    max-width: 12rem;
+    height: auto;
+  }
+</style>

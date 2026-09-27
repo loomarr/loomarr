@@ -1,5 +1,8 @@
 # Setup
 
+**For:** contributors on a fresh machine.
+**You'll get:** the toolchain installed and a working first build.
+
 ## Toolchain
 
 | Tool | Version | Pinned in |

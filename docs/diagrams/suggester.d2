@@ -1,20 +1,26 @@
-vars: {
-  d2-config: {
-    layout-engine: elk
-    theme-id: 4
-    dark-theme-id: 200
-    pad: 32
-    center: true
-  }
-}
+# Question: how does a sentence become a proposal, and why can't the model invent a title?
+# Reads top to bottom as one column: the model only chooses among candidates the searches already
+# found, and validation checks its choices before anyone sees them.
+...@system/theme
 
 direction: down
 
-intent: Intent and explicit context
-search: Catalog searches\nlibrary and TMDB
-candidates: Grounded candidates\nwith real identifiers
-model: LLM selects and structures
-validate: Deterministic validation\nand scoring
-proposal: Proposal\nlineup, acquisitions, and rationale
+people: Your sentence {class: audience; icon: icons/audience-users.svg}
+media: Emby or Jellyfin {class: service; icon: icons/service-server.svg}
+tmdb: TMDB {class: service; icon: icons/service-film.svg}
 
-intent -> search -> candidates -> model -> validate -> proposal
+search: Catalog search {class: loomarr; icon: icons/loomarr-search.svg}
+candidates: Real titles {class: loomarr; icon: icons/loomarr-list-checks.svg}
+llm: LLM picks {class: service; icon: icons/service-brain.svg}
+validate: Validation {class: loomarr; icon: icons/loomarr-shield-check.svg}
+proposal: Proposal {class: loomarr; icon: icons/loomarr-list-plus.svg}
+admin: Admin approves {class: audience; icon: icons/audience-user-check.svg}
+
+media -> search: {class: flow}
+people -> search: {class: hot}
+tmdb -> search: {class: flow}
+search -> candidates: {class: hot}
+candidates -> llm: {class: hot}
+llm -> validate: {class: hot}
+validate -> proposal: {class: hot}
+proposal -> admin: {class: hot}

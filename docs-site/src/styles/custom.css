@@ -31,6 +31,17 @@
   --sl-color-red-low: #331d21;
   --sl-color-red: #e85a5f;
   --sl-color-red-high: #e7eaf0;
+
+  /* Docs art (components/Hero.astro, components/SpotArt.astro): the drawings read these, so
+     they follow the theme. Ground is the brand's screen colour, the same in both themes. */
+  --art-ground: #0b0c0e; /* brand.ground */
+  --art-raised: #131519; /* surface.raised */
+  --art-elevated: #1b1e24; /* surface.elevated */
+  --art-outline: #2a2e37; /* border.decorative */
+  --art-control: #61646b; /* border.control */
+  --art-ink: #e7eaf0; /* content.primary */
+  --art-ink-2: #8b93a3; /* content.secondary */
+  --art-glow: #ffb020; /* action.primary */
 }
 
 :root[data-theme="light"] {
@@ -59,6 +70,14 @@
   --sl-color-red-low: #f2dfdf;
   --sl-color-red: #a5272c;
   --sl-color-red-high: #17191d;
+
+  --art-raised: #ffffff; /* surface.raised */
+  --art-elevated: #e7eaf0; /* surface.elevated */
+  --art-outline: #d2d6de; /* border.decorative */
+  --art-control: #747c8b; /* border.control */
+  --art-ink: #17191d; /* content.primary */
+  --art-ink-2: #515866; /* content.secondary */
+  --art-glow: #795000; /* action.primary */
 }
 
 /* The "For / You'll get" opener every page starts with. */
@@ -74,14 +93,6 @@
   height: auto;
   margin: 1.5rem 0;
   border-radius: 12px;
-}
-
-/* Starlight cycles card accents through its palette (so one landing card came out green).
-   Every card is Loomarr's, so every card is amber. :nth-child(n) matches Starlight's own
-   :nth-child selectors in specificity; the doubled class wins the tie. */
-.card.card:nth-child(n) {
-  --sl-card-border: var(--sl-color-accent);
-  --sl-card-bg: var(--sl-color-accent-low);
 }
 
 /* Wide reference tables (the settings and make references) get their own scroll container

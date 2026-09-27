@@ -1,5 +1,8 @@
 # The dev loop
 
+**For:** contributors running Loomarr from source.
+**You'll get:** a backend and frontend that reload as you edit, and which URL to use.
+
 Two processes, each with live reload. Run them in separate terminals; the harness assigns stable,
 worktree-specific ports and prints both URLs.
 
@@ -10,9 +13,8 @@ make dev-fe    # Vite HMR, proxying this worktree's backend
 
 ## Develop against the frontend URL
 
-![The local browser uses Vite for the current frontend and proxies to the Air-managed backend](../diagrams/generated/dev-loop.svg)
-
-*[D2 source](../diagrams/dev-loop.d2)*
+Your browser talks to Vite, which serves the frontend you're editing and proxies API calls to the
+Air-managed backend.
 
 The backend URL serves the SPA compiled into the binary at your last `make fe`, not your working copy.
 Frontend changes appear only at the frontend URL.

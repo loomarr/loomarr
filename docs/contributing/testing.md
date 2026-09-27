@@ -1,5 +1,8 @@
 # Testing
 
+**For:** contributors writing or running tests.
+**You'll get:** which suite covers what, and the rules every test follows.
+
 Unit tests never touch the network. External services are mocked through `internal/testkit` —
 extend it rather than writing a private mock.
 
