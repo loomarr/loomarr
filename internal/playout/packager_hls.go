@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
+	"sync/atomic"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/playout/packager"
@@ -302,10 +302,14 @@ func (m *PackagerHLS) schedule(
 		} else {
 			itemOut.SoftwareRung = StartRung(it.Format, RungCost{})
 		}
-		// TODO(#1512 RungMonitor): the live rung step (rungmonitor.go's caller contract) hooks in
-		// here. A software item encoder feeds its -progress to one monitor per item; on a Step the
-		// packager ends this slot's encoder and re-opens the item at its own clock with the new
-		// rung (itemOut.SoftwareRung), as it already re-opens one after a GPU fault.
+		// TODO(#1512 RungMonitor, beta.8 budget lane): the live rung step hooks in here, through
+		// #1545's lease binding (Lease.NewRungMonitor, whose Reprice asks the ledger before a step).
+		// A software item encoder feeds its -progress to one monitor per item; on a Step the packager
+		// ends this slot's encoder and re-opens the item at its own clock with the new rung
+		// (itemOut.SoftwareRung), as it already re-opens one after a GPU fault.
+		// The frames the packager took from this item (0 until it reports, and never for an item whose
+		// channel stopped): the cost sample's media.
+		var delivered atomic.Int64
 		item.Open = func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
 			pl, args, err := packagerItemArgs(host, itemOut, it, slot, faults.get(it.Input))
 			if err != nil {
@@ -321,13 +325,15 @@ func (m *PackagerHLS) schedule(
 				}
 			}, func(cpu time.Duration) {
 				// The ledger learns the class's real CPU cost from delivered items (#1520), as it
-				// did from the retired chain's finished programmes.
-				if itemOut.FPS > 0 {
-					media := time.Duration(slot.Frames) * time.Second / time.Duration(itemOut.FPS)
+				// did from the retired chain's finished programmes: CPU over the media the item put
+				// on the timeline, not its slot, so an encoder closed early cannot over-count.
+				if frames := delivered.Load(); frames > 0 && itemOut.FPS > 0 {
+					media := time.Duration(frames) * time.Second / time.Duration(itemOut.FPS)
 					lease.ObserveCPU(ClassOf(it.Format), cpu, media)
 				}
 			})
 		}
+		item.Delivered = func(frames int64) { delivered.Store(frames) }
 		return item, nil
 	}
 }
@@ -623,8 +629,8 @@ type encoderOutput struct {
 	stderr *bytes.Buffer
 	watch  *limitedWriter
 	failed func(decodeFault bool)
-	// done receives the CPU time of an encoder that delivered its slot, for the ledger's measured
-	// class cost (Lease.ObserveCPU, #1520).
+	// done receives the CPU time of an encoder that produced, for the ledger's measured class cost
+	// (Lease.ObserveCPU, #1520); the schedule divides it by the frames the packager took.
 	done     func(cpu time.Duration)
 	produced bool // read on the packager's reader goroutine, then by Close after it
 	log      *slog.Logger
@@ -646,17 +652,14 @@ func (e *encoderOutput) Close() error {
 			_ = e.cmd.Process.Kill() // the packager is done with this item, finished or not
 		}
 		err := e.cmd.Wait()
-		if e.ctx.Err() != nil {
-			return // the channel stopped mid-item: neither a failure nor a cost sample
-		}
-		// The packager asks for more frames than the slot and kills the encoder once it has them, so
-		// an encoder it killed after output delivered the slot; one that exited on its own with an
-		// error did not.
-		if e.produced && e.done != nil && e.cmd.ProcessState != nil && (err == nil || killedByUs(err)) {
+		// Every encoder that produced reports its CPU, however it ended (the packager cancels the
+		// item's context before closing it): the schedule counts it only over the frames the
+		// packager reported delivered.
+		if e.produced && e.done != nil && e.cmd.ProcessState != nil {
 			e.done(e.cmd.ProcessState.UserTime() + e.cmd.ProcessState.SystemTime())
 		}
-		if err == nil {
-			return
+		if e.ctx.Err() != nil || err == nil {
+			return // ended by the packager or its channel: not a failure
 		}
 		if e.stderr.Len() > 0 {
 			e.log.Warn("packager hls: item encoder failed", "err", err, "stderr", strings.TrimSpace(e.stderr.String()))
@@ -666,17 +669,6 @@ func (e *encoderOutput) Close() error {
 		}
 	})
 	return nil
-}
-
-// killedByUs reports an encoder that ended on SIGKILL: Close kills every item encoder once the
-// packager is done with it.
-func killedByUs(err error) bool {
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) {
-		return false
-	}
-	status, ok := exit.Sys().(syscall.WaitStatus)
-	return ok && status.Signaled() && status.Signal() == syscall.SIGKILL
 }
 
 // limitedWriter keeps the first n bytes of an encoder's stderr for its failure log, and notes a GPU

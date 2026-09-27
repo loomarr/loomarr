@@ -469,8 +469,10 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 }
 
 // The ledger learns a class's real CPU cost from live encodes (#1520). The retired chain reported it
-// from each finished programme; the packager reports it from each item encoder that delivered its
-// slot and was then ended by the packager, never from one a viewer's leaving cancelled.
+// from each finished programme; the packager reports each item encoder's CPU over the media it
+// DELIVERED (packager.Item.Delivered), never over its slot, so an encoder closed early cannot
+// over-count; an item whose channel stopped reports nothing. Each item follows airItem's order:
+// Delivered, then the item context is cancelled, then the reader is closed.
 func TestPackagerItemEncoderTeachesTheLedgerItsCPUCost(t *testing.T) {
 	dir := t.TempDir()
 	ffmpeg := filepath.Join(dir, "ffmpeg")
@@ -495,29 +497,39 @@ func TestPackagerItemEncoderTeachesTheLedgerItsCPUCost(t *testing.T) {
 	_, out := slowItemSource{}.Output(t.Context(), "ch", FormatBaseline, 0)
 	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline},
 		HostFor(EncoderSoftware, true, GPUFilters{}), out, lease, nil, slog.New(slog.DiscardHandler))
-	// encodeItem delivers one 60 s slot; beforeClose runs once the encoder has produced output.
-	encodeItem := func(ctx context.Context, beforeClose func()) {
-		item, err := sched(ctx, time.Now())
+	// encodeItem airs one item into a 60 s slot as airItem does; delivered < 0 is a channel that
+	// stopped mid-item (airItem reports nothing).
+	encodeItem := func(delivered int64) {
+		ictx, cancel := context.WithCancel(t.Context())
+		item, err := sched(ictx, time.Now())
 		if err != nil {
 			t.Fatal(err)
 		}
-		rc, err := item.Open(ctx, packager.Slot{Frames: int64(60 * out.FPS)})
+		rc, err := item.Open(ictx, packager.Slot{Frames: int64(60 * out.FPS)})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if _, err := io.ReadFull(rc, make([]byte, len("fragment"))); err != nil {
 			t.Fatal(err)
 		}
-		beforeClose()
+		if delivered >= 0 && item.Delivered != nil {
+			item.Delivered(delivered)
+		}
+		cancel()
 		_ = rc.Close()
 	}
 
-	left, leave := context.WithCancel(t.Context())
-	encodeItem(left, leave)
+	encodeItem(-1)
 	if got := cost(); got != base {
-		t.Fatalf("an encoder the viewer's leaving cancelled taught the ledger: %v → %v", base, got)
+		t.Fatalf("an encoder whose channel stopped taught the ledger: %v → %v", base, got)
 	}
-	encodeItem(t.Context(), func() {})
+	// 10 s delivered of a 60 s slot is under the ledger's 20 s sample floor; counted over its slot
+	// it would have taught the ledger.
+	encodeItem(int64(10 * out.FPS))
+	if got := cost(); got != base {
+		t.Fatalf("an encoder closed after 10 s of a 60 s slot taught the ledger (%v → %v): its media was counted by slot", base, got)
+	}
+	encodeItem(int64(60 * out.FPS))
 	if got := cost(); got >= base {
 		t.Fatalf("SDR CPU cost = %v after a delivered item that used far less than the probe's %v: the ledger did not learn", got, base)
 	}

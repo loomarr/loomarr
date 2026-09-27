@@ -30,6 +30,10 @@ type Item struct {
 	Label    string
 	Duration time.Duration
 	Open     func(ctx context.Context, slot Slot) (io.ReadCloser, error)
+	// Delivered, if set, receives the video frames the item put on the channel timeline, before its
+	// reader is closed. It is not called for an item that never produced, or whose channel stopped
+	// mid-item. An encoder's cost is its CPU over this media, not over its slot.
+	Delivered func(frames int64)
 }
 
 // Slot is one item's place on the channel timeline, fixed before its encoder starts.
@@ -368,6 +372,9 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 			break
 		}
 		frag = f
+	}
+	if item.Delivered != nil && ctx.Err() == nil {
+		item.Delivered(nv) // before the encoder is stopped and reaped
 	}
 	cancel()
 	if nv < slot.Frames && stream.err != nil && ctx.Err() == nil {
