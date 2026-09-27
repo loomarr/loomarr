@@ -187,3 +187,37 @@ Loading a local model dominates latency (measured about 9 s cold against 0.5 s w
   packager has no eviction step ([`playout.md`](playout.md#the-channel-packager)).
 - Boot and every model selection warm the model in the background, best-effort. With no configured
   model the warm-up is declined (`ErrNothingToWarm`), not attempted against a fallback tag.
+
+## Discovery feedback
+
+Feedback is explicit household editorial state, never inferred from viewing.
+
+- An admin records `keep`, `less`, `never` or `surprise` against a canonical title key
+  (`provision.ParseKey`), for the household or one Channel. Every change appends an actor-attributed
+  event; clearing appends a tombstone. Members may read, not write; anonymous callers can do neither.
+- The latest event per `(scope, target)` is effective, and a Channel event overrides the household
+  one for that Channel. `GET /v1/discovery/feedback` returns the effective view with the scope and
+  actor that supply each row, so undoing a Channel override reveals the household fallback.
+- A Channel-scoped event must name a persisted Channel (else 404 after authorization); detached
+  Channels keep theirs, and purge removes only that Channel's rows. No detach, purge, playback,
+  approval, denial or inactivity ever creates feedback.
+- Re-curation resolves its Channel scope server-side from the claimed Job's owning Channel; a client
+  never supplies execution scope.
+- **Ranking.** One pure deterministic ranker applies it below grounding, audience, explicit
+  includes and excludes, approval and quotas: `never` excludes, `keep` protects an existing lineup
+  item from automatic retirement, `less` demotes the title and same-genre candidates in the batch,
+  and `surprise` enables a diversity pass inside each unchanged relevance band without boosting the
+  marked title. Feedback affects only later proposals, never current playout.
+
+## Evaluation
+
+Behaviour is evaluated by the Go harness in `internal/eval` against frozen, digest-pinned corpora.
+Development corpora never certify (`certified: false`), scripted replies prove application behaviour
+only, and live provider trials are explicit, budgeted and outside CI. `make eval-matrix` runs one
+corpus through the local generator and through OpenRouter with pinned models and a single pinned
+upstream route (no fallbacks, no data collection); it refuses to start unless
+`LOOMARR_EVAL_ALLOW_LOCAL=1` confirms the host is idle, because local inference competes with
+playback. Empty proposals are classified (`no_tool_call`, `retrieval_empty`, `selection_empty`,
+`generation_error`, `provider_error`) so retrieval, provider and curation problems can be separated.
+The full certification protocol is archived in
+[`suggester-certification.md`](../engineering/archive/design-2026-09/suggester-certification.md).
