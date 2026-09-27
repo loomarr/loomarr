@@ -1,8 +1,10 @@
 ---
 // Section spot art for the landing page (#1572): one small idea per section, drawn from the
-// hero's parts only (raised card with outline, the screen, a knob, the on-air light, static and
-// the seven brand bars in their fixed order). Colours come from the --art-* variables in
-// styles/custom.css so each drawing follows the site theme; the bars are the brand chroma.
+// hero's parts (raised card with outline, the screen, a knob, the on-air light, static and the
+// seven brand bars in their fixed order) and, for Contributing, a branch-and-merge line in the
+// same surface colours. The maintainer approves each drawing. Colours come from the --art-*
+// variables in styles/custom.css so each drawing follows the site theme; the bars and dots are
+// the brand chroma.
 // Decorative: each sits beside a heading that already says what the section is.
 interface Props {
   name: "get-started" | "guides" | "reference" | "explanation" | "contributing";
@@ -100,18 +102,18 @@ const fadeId = `lm-spot-fade-${name}`;
   }
   {
     name === "contributing" && (
-      // Add your piece: the brand strip with one bar lifted out above its waiting slot.
-      // The slot's dashes are the static bar's grey, which reads on the ground in both themes.
+      // K2, merge a branch (maintainer-approved, 2026-09-27): the main line in the outline
+      // colour, a branch leaving and merging back in the control colour, commits as brand-colour
+      // dots, and the merge commit larger with a ring in the raised colour.
       <g>
-        <rect x="24" y="58" width="152" height="50" rx="10" fill="var(--art-ground)" stroke="var(--art-outline)" stroke-width="2" />
-        {chroma.map((fill, i) =>
-          i === 3 ? (
-            <rect x={31 + i * 20} y="65.75" width="18.5" height="34.5" fill="none" stroke={chroma[6]} stroke-width="1.5" stroke-dasharray="3 3" />
-          ) : (
-            <rect x={30 + i * 20} y="65" width="20" height="36" fill={fill} />
-          ),
-        )}
-        <rect x="90" y="12" width="20" height="36" fill={chroma[3]} />
+        <path d="M24 84 H176" stroke="var(--art-outline)" stroke-width="4" stroke-linecap="round" />
+        <path d="M62 84 C 62 44, 86 38, 100 38 H118 C 134 38, 138 60, 138 84" fill="none" stroke="var(--art-control)" stroke-width="4" stroke-linecap="round" />
+        <circle cx="40" cy="84" r="8" fill={chroma[6]} />
+        <circle cx="62" cy="84" r="8" fill={chroma[0]} />
+        <circle cx="92" cy="38" r="8" fill={chroma[2]} />
+        <circle cx="118" cy="38" r="8" fill={chroma[3]} />
+        <circle cx="138" cy="84" r="10" fill={chroma[4]} stroke="var(--art-raised)" stroke-width="3" />
+        <circle cx="162" cy="84" r="8" fill={chroma[6]} opacity=".6" />
       </g>
     )
   }
