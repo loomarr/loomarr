@@ -95,9 +95,16 @@ func TestBuildItem_WatermarkIsAGPUOverlay(t *testing.T) {
 				}
 			case FamilyVAAPI:
 				wantAll(t, hostName+"/"+srcName, g,
-					// Straight alpha: on the Arc a premultiplied bug blended as 129 where 65% white is
-					// 178, and the straight bgra bug blended correctly (scripts/watermark-vaapi-matrix.sh).
-					"movie=filename=/data/watermarks/ch1-abc.png,format=bgra,hwupload[wm]", "[main][wm]overlay_vaapi=x=")
+					// Straight alpha (on the Arc a premultiplied bug blended as 129 where 65% white is 178),
+					// mapped into limited range: the Arc carried RGB 255 into Y 255 (#1541,
+					// scripts/watermark-overlay-matrix.sh).
+					"movie=filename=/data/watermarks/ch1-abc.png,format=bgra,"+limitedRGB+",hwupload[wm]", "[main][wm]overlay_vaapi=x=")
+				// overlay_vaapi hands the bug layer the MAIN frame's colour properties, so the main is
+				// labelled like the output before the blend, whatever the source carried (an untagged
+				// SDR source and a tone-mapped bt709 one reach it differently labelled, #1541).
+				if main, _, _ := strings.Cut(g, "[main]"); !strings.HasSuffix(main, ","+conformColour) {
+					t.Errorf("%s/%s: the main must be labelled %q before overlay_vaapi: %q", hostName, srcName, conformColour, main)
+				}
 			}
 			if n := strings.Count(g, "movie="); n != 1 {
 				t.Errorf("%s/%s: the bug must be read once, got %d movie sources", hostName, srcName, n)

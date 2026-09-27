@@ -576,8 +576,11 @@ func (b *builder) vaapi() error {
 	f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2", b.out.Width, b.out.Height))
 	if b.overlay() {
 		b.p.Watermark = true
-		// Straight-alpha bgra (watermark.go): the Arc's overlay_vaapi blends it correctly.
-		b.p.VideoFilter = overlaid(f, "movie=filename="+b.wm.Straight+",format=bgra,hwupload",
+		// Straight-alpha bgra in limited-range RGB, over a main labelled like the output
+		// (watermark.go): overlay_vaapi hands the bug layer the main's colour labels, and on the Arc a
+		// bt709 label carries the bug's RGB into Y unscaled.
+		f = append(f, conformColour)
+		b.p.VideoFilter = overlaid(f, "movie=filename="+b.wm.Straight+",format=bgra,"+limitedRGB+",hwupload",
 			"overlay_vaapi="+b.bugPosition(), b.tail())
 		return nil
 	}
