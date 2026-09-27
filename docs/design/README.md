@@ -37,7 +37,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [storage](storage.md) | one store with two backends, Postgres concurrency, retention, backup | 5, 16 (backup) | here |
 | [suggester](suggester.md) | grounding, reference-backed Intent, explicit policy, providers, model selection and residency | 6 (reference source), 8, 8.1, 8.2 | here |
 | [proposal-workflow](proposal-workflow.md) | approval ordering, Proposal Jobs, the Journey, failures, date interpretation, decision traces | 8 (execution, human-in-the-loop, traces) | here |
-| scheduling | channels, lineups, strategies, airing history, breaks and pods | 9, 10 (breaks) | `design.md` |
+| [scheduling](scheduling.md) | channels, lineups, strategies, reconcile and backfill, guide freshness, airing history, breaks, pods and mid-programme breaks | 5 (airing history), 9, 10 (breaks) | here |
 | playout | the channel packager, backends, what is served, admission, playout status, Live TV wiring | 9.1 | `design.md` |
 | playback-clients | tuning, pause, Android TV | 9.1 (clients) | `design.md` |
 | auth | identity, credentials, invitations, SSO, roles, route authorization | 11 | `design.md` |
@@ -70,5 +70,6 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0025](decisions/0025-three-ai-pillars.md) | 2026-09-02 | Three independently certified AI pillars |
 | [0026](decisions/0026-specialized-local-model.md) | 2026-09-02 | A specialized local model is an optional Suggester optimisation |
 | [0027](decisions/0027-loomarr-owned-media-inventory.md) | 2026-09-05 | Loomarr owns its media inventory; the library is an importer |
+| [0034](decisions/0034-midroll-default-on.md) | 2026-09-27 | Mid-programme breaks on by default, with a per-channel off switch |
 
 Future work that used to live in `design.md` §20 is tracked in #1576.

@@ -36,32 +36,10 @@ Moved to [`design/acquisition.md`](design/acquisition.md#state-machine).
 
 The store, retention, PostgreSQL concurrency and the SQLite → PostgreSQL migration moved to
 [`design/storage.md`](design/storage.md); the media inventory and cached series episodes moved to
-[`design/library.md`](design/library.md). Airing history stays here until §9 moves.
+[`design/library.md`](design/library.md); airing history moved to
+[`design/scheduling.md`](design/scheduling.md#airing-history).
 
-### Airing history (§9 recency-aware placement)
-
-The scheduler had no memory of its own output. Separation (`programming-design.md` §3) constrains
-what recurs **within one cycle**; once the cycle wraps, the count resets and the deck replays from
-position. A viewer sees the same film every couple of days with no pattern behind it — reported
-from the dev "1980s Action Heroes": Akira at Tue 21:53, Fri 13:33, Sat 02:10, Mon 01:30.
-
-`airings` records one row per programme aired — `{channel_id, key, library_item_id, aired_at}` —
-written from playout at the moment a programme is resolved for streaming. It is the programme
-analogue of `RecordClipPlay` (§10 V28), which already does exactly this for commercial clips: the
-same write point, the same best-effort posture, and for the same reason (you cannot rotate what
-you cannot remember).
-
-- **Write path:** the playout resolver knows what it is about to stream, so the write costs no new
-  lookup. **Best-effort:** a failed insert is logged and the programme still airs — telemetry must
-  never be able to take a channel off the air.
-- **Read path:** `LastAiredByChannel(channelID)` returns the most recent airing per key, which is
-  all the scheduler needs. One row per distinct key, not the full history.
-- **Loomarr's own output, not viewer behaviour.** This deliberately does not touch the media
-  server's per-user watch state (`UserData`): that is a different signal with a per-user "whose
-  history counts?" question and privacy implications. This is the system remembering what it
-  broadcast — the minimum a human programmer does.
-- **Retention:** rows older than the janitor's horizon are purged like every other accumulating
-  table (below). History beyond the longest recency horizon has no reader.
+### Activity and diagnostic evidence tables
 
 `activity` records what Loomarr did, one row per notable event — `{id, at, kind, level, text,
 subject_id}` — for the Dashboard's **Recent activity** feed (§12, V32).
@@ -145,16 +123,6 @@ Loomarr observe?"* through stable fields an operator or support agent can filter
   unnecessary complete local paths are removed or replaced before a row or process-output byte is
   written. Read-time masking is defense in depth, not the privacy boundary (§17).
 
-⚠ **A recency signal cannot make repeats rare on a small library, and must not pretend to.** The
-arithmetic is unforgiving: a 24h day consumes ~13 films, so a channel needs ~168h of content to
-avoid repeating inside a week. The dev channel has 34 titles ≈ 62h — a 3-day no-repeat is already
-*impossible* there, let alone 7. That is why placement consumes this as a **soft ranking signal**
-(`programming-design.md` §3.1) rather than a hard constraint with a ladder step: a constraint that
-is unsatisfiable on every real run produces a relaxation note on every real run, which teaches
-operators to ignore the ladder. The signal spreads airings evenly and stops a title clustering near
-its own last showing; only more content fixes the underlying frequency, which is what re-curation
-and adjacency candidates (`programming-design.md` §8.2/§8.3) exist to supply.
-
 ---
 
 ## 6. External contracts
@@ -215,67 +183,8 @@ Proposal execution and the decision traces moved to
 
 ## 9. Scheduler / lineup builder — *the point of the app*
 
-Turns an approved proposal + live availability into a durable, filled channel on its selected playout backend, and keeps it that way. Everything upstream exists to feed this.
-
-### Responsibilities
-- Own a **Channel**: intent ref, identity (number, name, logo, group), optional Tunarr projection id, scheduling strategy, filler policy.
-- Compute **desired programming** from the approved lineup per strategy.
-- **Reconcile local desired state for every active channel**, then, only when Tunarr is the effective backend, reconcile desired → remote actual (create/update channel, set lineup, filler lists, flex) — idempotent, minimal-diff.
-- Run the **backfill loop** so a channel is live immediately and improves as content lands.
-- Keep channels from running dry; refresh on library changes.
-
-### Scheduler domain (persisted in the same store, §5)
-- `Channel`: id, intent ref, number, strategy, status, and an optional Tunarr projection id/filler-list ref.
-- `DesiredLineup`: ordered `Slot`s referencing external ids (some not-yet-available).
-- `DesiredLineup` is also the **accepted broadcast snapshot**. Reconciliation persists it in the
-  channel row before it becomes observable; internal playout and the guide segment containing
-  `now` read that persisted value directly. `CyclePreview` remains the authoring/forecast surface
-  for unsaved drafts and future rolling windows, never a runtime substitute for the accepted
-  snapshot. This distinction is load-bearing: preview includes mutable airing-history and live
-  availability inputs, so recomputing it at a finite ffmpeg child's EOF can reorder the deck and
-  put the same wall clock in the middle of an unrelated episode. The channel row also carries one
-  immutable **playout anchor**, stamped when a building/empty Channel first becomes live. A first
-  tune therefore starts near the beginning of the first accepted programme; later viewers still
-  join the shared live edge. Reconcile, lineup maintenance, backend changes, and restart preserve
-  that anchor. The migration seeds existing rows once from their last durable channel timestamp;
-  runtime code has no legacy epoch branch.
-- `Slot`: `program` (library item, once available) | `pending` (awaiting provisioner) | `filler`/`flex`.
-- **Availability resolution** turns an approved lineup entry into a `program` slot: it resolves the entry's key to `(library item id, duration, available)`. Duration comes from the media server (the same `RunTimeTicks` source filler uses, §10) — the approved lineup carries only *what* should play, not its runtime, so the scheduler learns duration at resolution time. A program slot always carries a real `duration > 0`; both internal timeline layout and downstream Tunarr programming require it.
-- **Series expansion.** A movie lineup entry is one playable item → one program slot. A **series** entry is *not* directly playable: a show has no single library item and no single runtime — its **episodes** are the programs. So a `series` entry **expands** at resolution time into one program slot **per episode**, each carrying that episode's own media-server item id and duration (from `RunTimeTicks`). Expansion is the scheduler's job, not the suggester's: the approved lineup stays at the intent level ("this channel plays Seinfeld"), and the scheduler resolves the concrete episodes that exist *now* (so newly-imported episodes join on a later reconcile, consistent with backfill). **Ordering follows the channel strategy** (the same rule as movies): `sequential` → episodes in season/episode order; `shuffle` → episodes shuffled with the channel seed. Episode enumeration comes from the library adapter (`ListEpisodes(showItemID)` → `[]{itemID, durationMs, season, episode}`); a series whose episodes aren't in the library yet resolves to a `pending` slot until they land. A cached list younger than `episodes.max_age` is complete evidence and avoids enumeration. An aged cache always attempts live enumeration: success replaces it with fresh evidence; failure may retain only its valid cached playable identity, runtime, numbering, and safety fields. That retained deck remains playable, but its editorial evidence is unavailable: highlights may use the complete already-safe pool, while holiday selection remains empty until current matching evidence is available. An aged empty cache whose refresh fails is unavailable, never a synthetic deck.
-  - **Season range (intent-level constraint).** A series entry may carry an optional `SeasonMin`/`SeasonMax` (inclusive; 0 = unbounded on that end) — an intent-level filter for channels like "old-school Simpsons" (seasons 1–10) or "just the classic run." Expansion filters the enumerated episodes to that range (by each episode's season number) before producing slots. It's a property of the *approved lineup entry* (the human's intent), not of availability, so it survives re-syncs and applies uniformly under any strategy. A range that matches no in-library episodes yet → a `pending` slot (same as an unavailable series).
-
-### Scheduling strategies (shared by both playout backends)
-- **Ordered/sequential** (e.g., a series in episode order).
-- **Shuffle** (random rotation).
-- **Time-slot / block** (fixed start times, themed blocks — cartoons AM, movies PM).
-
-### Filler & commercials
-Ad pods, bumpers, and station IDs between programs are what make a channel read as broadcast rather than a playlist. This is a first-class capability with its own sourcing pipeline and matching logic — see **§10**. The scheduler inserts break slots as it builds each channel; internal playout resolves local clips at airtime, while Tunarr fills Flex gaps from an attached filler list.
-
-### Backfill loop (async correctness)
-- On approval: build the channel from currently-available selected items; fill the remaining timeline with filler/fallback so it's **live immediately — never dead air**. **Default pending-slot policy: pod-fill** (fill the gap with matched filler); a "coming soon" interstitial card is a config alternative. Unselected suggestions do not silently enter the Channel.
-- Subscribe to provisioner availability events (internal). On `available` → place the real title, re-push affected programming. On `unavailable` → use the fallback pool. **The fallback pool is defined as** the channel's already-available selected lineup items (loopable) plus its filler catalog — i.e., "never dead air" concretely means: loop what the reviewer chose, padded with pods.
-- **Backfill placement is stable:** landed titles fill their pending slots in place; there is no global reshuffle of a live channel on backfill — viewers shouldn't see the guide scramble every time a download lands.
-- The desired lineup is built under the channel's **ChannelPolicy** — hard filters (scope, audience fail-closed, seasonal bench) → seeded constraint-aware slotting (separation, ordering) → **relaxation ladder** on shortfall (recorded + surfaced; audience and scope are never relaxed) → pods. Separation is enforced **across the cycle seam** (Tunarr lineups loop, so the last→first adjacency honors the gaps too). The audience filter emits an **exclusion report** (`{overCeiling, unrated, items}`) surfaced at proposal review *and* reconcile, so gaps are visible before approval ("14 excluded: 11 over ceiling, 3 unrated") — the fix (rate the media, or relax the policy) is a human decision. The `programming-design.md` doc is authoritative for the policy schema, the enforce-not-extract split, cycle-wrap separation, seasonality, and the ladder; the `GET /v1/channels/{id}/cycle` cycle preview (§8.1) shows the first N slots with active-rule attribution and the scheduler-owned trace for proposal review and the channel's Programming surface.
-- **Policy defaults:** omitted policy fields resolve to **built-in Go constants**. V55 removed the unused registry-default middle tier; per-channel policy is the only operator-authored override.
-- **Ordering has one operator-facing knob (`policy.ordering`), not two.** The canonical 3-tier precedence is **per-rule `How.Ordering` (within that rule's window) > `policy.ordering` > `Channel.Strategy` (the stored default)**. `Channel.Strategy` is the create-time default the suggester/binder seed and is consulted only when `policy.ordering` is unset (inherit); it is **not** a separately-editable field on the channel page — the operator edits `policy.ordering`. (`programming-design.md` §5 is authoritative for the ladder.)
-- Reconciliation is **backend-neutral and idempotent**. Every active channel recomputes and persists its desired lineup, applied policy, status, healed metadata, and next deadline. An internal channel stops there and never calls the `Programmer`; a Tunarr-backed channel additionally diffs the remote channel and applies the minimal API calls. Safe to re-run any time (`/v1/channels/{id}/reconcile`). Internal break eligibility uses Loomarr's local filler catalog (`HasPool`); Tunarr program UUIDs and filler-list attachment are projection details and are never required for internal playout.
-- **Periodic sweep (correctness):** a channel-reconcile ticker (`CHANNEL_RECONCILE_EVERY`, default `10m`) re-derives every channel's desired lineup from the store and converges its effective backend — so availability **events are a latency optimization, never load-bearing**. This is what makes backfill survive a crash between event and convergence, and what makes Postgres multi-replica correct without cross-instance event delivery (an in-memory event can't reach another replica; the sweep can). The sweep also **revalidates every program slot against the library** (§4 invariant 1): if a scheduled item has vanished (deleted, replaced, re-id'd), the slot uses the selected-lineup/filler fallback pool and the channel is flagged on the Channels view — an old `available` is never trusted forever. Postgres `LISTEN/NOTIFY` as a faster cross-replica signal is future work (§20).
-- ⚠ **A zero `reconcile_deadline` means DUE NOW, and the sweep's claim must never exclude it (V54).** The claim predicate carried an `AND reconcile_deadline > 0` guard, and the deadline's **only** writer is the *last* step of a *successful* reconcile. A channel whose very first reconcile failed therefore kept `0` and was invisible to the sweep **forever** — stranded in `building`, never pushed to Tunarr, with no UI affordance to retry (nothing in the frontend calls `POST /v1/channels/{id}/reconcile`). The binder's own comment said failures were fine because "the sweep retries"; the sweep retried every channel *except* the one case it existed to cover. Found in the wild: an approved channel sat at `building`/`deadline=0`/`tunarr_id=''` with a fully-built 19-airing schedule Loomarr never shipped. **The guard is gone** — `0` sorts first and is claimed immediately, which also heals already-stranded rows with no migration. A channel is additionally stamped due-now at creation, but that is belt-and-braces: the invariant that matters is that no non-`detached`/`paused` channel can ever be unreachable by the sweep. The states that opt OUT of reconciliation are named in the status filter, never encoded as a magic deadline.
-- ⚠ **A channel number must be free in TUNARR too, and a collision moves LOOMARR'S channel (V54).** `nextFreeChannelNumber` consulted only Loomarr's own store, so on an install where Tunarr already held channels — an earlier install, a reset database, one the operator made by hand — an approved channel was handed a number Tunarr was already using. `POST /api/channels` then answers **`500` with an empty body**, which is unmatchable, so the create failed identically forever. Numbering now unions Loomarr's store with Tunarr's channel list, and the reconcile re-checks occupancy immediately before a create (the list is authoritative at push time, not at approve time). **A collision renumbers Loomarr's own channel and never the occupant** — §9's "channels Loomarr didn't create are never touched" holds, and it has to: after a database reset Loomarr cannot distinguish its own orphan from a stranger's channel, so it must assume stranger. The move is reported (log + `activity`), never silent: the number is what a viewer tunes to. Both reads are best-effort — an unreachable Tunarr falls back to store-only numbering rather than blocking a bind. ⚠ **The rule binds every path that assigns a number, not just the one that PICKS one.** It was first applied only to `nextFreeChannelNumber` (the approve path), leaving `POST /v1/channels` and the `PATCH` renumber — the two places an operator *types* a number — checking `GetChannelByNumber` alone. The result was a visible inconsistency from one handler: a clash with a Loomarr channel was refused up front with a `409`, while a clash with a channel that exists only in Tunarr was accepted with a `201` and then renumbered underneath the operator by the reconcile. Both now ask `binder.NumberInUse`, which unions the same two sources. ⚠ There is deliberately **no "except this channel" escape** on that check: Tunarr's channel list is a bare number set with no identity, so a live channel's own number legitimately reports in-use from the Tunarr side; the renumber handler therefore only asks when the number actually changes.
-- ⚠ **A failed first reconcile is recorded, not just logged.** It was a `log.Warn` that scrolled out of the terminal, so the one question worth answering afterwards — *why* did it fail — had no durable answer. It now logs at ERROR with the cause and writes an `activity` row, which is the mechanism that already survives a restart and surfaces on the Dashboard.
-- **Ownership semantics:** Loomarr is authoritative for every channel's persisted local desired state. For a Tunarr-backed channel it is also authoritative for the managed Tunarr projection — manual edits made in Tunarr's own UI will be overwritten by the next sweep. The UI labels these channels "Managed by Loomarr" (§12) so nobody loses an hour of hand-tweaking to the robot. Channels Loomarr didn't create are never touched. Moving a channel to internal playout preserves any historical `tunarr_id` and remote channel but performs no remote calls; backend selection is reversible and does not imply destructive cleanup. Explicit purge remains the destructive operation.
-- **Time zones:** time-slot schedules are computed in the container's `TZ` (standard env; set it in compose). Slots are **wall-clock** — "cartoons at 8 AM" stays 8 AM across DST transitions, accepting the one skipped/doubled hour a year. Per-channel time zones are future work (§20).
-
-### Tunarr integration
-Only implementation of the `Programmer` boundary, but abstracted so a future ErsatzTV/dizqueTV target is possible. Tunarr must point at the same Emby/Jellyfin library as its media source (§6).
-
-### Guide freshness
-Emby/Jellyfin refresh guide data on a schedule (nightly by default). After any channel reconcile that **creates, renames, or deletes** channels, the scheduler pokes the media server so the change appears in minutes rather than after the nightly refresh (best-effort — a failure degrades freshness, never the reconcile). **Two distinct media-server operations, and the difference matters (learned in the first live smoke):**
-- **Guide refresh** (the `RefreshGuide` scheduled task) updates **EPG/program data for channels the media server already knows about**. It does **not** discover new channels. Use it when an *existing* channel's lineup changed.
-- **Tuner re-scan** re-reads the tuner's **M3U playlist to discover the channel _list_** — this is what surfaces a **newly-created** (or removed) channel. On Emby/Jellyfin, re-saving the M3U tuner host (`POST /LiveTv/TunerHosts` with the existing host config) forces this re-read. A guide refresh alone leaves a brand-new channel invisible in the family's guide until the media server's own periodic tuner scan (hence "I had to refresh the playlist manually").
-
-So the poke is **operation-specific**: a reconcile that **added or removed a channel** triggers a **tuner re-scan** (channel-list changed); a reconcile that only changed an existing channel's lineup triggers a **guide refresh** (EPG changed). Both are best-effort and idempotent (safe to re-request). The tuner-host payload + guide-refresh task id are version-fragile and pinned via the §6 Live TV wiring capture. Wiring itself is one-time (§6); these pokes are the only per-reconcile media-server touch.
+Moved to [`design/scheduling.md`](design/scheduling.md), including guide freshness, backfill and
+"what does not change" between playout backends.
 
 ---
 
@@ -1384,13 +1293,6 @@ a correctness constraint the compiler cannot enforce:
 without accumulating goroutines or stale state, so the phase ships an N-iteration
 Build/Run/Shutdown test asserting a stable goroutine count (`go.uber.org/goleak`, §14). A prose
 rule would not have caught it.
-
-### What does not change
-
-The scheduler, the lineup, pod assembly, the relaxation ladder, determinism and the approval gate are
-**backend-agnostic**. A backend decides *how bytes reach the television*; it never decides what plays,
-in what order, or whether a title was allowed to be acquired. The same lineup produces the same
-schedule on either backend — that is the invariant that makes the choice safe to change per channel.
 
 ---
 
@@ -7281,90 +7183,10 @@ ungrounded proposal read identically and the only way to tell whether the ground
 watch for an `ffmpeg … thumbnail=n=` process. That is why V54's own shipping went unverified.
 
 ### Break & pod policy (per channel)
-The scheduler assembles realistic **ad pods**, not single random clips:
-- **Pod structure:** intro bumper → 2–4 matched commercials → return bumper, sized to the flex gap.
-- **Matching rules:** country/local-market eligibility first, then `era` to the block (90s sitcom block → 90s ads), `audience` to the channel (Saturday-morning cartoons → toy/cereal ads, not car insurance), `category` variety within a pod so it doesn't play three car ads back to back.
-- **Per-channel filler selection (`policy.filler`, the `FillerSelection`).** A channel narrows its own break content — the era/audience/category/kinds it draws from, plus specific clips to always include or never use — rather than every channel drawing the same global pool. It lives on `ChannelPolicy` (persisted in `policy_json`, no new column; edited on the channel page like the other programming rules). On the first approval of a generated Channel, one pure policy function seeds this operator-owned selection from the approved proposal: it copies grounded `scope.era`; maps `TV-Y`/`TV-Y7` to `kids`, `G`/`TV-G`/`PG`/`TV-PG` to `family`, and every broader or absent ceiling to the conservative `general` filler audience; and leaves categories and kinds empty unless a future approved policy carries their own grounded closed-vocabulary assertions. Program genres are not product taxonomy, and an unrestricted or late-night audience is never invented from missing intent. The seed is a handoff, not a live default: once `policy.filler` exists, refine, re-curation, and reconcile preserve the operator-owned value. The shape: `era` (a year range, **both bounds honoured — V51f**, with THREE states because "unset" was never "any": **unset = INHERIT `policy.scope.era`** at derivation; **`{from: 0, to: 0}` = explicitly ANY era**, the escape hatch that did not exist before V51f; a set range = that window, matched with both ends. A generated seed uses the third state and snapshots the approved scope era; an operator who later clears it deliberately returns to live scope inheritance. ⚠ **Before V51f only `from` was ever read** — `filler.Selection.Era` and `filler.Window.Era` were a single `int`, so 1990–1999 behaved identically to 1990–2035 while the UI rendered, canonicalised and inverted-range-validated a "To year" nobody consumed — and because the scope default was re-applied on every derivation rather than at create, clearing the field silently re-inherited, making "any era" unreachable on any channel that had a programming era. The presence-as-opt-in third state is the same pattern `AutoCurate` uses, for the same reason), `audience` (unset = any), `categories` (empty = any; a subset of the closed category set), `kinds` (empty = the default commercial+bumper+station_id; else the chosen subset), `pinned` (clip hashes always included), `excluded` (clip hashes never used). Every field remains optional for an operator-authored selection; the generated seed is what prevents missing approved audience intent from accidentally becoming the whole catalog.
-- **Geography in that selection is inherited but never relaxed.** Optional `geography` carries an
-  ISO country and optional normalized local market. Omission inherits Installation geography;
-  presence may choose a market but cannot change a configured Installation country. This field is
-  applied before `pinned`, so a pin cannot turn a foreign or out-of-market Clip into eligible content.
-- **How the selection reaches assembly.** The theme filter is applied as a **catalog pre-filter** (`[]Clip → []Clip` by category + kinds) plus `Window.Era`/`Window.Audience` from the selection — replacing the previously **hardcoded** `PodEra→0` and empty audience. `excluded` ids are pre-seeded into the assembler's no-repeat set (`used`), which already excludes at every pick site, so exclusion needs no ladder change. `pinned` ids are placed as a **top-priority pool** at the front of the commercial fill before the ladder takes the rest (the one genuinely new assembly step, since the ladder ranks pools and has no force-include). If a clip is both pinned and excluded, **exclude wins** (the safe default). *(Historical note: the assembler once passed `general` as the channel audience under a comment claiming it "matches broadly" — the opposite of the filter's actual behavior — so every channel's filler-list held only bumpers + the fallback card, §10's central feature silently doing nothing; found by building the §12 pod preview. The per-channel selection above is what finally wires real era/audience through.)*
-- **Density:** target break length and breaks-per-hour; min/max filler duration. `FILLER_BREAK_DURATION` defaults to 30s (maintainer decision, 2026-09-25: a break should be short by default, drawn from rotated commercials; long breaks are a per-channel choice) and may be overridden per channel as `policy.breakDuration`; it hot-applies on the next reconcile. The authored minimum is 30s because Tunarr silently clamps smaller flex gaps to 30s, which would otherwise make Loomarr's preview and guide disagree with playout. Zero never means off here — `policy.breaksPerHour = 0` is the one off switch. **For internal playout the target is a ceiling, not airtime that filler owns:** reconcile caps every keyless commercial-break slot at the deterministic pod's playable-file duration. If two selected commercials total 40s, the following programme begins at 40s; Loomarr does not retain the original 5m slot and draw a card for the remaining 4m20s. This cap may therefore produce an actual internal break shorter than the 30s authoring floor when that is all the selected media contains. Keyed `SlotFiller` entries are unavailable-program placeholders and are never contracted. `FILLER_POD_MAX` is a preferred clip-count ceiling, but break length wins: the adapter estimates the clips required from the median duration of the tightest matching pool and raises the limit when necessary, so a 5m target is not truncated to four 30s adverts. The assembled pool window is `max(10m, resolved break length)` so long custom breaks are not clipped by the pool's former fixed size. **Break placement (the scheduler's job, §9):** the scheduler interleaves break slots between program slots at `FILLER_BREAKS_PER_HOUR` — a break roughly every `60 / breaks-per-hour` minutes of accumulated program runtime (default 4/hr ⇒ ~every 15 min). Because Tunarr only inserts filler at **program boundaries** (below), breaks snap to the nearest boundary: walk the ordered program slots summing durations, and when the running total crosses the next break threshold, emit a `SlotFiller` break *after* the current program and reset the accumulator. This is duration-aware — a 90-min movie gets several breaks, a 22-min sitcom about one — and the reconcile's `PodAdapter.Assemble` bridge calls the pure `filler.Assemble` over the matched catalog. **Breaks are only interleaved when a filler pool actually exists** (the reconcile builds the pool up front and passes `BreaksPerHour 0` when it's empty / no `FILLER_DIR` / no `PodFiller`): inserting break gaps with no clips to fill them leaves empty flex that Tunarr renders as large **channel-named blocks** in the guide — a promise of commercials it can't keep. No pool ⇒ programs play **back-to-back** (still "never dead air"). Self-healing: once clips land, the next reconcile sees a pool and re-inserts breaks. Deterministic: the same lineup + seed yields the same break positions.
 
-  **Acquisition, admission, matching and overrides are four decisions (V57/V61).** Acquisition
-  authorization answers whether Loomarr may download or scan a source and remains subject to its
-  existing approval, quota and enabled-source controls. Catalog admission is independent: only an
-  applied terminal decision backed by the exact certified evidence chain may let an arrived clip
-  leave Incoming. Source provenance, source enablement, and classification confidence are inputs or
-  diagnostics, never authority. Deterministic channel matching then applies the channel's era,
-  audience, category, kind and duration policy. Pins and exclusions are optional per-channel
-  overrides of matching, with exclusion still winning. Treating these as one approval switch would
-  either make acquisition unnecessarily manual or let a source-policy choice bypass audience,
-  rights, integrity, or safety proof.
-
-  The exact registered source id travels with downloaded bytes in the Loomarr sidecar and into the
-  catalog record, so an automatic decision is attributable after the fact. Registered folders and
-  libraries enter through that same held pipeline; manual URL ingests and legacy fetched clips use
-  the folder source policy. A file copied directly into the catalog folder is still an arrival, not
-  an implicit admission; filesystem placement cannot bypass terminal proof. A clip claiming an
-  unknown registered source remains held because unresolved provenance fails closed rather than
-  silently inheriting trust. The former per-source automatic-admission switch is retired;
-  acquisition may be automated without granting the downloaded bytes permission to air.
-
-  **Eligibility changes wake only affected channels immediately (V57, deepening V56).** Filing,
-  holding, retagging, reclassifying, removing or restoring a clip can change whether a real pool
-  exists. After the mutation is durably committed, one bounded reconciliation seam evaluates the
-  clip's before and after snapshots with the SAME `SelectionForChannel` and `FitForChannel`
-  predicates used by coverage, preview and playout, then best-effort reconciles compatible active
-  channels. Paused and detached channels remain explicit opt-outs. A failure never rolls back the
-  catalog decision: the durable ordinary sweep remains the crash-safe retry, while this immediate
-  pass is only the latency path. The applied-admission transaction calls that same seam after its
-  durable commit, so admission has one scheduling consequence without preserving a second publisher.
-- **Repeat avoidance and durable rotation (V58).** No-repeat inside one pod remains absolute, but
-  a changing seed is not exposure history. Loomarr persists one bounded row per `(channel, clip)`:
-  play count plus the most recent actual-airing timestamp. The history is channel-scoped because
-  the same commercial airing on one channel must not suppress an independent channel, and it
-  survives restart, clip removal, and later restoration without becoming an append-only log;
-  deleting the owning channel cascades its rows. The
-  row retains one prior timestamp solely to reconstruct an active break's pre-start snapshot after
-  its current clip writes the latest timestamp; no-repeat means one predecessor is sufficient.
-  Preview and reconcile never write this table. Internal playout records the exposure, together
-  with the clip's existing aggregate counter, when the parent channel encoder resolves the clip,
-  keyed by the clip's scheduled start. A finite encoder child normally requests its successor
-  milliseconds after that boundary, so correctness must not depend on observing an exact
-  zero-offset instant. Re-resolving the same scheduled start is an idempotent no-op, while a later
-  scheduled start of the same clip is another airing. Viewer tune-ins and schedule rebuilds
-  therefore cannot inflate the counters, and ordinary transition latency cannot leave history
-  empty.
-
-  Assembly takes an immutable exposure snapshot. For a specific break the snapshot is cut off
-  strictly before that break's start, so recording the first clip cannot reshuffle the second
-  clip when the resolver advances through the same pod. Given the same catalog, snapshot,
-  channel, and break seed, the result is identical. Within each matching rung, candidates are
-  deterministically tie-shuffled and then ranked: never aired first, then least recently aired
-  outside `filler.cooldown_seconds`, then least recently aired inside the cooldown only when the
-  earlier tiers cannot fill the bounded pod. Bumpers use the same ranking. This is least-recently-
-  aired fairness: among candidates that fit the remaining duration, a clip does not repeat until
-  the alternatives have aired. A newly admitted clip receives bounded exploration because it is
-  never-aired until its first real play, but it can consume no more than the ordinary pod budget;
-  after one airing it rejoins the same recency ordering.
-
-  Cooldown is a preference, not permission to create dead air. A small or exact-fit pool relaxes
-  to its oldest recent candidates and still obeys the duration and clip-count ceilings; the pod
-  reports that pressure for telemetry. Pins remain ahead of rotation, in operator order, and may
-  intentionally repeat; the channel UI says so. Exclusion still wins over pin. Actual internal
-  airings increment low-cardinality rotation metrics (`fresh` versus `repeat`, plus whether
-  cooldown relaxed), with no channel or clip labels.
-
-  Tunarr-backed channels remain an explicit backend boundary. Tunarr owns their actual picker and
-  play-history database; its 1.3.8 API exposes session counts but no current filler-item callback,
-  so Loomarr must not fabricate those airings in its own table. Loomarr writes the configured
-  repeat cooldown to Tunarr's channel-level `fillerRepeatCooldown` in milliseconds. The attached
-  Loomarr list itself has zero list cooldown: with exactly one managed list, applying the same
-  value as a list cooldown blocks the entire source rather than rotating programs. Tunarr then
-  enforces its own program history; Loomarr's durable per-channel metrics and guarantees are
-  reported only where Loomarr owns playout and can observe the actual start.
+Break and pod policy and break placement moved to
+[`design/scheduling.md`](design/scheduling.md#breaks-and-pods). Filler acquisition runs and
+readiness stay here until the filler docs move.
 
 - **Durable acquisition and filler readiness (V59).** Every accepted download creates a durable
   acquisition run before background work begins. The run records its trigger, registered source or
@@ -7413,43 +7235,11 @@ The scheduler assembles realistic **ad pods**, not single random clips:
   enablement, disk/catalog limits, grounding, required checks, or the held-to-Ready transition.
   Machine work, genuine operator decisions, completed Composite containers, and Ready catalog content remain distinct even
   when the simple overview brings them onto one page.
-- **Fallback ladder:** exact-era match → widen era (a decade either side of the range) → any appropriate-audience clip → **clips whose audience could not be grounded** → channel bumper card (Tunarr's flex fallback). Never dead air.
-
-  ⚠ **The untagged rung (V51f) exists because picking an Audience on an un-tagged catalog emptied EVERY rung above it.** `filterAudience` admits a clip whose audience equals the channel's or is `general`; a clip Loomarr could not classify carries `""` and matched neither, so it was invisible to pod assembly — and the meter said "nothing in the catalog fits", never "your catalog is untagged". These clips now fill breaks at the bottom rung, below every grounded match, so a real classification always wins and the operator can see the state they are actually in.
-
-  ⚠ **With one asymmetry that is never weakened: an ungrounded-audience clip is admitted ONLY to a `general` or `late_night` channel.** Never `kids`, and never `family` — family channels are watched by children, so the guardrail covers both. This is the kids/teen rule (§10 audience ceiling) and the safety direction is not symmetric: *"we could not tell who this is for"* must never resolve to *"so show it to children"*. A kids channel with an untagged catalog correctly falls to its bumper card, which is a visible, fixable state rather than a silent one.
-
-  ⚠ **A `kids` channel admits ONLY clips grounded `kids` or `family` — `general` and ungrounded clips are excluded on every rung (maintainer decision 2026-09-25, #1449).** This narrows the earlier "a `general` clip fits any channel": that holds for family, general and late-night channels, not for kids, where a general-audience ad is not good enough ("Saturday Morning Cartoons should show commercials for kids"). With nothing qualifying the channel airs its bumper card. Family, general and late-night channels are unchanged.
-
-  ⚠ **A channel's filler context is DERIVED from its programming wherever the operator left it unset (#1449).** `schedule.DeriveFiller`, applied live inside `channels.SelectionFrom` (the one place a selection becomes a domain Selection): audience = the channel's audience ceiling, else the HIGHEST content rating in its lineup (so one adult title keeps a mostly-kids lineup out of `kids`); era = the channel's scope era, else the span of the lineup's known release years. An explicit operator value always wins, including an explicit "any" era; nothing is persisted, so channels created before this rule benefit and a changed lineup is followed. Without it a channel with no filler policy (audience `""`) drew from the whole catalog — a kids channel could air adult 1990s ads. Era stays a soft rung; the audience rules above stay hard. Theme/daypart is not derived: scope genres do not map to the filler category taxonomy.
-
-  ⚠ **Encoded as an ALLOWLIST of admitting audiences, not a denylist of forbidden ones**, so an audience value added later admits nothing until someone decides it should. A denylist would hand every future audience the permissive default, which is the wrong direction for the one rule here that is about safety. Loomarr **ships a default bumper-card asset** (embedded) and sets it as each channel's Tunarr fallback at creation, so the bottom of the ladder exists on day one; operators can replace it per channel.
-
-### Break placement: a per-backend capability
-Loomarr drives Tunarr's **Flex** (time between programs) + **Filler lists**. A channel's commercials live in a Tunarr **filler-list** (`/api/filler-lists`, referencing the Tunarr-`local`-source clip program ids) that Loomarr builds from its matched catalog and attaches to the channel; Tunarr then plays clips from that list into the flex gaps the scheduler leaves between programs (§9 break placement). Both the filler-list programs and the channel's flex gaps are Loomarr-managed, so pods reproduce deterministically. Tunarr inserts filler at **program boundaries** — breaks *between* episodes/movies — not true mid-episode cut-ins. Real TV cuts mid-show; Tunarr generally doesn't unless the content itself is pre-segmented into parts.
-
-**Where breaks can go depends on the channel's playout backend (§9.1) — this is the clearest functional difference between the two:**
-
-| Backend | Break placement |
-| --- | --- |
-| **Tunarr** | **Between programs only.** The limitation above is Tunarr's, and it is not going away — design for between-program pods on these channels and be upfront about it in the UI. |
-| **Loomarr (internal)** | **Between programs *and* mid-roll.** Owning the encoder means owning the cut points, so a break can land inside a program. |
-
-**Mid-roll is therefore in scope for internal-playout channels** (it was previously out of scope everywhere, because Tunarr was the only backend — see the §20 note struck alongside this change). It carries its own costs, decided deliberately:
-
-- ~~**Detection is opt-in per channel, not library-wide.**~~ **Superseded (beta.8, #1512; maintainer decision 2026-09-26): mid-roll is ON by default on internal-playout channels, with a per-channel off switch, `policy.midRoll` (absent = inherit on, `false` = off).** Detection no longer decodes whole files: G7 measures each source once per revision (container chapters first, else a targeted black-and-silence search around each quarter hour, §5 `inventory_source_analysis`). A scheduling pass that finds an upcoming long programme unmeasured queues it on the one low-priority measurement worker and airs it whole until a later pass finds it measured.
-- **Placement never cuts mid-scene** (`schedule.PlaceMidRollCuts`, pure). The one breaks-per-hour cadence runs through mid-roll and between-programme breaks: a break falls due every `60 / breaksPerHour` minutes of programme runtime since the last break, carried across programme boundaries. Only programmes of 40 minutes or more split (a half-hour sitcom airs whole; an hour drama and every film split). Only **measured** fades are candidates (`OverlapMs > 0`). A container chapter mark is not one by itself: live, a scene-selection chapter sat in a bright picture (YAVG 88.8/93.4 either side, where black reads 16). So G7 keeps a chapter mark only when a one-second check around it (`mediatools.ChapterFadeArgs`) reads black on both sides (YAVG ≤ 24 on 8-bit limited range; measured act breaks read 16.0–20.6, scene chapters 31.4 and up) with no loud programme audio (mean ≤ −25 dB). That audio guard is loose on purpose: real act-break fades measured −28 to −37 dB because an act-out sting plays across the black, so the −35 dB silence floor would reject most of them. A file with chapters of which none pass gets the targeted fade search, like a chapterless file (#1529). Analyses written before this (schema 1) are re-measured. A due break takes the measured fade (confidence ≥ 0.25) nearest its due point within ±5 minutes (`inventory.BreakSearchHalfWindow`, the one constant G7's targeted search also uses, so the two cannot drift), and never leaves a part shorter than 8 minutes, so a fade in the cold open or the closing credits is never used. **A due break with no fade in its window is skipped, never forced;** the next falls due one interval later, and the between-programme rule still applies after the programme's last part. `breaksPerHour = 0`, no filler pool, or a marathon rule (`NoBreaks`) means no mid-roll either.
-- **A split programme airs as parts.** The scheduler emits `Segment` slots (1, 2, …) with `MidRoll` breaks between them; each later part carries `SourceOffsetMs`, the cut. `AiringAt` adds it to `Airing.Offset`, which is the seek both the live chain (`-ss` before `-i`) and the channel packager (`PackagerItem.Seek`) already read, so a part resumes at the exact cut and its encode ends at the next one. Preparation walks per item (`playout.SegmentsBetween`), so a prepared block never plays through a mid-roll break. **A programme is never re-split on air:** every programme on air, or starting within `channels.MidRollFreezeHorizon` (30 min, longer than the 10 min default reconcile interval), keeps the split the accepted cycle gave it (`playout.CommittedSplits` → `schedule.Channel.PinnedCuts`), whether that is whole or in parts. A fade measured mid-programme, or the switch flipping, applies to later airings only.
-- **The guide does not advertise mid-roll breaks.** Breaks stay an internal scheduling detail; a break rendering as its own EPG entry is confusing in the family's TV guide, and empty breaks have already caused exactly that (a bare channel name between episodes). A split programme is therefore **one** entry in the grid, XMLTV and now/next (`playout.BroadcastsBetween`), from its first part's start to its last part's stop. Its stop honestly includes the breaks inside it, as a broadcast EPG's does.
-- **Everything else is unchanged.** Pod assembly, the relaxation ladder, determinism and the shared assembler (below) are backend-agnostic — a mid-roll pod is assembled by the same code, from the same catalog, with the same seed, as a between-program one.
 
 ### AI assist (optional, opt-in)
 Two jobs the suggester (§8) can do here, both under the same grounding rule (can only reference clips that actually exist in the filler catalog):
 1. **Classify/tag** ingested filler so matching works without manual tagging.
 2. **Assemble pods** matched to a block's vibe, and flag gaps — "the Saturday-morning channel has no 80s toy ads" — so you can point the `FillerSource` at a playlist to fill them.
-
-### Config
-Core: `FILLER_DIR` (Loomarr's own clip folder, scanned directly; on a Tunarr-backed channel Loomarr separately exposes the same folder as a Tunarr `local` source), `FILLER_SYNC_EVERY`, and pod/density knobs (see §15). Text enrichment uses the household AI selection automatically; the retired `FILLER_AI_TAGGING` switch must not return. **Ingest config now lives in the core** (revised — it previously belonged to the sidecar, which no longer exists): `INGEST_YTDLP_PATH` and `INGEST_FFMPEG_PATH` (defaulted to the vendored binaries on the `filler` variant; overridable so an operator can point at a newer yt-dlp without waiting on a loomarr release — the tool ships fixes far faster than we cut images), plus `INGEST_TIMEOUT`; concurrency is owned by the pipeline implementation rather than exposed as a second worker dial. ⚠ **"Ingestion targets are supplied per-request by an admin — there is no unattended crawler" is SUPERSEDED (V38b).** A registered source now fetches on a schedule; see "Sources fetch on their own" below for what bounds it. The superseded rule's concern was right and is preserved as the limits there, not discarded. **Migration note (THRICE revised):** the `FILLER_LIBRARY` env var and the media-server-item-id clip identity were superseded by the Tunarr `local`-source program id — itself superseded by the clip's path relative to `FILLER_DIR` (§9.1: internal playout needs a playable input, and it must not require Tunarr to discover its own files) — and **that is now superseded by a content hash (V38c, see "Clip identity is a content hash" below)**. Each step moved identity closer to the thing Loomarr actually owns: from a foreign id, to a path we control, to the file's own bytes.
 
 ---
 
