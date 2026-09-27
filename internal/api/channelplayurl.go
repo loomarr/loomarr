@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -108,6 +109,40 @@ type playURLOutput struct {
 	}
 }
 
+// playRefusal returns the 409 that explains why this channel has no in-app stream to mint, or nil
+// when it has one. Each reason gets its own copy because each sends the viewer somewhere different.
+//
+// ⚠ Only a channel Tunarr streams may get the Tunarr copy. #1630: an internal channel that was
+// still `empty` shared it, so an internal-only install told its viewer to watch in the media
+// server through a Tunarr the install does not run.
+func playRefusal(ch store.Channel, checkpoint BackendCheckpoint) error {
+	if inAppPlayableAt(ch, checkpoint) {
+		return nil
+	}
+	if !playsInternallyAt(ch, checkpoint) {
+		// That stream lives in Tunarr, reached through the media server, not here. Say so rather
+		// than mint a URL whose segments would 404, so the UI can point at the right client.
+		return errConflict(
+			"This channel isn't streamed by Loomarr",
+			"Tunarr streams this channel — watch it in your media server. In-app playback is available "+
+				"only for channels Loomarr plays out itself (Settings → Playout).")
+	}
+	switch ch.Status {
+	case schedule.StatusPaused:
+		return errConflict("This channel is paused",
+			"Nothing airs on a paused channel. Resume it from Channels to watch it here.")
+	case schedule.StatusDetached:
+		return errConflict("This channel was removed",
+			"Loomarr no longer manages this channel, so it can't be watched here.")
+	default:
+		// StatusEmpty: the sweep keeps reconciling it, so it goes live on its own once a program
+		// can air.
+		return errConflict("Getting this channel ready",
+			"Nothing can air on this channel yet. Loomarr keeps checking, and the channel starts "+
+				"as soon as a program is ready.")
+	}
+}
+
 func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURLOutput, error) {
 	checkpoint, err := s.checkpoint(ctx)
 	if err != nil {
@@ -121,14 +156,8 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 		return nil, err
 	}
 
-	// A channel that Loomarr does not stream itself has no in-app HLS to serve — that stream
-	// lives in Tunarr, reached through the media server, not here. Say so rather than mint a
-	// URL whose segments would 404, so the UI can point the viewer at the right client.
-	if !inAppPlayableAt(ch, checkpoint) {
-		return nil, errConflict(
-			"This channel isn't streamed by Loomarr",
-			"Tunarr streams this channel — watch it in your media server. In-app playback is available "+
-				"only for channels Loomarr plays out itself (Settings → Playout).")
+	if err := playRefusal(ch, checkpoint); err != nil {
+		return nil, err
 	}
 	// Signed URLs use the device token as their HMAC key. Refresh it at this
 	// authenticated request boundary so a Postgres replica cannot mint a capability

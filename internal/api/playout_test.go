@@ -262,6 +262,45 @@ func TestChannelPlayURLCarriesAWorkingStillURL(t *testing.T) {
 	}
 }
 
+// #1630: an internal channel that cannot air yet is Loomarr's to stream, so its refusal must
+// say why in Loomarr's terms. It used to share the Tunarr-backed refusal, which sent the viewer
+// of an internal-only install to look for Tunarr in their media server.
+func TestChannelPlayURLRefusalNamesWhyTheChannelCannotPlay(t *testing.T) {
+	harness := newPlayoutHarness(t, playoutHarnessConfig{})
+	seedChannel(t, harness.Store, "empty", "Empty", 1, "internal")
+	setChannelStatus(t, harness.Store, "empty", schedule.StatusEmpty)
+	seedChannel(t, harness.Store, "paused", "Paused", 2, "internal")
+	setChannelStatus(t, harness.Store, "paused", schedule.StatusPaused)
+	seedChannel(t, harness.Store, "tunarr", "Tunarr", 3, "tunarr")
+
+	for _, tc := range []struct {
+		id, want, never string
+	}{
+		{id: "empty", want: "Nothing can air on this channel yet", never: "Tunarr"},
+		{id: "paused", want: "paused", never: "Tunarr"},
+		{id: "tunarr", want: "Tunarr streams this channel", never: "Nothing can air"},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			resp := do(t, harness.Server, http.MethodPost, "/v1/channels/"+tc.id+"/play-url", adminToken, `{}`)
+			defer func() { _ = resp.Body.Close() }()
+			if resp.StatusCode != http.StatusConflict {
+				t.Fatalf("play URL status = %d, want 409", resp.StatusCode)
+			}
+			var problem struct {
+				Title  string `json:"title"`
+				Detail string `json:"detail"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&problem); err != nil {
+				t.Fatal(err)
+			}
+			text := problem.Title + " " + problem.Detail
+			if !strings.Contains(text, tc.want) || strings.Contains(text, tc.never) {
+				t.Fatalf("refusal = %q, want it to contain %q and never %q", text, tc.want, tc.never)
+			}
+		})
+	}
+}
+
 // --- Device auth (§11). These are the negative cases AGENTS.md §19 requires. ---
 
 // EVERY playout route must reject a missing or wrong token. A television is the client, so
