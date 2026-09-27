@@ -23,6 +23,8 @@ nokey
 0:a:1
 -map_chapters
 -1
+-map_metadata
+-1
 -frames:v
 753
 -vf

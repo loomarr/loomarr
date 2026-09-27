@@ -51,6 +51,9 @@ type Config struct {
 	FPS int
 	// Dir holds segment files. It must not be tmpfs: ~8 Mbit/s × the DVR window per channel.
 	Dir string
+	// URIPrefix is prepended to the playlist's URIs (EXT-X-MAP and segments), so the packagers of a
+	// channel's formats share one flat asset namespace. Files in Dir keep their bare names.
+	URIPrefix string
 	// RunAhead bounds how far the encoded timeline may lead the wall clock (default 12 s).
 	RunAhead time.Duration
 	// ListAhead is the listing gate and HOLD-BACK: segments are listed only up to now + ListAhead
@@ -536,8 +539,64 @@ func (p *Packager) Playlist() []byte {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.window.render(playlistView{
-		edge: p.listEdgeLocked(p.cfg.Now()), epoch: p.epoch, holdBack: p.cfg.ListAhead,
+		edge: p.listEdgeLocked(p.cfg.Now()), epoch: p.epoch, holdBack: p.cfg.ListAhead, prefix: p.cfg.URIPrefix,
 	})
+}
+
+// ErrSegmentGone means a reader fell behind the DVR window.
+var ErrSegmentGone = errors.New("packager: segment left the window")
+
+// LiveSeq is the segment airing at the wall clock now, where a tuner joins (the oldest listed one
+// if the timeline is behind). Call it after AwaitPlaylist.
+func (p *Packager) LiveSeq() uint32 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := int64(p.cfg.Now().Sub(p.epoch).Seconds() * videoRate)
+	segs := p.window.segs
+	for _, s := range segs {
+		if s.start+s.dur > now {
+			return s.seq
+		}
+	}
+	if len(segs) > 0 {
+		return segs[len(segs)-1].seq
+	}
+	return 0
+}
+
+// WaitSegment returns segment seq once the listing gate lists it, so a reader that follows the
+// sequence is paced as a player is: at most ListAhead ahead of the wall clock.
+func (p *Packager) WaitSegment(ctx context.Context, seq uint32) ([]byte, error) {
+	for {
+		p.mu.Lock()
+		listed := p.window.listable(p.listEdgeLocked(p.cfg.Now()))
+		var name string
+		switch {
+		case len(p.window.segs) > 0 && seq < p.window.segs[0].seq:
+			p.mu.Unlock()
+			return nil, ErrSegmentGone
+		case len(listed) > 0 && seq <= listed[len(listed)-1].seq:
+			name = listed[seq-listed[0].seq].name
+		}
+		done, err, changed := p.done, p.err, p.changed
+		p.mu.Unlock()
+		if name != "" {
+			return os.ReadFile(filepath.Join(p.cfg.Dir, name))
+		}
+		if done {
+			return nil, errors.Join(ErrStopped, err)
+		}
+		// The gate moves with the clock as well as with new segments.
+		t := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return nil, ctx.Err()
+		case <-changed:
+		case <-t.C:
+		}
+		t.Stop()
+	}
 }
 
 // Init returns the channel init segment, or nil before the first item produced.

@@ -326,8 +326,9 @@ func (p Pipeline) itemInput(input string, seek time.Duration, audioTrack int) []
 		args = append(args, "-ss", seconds(seek))
 	}
 	// No chapters: the mp4 muxer writes a film's chapters as a text track, a third track no other
-	// item (or the slate) has.
-	return append(args, "-i", input, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack), "-map_chapters", "-1")
+	// item (or the slate) has. No metadata: the first item's would stay in the channel init for good, and a
+	// stream title is a udta box the init parsers (the TS writer, CODECS) reject.
+	return append(args, "-i", input, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack), "-map_chapters", "-1", "-map_metadata", "-1")
 }
 
 func (p Pipeline) itemEncode(args []string) []string {

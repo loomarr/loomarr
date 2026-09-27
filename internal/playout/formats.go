@@ -144,3 +144,16 @@ func PremiumOutput(class FormatClass, base OutputProfile) (OutputProfile, bool) 
 func (o OutputProfile) premium() bool {
 	return o.HDR || o.Width*o.Height > 1920*1080
 }
+
+// FormatOutput is what a channel's packager for class encodes (#1512 phase 2). The baseline is H.264
+// at the profile's geometry for every client and plan, even on a channel whose profile encoder is
+// HEVC (ChannelOutput follows the encoder); a premium class is PremiumOutput over that baseline. ok
+// is false for an unknown class.
+func FormatOutput(class FormatClass, p Profile) (OutputProfile, bool) {
+	base := ChannelOutput(p)
+	base.HEVC = false
+	if class == FormatBaseline {
+		return base, true
+	}
+	return PremiumOutput(class, base)
+}

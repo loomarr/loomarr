@@ -3,6 +3,7 @@ package playout
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -62,18 +63,20 @@ func TestSwitchedHLSChoosesPerTuneAndServesBothOrigins(t *testing.T) {
 }
 
 func TestPackagerHLSAssetPathServesOnlyItsOwnFiles(t *testing.T) {
-	m := &PackagerHLS{channels: map[remuxKey]*packagedChannel{
-		{channel: "ch", plan: PlanBaseline}: {dir: "/scratch/ch-1"},
+	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{
+		{channel: "ch", format: FormatBaseline}: {dir: "/scratch/ch-1"},
 	}}
-	for rel, want := range map[string]bool{
-		"init.mp4": true, "seg00000007.m4s": true,
-		"../secret": false, "seg/../../x.m4s": false, "live.m3u8": false, "seg-1.ts": false,
+	// A channel's formats share one flat namespace, `<format>-<file>`; the files keep bare names.
+	for rel, want := range map[string]string{
+		"1080p-h264-sdr-init.mp4": "/scratch/ch-1/init.mp4", "1080p-h264-sdr-seg00000007.m4s": "/scratch/ch-1/seg00000007.m4s",
+		"init.mp4": "", "seg00000007.m4s": "", "4k-hevc-sdr-init.mp4": "", "1080p-h264-sdr.m3u8": "",
+		"../secret": "", "1080p-h264-sdr-seg/../../x.m4s": "", "1080p-h264-sdr-init.mp4.bak": "", "seg-1.ts": "",
 	} {
-		if _, ok := m.AssetPath("ch", PlanBaseline, rel); ok != want {
-			t.Errorf("AssetPath(%q) = %v, want %v", rel, ok, want)
+		if got, ok := m.AssetPath("ch", PlanBaseline, rel); got != want || ok != (want != "") {
+			t.Errorf("AssetPath(%q) = %q, %v, want %q", rel, got, ok, want)
 		}
 	}
-	if _, ok := m.AssetPath("other", PlanBaseline, "init.mp4"); ok {
+	if _, ok := m.AssetPath("other", PlanBaseline, "1080p-h264-sdr-init.mp4"); ok {
 		t.Error("an asset of a channel with no packager resolved")
 	}
 }
@@ -175,10 +178,10 @@ func TestFillerGainIsFillerOnly(t *testing.T) {
 // stuckSlateSource airs nothing (a card slot), so the packager wants slate from the first instant.
 type stuckSlateSource struct{}
 
-func (stuckSlateSource) ItemAt(context.Context, string, EncodePlan, time.Time) (PackagerItem, error) {
+func (stuckSlateSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
 	return PackagerItem{Label: "card", Remaining: time.Minute}, nil
 }
-func (stuckSlateSource) Output(context.Context, string, EncodePlan, int) (HostProfile, OutputProfile) {
+func (stuckSlateSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
 	return HostProfile{}, OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
@@ -216,7 +219,7 @@ func TestChannelStartDoesNotWaitForTheSlate(t *testing.T) {
 // slowItemSource airs one real item, whose encoder is still starting.
 type slowItemSource struct{ stuckSlateSource }
 
-func (slowItemSource) ItemAt(context.Context, string, EncodePlan, time.Time) (PackagerItem, error) {
+func (slowItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
 	return PackagerItem{Label: "prog", Remaining: time.Hour, Input: "movie.mkv", Format: MediaFormat{
 		VideoCodec: "h264", Width: 1280, Height: 720, FrameRate: 25, PixelFormat: "yuv420p",
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}, nil
@@ -252,18 +255,18 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 // hdrItemSource airs one 4K HDR title on a CPU-only host that can tone-map.
 type hdrItemSource struct{}
 
-func (hdrItemSource) ItemAt(context.Context, string, EncodePlan, time.Time) (PackagerItem, error) {
+func (hdrItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
 	return PackagerItem{Label: "hdr", Remaining: time.Hour, Input: "hdr.mkv", Format: MediaFormat{
 		VideoCodec: "hevc", Width: 3840, Height: 2160, FrameRate: 24, PixelFormat: "yuv420p10le",
 		ColorTransfer: "smpte2084", AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}}, nil
 }
 
-func (hdrItemSource) Output(context.Context, string, EncodePlan, int) (HostProfile, OutputProfile) {
+func (hdrItemSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
 	return HostFor(EncoderSoftware, true, GPUFilters{}), OutputProfile{Width: 1280, Height: 720, FPS: 25, GOPSeconds: 2}
 }
 
 // The channel packager is admitted by the ResourceBudget (#1520): one lease per running (channel,
-// plan), its item encoding at the software rung the ledger picked, a second channel that does not fit
+// format), its item encoding at the software rung the ledger picked, a second channel that does not fit
 // even keyframes-only refused, and the lease returned when the packager stops.
 func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 	dir := t.TempDir()
@@ -317,9 +320,9 @@ type countingHDRSource struct {
 	calls atomic.Int32
 }
 
-func (s *countingHDRSource) ItemAt(ctx context.Context, ch string, plan EncodePlan, at time.Time) (PackagerItem, error) {
+func (s *countingHDRSource) ItemAt(ctx context.Context, ch string, at time.Time) (PackagerItem, error) {
 	s.calls.Add(1)
-	return s.hdrItemSource.ItemAt(ctx, ch, plan, at)
+	return s.hdrItemSource.ItemAt(ctx, ch, at)
 }
 
 // Admission is priced for the first item, resolved before any encoder starts (#1520 follow-up). On
@@ -375,5 +378,67 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 	}
 	if n := source.calls.Load(); n != 2 { // one per start; the schedule reused the second
 		t.Errorf("item lookups = %d, want 2 (the schedule must reuse the admission's lookup)", n)
+	}
+}
+
+// fakeVariantOrigin is a packager-shaped hlsOrigin: its variant playlists are rendered per request.
+type fakeVariantOrigin struct {
+	fakeHLSOrigin
+	asked []string
+}
+
+func (f *fakeVariantOrigin) MediaPlaylist(_ context.Context, _ string, _ EncodePlan, rel string) ([]byte, bool, error) {
+	f.asked = append(f.asked, rel)
+	return []byte("#EXTM3U\n" + rel + "\n"), rel == "1080p-h264-sdr.m3u8", nil
+}
+
+// The packager's Tune answer is a master playlist (#1512 phase 2b); the player then fetches the
+// variant it names as an asset. Origin renders that from the packager, marked as a playlist so the
+// transport authenticates its URIs, and never looks for it on disk. Other assets are still files.
+func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
+	remux := &fakeHLSOrigin{assets: map[string]string{}}
+	pk := &fakeVariantOrigin{fakeHLSOrigin: fakeHLSOrigin{assets: map[string]string{}}}
+	o := newOrigin(nil, nil, switchedHLS{remux: remux, packaged: pk, usePackager: func() bool { return true }})
+
+	asset, ok, err := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr.m3u8")
+	if err != nil || !ok || !asset.Playlist {
+		t.Fatalf("variant: ok %v playlist %v err %v", ok, asset.Playlist, err)
+	}
+	if b, _ := io.ReadAll(asset.Content); string(b) != "#EXTM3U\n1080p-h264-sdr.m3u8\n" {
+		t.Fatalf("variant body %q", b)
+	}
+	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8"); ok {
+		t.Fatal("a variant the packager does not serve resolved")
+	}
+	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr-seg00000001.m4s"); ok {
+		t.Fatal("a segment went to MediaPlaylist, or resolved with no file")
+	}
+	if len(pk.asked) != 2 {
+		t.Fatalf("MediaPlaylist asked for %v, want only the two .m3u8", pk.asked)
+	}
+}
+
+func TestPackagerHLSMediaPlaylistServesOnlyTheBaseline(t *testing.T) {
+	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{}}
+	for _, rel := range []string{"4k-hevc-sdr.m3u8", "../1080p-h264-sdr.m3u8", "live.m3u8"} {
+		if _, ok, err := m.MediaPlaylist(context.Background(), "ch", PlanBaseline, rel); ok || err != nil {
+			t.Errorf("MediaPlaylist(%q) = %v, %v; want not found, without starting a packager", rel, ok, err)
+		}
+	}
+	if len(m.channels) != 0 {
+		t.Fatal("a rejected variant started a packager")
+	}
+}
+
+func TestMasterPlaylistNamesEachVariant(t *testing.T) {
+	got := string(masterPlaylist([]hlsVariant{
+		{uri: "1080p-h264-sdr.m3u8", bandwidth: 12_160_000, average: 8_160_000, codecs: "avc1.640028,mp4a.40.2", width: 1920, height: 1080, rate: 25},
+		{uri: "4k-hevc-hdr.m3u8", bandwidth: 40_000_000, average: 30_000_000, width: 3840, height: 2160, rate: 25},
+	}))
+	want := "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-INDEPENDENT-SEGMENTS\n" +
+		"#EXT-X-STREAM-INF:BANDWIDTH=12160000,AVERAGE-BANDWIDTH=8160000,CODECS=\"avc1.640028,mp4a.40.2\",RESOLUTION=1920x1080,FRAME-RATE=25.000\n1080p-h264-sdr.m3u8\n" +
+		"#EXT-X-STREAM-INF:BANDWIDTH=40000000,AVERAGE-BANDWIDTH=30000000,RESOLUTION=3840x2160,FRAME-RATE=25.000\n4k-hevc-hdr.m3u8\n"
+	if got != want {
+		t.Fatalf("master:\n%s\nwant:\n%s", got, want)
 	}
 }

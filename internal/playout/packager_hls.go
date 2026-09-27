@@ -31,22 +31,32 @@ type PackagerItem struct {
 }
 
 // PackagerSource is the application's side of the channel packager (#1512 phase 2): the schedule,
-// and the host and output a (channel, plan) encodes with at an output ladder rung (the lease's).
+// and the host and output one of a channel's formats encodes with at an output ladder rung (the
+// lease's).
 type PackagerSource interface {
-	ItemAt(ctx context.Context, channelID string, plan EncodePlan, at time.Time) (PackagerItem, error)
-	Output(ctx context.Context, channelID string, plan EncodePlan, rung int) (HostProfile, OutputProfile)
+	ItemAt(ctx context.Context, channelID string, at time.Time) (PackagerItem, error)
+	Output(ctx context.Context, channelID string, class FormatClass, rung int) (HostProfile, OutputProfile)
 }
 
-// PackagerHLS serves in-app HLS from one channel packager per (channel, plan): one encoder per
+// packagedKey is one packager: a channel at one output format. Every client and plan reads the
+// baseline (H.264 1080p SDR); a channel adds at most one premium format (G10), read only by a
+// client that opts in to it.
+type packagedKey struct {
+	channel string
+	format  FormatClass
+}
+
+// PackagerHLS serves in-app HLS from one channel packager per (channel, format): one encoder per
 // scheduled item at a time, stitched in-process, no continuous transcode and no remux. It is an
-// hlsOrigin, so Origin serves it exactly as it serves the remux.
+// hlsOrigin, so Origin serves it exactly as it serves the remux: master.m3u8 is a master playlist
+// naming each format's media playlist, and every asset is flat, named `<format>-<file>`.
 type PackagerHLS struct {
 	ffmpeg, root string
 	unlock       func() // drops root's owner lock
 	grace        time.Duration
 	source       PackagerSource
 	log          *slog.Logger
-	// budget is the one admission ledger (#1520): one lease per running (channel, plan) packager.
+	// budget is the one admission ledger (#1520): one lease per running (channel, format) packager.
 	// Nil admits everything (tests, builds without internal playout).
 	budget *ResourceBudget
 
@@ -58,11 +68,12 @@ type PackagerHLS struct {
 	slates  map[string]*slateEncode // keyed by the encode (host, output)
 
 	mu       sync.Mutex
-	channels map[remuxKey]*packagedChannel
+	channels map[packagedKey]*packagedChannel
 }
 
 type packagedChannel struct {
 	p       *packager.Packager
+	out     OutputProfile
 	dir     string
 	cancel  context.CancelFunc
 	done    chan struct{}
@@ -83,7 +94,7 @@ func NewPackagerHLS(source PackagerSource, ffmpeg, root string, grace time.Durat
 	life, endLife := context.WithCancel(context.Background())
 	return &PackagerHLS{ffmpeg: ffmpeg, root: root, unlock: unlock, grace: grace, source: source, log: log,
 		life: life, endLife: endLife,
-		slates: map[string]*slateEncode{}, channels: map[remuxKey]*packagedChannel{}}, nil
+		slates: map[string]*slateEncode{}, channels: map[packagedKey]*packagedChannel{}}, nil
 }
 
 // WithBudget admits every channel packager through the ResourceBudget. Call before the packager
@@ -93,8 +104,45 @@ func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
 	return m
 }
 
-func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool) (hlsPlaylistLease, error) {
-	key := remuxKey{channel: channelID, plan: plan}
+// acquirePlaylist serves the channel's master playlist. Every plan gets the baseline variant: a
+// PlanBaseline browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2).
+func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, _ bool) (hlsPlaylistLease, error) {
+	c, release, err := m.acquire(channelID, FormatBaseline)
+	if err != nil {
+		return hlsPlaylistLease{}, err
+	}
+	return hlsPlaylistLease{
+		path:    filepath.Join(c.dir, "master.m3u8"),
+		release: release,
+		await:   c.p.AwaitPlaylist,
+		snapshot: func(context.Context) ([]byte, error) {
+			return masterPlaylist([]hlsVariant{c.variant(FormatBaseline)}), nil
+		},
+	}, nil
+}
+
+// MediaPlaylist serves a format's live media playlist (`<format>.m3u8`, named by the master). A
+// player polls it, not the master, so each poll counts as a viewer and keeps the packager past its
+// grace. Only the baseline is served: a premium variant is for a client that opts in to it (#1512
+// phase 3), which also checks the channel airs that format on this host.
+func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string) ([]byte, bool, error) {
+	if FormatClass(strings.TrimSuffix(rel, ".m3u8")) != FormatBaseline || filepath.Base(rel) != rel {
+		return nil, false, nil
+	}
+	c, release, err := m.acquire(channelID, FormatBaseline)
+	if err != nil {
+		return nil, false, err
+	}
+	defer release()
+	if err := c.p.AwaitPlaylist(ctx); err != nil {
+		return nil, false, err
+	}
+	return c.p.Playlist(), true, nil
+}
+
+// acquire counts a viewer (browser or tuner) on a channel format's packager, starting it if needed.
+func (m *PackagerHLS) acquire(channelID string, class FormatClass) (*packagedChannel, func(), error) {
+	key := packagedKey{channel: channelID, format: class}
 	m.mu.Lock()
 	c := m.channels[key]
 	if c != nil {
@@ -109,7 +157,7 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool)
 	if c == nil {
 		var err error
 		if c, err = m.start(key); err != nil {
-			return hlsPlaylistLease{}, err
+			return nil, nil, err
 		}
 	}
 	m.mu.Lock()
@@ -127,16 +175,10 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, plan EncodePlan, _ bool)
 		c.idle = nil
 	}
 	m.mu.Unlock()
-	var once sync.Once
-	return hlsPlaylistLease{
-		path:     filepath.Join(c.dir, "live.m3u8"),
-		release:  func() { once.Do(func() { m.release(key, c) }) },
-		await:    c.p.AwaitPlaylist,
-		snapshot: func(context.Context) ([]byte, error) { return c.p.Playlist(), nil },
-	}, nil
+	return c, onceRelease(func() { m.release(key, c) }), nil
 }
 
-func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
+func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Admission (#1520) is priced for the item airing now: the first manifest waits for the first
 	// real item anyway, so resolving it here costs the tune nothing, and the schedule's first lookup
@@ -144,7 +186,7 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 	// starts; a card slot or a failed lookup books SDR until a real item reclasses the lease.
 	// ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
 	resolvedAt := time.Now()
-	first, ferr := m.source.ItemAt(ctx, key.channel, key.plan, resolvedAt)
+	first, ferr := m.source.ItemAt(ctx, key.channel, resolvedAt)
 	class := ClassSDR
 	if ferr == nil && first.Input != "" {
 		class = ClassOf(first.Format)
@@ -166,7 +208,7 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 		rung = lease.Rung()
 	}
 	t0 := time.Now()
-	host, out := m.source.Output(ctx, key.channel, key.plan, rung)
+	host, out := m.source.Output(ctx, key.channel, key.format, rung)
 	t1 := time.Now()
 	// The tune-in (G2) split before the packager runs: the encode profile. The slate is waited for
 	// only by a slot that needs it.
@@ -178,15 +220,16 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 		lease.Release()
 		return nil, fmt.Errorf("packager hls: channel dir: %w", err)
 	}
-	log := m.log.With("channel", key.channel, "plan", key.plan.String())
-	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, Log: log}, m.schedule(key, host, out, lease, pre, log), slate)
+	log := m.log.With("channel", key.channel, "format", string(key.format))
+	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, URIPrefix: string(key.format) + "-", Log: log},
+		m.schedule(key, host, out, lease, pre, log), slate)
 	if err != nil {
 		cancel()
 		lease.Release()
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
-	c := &packagedChannel{p: p, dir: dir, cancel: cancel, done: make(chan struct{})}
+	c := &packagedChannel{p: p, out: out, dir: dir, cancel: cancel, done: make(chan struct{})}
 	go func() {
 		defer close(c.done)
 		defer lease.Release() // before done: a restart must not count this run
@@ -209,13 +252,13 @@ func (m *PackagerHLS) start(key remuxKey) (*packagedChannel, error) {
 // with the phase-1a builder and starts its encoder. Each item moves the channel's lease to its
 // class, and encodes at the software ladder rung the ledger picks for it (#1517, #1520).
 func (m *PackagerHLS) schedule(
-	key remuxKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
+	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
 		if !ok {
 			var err error
-			if it, err = m.source.ItemAt(ctx, key.channel, key.plan, at); err != nil {
+			if it, err = m.source.ItemAt(ctx, key.channel, at); err != nil {
 				return packager.Item{}, err
 			}
 		}
@@ -282,7 +325,7 @@ func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, slot
 	return pl, pl.FragmentArgs(it.Input, it.Seek, slot.Offset, slot.Frames, slot.AudioFrames, out.FPS, it.AudioTrack), nil
 }
 
-func (m *PackagerHLS) release(key remuxKey, c *packagedChannel) {
+func (m *PackagerHLS) release(key packagedKey, c *packagedChannel) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c.viewers--
@@ -298,7 +341,7 @@ func (m *PackagerHLS) release(key remuxKey, c *packagedChannel) {
 	})
 }
 
-func (m *PackagerHLS) removeLocked(key remuxKey, c *packagedChannel) {
+func (m *PackagerHLS) removeLocked(key packagedKey, c *packagedChannel) {
 	if m.channels[key] == c {
 		delete(m.channels, key)
 	}
@@ -308,18 +351,27 @@ func (m *PackagerHLS) removeLocked(key remuxKey, c *packagedChannel) {
 	c.cancel()
 }
 
-// AssetPath resolves the init segment or a media segment of a running channel packager.
-func (m *PackagerHLS) AssetPath(channelID string, plan EncodePlan, rel string) (string, bool) {
-	if rel != packager.InitName && (!strings.HasPrefix(rel, "seg") || !strings.HasSuffix(rel, ".m4s") || filepath.Base(rel) != rel) {
+// AssetPath resolves `<format>-<file>`, the init segment or a media segment of one of a running
+// channel's packagers.
+func (m *PackagerHLS) AssetPath(channelID string, _ EncodePlan, rel string) (string, bool) {
+	class, file, ok := strings.Cut(rel, "-"+packager.InitName)
+	if ok && file == "" {
+		file = packager.InitName
+	} else if i := strings.LastIndex(rel, "-seg"); i > 0 && strings.HasSuffix(rel, ".m4s") {
+		class, file = rel[:i], rel[i+1:]
+	} else {
+		return "", false
+	}
+	if filepath.Base(file) != file {
 		return "", false
 	}
 	m.mu.Lock()
-	c := m.channels[remuxKey{channel: channelID, plan: plan}]
+	c := m.channels[packagedKey{channel: channelID, format: FormatClass(class)}]
 	m.mu.Unlock()
 	if c == nil {
 		return "", false
 	}
-	return filepath.Join(c.dir, rel), true
+	return filepath.Join(c.dir, file), true
 }
 
 func (m *PackagerHLS) StopChannel(channelID string) {
@@ -530,6 +582,55 @@ func (s switchedHLS) StopAll() {
 	if s.remux != nil {
 		s.remux.StopAll()
 	}
+}
+
+// MediaPlaylist forwards a variant playlist request to the packager; the remux has none (its
+// playlist is the one Tune returns).
+func (s switchedHLS) MediaPlaylist(ctx context.Context, channelID string, plan EncodePlan, rel string) ([]byte, bool, error) {
+	if mp, ok := s.packaged.(mediaPlaylister); ok {
+		return mp.MediaPlaylist(ctx, channelID, plan, rel)
+	}
+	return nil, false, nil
+}
+
+// mediaPlaylister is an hlsOrigin whose Tune answer is a master playlist: its variant playlists are
+// live documents, rendered per request, not files.
+type mediaPlaylister interface {
+	MediaPlaylist(ctx context.Context, channelID string, plan EncodePlan, rel string) ([]byte, bool, error)
+}
+
+// hlsVariant is one EXT-X-STREAM-INF entry of a channel's master playlist.
+type hlsVariant struct {
+	uri                 string
+	bandwidth, average  int // bits/s: the peak and the target, video plus audio
+	codecs              string
+	width, height, rate int
+}
+
+// variant describes a running format's media playlist from its output and its channel init.
+func (c *packagedChannel) variant(class FormatClass) hlsVariant {
+	o := c.out
+	return hlsVariant{
+		uri:       string(class) + ".m3u8",
+		bandwidth: (o.MaxKbps + o.AudioKbps) * 1000, average: (o.TargetKbps + o.AudioKbps) * 1000,
+		codecs: packager.CodecsAttr(c.p.Init()),
+		width:  o.Width, height: o.Height, rate: o.FPS,
+	}
+}
+
+// masterPlaylist names each variant's media playlist. CODECS is omitted when the init could not
+// name every track, so a player probes instead of trusting a wrong string.
+func masterPlaylist(vs []hlsVariant) []byte {
+	var b bytes.Buffer
+	b.WriteString("#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-INDEPENDENT-SEGMENTS\n")
+	for _, v := range vs {
+		fmt.Fprintf(&b, "#EXT-X-STREAM-INF:BANDWIDTH=%d,AVERAGE-BANDWIDTH=%d", v.bandwidth, v.average)
+		if v.codecs != "" {
+			fmt.Fprintf(&b, ",CODECS=%q", v.codecs)
+		}
+		fmt.Fprintf(&b, ",RESOLUTION=%dx%d,FRAME-RATE=%.3f\n%s\n", v.width, v.height, float64(v.rate), v.uri)
+	}
+	return b.Bytes()
 }
 
 // Stop ends every channel packager and removes the scratch root.

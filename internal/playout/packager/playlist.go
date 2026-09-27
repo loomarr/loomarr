@@ -55,6 +55,7 @@ type playlistView struct {
 	edge     int64
 	epoch    time.Time
 	holdBack time.Duration
+	prefix   string // Config.URIPrefix
 }
 
 // render writes the live media playlist. It is the one place a delta update (EXT-X-SKIP with
@@ -74,13 +75,13 @@ func (w *window) render(v playlistView) []byte {
 		first = segs[0].seq
 	}
 	fmt.Fprintf(&b, "#EXT-X-MEDIA-SEQUENCE:%d\n", first)
-	fmt.Fprintf(&b, "#EXT-X-MAP:URI=%q\n", InitName)
+	fmt.Fprintf(&b, "#EXT-X-MAP:URI=%q\n", v.prefix+InitName)
 	for i, s := range segs {
 		if i == 0 {
 			at := v.epoch.Add(ticks(s.start)).UTC().Format("2006-01-02T15:04:05.000Z07:00")
 			fmt.Fprintf(&b, "#EXT-X-PROGRAM-DATE-TIME:%s\n", at)
 		}
-		fmt.Fprintf(&b, "#EXTINF:%.5f,\n%s\n", float64(s.dur)/videoRate, s.name)
+		fmt.Fprintf(&b, "#EXTINF:%.5f,\n%s%s\n", float64(s.dur)/videoRate, v.prefix, s.name)
 	}
 	return b.Bytes()
 }
