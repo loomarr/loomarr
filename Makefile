@@ -83,6 +83,7 @@ include mk/check.mk
 include mk/eval.mk
 include mk/build.mk
 include mk/store.mk
+include mk/cache-warm.mk
 include mk/contracts.mk
 include mk/docs.mk
 include mk/frontend.mk

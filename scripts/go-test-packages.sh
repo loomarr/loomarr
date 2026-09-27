@@ -21,13 +21,19 @@ if [[ "$mode" == "race" ]]; then
 	args+=(-race)
 	label="race"
 fi
+# Cache warming only (.github/workflows/ci-go-cache-warm.yml): build every test binary with the
+# lane's exact flags and execute none. `true` stands in for each binary. A gate that set this would
+# report green without running a test, so releaseverify allows it nowhere else.
+if [[ "${GO_TEST_COMPILE_ONLY:-}" == 1 ]]; then
+	args+=(-exec true)
+fi
 
 set +e
 "$go_bin" "${args[@]}" "$@" 2>&1 | tee "$log"
 status="${PIPESTATUS[0]}"
 set -e
 
-if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" && "${GO_TEST_COMPILE_ONLY:-}" != 1 ]]; then
 	timings="$(awk '
 		$1 == "ok" && $NF ~ /^[0-9.]+s$/ {
 			seconds = $NF

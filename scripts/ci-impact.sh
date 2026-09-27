@@ -514,6 +514,12 @@ classify() {
       select_gate postgres
       select_gate policy
       ;;
+    # Cache warming is not a gate: it compiles test binaries on main pushes and runs none. The
+    # policy job verifies its workflow registration and that no gate can reach compile-only mode.
+    mk/cache-warm.mk)
+      known=true
+      select_gate policy
+      ;;
     mk/contracts.mk)
       known=true
       select_gate contracts
