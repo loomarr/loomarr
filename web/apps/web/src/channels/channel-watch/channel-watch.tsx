@@ -16,9 +16,9 @@ import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu"
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
 import { type SwitchSound, startChannelSwitchSound } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
-import { useSwitchSoundPreference } from "../use-switch-sound-preference";
 import type { TuneAttempt } from "../tuner-timing";
 import type { TuneDirection } from "../use-channel-tuner";
+import { useSwitchSoundPreference } from "../use-switch-sound-preference";
 import { languageLabel } from "./language-label";
 
 // ChannelWatch — the Watch sub-section: play a channel live in the browser (§9.1, V46).
