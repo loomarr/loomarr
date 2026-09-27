@@ -1,43 +1,50 @@
-vars: {
-  d2-config: {
-    layout-engine: elk
-    theme-id: 4
-    dark-theme-id: 200
-    pad: 32
-    center: true
-  }
-}
+# Question: what happens to a title the channel wants but the library doesn't have?
+# A state diagram (internal/provision/state.go). Reads top to bottom: the happy path runs down the
+# middle in amber; every waiting state gives up at the title's deadline. Available and
+# Unavailable are final (no event moves a title back), so they sit at the bottom with no exit.
+...@system/theme
 
 direction: down
 
 classes: {
-  terminal-marker: {
+  endpoint: {
     shape: circle
-    width: 14
-    height: 14
+    width: 16
+    height: 16
     label: ""
+    style: {
+      fill: "#17191D" # content.primary
+      stroke: "#17191D"
+    }
+  }
+  settled: {
+    width: 240
+    height: 52
+    style: {
+      fill: "#E7EAF0" # surface.elevated
+      stroke: "#747C8B" # border.control
+      stroke-width: 1
+      font-color: "#17191D"
+      border-radius: 8
+      font-size: 16
+    }
   }
 }
 
-start.class: terminal-marker
-end.class: terminal-marker
-available: Available
-requested: Requested
-wanted: Wanted
-downloading: Downloading
-timeout: Deadline exceeded {shape: diamond}
-unavailable: Unavailable
+start: {class: endpoint}
+wanted: Wanted {class: loomarr}
+requested: Requested {class: loomarr}
+downloading: Downloading {class: loomarr}
+available: Available {class: loomarr}
+unavailable: Unavailable {class: settled}
 
-start -> available: Already in library
-start -> requested: Request accepted
-start -> wanted: Submit failed
-wanted -> requested: Reconcile retry
-requested -> downloading: Webhook Grab
-requested -> available: Library confirms
-downloading -> available: Import confirmed
-requested -> timeout
-downloading -> timeout
-wanted -> timeout
-timeout -> unavailable
-available -> end
-unavailable -> end
+start -> requested: request accepted {class: hot}
+start -> wanted: request failed {class: flow}
+start -> available: already in the library {class: flow}
+wanted -> requested: retried {class: flow}
+requested -> downloading: release grabbed {class: hot}
+requested -> available: library has it {class: flow}
+downloading -> available: imported {class: hot}
+wanted -> unavailable: deadline {class: state}
+requested -> unavailable: deadline {class: state}
+downloading -> unavailable: deadline {class: state}

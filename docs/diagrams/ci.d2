@@ -1,47 +1,35 @@
-vars: {
-  d2-config: {
-    layout-engine: elk
-    theme-id: 4
-    dark-theme-id: 200
-    pad: 32
-    center: true
+# Question: how does a change get from a pull request onto main?
+# Reads top to bottom: the classifier picks which families run, every family reports to one
+# required aggregate, and only the aggregate gates the merge.
+...@system/theme
+
+direction: down
+
+change: A pull request {class: audience; icon: icons/audience-git-pull-request.svg}
+
+ci: ci.yml {
+  class: boundary
+  classify: Path classifier {class: loomarr; icon: icons/loomarr-workflow.svg}
+  admit: PR or queue {class: loomarr; icon: icons/loomarr-list-checks.svg}
+  # Rows first, then columns, so the grid fills row by row.
+  families: {
+    class: zone
+    label: Family workflows
+    grid-rows: 2
+    grid-columns: 3
+    policy: Policy and contracts {class: service}
+    go: Go and Rust {class: service}
+    web: Web and browser {class: service}
+    native: Apple, Android, TV {class: service}
+    docs: Docs {class: service}
   }
+  aggregate: Required check {class: loomarr; icon: icons/loomarr-shield-check.svg}
 }
 
-direction: right
+main: main {class: service; icon: icons/service-git-merge.svg}
 
-inputs: Change enters CI {
-  shape: oval
-}
-
-orchestrator: Root ci.yml owns decisions {
-  classifier: Fail-closed\npath classifier {shape: hexagon}
-  admission: Fast PR feedback or\nauthoritative queue {shape: queue}
-  aggregate: Required CI\naggregate {shape: hexagon}
-
-  classifier -> admission: affected families
-}
-
-families: Reusable family workflows {
-  direction: down
-  policy: Policy + contracts
-  go: Go + Postgres + Rust
-  web: Web + browser + image
-  native: Apple + Android + TV
-  docs: Docs
-}
-
-main: Main {shape: page}
-
-inputs -> orchestrator.classifier
-orchestrator.admission -> families.policy: always when orchestration changes
-orchestrator.admission -> families.go: only owned inputs
-orchestrator.admission -> families.web: only owned inputs
-orchestrator.admission -> families.native: queue or manual
-orchestrator.admission -> families.docs: only owned inputs
-families.policy -> orchestrator.aggregate
-families.go -> orchestrator.aggregate
-families.web -> orchestrator.aggregate
-families.native -> orchestrator.aggregate
-families.docs -> orchestrator.aggregate
-orchestrator.aggregate -> main
+change -> ci.classify: {class: hot}
+ci.classify -> ci.admit: affected families {class: hot}
+ci.admit -> ci.families: only what changed {class: hot}
+ci.families -> ci.aggregate: every result {class: hot}
+ci.aggregate -> main: {class: hot}

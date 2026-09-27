@@ -11,9 +11,9 @@
 Loomarr picks a lineup from your library, requests anything missing, schedules it with ad
 breaks, and streams it to your media server as Live TV.
 
-![Loomarr channel creation from household intent through approval, acquisition, scheduling, and viewing](docs/diagrams/generated/readme-overview.svg)
+![Loomarr's parts, top to bottom: people, TMDB and an LLM feed the suggester; inside Loomarr the channel builder and filler feed the scheduler, which drives playout; missing titles go to Seerr or the *arrs, and playout, or Tunarr if you chose it, reaches Emby or Jellyfin as Live TV for TVs and browsers](docs/diagrams/generated/architecture.svg)
 
-*[D2 source](docs/diagrams/readme-overview.d2)*
+*[D2 source](docs/diagrams/architecture.d2)*
 
 Every pick is a real title from your library or TMDB — the model can't invent one. Nothing
 downloads until an admin approves.

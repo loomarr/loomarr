@@ -16,6 +16,13 @@ or if you already run it. Loomarr still decides what plays, and hands the schedu
 The practical difference: on the default backend, Loomarr must be running for channels to play.
 On Tunarr, they keep playing without it.
 
+## Playing a channel
+
+Nothing is encoded ahead of time. When someone tunes a channel, Loomarr looks up what's on and
+starts one encoder for that item, reading your media file. Each item joins one
+continuous timeline, and everyone watching that channel shares it. If an item isn't ready in
+time, a slate fills the gap. Browsers and the TV app get HLS; your media server gets MPEG-TS.
+
 ## Intent → proposal → channel
 
 You describe a channel; the suggester returns a **proposal**:
@@ -34,9 +41,11 @@ admins approve.
 
 ## Filling in
 
-Titles move **wanted → downloading → available**. A channel is built from what's available now;
-anything missing becomes a **pending** slot filled with commercials, and swaps to the real
-program the moment it lands.
+A missing title is **requested** from Seerr or the *arrs, then **downloading**, then
+**available**. If the request can't be sent, the title waits as **wanted** and is retried. A title
+that doesn't arrive by its deadline becomes **unavailable**. A channel is built from what's
+available now; anything missing becomes a **pending** slot filled with commercials, and swaps to
+the real program the moment it lands.
 
 ## Series
 
