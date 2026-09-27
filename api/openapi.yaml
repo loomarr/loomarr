@@ -12868,6 +12868,38 @@ paths:
       summary: List the embedded help pages
       tags:
         - help
+  /v1/docs/diagrams/{name}:
+    get:
+      description: "A diagram a help page shows, as SVG. It ships inside the binary, so Help's diagrams work air-gapped. Load it only as an image: it is served sandboxed."
+      operationId: get-doc-diagram
+      parameters:
+        - description: The diagram's file name, as a help page references it
+          in: path
+          name: name
+          required: true
+          schema:
+            description: The diagram's file name, as a help page references it
+            examples:
+              - architecture.svg
+            type: string
+      responses:
+        "200":
+          content:
+            image/svg+xml:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The diagram.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read one help diagram
+      tags:
+        - help
   /v1/docs/{slug}:
     get:
       description: "Returns raw markdown, not HTML: the frontend renders it and searches it client-side (§7.2), which needs the source rather than a rendered blob."
