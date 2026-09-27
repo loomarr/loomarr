@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,8 +254,9 @@ func (o *Origin) stillNow() time.Time {
 const stillDecodeLimit = 2
 
 // stillStaleFallback is how old a previous frame may be and still stand in when the decode bound
-// is hit: two segment intervals.
-const stillStaleFallback = 2 * hlsSegmentDuration * time.Second
+// is hit. It is a surf burst's slack, not a segment count: the packager's 1 s segments would make
+// "two segments" too tight to cover a burst of two queued source decodes.
+const stillStaleFallback = 8 * time.Second
 
 // stillSlotWait bounds how long a source still queues for a decode slot. Two source decodes take
 // ~0.1-0.3 s each, so this covers a surf burst; past it the request is a miss.
@@ -384,53 +383,4 @@ func (s airingStillSource) newestStillSegment(ctx context.Context, channelID str
 		},
 		wait: true,
 	}, true, nil
-}
-
-// newestStillSegment reads the live remux's playlist and returns its last COMPLETED segment (the
-// playlist only lists segments ffmpeg has finished), plus the fMP4 init segment when there is one.
-func (m *HLSManager) newestStillSegment(_ context.Context, channelID string, plan EncodePlan) (stillSegment, bool, error) {
-	m.mu.Lock()
-	r := m.remuxes[remuxKey{channel: channelID, plan: plan}]
-	if r == nil {
-		for key, candidate := range m.remuxes {
-			if key.channel == channelID {
-				r = candidate
-				break
-			}
-		}
-	}
-	m.mu.Unlock()
-	if r == nil {
-		return stillSegment{}, false, nil
-	}
-	body, err := os.ReadFile(r.playlist)
-	if err != nil {
-		return stillSegment{}, false, nil // no playlist yet: the remux has not cut a segment
-	}
-	var init, last string
-	for _, line := range strings.Split(string(body), "\n") {
-		line = strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(line, "#EXT-X-MAP:URI=\""):
-			init = strings.TrimSuffix(strings.TrimPrefix(line, "#EXT-X-MAP:URI=\""), "\"")
-		case line != "" && !strings.HasPrefix(line, "#"):
-			last = line
-		}
-	}
-	if last == "" || filepath.Base(last) != last {
-		return stillSegment{}, false, nil
-	}
-	info, err := os.Stat(filepath.Join(r.dir, last))
-	if err != nil {
-		return stillSegment{}, false, nil // pruned between the playlist read and now
-	}
-	open := func(name string) func() (io.ReadCloser, error) {
-		return func() (io.ReadCloser, error) { return os.Open(filepath.Join(r.dir, name)) }
-	}
-	seg := stillSegment{key: r.dir + "/" + last, at: info.ModTime().Add(-hlsSegmentDuration * time.Second)}
-	if init != "" && filepath.Base(init) == init {
-		seg.parts = append(seg.parts, open(init))
-	}
-	seg.parts = append(seg.parts, open(last))
-	return seg, true, nil
 }

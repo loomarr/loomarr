@@ -16,7 +16,7 @@ import "time"
 //     flushes, and on rungs 2–3 the flush includes the tail fill (up to 10 s of repeated frames,
 //     measured 10.2 s on a real 4K title), which must not reach the channel;
 //  2. restarts it at the item position the channel has reached (the packager's own clock, not the
-//     encoder's out_time) with ProgramSpec.SoftwareRung set to the decision's rung. Every rung
+//     encoder's out_time) with the item output's SoftwareRung set to the decision's rung. Every rung
 //     produces identical output parameters, so the packager splices it like any other restart;
 //  3. keeps feeding samples from the new process, whose out_time and CPU start again from zero.
 //

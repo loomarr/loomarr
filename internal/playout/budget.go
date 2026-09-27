@@ -404,14 +404,6 @@ func (l *Lease) Class() StreamClass {
 // Transcoding reports whether the lease currently holds an encoder.
 func (l *Lease) Transcoding() bool { return l.Class() != ClassCopy }
 
-// cost is the dashboard's whole-transcode cost: 1 while transcoding, else 0.
-func (l *Lease) cost() int {
-	if l.Transcoding() {
-		return 1
-	}
-	return 0
-}
-
 // Capacity is how many 1080p SDR streams fit an idle host at the top rung (0 = unmeasured).
 func (b *ResourceBudget) Capacity() int {
 	f := b.currentFacts()

@@ -3,7 +3,6 @@ package playout
 import (
 	"context"
 	"errors"
-	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/testkit/playoutstreamfixture"
 )
 
 type tuneSessions struct {
@@ -95,7 +96,7 @@ func TestOriginLifecycleGateFailsClosedAndStopAllIsReusable(t *testing.T) {
 	sessions := &tuneSessions{}
 	hls := &tuneHLS{}
 	origin := NewOrigin(OriginDependencies{
-		LiveSessions: nil, LiveHLS: nil, Available: func() bool { return available },
+		Available: func() bool { return available },
 	})
 	// Use the internal constructor's test adapters so StopAll is observable without real ffmpeg.
 	origin.sessions = sessions
@@ -175,7 +176,7 @@ func TestOriginNormalizesOptionalNilDependencies(t *testing.T) {
 	}
 }
 
-func TestOriginAcquireAdmissionDistinguishesLifecycleMissFromDurableOutage(t *testing.T) {
+func TestOriginTuneDistinguishesLifecycleMissFromDurableOutage(t *testing.T) {
 	t.Parallel()
 	wantReadErr := errors.New("checkpoint unavailable")
 	for _, tc := range []struct {
@@ -200,8 +201,9 @@ func TestOriginAcquireAdmissionDistinguishesLifecycleMissFromDurableOutage(t *te
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			origin := NewOrigin(OriginDependencies{Eligible: tc.eligible})
-			if _, err := origin.AcquireAdmission(context.Background(), "ch-one"); !errors.Is(err, tc.want) {
-				t.Fatalf("AcquireAdmission error = %v, want %v", err, tc.want)
+			_, err := origin.Tune(context.Background(), TuneRequest{ChannelID: "ch-one", Plan: PlanBaseline, Delivery: DeliveryHLS})
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("Tune error = %v, want %v", err, tc.want)
 			}
 		})
 	}

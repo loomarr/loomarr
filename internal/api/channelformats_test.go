@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -95,4 +96,22 @@ func TestChannelFormats_UnknownChannelIs404(t *testing.T) {
 	if status, _ := getChannelFormats(t, playout.EncoderNVENC, playout.GPUFilters{}, nil, "nope"); status != http.StatusNotFound {
 		t.Errorf("status %d, want 404", status)
 	}
+}
+
+// fakeResolver is the API's view of a channel's schedule and host, for the handlers that describe
+// a channel: the output profile, the Watch pickers' tracks, and the lineup's programme facts.
+type fakeResolver struct {
+	profile playout.Profile
+	tracks  playout.MediaTracks
+	lineup  []playout.MediaFormat
+}
+
+func (f *fakeResolver) Profile(context.Context, int) playout.Profile { return f.profile }
+
+func (f *fakeResolver) Tracks(context.Context, string) (playout.MediaTracks, error) {
+	return f.tracks, nil
+}
+
+func (f *fakeResolver) LineupFormats(context.Context, string) ([]playout.MediaFormat, error) {
+	return f.lineup, nil
 }

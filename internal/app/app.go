@@ -25,11 +25,6 @@ type Overrides struct {
 	// DataDir is the boot-configured data directory (config.DataDirFor): where the generated
 	// installation key lives and what the storage-directory settings default beneath.
 	DataDir string
-	// ListenAddr is the address run() binds (LISTEN_ADDR). Internal playout's own block fetches go
-	// there over loopback rather than through server.public_url, which only external consumers
-	// (a media server, Tunarr) need. Empty (embedded builds without a listener) falls back to
-	// server.public_url.
-	ListenAddr string
 	// Startup is the process-owned report for this application generation. nil creates a minimal
 	// embedded-build report so /readyz still derives from the same state object in tests.
 	Startup    *diagnostics.Startup
@@ -157,6 +152,9 @@ func buildHandler(
 	refreshSecretRedactor, readGeneratedSecret := foundation.refreshSecretRedactor, foundation.readGeneratedSecret
 	eventBus, emitter := foundation.eventBus, foundation.emitter
 	jobReg, activityRec := foundation.jobs, foundation.activity
+	// Channel watermarks (#1512 phase 1d): the channel packager asks for a programme's bug. The image
+	// service a custom upload is read from is bound once the suggestions build makes it.
+	watermarks := newChannelWatermarks(rootCtx, st, set, foundation.diagnostics, log)
 
 	episodeRefresh := buildProvisioning(st, set, libraryClient, emitter, jobReg, activityRec,
 		foundation.processDiagnostics, log, foundation.metrics)
@@ -164,7 +162,7 @@ func buildHandler(
 	channelsBuilt, err := buildChannels(
 		rootCtx, st, set, ov, owner, capturePlayoutResolver, libraryClient, secrets,
 		readGeneratedSecret, eventBus, emitter, activityRec, jobReg, episodeRefresh, fillerLayout, log,
-		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics,
+		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, watermarks,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -185,6 +183,7 @@ func buildHandler(
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	watermarks.withOriginals(suggestions.images)
 	fillers := buildFillerSubsystem(
 		st, set, fillerLayout, log, libraryClient, eventBus, emitter, jobReg, playoutRes, channelSvc,
 		foundation.processDiagnostics, foundation.storageGovernor, foundation.metrics, suggestions.images,

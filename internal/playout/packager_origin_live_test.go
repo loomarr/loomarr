@@ -61,8 +61,7 @@ func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	on := func() bool { return true }
-	o := newOrigin(nil, switchedSessions{packaged: m, usePackager: on}, switchedHLS{packaged: m, usePackager: on})
+	o := NewOrigin(OriginDependencies{Packager: m})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 

@@ -6,9 +6,7 @@ import (
 	"errors"
 	"image/jpeg"
 	"io"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -107,44 +105,6 @@ func TestOriginStill_NoExtractorMeansNoStills(t *testing.T) {
 	o.stillSources = []stillSource{&fakeStillSource{ok: true, seg: segment("s", "x", time.Now())}}
 	if _, ok, err := o.Still(context.Background(), "ch1", PlanBaseline); ok || err != nil {
 		t.Fatalf("ok=%v err=%v, want a clean miss when ffmpeg is not wired", ok, err)
-	}
-}
-
-func TestHLSStill_NewestCompletedSegmentPlusInit(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name, body string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("master.m3u8", "#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:4.0,\nseg-1.m4s\n#EXTINF:4.0,\nseg-2.m4s\n")
-	write("init.mp4", "INIT")
-	write("seg-1.m4s", "ONE")
-	write("seg-2.m4s", "TWO")
-	write("seg-3.m4s", "PARTIAL") // being written: not in the playlist yet, must never be picked
-	m := &HLSManager{remuxes: map[remuxKey]*hlsRemux{
-		{channel: "ch1", plan: PlanBaseline}: {dir: dir, playlist: filepath.Join(dir, "master.m3u8")},
-	}}
-
-	seg, ok, err := m.newestStillSegment(context.Background(), "ch1", PlanBaseline)
-	if err != nil || !ok {
-		t.Fatalf("ok=%v err=%v", ok, err)
-	}
-	var got strings.Builder
-	for _, open := range seg.parts {
-		rc, err := open()
-		if err != nil {
-			t.Fatal(err)
-		}
-		b, _ := io.ReadAll(rc)
-		_ = rc.Close()
-		got.Write(b)
-	}
-	if got.String() != "INITTWO" {
-		t.Fatalf("stream = %q, want INITTWO (init + newest COMPLETED segment)", got.String())
-	}
-	if _, ok, _ := m.newestStillSegment(context.Background(), "other", PlanBaseline); ok {
-		t.Fatal("a channel with no remux must be a miss")
 	}
 }
 

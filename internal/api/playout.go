@@ -89,9 +89,6 @@ const playoutModeParam = "mode"
 // Playout is the one playback interface used by HTTP transport adapters (§9.1 V56). It hides
 // prepared-vs-live selection, encoder sessions, HLS remuxes, and their filesystem layouts.
 type Playout interface {
-	// AcquireAdmission applies the canonical lifecycle/backend gate and tracks raw transport work
-	// until Release. Lifecycle teardown cancels the lease context before retiring live delivery.
-	AcquireAdmission(ctx context.Context, channelID string) (playout.Admission, error)
 	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
 	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
 	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
@@ -113,23 +110,6 @@ type PlayoutObserver interface {
 	Stats(now time.Time) []playout.SessionStat
 	// Capacity is the admission bound — the denominator in "2 / 4".
 	Capacity() int
-	// ReportProgram records the CURRENT program's encoder + progress for a channel.
-	//
-	// Reported from the per-program path rather than captured at session start, because the
-	// session's own ffmpeg is the `-c copy` parent and never encodes: its speed would measure
-	// remuxing and its encoder would be copy. Encoding happens in the per-program children,
-	// and a session can move between copy and transcode programs.
-	ReportProgram(channelID string, target playout.EncodePlan, enc playout.Encoder, class playout.StreamClass, p playout.Progress)
-	// ObserveProgramCost reports a finished live programme: its encoder CPU time over the media it
-	// produced refines the class's measured CPU cost in the ResourceBudget (#1512).
-	ObserveProgramCost(channelID string, target playout.EncodePlan, class playout.StreamClass, cpu, media time.Duration)
-	// AdmitProgram reclasses the live session's budget lease to the program's stream class
-	// (playout.ClassCopy for a copy) before a child starts. It prevents zero-cost prepared sessions
-	// from oversubscribing when they later fall back live.
-	AdmitProgram(ctx context.Context, channelID string, target playout.EncodePlan, class playout.StreamClass) bool
-	// SessionRung is the quality rung the session was admitted at, pinned for its lifetime (#1512);
-	// false when the session does not exist.
-	SessionRung(channelID string, target playout.EncodePlan) (int, bool)
 	// Budget snapshots the ResourceBudget: capacity terms, per-class costs and what is in use.
 	Budget() playout.BudgetSnapshot
 }
@@ -368,33 +348,6 @@ func firstTransportChunk(ctx context.Context, stream playout.Stream, timeout tim
 	}
 }
 
-// acquirePlayoutAdmission maps the canonical Playout lifecycle decision to the raw transport
-// contract. Ineligible channel ids stay indistinguishable from missing routes; a replica that
-// cannot prove durable state reports temporary unavailability and performs no downstream work.
-func (s *Server) acquirePlayoutAdmission(
-	w http.ResponseWriter, r *http.Request, channelID string,
-) (playout.Admission, bool) {
-	if s.playout == nil {
-		s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout unavailable",
-			"Internal playout isn't available on this instance right now.")
-		return playout.Admission{}, false
-	}
-	admission, err := s.playout.AcquireAdmission(r.Context(), channelID)
-	if err == nil {
-		return admission, true
-	}
-	if errors.Is(err, playout.ErrIneligible) {
-		http.NotFound(w, r)
-		return playout.Admission{}, false
-	}
-	if s.log != nil {
-		s.log.Warn("playout: lifecycle admission unavailable", "channel", channelID, "err", err)
-	}
-	s.writeProblem(w, r, http.StatusServiceUnavailable, "Playout temporarily unavailable",
-		"Loomarr couldn't verify this channel's current lifecycle state. Try again in a moment.")
-	return playout.Admission{}, false
-}
-
 // tunerHandler serves the M3U channel list the media server registers as a tuner.
 //
 // `#EXTINF` + the tvg-* attributes are how a media server correlates a stream with its guide
@@ -612,7 +565,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.log.Warn("playout: hls playlist failed", "channel", channelID, "err", err)
 		}
-		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel", startFailureDetail(err))
+		s.writeProblem(w, r, http.StatusBadGateway, "Couldn't start the channel", "Loomarr couldn't start this channel's in-app stream.")
 		return
 	}
 	// Release THIS fetch's refcount as it returns — the remux's grace timer keeps it alive
@@ -824,18 +777,12 @@ func (s *Server) registerPlayout(api huma.API) {
 		Summary: "Playout XMLTV guide (device-authed)", Tags: []string{"playout"},
 	}, "XMLTV listings for every internally-played channel.", "application/xml"), s.guideHandler)
 
-	// The continuous MPEG-TS a TV/media server plays, plus the finite block endpoint its supervisor reads.
+	// The continuous MPEG-TS a TV/media server plays.
 	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
 		OperationID: "playout-stream", Method: http.MethodGet, Path: "/v1/playout/stream/{id}",
 		Summary: "Channel MPEG-TS stream (device-authed)", Tags: []string{"playout"},
 	}, "A continuous transport stream of whatever the channel is playing now.",
 		"video/mp2t"), s.streamHandler)
-	// The sequencing layer (playoutprogram.go): the Go supervisor re-opens this once per block.
-	streamOp[playoutChannelInput](s, api, bytesResponse(huma.Operation{
-		OperationID: "playout-program", Method: http.MethodGet, Path: "/v1/playout/program/{id}",
-		Summary: "One program's MPEG-TS (device-authed)", Tags: []string{"playout"},
-	}, "One finite transport block; the channel supervisor re-opens this at each airing boundary.",
-		"video/mp2t"), s.programHandler)
 
 	// The latest still frame of a channel, for the switch overlay (still.go in playout). Authed like
 	// the HLS routes, so the play-url's signature covers it.
@@ -923,23 +870,18 @@ func (s *Server) playoutAuthMiddleware(hctx huma.Context, next func(huma.Context
 	next(hctx)
 }
 
-// startFailureDetail explains a failed in-app tune in words the viewer can act on. It reads the
-// typed reason the playout module recorded; anything untyped keeps the generic sentence, so a new
-// failure never renders as a misleading specific one.
-func startFailureDetail(err error) string {
-	var start *playout.StartError
-	if !errors.As(err, &start) {
-		return "Loomarr couldn't start this channel's in-app stream."
-	}
-	switch start.Reason {
-	case playout.StartProgramSourceUnreachable:
-		return "Loomarr couldn't reach its own programme source, so this channel has nothing to play. Ask an administrator to check the server's network settings."
-	case playout.StartProgramSourceFailed:
-		return "This channel's programme source refused the request, so there is nothing to play yet. Try again in a moment."
-	case playout.StartEncoderExited:
-		return "The video encoder stopped before this channel produced a picture. Ask an administrator to check Playout settings and hardware encoding."
-	case playout.StartNoStream:
-		return "This channel didn't produce a picture in time. Try again, or pick another channel."
-	}
-	return "Loomarr couldn't start this channel's in-app stream."
+// PlayoutResolver is the playout adapter's view of a channel's schedule and the host, for the
+// handlers that describe a channel rather than stream it. Implemented over channels.Engine and
+// library.Client, so the api package imports neither.
+type PlayoutResolver interface {
+	// Profile is the encode profile at a quality-ladder rung (§9.1; 0 is the top), the rung the
+	// ResourceBudget's lease admitted.
+	Profile(ctx context.Context, rung int) playout.Profile
+	// Tracks probes the audio and subtitle tracks of the channel's currently airing programme, for
+	// the Watch surface's pickers (§9.1, V46). Best-effort: empty when nothing airs or the probe
+	// fails, so a UI request never blocks on a bad probe.
+	Tracks(ctx context.Context, channelID string) (playout.MediaTracks, error)
+	// LineupFormats returns the inventory stream facts of each distinct programme in the channel's
+	// lineup (zero for an unmeasured item), from which the channel's formats are derived (#1512 G10).
+	LineupFormats(ctx context.Context, channelID string) ([]playout.MediaFormat, error)
 }

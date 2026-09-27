@@ -40,6 +40,8 @@ func TestBuild_WiresMeasuredCapacityToAdmissionAndQuality(t *testing.T) {
 		"playout.backend":      "internal",
 		"playout.encoder":      "libx264",
 		"playout.max_channels": "9",
+		// The channel packager (the admission point) needs its scratch root, as on an install.
+		"playout.hls_dir": t.TempDir(),
 	} {
 		if err := st.SetSetting(context.Background(), key, value); err != nil {
 			t.Fatal(err)

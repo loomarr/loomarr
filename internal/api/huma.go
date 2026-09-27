@@ -220,15 +220,9 @@ type Server struct {
 	// request security boundaries so a rotation handled by another process invalidates the
 	// old token and admits the new one immediately. Tests and SQLite use playoutSecret.
 	playoutSecretCurrent func(context.Context) (string, error)
-	// playoutResolver answers "what is airing now" for /playout/program (§9.1) — the
-	// finite-block layer the Go supervisor re-opens per program. nil ⇒ the route 501s.
+	// playoutResolver describes channels for the formats, play-url and filler handlers. Nil ⇒ those
+	// report playout as not configured.
 	playoutResolver PlayoutResolver
-	// playoutEncoder starts one supervised ffmpeg. Injected so the program handler is
-	// testable without executing a binary; the composition root passes playout.Start.
-	playoutEncoder PlayoutEncoder
-	// decodeFaults remembers sources the GPU decoder failed on, so their next program decodes in
-	// software with the encode kept on hardware (#1401).
-	decodeFaults decodeFaultSet
 	// playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
 	playout Playout
 	// playoutGuide resolves programme timelines for /playout/guide.xml (§9.1, V6b);
@@ -244,8 +238,6 @@ type Server struct {
 	// graph-init. Same fail-safe direction as playoutFont, for the same reason.
 	playoutTonemap    func() bool
 	playoutGPUTonemap func() playout.GPUFilters
-	playoutToneCurve  func() string
-	playoutWatermark  func(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark
 	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
 	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
@@ -1105,10 +1097,8 @@ type Options struct {
 	// PlayoutSecretCurrent reads the durable token at a request boundary. Production wires
 	// this for Postgres replica coherence; nil preserves the local/SQLite seam above.
 	PlayoutSecretCurrent func(context.Context) (string, error)
-	// PlayoutResolver answers "what is airing now" for /playout/program (§9.1). Nil ⇒ 501.
+	// PlayoutResolver describes channels for the formats, play-url and filler handlers.
 	PlayoutResolver PlayoutResolver
-	// PlayoutEncoder starts one supervised ffmpeg (playout.Start). Nil ⇒ /playout/program 501s.
-	PlayoutEncoder PlayoutEncoder
 	// Playout is the one playback seam for MPEG-TS and HLS (§9.1 V56).
 	Playout Playout
 	// PlayoutGuide resolves programme timelines for the XMLTV guide (§9.1). Nil ⇒ the route 501s.
@@ -1128,13 +1118,6 @@ type Options struct {
 	// PlayoutGPUTonemap reports which GPU tone-mappers the build carries (playout.GPUFiltersFor).
 	// Nil ⇒ none: HDR then tone-maps on the CPU after the GPU downscale.
 	PlayoutGPUTonemap func() playout.GPUFilters
-	// PlayoutToneCurve reads `playout.tone_curve` for a programme request that carries no session
-	// pin. Nil ⇒ the default curve.
-	PlayoutToneCurve func() string
-	// PlayoutWatermark returns a channel's rendered bug for a programme item at the output size,
-	// or nil when the channel turned it off, it cannot be rendered, or this host's GPU overlay
-	// failed its boot self-check (#1512 phase 1d). Nil ⇒ no watermarks.
-	PlayoutWatermark func(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark
 	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
 	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder

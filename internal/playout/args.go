@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"time"
 )
 
 // ffmpeg argument construction for internal playout (§9.1).
@@ -110,20 +109,6 @@ func engineOf(e Encoder) Encoder {
 // caller uses this when an hevc-plan session must transcode a non-HEVC program to keep the fMP4
 // stream uniform. Returns the input unchanged if it has no known HEVC sibling — a safe degrade to
 // h264 (the program still plays; only the fMP4-uniformity optimisation is lost for that encoder).
-// HEVCEncoderFor is the exported entry the API's program path uses to pick the HEVC encoder for an
-// hevc-plan transcode (§9.1 V49) — a thin wrapper over hevcVariant so the mapping stays single-sourced.
-func HEVCEncoderFor(h264 Encoder) Encoder { return hevcVariant(h264) }
-
-// SoftwareEncoderFor returns the software encoder that preserves the requested encoder's output
-// codec. A live session pins one codec for its lifetime, so an HEVC hardware failure must fall back
-// to libx265 rather than silently switching the stream to H.264/libx264.
-func SoftwareEncoderFor(enc Encoder) Encoder {
-	if engineOf(enc) != enc {
-		return EncoderSoftwareHEVC
-	}
-	return EncoderSoftware
-}
-
 // IsSoftwareEncoder reports whether enc is either supported software codec. Treating libx265 as a
 // hardware encoder would incorrectly acquire a GPU slot and attempt VRAM reclamation.
 func IsSoftwareEncoder(enc Encoder) bool {
@@ -375,11 +360,6 @@ func (p Profile) gopArgs() []string {
 	}
 }
 
-// audioEncodeArgs is fixed AAC stereo 48kHz — see Profile.AudioBitrate.
-func (p Profile) audioEncodeArgs() []string {
-	return p.audioEncodeArgsGain(0)
-}
-
 // MaxGainDB bounds a static per-item gain. Clips are normalised to the target at ingest, so a
 // real correction is a fraction of a dB; anything past this is a bad measurement, and applying it
 // would either clip (boost) or mute (cut) a clip on the strength of a number nobody checked.
@@ -421,141 +401,4 @@ func FillerGain(a Airing, targetLUFS string) (gainDB float64, note string) {
 // sample. It never rewrites the file on disk.
 func gainFilter(gainDB float64) string {
 	return "volume=" + strconv.FormatFloat(gainDB, 'f', -1, 64) + "dB"
-}
-
-// audioEncodeArgsGain is audioEncodeArgs plus an optional static gain (filler only).
-//
-// `gainDB` 0 ⇒ no filter at all, which is exactly what a library program gets: adjusting a
-// feature film to advert loudness would flatten its dynamic range.
-func (p Profile) audioEncodeArgsGain(gainDB float64) []string {
-	args := []string{}
-	if gainDB != 0 {
-		args = append(args, "-af", gainFilter(gainDB))
-	}
-	return append(args,
-		"-c:a", "aac",
-		"-b:a", strconv.Itoa(p.AudioBitrate)+"k",
-		"-ac", "2",
-		"-ar", "48000",
-	)
-}
-
-// TestCardArgs builds the args for a synthetic test card: a captioned colour field with
-// silent audio, muxed to MPEG-TS on stdout, forever.
-//
-// This is deliberately the first thing playout can do, because it proves the whole
-// pipeline — encode, mux, pipe, serve — with NO library content, no scheduler and no
-// media server. If the card plays, everything downstream of the encoder works.
-//
-// Three details are load-bearing, each learned from Tunarr's `ffmpegText.ts` rather than
-// guessed (prior-art §5a):
-//
-//   - `anullsrc` gives a SILENT AUDIO TRACK. A video-only MPEG-TS is a classic cause of
-//     a player refusing to play or showing no timeline. It is not optional.
-//   - `-re` reads the synthetic source at realtime. Without it lavfi generates as fast
-//     as the CPU allows and floods the pipe, racing ahead of wall-clock.
-//   - `-stream_loop -1` so a generated source never EOFs and ends the channel.
-func TestCardArgs(p Profile, fontFile, title, subtitle string) []string {
-	return testCardArgs(p, fontFile, title, subtitle, false)
-}
-
-func testCardArgs(p Profile, fontFile, title, subtitle string, sessionAudio bool) []string {
-	args := []string{
-		"-hide_banner", "-loglevel", "error",
-		// Progress as line-framed machine-readable key=value — never stdout, which carries
-		// the MPEG-TS. Unix gives it dedicated fd 3; Windows demultiplexes exact protocol
-		// lines from stderr because Go does not support ExtraFiles there. The platform value
-		// and wiring live at one seam so they cannot drift into "Bad file descriptor" again.
-		"-progress", progressPipeArg(), "-nostats",
-	}
-	// Video: a plain colour field, paced to realtime, looping forever.
-	if !sessionAudio {
-		args = append(args, "-re")
-	}
-	args = append(args,
-		"-f", "lavfi", "-stream_loop", "-1",
-		"-i", fmt.Sprintf("color=c=black:s=%dx%d:r=%d", p.Width, p.Height, p.Framerate),
-	)
-	// Audio: silence. Explicit layout + rate so it matches the encode profile exactly;
-	// letting anullsrc default and then resampling is a needless filter.
-	args = append(args,
-		"-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
-	)
-	if vf := drawTextFilter(fontFile, title, subtitle, p.Height); vf != "" {
-		args = append(args, "-vf", vf)
-	}
-	args = append(args, p.videoEncodeArgs()...)
-	if sessionAudio {
-		args = append(args, "-bf", "0", "-c:a", "s302m", "-strict", "-2", "-ac", "2", "-ar", "48000")
-	} else {
-		args = append(args, p.audioEncodeArgs()...)
-	}
-	// mpegts to stdout. `+initial_discontinuity` tells a downstream demuxer that the
-	// first timestamps are not necessarily zero, which is true for anything joining a
-	// live stream mid-flight (ErsatzTV sets the same flag).
-	return append(args,
-		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
-	)
-}
-
-// OfflineCardArgs is TestCardArgs bounded to a fixed duration — the card a channel plays when
-// nothing is airing (§9.1).
-//
-// The bound is the whole difference, and it is required rather than cosmetic. TestCardArgs loops
-// FOREVER by design (`-stream_loop -1`, so a generated source never EOFs mid-channel), which is
-// right for a standing test pattern and wrong for a program slot: the block supervisor advances on
-// its child's EOF, so a card that never ends means the channel can never pick up content that
-// later lands. Bounding it makes the supervisor ask again.
-//
-// `-t` goes before the output target, where it applies to the OUTPUT. As an input option it
-// would instead limit how much of the looping source is READ, which for an infinite generated
-// source means something subtly different.
-func OfflineCardArgs(p Profile, fontFile, title, subtitle string, d time.Duration, clock ProgramClock) []string {
-	args := testCardArgs(p, fontFile, title, subtitle, clock.active())
-	// Insert before the trailing output target rather than appending: ffmpeg applies an option
-	// to whatever comes after it, so `pipe:1 -t 30` would be a parse error.
-	out := args[len(args)-1]
-	args = append(args[:len(args)-1], "-t", seconds(d))
-	if clock.active() {
-		args = append(args, "-af", "atrim=end="+seconds(d))
-	}
-	return clock.apply(append(args, out), 0)
-}
-
-// drawTextFilter centres a title, with an optional subtitle beneath it. Returns "" when
-// there is no font — drawtext without a fontfile fails at init on a minimal image, so a
-// missing font degrades to a plain colour field rather than killing the channel.
-func drawTextFilter(fontFile, title, subtitle string, height int) string {
-	if fontFile == "" || title == "" {
-		return ""
-	}
-	size := height / 12 // scales with the profile instead of a fixed 30px
-	f := fmt.Sprintf(
-		"drawtext=fontfile=%s:fontsize=%d:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2:text='%s'",
-		fontFile, size, escapeDrawText(title))
-	if subtitle != "" {
-		f += fmt.Sprintf(
-			",drawtext=fontfile=%s:fontsize=%d:fontcolor=white:x=(w-text_w)/2:y=(h+text_h+%d)/2:text='%s'",
-			fontFile, size*2/3, size, escapeDrawText(subtitle))
-	}
-	return f
-}
-
-// escapeDrawText neutralises the characters that terminate or redirect a drawtext
-// expression. A channel name is operator-supplied text arriving here from the database,
-// so an unescaped apostrophe is a broken filter graph at best — and `:` introduces
-// another filter option, which is worse than broken.
-func escapeDrawText(s string) string {
-	out := make([]rune, 0, len(s))
-	for _, r := range s {
-		switch r {
-		case '\'', ':', '\\', '%':
-			out = append(out, '\\', r)
-		case '\n', '\r':
-			out = append(out, ' ')
-		default:
-			out = append(out, r)
-		}
-	}
-	return string(out)
 }

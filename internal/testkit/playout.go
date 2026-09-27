@@ -13,11 +13,10 @@ import (
 type Playout struct {
 	mu sync.Mutex
 
-	TuneResult   playout.Presentation
-	TuneErr      error
-	AdmissionErr error
-	stopped      []string
-	stoppedAll   int
+	TuneResult playout.Presentation
+	TuneErr    error
+	stopped    []string
+	stoppedAll int
 }
 
 func (p *Playout) Tune(context.Context, playout.TuneRequest) (playout.Presentation, error) {
@@ -28,11 +27,6 @@ func (p *Playout) Tune(context.Context, playout.TuneRequest) (playout.Presentati
 
 func (*Playout) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
 	return playout.Asset{}, false, nil
-}
-
-// AcquireAdmission satisfies the API's canonical lifecycle admission seam.
-func (p *Playout) AcquireAdmission(ctx context.Context, _ string) (playout.Admission, error) {
-	return playout.Admission{Context: ctx}, p.AdmissionErr
 }
 
 func (p *Playout) StopChannel(channelID string) {

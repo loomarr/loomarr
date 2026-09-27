@@ -56,6 +56,43 @@ type Presentation struct {
 	Release  func()
 }
 
+// Stream is an ordered raw transport with cancellable reads. Next returns an owned
+// chunk or an error; io.EOF follows the last accepted byte. Release the associated
+// Presentation when finished, including after cancellation or EOF.
+type Stream interface {
+	Next(context.Context) ([]byte, error)
+}
+
+// hlsPlaylistLease owns one viewer reference while media readiness is pending.
+// Acquiring the lease is short and lifecycle-ordered; reading it may wait for media.
+type hlsPlaylistLease struct {
+	path     string
+	release  func()
+	await    func(context.Context) error
+	snapshot func(context.Context) ([]byte, error)
+}
+
+func (l hlsPlaylistLease) readManifest(ctx context.Context) ([]byte, func(), error) {
+	if err := l.await(ctx); err != nil {
+		l.release()
+		return nil, nil, err
+	}
+	var (
+		body []byte
+		err  error
+	)
+	if l.snapshot != nil {
+		body, err = l.snapshot(ctx)
+	} else {
+		body, err = os.ReadFile(l.path)
+	}
+	if err != nil {
+		l.release()
+		return nil, nil, err
+	}
+	return body, l.release, nil
+}
+
 type readSeekCloser interface {
 	io.Reader
 	io.Seeker
@@ -71,22 +108,6 @@ type Asset struct {
 	// Playlist marks a live media playlist (a packager variant, #1512 phase 2b): its URIs are bare
 	// asset names the transport must make self-authenticating, as it does for the Tune manifest.
 	Playlist bool
-}
-
-// Admission is a tracked raw-transport operation. Context is cancelled when the request ends or
-// lifecycle teardown retires its channel; Release must be called after the operation is finished.
-// The unexported release function keeps registration ownership inside Origin while allowing HTTP
-// adapters and shared test doubles to carry the lease without learning its bookkeeping.
-type Admission struct {
-	Context context.Context
-	release func()
-}
-
-// Release retires the admission lease. It is safe to call on the zero value and more than once.
-func (a Admission) Release() {
-	if a.release != nil {
-		a.release()
-	}
 }
 
 type sessionAttacher interface {
@@ -123,9 +144,6 @@ type Origin struct {
 	available   func() bool
 	eligible    func(context.Context, string) (bool, error)
 
-	admissionsMu sync.Mutex
-	admissions   map[*admissionLease]string
-
 	// Channel stills (still.go): the segment holders, tried in Tune's order, and the decoder.
 	stillSources   []stillSource
 	stillExtractor StillExtractor
@@ -133,31 +151,13 @@ type Origin struct {
 	stills         stillCache
 }
 
-type admissionLease struct {
-	origin *Origin
-	once   sync.Once
-	cancel context.CancelFunc
-}
-
-func (l *admissionLease) release() {
-	l.once.Do(func() {
-		l.cancel()
-		l.origin.admissionsMu.Lock()
-		delete(l.origin.admissions, l)
-		l.origin.admissionsMu.Unlock()
-	})
-}
-
 // OriginDependencies are the implementations hidden behind the one production playout seam.
 // Prepared is consulted first; the bounded live implementations remain internal fallbacks.
 type OriginDependencies struct {
-	Prepared     *PreparedOrigin
-	LiveSessions *Manager
-	LiveHLS      *HLSManager
-	// PackagedHLS is the channel packager (#1512 phase 2). With it, UsePackager chooses per new
-	// tune between it and LiveHLS (nil UsePackager: always the packager).
-	PackagedHLS *PackagerHLS
-	UsePackager func() bool
+	Prepared *PreparedOrigin
+	// Packager is live playout (#1512 phase 2): one channel packager per watched channel serves
+	// the browser's HLS and every media-server tuner's MPEG-TS. Nil leaves live playout off.
+	Packager *PackagerHLS
 	// Available is a fail-closed admission gate. Nil means always available (the SQLite
 	// single-replica path); Postgres supplies a gate tied to its durable invalidation listener.
 	Available func() bool
@@ -189,21 +189,9 @@ func NewOrigin(deps OriginDependencies) *Origin {
 		prepared = deps.Prepared
 	}
 	var sessions sessionAttacher
-	if deps.LiveSessions != nil {
-		sessions = deps.LiveSessions
-	}
 	var hls hlsOrigin
-	if deps.LiveHLS != nil {
-		hls = deps.LiveHLS
-	}
-	if deps.PackagedHLS != nil {
-		use := deps.UsePackager
-		if use == nil {
-			use = func() bool { return true }
-		}
-		hls = switchedHLS{remux: hls, packaged: deps.PackagedHLS, usePackager: use}
-		// Media-server tuners read the same channel packager as the browser (#1512 phase 2b).
-		sessions = switchedSessions{live: sessions, packaged: deps.PackagedHLS, usePackager: use}
+	if deps.Packager != nil {
+		sessions, hls = packagedTuners{deps.Packager}, deps.Packager
 	}
 	o := newOrigin(prepared, sessions, hls)
 	o.available = deps.Available
@@ -212,8 +200,8 @@ func NewOrigin(deps OriginDependencies) *Origin {
 	o.stillExtractor = deps.Still
 	// A warm channel's newest segment first (fresher, and already decoded media), then the cold
 	// channel's source file. Prepared publications no longer supply stills (#1512 withdrew them).
-	if deps.LiveHLS != nil {
-		o.stillSources = append(o.stillSources, deps.LiveHLS)
+	if deps.Packager != nil {
+		o.stillSources = append(o.stillSources, deps.Packager)
 	}
 	if deps.StillAiring != nil && deps.SourceStill != nil {
 		o.stillSources = append(o.stillSources, airingStillSource{resolve: deps.StillAiring, extract: deps.SourceStill})
@@ -223,29 +211,6 @@ func NewOrigin(deps OriginDependencies) *Origin {
 
 func newOrigin(prepared preparedDelivery, sessions sessionAttacher, hls hlsOrigin) *Origin {
 	return &Origin{prepared: prepared, sessions: sessions, hls: hls}
-}
-
-// AcquireAdmission applies the same fail-closed lifecycle decision used by Tune and OpenAsset and
-// registers a cancellable raw-transport operation before teardown can pass it. Internal program
-// hops hold the returned lease through resolver and encoder work; StopChannel/StopAll cancel it.
-func (o *Origin) AcquireAdmission(ctx context.Context, channelID string) (Admission, error) {
-	if o == nil {
-		return Admission{}, ErrUnavailable
-	}
-	o.lifecycleMu.RLock()
-	defer o.lifecycleMu.RUnlock()
-	if err := o.checkAdmissionLocked(ctx, channelID); err != nil {
-		return Admission{}, err
-	}
-	leaseCtx, cancel := context.WithCancel(ctx)
-	lease := &admissionLease{origin: o, cancel: cancel}
-	o.admissionsMu.Lock()
-	if o.admissions == nil {
-		o.admissions = make(map[*admissionLease]string)
-	}
-	o.admissions[lease] = channelID
-	o.admissionsMu.Unlock()
-	return Admission{Context: leaseCtx, release: lease.release}, nil
 }
 
 func (o *Origin) checkAdmissionLocked(ctx context.Context, channelID string) error {
@@ -374,7 +339,6 @@ func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePla
 func (o *Origin) StopChannel(channelID string) {
 	o.lifecycleMu.Lock()
 	defer o.lifecycleMu.Unlock()
-	o.cancelAdmissions(channelID)
 	if o.hls != nil {
 		o.hls.StopChannel(channelID)
 	}
@@ -405,26 +369,11 @@ func (o *Origin) Quiesce() {
 }
 
 func (o *Origin) stopAllLocked() {
-	o.cancelAdmissions("")
 	if o.hls != nil {
 		o.hls.StopAll()
 	}
 	if o.sessions != nil {
 		o.sessions.Stop()
-	}
-}
-
-// cancelAdmissions cancels every raw operation for channelID; an empty id means all channels.
-// lifecycleMu is held by the caller, so an admission that passed its durable check cannot register
-// after this snapshot and escape teardown.
-func (o *Origin) cancelAdmissions(channelID string) {
-	o.admissionsMu.Lock()
-	defer o.admissionsMu.Unlock()
-	for lease, admittedChannel := range o.admissions {
-		if channelID == "" || admittedChannel == channelID {
-			lease.cancel()
-			delete(o.admissions, lease)
-		}
 	}
 }
 

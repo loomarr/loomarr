@@ -100,7 +100,7 @@ var (
 // HostFor is the host profile for the chosen encoder on this build. A GPU tone-mapper the build
 // carries but the host cannot run (no OpenCL ICD for this GPU, e.g. AMD or a missing runtime; no
 // Vulkan device) fails at device creation, before any output; the live ladder then demotes it and
-// retries with the next one, ending at the CPU tone-map (ProgramSpec.DemoteTonemap).
+// retries with the next one, ending at the CPU tone-map (the packager's itemFaults, demoteTonemapper).
 func HostFor(enc Encoder, cpuTonemap bool, gpu GPUFilters) HostProfile {
 	h := HostProfile{Encoder: engineOf(enc), CPUTonemap: cpuTonemap}
 	switch h.Encoder {

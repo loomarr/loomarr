@@ -3,7 +3,9 @@ package playout
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,7 +18,6 @@ import (
 )
 
 type fakeHLSOrigin struct {
-	name     string
 	acquired []string
 	stopped  int
 	assets   map[string]string
@@ -34,33 +35,6 @@ func (f *fakeHLSOrigin) AssetPath(_ string, _ EncodePlan, rel string) (string, b
 }
 func (f *fakeHLSOrigin) StopChannel(string) { f.stopped++ }
 func (f *fakeHLSOrigin) StopAll()           { f.stopped++ }
-
-func TestSwitchedHLSChoosesPerTuneAndServesBothOrigins(t *testing.T) {
-	remux := &fakeHLSOrigin{name: "remux", assets: map[string]string{"seg-1.ts": "/remux/seg-1.ts"}}
-	pk := &fakeHLSOrigin{name: "packager", assets: map[string]string{"init.mp4": "/pk/init.mp4"}}
-	on := false
-	s := switchedHLS{remux: remux, packaged: pk, usePackager: func() bool { return on }}
-
-	_, _ = s.acquirePlaylist("a", PlanBaseline, false)
-	on = true
-	_, _ = s.acquirePlaylist("b", PlanBaseline, false)
-	if len(remux.acquired) != 1 || remux.acquired[0] != "a" || len(pk.acquired) != 1 || pk.acquired[0] != "b" {
-		t.Fatalf("remux tuned %v, packager tuned %v", remux.acquired, pk.acquired)
-	}
-	// A channel keeps serving from the origin it started on after the setting flips.
-	on = false
-	if p, ok := s.AssetPath("b", PlanBaseline, "init.mp4"); !ok || p != "/pk/init.mp4" {
-		t.Fatalf("packager asset after flip: %q %v", p, ok)
-	}
-	if p, ok := s.AssetPath("a", PlanBaseline, "seg-1.ts"); !ok || p != "/remux/seg-1.ts" {
-		t.Fatalf("remux asset: %q %v", p, ok)
-	}
-	s.StopAll()
-	s.StopChannel("a")
-	if remux.stopped != 2 || pk.stopped != 2 {
-		t.Fatalf("stops: remux %d packager %d", remux.stopped, pk.stopped)
-	}
-}
 
 func TestPackagerHLSAssetPathServesOnlyItsOwnFiles(t *testing.T) {
 	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{
@@ -138,7 +112,7 @@ func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
 	for gain, want := range map[float64]string{-2.5: "volume=-2.5dB", 0: ""} {
-		_, args, err := packagerItemArgs(host, out, PackagerItem{Input: "clip.mp4", Format: format, GainDB: gain}, slot)
+		_, args, err := packagerItemArgs(host, out, PackagerItem{Input: "clip.mp4", Format: format, GainDB: gain}, nil, slot, itemFault{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,6 +128,172 @@ func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 	}
 }
 
+// A software host degrades a 4K HDR item instead of refusing it (#1517): with no ledger the
+// packager's item starts on the unmeasured start rung, as the retired program handler's did, and
+// SDR 1080p stays full.
+func TestPackagerItemArgsStartOnTheSoftwareRung(t *testing.T) {
+	host := HostFor(EncoderSoftware, true, GPUFilters{})
+	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
+	slot := packager.Slot{Frames: 250, AudioFrames: 469}
+	for name, want := range map[string]bool{"hevc-4k-hdr-dv": true, "h264-1080p-sdr-25": false} {
+		ffmpeg, runs := failingEncoder(t, "")
+		m, err := NewPackagerHLS(stuckSlateSource{}, ffmpeg, t.TempDir(), time.Second, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.source = fixedItemSource{item: PackagerItem{Label: "prog", Remaining: time.Hour, Input: "title.mkv", Format: testSources()[name]}}
+		item, err := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))(t.Context(), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rc, err := item.Open(t.Context(), slot); err == nil {
+			_, _ = io.Copy(io.Discard, rc)
+			_ = rc.Close()
+		}
+		m.Stop()
+		args := strings.Fields(runs()[0])
+		skip := slices.Index(args, "-skip_frame:v")
+		keyframesOnly := skip >= 0 && args[skip+1] == "nokey" && skip < slices.Index(args, "-i")
+		if keyframesOnly != want {
+			t.Errorf("%s: keyframes-only start = %v, want %v: %q", name, keyframesOnly, want, args)
+		}
+	}
+}
+
+// failingEncoder is an ffmpeg that records its arguments, one run per line, then fails before
+// producing output with the given stderr, the way a GPU fault ends an item's encoder.
+func failingEncoder(t *testing.T, stderr string) (ffmpeg string, runs func() []string) {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "runs")
+	ffmpeg = filepath.Join(dir, "ffmpeg")
+	script := "#!/bin/sh\necho \"$*\" >> " + log + "\necho '" + stderr + "' >&2\nexit 1\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return ffmpeg, func() []string {
+		b, _ := os.ReadFile(log)
+		return strings.Split(strings.TrimSpace(string(b)), "\n")
+	}
+}
+
+// openItem runs the channel's schedule for one item n times, as the packager does when an
+// item fails: the first encoder fails, the schedule is asked again, the next attempt opens.
+func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n int) {
+	t.Helper()
+	m, err := NewPackagerHLS(stuckSlateSource{}, ffmpeg, t.TempDir(), time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	m.source = fixedItemSource{item: it}
+	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
+	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))
+	for range n {
+		item, err := sched(t.Context(), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		rc, err := item.Open(t.Context(), packager.Slot{Frames: 250, AudioFrames: 469})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, rc)
+		_ = rc.Close()
+	}
+}
+
+type fixedItemSource struct {
+	stuckSlateSource
+	item PackagerItem
+}
+
+func (s fixedItemSource) ItemAt(context.Context, string, time.Time) (PackagerItem, error) {
+	return s.item, nil
+}
+
+// progItem is an hour of a library title with no watermark.
+func progItem(format MediaFormat) PackagerItem {
+	return PackagerItem{Label: "prog", Remaining: time.Hour, Input: "title.mkv", Format: format}
+}
+
+// The channel's bug rides a programme item into its encoder, sized for the packager's own encoder
+// and output (#1512 phase 1d, which the retired programme route drew). An item without a resolver
+// (filler, bumper, ID), one whose resolver declines (the channel turned it off, or this host's
+// overlay failed its self-check) and a host with no GPU overlay graph all encode bug-free.
+func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
+	bug := &Watermark{Straight: "/wm/bug.png", Width: 120, Height: 60, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
+	var asked []string
+	resolver := func(declines bool) WatermarkFor {
+		return func(_ context.Context, enc Encoder, width, height int) *Watermark {
+			asked = append(asked, fmt.Sprintf("%s %dx%d", enc, width, height))
+			if declines {
+				return nil
+			}
+			return bug
+		}
+	}
+	nvenc, software := HostFor(EncoderNVENC, true, GPUFilters{}), HostFor(EncoderSoftware, true, GPUFilters{})
+	for _, tc := range []struct {
+		name string
+		host HostProfile
+		wm   WatermarkFor
+		want bool
+	}{
+		{"programme", nvenc, resolver(false), true},
+		{"filler, bumper or ID", nvenc, nil, false},
+		{"resolver declines", nvenc, resolver(true), false},
+		{"software host", software, resolver(false), false},
+	} {
+		asked = nil
+		ffmpeg, runs := failingEncoder(t, "stopped")
+		it := progItem(testSources()["h264-1080p-sdr-25"])
+		it.Watermark = tc.wm
+		openItem(t, ffmpeg, tc.host, it, 1)
+		args := runs()[0]
+		overlaid := strings.Contains(args, "movie=filename=/wm/bug.png")
+		if overlaid != tc.want {
+			t.Errorf("%s: bug drawn = %v, want %v: %s", tc.name, overlaid, tc.want, args)
+		}
+		if tc.wm != nil && !slices.Equal(asked, []string{fmt.Sprintf("%s 1920x1080", tc.host.Encoder)}) {
+			t.Errorf("%s: the resolver was asked %q, want once for the packager's encoder and output", tc.name, asked)
+		}
+		if tc.host.Family == FamilyNVENC && !tc.want && strings.Contains(args, "yuv420p") {
+			t.Errorf("%s: a bug-free item keeps the nv12 main: %s", tc.name, args)
+		}
+	}
+}
+
+// A source the GPU decoder faults on is retried with a CPU decode and the same hardware encoder
+// (§9.1 V47, the retired chain's ladder): retrying the same -hwaccel path fails identically.
+func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
+	ffmpeg, runs := failingEncoder(t, "[AVHWFramesContext @ 0x1] Failed to sync surface 0xc: 23 (internal decoding error)")
+	openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), progItem(testSources()["h264-1080p-sdr-25"]), 2)
+	r := runs()
+	if len(r) != 2 || !strings.Contains(r[0], "-hwaccel") {
+		t.Fatalf("want a GPU-decoded first attempt and a retry, got %q", r)
+	}
+	if strings.Contains(r[1], "-hwaccel") || !strings.Contains(r[1], "h264_nvenc") {
+		t.Errorf("retry after a decode fault: want a CPU decode into the same encoder, got %q", r[1])
+	}
+}
+
+// A GPU tone-mapper that fails the item (no output, not a decode fault) is dropped for that source,
+// and the retry takes the next tone-mapper for the curve (DemoteTonemap's order).
+func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
+	ffmpeg, runs := failingEncoder(t, "[Parsed_tonemap_opencl_3 @ 0x1] Failed to enqueue kernel: -5.")
+	openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), progItem(testSources()["hevc-4k-hdr-dv"]), 2)
+	r := runs()
+	if len(r) != 2 || !strings.Contains(r[0], "tonemap_opencl") {
+		t.Fatalf("want an OpenCL tone-mapped first attempt and a retry, got %q", r)
+	}
+	if strings.Contains(r[1], "tonemap_opencl") || !strings.Contains(r[1], "libplacebo") {
+		t.Errorf("retry after a tone-map failure: want libplacebo, got %q", r[1])
+	}
+}
+
+// The packager admits through the one cost-aware policy (Admit, §9.1 V49): a full budget refuses a
+// new channel with ErrAtCapacity, and an unmeasured (zero) budget never blocks playout.
 func TestFillerGainIsFillerOnly(t *testing.T) {
 	lufs := -20.0
 	for name, tc := range map[string]struct {
@@ -381,6 +521,73 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 	}
 }
 
+// The ledger learns a class's real CPU cost from live encodes (#1520). The retired chain reported it
+// from each finished programme; the packager reports each item encoder's CPU over the media it
+// DELIVERED (packager.Item.Delivered), never over its slot, so an encoder closed early cannot
+// over-count; an item whose channel stopped reports nothing. Each item follows airItem's order:
+// Delivered, then the item context is cancelled, then the reader is closed.
+func TestPackagerItemEncoderTeachesTheLedgerItsCPUCost(t *testing.T) {
+	dir := t.TempDir()
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	// Enough CPU for the kernel's tick-granular accounting to see, then output, then wait to be killed.
+	script := "#!/bin/sh\ni=0\nwhile [ $i -lt 300000 ]; do i=$((i+1)); done\nprintf fragment\nexec sleep 30\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewPackagerHLS(slowItemSource{}, ffmpeg, t.TempDir(), time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	budget := NewResourceBudget(nvencFacts)
+	lease, err := budget.Admit(t.Context(), AdmitRequest{Class: ClassSDR})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Release()
+	cost := func() float64 { return budget.Snapshot().Classes[ClassSDR].CPUCores }
+	base := cost()
+	_, out := slowItemSource{}.Output(t.Context(), "ch", FormatBaseline, 0)
+	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline},
+		HostFor(EncoderSoftware, true, GPUFilters{}), out, lease, nil, slog.New(slog.DiscardHandler))
+	// encodeItem airs one item into a 60 s slot as airItem does; delivered < 0 is a channel that
+	// stopped mid-item (airItem reports nothing).
+	encodeItem := func(delivered int64) {
+		ictx, cancel := context.WithCancel(t.Context())
+		item, err := sched(ictx, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		rc, err := item.Open(ictx, packager.Slot{Frames: int64(60 * out.FPS)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.ReadFull(rc, make([]byte, len("fragment"))); err != nil {
+			t.Fatal(err)
+		}
+		if delivered >= 0 && item.Delivered != nil {
+			item.Delivered(delivered)
+		}
+		cancel()
+		_ = rc.Close()
+	}
+
+	encodeItem(-1)
+	if got := cost(); got != base {
+		t.Fatalf("an encoder whose channel stopped taught the ledger: %v → %v", base, got)
+	}
+	// 10 s delivered of a 60 s slot is under the ledger's 20 s sample floor; counted over its slot
+	// it would have taught the ledger.
+	encodeItem(int64(10 * out.FPS))
+	if got := cost(); got != base {
+		t.Fatalf("an encoder closed after 10 s of a 60 s slot taught the ledger (%v → %v): its media was counted by slot", base, got)
+	}
+	encodeItem(int64(60 * out.FPS))
+	if got := cost(); got >= base {
+		t.Fatalf("SDR CPU cost = %v after a delivered item that used far less than the probe's %v: the ledger did not learn", got, base)
+	}
+}
+
 // fakeVariantOrigin is a packager-shaped hlsOrigin: its variant playlists are rendered per request.
 type fakeVariantOrigin struct {
 	fakeHLSOrigin
@@ -396,9 +603,8 @@ func (f *fakeVariantOrigin) MediaPlaylist(_ context.Context, _ string, _ EncodeP
 // variant it names as an asset. Origin renders that from the packager, marked as a playlist so the
 // transport authenticates its URIs, and never looks for it on disk. Other assets are still files.
 func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
-	remux := &fakeHLSOrigin{assets: map[string]string{}}
 	pk := &fakeVariantOrigin{fakeHLSOrigin: fakeHLSOrigin{assets: map[string]string{}}}
-	o := newOrigin(nil, nil, switchedHLS{remux: remux, packaged: pk, usePackager: func() bool { return true }})
+	o := newOrigin(nil, nil, pk)
 
 	asset, ok, err := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr.m3u8")
 	if err != nil || !ok || !asset.Playlist {

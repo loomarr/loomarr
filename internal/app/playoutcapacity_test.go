@@ -25,6 +25,8 @@ func TestBuild_ToneCurveSettingPicksTheHDRCell(t *testing.T) {
 		"playout.backend":    "internal",
 		"playout.encoder":    string(playout.EncoderSoftware),
 		"playout.tone_curve": "bt2390",
+		// The channel packager is the status endpoint's playout observer; it needs a writable root.
+		"playout.hls_dir": t.TempDir(),
 	} {
 		if err := st.SetSetting(context.Background(), key, value); err != nil {
 			t.Fatal(err)

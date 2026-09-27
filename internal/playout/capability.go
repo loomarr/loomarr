@@ -547,7 +547,7 @@ func hardwareDecodeArgs(enc Encoder) []string {
 // input, e.g. "[AVHWFramesContext @ 0x…] Failed to sync surface 0xc: 23 (internal decoding error)"
 // from iHD/VAAPI. That is a fault of decoding this source, distinct from encoder capacity or VRAM
 // contention: retrying the same `-hwaccel` path fails identically, so recovery must decode in
-// software (ProgramSpec.SoftwareDecode) while the encode stays on hardware.
+// software (the packager's itemFaults retry) while the encode stays on hardware.
 func IsHardwareDecodeFault(line string) bool {
 	return strings.Contains(line, "Failed to sync surface") || strings.Contains(line, "internal decoding error")
 }
@@ -591,7 +591,7 @@ func lastSpeedObserved(r interface{ Read([]byte) (int, error) }, run *diagnostic
 	var current Progress
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		_, complete := consumeProgressLine(strings.TrimSpace(scanner.Text()), &current)
+		complete := consumeProgressLine(strings.TrimSpace(scanner.Text()), &current)
 		if current.Speed > speed {
 			speed = current.Speed
 		}

@@ -196,9 +196,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns host-wide resources shared by live and background media work.
 - **`playout/packager`** · 1 importer
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
-- **`playoutcert`** · 1 importer
-  Drives Loomarr's public playout transports through a bounded, credential-redacted production-path certification run.
-- **`proctree`** · 2 importers
+- **`proctree`** · 1 importer
   Supervises one child process and every descendant it starts.
 - **`provision`** · 22 importers
   Provisioner domain (design §3–§4): the Title/Key identity model and the acquisition state machine.
@@ -218,12 +216,10 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/execfixture`** · 1 importer
   Owns filesystem-backed executable test doubles without importing application packages.
-- **`testkit/httpfixture`** · 1 importer
+- **`testkit/httpfixture`**
   Shared no-network HTTP test seams without importing any application adapter.
 - **`testkit/operationfixture`**
   Cycle-free function-backed recordings for testing durable operations without importing an application package.
-- **`testkit/playoutprocessfixture`**
-  Supplies real subprocess behaviours for playout tests.
 - **`testkit/playoutstreamfixture`**
   Adapts controlled test chunks to cancellable transport reads.
 - **`testkit/postgresimage`** · 1 importer
@@ -255,8 +251,6 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
-- **`testkit/playoutcertfixture`** · → `testkit/httpfixture`
-  A neutral HTTP target for public playout-certification tests.
 
 **Layer 2**
 
@@ -277,7 +271,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
-- **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `prepared`, `proctree`, `provision`, `schedule`
+- **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `prepared`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
@@ -433,7 +427,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 **Layer 15**
 
-- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `playoutcert`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `watermark`
+- **`app`** · → `activity`, `api`, `auth`, `backendtransition`, `binder`, `buildinfo`, `catalog`, `channels`, `clipfetch`, `config`, `contact`, `diagnostics`, `events`, `filler`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstructurewindow`, `fillerstructurewindowopenrouter`, `httpx`, `images`, `images/rustgen`, `inventory`, `invitation`, `library`, `llm`, `media`, `mediameasure`, `mediatools`, `metrics`, `moviecollections`, `notifications`, `playout`, `prepared`, `programmer`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `reconcile`, `recovery`, `recurate`, `reference`, `requester`, `retention`, `schedule`, `scheduler`, `secretprotection`, `settings`, `setup`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `tmdb`, `watermark`
   Composition root: it wires every subsystem from an open store into the API handler that cmd/loomarr serves and the integration tests drive.
 
 
@@ -2689,6 +2683,45 @@ So the poke is **operation-specific**: a reconcile that **added or removed a cha
 > workarounds were accumulating faster than the feature they avoided. The cost is real and stated
 > below — this is not a free win, and it is not reversible cheaply.
 
+### The channel packager is the live path (#1512 phase 2)
+
+Internal playout has one live path: **one channel packager per (Channel, format)**
+(`playout/packager`, driven by `PackagerHLS`).
+
+- **Items, not a session.** Each scheduled item gets its own ffmpeg, built by the pipeline builder
+  (`Build`, then `FragmentArgs`). It emits fMP4 fragments already on the channel's timeline, and the
+  packager forwards them into one gapless media playlist: 1 s closed-GOP segments and a 15-minute
+  window (`DVRHorizon`). An item that is not producing by its deadline is slated for at most
+  `SlateRetry`, then the schedule is asked again, so the programme rejoins in progress.
+- **Two audiences, one timeline.** The browser tunes a master playlist naming its variant. A media
+  server's tuner reads the same timeline as one continuous MPEG-TS (the packager's TS writer).
+- **No FFmpeg without a viewer.** A packager starts on the first tune and stops `DefaultGrace` (30 s)
+  after its last viewer. There is no boot warm-up, so the first tune after a restart pays ~0.2 s of
+  encoder-evidence and filter probes; #1520's persisted probe evidence removes that cost.
+- **Admission.** Each packager is one video encode: cost 1 against the transcode budget through
+  `Admit` (§9.1 V49). An unmeasured budget never refuses, and a full one answers `ErrAtCapacity`
+  (503). #1520's ResourceBudget ledger replaces the budget function.
+- **The retry ladder.** An encode that fails before any output proves something about its source on
+  this host, and the next attempt at that source demotes the failing stage:
+  - a GPU decode fault (`IsHardwareDecodeFault`) → a CPU decode into the same encoder;
+  - a failed GPU tone-mapper → the next tone-mapper for the curve, ending at the CPU.
+
+  The encoder never changes, because every item must match the channel's init.
+- **The software rung.** A software host starts each item on `StartRung` (#1517): full quality up to
+  1080p SDR, keyframes-only for 4K or HDR until #1520 measures the class cost. Stepping mid-item
+  (`RungMonitor`) is not wired yet.
+- **Stills.** A warm channel's still is its newest listed segment behind its init. A cold channel's
+  still comes from the source file.
+
+**Retired with phase 2c:**
+- the per-programme chain: `/v1/playout/program`, the shared Channel session (`Manager`), the
+  MPEG-TS block mux, the HLS remux (`HLSManager`) and the loopback self-reach over `LISTEN_ADDR`;
+- load certification (`playout-load-cert`, `internal/playoutcert`);
+- the `playout.packager` preview switch.
+
+Subsections below that describe those mechanisms are history until this section is rewritten around
+the packager.
+
 **A channel names its backend.** `playout.backend` is a registry setting (§15) with a **per-channel
 override**. A channel set to “Follow the default” resolves the live global value; a channel pinned to
 `internal` or `tunarr` keeps that choice when the default changes. This inherited shape is intentional:
@@ -4091,371 +4124,6 @@ SQLite keeps the in-process value because its contract permits only one replica.
 a session cookie, so segment routes authenticate a **device** by token, not a **person** by session.
 This is the only route family that bypasses the allowlist model, it is read-only, and it is scoped to
 playout. It is described in §11 alongside the credential paths rather than left implicit here.
-
-### Production-path playout load certification (#1037)
-
-Many configured Channels and many simultaneously active streams are different capacities and the
-certification must never collapse them into one number. `playout-load-cert` is an explicit, opt-in
-operator command. It targets a separately named Loomarr origin through the same authenticated
-routes real clients use; it never starts, discovers, or falls back to the maintainer smoke stack.
-The caller supplies at least 100 Channel ids in an ordered private manifest, the instance origin,
-an administrator bearer through the environment, and the device playout credential through the
-environment. The command refuses an unbounded run, a non-loopback origin unless remote execution is
-explicitly acknowledged, fewer than 100 Channels for a certifying run, duplicate ids, URL/query
-credentials, and output paths outside the worktree artifact directory.
-
-The disposable synthetic target is composed in `internal/app`, using the real API router and
-production playout modules. `internal/playoutcert` owns the outbound workload, report and fault
-contracts; it never imports the inbound API adapter or HTTP server framework. The command wires
-the app-owned target to those contracts. Observed programme-boundary recording and bounded
-resource sampling may expose small operational ports needed by this composition; private test
-access belongs in test-only files. Moving the target preserves real-route coverage, lifecycle
-ownership, and the existing admission, cleanup and certification requirements.
-Declared-profile qualification selects an explicit existing quality tier on the disposable target.
-Before generating its workload it runs the production encoder probe at that tier's highest live
-rendition, requires a successful measured encoder, and uses the resulting admission capacity;
-the fixture-only capacity override cannot substitute for measurement. Live encoding follows the
-production load-dependent quality ladder, while preparation uses the tier's canonical rendition.
-Generated inputs use the declared top-rung dimensions and frame rate. The report binds the tier,
-encoder, probe profile, canonical prepared profile and measured admission budget as bounded fields.
-The small software fixture mode remains a deterministic harness check, with no declared-hardware
-qualification claim. A probe or a successful small fixture run never certifies concurrent capacity.
-
-Prepared readiness on the declared-profile target is produced by the normal runtime resolver,
-persistent readiness index, Preparer and Planner under the shared foreground/background encode
-pool. It is observed through the ordinary status API rather than supplied as invented ready counts.
-The target keeps intentionally cold copy/transcode Channels outside its preparation cohort, and
-waits for the declared prepared cohort to converge before the transport workload. Independent
-programme truth is frozen from source/publication evidence before observing transported bytes.
-Restart, schedule changes, retention and foreground preemption require their own integrated
-evidence; the initial convergence pass alone does not certify those lifecycle clauses. Every
-background task is cancelled and joined before the target's owned directories are disposed.
-The target includes the production live HLS manager beside prepared delivery and live sessions,
-using the same observed process owner and an isolated scratch directory. An explicitly cold cohort
-must miss prepared-only delivery and reach the ordinary signed HLS remux. Terminal shutdown joins
-that remux through the origin before retained resource sampling; final disposal removes its scratch.
-
-The command and the `playoutcert.Run` library entry point share the same input bounds, checked
-before target observation or process creation. An omitted zero value selects its documented default;
-a nonzero value outside the bounds is rejected rather than silently clamped. Concurrency and fan-in
-are within 1..64, surf rounds within 1..100, raw capture within 188 bytes..16 MiB, and warm grace
-within (0, 1 minute]. Request and cleanup timeouts are positive and at most 30 minutes; cleanup
-polling is within 1 millisecond..5 seconds. Existing programme-boundary timing bounds remain shared.
-A certifying caller may tighten the prepared latency thresholds but cannot raise them above 100 ms
-for HLS or 500 ms for raw prepared media. Private JSON manifests are at most 1 MiB including
-whitespace; readers detect bytes beyond that limit and reject trailing content instead of accepting
-an artificial EOF from a truncated reader. No invalid input may start a target or issue a request.
-
-The harness first mints a short-lived signed HLS URL for every Channel through
-`POST /v1/channels/{id}/play-url`; the device token is used only for the raw MPEG-TS route. It records
-Channels by stable run-local ordinal, never by id. A signed URL, bearer, token, media path, Library
-title, response body containing operator text, or free-form server error must never enter terminal or
-machine output. The report records only bounded vocabulary, counts, timings, numeric resource
-samples, HTTP classes, media stream shapes, the target build identity, and a hash of the ordered
-private manifest. Credentials are read from environment values, are never accepted as command-line
-flags, and are removed from retained request URLs before any error is classified.
-
-One run uses an explicit start barrier and per-request deadlines. Its fixed phases are: mint and
-prepared-only lookup over the whole configured catalog; rapid latest-request-wins surf churn; a
-same-Channel viewer fan-in; a cold burst up to the server-reported active transcode capacity; one
-bounded overload attempt; cancellation and warm-grace reuse; grace expiry and recovery; and a
-programme-boundary soak. Every configured Channel is minted, probed, and surfed; prepared readiness
-and cold transcode capacity remain separate cohorts within that complete catalog. A declared
-`prepared` Channel must return a prepared hit. A deliberately cold, explicitly declared copy or transcode
-Channel outside the prepared cohort may return the documented prepared-only `204` miss, which is retained as an expected probe
-outcome and must not silently start an encoder. The prepared latency and media assertions still
-apply to prepared hits, while the cold Channel must supply its real media and capacity evidence in
-the transcode lane. A missing prepared hit for a declared prepared Channel remains a failure; when
-no prepared roles are declared, the full catalog is the prepared cohort. Probe attempt counts
-always cover the full catalog, including retained misses, and never collapse to a ready subset.
-The `copy_raw` phase exercises every declared copy Channel in batches bounded by request concurrency.
-Each batch starts from the recorded resource baseline, requires a prepared-only miss, opens ordinary
-MPEG-TS viewers, and measures active sessions and zero additional video-transcode cost while those
-validated viewers remain attached. The phase retains the documented conservative cold-start
-reservation in its overall resource peak; separate `copy_raw_held` samples measure the maximum
-cost during validated held playback. A startup reservation is not proof that video was encoded.
-Initial validated A/V and later decoded-frame and transport progress are
-both required. The phase retains media shapes, held-viewer observations and resource samples, and
-waits for release to converge before the next batch or workload. Missing copy Channels, prepared
-hits, unavailable samples, or any measured additional video-transcode cost during held playback leave copy coverage
-unqualified. In particular, a source labelled copy that needs encoding at its actual seek cannot
-qualify as a copy workload. Audio codec role labels select inputs, not proof of a source codec;
-actual source codec qualification remains the target's probe and separate codec evidence.
-A private optional cohort manifest may assign copy, H.264/HEVC transcode,
-AAC/EAC3/AC3, expected-failure, and remote-input roles to Channel ordinals. Missing roles make that
-lane non-certifying rather than silently inventing coverage. Synthetic fixtures use deterministic
-FFmpeg sources in an isolated instance; an operator cohort may instead read real files over a
-Tailscale/shared mount. Synthetic logical programmes use distinct, known decoded-media signatures,
-and both the live resolver and prepared publication select the media matching the scheduled logical
-programme. The private cohort declares the expected signature succession before observation. A
-programme transition qualifies through the ordinary signed HLS path only when decoded media matches
-that succession and post-transition audio, video, reads and bytes continue through the late-observation
-interval. This applies to prepared and live-transcode cohorts. Schedule identity events, playlist
-advancement, discontinuities and elapsed time alone do not prove the media transition. Fixture-media
-preparation owns signature synthesis; the normal playout modules deliver those fixtures. An operator
-cohort needs independently qualified private media truth for this identity evidence; missing or
-ambiguous truth leaves that required lane unqualified. Signatures, source identifiers and media truth
-never enter public reports.
-
-Operator-cohort input uses a bounded private schema-v1 document with an ordered `channels` array
-matching the run manifest. Each Channel declares exactly two successive source programmes. Each
-programme supplies a corpus-relative `file`, exact positive `bytes`, lowercase `sha256`, and explicit
-`signals` (`luma`, `zeroCrossingRate`, `rmsDB` ranges with both `min` and `max`, plus `silence`). The
-same disjoint-signature rules used by the observer apply before media preparation. The document is
-at most 1 MiB, covers at most 1000 Channels and references at most 64 distinct files; each file is at
-most 256 MiB and the distinct source set is at most 1 GiB. These are bounded qualification clips,
-not a scan of an operator's Library. Unknown or duplicate JSON fields, conflicting descriptions of
-one path, missing fields, trailing content, non-regular files and paths escaping the corpus directory
-are rejected. Opening the corpus directory provides filesystem containment, including symlink races.
-Input validation hashes every source before admitting target setup. Staging rechecks hashes while
-copying into a new private directory, so later source mutation cannot change admitted bytes; a failed
-stage removes its partial copies. Source paths and hashes remain private audit inputs. This input
-does not itself certify the supplied expectations or establish codec coverage: target integration
-must probe actual media profiles, use the existing production resolver/packager and bind admitted
-assets to their real source lifetimes. Caller role labels cannot supply those facts.
-Before the isolated target opens its listener, every declared source-codec role must match the
-measured video or audio codec of at least one of that Channel's two programme sources. This applies
-to `transcode_h264`, `transcode_hevc`, `audio_aac`, `audio_ac3` and `audio_eac3`, in both generated and
-operator modes. Multiple roles may describe a mixed source pair; one Channel's files cannot satisfy
-another Channel's declaration. A mismatch aborts setup with a fixed error, without publishing a
-report or exposing source details. This validates the declared input cohort; runtime decoding,
-admission, boundary and mixed-codec qualification remain separate required evidence.
-The isolated target accepts the loaded cohort as an explicit input. It stages that cohort instead
-of generating source media, checks exact Channel coverage again, and probes each distinct staged
-file once. Each source must contain one video and one audio stream, cover the declared programme
-duration, and remain within a 90-second clip bound. Prepared publications may share physical output
-only for the same staged source and rendition; private asset truth stays scoped to Channel and
-programme variant. Operator copy decisions use the measured format and normal copy-plan rules.
-The isolated target initially stores the existing baseline H.264 broadcast policy; source codec
-diversity does not silently change that policy. Programme routing reads the stored Channel codec
-through the production codec reader, so an explicitly persisted HEVC policy applies consistently
-to native MPEG-TS and signed client negotiation. A capable HLS client receives HEVC/fMP4; a baseline
-client receives H.264/TS. Media tests must prove actual encoded/decoded output, not infer it from
-the declared input codec or minted plan. Generated fixtures retain their deliberate cold
-transcode workload. Explicit generated copy Channels receive a separate pair of H.264/AAC stereo
-sources with a random-access frame at every video frame. Their actual formats and tracks are probed
-through the same source-profile validation as operator input; the normal seek-local proof and
-atomic programme admission still decide each request. Generated prepared/transcode Channels keep
-their original source pair and deliberate transcode plan even though those sources are also probed
-for codec-role validation, so adding a copy Channel cannot remove
-the load being certified. The two source pairs retain the same predeclared programme signatures
-and private-input auditing. Neither mode may inherit another Channel's media or expected signals.
-
-The command selects operator input with `--operator-cohort PATH`, mutually exclusive with
-`--synthetic`; either mode starts the isolated target. Invalid operator input fails before output
-setup or target startup and never selects generated fixtures. Whole-suite timeout includes corpus
-validation and staging. The corpus handle closes after preparation and before running or publishing;
-a close failure aborts the run and cleans up the isolated target. Setup failure also releases input.
-The private evidence source retains SHA-256 of the exact loaded corpus document, independent of
-later changes to that file. Report schema v3 adds optional `target.cohortManifestSha256` for this
-identity; the existing `manifestSha256` still binds ordered Channels and roles. The new digest is
-an audited dynamic value, must be canonical lowercase SHA-256, and is omitted for generated or
-external targets without operator evidence. Source hashes, filenames and signal ranges stay private.
-
-Boundary observation has a dedicated decoded-signal port. One owned FFmpeg process maps both audio
-and video, preserves presentation timestamps and emits separate bounded video/audio metadata
-streams. Metadata is flushed while the admitted input remains open; successful observation must not
-require source EOF or a full output buffer. Its video signal is the mean luma of the declared interior
-sample region; audio is normalized to mono 48 kHz and reports decoded sample count, presentation time,
-zero-crossing rate and RMS level.
-These are private observations for a qualified cohort, not general-purpose recognition truth. The
-observer uses each asset's own media timeline when excluding buffered pre-arm evidence; packet
-arrival time is insufficient. Existing raw-load and held-stream frame-progress checks retain their
-separate decoder contract. Missing streams, malformed or oversized records, invalid numeric values,
-regressing per-stream timestamps and missing required signal fields cannot yield successful decoded
-signal evidence. Cancellation closes the admitted input and joins the decoder and both metadata
-readers; no unbounded metadata buffer or free-form decoder output enters a report.
-
-The private boundary-evidence source freezes a bounded, contiguous programme sequence before
-observation starts. Each programme declares its scheduled interval and disjoint decoded video/audio
-signature ranges. An independent asset resolver binds every admitted segment to its media
-origin and source generation and supplies bounded private reference bytes for its media and any
-initialization map. The signed response is compared against that reference as it is read, before
-bytes reach the decoder; short, changed or additional content cannot qualify. Reference reads do
-not count as viewer transport progress. Live references are opened from the exact HLS remux and
-retain the session that supplied its sink lease, rather than looking up the channel's newest
-session afterward. Replacing a source during resolution or fetching cannot transfer the old
-asset's proof to different bytes. Live source liveness is checked before admitting each read and
-again before success, so buffered callbacks cannot outlive the source's qualification. Prepared references also bind the independently qualified
-initialization map. These private references and source handles never enter HTTP or reports.
-An epoch may retain that origin only after each subsequent asset has
-been checked; a decoder callback may not borrow the currently fetched asset's origin. Missing truth,
-ambiguous signatures, a changed source generation, or inconsistent asset clocks leave the lane
-unqualified. The checker ignores media before its arm time, requires both signals on each side of
-an expected transition, and retains successful late audio/video plus transport reads and bytes.
-Neither observed colours nor producer identity events may choose the expected programme sequence.
-A declared HLS discontinuity creates a new decoder ordering epoch: timestamp ordering restarts
-only after the preceding decoder and its metadata readers have joined. The frozen schedule, arm
-time and matched evidence remain unchanged, so decoder preroll cannot select a different expected
-transition or count buffered pre-arm media. Ordering remains strict within each decoder epoch.
-Every epoch validates its media shape after decoding both streams, even when its samples fall
-before the arm time or within the boundary guard and contribute no programme evidence. Such an
-epoch may advance only through a declared discontinuity; all subsequent transition and late-sample
-requirements remain unchanged. Missing or invalid media still prevents qualification.
-For ordinary MPEG-TS from the baseline AAC session, the private asset source declares the decoder's
-single 1024-sample AAC priming frame. This declaration is fixed for the entire source epoch and
-comes from the source contract before decoding, never from an observed signal mismatch. The first
-audio callback must contain exactly 1024 samples; its numeric values and timestamp ordering are
-validated, but codec priming cannot count as programme content or transition/late evidence.
-Every following audio frame uses the unchanged programme signatures and 100 ms boundary guard.
-Prepared fMP4 assets retain their container handling of priming and declare no additional exclusion.
-A changed declaration within an epoch, malformed priming, or missing subsequent programme audio
-cannot qualify. Each discontinuity still joins the previous decoder before admitting a new epoch.
-Qualification also waits until the scheduled late-observation point has actually arrived; correctly
-signed future media and a completed arrival-time interval cannot certify an unaired transition.
-Queued observations are consumed before success, and input-close failure prevents qualification.
-Close failures from earlier completed assets remain failures even after the reader advances;
-successful cleanup of the final asset cannot erase them.
-This is the sole programme-qualification path. Producer-event subscriptions and playlist-only
-transition observers are retired; decoder discontinuities carry lifecycle boundaries only, while
-the private schedule and decoded audio/video determine whether a programme change qualifies.
-
-The signed-HLS observation reader accepts the prepared fMP4 and ordinary MPEG-TS media playlists
-served by the production origin. Prepared-only observation still requires an initialization map;
-ordinary MPEG-TS does not invent one. Programme-date-time may precede or follow `EXTINF`, including
-the numeric timezone form emitted by the pinned FFmpeg. Each segment retains its positive duration,
-absolute media sequence, discontinuity epoch and wall-clock interval. Missing initial/discontinuity
-time anchors, malformed durations, sequence overflow and changed metadata for a replayed segment
-fail closed. These playlist coordinates support decoded observation; they never substitute for the
-required private signature succession or late audio/video progress.
-
-A separately declared remote-FFmpeg lane may push MPEG-TS over TCP/Tailscale
-to that isolated instance, but it is reported independently and never substitutes for the real
-Loomarr HTTP route phases.
-
-The client measures signed-URL mint, HLS master, first referenced asset/body byte, and raw MPEG-TS
-first byte independently. HLS parsing accepts only relative same-origin asset references returned by
-the master; redirects to another origin, traversal, missing auth propagation, and an empty media
-playlist fail closed. A bounded capture is independently checked with `ffprobe` and must contain
-exactly one expected video stream and one expected audio stream.
-For admitted raw media, the independent decoder must produce a frame before the current bounded
-capture is probed. The capture byte limit is a maximum, not a minimum bitrate requirement: a
-decoded silent card need not accumulate 256 KiB before its stream pair can be validated. The same
-request deadline, stream-shape checks and subsequent held-continuity checks still apply.
-Percentiles use nearest-rank over
-successful observations and retain failure counts separately; a failed request never disappears
-from a latency distribution by being coerced to zero.
-
-Resource observation normally composes three existing public/admin projections rather than adding a
-benchmark-only production endpoint: `/metrics` supplies process RSS, CPU-seconds deltas, goroutines,
-file descriptors, HTTP in-flight requests, and active Playout sessions;
-`/v1/playout/sessions` supplies measured capacity, active/viewer/grace counts, and transcode cost;
-`/v1/playout/status` supplies bounded GPU/encoder health. Retained Process diagnostics supply the
-application-managed FFmpeg live/peak count. A sampler records baseline, every phase peak, and final
-state. For the isolated `shutdown` profile only, after the owned public listener stops, the synthetic
-target takes fresh samples through an internal observation seam backed by the same live metrics,
-session, status, and retained Process-diagnostics sources. It retains those sources until bounded
-convergence and final evidence are recorded; disposal closes them afterward. This seam grants no
-production or remote control authority, reuses no pre-shutdown sample, and never infers resource
-cleanup from successful server shutdown. Serving shutdown is a single terminal operation whose
-stored result is shared by repeated callers; cancelling a caller's wait cannot fabricate a receipt
-or reopen admission. Final disposal remains separate and preserves any lifecycle error.
-Cancellation, idle expiry, parent/child failure, and shutdown drills are separate opt-in
-profiles because shutdown mutates only the explicitly named disposable instance. Fault profiles use
-held viewers while selecting their target. A finite unpaced child may finish encoding while its
-parent still plays buffered media; the child-failure drill therefore waits within its existing
-request deadline for a currently owned child generation. It never signals a completed generation
-or treats expiry without a current child as a successful fault. Current-child selection polls at
-most ten milliseconds apart, independently of a coarser resource-cleanup sampling interval; a finite
-encoder can start and finish between the default 250 ms resource samples.
-Parent and child fault reports retain the held-viewer observations in selected-then-peer order,
-including on failure. Process-exit receipts are classified independently from viewer continuity:
-an observed, correctly bound exit remains `exited` when a viewer fails. Wrong target or generation
-is `binding_mismatch`; a missing exit is `not_exited`, while controller errors and expired fault
-budgets retain their separate outcomes. None of these additional observations can qualify a failed
-fault drill, and missing historical observations are never reconstructed from a later run.
-Fault profiles use
-the fixed names `child_failure`, `parent_failure`, and `shutdown`; omitted profiles are explicitly
-unqualified and a selected profile is required evidence, never an informational best effort. Unknown,
-duplicate, and conflicting terminal selections fail before target creation. Shutdown additionally
-requires a named disposable-target acknowledgement that exactly matches the isolated target's bound
-scope. Remote acknowledgement does not grant shutdown authority, and normal resource teardown is
-never reported as a shutdown drill. Ordinary origins without a supported fault controller report a
-selected profile unavailable and cannot certify it.
-
-Before measuring same-Channel raw fan-in against the run baseline, the harness waits for prior
-programme-boundary viewers and their warm sessions to converge to that baseline within the existing
-cleanup deadline. It records this convergence separately and refuses the fan-in workload if cleanup
-fails; a prior Channel's grace session cannot be counted as a duplicate fan-in session.
-
-When a programme observer’s context expires while its decoder completion is also ready, the
-observer reports `programme_observation_timeout` rather than a generic `decode_failed`. An already
-established asset-clock mismatch retains its specific failure. Neither outcome can qualify the
-run, and cancellation still closes and joins the owned decoder and transport.
-
-Raw burst observers record every viewer’s first decoded frame (or startup failure) before any
-metadata-validation subprocess starts. Validation remains mandatory for every successful observer,
-uses the original request deadline, and holds the viewers through resource sampling. This separates
-first-frame measurement from cross-viewer metadata-probe contention without moving the request clock,
-prestarting decoders, reducing concurrency or relaxing stream validity and latency requirements.
-
-Certification requires 100 or more configured Channels to complete mint and surf with bounded
-failure and resource growth; every admitted stream at measured capacity to yield valid media without
-interrupting an existing held stream; overload to return the documented bounded admission outcome
-without transcode cost exceeding capacity; prepared HLS p95 master-to-first-body below 100 ms and raw
-prepared p95 first decoded frame below 500 ms; and FFmpeg/session/file-descriptor/goroutine state to
-return to the recorded baseline within one grace interval plus ten seconds. Cold-start results remain
-diagnostic and separate child from parent cost; they do not weaken the prepared-path thresholds.
-Every run writes one schema-versioned JSON report atomically plus a concise summary under
-`$LOOMARR_ARTIFACT_DIR`. The report is unsuccessful, not partial-success, when a required phase,
-sample, media validation, cleanup assertion, exact target identity, or credential-redaction audit is
-missing.
-
-**Release scope — beta.5 through beta.7.** The maintainer deferred only the raw MPEG-TS prepared
-startup performance targets (p95 below 100 ms to first transport byte and 500 ms to first decoded
-frame) from beta.5 to beta.7. The certifier, threshold bounds, exit status and original failed
-reports remain unchanged. A report failing raw startup performance remains uncertified; release
-acceptance must not relabel it as a passing certification.
-For beta.5, the release evidence packet binds the exact candidate and declared hardware/client
-profile, identifies the deferred raw measurements explicitly, and proves every non-deferred
-requirement separately: media validity and continuity, admission and measured capacity, readiness,
-recovery, cleanup, credential audit, prepared HLS timing and shipping-browser/installed-client
-acceptance. Missing evidence or another failure still holds release. Browser budgets remain p95
-below 100 ms for OSD acknowledgement, 750 ms for prepared adjacent first frame and 1.5 seconds for
-prepared arbitrary first frame; HLS master-to-first-body remains below 100 ms. No cold-start
-performance guarantee is inferred from this scope change. Beta.7 must meet the original raw targets
-on its exact candidate/profile. The release roadmap and #1037/#1097 retain the deferred work.
-
-Playout report schema version 3 makes the credential-redaction audit executable and part of the
-publication verdict. `Run` retains private workload eligibility and a bounded private audit capsule;
-it returns an uncertified report until publication. Exported fields cannot supply or forge audit
-proof. A single library finalizer owns the exact serialized JSON, exact human summary, audit status,
-and exit verdict, returning immutable publication bytes through copy-returning accessors. Direct
-report JSON/summary rendering without that finalization emits a minimal uncertified/missing form.
-The CLI first finishes isolated cleanup and records any fixed-vocabulary cleanup downgrade, then
-finalizes once, atomically writes the returned JSON bytes, and prints the returned summary bytes.
-A cleanup failure invalidates certification and qualified fault rows. Public-field mutation cannot
-turn an ineligible workload into an eligible one; mutation after finalization cannot change its bytes.
-
-The private capsule registers the actual administrator bearer, device token, origin, private Channel
-ids, and every successfully minted signed URL, including the credential-bearing query values and
-path/query representations actually used by requests. Request producers may explicitly identify
-fixed public controls they construct, such as the diagnostics page limit and status filter; these
-controls are not private sources. Their complete URL and query representations remain registered.
-This declaration must come from the owning producer, not an inference from an arbitrary URL, key,
-or matching value. Unknown query values and signed capability values remain private by default;
-a control declaration never exempts the same bytes when registered from a credential, Channel id,
-or another private source. Matcher material and its source provenance
-remain unexported and never enter either output, logs, errors, fixtures containing real secrets, or
-artifacts. Registration is bounded to 8,192 derived probes and 8 MiB of matcher material; both output
-buffers together are bounded to 8 MiB, and finalization has a 30-second work deadline. Exceeding any
-bound makes the audit unavailable; it never silently drops a probe or raises an authentication minimum.
-Only the transformations used by the request and report encoders are required: raw UTF-8,
-path/query escaping and URL serialization, and JSON string escaping. The audit examines the actual
-rendered bytes, decoded JSON string tokens, and the raw summary, with renderer-owned provenance
-that distinguishes fixed schema/vocabulary from dynamic values. Missing provenance fails closed.
-
-Short probes are never ignored. A match derived from the sensitive source is a leak; a match in an
-independent dynamic value is an unresolved collision and cannot certify. A match wholly inside
-validated fixed schema or vocabulary is safe by provenance, so a Channel id such as `prepared`
-does not fail solely because the fixed phase name is also `prepared`. Arbitrary dynamic text cannot
-be declared fixed merely because it resembles an allowed value. A missing capsule, unsupported
-encoding, collision, audit error, or leak prevents certification. The candidate is discarded, and a
-minimal fixed-vocabulary artifact and summary are audited again before publication; they contain
-only schema version, uncertified status, audit status, and a bounded reason, never the matched bytes
-or original report fields. If even this audit cannot finish safely, no artifact replacement or stdout
-output occurs; the command emits only a fixed stderr error and exits unsuccessfully. An existing
-artifact remains untouched in that case, and the failing exit status never presents it as a new run.
 
 ### Playout status — one place that answers "why is this channel black?" (V47)
 

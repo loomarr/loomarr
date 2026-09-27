@@ -65,30 +65,22 @@ type playoutDeps struct {
 	appliedBackend        func(context.Context) (string, error)
 	transportBackend      func(context.Context) (string, error)
 	log                   *slog.Logger
-	// listenAddr is the process's bound address (LISTEN_ADDR). Internal playout reaches its own
-	// programme endpoint there; empty (embedded/test builds with no listener) falls back to
-	// server.public_url.
-	listenAddr         string
-	processDiagnostics *diagnostics.ProcessManager
-	storageGovernor    *storagegovernor.Governor
-	metrics            *metrics.Recorder
+	processDiagnostics    *diagnostics.ProcessManager
+	storageGovernor       *storagegovernor.Governor
+	metrics               *metrics.Recorder
 	// capacityProbe starts the boot capacity probe (Overrides.CapacityProbe); startup receives its
 	// tone-map self-check.
 	capacityProbe bool
 	startup       *diagnostics.Startup
-}
-
-// programBase is the session parent's own-programme address, read live so a hot-applied
-// server.public_url still reaches the no-listener fallback.
-func (deps playoutDeps) programBase(set resolved) func() string {
-	return func() string { return internalProgramBase(deps.listenAddr, set.str("server.public_url")) }
+	// watermarks draws the channel's bug on programme items (#1512 phase 1d).
+	watermarks *channelWatermarks
 }
 
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	rootCtx, st, set := deps.rootCtx, deps.store, deps.settings
 	owner, capturePlayoutResolver := deps.owner, deps.captureResolver
 	libraryClient, readGeneratedSecret := deps.library, deps.readSecret
-	lib, secrets := libraryClient, deps.secrets
+	lib := libraryClient
 	eventBus, jobReg, fillerLayout := deps.events, deps.jobs, deps.layout
 	channelEngine, liveTVConnector := deps.channels, deps.liveTVConnector
 	backendView, resolveDesiredBackend, log := deps.backendView, deps.resolveDesiredBackend, deps.log
@@ -102,35 +94,9 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var playoutRes *playoutResolver
 	var backendController *backendtransition.Controller
 	var residentVRAM func(context.Context) (float64, string)
-	var preparedBlockSource playout.BlockSource
-	var preparedMPEGTSReady func(context.Context, string, playout.EncodePlan) bool
 	// Internal playout (§9.1): Loomarr serves its own channels. Wired here because this is
 	// where BOTH halves already exist — the engine that answers "what airs when" and the
 	// library client that resolves an item to a streamable URL.
-	//
-	// ⚠ **The manager is built FIRST, and the resolver second.** The profile depends on
-	// how many channels are encoding (the load-aware ladder), so the resolver needs
-	// `playoutMgr.ActiveCount`.
-	//
-	// This used to read "the cycle is broken with a func … assigned after the manager
-	// exists", and there was no cycle: the manager never references the resolver. The
-	// resolver was simply constructed 45 lines too early, and the field was back-patched
-	// to compensate. Since `activeChannels` is called UNGUARDED, forgetting that patch
-	// was a nil-func panic when a viewer tuned in — and nothing tested it. Building in
-	// dependency order puts the field in the literal, where an omission is visible.
-	// Nil-guarded like every other secrets read in this file: the parent's playlist URL is
-	// built at SPAWN time, so an unguarded read here would panic when a viewer tunes in
-	// rather than at boot — the worst place to find out.
-	playoutTokenFn := func() string {
-		if secrets == nil {
-			return ""
-		}
-		token, err := readGeneratedSecret(context.Background(), settings.SecretPlayout)
-		if err != nil {
-			return "" // fail child URL generation closed while durable auth is unavailable.
-		}
-		return token
-	}
 	// residentVRAM (declared at function scope above) is the late-bound hook to "how much GPU VRAM
 	// a resident LLM holds right now" (§9.1 V49) — the real getter is assigned far below, after the
 	// LLM wiring. The budget closure reads it through that pointer; nil ⇒ assume no contention.
@@ -162,7 +128,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		}
 		return effectivePlayoutCapacity(measured)
 	}
-	// The ResourceBudget (#1512 G5) is the one admission ledger for sessions, programs and the
+	// The ResourceBudget (#1512 G5) is the one admission ledger for the channel packagers and the
 	// prepared pool. Its facts are re-read per admission: the cgroup quota or CPU count, the CPU
 	// allowance settings, and the measured capacity above (operator cap and VRAM shading included).
 	resourceBudget := playout.NewResourceBudget(func() playout.BudgetFacts {
@@ -184,31 +150,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		facts.ToneCurve = playoutRes.ToneCurve() // HDR capacity follows the operator's curve
 		return facts
 	}).WithLog(log)
-	playoutMgr := playout.NewManager(
-		playoutSpawner(set.str("playout.ffmpeg_path"),
-			deps.programBase(set),
-			playoutTokenFn, log, deps.processDiagnostics,
-			func() playout.BlockSource { return preparedBlockSource },
-			func(ctx context.Context) int { return playoutRes.Profile(ctx, 0).AudioBitrate },
-			func(ctx context.Context, channelID string, plan playout.EncodePlan) bool {
-				return preparedMPEGTSReady != nil && preparedMPEGTSReady(ctx, channelID, plan)
-			},
-			func() string { return set.str("playout.tone_curve") }),
-		playoutBudget,
-		playout.DefaultGrace,
-		log,
-	).WithBudget(resourceBudget).WithObserver(deps.metrics).WithCostEstimator(func(
-		ctx context.Context, channelID string, plan playout.EncodePlan,
-	) int {
-		if preparedMPEGTSReady != nil && preparedMPEGTSReady(ctx, channelID, plan) {
-			return 0
-		}
-		return plan.EstimatedCost()
-	})
-	// A committed internal Desired-cycle change must retire the encoder reading the
-	// previous cycle. The next tune starts from the new wall-clock position; peer
-	// Postgres replicas receive the same cutover through durable invalidations.
-	channelEngine.WithScheduleInvalidator(playoutMgr)
+	// The channel packager is built after the resolver it reads the schedule through.
+	var packagedHLS *playout.PackagerHLS
 	// Host measurements live in playout.state_dir; the encoder evidence moves there from the prepared
 	// library once (#1512), so an upgrade reuses its verified measurement instead of re-benchmarking.
 	stateDir := set.str("playout.state_dir")
@@ -289,42 +232,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	playoutRes.measurer = measurer
 	playoutRes.analyses = st
 	go measurer.Run(rootCtx)
-	// A channel starting or stopping is a STRUCTURAL change the dashboard should see
-	// immediately, so it rides the SSE bus (§8: the frame is the latency path, GET
-	// /v1/playout/sessions is truth). Deliberately NOT fired per ffmpeg progress sample —
-	// those arrive ~1/second per stream, and republishing each would push a handful of
-	// frames per second at every open browser for numbers that move by fractions.
-	//
-	// The payload is the CHANNEL COUNT, not the full snapshot: this layer holds the bus
-	// but not the API's telemetry shape, and a frame that says "something changed" is
-	// enough to make the dashboard re-read the endpoint that owns the shape.
-	playoutMgr.OnChange(func() {
-		eventBus.Publish(events.Event{
-			Type:    "playout",
-			Payload: api.PlayoutEvent{Active: playoutMgr.ActiveCount()},
-		})
-	})
-	playoutObserver = playoutMgr
-
-	// The in-app HLS repackager shares the session manager's encoder (§9.1 Watch, V46): it
-	// attaches to a channel like any other viewer and stream-copies the bytes into HLS. A
-	// failure to create its scratch root is not fatal — the media-server streams work without
-	// it — so log and leave the /playout/hls routes reporting "not running" rather than
-	// refusing to boot.
-	var liveHLS *playout.HLSManager
-	if hlsMgr, herr := playout.NewHLSManager(
-		playoutMgr, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"),
-		playout.DefaultGrace, log, deps.processDiagnostics,
-	); herr != nil {
-		log.Warn("internal playout: in-app HLS unavailable — browser playback disabled",
-			"err", herr)
-	} else {
-		liveHLS = hlsMgr
-		owner.addStop(func(context.Context) error {
-			hlsMgr.Stop()
-			return nil
-		})
-	}
 	playoutResolverSvc = playoutRes
 
 	// One-time broadcast-codec backfill (§9.1 V50). The migration defaults every existing
@@ -463,24 +370,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		// to discard their private staging.
 		owner.addStop(planner.Wait)
 		preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
-		rawPreparedBlockSource := preparedOrigin.MPEGTSBlockSource(
-			set.str("playout.ffmpeg_path"), log, deps.processDiagnostics,
-		)
-		preparedBlockSource = func(
-			ctx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
-			channelID := blockRequest.ChannelID
-			plan := blockRequest.Plan
-			block, err := rawPreparedBlockSource(ctx, blockRequest)
-			if err == nil && block.Content != nil && !playoutMgr.AdmitProgram(ctx, channelID, plan, playout.ClassCopy) {
-				_ = block.Content.Close()
-				return playout.Block{}, playout.ErrAtCapacity
-			}
-			return block, err
-		}
-		preparedMPEGTSReady = func(ctx context.Context, channelID string, plan playout.EncodePlan) bool {
-			ready, err := preparedOrigin.MPEGTSReady(ctx, channelID, plan)
-			return err == nil && ready
-		}
 	}
 	var lifecycleGate *playoutAdmissionGate
 	// Every transport hop uses one durable eligibility decision, including SQLite's raw
@@ -493,40 +382,45 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	if store.DialectOf(st) == store.DialectPostgres {
 		lifecycleGate = &playoutAdmissionGate{}
 	}
-	// The channel packager (#1512 phase 2) serves browser HLS instead of the remux while
-	// playout.packager is on; the choice is read per new tune.
+	// Live playout is the channel packager (#1512 phase 2): one encoder per scheduled item,
+	// stitched in-process into gapless fMP4 HLS for browsers and one continuous MPEG-TS per
+	// media-server tuner. One packager per watched channel, admitted against the transcode
+	// budget; viewers of a running channel join it.
+	//
+	// There is no boot warm-up of the output profile (the encoder evidence and four
+	// `ffmpeg -filters` probes, ~0.2 s of the first tune after a restart): idle channels start no
+	// FFmpeg, and those probes are FFmpeg runs.
 	tonemap, gpuFilters := playout.TonemapperFor(set.str("playout.ffmpeg_path")), playout.GPUFiltersFor(set.str("playout.ffmpeg_path"))
-	packagedHLS, perr := playout.NewPackagerHLS(packagerSource{
+	if pk, perr := playout.NewPackagerHLS(packagerSource{
 		res:     playoutRes,
 		tonemap: tonemap,
 		gpu:     gpuFilters,
-		// Filler loudness (#1512 G6), read live like the /program handler's.
+		// Filler loudness (#1512 G6), read live so a changed target applies at the next clip.
 		targetLUFS: func() string { return set.str("filler.target_lufs") },
+		watermark:  deps.watermarks.For,
 		log:        log,
-	}, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"), playout.DefaultGrace, log)
-	// The first tune's output profile, off the tune path (#1512 G2): the encoder evidence and four
-	// `ffmpeg -filters` probes, each once per process, were 0.2 s of a cold first tune. Both run
-	// FFmpeg, and idle channels start none, so the warm-up runs only for the packager it serves.
-	if set.boolv("playout.packager") {
-		go func() {
-			playoutRes.WarmProfile(rootCtx)
-			tonemap()
-			gpuFilters()
-		}()
-	}
-	if perr != nil {
-		log.Warn("internal playout: channel packager unavailable", "err", perr)
+	}, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"), playout.DefaultGrace, log); perr != nil {
+		log.Warn("internal playout: channel packager unavailable — live playout disabled", "err", perr)
 	} else {
-		packagedHLS.WithBudget(resourceBudget) // one lease per running channel packager (#1520)
+		// One lease per running channel packager in the ResourceBudget ledger (#1520).
+		packagedHLS = pk.WithBudget(resourceBudget).WithObserver(deps.metrics)
+		// A committed internal Desired-cycle change retires the packager reading the previous
+		// cycle; the next tune starts from the new wall-clock position. Peer Postgres replicas
+		// receive the same cutover through durable invalidations.
+		channelEngine.WithScheduleInvalidator(packagedHLS)
+		// A packager starting or stopping is a structural change the dashboard sees at once over
+		// the SSE bus (§8); GET /v1/playout/sessions stays the truth. The payload is the count.
+		packagedHLS.OnChange(func() {
+			eventBus.Publish(events.Event{Type: "playout", Payload: api.PlayoutEvent{Active: packagedHLS.ActiveCount()}})
+		})
+		playoutObserver = packagedHLS
 		owner.addStop(func(context.Context) error {
 			packagedHLS.Stop()
 			return nil
 		})
 	}
 	origin := playout.NewOrigin(playout.OriginDependencies{
-		Prepared: preparedOrigin, LiveSessions: playoutMgr, LiveHLS: liveHLS,
-		PackagedHLS: packagedHLS,
-		UsePackager: func() bool { return set.boolv("playout.packager") },
+		Prepared: preparedOrigin, Packager: packagedHLS,
 		Available: func() bool {
 			return lifecycleGate == nil || lifecycleGate.Available()
 		},
@@ -576,17 +470,11 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}
 	// The ladder inputs (tier/encoder) are called UNGUARDED by Profile, so leaving one
 	// unset is a panic when a viewer tunes in. `Profile` is
-	// invoked by the spawner rather than over HTTP. Build captures the concrete resolver
+	// invoked by the packager for each channel it starts. Build captures the concrete resolver
 	// on the returned generation, which lets package tests assert the real wiring without
 	// mutable package state crossing concurrent builds.
 	capturePlayoutResolver(playoutRes)
 	playoutGuideSvc = playoutRes
-	// A live encoder never exits on its own (playout/process.go), so shutdown MUST tear
-	// them down explicitly or they outlive the process that started them.
-	owner.addStop(func(context.Context) error {
-		playoutMgr.Stop()
-		return nil
-	})
 	log.Info("internal playout registered",
 		"ffmpeg", set.str("playout.ffmpeg_path"), "max_channels_cap", set.intv("playout.max_channels"))
 

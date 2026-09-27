@@ -51,39 +51,16 @@ func (s *tsStream) Next(ctx context.Context) ([]byte, error) {
 	return bytes.Clone(s.buf.Bytes()), nil
 }
 
-// switchedSessions picks the channel packager or the session manager for each new tuner, by the
-// same live setting as switchedHLS. Stops go to both, so a tuner keeps its source until it ends.
-type switchedSessions struct {
-	live        sessionAttacher
-	packaged    *PackagerHLS
-	usePackager func() bool
-}
-
-func (s switchedSessions) Attach(ctx context.Context, channelID string, plan EncodePlan) (Stream, func(), error) {
-	if s.live == nil || s.usePackager() {
-		return s.packaged.Attach(ctx, channelID, plan)
-	}
-	return s.live.Attach(ctx, channelID, plan)
-}
-
-func (s switchedSessions) StopChannel(channelID string) {
-	s.packaged.StopChannel(channelID)
-	if s.live != nil {
-		s.live.StopChannel(channelID)
-	}
-}
-
-func (s switchedSessions) Stop() {
-	s.packaged.StopAll()
-	if s.live != nil {
-		s.live.Stop()
-	}
-}
-
-var _ sessionAttacher = switchedSessions{}
-
 // onceRelease makes a lease's release idempotent.
 func onceRelease(f func()) func() {
 	var once sync.Once
 	return func() { once.Do(f) }
 }
+
+// packagedTuners is the packager as Origin's tuner seam. Origin's fail-closed stop ends every
+// channel but keeps the packager's scratch root, which only the application's shutdown removes.
+type packagedTuners struct{ *PackagerHLS }
+
+func (t packagedTuners) Stop() { t.StopAll() }
+
+var _ sessionAttacher = packagedTuners{}

@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -17,7 +15,6 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
@@ -1000,7 +997,7 @@ func (r *playoutResolver) airingFiller(
 			if gap.Remaining > 0 && gap.Remaining < remaining {
 				remaining = gap.Remaining
 			}
-			// The loudness measured at ingest rides the airing so the program route can apply a
+			// The loudness measured at ingest rides the airing so the channel packager can apply a
 			// static gain instead of a live loudnorm (#1512 G6). Absent ⇒ 0 dB.
 			var measured *float64
 			if lufs, ok := filler.PlaybackLoudness(full); ok {
@@ -1817,127 +1814,4 @@ func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("channel %s has no playout anchor", ch.ID)
 	}
 	return ch.PlayoutAnchor, nil
-}
-
-// playoutSpawner builds the session encoder: finite children supply broadcast video and PCM
-// audio; one long-lived parent copies video, encodes continuous AAC, and paces viewer output.
-func playoutSpawner(
-	ffmpegBin string, programBase func() string, token func() string, log *slog.Logger,
-	processDiagnostics *diagnostics.ProcessManager, preparedSource func() playout.BlockSource,
-	audioBitrate func(context.Context) int, preparedReady func(context.Context, string, playout.EncodePlan) bool,
-	toneCurve func() string,
-) playout.Spawner {
-	return func(ctx context.Context, channelID string, target playout.EncodePlan) (*playout.Process, error) {
-		base := programBase()
-		if base == "" {
-			return nil, fmt.Errorf("playout: no address for the session's own programme endpoint (no listener and server.public_url is not set)")
-		}
-		var prepared playout.BlockSource
-		if preparedSource != nil {
-			prepared = preparedSource()
-		}
-		// The session's tone curve, read once here and pinned for its life (`playout.tone_curve`
-		// applies to streams that start after a change, never mid-stream).
-		source := playoutBlockSource(base, token, http.DefaultClient, prepared, playout.ParseToneCurve(toneCurve()))
-		profile := playout.BlockProfile{AudioBitrate: audioBitrate(ctx), PreparedStart: preparedReady != nil && preparedReady(ctx, channelID, target)}
-		return playout.BlockSpawner(ffmpegBin, profile, source, log, processDiagnostics)(ctx, channelID, target)
-	}
-}
-
-// internalProgramBase is where the session's parent fetches its own programme blocks. The hop
-// never leaves the process, so it dials the bound listener over loopback: server.public_url is
-// the address OTHER machines use, and routing this hop through it made in-app playback depend on
-// a hairpin route (or a stale IP) that has nothing to do with playing a channel. Only a build
-// with no listener (embedded/tests) falls back to the public URL.
-func internalProgramBase(listenAddr, publicURL string) string {
-	if strings.TrimSpace(listenAddr) != "" {
-		return "http://" + config.DialableHostPort(listenAddr)
-	}
-	return strings.TrimSpace(publicURL)
-}
-
-// playoutBlockSource owns the internal HTTP hop and the session-scoped broadcast token. The first
-// child chooses a format from the load ladder; every later child must acknowledge that exact format
-// before its bytes can enter the long-lived mux.
-func playoutBlockSource(
-	base string, token func() string, client *http.Client, preparedSource playout.BlockSource,
-	toneCurve playout.ToneCurve,
-) playout.BlockSource {
-	var broadcast string
-	return func(blockCtx context.Context, blockRequest playout.BlockRequest) (playout.Block, error) {
-		blockChannel := blockRequest.ChannelID
-		blockPlan := blockRequest.Plan
-		if preparedSource != nil {
-			block, err := preparedSource(blockCtx, blockRequest)
-			if err == nil && block.Content != nil {
-				format, valid := playout.ParseBroadcastFormat(block.Format.String())
-				canonical := format.String()
-				if valid && (broadcast == "" || canonical == broadcast) {
-					broadcast = canonical
-					block.Format = format
-					return block, nil
-				}
-				_ = block.Content.Close()
-			}
-			if blockCtx.Err() != nil {
-				return playout.Block{}, blockCtx.Err()
-			}
-		}
-		if !blockRequest.AiringAt.IsZero() {
-			return playout.Block{}, playout.ErrPreparedUnavailable
-		}
-		query := url.Values{
-			"token":                   []string{token()},
-			"plan":                    []string{blockPlan.String()},
-			api.PlayoutToneCurveQuery: []string{string(toneCurve)},
-		}
-		if broadcast != "" {
-			query.Set(api.PlayoutBroadcastFormatQuery, broadcast)
-		}
-		programURL := fmt.Sprintf("%s/v1/playout/program/%s?%s",
-			strings.TrimRight(base, "/"), url.PathEscape(blockChannel), query.Encode())
-		req, err := http.NewRequestWithContext(blockCtx, http.MethodGet, programURL, nil)
-		if err != nil {
-			return playout.Block{}, err
-		}
-		if blockRequest.AudioBitrate > 0 {
-			req.Header.Set(api.PlayoutSessionAudioBitrateHeader, strconv.Itoa(blockRequest.AudioBitrate))
-		}
-		if !blockRequest.TimelineOrigin.IsZero() {
-			req.Header.Set(api.PlayoutTimelineOriginHeader, blockRequest.TimelineOrigin.UTC().Format(time.RFC3339Nano))
-		}
-		if parent, ok := diagnostics.ProcessSpecFromContext(blockCtx); ok && parent.ParentRunID != "" {
-			req.Header.Set(api.PlayoutParentProcessRunHeader, parent.ParentRunID)
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			return playout.Block{}, err
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			_ = resp.Body.Close()
-			return playout.Block{}, fmt.Errorf("playout: block endpoint returned %s", resp.Status)
-		}
-		if !blockRequest.TimelineOrigin.IsZero() && resp.Header.Get(api.PlayoutBlockAudioHeader) != api.PlayoutBlockAudioPCM {
-			_ = resp.Body.Close()
-			return playout.Block{}, errors.New("playout: block endpoint did not acknowledge session PCM audio")
-		}
-		format, ok := playout.ParseBroadcastFormat(resp.Header.Get(api.PlayoutBroadcastFormatHeader))
-		if !ok || (blockRequest.AudioBitrate > 0 && format.AudioBitrate != blockRequest.AudioBitrate) {
-			_ = resp.Body.Close()
-			return playout.Block{}, fmt.Errorf("playout: block endpoint returned no valid broadcast format")
-		}
-		canonical := format.String()
-		if broadcast == "" {
-			broadcast = canonical
-		} else if canonical != broadcast {
-			_ = resp.Body.Close()
-			return playout.Block{}, fmt.Errorf("playout: block format changed from %s to %s", broadcast, canonical)
-		}
-		identity, ok := api.ParsePlayoutAiringIdentity(resp.Header)
-		if !ok {
-			_ = resp.Body.Close()
-			return playout.Block{}, fmt.Errorf("playout: block endpoint returned no valid airing identity")
-		}
-		return playout.Block{Content: resp.Body, Identity: identity, Format: format}, nil
-	}
 }

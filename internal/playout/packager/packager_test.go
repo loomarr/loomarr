@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -208,6 +209,89 @@ func runPlans(t *testing.T, cfg Config, plans []plan) *harness {
 		t.Fatal("plans did not finish airing")
 	}
 	return h
+}
+
+// closeNotifier records that the packager closed an item's reader.
+type closeNotifier struct {
+	io.ReadCloser
+	closed *atomic.Bool
+}
+
+func (c closeNotifier) Close() error {
+	c.closed.Store(true)
+	return c.ReadCloser.Close()
+}
+
+// An item reports the frames it put on the timeline (Item.Delivered) before its reader is closed:
+// the whole slot when it fills it, fewer when its encoder ends early, and nothing when the channel
+// stops mid-item. The encoder's cost sample divides by this, never by the slot (#1512).
+func TestAirItemReportsTheFramesItDelivered(t *testing.T) {
+	type report struct {
+		frames      int64
+		closedFirst bool
+	}
+	var mu sync.Mutex
+	got := map[string]report{}
+	gate := make(chan struct{})
+	items := []plan{
+		{"full", time.Second, synth{label: "full"}},
+		{"short", 2 * time.Second, synth{label: "short", frames: 20}},
+		{"stopped", time.Hour, synth{label: "stopped", gate: gate}},
+	}
+	var i atomic.Int32
+	reached := make(chan struct{})
+	sched := func(ctx context.Context, _ time.Time) (Item, error) {
+		n := int(i.Add(1)) - 1
+		if n >= len(items) {
+			<-ctx.Done()
+			return Item{}, ctx.Err()
+		}
+		pl := items[n]
+		closed := &atomic.Bool{}
+		return Item{Label: pl.label, Duration: pl.dur,
+			Open: func(ictx context.Context, slot Slot) (io.ReadCloser, error) {
+				if pl.label == "stopped" {
+					close(reached)
+				}
+				return closeNotifier{ReadCloser: pl.enc.encode(t, ictx, slot), closed: closed}, nil
+			},
+			Delivered: func(frames int64) {
+				mu.Lock()
+				defer mu.Unlock()
+				got[pl.label] = report{frames: frames, closedFirst: closed.Load()}
+			},
+		}, nil
+	}
+	p, err := New(Config{FPS: testFPS, Dir: t.TempDir(), RunAhead: time.Hour}, sched, ReadySlate(testSlate(t)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = p.Run(ctx) }()
+	select {
+	case <-reached:
+	case <-time.After(10 * time.Second):
+		stop()
+		t.Fatal("the third item never opened")
+	}
+	// The stopped item is on the timeline before its channel stops: the pipe hands fragments over one
+	// at a time, so synth taking its 4th gate means airItem has taken fragment 2, and so forwarded 1.
+	for range 4 {
+		gate <- struct{}{}
+	}
+	if p.Stats().Items != 3 {
+		t.Fatalf("items aired = %d, want 3 before the stop", p.Stats().Items)
+	}
+	stop()
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := map[string]report{"full": {frames: testFPS}, "short": {frames: 20}}
+	if !maps.Equal(got, want) {
+		t.Fatalf("delivered reports = %+v, want %+v (before each reader closed; none for the stopped channel's item)", got, want)
+	}
 }
 
 type track struct {

@@ -27,7 +27,7 @@ import (
 )
 
 // channelWatermarks is the composition root's channel-bug service (#1512 phase 1d): the GPU
-// overlay self-check per encoder, and the programme route's per-item resolver.
+// overlay self-check per encoder, and the channel packager's per-item resolver.
 //
 // The self-check runs once per encoder, in the background, on the first programme that encoder
 // airs: the encoder itself is only known once capability detection has run, which is lazy. Until
@@ -57,30 +57,36 @@ type channelWatermarks struct {
 
 type watermarkGate struct{ works atomic.Bool }
 
-// newChannelWatermarks wires the service from the HTTP build. Rendered bugs are derived files,
-// kept beside the image store rather than inside it (the image GC owns that tree).
-func newChannelWatermarks(deps httpBuild, set resolved, imgs *images.Service) *channelWatermarks {
+// newChannelWatermarks builds the service before the channel packager that asks it for bugs. The
+// image service is built later and bound with withOriginals. Rendered bugs are derived files, kept
+// beside the image store rather than inside it (the image GC owns that tree).
+func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved, events *diagnostics.Recorder, log *slog.Logger) *channelWatermarks {
 	ffmpeg := set.str("playout.ffmpeg_path")
 	c := &channelWatermarks{
 		ffmpeg:   func() string { return ffmpeg },
 		tonemap:  playout.TonemapperFor(ffmpeg),
 		gpu:      playout.GPUFiltersFor(ffmpeg),
 		dir:      filepath.Join(filepath.Dir(filepath.Clean(set.str("images.dir"))), "watermarks"),
-		channels: deps.store, log: deps.log, lifetime: deps.rootCtx,
+		channels: st, log: log, lifetime: rootCtx,
 	}
+	if events != nil {
+		c.events = events
+	}
+	return c
+}
+
+// withOriginals binds the image service a custom upload is read from. The build calls it before the
+// server takes a request, so no tune can race it; unbound, a channel's bug is the generated Plate.
+func (c *channelWatermarks) withOriginals(imgs *images.Service) {
 	if imgs != nil {
 		c.originals = imgs
 	}
-	if deps.foundation.diagnostics != nil {
-		c.events = deps.foundation.diagnostics
-	}
-	return c
 }
 
 // renderVersion changes every cached bug when the renderer's output changes.
 const renderVersion = "1"
 
-// For is the programme route's resolver: the channel's rendered bug for this output, or nil.
+// For is the channel packager's resolver: the channel's rendered bug for this output, or nil.
 func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark {
 	if !c.gate(enc).works.Load() {
 		return nil

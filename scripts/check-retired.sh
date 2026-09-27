@@ -362,6 +362,10 @@ RETIRED=(
   'syntheticBoundaryWitness|retired: producer identity subscriptions are replaced by private media truth'
   'observeProgrammeBoundary|retired: programme qualification uses the signed-HLS signal observer'
   'observePreparedProgrammeBoundary|retired: playlist discontinuities alone are not programme truth'
+  # #1512 phase 2c: the channel packager is the only live path, so its preview switch has nothing
+  # to choose between. A persisted row is harmless legacy data.
+  'PLAYOUT_PACKAGER|#1512 2c: the channel packager is the only live playout path'
+  '"playout.packager"|#1512 2c: the channel packager is the only live playout path'
 
 )
 # ⚠ `internal/store/migrations/` is exempt, and it is the one exemption that is forced rather than

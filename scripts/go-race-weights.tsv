@@ -15,8 +15,6 @@ internal/recurate	103
 internal/integration	111
 internal/reconcile	143
 internal/binder	85
-internal/playoutcert	88
-cmd/playout-load-cert	72
 internal/clipfetch	82
 internal/releaseverify	43
 internal/images	40

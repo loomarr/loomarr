@@ -7,131 +7,18 @@ import (
 	"time"
 )
 
-// Per-program encode args (§9.1, prior-art §1) — DIRECT PLAY by default (V47).
-//
-// Video is copied when its codec, geometry, cadence, pixel format and seek/reordering proof
-// fit the session. Otherwise the ordinary admitted transcode produces the pinned profile.
-// Shared-session audio is decoded to PCM for one continuous parent AAC encoder. Standalone
-// responses may still copy an already compatible audio stream.
-//
-// Every child conforms before it enters the session mux. A logical Airing boundary alone
-// does not require an HLS decoder discontinuity.
-//
-// The transcode flags below are each verified in Tunarr's source or against the live dev Emby
-// (prior-art §5a–§5c); the ones that look redundant are the ones a real failure found.
-
-// readrateInitialBurst is how many seconds of content ffmpeg may read flat-out on a genuine
-// mid-program tune-in before settling to realtime pacing.
-//
-// This is the TUNE-IN LATENCY FIX (prior-art §5a, Tunarr's ReadrateInputOption). Realtime
-// pacing alone is correct but feels broken: a player joining a live stream has an empty
-// buffer and must wait for it to fill at 1.0x before showing anything. The burst fills it
-// immediately, then pacing settles down so we do not race ahead of wall-clock.
-//
-// Deliberately NOT applied to synthetic sources — pacing a lavfi generator with a burst
-// stalls the pipeline (see TestCardArgs, which uses plain `-re`).
-const readrateInitialBurst = 10
-
-// tuneInBurstThreshold keeps ordinary programme boundaries on the wall clock. A new session that
-// joins at least this far into an airing needs the latency win; a child opened near offset zero is
-// the parent advancing normally and racing it ahead would make the next resolve replay its tail.
-const tuneInBurstThreshold = time.Duration(readrateInitialBurst) * time.Second
-
-// ProgramSpec is everything one program's encode needs. A struct rather than the old positional
-// ladder (ProgramArgs → …WithAudio → …Normalised, which had reached six parameters): the copy plan
-// is a first-class field, not a seventh positional, and adding the next knob widens a struct instead
-// of forking another function.
-type ProgramSpec struct {
-	// SessionAudio emits private PCM for the shared session's continuous AAC encoder.
-	SessionAudio bool
-	// VideoCopySeek is a seek-local keyframe proof supplied by ordinary source planning.
-	// Prepared publications already own their copy-start contract and leave this nil.
-	VideoCopySeek *time.Duration
-	Clock         ProgramClock
-	Profile       Profile
-	// Input is the ffmpeg input — a local file path (direct play) or an HTTP URL (fallback). The
-	// input-option branch (reconnect flags) keys on isHTTP, so both are handled from the one field.
-	Input         string
-	Offset, Limit time.Duration
-	AudioTrack    int      // the N in -map 0:a:N (PickAudioTrack); 0 = the file's first track
-	GainDB        float64  // static per-item loudness gain (#1512 G6), measured at ingest; 0 = none
-	Plan          CopyPlan // per-stream copy/transcode decision (PlanCopy); zero value = transcode both
-	// UnpacedInput is reserved for immutable prepared media whose downstream Channel mux is the
-	// wall-clock pacing authority. Leaving read-rate on this child would pace the authoritative
-	// intra-segment seek itself and turn that discarded distance into cold-start latency.
-	UnpacedInput bool
-	// SoftwareDecode keeps the hardware ENCODE but decodes this source on the CPU. Set once the
-	// GPU decoder has failed on the source (IsHardwareDecodeFault); the encoder is unchanged so
-	// the session's pinned codec and GPU encode slot are untouched.
-	SoftwareDecode bool
-
-	// Source is the PROBE the Plan was derived from — the full MediaFormat, not the two booleans
-	// it reduces to.
-	//
-	// copyplan.go has promised this since it was written ("Probe once, keep it all… so later
-	// features need no second ffprobe"), and until now nothing collected on it: the resolver
-	// probed, computed CopyVideo/CopyAudio, and dropped everything else, so the HDR flag it went
-	// to the trouble of parsing had no production caller at all. Tone-mapping is the first
-	// feature to need it; SAR, field order and the copy path's missing geometry guard are the
-	// same shape and can now read from here rather than growing a second probe each.
-	//
-	// The zero value is the safe direction on purpose. A probe that failed yields a zero
-	// MediaFormat, whose HDR() is false, so an unprobed source is treated as SDR — washed-out at
-	// worst. The opposite default would tone-map SDR content, which damages a picture that was
-	// correct.
-	Source MediaFormat
-	// Tonemap reports whether this ffmpeg BUILD can tone-map (zscale + tonemap present). Resolved
-	// by the composition root via TonemapperFor, not probed here, because ProgramArgs is a pure
-	// function and asking a binary from inside it would make every arg test exec ffmpeg.
-	//
-	// It is deliberately separate from Source.HDR(): one is a property of the CONTENT, the other
-	// of the INSTALL, and both must hold. See filters.go for why a missing filter is fatal rather
-	// than degrading if emitted anyway.
-	Tonemap bool
-	// GPUTonemap is which GPU tone-mappers the build carries (GPUFiltersFor). With Tonemap and the
-	// encoder it makes the host profile (HostFor).
-	GPUTonemap GPUFilters
-	// ToneCurve is the HDR→SDR curve, pinned by the session at its start so a Settings change
-	// never changes the look mid-stream. Empty is the default.
-	ToneCurve ToneCurve
-	// SoftwareRung is the software degradation rung this item encodes at (#1517): StartRung at the
-	// start, then whatever the RungMonitor steps it to. GPU encoders ignore it.
-	SoftwareRung SoftwareRung
-	// Watermark is the channel's bug, set only for a PROGRAMME item on a host whose GPU overlay
-	// passed its self-check (WatermarkCheck); nil for breaks, bumpers and IDs. A burned-in bug needs
-	// a video transcode, so the caller never copies video for an item that carries one.
-	Watermark *Watermark
+// ToneMapApplies is the one decision about tone-mapping, shared by live playout and prepared
+// media: the content is HDR AND the build can tone-map. Prepared media records the answer in its
+// rendition contract so a publication is never reused across a different answer.
+func ToneMapApplies(sourceHDR, buildCanTonemap bool) bool {
+	return sourceHDR && buildCanTonemap
 }
 
-// Pipeline is this program's transcode pipeline (pipeline.go), or ErrRefused. A source that faulted
-// the GPU decoder (SoftwareDecode) is built as if the GPU decoded nothing.
-func (s ProgramSpec) Pipeline() (Pipeline, error) {
-	host := HostFor(s.Profile.Encoder, s.Tonemap, s.GPUTonemap)
-	if s.SoftwareDecode {
-		host.DecodeCodecs = nil
-	}
-	host.Overlay = s.Watermark != nil
-	out := ChannelOutput(s.Profile)
-	out.ToneCurve = s.ToneCurve
-	out.SoftwareRung = s.SoftwareRung
-	return BuildItem(host, s.Source, out, s.Watermark)
-}
-
-// DemoteTonemap drops the GPU tone-mapper this spec's pipeline uses, so a retry takes the next one
-// for the curve: its preferred GPU tone-mapper, the other one, then the CPU (ToneCurve; for Hable
-// that is tonemap_opencl, libplacebo, the CPU — the maintainer order, #1512). It reports false when
-// the source is SDR or the pipeline already tone-maps on the CPU.
-func (s *ProgramSpec) DemoteTonemap() bool {
-	p, err := s.Pipeline()
-	if err != nil {
-		return false
-	}
-	return demoteTonemapper(&s.GPUTonemap, p.Tonemapper)
-}
-
-// demoteTonemapper drops the GPU tone-mapper a graph used, so the next build takes the next one;
-// false when it used none. The capacity probe's tone-map self-check walks the same order, so the
-// startup check and the live ladder cannot disagree.
+// demoteTonemapper drops the GPU tone-mapper a graph used, so the next build takes the next one
+// for the curve: its preferred GPU tone-mapper, the other one, then the CPU (the maintainer order,
+// #1512); false when it used none. The capacity probe's tone-map self-check walks this order, and
+// the packager's item retry (itemFaults) demotes the same stages, so the startup check and the live
+// ladder cannot disagree.
 func demoteTonemapper(g *GPUFilters, used string) bool {
 	switch used {
 	case TonemapperOpenCL:
@@ -142,202 +29,6 @@ func demoteTonemapper(g *GPUFilters, used string) bool {
 		return false
 	}
 	return true
-}
-
-// tonemapStep returns the HDR→SDR filter chain for this program, or "" when it should not run.
-//
-// Both conditions are required and they fail in opposite directions, which is why neither is
-// folded into the other: HDR content on a build without zscale must NOT emit the filter (the graph
-// would fail at init and the channel would die — see filters.go), and an SDR source on a build
-// that CAN tone-map must not be tone-mapped either (it would compress a range that was already
-// correct).
-func (s ProgramSpec) tonemapStep() string {
-	if !ToneMapApplies(s.Source.HDR(), s.Tonemap) {
-		return ""
-	}
-	return hdrToSDRChain
-}
-
-// ToneMapApplies is the one decision about tone-mapping, shared by live playout and prepared
-// media: the content is HDR AND the build can tone-map. Prepared media records the answer in its
-// rendition contract so a publication is never reused across a different answer.
-func ToneMapApplies(sourceHDR, buildCanTonemap bool) bool {
-	return sourceHDR && buildCanTonemap
-}
-
-// ProgramArgs builds the args to encode (or COPY) ONE program, starting Offset in, for Limit.
-//
-// This is what the "what's on now" endpoint spawns per program. It streams finite MPEG-TS to stdout
-// and then EXITS — that EOF is the sequencing signal (prior-art §1). Nothing here loops.
-//
-// The copy plan drives the shape:
-//   - Plan.CopyVideo ⇒ `-c:v copy`, and the whole transcode apparatus (hardware device init,
-//     hardware decode, scale filter, video encode) is SKIPPED — a copy decodes nothing, so setting
-//     up a decoder/encoder would be wasted work and, worse, a chance for a hardware-init failure to
-//     take down a program that needed no hardware at all.
-//   - else the video transcodes to the Profile (the exception path, unchanged from before).
-//   - SessionAudio ⇒ selected PCM for the parent; otherwise Plan.CopyAudio copies audio or encodes AAC.
-func ProgramArgs(spec ProgramSpec) []string {
-	clock := spec.Clock
-	provenCopySeek := spec.Plan.CopyVideo && spec.VideoCopySeek != nil && *spec.VideoCopySeek >= 0 && *spec.VideoCopySeek <= spec.Offset
-	if provenCopySeek && !clock.active() {
-		// Standalone output begins at the requested source point. Preserve source
-		// coordinates for trimming, then shift them onto that zero-based output.
-		start := time.Unix(0, 0)
-		clock = ProgramClock{Origin: start.Add(spec.Offset), StartedAt: start}
-	}
-	args := []string{
-		"-hide_banner", "-loglevel", "error",
-		"-progress", progressPipeArg(), "-nostats",
-	}
-
-	// Hardware setup is a TRANSCODE concern: a video copy neither decodes nor encodes, so it needs
-	// no device and no hardware decoder. Emitting them for a copy is not just wasteful — a device
-	// init that fails (no /dev/dri in a container) would kill a program that could have copied fine.
-	//
-	// The transcode is the pipeline builder's (pipeline.go): device setup, full-GPU decode and
-	// probing go before everything (global/input options; after `-i` they apply to nothing), and
-	// its filter graph and encoder replace the old CPU scale + upload chain. A refused source has no
-	// args at all; the caller checks spec.Pipeline() first and shows the card.
-	var pipe Pipeline
-	if !spec.Plan.CopyVideo {
-		var err error
-		if pipe, err = spec.Pipeline(); err != nil {
-			return nil
-		}
-		args = append(args, pipe.PreInput...)
-	}
-
-	// --- Input options (before -i, so they apply to THIS input) ---
-	p, streamURL, offset, limit, audioTrack, gainDB := spec.Profile, spec.Input, spec.Offset, spec.Limit, spec.AudioTrack, spec.GainDB
-
-	// Reconnect flags, CHILD tier — and ONLY for an http input. See isHTTP.
-	//
-	// A child fetching a program from an HTTP media source should survive a network blip
-	// mid-program rather than killing the slot. These must NOT include `-reconnect_at_eof`,
-	// which belongs to the parent, where a child's EOF is the advance signal; on a child it
-	// means the child tries to continue past the end of its own program, presenting as an
-	// intermittent stall (prior-art §5a: "the two tiers must not get each other's flags").
-	if isHTTP(streamURL) {
-		args = append(args,
-			"-reconnect", "1",
-			"-reconnect_on_network_error", "1",
-			"-reconnect_streamed", "1",
-			"-multiple_requests", "1",
-		)
-	}
-
-	// Shared-session children leave pacing to the parent. Standalone responses retain their
-	// own clock; pacing a prepared seek would also turn discarded media into tune latency.
-	if !spec.UnpacedInput && !spec.SessionAudio {
-		args = append(args, "-readrate", "1.0")
-		// The burst is only for a genuine mid-program tune-in with enough media left to absorb it.
-		// Applying it at offset zero makes every child finish ten seconds before its wall-clock
-		// boundary; applying it to that short remaining tail repeats the same mistake. Both presented
-		// live as commercials arriving and leaving about ten seconds late.
-		if offset >= tuneInBurstThreshold && limit > tuneInBurstThreshold {
-			args = append(args, "-readrate_initial_burst", strconv.Itoa(readrateInitialBurst))
-		} else {
-			// FFmpeg treats both omission and zero as its 0.5-second default.
-			// Its pacing clock uses microseconds: the smallest positive value
-			// prevents every short child from finishing half a second early.
-			args = append(args, "-readrate_initial_burst", "0.000001")
-		}
-	}
-
-	// THE SEEK, and its placement is load-bearing. `-ss` BEFORE `-i` makes ffmpeg seek —
-	// over HTTP the server serves a byte range, verified at 2.9s wall-clock for a 40-minute
-	// offset into a 4K remux (prior-art §5c). After `-i` it would decode and DISCARD from
-	// the start of the file, which for the same offset takes minutes and burns a core
-	// producing nothing.
-	//
-	// Sub-second precision is deliberate: a channel is a wall clock, and rounding every
-	// tune-in to whole seconds would accumulate drift across a cycle.
-	if offset > 0 {
-		args = append(args, "-ss", seconds(offset))
-	}
-
-	args = append(args, "-i", streamURL)
-
-	// --- Output options ---
-
-	// EXPLICIT TRACK SELECTION, and it is mandatory rather than tidy (prior-art §5b). The
-	// verified test item carried THREE audio tracks (dts, flac, ac3) plus subtitles. Without
-	// maps, ffmpeg's default selection picks by its own heuristics — so the track count can
-	// differ between programs, and a varying track count breaks the parent's `-c copy`
-	// exactly like a varying resolution does.
-	//
-	// First video, ONE audio, nothing else. Subtitles are dropped: burning them in would
-	// vary per item and there is no subtitle track in a normalized MPEG-TS profile.
-	//
-	// Which audio is chosen by the caller (see audio.go). It used to be hardcoded `0:a:0` —
-	// the first track in the file — which is how a channel ended up playing a film in Russian:
-	// the release simply carried its Russian dub first. Exactly one audio track either way,
-	// because a varying track count breaks `-c copy` as surely as a varying resolution.
-	args = append(args, "-map", "0:v:0", "-map", "0:a:"+strconv.Itoa(audioTrack))
-
-	// With preserved input timestamps, stream copy retains the preceding GOP after an input
-	// seek. Discard it at the output as well; ProgramClock restores the resulting timestamp
-	// subtraction equally for audio and video. Never add an output seek at offset zero.
-	var outputSeek time.Duration
-	if clock.active() && offset > 0 && (spec.Plan.CopyVideo || spec.Plan.CopyAudio) {
-		outputSeek = offset
-		if provenCopySeek {
-			outputSeek = *spec.VideoCopySeek
-		}
-		args = append(args, "-ss", seconds(outputSeek))
-	}
-
-	// The duration (or absolute source end with copyts) bounds the child to its slot.
-	// This is what makes the child exit at the program
-	// boundary rather than playing to the end of the file — which matters when the lineup
-	// gives an item less time than its full duration (a rolling window, or a slot the
-	// scheduler trimmed).
-	if limit > 0 {
-		if clock.active() {
-			args = append(args, "-to", seconds(offset+limit))
-		} else {
-			args = append(args, "-t", seconds(limit))
-		}
-	}
-
-	// VIDEO: copy (direct play — the fast path) or transcode to the Profile (the exception).
-	if spec.Plan.CopyVideo {
-		// `-c:v copy` passes the source video through untouched. No scale filter, no encoder —
-		// those are transcode-only. This is the whole point: an h264 file plays with zero video
-		// re-encode.
-		args = append(args, "-c:v", "copy")
-	} else {
-		// Colour labels are conformed in the graph (setparams), never by output -color_* flags.
-		args = append(args, "-vf", pipe.VideoFilter)
-		args = append(args, pipe.VideoEncode...)
-	}
-
-	// AUDIO: copy when the target plays it, else transcode ONLY the audio (cheap) to AAC. The
-	// loudness filter (filler) is a transcode-time concern, so a copy skips it — a copied advert
-	// keeps its own levels, which is acceptable and far better than a needless re-encode.
-	if spec.SessionAudio {
-		trim := "atrim=start=" + seconds(offset)
-		if limit > 0 {
-			trim += ":end=" + seconds(offset+limit)
-		}
-		if gainDB != 0 && !spec.Plan.CopyAudio {
-			trim += "," + gainFilter(gainDB)
-		}
-		args = append(args, "-af", trim, "-c:a", "s302m", "-strict", "-2", "-ac", "2", "-ar", "48000")
-	} else if spec.Plan.CopyAudio {
-		args = append(args, "-c:a", "copy")
-	} else {
-		args = append(args, p.audioEncodeArgsGain(gainDB)...)
-	}
-
-	// `+initial_discontinuity` tells the downstream demuxer the first timestamps are not
-	// necessarily zero — true for anything joining a live stream mid-flight, and true here
-	// because we seeked.
-	args = append(args,
-		"-f", "mpegts", "-mpegts_flags", "+initial_discontinuity", "pipe:1",
-	)
-	return clock.apply(args, outputSeek)
 }
 
 // scaleFilterArgs normalizes any input geometry to the profile's.
@@ -354,12 +45,12 @@ func ProgramArgs(spec ProgramSpec) []string {
 //
 // `force_original_aspect_ratio=decrease` + `pad` letterboxes rather than stretching, so a
 // 4:3 episode in a 16:9 profile keeps its geometry. The pad is what preserves the profile's
-// exact output dimensions, which `-c copy` requires — a bare aspect-preserving scale would
-// emit 960x720 for 4:3 content and break concatenation.
-// `tonemap` is the HDR→SDR chain (ProgramSpec.tonemapStep), or "" for the overwhelmingly common
-// SDR case. It is a PARAMETER rather than something derived here because a Profile describes the
-// OUTPUT and tone-mapping is a fact about the INPUT — and because capability.go builds this same
-// chain for its trial encode against a synthetic lavfi source that has no input to speak of.
+// exact output dimensions.
+//
+// `tonemap` is the HDR→SDR chain, or "" for the overwhelmingly common SDR case. It is a PARAMETER
+// rather than something derived here because a Profile describes the OUTPUT and tone-mapping is a
+// fact about the INPUT — and because capability.go builds this same chain for its trial encode
+// against a synthetic lavfi source that has no input to speak of.
 func (p Profile) scaleFilterArgs(tonemap string) []string {
 	if p.Width <= 0 || p.Height <= 0 {
 		return nil
@@ -369,7 +60,7 @@ func (p Profile) scaleFilterArgs(tonemap string) []string {
 		p.Width, p.Height, p.Width, p.Height)
 
 	// Framerate is pinned too: a 24fps film and a 25fps episode must not produce different
-	// output rates, or `-c copy` on the parent is invalid.
+	// output rates.
 	fps := fmt.Sprintf("fps=%d", p.Framerate)
 
 	parts := []string{scale, fps}
@@ -396,8 +87,7 @@ func (p Profile) scaleFilterArgs(tonemap string) []string {
 	// per-encoder correct in ways a generic "format=nv12,hwupload" is not — QSV needs
 	// `extra_hw_frames=64` or its lookahead intermittently fails to allocate frames, and the
 	// families that accept CPU frames directly (nvenc, amf, videotoolbox, rkmpp, v4l2m2m)
-	// must get NO upload at all. A hand-rolled version here got QSV wrong and drifted from
-	// the prober within one commit of being written.
+	// must get NO upload at all.
 	if up := hardwareUploadFilter(p.Encoder); up != "" {
 		// These families upload to GPU memory, and their upload filter already pins the
 		// pixel format (nv12) on the way.
@@ -405,38 +95,12 @@ func (p Profile) scaleFilterArgs(tonemap string) []string {
 	} else {
 		// EVERY OTHER FAMILY gets an explicit 8-bit pixel format — software AND the hardware
 		// encoders that take CPU frames directly (nvenc, amf, videotoolbox, rkmpp, v4l2m2m).
-		//
-		// This `else` used to be `else if p.Encoder == EncoderSoftware`, which left exactly
-		// those hardware families with NO pixel-format normalization. A 10-bit source then
-		// reached the encoder as yuv420p10le, and h264_nvenc — which encodes 8-bit H.264 only
-		// — rejected it:
-		//
-		//	[h264_nvenc] No capable devices found
-		//	[out#0/mpegts] Nothing was written into output file
-		//
-		// That message names the DEVICE, not the pixel format, so it reads as "your GPU is
-		// missing" while the GPU is fine. Found on a live channel: a 4K 10-bit HEVC film
-		// played on libx264 (which had this filter) and died the moment nvenc was selected.
-		//
-		// Every prior live test used software, so every prior live test had the fix.
+		// Without it a 10-bit source reaches h264_nvenc, which encodes 8-bit H.264 only, as
+		// yuv420p10le, and it fails with "No capable devices found": a message that names the
+		// DEVICE, not the pixel format, so it reads as "your GPU is missing" while the GPU is fine.
 		parts = append(parts, "format=yuv420p")
 	}
 	return []string{"-vf", strings.Join(parts, ",")}
-}
-
-// isHTTP reports whether a URL uses a protocol that accepts ffmpeg's `-reconnect*` options.
-//
-// THIS CONDITION IS LOAD-BEARING, and omitting it is a hard failure rather than a missed
-// optimization. `-reconnect*` are private options of ffmpeg's HTTP protocol, not global ones:
-// against a local file input, `-reconnect 1` produces "Option reconnect not found" and
-// ffmpeg exits 8 before opening anything. Tunarr applies them conditionally on
-// `protocol === 'http'` for exactly this reason (prior-art §5a).
-//
-// It matters in production, not just in tests: filler clips are local files (§10 FILLER_DIR),
-// so an unconditional flag list means every commercial break fails to start — as a channel
-// that dies at the first break, with a message that names an option rather than a file.
-func isHTTP(u string) bool {
-	return strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")
 }
 
 // seconds formats a duration for ffmpeg's -ss / -t, keeping millisecond precision.
