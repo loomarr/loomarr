@@ -51,6 +51,7 @@ func Build(parent context.Context, st store.Store, log *slog.Logger, ov Override
 		defer cancel()
 		return nil, errors.Join(err, lifecycle.shutdown(shutdownCtx))
 	}
+	lifecycle.startBuilt()
 	return &Application{handler: handler, log: generationLog, lifecycle: lifecycle, playoutResolver: resolver, serverPublicURL: serverPublicURL}, nil
 }
 
@@ -105,6 +106,7 @@ type generationLifecycle struct {
 
 	mu          sync.Mutex
 	closed      bool
+	afterBuild  []func(context.Context) // workers held until composition finishes (goRunAfterBuild)
 	quiescers   []func(context.Context) error
 	stops       []func(context.Context) error
 	wg          sync.WaitGroup
@@ -120,6 +122,30 @@ func newGenerationLifecycle(parent context.Context) *generationLifecycle {
 	ctx, cancel := context.WithCancel(parent)
 	return &generationLifecycle{
 		ctx: ctx, cancel: cancel, quiesced: make(chan struct{}), done: make(chan struct{}),
+	}
+}
+
+// goRunAfterBuild registers a generation-owned worker that Build starts only once composition has
+// finished (startBuilt). Work that reads components a later builder still configures (the channel
+// engine's pods, the backend-transition checkpoint) must not start during construction: it would
+// race those writes, or see them missing. A generation whose Build fails never starts it.
+func (l *generationLifecycle) goRunAfterBuild(run func(context.Context)) {
+	if run == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.afterBuild = append(l.afterBuild, run)
+}
+
+// startBuilt starts the workers held by goRunAfterBuild. Build calls it once, after composition.
+func (l *generationLifecycle) startBuilt() {
+	l.mu.Lock()
+	runs := l.afterBuild
+	l.afterBuild = nil
+	l.mu.Unlock()
+	for _, run := range runs {
+		l.goRun(run)
 	}
 }
 

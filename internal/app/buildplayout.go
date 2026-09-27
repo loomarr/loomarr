@@ -245,7 +245,8 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	// writes the measured majority every time — so it needs no "already backfilled" marker
 	// and re-running on a later boot is harmless bounded work.
 	if st != nil {
-		owner.goRun(func(ctx context.Context) {
+		// After Build: it reads the channel engine, whose pods the filler subsystem sets later.
+		owner.goRunAfterBuild(func(ctx context.Context) {
 			chans, lerr := st.ListChannels(ctx)
 			if lerr != nil {
 				log.Warn("playout: broadcast-codec backfill skipped (channel list failed)", "err", lerr)
