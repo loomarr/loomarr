@@ -50,6 +50,7 @@ func seedProcessRun(t *testing.T, st Store, id string, size int64, status diagno
 }
 
 func TestDiagnosticRetainedBytesIsNotAFullScan(t *testing.T) {
+	t.Parallel()
 	st := openRetentionStore(t)
 	rows, err := PoolOf(st).QueryContext(context.Background(), "EXPLAIN QUERY PLAN "+diagnosticRetainedBytesQuery)
 	if err != nil {
@@ -74,6 +75,7 @@ func TestDiagnosticRetainedBytesIsNotAFullScan(t *testing.T) {
 }
 
 func TestDiagnosticRetainedBytesTracksEveryWrite(t *testing.T) {
+	t.Parallel()
 	st := openRetentionStore(t)
 	ctx := context.Background()
 	now := time.Now()
@@ -128,6 +130,7 @@ func TestDiagnosticRetainedBytesTracksEveryWrite(t *testing.T) {
 }
 
 func TestDiagnosticRetainedBytesSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "loomarr.db")
 	open := func() Store {
 		st, err := Open(context.Background(), "sqlite://"+path, true)
@@ -215,6 +218,7 @@ func sqliteIndexes(t *testing.T, st Store) map[string]string {
 // Migration 00121 seeds the running total from the rows that already exist (the household table)
 // and drops the indexes no query needs.
 func TestDiagnosticRetainedBytesMigrationSeedsTheTotalAndTrimsIndexes(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "diag.db"))
 	if err != nil {

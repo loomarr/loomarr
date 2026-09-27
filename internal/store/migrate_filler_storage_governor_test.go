@@ -7,6 +7,7 @@ import (
 )
 
 func TestFillerStorageGovernorMigrationSQLite(t *testing.T) {
+	t.Parallel()
 	t.Run("moves a durable positive allowance", func(t *testing.T) {
 		ctx := context.Background()
 		s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "storage-governor.db"))

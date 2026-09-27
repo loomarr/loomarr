@@ -135,10 +135,12 @@ func newSQLiteConformanceStoreFactoryWithOpen(t *testing.T, open sqliteConforman
 // TestSQLiteConformance runs the shared suite against SQLite. Phase 4 adds the
 // identical call for Postgres.
 func TestSQLiteConformance(t *testing.T) {
+	t.Parallel()
 	RunConformance(t, newSQLiteConformanceStoreFactory(t))
 }
 
 func TestNotificationWorkSurvivesStoreRestart(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "notification-restart.db")
 	dsn := "sqlite://" + path
@@ -434,6 +436,7 @@ func TestMigrationSourceIsStructurallyReadOnly(t *testing.T) {
 }
 
 func TestOpenHealsPreAtomicTaxonomyProjections(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "taxonomy-upgrade.db")
 	dsn := "sqlite://" + path

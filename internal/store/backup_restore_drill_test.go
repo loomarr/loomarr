@@ -26,6 +26,7 @@ func backupDrillTimestamp() time.Time { return time.Unix(1_800_000_000, 0).UTC()
 // against an isolated data directory. The backup lives beside that directory so
 // destroying the simulated volume cannot accidentally destroy its restore point.
 func TestSQLiteBackupRestoreDrill(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	root := t.TempDir()
 	liveDir := filepath.Join(root, "live-data")

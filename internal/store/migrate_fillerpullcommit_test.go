@@ -7,6 +7,7 @@ import (
 )
 
 func TestFillerPullCommitMigrationPreservesHistoricalRuns(t *testing.T) {
+	t.Parallel()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "pull-upgrade.db"))
 	if err != nil {
 		t.Fatal(err)

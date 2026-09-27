@@ -7,6 +7,7 @@ import (
 )
 
 func TestRemoveEmptyFillerGeographyMigrationSQLite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "empty-geography.db"))
 	if err != nil {
