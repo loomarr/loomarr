@@ -20,11 +20,43 @@ func postgresWorkflowActionAuthorities() map[string]map[string]struct{} {
 	}
 }
 
+// postgresTestCommand runs one suite per matrix job; postgresSuites is the complete set, which
+// is also the default in test-pg's protected recipe (#1570).
+const postgresTestCommand = "make test-pg TEST_PG_SUITE=${{ matrix.lane }}"
+
+func postgresSuites() []string { return []string{"store", "backendtransition", "app"} }
+
 func postgresWorkflowRunAuthorities() map[string]struct{} {
 	return map[string]struct{}{
 		`echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"`: {},
-		"make test-pg": {},
+		postgresTestCommand: {},
 	}
+}
+
+// verifyPostgresSuiteMatrix makes the matrix the gate's completeness proof: every suite exactly
+// once, in the recipe's order, and fail-fast off so a failure never cancels a sibling's evidence.
+func verifyPostgresSuiteMatrix(job *yaml.Node) error {
+	strategy, err := requiredMap(job, "strategy")
+	if err != nil {
+		return fmt.Errorf("postgres CI workflow must run one job per suite: %w", err)
+	}
+	if err := verifyOnlyKeySet(strategy, "postgres CI workflow strategy", setOf("fail-fast", "matrix")); err != nil {
+		return err
+	}
+	if failFast, ok := mappingValue(strategy, "fail-fast"); !ok || failFast.Kind != yaml.ScalarNode || failFast.Value != "false" {
+		return fmt.Errorf("postgres CI workflow strategy must set fail-fast: false")
+	}
+	matrix, err := requiredMap(strategy, "matrix")
+	if err != nil {
+		return fmt.Errorf("postgres CI workflow strategy: %w", err)
+	}
+	if err := verifyOnlyKeySet(matrix, "postgres CI workflow matrix", setOf("lane")); err != nil {
+		return err
+	}
+	if err := verifyWorkflowLanes(matrix, postgresSuites(), "postgres CI workflow"); err != nil {
+		return fmt.Errorf("%w: want exactly %v", err, postgresSuites())
+	}
+	return nil
 }
 
 func verifyPostgresWorkflow(path string) error {
@@ -87,7 +119,10 @@ func verifyWorkflowTrigger(workflow *yaml.Node) error {
 }
 
 func verifyPostgresWorkflowJob(job *yaml.Node) error {
-	if err := verifyOnlyKeySet(job, "postgres CI workflow run job", setOf("name", "runs-on", "steps")); err != nil {
+	if err := verifyOnlyKeySet(job, "postgres CI workflow run job", setOf("name", "runs-on", "strategy", "steps")); err != nil {
+		return err
+	}
+	if err := verifyPostgresSuiteMatrix(job); err != nil {
 		return err
 	}
 	if runner, err := requiredScalar(job, "runs-on"); err != nil || runner != "ubuntu-latest" {
@@ -108,12 +143,12 @@ func verifyPostgresWorkflowJob(job *yaml.Node) error {
 		if err := verifyPostgresWorkflowStep(step, index+1); err != nil {
 			return err
 		}
-		if value, ok := mappingValue(step, "run"); ok && value.Value == "make test-pg" {
+		if value, ok := mappingValue(step, "run"); ok && value.Value == postgresTestCommand {
 			testRuns++
 		}
 	}
 	if testRuns != 1 {
-		return fmt.Errorf("postgres CI workflow must run make test-pg exactly once, found %d", testRuns)
+		return fmt.Errorf("postgres CI workflow must run %s exactly once, found %d", postgresTestCommand, testRuns)
 	}
 	return nil
 }

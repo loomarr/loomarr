@@ -13,13 +13,13 @@ func TestVerifyCIContainerDownloadsRequiresEachContainerAuthorityExactlyOnce(t *
 	t.Parallel()
 	tests := map[string]func(string) string{
 		"removed Postgres route": func(workflow string) string {
-			return strings.Replace(workflow, "      - run: make test-pg\n", "      - run: echo safe\n", 1)
+			return strings.Replace(workflow, "      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n", "      - run: echo safe\n", 1)
 		},
 		"duplicated Postgres route": func(workflow string) string {
-			return strings.Replace(workflow, "      - run: make test-pg\n", "      - run: make test-pg\n      - run: make test-pg\n", 1)
+			return strings.Replace(workflow, "      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n", "      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n", 1)
 		},
 		"moved Postgres route": func(workflow string) string {
-			return strings.Replace(workflow, "      - run: make test-pg\n", "      - run: echo safe\n      - run: make test-pg\n", 1)
+			return strings.Replace(workflow, "      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n", "      - run: echo safe\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n", 1)
 		},
 	}
 	for name, mutate := range tests {
