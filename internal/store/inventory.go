@@ -493,6 +493,14 @@ func (s *sqlStore) RecordInventoryAnalysis(ctx context.Context, analysis invento
 	if err != nil {
 		return fmt.Errorf("marshal inventory analysis breaks: %w", err)
 	}
+	var active sql.NullString
+	if clean.ActivePicture != nil {
+		b, err := json.Marshal(clean.ActivePicture)
+		if err != nil {
+			return fmt.Errorf("marshal inventory analysis active picture: %w", err)
+		}
+		active = sql.NullString{String: string(b), Valid: true}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin inventory analysis: %w", err)
@@ -511,15 +519,16 @@ func (s *sqlStore) RecordInventoryAnalysis(ctx context.Context, analysis invento
 	}
 	if _, err := tx.ExecContext(ctx, s.ph(`
 		INSERT INTO inventory_source_analysis (source_id, source_revision, schema_version, keyframes,
-		  keyframe_count, integrated_lufs, true_peak_dbtp, breaks_json, analyzed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		  keyframe_count, integrated_lufs, true_peak_dbtp, breaks_json, active_picture_json, analyzed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(source_id) DO UPDATE SET source_revision=excluded.source_revision,
 		  schema_version=excluded.schema_version, keyframes=excluded.keyframes,
 		  keyframe_count=excluded.keyframe_count, integrated_lufs=excluded.integrated_lufs,
 		  true_peak_dbtp=excluded.true_peak_dbtp, breaks_json=excluded.breaks_json,
+		  active_picture_json=excluded.active_picture_json,
 		  analyzed_at=excluded.analyzed_at`), string(clean.SourceID), clean.Revision,
 		inventory.AnalysisSchemaVersion, inventory.EncodeKeyframes(clean.Keyframes), len(clean.Keyframes),
-		clean.IntegratedLUFS, clean.TruePeakDBTP, string(breaks), epoch(clean.AnalyzedAt)); err != nil {
+		clean.IntegratedLUFS, clean.TruePeakDBTP, string(breaks), active, epoch(clean.AnalyzedAt)); err != nil {
 		return fmt.Errorf("upsert inventory analysis: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -537,14 +546,15 @@ func (s *sqlStore) InventoryAnalysis(ctx context.Context, id inventory.SourceID)
 		blob            []byte
 		lufs, peak      sql.NullFloat64
 		breaksJSON      string
+		activeJSON      sql.NullString
 		analyzedAt      int64
 		currentRevision string
 	)
 	err := s.db.QueryRowContext(ctx, s.ph(`
 		SELECT a.source_revision, a.schema_version, a.keyframes, a.integrated_lufs, a.true_peak_dbtp,
-		  a.breaks_json, a.analyzed_at, s.revision
+		  a.breaks_json, a.active_picture_json, a.analyzed_at, s.revision
 		FROM inventory_source_analysis a JOIN inventory_sources s ON s.id = a.source_id
-		WHERE a.source_id = ?`), string(id)).Scan(&a.Revision, &schema, &blob, &lufs, &peak, &breaksJSON, &analyzedAt, &currentRevision)
+		WHERE a.source_id = ?`), string(id)).Scan(&a.Revision, &schema, &blob, &lufs, &peak, &breaksJSON, &activeJSON, &analyzedAt, &currentRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return inventory.Analysis{}, false, nil
 	}
@@ -561,6 +571,12 @@ func (s *sqlStore) InventoryAnalysis(ctx context.Context, id inventory.SourceID)
 	}
 	if err := json.Unmarshal([]byte(breaksJSON), &a.Breaks); err != nil {
 		return inventory.Analysis{}, false, fmt.Errorf("decode inventory breaks: %w", err)
+	}
+	if activeJSON.Valid {
+		a.ActivePicture = &inventory.PictureArea{}
+		if err := json.Unmarshal([]byte(activeJSON.String), a.ActivePicture); err != nil {
+			return inventory.Analysis{}, false, fmt.Errorf("decode inventory active picture: %w", err)
+		}
 	}
 	if lufs.Valid {
 		a.IntegratedLUFS = &lufs.Float64

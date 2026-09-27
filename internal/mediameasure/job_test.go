@@ -60,7 +60,7 @@ func newTestMeasurer(t *testing.T, sink *fakeSink) *Measurer {
 		Sink: sink, Tools: DefaultTools("", ""), Revision: statRevision,
 		Facts: func(context.Context, string) (inventory.SourceFacts, error) {
 			return inventory.SourceFacts{DurationMillis: 7000, Streams: []inventory.Stream{
-				{Index: 0, Kind: inventory.StreamVideo}, {Index: 1, Kind: inventory.StreamAudio}}}, nil
+				{Index: 0, Kind: inventory.StreamVideo, Width: 320, Height: 240}, {Index: 1, Kind: inventory.StreamAudio}}}, nil
 		},
 		Now: func() time.Time { return time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC) },
 		Sampling: Sampling{LoudnessWindows: 4, LoudnessWindow: 1500 * time.Millisecond, BreakEvery: 3500 * time.Millisecond,
@@ -96,6 +96,10 @@ func TestJob_MeasuresKeyframesLoudnessAndBreaksOncePerRevision(t *testing.T) {
 	}
 	if len(a.Breaks) != 1 || a.Breaks[0].AtMs < 3300 || a.Breaks[0].AtMs > 3700 || a.Breaks[0].KeyframeMs != 4000 {
 		t.Fatalf("breaks = %+v, want the fade at ~3.5 s snapped to the 4 s keyframe", a.Breaks)
+	}
+	// The watermark's anchor (#1512 1d): the fixture is picture edge to edge, no bars.
+	if a.ActivePicture == nil || *a.ActivePicture != (inventory.PictureArea{W: 320, H: 240}) {
+		t.Fatalf("active picture = %+v, want the whole 320x240 frame", a.ActivePicture)
 	}
 
 	// The same revision again is a no-op: nothing is re-measured.

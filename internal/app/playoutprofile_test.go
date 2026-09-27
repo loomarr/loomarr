@@ -551,6 +551,48 @@ func TestPlayoutResolver_FirstPlayMeasuresFactsOnceAndActivatesMinimalProbe(t *t
 	}
 }
 
+// The channel watermark anchors to the measured picture (#1512 1d): once the source's analysis
+// holds its active picture, the airtime format carries it, so a letterboxed film's bug sits on
+// the picture's corner, not in the black bar.
+func TestPlayoutResolver_AirtimeFormatCarriesTheMeasuredActivePicture(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	path := t.TempDir() + "/film.mkv"
+	if err := os.WriteFile(path, []byte("one stable local revision"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := &playoutResolver{
+		inventory: inventory.New(st), analyses: st, now: time.Now,
+		probeSource: func(context.Context, string) (playout.SourceObservation, error) {
+			return playout.SourceObservation{
+				Container: "matroska,webm", DurationMillis: 90_000,
+				Streams: []playout.ObservedStream{
+					{Index: 0, Kind: "video", Codec: "h264", Width: 1920, Height: 1080, FrameRate: "25/1", PixelFormat: "yuv420p"},
+				},
+			}, nil
+		},
+	}
+	r.measurer = r.newMeasurer(mediameasure.Tools{}, st)
+	if _, format := r.PlanFor(t.Context(), path, playout.PlanFull); format.Active != (playout.Rect{}) {
+		t.Fatalf("unmeasured source: active %+v, want unknown", format.Active)
+	}
+	origin, ok := r.ensureLocalInventorySource(t.Context(), path)
+	if !ok {
+		t.Fatal("no local inventory source")
+	}
+	source, found, err := r.inventory.ResolveSource(t.Context(), inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Now: time.Now(), Kinds: []inventory.SourceKind{inventory.SourceLocalFile}})
+	if err != nil || !found {
+		t.Fatalf("resolve source: found %v err %v", found, err)
+	}
+	if err := st.RecordInventoryAnalysis(t.Context(), inventory.Analysis{SourceID: source.ID, Revision: source.Revision,
+		AnalyzedAt: time.Now(), ActivePicture: &inventory.PictureArea{Y: 140, W: 1920, H: 800}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, format := r.PlanFor(t.Context(), path, playout.PlanFull); format.Active != (playout.Rect{Y: 140, W: 1920, H: 800}) {
+		t.Fatalf("measured source: active %+v, want the stored letterbox picture", format.Active)
+	}
+}
+
 func TestPlayoutResolver_UnmeasurableSourceKeepsFullProbe(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	path := t.TempDir() + "/movie.ts"
