@@ -245,6 +245,7 @@ type Server struct {
 	playoutTonemap    func() bool
 	playoutGPUTonemap func() playout.GPUFilters
 	playoutToneCurve  func() string
+	playoutWatermark  func(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark
 	// reclaimVRAM frees GPU memory the encoders need — in practice, evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47 retry ladder). Called ONLY when a hardware encode has already produced
 	// nothing, so the common case never touches it. Nil ⇒ no local LLM to reclaim (a hosted provider,
@@ -1130,6 +1131,10 @@ type Options struct {
 	// PlayoutToneCurve reads `playout.tone_curve` for a programme request that carries no session
 	// pin. Nil ⇒ the default curve.
 	PlayoutToneCurve func() string
+	// PlayoutWatermark returns a channel's rendered bug for a programme item at the output size,
+	// or nil when the channel turned it off, it cannot be rendered, or this host's GPU overlay
+	// failed its boot self-check (#1512 phase 1d). Nil ⇒ no watermarks.
+	PlayoutWatermark func(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark
 	// ReclaimVRAM frees GPU memory the hardware encoders need — evicts the resident local LLM
 	// (§8.2 Evictor, §9.1 V47). Wired to the LLM provider's Evict when the provider is local and
 	// implements Evictor; nil for a hosted provider (nothing local to reclaim). The retry ladder

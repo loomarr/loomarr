@@ -84,6 +84,17 @@ func (s *Server) registerChannels(api huma.API) {
 	}, RoleAdmin), s.uploadChannelIcon)
 
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "upload-channel-watermark", Method: http.MethodPost, Path: "/v1/channels/{id}/watermark",
+		Summary: "Upload a custom channel watermark",
+		Description: "Admin only. A PNG or WebP with transparency, under 2 MB, in the `file` field. The image's " +
+			"alpha is the bug's shape. Stores it in the image service (role watermark, original kept) and sets " +
+			"the channel's policy.watermark.image, which wins over the automatic image. Clear it by saving the " +
+			"policy without watermark.image.",
+		Tags:         []string{"channels"},
+		MaxBodyBytes: maxIconBytes + 1024,
+	}, RoleAdmin), s.uploadChannelWatermark)
+
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "preview-channel-pods", Method: http.MethodGet, Path: "/v1/channels/{id}/pods",
 		Summary:     "Preview the commercial pool this channel would get",
 		Description: "Assembles the channel's SAVED filler pool WITHOUT touching Tunarr (§10, §12). Same code path and same seed as reconcile, so what you see is what the channel gets. Read-only, so any authenticated user may call it.",

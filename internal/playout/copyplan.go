@@ -42,6 +42,9 @@ type MediaFormat struct {
 	VideoPreroll bool
 	// Interlaced is the inventory measurement's field-order fact; the transcode deinterlaces it.
 	Interlaced bool
+	// Active is the measured picture area inside the coded frame (letterbox and pillarbox bars
+	// excluded), in source pixels; zero means the whole frame. The watermark anchors to it.
+	Active Rect
 
 	// Audio (the first/primary track — track SELECTION is a separate concern, see audio.go).
 	AudioCodec      string // e.g. "aac", "eac3", "ac3" — lowercased; empty when no audio

@@ -1296,6 +1296,8 @@ components:
           $ref: "#/components/schemas/SeasonalPolicy"
         separation:
           $ref: "#/components/schemas/SeparationPolicy"
+        watermark:
+          $ref: "#/components/schemas/WatermarkPolicy"
         window:
           description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
           examples:
@@ -10962,6 +10964,22 @@ components:
       required:
         - logo
       type: object
+    UploadWatermarkOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/UploadWatermarkOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        image:
+          description: The stored image hash, now the channel's policy.watermark.image
+          type: string
+      required:
+        - image
+      type: object
     UserBody:
       additionalProperties: false
       properties:
@@ -11090,6 +11108,46 @@ components:
         - when
         - what
         - how
+      type: object
+    WatermarkPolicy:
+      additionalProperties: false
+      properties:
+        callsign:
+          description: Text of the generated Plate bug; omitted derives it from the channel name
+          maxLength: 12
+          type: string
+        corner:
+          description: Corner of the active picture; omitted is top-right
+          enum:
+            - top-right
+            - top-left
+            - bottom-right
+            - bottom-left
+          type: string
+        enabled:
+          description: false turns the bug off; omitted is on (the default)
+          type: boolean
+        image:
+          description: Custom bug image hash (upload with role watermark); omitted is automatic
+          type: string
+        margin:
+          description: Inset from the picture edges as a share of the frame width and height, 0-0.2; omitted is 0.05
+          format: double
+          maximum: 0.2
+          minimum: 0
+          type: number
+        opacity:
+          description: Bug opacity, 0.1-1; omitted is 0.65
+          format: double
+          maximum: 1
+          minimum: 0.1
+          type: number
+        size:
+          description: Bug height as a share of the frame height, 0.02-0.15; omitted is 0.06
+          format: double
+          maximum: 0.15
+          minimum: 0.02
+          type: number
       type: object
     WhatVocab:
       additionalProperties: false
@@ -12148,6 +12206,51 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: What's on this channel now and next
+      tags:
+        - channels
+  /v1/channels/{id}/watermark:
+    post:
+      description: Admin only. A PNG or WebP with transparency, under 2 MB, in the `file` field. The image's alpha is the bug's shape. Stores it in the image service (role watermark, original kept) and sets the channel's policy.watermark.image, which wins over the automatic image. Clear it by saving the policy without watermark.image.
+      operationId: upload-channel-watermark
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            encoding:
+              file:
+                contentType: image/png,image/webp
+            schema:
+              properties:
+                file:
+                  contentEncoding: binary
+                  contentMediaType: application/octet-stream
+                  description: "The bug image: PNG or WebP with transparency, under 2 MB."
+                  format: binary
+                  type: string
+              required:
+                - file
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadWatermarkOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Upload a custom channel watermark
       tags:
         - channels
   /v1/diagnostics/client-events:

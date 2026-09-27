@@ -297,7 +297,7 @@ func TestBuild_IntelHDRUsesOpenCLNeverTonemapVAAPI(t *testing.T) {
 	}
 	want := "scale_vaapi=w=1920:h=1080:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010," +
 		"hwmap=derive_device=opencl,tonemap_opencl=tonemap=hable:desat=0:t=bt709:m=bt709:p=bt709:r=tv:format=nv12," +
-		"hwmap=derive_device=vaapi:reverse=1,pad_vaapi=w=1920:h=1080,"
+		"hwmap=derive_device=vaapi:reverse=1,pad_vaapi=w=1920:h=1080:x=(ow-iw)/2:y=(oh-ih)/2,"
 	if !strings.HasPrefix(p.VideoFilter, want) {
 		t.Errorf("Intel HDR graph:\n got %q\nwant prefix %q", p.VideoFilter, want)
 	}
