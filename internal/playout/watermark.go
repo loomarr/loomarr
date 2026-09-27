@@ -1,7 +1,12 @@
 package playout
 
 import (
+	"crypto/sha256"
+	_ "embed"
+	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -9,38 +14,70 @@ import (
 // The channel watermark ("bug"), #1512 phase 1d.
 //
 // A programme item is encoded with the channel's bug burned in; breaks (commercials, bumpers, IDs)
-// are encoded without it. The bug is drawn by the family's GPU overlay filter and NEVER on the CPU
-// (maintainer): a host whose GPU overlay failed the boot self-check (WatermarkCheck), or a family
-// without one, airs programmes bug-free and declares it in Pipeline.Fallbacks.
+// are encoded without it. The bug is blended on the GPU and NEVER on the CPU (maintainer): a host
+// whose GPU overlay failed the boot self-check (WatermarkCheck), or a family without one, airs
+// programmes bug-free and declares it in Pipeline.Fallbacks. The programme's frames never leave the
+// GPU for it; only the bug's own single frame is prepared on the CPU, once, before its upload.
 //
 // The image is pre-rendered by internal/watermark at its final pixel size with the opacity and
 // drop shadow baked into its alpha, so the graph only decodes it once, uploads it once and blends
-// it: no scale, no per-frame alpha maths. Every family's overlay blends STRAIGHT alpha, each from
-// its own pixel format; the convention is measured per family on real hardware, never assumed:
+// it: no per-frame scale or alpha maths. Every family blends STRAIGHT alpha, each from its own
+// pixel format; the convention is measured per family on real hardware, never assumed:
 //
 //   - overlay_cuda: a yuva420p bug onto a yuv420p main only (spike #1532, finding 1). It also emits
 //     the decoder's aligned surface (1920x1088 at 1080p) with an SPS that has no cropping, so
 //     scale_cuda passthrough=0 restores the output geometry; the SPS is then byte-identical to a
 //     bug-off item's (finding 2), which the self-check asserts.
-//   - overlay_vaapi: a bgra bug. ffmpeg flags any alpha format VA_BLEND_PREMULTIPLIED_ALPHA, but
-//     the household Arc (iHD, ffmpeg n8.1.2) blends it as straight: over a Y 71 patch a
-//     premultiplied bug read 129 where 65% white is 178. How it converts the bug's RGB depends on
-//     the MAIN frame's colour labels, which ffmpeg copies onto the bug layer (the blend's second
-//     VAProcPipelineParameterBuffer is a memcpy of the main's): under a bt709-labelled main (a
-//     tone-mapped HDR programme) the Arc carried RGB into Y unscaled, white at 255, while under an
-//     unlabelled one (an untagged SDR file) it scaled 255 to 235 (#1541). So the main is labelled
-//     like the output (conformColour) before the blend, and the bug is mapped into limited-range
-//     RGB first (limitedRGB). scripts/watermark-overlay-matrix.sh measures each.
+//   - VAAPI: Loomarr's own OpenCL kernel (watermark.cl) through ffmpeg's program_opencl, on the
+//     NV12 surface mapped from VAAPI and back, zero-copy (#1613). No stock filter works on the Arc:
+//     overlay_vaapi draws a correct bug at ~30 fps (798 ms per 1 s fragment, #1595), overlay_opencl
+//     reads its alpha from the bug's V plane over an NV12 main, and overlay_qsv and overlay_vulkan
+//     cannot map the surface. The kernel is a straight-alpha mix per plane, so the bug and its
+//     alpha are prepared once as full NV12 frames (kernelBug); against ffmpeg's CPU overlay it lands
+//     within ±1 in Y and inside the bug's chroma (TestLive_BlendKernelMatchesTheCPUOverlay).
 //
-// NVENC needs no range step: swscale's yuva420p conversion already puts white at 235, and the
-// matrix measured overlay_cuda's blend at alpha 0.651 and white 234.8. The self-check's bug-luma
-// assertion (coded luma, ±6) re-proves each family's convention and range on every host, so a
-// driver that disagrees disables the bug rather than airing it dim or super-white.
+// Neither family needs a range step: swscale converts the bug to limited range (white at 235), and
+// the matrix measured overlay_cuda's blend at alpha 0.651 and white 234.8. The self-check's bug
+// assertions (coded luma and chroma, ±6) re-prove each family's convention, range and colour on
+// every host, so a driver that disagrees disables the bug rather than airing it dim, super-white
+// or tinted.
 
-// limitedRGB maps the bug's full-range RGB into limited range (0→16, 255→235), once, on its single
-// decoded frame. Over a bt709-labelled main, overlay_vaapi carries a bgra bug's RGB straight into Y,
-// so without it the bug's white lands at 255 in a limited-range stream (#1541).
-const limitedRGB = "lutrgb=r=16+val*219/255:g=16+val*219/255:b=16+val*219/255"
+// blendKernel is the VAAPI family's blend (watermark.cl), shipped inside the binary.
+//
+//go:embed watermark.cl
+var blendKernel string
+
+// WriteBlendKernel writes the blend kernel into dir, named by its content, and returns its path:
+// program_opencl reads its source from a file. A kernel already there is left alone, so a running
+// ffmpeg never reads a half-written file, and a new release's kernel never shadows an old one.
+func WriteBlendKernel(dir string) (string, error) {
+	sum := sha256.Sum256([]byte(blendKernel))
+	path := filepath.Join(dir, "blend-bug-"+hex.EncodeToString(sum[:4])+".cl")
+	if b, err := os.ReadFile(path); err == nil && string(b) == blendKernel {
+		return path, nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(dir, ".blend-bug-*")
+	if err != nil {
+		return "", err
+	}
+	if _, err := tmp.WriteString(blendKernel); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		_ = os.Remove(tmp.Name())
+		return "", err
+	}
+	return path, nil
+}
 
 // Corner is where the bug sits, relative to the active picture.
 type Corner string
@@ -64,7 +101,10 @@ type Rect struct {
 type Watermark struct {
 	// Straight is the rendered PNG, straight (non-premultiplied) alpha: final pixel size, opacity
 	// and shadow baked in, even dimensions (yuva420p).
-	Straight      string
+	Straight string
+	// Kernel is the VAAPI family's blend kernel on disk (WriteBlendKernel); without it the VAAPI
+	// family airs the programme bug-free.
+	Kernel        string
 	Width, Height int
 	Corner        Corner
 	// MarginX and MarginY are output pixels from the active picture's edges.
@@ -134,6 +174,10 @@ func (b *builder) overlay() bool {
 		why = fmt.Sprintf("bad bug size %dx%d", b.wm.Width, b.wm.Height)
 	case !safeGraphPath.MatchString(b.wm.Straight):
 		why = "the bug's path would need escaping in the filter graph"
+	case b.host.Family == FamilyVAAPI && b.wm.Kernel == "":
+		why = "no blend kernel file for the VAAPI overlay"
+	case b.host.Family == FamilyVAAPI && !safeGraphPath.MatchString(b.wm.Kernel):
+		why = "the blend kernel's path would need escaping in the filter graph"
 	}
 	if why != "" {
 		b.fallback("watermark", "disabled: "+why)
@@ -146,6 +190,31 @@ func (b *builder) overlay() bool {
 // chain's input and the last chain's output are the simple graph's own, so ItemArgs keeps -vf.
 func overlaid(main []string, bug, blend string, after ...string) string {
 	return strings.Join(main, ",") + "[main];" + bug + "[wm];[main][wm]" + strings.Join(append([]string{blend}, after...), ",")
+}
+
+// bugPTS is where the kernel's bug inputs sit in time: before any programme frame. program_opencl's
+// framesync holds a one-frame input forever after its EOF, but drops every main frame earlier than
+// an input's first frame (before=EXT_STOP), and a seek can start the main a few frames below 0.
+const bugPTS = "-86400/TB"
+
+// kernelBug is the VAAPI kernel's bug inputs from the bug's one decoded frame, on the CPU once
+// (never per programme frame), each uploaded to OpenCL once:
+//
+//   - [wm], the bug placed on a transparent frame of the output size (the kernel takes no position),
+//     in NV12, BT.709 limited range (swscale converts RGB with BT.601 unless told);
+//   - [wa], its alpha, NV12-shaped: Y is the alpha, and both chroma channels are the 2x2 mean, the
+//     chroma alpha ffmpeg's CPU overlay uses for 4:2:0.
+//
+// Each is labelled and re-timed like the main (program_opencl negotiates colour in common, and its
+// output keeps input 0's time base but carries framesync's pts, which an AVTB-only graph makes equal).
+func (b *builder) kernelBug() string {
+	x, y := b.wm.position(b.src, b.out)
+	upload := conformColour + ",hwupload=derive_device=opencl,settb=AVTB,setpts=" + bugPTS
+	return fmt.Sprintf("movie=filename=%s,format=rgba,pad=w=%d:h=%d:x=%d:y=%d:color=black@0,split[wmc][wma];",
+		b.wm.Straight, b.out.Width, b.out.Height, x, y) +
+		"[wmc]scale=out_color_matrix=bt709:out_range=tv,format=nv12," + upload + "[wm];" +
+		"[wma]alphaextract,format=gray,split[wmay][wmah];[wmah]scale=w=iw/2:h=ih/2:flags=area,split[wmau][wmav];" +
+		"[wmay][wmau][wmav]mergeplanes=map0s=0:map0p=0:map1s=1:map1p=0:map2s=2:map2p=0:format=yuv420p,format=nv12," + upload + "[wa]"
 }
 
 func (b *builder) bugPosition() string {

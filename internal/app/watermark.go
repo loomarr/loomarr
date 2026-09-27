@@ -53,6 +53,23 @@ type channelWatermarks struct {
 	mu     sync.Mutex
 	gates  map[playout.Encoder]*watermarkGate
 	render sync.Mutex // one render at a time; each is cached on disk
+
+	kernelOnce sync.Once
+	kernel     string // the VAAPI family's blend kernel beside the bugs, written on first use
+}
+
+// blendKernel is the path of the VAAPI blend kernel, or "" when it could not be written: the VAAPI
+// graph then airs the programme bug-free and says why.
+func (c *channelWatermarks) blendKernel() string {
+	c.kernelOnce.Do(func() {
+		k, err := playout.WriteBlendKernel(c.dir)
+		if err != nil {
+			c.log.Warn("watermark: the VAAPI blend kernel could not be written; VAAPI airs without the bug", "err", err)
+			return
+		}
+		c.kernel = k
+	})
+	return c.kernel
 }
 
 type watermarkGate struct{ works atomic.Bool }
@@ -113,7 +130,7 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 		c.log.Warn("watermark: the channel's bug could not be rendered; airing without it", "channel", channelID, "err", err)
 		return nil
 	}
-	return &playout.Watermark{Straight: straight, Width: w, Height: h,
+	return &playout.Watermark{Straight: straight, Kernel: c.blendKernel(), Width: w, Height: h,
 		Corner: playout.Corner(res.Corner), MarginX: evenRound(res.Margin * float64(width)), MarginY: evenRound(res.Margin * float64(height))}
 }
 

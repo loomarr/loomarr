@@ -71,6 +71,47 @@ func TestCompareBug_SeesTheLostProgramme(t *testing.T) {
 	}
 }
 
+// yuvFrame is a yuv420p check frame: a flat background with the square sq in another colour.
+func yuvFrame(bg, in [3]byte, sq Rect) []byte {
+	f := frame(bg[0], sq, in[0])
+	for _, n := range []int{1, 2} {
+		for r := 0; r < checkHeight/2; r++ {
+			for x := 0; x < checkWidth/2; x++ {
+				c := bg[n]
+				if 2*x >= sq.X && 2*x < sq.X+sq.W && 2*r >= sq.Y && 2*r < sq.Y+sq.H {
+					c = in[n]
+				}
+				f = append(f, c)
+			}
+		}
+	}
+	return f
+}
+
+// The luma assertion cannot see a colour cast: stock overlay_opencl over NV12 blended the bug's
+// luma exactly and pulled V toward 0, a green bug (#1595). A white bug's chroma is neutral, so the
+// blend's U and V are 128·a + background·(1-a), and the check asserts them too.
+func TestBugChroma_SeesAColourCast(t *testing.T) {
+	bug := Rect{X: 1680, Y: 54, W: 64, H: 64}
+	bg := [3]byte{120, 90, 170}
+	blend := func(c byte, white float64) byte {
+		return byte(math.Round(checkAlpha*white + (1-checkAlpha)*float64(c)))
+	}
+	good := [3]byte{blend(bg[0], 235), blend(bg[1], 128), blend(bg[2], 128)}
+	off := yuvFrame(bg, bg, Rect{})
+	if err := bugChroma(off, yuvFrame(bg, good, bug), bug); err != nil {
+		t.Fatalf("a correct blend fails: %v", err)
+	}
+	for name, wrong := range map[string][3]byte{
+		"V pulled to 0 (stock overlay_opencl)": {good[0], good[1], blend(bg[2], 0)},
+		"no chroma blend":                      {good[0], bg[1], bg[2]},
+	} {
+		if err := bugChroma(off, yuvFrame(bg, wrong, bug), bug); err == nil {
+			t.Errorf("%s passes", name)
+		}
+	}
+}
+
 func TestSameParameterSets(t *testing.T) {
 	sps := []byte{0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27, 0xe5, 0x80}
 	sps1088 := []byte{0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x04, 0x4f, 0xcb, 0x80}

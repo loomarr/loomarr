@@ -575,13 +575,13 @@ func (b *builder) vaapi() error {
 	// pad_vaapi places the picture at x=0:y=0 unless told to centre it.
 	f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2", b.out.Width, b.out.Height))
 	if b.overlay() {
+		// The shipped OpenCL kernel on the surface mapped from VAAPI, zero-copy both ways
+		// (watermark.go, #1613). Every kernel input carries the output's labels and time base.
 		b.p.Watermark = true
-		// Straight-alpha bgra in limited-range RGB, over a main labelled like the output
-		// (watermark.go): overlay_vaapi hands the bug layer the main's colour labels, and on the Arc a
-		// bt709 label carries the bug's RGB into Y unscaled.
-		f = append(f, conformColour)
-		b.p.VideoFilter = overlaid(f, "movie=filename="+b.wm.Straight+",format=bgra,"+limitedRGB+",hwupload",
-			"overlay_vaapi="+b.bugPosition(), b.tail())
+		f = append(f, conformColour, "settb=AVTB", "hwmap=derive_device=opencl")
+		b.p.VideoFilter = strings.Join(f, ",") + "[main];" + b.kernelBug() +
+			";[main][wm][wa]program_opencl=source=" + b.wm.Kernel + ":kernel=blend_bug:inputs=3," +
+			"hwmap=derive_device=vaapi:reverse=1,format=vaapi," + b.tail()
 		return nil
 	}
 	b.p.VideoFilter = strings.Join(append(f, b.tail()), ",")
