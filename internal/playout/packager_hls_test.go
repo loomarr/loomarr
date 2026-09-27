@@ -1,6 +1,7 @@
 package playout
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -646,5 +647,141 @@ func TestMasterPlaylistNamesEachVariant(t *testing.T) {
 		"#EXT-X-STREAM-INF:BANDWIDTH=40000000,AVERAGE-BANDWIDTH=30000000,RESOLUTION=3840x2160,FRAME-RATE=25.000\n4k-hevc-hdr.m3u8\n"
 	if got != want {
 		t.Fatalf("master:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// boxCut passes whole top-level boxes and, stopped, ends the stream cleanly at the next box
+// boundary: the packager never reads a partial fragment of an encoder it is replacing.
+func TestBoxCutEndsAtABoxBoundary(t *testing.T) {
+	box := func(typ string, body int) []byte {
+		b := make([]byte, 8+body)
+		b[3] = byte(8 + body)
+		copy(b[4:], typ)
+		return b
+	}
+	stream := slices.Concat(box("moof", 8), box("mdat", 40), box("moof", 8), box("mdat", 40))
+	c := &boxCut{r: bytes.NewReader(stream)}
+	first := make([]byte, 3) // smaller than a header: reads must still split correctly
+	got := []byte{}
+	for len(got) < 16+48 {
+		n, err := c.Read(first)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, first[:n]...)
+	}
+	c.stop.Store(true)
+	rest, err := io.ReadAll(c)
+	if err != nil || len(rest) != 0 || !bytes.Equal(got, stream[:64]) {
+		t.Fatalf("after a stop at a boundary: %d more bytes, err %v; want a clean EOF after the first fragment", len(rest), err)
+	}
+
+	c = &boxCut{r: bytes.NewReader(stream)}
+	head := make([]byte, 20)
+	if _, err := io.ReadFull(c, head); err != nil { // inside the first mdat
+		t.Fatal(err)
+	}
+	c.stop.Store(true)
+	rest, err = io.ReadAll(c)
+	if err != nil || 20+len(rest) != 64 {
+		t.Fatalf("a stop mid-box read %d bytes in all (err %v); want the box finished, then EOF at 64", 20+len(rest), err)
+	}
+
+	c = &boxCut{r: bytes.NewReader(stream[:30])}
+	if _, err := io.ReadAll(c); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("a stream cut mid-box: err = %v, want ErrUnexpectedEOF", err)
+	}
+}
+
+// On a software host the item encoder's -progress drives the ladder (#1517): a slow encoder is
+// stepped down, its stream ends at a box boundary, the lease is re-priced, and the airing resumes on
+// the new rung with a hold instead of a slate. A GPU host's encoder is not watched.
+func TestPackagerLadderStepsASlowItemDownAndResumesIt(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args")
+	ffmpeg := filepath.Join(dir, "ffmpeg")
+	// A 0.5x encoder: 50 ms of media per 100 ms, and 8-byte boxes on stdout.
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + argsFile + "\nt=0\nwhile :; do\n  printf '\\000\\000\\000\\010free'\n" +
+		"  t=$((t+50000))\n  printf 'out_time_ms=%d\\nprogress=continue\\n' $t >&3 2>/dev/null\n  sleep 0.1\ndone\n"
+	if err := os.WriteFile(ffmpeg, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewPackagerHLS(hdrItemSource{}, ffmpeg, t.TempDir(), time.Hour, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Stop)
+	m.ladderCfg = RungMonitorConfig{Settle: 100 * time.Millisecond, Window: 300 * time.Millisecond, DownFor: 400 * time.Millisecond}
+	budget := NewResourceBudget(func() BudgetFacts { return softwareHDRFacts(8) })
+	lease, err := budget.Admit(context.Background(), AdmitRequest{Class: ClassHDR4K})
+	if err != nil || lease.SoftwareRung() != RungFull {
+		t.Fatalf("admission: %v, rung %s; want full on 8 cores", err, lease.SoftwareRung())
+	}
+	host, out := hdrItemSource{}.Output(context.Background(), "ch", "", 0)
+	sched := m.schedule(packagedKey{channel: "ch"}, host, out, lease, nil, slog.New(slog.DiscardHandler))
+	at := time.Now()
+	slot := packager.Slot{Frames: 100_000, AudioFrames: 100_000}
+
+	item, err := sched(t.Context(), at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc, err := item.Open(t.Context(), slot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan []byte, 1)
+	go func() { b, _ := io.ReadAll(rc); done <- b }()
+	select {
+	case b := <-done:
+		if len(b) == 0 || len(b)%8 != 0 {
+			t.Fatalf("the stepped encoder's stream ended with %d bytes; want whole boxes", len(b))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a 0.5x encoder was never stepped down")
+	}
+	_ = rc.Close()
+	if lease.SoftwareRung() != RungLight || budget.Snapshot().InUse.CPUCores > 3.6*heavyRungCosts[RungLight]+1e-9 {
+		t.Fatalf("lease after the step: rung %s, %.3f cores; want rung 1 re-priced", lease.SoftwareRung(), budget.Snapshot().InUse.CPUCores)
+	}
+
+	resumed, err := sched(t.Context(), at.Add(2*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Wait != ladderResumeWait {
+		t.Errorf("resumed airing Wait = %s, want %s so it holds instead of slating", resumed.Wait, ladderResumeWait)
+	}
+	rc, err = resumed.Open(t.Context(), slot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var args []byte
+	for deadline := time.Now().Add(5 * time.Second); strings.Count(string(args), "\n") < 2 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		args, _ = os.ReadFile(argsFile)
+	}
+	_ = rc.Close()
+	lines := strings.Split(strings.TrimSpace(string(args)), "\n")
+	if len(lines) != 2 || strings.Contains(lines[0], "-skip_loop_filter") || !strings.Contains(lines[1], "-skip_loop_filter:v all") ||
+		!strings.Contains(lines[0], "-progress pipe:3") {
+		t.Fatalf("encoder commands: want a watched rung-0 encode, then rung 1:\n%s", args)
+	}
+	if again, _ := sched(t.Context(), at.Add(3*time.Second)); again.Wait != 0 {
+		t.Error("a resume without a new step still held")
+	}
+
+	gpu := m.schedule(packagedKey{channel: "gpu"}, HostFor(EncoderNVENC, true, GPUFilters{}), out, nil, nil, slog.New(slog.DiscardHandler))
+	if item, err := gpu(t.Context(), at); err == nil {
+		if rc, err := item.Open(t.Context(), slot); err == nil {
+			for deadline := time.Now().Add(5 * time.Second); strings.Count(string(args), "\n") < 3 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+				args, _ = os.ReadFile(argsFile)
+			}
+			_ = rc.Close()
+		}
+	}
+	args, _ = os.ReadFile(argsFile)
+	lines = strings.Split(strings.TrimSpace(string(args)), "\n")
+	if len(lines) != 3 || strings.Contains(lines[2], "-progress") {
+		t.Fatalf("a GPU host's item encoder: want one unwatched command, got:\n%s", args)
 	}
 }

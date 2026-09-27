@@ -387,6 +387,9 @@ func (l *Lease) NewRungMonitor(cfg RungMonitorConfig) *RungMonitor {
 	if cfg.Costs[RungFull] == 0 {
 		cfg.Costs = rungCostsOf(l.Class())
 	}
+	if cfg.CPUAllowance == 0 {
+		cfg.CPUAllowance = l.b.currentFacts().CPUAllowance // the ledger vetoes what others hold
+	}
 	cfg.Reprice = l.StepSoftware
 	return NewRungMonitor(l.SoftwareRung(), cfg)
 }
