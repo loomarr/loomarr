@@ -39,6 +39,9 @@ func costClass(out OutputProfile, convert bool) FormatClass {
 	return FormatBaseline
 }
 
+// isPremium reports whether c is one of the premium formats.
+func (c FormatClass) isPremium() bool { return c == Format4KSDR || c == Format4KHDR }
+
 // FormatSpec is what a class puts on the wire.
 type FormatSpec struct {
 	Codec         string // "h264" or "hevc"

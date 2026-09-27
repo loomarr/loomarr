@@ -2741,8 +2741,20 @@ range never changes mid-stream: on an HDR stream, SDR and HLG items are converte
 drops a premium format, and says why, when it is software-only, when its encoder has no GPU graph
 (QSV, AMF and other generic families) or, for HDR, when libplacebo is missing. `GET
 /v1/channels/{id}/formats` reports the baseline, what this host airs, what the lineup would warrant and
-any drop reason. ⚠ **Today the packager serves only the baseline.** A premium variant waits for a
-client opt-in.
+any drop reason.
+
+**The premium is served on a client's opt-in.** The master names the premium beside the baseline from
+its output alone: CODECS (the running init's own, or the HEVC Main/Main 10 string predicted before one
+runs), RESOLUTION, FRAME-RATE and `VIDEO-RANGE=PQ` for HDR10. Only a request for the premium's media
+playlist starts its packager, so a baseline viewer never starts a 4K encode. That packager holds one
+`premium_4k` lease for the channel's whole lineup. The class probe measures `premium_4k` at 2160p on GPU
+hosts through the packager's own item builder, taking the costlier of its item paths (a PQ item, an SDR
+item converted to HDR10). A measured host without that cell, or without room, leaves the premium out of
+the master and refuses a premium play with 503. An HDR10 packager inserts the channel's static SEI
+before the first slice of every IDR and writes `mdcv`/`clli` (and `colr` when missing) into the served
+init; decoder comparisons keep reading the encoder's own init. A browser plays the premium only when
+`MediaSource.isTypeSupported` accepts its exact CODECS, and pins that one level for the tune. On TV,
+ExoPlayer's default track selector picks it only when the device's decoder can play it.
 
 **One builder, full-GPU graphs per hardware family.** `playout.Build` takes a host profile, a source
 and an output, and returns the ffmpeg pieces. Frames stay on the GPU from decode to encode, and a stage

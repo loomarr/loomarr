@@ -292,7 +292,7 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 	resolvedAt := time.Now()
 	first, ferr := m.source.ItemAt(ctx, key.channel, resolvedAt)
 	req := AdmitRequest{Class: ClassSDR}
-	if key.format != FormatBaseline {
+	if key.format.isPremium() {
 		req = premiumAdmission
 	} else if ferr == nil && first.Input != "" {
 		req.Class = ClassOf(first.Format)
@@ -390,7 +390,7 @@ func (m *PackagerHLS) schedule(
 		itemOut := out
 		// A premium lease keeps its class: it was priced for the channel's whole lineup.
 		itemClass := ClassOf(it.Format)
-		if key.format != FormatBaseline {
+		if key.format.isPremium() {
 			itemClass = ClassPremium4K
 		}
 		airing := it.Label + "\x00" + it.Input
