@@ -160,9 +160,10 @@ image, callsign}`, and a nil field means the default (on, top-right, opacity 0.6
 /v1/channels/{id}/watermark` uploads a custom PNG or WebP. Placement anchors to the measured active
 picture, so a letterboxed film gets the bug inside its picture. A self-check encodes a clip with and
 without the bug and asserts that the programme is unchanged outside it, that the bug's blend is 65%
-white over the measured background in coded (limited-range) luma, and that the SPS and PPS are
-byte-identical. If it fails the watermark is off on that host and a `watermark.disabled` Diagnostics
-event says so.
+white over the measured background in coded (limited-range) luma, that the SPS and PPS are
+byte-identical, and that the overlay adds at most 10 ms per frame to the bug-off encode (the
+household Arc's `overlay_vaapi` drew a correct bug at 1.25x realtime, #1595). If it fails the
+watermark is off on that host and a `watermark.disabled` Diagnostics event says so.
 
 **Admission is one ledger.** See "Admission is one measured ledger" below.
 

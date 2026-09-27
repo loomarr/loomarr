@@ -3,6 +3,7 @@ package playout
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 // frame is a flat luma frame with an optional square painted in.
@@ -17,6 +18,29 @@ func frame(bg byte, sq Rect, v byte) []byte {
 		}
 	}
 	return y
+}
+
+// A drawn, correct bug is still a failure when the overlay cannot keep pace (#1595): on the
+// household Arc, overlay_vaapi made every 1 s fragment take ~800 ms instead of ~40 (1.25x realtime),
+// so a cold tune's first fragment took ~1 s and its first manifest ~3.4 s. NVENC's overlay_cuda adds
+// nothing measurable. The verdict is the overlay's added cost per frame over the bug-off graph.
+func TestOverlaySpeed_DisablesAnOverlayThatCannotKeepPace(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		off, on time.Duration
+		ok      bool
+	}{
+		// The Arc's measured rates, bug-off and bug-on (40 and ~800 ms per 24 frames), plus start-up.
+		{"Arc overlay_vaapi", 150*time.Millisecond + checkFrames*40*time.Millisecond/24, 150*time.Millisecond + checkFrames*800*time.Millisecond/24, false},
+		{"NVENC overlay_cuda, HDR (measured)", 883 * time.Millisecond, 1175 * time.Millisecond, true},
+		{"on the budget", time.Second, time.Second + checkFrames*overlayFrameBudget, true},
+		{"just over it", time.Second, time.Second + checkFrames*overlayFrameBudget + time.Millisecond, false},
+	} {
+		err := overlaySpeed(tc.off, tc.on, checkFrames)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: err = %v, want ok %v", tc.name, err, tc.ok)
+		}
+	}
 }
 
 // The n8.1.2 overlay_cuda failure (#1532 finding 4): the bug is drawn, the programme is gone (all
