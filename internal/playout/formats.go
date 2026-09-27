@@ -1,5 +1,7 @@
 package playout
 
+import "fmt"
+
 // Channel formats (#1512 G10). Every channel airs a 1080p SDR H.264 baseline. When its lineup
 // warrants it, it also airs ONE premium HEVC format, so a channel costs at most two encodes, and a
 // format's dynamic range never changes mid-stream.
@@ -36,6 +38,9 @@ func costClass(out OutputProfile, convert bool) FormatClass {
 	}
 	return FormatBaseline
 }
+
+// isPremium reports whether c is one of the premium formats.
+func (c FormatClass) isPremium() bool { return c == Format4KSDR || c == Format4KHDR }
 
 // FormatSpec is what a class puts on the wire.
 type FormatSpec struct {
@@ -143,6 +148,23 @@ func PremiumOutput(class FormatClass, base OutputProfile) (OutputProfile, bool) 
 // premium reports whether this output is a premium format: HDR, or more pixels than 1080p.
 func (o OutputProfile) premium() bool {
 	return o.HDR || o.Width*o.Height > 1920*1080
+}
+
+// premiumCodecs is the CODECS a premium output's init will name, for a master listing it before
+// its packager has run: the hvc1 entry every HEVC encode is tagged with (videoEncoder, Apple's HLS
+// requirement); Main 10 for HDR10, else Main (compatible
+// with Main 10); Main tier at level 5.0 for 3840x2160 up to 30 fps, 5.1 above; progressive
+// frame-only; and the AAC-LC every item's audio is (BuildItem). A running packager's init replaces
+// it (packager.CodecsAttr).
+func (o OutputProfile) premiumCodecs() string {
+	profile, level := "1.6", 150
+	if o.HDR {
+		profile = "2.4"
+	}
+	if o.FPS > 30 {
+		level = 153
+	}
+	return fmt.Sprintf("hvc1.%s.L%d.90,mp4a.40.2", profile, level)
 }
 
 // FormatOutput is what a channel's packager for class encodes (#1512 phase 2). The baseline is H.264

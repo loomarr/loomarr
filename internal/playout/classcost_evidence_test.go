@@ -12,13 +12,15 @@ func TestClassCosts_RoundTripKeyedToFingerprintAndEncoder(t *testing.T) {
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 	m := MeasuredCosts{Encoder: EncoderNVENC, SessionLimit: 12, ObservedAt: now, Costs: map[CostKey]ClassCost{
 		{Class: ClassSDR, Height: 1080}: {Speed: 19.18, CPUCores: 0.026}, {Class: ClassHDR4K, Height: 720}: {Speed: 11, CPUCores: 0.14},
+		{Class: ClassPremium4K, Height: 2160}: {Speed: 3.1, CPUCores: 0.19}, // admitted only on this cell
 	}}
 	if err := StoreClassCosts(root, "fp", m); err != nil {
 		t.Fatal(err)
 	}
 	got, ok := LoadClassCosts(root, "fp", EncoderNVENC, now.Add(time.Hour))
 	if !ok || got.SessionLimit != 12 || got.Costs[CostKey{Class: ClassSDR, Height: 1080}] != m.Costs[CostKey{Class: ClassSDR, Height: 1080}] ||
-		len(got.Costs) != 2 {
+		got.Costs[CostKey{Class: ClassPremium4K, Height: 2160}] != m.Costs[CostKey{Class: ClassPremium4K, Height: 2160}] ||
+		len(got.Costs) != 3 {
 		t.Fatalf("round trip = %+v, %v", got, ok)
 	}
 	for name, load := range map[string]func() bool{

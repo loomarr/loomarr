@@ -937,3 +937,24 @@ func TestCodecsAttrReadsTheInit(t *testing.T) {
 		t.Fatalf("CodecsAttr of junk = %q, want empty", got)
 	}
 }
+
+// A premium variant's CODECS is what a web player checks with MediaSource.isTypeSupported before it
+// picks the variant (#1512 G10), so it must be the init's own: the sample entry's 4CC and the SPS's
+// profile, compatibility flags, tier, level and constraint bytes (ISO/IEC 14496-15 E.3). The fixture
+// is libx265 Main 10 at level 1 (ffprobe: hvc1, Main 10, level 30); its own hvcC box carries
+// compatibility 0x20000000 (flag 2 only, so 4 reversed) and constraint bytes 90 00 00 00 00 00
+// (progressive, frame-only).
+func TestCodecsAttrNamesAnHEVCInit(t *testing.T) {
+	init, _ := hevcFixture(t)
+	if got, want := CodecsAttr(init), "hvc1.2.4.L30.90,mp4a.40.2"; got != want {
+		t.Fatalf("CodecsAttr(HEVC Main 10 init) = %q, want %q", got, want)
+	}
+	// The HDR10 boxes the packager adds to the served init leave its CODECS alone.
+	boxed, err := testHDR10.init(init)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := CodecsAttr(boxed); got != CodecsAttr(init) {
+		t.Fatalf("CodecsAttr(HDR10 init) = %q, want the raw init's %q", got, CodecsAttr(init))
+	}
+}

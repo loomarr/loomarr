@@ -1,5 +1,7 @@
 package playout
 
+import "github.com/loomarr/loomarr/internal/playout/packager"
+
 // The channel-level HDR10 static metadata (#1512 G10, spike 0b decision 2). A 4K HDR channel airs
 // titles mastered on different displays plus converted SDR items. If each item carried its own
 // mastering-display and light-level SEI, the TV would re-evaluate its tone curve at every seam. So
@@ -49,14 +51,7 @@ const (
 // SEI is the Annex B prefix SEI NAL unit (start code included) carrying m's mastering display
 // colour volume and content light level messages.
 func (m HDR10Metadata) SEI() []byte {
-	var mdcv []byte
-	for _, p := range m.Primaries {
-		mdcv = be16(be16(mdcv, p[0]), p[1])
-	}
-	mdcv = be16(be16(mdcv, m.WhitePoint[0]), m.WhitePoint[1])
-	mdcv = be32(be32(mdcv, m.MaxLuminance), m.MinLuminance)
-	clli := be16(be16(nil, m.MaxCLL), m.MaxFALL)
-
+	mdcv, clli := m.mdcv(), m.clli()
 	rbsp := append([]byte{seiMasteringDisplay, byte(len(mdcv))}, mdcv...)
 	rbsp = append(rbsp, seiContentLight, byte(len(clli)))
 	rbsp = append(rbsp, clli...)
@@ -65,6 +60,28 @@ func (m HDR10Metadata) SEI() []byte {
 	// NAL header: forbidden_zero_bit 0, nal_unit_type, nuh_layer_id 0, nuh_temporal_id_plus1 1.
 	nal := []byte{0, 0, 0, 1, nalPrefixSEI << 1, 1}
 	return append(nal, escapeRBSP(rbsp)...)
+}
+
+// mdcv is the mastering display colour volume message's payload, which is also the ISOBMFF mdcv
+// box's: G, B, R primaries, white point, then max and min luminance.
+func (m HDR10Metadata) mdcv() []byte {
+	var b []byte
+	for _, p := range m.Primaries {
+		b = be16(be16(b, p[0]), p[1])
+	}
+	b = be16(be16(b, m.WhitePoint[0]), m.WhitePoint[1])
+	return be32(be32(b, m.MaxLuminance), m.MinLuminance)
+}
+
+// clli is the content light level message's payload, which is also the clli box's.
+func (m HDR10Metadata) clli() []byte { return be16(be16(nil, m.MaxCLL), m.MaxFALL) }
+
+// Packager is m as a premium HDR10 packager writes it: the SEI for every IDR, the same values as
+// the init's mdcv and clli boxes, and an nclx colr (BT.2020 primaries 9, PQ transfer 16, BT.2020
+// non-constant matrix 9, limited range) for an encoder that wrote none.
+func (m HDR10Metadata) Packager() *packager.HDR10 {
+	return &packager.HDR10{SEI: m.SEI(), MDCV: m.mdcv(), CLLI: m.clli(),
+		Colr: []byte{'n', 'c', 'l', 'x', 0, 9, 0, 16, 0, 9, 0}}
 }
 
 // escapeRBSP inserts emulation_prevention_three_byte wherever two zero bytes precede a byte <= 3,

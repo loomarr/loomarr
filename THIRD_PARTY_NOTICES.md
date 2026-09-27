@@ -107,12 +107,17 @@ binds the pinned FFmpeg and yt-dlp asset identities to upstream release, source/
 references. It is traceability evidence only: it does not retain corresponding source or provide
 source-retention, distribution, or legal clearance.
 
-The pinned FFmpeg and yt-dlp source materials are available without authentication or charge in
-[Loomarr's August source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-08-31).
-Download `source-materials.tar.gz` and `ffmpeg-original-download-cache.zip`, then verify them against
-`SHA256SUMS`. `README.txt` explains the contents; `source-package-inventory.json` records all 490
-source/license file hashes. The [distribution record](docs/engineering/evidence/source-distribution-2026-08-31.json)
-binds public asset URLs, sizes and SHA256 digests to the accepted dependency pins. These directions
+The pinned FFmpeg and yt-dlp source materials are available without authentication or charge in two
+Loomarr source releases. The [n9.0 source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-09-27)
+carries the shipped FFmpeg's exact source, BtbN build recipe and original dependency download cache.
+The [August source release](https://github.com/loomarr/loomarr/releases/tag/third-party-sources-2026-08-31)
+carries yt-dlp, the retained dependency and runtime sources and license texts: download
+`source-materials.tar.gz` and `ffmpeg-original-download-cache.zip`. Verify every download against its
+release's `SHA256SUMS`. Each `README.txt` explains the contents; the August
+`source-package-inventory.json` records all 490 source/license file hashes. The distribution records
+([n9.0](docs/engineering/evidence/source-distribution-2026-09-27.json),
+[August](docs/engineering/evidence/source-distribution-2026-08-31.json)) bind public asset URLs, sizes
+and SHA256 digests to the accepted dependency pins. These directions
 ship in the image at `/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md`. Application release notes link
 the same source location alongside the image and bind the exact application commit/image separately.
 
@@ -161,10 +166,11 @@ logs were retained before expiry. The [retention record](docs/engineering/eviden
 binds those archives to the new pins and records the remaining distribution and validation work.
 The n9.0 build (#1549) comes from the same release, the same BtbN build scripts and the same
 retention policy; only the FFmpeg source commit differs: `e47273f4d9227152dcbf543cebaf9e2430ddbcc4`.
-⚠ The published source release below carries the n8.1 commit. An image with the n9.0 build must not
-be redistributed until that release also carries the n9.0 FFmpeg source (see the retention record).
+It was built in the same BtbN run as the n8.1 build and restored the same dependency download cache;
+the retention record gives the evidence. The n9.0 source release carries that exact FFmpeg commit,
+the BtbN build scripts and the cache.
 
-The source release retains the exact FFmpeg commit `1a748fe2cd43e3ead22fafb1b5b7d77f153898a8`,
+The August source release retains the n8.1 FFmpeg commit `1a748fe2cd43e3ead22fafb1b5b7d77f153898a8`,
 BtbN build scripts at `8267213e26c1031621e6e1210fe3aa4867214f6a`, the original dependency source
 cache, supplemental dependency sources and license texts. The unchanged `make test-ffmpeg` gate
 passed on both Linux architectures at source-pin commit `c4c8b6a4`; final release-commit and image

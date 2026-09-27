@@ -79,6 +79,12 @@ GitHub's branch-protection API when changing repository protection.
 A `changes` job diffs against the merge base and each job gates on its output. It fails safe: no
 usable merge base — first push, force-push, new branch — runs everything.
 
+`scripts/ci-diff-base.sh` resolves that base from the event payload. A PR diffs against its base
+commit; a merge-queue batch diffs against `merge_group.base_sha`, the main commit it is stacked on,
+so the queue selects the same gates as the PR it carries and a docs-only or Go-only batch never
+waits on the native client builds. `scripts/ci-diff-base-test.sh` proves both, end to end through
+the classifier.
+
 **Adding a new build input means adding it to the filter in the same PR.**
 
 Three non-obvious entries: `docs/help/` is in the Go filter because those pages are embedded and

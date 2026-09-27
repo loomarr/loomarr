@@ -110,14 +110,6 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_SCOPE: ${{ inputs.scope || '' }}
-          # ⚠ `merge_group` carries NEITHER `pull_request.base.sha` NOR `before`. Left to fall
-          # through it hits the fail-safe below and every job runs — correct, but it makes the
-          # queue cost a full ~14-minute matrix for a docs-only batch. `merge_group.base_sha`
-          # is the main commit the batch is stacked on, which is exactly the right diff base.
-          BASE: >-
-            ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha
-             || github.event_name == 'merge_group' && github.event.merge_group.base_sha
-             || github.event.before }}
         run: |
           set -uo pipefail
           ./scripts/ci-lane.sh "$EVENT_NAME" "$DISPATCH_SCOPE" >> "$GITHUB_OUTPUT"
@@ -125,10 +117,12 @@ jobs:
             ./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # No usable base (first push, force-push, a new branch): run everything. Skipping
-          # because we could not work out what changed would be the wrong failure direction.
-          if [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
-             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          # The merge queue diffs against the batch's main base, so it selects the same gates as
+          # the PR it carries (scripts/ci-diff-base-test.sh). No usable base (first push,
+          # force-push, a new branch): run everything. Skipping because we could not work out
+          # what changed would be the wrong failure direction.
+          BASE="$(./scripts/ci-diff-base.sh "$EVENT_NAME" "$GITHUB_EVENT_PATH")"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "no usable base ($BASE) — running every job"
             { echo "go=true"; echo "web=true"; echo "clients=true"; echo "image=true"; echo "docs=true"; echo "agent=true"; echo "android=true"; echo "release_candidate=false"; } >> "$GITHUB_OUTPUT"
             exit 0
@@ -248,10 +242,6 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_SCOPE: ${{ inputs.scope || '' }}
-          BASE: >-
-            ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha
-             || github.event_name == 'merge_group' && github.event.merge_group.base_sha
-             || github.event.before }}
           LEGACY_GO: ${{ steps.filter.outputs.go }}
           LEGACY_WEB: ${{ steps.filter.outputs.web }}
           LEGACY_CLIENTS: ${{ steps.filter.outputs.clients }}
@@ -262,11 +252,11 @@ jobs:
         run: |
           set -uo pipefail
           reason="classified the merge-base diff"
+          BASE="$(./scripts/ci-diff-base.sh "$EVENT_NAME" "$GITHUB_EVENT_PATH")"
           if [ "$EVENT_NAME" = workflow_dispatch ]; then
             reason="explicit $DISPATCH_SCOPE manual scope"
             impact="$(./scripts/ci-dispatch-scope.sh "$DISPATCH_SCOPE" impact)"
-          elif [ -z "${BASE:-}" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
-             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+          elif [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             reason="no usable diff base; failed closed"
             impact="$(./scripts/ci-impact.sh --all)"
           elif ! impact="$(git diff --name-only "$BASE" HEAD | ./scripts/ci-impact.sh)"; then

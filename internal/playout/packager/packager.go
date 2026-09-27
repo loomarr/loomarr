@@ -79,7 +79,10 @@ type Config struct {
 	FirstItemWait time.Duration
 	// SlateRetry is how much slate fills a failed schedule lookup (default 10 s).
 	SlateRetry time.Duration
-	Log        *slog.Logger
+	// HDR10 is set for a premium HDR10 format: the served init and every segment carry its static
+	// metadata. Nil for SDR formats.
+	HDR10 *HDR10
+	Log   *slog.Logger
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
@@ -127,6 +130,7 @@ type Packager struct {
 	mu       sync.Mutex
 	epoch    time.Time // wall instant of media time 0
 	init     []byte    // the channel init segment: the first producing encoder's ftyp+moov
+	served   []byte    // init as served: with the HDR10 boxes for an HDR10 format, else init
 	window   window
 	changed  chan struct{} // closed and replaced on every change; the condition-wait primitive
 	done     bool
@@ -343,7 +347,7 @@ func (p *Packager) airItem(ctx context.Context, item Item, slot Slot, deadline t
 	if !p.acceptInit(stream.init) {
 		p.count(func(s *Stats) { s.DecoderMismatch++ })
 		p.cfg.Log.Error("packager: item's decoder configuration differs from the channel's; slate", "item", item.Label,
-			"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.Init())), "item_stsd", fmt.Sprintf("%x", SampleDescriptions(stream.init)))
+			"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.encoderInit())), "item_stsd", fmt.Sprintf("%x", SampleDescriptions(stream.init)))
 		cancel()
 		return p.notReady(ctx, rc, slot)
 	}
@@ -417,10 +421,21 @@ func (p *Packager) acceptInit(init []byte) bool {
 		p.mu.Unlock()
 		return false
 	}
-	p.init = init
+	// An HDR10 format serves the static boxes; decoder comparisons keep reading the encoder's own
+	// init, which every later item's matches.
+	served := init
+	if p.cfg.HDR10 != nil {
+		var err error
+		if served, err = p.cfg.HDR10.init(init); err != nil {
+			p.mu.Unlock()
+			p.cfg.Log.Error("packager: HDR10 init", "err", err)
+			return false
+		}
+	}
+	p.init, p.served = init, served
 	slated := p.stats.Slates > 0
 	p.mu.Unlock()
-	if err := os.WriteFile(filepath.Join(p.cfg.Dir, InitName), init, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(p.cfg.Dir, InitName), served, 0o600); err != nil {
 		p.cfg.Log.Error("packager: write init", "err", err)
 	}
 	if slated && !SameDecoderConfig(init, p.slate.init) {
@@ -434,7 +449,15 @@ func (p *Packager) acceptInit(init []byte) bool {
 func (p *Packager) slateMismatch() {
 	p.count(func(s *Stats) { s.DecoderMismatch++ })
 	p.cfg.Log.Error("packager: slate's decoder configuration differs from the channel's",
-		"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.Init())), "slate_stsd", fmt.Sprintf("%x", SampleDescriptions(p.slate.init)))
+		"channel_stsd", fmt.Sprintf("%x", SampleDescriptions(p.encoderInit())), "slate_stsd", fmt.Sprintf("%x", SampleDescriptions(p.slate.init)))
+}
+
+// encoderInit is the channel init as the first item's encoder wrote it: what every later item's and
+// the slate's decoder configuration is compared against.
+func (p *Packager) encoderInit() []byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.init
 }
 
 // forward stamps one encoder fragment onto the timeline, trimming to keep, and appends it.
@@ -465,6 +488,12 @@ func (p *Packager) forward(ctx context.Context, frag []byte, first bool, keep ma
 func (p *Packager) appendSegment(ctx context.Context, b []byte, c map[uint32]int64) error {
 	if c[videoTrack] <= 0 {
 		return nil // an all-trimmed fragment carries nothing to list
+	}
+	if p.cfg.HDR10 != nil { // item and slate segments alike
+		var err error
+		if b, err = p.cfg.HDR10.fragment(b); err != nil {
+			return fmt.Errorf("packager: HDR10 segment: %w", err)
+		}
 	}
 	name := segmentName(p.seq)
 	if err := os.WriteFile(filepath.Join(p.cfg.Dir, name), b, 0o600); err != nil {
@@ -617,11 +646,11 @@ func (p *Packager) WaitSegment(ctx context.Context, seq uint32) ([]byte, error) 
 	}
 }
 
-// Init returns the channel init segment, or nil before the first item produced.
+// Init returns the channel init segment as served, or nil before the first item produced.
 func (p *Packager) Init() []byte {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.init
+	return p.served
 }
 
 // Lead is how far the encoded timeline runs ahead of now: the run-ahead, or, negative, how far the
