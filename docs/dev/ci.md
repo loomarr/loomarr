@@ -670,9 +670,27 @@ worker through `internal/testkit` and passes it through `app.Overrides.ImageWork
 focused clean `go test ./internal/integration` is self-contained without rebuilding Rust in lanes
 that do not consume it. Fresh consecutive merge-group passes remain required.
 
-`make go-shard-verify SHARDS=2` rejects missing or duplicated packages, an ordinary aggregate above
-1,200 seconds, a bounded-worker or serial-certification makespan above nine minutes, or more than 25%
-imbalance within any group. Aggregate and worker limits are deliberately separate: package overlap
+The weights are now regenerated, never hand-kept: `make go-race-weights RUNS="..."`
+(`scripts/go-race-weights-refresh.sh`) takes the median `ok` time of every package across the
+successful race-lane jobs of the given merge-group runs, rounded up. Regenerated from runs
+36330002206, 36330402570, 36330935829, 36331908558 and 36333318208 (#1570), the real costs were
+about 2.4× the earlier weights (`internal/store` 516s against 242), and the old unitless budgets
+had been passing on those stale inputs.
+
+The budgets derive from #1570's target, a Go-only merge-queue run in at most ten minutes
+(`./scripts/go-shard.sh --budgets`). The measured queue time outside a lane's test step is 131s:
+116s median from queue start to the test step, 4s of teardown, and 11s for the `CI` aggregator.
+That leaves a 469s lane test step. An ordinary lane's summed package-seconds must fit four `-p=4`
+workers in that step (1,876s). Its bounded-worker makespan, and each serial certification lane,
+must fit the step itself. A per-package cap bounds any single package. `internal/store` alone
+exceeds a whole lane's test step. It is not exempt: the cap is temporarily its measured time plus
+10% (567s, #1570), and only a lane holding such a package is judged against the cap instead of
+469s. Splitting store's tests is the next lever; the cap then returns to the lane budget.
+
+`make go-shard-verify SHARDS=2` rejects missing or duplicated packages, a package above the
+per-package cap, an ordinary aggregate or a bounded-worker or serial-certification makespan above
+those derived budgets, or more than 25% imbalance within any group. Aggregate and worker limits are
+deliberately separate: package overlap
 cannot hide unbounded total work, and a balanced aggregate cannot hide one saturated worker. Release
 verification additionally rejects an unreviewed serial package, grouping or workflow lane. The
 workflow also caps each whole job at 15 minutes, leaving six minutes for setup and compilation while

@@ -73,6 +73,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make deadcode-baseline` |  | rewrite the committed deadcode baseline the monthly report compares against |
 | `make test` | ✅ | unit tests; unsharded runs include Rust worker and eval contracts (never network — §19) |
 | `make go-shard-verify` | ✅ | Go test lanes must cover every package within their latency and balance budgets |
+| `make go-race-weights` |  | regenerate the race-lane package weights from hosted merge-group runs (RUNS="run-id ...") |
 | `make go-race-verify` |  | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
 | `make test-ffmpeg` |  | media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification) |
 | `make eval-contract` |  | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |

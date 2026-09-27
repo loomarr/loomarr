@@ -11,9 +11,10 @@
 #                                  -> print each shard's bounded four-worker makespan
 #   ./scripts/go-shard.sh --verify 2
 #                                  -> assert exact coverage and every latency/balance budget
+#   ./scripts/go-shard.sh --budgets -> print the budgets derived from #1570's wall-clock target
 #
-# The partition uses longest-processing-time assignment over a small, reviewed set of measured
-# package costs. Packages below the materiality floor cost one modeled second, so every current and
+# The partition uses longest-processing-time assignment over measured package seconds
+# (scripts/go-race-weights.tsv, regenerated from hosted runs by go-race-weights-refresh.sh). Packages below the materiality floor cost one modeled second, so every current and
 # future package remains assigned even before it has a hosted timing. Each ordinary lane is emitted
 # in descending measured-cost order too: `go test` schedules from its argument list, so restoring
 # `go list` order after modeling LPT left expensive packages waiting behind cheap compilations and
@@ -36,10 +37,29 @@ WEIGHTS="${GO_SHARD_WEIGHTS:-$ROOT/scripts/go-race-weights.tsv}"
 CERTIFICATION="${GO_SHARD_CERTIFICATION:-$ROOT/scripts/go-certification-lanes.tsv}"
 RACE_POLICY="${GO_SHARD_RACE_POLICY:-$ROOT/scripts/go-race-policy.sh}"
 CERTIFICATION_LANES=2
-MAX_WEIGHT_SECONDS=540
-MAX_ORDINARY_AGGREGATE_SECONDS=1200
 MAX_IMBALANCE_PERCENT=125
 ORDINARY_WORKERS=4
+
+# Every latency budget below derives from #1570's wall-clock target: a Go-only merge-queue run
+# finishes in at most ten minutes. The weights are measured wall seconds (go-race-weights-refresh.sh),
+# so the budgets are seconds too.
+TARGET_QUEUE_SECONDS=600
+# Queue time outside a lane's `make test` step, measured on merge-group runs 36330002206,
+# 36330402570, 36330935829, 36331908558 and 36333318208: queue start to the lane's test step
+# (What changed, runner pickup, checkout, toolchains, cache restore) median 116s; lane teardown 4s;
+# the `CI` aggregator after the last lane 11s. Warm compilation stays inside the test step.
+QUEUE_OVERHEAD_SECONDS=131
+# One lane's test step: the whole target left after that overhead.
+LANE_TEST_SECONDS=$((TARGET_QUEUE_SECONDS - QUEUE_OVERHEAD_SECONDS))
+# An ordinary lane runs `-p=4` on a four-vCPU runner, and each weight is a package's wall time under
+# that sharing, so a lane's summed package-seconds spread over four workers must fit the step.
+MAX_ORDINARY_AGGREGATE_SECONDS=$((LANE_TEST_SECONDS * ORDINARY_WORKERS))
+# ⚠ TEMPORARY (#1570): internal/store measures 516s, more than a whole lane's test step, and no
+# package split can fix that. It is not exempt: it stays weighted and scheduled, and this cap is its
+# measured time plus 10%. A lane holding a package above LANE_TEST_SECONDS is held to this cap
+# instead of the lane budget. Splitting store's tests is the next lever; then this returns to
+# LANE_TEST_SECONDS and every lane is back on the target.
+MAX_PACKAGE_SECONDS=567
 
 if [[ ! -r "$WEIGHTS" ]]; then
   echo "go-shard: weight file is not readable: $WEIGHTS" >&2
@@ -184,6 +204,41 @@ certification_load() {
   '
 }
 
+# The heaviest modeled package among the import paths on stdin.
+largest_weight() {
+  local module
+  module="$(go list -m)"
+  awk -v module="$module" -v weights_file="$WEIGHTS" '
+    BEGIN {
+      while ((getline line < weights_file) > 0) {
+        if (line ~ /^[[:space:]]*(#|$)/) continue
+        split(line, part, /[[:space:]]+/)
+        weight[part[1]] = part[2] + 0
+      }
+      close(weights_file)
+    }
+    {
+      relative = $0
+      prefix = module "/"
+      if (index(relative, prefix) == 1) relative = substr(relative, length(prefix) + 1)
+      cost = (relative in weight) ? weight[relative] : 1
+      if (cost > high) high = cost
+    }
+    END { print high + 0 }
+  '
+}
+
+# A lane's test-step budget: the target's LANE_TEST_SECONDS, unless it holds a package that alone
+# exceeds that, which is held to the explicit MAX_PACKAGE_SECONDS cap instead (see its note).
+lane_budget() {
+  local largest="$1"
+  if [ "$largest" -gt "$LANE_TEST_SECONDS" ]; then
+    echo "$MAX_PACKAGE_SECONDS"
+  else
+    echo "$LANE_TEST_SECONDS"
+  fi
+}
+
 slice() {
   partition packages "$1" "$2"
 }
@@ -269,7 +324,7 @@ worker_plan() {
 }
 
 usage() {
-  echo "usage: go-shard.sh [i/n | --certification i/2 | --plan n | --worker-plan n | --verify n]" >&2
+  echo "usage: go-shard.sh [i/n | --certification i/2 | --plan n | --worker-plan n | --verify n | --budgets]" >&2
   exit 2
 }
 
@@ -297,6 +352,15 @@ if [ "${1:-}" = "--verify" ]; then
     exit 1
   fi
 
+  oversized="$(awk -v max="$MAX_PACKAGE_SECONDS" '
+    $0 !~ /^[[:space:]]*(#|$)/ && $2 + 0 > max { print "  " $1 ": " $2 "s" }
+  ' "$WEIGHTS")"
+  if [ -n "$oversized" ]; then
+    echo "go-shard: package exceeds the ${MAX_PACKAGE_SECONDS}s per-package cap; split its tests" >&2
+    echo "$oversized" >&2
+    exit 1
+  fi
+
   modeled="$(plan "$total")"
   if ! printf '%s\n' "$modeled" | awk -v max="$MAX_ORDINARY_AGGREGATE_SECONDS" -v ratio="$MAX_IMBALANCE_PERCENT" '
     NR == 1 { min = $2; high = $2 }
@@ -309,40 +373,54 @@ if [ "${1:-}" = "--verify" ]; then
     done <<< "$modeled"
     exit 1
   fi
-  worker_modeled="$(worker_plan "$total")"
-  if ! printf '%s\n' "$worker_modeled" | awk -v max="$MAX_WEIGHT_SECONDS" -v ratio="$MAX_IMBALANCE_PERCENT" '
+  # Rows are `lane seconds budget`: each lane is judged against its own derived budget.
+  worker_modeled="$(worker_plan "$total" | while read -r shard seconds; do
+    printf '%s %s %s\n' "$shard" "$seconds" "$(lane_budget "$(slice "$shard" "$total" | largest_weight)")"
+  done)"
+  if ! printf '%s\n' "$worker_modeled" | awk -v ratio="$MAX_IMBALANCE_PERCENT" '
     NR == 1 { min = $2; high = $2 }
-    { if ($2 < min) min = $2; if ($2 > high) high = $2 }
-    END { exit !(min > 0 && high <= max && high * 100 <= min * ratio) }
+    { if ($2 < min) min = $2; if ($2 > high) high = $2; if ($2 > $3) over = 1 }
+    END { exit !(min > 0 && !over && high * 100 <= min * ratio) }
   '; then
-    echo "go-shard: modeled bounded-worker split exceeds ${MAX_WEIGHT_SECONDS}s or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
-    while read -r shard seconds; do
-      printf '  shard %s: %ss\n' "$shard" "$seconds" >&2
+    echo "go-shard: modeled bounded-worker split exceeds its lane budget or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
+    while read -r shard seconds budget; do
+      printf '  shard %s: %ss (budget %ss)\n' "$shard" "$seconds" "$budget" >&2
     done <<< "$worker_modeled"
     exit 1
   fi
-  certification_modeled="$(for ((i = 1; i <= CERTIFICATION_LANES; i++)); do printf '%s %s\n' "$i" "$(certification_load "$i")"; done)"
-  if ! printf '%s\n' "$certification_modeled" | awk -v max="$MAX_WEIGHT_SECONDS" -v ratio="$MAX_IMBALANCE_PERCENT" '
+  certification_modeled="$(for ((i = 1; i <= CERTIFICATION_LANES; i++)); do
+    printf '%s %s %s\n' "$i" "$(certification_load "$i")" "$(lane_budget "$(certification_lane_paths "$i" | largest_weight)")"
+  done)"
+  if ! printf '%s\n' "$certification_modeled" | awk -v ratio="$MAX_IMBALANCE_PERCENT" '
     NR == 1 { min = $2; high = $2 }
-    { if ($2 < min) min = $2; if ($2 > high) high = $2 }
-    END { exit !(min > 0 && high <= max && high * 100 <= min * ratio) }
+    { if ($2 < min) min = $2; if ($2 > high) high = $2; if ($2 > $3) over = 1 }
+    END { exit !(min > 0 && !over && high * 100 <= min * ratio) }
   '; then
-    echo "go-shard: certification split exceeds ${MAX_WEIGHT_SECONDS}s or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
-    while read -r lane seconds; do
-      printf '  certification lane %s/%s: %ss\n' "$lane" "$CERTIFICATION_LANES" "$seconds" >&2
+    echo "go-shard: certification split exceeds its lane budget or ${MAX_IMBALANCE_PERCENT}% balance budget" >&2
+    while read -r lane seconds budget; do
+      printf '  certification lane %s/%s: %ss (budget %ss)\n' "$lane" "$CERTIFICATION_LANES" "$seconds" "$budget" >&2
     done <<< "$certification_modeled"
     exit 1
   fi
   echo "$coverage"
   while read -r shard seconds; do
-    printf 'go-shard: modeled shard %s = %ss\n' "$shard" "$seconds"
+    printf 'go-shard: modeled shard %s = %ss (budget %ss)\n' "$shard" "$seconds" "$MAX_ORDINARY_AGGREGATE_SECONDS"
   done <<< "$modeled"
-  while read -r shard seconds; do
-    printf 'go-shard: modeled shard %s bounded-worker makespan = %ss\n' "$shard" "$seconds"
+  while read -r shard seconds budget; do
+    printf 'go-shard: modeled shard %s bounded-worker makespan = %ss (budget %ss)\n' "$shard" "$seconds" "$budget"
   done <<< "$worker_modeled"
-  while read -r lane seconds; do
-    printf 'go-shard: modeled certification lane %s/%s = %ss\n' "$lane" "$CERTIFICATION_LANES" "$seconds"
+  while read -r lane seconds budget; do
+    printf 'go-shard: modeled certification lane %s/%s = %ss (budget %ss)\n' "$lane" "$CERTIFICATION_LANES" "$seconds" "$budget"
   done <<< "$certification_modeled"
+  exit 0
+fi
+
+# --budgets: the derived budgets, one `name seconds` row each, so tests read the same numbers.
+if [ "${1:-}" = "--budgets" ]; then
+  [ "$#" -eq 1 ] || usage
+  printf 'target_queue %s\nqueue_overhead %s\nlane_test %s\nordinary_aggregate %s\nmax_package %s\n' \
+    "$TARGET_QUEUE_SECONDS" "$QUEUE_OVERHEAD_SECONDS" "$LANE_TEST_SECONDS" \
+    "$MAX_ORDINARY_AGGREGATE_SECONDS" "$MAX_PACKAGE_SECONDS"
   exit 0
 fi
 
