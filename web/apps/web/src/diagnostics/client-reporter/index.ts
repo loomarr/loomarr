@@ -1,6 +1,2 @@
-export type { ClientObservation, SendBatch } from "./client-reporter";
-export {
-  ClientDiagnosticsReporter,
-  clientDiagnostics,
-  installGlobalClientDiagnostics,
-} from "./client-reporter";
+export type { SendBatch } from "./client-reporter";
+export { clientDiagnostics, installGlobalClientDiagnostics } from "./client-reporter";

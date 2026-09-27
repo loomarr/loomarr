@@ -37,4 +37,4 @@ const mintChannelPlaySource = async (
   return { url, expiresAt: new Date(body.expiresAt).getTime(), ...(stillURL ? { stillURL } : {}) };
 };
 
-export { mintChannelPlaySource, qualityHint };
+export { mintChannelPlaySource };

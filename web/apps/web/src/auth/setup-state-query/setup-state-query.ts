@@ -41,4 +41,4 @@ const readSetupState = async (queryClient: SetupStateClient): Promise<SetupState
 const needsBootstrap = async (queryClient: SetupStateClient): Promise<boolean> =>
   (await readSetupState(queryClient))?.bootstrapped === false;
 
-export { needsBootstrap, readSetupState, setupStateQueryOptions };
+export { needsBootstrap, readSetupState };

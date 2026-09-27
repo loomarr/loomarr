@@ -1,1 +1,1 @@
-export { CurrentHealthCard, StartupReportPage } from "./startup-report-page";
+export { StartupReportPage } from "./startup-report-page";

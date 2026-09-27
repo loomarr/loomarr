@@ -35,6 +35,11 @@ fe-api-codegen: ## regenerate only the orval api client from api/openapi.yaml
 fe-lint: ## Biome lint + format check (web/)
 	cd $(WEB) && pnpm lint
 
+# knip reads the generated route tree and API client, so it runs after codegen (as in `make fe`).
+.PHONY: knip
+knip: ## unused files, exports and dependencies in web/ (config: web/knip.ts)
+	cd $(WEB) && pnpm codegen && pnpm knip
+
 .PHONY: fe-lint-fix
 fe-lint-fix: ## Biome autofix — format + safe lint fixes (web/)
 	cd $(WEB) && pnpm biome check --write
@@ -58,8 +63,8 @@ FE_SHARD ?=
 FE_SHARD_ARG := $(if $(FE_SHARD),--shard=$(FE_SHARD),)
 
 .PHONY: fe
-fe: ## biome + codegen + typecheck + unit tests + embedded SPA + storybook gallery
-	cd $(WEB) && pnpm codegen && pnpm lint && pnpm --filter @loomarr/web... -r --parallel typecheck \
+fe: ## biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery
+	cd $(WEB) && pnpm codegen && pnpm lint && pnpm knip && pnpm --filter @loomarr/web... -r --parallel typecheck \
 	  && pnpm --filter @loomarr/web... --filter '!@loomarr/web' -r --parallel test \
 	  && pnpm --filter @loomarr/web test $(FE_SHARD_ARG) \
 	  && pnpm --filter @loomarr/web build && pnpm --filter @loomarr/web build-storybook

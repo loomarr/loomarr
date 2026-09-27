@@ -25,4 +25,4 @@ const providerSuffix = (entries: SettingEntry[], key: string): string => {
 const blockTitle = (entries: SettingEntry[], base: string, providerKey: string): string =>
   base + providerSuffix(entries, providerKey);
 
-export { blockTitle, PROVIDER_LABELS, providerSuffix };
+export { blockTitle, providerSuffix };

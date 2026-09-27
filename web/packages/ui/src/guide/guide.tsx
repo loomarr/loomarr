@@ -331,4 +331,4 @@ const GuideExperience = (props: GuideExperienceProps) => {
   );
 };
 
-export { defaultFilters, GuideExperience, GuideSurface, guideRailWidth, guideRowHeight };
+export { GuideExperience, GuideSurface };

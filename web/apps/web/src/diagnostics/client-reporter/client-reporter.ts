@@ -1,11 +1,7 @@
 import { ingestClientDiagnostics } from "@loomarr/api/endpoints/diagnostics";
 import type { ClientObservation as GeneratedClientObservation } from "@loomarr/api/models/clientObservation";
 import { observeApiFailures } from "@loomarr/api/mutator";
-import {
-  ClientDiagnosticsReporter,
-  type ClientObservation,
-  type SendBatch,
-} from "@loomarr/core/client-diagnostics";
+import { ClientDiagnosticsReporter, type SendBatch } from "@loomarr/core/client-diagnostics";
 
 type WebPlatform = "chromium" | "firefox" | "webkit" | "unknown_web";
 
@@ -52,5 +48,5 @@ const installGlobalClientDiagnostics = () => {
   });
 };
 
-export type { ClientObservation, SendBatch };
+export type { SendBatch };
 export { ClientDiagnosticsReporter, installGlobalClientDiagnostics, reporter as clientDiagnostics };
