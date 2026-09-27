@@ -208,7 +208,9 @@ describe("TV channel switch overlay", () => {
     // shrink-wrapping, centred wrapper carries it.
     expect(dom.getComputedStyle(spinner).alignSelf).toBe("flex-start");
     expect(dom.getComputedStyle(spinner.parentElement).alignSelf).toBe("center");
-    // No root.unmount(): react-native-web's reduced-motion subscription has no `remove` in jsdom.
+    // Unmount: a tree left mounted keeps its spinner animating after jsdom tears down, and the
+    // next frame throws "window is not defined" as an unhandled error that fails the run.
+    act(() => root.unmount());
     container.remove();
   });
 
