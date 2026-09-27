@@ -27,6 +27,7 @@ document disagrees with either, the archived one is wrong — that is what being
 | `v54-filler-refresh-2.md` | Filler refresh programme | The shipped filler system and `PROGRESS.md` evidence |
 | `v59a-image-runtime-certification.md` | Rust image worker certification plan | The retained certification gates and `PROGRESS.md` evidence |
 | `v59b-image-runtime-optimization.md` | Rust image worker optimization plan | The retained benchmarks and `PROGRESS.md` evidence |
+| `design-2026-09/` | Verbatim `design.md` slices with measured evidence or retired protocols | `docs/design/`, one subsystem doc each |
 | `shield-client-2026-08-17.md` | Initial Android TV client plan | `docs/native-client-design.md` and the shared-client plan |
 
 ## What is NOT archived, and why
