@@ -61,7 +61,7 @@ func buildChannels(
 	jobReg *scheduler.Registry, episodeRefresh *reconcile.EpisodeRefresh, fillerLayout filler.Layout,
 	log *slog.Logger, processDiagnostics *diagnostics.ProcessManager,
 	storageGovernor *storagegovernor.Governor,
-	metricRecorder *metrics.Recorder,
+	metricRecorder *metrics.Recorder, watermarks *channelWatermarks,
 ) (channelBuild, error) {
 	// Scheduler + Tunarr (§9, Phase 10): the channel reconcile engine + periodic
 	// sweep, plus the Live TV wiring connector (guide-refresh poker). Wired when a
@@ -292,6 +292,7 @@ func buildChannels(
 			metrics:            metricRecorder,
 			capacityProbe:      ov.CapacityProbe,
 			startup:            ov.Startup,
+			watermarks:         watermarks,
 		})
 		if err != nil {
 			return channelBuild{}, err

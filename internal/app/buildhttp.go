@@ -200,8 +200,6 @@ func buildHTTP(deps httpBuild) http.Handler {
 		PlayoutFont:       playout.CardFontFor(set.str("playout.ffmpeg_path")),
 		PlayoutTonemap:    playout.TonemapperFor(set.str("playout.ffmpeg_path")),
 		PlayoutGPUTonemap: playout.GPUFiltersFor(set.str("playout.ffmpeg_path")),
-		PlayoutToneCurve:  func() string { return set.str("playout.tone_curve") },
-		PlayoutWatermark:  newChannelWatermarks(deps, set, imageSvc).For,
 		// Measured, not a build property: the boot class probe publishes it (probeCapacity).
 		// Free GPU memory for the hardware encoders by evicting the resident local LLM (§8.2, §9.1
 		// V47). Built on demand and read LIVE, so a provider/model change hot-applies and eviction

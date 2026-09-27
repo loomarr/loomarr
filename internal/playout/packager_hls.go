@@ -30,7 +30,15 @@ type PackagerItem struct {
 	Format     MediaFormat
 	// GainDB is a filler clip's static loudness gain (FillerGain); 0 for a library title.
 	GainDB float64
+	// Watermark is set only for a PROGRAMME airing (never filler, bumpers or IDs): the channel's bug
+	// sized for the packager's output, resolved per item because one item airs in every format.
+	Watermark WatermarkFor
 }
+
+// WatermarkFor returns the channel's rendered bug for an encoder and output size, or nil when the
+// channel turned it off or this host's GPU overlay failed its self-check (WatermarkCheck); the item
+// then airs bug-free.
+type WatermarkFor func(ctx context.Context, enc Encoder, width, height int) *Watermark
 
 // PackagerSource is the application's side of the channel packager (#1512 phase 2): the schedule,
 // and the host and output one of a channel's formats encodes with at an output ladder rung (the
@@ -307,11 +315,17 @@ func (m *PackagerHLS) schedule(
 		// A software item encoder feeds its -progress to one monitor per item; on a Step the packager
 		// ends this slot's encoder and re-opens the item at its own clock with the new rung
 		// (itemOut.SoftwareRung), as it already re-opens one after a GPU fault.
+		// The channel's bug, programmes only (#1512 phase 1d): resolved once per item at this
+		// packager's encoder and output size, so a retried Open reuses it.
+		var wm *Watermark
+		if it.Watermark != nil {
+			wm = it.Watermark(ctx, host.Encoder, out.Width, out.Height)
+		}
 		// The frames the packager took from this item (0 until it reports, and never for an item whose
 		// channel stopped): the cost sample's media.
 		var delivered atomic.Int64
 		item.Open = func(ctx context.Context, slot packager.Slot) (io.ReadCloser, error) {
-			pl, args, err := packagerItemArgs(host, itemOut, it, slot, faults.get(it.Input))
+			pl, args, err := packagerItemArgs(host, itemOut, it, wm, slot, faults.get(it.Input))
 			if err != nil {
 				return nil, err
 			}
@@ -421,9 +435,12 @@ func (f *itemFaults) record(input string, pl Pipeline, decodeFault bool) bool {
 }
 
 // packagerItemArgs is one item's encoder command for its slot: the phase-1a builder's pipeline on
-// the host less any stage this source faulted, the filler gain in its audio stage, fMP4 out.
-func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
-	pl, err := Build(fault.apply(host), it.Format, out)
+// the host less any stage this source faulted, the channel's bug when wm is non-nil (a programme on
+// a host whose overlay passed its self-check), the filler gain in its audio stage, fMP4 out.
+func packagerItemArgs(host HostProfile, out OutputProfile, it PackagerItem, wm *Watermark, slot packager.Slot, fault itemFault) (Pipeline, []string, error) {
+	h := fault.apply(host)
+	h.Overlay = wm != nil
+	pl, err := BuildItem(h, it.Format, out, wm)
 	if err != nil {
 		return Pipeline{}, nil, err
 	}

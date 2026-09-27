@@ -996,7 +996,7 @@ func (r *playoutResolver) airingFiller(
 			if gap.Remaining > 0 && gap.Remaining < remaining {
 				remaining = gap.Remaining
 			}
-			// The loudness measured at ingest rides the airing so the program route can apply a
+			// The loudness measured at ingest rides the airing so the channel packager can apply a
 			// static gain instead of a live loudnorm (#1512 G6). Absent ⇒ 0 dB.
 			var measured *float64
 			if lufs, ok := filler.PlaybackLoudness(full); ok {

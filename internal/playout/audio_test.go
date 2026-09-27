@@ -65,7 +65,7 @@ func itemArgsWithTrack(t *testing.T, track int) []string {
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
 	_, args, err := packagerItemArgs(HostFor(EncoderSoftware, true, GPUFilters{}), out,
 		PackagerItem{Input: "http://library.invalid/stream", Format: testSources()["h264-1080p-sdr-25"], AudioTrack: track},
-		packager.Slot{Frames: 250, AudioFrames: 469}, itemFault{})
+		nil, packager.Slot{Frames: 250, AudioFrames: 469}, itemFault{})
 	if err != nil {
 		t.Fatal(err)
 	}

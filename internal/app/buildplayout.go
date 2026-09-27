@@ -72,6 +72,8 @@ type playoutDeps struct {
 	// tone-map self-check.
 	capacityProbe bool
 	startup       *diagnostics.Startup
+	// watermarks draws the channel's bug on programme items (#1512 phase 1d).
+	watermarks *channelWatermarks
 }
 
 func buildPlayout(deps playoutDeps) (playoutBuild, error) {
@@ -395,6 +397,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		gpu:     gpuFilters,
 		// Filler loudness (#1512 G6), read live so a changed target applies at the next clip.
 		targetLUFS: func() string { return set.str("filler.target_lufs") },
+		watermark:  deps.watermarks.For,
 		log:        log,
 	}, set.str("playout.ffmpeg_path"), set.str("playout.hls_dir"), playout.DefaultGrace, log); perr != nil {
 		log.Warn("internal playout: channel packager unavailable — live playout disabled", "err", perr)

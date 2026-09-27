@@ -6,18 +6,32 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/schedule"
 )
 
 // packagerSource is the channel packager's view of the schedule and the host (#1512 phase 2). It
-// resolves an item the way the /v1/playout/program handler does (airing, stream URL, audio track,
-// stream facts) without the loopback HTTP hop.
+// resolves an item (airing, stream URL, audio track, stream facts, and a programme's watermark)
+// straight from the playout resolver.
 type packagerSource struct {
 	res     *playoutResolver
 	tonemap func() bool
 	gpu     func() playout.GPUFilters
 	// targetLUFS reads filler.target_lufs live, so a changed target applies at the next clip.
 	targetLUFS func() string
-	log        *slog.Logger
+	// watermark is the channel's bug for an output (channelWatermarks.For); nil draws none.
+	watermark func(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark
+	log       *slog.Logger
+}
+
+// watermarkFor is an item's bug resolver: a library programme's only, never a break's commercial, a
+// filler clip (Source), a bumper or an ID.
+func (s packagerSource) watermarkFor(channelID string, airing playout.Airing) playout.WatermarkFor {
+	if s.watermark == nil || airing.Kind != schedule.SlotProgram || airing.Source != "" {
+		return nil
+	}
+	return func(ctx context.Context, enc playout.Encoder, width, height int) *playout.Watermark {
+		return s.watermark(ctx, channelID, enc, width, height)
+	}
 }
 
 func (s packagerSource) ItemAt(ctx context.Context, channelID string, at time.Time) (playout.PackagerItem, error) {
@@ -31,6 +45,7 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 		return item, nil // a card slot: the packager slates it
 	}
 	item.Input, item.Seek = streamURL, airing.Offset
+	item.Watermark = s.watermarkFor(channelID, airing)
 	t1 := time.Now()
 	item.AudioTrack = s.res.AudioTrackFor(ctx, channelID, airing.LibraryItemID, streamURL)
 	t2 := time.Now()
@@ -66,5 +81,7 @@ func (s packagerSource) Output(ctx context.Context, channelID string, class play
 		}
 		out, _ = playout.FormatOutput(playout.FormatBaseline, profile)
 	}
+	// The live playout.tone_curve, the curve the capacity probe measured HDR with.
+	out.ToneCurve = s.res.ToneCurve()
 	return playout.HostFor(profile.Encoder, s.tonemap != nil && s.tonemap(), gpu), out
 }

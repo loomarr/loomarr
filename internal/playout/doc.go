@@ -8,15 +8,15 @@
 // and it is a tar pit — timestamps, keyframes, and stream parameters all have to be reconciled
 // across the join.
 //
-// This package does not splice transport files. A Go block supervisor asks the server what is on,
-// receives one finite programme/commercial/card MPEG-TS response, and writes it into one long-lived
-// `-c copy` mux. EOF is an explicit block boundary: Go closes the response and resolves the next
-// authoritative Airing from the wall clock. The mux rebases those finite timestamp domains onto one
-// monotonic output timeline.
+// This package does not splice transport files. The channel packager (#1512 phase 2) asks the
+// application what is on (PackagerSource.ItemAt), runs one encoder per scheduled item into its
+// slot of frames, and stitches the fragments in-process onto one monotonic timeline: every item
+// encodes to the same output parameters, so a boundary is a keyframe, not a decoder reset. The
+// slot end is an explicit block boundary: the packager resolves the next authoritative Airing
+// from the wall clock.
 //
-//	block supervisor ──> GET /playout/program/{ch} ──> finite episode
-//	                 └─> GET /playout/program/{ch} ──> finite commercial/card
-//	                 └─> one long-lived copy mux ─────> continuous channel MPEG-TS
+//	packager (channel, format) ──> item encoder ──> programme fragments ─┐
+//	                           └─> item encoder ──> commercial / card ───┴─> fMP4 HLS, MPEG-TS
 //
 // # The invariants
 //
@@ -34,8 +34,8 @@
 //     persisted first-live origin that survives restarts and reconciles. It is stamped once,
 //     rather than recomputed from query time, process start, or Channel.UpdatedAt.
 //
-//   - ONE ENCODER PER CHANNEL, N REFCOUNTED VIEWERS. A second viewer joins the existing stream
-//     rather than starting a second encode. Admission is bounded (AtCapacity); viewers are
+//   - ONE PACKAGER PER CHANNEL FORMAT, N REFCOUNTED VIEWERS. A second viewer joins the running one
+//     rather than starting a second encode. Admission is bounded (ErrAtCapacity); viewers are
 //     never EVICTED to make room, which was viewra's mistake — dropping a watching household to
 //     admit a new one trades a working stream for a broken one.
 //

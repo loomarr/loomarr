@@ -3,6 +3,7 @@ package playout
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -111,7 +112,7 @@ func TestPackagerItemArgsApplyTheFillerGain(t *testing.T) {
 		AudioCodec: "aac", AudioChannels: 2, AudioSampleRate: 48000, Container: "matroska,webm"}
 	slot := packager.Slot{Frames: 250, AudioFrames: 469}
 	for gain, want := range map[float64]string{-2.5: "volume=-2.5dB", 0: ""} {
-		_, args, err := packagerItemArgs(host, out, PackagerItem{Input: "clip.mp4", Format: format, GainDB: gain}, slot, itemFault{})
+		_, args, err := packagerItemArgs(host, out, PackagerItem{Input: "clip.mp4", Format: format, GainDB: gain}, nil, slot, itemFault{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -176,19 +177,19 @@ func failingEncoder(t *testing.T, stderr string) (ffmpeg string, runs func() []s
 	}
 }
 
-// openItemTwice runs the channel's schedule for one source twice, as the packager does when an
-// item fails: the first encoder fails, the schedule is asked again, the second attempt opens.
-func openItemTwice(t *testing.T, ffmpeg string, host HostProfile, format MediaFormat) {
+// openItem runs the channel's schedule for one item n times, as the packager does when an
+// item fails: the first encoder fails, the schedule is asked again, the next attempt opens.
+func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n int) {
 	t.Helper()
 	m, err := NewPackagerHLS(stuckSlateSource{}, ffmpeg, t.TempDir(), time.Second, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	m.source = fixedItemSource{item: PackagerItem{Label: "prog", Remaining: time.Hour, Input: "title.mkv", Format: format}}
+	m.source = fixedItemSource{item: it}
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
 	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))
-	for range 2 {
+	for range n {
 		item, err := sched(t.Context(), time.Now())
 		if err != nil {
 			t.Fatal(err)
@@ -211,11 +212,63 @@ func (s fixedItemSource) ItemAt(context.Context, string, time.Time) (PackagerIte
 	return s.item, nil
 }
 
+// progItem is an hour of a library title with no watermark.
+func progItem(format MediaFormat) PackagerItem {
+	return PackagerItem{Label: "prog", Remaining: time.Hour, Input: "title.mkv", Format: format}
+}
+
+// The channel's bug rides a programme item into its encoder, sized for the packager's own encoder
+// and output (#1512 phase 1d, which the retired programme route drew). An item without a resolver
+// (filler, bumper, ID), one whose resolver declines (the channel turned it off, or this host's
+// overlay failed its self-check) and a host with no GPU overlay graph all encode bug-free.
+func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
+	bug := &Watermark{Straight: "/wm/bug.png", Width: 120, Height: 60, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
+	var asked []string
+	resolver := func(declines bool) WatermarkFor {
+		return func(_ context.Context, enc Encoder, width, height int) *Watermark {
+			asked = append(asked, fmt.Sprintf("%s %dx%d", enc, width, height))
+			if declines {
+				return nil
+			}
+			return bug
+		}
+	}
+	nvenc, software := HostFor(EncoderNVENC, true, GPUFilters{}), HostFor(EncoderSoftware, true, GPUFilters{})
+	for _, tc := range []struct {
+		name string
+		host HostProfile
+		wm   WatermarkFor
+		want bool
+	}{
+		{"programme", nvenc, resolver(false), true},
+		{"filler, bumper or ID", nvenc, nil, false},
+		{"resolver declines", nvenc, resolver(true), false},
+		{"software host", software, resolver(false), false},
+	} {
+		asked = nil
+		ffmpeg, runs := failingEncoder(t, "stopped")
+		it := progItem(testSources()["h264-1080p-sdr-25"])
+		it.Watermark = tc.wm
+		openItem(t, ffmpeg, tc.host, it, 1)
+		args := runs()[0]
+		overlaid := strings.Contains(args, "movie=filename=/wm/bug.png")
+		if overlaid != tc.want {
+			t.Errorf("%s: bug drawn = %v, want %v: %s", tc.name, overlaid, tc.want, args)
+		}
+		if tc.wm != nil && !slices.Equal(asked, []string{fmt.Sprintf("%s 1920x1080", tc.host.Encoder)}) {
+			t.Errorf("%s: the resolver was asked %q, want once for the packager's encoder and output", tc.name, asked)
+		}
+		if tc.host.Family == FamilyNVENC && !tc.want && strings.Contains(args, "yuv420p") {
+			t.Errorf("%s: a bug-free item keeps the nv12 main: %s", tc.name, args)
+		}
+	}
+}
+
 // A source the GPU decoder faults on is retried with a CPU decode and the same hardware encoder
 // (§9.1 V47, the retired chain's ladder): retrying the same -hwaccel path fails identically.
 func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
 	ffmpeg, runs := failingEncoder(t, "[AVHWFramesContext @ 0x1] Failed to sync surface 0xc: 23 (internal decoding error)")
-	openItemTwice(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), testSources()["h264-1080p-sdr-25"])
+	openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), progItem(testSources()["h264-1080p-sdr-25"]), 2)
 	r := runs()
 	if len(r) != 2 || !strings.Contains(r[0], "-hwaccel") {
 		t.Fatalf("want a GPU-decoded first attempt and a retry, got %q", r)
@@ -229,7 +282,7 @@ func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
 // and the retry takes the next tone-mapper for the curve (DemoteTonemap's order).
 func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
 	ffmpeg, runs := failingEncoder(t, "[Parsed_tonemap_opencl_3 @ 0x1] Failed to enqueue kernel: -5.")
-	openItemTwice(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), testSources()["hevc-4k-hdr-dv"])
+	openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), progItem(testSources()["hevc-4k-hdr-dv"]), 2)
 	r := runs()
 	if len(r) != 2 || !strings.Contains(r[0], "tonemap_opencl") {
 		t.Fatalf("want an OpenCL tone-mapped first attempt and a retry, got %q", r)

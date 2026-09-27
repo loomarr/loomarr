@@ -57,7 +57,7 @@ type Airing struct {
 	Source string
 	// MeasuredLUFS is the integrated loudness measured for this item at ingest (the playback
 	// derivative's QC), or nil when nothing was measured. Only a filler clip carries one. The
-	// program route turns it into a static gain against `filler.target_lufs` (#1512 G6).
+	// channel packager turns it into a static gain against `filler.target_lufs` (#1512 G6).
 	MeasuredLUFS *float64
 	// Title is for logs and the guide, never for identity.
 	Title string
