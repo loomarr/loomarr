@@ -501,7 +501,34 @@ classify() {
         scripts/android-*.sh|scripts/build-android-beta.sh|scripts/check-android-release-env.sh|scripts/generate-android-tv-brand.sh|scripts/publish-android-beta.sh|scripts/test-android-release.sh|scripts/test-android-release-emulator.sh) select_gate android ;;
         scripts/generate-brand-assets.mjs|scripts/check-brand-assets.mjs) select_gate clients; select_gate android ;;
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
-        *) select_gate contracts ;;
+        # Repository contracts, release tooling, and operator helpers the contracts job lints or
+        # invokes. Each is named: a new script is not contracts-only until someone says so.
+        scripts/center-android-tv-emulator.js|scripts/check-agent-assets.sh|scripts/check-private-fixtures.sh|scripts/check-release-tag.sh|scripts/check-tags.sh) select_gate contracts ;;
+        scripts/ci-lane-test.sh|scripts/ci-lane.sh|scripts/codeql-impact-test.sh|scripts/codeql-impact.sh|scripts/deadcode.sh|scripts/generate-release-notes.sh|scripts/go-impact-test.sh) select_gate contracts ;;
+        scripts/image-parallelism-bench.sh|scripts/latency-sweep.sh|scripts/playout-diag.sh|scripts/run-android-tv-emulator.sh|scripts/test-android-release-emulator-contract-test.sh) select_gate contracts ;;
+        scripts/validate-release-source-test.sh|scripts/validate-release-source.sh) select_gate contracts ;;
+        # ⚠ One pattern per line below, never before a `|`. release-verify's container audit reads
+        # this file as shell, so a script name followed by `|` looks like a pipeline command. If the
+        # audit counts that script as acquiring containers (an engine call, or a variable
+        # executable such as "$gh_bin"), this classifier, run by the agent harness, would count too.
+        # Scripts with container tooling are listed here conservatively.
+        scripts/go-impact.sh) select_gate contracts ;;
+        scripts/go-race-weights-refresh.sh) select_gate contracts ;;
+        scripts/check-compose.sh) select_gate contracts ;;
+        scripts/check-release-image-absence.sh) select_gate contracts ;;
+        scripts/check-retired.sh) select_gate contracts ;;
+        scripts/generate-diagrams.sh) select_gate contracts ;;
+        scripts/merge-release-digests.sh) select_gate contracts ;;
+        scripts/observability-dev-runtime-test.sh) select_gate contracts ;;
+        scripts/observability-dev-test.sh) select_gate contracts ;;
+        scripts/observability-dev.sh) select_gate contracts ;;
+        scripts/publish-release-image.sh) select_gate contracts ;;
+        scripts/smoke.sh) select_gate contracts ;;
+        scripts/verify-observability.sh) select_gate contracts ;;
+        scripts/watermark-overlay-matrix.sh) select_gate contracts ;;
+        # Fail closed: a script no rule names may be invoked by any gate, so it selects every
+        # gate until it is classified here (#1570).
+        *) known=false ;;
       esac
       ;;
     # orca.yaml is Orca's adapter over scripts/agent.sh, like the Make module that wraps it.
@@ -678,7 +705,10 @@ classify() {
       select_gate android
       select_gate policy
       ;;
-    .github/workflows/*)
+    # Workflows whose product checks run elsewhere (release, maintenance, reporting, cache
+    # housekeeping). There is no .github/workflows/* catch-all: a workflow no rule names is
+    # unknown and selects every gate until it is classified (#1570).
+    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/image-benchmark.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml)
       known=true
       select_gate policy
       ;;

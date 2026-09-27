@@ -77,5 +77,9 @@ assert_batch_gates() {
 
 assert_batch_gates docs-only docs docs/research/ci-wall-clock.md
 assert_batch_gates go-only contracts,go,postgres,image internal/suggest/score.go
+# A shared input no rule names fails closed in the queue too (#1570).
+every_gate='contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench'
+assert_batch_gates unclassified-script "$every_gate" scripts/unclassified-helper.sh
+assert_batch_gates unclassified-workflow "$every_gate" .github/workflows/unclassified.yml
 
 echo 'ci-diff-base-test: ok'
