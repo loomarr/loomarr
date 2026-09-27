@@ -14,8 +14,8 @@ type WatermarkPolicy struct {
 	// Corner is where the bug sits on the active picture: top-right (default), top-left,
 	// bottom-right, bottom-left.
 	Corner string `json:"corner,omitempty" enum:"top-right,top-left,bottom-right,bottom-left" doc:"Corner of the active picture; omitted is top-right"`
-	// Opacity is 0.1–1; nil is 0.65.
-	Opacity *float64 `json:"opacity,omitempty" minimum:"0.1" maximum:"1" doc:"Bug opacity, 0.1-1; omitted is 0.65"`
+	// Opacity is 0.1–1; nil is 0.40.
+	Opacity *float64 `json:"opacity,omitempty" minimum:"0.1" maximum:"1" doc:"Bug opacity, 0.1-1; omitted is 0.40"`
 	// Size is the bug's height as a share of the frame height (a square bug's; wider marks keep the
 	// same area), 0.02–0.15; nil is 0.06.
 	Size *float64 `json:"size,omitempty" minimum:"0.02" maximum:"0.15" doc:"Bug height as a share of the frame height, 0.02-0.15; omitted is 0.06"`
@@ -29,10 +29,11 @@ type WatermarkPolicy struct {
 	Callsign string `json:"callsign,omitempty" maxLength:"12" doc:"Text of the generated Plate bug; omitted derives it from the channel name"`
 }
 
-// Watermark defaults: the maintainer-approved look (2026-09-26, PR #1532).
+// Watermark defaults: the maintainer-approved look (2026-09-26, PR #1532), and its opacity from a
+// real 1080p preview (2026-09-27, #1617: at 0.65 the Plate read as a solid badge).
 const (
 	WatermarkDefaultCorner  = "top-right"
-	WatermarkDefaultOpacity = 0.65
+	WatermarkDefaultOpacity = 0.40
 	WatermarkDefaultSize    = 0.06
 	WatermarkDefaultMargin  = 0.05
 	watermarkMaxCallsign    = 12

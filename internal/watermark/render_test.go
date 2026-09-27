@@ -10,6 +10,10 @@ import (
 	"testing"
 )
 
+// testLook is the approved Plate look at the approved opacity (#1617). internal/schedule owns the
+// product defaults; these tests exercise the renderer at the same values.
+var testLook = Look{Size: 0.06, Opacity: 0.40, Shadow: true}
+
 // The approved sizes, from the sample sheets (PR #1532): at 1080p every bug covers ~2·65² px², so
 // HBO's 2.4:1 mark is 143x59, NBC's 4.1:1 is 185x45 and the 6.9:1 Nickelodeon wordmark 238x35.
 func TestSizeFor_EqualArea(t *testing.T) {
@@ -23,7 +27,7 @@ func TestSizeFor_EqualArea(t *testing.T) {
 		{100, 100, 65, 65},   // square: reaches H
 		{100, 300, 22, 65},   // tall: capped at H, never taller
 	} {
-		w, h := sizeFor(c.w, c.h, 1080, DefaultSize)
+		w, h := sizeFor(c.w, c.h, 1080, testLook.Size)
 		if w != c.wantW || h != c.wantH {
 			t.Errorf("%dx%d: %dx%d, want %dx%d", c.w, c.h, w, h, c.wantW, c.wantH)
 		}
@@ -35,7 +39,7 @@ func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bug := Render(mask, 1080, DefaultLook())
+	bug := Render(mask, 1080, testLook)
 	w, h := bug.Size()
 	if w%2 != 0 || h%2 != 0 {
 		t.Fatalf("odd size %dx%d", w, h)
@@ -54,8 +58,8 @@ func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
 			}
 		}
 	}
-	// The plate is 65% at most: the opacity is baked in, and the bug never reaches opaque.
-	if want := uint8(166); maxA < want-1 || maxA > want+1 { // 0.65 × 255
+	// The plate is the look's opacity at most: it is baked in, and the bug never reaches opaque.
+	if want := uint8(testLook.Opacity*255 + 0.5); maxA < want-1 || maxA > want+1 {
 		t.Errorf("peak alpha %d, want %d", maxA, want)
 	}
 	if !shadowSeen {
@@ -72,7 +76,7 @@ func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
 		t.Error("callsign not knocked out of the plate")
 	}
 	// Deterministic: the same input renders the same bytes.
-	again := Render(mask, 1080, DefaultLook())
+	again := Render(mask, 1080, testLook)
 	if !bytes.Equal(again.Straight.Pix, bug.Straight.Pix) {
 		t.Error("rendering is not deterministic")
 	}
@@ -96,7 +100,7 @@ func strokeLogo(size, stroke int) *image.NRGBA {
 func TestPickVariant_PrefersTheFirstLegibleVariant(t *testing.T) {
 	thin, _ := LogoMask(strokeLogo(800, 12))  // stems ~1 px at airing size
 	bold, _ := LogoMask(strokeLogo(800, 300)) // stems ~24 px
-	look := DefaultLook()
+	look := testLook
 	if s := Legibility(thin, 1080, look); s >= legibleSurvival {
 		t.Errorf("thin strokes measured legible: %.2f", s)
 	}
@@ -136,8 +140,8 @@ func TestLegibility_SampleLogos(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s := Legibility(mask, 1080, DefaultLook())
-		w, h := Render(mask, 1080, DefaultLook()).Size()
+		s := Legibility(mask, 1080, testLook)
+		w, h := Render(mask, 1080, testLook).Size()
 		t.Logf("%s: survival %.2f at %dx%d", name, s, w, h)
 		if (s >= legibleSurvival) != legible {
 			t.Errorf("%s: survival %.2f, sample sheet says legible=%v", name, s, legible)

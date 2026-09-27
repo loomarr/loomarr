@@ -11073,7 +11073,7 @@ components:
           minimum: 0
           type: number
         opacity:
-          description: Bug opacity, 0.1-1; omitted is 0.65
+          description: Bug opacity, 0.1-1; omitted is 0.40
           format: double
           maximum: 1
           minimum: 0.1

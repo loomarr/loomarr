@@ -56,7 +56,10 @@ const (
 	checkFrames      = 100
 	checkClipSeconds = float64(checkFrames)/checkFPS + 0.2 // a few frames over: -frames:v must be reachable
 	checkBug         = 64                                  // the test bug: a white square
-	checkAlpha       = 166.0 / 255
+	// checkAlpha is the test square's, not a channel's: the blend is linear in alpha, so the check
+	// proves the convention and range at any opacity, and 0.65 keeps a full-range white's miss (13)
+	// well clear of bugTolerance. The channel default (0.40, #1617) would leave it at 8.
+	checkAlpha = 166.0 / 255
 	// checkFrame is the decoded frame compared; past the first so the overlay has settled.
 	checkFrame = 12
 	// pictureTolerance is the mean absolute luma difference allowed outside the bug: two encodes

@@ -12,8 +12,11 @@
 //     cannot fringe (white has neutral chroma);
 //   - equal visual weight: every bug covers the same area, 2·H², H = frame height × size (6%),
 //     so a wide mark gets shorter and a square one reaches H (never taller);
-//   - 65% opacity baked into alpha, over a soft black drop shadow at 35% of that opacity, offset
-//     H/40 and blurred H/30, on a canvas padded 12% of the mark's height.
+//   - the look's opacity baked into alpha, over a soft black drop shadow at 35% of that opacity,
+//     offset H/40 and blurred H/30, on a canvas padded 12% of the mark's height.
+//
+// The look's values come from the channel's policy; internal/schedule (watermark_policy.go) owns
+// the approved defaults, so this package holds none.
 package watermark
 
 import (
@@ -28,13 +31,6 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
-)
-
-// The approved default look.
-const (
-	DefaultSize    = 0.06 // of the frame height
-	DefaultOpacity = 0.65
-	DefaultMargin  = 0.05 // of the frame width (x) and height (y)
 )
 
 //go:embed fonts/Geist-Bold.ttf
@@ -52,14 +48,12 @@ type Bug struct {
 // Size is the bug's pixel size; both dimensions are even (yuva420p).
 func (b Bug) Size() (int, int) { return b.Straight.Rect.Dx(), b.Straight.Rect.Dy() }
 
-// Look is one channel's bug settings.
+// Look is one channel's bug settings: Size is the bug's height as a share of the frame height,
+// Opacity is baked into alpha.
 type Look struct {
 	Size, Opacity float64
 	Shadow        bool
 }
-
-// DefaultLook is the approved default.
-func DefaultLook() Look { return Look{Size: DefaultSize, Opacity: DefaultOpacity, Shadow: true} }
 
 // ErrEmpty means the source image has no visible pixels.
 var ErrEmpty = errors.New("watermark: the image has no visible shape")
