@@ -42,7 +42,7 @@ shellcheck: ## shellcheck every repository shell script
 	shellcheck -S style $(SHELL_SCRIPTS)
 
 .PHONY: privacy-verify
-privacy-verify: ## captured private fixture literals must not re-enter the tracked tree
+privacy-verify: demo-titles-verify ## captured private fixture literals and real media titles must not re-enter the tracked tree
 	@./scripts/check-private-fixtures.sh
 
 .PHONY: vet

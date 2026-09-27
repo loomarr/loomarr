@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -161,35 +163,30 @@ func TestDemoCatalogueIsInvented(t *testing.T) {
 	}
 }
 
-func TestSeedsCarryNoRealTitles(t *testing.T) {
-	root := repoRoot(t)
+// seedFiles lists every file under the guarded directories, repo-relative.
+func seedFiles(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
 	for _, dir := range guarded {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				return err
 			}
-			if filepath.Base(p) == "guard_test.go" { // holds the denylist itself
-				return nil
-			}
-			raw, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			if hits := realHits(string(raw)); len(hits) != 0 {
-				rel, _ := filepath.Rel(root, p)
-				t.Errorf("%s carries real titles or ids: %q", rel, hits)
-			}
+			rel, _ := filepath.Rel(root, p)
+			files = append(files, filepath.ToSlash(rel))
 			return nil
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+	return files
 }
 
-func TestFixturesCarryNoNewRealTitles(t *testing.T) {
-	root := repoRoot(t)
-	var dirty []string
+// fixtureFiles lists every web seed or fixture the guard scans, repo-relative.
+func fixtureFiles(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
 	err := filepath.WalkDir(filepath.Join(root, "web"), func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -201,20 +198,53 @@ func TestFixturesCarryNoNewRealTitles(t *testing.T) {
 			return nil
 		}
 		rel, _ := filepath.Rel(root, p)
-		if !isFixture(filepath.ToSlash(rel)) {
-			return nil
-		}
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		if len(realHits(string(raw))) != 0 {
-			dirty = append(dirty, filepath.ToSlash(rel))
+		if rel = filepath.ToSlash(rel); isFixture(rel) {
+			files = append(files, rel)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	return files
+}
+
+func TestSeedsCarryNoRealTitles(t *testing.T) {
+	root := repoRoot(t)
+	for _, rel := range seedFiles(t, root) {
+		if path.Base(rel) == "guard_test.go" { // holds the denylist itself
+			continue
+		}
+		if hits := realHits(mustRead(t, filepath.Join(root, rel))); len(hits) != 0 {
+			t.Errorf("%s carries real titles or ids: %q", rel, hits)
+		}
+	}
+}
+
+// CI runs this guard in the path-filtered Go contracts job (privacy-verify), so the ci-impact
+// classifier must select that job for every file the guard scans, Go and web alike.
+func TestCIRunsTheGuardWheneverAScannedFileChanges(t *testing.T) {
+	root := repoRoot(t)
+	for _, rel := range append(seedFiles(t, root), fixtureFiles(t, root)...) {
+		cmd := exec.Command("./scripts/ci-impact.sh", rel)
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("ci-impact %s: %v", rel, err)
+		}
+		if !slices.Contains(strings.Fields(string(out)), "contracts=true") {
+			t.Errorf("ci-impact skips the Go contracts job for %s, so a real title there would merge unchecked; route it in scripts/ci-impact.sh", rel)
+		}
+	}
+}
+
+func TestFixturesCarryNoNewRealTitles(t *testing.T) {
+	root := repoRoot(t)
+	var dirty []string
+	for _, rel := range fixtureFiles(t, root) {
+		if len(realHits(mustRead(t, filepath.Join(root, rel)))) != 0 {
+			dirty = append(dirty, rel)
+		}
 	}
 	for _, rel := range dirty {
 		if !slices.Contains(legacyFixtures, rel) {

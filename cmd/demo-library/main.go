@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -42,7 +43,7 @@ func main() {
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	dir := fs.String("dir", envOr("DEMO_DIR", ".agent-data/demo-library"), "directory for generated demo assets")
 	ffmpeg := fs.String("ffmpeg", envOr("DEMO_FFMPEG", "ffmpeg"), "ffmpeg binary used to generate assets")
-	addr := fs.String("addr", envOr("DEMO_LIBRARY_ADDR", "127.0.0.1:8097"), "stand-in media server listen address")
+	addr := fs.String("addr", envOr("DEMO_LIBRARY_ADDR", defaultAddr()), "stand-in media server listen address")
 	base := fs.String("base", os.Getenv("BASE"), "Loomarr backend URL to seed, e.g. http://localhost:18048")
 	libraryURL := fs.String("library-url", os.Getenv("DEMO_LIBRARY_URL"), "stand-in URL as the backend reaches it (default http://<addr>)")
 	dbURL := fs.String("database-url", os.Getenv("DATABASE_URL"), "the backend's store, for the approval gate")
@@ -88,6 +89,13 @@ func serve(ctx context.Context, dir, ffmpeg, addr string, log *slog.Logger) erro
 		return err
 	}
 	return nil
+}
+
+// defaultAddr is 22000 + the worktree's dev slot (LOOMARR_AGENT_SLOT, exported by
+// scripts/dev-env.sh), so each worktree's stand-in sits beside its other dev ports.
+func defaultAddr() string {
+	slot, _ := strconv.Atoi(os.Getenv("LOOMARR_AGENT_SLOT"))
+	return "127.0.0.1:" + strconv.Itoa(22000+slot)
 }
 
 func envOr(key, def string) string {

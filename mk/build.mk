@@ -128,20 +128,18 @@ seed: ## populate a dev store via the real domain paths (approval gate honored â
 	DATABASE_URL=$${DATABASE_URL:-sqlite://./loomarr-dev.db} go run ./cmd/seed
 
 # The demo library (#1587): invented titles, generated art and video, no real media anywhere.
-# Its stand-in media server listens on 22000 + this worktree's slot, beside the other dev ports.
-DEMO_LIBRARY_ENV = eval "$$(./scripts/dev-env.sh export)"; \
-	  export DEMO_LIBRARY_ADDR=$${DEMO_LIBRARY_ADDR:-127.0.0.1:$$((22000 + $${LOOMARR_AGENT_SLOT:-0}))}
-
+# Its stand-in media server listens on 22000 + this worktree's slot (LOOMARR_AGENT_SLOT from
+# dev-env.sh), beside the other dev ports; DEMO_LIBRARY_ADDR overrides it.
 .PHONY: demo-library
 demo-library: ## serve the demo library's Emby-compatible stand-in (generates its clips and art on first run)
-	@$(DEMO_LIBRARY_ENV); go run ./cmd/demo-library serve
+	@eval "$$(./scripts/dev-env.sh export)"; go run ./cmd/demo-library serve
 
 .PHONY: demo-titles-verify
-demo-titles-verify: ## no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI runs it on every PR)
-	$(GO) test ./internal/demolibrary -count=1 -run 'TestSeedsCarryNoRealTitles|TestFixturesCarryNoNewRealTitles|TestGuardCatchesRealTitlesAndIDs|TestDemoCatalogueIsInvented'
+demo-titles-verify: ## no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, whenever ci-impact sees a scanned path)
+	$(GO) test ./internal/demolibrary -count=1 -run 'TestSeedsCarryNoRealTitles|TestFixturesCarryNoNewRealTitles|TestGuardCatchesRealTitlesAndIDs|TestDemoCatalogueIsInvented|TestCIRunsTheGuardWheneverAScannedFileChanges'
 
 .PHONY: demo-seed
 demo-seed: ## point this worktree's backend at the running demo library and create the demo channels (idempotent)
-	@$(DEMO_LIBRARY_ENV); \
+	@eval "$$(./scripts/dev-env.sh export)"; \
 	  BASE=$${BASE:-$$LOOMARR_API} DEMO_WEB_URL=$${DEMO_WEB_URL:-http://localhost:$$LOOMARR_FE_PORT} \
 	  DATABASE_URL=$${DATABASE_URL:-$$LOOMARR_AGENT_DATABASE_URL} go run ./cmd/demo-library seed
