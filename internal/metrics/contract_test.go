@@ -32,7 +32,7 @@ func TestRecorderMatchesReviewedMetricManifest(t *testing.T) {
 	recorder.PlayoutSessionStarted("success")
 	recorder.PlayoutSessionActive(1)
 	recorder.PlayoutProcessFailure("parent")
-	recorder.PlayoutFallback("prepared_to_live")
+	recorder.PlayoutFallback("hardware_to_software")
 	recorder.ImageWorkerObserved(rustgen.Observation{
 		Kind: "inspect", Result: "success", Duration: time.Millisecond, PeakRSSBytes: 1,
 	})

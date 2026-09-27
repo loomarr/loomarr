@@ -98,14 +98,12 @@ copy of that volume:
 
 The database backup contains accounts, channels, settings, encrypted secrets, and wrapped data
 keys. It deliberately does not contain `/data/encryption.key`. Preserve that key separately: losing
-it makes stored credentials unrecoverable. The backup also omits filler files, prepared media,
-cached artwork, and operator-uploaded images. Copy the `/data` volume as part of host-level backup
-if those files matter; cached and prepared derivatives can be regenerated.
+it makes stored credentials unrecoverable. The backup also omits filler files, cached artwork, and
+operator-uploaded images. Copy the `/data` volume as part of host-level backup if those files
+matter; cached derivatives can be regenerated.
 
-Prepared media is bounded by the hot-applied `PLAYOUT_PREPARED_BUDGET_GB` soft cap (512 GiB by
-default). Keep enough free space for one programme beyond the cap because packaging commits before
-the retention pass; recently played programmes remain protected even if that temporarily exceeds
-the cap.
+Upgrading from a release that prepared programmes ahead of time: Loomarr no longer does, and it no
+longer reads `/data/prepared`. You can delete that directory to reclaim its space.
 
 If you write your own compose file, **mount `/data`**. Without it the database goes into the
 container's writable layer and is lost on the next `up --force-recreate` or image pull.

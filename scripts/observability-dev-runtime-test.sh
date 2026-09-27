@@ -101,7 +101,6 @@ DATABASE_URL="$database_url" \
   LOOMARR_DEV_LOGIN=1 \
   LOOMARR_METRICS_TOKEN=loomarr-dev-metrics-token \
   FILLER_DROP_DIR="$tmp/filler" \
-  PLAYOUT_PREPARED_DIR="$tmp/prepared" \
   DIAGNOSTICS_DIR="$tmp/diagnostics" \
   "$tmp/loomarr" >"$tmp/loomarr.log" 2>&1 &
 server_pid=$!

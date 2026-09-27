@@ -444,7 +444,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   await expect.poll(() => page.locator("video").evaluate((element) => element.ended)).toBe(true);
   await waitForAdjacentWarm(page, 1);
 
-  // Arbitrary prepared tune: navigate the already-running app to a non-adjacent Channel. Measure
+  // Arbitrary tune: navigate the already-running app to a non-adjacent Channel. Measure
   // route request to a genuinely decoded frame, including SPA/API/HLS work but excluding the cold
   // document + decoder bootstrap proven above and owned by the real-runtime gate.
   const arbitrary: number[] = [];
@@ -459,7 +459,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     await waitForAdjacentWarm(page, number);
   }
   const arbitraryP95 = p95(arbitrary);
-  const arbitraryEvidence = `arbitrary prepared p95: ${arbitraryP95.toFixed(1)}ms; samples: ${arbitrary
+  const arbitraryEvidence = `arbitrary p95: ${arbitraryP95.toFixed(1)}ms; samples: ${arbitrary
     .map((sample) => sample.toFixed(1))
     .join(", ")}; traces: ${arbitraryTraces.join(" | ")}`;
   if (browserName === "webkit") {
@@ -471,12 +471,13 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     expect(arbitraryP95, arbitraryEvidence).toBeLessThan(1_500);
   }
 
-  // Start the adjacent run from the middle of the catalog and prove speculative work is prepared-only.
-  const probeStart = backend.state.preparedProbes.length;
+  // Start the adjacent run from the middle of the catalog and prove speculative work is a bounded
+  // warm (mode=warm), never a foreground tune.
+  const probeStart = backend.state.warmProbes.length;
   await page.goto(`/channels/${channelId(50)}/watch`);
   await waitForDecodedFrame(page, "adjacent-run bootstrap");
   await expect
-    .poll(() => backend.state.preparedProbes.slice(probeStart))
+    .poll(() => backend.state.warmProbes.slice(probeStart))
     .toEqual(expect.arrayContaining([channelId(49), channelId(51)]));
   expect(backend.state.activeManifests.slice(-1)).toEqual([channelId(50)]);
 
@@ -602,7 +603,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
         `channel ${target} did not prepare new neighbor ${next}: ${JSON.stringify({
           marks,
           playURLMints: backend.state.playURLMints.slice(-8),
-          preparedProbes: backend.state.preparedProbes.slice(-8),
+          warmProbes: backend.state.warmProbes.slice(-8),
           assetRequests: backend.state.assetRequests.slice(-12),
           assetCompletions: backend.state.assetCompletions.slice(-12),
         })}`,
@@ -614,12 +615,12 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
 
   expect(p95(osd), `OSD p95: ${p95(osd).toFixed(1)}ms`).toBeLessThan(100);
   const adjacentP95 = p95(adjacentFrames);
-  const adjacentEvidence = `prepared adjacent first-frame p95: ${adjacentP95.toFixed(
+  const adjacentEvidence = `warmed adjacent first-frame p95: ${adjacentP95.toFixed(
     1,
   )}ms; samples: ${adjacentFrames
     .map((sample) => sample.toFixed(1))
     .join(", ")}; traces: ${adjacentTraces.join(" | ")}`;
-  await test.info().attach("prepared-adjacent-timing", {
+  await test.info().attach("warmed-adjacent-timing", {
     body: adjacentEvidence,
     contentType: "text/plain",
   });
@@ -635,14 +636,13 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   const manifestDurations = await page.evaluate(() =>
     performance
       .getEntriesByType("resource")
-      .filter((entry) => entry.name.includes("/master.m3u8") && entry.name.includes("mode=prepared"))
+      .filter((entry) => entry.name.includes("/master.m3u8") && entry.name.includes("mode=warm"))
       .map((entry) => entry.duration),
   );
   expect(manifestDurations.length).toBeGreaterThanOrEqual(20);
-  expect(
-    p95(manifestDurations),
-    `prepared manifest p95: ${p95(manifestDurations).toFixed(1)}ms`,
-  ).toBeLessThan(50);
+  expect(p95(manifestDurations), `warm manifest p95: ${p95(manifestDurations).toFixed(1)}ms`).toBeLessThan(
+    50,
+  );
 
   // Twenty mixed requests in one burst must collapse to the last intent. The first click provides
   // real user activation; the remaining clicks happen in one task, before route churn can sequence
@@ -683,7 +683,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
         assetCompletions: backend.state.assetCompletions.slice(-12),
         assetRequests: backend.state.assetRequests.slice(-12),
         playURLMints: backend.state.playURLMints.slice(-8),
-        preparedProbes: backend.state.preparedProbes.slice(-8),
+        warmProbes: backend.state.warmProbes.slice(-8),
       })}`,
       { cause: error },
     );

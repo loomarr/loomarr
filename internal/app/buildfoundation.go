@@ -144,8 +144,6 @@ func buildFoundation(
 					return storagegovernor.Policy{SoftBudgetBytes: int64(budget) * storagegovernor.GiB}
 				}
 				return storagegovernor.Policy{AutomaticBudget: true}
-			case storagegovernor.DomainPrepared:
-				return storagegovernor.Policy{SoftBudgetBytes: preparedBudgetBytes(result.set.intv("playout.prepared_budget_gb"))}
 			case storagegovernor.DomainDiagnostics:
 				return storagegovernor.Policy{SoftBudgetBytes: int64(result.set.intv("diagnostics.max_storage_mb")) * (1 << 20)}
 			default:
@@ -155,7 +153,6 @@ func buildFoundation(
 		result.storageGovernor, err = storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
 			{Path: result.fillerLayout.ClipDir(), Domain: storagegovernor.DomainFiller},
 			{Path: result.fillerLayout.WatchDir(), Domain: storagegovernor.DomainFiller},
-			{Path: result.set.str("playout.prepared_dir"), Domain: storagegovernor.DomainPrepared},
 			{Path: result.set.str("diagnostics.dir"), Domain: storagegovernor.DomainDiagnostics},
 		}, storagePolicy)
 		if err != nil {

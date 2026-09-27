@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -22,10 +23,21 @@ func (s hostPerChannelSource) Output(_ context.Context, channelID string, _ Form
 
 // countingObserver records the active-packager deltas the metrics see.
 type countingObserver struct {
-	mu     sync.Mutex
-	active int
+	mu        sync.Mutex
+	active    int
+	fallbacks []string
 }
 
+func (o *countingObserver) PlayoutFallback(reason string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.fallbacks = append(o.fallbacks, reason)
+}
+func (o *countingObserver) Fallbacks() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return slices.Clone(o.fallbacks)
+}
 func (o *countingObserver) PlayoutSessionStarted(string) {}
 func (o *countingObserver) PlayoutSessionActive(d int) {
 	o.mu.Lock()

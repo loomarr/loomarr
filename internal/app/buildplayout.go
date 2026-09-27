@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -21,8 +22,6 @@ import (
 	"github.com/loomarr/loomarr/internal/mediameasure"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/prepared"
-	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
@@ -34,7 +33,6 @@ const playoutGPUIdentityTimeout = 250 * time.Millisecond
 type playoutBuild struct {
 	observer          api.PlayoutObserver
 	capability        func() playout.Capacity
-	preparedObserver  api.PreparedObserver
 	service           api.Playout
 	resolverService   api.PlayoutResolver
 	encodePool        *media.EncodePool
@@ -56,14 +54,11 @@ type playoutDeps struct {
 	secrets               *settings.Secrets
 	readSecret            func(context.Context, settings.GeneratedSecret) (string, error)
 	events                *events.Bus
-	jobs                  *scheduler.Registry
 	layout                filler.Layout
 	channels              *channels.Engine
 	liveTVConnector       *setup.LiveTVConnector
 	backendView           backendtransition.CheckpointView
 	resolveDesiredBackend func(context.Context) (string, error)
-	appliedBackend        func(context.Context) (string, error)
-	transportBackend      func(context.Context) (string, error)
 	log                   *slog.Logger
 	processDiagnostics    *diagnostics.ProcessManager
 	storageGovernor       *storagegovernor.Governor
@@ -81,12 +76,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	owner, capturePlayoutResolver := deps.owner, deps.captureResolver
 	libraryClient, readGeneratedSecret := deps.library, deps.readSecret
 	lib := libraryClient
-	eventBus, jobReg, fillerLayout := deps.events, deps.jobs, deps.layout
+	eventBus, fillerLayout := deps.events, deps.layout
 	channelEngine, liveTVConnector := deps.channels, deps.liveTVConnector
 	backendView, resolveDesiredBackend, log := deps.backendView, deps.resolveDesiredBackend, deps.log
-	appliedBackendContext, transportBackendContext := deps.appliedBackend, deps.transportBackend
 	var playoutObserver api.PlayoutObserver
-	var preparedObserver api.PreparedObserver
 	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
 	var encodePool *media.EncodePool
@@ -152,10 +145,14 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	}).WithLog(log)
 	// The channel packager is built after the resolver it reads the schedule through.
 	var packagedHLS *playout.PackagerHLS
-	// Host measurements live in playout.state_dir; the encoder evidence moves there from the prepared
-	// library once (#1512), so an upgrade reuses its verified measurement instead of re-benchmarking.
+	// Host measurements live in playout.state_dir; the encoder evidence moves there from the retired
+	// prepared library once (#1512), so an upgrade reuses its verified measurement instead of
+	// re-benchmarking. The prepared library's setting is retired (phase 4), so the move reads its
+	// default home, <data dir>/prepared, the sibling of the default state directory; a custom
+	// state_dir finds nothing there and measures again.
 	stateDir := set.str("playout.state_dir")
-	if moved, merr := playout.MigrateCapabilityEvidence(set.str("playout.prepared_dir"), stateDir); merr != nil {
+	legacyPrepared := filepath.Join(filepath.Dir(filepath.Clean(stateDir)), "prepared")
+	if moved, merr := playout.MigrateCapabilityEvidence(legacyPrepared, stateDir); merr != nil {
 		log.Warn("playout: could not move the encoder measurement to the state directory; it will be re-measured", "err", merr)
 	} else if moved {
 		log.Info("playout: moved the encoder measurement to the state directory", "dir", stateDir)
@@ -300,78 +297,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 			"capacity probe disabled", "", "")
 	}
 
-	// Prepared playout is persistent control-plane work feeding the SAME Origin as the live
-	// fallback. Construction may fail on an unwritable volume without taking live TV down; the
-	// task remains visible with the exact reason instead of silently disappearing.
-	var preparedOrigin *playout.PreparedOrigin
-	preparedLibrary, preparedErr := prepared.NewLibrary(set.str("playout.prepared_dir"))
-	if preparedErr != nil {
-		reason := "the prepared media directory is unavailable: " + preparedErr.Error()
-		log.Warn("playout: prepared media unavailable — live fallback remains active", "err", preparedErr)
-		planner := prepared.NewPlanner(prepared.PlannerDependencies{
-			Pool: encodePool, Now: time.Now, Log: log, UnavailableReason: reason,
-		})
-		preparedObserver = planner
-		jobReg.Add(preparedPlayoutJob(planner, reason))
-	} else {
-		readiness, readinessErr := prepared.OpenReadiness(preparedLibrary)
-		if readinessErr != nil {
-			log.Warn("playout: prepared readiness index unavailable — live fallback remains active", "err", readinessErr)
-		}
-		packager := prepared.NewFFmpegPackager(
-			set.str("playout.ffmpeg_path"),
-			func(contract prepared.RenditionContract) (prepared.VideoPlan, error) {
-				encoder := playout.Encoder(set.str("playout.encoder"))
-				if encoder == "" {
-					encoder = playoutRes.detectedEncoder(rootCtx)
-				}
-				return playout.PreparedVideoArgs(encoder, contract)
-			},
-		).WithDiagnostics(deps.processDiagnostics)
-		preparer := prepared.NewPreparer(prepared.PreparerDependencies{
-			Library: preparedLibrary, Packager: packager, Access: playoutRes,
-			Storage: deps.storageGovernor,
-		})
-		preparedRuntime := newPreparedRuntimeResolver(preparedRuntimeDependencies{
-			Channels: st, Timeline: playoutRes, Sources: playoutRes, Lookup: preparer,
-			Now: time.Now, Readiness: readiness,
-			PathMap: func() library.PathMap { return library.ParsePathMap(set.str("library.path_map")) },
-			Policy: func() string {
-				authority := ""
-				if origin, err := lib.InventoryOrigin("prepared-policy"); err == nil {
-					authority = string(origin.Authority)
-				}
-				return preparedSourcePolicy(
-					set.str("playout.quality_tier"),
-					set.str("playout.audio_language"),
-					set.str("library.path_map"),
-					authority,
-				)
-			},
-			GlobalBackendContext:    appliedBackendContext,
-			TransportBackendContext: transportBackendContext,
-			Tonemap:                 playout.TonemapperFor(set.str("playout.ffmpeg_path")),
-			Rendition: func() prepared.RenditionContract {
-				return playout.CanonicalPreparedRendition(
-					playout.TierFor(set.str("playout.quality_tier")),
-				)
-			},
-		})
-		planner := prepared.NewPlanner(prepared.PlannerDependencies{
-			Resolver: preparedRuntime, Preparation: preparer, Pool: encodePool,
-			Retainer: preparedLibrary, Lifecycle: owner.ctx,
-			BudgetBytes: func() int64 {
-				return preparedBudgetBytes(set.intv("playout.prepared_budget_gb"))
-			},
-			Now: time.Now, Log: log,
-		})
-		preparedObserver = planner
-		jobReg.Add(preparedPlayoutJob(planner, ""))
-		// Publication workers outlive scheduler passes; shutdown cancels owner.ctx first, then waits for them
-		// to discard their private staging.
-		owner.addStop(planner.Wait)
-		preparedOrigin = playout.NewPreparedOrigin(preparedLibrary, preparedRuntime)
-	}
 	var lifecycleGate *playoutAdmissionGate
 	// Every transport hop uses one durable eligibility decision, including SQLite's raw
 	// playlist/program chain. Postgres additionally closes the process-wide listener gate
@@ -421,12 +346,11 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		})
 	}
 	origin := playout.NewOrigin(playout.OriginDependencies{
-		Prepared: preparedOrigin, Packager: packagedHLS,
+		Packager: packagedHLS,
 		Available: func() bool {
 			return lifecycleGate == nil || lifecycleGate.Available()
 		},
 		Eligible: durablePlayoutEligibility,
-		Observer: deps.metrics,
 		Still:    playout.FFmpegStill(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
 		// A cold channel's still: one frame of the airing on now, decoded from its source (#1512).
 		StillAiring: playoutRes.StillAiring,
@@ -491,7 +415,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 
 	return playoutBuild{
 		observer: playoutObserver, capability: playoutRes.PublishedCapability,
-		preparedObserver: preparedObserver, service: playoutSvc,
+		service:         playoutSvc,
 		resolverService: playoutResolverSvc, encodePool: encodePool, guide: playoutGuideSvc,
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },

@@ -181,13 +181,16 @@ func failingEncoder(t *testing.T, stderr string) (ffmpeg string, runs func() []s
 
 // openItem runs the channel's schedule for one item n times, as the packager does when an
 // item fails: the first encoder fails, the schedule is asked again, the next attempt opens.
-func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n int) {
+// It returns the fallbacks the packager reported to its metrics observer.
+func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n int) []string {
 	t.Helper()
 	m, err := NewPackagerHLS(stuckSlateSource{}, ffmpeg, t.TempDir(), time.Second, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
+	obs := &countingObserver{}
+	m.WithObserver(obs)
 	m.source = fixedItemSource{item: it}
 	out := OutputProfile{Width: 1920, Height: 1080, FPS: 25, Quality: 23, TargetKbps: 6000, MaxKbps: 9000, GOPSeconds: 1, AudioKbps: 128}
 	sched := m.schedule(packagedKey{channel: "ch", format: FormatBaseline}, host, out, nil, nil, slog.New(slog.DiscardHandler))
@@ -203,6 +206,7 @@ func openItem(t *testing.T, ffmpeg string, host HostProfile, it PackagerItem, n 
 		_, _ = io.Copy(io.Discard, rc)
 		_ = rc.Close()
 	}
+	return obs.Fallbacks()
 }
 
 type fixedItemSource struct {
@@ -270,7 +274,7 @@ func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
 // (§9.1 V47, the retired chain's ladder): retrying the same -hwaccel path fails identically.
 func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
 	ffmpeg, runs := failingEncoder(t, "[AVHWFramesContext @ 0x1] Failed to sync surface 0xc: 23 (internal decoding error)")
-	openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), progItem(testSources()["h264-1080p-sdr-25"]), 2)
+	fallbacks := openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{}), progItem(testSources()["h264-1080p-sdr-25"]), 2)
 	r := runs()
 	if len(r) != 2 || !strings.Contains(r[0], "-hwaccel") {
 		t.Fatalf("want a GPU-decoded first attempt and a retry, got %q", r)
@@ -278,19 +282,29 @@ func TestPackagerRetriesAHardwareDecodeFaultWithACPUDecode(t *testing.T) {
 	if strings.Contains(r[1], "-hwaccel") || !strings.Contains(r[1], "h264_nvenc") {
 		t.Errorf("retry after a decode fault: want a CPU decode into the same encoder, got %q", r[1])
 	}
+	// The demotion is the live hardware→software fallback the metrics count (#1512 phase 4: the
+	// retired prepared→live fallback was that counter's only other producer). The second attempt
+	// fails too, but already decodes on the CPU, so it demotes nothing more.
+	if !slices.Equal(fallbacks, []string{"hardware_to_software"}) {
+		t.Errorf("fallbacks reported = %q, want one hardware_to_software", fallbacks)
+	}
 }
 
 // A GPU tone-mapper that fails the item (no output, not a decode fault) is dropped for that source,
 // and the retry takes the next tone-mapper for the curve (DemoteTonemap's order).
 func TestPackagerRetriesAFailedGPUTonemapWithTheNextOne(t *testing.T) {
 	ffmpeg, runs := failingEncoder(t, "[Parsed_tonemap_opencl_3 @ 0x1] Failed to enqueue kernel: -5.")
-	openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), progItem(testSources()["hevc-4k-hdr-dv"]), 2)
+	fallbacks := openItem(t, ffmpeg, HostFor(EncoderNVENC, true, GPUFilters{TonemapOpenCL: true, Libplacebo: true}), progItem(testSources()["hevc-4k-hdr-dv"]), 2)
 	r := runs()
 	if len(r) != 2 || !strings.Contains(r[0], "tonemap_opencl") {
 		t.Fatalf("want an OpenCL tone-mapped first attempt and a retry, got %q", r)
 	}
 	if strings.Contains(r[1], "tonemap_opencl") || !strings.Contains(r[1], "libplacebo") {
 		t.Errorf("retry after a tone-map failure: want libplacebo, got %q", r[1])
+	}
+	// OpenCL → libplacebo stays on the GPU; libplacebo failing too leaves only the CPU tone-map.
+	if !slices.Equal(fallbacks, []string{"hardware_to_software"}) {
+		t.Errorf("fallbacks reported = %q, want one hardware_to_software (the second failure only)", fallbacks)
 	}
 }
 
@@ -610,7 +624,7 @@ func (f *fakeVariantOrigin) MediaPlaylist(_ context.Context, _ string, _ EncodeP
 // transport authenticates its URIs, and never looks for it on disk. Other assets are still files.
 func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
 	pk := &fakeVariantOrigin{fakeHLSOrigin: fakeHLSOrigin{assets: map[string]string{}}}
-	o := newOrigin(nil, nil, pk)
+	o := newOrigin(nil, pk)
 
 	asset, ok, err := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr.m3u8")
 	if err != nil || !ok || !asset.Playlist {

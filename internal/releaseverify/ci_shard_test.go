@@ -319,7 +319,6 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	}
 	want := []string{
 		"1 internal/app",
-		"1 internal/prepared",
 		"2 internal/api",
 		"2 internal/playout",
 	}

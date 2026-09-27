@@ -16,7 +16,7 @@ func TestMonitorPathStopsOutputThatCrossesItsLease(t *testing.T) {
 		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
 	})
 	lease, decision := governor.Reserve(t.Context(), storagegovernor.Request{
-		Path: root, Domain: storagegovernor.DomainPrepared, EstimatedBytes: 10,
+		Path: root, Domain: storagegovernor.DomainDiagnostics, EstimatedBytes: 10,
 	})
 	if lease == nil || !decision.Allowed {
 		t.Fatalf("reserve = %+v", decision)
@@ -41,7 +41,7 @@ func TestMonitorPathAcceptsBoundedRegularOutputAndRejectsSymlinks(t *testing.T) 
 		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
 	})
 	lease, _ := governor.Reserve(t.Context(), storagegovernor.Request{
-		Path: root, Domain: storagegovernor.DomainPrepared, EstimatedBytes: 10,
+		Path: root, Domain: storagegovernor.DomainDiagnostics, EstimatedBytes: 10,
 	})
 	if lease == nil {
 		t.Fatal("reservation was refused")
@@ -57,7 +57,7 @@ func TestMonitorPathAcceptsBoundedRegularOutputAndRejectsSymlinks(t *testing.T) 
 
 	linkRoot := t.TempDir()
 	linkLease, _ := governor.Reserve(t.Context(), storagegovernor.Request{
-		Path: linkRoot, Domain: storagegovernor.DomainPrepared, EstimatedBytes: 10,
+		Path: linkRoot, Domain: storagegovernor.DomainDiagnostics, EstimatedBytes: 10,
 	})
 	if linkLease == nil {
 		t.Fatal("symlink test reservation was refused")

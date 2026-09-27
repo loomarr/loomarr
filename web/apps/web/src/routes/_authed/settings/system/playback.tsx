@@ -52,13 +52,8 @@ const PlaybackSettings = () => {
           group: "playout",
           title: "Internal playback storage",
           description:
-            "Advanced executable, cache, and prepared-media storage controls. The defaults are right for most installations.",
-          keys: [
-            "playout.ffmpeg_path",
-            "playout.hls_dir",
-            "playout.prepared_dir",
-            "playout.prepared_budget_gb",
-          ],
+            "Advanced executable and live-segment storage controls. The defaults are right for most installations.",
+          keys: ["playout.ffmpeg_path", "playout.hls_dir"],
         },
       ]}
     >

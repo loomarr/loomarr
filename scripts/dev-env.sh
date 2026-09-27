@@ -66,7 +66,6 @@ if [ "$ROOT" = "$PRIMARY" ]; then
 	DEFAULT_DATABASE=
 	DEFAULT_FILLER=
 	DEFAULT_IMAGES=
-	DEFAULT_PREPARED=
 	DEFAULT_DIAGNOSTICS=
 	DEFAULT_DEV_LOGIN=
 	DEFAULT_ENCRYPTION_KEY_FILE=
@@ -81,7 +80,6 @@ else
 	DEFAULT_DATABASE="sqlite://$ROOT/.agent-data/loomarr.db"
 	DEFAULT_FILLER="$ROOT/.filler-drop"
 	DEFAULT_IMAGES="$ROOT/.agent-data/images"
-	DEFAULT_PREPARED="$ROOT/.agent-data/prepared"
 	DEFAULT_DIAGNOSTICS="$ROOT/.agent-data/diagnostics"
 	DEFAULT_DEV_LOGIN=1
 	# `make bootstrap` creates this worktree-private key before the server starts. Pointing at the
@@ -115,7 +113,6 @@ ARTIFACT_DIR="$ROOT/.artifacts/$INSTANCE"
 DATABASE_OVERRIDE="${LOOMARR_AGENT_DATABASE_URL:-$DEFAULT_DATABASE}"
 FILLER_OVERRIDE="${LOOMARR_AGENT_FILLER_DIR:-$DEFAULT_FILLER}"
 IMAGES_OVERRIDE="${LOOMARR_AGENT_IMAGES_DIR:-$DEFAULT_IMAGES}"
-PREPARED_OVERRIDE="${LOOMARR_AGENT_PREPARED_DIR:-$DEFAULT_PREPARED}"
 DIAGNOSTICS_OVERRIDE="${LOOMARR_AGENT_DIAGNOSTICS_DIR:-$DEFAULT_DIAGNOSTICS}"
 PUBLIC_URL_OVERRIDE="${LOOMARR_AGENT_PUBLIC_URL:-$DEFAULT_PUBLIC_URL}"
 DEV_LOGIN_OVERRIDE="${LOOMARR_AGENT_DEV_LOGIN:-$DEFAULT_DEV_LOGIN}"
@@ -148,7 +145,6 @@ case "${1:-show}" in
 		emit_export LOOMARR_AGENT_DATABASE_URL "$DATABASE_OVERRIDE"
 		emit_export LOOMARR_AGENT_FILLER_DIR "$FILLER_OVERRIDE"
 		emit_export LOOMARR_AGENT_IMAGES_DIR "$IMAGES_OVERRIDE"
-		emit_export LOOMARR_AGENT_PREPARED_DIR "$PREPARED_OVERRIDE"
 		emit_export LOOMARR_AGENT_DIAGNOSTICS_DIR "$DIAGNOSTICS_OVERRIDE"
 		emit_export LOOMARR_AGENT_PUBLIC_URL "$PUBLIC_URL_OVERRIDE"
 		emit_export LOOMARR_AGENT_DEV_LOGIN "$DEV_LOGIN_OVERRIDE"
@@ -172,7 +168,6 @@ case "${1:-show}" in
 			'database override' "${DATABASE_OVERRIDE:-<from .env>}" \
 			'filler override' "${FILLER_OVERRIDE:-<from .env>}" \
 			'images override' "${IMAGES_OVERRIDE:-<from .env>}" \
-			'prepared override' "${PREPARED_OVERRIDE:-<from .env>}" \
 			'diagnostics override' "${DIAGNOSTICS_OVERRIDE:-<from .env>}" \
 			'public URL override' "${PUBLIC_URL_OVERRIDE:-<from .env>}"
 		printf '%-22s %s\n' 'dev login' "$dev_login_label"
