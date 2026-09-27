@@ -95,7 +95,7 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 	}
 	look := watermark.Look{Size: res.Size, Opacity: res.Opacity, Shadow: true}
 	key, render := c.source(ctx, ch, res)
-	straight, pm, w, h, err := c.cached(fmt.Sprintf("%s|%d|%g|%g|%s", key, height, look.Size, look.Opacity, renderVersion),
+	straight, w, h, err := c.cached(fmt.Sprintf("%s|%d|%g|%g|%s", key, height, look.Size, look.Opacity, renderVersion),
 		func() (watermark.Bug, error) {
 			mask, err := render()
 			if err != nil {
@@ -107,7 +107,7 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 		c.log.Warn("watermark: the channel's bug could not be rendered; airing without it", "channel", channelID, "err", err)
 		return nil
 	}
-	return &playout.Watermark{Straight: straight, Premultiplied: pm, Width: w, Height: h,
+	return &playout.Watermark{Straight: straight, Width: w, Height: h,
 		Corner: playout.Corner(res.Corner), MarginX: evenRound(res.Margin * float64(width)), MarginY: evenRound(res.Margin * float64(height))}
 }
 
@@ -210,34 +210,31 @@ func deriveCallsign(name string, number int) string {
 	return fmt.Sprintf("CH%d", number)
 }
 
-// cached returns the rendered bug's two files for key, rendering them once.
-func (c *channelWatermarks) cached(key string, render func() (watermark.Bug, error)) (string, string, int, int, error) {
+// cached returns the rendered bug's file for key, rendering it once.
+func (c *channelWatermarks) cached(key string, render func() (watermark.Bug, error)) (string, int, int, error) {
 	sum := sha256.Sum256([]byte(key))
-	base := filepath.Join(c.dir, hex.EncodeToString(sum[:10]))
-	straight, pm := base+".png", base+".pm.png"
+	path := filepath.Join(c.dir, hex.EncodeToString(sum[:10])+".png")
 	c.render.Lock()
 	defer c.render.Unlock()
-	if f, err := os.Open(straight); err == nil {
+	if f, err := os.Open(path); err == nil {
 		cfg, derr := png.DecodeConfig(f)
 		_ = f.Close()
-		if _, serr := os.Stat(pm); derr == nil && serr == nil {
-			return straight, pm, cfg.Width, cfg.Height, nil
+		if derr == nil {
+			return path, cfg.Width, cfg.Height, nil
 		}
 	}
 	bug, err := render()
 	if err != nil {
-		return "", "", 0, 0, err
+		return "", 0, 0, err
 	}
 	if err := os.MkdirAll(c.dir, 0o755); err != nil {
-		return "", "", 0, 0, err
+		return "", 0, 0, err
 	}
-	for path, img := range map[string]image.Image{pm: bug.Premultiplied, straight: bug.Straight} {
-		if err := writePNGAtomic(path, img); err != nil {
-			return "", "", 0, 0, err
-		}
+	if err := writePNGAtomic(path, bug.Straight); err != nil {
+		return "", 0, 0, err
 	}
 	w, h := bug.Size()
-	return straight, pm, w, h, nil
+	return path, w, h, nil
 }
 
 func writePNGAtomic(path string, img image.Image) error {

@@ -43,12 +43,10 @@ var geistBold []byte
 // supersample is the factor shapes are drawn at before reduction.
 const supersample = 8
 
-// Bug is a rendered bug in both alpha conventions the GPU overlays need.
+// Bug is a rendered bug. Every GPU overlay blends straight alpha (playout/watermark.go).
 type Bug struct {
-	// Straight is ordinary (non-premultiplied) RGBA, for overlay_cuda.
+	// Straight is ordinary (non-premultiplied) RGBA.
 	Straight *image.NRGBA
-	// Premultiplied holds colour already multiplied by alpha, for overlay_vaapi.
-	Premultiplied *image.NRGBA
 }
 
 // Size is the bug's pixel size; both dimensions are even (yuva420p).
@@ -148,8 +146,8 @@ func sizeFor(w, h, frameHeight int, size float64) (int, int) {
 	return max(1, int(math.Round(hh*ar))), max(1, int(math.Round(hh)))
 }
 
-// finish bakes the opacity into alpha, adds the shadow, pads to even dimensions and derives the
-// premultiplied twin. fg is straight-alpha colour at final size; shape is its alpha.
+// finish bakes the opacity into alpha, adds the shadow and pads to even dimensions. fg is
+// straight-alpha colour at final size; shape is its alpha.
 func finish(fg *image.NRGBA, shape *image.Alpha, look Look) Bug {
 	w, h := fg.Rect.Dx(), fg.Rect.Dy()
 	pad, off := 0, 0
@@ -169,7 +167,6 @@ func finish(fg *image.NRGBA, shape *image.Alpha, look Look) Bug {
 	}
 	cw, ch = cw+cw%2, ch+ch%2 // yuva420p needs even dimensions; the extra line is transparent
 	straight := image.NewNRGBA(image.Rect(0, 0, cw, ch))
-	pm := image.NewNRGBA(straight.Rect)
 	for y := 0; y < ch; y++ {
 		for x := 0; x < cw; x++ {
 			var r, g, b, af, as float64
@@ -188,10 +185,9 @@ func finish(fg *image.NRGBA, shape *image.Alpha, look Look) Bug {
 			}
 			pr, pg, pb := r*af, g*af, b*af
 			straight.SetNRGBA(x, y, color.NRGBA{u8(pr / a), u8(pg / a), u8(pb / a), u8(a * 255)})
-			pm.SetNRGBA(x, y, color.NRGBA{u8(pr), u8(pg), u8(pb), u8(a * 255)})
 		}
 	}
-	return Bug{Straight: straight, Premultiplied: pm}
+	return Bug{Straight: straight}
 }
 
 func u8(v float64) uint8 { return uint8(math.Max(0, math.Min(255, math.Round(v)))) }

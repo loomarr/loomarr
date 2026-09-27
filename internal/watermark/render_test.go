@@ -46,14 +46,11 @@ func TestRender_WhiteSilhouetteBakedOpacityShadowEvenSize(t *testing.T) {
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			c := s.NRGBAAt(x, y)
-			// The bug's own opacity is its premultiplied white (the shadow beneath adds alpha, not light).
-			maxA = max(maxA, bug.Premultiplied.NRGBAAt(x, y).R)
+			// The bug's own opacity is its premultiplied white, R×A (the shadow beneath adds alpha,
+			// not light).
+			maxA = max(maxA, uint8((int(c.R)*int(c.A)+127)/255))
 			if c.A > 0 && c.R < 64 {
 				shadowSeen = true
-			}
-			p := bug.Premultiplied.NRGBAAt(x, y)
-			if p.A != c.A || int(p.R) > int(c.A)+1 {
-				t.Fatalf("(%d,%d) premultiplied %v vs straight %v", x, y, p, c)
 			}
 		}
 	}

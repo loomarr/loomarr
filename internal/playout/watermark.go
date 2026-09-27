@@ -15,15 +15,19 @@ import (
 //
 // The image is pre-rendered by internal/watermark at its final pixel size with the opacity and
 // drop shadow baked into its alpha, so the graph only decodes it once, uploads it once and blends
-// it: no scale, no per-frame alpha maths. Each overlay filter wants its own alpha convention:
+// it: no scale, no per-frame alpha maths. Every family's overlay blends STRAIGHT alpha, each from
+// its own pixel format; the convention is measured per family on real hardware, never assumed:
 //
-//   - overlay_cuda blends straight alpha, and only a yuva420p bug onto a yuv420p main (spike #1532,
-//     finding 1). It also emits the decoder's aligned surface (1920x1088 at 1080p) with an SPS that
-//     has no cropping, so scale_cuda passthrough=0 restores the output geometry; the SPS is then
-//     byte-identical to a bug-off item's (finding 2), which the self-check asserts.
-//   - overlay_vaapi blends premultiplied alpha (VA_BLEND_PREMULTIPLIED_ALPHA for an alpha format),
-//     so it reads the premultiplied rendition. The self-check's bug-luma assertion is what proves
-//     the convention on real hardware: a straight bug through a premultiplied blend is over-bright.
+//   - overlay_cuda: a yuva420p bug onto a yuv420p main only (spike #1532, finding 1). It also emits
+//     the decoder's aligned surface (1920x1088 at 1080p) with an SPS that has no cropping, so
+//     scale_cuda passthrough=0 restores the output geometry; the SPS is then byte-identical to a
+//     bug-off item's (finding 2), which the self-check asserts.
+//   - overlay_vaapi: a bgra bug. ffmpeg flags any alpha format VA_BLEND_PREMULTIPLIED_ALPHA, but
+//     the household Arc (iHD, ffmpeg n8.1.2) blends it as straight: over a Y 71 patch a
+//     premultiplied bug read 129 where 65% white is 178, and the straight bug read 178
+//     (scripts/watermark-vaapi-matrix.sh). The self-check's bug-luma assertion re-proves the
+//     convention on each host, so a driver that disagrees disables the bug rather than airing it
+//     dim.
 
 // Corner is where the bug sits, relative to the active picture.
 type Corner string
@@ -45,11 +49,11 @@ type Rect struct {
 
 // Watermark is one programme item's bug, rendered for this channel's output.
 type Watermark struct {
-	// Straight and Premultiplied are the rendered PNG in each alpha convention: final pixel size,
-	// opacity and shadow baked in, even dimensions (yuva420p).
-	Straight, Premultiplied string
-	Width, Height           int
-	Corner                  Corner
+	// Straight is the rendered PNG, straight (non-premultiplied) alpha: final pixel size, opacity
+	// and shadow baked in, even dimensions (yuva420p).
+	Straight      string
+	Width, Height int
+	Corner        Corner
 	// MarginX and MarginY are output pixels from the active picture's edges.
 	MarginX, MarginY int
 }
@@ -115,7 +119,7 @@ func (b *builder) overlay() bool {
 		why = "the GPU overlay failed this host's self-check"
 	case b.wm.Width <= 0 || b.wm.Height <= 0 || b.wm.Width%2 != 0 || b.wm.Height%2 != 0:
 		why = fmt.Sprintf("bad bug size %dx%d", b.wm.Width, b.wm.Height)
-	case !safeGraphPath.MatchString(b.wm.Straight) || !safeGraphPath.MatchString(b.wm.Premultiplied):
+	case !safeGraphPath.MatchString(b.wm.Straight):
 		why = "the bug's path would need escaping in the filter graph"
 	}
 	if why != "" {

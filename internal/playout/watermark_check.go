@@ -28,7 +28,8 @@ import (
 //
 //   - the programme survives: outside the bug, the bug-on frame matches the bug-off frame;
 //   - the bug is present, where placement says, at the expected blend: 65% white over the measured
-//     background, which also proves the family's alpha convention (straight vs premultiplied);
+//     background, which also proves the host blends the bug as straight alpha (a premultiplied
+//     reading, as ffmpeg flags it for VAAPI, lands far from the expected luma);
 //   - the bug-on SPS and PPS are byte-identical to the bug-off ones, because breaks air bug-off in
 //     the same channel stream and a parameter-set change there resets decoders.
 //
@@ -201,30 +202,26 @@ func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts Medi
 		m.pictureDiff, m.bugLuma, m.bugWant, m.bugBackground), nil
 }
 
-// writeCheckBug writes the test bug, a white square at the check alpha, in both conventions.
+// writeCheckBug writes the test bug, a white square at the check alpha (straight).
 func writeCheckBug(dir string) (*Watermark, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	a := uint8(math.Round(checkAlpha * 255))
-	straight := image.NewNRGBA(image.Rect(0, 0, checkBug, checkBug))
-	pm := image.NewNRGBA(image.Rect(0, 0, checkBug, checkBug))
+	img := image.NewNRGBA(image.Rect(0, 0, checkBug, checkBug))
 	for y := 0; y < checkBug; y++ {
 		for x := 0; x < checkBug; x++ {
-			straight.SetNRGBA(x, y, color.NRGBA{255, 255, 255, a})
-			pm.SetNRGBA(x, y, color.NRGBA{a, a, a, a}) // premultiplied values, stored as-is
+			img.SetNRGBA(x, y, color.NRGBA{255, 255, 255, a})
 		}
 	}
-	wm := &Watermark{Straight: filepath.Join(dir, "bug.png"), Premultiplied: filepath.Join(dir, "bug.pm.png"),
+	wm := &Watermark{Straight: filepath.Join(dir, "bug.png"),
 		Width: checkBug, Height: checkBug, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
-	for path, img := range map[string]image.Image{wm.Straight: straight, wm.Premultiplied: pm} {
-		var buf bytes.Buffer
-		if err := png.Encode(&buf, img); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
-			return nil, err
-		}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(wm.Straight, buf.Bytes(), 0o644); err != nil {
+		return nil, err
 	}
 	if !safeGraphPath.MatchString(wm.Straight) {
 		return nil, errors.New("scratch directory path needs escaping: " + dir)

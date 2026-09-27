@@ -8,7 +8,7 @@ import (
 // testBug is the approved default look at 1080p: 6% of the frame height (65 px, rounded to even),
 // margins 5% of width and height.
 func testBug() *Watermark {
-	return &Watermark{Straight: "/data/watermarks/ch1-abc.png", Premultiplied: "/data/watermarks/ch1-abc.pm.png",
+	return &Watermark{Straight: "/data/watermarks/ch1-abc.png",
 		Width: 144, Height: 64, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
 }
 
@@ -95,7 +95,9 @@ func TestBuildItem_WatermarkIsAGPUOverlay(t *testing.T) {
 				}
 			case FamilyVAAPI:
 				wantAll(t, hostName+"/"+srcName, g,
-					"movie=filename=/data/watermarks/ch1-abc.pm.png,format=bgra,hwupload[wm]", "[main][wm]overlay_vaapi=x=")
+					// Straight alpha: on the Arc a premultiplied bug blended as 129 where 65% white is
+					// 178, and the straight bgra bug blended correctly (scripts/watermark-vaapi-matrix.sh).
+					"movie=filename=/data/watermarks/ch1-abc.png,format=bgra,hwupload[wm]", "[main][wm]overlay_vaapi=x=")
 			}
 			if n := strings.Count(g, "movie="); n != 1 {
 				t.Errorf("%s/%s: the bug must be read once, got %d movie sources", hostName, srcName, n)

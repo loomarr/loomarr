@@ -1298,7 +1298,7 @@ func TestPlayoutProgramUnsafeCopyStartUsesAtomicTranscodeAdmission(t *testing.T)
 func TestPlayoutProgram_WatermarkOnProgrammesOnly(t *testing.T) {
 	nvenc := playout.DefaultProfile()
 	nvenc.Encoder = playout.EncoderNVENC
-	bug := &playout.Watermark{Straight: "/data/wm/a.png", Premultiplied: "/data/wm/a.pm.png", Width: 144, Height: 64,
+	bug := &playout.Watermark{Straight: "/data/wm/a.png", Width: 144, Height: 64,
 		Corner: playout.CornerTopRight, MarginX: 96, MarginY: 54}
 	h264 := playout.MediaFormat{VideoCodec: "h264", Width: 1920, Height: 1080, FrameRate: 25, PixelFormat: "yuv420p"}
 	for _, tc := range []struct {

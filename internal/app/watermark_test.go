@@ -28,10 +28,8 @@ func TestChannelWatermarks_DefaultPlateBug(t *testing.T) {
 	if wm.Corner != playout.CornerTopRight || wm.MarginX != 96 || wm.MarginY != 54 || wm.Width%2 != 0 || wm.Height%2 != 0 {
 		t.Errorf("placement %+v", wm)
 	}
-	for _, p := range []string{wm.Straight, wm.Premultiplied} {
-		if _, err := os.Stat(p); err != nil {
-			t.Errorf("rendered file missing: %v", err)
-		}
+	if _, err := os.Stat(wm.Straight); err != nil {
+		t.Errorf("rendered file missing: %v", err)
 	}
 	// Cached: the second ask returns the same files without re-rendering.
 	again := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)

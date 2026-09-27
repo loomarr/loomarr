@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # watermark-vaapi-matrix.sh — which overlay_vaapi graph draws the channel bug on THIS GPU (#1512 1d).
 #
-# WHY THIS EXISTS. On the household Intel Arc the production graph (a premultiplied bgra bug,
-# hwupload, overlay_vaapi after pad_vaapi) measured a bug-box luma EQUAL to the background: the
-# overlay drew nothing, at full speed, exit 0. The self-check disabled the watermark correctly, but
-# which graph DOES draw is a hardware question, so this script measures a matrix of candidates on
-# the real GPU instead of guessing. Each candidate changes ONE thing from production.
+# WHY THIS EXISTS. On the household Intel Arc the first production graph (a premultiplied bgra
+# bug, hwupload, overlay_vaapi after pad_vaapi) failed the self-check's blend at full speed, exit 0.
+# Which graph blends correctly is a hardware question, so this script measures a matrix of
+# candidates on the real GPU instead of guessing. Each candidate changes ONE thing from production.
+# Its first run on the Arc (ffmpeg n8.1.2, iHD) found overlay_vaapi blends a bgra bug as STRAIGHT
+# alpha: the premultiplied bug read 129 where 65% white is 178, the straight one 178. PROD is now
+# the straight bgra bug; pm-bgra is the old graph. Run it on any new VAAPI driver or ffmpeg.
 #
 # For every candidate and programme class (SDR H.264; HDR10 HEVC tone-mapped by tonemap_opencl when
 # the image has an OpenCL runtime for the GPU) it encodes 25 frames bug-off and bug-on through the
@@ -130,8 +132,8 @@ ST="movie=filename=$W/bug.png"
 OV="overlay_vaapi=x=$X:y=$Y"
 CANDIDATES="$(
 	cat <<EOF
-PROD|@PREPAD@,$PAD|$PM,format=bgra,hwupload|$OV||blend
-straight-bgra|@PREPAD@,$PAD|$ST,format=bgra,hwupload|$OV||blend
+PROD|@PREPAD@,$PAD|$ST,format=bgra,hwupload|$OV||blend
+pm-bgra|@PREPAD@,$PAD|$PM,format=bgra,hwupload|$OV||blend
 pm-rgba|@PREPAD@,$PAD|$PM,format=rgba,hwupload|$OV||blend
 straight-rgba|@PREPAD@,$PAD|$ST,format=rgba,hwupload|$OV||blend
 pm-argb|@PREPAD@,$PAD|$PM,format=argb,hwupload|$OV||blend
