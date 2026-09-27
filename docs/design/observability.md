@@ -157,3 +157,14 @@ with a closed outcome set.
   after 30 days; aggregates last 24 months, with at most 256 unreferenced evaluation-run snapshots.
 - One admin-only JSON export returns aggregates and referenced snapshots, never receipts or keys.
   Nothing is uploaded. SQLite and PostgreSQL share one conformance suite.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **Metrics scrape-token negatives:** with a token configured, no credential, a wrong token, a
+  prefix or superset of it, the admin `API_TOKEN`, a member token or a session cookie each get
+  `401` on `/v1/metrics` and `/metrics`; the correct bearer gets the exposition. With no token
+  configured every request gets `403` naming `LOOMARR_METRICS_TOKEN` and no series. The token never
+  appears in logs, config errors or refusals, and the composition-root test proves the same through
+  `app.Build`.

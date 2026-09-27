@@ -177,3 +177,15 @@ Both traces are versioned, stably ordered, bounded to 1,024 facts with `factTota
 and `truncated` counting past the bound, and carry only canonical identity, safe display names and
 closed codes. Prompts, rationale, credentials, provider payloads, paths and locations are redacted.
 Evaluators consume the same typed evidence and fail closed on mismatch.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- Interface-level tests cover every legal Journey milestone and permitted action without reading
+  raw tables. SQLite and Postgres conformance proves atomic claim, expired-running recovery,
+  monotonic Attempt tokens, stale-worker rejection, success and failure rollback, cache cloning and
+  bounded history. Crash tests stop after claim, model return, Proposal insert and approval commit;
+  restart converges to exactly one visible outcome. Old-version fixtures stay readable; unknown
+  versions and approved-without-Channel fail closed. Dropping every SSE frame does not change the
+  result.

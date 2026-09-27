@@ -176,3 +176,15 @@ creation; operators can replace it per channel.
   `channels.MidRollFreezeHorizon` (30 minutes) keep their accepted split (`PinnedCuts`).
 - The guide shows a split programme as **one** entry spanning its parts and the breaks inside.
 - `breaksPerHour = 0`, no filler pool, or a marathon rule (`NoBreaks`) means no mid-roll either.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **Scheduler reconcile** against a mock Tunarr: idempotent (a second reconcile is a no-op),
+  minimal-diff, and backfill (a pending slot filled with filler becomes the real title on
+  `available` and is re-pushed; `unavailable` substitutes). Dropping the availability event entirely
+  still backfills through the periodic sweep. One leader per channel under concurrency.
+- **Pods** are seeded-deterministic (seed = channel + window) and respect era and audience matching,
+  category variety, density and no-repeat-in-window; the fallback ladder degrades to a bumper card;
+  filler never appears as a lineup programme; only real catalog clips are placed.

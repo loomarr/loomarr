@@ -86,3 +86,14 @@ hostage, and both one-click wiring actions also live in Settings → Connections
 - One-click channel templates (embedded JSON) prefill the channel request workspace; users edit before
   running. The workspace shows examples of constraints that work well.
 - Members always see where a request is, from pending approval to live on a channel.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **Onboarding:** `GET /v1/setup/status` reports each integration's pass or fail against mocks
+  (including the Tunarr media-source-matches-library check); a Sonarr or Radarr `Test` webhook with a
+  minimal payload is acknowledged and flips the handshake check; a failing check carries an
+  actionable hint and doc link.
+- **Frontend:** typed-client generation compiles; an e2e smoke of the approve flow runs against a
+  mocked backend; the SSE board updates on a simulated `available`.

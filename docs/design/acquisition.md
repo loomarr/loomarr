@@ -87,3 +87,10 @@ request, including retries and body reads: media server, Seerr and TMDB 10 s, Tu
 
 A dependency that is down degrades its feature and shows on the setup checklist; it never wedges the
 process.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **State machine:** every transition and the five invariants.
+- **Webhook idempotency and replay:** duplicate and out-of-order events converge.

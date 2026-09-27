@@ -221,3 +221,17 @@ playback. Empty proposals are classified (`no_tool_call`, `retrieval_empty`, `se
 `generation_error`, `provider_error`) so retrieval, provider and curation problems can be separated.
 The full certification protocol is archived in
 [`suggester-certification.md`](../engineering/archive/design-2026-09/suggester-certification.md).
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **Suggestion grounding (critical):** a mock LLM that returns fabricated titles gets zero
+  unresolvable items into a proposal and nothing unapproved into `/v1/titles`; titles already
+  present are filtered; `auto_approve` respects its quota; output validates against the schema.
+- **Reference-backed intent:** hermetic generic-web fixtures cover arbitrary public hosts, visible
+  text and title-anchor extraction, bounded bodies, malformed and missing pages, cancellation,
+  redirects, content types, and private-address, port and userinfo rejection. Regressions use
+  fictional concepts and titles to prove exact-title grounding, reference-data prompt isolation,
+  zero-evidence rejection and no generic fallback. Tests never contact the public web, and no
+  household URL, prompt, library or fetched article enters a fixture or training corpus.

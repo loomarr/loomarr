@@ -544,3 +544,11 @@ Split children are measured, not trusted (V64, V65). Structure decisions are in
 Optional and opt-in, under the suggester's grounding rule (only clips that exist in the catalog):
 classify and tag ingested filler, and assemble pods matched to a block while flagging gaps such as
 a channel with no toy adverts from its era.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- Catalog sync lands clips with duration and metadata. AI tagging and pod assembly are grounded:
+  they only reference real catalog clips. Pod behaviour is pinned in
+  [scheduling](scheduling.md#tests-that-pin-this).

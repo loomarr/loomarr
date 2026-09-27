@@ -193,3 +193,11 @@ Go 1.27+ server, one static cgo-free binary; a Rust `loomarr-image` worker; Reac
 web client; Expo + React Native TV and mobile clients (decision
 [0024](decisions/0024-react-native-clients.md)). Every dependency and its reason is in
 [`dependencies.md`](dependencies.md). Adding one means adding its row there in the same PR.
+
+## Tests that pin this
+
+Formerly `design.md` §19.
+
+- **API contract:** `/openapi.json` is valid OpenAPI 3.1; the served spec equals the committed
+  `api/openapi.yaml` (CI fails on drift); the spec's `State` enum equals the code enum; `/docs`
+  renders offline.

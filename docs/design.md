@@ -306,151 +306,9 @@ was a stale second copy of the generated map and was deleted in #779.
 
 ## 15. Configuration — layered settings
 
-**Full subsystem design — registry schema, resolution semantics, secrets lifecycle, Settings IA, wizard integration — lives in `config-design.md`.** Every setting resolves **`env > database > default`**, per key, through one **typed settings registry** (backed by the §5 settings store; all subsystems read via the settings service, never `os.Getenv` directly). An env var that is set wins and **locks its UI field** ("set via environment"); unset, the setting is managed in the app (§13). Runtime application is per key: connection operations snapshot live values, policies resolve per run, and generation-scoped resources wait for restart. `filler.dir` + `filler.watch_dir` are the first app-managed generation-scoped pair; bootstrap keys below remain restart-scoped for their pre-database reason.
-
-### Bootstrap (needed before/independent of the DB) — `env > file > default`
-
-*Revised by V5: these were env-**only**. The wizard's Database step must persist which
-database to use and cannot write into the database it is choosing, so a narrow file tier
-sits beneath env — `bootstrap.json` in the data directory, bootstrap keys only, env still
-wins. See `config-design.md` §1. Every app-managed setting is unchanged at
-`env > database > default`.*
-
-| Env var | Required | Example / default |
-| --- | --- | --- |
-| `DATABASE_URL` | no | **default `sqlite:///data/loomarr.db`** / `postgres://…` |
-| `AUTO_MIGRATE` | no | `true` |
-| `LISTEN_ADDR` / `LOG_LEVEL` | no | `:8080` / `info` |
-| `TZ` | no | container time zone; time-slot schedules computed here (§9) |
-| `LOOMARR_ENCRYPTION_KEY` / `LOOMARR_ENCRYPTION_KEY_FILE` | no | Base64url 32-byte installation key, or a file containing it. Both set is an error. Neither set atomically creates `/data/encryption.key` at `0600`. Every PostgreSQL replica must share the same key; the database retains only its fingerprint. |
-| `LOOMARR_ENCRYPTION_KEY_PREVIOUS` / `LOOMARR_ENCRYPTION_KEY_PREVIOUS_FILE` | no | One-boot installation-key replacement input. Supply the old key here and the new key through the ordinary current-key variable; Loomarr atomically rewraps all DEKs, then this input must be removed. Both previous forms set is an error. |
-
-**Zero required env** for a SQLite first run: `docker run -v loomarr-data:/data loomarr` → wizard.
-
-### Database secret encryption
-
-Every reversibly stored database secret is sealed through one Grafana-style envelope-encryption
-module before persistence. Versioned AES-256-GCM ciphertext is authenticated against its record
-kind, stable identity, and field name. Wrapped data-encryption keys live in the database; the
-installation key that wraps them does not. Database-only backups therefore contain ciphertext but
-require the separately preserved installation key to restore credentials. A wrong or missing key,
-unknown envelope, or failed authentication prevents readiness and never clears the value.
-
-Data-key rotation activates a fresh key for new writes before existing ciphertext is migrated.
-Installation-key replacement rewraps the data keys while old and new material are explicitly
-available for that maintenance operation. Access and devices exposes encryption status, a non-secret
-fingerprint, and data-key rotation only; provider setup never exposes key management. Full host or
-volume compromise containing both database and installation key is outside this protection boundary.
-
-### Generated secrets (created at first migration; view/regenerate in Settings; env override optional)
-
-| Setting (env override) | Notes |
-| --- | --- |
-| `API_TOKEN` | Machine access + break-glass admin (§11) — the Sonarr API-key model. |
-| `PLAYOUT_TOKEN` | Read-only device credential for tuner and segment URLs (§9.1). |
-
-### Application settings registry (UI-managed; each key's env name pins it)
-
-| Setting (env name) | Default / example |
-| --- | --- |
-| `LIBRARY_FLAVOR` / `LIBRARY_URL` / `LIBRARY_TOKEN` | `emby` \| `jellyfin` / `http://emby:8096` / *(secret)* |
-| `REQUESTER_PROVIDER` | `seerr` \| `arr` — selects the acquisition backend (load-bearing, like `LLM_PROVIDER`); gates which fields show. |
-| `SEERR_URL` / `SEERR_API_KEY` | `http://seerr:5055` / *(secret)* — when `REQUESTER_PROVIDER=seerr` |
-| `SONARR_URL` / `SONARR_API_KEY` / `RADARR_URL` / `RADARR_API_KEY` | direct requester (`REQUESTER_PROVIDER=arr`): TV→Sonarr, movies→Radarr / *(secrets)*. Optional `SONARR_QUALITY_PROFILE`/`SONARR_ROOT_FOLDER` (+ `RADARR_*`) pin the profile/root; blank = the arr's first. |
-| `TUNARR_URL` | `http://tunarr:8000` (Tunarr has no auth; no key config) |
-| `TUNARR_TRANSCODE_CONFIG_ID` | Tunarr transcode-config uuid created channels reference (Phase-0: channel create requires a valid `transcodeConfigId`; empty → resolve the instance `Default` via `GET /api/transcode_configs`, §9) |
-| `SERVER_PUBLIC_URL` | **Re-scoped by §9.1 — no longer icon-only, and no longer Advanced.** Loomarr's own address as your media server *and* Tunarr reach it (e.g. `http://loomarr:8080`). **The rule (#1447): external consumers use the public URL; Loomarr's own process uses the listen address.** The stream URLs handed to a media server or Tunarr are built from this base, so a wrong value means channels appear in the guide *there* and never play. Loomarr's **in-app playback does not use it**: the playout session's parent process fetches its own programme blocks from the bound `LISTEN_ADDR` over loopback (a wildcard bind dials `127.0.0.1`), so a stale or hairpin-blocked public address cannot stall a tune. Only a build with no listener (embedded/test) falls back to this value. Current Health carries a non-required **Public address** check (`public_url`): it requests `/v1/healthz` at this address and, when unreachable, says "This server can't reach its public address … — check SERVER_PUBLIC_URL" with remediation `/settings/system/playback`. It is skipped at boot (the listener does not exist yet during assembly) and runs from the first Current Health refresh. A tune that fails to start returns a 502 problem whose `detail` names the cause (programme source unreachable or refused, encoder exited, no stream); the player shows that reason with Retry instead of retrying, while a 404/empty playlist stays the ordinary warm-up retry. Once three consecutive block opens for the first block fail, the tune fails at once rather than waiting the 45s first-segment deadline. Still also used for **uploaded** channel icons — the stored icon URL is built from this, never from request headers (Host-injection-safe). Deliberately ONE key rather than a second `playout.public_url`: it is genuinely the server's own address, both callers need the same value, and two keys could drift. Empty → a relative `/v1/channels/{id}/icon` URL for icons (works when Tunarr shares Loomarr's origin); a media server or Tunarr consuming internal playout requires it set (in-app playback does not). |
-| `ACCESS_PUBLIC_URL` | Empty by default. The global `access.public_url` setting is the absolute `http`/`https` browser origin recipients can reach (for example `https://loomarr.example.test`), used to construct Invitation and local-recovery links (§11). Its General editor is labelled **Recipient-facing Loomarr address** and, when the setting is empty, stages the current browser origin as the default. The operator saves that value or changes it when recipients reach Loomarr elsewhere. The backend never infers the value from request headers, so async email delivery always uses explicit persisted configuration. It is intentionally distinct from `SERVER_PUBLIC_URL`, which may be a container-only machine-client address. Empty suppresses email and shareable-link generation with an actionable Settings → General link; it does not prevent direct account creation/import or storing an Invitation reservation. Notifications consumes its readiness state but does not own its editor. |
-| `JOB_NOTIFICATION_DELIVERY_SCHEDULE` | `*/15 * * * * *`. How often the provider-neutral worker claims queued account-message Delivery attempts. The worker drains a bounded batch per run; retry availability remains the fixed policy above rather than another setting. |
-
-**One-time SMTP upgrade input (not application settings).** The legacy environment variables
-`NOTIFICATIONS_EMAIL_ENABLED`, `NOTIFICATIONS_SMTP_HOST`, `NOTIFICATIONS_SMTP_PORT`,
-`NOTIFICATIONS_SMTP_SECURITY`, `NOTIFICATIONS_SMTP_USERNAME`, `NOTIFICATIONS_SMTP_PASSWORD`,
-`NOTIFICATIONS_EMAIL_FROM_ADDRESS`, and `NOTIFICATIONS_EMAIL_FROM_NAME` retain their former parsing
-rules only for the one upgrade inspection described in §11. They do not pin, recreate, or update a
-provider after that inspection. New installations configure SMTP only through **Settings →
-Notifications → Add provider**.
-
-**Playout (§9.1 — added with internal playout).**
-
-| Env | Meaning / default |
-| --- | --- |
-| `PLAYOUT_BACKEND` | `internal` (default) or `tunarr` — who streams a channel. **Overridable per channel** via `policy.playout.backend`, which rides `policy_json` (no schema change, like `rules`/`filler`/`window`/`autoCurate`). Nil per-channel means **follow the live global value**; changing the default moves every inherited channel, while an explicit per-channel value pins that channel. |
-| `PLAYOUT_ENCODER` | ffmpeg encoder (e.g. `libx264`, `h264_vaapi`, `h264_nvenc`). Empty ⇒ the best one the transcode check found. |
-| `PLAYOUT_AUDIO_LANGUAGE` | `eng` (default) — ISO 639-2 code for the preferred audio track. A **preference**: an optional map plus a first-track fallback, so a file with no track in that language still gets audio rather than failing to encode. Empty ⇒ ffmpeg's own choice, which picks the track with the **most channels** and ignores language entirely — that is how a 5.1 Russian dub beats a 2.0 English track (§9.1). |
-| `PLAYOUT_FFMPEG_PATH` | `ffmpeg` — the binary playout executes. Deliberately **separate from `INGEST_FFMPEG_PATH`**, though ⚠ **not for the reason this row used to give** (it cited the filler sidecar bundling its own ffmpeg in a different image — there is one image now, §16, so that rationale died with the sidecar). The live reason is that the two fail differently: playout's ffmpeg is a runtime dependency of a channel that is **on air**, ingest's is a dependency of a download nobody is watching, so repointing one must not be able to break the other. Advanced; the default is right whenever ffmpeg is on `PATH`. |
-| `PLAYOUT_QUALITY_TIER` | `balanced` (default) / `efficient` / `quality` — the picture-vs-channel-count target. Resolved at each program boundary against measured capacity and current load, so quality adapts as channels come and go rather than being fixed per channel (§9.1). |
-| `PLAYOUT_PREPARED_DIR` | **Retired (#1512 phase 4)** with prepared media; ignored if still set. |
-| `PLAYOUT_PREPARED_BUDGET_GB` | **Retired (#1512 phase 4)** with prepared media; ignored if still set. |
-| `PLAYOUT_MAX_CHANNELS` | `0` (automatic) — use the encoder trial's measured concurrent-transcode capacity. A positive value is an optional safety cap and may only lower that measurement, never raise it. A test pattern encodes cheaper than film grain, so lower the cap if real content cannot sustain the measured budget. |
-| `PLAYOUT_TOKEN` | **Generated secret** (§11 device auth), viewable because it must be pasted into a tuner/listings URL by hand. Signs every segment request so only your media server can pull a stream. Distinct from `API_TOKEN`: that is break-glass **admin** with full authority; this grants nothing beyond reading streams. |
-
-**Backup (§16 — added with the Backup UI).**
-
-| Env | Meaning / default |
-| --- | --- |
-| `BACKUP_SCHEDULE` | `0 30 3 * * *` — nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped DEKs, but not the external installation key. It does not contain filler, prepared media, cached artwork, or operator image uploads; protect `/data` separately when those files matter. |
-| `BACKUP_RETAIN` | `7` — how many to keep before pruning the oldest. |
-| `BACKUP_DIR` | `/data/backups` — inside the documented volume by default; point elsewhere to keep backups off the database's disk. |
-| `LLM_PROVIDER` / `LLM_URL` / `LLM_MODEL` | `ollama` \| `openai` / base URL / model id. **`LLM_PROVIDER` is load-bearing** (selects the client). For `openai`, `LLM_URL` is the OpenAI-compatible **base URL** (a hosted `…/v1`, or Ollama's own `http://ollama:11434/v1`). Local default: `ollama` + `qwen3:8b` (or `qwen3:14b` at **Q6_K** — stock Q4 degrades tool-calling/JSON). **Initial defaults only:** an in-app selection (§8.1) persisted to the settings store (`llm.provider`/`llm.url`/`llm.model` + per-provider secret `llm.api_key.<provider>`) **overrides** them and hot-swaps the running suggester, so a UI choice survives a reboot without editing env. |
-| `LLM_API_KEY` | *(secret; read for `LLM_PROVIDER=openai`. An in-app hosted selection stores its own per-provider key in the settings store, overriding this — §8.1; **never echoed** by any API.)* |
-| `LLM_KEEP_ALIVE` | `30m` — how long a **local** Ollama model stays resident between calls (§8.2). Loading an 8B model costs ~9s vs ~0.5s warm, and Ollama unloads after 5m idle, so the stock behavior makes a describe→read→refine cycle re-pay the load every time. `0` disables (stock unload) for a memory-tight host. Ignored by hosted providers, which have no residency to manage. |
-| `TMDB_API_KEY` | *(secret; enables TMDB search, channel icon suggestions, and AI grounding — required if the suggester is enabled)* |
-| `IMAGES_DIR` | `/data/images` — where the image service (§22) stores originals and derivatives, inside the documented volume. ⚠ **Not covered by the application backup**, which is a database backup: `/data` is one volume and the volume is what to back up. Everything here is regenerable or re-fetchable **except** operator uploads. |
-| `IMAGES_MAX_UPLOAD_BYTES` | `8388608` (8 MiB) — the ceiling on an uploaded image, enforced on the read as well as the declared size. |
-| `IMAGES_REMOTE_FETCH_ENABLED` | `true` — whether to ingest remote artwork (TMDB, media-server) at all. `false` keeps the service to locally-produced images only; no outbound image requests are made. |
-| `IMAGES_CACHE_BUDGET_MB` | `2048` — soft cap on the derivative cache before the GC job evicts least-recently-used renditions. Derivatives are always regenerable, so eviction costs latency, never data. |
-| Image module policy (not settings) | AVIF/WebP/JPEG are always emitted; remote fetch concurrency is capped below the provider limit; fetched artwork never outlives the six-month compliance ceiling. These are compatibility, service-protection, and compliance invariants rather than user preferences. |
-| `REQUEST_TTL` / `DOWNLOADING_TTL` | `48h` / `12h` |
-| `CHANNEL_RECONCILE_EVERY` | `10m` — minimum delay after a successful channel rebuild before it is eligible for another scheduled sweep. The normal cadence control is the **Maintain live channels** task under System → Tasks, so this cooldown remains an advanced setting. |
-| `JOB_SYSTEM_HEALTH_SCHEDULE` | `*/30 * * * * *` — every 30 seconds, refresh Current Health through the named System task. Probes run concurrently under bounded deadlines; changing this cadence also changes their freshness deadline rather than allowing an older observation to remain green indefinitely (§17). |
-| `SESSION_TTL` / `COOKIE_SECURE` | `720h` / `auto` (§11) |
-| `TRUST_PROXY` | `false` (§11) — trust `X-Forwarded-For`/`X-Forwarded-Proto`. Default `false`: the login rate-limit key and `cookie.secure=auto` use the socket peer address, so forwarding headers can't be forged by a direct client. Set `true` only when a reverse proxy in front sets these headers. |
-| `LOOMARR_METRICS_TOKEN` / `LOOMARR_METRICS_TOKEN_FILE` | *(unset)* — the bearer credential Prometheus presents to `GET /v1/metrics` and `/metrics` (§7). **Unset ⇒ the endpoint is refused (`403`) — fail closed**, and boot WARNs once naming this variable. `_FILE` follows the Docker-secrets idiom (contents trimmed; both set, or an unreadable file, stops the boot; errors never echo the value). Bootstrap-tier like `LOOMARR_PPROF`: it gates a surface that is unauthenticated by nature, and a registry key would be editable by any admin session. Deliberately separate from `API_TOKEN` — a scraper credential must not act as an admin. Generate one with `openssl rand -hex 32`. |
-| `LOOMARR_PPROF` | *(unset)* — **development only.** `1` mounts `/debug/pprof/*` (§7). Unset ⇒ the routes do not exist. Bootstrap-tier for the same reason as `LOOMARR_DEV_LOGIN`: it decides which routes are mounted, and a profiling surface an admin session could switch on at runtime would be a worse hole than the one it opens. Boot WARNs while it is on. |
-| `LOOMARR_DEV_LOGIN` | *(unset)* — **development only.** `1` registers `POST /v1/auth/dev-login`, a credential-free admin sign-in (§11), and makes the login screen offer it. Unset ⇒ the route does not exist. Bootstrap-tier (read at boot, not hot-appliable): it decides which routes are mounted, and a bypass that could be switched on at runtime through the settings API would be a worse hole than the one it opens. Boot WARNs on every startup while it is on. |
-| `JOB_WORKERS` / `JOB_TIMEOUT` | `1` / `10m` (§8). One suggestion at a time is the appliance-safe default because a local model may share CPU, memory, and GPU with playback or transcode. A larger or hosted-model deployment may deliberately raise it. |
-| `JOBS_RETENTION` / `PROPOSALS_RETENTION` | `720h` / `2160h` (§5 housekeeping). |
-| `ACTIVITY_RETENTION` | `720h` — how long Dashboard activity rows are kept before `housekeeping` removes them (§5, §18.1, V32). |
-| `DIAGNOSTICS_DIR` | `/data/diagnostics` — persistent, diagnostics-owned Process-output files. The path is generation-scoped and applies after restart; changing it cannot split one generation's active Process runs across roots (§17). |
-| `DIAGNOSTICS_RETENTION` | `168h` — how long Diagnostic events and completed Process runs remain available. Active Process runs are exempt regardless of age (§5, §17). |
-| `DIAGNOSTICS_MAX_STORAGE_MB` | `512` — soft global budget for normalized Diagnostic-event payload plus bounded Process-output files. Housekeeping removes the oldest completed evidence until under budget; active Process runs remain protected even when that temporarily leaves the install over budget (§5, §17). |
-| `episodes.max_age` | `24h` — how stale a cached series episode list may be before resolution and `channel-maintenance` re-enumerate it (§5). A miss or aged row attempts the live library call. On an aged refresh failure, a non-empty valid cache preserves playable/safety facts but disables editorial subset selection; an empty cache remains unavailable. |
-| `SUGGEST_MAX_ACQUISITIONS` | `10` |
-| `SCHED_WINDOW_HOURS` | `24h` (rolling-window horizon a channel materializes; per-channel/-rule overridable, `0` = the whole run — `programming-design.md` §6.5) |
-| `FILLER_DIR` / `FILLER_SYNC_EVERY` | **`/data/filler`** / `15m` (§10). ⚠ **V38c: this is the CLIP FOLDER** — Loomarr's own store, holding `a3/f9/<hash>.mp4` plus sidecars, scanned directly by Loomarr and the only directory Loomarr rearranges. *(It briefly meant "the first watched folder" in V38c's intermediate model, before "Two folders, one pipeline" split arrival from storage. The key kept its name because its meaning — where the clips are — did not change; only the layout did.)* Tunarr-backed channels also receive this folder as a `local` source; that playout integration is not how the catalog discovers files. ⚠ **Defaults inside `/data`, like `DATABASE_URL` and `BACKUP_DIR`** — it was previously empty for no recorded reason, which made filler opt-in by accident: a zero-env install opened the Filler page on a single "no folder configured" empty state, hiding every shipped filler capability behind a config step. Created at generation build if missing (the scanner treats a missing root as fatal by design, so a default that did not exist would swap an honest empty state for a scan error). **Generation-scoped:** a saved replacement is desired immediately but every filesystem consumer keeps the applied root until restart. Changing it selects another library; it never moves the old library implicitly |
-| `FILLER_WATCH_DIR` | **`""` ⇒ `<FILLER_DIR>/_watch`** (§10 V38c, "Two folders, one pipeline"). Where clips ARRIVE — downloads land here, operators drop files here — and Loomarr drains it into the clip folder on every sync. ⚠ **The default is derived rather than a literal**, so pointing `FILLER_DIR` at an existing library moves the watch folder with it instead of leaving it orphaned under `/data`. ⚠ **Underscore-prefixed and INSIDE the clip folder on purpose**: a sibling default would need a second mounted volume to survive a restart, and an unmounted watch folder loses anything not yet filed on the next restart — silently, because an empty folder is also what success looks like. The scan skips it by name, so a file waiting there is never catalogued from its arrival path. **Generation-scoped with `FILLER_DIR`:** saving both can never apply the new watch against the old root; one immutable pair takes effect after restart |
-| `FILLER_BREAKS_PER_HOUR` / `FILLER_BREAK_DURATION` / `FILLER_POD_MAX` | `4` / `30s` / `4`. Break frequency is the inherited channel default (`policy.breaksPerHour`: absent = follow it, `0` = no breaks, positive = custom). Break length is also inherited (`policy.breakDuration`: absent = follow it, minimum `30s`) and never uses zero as off. Pod size is a global preferred clip count, automatically raised when the matching catalog's median clip duration needs more clips to fill the resolved break length. |
-| `FILLER_INCOMING_READY_WINDOW` | `24h` — how long Ready clips remain visible as recent activity in Filler → Incoming. Bounded from `1h` through `720h` (30 days), hot-applied on the next read, and view-only: aging out never removes a Library clip or changes playback eligibility. |
-| `FILLER_COOLDOWN_SECONDS` / `FILLER_WEIGHT` | `30` / `1` (Tunarr filler-list attach: min seconds before a clip repeats; relative draw weight across multiple filler-lists) |
-| `FILLER_MIN_QUALITY` | `0` — minimum clip height in px for a commercial to be eligible (`480` excludes 240p rips). **`0` disables the floor, and that is the default**: quality is display-only unless an operator opts in, because a blanket "prefer HD" starves the era-accurate 4:3 commercials §10 exists to play (V17c) |
-| `FILLER_MIN_DURATION` | `10s` — the quality gate's floor (§10 V40). A clip shorter than this is **rejected at the scan boundary** and never becomes a catalog row at all. ⚠ Distinct from `FILLER_MIN_QUALITY`, which is an opt-in *eligibility* filter over clips that already exist: this one rejects, and its default is ON. It exists because `DurationMs <= 0` was the only guard, and a 2.9KB / 33ms truncated download passed it and sat airable in the catalog. ⚠ **It has a SECOND job since V54**: composed with `MinSegmentMs` as `max()`, it is also the splitter's detection floor (§10 V34 step 2). One number, two enforcement points, deliberately — the alternative is a segment the auto-confirm gate admits and the scan boundary then rejects, which is the shape `FILLER_AUTOSPLIT_MAX_DURATION` one row down also serves two jobs to avoid |
-| `FILLER_SPLIT_REVIEW_WINDOW` | **`720h`** (30 days) — how long a split proposal's leftover cuts wait for review before `filler-split-sweep` gives up on them (§10 V54). ⚠ **The ONLY setting in Loomarr that deletes an operator's media**: when it expires, the leftover cuts are dropped AND the original recording is removed to reclaim the space (reels are commonly 1–2 GB). Bounded by three rules, all enforced rather than documented: only past the window; only for a recording that has ALREADY produced clips (a reel Loomarr could not use is the operator's only copy, and is never touched); and `0s` = never, which is the same off-by-explicit-zero encoding `FILLER_MIN_CLIP_DURATION` uses. The clips cut from a reel are never affected, and the catalog ROW survives as a tombstone so `parent_hash` lineage keeps resolving — only the bytes go. Told to the operator in `docs/help/filler.md`, which ships inside the binary |
-| `FILLER_MIN_CLIP_DURATION` / `FILLER_MAX_CLIP_DURATION` | **`0s` / `0s`** — both OFF (§10 V51f). Pod-assembly *eligibility* bounds: a commercial outside them is not drawn into breaks automatically, but stays in the catalog, searchable and pinnable. ⚠ **Distinct from `FILLER_MIN_DURATION` above, on the other side of the catalog boundary**: that one refuses a file *entry*; these decide what an existing clip may fill. ⚠ **`Policy.MinClipMs`/`MaxClipMs` existed for several phases with no way to set them** — assigned in tests and nowhere else — so `durationEligible` always returned true and `PoolReport.Eligible`, which §10 headlines as "the number that surprises operators", was arithmetically identical to `Commercials` on every install ever run. The pool strip printed one number twice and presented the pair as a diagnosis. The max is the one worth setting: it is the guard against a three-minute infomercial filling a thirty-second gap |
-| `FILLER_TARGET_LUFS` | `-23` — the broadcast loudness target filler is normalised to (§10 V40, §9.1). Measured spread across real fetched clips was −21.8 to −32.6 LUFS, about 11 dB of clip-to-clip jump. ⚠ **Applied at PLAYOUT by default** — the drop-folder holds the operator's own files, so Loomarr does not rewrite them unasked. ⚠ **ONE target for both stages**: `FILLER_CONDITIONING_NORMALIZE_LOUDNESS` reuses this value rather than declaring its own, or a clip normalised on file would be corrected again at playout toward a different number. Set empty to disable |
-| `FILLER_CONDITIONING_NORMALIZE_LOUDNESS` | `false` — when on, the transcode rung rewrites the playback derivative with ffmpeg `loudnorm` at `FILLER_TARGET_LUFS`. It is independent of admission and never mutates the retained source master. The sidecar records `normalizedLufs` so restart replay does not repeatedly process the same derivative. The former auto-file-named key is retired rather than silently retaining a false relationship to publication. |
-| `FILLER_VISION_ENABLED` / `FILLER_VISION_MODEL` | **`true` / empty** (§10 V44) — whether a clip's own frames are read, and by which model. Empty model ⇒ reuse `LLM_MODEL`, for an install whose main model already sees images. ⚠ **Neither row existed in this table until V54a**, though both settings shipped in V44; the omission is why the gap one row below went unnoticed. |
-| `FILLER_VISION_PROVIDER` / `FILLER_VISION_URL` / `FILLER_VISION_API_KEY` | **all empty ⇒ vision uses the main LLM's provider, URL and key** — unchanged behaviour for every existing install (§10 V54a). Set them to point vision at a *different service* from the one that writes text. ⚠ **This gap was load-bearing.** `FILLER_VISION_MODEL` promised a vision model independent of `LLM_MODEL`, but the provider was built from `LLM_URL`/`LLM_API_KEY`, so the model name was the ONLY independent part: naming a local `llava:7b` while `LLM_URL` was a hosted endpoint sent an Ollama tag to that endpoint. Measured on the maintainer's stack — `llava:7b` → `https://openrouter.ai/api/v1` → **HTTP 401** on every segment, so split grounding had never once run and the gate refused every reel with *"a segment could not be classified"*. ⚠ **The key is NEVER inherited when `FILLER_VISION_PROVIDER` is set.** Declaring a separate vision service means declaring its own credentials: inheriting would send the operator's hosted key to whatever host they named, including `localhost`. ⚠ `FILLER_VISION_URL` empty with provider `ollama` resolves to the conventional `http://localhost:11434`, the same rule `ollamaBase` already applies to probes and pulls. |
-| `FILLER_LANGUAGE` | `en` — the installation-level commercial language, chosen beside Location during setup or under Settings → Access and devices (§10 V40). It is searchable by friendly language name; provider/model details stay Advanced. A clip whose SPEECH is confidently something else is rejected; a clip with no speech at all is always kept, because a wordless visual spot has no language and those are often the best filler. Empty selects any language and disables the gate. The preference remains editable even when the detector is unavailable so setup records the household answer once; the backend reports and skips unavailable work without discarding that choice. |
-| `ASR_PROVIDER` / `ASR_URL` / `ASR_MODEL` / `ASR_API_KEY` | **`whisper` / empty / `openai/whisper-large-v3` / empty** (§10). One speech-recognition choice supplies both language detection and optional timed clip transcripts. `whisper` uses the bundled local `INGEST_WHISPER_*` paths. `hosted` uses standard multipart `/audio/transcriptions` with `verbose_json`; empty URL reuses the selected §8.1 hosted provider, while an explicit URL uses only its own optional API key. The model is separate from `LLM_MODEL` because chat/vision and STT have different modalities. Hosted spans are split into sub-minute requests and timestamps are reassembled. The detected language is trusted only when at least one non-empty segment proves speech. A service without timed segments fails visibly and retries; it never falls back to invented cuts. Connected speech sends clip audio off the box and may incur cost; local remains the default. |
-| `INGEST_YTDLP_PATH` / `INGEST_FFMPEG_PATH` | vendored paths in the image; **unset ⇒ looked up on `PATH`** (V38b), so a source build with the tools installed works without configuring anything. Overridable so an operator can run a newer yt-dlp than the image ships. `ffmpeg` is also the internal-playout encoder (§9.1), so pointing this at a broken binary degrades playout too. ⚠ **They gate DIFFERENT things** — see §10's "Two downloaders, two gates": ffmpeg alone enables archive.org; yt-dlp adds YouTube |
-| `INGEST_WHISPER_PATH` / `INGEST_WHISPER_MODEL` | vendored paths in the image — the whisper.cpp binary and its model file (§10, §14, V34). Unset/unrunnable ⇒ compilation splitting's transcript-rescue step is unavailable: over-long segments surface to the operator as **unsplittable** in the review UI rather than being guessed at (coarse splitting still works — it needs only ffmpeg). Overridable like the other tool paths |
-| `INGEST_TIMEOUT` | `30m` — per-item wall-clock ceiling so one wedged fetch cannot hold the pipeline forever. Ingest concurrency is pipeline-owned policy. |
-| `FILLER_PIPELINE_MAX_CLIPS` / `FILLER_TRANSCODE_MAX_PER_RUN` / `FILLER_PIPELINE_MAX_WHISPER` / `FILLER_PIPELINE_MAX_VISION` / `FILLER_PIPELINE_MAX_SPLITS` | **`25` / `3` / `10` / `5` / `3`** (§10 V51b). The ingest pipeline's per-run budget. Each bounds ONE PASS, not the catalog, so a backlog drains over cycles — the property the per-job batch constants they replace were chosen to defend, with the numbers carried forward unchanged. ⚠ **Zero means NONE, a distinct state from the default**: it is the only way to say "never do this kind of work on this box", which matters most for the transcode budget — the rung that creates V66's evidence and playback derivatives while retaining the source master. (⚠ `FILLER_SPLIT_EVERY` is retired: splitting is a rung every long recording reaches as it is ingested, so "how often do we go looking" stopped being a question with an answer.) |
-| `FILLER_AUTOSPLIT_ENABLED` / `FILLER_AUTOSPLIT_MIN_CONFIDENCE` | **`true` / `85`** (§10 V43, default flipped in V51b). Whether an unambiguous split is confirmed without a human, and the score every remaining segment must reach. Known duplicates and below-`FILLER_MIN_DURATION` fragments are discarded first; they are deterministic non-clips, not review decisions, and the preserved composite is the recovery path. ⚠ **This was OFF, and the note here argued for it**: cutting is destructive in a way tagging is not — a mis-cut clip plays half an advert. That risk has not changed; the evidence has. The gate remains strict (the remaining reel qualifies as a whole or none of it does, an ungrounded era disqualifies at every threshold, and a segment the detector admits it could not resolve sends the reel to a human) and its measured failure mode is refusing GOOD reels, not admitting bad ones. Off by default meant every compilation waited for a click the design says should be unnecessary. Its confidence threshold governs cut acceptance only and cannot make any child playable. |
-| `FILLER_AUTOSPLIT_MAX_DURATION` | `120s` (§10 V43). The longest a segment may be and still count as advert-shaped. ⚠ Serves TWO jobs and that is why it is one key: it selects which catalog clips the split job even looks at (longer than this ⇒ a compilation worth detecting), and it is the ceiling every segment must clear for auto-confirm. A single number keeps those two answers from disagreeing — a clip the job considers too long to be an advert must not then auto-confirm as one |
-| `FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH` | **empty** (§10 V67). Optional absolute path to the separately reviewed long-reel materialization-authority JSON. Empty, missing, malformed, drifted, or non-authorizing evidence enables no certified slice. The file is loaded at generation start and therefore requires restart after replacement. A valid authority permits independently assessed long-reel proposals to use the certified complete-plan gate. Without matching authority and a verified decision, automatic materialization holds; no compatibility fallback exists. Materialization can create held children but grants no training or broadcast admission. |
-| `FILLER_STRUCTURE_WINDOW_DEPLOYMENT_PATH` | **empty** (§10 V67). Optional absolute path to the content-addressed long-reel deployment JSON that binds the reviewed authority to two exact OpenRouter routes, reasoning modes, token bounds, reservations, and aggregate spend ceilings. It contains no credential; production uses the existing OpenRouter provider secret. Authority and deployment must both validate at generation start, and replacement requires restart. Empty, malformed, drifted, under-budgeted, or non-authorizing configuration performs no structure inference and enables no certified materialization. |
-| `FILLER_FETCH_EVERY` | `6h` (§10 V38b). How often each registered source is polled for new items. ⚠ **`0` disables auto-fetch entirely** — the escape hatch for an operator who wants acquisition to stay manual, and the value to reach for before disabling sources one by one. ⚠ **V38c: this is now the DEFAULT, not the only value** — a source may override it, and `0` on one row means *that* source never auto-fetches. Inherit is NULL, never 0 |
-| `FILLER_FETCH_MAX_PER_RUN` | `10` (§10 V38b). Items ONE source may pull per poll. ⚠ The bound that stops "add a source" meaning "download 8,000 files tonight" — an archive.org collection is thousands of items, and this is what makes it trickle rather than flood |
-| `FILLER_FETCH_MAX_CATALOG_CLIPS` | `2000` (§10 V38b). Auto-fetch stops when the catalog reaches this. ⚠ Manual queueing and approved pulls still work at the limit: a ceiling on what happens UNATTENDED is not a ceiling on what an operator may deliberately do |
-| `FILLER_STORAGE_LIBRARY_BUDGET_GB` | `0` (automatic) (§10, "Storage is reserved before Loomarr writes"). Soft allowance for Loomarr-managed filler media on its real filesystem: automatic means `min(10% of filesystem capacity, 20 GiB)`; a positive value is the operator's allowance. Hot-applies to new reservations. It never weakens the hard host reserve. The upgrade migration moves a verified stored value from the retired fetch-only disk ceiling to `filler.storage.library_budget_gb` and removes that obsolete key; its old env name and runtime path are not retained. |
-| `FILLER_RESEARCH_ENABLED` | `true` (§10 context research). Find missing descriptive clip details from exact public source metadata and credential-free structured sources when a text model is configured. Turning it off stops future context lookups; it does not remove reports or affect playback. |
-| `FILLER_RESEARCH_WEB_PROVIDER` / `FILLER_RESEARCH_BRAVE_API_KEY` / `FILLER_RESEARCH_SEARXNG_URL` | `none` / *(secret)* / empty (§10 #1349). Optional last-resort search after structured evidence cannot supply the requested context. Provider is `none`, `brave`, or `searxng`; Brave uses the fixed API host and SearXNG uses the operator's HTTPS endpoint. Secrets are masked and replace-only. |
-| `FILLER_RESEARCH_MONTHLY_LIMIT` | `100` (§10 #1349). Maximum general-web search requests reserved in one UTC calendar month. Structured sources do not consume it; connection tests and pipeline fallbacks do. The server enforces the limit atomically before dispatch. |
-| `FILLER_SOURCE_FOLDER_ENABLED` | `true` (§10 V35). The drop-folder's on/off switch. It is a setting rather than a row because the folder is **derived from configuration** — a remote collection's switch is a column on its own row. Disabling stops the catalog scan; ⚠ **it never removes clips already in the catalog**, and the enforcement lives in the syncer, not in the UI. ⚠ There is deliberately **no library equivalent**: nothing scans a media-server library for filler (§10), so the key would gate nothing |
-
-**Secrets handling:** stored in the DB following ecosystem practice (Sonarr, Seerr); masked after save (replace-only in the UI), never logged, excluded from `/v1/setup/status`; env-supplied secrets may come from env or mounted files (`<VAR>_FILE`), never baked into the image. This table mirrors the code registry — a setting that isn't here doesn't exist (AGENTS.md do-nots). Full mechanics: `config-design.md`.
+Moved to [`config-design.md`](config-design.md#12-rules-carried-from-the-former-designmd-15), with
+decision [0008](design/decisions/0008-settings-live-in-the-app.md). The settings table was deleted:
+the generated [settings reference](reference/settings.md) is the key reference.
 
 ---
 
@@ -476,45 +334,11 @@ Moved to [`design/deployment.md`](design/deployment.md#the-job-scheduler).
 ---
 
 ## 19. Testing strategy
-- **Reference-backed Intent:** hermetic generic-web fixtures cover arbitrary public hosts, visible-text
-  and title-anchor extraction, bounded bodies/excerpts/anchors, malformed and missing pages,
-  cancellation, redirects, content types, and private-address/port/userinfo rejection. Suggester regressions
-  use fictional programming concepts and titles to prove exact-title grounding, reference-data
-  prompt isolation, zero-evidence rejection, request-scaffolding normalization, rationale-independent
-  scoring, and no generic fallback when reference resolution fails. Unit and CI tests never contact
-  the public web; an operator's household URL, prompt, Library, and resolved article bytes never enter a
-  tracked fixture or training corpus.
-- **Invitation and contact store conformance:** one shared suite runs unchanged over SQLite and
-  Postgres. It covers normalized contact uniqueness, reserved local/Library identity collisions,
-  lifecycle transitions, regeneration/revocation, expiry, verified-contact replacement, grant hashes
-  never yielding a usable bearer, and two concurrent redemptions producing exactly one user/session.
-  Migrations are forward-only and upgrade populated users without inventing contact verification.
-- **Metrics scrape-token negatives (§7):** with a token configured, no credential, a wrong token,
-  a prefix or superset of the token, the admin `API_TOKEN`, a member token and a session cookie
-  alone each get `401` on both `/v1/metrics` and `/metrics`; the correct bearer gets the
-  exposition. With no token configured every request — including one carrying a Loomarr
-  credential — gets `403` naming `LOOMARR_METRICS_TOKEN` and no series. Neither the token nor a
-  guess at it appears in logs, config errors or refusals. The composition-root test proves the
-  same through `app.Build`.
-- **Access security negatives:** members receive 403 for every Invitation/contact/delivery admin
-  mutation; anonymous callers cannot inspect reservations or delivery status; disabled users lose
-  sessions; unlisted Library accounts remain indistinguishable from bad credentials; imported
-  recovery never sends or resets; public recovery responses do not enumerate eligibility; provider
-  rejection during imported redemption never falls back; and no password, provider/session token,
-  SMTP credential, or plaintext grant appears in SQL fixtures, logs, metrics, diagnostics, activity,
-  RFC 7807 bodies, browser storage, or generated examples.
-- **Notification certification:** a deterministic Delivery-means adapter pins intent idempotency,
-  retry timing/classification, suppression, retention, and ambiguous-acceptance behavior without a
-  network. SMTP integration runs against an in-process protocol server and covers unauthenticated and
-  authenticated submission, required STARTTLS, implicit TLS, certificate rejection, plain-text plus
-  HTML MIME, permanent recipient rejection, pre-acceptance transient retry, ambiguous post-`DATA`
-  disconnect, cancellation, and redaction. Unit tests never contact a real SMTP provider.
-- **Contract and frontend certification:** OpenAPI generation and orval types cover every new route
-  and lifecycle shape. Stories use synthetic non-secret grants and cover configured/unconfigured
-  email, delivery states, local/imported Invitations, invalid public grants, recovery, and QR/copy at
-  desktop and mobile widths. Vitest pins URL cleanup and zero browser persistence; Playwright pins
-  explicit-consent redemption, keyboard/focus return, the shared polite live region, forced colors,
-  axe, and deterministic visual baselines.
+
+Each subsystem's test obligations moved to a "Tests that pin this" section in its doc under
+[`design/`](design/README.md). The gate composition and CI selection text below is bound for the
+testing docs under #1572 and stays here until then.
+
 - **Gate composition:** `make verify` is the single local verification interface. Its default is
   affected evidence; `make verify SCOPE=all` is the complete explicit local Go/Rust audit and is not
   the default edit-loop, task-start, or pre-publication ritual. Normal local and agent work uses
@@ -656,29 +480,6 @@ Moved to [`design/deployment.md`](design/deployment.md#the-job-scheduler).
   aggregation, or family wiring without rebuilding unchanged products. Unknown paths still select
   everything. Generated docs, action pinning, impact fixtures, and the release verifier reject an
   orphaned module or a caller whose reusable implementation is not covered by its owning decision.
-- **State machine:** every transition + the five invariants.
-- **Store conformance:** one suite vs **both** SQLite (private temp-file clones) and Postgres (**testcontainers**, private database clones), incl. `ClaimDue` concurrency (no record claimed twice). Both template factories migrate and boot-seed once, then open each isolated clone through its production adapter without migration replay; dedicated migration and lifecycle tests retain fresh databases. The race-enabled integration target carries an explicit 20-minute Go package timeout because the complete store package has exceeded Go's implicit 10-minute default on a two-core hosted runner, while a finite doubled ceiling still fails closed on genuine hangs.
-- **Database lifecycle certification:** `make test-db-lifecycle` first runs that complete Postgres
-  gate, then builds the shipped Loomarr image and drives isolated Compose projects through the real
-  Traefik/HTTP boundary. It proves a fresh PostgreSQL install can write and restart; a populated
-  SQLite install can preflight, back up, drain, copy, verify, persist its bootstrap target, restart,
-  preserve authentication and application reads, accept PostgreSQL writes, and roll back; target
-  failures recover on SQLite; a killed mid-copy process leaves SQLite usable and can retry after the
-  disposable target is cleared; and an in-flight write drains into the snapshot while new admission
-  closes for the maintenance window. Direct SQL is restricted to fixture setup and independent
-  row-count, schema-version, and foreign-key fidelity checks.
-- **Library conformance:** Emby vs Jellyfin flavors w/ mock transport; correct auth header each.
-- **Webhook idempotency/replay:** duplicate/out-of-order events converge.
-- **Scheduler reconcile:** desired-vs-actual against a **mock Tunarr** — idempotent (second reconcile = no-op), minimal-diff, and **backfill** (pending slot filled with filler → real title on `available` → re-push; `unavailable` → substitute). **Event-loss recovery:** drop the availability event entirely and assert the periodic sweep still backfills. Per-channel single-leader claim under concurrency.
-- **Proposal workflow:** interface-level tests cover every legal Journey milestone and permitted action without reading raw tables. SQLite/Postgres conformance proves atomic claim, expired-running recovery, monotonically increasing Attempt tokens, stale-worker rejection, success/failure rollback, caller-owned cache cloning, and bounded history. Crash tests stop after claim, after model return, after Proposal insert, and after approval commit; restart converges to exactly one visible outcome. Previous-version fixtures remain readable; unknown versions and impossible approved-without-Channel combinations fail closed. Dropping every SSE frame does not change the authoritative result.
-- **Lifecycle:** the downgrade guard refuses to start on a newer-schema DB; the janitor purges expired sessions/old jobs on schedule; `GET /v1/backup` (SQLite) yields a snapshot that restores to a working instance; deleting a scheduled item from the mock library → the sweep flags drift and substitutes.
-- **Search:** `/v1/search` fans out to mock media server + mock TMDB + clip store; `in_library` flags correct; a member can search (read-only) but adding a missing title still routes through submit→approve; scope filters honored.
-- **Suggestion grounding (critical):** mock LLM returns fabricated titles → **zero** unresolvable items reach a proposal, **nothing** unapproved reaches `/v1/titles`; already-present acquisitions filtered; `auto_approve` respects quota; output validates against schema.
-- **Filler & pods:** catalog sync from a **mock media server's** filler library lands clips with duration + metadata; pod assembly is **seeded-deterministic** (seed = channel + window, so tests reproduce exactly) and respects era/audience matching, category variety, density, and no-repeat-in-window; the fallback ladder degrades gracefully to a bumper card; filler never appears as a lineup "program". Grounding applies to AI tagging and pod assembly (only real catalog clips).
-- **Auth & roles:** bootstrap creates the first local admin and succeeds **exactly once** (a second call 409s while an admin exists); a **local** user logs in against its Argon2id verifier (or upgrades a successfully verified legacy bcrypt row to Argon2id in the same login); an **imported** media-server user prefers provider auth, refreshes its verifier after success, falls back only during provider unavailability, and never falls back after provider rejection; an **un-imported** media-server user is **rejected even with valid credentials** (the allowlist — no lazy self-provision); plaintext passwords/media-server tokens are never persisted; import is admin-only and creates rows, sync refreshes but **never adds**; `member` cannot hit approve/admin routes **or `POST /v1/titles`** (403 — the approval bypass is closed); disabling a user (directly or via sync of a server-disabled user) revokes their sessions immediately; `API_TOKEN` grants break-glass admin; ⚠ **an SSO identity with no allowlist row is rejected even with a valid provider token** (§11 V8 — the direct analogue of the un-imported media-server case), and no SSO login path creates a row.
-- **Onboarding:** `GET /v1/setup/status` reports each integration pass/fail correctly against mocks (including the Tunarr media-source-matches-library check); a Sonarr/Radarr `Test` webhook with minimal payload is acked and flips the handshake check; a failing check carries an actionable hint + doc link.
-- **API contract:** `/openapi.json` valid 3.1; served spec == committed `api/openapi.yaml` (fail CI on drift); spec `State` enum == code enum; `/docs` renders offline.
-- **Frontend:** typed-client generation compiles; e2e smoke of approve flow vs mocked backend; SSE board updates on simulated `available`.
 
 ---
 
@@ -696,49 +497,9 @@ Deleted in #779: the phase plan shipped, and git history keeps it.
 
 Moved to [`design/images.md`](design/images.md), with decision
 [0020](design/decisions/0020-one-image-service.md). The data model, width ladders and job list were
-deleted: the migrations, the code and the scheduler registry own them. The frontend contract (bound
-for `frontend-design.md`) and runtime certification (bound for `docs/dev/releasing.md`, #1572) stay
-here for now.
-
-### Frontend contract
-
-One Layer-1 `Image` primitive consumes this service; no surface hand-writes an `<img>` against it.
-Beyond `<picture>`/`srcset`, three properties are required rather than optional:
-
-- **Explicit `width`/`height`**, from which browsers derive `aspect-ratio` — so cumulative layout shift
-  is zero. This is free here: the API returns real dimensions and the roles have fixed aspects.
-- **A `priority` mode.** ⚠ Lazy-loading the LCP image is the most common self-inflicted image
-  regression on the web, and a blanket "lazy-load everything" rule walks straight into it. `priority`
-  means eager loading with high fetch priority **and no async decoding** (async decode can defer the
-  very paint being measured); the default is lazy, async, low priority. The first row of any poster
-  grid is `priority`.
-- **A built-in error fallback**, because `logo` values can be operator-pasted arbitrary URLs.
-
-⚠ **Ship explicit `sizes`; do not use `sizes="auto"`.** Chrome and Firefox support it; **Safari does
-not, in any version**. It is an Interop 2026 focus, so revisit — but not yet.
-
-**Reaching the primitive from a resource that stores a URL.** `Image` takes the whole image record,
-not a hash — real `width`/`height`, the ThumbHash and both srcsets are exactly what a URL cannot
-carry. A resource whose field is a URL therefore carries the record ALONGSIDE it: `ChannelDTO` has
-`logo` (the URL, unchanged) and an optional `logoImage` (the record, present only when the logo
-resolves to one of this instance's images).
-
-⚠ **Enrichment, never replacement.** Substituting a hash for the URL would permanently break the
-external case, and the external case is not a legacy state — pasting an arbitrary image URL is a
-supported way to set a channel icon. An external logo simply has no `logoImage`, and the surface
-falls back to a plain `<img>`, which is the only honest rendering for bytes this instance does not
-own and knows no dimensions for.
-
-⚠ **The URL→record lookup VALIDATES, it does not merely parse.** The field is operator-writable
-(`PATCH /v1/channels/{id}` accepts any string), so whatever is extracted is attacker-influenced and
-is handed to the image store as a lookup key. Require a full 64-character lowercase hex hash;
-anything else is treated as an external URL. Extracting "the path segment after `/v1/images/`"
-without validating forwards traversal.
-
-⚠ **Resolve the batch before the loop, never inside the per-item mapper.** A list endpoint maps once
-per row, so a lookup inside the mapper is an N+1 — pre-resolve the distinct hashes for the whole
-page. A failed lookup is an absent record, never an error: an image row lost with `/data/images` (see
-*Durability*) must still let its channel render.
+deleted: the migrations, the code and the scheduler registry own them. The frontend contract moved
+to [`frontend-design.md`](frontend-design.md#8-the-image-primitive-formerly-designmd-22s-frontend-contract).
+Runtime certification (bound for `docs/dev/releasing.md`, #1572) stays here for now.
 
 ### Runtime certification
 
