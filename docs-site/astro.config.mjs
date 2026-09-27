@@ -64,6 +64,7 @@ export default defineConfig({
             "guides/filler",
             "guides/hardware-encoding",
             "guides/monitoring",
+            "guides/backup",
             "guides/upgrade",
             "guides/troubleshooting",
           ],
