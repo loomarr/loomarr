@@ -1,0 +1,29 @@
+%% Question: what are Loomarr's parts, and what does it talk to?
+flowchart TB
+  people([People: describe a channel, approve it]):::audience
+
+  subgraph loomarr["Loomarr: one container, one database (SQLite or Postgres)"]
+    direction LR
+    suggest[Suggester]:::loomarr ==> build[Channel builder]:::loomarr ==> schedule[Scheduler]:::loomarr ==> playout[Playout]:::loomarr
+    filler[Filler]:::loomarr --> schedule
+  end
+
+  subgraph services["What you already run"]
+    direction LR
+    tmdb[TMDB]:::service
+    llm[LLM]:::service
+    req[Seerr or *arr]:::service
+    media[Emby or Jellyfin]:::service
+  end
+
+  screens([TVs and browsers: watch]):::audience
+
+  people ==> suggest
+  suggest --> tmdb
+  suggest --> llm
+  build --> req
+  playout == Live TV ==> media
+  media ==> screens
+
+  class loomarr boundary
+  class services zone

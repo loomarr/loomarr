@@ -1,0 +1,49 @@
+# Question: what are Loomarr's parts, and what does it talk to?
+# Every part keeps its state in the one database, so the container label names it instead of
+# drawing an edge from every part.
+...@system/theme
+
+grid-rows: 4
+vertical-gap: 56
+
+people: People: describe a channel, approve it {class: audience}
+
+loomarr: Loomarr: one container, one database (SQLite or Postgres) {
+  class: boundary
+  grid-rows: 2
+  grid-columns: 4
+  horizontal-gap: 40
+  vertical-gap: 40
+  suggest: Suggester {class: loomarr}
+  build: Channel builder {class: loomarr}
+  schedule: Scheduler {class: loomarr}
+  playout: Playout {class: loomarr}
+  gap1: spacer {style.opacity: 0}
+  gap: spacer {style.opacity: 0}
+  filler: Filler {class: loomarr}
+  gap2: spacer {style.opacity: 0}
+}
+
+services: What you already run {
+  class: zone
+  grid-columns: 4
+  horizontal-gap: 40
+  tmdb: TMDB {class: service}
+  llm: LLM {class: service}
+  req: Seerr or *arr {class: service}
+  media: Emby or Jellyfin {class: service}
+}
+
+screens: TVs and browsers: watch {class: audience}
+
+people -> loomarr.suggest {class: hot}
+loomarr.suggest -> loomarr.build {class: hot}
+loomarr.build -> loomarr.schedule {class: hot}
+loomarr.schedule -> loomarr.playout {class: hot}
+loomarr.filler -> loomarr.schedule {class: flow}
+loomarr.playout -> services.media: Live TV {class: hot}
+services.media -> screens {class: hot}
+
+loomarr.suggest -> services.tmdb {class: flow}
+loomarr.suggest -> services.llm {class: flow}
+loomarr.build -> services.req {class: flow}

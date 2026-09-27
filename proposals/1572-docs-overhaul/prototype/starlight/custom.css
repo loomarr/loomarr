@@ -1,0 +1,77 @@
+/* PROTOTYPE: Starlight re-themed from the design-system semantic tokens
+   (web/packages/design-system/src/tokens/tokens.ts). Amber is the brand; the greys are the
+   "static" scale. No colour here is new. */
+:root {
+  --sl-font: "Geist Variable", Geist, ui-sans-serif, system-ui, sans-serif;
+  --sl-font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", monospace;
+
+  /* dark (Starlight's default) */
+  --sl-color-accent-low: #282010; /* signal 12% over canvas */
+  --sl-color-accent: #ffb020; /* action.primary */
+  --sl-color-accent-high: #ffc14d; /* signal-400 */
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #e7eaf0; /* content.primary */
+  --sl-color-gray-2: #c9ced8;
+  --sl-color-gray-3: #8b93a3; /* content.secondary */
+  --sl-color-gray-4: #5a6170; /* static-500 */
+  --sl-color-gray-5: #2a2e37; /* border.decorative */
+  --sl-color-gray-6: #131519; /* surface.raised */
+  --sl-color-black: #0b0c0e; /* surface.canvas */
+
+  /* callouts: note = info, tip = success, caution = warning, danger = danger */
+  --sl-color-blue-low: #1c3038;
+  --sl-color-blue: #4cc9e8;
+  --sl-color-blue-high: #e7eaf0;
+  --sl-color-purple-low: #19322a;
+  --sl-color-purple: #3dd68c;
+  --sl-color-purple-high: #e7eaf0;
+  --sl-color-orange-low: #353217;
+  --sl-color-orange: #f5d90a;
+  --sl-color-orange-high: #e7eaf0;
+  --sl-color-red-low: #331d21;
+  --sl-color-red: #e85a5f;
+  --sl-color-red-high: #e7eaf0;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #fff3d6; /* surface.focus */
+  --sl-color-accent: #795000; /* action.primary */
+  --sl-color-accent-high: #5c3d00;
+  --sl-color-white: #17191d; /* content.primary */
+  --sl-color-gray-1: #2a2e37;
+  --sl-color-gray-2: #515866; /* content.secondary */
+  --sl-color-gray-3: #69717f; /* content.muted */
+  --sl-color-gray-4: #8b93a3;
+  --sl-color-gray-5: #d2d6de; /* border.decorative */
+  --sl-color-gray-6: #e7eaf0; /* surface.elevated */
+  --sl-color-gray-7: #f7f8fa; /* surface.canvas */
+  --sl-color-black: #ffffff; /* surface.raised */
+
+  --sl-color-blue-low: #dae8eb;
+  --sl-color-blue: #08657a;
+  --sl-color-blue-high: #17191d;
+  --sl-color-purple-low: #dbe9e3;
+  --sl-color-purple: #116b45;
+  --sl-color-purple-high: #17191d;
+  --sl-color-orange-low: #e8e6d9;
+  --sl-color-orange: #655500;
+  --sl-color-orange-high: #17191d;
+  --sl-color-red-low: #f2dfdf;
+  --sl-color-red: #a5272c;
+  --sl-color-red-high: #17191d;
+}
+
+/* The "For / You'll get" opener every page starts with. */
+.sl-markdown-content > p:first-child {
+  border-left: 3px solid var(--sl-color-accent);
+  padding: 0.5rem 0 0.5rem 1rem;
+  color: var(--sl-color-gray-2);
+}
+
+.sl-markdown-content img[src$=".svg"] {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem 0;
+  border-radius: 12px;
+}

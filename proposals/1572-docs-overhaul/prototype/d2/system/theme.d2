@@ -1,0 +1,135 @@
+# Loomarr diagram system: one theme for every diagram.
+# Every colour is a design-system semantic token (web/packages/design-system/src/tokens/tokens.ts).
+# Sources carry the LIGHT value; system/darken.mjs swaps each one for its dark token after D2
+# renders, so one SVG follows the reader's colour scheme. Each light value maps to exactly one dark
+# value (the palette map in darken.mjs is checked for that).
+vars: {
+  d2-config: {
+    layout-engine: elk
+    pad: 24
+    center: true
+    dark-theme-id: 200
+    theme-overrides: {
+      N1: "#17191D"
+      N2: "#515866"
+      N7: "#FFFFFF"
+      B1: "#69717F"
+      B2: "#69717F"
+    }
+    dark-theme-overrides: {
+      N1: "#E7EAF0"
+      N2: "#8B93A3"
+      N7: "#131519"
+      B1: "#8B93A3"
+      B2: "#8B93A3"
+    }
+  }
+}
+
+classes: {
+  # Loomarr's own parts: amber, the brand colour.
+  loomarr: {
+    style: {
+      fill: "#FFF3D6" # surface.focus | dark: signal 12% over canvas
+      stroke: "#795000" # action.primary
+      stroke-width: 2
+      font-color: "#17191D" # content.primary
+      border-radius: 8
+      font-size: 16
+    }
+  }
+  # Things you run beside Loomarr: neutral.
+  service: {
+    style: {
+      fill: "#E7EAF0" # surface.elevated
+      stroke: "#747C8B" # border.control
+      stroke-width: 1
+      font-color: "#17191D"
+      border-radius: 8
+      font-size: 16
+    }
+  }
+  # People and screens: cyan, the "tune" colour.
+  audience: {
+    style: {
+      fill: "#DAE8EB" # stateSurface.info
+      stroke: "#08657A" # state.info
+      stroke-width: 2
+      font-color: "#17191D"
+      border-radius: 24
+      font-size: 16
+    }
+  }
+  store: {
+    shape: cylinder
+    style: {
+      fill: "#E7EAF0"
+      stroke: "#747C8B"
+      stroke-width: 1
+      font-color: "#17191D"
+      font-size: 16
+    }
+  }
+  # A boundary is one running thing (a container, a process).
+  boundary: {
+    label.near: top-left
+    style: {
+      fill: "#F7F8FA" # surface.canvas
+      stroke: "#795000"
+      stroke-dash: 4
+      stroke-width: 1
+      font-color: "#515866" # content.secondary
+      border-radius: 12
+      font-size: 14
+    }
+  }
+  # A zone only groups; it is not a running thing.
+  zone: {
+    label.near: top-left
+    style: {
+      fill: "#FFFFFF" # surface.raised (same as the card: invisible fill)
+      stroke: "#D2D6DE" # border.decorative
+      stroke-width: 1
+      font-color: "#515866"
+      border-radius: 12
+      font-size: 14
+    }
+  }
+  note: {
+    shape: text
+    style: {
+      font-color: "#515866"
+      font-size: 14
+    }
+  }
+  # Flow is solid grey; the one path the diagram is about is amber.
+  flow: {
+    style: {
+      stroke: "#69717F" # content.muted
+      stroke-width: 2
+      font-color: "#515866"
+      font-size: 14
+      italic: false
+    }
+  }
+  hot: {
+    style: {
+      stroke: "#795000"
+      stroke-width: 3
+      font-color: "#17191D"
+      font-size: 14
+      italic: false
+    }
+  }
+  # Durable state reads and writes are dashed.
+  state: {
+    style: {
+      stroke: "#747C8B"
+      stroke-width: 1
+      stroke-dash: 4
+      font-color: "#515866"
+      font-size: 14
+      italic: false
+    }
+  }
+}

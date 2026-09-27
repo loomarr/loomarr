@@ -1,0 +1,27 @@
+%% Question: what happens when someone tunes a channel?
+flowchart TB
+  viewer([Someone tunes in]):::audience
+  file[Your media file<br/>read directly]:::service
+
+  subgraph packager["Channel packager"]
+    schedule[Schedule<br/>what airs now?]:::loomarr
+    encoder[ffmpeg<br/>one process per item]:::loomarr
+    slate[Slate<br/>if an item is late]:::service
+    timeline[Timeline<br/>1 s segments, 15 min window]:::loomarr
+    schedule == next item ==> encoder
+    encoder == fragments ==> timeline
+    slate --> timeline
+  end
+
+  subgraph out["One encode, two outputs"]
+    hls([HLS<br/>browsers, TV app]):::audience
+    ts([MPEG-TS<br/>Emby or Jellyfin tuner]):::audience
+  end
+
+  viewer == first tune starts it ==> schedule
+  file --> encoder
+  timeline ==> hls
+  timeline ==> ts
+
+  class packager boundary
+  class out zone

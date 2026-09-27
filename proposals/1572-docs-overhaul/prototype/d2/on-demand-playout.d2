@@ -1,0 +1,29 @@
+# Question: what happens when someone tunes a channel?
+...@system/theme
+
+direction: down
+
+viewer: Someone tunes in {class: audience}
+file: Your media file\nread directly {class: service}
+
+packager: Channel packager {
+  class: boundary
+  schedule: Schedule\nwhat airs now? {class: loomarr}
+  encoder: ffmpeg\none process per item {class: loomarr}
+  slate: Slate\nif an item is late {class: service}
+  timeline: Timeline\n1 s segments, 15 min window {class: loomarr}
+  schedule -> encoder: next item {class: hot}
+  encoder -> timeline: fragments {class: hot}
+  slate -> timeline {class: flow}
+}
+
+out: One encode, two outputs {
+  class: zone
+  hls: HLS\nbrowsers, TV app {class: audience}
+  ts: MPEG-TS\nEmby or Jellyfin tuner {class: audience}
+}
+
+viewer -> packager.schedule: first tune starts it {class: hot}
+file -> packager.encoder {class: flow}
+packager.timeline -> out.hls {class: hot}
+packager.timeline -> out.ts {class: hot}

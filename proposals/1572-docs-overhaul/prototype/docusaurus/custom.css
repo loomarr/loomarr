@@ -1,0 +1,37 @@
+/* PROTOTYPE: the same design-system tokens as the Starlight prototype. */
+:root {
+  --ifm-font-family-base: "Geist Variable", Geist, ui-sans-serif, system-ui, sans-serif;
+  --ifm-color-primary: #795000;
+  --ifm-color-primary-dark: #6d4800;
+  --ifm-color-primary-darker: #674400;
+  --ifm-color-primary-darkest: #553800;
+  --ifm-color-primary-light: #855800;
+  --ifm-color-primary-lighter: #8b5c00;
+  --ifm-color-primary-lightest: #9d6800;
+  --ifm-background-color: #ffffff;
+  --ifm-font-color-base: #17191d;
+  --ifm-color-info-contrast-background: #dae8eb;
+  --ifm-color-success-contrast-background: #dbe9e3;
+}
+html[data-theme="dark"] {
+  --ifm-navbar-background-color: #131519;
+  --ifm-code-background: #1b1e24;
+  --prism-background-color: #131519;
+  --ifm-color-primary: #ffb020;
+  --ifm-color-primary-dark: #ffa300;
+  --ifm-color-primary-darker: #f59c00;
+  --ifm-color-primary-darkest: #c98100;
+  --ifm-color-primary-light: #ffbd40;
+  --ifm-color-primary-lighter: #ffc14d;
+  --ifm-color-primary-lightest: #ffd07a;
+  --ifm-background-color: #0b0c0e;
+  --ifm-background-surface-color: #131519;
+  --ifm-font-color-base: #e7eaf0;
+  --ifm-color-info-contrast-background: #1c3038;
+  --ifm-color-success-contrast-background: #19322a;
+}
+.markdown > p:first-of-type {
+  border-left: 3px solid var(--ifm-color-primary);
+  padding: 0.25rem 0 0.25rem 1rem;
+}
+.markdown img[src$=".svg"] { border-radius: 12px; }
