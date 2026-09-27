@@ -23,6 +23,8 @@ starts one encoder for that item, reading your media file. Each item joins one
 continuous timeline, and everyone watching that channel shares it. If an item isn't ready in
 time, a slate fills the gap. Browsers and the TV app get HLS; your media server gets MPEG-TS.
 
+![Someone tunes a channel: the schedule picks the item, one encoder reads your media file, a slate covers any gap, and one timeline serves browsers and the TV app over HLS and your media server over MPEG-TS](../diagrams/generated/on-demand-playout.svg)
+
 ## Intent → proposal → channel
 
 You describe a channel; the suggester returns a **proposal**:
@@ -46,6 +48,8 @@ A missing title is **requested** from Seerr or the *arrs, then **downloading**, 
 that doesn't arrive by its deadline becomes **unavailable**. A channel is built from what's
 available now; anything missing becomes a **pending** slot filled with commercials, and swaps to
 the real program the moment it lands.
+
+![A missing title moves from requested to downloading to available; a request that can't be sent waits as wanted and is retried, and a title that misses its deadline becomes unavailable](../diagrams/generated/acquisition-state.svg)
 
 ## Series
 
