@@ -8,6 +8,8 @@ links to [Troubleshooting](troubleshooting.md) for the fix. Every field is also 
 variable. A value set in the environment wins, and shows as locked in Settings. The
 [settings reference](https://mantonx.github.io/loomarr/reference/settings/) lists every one.
 
+![Settings → Connections on a new install: the media server shows OK, and each optional service it hasn't reached yet says what it needs, with a Fix link](../images/screenshots/settings-connections-dark.webp)
+
 ## 1. Your media server
 
 Required. Emby or Jellyfin holds your library, and can also supply user accounts. In
@@ -52,6 +54,8 @@ Health flags an address Loomarr can't reach.
 
 The rest of Playback can stay as it is. For a GPU, see
 [Set up hardware encoding](hardware-encoding.md).
+
+![Settings → Playback: the encoder Loomarr measured and how many channels it can run, then the playback engine and the Loomarr address, locked because the environment sets it](../images/screenshots/settings-playback-dark.webp)
 
 ## 5. Downloads (optional)
 

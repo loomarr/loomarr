@@ -12,13 +12,16 @@ import type { DocViewProps } from "./doc-view.type";
 const isInternal = (href?: string): href is string =>
   !!href && !/^[a-z]+:\/\//i.test(href) && !href.startsWith("#") && !href.startsWith("/");
 
-// A page shows a diagram by its repo path ("../diagrams/generated/architecture.svg") so it
-// renders on GitHub and the docs site too. In the app the same file ships inside the binary,
-// at /v1/docs/diagrams/<name>, so Help's diagrams work air-gapped. docs/embed_test.go checks
-// every diagram a page shows is embedded.
-const diagramSrc = (src?: string): string | undefined => {
-  const name = src?.match(/(?:^|\/)diagrams\/generated\/([a-z0-9-]+\.svg)$/)?.[1];
-  return name ? `/v1/docs/diagrams/${name}` : undefined;
+// A page shows a diagram or screenshot by its repo path ("../diagrams/generated/architecture.svg",
+// "../images/screenshots/guide-dark.webp") so it renders on GitHub and the docs site too. In the
+// app the same file ships inside the binary, at /v1/docs/diagrams/<name> or
+// /v1/docs/screenshots/<name>, so Help's images work air-gapped. docs/embed_test.go checks
+// every image a page shows is embedded.
+const embeddedSrc = (src?: string): string | undefined => {
+  const diagram = src?.match(/(?:^|\/)diagrams\/generated\/([a-z0-9-]+\.svg)$/)?.[1];
+  if (diagram) return `/v1/docs/diagrams/${diagram}`;
+  const screenshot = src?.match(/(?:^|\/)images\/screenshots\/([a-z0-9-]+-dark\.webp)$/)?.[1];
+  return screenshot ? `/v1/docs/screenshots/${screenshot}` : undefined;
 };
 
 // Heading ids are a CONTRACT, not decoration. The API emits `troubleshooting#tunarr`-style
@@ -100,13 +103,13 @@ const DocView = ({ markdown, className, onNavigate }: DocViewProps) => (
               {children}
             </a>
           ),
-        // Diagrams load only through <img>, where an SVG can't run script (the route also
-        // serves them sandboxed). Any other image would be a fetch out of the household's
-        // network, so it shows as its alt text instead.
+        // Diagrams and screenshots load only through <img>, where an SVG can't run script (the
+        // route also serves diagrams sandboxed). Any other image would be a fetch out of the
+        // household's network, so it shows as its alt text instead.
         img: ({ src, alt }) => {
-          const diagram = diagramSrc(src);
-          return diagram ? (
-            <img src={diagram} alt={alt ?? ""} className="my-2 h-auto max-w-full" loading="lazy" />
+          const embedded = embeddedSrc(src);
+          return embedded ? (
+            <img src={embedded} alt={alt ?? ""} className="my-2 h-auto max-w-full" loading="lazy" />
           ) : (
             <span className="text-muted-foreground">{alt}</span>
           );

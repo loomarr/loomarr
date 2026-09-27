@@ -162,6 +162,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make demo-library` |  | serve the demo library's Emby-compatible stand-in (generates its clips and art on first run) |
 | `make demo-titles-verify` |  | no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI: privacy-verify, whenever ci-impact sees a scanned path) |
 | `make demo-seed` |  | point this worktree's backend at the running demo library and create the demo channels (idempotent) |
+| `make docs-capture` |  | regenerate the docs screenshots from the demo seed (needs dev-be, dev-fe, demo-library, demo-seed) |
 
 ## Store conformance (Phase 3/4)
 

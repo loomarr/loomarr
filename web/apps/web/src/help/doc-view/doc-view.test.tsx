@@ -38,6 +38,14 @@ describe("DocView images", () => {
     expect(img).toHaveAttribute("src", "/v1/docs/diagrams/architecture.svg");
   });
 
+  it("shows a page's screenshot as an <img> from the binary, not the repo path", () => {
+    render(<DocView markdown="![The guide](../images/screenshots/guide-dark.webp)" />);
+    expect(screen.getByRole("img", { name: "The guide" })).toHaveAttribute(
+      "src",
+      "/v1/docs/screenshots/guide-dark.webp",
+    );
+  });
+
   it("never fetches any other image: Help works air-gapped", () => {
     render(<DocView markdown="![A remote picture](https://example.com/x.png)" />);
     expect(screen.queryByRole("img")).toBeNull();

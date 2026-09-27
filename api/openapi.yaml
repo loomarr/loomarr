@@ -12908,6 +12908,38 @@ paths:
       summary: Read one help diagram
       tags:
         - help
+  /v1/docs/screenshots/{name}:
+    get:
+      description: A screenshot a help page shows, as WebP. It ships inside the binary, so Help's screenshots work air-gapped.
+      operationId: get-doc-screenshot
+      parameters:
+        - description: The screenshot's file name, as a help page references it
+          in: path
+          name: name
+          required: true
+          schema:
+            description: The screenshot's file name, as a help page references it
+            examples:
+              - guide-dark.webp
+            type: string
+      responses:
+        "200":
+          content:
+            image/webp:
+              schema:
+                contentMediaType: application/octet-stream
+                format: binary
+                type: string
+          description: The screenshot.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Read one help screenshot
+      tags:
+        - help
   /v1/docs/{slug}:
     get:
       description: "Returns raw markdown, not HTML: the frontend renders it and searches it client-side (§7.2), which needs the source rather than a rendered blob."

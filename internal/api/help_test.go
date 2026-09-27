@@ -358,3 +358,35 @@ func TestHelp_ServesDiagramAsSandboxedImage(t *testing.T) {
 		t.Errorf("anonymous diagram → %d, want 401: Help is for signed-in users", resp.StatusCode)
 	}
 }
+
+// Help shows a page's screenshots from the binary too, so a guide's pictures work air-gapped.
+func TestHelp_ServesScreenshotFromTheBinary(t *testing.T) {
+	srv := newHelpServer(t, nil)
+	resp := do(t, srv, http.MethodGet, "/v1/docs/screenshots/guide-dark.webp", memberToken, "")
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("screenshot → %d, want 200 for a member", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "image/webp" {
+		t.Errorf("Content-Type = %q, want image/webp", got)
+	}
+	if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if !strings.HasPrefix(body, "RIFF") || !strings.Contains(body[:16], "WEBP") {
+		t.Errorf("body is not a WebP: %.16q", body)
+	}
+
+	for _, path := range []string{
+		"/v1/docs/screenshots/missing-dark.webp",
+		"/v1/docs/screenshots/guide-light.webp",
+		"/v1/docs/screenshots/..%2Fget-started.md",
+	} {
+		if resp := do(t, srv, http.MethodGet, path, memberToken, ""); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s → %d, want 404", path, resp.StatusCode)
+		}
+	}
+	if resp := do(t, srv, http.MethodGet, "/v1/docs/screenshots/guide-dark.webp", "", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("anonymous screenshot → %d, want 401: Help is for signed-in users", resp.StatusCode)
+	}
+}
