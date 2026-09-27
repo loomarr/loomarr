@@ -8,7 +8,9 @@ content went. The last full version is
 
 Three release and testing passages (browser certification layering and Android TV distribution
 under §9.1, the gate composition and CI selection under §19, and image runtime certification under
-§22) are still here until they move to `docs/dev/` under #1572. Until then they remain current;
+§22) are still here until #1572 moves them: testing and certification to
+`docs/contributing/testing.md` and `docs/contributing/releasing.md`, Android TV distribution to
+`project/android-release.md`. Until then they remain current;
 amend them in the same PR as the behaviour they describe. Add nothing else to this file.
 
 **Audience:** Builders and coding agents. User-facing instructions live under
@@ -89,7 +91,7 @@ The channel packager, backend selection, what internal playout serves, admission
 moved to [`design/playout.md`](design/playout.md). The founding reversal is decision
 [0009](design/decisions/0009-loomarr-plays-out.md). Tuning, pause and the Android TV client moved to
 [`design/playback-clients.md`](design/playback-clients.md). The two sections below are release and
-testing mechanics bound for `docs/dev/` (#1572).
+testing mechanics bound for `docs/contributing/` and `project/android-release.md` (#1572).
 
 ### Browser and real-runtime certification is layered (V58)
 
@@ -503,7 +505,7 @@ Moved to [`design/images.md`](design/images.md), with decision
 [0020](design/decisions/0020-one-image-service.md). The data model, width ladders and job list were
 deleted: the migrations, the code and the scheduler registry own them. The frontend contract moved
 to [`frontend-design.md`](frontend-design.md#8-the-image-primitive-formerly-designmd-22s-frontend-contract).
-Runtime certification (bound for `docs/dev/releasing.md`, #1572) stays here for now.
+Runtime certification (bound for `docs/contributing/releasing.md`, #1572) stays here for now.
 
 ### Runtime certification
 

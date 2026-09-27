@@ -9,7 +9,7 @@ This directory describes **how the system works now** and **why the lasting deci
 It replaced the single [`docs/design.md`](../design.md) (#779), which is now a pointer file; its
 [last full version](https://github.com/loomarr/loomarr/blob/8031a52fe007992666c1dfcea28e8adc294f2620/docs/design.md)
 stays readable by permalink. Three release and testing passages stay in `design.md` until #1572
-moves them to `docs/dev/`.
+moves them to `docs/contributing/` and `project/android-release.md`.
 
 ## How to use these docs
 
