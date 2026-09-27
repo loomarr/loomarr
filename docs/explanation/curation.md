@@ -66,3 +66,42 @@ Loomarr relaxes the rules in a fixed order and records what it did on the channe
 4. Pad with filler.
 
 The audience cap and your explicit series choices are never relaxed.
+
+## Filler in the breaks
+
+Filler follows the same idea as programming: the channel's policy decides, and the scheduler
+applies it the same way every time. [Set up filler](../guides/filler.md) covers the steps.
+
+### What Loomarr knows about a clip
+
+Matching a clip to a channel needs several separate facts:
+
+- **Kind:** commercial, bumper, station ID, PSA, trailer or interstitial. Kind decides where a
+  clip may play.
+- **Era** and **audience:** scheduling facts, each checked on its own.
+- **Brand:** shown only when the clip's own text or picture supports it.
+- **Geography:** national or local, with a country and an optional market. Unknown means it
+  still needs review; it never means local.
+- **Tags:** what the clip is about (products and topics, format, seasonal and audience cues),
+  from the vocabulary under **Filler → Manage**.
+
+A tag describes; it doesn't change where a clip may play. Tags form a hierarchy, so picking a
+broad tag such as Food also matches clips tagged Cereal. A clip stores only the tags chosen for
+it, so reshaping the hierarchy later never rewrites old decisions.
+
+When an AI model is set up, Loomarr uses it to fill in facts the clip's own details don't answer.
+It can pick only tags that already exist; it can't invent one. It can also look up a clip's
+likely era and place in public sources; [Privacy](privacy.md) lists what that sends.
+
+### Safety comes first
+
+- **Unknown audience is never safe for children.** Commercials with no tags are a last resort,
+  and only on general and late-night channels. Kids and family channels never get them.
+- **A new channel starts from its own policy.** A channel created from a proposal draws filler
+  matching its era and audience: a kids channel starts from kids-safe filler, and any other
+  channel from general-audience filler. Loomarr doesn't guess product categories from the
+  shows' genres.
+- **Geography is never loosened.** A channel set to a US market takes US-national clips and that
+  market's local clips. Clips from other countries or markets stay in the library but never
+  enter that channel's pool, whatever the fallback. The guide's time zone only changes how times
+  are shown; it never sets a country.

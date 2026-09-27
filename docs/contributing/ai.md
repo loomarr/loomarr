@@ -78,16 +78,6 @@ among candidates; it can't invent one.
 **It only proposes.** The model extracts intent — a rating cap, an era, an ordering — and
 deterministic code enforces it. Nothing downloads until an admin approves.
 
-### What leaves your network
-
-| Provider | Sends |
-| --- | --- |
-| Ollama, local (default) | Nothing |
-| Hosted (OpenAI, Gemini, Groq, OpenRouter) | Your intent, plus titles and metadata from your library |
-| TMDB | Title searches |
-
-Two optional filler features send more and are off by default: vision tagging sends video
-keyframes, and connected speech recognition sends audio. A fully local install sends only TMDB
-lookups.
-
-Choose the provider in Settings → AI. Switching takes effect immediately.
+What each provider sends, and everything else that leaves the network, is on the
+[Privacy](../explanation/privacy.md) page. Choose the provider in Settings → AI; switching takes
+effect immediately.
