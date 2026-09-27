@@ -21,6 +21,7 @@ import (
 // building one for a single data migration is more machinery than the risk warrants). What it
 // pins is the PREDICATE: which rows move, and — far more important — which rows do not.
 func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "unpark.db"), true)
 	if err != nil {

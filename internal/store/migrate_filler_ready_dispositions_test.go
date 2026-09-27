@@ -12,6 +12,7 @@ import (
 )
 
 func TestFillerReadyDispositionsMigrationSQLite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "ready-dispositions.db"))
 	if err != nil {
@@ -65,6 +66,7 @@ func testFillerReadyDispositionsMigration(t *testing.T, s *sqlStore, migrationDi
 }
 
 func TestRemoveFillerAdmissionRungMigrationSQLite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "remove-admission-rung.db"))
 	if err != nil {
@@ -130,6 +132,7 @@ func testRemoveFillerAdmissionRungMigration(t *testing.T, s *sqlStore, migration
 }
 
 func TestRetireFillerTaggingPathMigrationSQLite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "retire-tagging-path.db"))
 	if err != nil {

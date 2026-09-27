@@ -46,6 +46,9 @@ func seedDiagnosticEvents(t *testing.T, st Store, prefix string, n int, newest t
 // probeConnection stands in for the elector/health probe: a trivial query on the shared pool
 // with the short budget River and the health check give themselves. It records how many probes
 // completed while `work` ran and how many blew their budget.
+//
+// Tests that probe with this stay serial (no t.Parallel): the budget is wall-clock, so competing
+// with the package's parallel tests for CPU under -race would turn it into a flake (#1570).
 func probeConnection(t *testing.T, st Store, budget time.Duration, work func()) (completed, timedOut int64) {
 	t.Helper()
 	pool := PoolOf(st)

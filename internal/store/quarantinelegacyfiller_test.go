@@ -11,6 +11,7 @@ import (
 )
 
 func TestQuarantineLegacyFillerMigration_SQLite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "quarantine.db"), true)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 )
 
 func TestRetireFillerRuntimeRightsMigrationSQLite(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, err := openSQLite(ctx, filepath.Join(t.TempDir(), "retire-runtime-rights.db"))
 	if err != nil {

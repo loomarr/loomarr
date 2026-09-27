@@ -15,6 +15,7 @@ import (
 // schema, applied migration versions, and seeded rows. It cannot go stale — the template is built
 // by the same Open(..., true) this test compares against, once per test process.
 func TestSQLiteStoreCloneMatchesFreshReplay(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	replayed, err := Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "replayed.db"), true)
 	if err != nil {

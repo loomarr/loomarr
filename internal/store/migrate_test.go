@@ -12,6 +12,7 @@ import (
 // TestDowngradeGuard: if the DB records a schema version newer than the binary
 // embeds, Open must refuse (§16) instead of limping into an unknown schema.
 func TestDowngradeGuard(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "future.db")
 
@@ -41,6 +42,7 @@ func TestDowngradeGuard(t *testing.T) {
 }
 
 func TestMigrationProviderIsDialectLocal(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "provider.db")
 	db, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
