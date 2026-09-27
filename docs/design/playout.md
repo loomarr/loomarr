@@ -158,15 +158,16 @@ mapped from VAAPI, #1613) and hidden during filler, bumpers and IDs. The program
 through a CPU filter for it. Software,
 generic, VideoToolbox and HDR10 premium outputs never draw it, the programme still airs, and the
 pipeline says why in `Fallbacks`. `policy.watermark` holds `{enabled, corner, opacity, size, margin,
-image, callsign}`, and a nil field means the default (on, top-right, opacity 0.65). `POST
+image, callsign}`, and a nil field means the default (on, top-right, opacity 0.40, #1617). `POST
 /v1/channels/{id}/watermark` uploads a custom PNG or WebP. Placement anchors to the measured active
 picture, so a letterboxed film gets the bug inside its picture. A self-check encodes a clip with and
-without the bug and asserts that the programme is unchanged outside it, that the bug's blend is 65%
-white over the measured background in coded (limited-range) luma and neutral in chroma, that the SPS
-and PPS are byte-identical, and that the overlay adds at most 10 ms per frame to the bug-off encode (the
-household Arc's `overlay_vaapi` drew a correct bug at 1.25x realtime, #1595). If it fails, including on
-a VAAPI host without an OpenCL runtime, the watermark is off on that host and a `watermark.disabled`
-Diagnostics event says so.
+without a test bug and asserts that the programme is unchanged outside it, that the test bug's blend
+is 65% white (its own alpha, independent of the channel default) over the measured background in
+coded (limited-range) luma and neutral in chroma, that the SPS and PPS are byte-identical, and that
+the overlay adds at most 10 ms per frame to the bug-off encode (the household Arc's `overlay_vaapi`
+drew a correct bug at 1.25x realtime, #1595). If it fails, including on a VAAPI host without an
+OpenCL runtime, the watermark is off on that host and a `watermark.disabled` Diagnostics event says
+so.
 
 **Admission is one ledger.** See "Admission is one measured ledger" below.
 

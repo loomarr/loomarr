@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"image/color"
+	"image/png"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -31,8 +33,26 @@ func TestChannelWatermarks_DefaultPlateBug(t *testing.T) {
 	if wm.Corner != playout.CornerTopRight || wm.MarginX != 96 || wm.MarginY != 54 || wm.Width%2 != 0 || wm.Height%2 != 0 {
 		t.Errorf("placement %+v", wm)
 	}
-	if _, err := os.Stat(wm.Straight); err != nil {
-		t.Errorf("rendered file missing: %v", err)
+	// The approved opacity, 40% (#1617), baked into the aired PNG: the plate's peak premultiplied
+	// white (the shadow beneath adds alpha, not light).
+	f, err := os.Open(wm.Straight)
+	if err != nil {
+		t.Fatalf("rendered file missing: %v", err)
+	}
+	img, err := png.Decode(f)
+	_ = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var peak uint32
+	for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
+		for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
+			c := color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
+			peak = max(peak, (uint32(c.R)*uint32(c.A)+127)/255)
+		}
+	}
+	if want := uint32(102); peak < want-1 || peak > want+1 { // 0.40 × 255
+		t.Errorf("default bug peaks at %d/255, want %d (opacity 0.40)", peak, want)
 	}
 	// Cached: the second ask returns the same files without re-rendering.
 	again := c.For(context.Background(), "ch", playout.EncoderNVENC, 1920, 1080)

@@ -7,7 +7,7 @@ import (
 
 // ON BY DEFAULT with the approved look; a stored value is always a real choice.
 func TestResolveWatermark_DefaultsAndOverrides(t *testing.T) {
-	if got := ResolveWatermark(nil); got != (ResolvedWatermark{Enabled: true, Corner: "top-right", Opacity: 0.65, Size: 0.06, Margin: 0.05}) {
+	if got := ResolveWatermark(nil); got != (ResolvedWatermark{Enabled: true, Corner: "top-right", Opacity: 0.40, Size: 0.06, Margin: 0.05}) {
 		t.Errorf("nil policy: %+v", got)
 	}
 	var p WatermarkPolicy
