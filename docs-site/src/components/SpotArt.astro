@@ -14,8 +14,13 @@ const { name } = Astro.props;
 // signal, caution, lock, tune, suggest, on-air, static
 // (web/packages/design-system/src/tokens/brand-contract.json).
 const chroma = ["#FFB020", "#F5D90A", "#3DD68C", "#4CC9E8", "#D6409F", "#E5484D", "#8B93A3"];
+// Per-instance ids, so two drawings on one page never share a filter, mask or clip.
 const snowId = `lm-spot-snow-${name}`;
 const fadeId = `lm-spot-fade-${name}`;
+const maskId = `lm-spot-mask-${name}`;
+const clipId = `lm-spot-clip-${name}`;
+// E1's bar edges, exactly as approved (152 / 7 rounded to 21.72).
+const e1BarX = [24, 45.72, 67.44, 89.16, 110.88, 132.6, 154.32];
 ---
 
 <svg class="lm-spot" viewBox="0 0 200 120" aria-hidden="true" focusable="false">
@@ -74,28 +79,40 @@ const fadeId = `lm-spot-fade-${name}`;
   }
   {
     name === "explanation" && (
-      // Static becoming signal: the tuner loader's idea, snow at the top resolving into all
-      // seven bars below.
+      // E1, static becoming signal (maintainer-approved, 2026-09-27): crisp TV snow (dense
+      // two-octave noise in full greyscale, with faint horizontal streaks over it) fading on a
+      // long eased mask into the seven bars, all clipped to the screen.
       <g>
         <defs>
           <filter id={snowId} x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-            <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="1" seed="4" />
-            <feColorMatrix type="matrix" values="0 0 0 1.6 -.36  0 0 0 1.6 -.34  0 0 0 1.6 -.30  0 0 0 0 1" />
+            <feTurbulence type="fractalNoise" baseFrequency="1.6 2.8" numOctaves="2" seed="4" result="g" />
+            <feColorMatrix in="g" type="matrix" values="2.6 0 0 0 -.82  2.6 0 0 0 -.82  2.6 0 0 0 -.8  0 0 0 0 1" result="snow" />
+            <feTurbulence type="fractalNoise" baseFrequency="0.004 0.9" numOctaves="1" seed="11" result="s" />
+            <feColorMatrix in="s" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1.4 0 0 0 -.62" result="streak" />
+            <feComposite in="streak" in2="snow" operator="over" />
           </filter>
           <linearGradient id={fadeId} x1="0" x2="0" y1="0" y2="1">
-            <stop offset=".15" stop-color="#fff" stop-opacity="0" />
-            <stop offset=".6" stop-color="#fff" stop-opacity="1" />
+            <stop offset=".12" stop-color="#fff" stop-opacity="0" />
+            <stop offset=".35" stop-color="#fff" stop-opacity=".12" />
+            <stop offset=".55" stop-color="#fff" stop-opacity=".55" />
+            <stop offset=".75" stop-color="#fff" stop-opacity=".92" />
+            <stop offset=".9" stop-color="#fff" stop-opacity="1" />
           </linearGradient>
-          <mask id={`${fadeId}-mask`}>
+          <mask id={maskId}>
             <rect x="24" y="18" width="152" height="84" fill={`url(#${fadeId})`} />
           </mask>
+          <clipPath id={clipId}>
+            <rect x="24" y="18" width="152" height="84" rx="12" />
+          </clipPath>
         </defs>
         <rect x="20" y="14" width="160" height="92" rx="16" fill="var(--art-ground)" stroke="var(--art-outline)" stroke-width="2" />
-        <rect x="24" y="18" width="152" height="84" rx="12" filter={`url(#${snowId})`} opacity=".9" />
-        <g mask={`url(#${fadeId}-mask)`}>
-          {chroma.map((fill, i) => (
-            <rect x={24 + i * (152 / 7)} y="18" width={152 / 7} height="84" fill={fill} />
-          ))}
+        <g clip-path={`url(#${clipId})`}>
+          <rect x="24" y="18" width="152" height="84" filter={`url(#${snowId})`} shape-rendering="crispEdges" />
+          <g mask={`url(#${maskId})`}>
+            {chroma.map((fill, i) => (
+              <rect x={e1BarX[i]} y="18" width="21.72" height="84" fill={fill} />
+            ))}
+          </g>
         </g>
       </g>
     )
