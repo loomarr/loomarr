@@ -158,7 +158,9 @@ mapped from VAAPI, #1613) and hidden during filler, bumpers and IDs. The program
 through a CPU filter for it. Software,
 generic, VideoToolbox and HDR10 premium outputs never draw it, the programme still airs, and the
 pipeline says why in `Fallbacks`. `policy.watermark` holds `{enabled, corner, opacity, size, margin,
-image, callsign}`, and a nil field means the default (on, top-right, opacity 0.40, #1617). `POST
+image, callsign}`, and a nil field means the default (on, top-right). A nil opacity means the install
+setting `playout.watermark_opacity_pct` (Settings → Playback, default 40%, #1617), read per programme
+item, so a change re-renders the bugs from each channel's next programme. `POST
 /v1/channels/{id}/watermark` uploads a custom PNG or WebP. Placement anchors to the measured active
 picture, so a letterboxed film gets the bug inside its picture. A self-check encodes a clip with and
 without a test bug and asserts that the programme is unchanged outside it, that the test bug's blend

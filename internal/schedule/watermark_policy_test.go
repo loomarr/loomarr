@@ -7,14 +7,18 @@ import (
 
 // ON BY DEFAULT with the approved look; a stored value is always a real choice.
 func TestResolveWatermark_DefaultsAndOverrides(t *testing.T) {
-	if got := ResolveWatermark(nil); got != (ResolvedWatermark{Enabled: true, Corner: "top-right", Opacity: 0.40, Size: 0.06, Margin: 0.05}) {
+	// Opacity: the channel's override, else the install setting (playout.watermark_opacity_pct).
+	if got := ResolveWatermark(nil, 0.55); got != (ResolvedWatermark{Enabled: true, Corner: "top-right", Opacity: 0.55, Size: 0.06, Margin: 0.05}) {
 		t.Errorf("nil policy: %+v", got)
+	}
+	if got := ResolveWatermark(&WatermarkPolicy{Corner: "top-left"}, 0.55); got.Opacity != 0.55 {
+		t.Errorf("omitted opacity: %v, want the install setting 0.55", got.Opacity)
 	}
 	var p WatermarkPolicy
 	if err := json.Unmarshal([]byte(`{"enabled":false,"corner":"bottom-left","opacity":0.8,"size":0.045,"margin":0,"callsign":" RETRO "}`), &p); err != nil {
 		t.Fatal(err)
 	}
-	got := ResolveWatermark(&p)
+	got := ResolveWatermark(&p, 0.55)
 	if got.Enabled || got.Corner != "bottom-left" || got.Opacity != 0.8 || got.Size != 0.045 || got.Margin != 0 || got.Callsign != "RETRO" {
 		t.Errorf("overrides: %+v", got)
 	}

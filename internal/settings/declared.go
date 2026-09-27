@@ -170,6 +170,19 @@ func fillerIncomingReadyWindow(v any) error {
 	return nil
 }
 
+// watermarkOpacityRange bounds `playout.watermark_opacity_pct` to the per-channel
+// policy.watermark.opacity range (0.1–1), in percent.
+func watermarkOpacityRange(v any) error {
+	n, ok := v.(int)
+	if !ok {
+		return fmt.Errorf("want a whole number")
+	}
+	if n < 10 || n > 100 {
+		return fmt.Errorf("want 10-100 (got %d)", n)
+	}
+	return nil
+}
+
 func nonNegativeWholeNumber(v any) error {
 	n, ok := v.(int)
 	if !ok {
@@ -479,6 +492,14 @@ func declared() []Setting {
 			Doc: "How an HDR film is turned into the SDR picture a channel broadcasts. Hable (the default) rolls bright highlights off gently, like film; Mobius and Reinhard keep more of the mid-tones and highlights. These three run on the GPU on Intel and NVIDIA, about 0.1 CPU cores per HDR stream on Intel. " +
 				"BT.2390, BT.2446 Method A and Spline come from libplacebo. On Intel the picture makes a trip through system memory for them, which roughly doubles the CPU cost to about 0.25 cores per HDR stream. Where libplacebo cannot run (no Vulkan GPU, for example an NVIDIA container without NVIDIA's Vulkan driver), those three use the CPU tone-mapper's Mobius curve instead. " +
 				"Without a GPU tone-mapper at all, every curve runs on the CPU after the GPU has scaled the picture down; the picture is correct but costs more CPU. A change applies to streams that start afterwards; a channel already playing keeps its curve until it restarts.",
+		},
+		{
+			// The middle tier of channel policy.watermark.opacity > this > built-in (#1617); the
+			// maintainer chose 40% from a real 1080p preview. Read per programme item, and the
+			// rendered-bug cache is keyed by opacity, so a change re-renders the bugs.
+			Key: "playout.watermark_opacity_pct", Label: "Channel logo opacity", EnvVar: "PLAYOUT_WATERMARK_OPACITY_PCT", Group: GroupPlayout,
+			Kind: KindInt, Default: "40", Validate: watermarkOpacityRange,
+			Doc: "How solid the channel logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own watermark opacity keeps it. A change shows from each channel's next programme.",
 		},
 		{
 			// ⚠ Still separate from ingest.ffmpeg_path, but NOT for the reason this comment
