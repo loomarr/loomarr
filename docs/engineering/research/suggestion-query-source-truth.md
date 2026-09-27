@@ -483,7 +483,7 @@ above or permit `certified: true` in an exposed development corpus.
   ([evaluation plan](../plans/suggestion-query-evaluation.md#fourth-executable-expansion-batch)).
   The human packet already requires opaque IDs, identical evidence, append-only
   submissions, threshold-aware adjudication, and `uncertain` instead of forced
-  consensus ([packet protocol](#blinded-human-review-packet-movie-mood-ordinal-v1)).
+  consensus ([packet protocol](#original-blinded-human-review-packet-movie-mood-ordinal-v1)).
 - The existing generic `modelJudge` is not a substitute: it takes a single
   `llm.Provider`, and its own comment permits that provider to be the same as
   the suggester ([`internal/eval/judge.go`](../../../internal/eval/judge.go)).

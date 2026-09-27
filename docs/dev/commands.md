@@ -181,11 +181,11 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make config-docs` |  | generate docs/configuration.md from the settings registry |
 | `make config-docs-verify` | ✅ | regenerated config docs must match committed (CI red on drift) <br>*runs:* `config-docs` |
 
-## Architecture map (design.md §2)
+## Architecture map (docs/design/package-map.md)
 
 | Target | CI | What it does |
 | --- | --- | --- |
-| `make arch-docs` |  | regenerate the §2 package map in docs/design.md from the code |
+| `make arch-docs` |  | regenerate the package map in docs/design/package-map.md from the code |
 | `make arch-docs-verify` | ✅ | regenerated package map must match committed (CI red on drift) <br>*runs:* `arch-docs` |
 
 ## Dev docs (the command contract)

@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-// beginMarker/endMarker delimit the generated block inside docs/design.md §2.
+// beginMarker/endMarker delimit the generated block inside docs/design/package-map.md.
 //
 // A marker pair rather than whole-file generation (which is how docs/configuration.md
-// works): design.md is hand-written and authoritative for behaviour, so this tool owns
-// one block inside it and must not be able to touch a word outside that block.
+// works): the page's heading and introduction are hand-written, so this tool owns one
+// block inside it and must not be able to touch a word outside that block.
 const (
 	beginMarker = "<!-- BEGIN GENERATED: package-map — `make arch-docs`. DO NOT EDIT BY HAND. -->"
 	endMarker   = "<!-- END GENERATED: package-map -->"
@@ -25,7 +25,7 @@ const (
 // nothing. The full edge set is in the list below it, which is greppable.
 const spineFanIn = 5
 
-// render produces the generated block for design.md §2.
+// render produces the generated block for the package-map page.
 //
 // Deterministic by construction — every list is sorted — so the CI drift check is
 // stable and a regeneration with no source change produces a byte-identical file.
@@ -33,7 +33,6 @@ func render(pkgs []Package) string {
 	var b strings.Builder
 
 	b.WriteString(beginMarker + "\n\n")
-	b.WriteString("#### Package map\n\n")
 	b.WriteString("Generated recursively from each package's own doc comment and exact internal imports, ")
 	b.WriteString("using full paths below `internal/`, so it cannot drift from the code the way a ")
 	b.WriteString("hand-maintained list does. **Layer** is derived: the longest ")
@@ -47,7 +46,8 @@ func render(pkgs []Package) string {
 	b.WriteString(renderSpine(pkgs, fanIn))
 	b.WriteString(renderLayers(pkgs, fanIn))
 
-	b.WriteString("\n" + endMarker)
+	// Every layer group already ends with a blank line, so the marker follows directly.
+	b.WriteString(endMarker)
 	return b.String()
 }
 
@@ -64,7 +64,7 @@ func renderSpine(pkgs []Package, fanIn map[string]int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("##### Dependency spine\n\n")
+	b.WriteString("## Dependency spine\n\n")
 	fmt.Fprintf(&b, "Packages imported by %d or more others, and their dependencies within the spine. ",
 		spineFanIn)
 	b.WriteString("Everything else in the tree sits on top of these packages.\n\n")
@@ -105,7 +105,7 @@ func renderLayers(pkgs []Package, fanIn map[string]int) string {
 	}
 
 	var b strings.Builder
-	b.WriteString("##### Every package, by layer\n\n")
+	b.WriteString("## Every package, by layer\n\n")
 
 	for layer := 0; layer <= maxLayer; layer++ {
 		group := byLayer[layer]
@@ -114,10 +114,9 @@ func renderLayers(pkgs []Package, fanIn map[string]int) string {
 		}
 		sort.Slice(group, func(i, j int) bool { return group[i].Name < group[j].Name })
 
+		fmt.Fprintf(&b, "### Layer %d\n\n", layer)
 		if layer == 0 {
-			b.WriteString("**Layer 0** — no internal dependencies. These are the vocabulary the rest agrees on.\n\n")
-		} else {
-			fmt.Fprintf(&b, "**Layer %d**\n\n", layer)
+			b.WriteString("No internal dependencies. These are the vocabulary the rest agrees on.\n\n")
 		}
 		for _, p := range group {
 			fmt.Fprintf(&b, "- **`%s`**", p.Name)
@@ -159,14 +158,14 @@ func splice(doc, block, anchor string) (string, error) {
 	case start >= 0 && end > start:
 		return doc[:start] + block + doc[end+len(endMarker):], nil
 	case start >= 0 || end >= 0:
-		return "", fmt.Errorf("design.md has one half of the generated-block marker pair but not the other; " +
+		return "", fmt.Errorf("the package-map page has one half of the generated-block marker pair but not the other; " +
 			"repair it by hand — regenerating over a malformed pair would delete prose")
 	}
 
 	// First run: insert after the anchor heading's section.
 	idx := strings.Index(doc, anchor)
 	if idx < 0 {
-		return "", fmt.Errorf("anchor %q not found in design.md", anchor)
+		return "", fmt.Errorf("anchor %q not found in the package-map page", anchor)
 	}
 	// Insert immediately before the next top-level heading after the anchor, so the
 	// block lands at the end of §2 rather than in the middle of its prose.

@@ -17,8 +17,9 @@ BIN_DIR := bin
 
 # STYLE is checked only on what ships to a reader. design.md, PROGRESS.md and
 # docs/engineering/ are long-form internal records whose house style predates any linter, and
-# whose volume would bury every real finding.
-DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev
+# whose volume would bury every real finding. docs/design/ is the design being rewritten out of
+# design.md (#779) and is linted from its first page, so it never accumulates that backlog.
+DOC_GLOBS := README.md CONTRIBUTING.md docs/help docs/install docs/dev docs/design
 
 # LINKS are checked far wider, and the difference is deliberate: a broken link is objectively
 # wrong everywhere, while a style rule is a preference that only earns its place in prose

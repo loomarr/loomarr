@@ -10,20 +10,20 @@ import (
 	"testing"
 )
 
-// The generated package map must match what is committed in docs/design.md §2 — the
-// same drift gate `make config-docs` has, and the reason this generator exists at all.
-// Adding, removing or re-pointing a package without regenerating fails here, so §2
-// cannot quietly go stale the way its filler-flow paragraph did.
+// The generated package map must match what is committed in docs/design/package-map.md —
+// the same drift gate `make config-docs` has, and the reason this generator exists at all.
+// Adding, removing or re-pointing a package without regenerating fails here, so the map
+// cannot quietly go stale the way design.md §2's filler-flow paragraph did.
 //
 // Runs under comprehensive verification, not only under `make arch-docs-verify`: a gate that lives
 // only in a Makefile target is one CI-config edit away from never running.
 func TestArchDocs_NoDrift(t *testing.T) {
 	root := repoRoot(t)
-	docPath := filepath.Join(root, "docs", "design.md")
+	docPath := filepath.Join(root, filepath.FromSlash(defaultDocPath))
 
 	committed, err := os.ReadFile(docPath)
 	if err != nil {
-		t.Fatalf("read design.md: %v", err)
+		t.Fatalf("read package map: %v", err)
 	}
 	pkgs, err := scan(filepath.Join(root, "internal"))
 	if err != nil {
@@ -34,8 +34,8 @@ func TestArchDocs_NoDrift(t *testing.T) {
 		t.Fatalf("splice: %v", err)
 	}
 	if next != string(committed) {
-		t.Errorf("docs/design.md §2 package map is stale — run `make arch-docs` and commit.\n"+
-			"committed %d bytes, generated %d bytes", len(committed), len(next))
+		t.Errorf("%s is stale — run `make arch-docs` and commit.\n"+
+			"committed %d bytes, generated %d bytes", defaultDocPath, len(committed), len(next))
 	}
 }
 
@@ -49,9 +49,9 @@ func TestArchDocs_CoversEveryPackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discover source packages: %v", err)
 	}
-	doc, err := os.ReadFile(filepath.Join(root, "docs", "design.md"))
+	doc, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(defaultDocPath)))
 	if err != nil {
-		t.Fatalf("read design.md: %v", err)
+		t.Fatalf("read package map: %v", err)
 	}
 	rendered := renderedPackageNames(string(doc))
 	missing, stale := packageInventoryDiff(source, rendered)

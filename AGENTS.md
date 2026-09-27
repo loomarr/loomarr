@@ -5,8 +5,9 @@ files may add interface conveniences, but they do not override this file.
 
 ## Authority
 
-- `docs/design.md` is the source of truth for behaviour. Amend it in the same PR before code that
-  deviates from it.
+- The design docs are the source of truth for behaviour: `docs/design/` (start at its README),
+  plus the `docs/design.md` sections not yet moved there (#779). Amend them in the same PR before
+  code that deviates from them. Old `§N` references resolve through the index's Old § column.
 - Companion design documents in `docs/` own their named domains; `CONTEXT.md` owns vocabulary.
 - `PROGRESS.md` records active and shipped work. Read its **Active work** table first; do not load the
   historical tables unless the task needs them.
@@ -186,7 +187,7 @@ Air run at pinned versions from the harness.
 - `api/openapi.yaml` → `make openapi`; verify with `make openapi-verify`
 - `docs/configuration.md` → `make config-docs`
 - `docs/dev/commands.md` → `make dev-docs`
-- `docs/design.md` §2 map → `make arch-docs`
+- `docs/design/package-map.md` → `make arch-docs`
 - `web/packages/tokens/generated/` → `make fe-tokens`
 - `web/packages/api/generated/` and `web/apps/web/src/routeTree.gen.ts` → `make fe-codegen`; both are
   gitignored and absent from a fresh worktree

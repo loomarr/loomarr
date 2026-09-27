@@ -59,12 +59,18 @@ exclude = [
   "^https?://emby:",
   "^https?://tunarr:",
   "^https?://ollama:",
+
+  # GitHub line anchors (`file.md#L12-L34`) exist only in GitHub's blob view; no markdown
+  # renderer, lychee included, can resolve them from the file.
+  '#L[0-9]+(-L[0-9]+)?$',
 ]
 
-# Fragment checking stays OFF (lychee's default; do not pass --include-fragments). Not an
-# oversight: `docs/embed_test.go` already proves the anchors that MATTER — every docHref the API
-# emits — and it does so against the same slug transform the frontend uses, which a generic
-# checker has no way to know about.
+# Fragment checking is ON. `docs/embed_test.go` proves the in-app help anchors against the
+# frontend's own slug transform, but nothing covered the design and engineering docs: when
+# #779 turned this on, two links into design.md sections had already died unnoticed (the
+# sections were renamed or retired), and moving design.md into docs/design/ would break every
+# anchored link to it at once.
+include_fragments = "anchor-only"
 
 max_concurrency = 8
 no_progress = true
