@@ -44,7 +44,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | web-ui | navigation, first-run wizard, cross-view rules | 12, 13 | `design.md` |
 | deployment | image, Compose, restart in place, the job scheduler | 9.2, 16, 18.1 | `design.md` |
 | observability | diagnostics, correlation, health, metrics | 17 | `design.md` |
-| images | the image service | 22 | `design.md` |
+| [images](images.md) | the image service | 22 | here |
 | filler | catalog, lifecycle, gates, sources, pulls, clip identity | 10 | `design.md` |
 | filler-pipeline | the ingest pipeline and its budgets | 10 (V51) | `design.md` |
 | filler-structure | compilation structure, splitting, composites | 10 (V34, V45, V67) | `design.md` |
@@ -67,6 +67,7 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0004](decisions/0004-grounding.md) | 2026-07-13 | The LLM never supplies trusted identity |
 | [0005](decisions/0005-human-approval.md) | 2026-07-13 | Proposals need human approval by default |
 | [0009](decisions/0009-loomarr-plays-out.md) | 2026-07-25 | Loomarr plays out its own streams |
+| [0020](decisions/0020-one-image-service.md) | 2026-08-09 | One content-addressed image service |
 | [0024](decisions/0024-react-native-clients.md) | 2026-08-23 | React Native and Expo for client binaries |
 | [0025](decisions/0025-three-ai-pillars.md) | 2026-09-02 | Three independently certified AI pillars |
 | [0026](decisions/0026-specialized-local-model.md) | 2026-09-02 | A specialized local model is an optional Suggester optimisation |
