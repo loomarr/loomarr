@@ -17,6 +17,12 @@ class MockHls {
   url: string | null = null;
   config: unknown;
   liveSyncPosition: number | null = 98;
+  // The master's variants, as hls.js has parsed them by MANIFEST_PARSED; the pinned level.
+  levels: { attrs: { CODECS?: string }; height: number; videoRange: string }[] = [
+    { attrs: { CODECS: "avc1.640028,mp4a.40.2" }, height: 1080, videoRange: "SDR" },
+  ];
+  startLevel = -1;
+  loadLevel = -1;
   playingDate: Date | null = null;
   attachMedia = vi.fn((media: HTMLMediaElement) => {
     this.media = media;

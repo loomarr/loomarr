@@ -65,6 +65,22 @@ func (s packagerSource) ItemAt(ctx context.Context, channelID string, at time.Ti
 	return item, nil
 }
 
+// Premium is the premium format the channel's lineup warrants, as this host airs it (#1512 G10):
+// GET /v1/channels/{id}/formats' derivation, on the host the packager encodes with. A lineup that
+// cannot be read airs none.
+func (s packagerSource) Premium(ctx context.Context, channelID string) playout.FormatClass {
+	lineup, err := s.res.LineupFormats(ctx, channelID)
+	if err != nil {
+		if s.log != nil {
+			s.log.Warn("packager: lineup formats unavailable; offering the baseline only", "channel", channelID, "err", err)
+		}
+		return ""
+	}
+	host, _ := s.Output(ctx, channelID, playout.FormatBaseline, 0)
+	aired, _ := playout.DeriveChannelFormats(lineup).OnHost(host)
+	return aired.Premium
+}
+
 // Output is the host and the output profile a channel's format encodes with at the lease's output
 // ladder rung (#1520). The packager asks only for formats it serves; an unknown class gets the
 // baseline, logged.

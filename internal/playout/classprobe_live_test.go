@@ -49,6 +49,37 @@ func TestLive_ClassProbeMeasuresEveryClassAndSelfChecksTonemap(t *testing.T) {
 	}
 }
 
+// Premium is admitted only on its own measurement (#1520, #1512 G10): on a GPU host the probe
+// measures the premium class at 2160p through the packager's own item builder, with a real speed and
+// real CPU. A software host never airs a premium, so it measures none.
+func TestLive_ClassProbeMeasuresThePremium(t *testing.T) {
+	bin := ffmpegBin(t)
+	enc := probeEncoder()
+	cfg := ClassProbeConfig{
+		FFmpeg: bin, ClipDir: t.TempDir(), Encoder: enc,
+		CPUTonemap: TonemapperFor(bin)(), GPU: GPUFiltersFor(bin)(),
+		Outputs: []Profile{Resolve(DefaultTier, enc, 0)},
+		Classes: []StreamClass{ClassPremium4K},
+	}
+	res := ProbeClassCosts(t.Context(), cfg)
+	c, ok := res.Costs[CostKey{Class: ClassPremium4K, Height: premiumHeight}]
+	t.Logf("premium: %+v (measured %v); failures: %v", c, ok, res.Failures)
+	if IsSoftwareEncoder(enc) {
+		if ok {
+			t.Fatalf("a software host measured a premium it never airs: %+v", c)
+		}
+		return
+	}
+	if !ok || c.Speed <= 0 || c.CPUCores <= 0 {
+		t.Fatalf("premium cost = %+v (measured %v), want a real speed and CPU: %v", c, ok, res.Failures)
+	}
+	for k := range res.Costs {
+		if k.Class != ClassPremium4K {
+			t.Errorf("a premium-only run measured %s", k.Class)
+		}
+	}
+}
+
 func TestLive_SessionLimitProbe(t *testing.T) {
 	bin := ffmpegBin(t)
 	enc := probeEncoder()

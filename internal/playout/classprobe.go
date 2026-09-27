@@ -236,7 +236,65 @@ func ProbeClassCosts(ctx context.Context, cfg ClassProbeConfig) ClassProbeResult
 			res.Costs[HDRKey(clip.class, out.Height, cfg.curve())] = cost
 		}
 	}
+	if wantClass(cfg.Classes, ClassPremium4K) && ctx.Err() == nil {
+		cost, ok, err := measurePremium(ctx, cfg)
+		switch {
+		case err != nil:
+			res.Failures = append(res.Failures, fmt.Sprintf("%s at %dp: %v", ClassPremium4K, premiumHeight, err))
+		case ok:
+			res.Costs[CostKey{Class: ClassPremium4K, Height: premiumHeight}] = cost
+		}
+	}
 	return res
+}
+
+// measurePremium measures the premium class (#1512 G10) through the packager's own item builder
+// into the premium this host can air (4K HDR10, else 4K SDR), from every probe clip that premium
+// carries, and keeps the costlier figures. A premium lease is held for its channel's whole lineup, so
+// it is priced for the heaviest item: a PQ programme or an SDR one converted to HDR10. ok is false
+// when this host airs no premium (software, or no GPU graph).
+func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool, error) {
+	if len(cfg.Outputs) == 0 {
+		return ClassCost{}, false, nil
+	}
+	host := HostFor(cfg.Encoder, cfg.CPUTonemap, cfg.GPU)
+	var class FormatClass
+	for _, c := range []FormatClass{Format4KHDR, Format4KSDR} {
+		if aired, _ := (ChannelFormats{Baseline: FormatBaseline, Premium: c}).OnHost(host); aired.Premium != "" {
+			class = c
+			break
+		}
+	}
+	if class == "" {
+		return ClassCost{}, false, nil
+	}
+	out, _ := FormatOutput(class, cfg.Outputs[0])
+	var worst ClassCost
+	for _, clip := range probeClips {
+		src := clip.source()
+		if src.HDR() && !out.HDR {
+			continue // a 4K SDR channel never carries an HDR item
+		}
+		path, err := ensureProbeClip(ctx, cfg, clip)
+		if err != nil {
+			return ClassCost{}, false, err
+		}
+		pipe, err := BuildItem(host, src, out, nil)
+		if err != nil {
+			return ClassCost{}, false, fmt.Errorf("%s item: %w", clip.class, err)
+		}
+		cost, err := yielding(ctx, cfg.Foreground, func(ctx context.Context) (ClassCost, error) {
+			return measureCost(ctx, cfg, ClassPremium4K, path, pipe, out.Height)
+		})
+		if err != nil {
+			return ClassCost{}, false, fmt.Errorf("%s item: %w", clip.class, err)
+		}
+		if worst.Speed == 0 || cost.Speed < worst.Speed {
+			worst.Speed = cost.Speed
+		}
+		worst.CPUCores = max(worst.CPUCores, cost.CPUCores)
+	}
+	return worst, true, nil
 }
 
 func wantClass(classes []StreamClass, c StreamClass) bool {

@@ -215,6 +215,42 @@ describe("useHlsPlayer", () => {
     expect(onManifest).toHaveBeenCalledOnce();
   });
 
+  it("pins the baseline of a 4K channel when the browser cannot decode the premium", async () => {
+    // #1512 G10: playing the premium variant starts its 4K encode on the server, so a browser that
+    // cannot decode HEVC (jsdom has no MediaSource at all) must never request it.
+    hls.supported = true;
+    channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
+    const { result } = renderHook(() => useHlsPlayer("ch-1"));
+    act(() => result.current.attach(videoEl()));
+    await waitFor(() =>
+      expect(
+        (hls.instances as { loadSource: ReturnType<typeof vi.fn> }[]).some(
+          (instance) => instance.loadSource.mock.calls.length > 0,
+        ),
+      ).toBe(true),
+    );
+    const active = (
+      hls.instances as {
+        loadSource: ReturnType<typeof vi.fn>;
+        on: ReturnType<typeof vi.fn>;
+        levels: { attrs: { CODECS?: string }; height: number; videoRange: string }[];
+        loadLevel: number;
+        startLevel: number;
+      }[]
+    ).find((instance) => instance.loadSource.mock.calls.length > 0);
+    if (!active) throw new Error("no controller loaded the source");
+    active.levels = [
+      { attrs: { CODECS: "hvc1.2.4.L150.90,mp4a.40.2" }, height: 2160, videoRange: "PQ" },
+      { attrs: { CODECS: "avc1.640028,mp4a.40.2" }, height: 1080, videoRange: "SDR" },
+    ];
+    const manifestParsed = active.on.mock.calls
+      .filter((call: unknown[]) => call[0] === "manifestParsed")
+      .at(-1)?.[1] as (() => void) | undefined;
+    act(() => manifestParsed?.());
+    expect(active.loadLevel).toBe(1);
+    expect(active.startLevel).toBe(1);
+  });
+
   it("reports the first manifest on native HLS at loadedmetadata", async () => {
     channelPlayUrl.mockResolvedValue({ relativeUrl: "/v1/playout/hls/ch-1/master.m3u8" });
     const onManifest = vi.fn();
