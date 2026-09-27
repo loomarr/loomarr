@@ -503,10 +503,29 @@ classify() {
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
         # Repository contracts, release tooling, and operator helpers the contracts job lints or
         # invokes. Each is named: a new script is not contracts-only until someone says so.
-        scripts/center-android-tv-emulator.js|scripts/check-agent-assets.sh|scripts/check-compose.sh|scripts/check-private-fixtures.sh|scripts/check-release-image-absence.sh|scripts/check-release-tag.sh|scripts/check-retired.sh|scripts/check-tags.sh) select_gate contracts ;;
-        scripts/ci-lane-test.sh|scripts/ci-lane.sh|scripts/codeql-impact-test.sh|scripts/codeql-impact.sh|scripts/deadcode.sh|scripts/generate-diagrams.sh|scripts/generate-release-notes.sh|scripts/go-impact-test.sh|scripts/go-impact.sh) select_gate contracts ;;
-        scripts/go-race-weights-refresh.sh|scripts/image-parallelism-bench.sh|scripts/latency-sweep.sh|scripts/merge-release-digests.sh|scripts/observability-dev-runtime-test.sh|scripts/observability-dev-test.sh|scripts/observability-dev.sh|scripts/playout-diag.sh) select_gate contracts ;;
-        scripts/publish-release-image.sh|scripts/run-android-tv-emulator.sh|scripts/smoke.sh|scripts/test-android-release-emulator-contract-test.sh|scripts/validate-release-source-test.sh|scripts/validate-release-source.sh|scripts/verify-observability.sh|scripts/watermark-overlay-matrix.sh) select_gate contracts ;;
+        scripts/center-android-tv-emulator.js|scripts/check-agent-assets.sh|scripts/check-private-fixtures.sh|scripts/check-release-tag.sh|scripts/check-tags.sh) select_gate contracts ;;
+        scripts/ci-lane-test.sh|scripts/ci-lane.sh|scripts/codeql-impact-test.sh|scripts/codeql-impact.sh|scripts/deadcode.sh|scripts/generate-release-notes.sh|scripts/go-impact-test.sh) select_gate contracts ;;
+        scripts/image-parallelism-bench.sh|scripts/latency-sweep.sh|scripts/playout-diag.sh|scripts/run-android-tv-emulator.sh|scripts/test-android-release-emulator-contract-test.sh) select_gate contracts ;;
+        scripts/validate-release-source-test.sh|scripts/validate-release-source.sh) select_gate contracts ;;
+        # ⚠ One pattern per line below, never before a `|`. release-verify's container audit reads
+        # this file as shell, so a script name followed by `|` looks like a pipeline command. If the
+        # audit counts that script as acquiring containers (an engine call, or a variable
+        # executable such as "$gh_bin"), this classifier, run by the agent harness, would count too.
+        # Scripts with container tooling are listed here conservatively.
+        scripts/go-impact.sh) select_gate contracts ;;
+        scripts/go-race-weights-refresh.sh) select_gate contracts ;;
+        scripts/check-compose.sh) select_gate contracts ;;
+        scripts/check-release-image-absence.sh) select_gate contracts ;;
+        scripts/check-retired.sh) select_gate contracts ;;
+        scripts/generate-diagrams.sh) select_gate contracts ;;
+        scripts/merge-release-digests.sh) select_gate contracts ;;
+        scripts/observability-dev-runtime-test.sh) select_gate contracts ;;
+        scripts/observability-dev-test.sh) select_gate contracts ;;
+        scripts/observability-dev.sh) select_gate contracts ;;
+        scripts/publish-release-image.sh) select_gate contracts ;;
+        scripts/smoke.sh) select_gate contracts ;;
+        scripts/verify-observability.sh) select_gate contracts ;;
+        scripts/watermark-overlay-matrix.sh) select_gate contracts ;;
         # Fail closed: a script no rule names may be invoked by any gate, so it selects every
         # gate until it is classified here (#1570).
         *) known=false ;;
