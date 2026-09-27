@@ -337,7 +337,7 @@ example.invalid/cert-two`
 			t.Fatalf("go shard verification rejected a package inside the cap: %v\n%s", err, output)
 		}
 		// +1: internal/config's one-second floor runs in the plain group after the race group.
-		if want := fmt.Sprintf("bounded-worker makespan = %ds (budget %ds)", lane+2, capSeconds);!strings.Contains(output, want) {
+		if want := fmt.Sprintf("bounded-worker makespan = %ds (budget %ds)", lane+2, capSeconds); !strings.Contains(output, want) {
 			t.Fatalf("verification output =\n%s\nwant %q", output, want)
 		}
 	})
