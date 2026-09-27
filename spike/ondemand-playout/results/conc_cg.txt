@@ -1,0 +1,11 @@
+hdr=0 n=1 before: usage_usec 4982531 nr_throttled 0 throttled_usec 0  after: usage_usec 12605986 nr_throttled 0 throttled_usec 0 
+hdr=0 n=2 before: usage_usec 12611789 nr_throttled 0 throttled_usec 0  after: usage_usec 27339498 nr_throttled 0 throttled_usec 0 
+hdr=0 n=4 before: usage_usec 27346327 nr_throttled 0 throttled_usec 0  after: usage_usec 57435148 nr_throttled 1 throttled_usec 16857 
+hdr=0 n=6 before: usage_usec 57448747 nr_throttled 1 throttled_usec 16857  after: usage_usec 103974562 nr_throttled 3 throttled_usec 196864 
+hdr=0 n=8 before: usage_usec 103989125 nr_throttled 3 throttled_usec 196864  after: usage_usec 166315527 nr_throttled 6 throttled_usec 518471 
+hdr=0 n=10 before: usage_usec 166340120 nr_throttled 6 throttled_usec 518471  after: usage_usec 245009245 nr_throttled 10 throttled_usec 1020995 
+hdr=0 n=12 before: usage_usec 245038903 nr_throttled 10 throttled_usec 1020995  after: usage_usec 340496343 nr_throttled 14 throttled_usec 1604351 
+hdr=0 n=16 before: usage_usec 340535033 nr_throttled 14 throttled_usec 1604351  after: usage_usec 467524104 nr_throttled 20 throttled_usec 2232795 
+hdr=1 n=2 before: usage_usec 467568645 nr_throttled 20 throttled_usec 2232795  after: usage_usec 493291091 nr_throttled 20 throttled_usec 2232795 
+hdr=1 n=4 before: usage_usec 493303721 nr_throttled 20 throttled_usec 2232795  after: usage_usec 534687539 nr_throttled 21 throttled_usec 2276439 
+hdr=1 n=6 before: usage_usec 534701968 nr_throttled 21 throttled_usec 2276439  after: usage_usec 592213865 nr_throttled 23 throttled_usec 2569133 
