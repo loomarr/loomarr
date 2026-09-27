@@ -38,7 +38,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [suggester](suggester.md) | grounding, reference-backed Intent, explicit policy, providers, model selection and residency | 6 (reference source), 8, 8.1, 8.2 | here |
 | [proposal-workflow](proposal-workflow.md) | approval ordering, Proposal Jobs, the Journey, failures, date interpretation, decision traces | 8 (execution, human-in-the-loop, traces) | here |
 | [scheduling](scheduling.md) | channels, lineups, strategies, reconcile and backfill, guide freshness, airing history, breaks, pods and mid-programme breaks | 5 (airing history), 9, 10 (breaks) | here |
-| playout | the channel packager, backends, what is served, admission, playout status, Live TV wiring | 9.1 | `design.md` |
+| [playout](playout.md) | the channel packager, backends, what is served, admission, playout status, Tunarr, Live TV wiring | 6 (Tunarr, Live TV), 9.1 | here |
 | playback-clients | tuning, pause, Android TV | 9.1 (clients) | `design.md` |
 | auth | identity, credentials, invitations, SSO, roles, route authorization | 11 | `design.md` |
 | web-ui | navigation, first-run wizard, cross-view rules | 12, 13 | `design.md` |
@@ -66,10 +66,21 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0003](decisions/0003-federated-search.md) | 2026-07-13 | Search is federated; Loomarr builds no index |
 | [0004](decisions/0004-grounding.md) | 2026-07-13 | The LLM never supplies trusted identity |
 | [0005](decisions/0005-human-approval.md) | 2026-07-13 | Proposals need human approval by default |
+| [0009](decisions/0009-loomarr-plays-out.md) | 2026-07-25 | Loomarr plays out its own streams |
 | [0024](decisions/0024-react-native-clients.md) | 2026-08-23 | React Native and Expo for client binaries |
 | [0025](decisions/0025-three-ai-pillars.md) | 2026-09-02 | Three independently certified AI pillars |
 | [0026](decisions/0026-specialized-local-model.md) | 2026-09-02 | A specialized local model is an optional Suggester optimisation |
 | [0027](decisions/0027-loomarr-owned-media-inventory.md) | 2026-09-05 | Loomarr owns its media inventory; the library is an importer |
+| [0031](decisions/0031-tone-curve.md) | 2026-09-26 | Tone curve: one default plus six selectable curves |
+| [0032](decisions/0032-4k-and-dynamic-range.md) | 2026-09-26 | 4K is a given; dynamic range is independent of resolution |
+| [0033](decisions/0033-measured-admission.md) | 2026-09-27 | Admission is one measured ledger |
 | [0034](decisions/0034-midroll-default-on.md) | 2026-09-27 | Mid-programme breaks on by default, with a per-channel off switch |
+| [0035](decisions/0035-cpu-degradation-ladder.md) | 2026-09-27 | CPU degradation ladder: never refuse on a slow CPU |
+| [0036](decisions/0036-watermark-active-picture.md) | 2026-09-27 | The watermark is anchored to the measured active picture |
+| [0037](decisions/0037-one-packager-per-channel-format.md) | 2026-09-27 | One packager per (channel, format) |
+| [0038](decisions/0038-one-second-segments.md) | 2026-09-27 | 1 s segments |
+| [0039](decisions/0039-uniform-channel-output.md) | 2026-09-27 | Always transcode to one uniform channel output |
+| [0040](decisions/0040-prepared-media-withdrawn.md) | 2026-09-27 | Prepared media is withdrawn; nothing encodes until a viewer tunes |
+| [0041](decisions/0041-ship-ffmpeg-9.md) | 2026-09-27 | Ship ffmpeg 9 |
 
 Future work that used to live in `design.md` §20 is tracked in #1576.
