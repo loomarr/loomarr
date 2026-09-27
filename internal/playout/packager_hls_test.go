@@ -700,7 +700,7 @@ func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
 	master := string(body)
 	for _, want := range []string{
 		",RESOLUTION=1920x1080,FRAME-RATE=25.000,VIDEO-RANGE=SDR\n1080p-h264-sdr.m3u8\n",
-		`#EXT-X-STREAM-INF:BANDWIDTH=24160000,AVERAGE-BANDWIDTH=16160000,CODECS="hev1.2.4.L150.90,mp4a.40.2",RESOLUTION=3840x2160,FRAME-RATE=25.000,VIDEO-RANGE=PQ` + "\n4k-hevc-hdr.m3u8\n",
+		`#EXT-X-STREAM-INF:BANDWIDTH=24160000,AVERAGE-BANDWIDTH=16160000,CODECS="hvc1.2.4.L150.90,mp4a.40.2",RESOLUTION=3840x2160,FRAME-RATE=25.000,VIDEO-RANGE=PQ` + "\n4k-hevc-hdr.m3u8\n",
 	} {
 		if !strings.Contains(master, want) {
 			t.Errorf("master lacks %q:\n%s", want, master)

@@ -240,7 +240,7 @@ describe("useHlsPlayer", () => {
     ).find((instance) => instance.loadSource.mock.calls.length > 0);
     if (!active) throw new Error("no controller loaded the source");
     active.levels = [
-      { attrs: { CODECS: "hev1.2.4.L150.90,mp4a.40.2" }, height: 2160, videoRange: "PQ" },
+      { attrs: { CODECS: "hvc1.2.4.L150.90,mp4a.40.2" }, height: 2160, videoRange: "PQ" },
       { attrs: { CODECS: "avc1.640028,mp4a.40.2" }, height: 1080, videoRange: "SDR" },
     ];
     const manifestParsed = active.on.mock.calls

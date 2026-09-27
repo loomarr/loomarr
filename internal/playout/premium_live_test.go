@@ -509,7 +509,7 @@ func TestLivePremium_PackagerServesHDR10(t *testing.T) {
 	defer browser.Release()
 	master := string(browser.Manifest)
 	t.Logf("master before premium play:\n%s", master)
-	predicted := `CODECS="hev1.2.4.L150.90,mp4a.40.2",RESOLUTION=3840x2160,FRAME-RATE=25.000,VIDEO-RANGE=PQ` + "\n4k-hevc-hdr.m3u8\n"
+	predicted := `CODECS="hvc1.2.4.L150.90,mp4a.40.2",RESOLUTION=3840x2160,FRAME-RATE=25.000,VIDEO-RANGE=PQ` + "\n4k-hevc-hdr.m3u8\n"
 	if !strings.Contains(master, predicted) {
 		t.Fatalf("master does not offer the HDR10 premium:\n%s", master)
 	}
@@ -583,7 +583,7 @@ func TestLivePremium_PackagerServesHDR10(t *testing.T) {
 		t.Fatalf("ffprobe init: %v", err)
 	}
 	t.Logf("init: %s", initProbe)
-	for _, want := range []string{"Mastering display metadata", `max_luminance="10000000/10000"`, "max_content=1000", `color_transfer="smpte2084"`} {
+	for _, want := range []string{`codec_tag_string="hvc1"`, "Mastering display metadata", `max_luminance="10000000/10000"`, "max_content=1000", `color_transfer="smpte2084"`} {
 		if !strings.Contains(string(initProbe), want) {
 			t.Errorf("the premium init lacks %s", want)
 		}

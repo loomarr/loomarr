@@ -151,7 +151,8 @@ func (o OutputProfile) premium() bool {
 }
 
 // premiumCodecs is the CODECS a premium output's init will name, for a master listing it before
-// its packager has run: ffmpeg's fMP4 HEVC entry (hev1); Main 10 for HDR10, else Main (compatible
+// its packager has run: the hvc1 entry every HEVC encode is tagged with (videoEncoder, Apple's HLS
+// requirement); Main 10 for HDR10, else Main (compatible
 // with Main 10); Main tier at level 5.0 for 3840x2160 up to 30 fps, 5.1 above; progressive
 // frame-only; and the AAC-LC every item's audio is (BuildItem). A running packager's init replaces
 // it (packager.CodecsAttr).
@@ -163,7 +164,7 @@ func (o OutputProfile) premiumCodecs() string {
 	if o.FPS > 30 {
 		level = 153
 	}
-	return fmt.Sprintf("hev1.%s.L%d.90,mp4a.40.2", profile, level)
+	return fmt.Sprintf("hvc1.%s.L%d.90,mp4a.40.2", profile, level)
 }
 
 // FormatOutput is what a channel's packager for class encodes (#1512 phase 2). The baseline is H.264

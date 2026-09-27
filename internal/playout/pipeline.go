@@ -835,8 +835,18 @@ func (b *builder) generic() error {
 //	generic       average bitrate with the cap.
 //
 // Every family: H.264 High (HEVC Main), no B-frames, one closed GOP per segment, IDR at every
-// keyframe, no scene-cut keyframes.
+// keyframe, no scene-cut keyframes. HEVC is tagged hvc1: Apple's HLS authoring spec requires it
+// for fMP4 (ffmpeg's mp4 muxer writes hev1 otherwise); an MPEG-TS output ignores the tag.
 func videoEncoder(host HostProfile, out OutputProfile) []string {
+	args := videoEncoderArgs(host, out)
+	if out.HEVC {
+		args = append(args, "-tag:v", "hvc1")
+	}
+	return args
+}
+
+// videoEncoderArgs is one family's encoder and rate control (videoEncoder).
+func videoEncoderArgs(host HostProfile, out OutputProfile) []string {
 	g := strconv.Itoa(out.gop())
 	target, maxrate := strconv.Itoa(out.TargetKbps)+"k", strconv.Itoa(out.MaxKbps)+"k"
 	q := strconv.Itoa(out.Quality)

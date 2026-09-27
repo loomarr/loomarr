@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 // own 4K encode on the server, so a browser plays it only when it can decode that exact CODECS
 // string, and never drifts onto it by bandwidth.
 const baseline = { codecs: "avc1.640028,mp4a.40.2", height: 1080, videoRange: "SDR" };
-const premiumHDR = { codecs: "hev1.2.4.L150.90,mp4a.40.2", height: 2160, videoRange: "PQ" };
-const premiumSDR = { codecs: "hev1.1.6.L150.90,mp4a.40.2", height: 2160, videoRange: "SDR" };
+const premiumHDR = { codecs: "hvc1.2.4.L150.90,mp4a.40.2", height: 2160, videoRange: "PQ" };
+const premiumSDR = { codecs: "hvc1.1.6.L150.90,mp4a.40.2", height: 2160, videoRange: "SDR" };
 
 const decodes =
   (...codecs: string[]) =>

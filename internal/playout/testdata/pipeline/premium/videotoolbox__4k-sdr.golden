@@ -47,6 +47,8 @@ main
 25
 -bf
 0
+-tag:v
+hvc1
 -c:a
 aac
 -profile:a

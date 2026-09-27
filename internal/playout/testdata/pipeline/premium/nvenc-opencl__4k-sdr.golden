@@ -63,6 +63,8 @@ vbr
 1
 -no-scenecut
 1
+-tag:v
+hvc1
 -c:a
 aac
 -profile:a
