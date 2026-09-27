@@ -136,6 +136,10 @@ DEMO_LIBRARY_ENV = eval "$$(./scripts/dev-env.sh export)"; \
 demo-library: ## serve the demo library's Emby-compatible stand-in (generates its clips and art on first run)
 	@$(DEMO_LIBRARY_ENV); go run ./cmd/demo-library serve
 
+.PHONY: demo-titles-verify
+demo-titles-verify: ## no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI runs it on every PR)
+	$(GO) test ./internal/demolibrary -count=1 -run 'TestSeedsCarryNoRealTitles|TestFixturesCarryNoNewRealTitles|TestGuardCatchesRealTitlesAndIDs|TestDemoCatalogueIsInvented'
+
 .PHONY: demo-seed
 demo-seed: ## point this worktree's backend at the running demo library and create the demo channels (idempotent)
 	@$(DEMO_LIBRARY_ENV); \

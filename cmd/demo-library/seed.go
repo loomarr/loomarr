@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,13 +14,13 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/demolibrary"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -92,8 +91,12 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 		return err
 	}
 
+	// Transcription is off because the demo interstitials carry music, not speech, and a demo
+	// backend has no speech engine: left on, the filler pipeline fails every clip at that stage
+	// ("whisper not configured") and none ever reaches a break.
 	if err := api.expectOK(ctx, http.MethodPatch, "/v1/settings", map[string]any{"edits": map[string]string{
 		"library.flavor": "emby", "library.url": cfg.libraryURL, "library.token": DemoToken,
+		"filler.transcribe.enabled": "false",
 	}}, nil); err != nil {
 		return fmt.Errorf("point the backend at the demo library: %w", err)
 	}
@@ -123,7 +126,7 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 		out.Channels = append(out.Channels, SeedChannel{ID: id, Number: c.Number, Name: c.Name, Watermark: c.Watermark})
 		log.Info("demo channel ready", "number", c.Number, "name", c.Name, "id", id)
 	}
-	if err := seedFiller(ctx, st, l); err != nil {
+	if err := api.seedFiller(ctx, log); err != nil {
 		return err
 	}
 	for _, c := range out.Channels {
@@ -220,30 +223,83 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 		ProposalJSON: string(propJSON), CreatedAt: now, UpdatedAt: now})
 }
 
-// seedFiller adds the generated interstitials to the clip catalogue. Clips are not gated titles;
-// a direct upsert is how `make seed` builds its catalogue too. Each is keyed on its content hash.
-func seedFiller(ctx context.Context, st store.Store, l demolibrary.Layout) error {
-	now := time.Now()
-	for _, f := range demolibrary.Fillers {
-		path, err := filepath.Abs(l.Filler(f.ID))
-		if err != nil {
+// fillerSourceID is how the backend names a media-server library filler source.
+const fillerSourceID = "library:" + demolibrary.FillerLibraryName
+
+// seedFiller registers the stand-in's filler library as a filler source, then runs the sync and
+// the ingest pipeline once each, one after the other, so the interstitials reach channel breaks.
+// A clip airs only after the pipeline's quality gate marks it Ready, so writing clip rows
+// directly would catalogue clips that never air. Run-now works on a paused job and leaves it
+// paused, so a lane backend's paused media jobs stay paused.
+//
+// The jobs run only when this call registers the source. A rerun must not sync again: a
+// re-sync of an unchanged library re-adds clips the pipeline has already normalized, and their
+// transcodes then fail on a duplicate hash (#1605).
+func (b *backend) seedFiller(ctx context.Context, log *slog.Logger) error {
+	var list struct {
+		Sources []struct {
+			ID string `json:"id"`
+		} `json:"sources"`
+	}
+	if err := b.expectOK(ctx, http.MethodGet, "/v1/filler/sources", nil, &list); err != nil {
+		return err
+	}
+	if slices.ContainsFunc(list.Sources, func(s struct {
+		ID string `json:"id"`
+	}) bool {
+		return s.ID == fillerSourceID
+	}) {
+		log.Info("demo filler source already registered; not syncing again (#1605)")
+		return nil
+	}
+	if err := b.expectOK(ctx, http.MethodPost, "/v1/filler/sources", map[string]string{
+		"kind": "library", "uri": demolibrary.FillerLibraryName, "label": "Demo filler",
+	}, nil); err != nil {
+		return fmt.Errorf("add the demo filler source: %w", err)
+	}
+	for _, job := range []string{"filler-sync", "filler-pipeline"} {
+		if err := b.runJob(ctx, job); err != nil {
 			return err
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		hash := fmt.Sprintf("%x", sha256.Sum256(raw))
-		clip := filler.Clip{Hash: hash, Path: path, Name: f.Name, Kind: filler.Kind(f.Kind), Audience: filler.General,
-			DurationMs: int64(f.Duration) * 1000, Source: "demo"}
-		if err := st.UpsertClip(ctx, store.Clip{Clip: clip, UpdatedAt: now}); err != nil {
-			return fmt.Errorf("filler %q: %w", f.Name, err)
-		}
-		if err := st.SetClipTags(ctx, hash, []string{f.Tag}); err != nil {
-			return fmt.Errorf("tag filler %q: %w", f.Name, err)
-		}
+		log.Info("demo filler job finished", "job", job)
 	}
 	return nil
+}
+
+// runJob starts a job now and waits for that manual run to finish.
+func (b *backend) runJob(ctx context.Context, name string) error {
+	started := time.Now()
+	if err := b.expectOK(ctx, http.MethodPost, "/v1/jobs/"+name+"/run", map[string]any{}, nil); err != nil {
+		return fmt.Errorf("run %s: %w", name, err)
+	}
+	deadline := time.Now().Add(10 * time.Minute)
+	for time.Now().Before(deadline) {
+		var hist struct {
+			Recent []struct {
+				StartedAt  time.Time `json:"startedAt"`
+				FinishedAt time.Time `json:"finishedAt"`
+				Result     string    `json:"result"`
+				Trigger    string    `json:"trigger"`
+			} `json:"recent"`
+		}
+		if err := b.expectOK(ctx, http.MethodGet, "/v1/jobs/"+name+"/history", nil, &hist); err != nil {
+			return err
+		}
+		for _, r := range hist.Recent {
+			if r.Trigger == "manual" && !r.StartedAt.Before(started.Add(-time.Second)) && !r.FinishedAt.IsZero() {
+				if r.Result != "ok" {
+					return fmt.Errorf("%s finished with %q", name, r.Result)
+				}
+				return nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+	return fmt.Errorf("%s did not finish within 10 minutes", name)
 }
 
 // nameChannel gives an approved channel its stable demo name, number and group. The approval gate

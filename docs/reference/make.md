@@ -160,6 +160,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make dev-fe` |  | frontend with HMR on this worktree's isolated port, proxying its backend |
 | `make seed` |  | populate a dev store via the real domain paths (approval gate honored — AGENTS.md) |
 | `make demo-library` |  | serve the demo library's Emby-compatible stand-in (generates its clips and art on first run) |
+| `make demo-titles-verify` | ✅ | no real media titles, brands or provider ids in seeds, fixtures or the demo catalogue (CI runs it on every PR) |
 | `make demo-seed` |  | point this worktree's backend at the running demo library and create the demo channels (idempotent) |
 
 ## Store conformance (Phase 3/4)
@@ -266,7 +267,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `demo-titles-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

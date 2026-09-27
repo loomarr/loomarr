@@ -348,6 +348,10 @@ jobs:
         run: make agent-harness-test shellcheck
       - name: Documentation contracts read by Go
         run: go test ./docs && make arch-docs-verify config-docs-verify dev-docs-verify
+      # The repo is public. Real titles can arrive in any seed or fixture, Go or web, so this
+      # cheap guard runs on every PR here instead of behind a path filter (#1587).
+      - name: No real media titles in seeds or fixtures
+        run: make demo-titles-verify
 
   rust-contracts:
     name: Rust — repository contracts

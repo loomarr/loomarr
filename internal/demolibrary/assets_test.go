@@ -7,6 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +24,46 @@ func testGenerator(t *testing.T) generator {
 		t.Fatal(err)
 	}
 	return generator{ffmpeg: ffmpeg, l: l, log: slog.New(slog.DiscardHandler)}
+}
+
+// The filler quality gate (internal/mediatools/quality.go) decides whether a clip can air. The first
+// generator failed it twice, so no demo break aired: its silent track was rejected as
+// silent_content ("99% of the 10.0s audio is silent"), and its static cards were held for review
+// ("The picture is unchanged for 20.0s"). Each interstitial must carry real sound, a moving
+// picture, and clear the gate's 10-second floor, measured with the gate's own detector settings.
+func TestFillerClearsTheQualityGate(t *testing.T) {
+	g := testGenerator(t)
+	for i, f := range Fillers {
+		if f.Duration <= 10 {
+			t.Errorf("%s is %ds; the quality gate's floor is 10s", f.ID, f.Duration)
+		}
+		out := filepath.Join(g.l.Dir, f.ID+".mp4")
+		if err := g.filler(context.Background(), f, chroma[i], out); err != nil {
+			t.Fatal(err)
+		}
+		stats, err := exec.Command(g.ffmpeg, "-hide_banner", "-nostdin", "-i", out, "-vn", "-af", "volumedetect", "-f", "null", "-").CombinedOutput()
+		if err != nil {
+			t.Fatalf("volumedetect %s: %v: %s", f.ID, err, stats)
+		}
+		m := regexp.MustCompile(`mean_volume: (-?[0-9.]+|-inf) dB`).FindStringSubmatch(string(stats))
+		if m == nil {
+			t.Fatalf("%s: no mean_volume in ffmpeg output", f.ID)
+		}
+		if mean, err := strconv.ParseFloat(m[1], 64); err != nil || mean < -40 {
+			t.Errorf("%s mean volume %s dB; the clip is effectively silent", f.ID, m[1])
+		}
+		detect, err := exec.Command(g.ffmpeg, "-hide_banner", "-nostdin", "-i", out,
+			"-vf", "blackdetect=d=0.1:pix_th=0.20,freezedetect=n=-60dB:d=2",
+			"-af", "silencedetect=n=-35dB:d=0.3", "-f", "null", "-").CombinedOutput()
+		if err != nil {
+			t.Fatalf("detectors %s: %v: %s", f.ID, err, detect)
+		}
+		for _, marker := range []string{"freeze_start", "black_start", "silence_start"} {
+			if strings.Contains(string(detect), marker) {
+				t.Errorf("%s trips the quality gate's detector: %s", f.ID, marker)
+			}
+		}
+	}
 }
 
 // Playout draws a custom watermark by its alpha and refuses an image with no visible shape

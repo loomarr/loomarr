@@ -53,20 +53,20 @@ var Formats = []Format{
 	{ID: "film-2160p-hdr10", Label: "4K HDR10 · HEVC 10-bit", Width: 3840, Height: 2160, Codec: "hevc", TenBit: true, HDR10: true, Duration: 30 * 60},
 }
 
-// Filler is one generated interstitial (bumpers and promos between programmes).
+// Filler is one generated interstitial (bumpers and idents between programmes). The stand-in
+// serves them as its "Demo Filler" library; Loomarr's filler pipeline classifies and gates them
+// like any library clip, so nothing here pre-decides a clip's kind or tags.
 type Filler struct {
 	ID       string
 	Name     string
-	Kind     string // filler.Kind wire value
-	Tag      string // taxonomy tag pod assembly matches on
-	Duration int    // seconds
+	Duration int // seconds
 }
 
-// Fillers are the generated interstitials.
+// Fillers are the generated interstitials. Every one clears the quality gate's 10-second floor.
 var Fillers = []Filler{
-	{ID: "bumper-stay-tuned", Name: "Stay tuned", Kind: "bumper", Tag: "bumper", Duration: 10},
-	{ID: "bumper-up-next", Name: "Up next", Kind: "bumper", Tag: "bumper", Duration: 10},
-	{ID: "ident-always-on", Name: "Always something on", Kind: "station_id", Tag: "ident", Duration: 20},
+	{ID: "bumper-stay-tuned", Name: "Stay tuned", Duration: 15},
+	{ID: "bumper-up-next", Name: "Up next", Duration: 15},
+	{ID: "ident-always-on", Name: "Always something on", Duration: 20},
 }
 
 // Title is one invented catalogue entry.
