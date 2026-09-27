@@ -8,6 +8,17 @@
 # (#1541). Speed and exit codes prove nothing, so this script measures a matrix of candidate graphs
 # through the production decode, filters and encoder, each changing ONE thing from production.
 #
+# overlay_vaapi hands the bug layer the MAIN frame's colour labels (ffmpeg memcpys the main's
+# VAProcPipelineParameterBuffer into the blend's), and an untagged SDR file and a tone-mapped HDR
+# programme reach the blend labelled differently. So each candidate says whether the main is
+# labelled like the output (tag) or left as the source left it (-), and the "labels" section
+# prints what each class's main carries into the blend and, on VAAPI, what overlay_vaapi mapped
+# that to for the driver. Measured on a GeForce with the self-check's fixtures: the SDR main is
+# range tv with no matrix, primaries or transfer; the tone-mapped HDR main is tv and bt709.
+# If the labels are what switches the Arc's RGB conversion, a VAAPI run shows: PROD DRAWS in both
+# classes; tagged-full reads FULL-RANGE in both; untagged-limited reads WRONG-WHITE (≈218) in SDR
+# only; untagged-full DRAWS in SDR only (the beta.7 graph).
+#
 # For every candidate and programme class (SDR H.264; HDR10 HEVC tone-mapped by tonemap_opencl when
 # the host has an OpenCL runtime for the GPU) it encodes 25 frames bug-off and bug-on and prints:
 #   - bug luma vs the expected blend (65% of limited-range white 235 over the measured background,
@@ -55,11 +66,13 @@ TONEMAP="tonemap_opencl=tonemap=hable:desat=0:t=bt709:m=bt709:p=bt709:r=tv:forma
 # LIMITED maps the bug's full-range RGB into limited range (0→16, 255→235), for a GPU conversion
 # that carries RGB values straight into Y.
 LIMITED="lutrgb=r=16+val*219/255:g=16+val*219/255:b=16+val*219/255"
+# CONFORM labels the main like the output, before the blend (production's VAAPI graph, #1541).
+CONFORM="setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv:chroma_location=left"
 ST="movie=filename=$W/bug.png"
-PM="movie=filename=$W/bug.pm.png"
 
 # Per family: the production decode, bug-off and bug-on main chains, the bug's blend and what
-# follows it, and the candidates. Rows: name | bug chain | blend | expect (blend|opaque).
+# follows it, and the candidates. Rows: name | main label (tag: CONFORM, -: as decoded) | bug chain |
+# blend | expect (blend|opaque).
 case "$FAMILY" in
 vaapi)
 	PRE_SDR=(-init_hw_device "vaapi=va:$NODE" -filter_hw_device va -hwaccel vaapi -hwaccel_device va -hwaccel_output_format vaapi)
@@ -72,14 +85,13 @@ vaapi)
 	OV="overlay_vaapi=x=$X:y=$Y" AFTER=""
 	CANDIDATES="$(
 		cat <<EOF
-PROD|$ST,format=bgra,$LIMITED,hwupload|$OV|blend
-full-range-bgra|$ST,format=bgra,hwupload|$OV|blend
-pm-bgra|$PM,format=bgra,hwupload|$OV|blend
-straight-vuya|$ST,format=vuya,hwupload|$OV|blend
-limited-vuya|$ST,format=bgra,$LIMITED,format=vuya,hwupload|$OV|blend
-opaque-bgr0|$ST,format=bgr0,hwupload|$OV|opaque
-opaque-limited-bgr0|$ST,format=bgr0,$LIMITED,hwupload|$OV|opaque
-REF-cpu|$ST,format=yuva420p|overlay=x=$X:y=$Y|blend
+PROD|tag|$ST,format=bgra,$LIMITED,hwupload|$OV|blend
+untagged-limited|-|$ST,format=bgra,$LIMITED,hwupload|$OV|blend
+untagged-full|-|$ST,format=bgra,hwupload|$OV|blend
+tagged-full|tag|$ST,format=bgra,hwupload|$OV|blend
+opaque-limited-bgr0|tag|$ST,format=bgr0,$LIMITED,hwupload|$OV|opaque
+opaque-bgr0|-|$ST,format=bgr0,hwupload|$OV|opaque
+REF-cpu|-|$ST,format=yuva420p|overlay=x=$X:y=$Y|blend
 EOF
 	)"
 	REF_MAIN_TAIL="hwdownload,format=nv12" REF_AFTER="format=nv12,hwupload"
@@ -95,10 +107,10 @@ nvenc)
 	OV="overlay_cuda=x=$X:y=$Y" AFTER="scale_cuda=w=1920:h=1080:format=yuv420p:passthrough=0"
 	CANDIDATES="$(
 		cat <<EOF
-PROD|$ST,format=yuva420p,hwupload_cuda|$OV|blend
-limited-yuva|$ST,format=bgra,$LIMITED,format=yuva420p,hwupload_cuda|$OV|blend
-pm-yuva|$PM,format=yuva420p,hwupload_cuda|$OV|blend
-opaque-yuv420p|$ST,format=yuv420p,hwupload_cuda|$OV|opaque
+PROD|-|$ST,format=yuva420p,hwupload_cuda|$OV|blend
+tagged|tag|$ST,format=yuva420p,hwupload_cuda|$OV|blend
+limited-yuva|-|$ST,format=bgra,$LIMITED,format=yuva420p,hwupload_cuda|$OV|blend
+opaque-yuv420p|-|$ST,format=yuv420p,hwupload_cuda|$OV|opaque
 EOF
 	)"
 	# No REF-cpu row: hwdownload refuses the NVDEC-decoded frames after pad_cuda. The opaque control
@@ -153,6 +165,25 @@ luma() {
 		-frames:v 1 -f rawvideo -pix_fmt yuv420p - 2>/dev/null | head -c "$((w * ${rest%%:*}))" | od -An -v -tu1 -w1
 }
 
+# labels CLASS SRC MAIN → the colour labels frame 0 carries out of the nv12 main chain MAIN (its
+# trailing pad dropped: pad only copies them, and hwdownload refuses NVDEC frames after pad_cuda).
+labels() {
+	local vf="${3%,"$PAD"},hwdownload,format=nv12" pre=("${PRE_SDR[@]}")
+	[ "$1" = hdr ] && pre=("${PRE_HDR[@]}")
+	[ "${SELFTEST:-}" = 1 ] && vf="$(cpu_twin "$vf")"
+	"$FF" -hide_banner -nostdin -y "${pre[@]}" -i "$2" -map 0:v:0 -frames:v 1 -vf "$vf,showinfo" -f null - 2>&1 |
+		grep -o -m1 'color_range:[a-z]* color_space:[a-z0-9-]* color_primaries:[a-z0-9-]* color_trc:[a-z0-9-]*' || echo "no showinfo line"
+}
+
+# vppmap CLASS SRC GRAPH → what overlay_vaapi told the driver for the main (input) and its output:
+# ffmpeg's debug "Mapped colour properties" lines, which the bug layer inherits.
+vppmap() {
+	local pre=("${PRE_SDR[@]}")
+	[ "$1" = hdr ] && pre=("${PRE_HDR[@]}")
+	"$FF" -hide_banner -nostdin -loglevel debug -y "${pre[@]}" -i "$2" -map 0:v:0 -frames:v 1 -vf "$3" "${ENC[@]}" -f null - 2>&1 |
+		grep 'overlay_vaapi.*Mapped colour properties' | head -2 | sed -E 's/^\[[^]]*\] /    /'
+}
+
 # params FILE → the first SPS and PPS, field by field (trace_headers, addresses stripped).
 params() {
 	"$FF" -hide_banner -nostdin -loglevel trace -i "$1" -map 0:v:0 -c copy -bsf:v trace_headers \
@@ -173,9 +204,8 @@ fi
 # dark-to-mid range keeps the outcomes apart (nothing drawn, a wrong alpha, a full-range white).
 RAMP="format=yuv420p,geq=lum='if(between(X\,1700\,1919)*between(Y\,0\,199)\,40+160*(X-1700)/219\,lum(X\,Y))':cb='if(between(X/SW\,1700\,1919)*between(Y/SH\,0\,199)\,128\,cb(X\,Y))':cr='if(between(X/SW\,1700\,1919)*between(Y/SH\,0\,199)\,128\,cr(X\,Y))'"
 
-# The test bug: a 64x64 white square at 65% alpha, straight and premultiplied.
-if ! "$FF" -hide_banner -nostdin -loglevel error -y -f lavfi -i "color=c=0xFFFFFFA6:s=${B}x${B},format=rgba" -frames:v 1 "$W/bug.png" ||
-	! "$FF" -hide_banner -nostdin -loglevel error -y -f lavfi -i "color=c=0xA6A6A6A6:s=${B}x${B},format=rgba" -frames:v 1 "$W/bug.pm.png"; then
+# The test bug: a 64x64 white square at 65% alpha, straight.
+if ! "$FF" -hide_banner -nostdin -loglevel error -y -f lavfi -i "color=c=0xFFFFFFA6:s=${B}x${B},format=rgba" -frames:v 1 "$W/bug.png"; then
 	echo "cannot write the test bug"
 	exit 1
 fi
@@ -206,9 +236,19 @@ for class in sdr hdr; do
 		echo "the bug-off production graph fails ($err): $class class skipped"
 		continue
 	fi
+	echo "labels the main carries into the blend: $(labels "$class" "$src" "$off_main")"
+	if [ "$FAMILY" = vaapi ] && [ "${SELFTEST:-}" != 1 ]; then
+		for tag in - tag; do
+			m="$on_main"
+			[ "$tag" = tag ] && m="$on_main,$CONFORM"
+			echo "  overlay_vaapi's mapping, main $([ "$tag" = tag ] && echo "labelled like the output" || echo "as decoded") (input, then output):"
+			vppmap "$class" "$src" "${m}[main];$ST,format=bgra,hwupload[wm];[main][wm]$OV"
+		done
+	fi
 	printf '%-20s %-13s %7s %7s %7s %6s %6s %7s  %s\n' candidate verdict bug want bg alpha white ctrlΔY SPS/PPS
-	while IFS='|' read -r name bug blend expect; do
+	while IFS='|' read -r name tag bug blend expect; do
 		main="$on_main" after="$AFTER"
+		[ "$tag" = tag ] && main="$on_main,$CONFORM"
 		if [ "$name" = REF-cpu ]; then
 			main="$on_main,$REF_MAIN_TAIL" after="$(join "$REF_AFTER" "$AFTER")"
 		fi
@@ -265,7 +305,7 @@ else
 	for n in "${!DRAWS[@]}"; do echo "$n: ${DRAWS[$n]}"; done | sort
 fi
 echo
-echo "== graphs (bug chain | blend), for reference"
-while IFS='|' read -r name bug blend expect; do
-	printf '%-20s bug=%s | %s\n' "$name" "${bug//$W\//}" "$blend"
+echo "== graphs (main label | bug chain | blend), for reference; tag = ,$CONFORM"
+while IFS='|' read -r name tag bug blend expect; do
+	printf '%-20s %-3s | bug=%s | %s\n' "$name" "$tag" "${bug//$W\//}" "$blend"
 done <<<"$CANDIDATES"

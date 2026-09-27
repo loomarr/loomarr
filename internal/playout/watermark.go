@@ -24,9 +24,13 @@ import (
 //     bug-off item's (finding 2), which the self-check asserts.
 //   - overlay_vaapi: a bgra bug. ffmpeg flags any alpha format VA_BLEND_PREMULTIPLIED_ALPHA, but
 //     the household Arc (iHD, ffmpeg n8.1.2) blends it as straight: over a Y 71 patch a
-//     premultiplied bug read 129 where 65% white is 178. It also carries the bug's RGB into Y
-//     unscaled, so white landed at 255 in a limited-range stream (#1541); the bug is mapped into
-//     limited-range RGB first (limitedRGB). scripts/watermark-overlay-matrix.sh measures both.
+//     premultiplied bug read 129 where 65% white is 178. How it converts the bug's RGB depends on
+//     the MAIN frame's colour labels, which ffmpeg copies onto the bug layer (the blend's second
+//     VAProcPipelineParameterBuffer is a memcpy of the main's): under a bt709-labelled main (a
+//     tone-mapped HDR programme) the Arc carried RGB into Y unscaled, white at 255, while under an
+//     unlabelled one (an untagged SDR file) it scaled 255 to 235 (#1541). So the main is labelled
+//     like the output (conformColour) before the blend, and the bug is mapped into limited-range
+//     RGB first (limitedRGB). scripts/watermark-overlay-matrix.sh measures each.
 //
 // NVENC needs no range step: swscale's yuva420p conversion already puts white at 235, and the
 // matrix measured overlay_cuda's blend at alpha 0.651 and white 234.8. The self-check's bug-luma
@@ -34,8 +38,8 @@ import (
 // driver that disagrees disables the bug rather than airing it dim or super-white.
 
 // limitedRGB maps the bug's full-range RGB into limited range (0→16, 255→235), once, on its single
-// decoded frame. overlay_vaapi carries a bgra bug's RGB straight into Y, so without it the bug's
-// white lands at 255 in a limited-range stream (#1541).
+// decoded frame. Over a bt709-labelled main, overlay_vaapi carries a bgra bug's RGB straight into Y,
+// so without it the bug's white lands at 255 in a limited-range stream (#1541).
 const limitedRGB = "lutrgb=r=16+val*219/255:g=16+val*219/255:b=16+val*219/255"
 
 // Corner is where the bug sits, relative to the active picture.
