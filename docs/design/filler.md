@@ -3,8 +3,8 @@
 Formerly `design.md` §10: the catalog, sources, automatic fetching, storage, pulls, the clip
 lifecycle, the media gates, media roles, conditioning evidence and acquisition runs. The per-clip
 pipeline is in [filler-pipeline](filler-pipeline.md), compilation structure is in
-`filler-structure.md`, and tagging, screening and readiness evidence are in
-`filler-classification.md` (both still in `design.md` §10 until they move). Break and pod policy is in
+[filler-structure](filler-structure.md), and tagging, screening and readiness evidence are in
+`filler-classification.md` (still in `design.md` §10 until it moves). Break and pod policy is in
 [scheduling](scheduling.md#breaks-and-pods).
 
 Commercials, bumpers and station IDs are core to "feels like real TV". They are not titles and are
@@ -473,7 +473,7 @@ roles (decision [0028](decisions/0028-source-evidence-and-playable-media.md)):
 ## Conditioning evidence for split children
 
 Split children are measured, not trusted (V64, V65). Structure decisions are in
-`filler-structure.md`.
+[filler-structure](filler-structure.md).
 
 - **Measurement is evidence, never authority.** The media-tools inspector measures one bounded local
   artifact, optionally against one parent and up to eight intended cuts: container and per-stream
