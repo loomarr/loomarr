@@ -31,6 +31,8 @@ func (s rotatingSource) ItemAt(_ context.Context, _ string, at time.Time) (Packa
 		Format: s.formats[idx%len(s.formats)], Seek: time.Duration(idx%3) * time.Second, Remaining: end.Sub(at)}, nil
 }
 
+func (rotatingSource) Premium(context.Context, string) FormatClass { return "" }
+
 func (s rotatingSource) Output(context.Context, string, FormatClass, int) (HostProfile, OutputProfile) {
 	return HostFor(EncoderSoftware, true, GPUFilters{}), s.out
 }

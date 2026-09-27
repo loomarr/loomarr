@@ -47,6 +47,9 @@ type WatermarkFor func(ctx context.Context, enc Encoder, width, height int) *Wat
 type PackagerSource interface {
 	ItemAt(ctx context.Context, channelID string, at time.Time) (PackagerItem, error)
 	Output(ctx context.Context, channelID string, class FormatClass, rung int) (HostProfile, OutputProfile)
+	// Premium is the premium format the channel airs on this host (its lineup's, after
+	// ChannelFormats.OnHost); empty when none.
+	Premium(ctx context.Context, channelID string) FormatClass
 }
 
 // packagedKey is one packager: a channel at one output format. Every client and plan reads the
@@ -131,8 +134,18 @@ func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
 }
 
 // acquirePlaylist serves the channel's master playlist. Every plan gets the baseline variant: a
-// PlanBaseline browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2).
+// PlanBaseline browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2). Beside
+// it the master names the channel's premium format when it airs one here and the ledger has room
+// (#1512 G10). The premium is described from its output alone: only a client that plays it starts
+// its packager. Its lineup lookup runs beside the baseline's cold start, off the tune path.
 func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, _ bool) (hlsPlaylistLease, error) {
+	premium, found := new(*hlsVariant), make(chan struct{})
+	go func() {
+		defer close(found)
+		ctx, cancel := context.WithTimeout(m.life, premiumLookupTimeout)
+		defer cancel()
+		*premium = m.premiumVariant(ctx, channelID)
+	}()
 	c, release, err := m.acquire(channelID, FormatBaseline)
 	if err != nil {
 		return hlsPlaylistLease{}, err
@@ -141,21 +154,76 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, _ bool) (h
 		path:    filepath.Join(c.dir, "master.m3u8"),
 		release: release,
 		await:   c.p.AwaitPlaylist,
-		snapshot: func(context.Context) ([]byte, error) {
-			return masterPlaylist([]hlsVariant{c.variant(FormatBaseline)}), nil
+		snapshot: func(ctx context.Context) ([]byte, error) {
+			vs := []hlsVariant{c.variant(FormatBaseline)}
+			select {
+			case <-found:
+				if *premium != nil {
+					vs = append(vs, **premium)
+				}
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return masterPlaylist(vs), nil
 		},
 	}, nil
 }
 
+// premiumLookupTimeout bounds the master's premium lookup (the lineup's formats); a lookup that
+// fails or times out lists the baseline alone.
+const premiumLookupTimeout = 5 * time.Second
+
+// premiumVariant is the master's entry for the channel's premium format, or nil when it airs none
+// on this host or the ledger has no room for another one now (#1520: premium is admitted only on
+// its own measured cost). A running premium is described from its own init.
+func (m *PackagerHLS) premiumVariant(ctx context.Context, channelID string) *hlsVariant {
+	class := m.source.Premium(ctx, channelID)
+	if class == "" {
+		return nil
+	}
+	m.mu.Lock()
+	c := m.channels[packagedKey{channel: channelID, format: class}]
+	m.mu.Unlock()
+	if c != nil {
+		v := c.variant(class)
+		return &v
+	}
+	if m.budget != nil && !m.budget.Fits(premiumAdmission) {
+		m.log.Info("packager hls: premium not offered: no measured room for it", "channel", channelID, "format", string(class))
+		return nil
+	}
+	_, out := m.source.Output(ctx, channelID, class, 0)
+	v := variantOf(class, out, nil)
+	return &v
+}
+
+// premiumAdmission is a premium packager's lease: the premium class at its measured cost for the
+// channel's life, whatever each item's source is, and never a lower output rung (a premium's
+// geometry is fixed).
+var premiumAdmission = AdmitRequest{Class: ClassPremium4K, NoRungDrop: true}
+
 // MediaPlaylist serves a format's live media playlist (`<format>.m3u8`, named by the master). A
 // player polls it, not the master, so each poll counts as a viewer and keeps the packager past its
-// grace. Only the baseline is served: a premium variant is for a client that opts in to it (#1512
-// phase 3), which also checks the channel airs that format on this host.
+// grace. A premium playlist is the client's opt-in (#1512 G10): it starts the channel's premium
+// packager, and only for the premium the channel airs on this host.
 func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string) ([]byte, bool, error) {
-	if FormatClass(strings.TrimSuffix(rel, ".m3u8")) != FormatBaseline || filepath.Base(rel) != rel {
+	class := FormatClass(strings.TrimSuffix(rel, ".m3u8"))
+	if filepath.Base(rel) != rel || !strings.HasSuffix(rel, ".m3u8") {
 		return nil, false, nil
 	}
-	c, release, err := m.acquire(channelID, FormatBaseline)
+	switch class {
+	case FormatBaseline:
+	case Format4KSDR, Format4KHDR:
+		m.mu.Lock()
+		running := m.channels[packagedKey{channel: channelID, format: class}] != nil
+		m.mu.Unlock()
+		if !running && m.source.Premium(ctx, channelID) != class {
+			return nil, false, nil
+		}
+	default:
+		return nil, false, nil
+	}
+	c, release, err := m.acquire(channelID, class)
 	if err != nil {
 		return nil, false, err
 	}
@@ -220,11 +288,14 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 	// reuses it. A 4K HDR first item on a nearly full host is demoted or refused before any encoder
 	// starts; a card slot or a failed lookup books SDR until a real item reclasses the lease.
 	// ErrAtCapacity reaches the viewer as 503. The lease is released when the run ends.
+	// A premium packager is priced by its own class instead (premiumAdmission).
 	resolvedAt := time.Now()
 	first, ferr := m.source.ItemAt(ctx, key.channel, resolvedAt)
-	class := ClassSDR
-	if ferr == nil && first.Input != "" {
-		class = ClassOf(first.Format)
+	req := AdmitRequest{Class: ClassSDR}
+	if key.format != FormatBaseline {
+		req = premiumAdmission
+	} else if ferr == nil && first.Input != "" {
+		req.Class = ClassOf(first.Format)
 	}
 	var pre *prefetchedItem
 	if ferr == nil {
@@ -233,7 +304,7 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 	var lease *Lease
 	if m.budget != nil {
 		var err error
-		if lease, err = m.budget.Admit(ctx, AdmitRequest{Class: class}); err != nil {
+		if lease, err = m.budget.Admit(ctx, req); err != nil {
 			cancel()
 			return nil, err
 		}
@@ -256,8 +327,11 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 		return nil, fmt.Errorf("packager hls: channel dir: %w", err)
 	}
 	log := m.log.With("channel", key.channel, "format", string(key.format))
-	p, err := packager.New(packager.Config{FPS: out.FPS, Dir: dir, DVR: DVRHorizon, URIPrefix: string(key.format) + "-", Log: log},
-		m.schedule(key, host, out, lease, pre, log), slate)
+	cfg := packager.Config{FPS: out.FPS, Dir: dir, DVR: DVRHorizon, URIPrefix: string(key.format) + "-", Log: log}
+	if out.HDR {
+		cfg.HDR10 = ChannelHDR10.Packager() // no encoder writes the channel's fixed metadata (#1527)
+	}
+	p, err := packager.New(cfg, m.schedule(key, host, out, lease, pre, log), slate)
 	if err != nil {
 		cancel()
 		lease.Release()
@@ -314,13 +388,18 @@ func (m *PackagerHLS) schedule(
 		// the same airing at the position the channel reached, and it resumes here on the monitor's
 		// rung instead of a fresh pick.
 		itemOut := out
+		// A premium lease keeps its class: it was priced for the channel's whole lineup.
+		itemClass := ClassOf(it.Format)
+		if key.format != FormatBaseline {
+			itemClass = ClassPremium4K
+		}
 		airing := it.Label + "\x00" + it.Input
 		rung, resumed, stepped := ladder.resume(airing)
 		switch {
 		case resumed:
 			itemOut.SoftwareRung = rung
 		case lease != nil:
-			lease.ReclassItem(ctx, ClassOf(it.Format)) // a transcoding lease always moves
+			lease.ReclassItem(ctx, itemClass) // a transcoding lease always moves
 			itemOut.SoftwareRung = lease.SoftwareRung()
 		default:
 			itemOut.SoftwareRung = StartRung(it.Format, RungCost{})
@@ -372,7 +451,7 @@ func (m *PackagerHLS) schedule(
 				// on the timeline, not its slot, so an encoder closed early cannot over-count.
 				if frames := delivered.Load(); frames > 0 && itemOut.FPS > 0 {
 					media := time.Duration(frames) * time.Second / time.Duration(itemOut.FPS)
-					lease.ObserveCPU(ClassOf(it.Format), cpu, media)
+					lease.ObserveCPU(itemClass, cpu, media)
 				}
 			}, ladder.watch(monitor, log, it.Label))
 		}
@@ -908,17 +987,31 @@ type hlsVariant struct {
 	bandwidth, average  int // bits/s: the peak and the target, video plus audio
 	codecs              string
 	width, height, rate int
+	videoRange          string // SDR or PQ
 }
 
 // variant describes a running format's media playlist from its output and its channel init.
 func (c *packagedChannel) variant(class FormatClass) hlsVariant {
-	o := c.out
-	return hlsVariant{
+	return variantOf(class, c.out, c.p.Init())
+}
+
+// variantOf describes a format's media playlist from its output and, once it has one, its channel
+// init. A premium with no init yet names its predicted CODECS (premiumCodecs), because a web player
+// offers it only when it can decode that exact string.
+func variantOf(class FormatClass, o OutputProfile, init []byte) hlsVariant {
+	v := hlsVariant{
 		uri:       string(class) + ".m3u8",
 		bandwidth: (o.MaxKbps + o.AudioKbps) * 1000, average: (o.TargetKbps + o.AudioKbps) * 1000,
-		codecs: packager.CodecsAttr(c.p.Init()),
-		width:  o.Width, height: o.Height, rate: o.FPS,
+		codecs: packager.CodecsAttr(init),
+		width:  o.Width, height: o.Height, rate: o.FPS, videoRange: "SDR",
 	}
+	if o.HDR {
+		v.videoRange = "PQ"
+	}
+	if v.codecs == "" && o.premium() {
+		v.codecs = o.premiumCodecs()
+	}
+	return v
 }
 
 // masterPlaylist names each variant's media playlist. CODECS is omitted when the init could not
@@ -931,7 +1024,11 @@ func masterPlaylist(vs []hlsVariant) []byte {
 		if v.codecs != "" {
 			fmt.Fprintf(&b, ",CODECS=%q", v.codecs)
 		}
-		fmt.Fprintf(&b, ",RESOLUTION=%dx%d,FRAME-RATE=%.3f\n%s\n", v.width, v.height, float64(v.rate), v.uri)
+		fmt.Fprintf(&b, ",RESOLUTION=%dx%d,FRAME-RATE=%.3f", v.width, v.height, float64(v.rate))
+		if v.videoRange != "" {
+			fmt.Fprintf(&b, ",VIDEO-RANGE=%s", v.videoRange)
+		}
+		fmt.Fprintf(&b, "\n%s\n", v.uri)
 	}
 	return b.Bytes()
 }

@@ -28,28 +28,7 @@ const visualSampleEntryHeader = 8 + 6 + 2 + 70
 // init returns init with the static boxes appended to each HEVC sample entry, every enclosing
 // box grown to match. Boxes the entry already has are kept, so boxing twice changes nothing.
 func (h *HDR10) init(init []byte) ([]byte, error) {
-	type entry struct {
-		ancestors  []int // start offsets of moov … stsd
-		start, end int
-	}
-	var found []entry
-	var walk func(off, end int, path []int)
-	walk = func(off, end int, path []int) {
-		children(init, off, end, func(t string, s, sz int) {
-			here := append(path[:len(path):len(path)], s)
-			switch t {
-			case "moov", "trak", "mdia", "minf", "stbl":
-				walk(s+8, s+sz, here)
-			case "stsd": // full box header, then entry_count
-				children(init, s+16, s+sz, func(et string, es, esz int) {
-					if (et == "hvc1" || et == "hev1") && esz >= visualSampleEntryHeader {
-						found = append(found, entry{here, es, es + esz})
-					}
-				})
-			}
-		})
-	}
-	walk(0, len(init), nil)
+	found := hevcEntries(init)
 	if len(found) == 0 {
 		return nil, fmt.Errorf("%w: an HDR10 init has no HEVC sample entry", errBadBox)
 	}
