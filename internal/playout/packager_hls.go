@@ -23,12 +23,17 @@ import (
 // how far into it, how long the airing has left, and the stream facts the builder needs. An empty
 // Input is a card slot (nothing playable): the packager slates it.
 type PackagerItem struct {
-	Label      string
-	Input      string
-	Seek       time.Duration
-	Remaining  time.Duration
-	AudioTrack int
-	Format     MediaFormat
+	Label string
+	Input string
+	Seek  time.Duration
+	// Keyframe is the source's last keyframe at or before Seek, from the keyframe index Loomarr
+	// measured for the file's current bytes; KeyframeIndexed is false without one (a stream URL, an
+	// unmeasured file). A tune-in seeks from it (tuneInSeek).
+	Keyframe        time.Duration
+	KeyframeIndexed bool
+	Remaining       time.Duration
+	AudioTrack      int
+	Format          MediaFormat
 	// GainDB is a filler clip's static loudness gain (FillerGain); 0 for a library title.
 	GainDB float64
 	// Watermark is set only for a PROGRAMME airing (never filler, bumpers or IDs): the channel's bug
@@ -366,6 +371,7 @@ func (m *PackagerHLS) schedule(
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
 	ladder := &itemLadder{}
+	tuneIn := true // the packager's first lookup; the schedule runs on one goroutine
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
 		if !ok {
@@ -374,6 +380,14 @@ func (m *PackagerHLS) schedule(
 				return packager.Item{}, err
 			}
 		}
+		if tuneIn && it.Input != "" {
+			var rewind time.Duration
+			it, rewind = tuneInSeek(it)
+			// The tune-in (G2) split: whether this join paid ffmpeg's accurate seek.
+			log.Info("packager hls: tune-in seek", "item", it.Label, "keyframe_indexed", it.KeyframeIndexed,
+				"rewind_ms", rewind.Milliseconds())
+		}
+		tuneIn = false
 		item := packager.Item{Label: it.Label, Duration: it.Remaining}
 		if it.Input == "" {
 			return item, nil
@@ -463,6 +477,28 @@ func (m *PackagerHLS) schedule(
 		return item, nil
 	}
 }
+
+// tuneInSeek starts a tune-in's encoder at the source's indexed keyframe at or before its offset
+// (#1595), and returns how far back that is. From the exact offset, ffmpeg's accurate seek decodes
+// and discards everything back to that keyframe before the first frame: up to a whole source GOP on
+// the tune path. From the keyframe itself it discards nothing, and audio is still cut at the same
+// instant (-noaccurate_seek would not promise that: MP4 seeks each track on its own). The slot is
+// unchanged, so the item airs from the keyframe and its slot ends that much short of the airing's
+// end. Only the tune-in: a later lookup (a resume after a break or a slate) must not air anything
+// twice.
+func tuneInSeek(it PackagerItem) (PackagerItem, time.Duration) {
+	back := it.Seek - it.Keyframe
+	if !it.KeyframeIndexed || back <= 0 || back > tuneInRewindMax {
+		return it, 0
+	}
+	it.Seek = it.Keyframe
+	return it, back
+}
+
+// tuneInRewindMax bounds how far before the airing's offset a tune-in may start (tuneInSeek): past
+// one long source GOP (x264's default 250 frames is 10.4 s at 23.976 fps), the airing's end it would
+// cut costs more than the seek it saves.
+const tuneInRewindMax = 12 * time.Second
 
 // ladderResumeWait is how long an airing resumed on a new rung gets to produce, as long as a tune-in's
 // first item (FirstItemWait): the encoder it replaces was too slow, so the timeline has no lead left,

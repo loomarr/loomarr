@@ -63,7 +63,7 @@ func TestStillAiring_IsTheProgrammeOnNowAndRecordsNothing(t *testing.T) {
 	}
 }
 
-func TestStillKeyframe_SeeksWithTheMeasuredIndexOfTheFilesCurrentBytes(t *testing.T) {
+func TestIndexedKeyframe_SeeksWithTheMeasuredIndexOfTheFilesCurrentBytes(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
@@ -86,10 +86,10 @@ func TestStillKeyframe_SeeksWithTheMeasuredIndexOfTheFilesCurrentBytes(t *testin
 		t.Fatal(err)
 	}
 
-	if at, ok := r.stillKeyframe(ctx, file, 3500*time.Millisecond); !ok || at != 2*time.Second {
+	if at, ok := r.indexedKeyframe(ctx, file, 3500*time.Millisecond); !ok || at != 2*time.Second {
 		t.Fatalf("keyframe = %v ok=%v, want 2s (the last one at or before 3.5 s)", at, ok)
 	}
-	if _, ok := r.stillKeyframe(ctx, "http://media.test/stream", time.Second); ok {
+	if _, ok := r.indexedKeyframe(ctx, "http://media.test/stream", time.Second); ok {
 		t.Fatal("a stream URL has no measured index")
 	}
 
@@ -102,7 +102,7 @@ func TestStillKeyframe_SeeksWithTheMeasuredIndexOfTheFilesCurrentBytes(t *testin
 	if _, ok := r.ensureLocalInventorySource(ctx, file); !ok {
 		t.Fatal("registering the new revision failed")
 	}
-	if _, ok := r.stillKeyframe(ctx, file, 3500*time.Millisecond); ok {
+	if _, ok := r.indexedKeyframe(ctx, file, 3500*time.Millisecond); ok {
 		t.Fatal("used an index measured for the file's previous bytes")
 	}
 }
