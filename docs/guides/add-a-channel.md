@@ -1,6 +1,7 @@
-# Member guide
+# Add a channel
 
-For everyone who describes channels and watches them.
+**For:** everyone in the household who describes channels and watches them.
+**You'll get:** how to ask for a channel, what happens to your request, and what its status means.
 
 ## What you can do
 

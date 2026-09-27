@@ -1,4 +1,7 @@
-# Hardware acceleration
+# Set up hardware encoding
+
+**For:** household admins with an Intel, AMD or NVIDIA GPU on a Linux host.
+**You'll get:** the GPU passed to Loomarr, so it can play more channels at once, including 4K HDR.
 
 Hardware passthrough is a Linux-host capability. Docker Desktop on macOS does not expose the Mac
 GPU to this Linux container; use software playout there and size channel capacity accordingly.

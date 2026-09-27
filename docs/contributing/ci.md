@@ -410,7 +410,7 @@ sets, so both a missed gate and an unexplained extra gate require an explicit fi
 
 Non-code files consumed by Go tests are Go inputs too. In particular, design/configuration/command
 docs, install docs and README, the committed OpenAPI document, production Compose, and embedded
-help select the complete Go test set. Dockerfile and packaged licence/notices select repository
+help select the complete Go test set. Dockerfile and packaged license/notices select repository
 contracts as well as the image build. These mappings are fixtures because file extensions cannot
 reveal those dependencies.
 
@@ -799,7 +799,7 @@ when the total exceeds the committed baseline. See [Code hygiene](code-hygiene.m
 
 `rust-maintenance.yml` is intentionally outside the required PR gate. Every Monday, and on manual
 dispatch, it installs pinned cargo-deny and cargo-fuzz versions, checks both Cargo lockfiles for
-RustSec advisories, approved SPDX licences, and untrusted sources, then fuzzes the worker's bounded
+RustSec advisories, approved SPDX licenses, and untrusted sources, then fuzzes the worker's bounded
 JSON-to-decoder boundary under nightly libFuzzer. A crash retains its reproducer for 30 days.
 
 This job is allowed to be expensive and network-sensitive. The fast deterministic protections stay

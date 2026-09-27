@@ -76,7 +76,7 @@ D2 sources live in `docs/diagrams/`, generated SVGs in `docs/diagrams/generated/
 approved system (#1572):
 
 - **One question per diagram,** written as the first comment in the source. At most 10 nodes.
-- **Roles, not colors.** Amber for Loomarr's own parts, grey for the services you run beside it,
+- **Roles, not colors.** Amber for Loomarr's own parts, gray for the services you run beside it,
   cyan for people and screens. Colors come from the design tokens and follow light and dark.
 - **One flow direction,** top to bottom, and **zero line or label crossings**.
 - **Short labels** (nouns of at most three words); the detail goes in the prose below.

@@ -1,11 +1,14 @@
 package docs_test
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -305,6 +308,57 @@ func TestProductionComposeUsesCanonicalFillerStorage(t *testing.T) {
 			t.Errorf("production compose still declares the competing filler storage %q", stale)
 		}
 	}
+}
+
+// The first command a new user runs pins an image version. Four pages pinned 0.1.0-beta.8 for
+// weeks after v0.2.0-beta.7 shipped (#1572): a real tag, so nothing failed, just an old one. The
+// newest release is the newest published header in project/release/ (release candidates don't
+// count), and every pin on an operator page must name it.
+var versionPin = regexp.MustCompile(`(?:VERSION=|ghcr\.io/loomarr/loomarr:)v?(\d+\.\d+\.\d+(?:-beta\.\d+)?)\b`)
+
+func TestInstallPinsTheNewestRelease(t *testing.T) {
+	headers, err := filepath.Glob(filepath.Join("..", "project", "release", "v*.md"))
+	if err != nil || len(headers) == 0 {
+		t.Fatalf("no release headers under project/release/ (%v); the guard has nothing to compare", err)
+	}
+	var newest []int
+	var newestName string
+	for _, h := range headers {
+		name := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(h), "v"), ".md")
+		if strings.Contains(name, "-rc") {
+			continue
+		}
+		if key := releaseKey(name); newest == nil || slices.Compare(key, newest) > 0 {
+			newest, newestName = key, name
+		}
+	}
+	var checked int
+	for label, body := range operatorEntryPages(t) {
+		for _, m := range versionPin.FindAllStringSubmatch(body, -1) {
+			checked++
+			if m[1] != newestName {
+				t.Errorf("%s pins %s, but the newest release is %s", label, m[1], newestName)
+			}
+		}
+	}
+	if checked < 3 {
+		t.Errorf("only %d version pin(s) found; README and Get started both show one, so the regex broke", checked)
+	}
+}
+
+// releaseKey orders "0.2.0-beta.7" as [0 2 0 7]; a final release (no -beta) sorts after its betas.
+func releaseKey(version string) []int {
+	core, beta, isBeta := strings.Cut(version, "-beta.")
+	var key []int
+	for _, part := range strings.Split(core, ".") {
+		n, _ := strconv.Atoi(part)
+		key = append(key, n)
+	}
+	if !isBeta {
+		return append(key, math.MaxInt)
+	}
+	n, _ := strconv.Atoi(beta)
+	return append(key, n)
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,8 @@
 # Troubleshooting
 
+**For:** anyone whose setup check is red, or whose channel won't play.
+**You'll get:** the fix for each symptom, one section per check.
+
 <!--
 EDITOR NOTE: the headings below are an API contract, not a style choice. internal/api/setup.go
 emits anchors like "troubleshooting#tunarr-library" on every failed setup check, and
@@ -11,7 +14,7 @@ Every red check in the setup wizard links to a section here.
 
 ## Android TV cannot find Loomarr
 
-The TV app searches with DNS-SD, UDP broadcast, and a bounded local-neighbour unicast fallback. It
+The TV app searches with DNS-SD, UDP broadcast, and a bounded local-neighbor unicast fallback. It
 uses a direct Wi-Fi/Ethernet default network, or one matching public Android network when a VPN is
 the default; it waits and retries instead of guessing if the local network is absent or ambiguous. For
 the supported Docker Compose deployment, confirm that UDP port `51029` is published and allowed
@@ -176,7 +179,7 @@ rename or delete propagate on their own.
 
 - **Channels exist but aren't in the guide** — the tuner is wired, the guide hasn't refreshed.
   Media servers refresh on their own schedule, often nightly. Loomarr asks for a refresh after
-  each rebuild, but the media server decides when to honour it.
+  each rebuild, but the media server decides when to honor it.
 - **Duplicate channels in the guide** — a tuner got registered twice. Delete the extras in your
   media server; Loomarr's connect is idempotent and won't add more.
 - **Channels show but won't play** — not a guide problem. On the Tunarr backend, re-run **Wire

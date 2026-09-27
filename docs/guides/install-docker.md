@@ -1,23 +1,26 @@
-# Docker install
+# Install with Docker
+
+**For:** household admins who want Postgres, other ports or their own compose file.
+**You'll get:** a pinned, reproducible install you can back up and roll back.
 
 You'll need Docker Engine on Linux or Docker Desktop on macOS, plus your Emby or Jellyfin URL and
 an admin API key. TMDB and an LLM are also required to create a channel from a sentence; requesters
 and filler can be added later from Settings.
 
 Choose an exact version from [GitHub Releases](https://github.com/loomarr/loomarr/releases). This
-example uses `0.1.0-beta.8`; keep the version pinned for reproducible installs and rollbacks.
+example uses `0.2.0-beta.7`; keep the version pinned for reproducible installs and rollbacks.
 
 ## Start it
 
 ```bash
-VERSION=0.1.0-beta.8
+VERSION=0.2.0-beta.7
 git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr && cd loomarr
 cp .env.example .env
 # Edit .env: SERVER_PUBLIC_URL must be a URL this host and your media server can reach.
 LOOMARR_VERSION="$VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-This pulls the pinned `ghcr.io/loomarr/loomarr:0.1.0-beta.8` image. Linux hosts use the native
+This pulls the pinned `ghcr.io/loomarr/loomarr:0.2.0-beta.7` image. Linux hosts use the native
 amd64 or arm64 manifest. Docker Desktop does the same on Intel or Apple Silicon Macs.
 
 Profiles combine:
@@ -40,7 +43,7 @@ Set `LOOMARR_HTTP_PORT` in `.env` if the host must publish a different port, and
 in `SERVER_PUBLIC_URL`.
 
 The Compose stack also publishes UDP port `51029` so Android TV clients can find Loomarr across
-Docker bridge networking. The client uses DNS-SD and broadcast first, then a bounded local-neighbour
+Docker bridge networking. The client uses DNS-SD and broadcast first, then a bounded local-neighbor
 unicast fallback for Linux Docker hosts, which do not forward LAN broadcasts to published UDP
 ports. Its Android search binds one observed Wi-Fi/Ethernet network and retries while that LAN is
 unavailable or ambiguous, rather than selecting an arbitrary interface. Allow inbound UDP `51029`
@@ -94,7 +97,6 @@ copy of that volume:
 | `/data/encryption.key` | Installation key — required to restore encrypted database secrets |
 | `/data/filler/` | Commercial and bumper clips |
 | `/data/images/` | Cached artwork |
-| `/data/prepared/` | Reusable prepared programme media for instant channel changes |
 
 The database backup contains accounts, channels, settings, encrypted secrets, and wrapped data
 keys. It deliberately does not contain `/data/encryption.key`. Preserve that key separately: losing
@@ -102,8 +104,9 @@ it makes stored credentials unrecoverable. The backup also omits filler files, c
 operator-uploaded images. Copy the `/data` volume as part of host-level backup if those files
 matter; cached derivatives can be regenerated.
 
-Upgrading from a release that prepared programmes ahead of time: Loomarr no longer does, and it no
-longer reads `/data/prepared`. You can delete that directory to reclaim its space.
+Upgrading from a release before 0.2.0-beta.8? Those releases encoded programs ahead of time into
+`/data/prepared`. Loomarr now encodes only while someone watches and never reads that directory, so
+you can delete it to reclaim the space.
 
 If you write your own compose file, **mount `/data`**. Without it the database goes into the
 container's writable layer and is lost on the next `up --force-recreate` or image pull.

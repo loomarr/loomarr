@@ -1,4 +1,7 @@
-# Programming guide
+# How curation works
+
+**For:** household admins who want to understand, or change, what a channel plays.
+**You'll get:** what each part of a channel's policy does, and how the scheduler applies it.
 
 Every channel carries a **policy**: the rules deciding what may play, in what order, and how
 often. The model proposes one from your intent; the scheduler enforces it. You can edit every
@@ -11,8 +14,9 @@ Everything the model proposes is shown as an editable chip before anything runs.
 Which titles the channel may draw from: specific series, genres, a year range, or a media-server
 collection. Anything outside scope is never scheduled.
 
-A year range stretches to fit your own picks. Approve a proposal containing *Alien* (1979) on a
-channel scoped to 1982+, and the range widens rather than dropping a title you approved.
+A year range stretches to fit your own picks. Approve a proposal containing a 1979 space
+horror film on a channel scoped to 1982 and later, and the range widens rather than dropping a
+title you approved.
 
 ## Audience
 
@@ -41,7 +45,7 @@ no-repeat window so something that just aired doesn't come straight back.
 ## Ordering
 
 - **`sequential`** — S1E1 onward, looping. Good for a binge channel.
-- **`shuffle`** — random, honouring the separation rules. Seeded, so it's reproducible.
+- **`shuffle`** — random, honoring the separation rules. Seeded, so it's reproducible.
 - **`syndication`** — random without repeats until the pool is exhausted, then reshuffled. This
   is the weekday-rerun feel, and the default when a channel spans more than one series.
 

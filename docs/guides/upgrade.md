@@ -1,4 +1,7 @@
-# Upgrading
+# Upgrade Loomarr
+
+**For:** household admins moving to a new release.
+**You'll get:** a backup you can restore, the new version running, and a way back if it goes wrong.
 
 Migrations only run forward, so: **back up, then pull.**
 
@@ -42,7 +45,7 @@ Database backups contain encrypted credentials and wrapped data keys, but not th
 installation key needed to decrypt them.
 
 The application backup is database-only. Copy `/data` separately if you need operator-uploaded
-images or filler files; cached artwork and prepared media can be regenerated. Keep at least one
+images or filler files; cached artwork can be regenerated. Keep at least one
 backup off the Loomarr data volume and, ideally, off the host.
 
 Preserve `/data/encryption.key` separately from the database backup, or preserve the external
@@ -57,7 +60,7 @@ not a permanent fallback.
 ## Pull
 
 ```bash
-NEXT_VERSION=0.1.0-beta.8 # replace with the exact release you intend to run
+NEXT_VERSION=0.2.0-beta.7 # replace with the exact release you intend to run
 LOOMARR_VERSION="$NEXT_VERSION" docker compose -f docker/compose.yaml --profile sqlite pull
 LOOMARR_VERSION="$NEXT_VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```

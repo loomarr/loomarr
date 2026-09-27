@@ -1,4 +1,7 @@
-# Monitoring Loomarr
+# Monitor Loomarr
+
+**For:** household admins who run Prometheus and Grafana.
+**You'll get:** Loomarr's metrics scraped, and a ready-made dashboard.
 
 Loomarr exposes Prometheus metrics at `/v1/metrics`; the permanent `/metrics` alias returns the
 same scrape. **Both require a scrape token**, sent as `Authorization: Bearer <token>`. Prometheus
