@@ -13,8 +13,8 @@ import (
 
 // THE WATERMARK SELF-CHECK ON THIS HOST'S REAL GPU (#1512 phase 1d). It runs WatermarkCheck for each
 // GPU family this ffmpeg can encode with and logs the verdict. Set PLAYOUT_TEST_WATERMARK to the
-// expected verdicts by FAMILY, e.g. "nvenc=works" for native ffmpeg n9 on a GeForce,
-// "nvenc=disabled" for the image's n8.1.2 (overlay_cuda drops the picture after NVDEC),
+// expected verdicts by FAMILY, e.g. "nvenc=works" for ffmpeg n9 (native or the image's) on a GeForce,
+// "nvenc=disabled" for n8.1.2 (overlay_cuda drops the picture after NVDEC),
 // "vaapi=works" on the Arc, so the run cannot pass vacuously: a verdict that differs, a family
 // that cannot encode here, or an unknown key or verdict fails. PLAYOUT_TEST_FRAME_DIR keeps the
 // check's encodes for inspection.

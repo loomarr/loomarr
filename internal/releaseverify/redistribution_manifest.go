@@ -183,7 +183,7 @@ func verifyRedistributionArtifact(artifact redistributionArtifact) error {
 		return errors.New("release, source, and build revisions must be immutable git revisions")
 	}
 	want := map[string]struct{ release, releaseCommit, source, build, releaseRev, sourceRev, buildRev string }{
-		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-31-13-27", "8267213e26c1031621e6e1210fe3aa4867214f6a", "https://github.com/FFmpeg/FFmpeg/commit/1a748fe2cd43e3ead22fafb1b5b7d77f153898a8", "https://github.com/BtbN/FFmpeg-Builds/tree/8267213e26c1031621e6e1210fe3aa4867214f6a", "autobuild-2026-08-31-13-27", "1a748fe2cd43e3ead22fafb1b5b7d77f153898a8", "8267213e26c1031621e6e1210fe3aa4867214f6a"},
+		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-08-31-13-27", "8267213e26c1031621e6e1210fe3aa4867214f6a", "https://github.com/FFmpeg/FFmpeg/commit/e47273f4d9227152dcbf543cebaf9e2430ddbcc4", "https://github.com/BtbN/FFmpeg-Builds/tree/8267213e26c1031621e6e1210fe3aa4867214f6a", "autobuild-2026-08-31-13-27", "e47273f4d9227152dcbf543cebaf9e2430ddbcc4", "8267213e26c1031621e6e1210fe3aa4867214f6a"},
 		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/releases/tag/2026.08.19", "3a08beaf031ab68f966401ead017ac81fe8486cf", "https://github.com/yt-dlp/yt-dlp/tree/3a08beaf031ab68f966401ead017ac81fe8486cf", "https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/bundle/pyinstaller.py", "2026.08.19", "3a08beaf031ab68f966401ead017ac81fe8486cf", "3a08beaf031ab68f966401ead017ac81fe8486cf"},
 	}
 	w, ok := want[artifact.Name]
@@ -199,11 +199,11 @@ func verifyRedistributionArtifact(artifact redistributionArtifact) error {
 		return errors.New("unexpected retention policy on non-BtbN artifact")
 	}
 	expectedAssets := map[string]map[string]string{
-		"ffmpeg": {"amd64": "ffmpeg-n8.1.2-50-g1a748fe2cd-linux64-gpl-8.1.tar.xz", "arm64": "ffmpeg-n8.1.2-50-g1a748fe2cd-linuxarm64-gpl-8.1.tar.xz"},
+		"ffmpeg": {"amd64": "ffmpeg-n9.0.1-11-ge47273f4d9-linux64-gpl-9.0.tar.xz", "arm64": "ffmpeg-n9.0.1-11-ge47273f4d9-linuxarm64-gpl-9.0.tar.xz"},
 		"yt-dlp": {"amd64": "yt-dlp_linux", "arm64": "yt-dlp_linux_aarch64"},
 	}
 	expectedLicenses := map[string][]string{
-		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/blob/8267213e26c1031621e6e1210fe3aa4867214f6a/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/1a748fe2cd43e3ead22fafb1b5b7d77f153898a8/COPYING.GPLv3"},
+		"ffmpeg": {"https://github.com/BtbN/FFmpeg-Builds/blob/8267213e26c1031621e6e1210fe3aa4867214f6a/LICENSE", "https://github.com/FFmpeg/FFmpeg/blob/e47273f4d9227152dcbf543cebaf9e2430ddbcc4/COPYING.GPLv3"},
 		"yt-dlp": {"https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/LICENSE", "https://github.com/yt-dlp/yt-dlp/blob/3a08beaf031ab68f966401ead017ac81fe8486cf/THIRD_PARTY_LICENSES.txt", "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/SHA2-256SUMS"},
 	}
 	if !slices.Equal(artifact.Upstream.LicenseURLs, expectedLicenses[artifact.Name]) {

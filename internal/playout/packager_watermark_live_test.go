@@ -19,9 +19,9 @@ import (
 // packager). Both items are encoded by the packager's own item command (packagerItemArgs, fMP4)
 // on this host's NVENC: their SPS and PPS must be byte-identical, or the programme→break boundary
 // resets the decoder. The bug-on item must keep the programme picture and blend the bug. Run it
-// under the GPU lock; it skips where NVENC cannot encode. FFMPEG_PATH picks the build: native n9
-// draws the bug, while the image's n8.1.2 loses the picture under NVDEC (the self-check disables
-// the watermark there, so production never airs this graph on it).
+// under the GPU lock; it skips where NVENC cannot encode. FFMPEG_PATH picks the build: n9 (native
+// or the image's, since #1549) draws the bug, while n8.1.2 loses the picture under NVDEC (the
+// self-check disables the watermark there, so production never airs this graph on it).
 func TestLive_PackagerWatermarkKeepsTheParameterSets(t *testing.T) {
 	bin := ffmpegBin(t)
 	ctx := context.Background()
