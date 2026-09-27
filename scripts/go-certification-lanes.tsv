@@ -2,7 +2,6 @@
 # Each reviewed lane is pinned to -p=1. Separate runners overlap the two groups without allowing
 # package concurrency inside either certification group.
 1	internal/app
-1	internal/prepared
 # internal/api serves the channel packager's HLS and MPEG-TS (#1512 phase 2c) and balances lane 2 now
 # that the load-certification packages are retired.
 2	internal/api

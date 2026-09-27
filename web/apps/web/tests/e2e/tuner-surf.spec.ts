@@ -640,10 +640,9 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
       .map((entry) => entry.duration),
   );
   expect(manifestDurations.length).toBeGreaterThanOrEqual(20);
-  expect(
-    p95(manifestDurations),
-    `warm manifest p95: ${p95(manifestDurations).toFixed(1)}ms`,
-  ).toBeLessThan(50);
+  expect(p95(manifestDurations), `warm manifest p95: ${p95(manifestDurations).toFixed(1)}ms`).toBeLessThan(
+    50,
+  );
 
   // Twenty mixed requests in one burst must collapse to the last intent. The first click provides
   // real user activation; the remaining clicks happen in one task, before route churn can sequence
