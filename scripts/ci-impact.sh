@@ -86,7 +86,7 @@ classify() {
       select_gate playout_bench
       select_gate docs
       ;;
-    docs/dev/playout-bench.md)
+    docs/contributing/playout-bench.md)
       known=true
       select_gate docs
       ;;
@@ -332,7 +332,7 @@ classify() {
       known=true
       select_gate image
       ;;
-    docs/help/*)
+    docs/get-started.md|docs/guides/*|docs/explanation/*)
       known=true
       select_gate contracts
       select_gate go
@@ -340,12 +340,12 @@ classify() {
       select_gate image
       select_gate docs
       ;;
-    docs/design.md|docs/configuration.md|docs/dev/ci.md|docs/dev/commands.md|docs/install/*|README.md)
+    docs/design.md|docs/reference/*|docs/contributing/ci.md|README.md)
       known=true
       select_gate docs
       select_gate policy
       ;;
-    docs/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
+    docs/*|project/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
       known=true
       select_gate docs
       ;;
@@ -360,7 +360,7 @@ classify() {
       select_gate docs
       ;;
     spike/*)
-      # Throwaway measurement scripts and results behind docs/engineering/SPIKE-*.md. Nothing builds,
+      # Throwaway measurement scripts and results behind project/SPIKE-*.md. Nothing builds,
       # ships or imports them (a spike's Go code is its own module, outside ./...).
       known=true
       select_gate docs

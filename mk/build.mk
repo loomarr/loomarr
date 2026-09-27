@@ -36,7 +36,7 @@ image-bench: rust-build ## benchmark release-worker AVIF ladders; optional IMAGE
 playout-bench-corpus: ## generate the playout-bench corpus cache (keyed by recipe hash); run OUTSIDE any shared lock, then make playout-bench
 	$(GO) run ./cmd/playout-bench --corpus-only --ffmpeg "$${PLAYOUT_BENCH_FFMPEG:-ffmpeg}"
 
-playout-bench: ## run the cross-hardware playout bench on this host; PLAYOUT_BENCH_FAMILY/THRESHOLDS/HEIGHT/ACCEPT=1 (docs/dev/playout-bench.md)
+playout-bench: ## run the cross-hardware playout bench on this host; PLAYOUT_BENCH_FAMILY/THRESHOLDS/HEIGHT/ACCEPT=1 (docs/contributing/playout-bench.md)
 	$(GO) run ./cmd/playout-bench \
 	  --ffmpeg "$${PLAYOUT_BENCH_FFMPEG:-ffmpeg}" \
 	  --family "$${PLAYOUT_BENCH_FAMILY:-}" \

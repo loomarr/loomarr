@@ -36,7 +36,7 @@ while IFS= read -r name; do
 	grep -Fqx "name: $name" "$skill" || fail "$name frontmatter has the wrong name"
 	grep -q '^description: .' "$skill" || fail "$name has no description"
 	[ "$(readlink "$adapter")" = "../../.agents/skills/$name" ] || fail "$name Claude adapter points somewhere else"
-	grep -Fq "| \`$name\` |" "$ROOT/docs/dev/skills.md" || fail "$name is absent from docs/dev/skills.md"
+	grep -Fq "| \`$name\` |" "$ROOT/docs/agents/skills.md" || fail "$name is absent from docs/agents/skills.md"
 done < "$WORK/directories"
 
 find "$ROOT/.agents/workflows" -maxdepth 1 -type f -name '*.md' -exec basename {} \; | sort > "$WORK/workflows"

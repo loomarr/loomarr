@@ -40,9 +40,9 @@ default and health-checks the compiled Loomarr app on its private container port
 The image supports Linux on amd64 and arm64. On macOS, run it through Docker Desktop; Apple
 Silicon pulls the arm64 image and Intel Macs pull amd64.
 
-→ [Install guide](docs/install/index.md) · [Docker](docs/install/docker.md) ·
-[Hardware acceleration](docs/install/hardware.md) · [Upgrading](docs/install/upgrading.md) ·
-[Monitoring](docs/install/monitoring.md) · [All settings](docs/configuration.md)
+→ [Get started](docs/get-started.md) · [Docker](docs/guides/install-docker.md) ·
+[Hardware encoding](docs/guides/hardware-encoding.md) · [Upgrading](docs/guides/upgrade.md) ·
+[Monitoring](docs/guides/monitoring.md) · [All settings](docs/reference/settings.md)
 
 ## How it plays
 
@@ -62,18 +62,22 @@ make dev-be         # isolated Go/Rust backend with live reload
 make dev-fe         # isolated frontend pointed at that backend
 ```
 
-→ [Developer guide](docs/dev/index.md) · [Setup](docs/dev/setup.md) ·
-[Dev loop](docs/dev/dev-loop.md) · [Testing](docs/dev/testing.md) · [CI](docs/dev/ci.md) ·
-[Commands](docs/dev/commands.md) · [Agent development](docs/dev/agents.md)
+→ [Contributing](docs/contributing/index.md) · [Setup](docs/contributing/setup.md) ·
+[Dev loop](docs/contributing/dev-loop.md) · [Testing](docs/contributing/testing.md) ·
+[CI](docs/contributing/ci.md) · [Commands](docs/reference/make.md) ·
+[Agent development](docs/agents/harness.md)
 
 ## Documentation
 
+Read it on the [docs site](https://mantonx.github.io/loomarr/), in the app under **Help**, or here:
+
 | For | Where |
 | --- | --- |
-| Installing | [`docs/install/`](docs/install/index.md) |
-| Using it | [`docs/help/`](docs/help/quickstart.md) — also in the app under **Help** |
-| Contributing | [`docs/dev/`](docs/dev/index.md), [`CONTRIBUTING.md`](CONTRIBUTING.md) |
-| How it works | [`docs/design.md`](docs/design.md) |
+| Installing and first channel | [`docs/get-started.md`](docs/get-started.md) |
+| Tasks | [`docs/guides/`](docs/guides/add-a-channel.md) |
+| Settings and commands | [`docs/reference/`](docs/reference/settings.md) |
+| How it works | [`docs/explanation/`](docs/explanation/how-loomarr-works.md), [`docs/design.md`](docs/design.md) |
+| Contributing | [`docs/contributing/`](docs/contributing/index.md), [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 
 The help pages are built into the binary, so they work offline. The docs site renders the same
 files.
@@ -91,7 +95,7 @@ for the LLM. Details in [`docs/design.md`](docs/design.md) §14.
 - **Probes** — `/v1/healthz` and `/v1/readyz`, unauthenticated on the LAN. `/healthz` and
   `/readyz` also work.
 - **Metrics** — `/v1/metrics` (scrape token required) in Prometheus format: HTTP, dependency, database, Job, Playout, Go
-  runtime, and bounded domain signals. See [Monitoring](docs/install/monitoring.md) for scraping and
+  runtime, and bounded domain signals. See [Monitoring](docs/guides/monitoring.md) for scraping and
   the source-controlled Grafana overview.
 - **Backup** — `GET /v1/backup` for SQLite; a mode-`0600` `pg_dump --format=custom` archive for
   Postgres. Stored credentials are encrypted, and the external installation key must be preserved

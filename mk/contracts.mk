@@ -17,12 +17,12 @@ retired-verify: ## retired identifiers must not appear as live instructions (CI 
 ## ---- config docs (settings registry) ------------------------------------
 
 .PHONY: config-docs
-config-docs: ## generate docs/configuration.md from the settings registry
-	$(GO) run ./cmd/config-docs docs/configuration.md
+config-docs: ## generate docs/reference/settings.md from the settings registry
+	$(GO) run ./cmd/config-docs docs/reference/settings.md
 
 .PHONY: config-docs-verify
 config-docs-verify: config-docs ## regenerated config docs must match committed (CI red on drift)
-	@git diff --exit-code docs/configuration.md
+	@git diff --exit-code docs/reference/settings.md
 
 ## ---- architecture map (docs/design/package-map.md) -----------------------
 # The same discipline as config-docs, applied to the one section a newcomer reads first.
@@ -45,10 +45,10 @@ arch-docs-verify: arch-docs ## regenerated package map must match committed (CI 
 ## ---- dev docs (the command contract) ------------------------------------
 
 .PHONY: dev-docs
-dev-docs: ## generate docs/dev/commands.md from this Makefile + the CI workflows
-	$(GO) run ./cmd/dev-docs docs/dev/commands.md
+dev-docs: ## generate docs/reference/make.md from this Makefile + the CI workflows
+	$(GO) run ./cmd/dev-docs docs/reference/make.md
 
 .PHONY: dev-docs-verify
 dev-docs-verify: dev-docs ## regenerated command reference must match committed (CI red on drift)
-	@git diff --exit-code docs/dev/commands.md
+	@git diff --exit-code docs/reference/make.md
 

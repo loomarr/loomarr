@@ -6,7 +6,7 @@ pipeline against, without a throwaway spin-up each time.
 > **You only need this when working on the Tunarr backend.** Since §9.1, `playout.backend`
 > defaults to `internal` — Loomarr streams its own channels — so most development needs no
 > Tunarr at all. `make dev` brings up external dependencies, not the app; the app itself runs
-> from [`docs/dev/dev-loop.md`](../docs/dev/dev-loop.md).
+> from [`docs/contributing/dev-loop.md`](../docs/contributing/dev-loop.md).
 
 ## Start / stop
 

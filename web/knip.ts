@@ -6,7 +6,7 @@ import type { KnipConfig } from "knip";
 // names that consumer, so a reviewer can tell an allowance from a hiding place. The first
 // answer to a finding is to delete the unused code. Add an allowance here only when something
 // outside the TypeScript import graph really uses it (a string path, a native build, a
-// generated file), and write down what. docs/dev/code-hygiene.md has the procedure.
+// generated file), and write down what. docs/contributing/code-hygiene.md has the procedure.
 
 const config: KnipConfig = {
   // A stale allowance fails the gate too: knip reports an ignore that no longer matches an

@@ -30,23 +30,10 @@ exclude_path = [
 ]
 
 exclude = [
-  # ⚠ BARE SLUG LINKS — the in-app help convention, and NOT a broken link.
-  #
-  # docs/help/*.md cross-link each other as `[Filler guide](filler)`, with no extension. That
-  # is required by the primary consumer: those pages ship inside the binary, and the in-app
-  # viewer routes any relative href through `parseDocHref`, which splits on `#` and treats the
-  # whole first segment as a page slug. `filler.md` would therefore look for a page named
-  # "filler.md" and land nowhere — so the extensionless form is correct, not sloppy.
-  #
-  # It also resolves correctly on the Starlight site (`/help/filler`). GitHub's raw markdown
-  # view is the one renderer where it does not, which is the accepted cost of the three-way
-  # split; docs/README.md sends readers to the app or the site for this set.
-  #
-  # ⚠ Matched against the RESOLVED target (file:///…/docs/help/filler), not the raw href —
-  # lychee expands relative links before applying these patterns, so anchoring on the bare
-  # slug silently matches nothing. Deliberately narrow: only extensionless paths inside
-  # docs/help/, which is the only directory using this convention.
-  'docs/help/[a-z0-9-]+$',
+  # (No bare-slug exclusion any more. The in-app help pages used to link each other as
+  # `[Filler guide](filler)`, which lychee could not check. Since #1572 they use real relative
+  # `.md` links, which the app (parseDocHref), the site (remark-md-links) and GitHub all
+  # resolve, so every one of them is checked here.)
 
   # Hosts that reject or rate-limit automated requests. Only consulted on a non-offline run.
   # Requires a signed-in session; always 403s a bot.

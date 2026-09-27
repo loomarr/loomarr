@@ -39,14 +39,14 @@ jobs:
           args: >-
             --offline --no-progress
             README.md CONTRIBUTING.md CLAUDE.md AGENTS.md CONTEXT.md PROGRESS.md
-            docs 'design/*.md' .agents .claude
+            docs project 'design/*.md' .agents .claude
           fail: true
 
       # Repo vocabulary only — no stock style package. See .vale.ini for why.
       - name: Prose
         uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3
         with:
-          files: '["README.md", "CONTRIBUTING.md", "docs/help", "docs/install", "docs/dev"]'
+          files: '["README.md", "CONTRIBUTING.md", "docs/README.md", "docs/get-started.md", "docs/guides", "docs/explanation", "docs/contributing"]'
           fail_on_error: true
           version: 3.17.1
 

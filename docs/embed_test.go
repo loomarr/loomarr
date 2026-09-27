@@ -1,6 +1,10 @@
 package docs_test
 
 import (
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -43,6 +47,73 @@ func TestEveryDocHrefResolves(t *testing.T) {
 			t.Errorf("docHref %q: page %q has no heading anchoring to %q.\n  available: %v",
 				href, slug, fragment, anchors)
 		}
+	}
+}
+
+// #1572 moved the help pages out of docs/help/ into the published tree (get-started.md,
+// guides/, explanation/) and renamed five of them. Every deep-link that existed before the
+// move is frozen in testdata: a bookmark, an older build's docHref or a support answer can
+// still carry one, and it must land on the page and heading that now hold that content.
+func TestPreMoveHelpLinksStillLand(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "help-anchors-v0.2.0-beta.7.txt"))
+	if err != nil {
+		t.Fatalf("read frozen links: %v", err)
+	}
+	var checked int
+	for _, line := range strings.Split(string(raw), "\n") {
+		old := strings.TrimSpace(line)
+		if old == "" || strings.HasPrefix(old, "#") {
+			continue
+		}
+		checked++
+		slug, fragment, _ := strings.Cut(docs.Resolve(old), "#")
+		page, found := docs.Get(slug)
+		if !found {
+			t.Errorf("pre-move link %q resolves to page %q, which is not embedded", old, slug)
+			continue
+		}
+		if fragment != "" && !slices.Contains(docs.Anchors(page.Markdown), fragment) {
+			t.Errorf("pre-move link %q resolves to %q#%q, which has no such heading; "+
+				"add it to movedSections in embed.go", old, slug, fragment)
+		}
+	}
+	if checked < 50 {
+		t.Fatalf("only %d frozen links read; the fixture or its parser broke", checked)
+	}
+}
+
+// The in-app viewer routes every relative link to a help slug (parseDocHref), so a relative
+// link from an embedded page to anything that is not embedded (the settings reference, a
+// compose file) opens "Help page not found". Those links must be absolute URLs.
+func TestEmbeddedPagesLinkOnlyToEmbeddedPages(t *testing.T) {
+	link := regexp.MustCompile(`\]\(([^)\s]+)\)`)
+	for _, p := range docs.Pages() {
+		for _, m := range link.FindAllStringSubmatch(p.Markdown, -1) {
+			href := m[1]
+			if strings.Contains(href, "://") || strings.HasPrefix(href, "#") || strings.HasPrefix(href, "mailto:") {
+				continue
+			}
+			target, _, _ := strings.Cut(href, "#")
+			resolved := path.Join(path.Dir(p.Path), target)
+			slug := strings.TrimSuffix(path.Base(target), ".md")
+			page, found := docs.Get(slug)
+			if !strings.HasSuffix(target, ".md") || !found || page.Path != resolved {
+				t.Errorf("docs/%s links to %q, which the app cannot open; link an embedded page "+
+					"by its relative .md path, or anything else by its absolute URL", p.Path, href)
+			}
+		}
+	}
+}
+
+// A slug is a file's base name, whichever folder it sits in, so two pages with one name
+// would make one of them unreachable in the app.
+func TestHelpSlugsAreUnique(t *testing.T) {
+	seen := map[string]string{}
+	for _, p := range docs.Pages() {
+		if prev, dup := seen[p.Slug]; dup {
+			t.Errorf("slug %q is used by both %s and %s", p.Slug, prev, p.Path)
+		}
+		seen[p.Slug] = p.Path
 	}
 }
 

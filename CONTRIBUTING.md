@@ -2,17 +2,17 @@
 
 Thanks for your interest! This page covers the conventions and the PR process.
 
-**Setup, the dev loop, testing and CI live in [`docs/dev/`](docs/dev/index.md)** — they used to
-be restated here and in three other files, and the copies drifted apart. One home now:
+**Setup, the dev loop, testing and CI live in [`docs/contributing/`](docs/contributing/index.md)**.
+They used to be restated here and in three other files, and the copies drifted apart. One home now:
 
-- [Setup](docs/dev/setup.md) — toolchain versions and a clean-clone path that works
-- [The dev loop](docs/dev/dev-loop.md) — both halves with live reload
-- [Testing](docs/dev/testing.md) — the layers and what each proves
-- [CI](docs/dev/ci.md) — jobs, path filters, and what's required
-- [Commands](docs/dev/commands.md) — every `make` target (generated)
-- [AI in this project](docs/dev/ai.md) — how it's built with coding agents, and what that
+- [Setup](docs/contributing/setup.md): toolchain versions and a clean-clone path that works
+- [The dev loop](docs/contributing/dev-loop.md): both halves with live reload
+- [Testing](docs/contributing/testing.md): the layers and what each proves
+- [CI](docs/contributing/ci.md): jobs, path filters, and what's required
+- [Commands](docs/reference/make.md): every `make` target (generated)
+- [AI in this project](docs/contributing/ai.md): how it's built with coding agents, and what that
   expects of a contribution
-- [Agent development](docs/dev/agents.md) — shared sessions, claims, worktrees, and isolated runtimes
+- [Agent development](docs/agents/harness.md): shared sessions, claims, worktrees, and isolated runtimes
 
 ## Ground rules
 
@@ -24,12 +24,12 @@ be restated here and in three other files, and the copies drifted apart. One hom
 - **New dependencies are fine when they genuinely help** — add a row to
   [`docs/design/dependencies.md`](docs/design/dependencies.md) in the same PR with a one-line rationale. Prefer something already in the tree, and a focused
   library over a framework.
-- **Generated files are never hand-edited.** See [codegen](docs/dev/codegen.md). Migrations are
+- **Generated files are never hand-edited.** See [codegen](docs/contributing/codegen.md). Migrations are
   forward-only: add a new one, never edit an applied one.
 - **All application code is Go.** The exceptions are the frontend (compiles to embedded static
   assets), the vendored binaries invoked via `exec`, and build tooling that doesn't ship.
 - **When a PR retires a capability, add its identifier to `scripts/check-retired.sh`** in the
-  same PR. `docs/help/` ships inside the binary and is read as instructions — a retired setting
+  same PR. The household pages (`docs/get-started.md`, `docs/guides/`, `docs/explanation/`) ship inside the binary and is read as instructions — a retired setting
   still documented sends an operator to configure something nothing reads.
 
 ## Before you open a PR
@@ -75,7 +75,7 @@ actually shipped rather than the approach you started with. Mention it in the PR
 useful review context, not a mark against the change.
 
 Details, and the specific failure modes this repo has learned to look for, are in
-[AI in this project](docs/dev/ai.md).
+[AI in this project](docs/contributing/ai.md).
 
 ## Reporting bugs / proposing features
 

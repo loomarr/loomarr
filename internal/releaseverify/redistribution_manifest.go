@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-const redistributionManifestPath = "docs/engineering/evidence/redistribution-manifest-v1.json"
+const redistributionManifestPath = "project/evidence/redistribution-manifest-v1.json"
 
 type redistributionManifest struct {
 	SchemaVersion int                      `json:"schema_version"`

@@ -1,5 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 // Where Starlight BELIEVES the docs collection lives. It derives this internally as
 // `<srcDir>/content/<collection>` and strips exactly that prefix off each entry's `filePath`
@@ -18,7 +19,7 @@ const DOCS_COLLECTION_ROOT = "src/content/docs";
  * a renderer, not a second copy: one file, three consumers.
  *
  * WHY NOT JUST `glob({ base: '../docs' })`. Starlight requires a `title` in frontmatter, and
- * `docs/help/*.md` must have NO frontmatter at all — `docs/embed.go` derives a page's title from
+ * the pages the app embeds (get-started.md, guides/, explanation/) must have NO frontmatter at all — `docs/embed.go` derives a page's title from
  * its first H1, and the in-app viewer renders raw markdown, so a YAML block would print as
  * literal text to an operator mid-troubleshooting. Rather than bend the shipped files to suit
  * one consumer, this loader lifts the H1 into `data.title` and drops it from the body (Starlight
@@ -91,7 +92,8 @@ export const repoDocs = ({ base, include }) => ({
         body,
         filePath: `${DOCS_COLLECTION_ROOT}/${path.relative(root, filePath)}`,
         digest: generateDigest(body),
-        rendered: await renderMarkdown(body),
+        // fileURL lets the link adapter resolve a page's relative links against its own folder.
+        rendered: await renderMarkdown(body, { fileURL: pathToFileURL(filePath) }),
       });
     }
 
@@ -111,7 +113,8 @@ const collectMarkdown = async (target, root) => {
   try {
     entries = await readdir(target, { withFileTypes: true });
   } catch {
-    // A single file rather than a directory (docs/configuration.md).
+    // A single file rather than a directory (docs/get-started.md), or a folder that doesn't
+    // exist yet (docs/design/ before the design lane adds it).
     return target.endsWith(".md") ? [target] : [];
   }
   for (const entry of entries) {

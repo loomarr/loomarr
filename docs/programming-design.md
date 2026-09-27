@@ -663,8 +663,8 @@ Candidates already visible from here (logged, not v1): dayparting audience ceili
 
 ## 9.1. Discovery certification owns provider-resource uncertainty
 
-The discovery evaluator follows the slice-1 seam in
-[`channel-discovery-next.md`](engineering/plans/channel-discovery-next.md): one public `Runner`
+The discovery evaluator follows the slice-1 seam from the channel-discovery plan (now in git
+history; see #1572): one public `Runner`
 owns grounded generation, materialized schedule outcomes, judging, and the versioned scorecard.
 Runner and schedule certification tests inject the eval-only semantic recording `Judge`, exercise
 the public `Judge.Score(ctx, JudgeEvidence)` seam, validate the bounded typed evidence received at

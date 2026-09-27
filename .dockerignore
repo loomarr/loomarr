@@ -33,7 +33,7 @@ web/apps/web/tests/**/__screenshots__
 *.db-shm
 *.db-wal
 
-# NOTE: docs/ MUST stay — docs/embed.go does `//go:embed help/*.md` into the
+# NOTE: docs/ MUST stay — docs/embed.go embeds get-started.md, guides/ and explanation/ into the
 # binary (the in-app Help center), so excluding it breaks the Go build.
 # Only the non-embedded design mocks and scratch are safe to drop.
 design/

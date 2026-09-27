@@ -2,7 +2,7 @@
 // pipeline builder on this host and writes one standard report: start p95, speed, CPU per stream,
 // concurrency, gaps, SPS identity, loudness and VMAF. The report is judged against the beta.8
 // thresholds and diffed against the last accepted baseline for the host's hardware family. See
-// docs/dev/playout-bench.md.
+// docs/contributing/playout-bench.md.
 package main
 
 import (

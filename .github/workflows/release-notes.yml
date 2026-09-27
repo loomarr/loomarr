@@ -10,7 +10,7 @@
 # Notes begin with GitHub's exact list of merged PRs since the previous tag. OpenRouter assigns only
 # those verified PR numbers to a fixed set of sections; repository code rejects missing, duplicate,
 # invented, or malformed classifications and renders GitHub's real titles/authors/links. A curated
-# `docs/release/<tag>.md` header still supplies framing a machine cannot infer. A tag with a `-`
+# `project/release/<tag>.md` header still supplies framing a machine cannot infer. A tag with a `-`
 # (e.g. `v0.1.0-beta.1`) is marked a prerelease.
 name: Release notes
 
