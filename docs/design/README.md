@@ -46,7 +46,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [observability](observability.md) | activity, diagnostics, correlation, client events, health, reports, metrics, discovery quality | 5 (activity, diagnostics tables), 17 | here |
 | [images](images.md) | the image service | 22 | here |
 | filler | catalog, lifecycle, gates, sources, pulls, clip identity | 10 | `design.md` |
-| filler-pipeline | the ingest pipeline and its budgets | 10 (V51) | `design.md` |
+| [filler-pipeline](filler-pipeline.md) | the ingest pipeline, budgets, enrichment, Incoming, the catalog listing | 10 (V51b, V51d, V51e, V51g) | here |
 | filler-structure | compilation structure, splitting, composites | 10 (V34, V45, V67) | `design.md` |
 | filler-classification | tagging, confidence, readiness | 10 (V38, V44, V61–V63) | `design.md` |
 
@@ -72,6 +72,8 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0010](decisions/0010-restart-in-process.md) | 2026-07-29 | Restart rebuilds in process, never exits |
 | [0011](decisions/0011-sso-is-a-credential-path.md) | 2026-07-30 | SSO is a credential path, not a provisioning path |
 | [0012](decisions/0012-routes-declare-their-role.md) | 2026-07-30 | Every route declares its role; anonymous is denied by default |
+| [0018](decisions/0018-one-ingest-pipeline.md) | 2026-08-09 | Ingest is one ordered, watchable pipeline |
+| [0019](decisions/0019-stage-budget-is-per-clip-rate.md) | 2026-08-09 | A stage's budget is a per-clip rate |
 | [0020](decisions/0020-one-image-service.md) | 2026-08-09 | One content-addressed image service |
 | [0021](decisions/0021-tuning-state-machine.md) | 2026-08-15 | Tuning is a latest-request-wins state machine |
 | [0022](decisions/0022-pause-is-shared-time-shift.md) | 2026-08-17 | Pause is shared time-shift |
