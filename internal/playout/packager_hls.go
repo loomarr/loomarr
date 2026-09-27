@@ -3,6 +3,7 @@ package playout
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -69,6 +70,8 @@ type PackagerHLS struct {
 	// budget is the one admission ledger (#1520): one lease per running (channel, format) packager.
 	// Nil admits everything (tests, builds without internal playout).
 	budget *ResourceBudget
+	// ladderCfg tunes each airing's RungMonitor; zero is the defaults (a test seam for its dwell times).
+	ladderCfg RungMonitorConfig
 
 	// life bounds background work that outlives a viewer (the slate encodes); Stop ends it.
 	life    context.Context
@@ -288,6 +291,7 @@ func (m *PackagerHLS) schedule(
 	key packagedKey, host HostProfile, out OutputProfile, lease *Lease, pre *prefetchedItem, log *slog.Logger,
 ) packager.Schedule {
 	faults := &itemFaults{by: map[string]itemFault{}}
+	ladder := &itemLadder{}
 	return func(ctx context.Context, at time.Time) (packager.Item, error) {
 		it, ok := pre.take(at)
 		if !ok {
@@ -303,18 +307,43 @@ func (m *PackagerHLS) schedule(
 		// A CPU too slow for the source degrades the picture instead of refusing it (#1517): the
 		// ledger picks the item's software rung (GPU families ignore it); with no ledger, the
 		// unmeasured start (full quality up to 1080p SDR, keyframes-only for 4K or HDR).
+		//
+		// On a software host the rung then follows the item encoder's measured speed (#1517): one
+		// RungMonitor per airing, bound to the lease so every step re-prices it. A step ends the
+		// encoder at a fragment boundary; the packager asks again at its own clock, which resolves
+		// the same airing at the position the channel reached, and it resumes here on the monitor's
+		// rung instead of a fresh pick.
 		itemOut := out
-		if lease != nil {
+		airing := it.Label + "\x00" + it.Input
+		rung, resumed, stepped := ladder.resume(airing)
+		switch {
+		case resumed:
+			itemOut.SoftwareRung = rung
+		case lease != nil:
 			lease.ReclassItem(ctx, ClassOf(it.Format)) // a transcoding lease always moves
 			itemOut.SoftwareRung = lease.SoftwareRung()
-		} else {
+		default:
 			itemOut.SoftwareRung = StartRung(it.Format, RungCost{})
 		}
-		// TODO(#1512 RungMonitor, beta.8 budget lane): the live rung step hooks in here, through
-		// #1545's lease binding (Lease.NewRungMonitor, whose Reprice asks the ledger before a step).
-		// A software item encoder feeds its -progress to one monitor per item; on a Step the packager
-		// ends this slot's encoder and re-opens the item at its own clock with the new rung
-		// (itemOut.SoftwareRung), as it already re-opens one after a GPU fault.
+		var monitor *RungMonitor
+		switch {
+		case host.Family != FamilySoftware:
+			ladder.begin("", nil)
+		case resumed:
+			monitor = ladder.current()
+		case lease != nil:
+			monitor = lease.NewRungMonitor(m.ladderCfg)
+		default:
+			cfg := m.ladderCfg
+			cfg.Costs = RungCostsFor(it.Format)
+			monitor = NewRungMonitor(itemOut.SoftwareRung, cfg)
+		}
+		if monitor != nil && !resumed {
+			ladder.begin(airing, monitor)
+		}
+		if stepped {
+			item.Wait = ladderResumeWait
+		}
 		// The channel's bug, programmes only (#1512 phase 1d): resolved once per item at this
 		// packager's encoder and output size, so a retried Open reuses it.
 		var wm *Watermark
@@ -345,10 +374,71 @@ func (m *PackagerHLS) schedule(
 					media := time.Duration(frames) * time.Second / time.Duration(itemOut.FPS)
 					lease.ObserveCPU(ClassOf(it.Format), cpu, media)
 				}
-			})
+			}, ladder.watch(monitor, log, it.Label))
 		}
 		item.Delivered = func(frames int64) { delivered.Store(frames) }
 		return item, nil
+	}
+}
+
+// ladderResumeWait is how long an airing resumed on a new rung gets to produce, as long as a tune-in's
+// first item (FirstItemWait): the encoder it replaces was too slow, so the timeline has no lead left,
+// and a hold beats a slate.
+const ladderResumeWait = 10 * time.Second
+
+// itemLadder is one channel packager's software ladder (#1517): the RungMonitor of the airing on
+// air, which outlives its encoder restarts (a new airing starts a new monitor). The schedule reads
+// it; the item encoder's progress goroutine feeds it.
+type itemLadder struct {
+	mu      sync.Mutex
+	airing  string
+	monitor *RungMonitor
+	stepped bool // a step ended the airing's encoder: its next open resumes on the monitor's rung
+}
+
+func (l *itemLadder) begin(airing string, m *RungMonitor) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.airing, l.monitor, l.stepped = airing, m, false
+}
+
+func (l *itemLadder) current() *RungMonitor {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.monitor
+}
+
+// resume reports whether airing is the one on air (a restart of it), on which rung, and whether a
+// step caused the restart.
+func (l *itemLadder) resume(airing string) (rung SoftwareRung, resumed, stepped bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.monitor == nil || l.airing != airing {
+		return RungFull, false, false
+	}
+	stepped, l.stepped = l.stepped, false
+	return l.monitor.Rung(), true, stepped
+}
+
+// watch feeds an item encoder's samples to m and ends that encoder on a step. Samples from an
+// encoder of an airing no longer on air are ignored. Nil when there is no monitor (GPU hosts).
+func (l *itemLadder) watch(m *RungMonitor, log *slog.Logger, label string) func(SpeedSample) bool {
+	if m == nil {
+		return nil
+	}
+	return func(s SpeedSample) bool {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if l.monitor != m || l.stepped {
+			return false
+		}
+		d := m.Observe(s)
+		if d.Step {
+			l.stepped = true
+			log.Info("packager hls: software rung step", "item", label, "rung", d.Rung.String(), "reason", d.Reason,
+				"encoder_media", s.OutTime.Round(time.Millisecond))
+		}
+		return d.Step
 	}
 }
 
@@ -623,29 +713,126 @@ const audioRateHz = 48000
 // startFragmentEncoder starts one item's encoder. failed, when set, hears an encoder that exited
 // on its own with an error before any output: a fault of this source on this host, not a slow
 // start (a late item's context is cancelled first) and not an item the packager finished.
-func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log *slog.Logger, failed func(decodeFault bool), done func(cpu time.Duration)) (io.ReadCloser, error) {
+//
+// watch, when set, is fed the encoder's -progress, one SpeedSample per block with the process's
+// CPU time (RungMonitor, #1517). When it returns true the stream ends cleanly at the next top-level
+// box, so the packager takes the fragments produced so far and none of what the killed encoder had
+// in flight (#1533's contract: no flush reaches the channel); the schedule then resumes the item on
+// the new rung.
+func startFragmentEncoder(ctx context.Context, ffmpeg string, args []string, log *slog.Logger,
+	failed func(decodeFault bool), done func(cpu time.Duration), watch func(SpeedSample) bool,
+) (io.ReadCloser, error) {
+	var progress, progressW *os.File
+	if watch != nil {
+		var err error
+		if progress, progressW, err = os.Pipe(); err != nil {
+			return nil, err
+		}
+		args = append([]string{"-progress", "pipe:3"}, args...)
+	}
+	closeProgress := func() {
+		if progress != nil {
+			_ = progress.Close()
+			_ = progressW.Close()
+		}
+	}
 	cmd := exec.CommandContext(ctx, ffmpeg, args...)
 	cmd.WaitDelay = 2 * time.Second
 	var stderr bytes.Buffer
-	watch := &limitedWriter{w: &stderr, n: 4096}
-	cmd.Stderr = watch
+	faults := &limitedWriter{w: &stderr, n: 4096}
+	cmd.Stderr = faults
+	if progressW != nil {
+		cmd.ExtraFiles = []*os.File{progressW}
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		closeProgress()
 		return nil, err
 	}
 	if err := cmd.Start(); err != nil {
+		closeProgress()
 		return nil, err
 	}
-	return &encoderOutput{ReadCloser: stdout, ctx: ctx, cmd: cmd, stderr: &stderr, watch: watch, failed: failed, done: done, log: log}, nil
+	cut := &boxCut{r: stdout}
+	if progress != nil {
+		_ = progressW.Close() // the child holds its own copy
+		pid := cmd.Process.Pid
+		go ReadProgress(progress, func(p Progress) {
+			if cut.stop.Load() {
+				return
+			}
+			cpu, _ := processCPUTime(pid)
+			if watch(SpeedSample{At: time.Now(), OutTime: time.Duration(p.OutTimeMS) * time.Millisecond, CPU: cpu}) {
+				cut.stop.Store(true)
+			}
+		})
+	}
+	return &encoderOutput{ReadCloser: stdout, cut: cut, ctx: ctx, cmd: cmd, stderr: &stderr, watch: faults, failed: failed, done: done, log: log}, nil
+}
+
+// boxCut passes an fMP4 stream through whole top-level boxes and, once stopped, ends it with a
+// clean EOF at the next box boundary: the reader never sees a partial box, so the packager's
+// stream ends as if the encoder had finished there.
+type boxCut struct {
+	r       io.Reader
+	stop    atomic.Bool
+	left    int64 // bytes left in the current box; 0 at a boundary, -1 for a box that runs to EOF
+	pending []byte
+}
+
+func (c *boxCut) Read(p []byte) (int, error) {
+	if len(c.pending) > 0 {
+		n := copy(p, c.pending)
+		c.pending = c.pending[n:]
+		return n, nil
+	}
+	if c.left == 0 {
+		if c.stop.Load() {
+			return 0, io.EOF
+		}
+		var h [16]byte
+		if _, err := io.ReadFull(c.r, h[:8]); err != nil {
+			return 0, err // io.EOF here is the encoder finishing at a boundary
+		}
+		size, hl := int64(binary.BigEndian.Uint32(h[:4])), 8
+		if size == 1 {
+			if _, err := io.ReadFull(c.r, h[8:16]); err != nil {
+				return 0, io.ErrUnexpectedEOF
+			}
+			size, hl = int64(binary.BigEndian.Uint64(h[8:16])), 16
+		}
+		switch {
+		case size == 0:
+			c.left = -1
+		case size < int64(hl):
+			return 0, fmt.Errorf("packager hls: box size %d", size)
+		default:
+			c.left = size - int64(hl)
+		}
+		c.pending = append([]byte(nil), h[:hl]...)
+		return c.Read(p)
+	}
+	if c.left > 0 && int64(len(p)) > c.left {
+		p = p[:c.left]
+	}
+	n, err := c.r.Read(p)
+	if c.left > 0 {
+		c.left -= int64(n)
+		if err == io.EOF && c.left > 0 {
+			err = io.ErrUnexpectedEOF
+		}
+	}
+	return n, err
 }
 
 type encoderOutput struct {
-	io.ReadCloser
-	ctx    context.Context
-	cmd    *exec.Cmd
-	stderr *bytes.Buffer
-	watch  *limitedWriter
-	failed func(decodeFault bool)
+	io.ReadCloser // the encoder's stdout; reads go through cut
+	cut           *boxCut
+	ctx           context.Context
+	cmd           *exec.Cmd
+	stderr        *bytes.Buffer
+	watch         *limitedWriter
+	failed        func(decodeFault bool)
 	// done receives the CPU time of an encoder that produced, for the ledger's measured class cost
 	// (Lease.ObserveCPU, #1520); the schedule divides it by the frames the packager took.
 	done     func(cpu time.Duration)
@@ -655,7 +842,7 @@ type encoderOutput struct {
 }
 
 func (e *encoderOutput) Read(p []byte) (int, error) {
-	n, err := e.ReadCloser.Read(p)
+	n, err := e.cut.Read(p)
 	if n > 0 {
 		e.produced = true
 	}

@@ -34,6 +34,10 @@ type Item struct {
 	// reader is closed. It is not called for an item that never produced, or whose channel stopped
 	// mid-item. An encoder's cost is its CPU over this media, not over its slot.
 	Delivered func(frames int64)
+	// Wait, if set, is the least time the item gets to produce its first fragment: an item resumed
+	// on a new rung after its encoder ran the timeline's lead down would otherwise miss a deadline
+	// already past and slate, where a short hold keeps the picture.
+	Wait time.Duration
 }
 
 // Slot is one item's place on the channel timeline, fixed before its encoder starts.
@@ -214,6 +218,9 @@ func (p *Packager) run(ctx context.Context) error {
 			deadline = now.Add(p.cfg.FirstItemWait)
 		} else if deadline.Before(now) {
 			deadline = airAt
+		}
+		if least := now.Add(item.Wait); deadline.Before(least) {
+			deadline = least
 		}
 		tuneIn = false
 		if err := p.airItem(ctx, item, slot, deadline); err != nil {
