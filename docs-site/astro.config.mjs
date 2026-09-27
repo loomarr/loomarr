@@ -73,11 +73,11 @@ export default defineConfig({
         },
         {
           label: "Reference",
-          items: ["reference/settings", "reference/make"],
+          items: ["reference/settings", "reference/hardware", "reference/make"],
         },
         {
           label: "Explanation",
-          items: ["explanation/how-loomarr-works", "explanation/curation"],
+          items: ["explanation/how-loomarr-works", "explanation/curation", "explanation/privacy"],
         },
         {
           label: "Contributing",

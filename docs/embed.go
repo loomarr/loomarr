@@ -48,6 +48,25 @@ var movedSections = map[string]string{
 	"quickstart#2-run-the-wizard": "get-started#2-run-the-setup-wizard",
 	"quickstart#3-make-a-channel": "get-started#3-describe-your-first-channel",
 	"quickstart#upgrading":        "upgrade",
+
+	"concepts#private-local-quality-measurements": "privacy#quality-measurements-stay-local",
+
+	"filler#how-clips-arrive":               "filler#2-add-clips",
+	"filler#automatic-downloads-and-limits": "filler#limits",
+	"filler#tagging":                        "curation#what-loomarr-knows-about-a-clip",
+	"filler#geography":                      "filler#1-set-your-area",
+	"filler#tuning":                         "filler#limits",
+	"filler#preview":                        "filler#4-check-a-channels-breaks",
+	"filler#recordings-of-several-adverts":  "filler#3-watch-clips-arrive",
+
+	"integrations#media-server-emby-jellyfin":            "connect-services#1-your-media-server",
+	"integrations#playout":                               "connect-services#4-loomarrs-own-address",
+	"integrations#tunarr":                                "connect-services#6-tunarr-optional",
+	"integrations#llm-ollama-or-hosted":                  "connect-services#3-an-ai-model",
+	"integrations#tmdb":                                  "connect-services#2-tmdb",
+	"integrations#provider-settings":                     "connect-services#notifications",
+	"integrations#requester-seerr-or-sonarrradarr":       "connect-services#5-downloads-optional",
+	"integrations#how-loomarr-knows-a-download-finished": "connect-services#5-downloads-optional",
 }
 
 // Page is one help document.
