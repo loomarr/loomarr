@@ -17,6 +17,13 @@ const warmChannel = async (channelId: string, signal: AbortSignal): Promise<Warm
       cache: kind === "playlist" ? "no-store" : "force-cache",
     }),
   );
+  if (source.stillURL) {
+    // The server decodes a cold channel's still on demand. Asking now puts that decode and the
+    // bytes behind us, so a surf to this neighbour paints its picture from the browser cache.
+    await fetch(source.stillURL, { signal, credentials: "same-origin" })
+      .then((response) => response.arrayBuffer())
+      .catch(() => undefined);
+  }
   return { ...source, warmed };
 };
 

@@ -112,6 +112,10 @@ const createNativePlayerTransport = (
     next.showNowPlayingNotification = false;
     next.staysActiveInBackground = false;
     next.timeUpdateEventInterval = 0.25;
+    // The channel packager cuts 1 s segments, so one segment is enough to start (or resume after a
+    // stall). ExoPlayer's 2 s default makes every tune and surf wait for a second segment. Expo takes
+    // the whole object; the fields left out keep their defaults.
+    next.bufferOptions = { minBufferForPlayback: 1 };
     statusSubscription = next.addListener("statusChange", ({ error, status }) => {
       if (status === "error" && activeAttemptId !== undefined) {
         emit({

@@ -5,8 +5,8 @@ let nextAttemptId = 1;
 const markName = (attempt: TuneAttempt, phase: "request" | TunePhase) =>
   `loomarr:tune:${attempt.id}:${phase}`;
 
-const beginTune = (adjacent: boolean, warmed = false, playURL?: string): TuneAttempt => {
-  const attempt = { id: nextAttemptId++, adjacent, warmed, playURL };
+const beginTune = (adjacent: boolean, warmed = false, playURL?: string, stillURL?: string): TuneAttempt => {
+  const attempt = { id: nextAttemptId++, adjacent, warmed, playURL, stillURL };
   if (typeof performance?.mark === "function") performance.mark(markName(attempt, "request"));
   return attempt;
 };

@@ -494,7 +494,23 @@ describe("player controller channel still", () => {
     expect(seen[0]).toBe("https://loomarr.test/still/ch2");
   });
 
-  it("has no still for a channel that was never warmed", async () => {
+  it("shows a never-warmed channel's still as soon as its own mint returns one", async () => {
+    const withStill = (channel: PlayerChannel) =>
+      Promise.resolve({
+        stillUri: `https://loomarr.test/still/${channel.id}?fresh`,
+        uri: `https://loomarr.test/${channel.id}.m3u8?fresh`,
+      });
+    const { controller } = harness({ mint: withStill });
+    await controller.reconcile(list);
+    await controller.step(1);
+
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "tuning",
+      stillUri: "https://loomarr.test/still/ch2?fresh",
+    });
+  });
+
+  it("has no still for a channel whose source has none", async () => {
     const { controller } = harness();
     await controller.reconcile(list);
     await controller.step(1);

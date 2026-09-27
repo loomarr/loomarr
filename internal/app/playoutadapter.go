@@ -153,6 +153,8 @@ type playoutResolver struct {
 	// measurer records first-play stream facts and queues background analysis (keyframes, loudness,
 	// break candidates) per source revision. Nil ⇒ playout probes as before and stores nothing.
 	measurer sourceMeasurer
+	// analyses reads the measured keyframe index a still seeks with. Nil ⇒ ffmpeg's container seek.
+	analyses inventory.AnalysisReader
 	// probeSource returns the shared ffprobe superset so the audio choice and durable technical
 	// observation come from one process. Nil ⇒ track 0, preserving best-effort playout.
 	probeSource playout.SourceProber
@@ -282,6 +284,90 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 		return playout.Airing{Kind: schedule.SlotFlex}, "", nil
 	}
 	return airing, src.URL, nil
+}
+
+// StillAiring is the cold-channel still's view of the schedule (playout.StillAiringResolver): the
+// programme on now, with its source resolved lazily. Unlike AiringNow it writes nothing (no airing
+// history, no filler pick), because showing a picture is not airing it. It runs on every still
+// request, so it reads only the accepted cycle; the source lookup, which can cost a media-server
+// round trip, runs once per airing on the still cache's miss. A break has no still: resolving its
+// clip would pick, and count, filler.
+func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (playout.StillAiring, bool, error) {
+	slots, epoch, err := r.acceptedCycle(ctx, channelID)
+	if err != nil {
+		return playout.StillAiring{}, false, err
+	}
+	airing := playout.AiringAt(slots, epoch, r.now())
+	if airing.Kind == schedule.SlotFiller || !airing.Playable() || r.lib == nil {
+		return playout.StillAiring{}, false, nil
+	}
+	itemID := airing.LibraryItemID
+	return playout.StillAiring{
+		Key:    playout.ScheduledBlockID(channelID, airing.StartedAt, airing.Kind, airing.Identity),
+		Offset: airing.Offset,
+		At:     airing.StartedAt,
+		Source: func(ctx context.Context) (playout.StillSource, bool, error) {
+			var pm library.PathMap
+			if r.pathMap != nil {
+				pm = r.pathMap()
+			}
+			src := r.lib.ResolveInput(ctx, itemID, pm, library.StatReadableFile)
+			if src.URL == "" {
+				return playout.StillSource{}, false, nil
+			}
+			source := playout.StillSource{Input: src.URL, HDR: r.inventoryHDR(ctx, itemID)}
+			source.Keyframe, source.Indexed = r.stillKeyframe(ctx, src.URL, airing.Offset)
+			return source, true, nil
+		},
+	}, true, nil
+}
+
+// stillKeyframe is the direct file's last keyframe at or before offset, from the keyframe index
+// Loomarr measured for the file's current bytes. ok=false for a stream URL, an unmeasured file, or
+// an index from older bytes; the still then relies on ffmpeg's container seek.
+func (r *playoutResolver) stillKeyframe(ctx context.Context, input string, offset time.Duration) (time.Duration, bool) {
+	if r.analyses == nil {
+		return 0, false
+	}
+	source, ok := r.knownLocalSource(ctx, input)
+	if !ok {
+		return 0, false
+	}
+	analysis, found, err := r.analyses.InventoryAnalysis(ctx, source.ID)
+	if err != nil || !found || analysis.Revision != source.Revision {
+		return 0, false
+	}
+	keyframe, ok := analysis.KeyframeAtOrBefore(offset.Milliseconds())
+	if !ok {
+		return 0, false
+	}
+	return time.Duration(keyframe.PTSMs) * time.Millisecond, true
+}
+
+// inventoryHDR reports whether the item's library source is HDR, from Loomarr's own inventory only
+// (never the media server, never ffprobe). Unknown is false: an untone-mapped still is dim, not
+// broken.
+func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string) bool {
+	if r.inventory == nil || r.lib == nil {
+		return false
+	}
+	origin, err := r.lib.InventoryOrigin(libraryItemID)
+	if err != nil {
+		return false
+	}
+	source, ok, err := r.inventory.ResolveSource(ctx, inventory.SourceRequest{
+		Item: inventory.ItemRef{Origin: &origin}, Kinds: []inventory.SourceKind{inventory.SourceLibraryOriginal},
+		RequiredCoverage: []string{"videoStreams"},
+	})
+	if err != nil || !ok {
+		return false
+	}
+	for _, stream := range source.Observation.Facts.Streams {
+		if stream.Kind == inventory.StreamVideo && stream.HDR {
+			return true
+		}
+	}
+	return false
 }
 
 // acceptedCycle is the broadcast commit boundary. Reconciliation owns the write; the encoder and
@@ -1305,25 +1391,50 @@ func preparedInventoryOrigin(
 	return inventory.Source{}, inventory.SourceOrigin{}, false
 }
 
-func (r *playoutResolver) ensureLocalInventorySource(ctx context.Context, input string) (inventory.OriginKey, bool) {
+// localInventoryOrigin is the inventory identity of a local file: its path's origin key and the
+// stat revision of its current bytes.
+func localInventoryOrigin(input string) (inventory.OriginKey, os.FileInfo, bool) {
 	info, err := os.Stat(input)
 	if err != nil || info.IsDir() || !info.Mode().IsRegular() {
-		return inventory.OriginKey{}, false
+		return inventory.OriginKey{}, nil, false
 	}
 	digest := sha256.Sum256([]byte(input))
-	origin := inventory.OriginKey{
-		Authority: "local-playout:v1", ExternalItemID: hex.EncodeToString(digest[:16]),
+	return inventory.OriginKey{Authority: "local-playout:v1", ExternalItemID: hex.EncodeToString(digest[:16])}, info, true
+}
+
+// knownLocalSource reads, never registers, the inventory source of a local file's current bytes.
+func (r *playoutResolver) knownLocalSource(ctx context.Context, input string) (inventory.Source, bool) {
+	if r.inventory == nil {
+		return inventory.Source{}, false
+	}
+	origin, info, ok := localInventoryOrigin(input)
+	if !ok {
+		return inventory.Source{}, false
 	}
 	revision := localInventoryRevision(info)
-	if item, ok, itemErr := r.inventory.Item(ctx, inventory.ItemRef{Origin: &origin}); itemErr == nil && ok {
-		for _, source := range item.Sources {
-			if source.Kind == inventory.SourceLocalFile && source.Revision == revision {
-				return origin, true
-			}
+	item, found, err := r.inventory.Item(ctx, inventory.ItemRef{Origin: &origin})
+	if err != nil || !found {
+		return inventory.Source{}, false
+	}
+	for _, source := range item.Sources {
+		if source.Kind == inventory.SourceLocalFile && source.Revision == revision {
+			return source, true
 		}
 	}
+	return inventory.Source{}, false
+}
+
+func (r *playoutResolver) ensureLocalInventorySource(ctx context.Context, input string) (inventory.OriginKey, bool) {
+	origin, info, ok := localInventoryOrigin(input)
+	if !ok {
+		return inventory.OriginKey{}, false
+	}
+	revision := localInventoryRevision(info)
+	if _, known := r.knownLocalSource(ctx, input); known {
+		return origin, true
+	}
 	at := r.inventoryNow()
-	_, err = r.inventory.ApplySnapshot(ctx, inventory.Snapshot{
+	_, err := r.inventory.ApplySnapshot(ctx, inventory.Snapshot{
 		Origin: origin, Kind: "unknown",
 		Observation: inventory.Observation[inventory.ItemFacts]{
 			SchemaVersion: 1, ObservedAt: at,

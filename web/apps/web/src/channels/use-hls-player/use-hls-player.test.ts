@@ -104,6 +104,53 @@ describe("useHlsPlayer", () => {
     expect(video.src).toContain("sig=warmed");
   });
 
+  it("shows the tuned channel's still until its first frame plays", async () => {
+    // jsdom never loads images; this one decodes on the next task, like a cached JPEG.
+    vi.stubGlobal(
+      "Image",
+      class {
+        onload: (() => void) | null = null;
+        set src(_: string) {
+          setTimeout(() => this.onload?.(), 0);
+        }
+      },
+    );
+    const video = Object.assign(videoEl("application/vnd.apple.mpegurl"), {
+      buffered: { length: 0, start: vi.fn(), end: vi.fn() },
+    });
+    const marks: string[] = [];
+    const { result } = renderHook(() =>
+      useHlsPlayer("ch-2", {
+        id: 3,
+        adjacent: true,
+        warmed: true,
+        playURL: "/v1/playout/hls/ch-2/master.m3u8?sig=warmed",
+        stillURL: "/v1/playout/still/ch-2?sig=warmed",
+      }),
+    );
+    const measure = vi.spyOn(performance, "measure").mockImplementation((name: string) => {
+      marks.push(name);
+      return undefined as unknown as PerformanceMeasure;
+    });
+
+    act(() => {
+      result.current.attach(video);
+    });
+    await waitFor(() => expect(result.current.stillURL).toBe("/v1/playout/still/ch-2?sig=warmed"));
+    expect(marks).toContain("loomarr:tune:request-to-still");
+    // Not the poster: an element holding a transferred MediaSource keeps painting its last frame.
+    expect(video.poster).toBe("");
+
+    const listeners = vi.mocked(video.addEventListener).mock.calls;
+    act(() => {
+      for (const [type, listener] of listeners) {
+        if (type === "playing") (listener as () => void)();
+      }
+    });
+    expect(result.current.stillURL).toBeUndefined();
+    measure.mockRestore();
+  });
+
   it("prefers native HLS on Apple WebKit even when hls.js MSE is available", async () => {
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 AppleWebKit/605.1.15 Version/18.6 Safari/605.1.15",

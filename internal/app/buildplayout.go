@@ -259,6 +259,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	measurer := playoutRes.newMeasurer(
 		mediameasure.DefaultTools(ffmpegBin, playout.FFprobeBeside(ffmpegBin)), st)
 	playoutRes.measurer = measurer
+	playoutRes.analyses = st
 	go measurer.Run(rootCtx)
 	// A channel starting or stopping is a STRUCTURAL change the dashboard should see
 	// immediately, so it rides the SSE bus (§8: the frame is the latency path, GET
@@ -483,6 +484,10 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		Eligible: durablePlayoutEligibility,
 		Observer: deps.metrics,
 		Still:    playout.FFmpegStill(set.str("playout.ffmpeg_path"), deps.processDiagnostics),
+		// A cold channel's still: one frame of the airing on now, decoded from its source (#1512).
+		StillAiring: playoutRes.StillAiring,
+		SourceStill: playout.FFmpegSourceStill(set.str("playout.ffmpeg_path"),
+			playout.TonemapperFor(set.str("playout.ffmpeg_path")), deps.processDiagnostics),
 	})
 	owner.addQuiesce(func(context.Context) error {
 		origin.Quiesce()

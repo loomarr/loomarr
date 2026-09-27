@@ -2,6 +2,7 @@ import type { ClientObservation as BrowserClientObservation } from "@loomarr/cor
 import type Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LivePlaybackState } from "../player-controller";
+import { liveHlsConfig } from "./live-hls-config";
 
 // useHlsPlayer — binds a channel's live ABR HLS to a <video> element (§9.1 Watch, V46).
 //
@@ -24,15 +25,19 @@ import type { LivePlaybackState } from "../player-controller";
 type BrowserPlayerStatus = "idle" | "loading" | "playing" | "error";
 const LIVE_DVR_HORIZON_MS = 15 * 60_000;
 
-type BrowserTunePhase = "first-frame" | "manifest";
+type BrowserTunePhase = "first-frame" | "manifest" | "still";
 
 interface BrowserTuneAttempt {
   markPhase: (phase: BrowserTunePhase) => void;
   playURL?: string;
+  /** The warmed neighbour's still, already prefetched: painted the moment the tune starts. */
+  stillURL?: string;
 }
 
 interface BrowserPlaySource {
   expiresAt?: number;
+  /** The channel's current frame (a cold channel's is decoded on demand), shown until video starts. */
+  stillURL?: string;
   url: string;
 }
 
@@ -67,6 +72,8 @@ interface UseBrowserHlsPlayer {
    * attaches via native HLS or hls.js, and returns a cleanup that tears both down.
    */
   attach: (video: HTMLVideoElement) => () => void;
+  /** The tuned channel's still while its stream starts: layer it over the frame until playback. */
+  stillURL?: string;
 }
 
 let cachedHlsController: typeof Hls | undefined;
@@ -260,36 +267,7 @@ const discardTransferredMedia = (
   if (objectURL?.startsWith("blob:")) URL.revokeObjectURL(objectURL);
 };
 
-const createHlsController = (HlsController: typeof Hls): Hls =>
-  new HlsController({
-    // A source-scoped controller stays empty until its transferred MediaSource is attached. The
-    // handoff below then loads the source and performs one explicit media start.
-    autoStartLoad: false,
-    capLevelToPlayerSize: true,
-    // Baseline HLS is MPEG-TS. Keep its transmux off the UI thread; hls.js shares and reference-
-    // counts this worker across the bounded source-scoped controller pair.
-    enableWorker: true,
-    // Live channel: keep chasing the live edge, and be patient while it warms up. A channel takes a
-    // few seconds to produce its first segment (the encoder spins up), during which the playlist
-    // may briefly have no media — hls.js must RETRY, not give up.
-    liveDurationInfinity: true,
-    manifestLoadingMaxRetry: 8,
-    manifestLoadingRetryDelay: 1000,
-    levelLoadingMaxRetry: 8,
-    fragLoadingMaxRetry: 8,
-    // ⚠ Start ~TWO segments from the live edge — the balance between fast first-paint and a
-    // survivable buffer (both measured in-browser). hls.js's default is 3 (~12s at our 4s
-    // segments); 1 sits at the live edge and leaves transcodes no cushion against a realtime dip.
-    liveSyncDurationCount: 2,
-    // Keep corrective live-edge seeks well above the sync target so a slow transcode can drift and
-    // let its buffer absorb a dip rather than causing another visible stall.
-    // The shared DVR window, not hls.js's latency correction, decides when an intentional pause
-    // expires. Keep this above the complete fifteen-minute server horizon.
-    liveMaxLatencyDurationCount: 10_000,
-    // Build a forward cushion after fast start and retain the complete shared DVR horizon.
-    maxBufferLength: 60,
-    backBufferLength: 900,
-  });
+const createHlsController = (HlsController: typeof Hls): Hls => new HlsController({ ...liveHlsConfig });
 
 interface ManifestLoadFailure {
   details?: string;
@@ -410,6 +388,10 @@ function useBrowserHlsPlayer({
     value: liveStateAt(clockRef.current, now),
   });
   const warmedPlayURL = playbackAttempt?.playURL;
+  const warmedStillURL = playbackAttempt?.stillURL;
+  // The decoded still of the tune in progress; cleared by that tune's first frame.
+  const [still, setStill] = useState<{ channelId: string; url: string }>();
+  const firstFrameGenerationRef = useRef(0);
 
   const publishTransport = useCallback(
     (sampleFrame = true) => {
@@ -622,6 +604,8 @@ function useBrowserHlsPlayer({
         if (firstFrame) return;
         firstFrame = true;
         if (video.poster.startsWith("data:image/png;base64,")) video.removeAttribute("poster");
+        firstFrameGenerationRef.current = generationRef.current;
+        setStill(undefined);
         playbackAttempt?.markPhase("first-frame");
         setState({ channelId, status: "playing" });
         recordDiagnostic({ ...diagnosticBase, event: "player.ready" });
@@ -996,6 +980,25 @@ function useBrowserHlsPlayer({
       const onTimeUpdate = () => publishTransport();
       video.addEventListener("timeupdate", onTimeUpdate);
       setState({ channelId, status: "loading" });
+      // The channel's still is published once it has decoded, for the surface to layer over the
+      // held outgoing frame, so the viewer sees the channel they asked for while its stream starts.
+      // Not the <video> poster: an element that still holds a transferred MediaSource keeps showing
+      // its last frame and never paints a poster. Decoded off-screen first so a half-loaded image
+      // never flashes, and never published after this tune's first frame.
+      setStill(undefined);
+      let stillShown = false;
+      const showStill = (stillURL: string | undefined) => {
+        if (!stillURL || stillShown) return;
+        stillShown = true;
+        const image = new Image();
+        image.onload = () => {
+          if (!current() || firstFrameGenerationRef.current === generation) return;
+          setStill({ channelId, url: stillURL });
+          playbackAttempt?.markPhase("still");
+        };
+        image.src = stillURL;
+      };
+      showStill(warmedStillURL);
       const at = Date.now();
       clockRef.current = {
         channelId,
@@ -1014,7 +1017,7 @@ function useBrowserHlsPlayer({
       let teardown: (() => void) | undefined;
       // Reuse an adjacent warmer's signed URL when present. Otherwise mint normally. Both paths
       // arrive at the same transport attachment; warming never creates a second player.
-      const source = warmedPlayURL
+      const source: Promise<BrowserPlaySource | undefined> = warmedPlayURL
         ? Promise.resolve({ url: warmedPlayURL, expiresAt: Number.POSITIVE_INFINITY })
         : mintSource(controller.signal);
       source
@@ -1023,6 +1026,7 @@ function useBrowserHlsPlayer({
           // The Web adapter prefers a relative same-origin form, which avoids CORS and works when
           // server.public_url is unset.
           const src = body?.url;
+          showStill(body?.stillURL);
           if (!src) {
             setState({ channelId, status: "error", error: "Couldn't get a stream for this channel." });
             return;
@@ -1051,7 +1055,16 @@ function useBrowserHlsPlayer({
         teardown?.();
       };
     },
-    [channelId, bind, errorMessage, mintSource, publishTransport, warmedPlayURL],
+    [
+      channelId,
+      bind,
+      errorMessage,
+      mintSource,
+      playbackAttempt,
+      publishTransport,
+      warmedPlayURL,
+      warmedStillURL,
+    ],
   );
 
   const liveTransport = useMemo<BrowserLivePlaybackTransport>(
@@ -1067,7 +1080,14 @@ function useBrowserHlsPlayer({
     [channelId, pauseLive, playLive, returnLive, transportState],
   );
 
-  return { status, error, playbackSessionId: playbackSessionIDRef.current, attach, liveTransport };
+  return {
+    status,
+    error,
+    playbackSessionId: playbackSessionIDRef.current,
+    attach,
+    liveTransport,
+    stillURL: still?.channelId === channelId ? still.url : undefined,
+  };
 }
 
 export type {
@@ -1080,4 +1100,4 @@ export type {
   BrowserTunePhase,
   UseBrowserHlsPlayer,
 };
-export { useBrowserHlsPlayer };
+export { liveHlsConfig, useBrowserHlsPlayer };

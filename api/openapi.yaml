@@ -15445,7 +15445,7 @@ paths:
                 contentMediaType: application/octet-stream
                 format: binary
                 type: string
-          description: The newest decoded frame of the channel, at most one segment old; 404 when none is available.
+          description: "One frame of what the channel airs now: a warm channel's newest segment (at most one segment old), else decoded on demand from the current programme's source and cached for that airing. 404 when neither is available (nothing airing, a break, an unreadable source)."
         default:
           content:
             application/problem+json:

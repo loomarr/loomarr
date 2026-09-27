@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/auth"
@@ -68,6 +69,15 @@ func main() {
 		log.Fatalf("seed: open store %q: %v", cfg.DatabaseURL, err)
 	}
 	defer func() { _ = st.Close() }()
+
+	// SEED_LIBRARY_PICKS switches to real-library channels (library.go) on an existing store.
+	if picks := os.Getenv("SEED_LIBRARY_PICKS"); picks != "" {
+		if err := seedLibraryChannels(ctx, st, picks); err != nil {
+			log.Fatalf("seed: library channels: %v", err)
+		}
+		fmt.Printf("\nseed complete: library channels from %s.\n", picks)
+		return
+	}
 
 	// One shared user-id minter across admin + member: a per-call minter would reset
 	// its counter and hand both users the same id (upsert-by-id → the member silently
