@@ -40,7 +40,7 @@ const anchorOf = (heading: string): string => {
 // docs/embed.go keeps unique across the embedded folders.
 const parseDocHref = (href: string): { page?: string; section?: string } => {
   if (href.startsWith("#")) return { section: href.slice(1) || undefined };
-  const [path, section] = href.split("#", 2);
+  const [path = "", section] = href.split("#", 2);
   const page = path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, "");
   return { page: page || undefined, section: section || undefined };
 };
