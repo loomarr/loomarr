@@ -4,7 +4,7 @@ Formerly `design.md` §10: the catalog, sources, automatic fetching, storage, pu
 lifecycle, the media gates, media roles, conditioning evidence and acquisition runs. The per-clip
 pipeline is in [filler-pipeline](filler-pipeline.md), compilation structure is in
 [filler-structure](filler-structure.md), and tagging, screening and readiness evidence are in
-`filler-classification.md` (still in `design.md` §10 until it moves). Break and pod policy is in
+[filler-classification](filler-classification.md). Break and pod policy is in
 [scheduling](scheduling.md#breaks-and-pods).
 
 Commercials, bumpers and station IDs are core to "feels like real TV". They are not titles and are
@@ -349,6 +349,14 @@ date never becomes an era.
   URLs**, never the collection URL, to the manifest-backed ingest path.
 - Scheduled acquisition adopts this selector only after parity tests; there must not be two ranking
   algorithms. Intent chooses promising evidence; it does not certify it.
+
+**A starter pack fills a new install's first breaks.** `GET /v1/filler/discover?collection=<id>`
+lists a curated Archive.org collection; the operator keeps or excludes rows and only the survivors
+are fetched through the ordinary ingest path. It is a listing, not an acquisition; it is the
+discovery path with a different argument, not a parallel one; and it is never required ("Start
+from scratch" is always offered, and a vanished collection degrades to an empty list with the
+reason). The starter collections are product-curated seeds that may change with a release, not
+operator configuration.
 
 ## The clip lifecycle: held, then Ready
 

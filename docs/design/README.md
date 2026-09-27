@@ -48,7 +48,7 @@ The **Old §** column maps the `§N` references in code comments to the doc that
 | [filler](filler.md) | catalog, sources, fetching, storage, pulls, lifecycle, media gates, media roles, conditioning, acquisition runs | 10 | here |
 | [filler-pipeline](filler-pipeline.md) | the ingest pipeline, budgets, enrichment, Incoming, the catalog listing | 10 (V51b, V51d, V51e, V51g) | here |
 | [filler-structure](filler-structure.md) | long-source quarantine, structure assessment, detection, auto-split, split review, composites | 10 (V34, V45, V51a, V67) | here |
-| filler-classification | tagging, confidence, readiness | 10 (V38, V44, V61–V63) | `design.md` |
+| [filler-classification](filler-classification.md) | readiness, routing and accounting, operator surfaces, metadata, taxonomy, child screening, visual safety, the release report | 10 (V38, V44, V45, V61–V63, V67, V68) | here |
 
 Settings (§15) belong to [`config-design.md`](../config-design.md). Scheduling heuristics belong to
 [`programming-design.md`](../programming-design.md), and the client architecture to
@@ -90,6 +90,7 @@ when the map was approved on #779, so gaps close as the remaining records are wr
 | [0027](decisions/0027-loomarr-owned-media-inventory.md) | 2026-09-05 | Loomarr owns its media inventory; the library is an importer |
 | [0028](decisions/0028-source-evidence-and-playable-media.md) | 2026-09-06 | Source evidence and playable media are separate assets |
 | [0029](decisions/0029-structure-before-children.md) | 2026-09-06 | Compilation structure is assessed before children are materialized |
+| [0030](decisions/0030-readiness-is-evidence-based.md) | 2026-09-15 | Readiness is evidence-based; confidence never publishes |
 | [0031](decisions/0031-tone-curve.md) | 2026-09-26 | Tone curve: one default plus six selectable curves |
 | [0032](decisions/0032-4k-and-dynamic-range.md) | 2026-09-26 | 4K is a given; dynamic range is independent of resolution |
 | [0033](decisions/0033-measured-admission.md) | 2026-09-27 | Admission is one measured ledger |
