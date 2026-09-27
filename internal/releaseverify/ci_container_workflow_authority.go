@@ -341,7 +341,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make e2e":                   exactWorkflowStep(7, "Wizard e2e smoke vs a mocked backend", workflowStepAuthority{targets: []string{"e2e"}, allowsAcquisition: true, condition: "matrix.shard == 1"}),
 		}),
 		"ci-postgres.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make test-pg": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"test-pg"}, allowsAcquisition: true}),
+			postgresTestCommand: exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"test-pg"}, allowsAcquisition: true}),
 		}),
 		"ci-rust-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make rust-check": exactWorkflowStep(2, "", workflowStepAuthority{targets: []string{"rust-check"}}),

@@ -126,8 +126,8 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 			path: workflowPath,
 			contents: strings.Replace(
 				workflow,
-				"      - run: make test-pg\n",
-				"      - run: make test-pg\n      - run: make test-pg\n",
+				"      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
+				"      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
 				1,
 			),
 		},
@@ -135,8 +135,8 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 			path: workflowPath,
 			contents: strings.Replace(
 				workflow,
-				"      - run: make test-pg\n",
-				"      - run: docker pull postgres:16-alpine\n      - run: make test-pg\n",
+				"      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
+				"      - run: docker pull postgres:16-alpine\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
 				1,
 			),
 		},
@@ -144,8 +144,8 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 			path: workflowPath,
 			contents: strings.Replace(
 				workflow,
-				"      - run: make test-pg\n",
-				"      - run: docker pull busybox:stable\n      - run: make test-pg\n",
+				"      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
+				"      - run: docker pull busybox:stable\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
 				1,
 			),
 		},
@@ -175,8 +175,8 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 				path: workflowPath,
 				contents: strings.Replace(
 					workflow,
-					"      - run: make test-pg\n",
-					"      - run: "+command+"\n      - run: make test-pg\n",
+					"      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
+					"      - run: "+command+"\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
 					1,
 				),
 			}
@@ -195,8 +195,8 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 			path: workflowPath,
 			contents: strings.Replace(
 				workflow,
-				"      - run: make test-pg\n",
-				"      - run: "+command+"\n      - run: make test-pg\n",
+				"      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
+				"      - run: "+command+"\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
 				1,
 			),
 		}
@@ -209,8 +209,8 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 			path: workflowPath,
 			contents: strings.Replace(
 				workflow,
-				"      - run: make test-pg\n",
-				"      - uses: "+use+"\n      - run: make test-pg\n",
+				"      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
+				"      - uses: "+use+"\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
 				1,
 			),
 		}
@@ -241,8 +241,8 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 		path: workflowPath,
 		contents: strings.Replace(
 			workflow,
-			"      - run: make test-pg\n",
-			"      - run: |\n          runtime=docker\n          \"$runtime\" run postgres:17-alpine\n      - run: make test-pg\n",
+			"      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
+			"      - run: |\n          runtime=docker\n          \"$runtime\" run postgres:17-alpine\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
 			1,
 		),
 	}
@@ -254,7 +254,7 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 		"job shell":               "    shell: bash\n",
 		"job working directory":   "    working-directory: internal/store\n",
 		"job dry-run MAKEFLAGS":   "    env:\n      MAKEFLAGS: -n\n",
-		"unapproved job metadata": "    strategy:\n      fail-fast: false\n",
+		"unapproved job metadata": "    timeout-minutes: 5\n",
 	} {
 		mutations["Postgres workflow rejects "+name] = fileMutation{
 			path:     workflowPath,
@@ -271,19 +271,19 @@ func TestVerifyCIContainerDownloadsRejectsBypasses(t *testing.T) {
 	} {
 		mutations["Postgres workflow rejects "+name] = fileMutation{
 			path:     workflowPath,
-			contents: strings.Replace(workflow, "      - run: make test-pg\n", "      - run: make test-pg\n"+keys, 1),
+			contents: strings.Replace(workflow, "      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n", "      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n"+keys, 1),
 		}
 	}
 	for name, replacement := range map[string]string{
 		"metadata-only step":  "      - name: skipped test\n",
-		"run and action step": "      - run: make test-pg\n        uses: actions/checkout@0123456789012345678901234567890123456789\n",
+		"run and action step": "      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n        uses: actions/checkout@0123456789012345678901234567890123456789\n",
 		"mapping run":         "      - run:\n          command: make test-pg\n",
-		"mapping action":      "      - uses:\n          action: actions/checkout@0123456789012345678901234567890123456789\n      - run: make test-pg\n",
+		"mapping action":      "      - uses:\n          action: actions/checkout@0123456789012345678901234567890123456789\n      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n",
 		"empty run":           "      - run: \"\"\n",
 	} {
 		mutations["Postgres workflow rejects "+name] = fileMutation{
 			path:     workflowPath,
-			contents: strings.Replace(workflow, "      - run: make test-pg\n", replacement, 1),
+			contents: strings.Replace(workflow, "      - run: make test-pg TEST_PG_SUITE=${{ matrix.lane }}\n", replacement, 1),
 		}
 	}
 	mutations["Postgres workflow rejects root dry-run MAKEFLAGS"] = fileMutation{

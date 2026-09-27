@@ -17,7 +17,10 @@ test-pg: rust-dev-build ensure-postgres-test-image ## all real-Postgres integrat
 # This is the third variant of "green that proves nothing" this repo has hit — after a pipe masking
 # an exit code, and a missing -tags=integration printing `ok … [no tests to run]`. A test existing,
 # compiling, and EXECUTING are three separate facts.
-	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m ./internal/store/ ./internal/backendtransition/ ./internal/app/
+#
+# TEST_PG_SUITE runs one suite (CI gives each its own runner, #1570); unset, all three run. A name
+# that is not a suite fails as "no matching packages" rather than passing with nothing run.
+	TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m $(if $(TEST_PG_SUITE),./internal/$(TEST_PG_SUITE)/,./internal/store/ ./internal/backendtransition/ ./internal/app/)
 
 .PHONY: test-db-lifecycle
 test-db-lifecycle: test-pg ## certify Postgres conformance plus fresh-PG and SQLite→PG deployment lifecycles (Docker)

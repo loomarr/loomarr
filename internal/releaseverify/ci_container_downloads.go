@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func playwrightContainerTargets() []string {
@@ -89,8 +90,12 @@ func VerifyCIContainerDownloads(root string) error {
 	if err := verifyMakePrerequisiteClosure(repositoryMake, "test-pg", postgresMakePrerequisites()); err != nil {
 		return fmt.Errorf("postgres target test-pg: %w", err)
 	}
+	allSuites := make([]string, 0, len(postgresSuites()))
+	for _, suite := range postgresSuites() {
+		allSuites = append(allSuites, "./internal/"+suite+"/")
+	}
 	if err := verifyProtectedMakeTarget(repositoryMake, "test-pg", []string{
-		`TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m ./internal/store/ ./internal/backendtransition/ ./internal/app/`,
+		`TESTCONTAINERS_HUB_IMAGE_NAME_PREFIX=docker.io TESTCONTAINERS_RYUK_DISABLED=false $(GO) test -p=1 -race -tags=integration -timeout=20m $(if $(TEST_PG_SUITE),./internal/$(TEST_PG_SUITE)/,` + strings.Join(allSuites, " ") + `)`,
 	}); err != nil {
 		return fmt.Errorf("postgres target test-pg: %w", err)
 	}

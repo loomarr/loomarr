@@ -238,13 +238,17 @@ Buildah, Compose, variable-engine acquisition grammar, `if`/`then` bodies, and i
 process substitutions are classified without executing the script. A cycle is not acquisition by
 itself, but any acquisition-bearing member poisons the complete reachable cycle.
 
-The reusable Postgres workflow retains one exact `make test-pg` step. Across every job and step,
-release verification admits only the current workflow, `run` job, and exact step schemas. It rejects
+The reusable Postgres workflow retains one exact `make test-pg TEST_PG_SUITE=${{ matrix.lane }}`
+step, run once per suite: its `run` job's matrix must list exactly `store`, `backendtransition`, and
+`app` with `fail-fast: false`, so each suite gets its own runner (still `-p=1` under the race
+detector) and no suite can drop out of the gate. Unset, `TEST_PG_SUITE` runs all three. Across every
+job and step, release verification admits only the current workflow, `run` job, and exact step
+schemas. It rejects
 job containers, services, unaudited reusable-workflow delegation, container-acquiring actions, unknown keys,
 metadata-only or malformed steps, multiple execution mechanisms, and unapproved environment,
 defaults, condition, error-tolerance, shell, working-directory, or `MAKEFLAGS` controls. The root
 tool-version environment and the cache-save condition are admitted only at their exact current
-values. Its only permitted shell steps are the exact cache-epoch command and `make test-pg`; this
+values. Its only permitted shell steps are the exact cache-epoch command and the suite's `make test-pg`; this
 closes dry-run, variable, wrapper, and quoting indirection without parsing arbitrary shell. Every
 repository workflow is also parsed structurally. Any service or job container or `docker://` action
 is rejected. Workflow shell is not interpreted: route-shaped steps are classified from the raw
@@ -266,7 +270,7 @@ control operators, or any other added shell context is not evaluated and cannot 
 it fails closed.
 
 The only bounded test-image download routes are
-the exact `make test-pg` step
+the exact per-suite `make test-pg` step
 in `ci-postgres.yml`, the exact visual shard invocation, and the exact `make e2e` step in
 `ci-playwright.yml`; `ci-image.yml` retains one source-exact local packaged-image metadata inspection
 that cannot pull an image. Release publication's two existing manifest/signing scripts are also

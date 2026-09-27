@@ -64,7 +64,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 			strategy: &workflowStrategyAuthority{include: []workflowMatrixEntryAuthority{{platform: "linux/amd64", runner: "ubuntu-24.04"}, {platform: "linux/arm64", runner: "ubuntu-24.04-arm"}}},
 		},
 		{workflow: "ci-playwright.yml", job: "run"}:                    {name: "Playwright — visual + a11y + e2e (${{ matrix.shard }}/${{ strategy.job-total }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{shards: []int{1, 2, 3, 4}}},
-		{workflow: "ci-postgres.yml", job: "run"}:                      {name: "Store conformance (Postgres)", runsOn: "ubuntu-latest"},
+		{workflow: "ci-postgres.yml", job: "run"}:                      {name: "Store conformance (Postgres, ${{ matrix.lane }})", runsOn: "ubuntu-latest", strategy: &workflowStrategyAuthority{lanes: postgresSuites()}},
 		{workflow: "ci-rust-contracts.yml", job: "run"}:                {name: "Rust — repository contracts", runsOn: "ubuntu-latest"},
 		{workflow: "ci-tuner.yml", job: "run"}:                         {name: "Tuner — Chromium + Firefox + WebKit", runsOn: "macos-latest"},
 		{workflow: "codeql.yml", job: "changes"}:                       {name: "CodeQL — select languages", runsOn: "ubuntu-latest"},

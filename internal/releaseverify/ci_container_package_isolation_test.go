@@ -32,6 +32,41 @@ func TestVerifyCIContainerDownloadsRequiresIsolatedCompletePostgresTests(t *test
 	}
 }
 
+// TestVerifyCIContainerDownloadsRequiresEveryPostgresSuiteInTheMatrix: the Postgres gate runs one
+// suite per job (#1570), so the matrix is what makes it complete. A suite dropped, duplicated,
+// renamed, or cancelled by a sibling's failure must not pass as the whole gate.
+func TestVerifyCIContainerDownloadsRequiresEveryPostgresSuiteInTheMatrix(t *testing.T) {
+	t.Parallel()
+	const matrix = `lane: ["store", "backendtransition", "app"]`
+	for name, replacement := range map[string]string{
+		"suite dropped":      `lane: ["store", "backendtransition"]`,
+		"suite duplicated":   `lane: ["store", "store", "backendtransition", "app"]`,
+		"suite renamed":      `lane: ["store", "backendtransition", "api"]`,
+		"suites reordered":   `lane: ["app", "store", "backendtransition"]`,
+		"fail-fast restored": "fail-fast: true\n      matrix:\n        " + matrix,
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := writeCIContainerDownloadsFixture(t)
+			if err := VerifyCIContainerDownloads(root); err != nil {
+				t.Fatalf("valid Postgres suite matrix rejected: %v", err)
+			}
+			path := filepath.Join(root, ".github", "workflows", "ci-postgres.yml")
+			source := readFixtureFile(t, path)
+			old := matrix
+			if name == "fail-fast restored" {
+				old = "fail-fast: false\n      matrix:\n        " + matrix
+			}
+			if !strings.Contains(source, old) {
+				t.Fatalf("fixture lacks %q", old)
+			}
+			writeFixtureFile(t, path, strings.Replace(source, old, replacement, 1))
+			if err := VerifyCIContainerDownloads(root); err == nil {
+				t.Fatal("incomplete Postgres suite matrix accepted")
+			}
+		})
+	}
+}
+
 func TestVerifyCIContainerDownloadsRequiresLaneOwnedGoFlags(t *testing.T) {
 	t.Parallel()
 	for name, environment := range map[string]string{
