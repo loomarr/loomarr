@@ -272,11 +272,13 @@ func TestPackagerDrawsTheBugOnProgrammesOnly(t *testing.T) {
 
 // A tune-in starts its encoder at the source's indexed keyframe at or before the airing's offset
 // (#1595). From the exact offset, ffmpeg's accurate seek decodes and discards everything back to
-// that keyframe, up to a whole source GOP (~10 s in common encodes): measured, the first fragment
-// took 345-776 ms on NVENC by how far back the keyframe was, and 339-347 ms from the keyframe. The
-// tune-in then airs from up to one GOP earlier and its slot ends that much short of the airing's
-// end. Every later lookup (a retry, a resume after a break or a slate) keeps the exact offset, so
-// nothing airs twice; a keyframe further back than tuneInRewindMax, or no index, keeps it too.
+// that keyframe, up to a whole source GOP (~10 s in common encodes): measured on NVENC, 314-612 ms
+// to the first fragment by how far back the keyframe was. The seek aims demuxSeekBackoff past the
+// keyframe: at the keyframe itself, ffmpeg's DTS heuristic lands a Matroska source with B-frames on
+// the keyframe BEFORE it (a whole GOP again: 637 ms at +112 ms, 303-315 ms at +131 ms). The tune-in
+// then airs from up to one GOP earlier and its slot ends that much short of the airing's end. Every
+// later lookup (a retry, a resume after a break or a slate) keeps the exact offset, so nothing airs
+// twice; a keyframe further back than tuneInRewindMax, or no index, keeps it too.
 func TestPackagerTuneInSeeksFromTheIndexedKeyframe(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -284,8 +286,9 @@ func TestPackagerTuneInSeeksFromTheIndexedKeyframe(t *testing.T) {
 		indexed  bool
 		want     string
 	}{
-		{"indexed keyframe 8.5 s back", 91500 * time.Millisecond, true, "91.500"},
-		{"offset on a keyframe", 100 * time.Second, true, "100.000"},
+		{"indexed keyframe 8.5 s back", 91500 * time.Millisecond, true, "91.631"},
+		// Starting 131 ms late beats the exact offset, whose DTS heuristic seeks a GOP back.
+		{"offset on a keyframe", 100 * time.Second, true, "100.131"},
 		{"no index", 91500 * time.Millisecond, false, "100.000"},
 		{"keyframe beyond the rewind bound", 100*time.Second - tuneInRewindMax - time.Millisecond, true, "100.000"},
 	} {

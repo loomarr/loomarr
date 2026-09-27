@@ -479,21 +479,29 @@ func (m *PackagerHLS) schedule(
 }
 
 // tuneInSeek starts a tune-in's encoder at the source's indexed keyframe at or before its offset
-// (#1595), and returns how far back that is. From the exact offset, ffmpeg's accurate seek decodes
-// and discards everything back to that keyframe before the first frame: up to a whole source GOP on
-// the tune path. From the keyframe itself it discards nothing, and audio is still cut at the same
-// instant (-noaccurate_seek would not promise that: MP4 seeks each track on its own). The slot is
-// unchanged, so the item airs from the keyframe and its slot ends that much short of the airing's
-// end. Only the tune-in: a later lookup (a resume after a break or a slate) must not air anything
-// twice.
+// (#1595), and returns how much earlier that is than the offset (negative: later, by at most
+// demuxSeekBackoff). From the exact offset, ffmpeg's accurate seek decodes and discards everything
+// back to that keyframe before the first frame: up to a whole source GOP on the tune path. From just
+// past the keyframe it discards a few frames, and audio is still cut at the same instant
+// (-noaccurate_seek would not promise that: MP4 seeks each track on its own). The slot is unchanged,
+// so the item airs from the keyframe and its slot ends that much short of the airing's end. Only
+// the tune-in: a later lookup (a resume after a break or a slate) must not air anything twice.
 func tuneInSeek(it PackagerItem) (PackagerItem, time.Duration) {
 	back := it.Seek - it.Keyframe
-	if !it.KeyframeIndexed || back <= 0 || back > tuneInRewindMax {
+	if !it.KeyframeIndexed || back < 0 || back > tuneInRewindMax {
 		return it, 0
 	}
-	it.Seek = it.Keyframe
-	return it, back
+	seek := it.Keyframe + demuxSeekBackoff
+	rewind := it.Seek - seek
+	it.Seek = seek
+	return it, rewind
 }
+
+// demuxSeekBackoff is how far past a keyframe a seek must aim to land on it. ffmpeg moves an input
+// seek 3/23 s earlier for a demuxer that seeks by DTS (Matroska, not MP4) when a stream has B-frames
+// (ffmpeg_demux.c), so a seek at the keyframe lands on the one before it: a whole GOP decoded and
+// discarded again (measured: 637 ms to the first fragment at +112 ms, 303-315 ms at +131 ms).
+const demuxSeekBackoff = 131 * time.Millisecond
 
 // tuneInRewindMax bounds how far before the airing's offset a tune-in may start (tuneInSeek): past
 // one long source GOP (x264's default 250 frames is 10.4 s at 23.976 fps), the airing's end it would
