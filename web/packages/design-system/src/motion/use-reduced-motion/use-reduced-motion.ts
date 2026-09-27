@@ -17,7 +17,9 @@ const useReducedMotionPreference = (override?: boolean): boolean | null => {
     const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setSystemPreference);
     return () => {
       mounted = false;
-      subscription.remove();
+      // react-native-web returns a subscription without `remove` where matchMedia is missing
+      // (jsdom), so an unmount must not assume one.
+      subscription?.remove?.();
     };
   }, [override]);
 
