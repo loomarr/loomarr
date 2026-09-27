@@ -1,0 +1,71 @@
+# Keeps the Go build caches that the merge queue restores warm (#1570). Not a gate: nothing here is
+# a required check, and it runs no tests.
+#
+# ⚠ Why this exists: the race lanes (ci-go.yml) and Store conformance (ci-postgres.yml) save their
+# Go caches only on `refs/heads/main`, because a cache saved on a PR or merge-queue ref is never read
+# again. But ci.yml never runs on a main push, so nothing ever saved them, and every queue run
+# compiled the race-instrumented standard library and dependencies from cold ("Cache not found").
+#
+# ⚠ One save per (ISO week, go.sum, gate), not one per merge. Each lane's cache is ~1.4 GB; saving
+# on every merge would churn the repository's 10 GB cache quota and evict the Android and client
+# caches. Go's build cache is content-addressed, so a cache built earlier in the week still serves
+# the standard library and every dependency; only packages changed since then recompile.
+#
+# Each key ends in `-warm` so the consumer's existing restore prefix (`…-<go.sum hash>-`) matches.
+name: CI / Go cache warm
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-cache-warm
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.27"
+  NODE_VERSION: "22"
+
+jobs:
+  run:
+    name: Warm Go build cache (${{ matrix.lane }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # ci-go.yml's four race lanes, plus `postgres` for ci-postgres.yml.
+      matrix:
+        lane: ["1/2", "2/2", "certification-1/2", "certification-2/2", "postgres"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Cache epoch (matches the consumers)
+        id: epoch
+        run: echo "week=$(date -u +%GW%V)" >> "$GITHUB_OUTPUT"
+      - name: Is this week's cache already warm?
+        id: warm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ matrix.lane == 'postgres' && format('gobuild-pg-{0}-{1}-{2}-warm', runner.os, steps.epoch.outputs.week, hashFiles('go.sum')) || format('go-test-{0}-{1}-{2}-{3}-warm', runner.os, steps.epoch.outputs.week, matrix.lane, hashFiles('go.sum')) }}
+          lookup-only: true
+      - name: Compile the gate's test binaries without running them
+        if: steps.warm.outputs.cache-hit != 'true'
+        run: make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}
+      - name: Save the warm cache
+        if: steps.warm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ steps.warm.outputs.cache-primary-key }}

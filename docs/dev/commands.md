@@ -167,6 +167,12 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make test-pg` | ✅ | all real-Postgres integration suites (store, backend transition, app; testcontainers; requires Docker) <br>*runs:* `rust-dev-build` `ensure-postgres-test-image` |
 | `make test-db-lifecycle` |  | certify Postgres conformance plus fresh-PG and SQLite→PG deployment lifecycles (Docker) <br>*runs:* `test-pg` |
 
+## CI build-cache warming (#1570)
+
+| Target | CI | What it does |
+| --- | --- | --- |
+| `make go-cache-warm` | ✅ | CI cache warming only: build one gate's Go test binaries without running them (GO_CACHE_WARM names a race lane or postgres) |
+
 ## OpenAPI (Phase 8)
 
 | Target | CI | What it does |
@@ -257,7 +263,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

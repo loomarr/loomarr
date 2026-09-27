@@ -463,6 +463,85 @@ exit "${FAKE_GO_EXIT:-0}"
 	}
 }
 
+// TestGoTestPackagesCompileOnlyBuildsWithTheLaneFlags covers the cache-warming mode (#1570): it
+// must compile the same packages with the same race flag the lane tests with, and execute nothing.
+func TestGoTestPackagesCompileOnlyBuildsWithTheLaneFlags(t *testing.T) {
+	t.Parallel()
+
+	bin := t.TempDir()
+	argsFile := filepath.Join(bin, "args")
+	fakeGo := filepath.Join(bin, "go")
+	if err := os.WriteFile(fakeGo, []byte(`#!/usr/bin/env bash
+printf '%s\n' "$*" > "$FAKE_GO_ARGS"
+echo 'ok  example.invalid/fast  0.001s'
+`), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	run := func(mode string, extraEnv ...string) string {
+		t.Helper()
+		summary := filepath.Join(t.TempDir(), "summary.md")
+		cmd := exec.Command("bash", filepath.Join("scripts", "go-test-packages.sh"), mode, "25m", "example.invalid/fast")
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), append([]string{"GO_BIN=" + fakeGo, "FAKE_GO_ARGS=" + argsFile, "GITHUB_STEP_SUMMARY=" + summary}, extraEnv...)...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("go-test-packages.sh %s: %v\n%s", mode, err, output)
+		}
+		args, err := os.ReadFile(argsFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(args))
+	}
+
+	if got, want := run("race", "GO_TEST_COMPILE_ONLY=1"), "test -timeout 25m -race -exec true example.invalid/fast"; got != want {
+		t.Fatalf("compile-only race args = %q, want %q", got, want)
+	}
+	if got, want := run("plain", "GO_TEST_COMPILE_ONLY=1"), "test -timeout 25m -exec true example.invalid/fast"; got != want {
+		t.Fatalf("compile-only plain args = %q, want %q", got, want)
+	}
+	if got := run("race"); strings.Contains(got, "-exec") {
+		t.Fatalf("a real test run must execute its tests: args = %q", got)
+	}
+}
+
+// TestOnlyTheCacheWarmerCompilesWithoutRunning keeps compile-only mode out of every gate: a gate
+// that set it would build every test binary, execute none, and report green.
+func TestOnlyTheCacheWarmerCompilesWithoutRunning(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	var sources []string
+	for _, pattern := range []string{".github/workflows/*.yml", "Makefile", "mk/*.mk", "scripts/*.sh"} {
+		matches, err := filepath.Glob(filepath.Join(root, pattern))
+		if err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, matches...)
+	}
+	warmer := filepath.Join(root, ".github", "workflows", "ci-go-cache-warm.yml")
+	compileOnlyOwners := map[string]bool{
+		filepath.Join(root, "mk", "cache-warm.mk"):            true,
+		filepath.Join(root, "scripts", "go-test-packages.sh"): true,
+	}
+	for _, path := range sources {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "GO_TEST_COMPILE_ONLY") && !compileOnlyOwners[path] {
+			t.Errorf("%s sets GO_TEST_COMPILE_ONLY; only mk/cache-warm.mk may compile tests without running them", path)
+		}
+		if strings.HasSuffix(path, ".yml") && strings.Contains(string(data), "go-cache-warm") != (path == warmer) {
+			t.Errorf("%s: only ci-go-cache-warm.yml may run make go-cache-warm, and it must", path)
+		}
+		if strings.Contains(string(data), "-exec true") && path != filepath.Join(root, "scripts", "go-test-packages.sh") {
+			t.Errorf("%s runs go test with -exec true; compile-only belongs to go-test-packages.sh behind GO_TEST_COMPILE_ONLY", path)
+		}
+	}
+}
+
 func readGoRaceWeights(t *testing.T, path string) map[string]int {
 	t.Helper()
 

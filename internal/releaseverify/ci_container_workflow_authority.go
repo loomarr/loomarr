@@ -322,6 +322,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make ci-lint":                  exactWorkflowStep(11, "Workflows are valid", workflowStepAuthority{targets: []string{"ci-lint"}}),
 			"make observability-verify":     exactWorkflowStep(12, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true}),
 		}),
+		"ci-go-cache-warm.yml": standardRunWorkflow(map[string]workflowStepAuthority{
+			"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
+		}),
 		"ci-go.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make test GO_TEST_LANE=${{ matrix.lane }}": exactWorkflowStep(10, "", workflowStepAuthority{targets: []string{"test"}}),
 		}),
