@@ -34,7 +34,9 @@ total_of() {
 track() {
   local base="$1" current before after body number
   current="$(mktemp)"
-  trap 'rm -f "$current"' EXIT
+  # Expanded now: the trap fires after this function's locals are gone.
+  # shellcheck disable=SC2064
+  trap "rm -f '$current'" EXIT
   report >"$current"
   cat "$current"
   before="$(total_of "$base")"
