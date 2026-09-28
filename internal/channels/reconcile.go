@@ -241,6 +241,16 @@ func (e *Engine) reconcileOnce(
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
+	chDomain.WindowZone = e.windowZoneFor()
+	// Rolling-window carry-over (#1675): the accepted window stays on air until the programme
+	// crossing its boundary ends, and the next one is anchored at that end. Internal playout
+	// only: it walks the accepted cycle from the anchor. Tunarr loops the list it was given
+	// from its own clock and has no way to be told where a window starts.
+	turnAnchor := ch.PlayoutAnchor
+	if playsInternally {
+		window := schedule.ResolveWindow(chDomain, ch.Policy, e.now())
+		chDomain.WindowOpened, turnAnchor, _ = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, chDomain.WindowZone, e.now())
+	}
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now())
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
@@ -278,8 +288,10 @@ func (e *Engine) reconcileOnce(
 		e.metrics.ChannelSlotSubstitutions(staleCount)
 	}
 	nextStatus := e.statusFor(desired, drifted)
-	// Anchor a new channel at the instant its first playable deck becomes live.
-	// Once set, every later reconcile and backend transition preserves it.
+	// Anchor a new channel at the instant its first playable deck becomes live. After that the
+	// anchor moves only when the rolling window turns: to the end of the programme that
+	// crossed the boundary (#1675), which is where the newly accepted slice starts airing.
+	ch.PlayoutAnchor = turnAnchor
 	if ch.PlayoutAnchor.IsZero() && (nextStatus == schedule.StatusLive || nextStatus == schedule.StatusDrifted) {
 		ch.PlayoutAnchor = e.now().UTC().Truncate(time.Second)
 	}

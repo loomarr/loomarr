@@ -132,6 +132,7 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor()
+	chDomain.WindowZone = e.windowZoneFor()
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, at)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, at)

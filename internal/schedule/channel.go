@@ -133,6 +133,15 @@ type Channel struct {
 	// the way BreaksPerHour does. A channel/rule Window overrides it; 0 here = the whole
 	// run (the policy-free path leaves it 0, preserving today's un-windowed behavior).
 	DefaultWindow time.Duration
+	// WindowZone is the wall clock the rolling-window grid is laid on (guide.timezone, else the
+	// container's zone), so a daily window turns at local midnight, not 00:00 UTC (#1675).
+	// Transient, like DefaultWindow. Nil = UTC.
+	WindowZone *time.Location `json:"-"`
+	// WindowOpened names the rolling window being arranged by its opening instant. Zero = the
+	// window `now` falls in. Reconcile sets it while the programme that crossed a boundary is
+	// still airing: until that programme ends, the committed window is still the one it belongs
+	// to (#1675 carry-over). Transient.
+	WindowOpened time.Time `json:"-"`
 	FillerRef     string        // ref to the channel's filler list (§10); "" = none yet
 	TunarrID      string        // retained Tunarr projection id; "" until first-ever successful projection
 	Status        ChannelStatus // Loomarr-side status
