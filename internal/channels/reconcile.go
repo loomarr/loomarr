@@ -238,10 +238,10 @@ func (e *Engine) reconcileOnce(
 	// gaps with no clips is a promise of commercials we cannot keep. No pool means
 	// programs play back-to-back. Once clips land, the next reconcile re-inserts breaks.
 	chDomain := ch.Channel
-	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor() // §6.5 rolling-window horizon from settings
+	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now())
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, e.now())
 	desired := schedule.ComputeDesiredAt(chDomain, ch.Lineup, e.avail, e.policy, ch.Policy, e.now())

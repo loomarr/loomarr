@@ -15,11 +15,47 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-type recordedAirings struct{ n int }
+type recordedAirings struct {
+	n                           int
+	lastAiredAt, lastRecordedAt time.Time
+}
 
-func (r *recordedAirings) RecordAiring(context.Context, string, provision.Key, string, time.Time) error {
+func (r *recordedAirings) RecordAiring(_ context.Context, _ string, _ provision.Key, _ string, airedAt, recordedAt time.Time) error {
 	r.n++
+	r.lastAiredAt, r.lastRecordedAt = airedAt, recordedAt
 	return nil
+}
+
+// An airing is stamped with the programme's start and with when it was observed, never earlier
+// than that start (#1674). The packager resolves up to its run-ahead early; a programme opening a
+// rolling window must not be recorded as observed before the window, or it would count toward
+// the arrangement of the very window it opens.
+func TestAiringAt_RecordsWhenObservedNeverBeforeTheStart(t *testing.T) {
+	t.Parallel()
+	slots := []schedule.Slot{
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "item-1", DurationMs: 60_000},
+		{Kind: schedule.SlotProgram, Key: "movie:tmdb:2", LibraryItemID: "item-2", DurationMs: 60_000},
+	}
+	history := &recordedAirings{}
+	now := testPlayoutAnchor().Add(55 * time.Second) // item-2 starts in 5 s
+	r := stillResolver(slots, now, history)
+
+	if _, _, err := r.AiringAt(context.Background(), "ch1", now.Add(12*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	start := testPlayoutAnchor().Add(60 * time.Second)
+	if !history.lastAiredAt.Equal(start) || !history.lastRecordedAt.Equal(start) {
+		t.Fatalf("run-ahead recorded aired %v / observed %v, want both at the programme start %v",
+			history.lastAiredAt, history.lastRecordedAt, start)
+	}
+
+	later := testPlayoutAnchor().Add(80 * time.Second) // a tune-in 20 s into item-2
+	if _, _, err := stillResolver(slots, later, history).AiringAt(context.Background(), "ch1", later); err != nil {
+		t.Fatal(err)
+	}
+	if !history.lastAiredAt.Equal(start) || !history.lastRecordedAt.Equal(later) {
+		t.Fatalf("tune-in recorded aired %v / observed %v, want %v / %v", history.lastAiredAt, history.lastRecordedAt, start, later)
+	}
 }
 
 func stillResolver(slots []schedule.Slot, now time.Time, airings airingRecorder) *playoutResolver {

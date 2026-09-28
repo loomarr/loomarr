@@ -432,6 +432,19 @@ func windowIndex(now time.Time, window time.Duration) int64 {
 	return now.Unix() / int64(window/time.Second)
 }
 
+// WindowStart is the instant the rolling window containing `at` opened: the boundary at which
+// windowIndex last advanced. Zero for an unbounded window or a zero clock, which never advance.
+//
+// It is the cutoff for everything a window's arrangement reads that changes while the window airs
+// (airing history, #1674): read as of this instant, the input is the same on every reconcile in
+// the window, exactly like the slice offset windowIndex drives.
+func WindowStart(at time.Time, window time.Duration) time.Time {
+	if window <= 0 || at.IsZero() {
+		return time.Time{}
+	}
+	return time.Unix(windowIndex(at, window)*int64(window/time.Second), 0).UTC()
+}
+
 // windowSlice keeps a ROTATING ~window-of-runtime slice of the ordered deck, advancing its
 // start by the window index and WRAPPING the catalog (§6.5). This is the fix for prefix
 // starvation: keeping only the deck head (`slots[:kept]`) would loop the same films every

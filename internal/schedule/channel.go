@@ -118,13 +118,15 @@ type Channel struct {
 	// see a programme re-cut under them; new splits apply to later airings. Transient: reconcile
 	// derives it from the accepted Desired cycle (playout.CommittedSplits).
 	PinnedCuts map[string][]int64 `json:"-"`
-	// LastAired is when each key last aired on THIS channel (§3.1) — the recency signal
-	// placement biases on, loaded from the airings table by the caller.
+	// LastAired is when each unit (library item id: one episode or film) last aired on THIS
+	// channel (§3.1) — the recency signal placement biases on, loaded from the airings table
+	// by the caller AS OF the start of the window being arranged (#1674): anything recorded
+	// later belongs to the next window, so a tune-in cannot re-arrange the window on air.
 	//
 	// Observed state rather than configuration: nothing authors it, it has no ChannelPolicy
 	// counterpart, and an empty map is always valid (a fresh channel, or a store that could
 	// not answer) — placement then behaves exactly as it did before recency existed.
-	LastAired map[provision.Key]time.Time
+	LastAired map[string]time.Time
 	// DefaultWindow is the global rolling-window horizon (§6.5, sched.window_hours,
 	// default 24h) reconcile sets from settings before ComputeDesiredAt — the pure
 	// schedule package can't read settings, so this transient field carries the default

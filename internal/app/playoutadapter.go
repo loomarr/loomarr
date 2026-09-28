@@ -68,7 +68,7 @@ type clipPlayRecorder interface {
 // airingRecorder stamps that a PROGRAMME aired (§5, programming-design §3.1) — the recency
 // signal placement ranks on. Narrowed to the one write, like every other store slice here.
 type airingRecorder interface {
-	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, at time.Time) error
+	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error
 }
 
 // channelReader is the one store method both broadcast and guide need. Broadcast reads Desired,
@@ -257,12 +257,21 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 	// begin airing", which is stable no matter when anyone tuned in or how often ffmpeg
 	// re-requested the segment.
 	//
+	// The row is also stamped with when it was observed, because placement reads history as of
+	// a window's start (#1674). Never earlier than the programme's own start: the packager
+	// resolves up to its run-ahead early, and a programme that opens a window must not count
+	// toward that window's arrangement.
+	//
 	// ⚠ Telemetry, never correctness. A failed write is logged and the programme still airs —
 	// the same posture as RecordClipPlay, for the same reason: a channel must never go dark
 	// because a history table was unavailable.
 	if r.airings != nil && airing.Key != "" {
 		startedAt := now.Add(-airing.Offset)
-		if aerr := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt); aerr != nil && r.log != nil {
+		recordedAt := r.now()
+		if startedAt.After(recordedAt) {
+			recordedAt = startedAt
+		}
+		if aerr := r.airings.RecordAiring(ctx, channelID, airing.Key, airing.LibraryItemID, startedAt, recordedAt); aerr != nil && r.log != nil {
 			r.log.Debug("playout: airing not recorded", "channel", channelID, "key", airing.Key, "err", aerr)
 		}
 	}
