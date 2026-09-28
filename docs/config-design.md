@@ -89,7 +89,7 @@ type Setting struct {
 }
 ```
 
-**The registry is the single source of truth**, with the same committed-artifact discipline as OpenAPI: `make config-docs` generates `docs/configuration.md` (grouped tables, owner tasks, env names, defaults, docs) and CI fails on drift (`git diff --exit-code`). The main doc's §15 table is a human mirror; the generated file is the contract. A setting that isn't in the registry does not exist — validation, the API, the UI, the wizard, and the docs all derive from it.
+**The registry is the single source of truth**, with the same committed-artifact discipline as OpenAPI: `make config-docs` generates `docs/reference/settings.md` (grouped tables, owner tasks, env names, defaults, docs) and CI fails on drift (`git diff --exit-code`). The main doc's §15 table is a human mirror; the generated file is the contract. A setting that isn't in the registry does not exist — validation, the API, the UI, the wizard, and the docs all derive from it.
 
 `Group` and `Owner` answer different questions. A group is the registry's stable form and documentation grouping; an owner identifies the one task where a person changes the value. Every public setting has exactly one known owner. The API exposes that owner id, while one frontend destination catalog maps ids to labels, aliases, role visibility, and paths. The backend never knows browser paths. Action-owned destinations such as database migration, paired devices, diagnostics, and About live only in that catalog because they do not represent registry values.
 
@@ -628,7 +628,7 @@ does not exist.
 - **Phase 8:** the §8 API surface.
 - **Phase 9:** generated API/playout tokens + rotation side-effects (auth interplay).
 - **Phase 13:** Settings pages, save bar, provenance chips, wizard-as-settings-forms, feature-gated empty states.
-- This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/configuration.md` is the *generated* reference beside it.
+- This doc is a **seed doc**: incorporate as `docs/config-design.md` during phase 14; `docs/reference/settings.md` is the *generated* reference beside it.
 
 ## 12. Rules carried from the former `design.md` §15
 

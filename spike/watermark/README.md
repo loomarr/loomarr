@@ -1,6 +1,6 @@
 # Phase 1d spike: channel watermark samples (throwaway, #1512)
 
-Scripts behind `docs/engineering/SPIKE-watermark.md`. They are not production code and have no tests; delete
+Scripts behind [`project/SPIKE-watermark.md`](../../project/SPIKE-watermark.md). They are not production code and have no tests; delete
 them once the watermark lands.
 
 - `render_bugs.py`: deterministic bug renderer (Pillow). It draws TMDB logo silhouettes and four typographic

@@ -54,7 +54,7 @@ any more: the unsuffixed file is the new export, the `copy` is the previous 502 
 
 > The structure-vs-look precedence note above applies to the v2 prototypes **with more force, not
 > less**: they propose a top-level IA change (Dashboard landing, Channels→Guide, Users→People) and
-> pre-answer several maintainer decisions. See `docs/engineering/v2-mock-delta-2026-07-24.md` for the
+> pre-answer several maintainer decisions. See [`v2-mock-delta-2026-07-24.md` at `e9d9f9cc`](https://github.com/loomarr/loomarr/blob/e9d9f9cc/docs/engineering/v2-mock-delta-2026-07-24.md) for the
 > verified delta and the ratified decisions — and `SYNC-LOG-2026-07-24.md`, which shows the mocks
 > were built *from* this repo, so much of the apparent delta is the mock reflecting shipped code.
 
