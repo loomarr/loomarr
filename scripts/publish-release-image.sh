@@ -11,9 +11,18 @@ required_env() {
 	fi
 }
 
-for name in IMAGE DIGEST RELEASE_TAG PUBLISH_LATEST COSIGN_CERTIFICATE_IDENTITY COSIGN_CERTIFICATE_OIDC_ISSUER; do
+# GITHUB_SHA and GITHUB_REPOSITORY are set by Actions in every step: the tagged commit and the
+# repository the image's provenance must name (#661).
+for name in IMAGE DIGEST RELEASE_TAG PUBLISH_LATEST COSIGN_CERTIFICATE_IDENTITY COSIGN_CERTIFICATE_OIDC_ISSUER GITHUB_SHA GITHUB_REPOSITORY; do
 	required_env "$name"
 done
+case "$GITHUB_SHA" in
+	*[!0-9a-f]*) echo "GITHUB_SHA must be a full lowercase commit id" >&2; exit 2 ;;
+esac
+if [ "${#GITHUB_SHA}" -ne 40 ]; then
+	echo "GITHUB_SHA must be a full lowercase commit id" >&2
+	exit 2
+fi
 
 case "$IMAGE" in
 	*@*|*:*|*/*/*/*) echo "IMAGE must be an untagged registry/repository reference: $IMAGE" >&2; exit 2 ;;
@@ -75,10 +84,37 @@ inspect_digest() {
 	fi
 }
 
+# verify_release_evidence requires, for BOTH platform images, a non-empty SPDX SBOM and a build
+# provenance whose every recorded source revision is the tagged commit of this repository (#661).
+# That binding is what ties the published image to the exact release source, and through it to
+# the third-party source releases its notices name; an image without it is not published.
+verify_release_evidence() {
+	ref=$1
+	sbom=$(docker buildx imagetools inspect "$ref" --format '{{ json .SBOM }}')
+	if ! printf '%s\n' "$sbom" | jq -e '
+		(keys == ["linux/amd64", "linux/arm64"]) and
+		all(.[]; (.SPDX.spdxVersion // "" | startswith("SPDX-")) and ((.SPDX.packages // []) | length > 0))
+	' >/dev/null; then
+		echo "release manifest $ref does not carry a non-empty SPDX SBOM for both linux/amd64 and linux/arm64" >&2
+		exit 1
+	fi
+	provenance=$(docker buildx imagetools inspect "$ref" --format '{{ json .Provenance }}')
+	if ! printf '%s\n' "$provenance" | jq -e --arg rev "$GITHUB_SHA" --arg src "https://github.com/$GITHUB_REPOSITORY" '
+		(keys == ["linux/amd64", "linux/arm64"]) and
+		all(.[];
+		  ([.. | objects | .["vcs:revision"]? // empty] | unique) == [$rev] and
+		  ([.. | objects | .["vcs:source"]? // empty] | unique) == [$src])
+	' >/dev/null; then
+		echo "release manifest $ref does not carry build provenance naming $GITHUB_REPOSITORY at $GITHUB_SHA for both linux/amd64 and linux/arm64" >&2
+		exit 1
+	fi
+}
+
 # Re-check immediately before any publication. A workflow-level check alone leaves
 # a time-of-check/time-of-use window if a tag is raced into GHCR while the image builds.
 ./scripts/check-release-image-absence.sh "$version_ref"
 inspect_digest "$digest_ref" "$DIGEST"
+verify_release_evidence "$digest_ref"
 
 cosign sign --yes "$digest_ref"
 cosign verify \

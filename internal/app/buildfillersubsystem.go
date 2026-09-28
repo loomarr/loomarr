@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,6 +34,15 @@ type fillerBuild struct {
 	preview   api.PodPreviewer
 	taxonomy  api.TaxonomyEditor
 	research  api.FillerResearchService
+}
+
+// compilationGate reads `filler.acquisition.compilations` against the same single-clip ceiling
+// probe marks compilations by, both live on every call (#1773).
+func compilationGate(set resolved) filler.CompilationGate {
+	return filler.CompilationGate{
+		Take: func() bool { return set.boolv("filler.acquisition.compilations") },
+		Over: func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+	}
 }
 
 func buildFillerSubsystem(
@@ -118,6 +128,7 @@ func buildFillerSubsystem(
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
 		start: owner.startInteractiveOperation, operations: st,
 		sources: st, pullPlanning: st, acquisitions: st, readiness: st, now: time.Now,
+		compilations:  compilationGate(set),
 		archiveFinder: clipfetch.NewArchiveSourceFinder(),
 		home: func() filler.Geography {
 			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
@@ -255,7 +266,18 @@ func buildFillerSubsystem(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
-	sourceEnumerator := registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath)}
+	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
+	// folder there is nothing to download into, and the cache lives in memory only.
+	runtimesPath := ""
+	if dir := layout.ClipDir(); dir != "" {
+		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
+	}
+	sourceEnumerator := registeredSourceEnumerator{
+		youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath),
+		archive: cachedArchiveCatalog{archiveCatalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
+		// The compilation gate can only hold back a runtime it knows (#1773).
+		archiveRuntimes: func() bool { return !set.boolv("filler.acquisition.compilations") },
+	}
 	adapter.sourceEnum = sourceEnumerator
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{
@@ -272,6 +294,7 @@ func buildFillerSubsystem(
 			MaxCatalogClips:   func() int { return set.intv("filler.fetch.max_catalog_clips") },
 			MinDuration:       func() time.Duration { return set.dur("filler.min_duration") },
 			MaxDuration:       func() time.Duration { return set.dur("filler.autosplit.max_duration") },
+			Compilations:      compilationGate(set),
 		}, log,
 	).WithCoverageGaps(func(ctx context.Context) (filler.CoverageGaps, error) {
 		// The same per-channel coverage readiness and the pool strip report (#749).

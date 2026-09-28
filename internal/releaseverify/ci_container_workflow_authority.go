@@ -337,6 +337,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		}),
 		"ci-image.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			packagedImageMetadataInspection: exactWorkflowStep(3, "Inspect packaged license and notice metadata", workflowStepAuthority{allowsAcquisition: true, shell: "bash"}),
+			// #661: the unchanged FFmpeg gate against the binaries the image just built ships.
+			shippedFFmpegExtraction: exactWorkflowStep(5, "Put the image's own ffmpeg and ffprobe on PATH", workflowStepAuthority{allowsAcquisition: true, shell: "bash"}),
+			"make test-ffmpeg":      exactWorkflowStep(6, "FFmpeg acceptance against the shipped binaries", workflowStepAuthority{targets: []string{"test-ffmpeg"}}),
 		}),
 		"ci-playwright.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install":            exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}}),

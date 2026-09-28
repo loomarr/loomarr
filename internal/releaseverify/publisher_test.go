@@ -61,6 +61,21 @@ func TestPublisherDoesNotMoveLatestForPrerelease(t *testing.T) {
 	}
 }
 
+// #661: nothing is signed or published unless both platform images carry an SBOM and a build
+// provenance naming the tagged commit of this repository: that is what binds the image to the
+// exact release source its notices point at.
+func TestPublisherRefusesAnImageWithoutReleaseEvidence(t *testing.T) {
+	for _, attestations := range []string{"no-sbom", "no-arm64-sbom", "empty-sbom", "no-provenance", "other-commit", "other-source"} {
+		result := runPublisherWith(t, "", false, attestations)
+		if result.err == nil {
+			t.Errorf("%s: publisher succeeded:\n%s", attestations, result.output)
+		}
+		if strings.Contains(result.log, "COSIGN sign") || strings.Contains(result.log, "PROMOTE") {
+			t.Errorf("%s: publisher signed or promoted an image without release evidence:\n%s", attestations, result.log)
+		}
+	}
+}
+
 type publisherResult struct {
 	err    error
 	log    string
@@ -68,6 +83,14 @@ type publisherResult struct {
 }
 
 func runPublisher(t *testing.T, fail string, stable bool) publisherResult {
+	t.Helper()
+	return runPublisherWith(t, fail, stable, "")
+}
+
+// publisherCommit is the tagged commit the fake provenance names unless told otherwise.
+const publisherCommit = "0123456789abcdef0123456789abcdef01234567"
+
+func runPublisherWith(t *testing.T, fail string, stable bool, attestations string) publisherResult {
 	t.Helper()
 	_, source, _, _ := runtime.Caller(0)
 	root := filepath.Clean(filepath.Join(filepath.Dir(source), "..", ".."))
@@ -92,6 +115,9 @@ func runPublisher(t *testing.T, fail string, stable bool) publisherResult {
 		"PATH="+bin+":"+os.Getenv("PATH"),
 		"LOG_FILE="+logPath,
 		"COSIGN_FAIL="+fail,
+		"FAKE_ATTESTATIONS="+attestations,
+		"GITHUB_SHA="+publisherCommit,
+		"GITHUB_REPOSITORY=loomarr/loomarr",
 		"IMAGE=ghcr.io/loomarr/loomarr",
 		"DIGEST="+publisherDigest,
 		"RELEASE_TAG="+tag,
@@ -122,6 +148,27 @@ if [ "$1 $2 $3" = "buildx imagetools inspect" ]; then
     cat <<'JSON'
 {"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{"platform":{"os":"linux","architecture":"amd64"}},{"platform":{"os":"linux","architecture":"arm64"}},{"platform":{"os":"unknown","architecture":"unknown"},"annotations":{"vnd.docker.reference.type":"attestation-manifest"}}]}
 JSON
+    exit 0
+  fi
+  if [ "${5:-}" = "--format" ]; then
+    # The shapes buildx prints for a published release index (v0.2.0-beta.8-rc.5), trimmed.
+    rev=` + publisherCommit + `
+    src=https://github.com/loomarr/loomarr
+    packages='[{"name":"loomarr"}]'
+    case "${FAKE_ATTESTATIONS:-}" in
+      other-commit) rev=fedcba9876543210fedcba9876543210fedcba98 ;;
+      other-source) src=https://github.com/someone/fork ;;
+      empty-sbom) packages='[]' ;;
+    esac
+    sbom='{"SPDX":{"spdxVersion":"SPDX-2.3","packages":'"$packages"'}}'
+    slsa='{"SLSA":{"buildDefinition":{"externalParameters":{"request":{"args":{"build-arg:COMMIT":"'"$rev"'","vcs:revision":"'"$rev"'","vcs:source":"'"$src"'"}}}}}}'
+    case "$6:${FAKE_ATTESTATIONS:-}" in
+      *SBOM*:no-sbom|*Provenance*:no-provenance) echo '{}' ;;
+      *SBOM*:no-arm64-sbom) echo '{"linux/amd64":'"$sbom"'}' ;;
+      *SBOM*) echo '{"linux/amd64":'"$sbom"',"linux/arm64":'"$sbom"'}' ;;
+      *Provenance*) echo '{"linux/amd64":'"$slsa"',"linux/arm64":'"$slsa"'}' ;;
+      *) echo "unexpected format: $6" >&2; exit 99 ;;
+    esac
     exit 0
   fi
   ref=$4
