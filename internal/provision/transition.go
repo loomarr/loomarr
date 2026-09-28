@@ -92,6 +92,7 @@ func Apply(rec Record, ev Event, now time.Time) (Record, []DomainEvent) {
 		// Library is the source of truth (inv. 4): any in-flight state → available.
 		next.State = Available
 		next.LibraryID = ev.LibraryID
+		next.AvailableAt = now
 
 	case DeadlineExceeded:
 		// Only give up if still in flight and actually past the deadline.

@@ -22,8 +22,7 @@ WHERE key IN (
     WHERE state IN ('wanted','requested','downloading') AND deadline <= ?2 AND deadline > 0
     ORDER BY deadline LIMIT ?3
 )
-RETURNING key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
-          progress, eta_text, download_status`
+RETURNING ` + titleColumns
 
 // SQLite channel claim: same guarded-UPDATE lease as titles, keyed on
 // reconcile_deadline and excluding detached + paused channels (§9/§18) — both are
@@ -45,9 +44,7 @@ WHERE id IN (
     WHERE status NOT IN ('detached', 'paused') AND reconcile_deadline <= ?2
     ORDER BY reconcile_deadline LIMIT ?3
 )
-RETURNING id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
-          status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-          playout_anchor, reconcile_deadline, updated_at, revision`
+RETURNING ` + channelColumns
 
 // SQLite job claim: lease due queued jobs (§8). Placeholders: ?1=leaseUntil, ?2=now, ?3=limit.
 const sqliteJobClaimSQL = `

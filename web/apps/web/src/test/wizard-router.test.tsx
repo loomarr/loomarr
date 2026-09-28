@@ -453,6 +453,25 @@ describe("wizard", () => {
       expect(await screen.findByRole("heading", { name: /create your admin account/i })).toBeInTheDocument();
     });
 
+    // The rail's steps are buttons, as the mock draws them, but only back to the steps a link
+    // could reach. The frontier here is Library, so Users and First channel stay text.
+    it("lets the rail go back to a reached step, never ahead of the frontier", async () => {
+      const user = userEvent.setup();
+      stubWizard({ authed: true, setupCompleted: false });
+      renderAt("/wizard");
+
+      expect(await screen.findByRole("heading", { name: /give tunarr your library/i })).toBeInTheDocument();
+      const rail = within(screen.getByRole("list", { name: "Setup steps" }));
+      expect(rail.queryByRole("button", { name: /library/i })).not.toBeInTheDocument();
+      expect(rail.queryByRole("button", { name: /users/i })).not.toBeInTheDocument();
+      expect(rail.queryByRole("button", { name: /first channel/i })).not.toBeInTheDocument();
+
+      await user.click(rail.getByRole("button", { name: /connections/i }));
+      expect(await screen.findByRole("heading", { name: /connect your services/i })).toBeInTheDocument();
+      // Library, one step ahead of Connections, is the frontier: reached, so now a button.
+      expect(rail.getByRole("button", { name: /library/i })).toBeInTheDocument();
+    });
+
     it("lands somewhere real when a link names a step that no longer exists", async () => {
       stubWizard({ authed: true, setupCompleted: false });
       renderAt("/wizard?step=not-a-step");

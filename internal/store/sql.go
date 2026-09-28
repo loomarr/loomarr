@@ -70,11 +70,21 @@ type placeholder func(query string) string
 func passthrough(q string) string { return q }
 
 func (s *sqlStore) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
-	row := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
-		        progress, eta_text, download_status
-		 FROM titles WHERE key = ?`), string(key))
+	row := s.db.QueryRowContext(ctx, s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key))
 	return scanTitle(row)
+}
+
+// ListTitlesAvailableSince returns the titles that arrived at or after `since`, newest first
+// (Home's New this week, #1663). Titles that never arrived (available_at 0) are not listed.
+func (s *sqlStore) ListTitlesAvailableSince(ctx context.Context, since time.Time) ([]provision.Record, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(
+		`SELECT `+titleColumns+` FROM titles
+		 WHERE available_at >= ? AND available_at > 0 ORDER BY available_at DESC, key`), epoch(since))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanTitles(rows)
 }
 
 func (s *sqlStore) UpsertTitle(ctx context.Context, rec provision.Record) error {
@@ -82,17 +92,22 @@ func (s *sqlStore) UpsertTitle(ctx context.Context, rec provision.Record) error 
 	if err != nil {
 		return fmt.Errorf("marshal title: %w", err)
 	}
-	// ON CONFLICT ... DO UPDATE is valid on both dialects (§5). Identity is `key`.
+	// ON CONFLICT ... DO UPDATE is valid on both dialects (§5). Identity is `key`. An unstamped
+	// write keeps the arrival already recorded: suggest approve re-writes an in-library pick as
+	// available with no AvailableAt, and that must not erase when the title arrived (#1663).
 	_, err = s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO titles
-		   (key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   (key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
+		    available_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(key) DO UPDATE SET
 		   title_json=excluded.title_json, state=excluded.state, library_id=excluded.library_id,
 		   requested_at=excluded.requested_at, deadline=excluded.deadline, attempts=excluded.attempts,
-		   last_error=excluded.last_error, updated_at=excluded.updated_at`),
+		   last_error=excluded.last_error, updated_at=excluded.updated_at,
+		   available_at=CASE WHEN excluded.available_at > 0 THEN excluded.available_at ELSE titles.available_at END`),
 		string(rec.Key), string(blob), string(rec.State), rec.LibraryID,
-		epoch(rec.RequestedAt), epoch(rec.Deadline), rec.Attempts, rec.LastError, epoch(rec.UpdatedAt))
+		epoch(rec.RequestedAt), epoch(rec.Deadline), rec.Attempts, rec.LastError, epoch(rec.UpdatedAt),
+		epoch(rec.AvailableAt))
 	if err != nil {
 		return fmt.Errorf("upsert title %s: %w", rec.Key, err)
 	}
@@ -116,9 +131,7 @@ func (s *sqlStore) UpdateTitleProgress(ctx context.Context, key provision.Key, p
 
 func (s *sqlStore) ListTitlesByState(ctx context.Context, state provision.State) ([]provision.Record, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
-		        progress, eta_text, download_status
-		 FROM titles WHERE state = ? ORDER BY key`), string(state))
+		`SELECT `+titleColumns+` FROM titles WHERE state = ? ORDER BY key`), string(state))
 	if err != nil {
 		return nil, err
 	}
@@ -484,15 +497,20 @@ type scannable interface {
 	Scan(dest ...any) error
 }
 
+// titleColumns is the column list scanTitle reads, in its order. Every titles read uses it; the
+// Postgres claim spells it with its `t.` alias (postgres.go) and must stay in step.
+const titleColumns = `key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
+	progress, eta_text, download_status, available_at`
+
 func scanTitle(sc scannable) (provision.Record, error) {
 	var (
-		rec                        provision.Record
-		blob                       string
-		reqAt, deadline, updatedAt int64
+		rec                                     provision.Record
+		blob                                    string
+		reqAt, deadline, updatedAt, availableAt int64
 	)
 	err := sc.Scan(&rec.Key, &blob, &rec.State, &rec.LibraryID,
 		&reqAt, &deadline, &rec.Attempts, &rec.LastError, &updatedAt,
-		&rec.Progress, &rec.ETAText, &rec.DownloadStatus)
+		&rec.Progress, &rec.ETAText, &rec.DownloadStatus, &availableAt)
 	if err == sql.ErrNoRows {
 		return provision.Record{}, ErrNotFound
 	}
@@ -505,6 +523,7 @@ func scanTitle(sc scannable) (provision.Record, error) {
 	rec.RequestedAt = fromEpoch(reqAt)
 	rec.Deadline = fromEpoch(deadline)
 	rec.UpdatedAt = fromEpoch(updatedAt)
+	rec.AvailableAt = fromEpoch(availableAt)
 	return rec, nil
 }
 

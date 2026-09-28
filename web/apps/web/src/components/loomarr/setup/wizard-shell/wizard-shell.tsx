@@ -24,6 +24,8 @@ const WizardShell = ({
   statusById,
   activeSubItem,
   onSubItem,
+  reachable,
+  onStep,
   title,
   description,
   children,
@@ -57,32 +59,44 @@ const WizardShell = ({
           const status = statusById[step.id] ?? "pending";
           const isCurrent = step.id === currentId;
           const subItems = isCurrent ? step.subItems : undefined;
-          return (
-            <li key={step.id} aria-current={isCurrent ? "step" : undefined}>
-              <div
+          const row = cn(
+            "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5",
+            isCurrent && "bg-static-800",
+          );
+          // A reached step is a way back to it. One not yet reached stays text: clicking ahead
+          // would land on the frontier anyway (resolveStep), which reads as a broken link.
+          const canGo = !isCurrent && onStep !== undefined && reachable?.has(step.id) === true;
+          const content = (
+            <>
+              <span
                 className={cn(
-                  "-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5",
-                  isCurrent && "bg-static-800",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs",
+                  MARKER[status],
                 )}
               >
-                <span
-                  className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs",
-                    MARKER[status],
-                  )}
+                {status === "done" ? <Check className="size-3.5" aria-hidden /> : i + 1}
+              </span>
+              <span
+                className={cn("text-sm", isCurrent ? "font-medium text-foreground" : "text-muted-foreground")}
+              >
+                {step.title}
+              </span>
+              {status === "skipped" && <span className="ml-auto text-static-400 text-xs">skipped</span>}
+            </>
+          );
+          return (
+            <li key={step.id} aria-current={isCurrent ? "step" : undefined}>
+              {canGo ? (
+                <button
+                  type="button"
+                  onClick={() => onStep?.(step.id)}
+                  className={cn(row, "w-[calc(100%+1rem)] cursor-pointer text-left")}
                 >
-                  {status === "done" ? <Check className="size-3.5" aria-hidden /> : i + 1}
-                </span>
-                <span
-                  className={cn(
-                    "text-sm",
-                    isCurrent ? "font-medium text-foreground" : "text-muted-foreground",
-                  )}
-                >
-                  {step.title}
-                </span>
-                {status === "skipped" && <span className="ml-auto text-static-400 text-xs">skipped</span>}
-              </div>
+                  {content}
+                </button>
+              ) : (
+                <div className={row}>{content}</div>
+              )}
 
               {subItems && subItems.length > 0 && (
                 // Second-level connections: an indented list that appears under the current

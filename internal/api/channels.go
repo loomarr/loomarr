@@ -190,9 +190,10 @@ func (s *Server) listChannels(ctx context.Context, _ *struct{}) (*listChannelsOu
 		logos = append(logos, ch.Logo)
 	}
 	logoImage := s.logoImageResolver(ctx, logos)
+	requesters := s.channelRequesters(ctx) // once for the list, like the logos
 	for _, ch := range all {
 		// nil entry-state resolver: the list shows counts, not per-entry state — no per-key fan-out.
-		out.Body.Channels = append(out.Body.Channels, s.channelDTOAt(ch, nil, logoImage, checkpoint))
+		out.Body.Channels = append(out.Body.Channels, s.channelDTOAt(ch, nil, logoImage, requesters, checkpoint))
 	}
 	return out, nil
 }
@@ -209,7 +210,7 @@ func (s *Server) getChannel(ctx context.Context, in *channelIDInput) (*channelOu
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: s.channelDTOAt(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}), checkpoint)}, nil
+	return &channelOutput{Body: s.channelDTOAt(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
 }
 
 type iconSuggestionsOutput struct {
@@ -392,7 +393,7 @@ func (s *Server) createChannel(ctx context.Context, in *createChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), checkpoint)}, nil
+	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
 }
 
 // updateChannelInput is a PARTIAL edit (§7): a nil field is "leave unchanged", so
@@ -563,7 +564,7 @@ func (s *Server) updateChannel(ctx context.Context, in *updateChannelInput) (*ch
 	if err != nil {
 		return nil, err
 	}
-	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), checkpoint)}, nil
+	return &channelOutput{Body: s.channelDTOAt(fresh, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{fresh.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
 }
 
 type refineChannelInput struct {
@@ -658,7 +659,7 @@ func (s *Server) reconcileChannel(ctx context.Context, in *channelIDInput) (*rec
 	if err != nil {
 		return nil, err
 	}
-	return &reconcileOutput{Body: s.channelDTOAt(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}), checkpoint)}, nil
+	return &reconcileOutput{Body: s.channelDTOAt(ch, s.entryStateResolver(ctx), s.logoImageResolver(ctx, []string{ch.Logo}), s.channelRequesters(ctx), checkpoint)}, nil
 }
 
 type deleteChannelInput struct {

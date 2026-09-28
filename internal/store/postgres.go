@@ -26,7 +26,7 @@ WITH due AS (
 UPDATE titles t SET deadline = $1
 FROM due WHERE t.key = due.key
 RETURNING t.key, t.title_json, t.state, t.library_id, t.requested_at, t.deadline, t.attempts, t.last_error, t.updated_at,
-          t.progress, t.eta_text, t.download_status`
+          t.progress, t.eta_text, t.download_status, t.available_at` // titleColumns, aliased
 
 // Postgres channel claim: FOR UPDATE SKIP LOCKED so two replicas never reconcile
 // the same channel (§18 single-leader-per-channel). Keyed on reconcile_deadline,
@@ -47,7 +47,7 @@ UPDATE channels c SET reconcile_deadline = $1, revision = c.revision + 1
 FROM due WHERE c.id = due.id
 RETURNING c.id, c.intent_ref, c.name, c.number, c.grp, c.logo, c.strategy, c.filler_ref,
           c.tunarr_id, c.status, c.shuffle_seed, c.lineup_json, c.desired_json, c.policy_json,
-          c.broadcast_codec, c.playout_anchor, c.reconcile_deadline, c.updated_at, c.revision`
+          c.broadcast_codec, c.playout_anchor, c.reconcile_deadline, c.updated_at, c.revision, c.created_at` // channelColumns, aliased
 
 // Postgres job claim: FOR UPDATE SKIP LOCKED so replicas never run one job twice
 // (§8/§18). Placeholders: $1=leaseUntil, $2=now, $3=limit.

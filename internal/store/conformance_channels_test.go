@@ -244,6 +244,61 @@ func testChannelListDelete(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testChannelOrigin (#1663, Home's "New channel"): a channel remembers when it was created, which
+// no later save moves, and who asked for it, read through the job that produced it.
+func testChannelOrigin(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	for _, u := range []User{{ID: "u-member", Name: "Member One", Role: RoleMember}} {
+		if err := s.UpsertUser(ctx, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, j := range []Job{
+		{ID: "job-member", Kind: "suggest", Status: "done", CreatedBy: "u-member"},
+		{ID: "job-ghost", Kind: "suggest", Status: "done", CreatedBy: "u-gone"},
+	} {
+		if err := s.CreateJob(ctx, j); err != nil {
+			t.Fatal(err)
+		}
+	}
+	day0 := time.Unix(1_800_000_000, 0).UTC()
+
+	requested := sampleChannel("ch-req", 1, time.Time{})
+	requested.IntentRef = "job-member"
+	before := time.Now().Add(-time.Second)
+	mustSaveChannel(t, s, requested) // no CreatedAt: the store stamps it
+	handMade := sampleChannel("ch-hand", 2, time.Time{})
+	handMade.IntentRef, handMade.CreatedAt = "", day0
+	mustSaveChannel(t, s, handMade)
+	ghost := sampleChannel("ch-ghost", 3, time.Time{})
+	ghost.IntentRef = "job-ghost"
+	mustSaveChannel(t, s, ghost)
+
+	got, err := s.GetChannel(ctx, "ch-req")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CreatedAt.Before(before) || got.CreatedAt.After(time.Now().Add(time.Second)) {
+		t.Errorf("stamped CreatedAt = %v, want about now", got.CreatedAt)
+	}
+	hand, _ := s.GetChannel(ctx, "ch-hand")
+	hand.Name, hand.CreatedAt = "Renamed", day0.Add(48*time.Hour)
+	mustSaveChannel(t, s, hand)
+	if again, _ := s.GetChannel(ctx, "ch-hand"); !again.CreatedAt.Equal(day0) {
+		t.Errorf("CreatedAt after an update = %v, want %v (creation never moves)", again.CreatedAt, day0)
+	}
+
+	requesters, err := s.ChannelRequesters(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A hand-made channel and one whose requester is gone have no requester.
+	if want := map[string]string{"ch-req": "Member One"}; fmt.Sprint(requesters) != fmt.Sprint(want) {
+		t.Errorf("ChannelRequesters = %v, want %v", requesters, want)
+	}
+}
+
 // Deleting a channel must drop its IMAGE REFS — the cascade that replaced the `channel_icons` retired-ok
 // cleanup when the table went (V52 phase 8).
 //

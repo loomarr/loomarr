@@ -34,6 +34,10 @@ type Record struct {
 	Attempts    int
 	LastError   string
 	UpdatedAt   time.Time
+	// AvailableAt is when the library confirmed an in-flight title: its arrival (Home's New
+	// this week, #1663). Zero for a title that was already in the library when a channel picked
+	// it (suggest approve writes those straight to available), so those never read as new.
+	AvailableAt time.Time
 
 	// Download progress (§18.1 arr-queue-poll). Display-only, poll-updated via the store's
 	// targeted UpdateTitleProgress — NOT written by the state-machine Upsert, so a reconcile

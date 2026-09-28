@@ -53,6 +53,34 @@ type Channel struct {
 	// ReconcileDeadline: the channel is due for a sweep reconcile at/before this
 	// time. Leased forward on claim (§9/§18).
 	ReconcileDeadline time.Time
+	// CreatedAt is when the channel row was first saved (Home's "New channel", #1663). SaveChannel
+	// stamps it on create when zero and never changes it after. Zero on a channel older than the
+	// column that no approval dates.
+	CreatedAt time.Time
+}
+
+// ChannelRequesters maps each channel made from a member's request to that person's name, read
+// through the job that produced it (`intent_ref`). One query for every channel; a hand-made
+// channel, or one whose requester no longer exists, has no entry (#1663).
+func (s *sqlStore) ChannelRequesters(ctx context.Context) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT c.id, u.name FROM channels c
+		 JOIN jobs j ON j.id = c.intent_ref
+		 JOIN users u ON u.id = j.created_by
+		 WHERE c.intent_ref <> ''`)
+	if err != nil {
+		return nil, fmt.Errorf("channel requesters: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]string{}
+	for rows.Next() {
+		var id, name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		out[id] = name
+	}
+	return out, rows.Err()
 }
 
 func (s *sqlStore) GetChannel(ctx context.Context, id string) (Channel, error) {
@@ -154,14 +182,18 @@ func (s *sqlStore) saveChannel(ctx context.Context, exec channelDB, ch Channel) 
 		}
 	}
 	if ch.Revision == 0 {
+		// Creation is stamped here, once; the UPDATE below never writes created_at (#1663).
+		if ch.CreatedAt.IsZero() {
+			ch.CreatedAt = time.Now().UTC().Truncate(time.Second)
+		}
 		query :=
 			`INSERT INTO channels
 			   (id, intent_ref, name, number, grp, logo, strategy, filler_ref, tunarr_id,
 			    status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-			    playout_anchor, reconcile_deadline, updated_at, revision)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+			    playout_anchor, reconcile_deadline, updated_at, revision, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 			 RETURNING revision`
-		queryArgs := append([]any{ch.ID}, args...)
+		queryArgs := append(append([]any{ch.ID}, args...), epoch(ch.CreatedAt))
 		if s.dialect == DialectPostgres {
 			query += `, pg_notify('` + postgresInvalidationChannel + `', ?)`
 			queryArgs = append(queryArgs, invalidation)
@@ -370,10 +402,13 @@ func (s *sqlStore) ClaimDueChannels(ctx context.Context, now time.Time, lease ti
 
 // channelSelect is the shared column list; claim SQL RETURNs the same columns in
 // this order so scanChannel serves both paths (mirrors scanTitle).
-const channelSelect = `SELECT id, intent_ref, name, number, grp, logo, strategy, filler_ref,
+// channelColumns is the column list scanChannel reads, in its order. The Postgres claim spells it
+// with its `c.` alias (postgres.go) and must stay in step.
+const channelColumns = `id, intent_ref, name, number, grp, logo, strategy, filler_ref,
 		tunarr_id, status, shuffle_seed, lineup_json, desired_json, policy_json, broadcast_codec,
-		playout_anchor, reconcile_deadline, updated_at, revision
-	FROM channels`
+		playout_anchor, reconcile_deadline, updated_at, revision, created_at`
+
+const channelSelect = `SELECT ` + channelColumns + ` FROM channels`
 
 func scanChannel(sc scannable) (Channel, error) {
 	var (
@@ -381,10 +416,12 @@ func scanChannel(sc scannable) (Channel, error) {
 		strategy, status                    string
 		lineupBlob, desiredBlob, policyBlob string
 		seed, anchor, deadline, updatedAt   int64
+		createdAt                           int64
 	)
 	err := sc.Scan(&ch.ID, &ch.IntentRef, &ch.Name, &ch.Number, &ch.Group, &ch.Logo,
 		&strategy, &ch.FillerRef, &ch.TunarrID, &status, &seed,
-		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision)
+		&lineupBlob, &desiredBlob, &policyBlob, &ch.BroadcastCodec, &anchor, &deadline, &updatedAt, &ch.Revision,
+		&createdAt)
 	if err == sql.ErrNoRows {
 		return Channel{}, ErrNotFound
 	}
@@ -406,6 +443,7 @@ func scanChannel(sc scannable) (Channel, error) {
 	}
 	ch.ReconcileDeadline = fromEpoch(deadline)
 	ch.UpdatedAt = updatedAt
+	ch.CreatedAt = fromEpoch(createdAt)
 	return ch, nil
 }
 

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -39,6 +40,53 @@ func testTitleRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	}
 	if !got.Deadline.Equal(want.Deadline) || !got.RequestedAt.Equal(want.RequestedAt) {
 		t.Errorf("epoch time round-trip lost precision: got dl=%v ra=%v", got.Deadline, got.RequestedAt)
+	}
+}
+
+// testTitlesAvailableSince: arrivals (#1663) round-trip, list newest first from `since`, and
+// survive a later upsert that carries no stamp (suggest approve re-writes an in-library pick as
+// available with a zero AvailableAt; that must not erase when the title arrived).
+func testTitlesAvailableSince(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	day := func(n int) time.Time { return time.Unix(1_800_000_000, 0).UTC().Add(time.Duration(n) * 24 * time.Hour) }
+	arrived := func(key provision.Key, at time.Time) provision.Record {
+		r := sampleRecord(key, provision.Available, time.Time{})
+		r.AvailableAt = at
+		return r
+	}
+	for _, r := range []provision.Record{
+		arrived("movie:tmdb:1", day(0)),
+		arrived("movie:tmdb:2", day(5)),
+		arrived("movie:tmdb:3", day(3)),
+		sampleRecord("movie:tmdb:4", provision.Available, time.Time{}), // an in-library pick: never arrived
+		sampleRecord("movie:tmdb:5", provision.Downloading, day(9)),
+	} {
+		if err := s.UpsertTitle(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The approve path re-writes #2 without a stamp.
+	if err := s.UpsertTitle(ctx, sampleRecord("movie:tmdb:2", provision.Available, time.Time{})); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetTitle(ctx, "movie:tmdb:2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.AvailableAt.Equal(day(5)) {
+		t.Fatalf("AvailableAt after an unstamped upsert = %v, want %v", got.AvailableAt, day(5))
+	}
+	recs, err := s.ListTitlesAvailableSince(ctx, day(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, r := range recs {
+		keys = append(keys, string(r.Key)+"@"+r.AvailableAt.Sub(day(0)).String())
+	}
+	if want := "movie:tmdb:2@120h0m0s movie:tmdb:3@72h0m0s"; strings.Join(keys, " ") != want {
+		t.Fatalf("available since day 2 = %v, want %s", keys, want)
 	}
 }
 
