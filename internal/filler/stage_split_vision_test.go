@@ -613,9 +613,9 @@ func TestSplitStageResumesExistingReviewForOneMissingShadowObservation(t *testin
 		{ClipHash: "unobserved", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
 		{ClipHash: "observed", Segments: []SplitSegment{{StartMs: 0, EndMs: 30_000, Looked: true}}},
 	}}
-	stage := NewSplitStage(nil, queue).WithStructureShadow(pendingStructureShadow{
+	stage := NewSplitStage(nil, queue).WithFixedStructureRuntime(StructureRuntime{Shadow: pendingStructureShadow{
 		pending: map[string]bool{"unobserved": true},
-	})
+	}})
 
 	hashes, err := stage.resumableReviewHashes(t.Context())
 	if err != nil {

@@ -21,12 +21,13 @@ func TestResolvedFreezeKeepsAppliedValuesAcrossLiveWrites(t *testing.T) {
 	if applied["filler.dir"] != "/clips/old" || applied["filler.watch_dir"] != "/watch/old" {
 		t.Fatalf("applied = %v, want canonical generation values", applied)
 	}
-	if applied["filler.structure_window_authority_path"] != "/authority/old.json" ||
-		applied["filler.structure_window_deployment_path"] != "/deployment/old.json" || len(applied) != 4 {
-		t.Fatalf("applied = %v, want all restart-scoped storage keys", applied)
+	if len(applied) != 2 {
+		t.Fatalf("applied = %v, want only the filler folders frozen for the generation", applied)
 	}
-	if _, frozenDiagnostics := applied["diagnostics.dir"]; frozenDiagnostics {
-		t.Fatal("diagnostics.dir applies live (#1659); it must not be frozen for the generation")
+	for _, live := range []string{"diagnostics.dir", "filler.structure_window_authority_path", "filler.structure_window_deployment_path"} {
+		if _, frozenLive := applied[live]; frozenLive {
+			t.Fatalf("%s applies live (#1659); it must not be frozen for the generation", live)
+		}
 	}
 
 	set.svc.SetDB(map[string]string{
@@ -45,11 +46,11 @@ func TestResolvedFreezeKeepsAppliedValuesAcrossLiveWrites(t *testing.T) {
 	if got := frozen.str("filler.watch_dir"); got != "/watch/old" {
 		t.Errorf("frozen watch = %q, want old value", got)
 	}
-	if got := frozen.str("filler.structure_window_authority_path"); got != "/authority/old.json" {
-		t.Errorf("frozen authority = %q, want old value", got)
+	if got := frozen.str("filler.structure_window_authority_path"); got != "/authority/new.json" {
+		t.Errorf("live authority = %q, want new value", got)
 	}
-	if got := frozen.str("filler.structure_window_deployment_path"); got != "/deployment/old.json" {
-		t.Errorf("frozen deployment = %q, want old value", got)
+	if got := frozen.str("filler.structure_window_deployment_path"); got != "/deployment/new.json" {
+		t.Errorf("live deployment = %q, want new value", got)
 	}
 	if got := frozen.dur("filler.sync_every").String(); got != "10m0s" {
 		t.Errorf("live duration = %q, want 10m0s", got)
