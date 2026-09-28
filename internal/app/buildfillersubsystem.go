@@ -273,13 +273,13 @@ func buildFillerSubsystem(
 			MinDuration:       func() time.Duration { return set.dur("filler.min_duration") },
 			MaxDuration:       func() time.Duration { return set.dur("filler.autosplit.max_duration") },
 		}, log,
-	).WithCoverageGaps(func(ctx context.Context) ([]filler.EraRange, error) {
+	).WithCoverageGaps(func(ctx context.Context) (filler.CoverageGaps, error) {
 		// The same per-channel coverage readiness and the pool strip report (#749).
 		pool, err := result.preview.Pool(ctx)
 		if err != nil {
-			return nil, err
+			return filler.CoverageGaps{}, err
 		}
-		return filler.CoverageGapEras(pool), nil
+		return filler.CoverageGapsFrom(pool), nil
 	})
 	adapter.autoFetch = autoFetch
 	result.service = adapter

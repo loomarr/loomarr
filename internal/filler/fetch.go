@@ -238,13 +238,13 @@ type Fetcher struct {
 	limits FetchLimits
 	log    *slog.Logger
 	now    func() time.Time
-	gaps   func(context.Context) ([]EraRange, error)
+	gaps   func(context.Context) (CoverageGaps, error)
 }
 
-// WithCoverageGaps steers each pass toward the era windows of channels that cannot fill their
-// breaks from their own era (#749, CoverageGapEras). Optional: without it a pass ranks by
-// quality and diversity alone, as it always has.
-func (f *Fetcher) WithCoverageGaps(gaps func(context.Context) ([]EraRange, error)) *Fetcher {
+// WithCoverageGaps steers each pass toward what the live channels' breaks are short of (#749,
+// CoverageGapsFrom). Optional: without it a pass ranks by quality and diversity alone, as it
+// always has.
+func (f *Fetcher) WithCoverageGaps(gaps func(context.Context) (CoverageGaps, error)) *Fetcher {
 	f.gaps = gaps
 	return f
 }
@@ -411,16 +411,19 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	// Channel coverage gaps steer which items this pass takes first (#749). Read once per pass
 	// that has due work, never on an idle wake. A failed read degrades to the unsteered pass:
 	// steering is an optimisation, and the source still deserves its bounded refresh.
-	var gaps []EraRange
+	var gaps CoverageGaps
 	if f.gaps != nil {
 		if gaps, err = f.gaps(ctx); err != nil {
 			f.log.Warn("filler auto-fetch: coverage gaps unavailable; selecting without them", "err", err)
-			gaps = nil
+			gaps = CoverageGaps{}
 		}
 	}
 	gapReason := ""
-	if len(gaps) > 0 {
-		gapReason = " Items from " + formatEraWindows(gaps) + " go first: channels there cannot fill a break from their own era."
+	if len(gaps.Eras) > 0 {
+		gapReason = " Items from " + formatEraWindows(gaps.Eras) + " go first: channels there cannot fill a break from their own era."
+	}
+	if len(gaps.Roles) > 0 {
+		gapReason += " Bumpers and station IDs go first: no break has one to open or close on."
 	}
 
 	if max := f.limits.MaxCatalogClips(); max > 0 && len(have) >= max {

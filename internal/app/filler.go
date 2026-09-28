@@ -1453,6 +1453,11 @@ func (a podPreviewAdapter) Pool(ctx context.Context) (filler.PoolReport, error) 
 	if err != nil {
 		return filler.PoolReport{}, err
 	}
+	for _, c := range clips {
+		if c.IsBumper() {
+			report.Bookends++ // what pod assembly opens and closes a break on (#749 role gaps)
+		}
+	}
 	for _, ch := range chans {
 		// The same two-state DENY-LIST `recurate.eligible` uses, for the same reason: every
 		// managed state qualifies (live, building, and drifted), because drifted is a transient
