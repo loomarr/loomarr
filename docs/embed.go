@@ -27,6 +27,12 @@ var helpFS embed.FS
 //go:embed diagrams/generated/*.svg
 var diagramFS embed.FS
 
+// The guides' screenshots ride along for the same reason. The suffix names the frame: the app
+// is dark, so the captures are dark-framed. `make docs-capture` regenerates them.
+//
+//go:embed images/screenshots/*-dark.webp
+var screenshotFS embed.FS
+
 // helpDirs are the embedded folders, "." being docs/ itself (get-started.md).
 var helpDirs = []string{".", "guides", "explanation"}
 
@@ -204,4 +210,18 @@ func Anchors(markdown string) []string {
 		out = append(out, Anchor(strings.TrimSpace(heading)))
 	}
 	return out
+}
+
+// Screenshot returns one embedded screenshot by base name ("guide-dark.webp"), as a page
+// references it (../images/screenshots/guide-dark.webp). Like Diagram, the name comes from a
+// URL, so anything but a plain "<name>-dark.webp" is refused before the embed is read.
+func Screenshot(name string) ([]byte, bool) {
+	if name != path.Base(name) || !strings.HasSuffix(name, "-dark.webp") || strings.HasPrefix(name, ".") {
+		return nil, false
+	}
+	body, err := fs.ReadFile(screenshotFS, "images/screenshots/"+name)
+	if err != nil {
+		return nil, false
+	}
+	return body, true
 }

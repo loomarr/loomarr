@@ -40,6 +40,14 @@ func (s *Server) registerHelp(api huma.API) {
 		Tags: []string{"help"},
 	}, "The diagram.", "image/svg+xml"), RoleMember, serveDiagram)
 
+	rawOp[screenshotInput](api, bytesResponse(huma.Operation{
+		OperationID: "get-doc-screenshot", Method: http.MethodGet, Path: "/v1/docs/screenshots/{name}",
+		Summary: "Read one help screenshot",
+		Description: "A screenshot a help page shows, as WebP. It ships inside the binary, so Help's " +
+			"screenshots work air-gapped.",
+		Tags: []string{"help"},
+	}, "The screenshot.", "image/webp"), RoleMember, serveScreenshot)
+
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "system-version", Method: http.MethodGet, Path: "/v1/system/version",
 		Summary:     "Version and readiness of this instance",
@@ -112,6 +120,27 @@ func serveDiagram(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy",
 		"default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox")
+	// The bytes change only with the binary, and Help is behind a sign-in.
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))
+}
+
+// screenshotInput names an embedded screenshot. Declared for the spec; the handler reads the
+// path value itself and docs.Screenshot refuses anything but a plain "<name>-dark.webp".
+type screenshotInput struct {
+	Name string `path:"name" example:"guide-dark.webp" doc:"The screenshot's file name, as a help page references it"`
+}
+
+// serveScreenshot writes one embedded screenshot. A WebP is not a document, so it needs no
+// sandbox; nosniff still pins the type.
+func serveScreenshot(w http.ResponseWriter, r *http.Request) {
+	body, ok := docs.Screenshot(r.PathValue("name"))
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/webp")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	// The bytes change only with the binary, and Help is behind a sign-in.
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))

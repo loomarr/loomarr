@@ -143,3 +143,15 @@ demo-seed: ## point this worktree's backend at the running demo library and crea
 	@eval "$$(./scripts/dev-env.sh export)"; \
 	  BASE=$${BASE:-$$LOOMARR_API} DEMO_WEB_URL=$${DEMO_WEB_URL:-http://localhost:$$LOOMARR_FE_PORT} \
 	  DATABASE_URL=$${DATABASE_URL:-$$LOOMARR_AGENT_DATABASE_URL} go run ./cmd/demo-library seed
+
+# The docs screenshots (#1572), from the demo seed above. Needs this worktree's backend and
+# frontend running (make dev-be, make dev-fe); the watch shot plays a stream, so it takes the
+# GPU lock. Rewrites docs/images/screenshots/; see docs/contributing/docs.md.
+DOCS_CAPTURE_RAW ?= .artifacts/docs-capture
+.PHONY: docs-capture
+docs-capture: ## regenerate the docs screenshots from the demo seed (needs dev-be, dev-fe, demo-library, demo-seed)
+	PLAYWRIGHT_DIR=$(CURDIR)/$(WEB)/node_modules/.pnpm/node_modules/playwright/ \
+	  flock /tmp/loomarr-gpu.lock node scripts/docs-capture/capture.mjs \
+	  $${DEMO_DIR:-.agent-data/demo-library}/seed.json $(DOCS_CAPTURE_RAW)
+	PLAYWRIGHT_DIR=$(CURDIR)/$(WEB)/node_modules/.pnpm/node_modules/playwright/ \
+	  node scripts/docs-capture/frame.mjs $(DOCS_CAPTURE_RAW) docs/images/screenshots

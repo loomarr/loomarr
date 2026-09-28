@@ -122,6 +122,13 @@ func TestEmbeddedPagesShowOnlyEmbeddedDiagrams(t *testing.T) {
 				continue
 			}
 			src := m[2]
+			if shot, isShot := strings.CutPrefix(path.Join(path.Dir(p.Path), src), "images/screenshots/"); isShot {
+				if _, found := docs.Screenshot(shot); !found {
+					t.Errorf("docs/%s shows screenshot %q, which is not embedded; Help can show only "+
+						"the dark captures in docs/images/screenshots/, run make docs-capture", p.Path, src)
+				}
+				continue
+			}
 			name, isDiagram := strings.CutPrefix(path.Join(path.Dir(p.Path), src), "diagrams/generated/")
 			if !isDiagram || strings.Contains(name, "/") || path.Ext(name) != ".svg" {
 				t.Errorf("docs/%s shows image %q; Help can show only diagrams from "+
@@ -143,6 +150,19 @@ func TestDiagramServesOnlyGeneratedSVGs(t *testing.T) {
 	for _, name := range []string{"", ".", "..", "../get-started.md", "generated/ci.svg", "ci.d2", "ci", "/ci.svg"} {
 		if _, found := docs.Diagram(name); found {
 			t.Errorf("Diagram(%q) returned a file; only a generated diagram's base name may", name)
+		}
+	}
+}
+
+// Screenshot is the only file the screenshot route reads, and the name comes from the URL.
+func TestScreenshotServesOnlyDarkCaptures(t *testing.T) {
+	if _, found := docs.Screenshot("guide-dark.webp"); !found {
+		t.Fatal(`Screenshot("guide-dark.webp") not found; the screenshots are not embedded`)
+	}
+	for _, name := range []string{"", ".", "..", "../get-started.md", "screenshots/guide-dark.webp",
+		"guide.png", "guide-dark", "/guide-dark.webp", "guide-light.webp"} {
+		if _, found := docs.Screenshot(name); found {
+			t.Errorf("Screenshot(%q) returned a file; only a dark capture's base name may", name)
 		}
 	}
 }
