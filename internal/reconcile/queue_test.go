@@ -9,6 +9,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/requester"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeQueue returns scripted queue items regardless of the titles passed — enough to drive the
@@ -25,12 +26,7 @@ func (f *fakeQueue) QueueStatus(_ context.Context, _ []provision.Title) ([]reque
 
 func newQueueStore(t *testing.T) store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/q.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return testkit.MigratedSQLiteStore(t)
 }
 
 // A requested title that shows up in the arr queue is promoted to downloading (Grabbed) and its

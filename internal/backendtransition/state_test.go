@@ -22,7 +22,7 @@ func TestLoadInitializesEmptyFleetFromDesired(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.desired, func(t *testing.T) {
-			st := testkit.SQLiteStore(t)
+			st := testkit.MigratedSQLiteStore(t)
 			state, err := Load(context.Background(), st, tt.desired)
 			if err != nil {
 				t.Fatal(err)
@@ -42,7 +42,7 @@ func TestLoadInitializesEmptyFleetFromDesired(t *testing.T) {
 
 func TestLoadInitializesPreExistingFleetFromDesired(t *testing.T) {
 	t.Parallel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	_, err := st.SaveChannel(context.Background(), store.Channel{Channel: schedule.Channel{
 		ID: "existing", Name: "Existing", Number: 1, Strategy: schedule.Sequential, Status: schedule.StatusLive,
 	}})
@@ -65,7 +65,7 @@ func TestLoadInitializesPreExistingFleetFromDesired(t *testing.T) {
 
 func TestStatePreparesBeforePublishingAndSurvivesReload(t *testing.T) {
 	t.Parallel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	ctx := context.Background()
 	state, err := Load(ctx, st, BackendInternal)
 	if err != nil {
@@ -114,7 +114,7 @@ func TestLoadCorruptStateFailsClosed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			st := testkit.SQLiteStore(t)
+			st := testkit.MigratedSQLiteStore(t)
 			ctx := context.Background()
 			if err := st.SetSetting(ctx, CheckpointSettingKey, tt.raw); err != nil {
 				t.Fatal(err)
@@ -135,7 +135,7 @@ func TestLoadCorruptStateFailsClosed(t *testing.T) {
 
 func TestStateRejectsUnknownBackendAndZeroState(t *testing.T) {
 	t.Parallel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	ctx := context.Background()
 	state, err := Load(ctx, st, BackendInternal)
 	if err != nil {
@@ -160,7 +160,7 @@ func TestStateRejectsUnknownBackendAndZeroState(t *testing.T) {
 
 func TestCancelPreparedPreservesAppliedAndIsSteadyStateNoOp(t *testing.T) {
 	t.Parallel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	state, err := Load(context.Background(), st, BackendTunarr)
 	if err != nil {
 		t.Fatal(err)
