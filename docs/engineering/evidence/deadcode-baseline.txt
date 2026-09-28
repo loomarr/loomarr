@@ -5,7 +5,6 @@
 1 internal/clipfetch
 1 internal/filler
 2 internal/fillerairworthiness
-1 internal/fillerstore
 2 internal/fillerstructure
 2 internal/library
 9 internal/llm
@@ -25,4 +24,4 @@
 2 internal/suggest
 4 internal/tmdb
 2 internal/watermark
-total 59
+total 58

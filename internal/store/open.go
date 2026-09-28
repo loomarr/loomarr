@@ -28,10 +28,8 @@ func seedAfterMigrate(ctx context.Context, s *sqlStore) error {
 	if err != nil {
 		return err
 	}
-	if err := s.rebuildTaxonomyDerived(ctx, taxonomy.New(taxa)); err != nil {
-		return err
-	}
-	return s.backfillFillerEnrichment(ctx, now)
+	// The filler enrichment backfill runs after these, in fillerstore.Open.
+	return s.rebuildTaxonomyDerived(ctx, taxonomy.New(taxa))
 }
 
 // Open selects and opens a backend from the DATABASE_URL scheme (§5) and, when
