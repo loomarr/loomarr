@@ -125,6 +125,7 @@ func buildHTTP(deps httpBuild) http.Handler {
 		Search:              searchSvc,
 		MovieCollections:    movieCollectionsSvc,
 		Collections:         collectionsSvc,
+		IdeaLibrary:         deps.suggestions.ideaLibrary,
 		Icons:               iconSvc,
 		Images:              imageService(imageSvc),
 		Events:              eventBus,

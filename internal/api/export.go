@@ -50,6 +50,7 @@ func schemaOnlyAPI(log *slog.Logger) (*Server, huma.API) {
 	srv.registerProposals(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
 	srv.registerMyChannels(humaAPI)
+	srv.registerChannelIdeas(humaAPI)
 	srv.registerHouseholdViewing(humaAPI)
 	srv.registerProposalJourneys(humaAPI)
 	srv.registerSearch(humaAPI)
