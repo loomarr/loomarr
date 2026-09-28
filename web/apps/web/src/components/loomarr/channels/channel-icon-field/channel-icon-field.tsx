@@ -3,7 +3,6 @@ import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { ImageOff, Loader2, Upload } from "lucide-react";
 import { useId, useRef, useState } from "react";
-import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { Button } from "@/components/ui/button";
 import { Image } from "@/components/ui/image";
 import { Input } from "@/components/ui/input";
@@ -41,6 +40,7 @@ const ChannelIconField = ({
   className,
 }: ChannelIconFieldProps) => {
   const urlInputId = useId();
+  const pickerId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [urlDraft, setUrlDraft] = useState("");
@@ -122,10 +122,10 @@ const ChannelIconField = ({
 
   return (
     <div className={cn("flex flex-col gap-3", className)}>
-      <div className="flex items-center gap-4">
-        {/* The 64px preview — a muted placeholder box when there's no icon yet, never a
+      <div className="flex items-center gap-3">
+        {/* The web mock's 48px tile: a muted placeholder when there's no icon yet, never a
             broken-image glyph. */}
-        <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-static-800">
+        <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
           {/*
             Three states, and the middle one is the interesting one.
 
@@ -143,7 +143,7 @@ const ChannelIconField = ({
             <Image
               image={logoImage}
               alt="Channel icon"
-              sizes="64px"
+              sizes="48px"
               className="size-full object-cover"
               fallback={<ImageOff className="size-6 text-static-500" aria-hidden />}
             />
@@ -153,35 +153,45 @@ const ChannelIconField = ({
             <ImageOff className="size-6 text-static-500" aria-hidden />
           )}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-medium text-sm">Channel icon</p>
-          <p className="text-muted-foreground text-xs">
-            Shown in your TV guide next to the channel name and number.
+          <p className="mt-0.5 text-muted-foreground text-xs">
+            What your household sees in the media server's guide.
           </p>
         </div>
-        {isAdmin && logo && (
+        {isAdmin && (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="ml-auto shrink-0 text-muted-foreground"
-            disabled={clearing}
-            onClick={() => void clear()}
+            className="shrink-0"
+            aria-expanded={suggestionsOpen}
+            aria-controls={pickerId}
+            onClick={() => setSuggestionsOpen((open) => !open)}
           >
-            {clearing ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
-            Clear
+            Change…
           </Button>
         )}
       </div>
 
-      {isAdmin && (
-        <CollapsibleSection
-          title="Change icon"
-          description="From your titles, upload a file, or paste an image URL"
-          open={suggestionsOpen}
-          onOpenChange={setSuggestionsOpen}
-        >
+      {/* The mock draws only the "Change…" button, not what it opens, so the picker keeps
+          today's three ways in plus Clear. */}
+      {isAdmin && suggestionsOpen && (
+        <div id={pickerId} className="rounded-md border border-border p-4">
           <div className="flex flex-col gap-4">
+            {logo && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-start text-muted-foreground"
+                disabled={clearing}
+                onClick={() => void clear()}
+              >
+                {clearing ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
+                Clear
+              </Button>
+            )}
             {/* (a) From your titles — TMDB posters for the channel's own lineup. */}
             <div>
               <p className="font-medium text-sm">From your titles</p>
@@ -316,7 +326,7 @@ const ChannelIconField = ({
               {urlError && <p className="mt-1 text-onair-300 text-xs">{urlError}</p>}
             </div>
           </div>
-        </CollapsibleSection>
+        </div>
       )}
     </div>
   );

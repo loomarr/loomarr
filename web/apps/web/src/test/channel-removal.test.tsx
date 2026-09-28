@@ -62,8 +62,8 @@ describe("channel removal feedback", () => {
     const user = userEvent.setup();
     const { deletes } = renderDanger();
 
-    await user.click(await screen.findByRole("button", { name: "Stop managing" }));
-    await user.click(screen.getByRole("button", { name: "Stop managing" }));
+    await user.click(await screen.findByRole("button", { name: "Stop updating" }));
+    await user.click(screen.getByRole("button", { name: "Stop updating" }));
 
     await waitFor(() => expect(deletes).toHaveLength(1));
     expect(deletes[0]).toContain("purge=false");
@@ -76,8 +76,8 @@ describe("channel removal feedback", () => {
     const user = userEvent.setup();
     const { deletes } = renderDanger();
 
-    await user.click(await screen.findByRole("button", { name: "Delete from Loomarr and Tunarr" }));
-    await user.click(screen.getByRole("button", { name: "Delete from Loomarr and Tunarr" }));
+    await user.click(await screen.findByRole("button", { name: "Delete channel" }));
+    await user.click(screen.getByRole("button", { name: "Delete channel" }));
 
     await waitFor(() => expect(deletes).toHaveLength(1));
     expect(deletes[0]).toContain("purge=true");

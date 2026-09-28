@@ -15,6 +15,9 @@ interface CollapsibleSectionProps {
   // Controlled open state — provide with onOpenChange to drive it from a parent.
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  // "compact" is the web mock's channel-detail disclosure: a card-coloured section with a 13px
+  // title, a 12px hint and tighter padding. "default" keeps the larger settings-page header.
+  size?: "default" | "compact";
   children: ReactNode;
   className?: string;
 }

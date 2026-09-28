@@ -75,8 +75,9 @@ const InfoScreen = () => {
           collapsed disclosure rather than a top-level "Advanced" tab. A viewer never sees it. */}
       {isAdmin && (
         <CollapsibleSection
+          size="compact"
           title="Diagnostics"
-          description="How this channel is being built right now, relaxations applied and its Tunarr link."
+          description="Technical details about how Loomarr builds this channel."
         >
           <ChannelAdvanced channel={ch} onPolicyChange={savePolicy} />
         </CollapsibleSection>
