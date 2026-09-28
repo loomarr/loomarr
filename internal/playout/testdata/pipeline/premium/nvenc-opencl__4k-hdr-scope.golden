@@ -34,7 +34,7 @@ cuda
 -frames:v
 753
 -vf
-hwdownload,format=nv12,libplacebo=format=p010le:colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv,hwupload_cuda,scale_cuda=w=3840:h=2160:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010le,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left
+scale_cuda=w=3840:h=2160:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010le,hwdownload,format=p010le,pad=3840:2160:-1:-1,hwupload_cuda,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left
 -c:v
 hevc_nvenc
 -preset
@@ -82,4 +82,4 @@ mpegts
 -muxpreload
 0
 pipe:1
-# fallbacks: hdr: libplacebo converts SDR to HDR10 through system memory
+# fallbacks: pad: pad_cuda takes 8-bit frames only: the 10-bit letterbox is added on the CPU at output size
