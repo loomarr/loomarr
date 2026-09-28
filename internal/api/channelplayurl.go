@@ -188,11 +188,17 @@ func (s *Server) channelPlayURL(ctx context.Context, in *playURLInput) (*playURL
 			"Loomarr's playout secret isn't set up yet, so channels can't be watched.")
 	}
 
+	// Who this URL is for, so household viewing can attribute its playlist polls (#1662).
+	var viewerTag string
+	if viewer, ok := s.viewerOf(ctx); ok {
+		viewerTag = signViewerTag(playoutToken, ch.ID, viewer)
+	}
+
 	out := &playURLOutput{}
 	// Absolute may be empty (public_url unset) — that only strands NATIVE clients, and the message
 	// for them is different (set the public address), so it is not an error for the web player.
-	out.Body.URL = s.playoutHLSURLWithKey(playoutToken, ch.ID, quality, plan, exp)
-	out.Body.RelativeURL = rel
+	out.Body.URL = withViewerTag(s.playoutHLSURLWithKey(playoutToken, ch.ID, quality, plan, exp), viewerTag)
+	out.Body.RelativeURL = withViewerTag(rel, viewerTag)
 	out.Body.RelativeStillURL = s.playoutStillPathURLWithKey(playoutToken, ch.ID, plan, exp)
 	if base := s.playoutBaseURL(); base != "" && out.Body.RelativeStillURL != "" {
 		out.Body.StillURL = base + out.Body.RelativeStillURL

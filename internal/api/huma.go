@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
+	"github.com/loomarr/loomarr/internal/viewing"
 )
 
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
@@ -124,6 +125,9 @@ type Server struct {
 	// now is an optional request-clock seam for projections whose membership is time-bounded.
 	// Production leaves it nil and uses time.Now; tests pin it to prove exact cutoff behaviour.
 	now func() time.Time
+	// viewing is who is watching what, from the players' own playlist polls (#1662). Always set
+	// by Router; nil only on the schema-only exporter.
+	viewing *viewing.Tracker
 	// sso wires /v1/auth/sso/* — the OIDC credential path (§11, V8). nil ⇒ the routes are
 	// NOT MOUNTED, which is the honest posture for an unconfigured provider: a
 	// sign-in-with button that 501s is worse than one that is not offered.
