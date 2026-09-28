@@ -130,7 +130,7 @@ test.describe("operator first-run wizard", () => {
     backend.state.edits["setup.completed"] = "true";
 
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Channels" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Home", level: 1 })).toBeVisible();
   });
 
   test("an unfinished setup sends the operator back into the wizard", async ({ page }) => {

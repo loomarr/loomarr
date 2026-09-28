@@ -29,8 +29,7 @@ import type { AppShellProps, NavItem } from "./app-shell.type";
 // filter cannot rename, so the shape of the old code made the right IA inexpressible.
 const ADMIN_NAV: NavItem[] = [
   // Home leads the admin rail, named and drawn as in the #1659 web mock (its screen id is still
-  // `dashboard`, and so is the route, so bookmarks keep working). Members do not get it yet: its
-  // content is machine state, which §11 keeps to admins, until the member Home is built.
+  // `dashboard`, and so is the route, so bookmarks keep working).
   { to: "/dashboard", label: "Home", icon: House },
   // Guide IS the channels surface (headed "Channels"): "what do I have" and "what is on" are
   // one grid. The fold completed when the grid grew the origination affordance the mock always
@@ -55,7 +54,11 @@ const ADMIN_NAV: NavItem[] = [
 // app, so a member who cannot reach it cannot ask for anything). Listing it again here would
 // be a second link to /guide: a duplicate React key and two entries highlighting active at
 // once, not an IA choice. The verb lives on the surface it acts on.
+//
+// Home leads it too (#1659): the member Home carries no machine state, which is what §11 kept
+// from members.
 const MEMBER_NAV: NavItem[] = [
+  { to: "/dashboard", label: "Home", icon: House },
   { to: "/guide", label: "Guide", icon: CalendarClock },
   { to: "/requests", label: "Requests", icon: LayoutGrid },
   { to: "/settings/notifications", label: "Notifications", icon: Settings },

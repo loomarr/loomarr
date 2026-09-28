@@ -29,6 +29,9 @@ interface ProgrammeCardProps {
   focused?: boolean;
   // Outlines the card in the focus amber: the viewer's own card in Watching now.
   highlighted?: boolean;
+  // Outlines the card in the focus amber under the pointer, for a card that is a link (the web
+  // mock's hover on Watching now). Keyboard focus keeps the link's own ring.
+  hoverHighlight?: boolean;
   layout?: ProgrammeCardLayout;
   programme: ProgrammeCardData;
   viewer?: ProgrammeCardViewer;
