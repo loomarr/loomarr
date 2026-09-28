@@ -1005,6 +1005,10 @@ components:
           description: Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount
           format: int64
           type: integer
+        createdAtMs:
+          description: When the channel was created (Unix ms); absent for an older channel no approval dates
+          format: int64
+          type: integer
         group:
           examples:
             - Kids
@@ -1050,6 +1054,9 @@ components:
           description: Real playable programs (available titles) in the desired lineup
           format: int64
           type: integer
+        requestedBy:
+          description: Name of the person whose request made this channel; absent for a hand-made channel
+          type: string
         revision:
           description: Optimistic-concurrency revision. Send this value with PATCH; a stale edit is rejected instead of overwriting a newer channel definition.
           format: int64
@@ -10725,6 +10732,21 @@ components:
         - serverNowMs
         - airings
       type: object
+    TitleChannelDTO:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        number:
+          format: int64
+          type: integer
+      required:
+        - id
+        - name
+        - number
+      type: object
     TitleDTO:
       additionalProperties: false
       properties:
@@ -10735,6 +10757,15 @@ components:
           format: uri
           readOnly: true
           type: string
+        availableAtMs:
+          description: When the library confirmed this acquired title (Unix ms); absent if it was already in the library
+          format: int64
+          type: integer
+        channels:
+          description: Channels whose lineup holds this title, by number (detached channels excluded)
+          items:
+            $ref: "#/components/schemas/TitleChannelDTO"
+          type: array
         downloadStatus:
           description: Download-client status (downloading/warning/stalled/…)
           type: string
@@ -17348,6 +17379,15 @@ paths:
               - available
               - unavailable
             type: string
+        - description: Unix ms. Lists the titles that arrived at or after this time, newest first (Home's New this week). state may be omitted or 'available'.
+          explode: false
+          in: query
+          name: since
+          schema:
+            description: Unix ms. Lists the titles that arrived at or after this time, newest first (Home's New this week). state may be omitted or 'available'.
+            format: int64
+            minimum: 0
+            type: integer
       responses:
         "200":
           content:
