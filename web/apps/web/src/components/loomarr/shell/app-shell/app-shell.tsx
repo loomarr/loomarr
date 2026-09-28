@@ -3,7 +3,7 @@ import {
   BadgeInfo,
   CalendarClock,
   Clapperboard,
-  LayoutDashboard,
+  House,
   LayoutGrid,
   ListChecks,
   LogOut,
@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { BrandLockup } from "../brand-lockup";
 import type { AppShellProps, NavItem } from "./app-shell.type";
 
@@ -27,11 +28,10 @@ import type { AppShellProps, NavItem } from "./app-shell.type";
 // for them: `/suggest` was "Request a channel", `/settings/notifications` is "Notifications". A
 // filter cannot rename, so the shape of the old code made the right IA inexpressible.
 const ADMIN_NAV: NavItem[] = [
-  // Dashboard leads the admin rail, matching the v2 mock. It was deferred while it did not
-  // exist ("a nav entry to a placeholder is worse than no entry", §12) — V16 built the
-  // surface, so the entry is now a door rather than a promise. Members do not get it: its
-  // content is machine state, which §11 keeps to admins.
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  // Home leads the admin rail, named and drawn as in the #1659 web mock (its screen id is still
+  // `dashboard`, and so is the route, so bookmarks keep working). Members do not get it yet: its
+  // content is machine state, which §11 keeps to admins, until the member Home is built.
+  { to: "/dashboard", label: "Home", icon: House },
   // Guide IS the channels surface (headed "Channels"): "what do I have" and "what is on" are
   // one grid. The fold completed when the grid grew the origination affordance the mock always
   // specified — `✦ Add a channel` in its header — so `/channels` and `/suggest` are now
@@ -92,11 +92,14 @@ const AppShell = ({
           type="button"
           onClick={onOpenCommand}
           aria-label="Open global search"
+          aria-keyshortcuts={commandShortcutAria()}
           className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-input px-2 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent md:justify-start md:px-3"
         >
           <Search className="size-4" aria-hidden />
           <span className="sr-only md:not-sr-only">Search…</span>
-          <kbd className="ml-auto hidden font-mono text-static-400 text-xs md:inline">⌘K</kbd>
+          <kbd className="ml-auto hidden font-mono text-static-400 text-xs md:inline">
+            {commandShortcutLabel()}
+          </kbd>
         </button>
 
         {(isAdmin ? ADMIN_NAV : MEMBER_NAV).map(({ to, label, icon: Icon }) => (
