@@ -32,6 +32,14 @@ func (c *countingCycle) CyclePreview(context.Context, string, time.Time) (
 	return time.Time{}, c.slots, schedule.ActiveRuleAttribution{}, c.window, nil
 }
 
+func (c *countingCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
+	return c.window, nil
+}
+
+func (c *countingCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
+	return true, nil
+}
+
 func (c *countingCycle) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -197,14 +205,14 @@ func TestCycleCache_EntryExpiresAfterTTL(t *testing.T) {
 	if !ok {
 		t.Fatal("fingerprint failed on an empty channel")
 	}
-	c.put(key, now, []schedule.Slot{{Kind: schedule.SlotProgram}}, 24*time.Hour)
+	c.put(key, now, nil, []schedule.Slot{{Kind: schedule.SlotProgram}}, 24*time.Hour)
 
-	if _, _, hit := c.get(key, now); !hit {
+	if _, _, hit := c.get(key, now, nil); !hit {
 		t.Fatal("fresh entry missed")
 	}
 	stored := now
 	now = now.Add(cycleCacheTTL + time.Second)
-	if _, _, hit := c.get(key, stored); hit {
+	if _, _, hit := c.get(key, stored, nil); hit {
 		t.Fatal("entry survived its TTL — availability/settings staleness is now unbounded")
 	}
 }

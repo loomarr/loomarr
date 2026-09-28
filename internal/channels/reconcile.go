@@ -248,8 +248,8 @@ func (e *Engine) reconcileOnce(
 	// from its own clock and has no way to be told where a window starts.
 	turnAnchor := ch.PlayoutAnchor
 	if playsInternally {
-		window := schedule.ResolveWindow(chDomain, ch.Policy, e.now())
-		chDomain.WindowOpened, turnAnchor, _ = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, chDomain.WindowZone, e.now())
+		window, zone := e.RollingWindow(ch.Policy, e.now())
+		chDomain.WindowOpened, turnAnchor, _ = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, e.now())
 	}
 	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, e.now())
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)

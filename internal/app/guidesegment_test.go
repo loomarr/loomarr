@@ -20,6 +20,15 @@ type rotatingCycle struct {
 	askedAt           []time.Time
 	window            time.Duration
 	programmeDuration time.Duration
+	tunarr            bool // the channel cannot carry over (CarriesOver = false)
+}
+
+func (c *rotatingCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
+	return c.window, nil
+}
+
+func (c *rotatingCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
+	return !c.tunarr, nil
 }
 
 func (c *rotatingCycle) CyclePreview(_ context.Context, _ string, at time.Time) (
@@ -88,14 +97,16 @@ func TestSegmentedBroadcasts_ReResolvesAtEachWindowBoundary(t *testing.T) {
 	}
 }
 
-// A rolling-window boundary changes which arranged cycle is authoritative. Programme times at
-// each edge come from cycle arithmetic and can extend across that boundary when runtime and window
-// length are not aligned. Concatenating those full edges makes two different programmes occupy the
-// same wall-clock time in the Guide even though only one cycle can be authoritative there.
-func TestSegmentedBroadcasts_ClipsAdjacentCyclesAtWindowBoundary(t *testing.T) {
+// A channel that cannot carry over (Tunarr-backed: it loops the list it was given from its own
+// clock) really does swap arrangements on the rolling-window boundary. Programme times at each edge
+// come from cycle arithmetic and can extend across that boundary when runtime and window length are
+// not aligned. Concatenating those full edges makes two different programmes occupy the same
+// wall-clock time in the Guide even though only one cycle can be authoritative there. (With
+// carry-over there is no cut to show: TestGuide_ProgrammeCrossingTheWindowBoundaryAirsWhole.)
+func TestSegmentedBroadcasts_ClipsAdjacentCyclesAtWindowBoundaryWithoutCarryOver(t *testing.T) {
 	t.Parallel()
 	window := time.Hour
-	eng := &rotatingCycle{window: window, programmeDuration: 90 * time.Minute}
+	eng := &rotatingCycle{window: window, programmeDuration: 90 * time.Minute, tunarr: true}
 	boundary := time.Date(2026, time.August, 15, 1, 0, 0, 0, time.UTC)
 	accepted := &stubChannels{}
 	accepted.ch.ID = "ch1"
@@ -171,6 +182,8 @@ func TestSegmentedBroadcasts_CurrentWindowUsesThePersistedAcceptedCycle(t *testi
 		Kind: schedule.SlotProgram, Key: provision.Key("movie:tmdb:accepted"),
 		Title: "accepted broadcast", LibraryItemID: "accepted", DurationMs: (24 * time.Hour).Milliseconds(),
 	}}
+	// Accepted for the window on air: reconcile moves the anchor to where each window starts.
+	accepted.ch.PlayoutAnchor = now.Truncate(24 * time.Hour)
 	r := &playoutResolver{engine: eng, channels: accepted, now: func() time.Time { return now }}
 
 	from := now.Add(-time.Hour)

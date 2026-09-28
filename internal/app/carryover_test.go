@@ -29,7 +29,7 @@ func (d *windowDecks) CyclePreview(_ context.Context, _ string, at time.Time) (
 	time.Time, []schedule.Slot, schedule.ActiveRuleAttribution, time.Duration, error,
 ) {
 	d.asked = append(d.asked, at)
-	opened := schedule.WindowStart(at, d.window)
+	opened := schedule.WindowStart(at, d.window, nil)
 	var slots []schedule.Slot
 	for ep := 1; ep <= 3; ep++ {
 		id := fmt.Sprintf("%s-e%d", opened.Format("15h"), ep)
@@ -39,6 +39,14 @@ func (d *windowDecks) CyclePreview(_ context.Context, _ string, at time.Time) (
 		})
 	}
 	return at, slots, schedule.ActiveRuleAttribution{}, d.window, nil
+}
+
+func (d *windowDecks) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
+	return d.window, nil
+}
+
+func (d *windowDecks) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
+	return true, nil
 }
 
 // carryOverResolver has window 00:00–01:00 committed: its slice, walked from the anchor 00:00.
@@ -90,7 +98,7 @@ func TestAiringAt_CarriesTheCrossingProgrammeOverTheBoundary(t *testing.T) {
 		{at: 66*time.Minute + time.Second, want: "01h-e1", wantOffset: time.Second},
 	} {
 		r, w0 := carryOverResolver(w0At(tc.at))
-		slots, epoch, err := r.acceptedCycle(context.Background(), "ch1")
+		slots, epoch, err := r.acceptedCycle(context.Background(), "ch1", w0.Add(tc.at))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -10,6 +10,7 @@ package channels
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -723,6 +724,26 @@ func (s *storeAvailability) memoEpisodes(libraryID string, resolution schedule.E
 	s.mu.Lock()
 	s.epsMemo[libraryID] = memoEntry[schedule.EpisodeResolution]{val: resolution, exp: now.Add(memoTTL)}
 	s.mu.Unlock()
+}
+
+// RollingWindow is the rolling-window length a channel with this policy resolves to at `at` (rule
+// > channel > the live default), and the wall clock its grid is laid on: exactly what reconcile
+// resolves. Pure and cheap, so the playout resolver can apply the window turn (#1675) on every
+// airing lookup without arranging a cycle.
+func (e *Engine) RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location) {
+	return schedule.ResolveWindow(schedule.Channel{DefaultWindow: e.defaultWindowFor()}, policy, at), e.windowZoneFor()
+}
+
+// CarriesOver reports whether the channel's rolling window turns with carry-over (#1675), which
+// only internal playout can do: it walks the accepted cycle from an anchor reconcile moves.
+// Tunarr loops the list it was given from its own clock and cannot be told where a window
+// starts. The backend is resolved as reconcile resolves it, so both agree on which channels turn.
+func (e *Engine) CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error) {
+	backend, err := e.playoutBackendFor(ctx)
+	if err != nil {
+		return false, fmt.Errorf("resolve playout backend: %w", err)
+	}
+	return schedule.PlaysInternally(policy, backend), nil
 }
 
 // lastAiredFor loads the channel's airing history for recency-aware placement (§3.1), as of the
