@@ -188,15 +188,22 @@ why it is corrected in place rather than quietly rewritten.
 
 ## Open redistribution review — beta blockers
 
-This notice is an inventory, not release clearance. The following engineering evidence remains
-required on the beta.5 release commit. Release engineering must bind the exact corresponding source
-to the actual shipped artifacts and document source distribution mechanics for that image using the
-public source record above:
+This notice is an inventory, not release clearance. The following engineering evidence is
+required on every release commit, first enforced for v0.2.0-beta.8. Release engineering must bind
+the exact corresponding source to the actual shipped artifacts and
+document source distribution mechanics for that image using the public source record above:
 
-- verify the final candidate uses the exact pinned FFmpeg, ffprobe and yt-dlp binaries tied to the
-  published source materials, and record the unchanged full `make test-ffmpeg` gate on that commit;
-- verify both release-platform images retain the referenced notices/license texts and bind their
-  image digests and SBOM/provenance to the exact release source;
+- ~~verify the final candidate uses the exact pinned FFmpeg, ffprobe and yt-dlp binaries tied to the
+  published source materials, and record the unchanged full `make test-ffmpeg` gate on that commit~~
+  (enforced, #661: the image build admits the FFmpeg archive and both yt-dlp executables only by
+  their SHA256 pins, and on the release-candidate run each native amd64/arm64 image build runs the
+  unchanged `make test-ffmpeg` against the `ffmpeg`/`ffprobe` copied out of that image;
+  `release.yml` refuses a tag whose candidate run did not pass both);
+- ~~verify both release-platform images retain the referenced notices/license texts and bind their
+  image digests and SBOM/provenance to the exact release source~~ (enforced, #661: the same image
+  builds compare the packaged `LICENSE` and this file with the tagged source, and the publish helper
+  refuses to sign an index unless both platform images carry a non-empty SPDX SBOM and a build
+  provenance naming this repository at the tagged commit);
 - ~~pin the runtime and build base images by digest~~ (done — all four `FROM` bases in
   [`Dockerfile`](Dockerfile) carry an immutable `@sha256:` alongside their tag) ~~and make the Debian
   package input reproducible~~ (done — the runtime stage repoints apt at a fixed
@@ -211,7 +218,9 @@ public source record above:
 - ~~inspect and include any required Prometheus `NOTICE` material~~ (done — the upstream NOTICE is
   reproduced above); and
 - verify the final application release notes and image notices point to the public source location
-  above. Source distribution is published; the exact application release binding remains pending.
+  above. Source distribution is published, and the image notices name it. The release notes are
+  written per release and checked by hand (`docs/contributing/releasing.md`); the
+  v0.2.0-beta.8 candidates' notes link both source releases.
 
 For beta.5, the maintainer removed the separate qualified legal/NOTICE reviewer sign-off requirement.
 Release engineering owns the evidence above; an external reviewer or legal opinion is not a release

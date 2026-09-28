@@ -62,7 +62,7 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 | Frontend units | `make fe` | Components and domain logic | CI |
 | Visual + a11y | `make fe-visual` | Every story, two viewports, pixel + axe | CI |
 | e2e | `make e2e` | The embedded SPA through first-run | CI |
-| ffmpeg | `make test-ffmpeg` | Programs sequence through real ffmpeg | manual |
+| ffmpeg | `make test-ffmpeg` | Programs sequence through real ffmpeg | CI (image builds, against the image's own ffmpeg) |
 | LLM eval | `make eval` | Real intents against a real model | manual |
 | LLM certification | `make eval-cert` | Exact starter/adversarial corpus executed with a versioned scorecard | release/manual |
 | LLM matrix | `make eval-matrix` | Same corpus on local and OpenRouter generation, judged through OpenRouter | release/manual |

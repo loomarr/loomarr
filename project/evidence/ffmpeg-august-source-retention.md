@@ -100,7 +100,11 @@ and sizes match the local publication. Public README, checksums and inventory do
 verified without authentication. Supplemental optional/build/test sources do not assert linkage.
 
 The unchanged full `make test-ffmpeg` passed for Linux amd64 and arm64 using source-pin commit
-`c4c8b6a4` and the exact August archives. Final release-commit, image notice and SBOM checks remain,
-as does binding the application image to these public sources in the application release notes.
+`c4c8b6a4` and the exact August archives. Since #661 (2026-09-28), the release-commit checks are
+enforced on every release rather than recorded once: the release-candidate image builds run the
+unchanged `make test-ffmpeg` against the `ffmpeg`/`ffprobe` copied out of each native amd64/arm64
+image and compare the packaged notices with the tagged source, and publication refuses an index
+without per-platform SBOM and provenance naming the tagged commit. The application release notes
+bind the image to these public sources by hand (the v0.2.0-beta.8 candidates' notes link both).
 The source-only release publishes no application binary and does not certify beta.5. No separate
 external reviewer sign-off is required.

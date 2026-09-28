@@ -74,7 +74,10 @@ gh workflow run ci.yml --repo loomarr/loomarr --ref main -f scope=release-candid
 ```
 
 That scope runs repository contracts, real-codec image-worker certification, and the native amd64
-and arm64 image builds. It deliberately leaves unrelated platform and UI matrices to their normal
+and arm64 image builds. Each image build also compares the packaged `LICENSE` and
+`THIRD_PARTY_NOTICES.md` with the tagged source, then runs the unchanged `make test-ffmpeg` gate
+against the `ffmpeg` and `ffprobe` copied out of that image (#661). That ties the gate to the exact
+bytes the published GPL source releases correspond to. It deliberately leaves unrelated platform and UI matrices to their normal
 change-based CI. A normal push run or `-f scope=full` run is never accepted as Docker-release
 evidence, even when green, because neither proves that publication is isolated from those unrelated
 jobs. Use `-f scope=full` only when a complete manual rerun is independently required.
@@ -83,8 +86,12 @@ Both release workflows start from the tag. If OpenRouter is temporarily unavaila
 failed **Release notes** workflow after service recovers; the separately hardened image publication
 is unaffected.
 
-After both workflows finish, verify the GitHub Release body, the GHCR manifest, signature, SBOM, and
-provenance against the tagged commit. The tag-specific header remains the place to state limitations
+Before signing, the publish helper (`scripts/publish-release-image.sh`) refuses an image index unless
+both platform images carry a non-empty SPDX SBOM and a build provenance whose every recorded source
+revision is the tagged commit of this repository. After both workflows finish, verify the GitHub
+Release body (including its links to the third-party source releases named in
+`THIRD_PARTY_NOTICES.md`), the GHCR manifest, signature, SBOM, and provenance against the tagged
+commit. The tag-specific header remains the place to state limitations
 that cannot be derived from pull requests.
 
 ## Image-worker certification
