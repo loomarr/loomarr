@@ -226,8 +226,8 @@ const Row = memo(
         borderWidth={0}
         flexDirection="row"
         height={ROW + 1}
-        // A channel that is off the air recedes, as in the mock.
-        opacity={broadcast === "off" ? 0.55 : 1}
+        // No fade for a channel that is off the air, unlike the mock: at the mock's 0.55 its text
+        // fails WCAG contrast (2.4-3.8:1, #1705). The grey dot and the "Paused" chip mark it.
       >
         <Surface
           alignItems="center"
