@@ -80,7 +80,7 @@ test("offline temporal reviewer completes by keyboard, resumes, navigates, contr
   };
   const templatePath = path.resolve(
     testInfo.config.rootDir,
-    "../../../../../internal/fillerreview/temporal_reviewer_template.go",
+    "../../../../../research/internal/fillerreview/temporal_reviewer_template.go",
   );
   const templateSource = await readFile(templatePath, "utf8");
   const templateStart = templateSource.indexOf("`<!doctype html>");

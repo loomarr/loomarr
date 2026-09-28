@@ -140,7 +140,7 @@ filler-corpus-commons	internal/fillercorpus/corpus/pilot/commons.json	contracts,
 filler-corpus-locked	internal/fillercorpus/corpus/pilot/locked.json	contracts,go
 installation-location-data	internal/installationlocation/places.tsv.gz;internal/installationlocation/ip-country.csv.gz;internal/installationlocation/location-data.generated.json	contracts,go,image
 filler-pilot-review	internal/fillercorpus/pilotreview.go	contracts,go,postgres,image
-filler-pilot-review-command	cmd/filler-corpus-pilot-rights-review/main.go;cmd/filler-corpus-pilot-rights-lock/main.go	contracts,go,postgres,image
+research-archive	research/cmd/filler-corpus-pilot-rights-review/main.go;research/internal/fillerreview/temporal_reviewer_template.go;research/go.mod	docs
 filler-eval-doc	internal/fillereval/README.md	docs
 ci-ffmpeg-toolchain	scripts/ci-ffmpeg.sh	contracts,go,go_full,policy
 go-race-sharding	scripts/go-certification-lanes.tsv;scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-test-lane.sh;scripts/go-test-packages.sh	contracts,go,go_full,policy
