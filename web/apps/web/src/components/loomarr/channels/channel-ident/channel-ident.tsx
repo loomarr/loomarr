@@ -1,3 +1,4 @@
+import { channelIdentHue, monogramOf } from "@loomarr/core/guide";
 import { cn } from "@/lib/utils";
 import type { ChannelIdentProps } from "./channel-ident.type";
 
@@ -15,37 +16,10 @@ import type { ChannelIdentProps } from "./channel-ident.type";
 // deliberate mark rather than a flat coloured square.
 const HATCH = "repeating-linear-gradient(135deg,transparent 0 3px,rgb(255 255 255/0.05) 3px 6px)";
 
-// The palette monograms cycle through. Drawn from the design tokens rather than invented, so
-// the rail stays inside the product's colour language however many channels exist.
-const IDENT_COLORS = [
-  "var(--color-tune)",
-  "var(--color-suggest)",
-  "var(--color-signal)",
-  "var(--color-onair)",
-  "var(--color-tune)",
-] as const;
-
-// monogramOf takes the initials of the first two significant words — "1980s Action Heroes" →
-// "AH", "Springfield Classics" → "SC". Leading numbers are skipped: a channel named "90s
-// Action" should read "9A" at best, and "AC" is more recognisable than a digit pair.
-const monogramOf = (name: string): string => {
-  const words = name
-    .split(/[\s—–-]+/)
-    .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
-    .filter(Boolean);
-  const alpha = words.filter((w) => /^\p{L}/u.test(w));
-  const source = alpha.length > 0 ? alpha : words;
-  const [first, second] = source;
-  // "CH" rather than empty: a channel named only with punctuation still needs a mark, and a
-  // blank square reads as a failed image load.
-  if (!first) return "CH";
-  if (!second) return first.slice(0, 2).toUpperCase();
-  return ((first[0] ?? "") + (second[0] ?? "")).toUpperCase();
-};
-
-// Colour is keyed on the channel NUMBER, so a channel keeps its colour as long as its number
-// is stable — renaming it does not change how the rail looks.
-const colorFor = (num: number) => IDENT_COLORS[Math.abs(num) % IDENT_COLORS.length] ?? IDENT_COLORS[0];
+// The letters and the hue come from `@loomarr/core/guide` (#1659, N8), so the shared guide grid
+// and native draw the same mark. Colour is keyed on the channel NUMBER, so renaming a channel
+// does not change how the rail looks.
+const colorFor = (num: number) => `var(--color-${channelIdentHue(num)})`;
 
 const ChannelIdent = ({ name, number, logo, size = 30, className }: ChannelIdentProps) => {
   if (logo) {

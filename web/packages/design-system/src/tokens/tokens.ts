@@ -54,6 +54,22 @@ const semanticThemes = {
       scrimStrong: "rgba(11, 12, 14, 0.92)",
       progressTrack: "rgba(255, 255, 255, 0.15)",
     },
+    // The web mock's time grid (#1659): the row rule, an ordinary block's left accent, the dashed
+    // pending block, the break wash and the per-clip segments inside it.
+    guide: {
+      rowRule: "rgba(42, 46, 55, 0.6)",
+      blockAccent: "#3A3F49",
+      pendingFill: "rgba(76, 201, 232, 0.08)",
+      pendingBorder: "rgba(76, 201, 232, 0.4)",
+      breakFill: "rgba(255, 176, 32, 0.3)",
+      clipSignal: "rgba(255, 176, 32, 0.4)",
+      clipTune: "rgba(76, 201, 232, 0.4)",
+      clipSuggest: "rgba(214, 64, 159, 0.4)",
+      clipPlain: "#2A2E37",
+      // The rail's on-air and reconciling dots (the brand onair red, and the lighter queued amber).
+      onAir: "#E5484D",
+      reconciling: "#FFC14D",
+    },
   },
   light: {
     surface: {
@@ -103,6 +119,21 @@ const semanticThemes = {
       scrim: "rgba(11, 12, 14, 0.58)",
       scrimStrong: "rgba(11, 12, 14, 0.92)",
       progressTrack: "rgba(255, 255, 255, 0.15)",
+    },
+    // The light guide has no mock: each tint is the light theme's own hue at the dark mock's alpha,
+    // the way `border.airing` and `stateSurface.airing` already are.
+    guide: {
+      rowRule: "rgba(210, 214, 222, 0.6)",
+      blockAccent: "#747C8B",
+      pendingFill: "rgba(8, 101, 122, 0.08)",
+      pendingBorder: "rgba(8, 101, 122, 0.4)",
+      breakFill: "rgba(121, 80, 0, 0.3)",
+      clipSignal: "rgba(121, 80, 0, 0.4)",
+      clipTune: "rgba(8, 101, 122, 0.4)",
+      clipSuggest: "rgba(214, 64, 159, 0.4)",
+      clipPlain: "#D2D6DE",
+      onAir: "#E5484D",
+      reconciling: "#FFC14D",
     },
   },
 } as const;
@@ -192,6 +223,15 @@ const typography = {
     cardChannelNumber: { size: 12, lineHeight: 16, weight: "600" },
     cardTime: { size: 12, lineHeight: 16, weight: "400" },
     cardInitials: { size: 11, lineHeight: 14, weight: "500" },
+    // The web mock's time grid (#1659). Touch and TV take the nearest existing role's size
+    // (meta, label and clip → metadata; number → headline), as the card roles do.
+    guideMeta: { size: 11, lineHeight: 14, weight: "400" },
+    guideLabel: { size: 11, lineHeight: 14, weight: "400" },
+    guideNumber: { size: 20, lineHeight: 20, weight: "600" },
+    guideClip: { size: 11, lineHeight: 14, weight: "400" },
+    guideIdent: { size: 11, lineHeight: 14, weight: "600" },
+    // The now-line's time pill sets its text solid (line-height 1), as the mock does.
+    guideNow: { size: 11, lineHeight: 11, weight: "400" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -214,6 +254,12 @@ const typography = {
     cardChannelNumber: { size: 13, lineHeight: 18, weight: "600" },
     cardTime: { size: 13, lineHeight: 18, weight: "400" },
     cardInitials: { size: 13, lineHeight: 18, weight: "500" },
+    guideMeta: { size: 13, lineHeight: 18, weight: "400" },
+    guideLabel: { size: 13, lineHeight: 18, weight: "400" },
+    guideNumber: { size: 22, lineHeight: 22, weight: "600" },
+    guideClip: { size: 13, lineHeight: 18, weight: "400" },
+    guideIdent: { size: 13, lineHeight: 18, weight: "600" },
+    guideNow: { size: 13, lineHeight: 13, weight: "400" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -236,6 +282,12 @@ const typography = {
     cardChannelNumber: { size: 16, lineHeight: 22, weight: "600" },
     cardTime: { size: 16, lineHeight: 22, weight: "400" },
     cardInitials: { size: 16, lineHeight: 22, weight: "500" },
+    guideMeta: { size: 16, lineHeight: 22, weight: "400" },
+    guideLabel: { size: 16, lineHeight: 22, weight: "400" },
+    guideNumber: { size: 30, lineHeight: 30, weight: "600" },
+    guideClip: { size: 16, lineHeight: 22, weight: "400" },
+    guideIdent: { size: 16, lineHeight: 22, weight: "600" },
+    guideNow: { size: 16, lineHeight: 16, weight: "400" },
   },
 } as const;
 

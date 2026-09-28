@@ -54,14 +54,24 @@ const defaultGuideWindow = (at: number): GuideWindow =>
     startHour: null,
   });
 
+// One formatter per zone: constructing an Intl.DateTimeFormat costs ~0.35 ms, and a 100-channel
+// guide asks for hundreds of times on mount (measured on #1705: 143 ms of it before this cache).
+const guideTimeFormatters = new Map<string | undefined, Intl.DateTimeFormat>();
+
 /** Household guide clocks are explicit and consistent across browser, mobile, and TV. */
-const guideTimeFormatter = (timeZone?: string): Intl.DateTimeFormat =>
-  new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    hourCycle: "h12",
-    timeZone,
-  });
+const guideTimeFormatter = (timeZone?: string): Intl.DateTimeFormat => {
+  let formatter = guideTimeFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hourCycle: "h12",
+      timeZone,
+    });
+    guideTimeFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+};
 
 const formatGuideTime = (at: number, timeZone?: string): string => guideTimeFormatter(timeZone).format(at);
 

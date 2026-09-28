@@ -14,7 +14,8 @@
   "dependencies": {
     "@loomarr/core": "workspace:*",
     "@loomarr/design-system": "workspace:*",
-    "@loomarr/player": "workspace:*"
+    "@loomarr/player": "workspace:*",
+    "@tanstack/react-virtual": "3.14.10"
   },
   "peerDependencies": {
     "react": ">=19 <20",
