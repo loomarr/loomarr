@@ -28,7 +28,8 @@ interface NavTab {
   count?: number;
   /**
    * Tints the count pill (`suggest`) while the count is above zero: this tab holds work that is
-   * waiting on the viewer. Only the underline variant draws it — the v2 mock's Queue bar does.
+   * waiting on the viewer. Both variants draw it (the v2 mock's Queue bar, and the #1659 web
+   * mock's pills, where it outranks the active tab's own count colour).
    */
   attention?: boolean;
 }

@@ -79,7 +79,9 @@ const NavTabs = ({
                       : "border-transparent text-muted-foreground",
                   )
                 : cn(
-                    "rounded-md px-3 py-1.5 text-muted-foreground text-sm hover:bg-accent hover:text-foreground",
+                    // The #1659 web mock's pill: 13 px at the browser's normal line height (29 px
+                    // tall, not the body's 1.5), and hover changes the colour only.
+                    "rounded-md px-3 py-1.5 text-[13px] text-muted-foreground leading-[normal] hover:text-foreground",
                     active && "bg-signal-tint-15 font-medium text-signal",
                   ),
             )}
@@ -99,9 +101,13 @@ const NavTabs = ({
                     ? tab.attention && tab.count > 0
                       ? "bg-suggest-tint-15 px-[7px] text-suggest-300"
                       : "bg-static-800 px-[7px] text-static-400"
-                    : active
-                      ? "bg-background text-signal"
-                      : "bg-static-800 text-static-400",
+                    : // Waiting work outranks "you are here" (#1659 web mock): Needs you keeps its pink
+                      // count while selected, so the number still reads as work to do.
+                      tab.attention && tab.count > 0
+                      ? "bg-suggest-tint-15 text-suggest-300"
+                      : active
+                        ? "bg-background text-signal"
+                        : "bg-static-800 text-static-400",
                 )}
               >
                 {tab.count}
