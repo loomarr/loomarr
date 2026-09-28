@@ -252,4 +252,4 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
   );
 };
 
-export { ChannelIdeas, IdeaCard, ideaReason };
+export { ChannelIdeas, ideaReason };
