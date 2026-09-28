@@ -137,6 +137,9 @@ type PoolReport struct {
 	// AI-tagging work list reads the same predicate); recomputing it in Go here would be a
 	// second definition of the word, free to drift from the job that acts on it.
 	Untagged int
+	// Bookends is the catalog's bumpers and station IDs: the clips a pod opens and closes on
+	// (Clip.IsBumper, what pod assembly picks from). Zero with live channels is a role gap (#749).
+	Bookends int
 	// Channels is per-live-channel coverage, worst first, so the strip's diagnosis line can
 	// name a channel without the caller sorting. Empty on an install with no live channels —
 	// which is a real state (a fresh install), not a missing answer.

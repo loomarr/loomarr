@@ -18,7 +18,7 @@ func TestPlanAcquisitionFor_GapEraOutranksRepresentationQuality(t *testing.T) {
 		candidate("a", "modern-hd", 2015, 1080, ""),
 		candidate("a", "nineties-sd", 1994, 480, ""),
 	}
-	gaps := []filler.EraRange{{From: 1990, To: 1999}}
+	gaps := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}}
 	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 1}, input, nil, gaps)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestPlanAcquisitionFor_AGapNeverRejectsACandidate(t *testing.T) {
 		candidate("a", "undated", 0, 720, ""),
 	}
 	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 2}, input, nil,
-		[]filler.EraRange{{From: 1990, To: 1999}})
+		filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}, Roles: []filler.Kind{filler.StationID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,10 +90,45 @@ func TestCoverageGapEras_AreTheErasOfChannelsBelowExact(t *testing.T) {
 		channel(filler.MatchWidened), // any era: nothing to steer by
 		channel(filler.MatchWidened, filler.EraRange{From: 2010, To: 2012}),
 	}}
-	got := filler.CoverageGapEras(pool)
-	want := []filler.EraRange{{From: 1990, To: 1999}, {From: 2010, To: 2012}}
+	pool.Bookends = 3
+	got := filler.CoverageGapsFrom(pool)
+	want := filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}, {From: 2010, To: 2012}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("gaps = %+v, want %+v", got, want)
+	}
+}
+
+// A role gap: live channels whose breaks have no bookend, because the catalog holds no bumper or
+// station ID at all. Every pod then opens and closes on the break body alone.
+func TestCoverageGapsFrom_NoBookendIsARoleGap(t *testing.T) {
+	live := filler.PoolReport{Channels: []filler.ChannelCoverage{{Report: filler.CoverageReport{Level: filler.MatchExact}}}}
+	want := []filler.Kind{filler.Bumper, filler.StationID}
+	if got := filler.CoverageGapsFrom(live).Roles; !reflect.DeepEqual(got, want) {
+		t.Fatalf("role gaps with no bookends = %v, want %v", got, want)
+	}
+	live.Bookends = 1
+	if got := filler.CoverageGapsFrom(live).Roles; got != nil {
+		t.Fatalf("role gaps with a bookend = %v, want none", got)
+	}
+	if got := filler.CoverageGapsFrom(filler.PoolReport{}).Roles; got != nil {
+		t.Fatalf("role gaps with no live channel = %v, want none: nothing is airing", got)
+	}
+}
+
+// A bookend role is observed the way intake will classify the file: the explicit role token in
+// its title (KindFromName). A sharper commercial does not fill the gap; the titled ident does.
+func TestPlanAcquisitionFor_RoleGapTakesTitledBookendsFirst(t *testing.T) {
+	ident := candidate("a", "ident", 0, 480, "")
+	ident.Title = "Local station ID loop"
+	spot := candidate("a", "spot", 0, 1080, "")
+	spot.Title = "Soda commercial"
+	plan, err := filler.PlanAcquisitionFor(filler.AcquisitionIntent{Count: 1}, []filler.AcquisitionCandidate{spot, ident}, nil,
+		filler.CoverageGaps{Roles: []filler.Kind{filler.Bumper, filler.StationID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plan.Selected[0]; got.Candidate.Identity.RemoteID != "ident" || got.Gap != "role:station_id" {
+		t.Fatalf("selected %q gap %q, want the ident for role:station_id", got.Candidate.Identity.RemoteID, got.Gap)
 	}
 }
 
@@ -115,8 +150,8 @@ func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 			{ID: "nineties", URL: "https://archive.org/details/nineties", Height: 480, ObservedYear: 1996},
 		},
 	}
-	fetcher := newFetcher(t, stub, limits(1, 2000)).WithCoverageGaps(func(context.Context) ([]filler.EraRange, error) {
-		return []filler.EraRange{{From: 1990, To: 1999}}, nil
+	fetcher := newFetcher(t, stub, limits(1, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
+		return filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}}, nil
 	})
 	if _, err := fetcher.Run(t.Context()); err != nil {
 		t.Fatal(err)
@@ -135,8 +170,8 @@ func TestFetch_UnavailableGapsDegradeToTheUnsteeredPass(t *testing.T) {
 		sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
 		offers:  refs("a", "b"),
 	}
-	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) ([]filler.EraRange, error) {
-		return nil, errors.New("coverage unavailable")
+	fetcher := newFetcher(t, stub, limits(2, 2000)).WithCoverageGaps(func(context.Context) (filler.CoverageGaps, error) {
+		return filler.CoverageGaps{}, errors.New("coverage unavailable")
 	})
 	res, err := fetcher.Run(t.Context())
 	if err != nil {
