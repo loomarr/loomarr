@@ -108,7 +108,7 @@ Upgrading from a release before 0.2.0-beta.8? Those releases encoded programs ah
 `/data/prepared`. Loomarr now encodes only while someone watches and never reads that directory.
 On its first start after the upgrade it removes the encoded media it left there and logs
 `removed the retired prepared-media library` with the bytes reclaimed. Anything else you put in
-that directory stays. If you had moved it with `PLAYOUT_PREPARED_DIR`, delete that directory yourself.
+that directory stays. If you had moved the prepared library somewhere else, delete it there yourself.
 
 If you write your own compose file, **mount `/data`**. Without it the database goes into the
 container's writable layer and is lost on the next `up --force-recreate` or image pull.
