@@ -1,8 +1,11 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
+import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { DRAWER_NOW_PERCENT, drawerChannels } from "@/channels/channel-drawer";
 import { ChannelWatch } from "@/channels/channel-watch";
+import { defaultGuideWindow } from "@/channels/guide-window";
 import { useChannelTuner } from "@/channels/use-channel-tuner";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 import { useChannelDetail } from "./-channel-detail-context";
@@ -12,6 +15,9 @@ import { useChannelDetail } from "./-channel-detail-context";
 // `value` is populated. An unset URL leaves `mediaServerUrl` undefined and the button hides itself
 // rather than doing nothing.
 const FLAVOR_NAMES: Record<string, string> = { emby: "Emby", jellyfin: "Jellyfin" };
+
+// How often the drawer's rows move on: minutes left and the strip's window.
+const NOW_TICK_MS = 30_000;
 
 // WATCH — play the channel live in the browser (§9.1, V46). A VIEWER surface (like Overview): a
 // member reaches it too, so it is not gated on isAdmin here. The channel-level audio/subtitle
@@ -40,6 +46,32 @@ const WatchScreen = () => {
     onTune: tune,
   });
   const tunedChannel = tuner.channel ?? channel;
+
+  // The channels drawer reads the guide window Home and the Guide already share, and the viewer's
+  // favourites and recents (#1666). A star or a settled tune answers with both lists, which replace
+  // the cached ones.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+  const guide = channelsApi.useChannelGuide(defaultGuideWindow(nowMs), {
+    query: { retry: false, placeholderData: keepPreviousData },
+  });
+  const queryClient = useQueryClient();
+  const mine = channelsApi.useMyChannels({ query: { retry: false } });
+  const mineBody = unwrap(mine.data);
+  const storeMine = {
+    onSuccess: (res: unknown) => queryClient.setQueryData(channelsApi.getMyChannelsQueryKey(), res),
+  };
+  const addFavourite = channelsApi.useAddFavouriteChannel({ mutation: storeMine });
+  const removeFavourite = channelsApi.useRemoveFavouriteChannel({ mutation: storeMine });
+  const recordTune = channelsApi.useRecordChannelTune({ mutation: storeMine });
+  const drawerChannelList = useMemo(
+    () => drawerChannels(unwrap(guide.data)?.channels ?? [], nowMs),
+    [guide.data, nowMs],
+  );
+
   return (
     <>
       {/* A visually-hidden heading, same as filler.tsx. The Watch surface labels itself visibly through
@@ -61,8 +93,18 @@ const WatchScreen = () => {
           acknowledging: tuner.acknowledging,
           ready: tuner.ready,
           step: tuner.step,
+          tune: tuner.tune,
           retry: tuner.retry,
         }}
+        drawer={{
+          channels: drawerChannelList,
+          favourites: mineBody?.favourites.map((f) => f.channelId) ?? [],
+          recent: mineBody?.recent.map((r) => r.channelId) ?? [],
+          nowPercent: DRAWER_NOW_PERCENT,
+          onFavourite: (channelId, favourite) =>
+            (favourite ? addFavourite : removeFavourite).mutate({ channelId }),
+        }}
+        onTuneSettled={(channelId) => recordTune.mutate({ channelId })}
       />
     </>
   );

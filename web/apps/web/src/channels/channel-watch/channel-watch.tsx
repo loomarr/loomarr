@@ -7,13 +7,16 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ChannelDrawer, type DrawerChannel } from "@/channels/channel-drawer";
 import { useHlsPlayer } from "@/channels/use-hls-player";
+import { useNumberEntry } from "@/channels/use-number-entry";
 import { TunerLoader } from "@/components/loomarr/shell/tuner-loader";
 import { Button } from "@/components/ui/button";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
+import { cn } from "@/lib/utils";
 import { type SwitchSound, startChannelSwitchSound } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
 import type { TuneAttempt } from "../tuner-timing";
@@ -57,8 +60,20 @@ interface ChannelWatchProps {
     acknowledging?: boolean;
     ready: (channelId: string) => void;
     step: (direction: TuneDirection) => void;
+    tune: (channelId: string) => void;
     retry: () => void;
   };
+  // The channels drawer's data (#1659 W1): every channel read from the guide, and the viewer's own
+  // favourites and recent channels. Also the list a typed number is looked up in.
+  drawer?: {
+    channels: DrawerChannel[];
+    favourites: string[];
+    recent: string[];
+    nowPercent: number;
+    onFavourite: (channelId: string, favourite: boolean) => void;
+  };
+  // A tune has settled on this channel (its first frame played): the viewer's recents record it.
+  onTuneSettled?: (channelId: string) => void;
 }
 
 // withSaved keeps the currently-saved value present in an options list even when the airing does
@@ -124,6 +139,8 @@ const ChannelWatch = ({
   mediaServerName = "your media server",
   mediaServerUrl,
   tuner,
+  drawer,
+  onTuneSettled,
 }: ChannelWatchProps) => {
   const tunerReady = tuner?.ready;
   // The tuner warms this Channel's neighbours once its own manifest has arrived, not before: the
@@ -175,6 +192,15 @@ const ChannelWatch = ({
   useEffect(() => {
     if (player.status === "playing") setHeldFrame(true);
   }, [player.status]);
+
+  // Recents record a tune once it settles, never a warm or a channel surfed past (the API's rule):
+  // once per channel, on its first frame.
+  const settledRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (player.status !== "playing" || settledRef.current === channel.id) return;
+    settledRef.current = channel.id;
+    onTuneSettled?.(channel.id);
+  }, [player.status, channel.id, onTuneSettled]);
 
   const paused = channel.status === "paused" || channel.status === "detached";
 
@@ -320,6 +346,48 @@ const ChannelWatch = ({
   }, [tuning, endSwitchSound]);
   useEffect(() => endSwitchSound, [endSwitchSound]);
 
+  // The channels drawer and 0-9 direct tune (#1659 W1, from the console mock). G opens and closes
+  // the drawer; digits open a number entry; Enter tunes it at once. Closing the drawer hands focus
+  // back to the button that opened it.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerButtonRef = useRef<HTMLButtonElement>(null);
+  const tunerTune = tuner?.tune;
+  const directTune = useCallback((channelId: string) => tunerTune?.(channelId), [tunerTune]);
+  const entry = useNumberEntry({ channels: drawer?.channels ?? [], onTune: directTune });
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    drawerButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+  const onShortcut = (key: string): boolean => {
+    if (!tuner || !drawer) return false;
+    if (entry.press(key)) return true;
+    if (key === "Enter") return entry.commit();
+    if (key === "g" || key === "G") {
+      setDrawerOpen((open) => !open);
+      return true;
+    }
+    return false;
+  };
+
+  // The number readout, top right of the frame (the console mock): the digits so far, dashed out
+  // to the longest channel number, over "ENTER CHANNEL" or, for a number no channel has, "NO SUCH
+  // CHANNEL".
+  const numberReadout = entry.digits ? (
+    <div className="absolute top-14 right-7 text-right" role="status">
+      <div className="font-mono font-semibold text-[52px] text-signal tracking-[.1em] [text-shadow:0_0_18px_rgb(255_176_32/.5)]">
+        {entry.missed ? entry.digits : entry.digits.padEnd(entry.width, "–")}
+      </div>
+      <div
+        className={cn(
+          "animate-pulse font-mono text-[11px] tracking-[.2em]",
+          entry.missed ? "text-onair-300" : "text-signal/65",
+        )}
+      >
+        {entry.missed ? "NO SUCH CHANNEL" : "ENTER CHANNEL"}
+      </div>
+    </div>
+  ) : undefined;
+
   // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
   // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
   // fetched here; the channel identity is what a viewer needs.
@@ -362,6 +430,22 @@ const ChannelWatch = ({
           </Button>
         </fieldset>
       )}
+      {tuner && drawer && (
+        <button
+          ref={drawerButtonRef}
+          type="button"
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen((open) => !open)}
+          className={cn(
+            "flex h-9 shrink-0 items-center gap-[7px] rounded-lg border px-[13px] text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            drawerOpen
+              ? "border-signal/45 bg-signal/15 text-signal"
+              : "border-static-0/14 bg-static-0/6 text-foreground hover:bg-static-0/12",
+          )}
+        >
+          <span aria-hidden>☰</span> Channels
+        </button>
+      )}
       <TrackSelectMenu
         icon={Volume2}
         label="Audio"
@@ -396,15 +480,38 @@ const ChannelWatch = ({
       // The loader's wash covers both (#1620): it drains a held frame on a switch, and a still that
       // lands later arrives already under the snow, so the readout never sits on a picture.
       overlay={
-        tuning ? (
+        tuning || numberReadout ? (
           <>
-            {player.stillURL && (
+            {tuning && player.stillURL && (
               <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
             )}
-            <TunerLoader channel={osdChannel} heldFrame={heldFrame} />
+            {tuning && <TunerLoader channel={osdChannel} heldFrame={heldFrame} />}
+            {numberReadout}
           </>
         ) : undefined
       }
+      panel={
+        drawerOpen && tuner && drawer ? (
+          <ChannelDrawer
+            channels={drawer.channels}
+            tunedId={osdChannel.id}
+            favourites={drawer.favourites}
+            recent={drawer.recent}
+            nowPercent={drawer.nowPercent}
+            onTune={tuner.tune}
+            onFavourite={drawer.onFavourite}
+            onClose={closeDrawer}
+          />
+        ) : undefined
+      }
+      hints={
+        tuner && drawer ? (
+          <p className="hidden justify-center font-mono text-[11px] text-muted-foreground tracking-[.08em] lg:flex">
+            0–9 TUNE DIRECT · ⌃⌄ CHANNEL · SPACE PAUSE · G CHANNELS · M MUTE
+          </p>
+        ) : undefined
+      }
+      onShortcut={onShortcut}
       attach={attach}
       onChannelStep={tuner?.step}
       className="overflow-hidden rounded-xl border border-border bg-black"
