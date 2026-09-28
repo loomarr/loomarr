@@ -3,11 +3,15 @@ package releaseverify
 import (
 	"crypto/sha256"
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -113,6 +117,81 @@ exit 2
 				}
 			}
 		})
+	}
+}
+
+// resetFirstListener resets the first connection it accepts before any TLS byte is exchanged,
+// the way GitHub's release CDN did in merge-group run 36360418631 (`curl: (35) Recv failure:
+// Connection reset by peer`), and hands every later connection to the server.
+type resetFirstListener struct {
+	net.Listener
+	resets atomic.Int32
+}
+
+func (l *resetFirstListener) Accept() (net.Conn, error) {
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil || !l.resets.CompareAndSwap(0, 1) {
+			return conn, err
+		}
+		_ = conn.(*net.TCPConn).SetLinger(0)
+		_ = conn.Close()
+	}
+}
+
+// The download is the only network step in the Go lanes, and one reset used to eject the whole
+// queue batch: curl's `--retry` alone never retries a connection reset. This drives the real curl
+// at a local TLS server through `--connect-to`, so the script's own flags are what gets tested.
+func TestCIFFmpegDownloadRetriesAConnectionReset(t *testing.T) {
+	realCurl, err := exec.LookPath("curl")
+	if err != nil {
+		t.Fatalf("curl is required: %v", err)
+	}
+	const release = "autobuild-2026-07-31-14-10"
+	const buildID = "n8.1.2-34-g9b6c8969e0"
+	const archive = "ffmpeg-" + buildID + "-linux64-gpl-8.1.tar.xz"
+	payload := []byte("pinned archive bytes")
+	var served atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/BtbN/FFmpeg-Builds/releases/download/"+release+"/"+archive {
+			http.NotFound(w, r)
+			return
+		}
+		served.Add(1)
+		_, _ = w.Write(payload)
+	}))
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flaky := &resetFirstListener{Listener: listener}
+	server.Listener = flaky
+	server.StartTLS()
+	t.Cleanup(server.Close)
+
+	root := t.TempDir()
+	_, source, _, _ := runtime.Caller(0)
+	script := filepath.Join(root, "scripts", "ci-ffmpeg.sh")
+	writeFixtureExecutable(t, script, readFixtureFile(t, filepath.Join(filepath.Dir(source), "..", "..", "scripts", "ci-ffmpeg.sh")))
+	writeFixtureFile(t, filepath.Join(root, "Dockerfile"), fmt.Sprintf(
+		"ARG FFMPEG_RELEASE=%s\nARG FFMPEG_BUILD_ID=%s\nARG FFMPEG_AMD64_SHA256=%x\n", release, buildID, sha256.Sum256(payload)))
+	bin := filepath.Join(root, "commands")
+	writeFixtureExecutable(t, filepath.Join(bin, "uname"), "#!/bin/sh\nprintf 'x86_64\\n'\n")
+	port := listener.Addr().(*net.TCPAddr).Port
+	writeFixtureExecutable(t, filepath.Join(bin, "curl"), fmt.Sprintf(
+		"#!/bin/sh\nexec %q --insecure --connect-to github.com:443:127.0.0.1:%d \"$@\"\n", realCurl, port))
+
+	cache := filepath.Join(root, "cache")
+	cmd := exec.Command("/bin/bash", script, "download", cache)
+	cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("download did not survive one connection reset: %v\n%s", err, out)
+	}
+	if flaky.resets.Load() != 1 || served.Load() != 1 {
+		t.Fatalf("resets = %d, served = %d; want one reset then one download", flaky.resets.Load(), served.Load())
+	}
+	if got := readFixtureFile(t, filepath.Join(cache, archive)); got != string(payload) {
+		t.Fatalf("cached archive = %q, want the pinned bytes", got)
 	}
 }
 
