@@ -263,6 +263,11 @@ const startTunerServer = () => {
       if (/^\/v1\/channels\/ch-\d+\/tracks$/.test(path)) {
         return sendJSON(response, { audio: [], subtitles: [] });
       }
+      // Watch's drawer reads the viewer's favourites and recent channels, and a tune records one;
+      // every answer carries both required lists, so the catch-all `{}` would crash the page.
+      if (path === "/v1/me/channels" || /^\/v1\/me\/(favourites|recent-channels)\//.test(path)) {
+        return sendJSON(response, { favourites: [], recent: [] });
+      }
       const detail = path.match(/^\/v1\/channels\/(ch-\d+)$/);
       if (detail) {
         const found = channels.find((channel) => channel.id === detail[1]);

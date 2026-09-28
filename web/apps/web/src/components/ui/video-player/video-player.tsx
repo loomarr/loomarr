@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { FullscreenButton } from "./fullscreen-button";
 import { HoldControlsContext } from "./internal/hold-controls-context";
@@ -76,6 +76,9 @@ const VideoPlayer = ({
   timeLeft,
   barControls,
   overlay,
+  panel,
+  hints,
+  onShortcut,
   attach,
   onChannelStep,
   className,
@@ -103,6 +106,14 @@ const VideoPlayer = ({
   const { fullscreen, toggleFullscreen } = useFullscreen(wrapperRef);
   const { controlsShown, holdControls, onPointerActive, onPointerLeave, revealControls } =
     useAutoHideControls(playing);
+
+  // An open panel holds the controls shown, the way an open menu does.
+  const panelOpen = Boolean(panel);
+  useEffect(() => {
+    if (!panelOpen) return;
+    holdControls.hold(true);
+    return () => holdControls.hold(false);
+  }, [panelOpen, holdControls]);
 
   // Custom source binding (hls.js). `attach(el)` runs in the commit before WebKit can defer passive
   // effects behind outgoing media work; the Tuner has already painted its acknowledgement before
@@ -141,6 +152,8 @@ const VideoPlayer = ({
   // and skipped when focus is in a control that uses the same keys (Space on a <button> must click).
   const onKeyDown = (e: React.KeyboardEvent) => {
     const target = e.target as HTMLElement;
+    // Typing belongs to the field: a search box in the panel must be able to take "m" and "k".
+    if (target.closest("input:not([type=range]), textarea, select")) return;
     const isSlider = target.getAttribute("role") === "slider";
     const isButton = target.tagName === "BUTTON";
     const ownsNavigationKey = Boolean(
@@ -185,6 +198,10 @@ const VideoPlayer = ({
         onChannelStep(-1);
         break;
       default:
+        // A key the player doesn't use goes to the caller, unless focus is typing or in a menu.
+        if (!onShortcut || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (target.closest("[role=menuitem], [role=menuitemcheckbox]")) return;
+        if (onShortcut(e.key)) e.preventDefault();
         break;
     }
   };
@@ -305,7 +322,13 @@ const VideoPlayer = ({
               <FullscreenButton active={fullscreen} onToggle={toggleFullscreen} />
             </div>
           </fieldset>
+
+          {/* Row 3 (live): the caller's keyboard hints. */}
+          {live && hints}
         </div>
+
+        {/* PANEL SLOT — the caller's side panel, over the controls' scrims so it takes the pointer. */}
+        {panel && <div className="absolute inset-y-0 right-0 z-10 flex max-w-full">{panel}</div>}
       </div>
     </HoldControlsContext.Provider>
   );
