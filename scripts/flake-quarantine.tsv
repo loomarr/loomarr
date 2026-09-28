@@ -1,0 +1,9 @@
+# Flake quarantine (#1570 step 3). A test listed here with an OPEN issue runs in its suite's
+# non-blocking quarantine job instead of the required one; it still runs and still reports. When the
+# issue closes, the test rejoins the required job on the next run, without editing this file.
+#
+# A test enters quarantine only by a line here, naming its tracking issue. Tab-separated:
+#   suite  project  spec file  test title (as Playwright prints it after the file)  issue
+# Validated by scripts/flake-quarantine.sh; tested by scripts/flake-quarantine-test.sh.
+tuner	webkit	tuner-surf.spec.ts	100-channel tuner meets surf latency and latest-request-wins gates	1443
+tuner	firefox	tuner-surf.spec.ts	100-channel tuner meets surf latency and latest-request-wins gates	1492

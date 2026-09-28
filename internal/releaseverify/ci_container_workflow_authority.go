@@ -18,6 +18,10 @@ type workflowStepAuthority struct {
 	environment       map[string]string
 	condition         string
 	shell             string
+	// nonBlocking is the one explicit way a source-bound step may set continue-on-error: true
+	// (and then must). Only the flake quarantine's step uses it (#1570 step 3); every other step
+	// stays forbidden from tolerating its own failure.
+	nonBlocking bool
 }
 
 type workflowJobAuthority struct {
@@ -346,10 +350,19 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ci-rust-contracts.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make rust-check": exactWorkflowStep(2, "", workflowStepAuthority{targets: []string{"rust-check"}}),
 		}),
-		"ci-tuner.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fe-install":     exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			"make tuner-e2e-host": exactWorkflowStep(5, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}, environment: map[string]string{"TUNER_PROJECT": "${{ inputs.project }}", "TUNER_REPEAT_EACH": "${{ inputs.repeat_each }}"}}),
-		}),
+		"ci-tuner.yml": {
+			environment: standardWorkflowEnvironment(),
+			// issues: read lets the flake quarantine read whether a tracking issue is still open.
+			permissions: map[string]string{"contents": "read", "issues": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"run": {steps: map[string]workflowStepAuthority{
+					"make fe-install":           exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+					"make tuner-quarantine":     exactWorkflowStep(5, "Resolve the flake quarantine", workflowStepAuthority{targets: []string{"tuner-quarantine"}, environment: map[string]string{"GH_TOKEN": "${{ github.token }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
+					"make tuner-e2e-host":       exactWorkflowStep(6, "100-Channel controller matrix", workflowStepAuthority{targets: []string{"tuner-e2e-host"}, environment: map[string]string{"TUNER_PROJECT": "${{ inputs.project }}", "TUNER_REPEAT_EACH": "${{ inputs.repeat_each }}", "TUNER_QUARANTINE": "${{ inputs.quarantine }}"}}),
+					"make tuner-e2e-quarantine": exactWorkflowStep(8, "Quarantined tests (non-blocking)", workflowStepAuthority{targets: []string{"tuner-e2e-quarantine"}, condition: "inputs.quarantine == 'exclude'", nonBlocking: true}),
+				}},
+			},
+		},
 		"codeql.yml": codeQLWorkflowAuthority(),
 		"ci.yml": {
 			environment: standardWorkflowEnvironment(),
@@ -624,7 +637,11 @@ func (ledger *workflowAuthorityLedger) authorize(workflowName, jobName string, s
 		}
 	}
 	label := fmt.Sprintf("workflow %s job %s source-bound step %q", workflowName, jobName, strings.TrimSpace(run.Value))
-	if err := verifyExactExecutionContext(step, label+" step", stepAuthority.environment, nil, stepAuthority.condition, stepAuthority.shell); err != nil {
+	continueOnError := ""
+	if stepAuthority.nonBlocking {
+		continueOnError = "true"
+	}
+	if err := verifyExactExecutionContext(step, label+" step", stepAuthority.environment, nil, stepAuthority.condition, stepAuthority.shell, continueOnError); err != nil {
 		return false, err
 	}
 	key := workflowAuthorityKey{workflow: workflowName, job: jobName, command: run.Value}
@@ -645,10 +662,10 @@ func verifySourceBoundWorkflowContext(workflowName, jobName string, workflow, jo
 		return nil
 	}
 	label := fmt.Sprintf("workflow %s job %s source-bound context", workflowName, jobName)
-	if err := verifyExactExecutionContext(workflow, label+" workflow", authority.environment, authority.permissions, "", ""); err != nil {
+	if err := verifyExactExecutionContext(workflow, label+" workflow", authority.environment, authority.permissions, "", "", ""); err != nil {
 		return err
 	}
-	if err := verifyExactExecutionContext(job, label+" job", jobAuthority.environment, jobAuthority.permissions, jobAuthority.condition, ""); err != nil {
+	if err := verifyExactExecutionContext(job, label+" job", jobAuthority.environment, jobAuthority.permissions, jobAuthority.condition, "", ""); err != nil {
 		return err
 	}
 	return verifyWorkflowJobContextAuthority(workflowName, jobName, job)
@@ -735,7 +752,7 @@ func (ledger *workflowAuthorityLedger) verifyComplete() error {
 	return nil
 }
 
-func verifyExactExecutionContext(scope *yaml.Node, label string, wantEnvironment, wantPermissions map[string]string, wantCondition, wantShell string) error {
+func verifyExactExecutionContext(scope *yaml.Node, label string, wantEnvironment, wantPermissions map[string]string, wantCondition, wantShell, wantContinueOnError string) error {
 	gotEnvironment, err := scalarEnvironment(scope)
 	if err != nil {
 		return fmt.Errorf("%s: %w", label, err)
@@ -757,7 +774,7 @@ func verifyExactExecutionContext(scope *yaml.Node, label string, wantEnvironment
 		"if":                wantCondition,
 		"shell":             wantShell,
 		"working-directory": "",
-		"continue-on-error": "",
+		"continue-on-error": wantContinueOnError,
 	} {
 		got, present := mappingValue(scope, key)
 		if want == "" {
