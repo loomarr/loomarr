@@ -315,14 +315,6 @@ func unitAt(bs []playout.Broadcast, at time.Time) string {
 	return ""
 }
 
-func copyMap(m map[provision.Key]time.Time) map[provision.Key]time.Time {
-	out := make(map[provision.Key]time.Time, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
-}
-
 // ledger is the prototype: an APPEND-ONLY timeline with an airing ledger per episode/film.
 //
 //   - What aired is recorded when it is scheduled to air, watched or not (a linear channel airs
