@@ -17,8 +17,18 @@ var aggregateStoreExceptions = map[string]string{
 	modulePath + "/cmd/seed":         "is an explicit whole-database development command",
 	modulePath + "/internal/api":     "retains complete HTTP dependency assembly outside this refactor",
 	modulePath + "/internal/app":     "is the composition root that narrows the store for domain modules",
+	modulePath + "/internal/fillerstore": "is the aggregate's filler half: it extends the core store.Store " +
+		"with filler persistence (#1747)",
 	modulePath + "/internal/suggest": "contains compile-time conformance assertions for its narrow store roles",
 	modulePath + "/internal/testkit": "owns shared complete-store factories for tests",
+}
+
+// aggregateStorePackages export the aggregate. fillerstore.Store embeds store.Store, so naming it
+// is naming the aggregate; without it here, moving a package onto fillerstore.Store would hide its
+// aggregate reference from the allowlist.
+var aggregateStorePackages = map[string]bool{
+	modulePath + "/internal/store":       true,
+	modulePath + "/internal/fillerstore": true,
 }
 
 // Aggregate store references are deliberately rare. The full store exists for construction,
@@ -67,10 +77,10 @@ func aggregateStoreReferences(t *testing.T, packages map[string]*build.Package) 
 				if err != nil {
 					t.Fatalf("unquote import in %s: %v", path, err)
 				}
-				if importPath != modulePath+"/internal/store" {
+				if !aggregateStorePackages[importPath] {
 					continue
 				}
-				alias := "store"
+				alias := filepath.Base(importPath)
 				if imp.Name != nil {
 					alias = imp.Name.Name
 				}

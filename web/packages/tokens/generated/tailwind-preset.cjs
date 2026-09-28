@@ -12,7 +12,7 @@ module.exports = {
         "static-100": "#E7EAF0",
         "static-0": "#FFFFFF",
         "signal-400": "#FFC14D",
-        "border-control": "#61646B",
+        "border-control": "#666970",
         "signal": "#FFB020",
         "onair": "#E5484D",
         "onair-300": "#E85A5F",

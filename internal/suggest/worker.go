@@ -252,6 +252,35 @@ func (s *Service) Refine(ctx context.Context, jobID string, intent Intent) (stri
 	return s.requeue(ctx, jobID, intent, jobKindSuggest, "refine")
 }
 
+// SubmitBuilt puts a proposal that needed no generation (a library channel idea, #1720) in the
+// approval queue as the requester's own request, and returns its job id. The model never runs, so
+// it works with the LLM off. Afterwards it does what a generated proposal gets: admins are told a
+// request is waiting, and the requester's auto-approve grant, if any, applies within its cap.
+func (s *Service) SubmitBuilt(ctx context.Context, intent Intent, proposal Proposal, createdBy string) (string, error) {
+	if s.workflow == nil {
+		return "", errors.New("submit built proposal: durable workflow not configured")
+	}
+	recorded, err := s.workflow.Record(ctx, intent, proposal, createdBy)
+	if err != nil {
+		return "", err
+	}
+	blob, err := json.Marshal(recorded.Proposal)
+	if err != nil {
+		// Already durable; only the post-commit notice and grant are skipped.
+		s.log.Error("marshal recorded Proposal for notification", "job", recorded.JobID, "err", err)
+		return recorded.JobID, nil
+	}
+	row := store.Proposal{
+		ID: recorded.ID, JobID: recorded.JobID, Status: "submitted", CreatedBy: createdBy,
+		ProposalJSON: string(blob), CreatedAt: recorded.CreatedAt, UpdatedAt: recorded.CreatedAt,
+	}
+	if s.notify != nil {
+		s.notify.ProposalSubmitted(ctx, row)
+	}
+	s.considerAutomaticApproval(ctx, store.Job{ID: recorded.JobID, Kind: jobKindSuggest, CreatedBy: createdBy, Attempts: 1}, row)
+	return recorded.JobID, nil
+}
+
 // Recurate re-runs a channel job under the channel-scoped unattended grant. The distinct
 // durable kind is the authorization discriminator the worker reads: a scheduled refresh must
 // never fall through the requester's auto-approve grant, and a human refine must never be

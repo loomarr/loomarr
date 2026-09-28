@@ -20,6 +20,30 @@ func TestCIImpactClassifier(t *testing.T) {
 	}
 }
 
+func TestTunerArgs(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	cmd := exec.Command("bash", filepath.Join("scripts", "tuner-args-test.sh"))
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("tuner dispatch arguments contract: %v\n%s", err, output)
+	}
+}
+
+func TestFlakeQuarantine(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Clean(filepath.Join("..", ".."))
+	cmd := exec.Command("bash", filepath.Join("scripts", "flake-quarantine-test.sh"))
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("flake quarantine contract: %v\n%s", err, output)
+	}
+}
+
 func TestCILaneSelector(t *testing.T) {
 	t.Parallel()
 

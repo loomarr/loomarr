@@ -40,6 +40,11 @@ func (f *fakeSuggest) Submit(_ context.Context, intent suggest.Intent, _ string)
 	return "job-1", nil
 }
 
+// SubmitBuilt is unused by these routes; the channel-ideas tests run the real service.
+func (f *fakeSuggest) SubmitBuilt(context.Context, suggest.Intent, suggest.Proposal, string) (string, error) {
+	return "", errors.New("fakeSuggest: SubmitBuilt is not part of the proposal routes")
+}
+
 func (f *fakeSuggest) Refine(_ context.Context, jobID string, intent suggest.Intent) (string, error) {
 	f.refines++
 	f.lastJobID = jobID

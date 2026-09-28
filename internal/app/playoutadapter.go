@@ -1749,19 +1749,6 @@ func (r *playoutResolver) EncodeHostBytes() int64 {
 	return r.encodeHostBytes.Load()
 }
 
-// HWEncodeSlots is how many concurrent HARDWARE encodes this box sustains — the capability probe's
-// measured_max_channels. It drives the playout admission gate: a transcode that cannot get a slot
-// goes straight to software rather than piling onto a saturated GPU and stalling. Runs the same
-// memoised probe as detectedEncoder (first call pays; the rest read the cache). Returns 0 when the
-// box has no working hardware encoder (software-only) — the gate treats 0 as "never admit hardware",
-// which is correct: there is no hardware to admit.
-func (r *playoutResolver) HWEncodeSlots(ctx context.Context) int {
-	if r.detectedEncoder(ctx) == playout.EncoderSoftware {
-		return 0
-	}
-	return int(r.maxChannels.Load())
-}
-
 // effectivePlayoutAnchor enforces the persisted timeline origin. A live channel without
 // one is corrupt control-plane state; guessing would let the encoder and guide diverge.
 func effectivePlayoutAnchor(ch store.Channel) (time.Time, error) {

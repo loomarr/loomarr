@@ -30,8 +30,10 @@ const ChannelBreaks = ({ channelId, className }: ChannelBreaksProps) => {
   if (entries.length === 0) return null;
 
   return (
-    <section className={cn("flex flex-col gap-2", className)}>
-      <h3 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">In the breaks</h3>
+    <section className={cn("flex flex-col gap-1.5", className)}>
+      <h3 className="font-mono font-normal text-2xs text-muted-foreground uppercase tracking-wide">
+        Between shows
+      </h3>
       <PodTimeline entries={entries} matchLevel={pod?.matchLevel} />
       <p className="text-muted-foreground text-sm">
         {`${pluralize(entries.length, "clip")} between shows, assembled exactly as the channel builds them.`}

@@ -209,11 +209,11 @@ describe("ChannelFiller", () => {
       />,
     );
 
-    const coverage = await screen.findByRole("heading", { name: "Saved channel coverage" });
-    const controls = screen.getByRole("heading", { name: "Match this channel" });
+    const coverage = await screen.findByRole("heading", { name: "What this channel can play" });
+    const controls = screen.getByRole("heading", { name: "Choose what fits" });
     expect(coverage.compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 
-    const overrides = screen.getByRole("button", { name: /clip preferences \(advanced\)/i });
+    const overrides = screen.getByRole("button", { name: /specific clips \(advanced\)/i });
     expect(overrides).toHaveAttribute("aria-expanded", "false");
     await user.click(overrides);
     expect(screen.getByText("Prefer on this channel")).toBeVisible();
@@ -376,7 +376,7 @@ describe("ChannelFiller", () => {
           policy={policy({ [list]: ["saved-clip"], [other]: ["other-clip"], audience: "kids" })}
         />,
       );
-      await user.click(await screen.findByRole("button", { name: /Clip preferences \(advanced\)/ }));
+      await user.click(await screen.findByRole("button", { name: /Specific clips \(advanced\)/ }));
       await user.click(await screen.findByRole("button", { name: "Remove Saved clip" }));
       await user.click(await screen.findByRole("button", { name: /apply filler/i }));
       await waitFor(() => expect(patches).toHaveLength(1));

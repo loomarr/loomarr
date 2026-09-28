@@ -21,7 +21,7 @@ func newTestDatabaseService(t *testing.T) (*databaseService, string) {
 	dir := t.TempDir()
 	st := testkit.MigratedSQLiteStore(t)
 	backups := filepath.Join(dir, "backups")
-	return newDatabaseService(st, dir, func() string { return backups }, nil), backups
+	return newDatabaseService(st, func() string { return backups }, nil), backups
 }
 
 // ⚠ THE PHASE GATE. Migrate must refuse without a backup — and the target DSN here is
@@ -195,82 +195,4 @@ func TestStatusReportsBackendAndOffersMigration(t *testing.T) {
 	if st.Phase != "idle" || st.Parity != "unknown" {
 		t.Errorf("fresh service = phase %q parity %q, want idle/unknown", st.Phase, st.Parity)
 	}
-}
-
-// Switchover writes the bootstrap file the NEXT boot reads — the whole point of the
-// step. Asserting the file's content because "roll back by reverting one config line"
-// is only true if there is a line to revert.
-func TestSwitchoverWritesTheBootstrapFile(t *testing.T) {
-	svc, _ := newTestDatabaseService(t)
-	const dsn = "postgres://u:p@db:5432/loomarr"
-	seedVerifiedSwitchover(svc, dsn)
-
-	if err := svc.Switchover(context.Background(), dsn); err != nil {
-		t.Fatalf("switchover: %v", err)
-	}
-	raw, err := os.ReadFile(filepath.Join(svc.dataDir, "bootstrap.json"))
-	if err != nil {
-		t.Fatalf("read bootstrap file: %v", err)
-	}
-	if !strings.Contains(string(raw), dsn) {
-		t.Errorf("bootstrap file does not carry the new DSN:\n%s", raw)
-	}
-}
-
-// An env-pinned DATABASE_URL always wins at boot, so writing the file would produce a
-// switch that silently does not happen. Refusing is the honest answer.
-func TestSwitchoverRefusesWhenPinnedByEnv(t *testing.T) {
-	t.Setenv("DATABASE_URL", "sqlite:///data/loomarr.db")
-	svc, _ := newTestDatabaseService(t)
-	const dsn = "postgres://u:p@db:5432/loomarr"
-	seedVerifiedSwitchover(svc, dsn)
-
-	err := svc.Switchover(context.Background(), dsn)
-	if !errors.Is(err, api.ErrDatabaseURLPinned) {
-		t.Fatalf("pinned switchover = %v, want ErrDatabaseURLPinned", err)
-	}
-	if _, statErr := os.Stat(filepath.Join(svc.dataDir, "bootstrap.json")); statErr == nil {
-		t.Error("nothing should have been written")
-	}
-}
-
-func TestSwitchoverFailsClosedWithoutExactVerifiedState(t *testing.T) {
-	const dsn = "postgres://u:p@db:5432/loomarr"
-	for _, tc := range []struct {
-		name  string
-		alter func(*databaseService)
-	}{
-		{name: "idle", alter: func(*databaseService) {}},
-		{name: "wrong target", alter: func(s *databaseService) {
-			seedVerifiedSwitchover(s, "postgres://u:p@other:5432/loomarr")
-		}},
-		{name: "parity unknown", alter: func(s *databaseService) {
-			seedVerifiedSwitchover(s, dsn)
-			s.parity = "unknown"
-		}},
-		{name: "still running", alter: func(s *databaseService) {
-			seedVerifiedSwitchover(s, dsn)
-			s.running = true
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			svc, _ := newTestDatabaseService(t)
-			tc.alter(svc)
-			if err := svc.Switchover(context.Background(), dsn); !errors.Is(err, api.ErrMigrationNotVerified) {
-				t.Fatalf("switchover = %v, want ErrMigrationNotVerified", err)
-			}
-			if _, err := os.Stat(filepath.Join(svc.dataDir, "bootstrap.json")); err == nil {
-				t.Fatal("unverified switchover wrote bootstrap.json")
-			}
-		})
-	}
-}
-
-func seedVerifiedSwitchover(svc *databaseService, dsn string) {
-	svc.mu.Lock()
-	svc.preflighted = dsn
-	svc.backup = &api.DatabaseBackup{Path: "/backup", Bytes: 1, WrittenAt: 1}
-	svc.phase = "verified"
-	svc.parity = "match"
-	svc.mu.Unlock()
 }
