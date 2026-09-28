@@ -46,5 +46,55 @@ const LightFocused: Story = {
   globals: { theme: "light" },
 };
 
+// The web mock's two layouts of the same card (#1659), at the widths the mock lays them out.
+const Stacked: Story = {
+  args: { artwork: <Artwork />, layout: "stacked", programme: classicEpisode },
+  decorators: [
+    (Story) => (
+      <div style={{ width: 260 }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
+const StackedMissingArtwork: Story = {
+  args: { layout: "stacked", programme: missingArtworkEpisode },
+  decorators: Stacked.decorators,
+};
+const Overlay: Story = {
+  args: {
+    artwork: <Artwork />,
+    layout: "overlay",
+    programme: classicEpisode,
+    viewer: { device: "living room TV", initials: "HM", name: "A household member" },
+  },
+  decorators: [
+    (Story) => (
+      <div style={{ width: 352 }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
+const OverlayOwnCard: Story = {
+  args: { ...Overlay.args, highlighted: true, viewer: { device: "laptop", initials: "YO", name: "You" } },
+  decorators: Overlay.decorators,
+};
+const OverlayMissingArtwork: Story = {
+  args: { ...Overlay.args, artwork: undefined, programme: missingArtworkEpisode },
+  decorators: Overlay.decorators,
+};
+
 export default meta;
-export { LightFocused, MissingArtwork, Pointer, TouchFocused, TvFocused };
+export {
+  LightFocused,
+  MissingArtwork,
+  Overlay,
+  OverlayMissingArtwork,
+  OverlayOwnCard,
+  Pointer,
+  Stacked,
+  StackedMissingArtwork,
+  TouchFocused,
+  TvFocused,
+};

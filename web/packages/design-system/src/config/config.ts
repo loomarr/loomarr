@@ -42,6 +42,8 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   actionDisabled: semanticThemes[mode].action.disabled,
   artworkPlaceholder: semanticThemes[mode].artwork.placeholder,
   artworkScrim: semanticThemes[mode].artwork.scrim,
+  artworkScrimStrong: semanticThemes[mode].artwork.scrimStrong,
+  artworkProgressTrack: semanticThemes[mode].artwork.progressTrack,
 });
 
 const tamaguiTheme = (mode: keyof typeof semanticThemes) => {
@@ -102,6 +104,8 @@ const tokens = createTokens({
     actionDisabled: semanticColors.action.disabled,
     artworkPlaceholder: semanticColors.artwork.placeholder,
     artworkScrim: semanticColors.artwork.scrim,
+    artworkScrimStrong: semanticColors.artwork.scrimStrong,
+    artworkProgressTrack: semanticColors.artwork.progressTrack,
     transparent: "transparent",
   },
   radius: {
