@@ -690,12 +690,12 @@ sharder's indivisible unit, so an oversized one must run its tests in parallel, 
 lane of its own, or be split, never be given a larger budget. (Until #1650 a temporary cap of
 567s, `internal/store`'s measured time plus 10%, stood in for that rule.)
 
-#1631 made the 21 heaviest `internal/store` tests (88% of its time) run in parallel. Pinned to four
+Pull request #1631 made the 21 heaviest `internal/store` tests (88% of its time) run in parallel. Pinned to four
 cores locally, that cut the package from 146.9s to 110.1s, but merge-group run 36359955148 measured
 it at 542s in ordinary lane 1/2: beside three other `-p=4` packages on a four-vCPU runner, its
 parallel tests only competed for the same cores. So `internal/store` now runs alone in the second
 serial lane, where one package at a time owns the runner, and the playout/capacity set shares the
-first. The serial lanes keep their `certification-1/2` and `certification-2/2` identities (the
+first. There, workflow-dispatch run 36366596157 measured it at 171s. The serial lanes keep their `certification-1/2` and `certification-2/2` identities (the
 workflow matrix, cache keys and release-verifier pins name them), but they now hold two kinds of
 package: media certification that must not compete for a worker while asserting latency, and
 CPU-heavy packages whose own parallelism needs a runner to themselves.
