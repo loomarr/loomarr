@@ -56,12 +56,11 @@ LANE_TEST_SECONDS=$((TARGET_QUEUE_SECONDS - QUEUE_OVERHEAD_SECONDS))
 # An ordinary lane runs `-p=4` on a four-vCPU runner, and each weight is a package's wall time under
 # that sharing, so a lane's summed package-seconds spread over four workers must fit the step.
 MAX_ORDINARY_AGGREGATE_SECONDS=$((LANE_TEST_SECONDS * ORDINARY_WORKERS))
-# ⚠ TEMPORARY (#1570): internal/store measures 516s, more than a whole lane's test step, and no
-# package split can fix that. It is not exempt: it stays weighted and scheduled, and this cap is its
-# measured time plus 10%. A lane holding a package above LANE_TEST_SECONDS is held to this cap
-# instead of the lane budget. Splitting store's tests is the next lever; then this returns to
-# LANE_TEST_SECONDS and every lane is back on the target.
-MAX_PACKAGE_SECONDS=567
+# No single package may take longer than a lane's whole test step: a package is the sharder's
+# indivisible unit, so one that did would put its lane over the target whatever the partition. A
+# package that outgrows this must run its tests in parallel, move to a serial lane of its own, or be
+# split (internal/store needed the first two, #1570), never be given a larger budget.
+MAX_PACKAGE_SECONDS=$LANE_TEST_SECONDS
 
 if [[ ! -r "$WEIGHTS" ]]; then
   echo "go-shard: weight file is not readable: $WEIGHTS" >&2
@@ -206,40 +205,6 @@ certification_load() {
   '
 }
 
-# The heaviest modeled package among the import paths on stdin.
-largest_weight() {
-  local module
-  module="$(go list -m)"
-  awk -v module="$module" -v weights_file="$WEIGHTS" '
-    BEGIN {
-      while ((getline line < weights_file) > 0) {
-        if (line ~ /^[[:space:]]*(#|$)/) continue
-        split(line, part, /[[:space:]]+/)
-        weight[part[1]] = part[2] + 0
-      }
-      close(weights_file)
-    }
-    {
-      relative = $0
-      prefix = module "/"
-      if (index(relative, prefix) == 1) relative = substr(relative, length(prefix) + 1)
-      cost = (relative in weight) ? weight[relative] : 1
-      if (cost > high) high = cost
-    }
-    END { print high + 0 }
-  '
-}
-
-# A lane's test-step budget: the target's LANE_TEST_SECONDS, unless it holds a package that alone
-# exceeds that, which is held to the explicit MAX_PACKAGE_SECONDS cap instead (see its note).
-lane_budget() {
-  local largest="$1"
-  if [ "$largest" -gt "$LANE_TEST_SECONDS" ]; then
-    echo "$MAX_PACKAGE_SECONDS"
-  else
-    echo "$LANE_TEST_SECONDS"
-  fi
-}
 
 slice() {
   partition packages "$1" "$2"
@@ -375,9 +340,9 @@ if [ "${1:-}" = "--verify" ]; then
     done <<< "$modeled"
     exit 1
   fi
-  # Rows are `lane seconds budget`: each lane is judged against its own derived budget.
+  # Rows are `lane seconds budget`, so a failure names the budget it broke.
   worker_modeled="$(worker_plan "$total" | while read -r shard seconds; do
-    printf '%s %s %s\n' "$shard" "$seconds" "$(lane_budget "$(slice "$shard" "$total" | largest_weight)")"
+    printf '%s %s %s\n' "$shard" "$seconds" "$LANE_TEST_SECONDS"
   done)"
   if ! printf '%s\n' "$worker_modeled" | awk -v ratio="$MAX_IMBALANCE_PERCENT" '
     NR == 1 { min = $2; high = $2 }
@@ -391,7 +356,7 @@ if [ "${1:-}" = "--verify" ]; then
     exit 1
   fi
   certification_modeled="$(for ((i = 1; i <= CERTIFICATION_LANES; i++)); do
-    printf '%s %s %s\n' "$i" "$(certification_load "$i")" "$(lane_budget "$(certification_lane_paths "$i" | largest_weight)")"
+    printf '%s %s %s\n' "$i" "$(certification_load "$i")" "$LANE_TEST_SECONDS"
   done)"
   if ! printf '%s\n' "$certification_modeled" | awk -v ratio="$MAX_IMBALANCE_PERCENT" '
     NR == 1 { min = $2; high = $2 }
