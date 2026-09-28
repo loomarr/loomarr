@@ -105,7 +105,7 @@ func TestLive_DetectChoosesSomethingThatActuallyWorks(t *testing.T) {
 	// "Works" alone cannot detect that, because a vacuous probe reports exactly what a real one
 	// does. A measured throughput cannot be faked by an encode that never ran.
 	for _, x := range c.All {
-		// The trial child's peak RSS sizes the encode pool's host-memory gate; on platforms that
+		// The trial child's peak RSS sizes the ResourceBudget's host-memory gate; on platforms that
 		// report it, a working trial that measured nothing would silently fall back to a default.
 		if x.Works && x.PeakRSSBytes <= 0 && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") {
 			t.Errorf("%s reports Works with no measured peak RSS", x.Encoder)

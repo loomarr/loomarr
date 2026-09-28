@@ -160,7 +160,7 @@ func (s *Server) registerDiagnostics(api huma.API) {
 		huma.Register(api, withRole(huma.Operation{
 			OperationID: "list-startup-reports", Method: http.MethodGet, Path: "/v1/diagnostics/startup-reports",
 			Summary:     "List startup reports",
-			Description: "Returns the live application-generation startup report and recent completed reports retained in Diagnostics.",
+			Description: "Returns the live application-generation startup report and recent completed reports retained in Diagnostics. " + operatorAPI,
 			Tags:        []string{"diagnostics"},
 		}, RoleAdmin), s.listStartupReports)
 	}

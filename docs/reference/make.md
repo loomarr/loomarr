@@ -46,6 +46,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make release-notes-preview` |  | generate validated release notes (TAG required; optional PREVIOUS_TAG and OUTPUT) |
 | `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
 | `make backup-restore-drill` |  | SQLite + Docker-backed Postgres backup/restore drills <br>*runs:* `backup-restore-verify` |
+| `make graph` |  | build the local Graphify index in graphify-out/ (never committed; needs graphifyy, see docs/agents/graphify.md) |
 
 ## Proportional local verification
 
@@ -250,7 +251,9 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make fe-visual-update` |  | regenerate the committed Linux baselines in the Docker image (sanctioned update path) <br>*runs:* `storybook-build` `ensure-playwright-image` |
 | `make e2e` | ✅ | wizard e2e smoke vs a mocked backend, in the pinned Docker image (13.3 gate) <br>*runs:* `fe-build` `ensure-playwright-image` |
 | `make tuner-e2e` |  | 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1) <br>*runs:* `fe-build` `ensure-playwright-image` |
+| `make tuner-quarantine` | ✅ | resolve the tuner tests the flake quarantine holds out (TUNER_QUARANTINE=exclude|only; needs gh) |
 | `make tuner-e2e-host` | ✅ | 100-Channel tuner controller matrix in host-installed browsers (§9.1); TUNER_PROJECT / TUNER_REPEAT_EACH narrow a manual rerun <br>*runs:* `fe-build` |
+| `make tuner-e2e-quarantine` | ✅ | only the tuner tests the flake quarantine holds out (after tuner-quarantine) <br>*runs:* `tuner-e2e-host` |
 | `make e2e-update` |  | regenerate the committed e2e page snapshots (sanctioned update path) <br>*runs:* `fe-build` `ensure-playwright-image` |
 
 ## Maintainer smoke (NOT CI)
@@ -272,7 +275,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository

@@ -292,7 +292,7 @@ reservations and the operator-facing decision.
   cancellation or failure. Writes have a byte ceiling, so a dishonest provider length cannot
   overrun.
 - An acquisition lease covers its staging ceiling, `source + max(source/4, 32 MiB)`. Transcode,
-  split, prepared media and artwork reserve their own peaks when they run. Leases are per item and
+  split and artwork reserve their own peaks when they run. Leases are per item and
   released as each download ends. An unsizable item is planned from its duration and height, else a
   512 MiB cap.
 - Reservations group by filesystem, not path. The hard reserve aggregates every domain on the

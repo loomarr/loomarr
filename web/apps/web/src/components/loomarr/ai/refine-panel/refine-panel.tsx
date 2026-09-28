@@ -1,12 +1,13 @@
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import { toProblem } from "@loomarr/api/mutator";
-import { ChevronDown, Loader2, Sparkles, TriangleAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Loader2, Sparkles, TriangleAlert } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { RefineReview } from "@/components/loomarr/ai/refine-review";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { GenerationProgress } from "@/components/loomarr/feedback/generation-progress";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { suggestionFailureCopy } from "@/suggest/suggestion-failure-copy";
 import { useChannelRefine } from "@/suggest/use-channel-refine";
@@ -31,6 +32,7 @@ const RefinePanel = ({
 }: RefinePanelProps) => {
   const [state, setState] = useState<PanelState>("idle");
   const [change, setChange] = useState("");
+  const headingId = useId();
 
   const refine = useChannelRefine();
   const elapsed = useElapsed(refine.isRunning);
@@ -74,29 +76,24 @@ const RefinePanel = ({
   const failureCopy = refine.failure ? suggestionFailureCopy(refine.failure) : undefined;
 
   return (
-    <section className={cn("flex flex-col gap-3 rounded-lg border border-suggest-tint-15 p-4", className)}>
-      <button
-        type="button"
-        onClick={() => (state === "idle" ? setState("open") : close())}
-        aria-expanded={state !== "idle"}
-        className="flex w-full cursor-pointer items-center gap-2 text-left"
-      >
-        <Sparkles className="size-4 text-suggest-300" aria-hidden />
-        <span className="font-semibold">Refine with AI</span>
-        <span className="text-muted-foreground text-sm">
-          Describe a change and review a diff before it applies
+    // The web mock's card: always open, a one-line input and "Suggest changes". The running and
+    // review states below are today's; the mock draws neither.
+    <section
+      aria-labelledby={headingId}
+      className={cn("flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4", className)}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Sparkles className="size-4 shrink-0 text-suggest-300" aria-hidden />
+        <h3 id={headingId} className="font-medium text-sm">
+          Refine with AI
+        </h3>
+        <span className="ml-auto text-muted-foreground text-xs">
+          Describe what to change. You'll see the result before anything is saved.
         </span>
-        <ChevronDown
-          className={cn(
-            "ml-auto size-4 text-muted-foreground transition-transform",
-            state !== "idle" && "rotate-180",
-          )}
-          aria-hidden
-        />
-      </button>
+      </div>
 
-      {state === "open" && (
-        <div className="flex flex-col gap-3">
+      {(state === "idle" || state === "open") && (
+        <div className="flex flex-col gap-2.5">
           {generationFailed && (
             <div
               role="alert"
@@ -116,30 +113,25 @@ const RefinePanel = ({
               )}
             </div>
           )}
-          <textarea
-            value={change}
-            onChange={(e) => setChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                submit();
-              }
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
             }}
-            placeholder={`What should change on ${channelName}? e.g. "add more Schwarzenegger, drop the slow ones"`}
-            rows={3}
-            aria-label="What to change"
-            className="w-full resize-none rounded-lg border border-input bg-transparent px-4 py-3 text-sm leading-relaxed shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:border-suggest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-suggest focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          />
+          >
+            <Input
+              value={change}
+              onChange={(e) => setChange(e.target.value)}
+              placeholder="e.g. More 90s sci-fi, fewer movies after midnight"
+              aria-label={`What to change on ${channelName}`}
+              className="flex-1"
+            />
+            <Button type="submit" disabled={change.trim().length === 0}>
+              Suggest changes
+            </Button>
+          </form>
           {refine.error != null && <ErrorState error={refine.error} />}
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={close}>
-              Cancel
-            </Button>
-            <Button variant="suggest" onClick={submit} disabled={change.trim().length === 0}>
-              <Sparkles aria-hidden />
-              Refine
-            </Button>
-          </div>
         </div>
       )}
 

@@ -23,7 +23,11 @@ playback.
 - **Controls.** Channel Up/Down are visible controls; `ArrowUp`/`ArrowDown`, `PageUp`/`PageDown` and
   `ChannelUp`/`ChannelDown` invoke them when focus is not in a control that owns those keys. The OSD
   switches at once to the target and `Tuning…` and stays over the held frame until the replacement
-  decodes. A failed tune keeps the target visible with a retry.
+  decodes. A failed tune keeps the target visible with a retry. Digits tune a channel by number
+  (up to three, 1.2 s to finish, `Enter` tunes at once), the same entry the TV remote uses; on the
+  web, `G` opens the channels drawer. Both go through the same latest-request-wins tune. A settled
+  tune (its first frame) records itself in the viewer's recents; a warm or a channel surfed past
+  never does.
 - **The playhead describes the decoded frame,** from the program-date-time mapping of the frame on
   screen, not `Date.now()`. A stalled frame freezes programme context instead of claiming a break
   has begun.

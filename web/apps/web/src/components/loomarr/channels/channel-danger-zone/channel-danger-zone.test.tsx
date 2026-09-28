@@ -41,13 +41,13 @@ describe("ChannelDangerZone", () => {
   it("offers separate stop-managing and permanent-delete actions with honest consequences", () => {
     render(<ChannelDangerZone {...base} />);
 
-    expect(screen.getByRole("button", { name: "Stop managing" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop updating" })).toBeInTheDocument();
     expect(
       screen.getByText("Loomarr keeps its record and leaves any Tunarr channel in place."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete from Loomarr and Tunarr" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete channel" })).toBeInTheDocument();
     expect(
-      screen.getByText("Permanently delete Loomarr's record and any retained Tunarr channel."),
+      screen.getByText("Delete this channel from Loomarr, and from Tunarr if it's there."),
     ).toBeInTheDocument();
   });
 
@@ -55,14 +55,14 @@ describe("ChannelDangerZone", () => {
     const onDelete = vi.fn();
     render(<ChannelDangerZone {...base} onDelete={onDelete} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Stop managing" }));
+    await userEvent.click(screen.getByRole("button", { name: "Stop updating" }));
     expect(
       screen.getByText(
-        "Stop managing 90s Action? Loomarr will keep its record and leave any Tunarr channel in place.",
+        "Stop updating 90s Action? Loomarr will keep its record and leave any Tunarr channel in place.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Stop managing" }));
+    await userEvent.click(screen.getByRole("button", { name: "Stop updating" }));
 
     expect(onDelete).toHaveBeenCalledWith({ purge: false });
   });
@@ -71,26 +71,28 @@ describe("ChannelDangerZone", () => {
     const onDelete = vi.fn();
     render(<ChannelDangerZone {...base} onDelete={onDelete} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Delete from Loomarr and Tunarr" }));
-    expect(screen.getByText("Delete 90s Action from Loomarr and Tunarr for good?")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Delete from Loomarr and Tunarr" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete channel" }));
+    expect(
+      screen.getByText("Delete 90s Action from Loomarr, and from Tunarr if it's there?"),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete channel" }));
 
     expect(onDelete).toHaveBeenCalledWith({ purge: true });
   });
 
   it("cancel returns to both choices", async () => {
     render(<ChannelDangerZone {...base} />);
-    await userEvent.click(screen.getByRole("button", { name: "Delete from Loomarr and Tunarr" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete channel" }));
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(screen.getByRole("button", { name: "Stop managing" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete from Loomarr and Tunarr" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop updating" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete channel" })).toBeInTheDocument();
   });
 
   it("disables every control while busy", () => {
     render(<ChannelDangerZone {...base} busy />);
     expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Stop managing" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Delete from Loomarr and Tunarr" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Stop updating" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete channel" })).toBeDisabled();
   });
 });

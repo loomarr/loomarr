@@ -33,6 +33,7 @@ const CollapsibleSection = ({
   defaultOpen = false,
   open,
   onOpenChange,
+  size = "default",
   children,
   className,
 }: CollapsibleSectionProps) => (
@@ -45,13 +46,39 @@ const CollapsibleSection = ({
     // Base UI passes (open, eventDetails); this component's contract is (open) => void, so the
     // second argument is dropped deliberately rather than widened into the public type.
     onOpenChange={(next) => onOpenChange?.(next)}
-    render={<section className={cn("overflow-hidden rounded-lg border border-border", className)} />}
+    render={
+      <section
+        className={cn(
+          "overflow-hidden rounded-lg border border-border",
+          size === "compact" && "bg-card",
+          className,
+        )}
+      />
+    }
   >
-    <Collapsible.Trigger className="group flex w-full cursor-pointer items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-static-800">
+    <Collapsible.Trigger
+      className={cn(
+        "group flex w-full cursor-pointer items-center gap-3 text-left transition-colors hover:bg-static-800",
+        size === "compact" ? "px-4 py-3.5" : "px-5 py-4",
+      )}
+    >
       {icon && <span className="flex shrink-0 items-center text-muted-foreground">{icon}</span>}
       <span className="min-w-0">
-        <span className="block font-semibold text-lg leading-tight">{title}</span>
-        {description && <span className="mt-0.5 block text-muted-foreground text-sm">{description}</span>}
+        <span
+          className={cn(
+            "block leading-tight",
+            size === "compact" ? "font-medium text-sm" : "font-semibold text-lg",
+          )}
+        >
+          {title}
+        </span>
+        {description && (
+          <span
+            className={cn("mt-0.5 block text-muted-foreground", size === "compact" ? "text-xs" : "text-sm")}
+          >
+            {description}
+          </span>
+        )}
       </span>
       {trailing && <span className="ml-auto shrink-0">{trailing}</span>}
       {/* The chevron follows the trigger's own `data-panel-open` rather than a React boolean —
@@ -73,7 +100,7 @@ const CollapsibleSection = ({
         because React renders `data-open={false}` as the STRING "false". */}
     <Collapsible.Panel hiddenUntilFound className="reveal">
       <div className="reveal-inner">
-        <div className="border-border border-t p-5">{children}</div>
+        <div className={cn("border-border border-t", size === "compact" ? "p-4" : "p-5")}>{children}</div>
       </div>
     </Collapsible.Panel>
   </Collapsible.Root>

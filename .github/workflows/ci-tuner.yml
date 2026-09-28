@@ -11,9 +11,16 @@ on:
       repeat_each:
         type: string
         default: "1"
+      # Flake quarantine (#1570 step 3, scripts/flake-quarantine.tsv). `exclude`: a test listed with
+      # an OPEN issue leaves the required matrix and runs afterwards in the non-blocking quarantine
+      # step. `off`: the manual tuner scope runs everything as required, to measure a flake.
+      quarantine:
+        type: string
+        default: exclude
 
 permissions:
   contents: read
+  issues: read
 
 env:
   GO_VERSION: "1.27"
@@ -37,16 +44,37 @@ jobs:
       - run: make fe-install
       - name: Install pinned browser engines
         run: cd web && pnpm --filter @loomarr/web exec playwright install chromium firefox webkit
+      - name: Resolve the flake quarantine
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TUNER_QUARANTINE: ${{ inputs.quarantine }}
+        run: make tuner-quarantine
       - name: 100-Channel controller matrix
         env:
           TUNER_PROJECT: ${{ inputs.project }}
           TUNER_REPEAT_EACH: ${{ inputs.repeat_each }}
+          TUNER_QUARANTINE: ${{ inputs.quarantine }}
         run: make tuner-e2e-host
       - name: Keep tuner failure evidence
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: tuner-failures
+          path: web/apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+      # The quarantined tests still run on every tuner change and still report, but they cannot
+      # fail the job. A test rejoins the required step above when its issue closes.
+      - name: Quarantined tests (non-blocking)
+        id: quarantined
+        if: inputs.quarantine == 'exclude'
+        continue-on-error: true
+        run: make tuner-e2e-quarantine
+      - name: Keep quarantined failure evidence
+        if: steps.quarantined.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: tuner-quarantine-failures
           path: web/apps/web/test-results/
           if-no-files-found: ignore
           retention-days: 7

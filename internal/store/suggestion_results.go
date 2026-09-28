@@ -265,6 +265,49 @@ func (s *sqlStore) CommitSuggestionFailure(
 	return nil
 }
 
+// CreateSuggestionResult records a proposal that needed no generation (a library channel idea,
+// #1720) as one finished request lifecycle: the done job, its succeeded Attempt 1, and the
+// submitted proposal, in one transaction. It is CloneSuggestionSuccess without a cache source, so
+// the request reads exactly like a generated one to the queue, the journey and the approver.
+func (s *sqlStore) CreateSuggestionResult(ctx context.Context, job Job, p Proposal) error {
+	if job.Status != "done" {
+		return fmt.Errorf("record suggestion job %s: status is %q", job.ID, job.Status)
+	}
+	if p.JobID != job.ID || p.CreatedBy != job.CreatedBy || p.Status != "submitted" {
+		return fmt.Errorf("record suggestion job %s: proposal %s must be the job's own submitted proposal", job.ID, p.ID)
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("record suggestion job %s: begin: %w", job.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, s.ph(
+		`INSERT INTO jobs (id, kind, status, intent_json, intent_hash, created_by, last_error, failure_code,
+		                    workflow_version, reached_live, deadline, attempts, created_at, updated_at, failure_trace_json)
+		 VALUES (?, ?, ?, ?, ?, ?, '', '', ?, ?, ?, 1, ?, ?, '')`),
+		job.ID, job.Kind, job.Status, job.IntentJSON, job.IntentHash, job.CreatedBy,
+		ProposalWorkflowVersion, job.ReachedLive, epoch(job.Deadline),
+		epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
+		return fmt.Errorf("record suggestion job %s: create job: %w", job.ID, err)
+	}
+	if _, err := tx.ExecContext(ctx, s.ph(
+		`INSERT INTO proposal_job_attempts
+		    (job_id, attempt, workflow_version, status, started_at, completed_at, failure_code)
+		 VALUES (?, 1, ?, 'succeeded', ?, ?, '')`),
+		job.ID, ProposalWorkflowVersion, epoch(job.CreatedAt), epoch(job.UpdatedAt)); err != nil {
+		return fmt.Errorf("record suggestion job %s: create Attempt: %w", job.ID, err)
+	}
+	if err := insertProposalTx(ctx, tx, s, p); err != nil {
+		return fmt.Errorf("record suggestion job %s: %w", job.ID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record suggestion job %s: commit: %w", job.ID, err)
+	}
+	return nil
+}
+
 // CloneSuggestionSuccess copies only cached proposal content. The new job and
 // proposal are a fresh request lifecycle owned by the current caller.
 func (s *sqlStore) CloneSuggestionSuccess(

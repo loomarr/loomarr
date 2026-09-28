@@ -13,6 +13,7 @@ import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
+import { StatusDot, type StatusTone } from "@/components/ui/status-dot";
 
 const ACTIVITY_LABELS: Record<FillerDecisionActivityWireDTOKind, string> = {
   automatic_admit: "Added automatically",
@@ -161,6 +162,125 @@ const DiagnosticRecovery = ({ row }: { row: FillerDecisionDiagnosticDTO }) => {
   );
 };
 
+type HubRow = {
+  title: string;
+  summary: string;
+  tone: StatusTone;
+  // A route to open, or a handler (Problems opens the diagnostics panel on this page).
+  open?:
+    | { to: "/filler/sources" | "/filler/incoming" | "/filler/taxonomy" | "/filler/settings" }
+    | (() => void);
+};
+
+// ManageHub — the web mock's Manage tab: one list of the filler tools, each with a status dot,
+// a one-line state and Open. Sources, Incoming and Problems are admin-only, as their pages and
+// the diagnostics are. Every summary comes from data the page already serves; none is guessed.
+const ManageHub = ({
+  isAdmin,
+  problems,
+  onOpenProblems,
+}: {
+  isAdmin: boolean;
+  problems?: number;
+  onOpenProblems: () => void;
+}) => {
+  const watch = unwrap(fillerApi.useFillerWatch().data, (body) => body);
+  const readiness = unwrap(fillerApi.useFillerReadiness().data, (body) => body);
+
+  // "Need a choice" is the watch line's `held` (clips waiting for review in Incoming), so the hub
+  // and the header's "N need you" are always the same number.
+  const needsChoice = watch?.held ?? 0;
+  const preparing = readiness?.pipeline.inProgress ?? 0;
+  const untagged = readiness?.pool.untagged ?? 0;
+
+  const rows: HubRow[] = [
+    ...(isAdmin
+      ? [
+          {
+            title: "Sources",
+            // The mock also names the sources on. A source's `target` is its URL or folder
+            // path, not a display name, so the names wait for one rather than printing paths.
+            summary: watch ? `${watch.sourcesOn} of ${watch.sourcesTotal} on` : "Checking sources…",
+            tone: (watch && watch.sourcesOn > 0 ? "ok" : "off") as StatusTone,
+            open: { to: "/filler/sources" as const },
+          },
+          {
+            title: "Incoming",
+            summary:
+              needsChoice > 0
+                ? `${pluralize(needsChoice, "clip")} ${needsChoice === 1 ? "needs" : "need"} a choice`
+                : `Nothing needs you · ${pluralize(preparing, "clip")} preparing`,
+            tone: (needsChoice > 0 ? "warn" : "ok") as StatusTone,
+            open: { to: "/filler/incoming" as const },
+          },
+        ]
+      : []),
+    {
+      title: "Tags",
+      summary: `Product, format, season and audience · ${
+        untagged > 0 ? `${pluralize(untagged, "clip")} not tagged yet` : "every clip tagged"
+      }`,
+      tone: untagged > 0 ? "warn" : "ok",
+      open: { to: "/filler/taxonomy" },
+    },
+    {
+      title: "Settings",
+      summary: "Folders, downloads, storage and matching defaults",
+      tone: "off",
+      ...(isAdmin ? { open: { to: "/filler/settings" as const } } : {}),
+    },
+    ...(isAdmin
+      ? [
+          {
+            title: "Problems",
+            summary:
+              problems === undefined
+                ? "Checking…"
+                : problems > 0
+                  ? `${pluralize(problems, "item")} can be tried again`
+                  : "Nothing to try again",
+            tone: (problems ? "notice" : "ok") as StatusTone,
+            open: onOpenProblems,
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <section aria-label="Filler tools" className="overflow-hidden rounded-lg border border-border bg-card">
+      <ul>
+        {rows.map((row) => (
+          <li
+            key={row.title}
+            className="flex items-center gap-3 border-border border-b px-4 py-3 last:border-b-0"
+          >
+            {/* Decorative: the summary beside it says the same thing in words. */}
+            <StatusDot tone={row.tone} label="" className="size-1.5" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm">{row.title}</p>
+              <p className="mt-0.5 text-muted-foreground text-xs">{row.summary}</p>
+            </div>
+            {typeof row.open === "function" ? (
+              <Button size="sm" variant="outline" onClick={row.open} aria-label={`Open ${row.title}`}>
+                Open
+              </Button>
+            ) : row.open ? (
+              <Button
+                size="sm"
+                variant="outline"
+                aria-label={`Open ${row.title}`}
+                render={<Link to={row.open.to} />}
+              >
+                Open
+              </Button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
+
 const FillerManage = () => {
   const { isAdmin } = useAuth();
   const { hash } = useLocation();
@@ -168,47 +288,25 @@ const FillerManage = () => {
     () => hash === "diagnostics" || hash === "#diagnostics",
   );
   const activityQuery = fillerApi.useFillerDecisionActivity({ limit: 100 });
+  // Fetched up front for admins now, not on opening the panel: the hub's Problems row shows
+  // the count.
   const diagnosticsQuery = fillerApi.useFillerDecisionDiagnostics(
     { limit: 100 },
-    { query: { enabled: isAdmin && diagnosticsOpen } },
+    { query: { enabled: isAdmin } },
   );
   const activity = unwrap(activityQuery.data, (body) => body);
   const diagnostics = unwrap(diagnosticsQuery.data, (body) => body);
 
   return (
     <div className="flex flex-col gap-6">
-      <section aria-labelledby="manage-tools-heading">
-        <div className="mb-3">
-          <h2 id="manage-tools-heading" className="font-semibold text-lg">
-            Settings and tools
-          </h2>
-          <p className="text-muted-foreground text-sm">
-            Filler runs automatically. Change how it works or open a tool when you need one.
-          </p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Card className="p-4">
-            <h3 className="font-medium">Filler settings</h3>
-            <p className="mt-1 text-muted-foreground text-sm">
-              Downloads, folders, storage, clip review, playback, and advanced processing controls.
-            </p>
-            {isAdmin ? (
-              <Button className="mt-4" size="sm" variant="outline" render={<Link to="/filler/settings" />}>
-                Open filler settings
-              </Button>
-            ) : null}
-          </Card>
-          <Card className="p-4">
-            <h3 className="font-medium">Categories</h3>
-            <p className="mt-1 text-muted-foreground text-sm">
-              Review the labels Loomarr uses to understand and organize filler.
-            </p>
-            <Button className="mt-4" size="sm" variant="outline" render={<Link to="/filler/taxonomy" />}>
-              View categories
-            </Button>
-          </Card>
-        </div>
-      </section>
+      <ManageHub
+        isAdmin={isAdmin}
+        problems={diagnostics?.total}
+        onOpenProblems={() => {
+          setDiagnosticsOpen(true);
+          document.getElementById("diagnostics")?.scrollIntoView({ block: "start" });
+        }}
+      />
 
       <section aria-labelledby="activity-heading">
         <div className="mb-3">
