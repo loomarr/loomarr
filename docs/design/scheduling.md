@@ -120,6 +120,9 @@ marathons (#1659 H3); movies and "new on this channel" don't.
   Only `sequential` qualifies: `shuffle` and `syndication` (the default) deal a deck, so an episode 1
   there is chance. A run on such a Channel can still be a marathon.
 - Otherwise a run of three or more is a `marathon`.
+- One highlight per show on a Channel: a Channel looping a short pool airs the same premiere or
+  marathon every cycle, and the rerun is not news, so the show's best-ranked one stands. The same
+  show on another Channel is its own highlight.
 - One highlight per run. Premieres outrank marathons and longer marathons outrank shorter; every
   Channel gets one before any gets a second, and the chosen few come back in airtime order.
   Paused and detached Channels are skipped.

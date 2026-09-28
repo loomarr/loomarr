@@ -90,11 +90,25 @@ func TestHighlightsNoPremieresWhileShuffled(t *testing.T) {
 	always := func(time.Time) bool { return true }
 	got := pickHighlights([]channelAirings{
 		// Shuffled at 0: the episode 1 opens a plain marathon. In order again by 2h: a premiere.
-		{channelID: "ch-a", shuffledAt: firstHourShuffled, broadcasts: lineup("Show A", "S1E1", "S1E2", "S1E3", "M", "S2E1")},
+		{channelID: "ch-a", shuffledAt: firstHourShuffled, broadcasts: lineup("Show A", "S1E1", "S1E2", "S1E3", "M", "X:Other:S2E1")},
 		// Always shuffled and too short for a marathon: nothing.
 		{channelID: "ch-b", shuffledAt: always, broadcasts: lineup("Show B", "S1E1", "S1E2")},
 	}, 10)
 	if want := "ch-a:marathon@0sx3-until-1h30m0s ch-a:season_premiere@2h0m0s"; describePicks(got) != want {
+		t.Fatalf("highlights = %s, want %s", describePicks(got), want)
+	}
+}
+
+// A channel looping a short pool airs the same premiere and the same marathon every cycle. The
+// rerun is not news: one highlight per show on a channel, its best one. The same show on another
+// channel is its own highlight.
+func TestHighlightsOnePerShowPerChannel(t *testing.T) {
+	got := pickHighlights([]channelAirings{
+		{channelID: "ch-a", broadcasts: lineup("Show A", "S1E1", "S1E2", "S1E3", "M", "S1E1", "S1E2", "S1E3")},
+		{channelID: "ch-b", broadcasts: lineup("Show A", "S2E4", "S2E5", "S2E6", "M", "S2E4", "S2E5", "S2E6", "M", "S2E1")},
+		{channelID: "ch-c", broadcasts: lineup("Show B", "S3E2", "S3E3", "S3E4", "M", "S3E2", "S3E3", "S3E4")},
+	}, 10)
+	if want := "ch-a:series_premiere@0sx3-until-1h30m0s ch-c:marathon@0sx3-until-1h30m0s ch-b:season_premiere@4h0m0s"; describePicks(got) != want {
 		t.Fatalf("highlights = %s, want %s", describePicks(got), want)
 	}
 }
@@ -155,7 +169,13 @@ func TestHighlightsInvariantsProperty(t *testing.T) {
 			candidateChannels[p.channelID] = true
 		}
 		pickedChannels := map[string]bool{}
+		pickedShows := map[string]bool{}
 		for i, p := range picks {
+			if show := p.channelID + "|" + string(p.airing.Key); pickedShows[show] {
+				t.Fatalf("seed %d: a show picked twice on one channel: %s", seed, describePicks(picks))
+			} else {
+				pickedShows[show] = true
+			}
 			if i > 0 && p.airing.Start.Before(picks[i-1].airing.Start) {
 				t.Fatalf("seed %d: not in airtime order: %s", seed, describePicks(picks))
 			}

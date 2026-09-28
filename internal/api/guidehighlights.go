@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/playout"
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -33,8 +34,9 @@ import (
 //     "premieres".
 //   - Otherwise a run of three or more is a marathon.
 //
-// One highlight per run. Premieres outrank marathons, longer marathons outrank shorter; every
-// channel gets one before any gets a second; the chosen few come back in airtime order.
+// One highlight per run, and one per show on a channel (a looping channel's rerun is not news).
+// Premieres outrank marathons, longer marathons outrank shorter; every channel gets one before
+// any gets a second; the chosen few come back in airtime order.
 
 type highlightReason string
 
@@ -98,6 +100,19 @@ func pickHighlights(channels []channelAirings, limit int) []highlightPick {
 			a.airing.Start.Compare(b.airing.Start),
 			cmp.Compare(a.channelID, b.channelID),
 		)
+	})
+	// A channel looping a short pool airs the same premiere or marathon every cycle; the rerun is
+	// not news. One highlight per show on a channel: its best, the first in rank order.
+	type channelShow struct {
+		channelID string
+		key       provision.Key
+	}
+	seen := map[channelShow]bool{}
+	candidates = slices.DeleteFunc(candidates, func(c highlightPick) bool {
+		show := channelShow{c.channelID, c.airing.Key}
+		dup := seen[show]
+		seen[show] = true
+		return dup
 	})
 	picked := make([]bool, len(candidates))
 	var out []highlightPick
