@@ -4,7 +4,8 @@ import { installMockBackend } from "./mock-backend";
 test("Filler keeps its workspace stable and settings focused without losing edits", async ({ page }) => {
   const backend = await installMockBackend(page, { authed: true, role: "admin", fillerEnabled: true });
   await page.goto("/filler/manage");
-  await page.getByRole("link", { name: "Open filler settings" }).click();
+  // The web mock's Manage list opens Settings from its own row (#1659).
+  await page.getByRole("link", { name: "Open Settings" }).click();
   await expect(page).toHaveURL(/\/filler\/settings$/);
   await page.getByRole("link", { name: /^Automatic downloads/ }).click();
   await expect(page).toHaveURL(/\/filler\/settings\/downloads$/);

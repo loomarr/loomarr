@@ -19,4 +19,4 @@ export * from "./segment-filmstrip";
 export * from "./segment-preview";
 export * from "./source-search";
 export * from "./split-review-editor";
-export * from "./watch-pill";
+export * from "./watch-line";

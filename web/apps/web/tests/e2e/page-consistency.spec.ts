@@ -142,8 +142,9 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
   });
   const destinations = [
     { path: "/filler", current: "Overview", title: "Filler" },
-    { path: "/filler/sources", current: "Sources", title: "Filler" },
-    { path: "/filler/incoming", current: "Incoming", title: "Filler" },
+    // Sources and Incoming open from the Manage hub, so they light Manage (#1659).
+    { path: "/filler/sources", current: "Manage", title: "Filler" },
+    { path: "/filler/incoming", current: "Manage", title: "Filler" },
     { path: "/filler/library", current: "Library", title: "Filler" },
     { path: "/filler/manage", current: "Manage", title: "Filler" },
     // Focused settings retain the same Filler workspace header and Manage destination.
@@ -235,6 +236,9 @@ test("Filler keeps member navigation on member-readable routes", async ({ page }
 
   await page.goto("/filler/settings/details");
   await expect(page).toHaveURL(/\/filler\/manage$/);
-  await expect(page.getByRole("heading", { level: 2, name: "Settings and tools" })).toBeVisible();
+  // The web mock's Manage list (#1659): a member sees the tools, but Settings has no Open.
+  const tools = page.getByRole("region", { name: "Filler tools" });
+  await expect(tools).toBeVisible();
+  await expect(tools.getByRole("link", { name: "Open Settings" })).toHaveCount(0);
   expect(privateReads).toEqual([]);
 });

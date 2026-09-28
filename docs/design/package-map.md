@@ -65,6 +65,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
+- **`fillereval`**
+  The budget arithmetic that paid filler assessment shares with certification.
 - **`fillerstructure`** · 5 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers

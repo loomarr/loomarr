@@ -1,17 +1,15 @@
 import { cn } from "@/lib/utils";
-import type { WatchHealth, WatchPillProps } from "./watch-pill.type";
+import type { WatchHealth, WatchLineProps } from "./watch-line.type";
 
-// WatchPill — the mock's `watchLine`, top-right of the Filler page header (§10 V38c).
+// WatchLine — the web mock's `watchLine` (#1659): a plain mono line under the Filler page's
+// description, with a 7px status dot. It was a bordered pill at the header's top right (§10
+// V38c); the web mock draws it unboxed under the description, so it is a line now.
 //
-// The card is the mock's, measured off the rendered prototype: `bg-card` on a 1px border, 8px
-// radius, 8/13px padding, a 9px gap, 7px dot, 11px mono text.
-//
-// ⚠ **The DOT is a deliberate addition, not something the mock specifies.** The prototype draws it
-// unconditionally green because a static mock has no failure states to show. Shipping that
-// verbatim would mean a healthy green pulse on an install with every source switched off, or with
-// nothing configured at all — the one moment the operator most needs to be told otherwise. The
-// text says WHAT ("4 of 5 sources on"); the dot answers the question the text cannot: is this
-// working right now? (Maintainer decision, 2026-08-02.)
+// ⚠ **The dot's colour follows the server's health verdict.** The web mock does the same (green and
+// pulsing when healthy, caution and still when not). Before it did, a static mock drew the dot
+// unconditionally green, and shipping that would have shown a healthy pulse on an install with every
+// source switched off. The text says WHAT ("3 of 4 sources on"); the dot answers whether it is
+// working right now. (Maintainer decision, 2026-08-02.)
 const DOT: Record<WatchHealth, string> = {
   healthy: "bg-lock",
   attention: "bg-caution",
@@ -30,13 +28,8 @@ const SR: Record<WatchHealth, string> = {
   unconfigured: "No sources set up yet",
 };
 
-const WatchPill = ({ status, health, className }: WatchPillProps) => (
-  <div
-    className={cn(
-      "flex w-full min-w-0 max-w-full items-center gap-2 whitespace-normal rounded-lg border border-border bg-card px-3 py-2 sm:w-auto sm:whitespace-nowrap",
-      className,
-    )}
-  >
+const WatchLine = ({ status, health, className }: WatchLineProps) => (
+  <p className={cn("mt-2 flex min-w-0 items-center gap-2", className)}>
     <span
       className={cn(
         "size-1.75 shrink-0 rounded-full",
@@ -50,7 +43,7 @@ const WatchPill = ({ status, health, className }: WatchPillProps) => (
         screen reader — a colour with no text equivalent is exactly the failure axe cannot catch
         (it sees a decorated span, not a missing sentence). */}
     <span className="sr-only">{SR[health]}</span>
-  </div>
+  </p>
 );
 
-export { WatchPill };
+export { WatchLine };
