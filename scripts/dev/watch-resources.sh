@@ -284,5 +284,5 @@ if [ "${1:-}" = --once ]; then
 fi
 while :; do
 	poll
-	sleep "$interval"
+	watch_sleep "$interval"
 done

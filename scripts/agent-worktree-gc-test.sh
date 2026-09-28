@@ -43,10 +43,9 @@ printf 'dependent\n' > "$dependent/dependent.txt"
 git -C "$dependent" add dependent.txt
 git -C "$dependent" commit -qm dependent
 runtime="$(add_worktree runtime)"
-printf '%s\n' 'package main' 'import "time"' 'func main() { time.Sleep(60 * time.Second) }' > "$tmp/loomarr-dev.go"
-go build -o "$runtime/loomarr-dev" "$tmp/loomarr-dev.go"
-git -C "$runtime" add loomarr-dev
-git -C "$runtime" commit -qm 'runtime fixture'
+# Any process below the worktree protects it, not only known dev servers at its root: vite and
+# storybook run from web/apps/web, and a removed worktree left them running against a deleted tree.
+mkdir -p "$runtime/web/apps/web"
 
 printf 'dirty\n' >> "$dirty/dirty.txt"
 printf 'secret\n' > "$credential/.env"
@@ -93,7 +92,7 @@ LOOMARR_REPO_ROOT="$active" "$SCRIPT_DIR/agent.sh" start active-task '' >/dev/nu
 LOOMARR_REPO_ROOT="$dependency" "$SCRIPT_DIR/agent.sh" start dependency-task '' >/dev/null
 LOOMARR_REPO_ROOT="$dependent" "$SCRIPT_DIR/agent.sh" start dependent-task '' dependency-task >/dev/null
 LOOMARR_REPO_ROOT="$dependency" "$SCRIPT_DIR/agent.sh" stop >/dev/null
-(cd "$runtime" && exec ./loomarr-dev 60) &
+(cd "$runtime/web/apps/web" && exec sleep 60) &
 runtime_pid=$!
 sleep 0.05
 

@@ -74,6 +74,7 @@ printf '/dev/disk3s1 on / (apfs, local)\n'
 EOF
 chmod +x "$BIN"/*
 
+REAL_PATH="$PATH"
 export PATH="$BIN:$PATH" FIX WATCH_PROC="$P" WATCH_CORES=10 WATCH_INTERVAL=60 WATCH_STATE_DIR="$tmp/state"
 export WATCH_WORKTREE_ROOTS="$tmp/worktrees" WATCH_TMP_DIR="$tmp/tmpfs" WATCH_LOCKS="$tmp/gpu.lock"
 export WATCH_OS=Linux
@@ -362,6 +363,40 @@ fi
 # No orca: skip cleanly.
 out="$(PATH=/usr/bin:/bin WATCH_STATE_DIR="$tmp/state" "$SCRIPT_DIR/watch-lanes.sh" --once 2>&1)" || fail "watch-lanes failed without orca"
 expect "$out" 'orca CLI not found; skipping'
+
+# ---------------------------------------------------------------- worktree-procs (real processes)
+
+unset WATCH_PROC WATCH_WORKTREE_ROOTS
+WATCH_OS="$(uname -s)"
+export WATCH_OS WATCH_REAP_GRACE=2 PATH="$REAL_PATH"
+wt="$tmp/reap/wt"
+mkdir -p "$wt/web/apps/web" "$tmp/reap/other"
+# Detach each sleeper (its subshell exits), so a stopped one is reaped by init and kill -0 sees it gone.
+spawn() { # dir name
+	(cd "$1" && { sleep 300 & echo $! > "$tmp/reap/$2"; })
+}
+spawn "$wt/web/apps/web" sub
+spawn "$wt" root
+spawn "$tmp/reap/other" outside
+sub=$(cat "$tmp/reap/sub") root=$(cat "$tmp/reap/root") outside=$(cat "$tmp/reap/outside")
+trap 'kill "$sub" "$root" "$outside" 2>/dev/null || true; rm -rf "$tmp"' EXIT INT TERM
+out="$(cd "$wt" && "$SCRIPT_DIR/worktree-procs.sh" "$wt")"
+expect "$out" "^$sub	sleep	$wt/web/apps/web\$"
+expect "$out" "^$root	sleep	$wt\$"
+# Neither the process outside nor the caller's own shell (its cwd is the worktree) is listed.
+[ "$(printf '%s\n' "$out" | grep -c .)" = 2 ] || fail "expected exactly the two sleepers, got: $out"
+(cd "$wt" && "$SCRIPT_DIR/worktree-procs.sh" "$wt" --kill >/dev/null 2>&1) || fail 'worktree-procs --kill failed'
+kill -0 "$sub" 2>/dev/null && fail "sleeper in a subdirectory survived --kill"
+kill -0 "$root" 2>/dev/null && fail "sleeper at the root survived --kill"
+kill -0 "$outside" 2>/dev/null || fail "--kill stopped a process outside the worktree"
+kill "$outside"
+# After the worktree is deleted, --orphans finds what still runs in it (the Orca trash case).
+spawn "$wt/web/apps/web" late
+late=$(cat "$tmp/reap/late")
+rm -rf "$wt"
+out="$(WATCH_WORKTREE_ROOTS="$tmp/reap" "$SCRIPT_DIR/worktree-procs.sh" --orphans)"
+expect "$out" "^$late	sleep	"
+kill "$late"
 
 if [ "$failures" -gt 0 ]; then
 	printf 'watch-test: %s failure(s)\n' "$failures" >&2

@@ -8,9 +8,6 @@ ROOT="${LOOMARR_REPO_ROOT:-$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd -P)}"
 ROOT="$(CDPATH='' cd -- "$ROOT" && pwd -P)"
 apply="${APPLY:-0}"
 
-# shellcheck disable=SC1091 # Resolved beside this script at runtime.
-. "$SCRIPT_DIR/dev-processes.sh"
-
 if [[ "$apply" != 0 && "$apply" != 1 ]]; then
 	echo 'agent-gc: APPLY must be 0 or 1' >&2
 	exit 2
@@ -72,15 +69,10 @@ report_protected() {
 	printf 'PROTECTED\t%s\t%s\t%s\t%s\n' "$branch" "$reason" "$path" "$detail"
 }
 
+# Any process whose cwd is in the worktree, subdirectories included, as "comm:pid,comm:pid".
+# Stop them first with `make agent-reap WORKTREE=<path> APPLY=1`.
 running_processes() {
-	local path="$1" comm pids found=''
-	for comm in air loomarr-dev node pnpm ffmpeg; do
-		pids="$(repo_pids_by_comm "$comm" "$path")"
-		if [[ -n "$pids" ]]; then
-			found="${found:+$found,}$comm:$(printf '%s\n' "$pids" | paste -sd+ -)"
-		fi
-	done
-	printf '%s' "$found"
+	"$SCRIPT_DIR/dev/worktree-procs.sh" "$1" | awk -F '\t' '{ printf "%s%s:%s", (NR > 1 ? "," : ""), $2, $1 }'
 }
 
 process_worktree() {

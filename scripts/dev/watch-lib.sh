@@ -21,6 +21,8 @@ watch_state_init() {
 		WATCH_STATE="$(mktemp -d "${TMPDIR:-/tmp}/loomarr-watch-$1.XXXXXX")"
 		# shellcheck disable=SC2064 # Expand now: the path is fixed for this run.
 		trap "rm -rf '$WATCH_STATE'" EXIT
+		trap 'exit 130' INT
+		trap 'exit 143' TERM
 	fi
 	mkdir -p "$WATCH_STATE"
 	WATCH_NAME="$1"
@@ -77,6 +79,13 @@ watch_first() {
 	f="$WATCH_STATE/seen.$(watch_key "$1")"
 	[ -f "$f" ] && return 1
 	: > "$f"
+}
+
+# watch_sleep SECONDS: bash runs a trap only after a foreground command returns, so a plain `sleep 60`
+# would hold off Ctrl-C (and the state cleanup) for up to a minute.
+watch_sleep() {
+	sleep "$1" &
+	wait $!
 }
 
 watch_hash() {
@@ -139,11 +148,6 @@ list_cwds() {
 cwd_is_gone() {
 	case $1 in *' (deleted)') return 0 ;; esac
 	[ ! -d "$1" ]
-}
-
-# cwd_strip CWD: the path without Linux's " (deleted)" marker.
-cwd_strip() {
-	printf '%s\n' "${1% (deleted)}"
 }
 
 # path_under PATH ROOT: PATH is ROOT or inside it.
