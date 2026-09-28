@@ -62,6 +62,27 @@ as the person who paired it, so a Channel starred on the TV shows on their phone
   mints them for the neighbouring Channels. A late report never moves a Channel backwards.
 - Both lists die with their person or their Channel.
 
+## Household viewing
+
+Home's **Watching now** reads `GET /v1/household/viewing` (#1662). Who is watching is the server's
+own observation, not a client report: a live player re-reads its media playlist every segment, so a
+device is watching a Channel while its polls continue (`internal/viewing`).
+
+- **Attribution.** A play URL carries a signed `viewer` tag naming the person and device it was
+  minted for: a paired device by its name, a browser by its family and system ("Firefox on
+  macOS"). The master copies it onto the media-playlist URLs, so no client change is needed. It
+  grants nothing (`sig` alone authorizes the stream), but it is HMAC-signed and bound to the
+  Channel, so nobody can make the household believe someone else is watching.
+- **What counts.** Two polls within 30 s make a viewing; the warmer's single fetch of a neighbour
+  does not. A device watches one Channel at a time. Thirty seconds without a poll ends a viewing.
+  Media-server Live TV viewing carries no person and is not counted.
+- **Who sees what** (#1659 H2, enforced by the server): an admin gets every viewing by name
+  (`scope: household`); a member gets the per-Channel counts plus only their own viewings
+  (`scope: self`). Each person also gets `continueWatching`, their latest settled tune from
+  [Favourites and recents](#favourites-and-recents), which is also what Watch opens.
+- The tracker is in memory: one replica is the supported topology, and a restart loses nothing
+  a poll interval doesn't rebuild.
+
 ## Pause
 
 Pause is shared time-shift, not a private playback stack (decision

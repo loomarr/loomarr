@@ -692,6 +692,9 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "playlist unavailable", http.StatusInternalServerError)
 			return
 		}
+		// A player re-reads its media playlist every segment while it plays: that poll is the
+		// household-viewing signal (#1662). Segments are not, so one viewing isn't counted per fetch.
+		s.observeViewerPoll(r.Context(), channelID, r.URL.Query())
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write(rewritePlaylistAuth(body, hlsAssetQuery(r.URL.Query())))

@@ -1344,6 +1344,19 @@ components:
         - audio
         - subtitles
       type: object
+    ChannelViewersDTO:
+      additionalProperties: false
+      properties:
+        channelId:
+          type: string
+        viewers:
+          description: Devices watching this channel now
+          format: int64
+          type: integer
+      required:
+        - channelId
+        - viewers
+      type: object
     ClassBudget:
       additionalProperties: false
       properties:
@@ -1970,6 +1983,19 @@ components:
         - email
         - status
         - provenance
+      type: object
+    ContinueWatchingDTO:
+      additionalProperties: false
+      properties:
+        channelId:
+          type: string
+        tunedAt:
+          description: The caller's latest settled tune, from any of their devices
+          format: date-time
+          type: string
+      required:
+        - channelId
+        - tunedAt
       type: object
     CoverageCriterionDTO:
       additionalProperties: false
@@ -5017,6 +5043,45 @@ components:
         - active
         - modelsLive
         - models
+      type: object
+    HouseholdViewingOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/HouseholdViewingOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        channels:
+          description: Devices watching each channel, busiest first
+          items:
+            $ref: "#/components/schemas/ChannelViewersDTO"
+          type: array
+        continueWatching:
+          $ref: "#/components/schemas/ContinueWatchingDTO"
+          description: The caller's last-tuned channel, for Home's continue-watching and Watch
+        scope:
+          description: "household: viewers names everyone watching (admin). self: viewers holds only the caller's own devices (member)"
+          enum:
+            - household
+            - self
+          type: string
+        viewers:
+          description: Named viewings, oldest first, limited by scope
+          items:
+            $ref: "#/components/schemas/ViewerDTO"
+          type: array
+        watching:
+          description: Devices watching anything right now, across the household
+          format: int64
+          type: integer
+      required:
+        - scope
+        - watching
+        - channels
+        - viewers
       type: object
     HowVocab:
       additionalProperties: false
@@ -11151,6 +11216,34 @@ components:
       required:
         - durationMinutes
       type: object
+    ViewerDTO:
+      additionalProperties: false
+      properties:
+        channelId:
+          type: string
+        device:
+          description: "What the household calls the device: a paired device's name, or the browser and system"
+          type: string
+        name:
+          description: The person's display name
+          type: string
+        since:
+          description: When this device started watching this channel
+          format: date-time
+          type: string
+        userId:
+          type: string
+        you:
+          description: Whether this is the caller's own viewing
+          type: boolean
+      required:
+        - userId
+        - name
+        - device
+        - channelId
+        - since
+        - you
+      type: object
     Vocabulary:
       additionalProperties: false
       properties:
@@ -14862,6 +14955,26 @@ paths:
       summary: Liveness probe
       tags:
         - ops
+  /v1/household/viewing:
+    get:
+      description: "Any signed-in person. Counts of devices watching each channel for everyone; the named viewings (person, device, channel, since) only for an admin (`scope: household`). A member gets their own viewings only (`scope: self`). Both get their own continue-watching channel. Counts only in-app playback; watching through the media server's Live TV isn't attributed to a person."
+      operationId: household-viewing
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HouseholdViewingOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Who is watching what right now
+      tags:
+        - dashboard
   /v1/images:
     post:
       description: Stores an image and returns its record. Raster only — SVG is refused.
