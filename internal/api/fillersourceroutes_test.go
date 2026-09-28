@@ -11,7 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 func sourceReq(t *testing.T, method, url, body, token string) *http.Response {
@@ -103,13 +103,13 @@ func TestAddFillerSource_RejectsMarketWithoutCountry(t *testing.T) {
 // ⚠ Since V38c an operator can ADD folders and libraries too (§10), so this no longer means
 // "everything the operator added". A test about those kinds must read the whole table; see
 // TestAddFillerSource_AcceptsFoldersAndLibraries.
-func registeredSources(t *testing.T, st store.Store) []store.FillerSource {
+func registeredSources(t *testing.T, st fillerstore.Store) []fillerstore.FillerSource {
 	t.Helper()
 	all, err := st.ListFillerSources(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	var out []store.FillerSource
+	var out []fillerstore.FillerSource
 	for _, s := range all {
 		if s.Kind != "folder" && s.Kind != "library" {
 			out = append(out, s)
@@ -263,7 +263,7 @@ func TestAddFillerSource_RefusesUnusableFolderPaths(t *testing.T) {
 func TestSetFillerSourceEnabled_DisablingKeepsTheClips(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
-	if err := st.UpsertFillerSource(ctx, store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+	if err := st.UpsertFillerSource(ctx, fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 	seedClip(t, st, "classic/ad.mp4", "commercial", 1992, "kids", "toys")
@@ -325,13 +325,13 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 		return ""
 	})
 	ctx := context.Background()
-	source := store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
+	source := fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
 	source.Geography.Country = "US"
 	if err := st.UpsertFillerSource(ctx, source); err != nil {
 		t.Fatal(err)
 	}
 
-	sourceByID := func(id string) store.FillerSource {
+	sourceByID := func(id string) fillerstore.FillerSource {
 		t.Helper()
 		all, err := st.ListFillerSources(ctx)
 		if err != nil {
@@ -343,7 +343,7 @@ func TestSetFillerSourceFetchPolicy_ThreeStatesAllReachable(t *testing.T) {
 			}
 		}
 		t.Fatalf("source %q not found", id)
-		return store.FillerSource{}
+		return fillerstore.FillerSource{}
 	}
 
 	// 1. A custom policy — poll this source on its own schedule.
@@ -443,7 +443,7 @@ func TestSetFillerSourceFetchPolicy_RefusesAZeroCap(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
 	if err := st.UpsertFillerSource(ctx,
-		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -462,7 +462,7 @@ func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testin
 		return ""
 	})
 	ctx := t.Context()
-	src := store.NewFillerSource("retrying", "archive", "retrying", "Retrying", time.Now().UTC())
+	src := fillerstore.NewFillerSource("retrying", "archive", "retrying", "Retrying", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +494,7 @@ func TestListFillerSources_ProjectsDurableRetryAsTheNextAutomaticCheck(t *testin
 func TestDeleteFillerSource_ForgetsTheSourceNotTheClips(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
-	if err := st.UpsertFillerSource(ctx, store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+	if err := st.UpsertFillerSource(ctx, fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 	seedClip(t, st, "classic/ad.mp4", "commercial", 1992, "kids", "toys")
@@ -631,13 +631,13 @@ func TestListFillerSources_NoFetchButtonWithNothingToFetch(t *testing.T) {
 	ctx := context.Background()
 
 	// A YouTube row with no playlist yet — exactly how migration 00034 seeds it.
-	unconfigured := store.NewFillerSource("youtube", "youtube", "", "YouTube", time.Now().UTC())
+	unconfigured := fillerstore.NewFillerSource("youtube", "youtube", "", "YouTube", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, unconfigured); err != nil {
 		t.Fatal(err)
 	}
 	// And one that IS configured, so this test cannot pass by reporting false for everything.
 	if err := st.UpsertFillerSource(ctx,
-		store.NewFillerSource("youtube:PL1", "youtube", "https://www.youtube.com/playlist?list=PL1",
+		fillerstore.NewFillerSource("youtube:PL1", "youtube", "https://www.youtube.com/playlist?list=PL1",
 			"My playlist", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
@@ -671,11 +671,11 @@ func TestListFillerSources_ProjectsInheritedLocationAndReadiness(t *testing.T) {
 	})
 	ctx := context.Background()
 
-	inherited := store.NewFillerSource("archive:inherited", "archive", "inherited", "Inherited", time.Now().UTC())
+	inherited := fillerstore.NewFillerSource("archive:inherited", "archive", "inherited", "Inherited", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, inherited); err != nil {
 		t.Fatal(err)
 	}
-	overridden := store.NewFillerSource("archive:canada", "archive", "canada", "Canada", time.Now().UTC())
+	overridden := fillerstore.NewFillerSource("archive:canada", "archive", "canada", "Canada", time.Now().UTC())
 	overridden.Geography = filler.Geography{Country: "CA"}
 	if err := st.UpsertFillerSource(ctx, overridden); err != nil {
 		t.Fatal(err)

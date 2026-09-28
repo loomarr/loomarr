@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -71,7 +72,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list filler sources", err)
 	}
-	live := make(map[string]store.FillerSource, len(srcs))
+	live := make(map[string]fillerstore.FillerSource, len(srcs))
 	home := s.fillerHomeGeography()
 	for _, src := range srcs {
 		if src.EffectiveEnabled() && src.Fetchable() && src.GeographicallyEligible(home) {

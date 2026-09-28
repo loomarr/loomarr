@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // RecoverInterruptedSpokenSafetyRuns closes attempts owned by a previous
@@ -52,13 +53,13 @@ func (s *sqlStore) RecoverInterruptedSpokenSafetyRuns(ctx context.Context, at ti
 }
 
 func (s *sqlStore) recoverSpokenSafetyRun(ctx context.Context, runID string, at time.Time) (bool, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	query := spokenSafetyRunSelect + ` WHERE id = ?`
-	if s.dialect == DialectPostgres {
+	if s.dialect == store.DialectPostgres {
 		query += ` FOR UPDATE`
 	}
 	run, err := scanSpokenSafetyRun(tx.QueryRowContext(ctx, s.ph(query), runID))

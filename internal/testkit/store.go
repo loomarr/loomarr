@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -137,9 +138,9 @@ func (s *FaultSettingStore) SetSetting(ctx context.Context, key, value string) e
 // migrate path and stays for callers that specifically want that (e.g. asserting
 // on migration behavior itself), or as a fallback if the template ever needs
 // bypassing for a specific test.
-func SQLiteStore(t testing.TB) store.Store {
+func SQLiteStore(t testing.TB) fillerstore.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := fillerstore.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
 	if err != nil {
 		t.Fatalf("open SQLite test store: %v", err)
 	}
@@ -211,7 +212,7 @@ func buildTemplate() (string, error) {
 //
 // Every call still gets an independent on-disk database: the template is only
 // ever read from, and each test copies it into a fresh file it alone owns.
-func MigratedSQLiteStore(t testing.TB) store.Store {
+func MigratedSQLiteStore(t testing.TB) fillerstore.Store {
 	t.Helper()
 
 	templateOnce.Do(func() {
@@ -226,7 +227,7 @@ func MigratedSQLiteStore(t testing.TB) store.Store {
 		t.Fatalf("copy migrated SQLite template: %v", err)
 	}
 
-	st, err := store.Open(context.Background(), "sqlite://"+dest, false)
+	st, err := fillerstore.Open(context.Background(), "sqlite://"+dest, false)
 	if err != nil {
 		t.Fatalf("open copied SQLite test store: %v", err)
 	}

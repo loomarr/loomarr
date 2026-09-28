@@ -13,6 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -283,7 +284,7 @@ func automaticDownloadSummary(mode string, every time.Duration, maxPerCheck int)
 	return strings.ToUpper(policy[:1]) + policy[1:] + "."
 }
 
-func (s *Server) sourceAutomaticDownloads(src store.FillerSource, active bool) *SourceAutomaticDownloadsDTO {
+func (s *Server) sourceAutomaticDownloads(src fillerstore.FillerSource, active bool) *SourceAutomaticDownloadsDTO {
 	if src.Kind != "archive" && src.Kind != "youtube" {
 		return nil
 	}
@@ -583,7 +584,7 @@ func (s *Server) queueFillerSourceItem(ctx context.Context, in *queueFillerSourc
 	if err != nil {
 		return nil, huma.Error500InternalServerError("read filler source", err)
 	}
-	var selected *store.FillerSource
+	var selected *fillerstore.FillerSource
 	for i := range sources {
 		if sources[i].ID == in.ID {
 			selected = &sources[i]
@@ -661,7 +662,7 @@ func sourceSuggestionDTO(source filler.SourceSuggestion, registered map[string]b
 //     "Fetch now" runs the same sync the scheduler does.
 //   - DOWNLOADED (archive, youtube) need BOTH a target to fetch (the store's `Fetchable()`,
 //     which is false on an empty uri) and the ingest route to hand it to.
-func canFetchRow(src store.FillerSource, ingestAvailable bool) bool {
+func canFetchRow(src fillerstore.FillerSource, ingestAvailable bool) bool {
 	if src.Scannable() {
 		return true
 	}
@@ -831,7 +832,7 @@ func (s *Server) addFillerSource(ctx context.Context, in *addFillerSourceInput) 
 	rowID := kind + ":" + id
 	// NewFillerSource, never a struct literal: `Enabled` is a bool, so a literal that omits it
 	// registers the collection SWITCHED OFF (see the store).
-	src := store.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
+	src := fillerstore.NewFillerSource(rowID, kind, id, label, time.Now().UTC())
 	src.Geography = filler.Geography{Country: in.Body.Country, Market: in.Body.Market}.Normalize()
 	if err := src.Geography.Validate(); err != nil {
 		return nil, errUnprocessable("Invalid source geography", err.Error())
@@ -1095,19 +1096,10 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	}
 	// The Incoming count must use the same lifecycle projection as the page it links to. Counting
 	// every held row includes terminal composite parents; counting only ordinary held clips drops
-	// active reels. Production stores expose the exact projection, while the fallback preserves a
-	// conservative answer for narrow adapters.
-	incomingBySource, err := s.store.CountClipsBySource(ctx, store.ClipFilter{HeldOnly: true})
+	// active reels.
+	incomingBySource, err := s.store.CountIncomingConveyorBySource(ctx)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count incoming clips", err)
-	}
-	if counter, ok := s.store.(interface {
-		CountIncomingConveyorBySource(context.Context) (map[string]int, error)
-	}); ok {
-		incomingBySource, err = counter.CountIncomingConveyorBySource(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("count incoming clips", err)
-		}
 	}
 	totalClips := 0
 	for _, n := range bySource {

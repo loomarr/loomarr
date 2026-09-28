@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 type InferenceEvaluationState string
@@ -88,7 +90,7 @@ func (s *sqlStore) ReserveInferenceEvaluation(ctx context.Context, e InferenceEv
 	if err := validateInferenceReservation(e, budget); err != nil {
 		return InferenceEvaluation{}, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return InferenceEvaluation{}, fmt.Errorf("begin inference reservation: %w", err)
 	}
@@ -103,7 +105,7 @@ func (s *sqlStore) ReserveInferenceEvaluation(ctx context.Context, e InferenceEv
 	return e, nil
 }
 
-func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx *sql.Tx, e InferenceEvaluation, budget InferenceBudget) (InferenceEvaluation, error) {
+func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx store.Tx, e InferenceEvaluation, budget InferenceBudget) (InferenceEvaluation, error) {
 	dayStart := e.CreatedAt.UTC().Truncate(24 * time.Hour)
 	scopes := []string{"clip:" + e.ClipHash, "day:" + dayStart.Format("2006-01-02")}
 	if e.RunID != "" {
@@ -115,7 +117,7 @@ func (s *sqlStore) reserveInferenceEvaluation(ctx context.Context, tx *sql.Tx, e
 			return InferenceEvaluation{}, fmt.Errorf("create inference budget guard: %w", err)
 		}
 		lockSQL := `SELECT scope FROM filler_inference_budget_guards WHERE scope = ?`
-		if s.dialect == DialectPostgres {
+		if s.dialect == store.DialectPostgres {
 			lockSQL += ` FOR UPDATE`
 		}
 		var locked string
@@ -219,7 +221,7 @@ func sumInferenceBudget(ctx context.Context, q interface {
 	return used, nil
 }
 
-func insertInferenceEvaluation(ctx context.Context, tx *sql.Tx, ph placeholder, e InferenceEvaluation) error {
+func insertInferenceEvaluation(ctx context.Context, tx store.Tx, ph placeholder, e InferenceEvaluation) error {
 	modalities, err := json.Marshal(e.Modalities)
 	if err != nil {
 		return fmt.Errorf("marshal inference modalities: %w", err)
@@ -251,7 +253,7 @@ func insertInferenceEvaluation(ctx context.Context, tx *sql.Tx, ph placeholder, 
 }
 
 func (s *sqlStore) SettleInferenceEvaluation(ctx context.Context, id string, settlement InferenceSettlement) (InferenceEvaluation, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return InferenceEvaluation{}, err
 	}
@@ -269,7 +271,7 @@ func (s *sqlStore) SettleInferenceEvaluation(ctx context.Context, id string, set
 	return got, nil
 }
 
-func (s *sqlStore) settleInferenceEvaluation(ctx context.Context, tx *sql.Tx, id string, settlement InferenceSettlement) (InferenceEvaluation, bool, error) {
+func (s *sqlStore) settleInferenceEvaluation(ctx context.Context, tx store.Tx, id string, settlement InferenceSettlement) (InferenceEvaluation, bool, error) {
 	if settlement.UpdatedAt.IsZero() || settlement.ChargedNanoUSD < 0 || settlement.EstimatedNanoUSD < 0 {
 		return InferenceEvaluation{}, false, fmt.Errorf("invalid inference settlement")
 	}
@@ -285,11 +287,11 @@ func (s *sqlStore) settleInferenceEvaluation(ctx context.Context, tx *sql.Tx, id
 	var reserved int64
 	var state string
 	q := `SELECT reserved_nano_usd, state FROM filler_inference_evaluations WHERE id = ?`
-	if s.dialect == DialectPostgres {
+	if s.dialect == store.DialectPostgres {
 		q += ` FOR UPDATE`
 	}
 	if err := tx.QueryRowContext(ctx, s.ph(q), id).Scan(&reserved, &state); errors.Is(err, sql.ErrNoRows) {
-		return InferenceEvaluation{}, false, ErrNotFound
+		return InferenceEvaluation{}, false, store.ErrNotFound
 	} else if err != nil {
 		return InferenceEvaluation{}, false, err
 	}
@@ -334,7 +336,7 @@ func (s *sqlStore) settleInferenceEvaluation(ctx context.Context, tx *sql.Tx, id
 func (s *sqlStore) GetInferenceEvaluation(ctx context.Context, id string) (InferenceEvaluation, error) {
 	e, err := scanInferenceEvaluation(s.db.QueryRowContext(ctx, s.ph(inferenceEvaluationSelect+` WHERE id = ?`), id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return InferenceEvaluation{}, ErrNotFound
+		return InferenceEvaluation{}, store.ErrNotFound
 	}
 	if err != nil {
 		return InferenceEvaluation{}, fmt.Errorf("get inference evaluation %s: %w", id, err)

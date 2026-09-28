@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/notifications"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store/storetest"
 )
 
 type cachedEpisodeAvailability []schedule.ResolvedProgram
@@ -79,57 +81,26 @@ func sharedSQLiteTemplate(t *testing.T) []byte {
 // buildSQLiteTemplate migrates and boot-seeds one database, folds its WAL into the main file, and
 // returns the file's bytes: a complete, closed database that any number of copies can start from.
 func buildSQLiteTemplate(ctx context.Context, open sqliteConformanceOpenFunc, path string) ([]byte, error) {
-	template, err := open(ctx, "sqlite://"+path, true)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := template.(*sqlStore).db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-		_ = template.Close()
-		return nil, fmt.Errorf("checkpoint: %w", err)
-	}
-	if err := template.Close(); err != nil {
-		return nil, fmt.Errorf("close: %w", err)
-	}
-	return os.ReadFile(path)
+	return storetest.SQLiteTemplate(ctx, storetest.OpenFunc[Store](open), checkpointSQLite, path)
+}
+
+// checkpointSQLite folds the WAL into the main file so the template's bytes are the whole database.
+func checkpointSQLite(s Store) error {
+	_, err := HandleOf(s).ExecContext(context.Background(), "PRAGMA wal_checkpoint(TRUNCATE)")
+	return err
 }
 
 type sqliteConformanceOpenFunc func(context.Context, string, bool) (Store, error)
 
-// newSQLiteConformanceStoreFactory migrates and boot-seeds one clean SQLite database, then gives
-// every conformance assertion a byte-for-byte private copy. The assertions still open the copied
-// file through the production SQLite adapter (including WAL and connection pragmas), but they do
-// not replay the complete forward-only migration history 131 times in one suite run.
-//
-// Dedicated migration, startup, downgrade, historical-data, and restart tests deliberately keep
-// using newSQLiteStore/Open(..., true): this fixture is only the already-current-schema starting
-// point for backend-agnostic Store behavior.
+// newSQLiteConformanceStoreFactory gives every conformance assertion a private copy of one
+// migrated, boot-seeded SQLite database (storetest.SQLiteClones).
 func newSQLiteConformanceStoreFactory(t *testing.T) NewStoreFunc {
 	return newSQLiteConformanceStoreFactoryWithOpen(t, Open)
 }
 
 func newSQLiteConformanceStoreFactoryWithOpen(t *testing.T, open sqliteConformanceOpenFunc) NewStoreFunc {
 	t.Helper()
-	ctx := context.Background()
-	dir := t.TempDir()
-	templateBytes, err := buildSQLiteTemplate(ctx, open, filepath.Join(dir, "conformance-template.db"))
-	if err != nil {
-		t.Fatalf("create sqlite conformance template: %v", err)
-	}
-
-	var sequence atomic.Uint64
-	return func(t *testing.T) Store {
-		t.Helper()
-		path := filepath.Join(dir, fmt.Sprintf("conformance-%d.db", sequence.Add(1)))
-		if err := os.WriteFile(path, templateBytes, 0o600); err != nil {
-			t.Fatalf("clone sqlite conformance template: %v", err)
-		}
-		s, err := open(context.Background(), "sqlite://"+path, false)
-		if err != nil {
-			t.Fatalf("open cloned sqlite conformance store: %v", err)
-		}
-		t.Cleanup(func() { _ = s.Close() })
-		return s
-	}
+	return storetest.SQLiteClones(t, storetest.OpenFunc[Store](open), checkpointSQLite)
 }
 
 // TestSQLiteConformance runs the shared suite against SQLite. Phase 4 adds the
@@ -444,7 +415,10 @@ func TestOpenHealsPreAtomicTaxonomyProjections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	clip := sampleClip("upgrade-clip", "upgrade.mp4", filler.Commercial, 1994, filler.General, "")
+	clip := Clip{}
+	clip.Hash, clip.Path, clip.TunarrProgramID = "upgrade-clip", "p/upgrade-clip.mp4", "tun-upgrade-clip"
+	clip.Name, clip.Kind, clip.Era, clip.Audience = "upgrade.mp4", filler.Commercial, 1994, filler.General
+	clip.DurationMs, clip.Source, clip.UpdatedAt = 30000, "archive", time.Unix(1_700_000_000, 0).UTC()
 	if err := s.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
 	}
@@ -482,7 +456,9 @@ func TestOpenHealsPreAtomicTaxonomyProjections(t *testing.T) {
 	if got.Category != "cereal" {
 		t.Errorf("healed category = %q, want cereal", got.Category)
 	}
-	assertSet(t, "healed tags", got.Tags, []string{"cereal", "food"})
+	if tags := slices.Sorted(slices.Values(got.Tags)); !slices.Equal(tags, []string{"cereal", "food"}) {
+		t.Errorf("healed tags = %v, want [cereal food] (set)", got.Tags)
+	}
 }
 
 func TestUnknownSchemeFailsFast(t *testing.T) {

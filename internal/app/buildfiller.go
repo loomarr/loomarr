@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/mediatools"
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
@@ -46,7 +47,7 @@ import (
 // ⚠ The library scanner stays wired when no media server is configured, and that is a SUPPORTED
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
-func buildSyncer(st store.Store, set resolved, layout filler.Layout, log *slog.Logger,
+func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger,
 	fillerProg *programmer.Tunarr, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := filler.DirSource{
 		Layout: layout,
@@ -207,7 +208,7 @@ func buildFillerMediaTools(set resolved, recorder *metrics.Recorder) *mediatools
 // one that is present says why it skipped in the operator's own terms. That is what makes the
 // ladder explain an install rather than merely show gaps in it. Do not make registration
 // conditional to "clean up" the nil cases.
-func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
+func buildPipeline(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger, emitter *eventEmitter,
 	splitter *filler.Splitter, wake *fillerChannelWake,
 	processDiagnostics *diagnostics.ProcessManager, storageGovernor *storagegovernor.Governor,
 	recorder *metrics.Recorder, headroom filler.PlaybackHeadroom) (*filler.Pipeline, *filler.TranscribeStage, *filler.VisionStage) {

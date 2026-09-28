@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -14,7 +14,7 @@ func (s *sqlStore) SettleStructureWindowCall(ctx context.Context, record fillers
 	if err := fillerstructurewindow.ValidateCallRecord(record); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin structure window call settlement: %w", err)
 	}

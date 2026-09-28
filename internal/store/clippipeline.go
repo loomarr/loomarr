@@ -376,31 +376,18 @@ func clipPipelineWhere(f filler.PipelineFilter, includeCursor bool) (string, []a
 	return "", args, nil
 }
 
-// CountIncomingConveyor counts the exact union rendered by the Incoming belt: held legacy clips
-// plus running/review pipeline rows, minus READY reels that have their own row. A split detection
-// checkpoint is still machine work and therefore stays on the belt; only a complete proposal
-// claims its composite into the reels list.
+// CountIncomingConveyorBySource counts, per clip source, the exact union rendered by the Incoming
+// belt: held legacy clips plus running/review pipeline rows, minus READY reels that have their own
+// row. A split detection checkpoint is still machine work and therefore stays on the belt; only a
+// complete proposal claims its composite into the reels list. Sources uses this instead of
+// counting every held row: completed composite parents stay held for lineage and re-splitting but
+// are no longer Incoming work.
 //
 // Readiness lives inside the versioned proposal document, so SQL returns one narrow row per belt
 // candidate and only intersecting proposal documents are decoded here. One query matters: counting
 // candidates and reading proposals separately can race a pipeline transition and briefly return a
 // negative or inflated total. This also stays dialect-neutral; teaching shared store code two JSON
 // syntaxes would make SQLite and Postgres capable of reporting different Incoming totals.
-func (s *sqlStore) CountIncomingConveyor(ctx context.Context) (int, error) {
-	bySource, err := s.CountIncomingConveyorBySource(ctx)
-	if err != nil {
-		return 0, err
-	}
-	total := 0
-	for _, n := range bySource {
-		total += n
-	}
-	return total, nil
-}
-
-// CountIncomingConveyorBySource projects the same conveyor as CountIncomingConveyor while
-// retaining clip provenance. Sources uses this instead of counting every held row: completed
-// composite parents stay held for lineage and re-splitting but are no longer Incoming work.
 func (s *sqlStore) CountIncomingConveyorBySource(ctx context.Context) (map[string]int, error) {
 	args := []any{true, false, string(filler.DispositionRunning), string(filler.DispositionReview)}
 	const candidate = `((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
@@ -437,26 +424,6 @@ func (s *sqlStore) CountIncomingConveyorBySource(ctx context.Context) (map[strin
 		return nil, fmt.Errorf("count incoming conveyor by source: %w", err)
 	}
 	return counts, nil
-}
-
-// CountIncomingDecisions counts only conveyor rows the machine has handed to a person. It is the
-// source for the tab badge, which must not shrink to the first response page.
-func (s *sqlStore) CountIncomingDecisions(ctx context.Context) (int, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips c
-		WHERE c.is_composite = ?
-		  AND NOT EXISTS (SELECT 1 FROM filler_split_proposals sp WHERE sp.clip_hash = c.hash)
-		  AND (EXISTS (SELECT 1 FROM filler_clip_pipeline p
-		         WHERE p.clip_hash = c.hash AND p.disposition = ?)
-		    OR (c.removed_at = 0 AND c.held = ? AND NOT EXISTS
-		       (SELECT 1 FROM filler_clip_pipeline p
-		        WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?))))`),
-		false, string(filler.DispositionReview), true,
-		string(filler.DispositionRunning), string(filler.DispositionReview)).Scan(&n)
-	if err != nil {
-		return 0, fmt.Errorf("count incoming decisions: %w", err)
-	}
-	return n, nil
 }
 
 // ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet.
