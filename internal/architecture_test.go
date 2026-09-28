@@ -166,6 +166,27 @@ func TestServerDoesNotLinkResearchOrEvalTooling(t *testing.T) {
 	}
 }
 
+// The core store persists the clip catalog without the filler domain (#1747). Filler persistence
+// is internal/fillerstore, which extends the core store; the clip value types are
+// internal/clipcatalog, which imports no Loomarr package. Dependencies point filler → core only.
+// Test files are exempt: core's migration tests seed filler's pipeline table with filler's values.
+func TestCoreStoreDoesNotImportFiller(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	for _, path := range []string{modulePath + "/internal/store", modulePath + "/internal/clipcatalog"} {
+		pkg, ok := pkgs[path]
+		if !ok {
+			t.Fatalf("%s is not in the import graph", path)
+		}
+		for _, imported := range pkg.Imports {
+			if strings.HasPrefix(imported, modulePath+"/internal/filler") ||
+				(path == modulePath+"/internal/clipcatalog" && strings.HasPrefix(imported, modulePath+"/")) {
+				t.Errorf("%s imports %s — filler persistence belongs in internal/fillerstore and the clip "+
+					"values in internal/clipcatalog, so dependencies point filler → core (#1747)", path, imported)
+			}
+		}
+	}
+}
+
 // The Image service's pixel boundary is the required Rust worker (§22). Keeping Go's image
 // codecs out of this package prevents a certification helper or a convenient local decode from
 // quietly becoming a second production implementation. Other domains can own measured, bounded

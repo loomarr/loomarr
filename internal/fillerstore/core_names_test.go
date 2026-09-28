@@ -1,6 +1,9 @@
 package fillerstore
 
-import "github.com/loomarr/loomarr/internal/store"
+import (
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
+)
 
 // The filler conformance suite moved here from internal/store unedited (#1747); these test-only
 // aliases name the core store types and errors it asserts against. They leave the package's
@@ -35,5 +38,5 @@ var (
 	ErrNotFound                        = store.ErrNotFound
 	ErrTaxonConflict                   = store.ErrTaxonConflict
 	ErrUnknownClipSort                 = store.ErrUnknownClipSort
-	ErrConditioningPublicationMismatch = store.ErrConditioningPublicationMismatch
+	ErrConditioningPublicationMismatch = filler.ErrConditioningOwnershipMismatch
 )

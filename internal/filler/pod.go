@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"sort"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 )
 
 // Exposure is one clip's durable actual-airing history on a channel (§10 V58).
@@ -14,14 +16,9 @@ type Exposure struct {
 	LastPlayedAt time.Time
 }
 
-// ExposureRecord is one clip's stored aggregate on a channel: the Exposure plus the airing before
-// the latest. That one predecessor is the bounded state that lets a break's snapshot be rebuilt
-// after its own clips start airing (no-repeat means a clip airs at most once inside one pod).
-type ExposureRecord struct {
-	PlayCount        int64
-	LastPlayedAt     time.Time
-	PreviousPlayedAt time.Time
-}
+// ExposureRecord is one clip's stored aggregate on a channel, which playout writes through the core
+// store (see clipcatalog.ExposureRecord).
+type ExposureRecord = clipcatalog.ExposureRecord
 
 // ExposuresBefore is the history strictly before `before`, cut from the stored aggregates. A zero
 // cutoff returns all history. The strict boundary keeps a break's snapshot immutable while that

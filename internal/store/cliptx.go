@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 )
 
 // ClipTx writes a clip's own columns and tags inside a transaction another part of the store began
@@ -53,9 +53,9 @@ func (c ClipTx) EnrichmentRevision(ctx context.Context, hash string) (int64, err
 }
 
 // ClassifyKind sets the kind of a clip that is still unclassified; a classified clip keeps its kind.
-func (c ClipTx) ClassifyKind(ctx context.Context, hash string, kind filler.Kind, at time.Time) error {
+func (c ClipTx) ClassifyKind(ctx context.Context, hash string, kind clipcatalog.Kind, at time.Time) error {
 	_, err := c.tx.ExecContext(ctx, c.s.ph(`UPDATE clips SET kind = ?, updated_at = ? WHERE hash = ? AND kind = ?`),
-		string(kind), epoch(at), hash, string(filler.Unclassified))
+		string(kind), epoch(at), hash, string(clipcatalog.Unclassified))
 	return err
 }
 
@@ -156,7 +156,7 @@ func (c ClipTx) RecordVision(ctx context.Context, hash, visibleText string, sugg
 func (c ClipTx) Admit(ctx context.Context, hash string, at time.Time) (bool, error) {
 	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ?
 		WHERE hash = ? AND held = ? AND removed_at = 0 AND kind <> ?`,
-		false, false, epoch(at), hash, true, string(filler.Unclassified))
+		false, false, epoch(at), hash, true, string(clipcatalog.Unclassified))
 }
 
 // Unfile takes a filed clip out of the catalog and holds it for review again.

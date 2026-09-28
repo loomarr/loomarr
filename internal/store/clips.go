@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
-// Clip is the persisted form of a filler clip (§10). It embeds the domain
-// filler.Clip; the store owns the persistence concerns (UpdatedAt). Identity is
-// the clip's sparse content HASH (§10 V38c) — see filler.Clip.Hash for why the
+// Clip is the persisted form of a filler clip (§10). It embeds the catalog's value type,
+// clipcatalog.Clip; the store owns the persistence concerns (UpdatedAt). Identity is
+// the clip's sparse content HASH (§10 V38c) — see clipcatalog.Clip.Hash for why the
 // path could not stay the key once many watched folders were allowed. The Tunarr
 // program uuid rides alongside, nullable, for Tunarr-backed filler-lists.
 //
@@ -25,7 +25,7 @@ import (
 // Several methods below are still path-keyed on purpose (a scan job carries a path,
 // not a hash); read each one's doc rather than assuming a single key.
 type Clip struct {
-	filler.Clip
+	clipcatalog.Clip
 	UpdatedAt time.Time
 	// CreatedAt is when the clip ENTERED the catalog (§10 V51d, migration 00046) — the "recently
 	// added" sort order, and the only honest answer to "what arrived while I was away?".
@@ -35,7 +35,7 @@ type Clip struct {
 	// catalog after a routine scan. Written ONCE, at insert — `UpsertClip` omits it from the
 	// DO UPDATE list for the same reason it omits held/removed_at/confidence and the counters.
 	//
-	// ⚠ A catalog fact, so it lives HERE beside UpdatedAt rather than on filler.Clip. Nothing in
+	// ⚠ A catalog fact, so it lives HERE beside UpdatedAt rather than on clipcatalog.Clip. Nothing in
 	// pod assembly, matching or playout reads it; the domain has no opinion about when a row
 	// appeared, only about what the clip is.
 	CreatedAt time.Time
@@ -44,11 +44,11 @@ type Clip struct {
 // ClipFilter narrows a ListClips query. Any zero-value field is a wildcard, so a
 // zero ClipFilter lists everything (the pod-assembly catalog load).
 type ClipFilter struct {
-	Kind            filler.Kind
+	Kind            clipcatalog.Kind
 	Era             int
-	Audience        filler.Audience
+	Audience        clipcatalog.Audience
 	Category        string
-	GeographicScope filler.GeographicScope
+	GeographicScope clipcatalog.GeographicScope
 	Country         string
 	Market          string
 	// Taxon matches the denormalised full tag set, so selecting a parent includes descendants.
@@ -404,21 +404,20 @@ func (s *sqlStore) rekeyClipReferencesTx(ctx context.Context, tx *sql.Tx, oldHas
 	return nil
 }
 
-// CommitConditioningPublication closes the catalog half of the owner-bound filesystem saga.
-// The pending sidecar has already proved the exact source/target byte pair. This transaction
-// permits only the three catalog shapes that proof can own: an ordinary source-only re-key, a
-// source plus the held row Sync reconstructed from that sidecar, or the exact target-only state
-// left by a re-key that committed before process loss.
-func (s *sqlStore) CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target Clip) error {
-	if publication.State != "pending" || publication.Owner == "" || publication.SourceHash == "" ||
-		publication.TargetHash == "" || publication.SourceHash == publication.TargetHash ||
-		publication.TargetHash != target.Hash || target.Path == "" {
-		return ErrConditioningPublicationMismatch
+// AdoptConditionedClip closes the catalog half of the owner-bound conditioning saga: the clip at
+// sourceHash becomes target. The caller has already proved the exact source/target byte pair and
+// its ownership (internal/fillerstore's CommitConditioningPublication). This transaction permits
+// only the three catalog shapes that proof can own: an ordinary source-only re-key, a source plus
+// the held row Sync reconstructed from that sidecar, or the exact target-only state left by a
+// re-key that committed before process loss.
+func (s *sqlStore) AdoptConditionedClip(ctx context.Context, sourceHash string, target Clip) error {
+	if sourceHash == "" || target.Hash == "" || sourceHash == target.Hash || target.Path == "" {
+		return ErrConditionedClipMismatch
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("commit conditioning publication %s: %w", publication.TargetHash, err)
+		return fmt.Errorf("commit conditioning publication %s: %w", target.Hash, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -431,36 +430,36 @@ func (s *sqlStore) CommitConditioningPublication(ctx context.Context, publicatio
 		isComposite bool
 	}
 	states := map[string]*catalogState{
-		publication.SourceHash: {},
-		publication.TargetHash: {},
+		sourceHash:  {},
+		target.Hash: {},
 	}
 	query := `SELECT hash, path, parent_hash, held, removed_at, is_composite
 		FROM clips WHERE hash IN (?, ?)`
 	if s.dialect == DialectPostgres {
 		query += ` FOR UPDATE`
 	}
-	rows, err := tx.QueryContext(ctx, s.ph(query), publication.SourceHash, publication.TargetHash)
+	rows, err := tx.QueryContext(ctx, s.ph(query), sourceHash, target.Hash)
 	if err != nil {
-		return fmt.Errorf("commit conditioning publication %s classify: %w", publication.TargetHash, err)
+		return fmt.Errorf("commit conditioning publication %s classify: %w", target.Hash, err)
 	}
 	for rows.Next() {
 		var hash string
 		var state catalogState
 		if err := rows.Scan(&hash, &state.path, &state.parentHash, &state.held, &state.removedAt, &state.isComposite); err != nil {
 			_ = rows.Close()
-			return fmt.Errorf("commit conditioning publication %s classify: %w", publication.TargetHash, err)
+			return fmt.Errorf("commit conditioning publication %s classify: %w", target.Hash, err)
 		}
 		state.found = true
 		states[hash] = &state
 	}
 	if err := rows.Close(); err != nil {
-		return fmt.Errorf("commit conditioning publication %s classify: %w", publication.TargetHash, err)
+		return fmt.Errorf("commit conditioning publication %s classify: %w", target.Hash, err)
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("commit conditioning publication %s classify: %w", publication.TargetHash, err)
+		return fmt.Errorf("commit conditioning publication %s classify: %w", target.Hash, err)
 	}
-	sourceState := states[publication.SourceHash]
-	targetState := states[publication.TargetHash]
+	sourceState := states[sourceHash]
+	targetState := states[target.Hash]
 	targetRemovedAt := epoch(target.RemovedAt)
 
 	// The durable re-key already won. Exact filesystem evidence plus source absence and an exact
@@ -471,17 +470,17 @@ func (s *sqlStore) CommitConditioningPublication(ctx context.Context, publicatio
 			targetState.isComposite == target.IsComposite {
 			return nil
 		}
-		return ErrConditioningPublicationMismatch
+		return ErrConditionedClipMismatch
 	}
 
 	// The source row must still describe the owner whose metadata the staged target carries.
 	if sourceState.parentHash != target.ParentHash || sourceState.held != target.Held ||
 		sourceState.removedAt != targetRemovedAt || sourceState.isComposite != target.IsComposite {
-		return ErrConditioningPublicationMismatch
+		return ErrConditionedClipMismatch
 	}
 
 	if !targetState.found {
-		if err := s.replaceClipIdentityTx(ctx, tx, publication.SourceHash, target); err != nil {
+		if err := s.replaceClipIdentityTx(ctx, tx, sourceHash, target); err != nil {
 			return err
 		}
 	} else {
@@ -489,7 +488,7 @@ func (s *sqlStore) CommitConditioningPublication(ctx context.Context, publicatio
 		// there is never a delete-then-reinsert window for the content-addressed target identity.
 		if targetState.path != target.Path || targetState.parentHash != target.ParentHash ||
 			!targetState.held || targetState.removedAt != 0 || targetState.isComposite {
-			return ErrConditioningPublicationMismatch
+			return ErrConditionedClipMismatch
 		}
 		res, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET
 			(name, kind, era, audience, category, rating, source, ai_tagged, license,
@@ -504,34 +503,34 @@ func (s *sqlStore) CommitConditioningPublication(ctx context.Context, publicatio
 			 created_at, reaped_at FROM clips WHERE hash = ?),
 			path = ?, tunarr_program_id = NULL, duration_ms = ?, quality = ?, updated_at = ?
 			WHERE hash = ? AND path = ? AND parent_hash = ? AND held = ? AND removed_at = ? AND is_composite = ?`),
-			publication.SourceHash, target.Path, target.DurationMs, target.Quality, epoch(target.UpdatedAt),
-			publication.TargetHash, target.Path, target.ParentHash, true, int64(0), false)
+			sourceHash, target.Path, target.DurationMs, target.Quality, epoch(target.UpdatedAt),
+			target.Hash, target.Path, target.ParentHash, true, int64(0), false)
 		if err != nil {
-			return fmt.Errorf("commit conditioning publication %s adopt target: %w", publication.TargetHash, err)
+			return fmt.Errorf("commit conditioning publication %s adopt target: %w", target.Hash, err)
 		}
 		if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
 			if countErr != nil {
-				return fmt.Errorf("commit conditioning publication %s count target: %w", publication.TargetHash, countErr)
+				return fmt.Errorf("commit conditioning publication %s count target: %w", target.Hash, countErr)
 			}
-			return ErrConditioningPublicationMismatch
+			return ErrConditionedClipMismatch
 		}
-		if err := s.rekeyClipReferencesTx(ctx, tx, publication.SourceHash, publication.TargetHash); err != nil {
+		if err := s.rekeyClipReferencesTx(ctx, tx, sourceHash, target.Hash); err != nil {
 			return err
 		}
-		res, err = tx.ExecContext(ctx, s.ph(`DELETE FROM clips WHERE hash = ?`), publication.SourceHash)
+		res, err = tx.ExecContext(ctx, s.ph(`DELETE FROM clips WHERE hash = ?`), sourceHash)
 		if err != nil {
-			return fmt.Errorf("commit conditioning publication %s retire source: %w", publication.TargetHash, err)
+			return fmt.Errorf("commit conditioning publication %s retire source: %w", target.Hash, err)
 		}
 		if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
 			if countErr != nil {
-				return fmt.Errorf("commit conditioning publication %s count source: %w", publication.TargetHash, countErr)
+				return fmt.Errorf("commit conditioning publication %s count source: %w", target.Hash, countErr)
 			}
-			return ErrConditioningPublicationMismatch
+			return ErrConditionedClipMismatch
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit conditioning publication %s: %w", publication.TargetHash, err)
+		return fmt.Errorf("commit conditioning publication %s: %w", target.Hash, err)
 	}
 	return nil
 }
@@ -625,16 +624,16 @@ func clipCreatedAt(c Clip) time.Time {
 
 func clipGeographicScope(c Clip) string {
 	if c.GeographicScope == "" {
-		return string(filler.GeographicUnknown)
+		return string(clipcatalog.GeographicUnknown)
 	}
 	return string(c.GeographicScope)
 }
 
 // clipPlacement gives a direct insert of an already-unheld known role its natural placement. Real
 // intake inserts held rows and therefore starts not_playable until CommitFillerReady.
-func clipPlacement(c Clip) filler.Placement {
+func clipPlacement(c Clip) clipcatalog.Placement {
 	if c.Held {
-		return filler.PlacementNotPlayable
+		return clipcatalog.PlacementNotPlayable
 	}
 	return c.EffectivePlacement()
 }
@@ -884,7 +883,7 @@ func clipWhere(f ClipFilter) ([]string, []any) {
 		where = append(where, "held = ?")
 		args = append(args, false)
 		where = append(where, "placement <> ?")
-		args = append(args, string(filler.PlacementNotPlayable))
+		args = append(args, string(clipcatalog.PlacementNotPlayable))
 	}
 	// ⚠ THE composite chokepoint (§10 V45), the same shape as the held block above and for the same
 	// reason: pod assembly loads the catalog here with a zero filter, so a composite excluded ONCE
@@ -1018,7 +1017,7 @@ func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at 
 
 // FillerExposureRecords returns one channel's durable aggregate rotation records (§10 V58). The
 // per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
-func (s *sqlStore) FillerExposureRecords(ctx context.Context, channelID string) (map[string]filler.ExposureRecord, error) {
+func (s *sqlStore) FillerExposureRecords(ctx context.Context, channelID string) (map[string]clipcatalog.ExposureRecord, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT clip_hash, play_count, last_played_at,
 		previous_played_at FROM filler_exposures WHERE channel_id = ?`), channelID)
 	if err != nil {
@@ -1026,14 +1025,14 @@ func (s *sqlStore) FillerExposureRecords(ctx context.Context, channelID string) 
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := map[string]filler.ExposureRecord{}
+	out := map[string]clipcatalog.ExposureRecord{}
 	for rows.Next() {
 		var hash string
 		var count, lastMs, previousMs int64
 		if err := rows.Scan(&hash, &count, &lastMs, &previousMs); err != nil {
 			return nil, fmt.Errorf("scan filler exposure for channel %s: %w", channelID, err)
 		}
-		out[hash] = filler.ExposureRecord{
+		out[hash] = clipcatalog.ExposureRecord{
 			PlayCount: count, LastPlayedAt: exposureTime(lastMs), PreviousPlayedAt: exposureTime(previousMs),
 		}
 	}
@@ -1207,8 +1206,8 @@ func scanClip(sc scannable) (Clip, error) {
 	if err != nil {
 		return Clip{}, err
 	}
-	c.Kind = filler.Kind(kind)
-	c.Audience = filler.Audience(audience)
+	c.Kind = clipcatalog.Kind(kind)
+	c.Audience = clipcatalog.Audience(audience)
 	c.TunarrProgramID = tunarrID.String // "" when NULL — the no-Tunarr case
 	c.AITagged = aiTagged
 	c.VisionTagged = visionTagged
