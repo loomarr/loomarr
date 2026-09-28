@@ -51,7 +51,7 @@ func TestControllerAppliesInDurableOrderAndPublishesRuntimeAfterSave(t *testing.
 
 func TestControllerInitializePublishesDurableStateWithoutSideEffects(t *testing.T) {
 	t.Parallel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	probe := testkit.NewBackendTransitionPhaseProbe(BackendTunarr)
 	controller := NewController(st, probe, probe, probe)
 
@@ -586,7 +586,7 @@ func TestControllerMutateAndApplyCurrentStopsBeforeMutationWhenRefreshFails(t *t
 
 func initializedStore(t testing.TB, applied string) store.Store {
 	t.Helper()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	if _, err := Load(context.Background(), st, applied); err != nil {
 		t.Fatalf("initialize state: %v", err)
 	}

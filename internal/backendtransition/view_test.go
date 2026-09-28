@@ -11,7 +11,7 @@ import (
 
 func TestDurableViewObservesExternalCheckpointWrites(t *testing.T) {
 	t.Parallel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	ctx := context.Background()
 	state, err := Load(ctx, st, BackendTunarr)
 	if err != nil {
@@ -41,7 +41,7 @@ func TestDurableViewObservesExternalCheckpointWrites(t *testing.T) {
 
 func TestDurableViewFailsClosedWithoutInitializing(t *testing.T) {
 	t.Parallel()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	view := NewDurableView(st)
 	if _, err := view.Snapshot(context.Background()); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("missing snapshot error = %v, want ErrInvalidState", err)
