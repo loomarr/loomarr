@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/httpx"
+	"github.com/loomarr/loomarr/internal/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
 
@@ -24,7 +24,7 @@ const (
 	snapshotRefreshAge  = 12 * time.Hour
 )
 
-type SnapshotFetcher func(context.Context, fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error)
+type SnapshotFetcher func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error)
 
 type CertifiedRuntimeConfig struct {
 	Authority     fillerstructurewindow.MaterializationAuthority
@@ -49,7 +49,7 @@ type CertifiedRuntime struct {
 	client   *http.Client
 
 	mu       sync.Mutex
-	snapshot fillerbakeoff.OpenRouterSnapshot
+	snapshot openroutercatalog.OpenRouterSnapshot
 }
 
 func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, error) {
@@ -66,7 +66,7 @@ func NewCertifiedRuntime(config CertifiedRuntimeConfig) (*CertifiedRuntime, erro
 	}
 	config.Now = now
 	if config.FetchSnapshot == nil {
-		config.FetchSnapshot = fillerbakeoff.FetchOpenRouterSnapshot
+		config.FetchSnapshot = openroutercatalog.FetchOpenRouterSnapshot
 	}
 	config.Authority.Assessors = slices.Clone(config.Authority.Assessors)
 	config.Authority.AllowedUnits = slices.Clone(config.Authority.AllowedUnits)
@@ -147,7 +147,7 @@ func validatePreparedMediaAuthority(prepared filler.StructureAssessmentWindowMed
 	return nil
 }
 
-func (r *CertifiedRuntime) freshSnapshot(ctx context.Context) (fillerbakeoff.OpenRouterSnapshot, error) {
+func (r *CertifiedRuntime) freshSnapshot(ctx context.Context) (openroutercatalog.OpenRouterSnapshot, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := r.config.Now().UTC()
@@ -163,29 +163,29 @@ func (r *CertifiedRuntime) freshSnapshot(ctx context.Context) (fillerbakeoff.Ope
 	}
 	slices.Sort(models)
 	models = slices.Compact(models)
-	snapshot, err := r.config.FetchSnapshot(ctx, fillerbakeoff.OpenRouterSnapshotConfig{
-		BaseURL: fillerbakeoff.OpenRouterBaseURL, APIKey: r.config.APIKey, Models: models,
+	snapshot, err := r.config.FetchSnapshot(ctx, openroutercatalog.OpenRouterSnapshotConfig{
+		BaseURL: openroutercatalog.OpenRouterBaseURL, APIKey: r.config.APIKey, Models: models,
 		RetrievedAt: now, Client: r.client,
 	})
 	if err != nil {
-		return fillerbakeoff.OpenRouterSnapshot{}, fmt.Errorf("refresh OpenRouter structure metadata: %w", err)
+		return openroutercatalog.OpenRouterSnapshot{}, fmt.Errorf("refresh OpenRouter structure metadata: %w", err)
 	}
 	r.snapshot = snapshot
 	return snapshot, nil
 }
 
-func (r *CertifiedRuntime) assessors(snapshot fillerbakeoff.OpenRouterSnapshot, at time.Time) ([]filler.CompleteWindowStructureAssessor, error) {
-	snapshotSHA := fillerbakeoff.OpenRouterSnapshotSHA256(snapshot)
+func (r *CertifiedRuntime) assessors(snapshot openroutercatalog.OpenRouterSnapshot, at time.Time) ([]filler.CompleteWindowStructureAssessor, error) {
+	snapshotSHA := openroutercatalog.OpenRouterSnapshotSHA256(snapshot)
 	result := make([]filler.CompleteWindowStructureAssessor, 0, len(r.config.Deployment.Families))
 	profiles := make([]fillerstructure.AssessorProfile, 0, len(r.config.Deployment.Families))
 	for _, family := range r.config.Deployment.Families {
-		model, endpoint, err := fillerbakeoff.ValidateOpenRouterVideoRoute(
+		model, endpoint, err := openroutercatalog.ValidateOpenRouterVideoRoute(
 			snapshot, family.Model, family.UpstreamProvider, family.UpstreamProviderSlug, at, MaximumOutputTokens,
 		)
 		if err != nil {
 			return nil, err
 		}
-		modelDigest, capabilitySHA, err := fillerbakeoff.OpenRouterAssessorIdentity(
+		modelDigest, capabilitySHA, err := openroutercatalog.OpenRouterAssessorIdentity(
 			snapshot, family.Model, family.UpstreamProvider, family.UpstreamProviderSlug, family.ReasoningMode,
 		)
 		if err != nil {
@@ -196,7 +196,7 @@ func (r *CertifiedRuntime) assessors(snapshot fillerbakeoff.OpenRouterSnapshot, 
 			ModelDigest: modelDigest, CapabilitySHA256: capabilitySHA,
 			PromptVersion: fillerstructurewindow.DirectVideoPromptVersion, EvidenceContract: fillerstructurewindow.CallRecordContractVersion,
 		}
-		maximumCharge, err := fillerbakeoff.EstimateOpenRouterTokenChargeNanoUSD(endpoint, family.MaximumInputTokens, MaximumOutputTokens)
+		maximumCharge, err := openroutercatalog.EstimateOpenRouterTokenChargeNanoUSD(endpoint, family.MaximumInputTokens, MaximumOutputTokens)
 		if err != nil {
 			return nil, err
 		}
@@ -204,7 +204,7 @@ func (r *CertifiedRuntime) assessors(snapshot fillerbakeoff.OpenRouterSnapshot, 
 			return nil, fmt.Errorf("OpenRouter structure reservation %d is below current price bound %d", family.ReservationNanoUSD, maximumCharge)
 		}
 		authority, err := openroutermedia.NewRouteAuthority(snapshot, snapshotSHA, openroutermedia.RouteRequirements{
-			BaseURL: fillerbakeoff.OpenRouterBaseURL, RequestedModel: family.Model, CanonicalModel: model.CanonicalSlug,
+			BaseURL: openroutercatalog.OpenRouterBaseURL, RequestedModel: family.Model, CanonicalModel: model.CanonicalSlug,
 			UpstreamProvider: family.UpstreamProvider, ProviderSlug: family.UpstreamProviderSlug,
 			RequiredInputModalities: []string{"text", "video"}, MaxTokens: MaximumOutputTokens,
 			RequireReasoning: family.ReasoningMode == ReasoningProviderRequired, Now: r.config.Now,
@@ -214,7 +214,7 @@ func (r *CertifiedRuntime) assessors(snapshot fillerbakeoff.OpenRouterSnapshot, 
 		}
 		assessor, err := New(Config{
 			RouteAuthority: authority, Profile: profile, MetadataSnapshotSHA256: snapshotSHA,
-			APIKey: r.config.APIKey, BaseURL: fillerbakeoff.OpenRouterBaseURL, Model: family.Model,
+			APIKey: r.config.APIKey, BaseURL: openroutercatalog.OpenRouterBaseURL, Model: family.Model,
 			ResolvedModel: model.CanonicalSlug, UpstreamProvider: family.UpstreamProvider,
 			UpstreamProviderSlug: family.UpstreamProviderSlug, ReservationNanoUSD: family.ReservationNanoUSD,
 			MaximumChargeNanoUSD: maximumCharge, MaxTokens: MaximumOutputTokens,

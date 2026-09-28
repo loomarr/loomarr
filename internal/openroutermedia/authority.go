@@ -9,8 +9,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
 const (
@@ -277,7 +275,7 @@ func validateCapabilityPricing(providerSlug string, pricing map[string]string) e
 		if name == "" || len(name) > maxCapabilityFieldBytes || price == "" || len(price) > 128 {
 			return fmt.Errorf("OpenRouter snapshot endpoint %q has invalid bounded pricing", providerSlug)
 		}
-		if _, err := fillereval.USDToNanoCeil(price); err != nil {
+		if _, err := USDToNanoCeil(price); err != nil {
 			return fmt.Errorf("OpenRouter snapshot endpoint %q price %q: %w", providerSlug, name, err)
 		}
 	}

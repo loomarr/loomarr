@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -51,7 +51,7 @@ type InferenceReservation struct {
 // OpenRouterReservationConfig binds a resource reservation to one immutable
 // capability snapshot and the exact request limits enforced by the caller.
 type OpenRouterReservationConfig struct {
-	Snapshot            fillerbakeoff.OpenRouterSnapshot
+	Snapshot            openroutercatalog.OpenRouterSnapshot
 	SnapshotSHA256      string
 	At                  time.Time
 	Model               string
@@ -64,10 +64,10 @@ type OpenRouterReservationConfig struct {
 // DeriveOpenRouterReservation prices one call against the most expensive
 // active ZDR endpoint OpenRouter may choose inside the pinned provider family.
 func DeriveOpenRouterReservation(config OpenRouterReservationConfig) (InferenceReservation, error) {
-	if err := fillerbakeoff.ValidateOpenRouterSnapshot(config.Snapshot); err != nil {
+	if err := openroutercatalog.ValidateOpenRouterSnapshot(config.Snapshot); err != nil {
 		return InferenceReservation{}, err
 	}
-	if config.SnapshotSHA256 == "" || config.SnapshotSHA256 != fillerbakeoff.OpenRouterSnapshotSHA256(config.Snapshot) {
+	if config.SnapshotSHA256 == "" || config.SnapshotSHA256 != openroutercatalog.OpenRouterSnapshotSHA256(config.Snapshot) {
 		return InferenceReservation{}, fmt.Errorf("OpenRouter snapshot digest does not match the pinned reservation authority")
 	}
 	if config.Snapshot.SourceBaseURL != OpenRouterCertificationBaseURL || config.At.IsZero() || config.At.Location() != time.UTC {
@@ -84,7 +84,7 @@ func DeriveOpenRouterReservation(config OpenRouterReservationConfig) (InferenceR
 	if !ok {
 		return InferenceReservation{}, fmt.Errorf("OpenRouter reservation token limit overflows")
 	}
-	var model *fillerbakeoff.OpenRouterModelSnapshot
+	var model *openroutercatalog.OpenRouterModelSnapshot
 	for index := range config.Snapshot.Models {
 		if config.Snapshot.Models[index].ID == config.Model {
 			model = &config.Snapshot.Models[index]
@@ -120,7 +120,7 @@ func DeriveOpenRouterReservation(config OpenRouterReservationConfig) (InferenceR
 				return InferenceReservation{}, fmt.Errorf("OpenRouter route %q requires a stronger reasoning-token price bound", endpoint.ProviderSlug)
 			}
 		}
-		charge, err := fillerbakeoff.EstimateOpenRouterTokenChargeNanoUSD(
+		charge, err := openroutercatalog.EstimateOpenRouterTokenChargeNanoUSD(
 			endpoint, int64(config.MaxInputTokens), int64(config.MaxCompletionTokens),
 		)
 		if err != nil {

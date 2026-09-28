@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
+	"github.com/loomarr/loomarr/internal/openroutercatalog"
 )
 
 func TestCertifiedRuntimeRefreshesMetadataAndRequiresReviewedProfiles(t *testing.T) {
@@ -22,7 +22,7 @@ func TestCertifiedRuntimeRefreshesMetadataAndRequiresReviewedProfiles(t *testing
 		Authority: authority, Deployment: deployment, APIKey: "secret",
 		SourceRoot: t.TempDir(), MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
 		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
-		FetchSnapshot: func(_ context.Context, config fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error) {
+		FetchSnapshot: func(_ context.Context, config openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
 			fetches++
 			if len(config.Models) != 2 || config.Models[0] != "vendor/model-a" || config.Models[1] != "vendor/model-b" || config.APIKey != "secret" {
 				t.Fatalf("snapshot config=%+v", config)
@@ -51,7 +51,7 @@ func TestCertifiedRuntimeRefreshesMetadataAndRequiresReviewedProfiles(t *testing
 	}
 
 	drifted := first
-	drifted.Models = append([]fillerbakeoff.OpenRouterModelSnapshot(nil), first.Models...)
+	drifted.Models = append([]openroutercatalog.OpenRouterModelSnapshot(nil), first.Models...)
 	drifted.Models[0].CanonicalSlug += "-different"
 	if _, err := runtime.assessors(drifted, first.RetrievedAt); err == nil || !strings.Contains(err.Error(), "profiles") {
 		t.Fatalf("profile drift error=%v", err)
@@ -66,9 +66,9 @@ func TestCertifiedRuntimeRejectsOutOfEnvelopeSourceBeforeMetadata(t *testing.T) 
 		Authority: authority, Deployment: deployment, APIKey: "secret",
 		SourceRoot: t.TempDir(), MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
 		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
-		FetchSnapshot: func(context.Context, fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error) {
+		FetchSnapshot: func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
 			fetched = true
-			return fillerbakeoff.OpenRouterSnapshot{}, nil
+			return openroutercatalog.OpenRouterSnapshot{}, nil
 		},
 	})
 	if err != nil {
@@ -103,9 +103,9 @@ func TestCertifiedRuntimePreflightsMediaBeforeProviderMetadata(t *testing.T) {
 		Authority: authority, Deployment: deployment, APIKey: "secret",
 		SourceRoot: sourceRoot, MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
 		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
-		FetchSnapshot: func(context.Context, fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error) {
+		FetchSnapshot: func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
 			fetched = true
-			return fillerbakeoff.OpenRouterSnapshot{}, nil
+			return openroutercatalog.OpenRouterSnapshot{}, nil
 		},
 	})
 	if err != nil {
@@ -139,9 +139,9 @@ func TestCertifiedRuntimeChecksReviewedMediaEnvelopeBeforeProviderMetadata(t *te
 		Authority: authority, Deployment: deployment, APIKey: "secret",
 		SourceRoot: sourceRoot, MediaRoot: t.TempDir(), EvidenceRoot: t.TempDir(), FFmpegPath: "ffmpeg",
 		Ledger: runtimeNoopLedger{}, Now: func() time.Time { return now },
-		FetchSnapshot: func(context.Context, fillerbakeoff.OpenRouterSnapshotConfig) (fillerbakeoff.OpenRouterSnapshot, error) {
+		FetchSnapshot: func(context.Context, openroutercatalog.OpenRouterSnapshotConfig) (openroutercatalog.OpenRouterSnapshot, error) {
 			fetched = true
-			return fillerbakeoff.OpenRouterSnapshot{}, nil
+			return openroutercatalog.OpenRouterSnapshot{}, nil
 		},
 	})
 	if err != nil {
@@ -194,10 +194,10 @@ func (runtimeNoopLedger) Reserve(context.Context, fillerstructurewindow.CallRese
 
 func (runtimeNoopLedger) Settle(context.Context, fillerstructurewindow.CallRecord) error { return nil }
 
-func certifiedRuntimeFixture(t *testing.T, now time.Time) (fillerbakeoff.OpenRouterSnapshot, fillerstructurewindow.MaterializationAuthority, Deployment) {
+func certifiedRuntimeFixture(t *testing.T, now time.Time) (openroutercatalog.OpenRouterSnapshot, fillerstructurewindow.MaterializationAuthority, Deployment) {
 	t.Helper()
-	snapshot := fillerbakeoff.OpenRouterSnapshot{
-		SchemaVersion: fillerbakeoff.OpenRouterSnapshotSchemaVersion, SourceBaseURL: fillerbakeoff.OpenRouterBaseURL,
+	snapshot := openroutercatalog.OpenRouterSnapshot{
+		SchemaVersion: openroutercatalog.OpenRouterSnapshotSchemaVersion, SourceBaseURL: openroutercatalog.OpenRouterBaseURL,
 		RetrievedAt: now, Requests: 4, ResponseBytes: 1_000,
 	}
 	deployment := Deployment{
@@ -209,10 +209,10 @@ func certifiedRuntimeFixture(t *testing.T, now time.Time) (fillerbakeoff.OpenRou
 		modelID := "vendor/model-" + suffix
 		provider := "Provider " + strings.ToUpper(suffix)
 		providerSlug := "provider/" + suffix
-		snapshot.Models = append(snapshot.Models, fillerbakeoff.OpenRouterModelSnapshot{
+		snapshot.Models = append(snapshot.Models, openroutercatalog.OpenRouterModelSnapshot{
 			ID: modelID, CanonicalSlug: modelID + "-20260914", Name: "Model " + suffix, Created: 1,
 			InputModalities: []string{"text", "video"}, OutputModalities: []string{"text"},
-			Endpoints: []fillerbakeoff.OpenRouterEndpointSnapshot{{
+			Endpoints: []openroutercatalog.OpenRouterEndpointSnapshot{{
 				Name: provider + " endpoint", ModelID: modelID, ProviderName: provider, ProviderSlug: providerSlug,
 				Quantization: "fp16", ContextLength: 32_768, MaxCompletionTokens: MaximumOutputTokens,
 				MaxPromptTokens: 20_000, SupportedParameters: []string{"reasoning", "response_format", "structured_outputs"},
@@ -239,7 +239,7 @@ func certifiedRuntimeFixture(t *testing.T, now time.Time) (fillerbakeoff.OpenRou
 		ReviewerID:   "maintainer", ReviewedAt: now, AutomaticMaterializationAllowed: true,
 	}
 	for _, family := range deployment.Families {
-		modelDigest, capabilitySHA, err := fillerbakeoff.OpenRouterAssessorIdentity(
+		modelDigest, capabilitySHA, err := openroutercatalog.OpenRouterAssessorIdentity(
 			snapshot, family.Model, family.UpstreamProvider, family.UpstreamProviderSlug, family.ReasoningMode,
 		)
 		if err != nil {

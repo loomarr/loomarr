@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/eval"
-	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/openroutercatalog"
 )
 
 const maxInputBytes = 8 << 20
@@ -131,7 +131,7 @@ func runReview(ctx context.Context, packet []byte, options runOptions) (eval.Moo
 		config.IdentityKind, config.IdentitySHA256 = "ollama-model-digest", options.modelDigest
 	case "openrouter":
 		if options.baseURL == "" {
-			options.baseURL = fillerbakeoff.OpenRouterBaseURL
+			options.baseURL = openroutercatalog.OpenRouterBaseURL
 		}
 		budget, ok := new(big.Rat).SetString(options.maxChargeUSD)
 		if !ok || budget.Sign() <= 0 {
@@ -144,7 +144,7 @@ func runReview(ctx context.Context, packet []byte, options runOptions) (eval.Moo
 		if err != nil {
 			return eval.MoodReviewSubmission{}, err
 		}
-		var snapshot fillerbakeoff.OpenRouterSnapshot
+		var snapshot openroutercatalog.OpenRouterSnapshot
 		if err := decodeStrict(snapshotBlob, &snapshot); err != nil {
 			return eval.MoodReviewSubmission{}, fmt.Errorf("decode OpenRouter snapshot: %w", err)
 		}
@@ -152,7 +152,7 @@ func runReview(ctx context.Context, packet []byte, options runOptions) (eval.Moo
 		if age < 0 || age > 24*time.Hour || snapshot.SourceBaseURL != options.baseURL {
 			return eval.MoodReviewSubmission{}, errors.New("OpenRouter snapshot is stale, future-dated, or from another API base")
 		}
-		_, capabilityDigest, err := fillerbakeoff.OpenRouterAssessorIdentity(snapshot, options.model, options.upstreamProvider, options.providerSlug, "disabled")
+		_, capabilityDigest, err := openroutercatalog.OpenRouterAssessorIdentity(snapshot, options.model, options.upstreamProvider, options.providerSlug, "disabled")
 		if err != nil {
 			return eval.MoodReviewSubmission{}, fmt.Errorf("bind OpenRouter reviewer identity: %w", err)
 		}

@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
-	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
 // ErrRouteMismatch reports that a charged response did not prove the exact
@@ -103,7 +101,7 @@ func settleResponse(result Result, raw []byte, config Config) (Result, error) {
 	result.CompletionTokens = wire.Usage.CompletionTokens
 	result.ChargedAmountUSD = wire.Usage.Cost.String()
 	if result.ChargedAmountUSD != "" {
-		charged, err := fillereval.USDToNanoCeil(result.ChargedAmountUSD)
+		charged, err := USDToNanoCeil(result.ChargedAmountUSD)
 		if err != nil || charged < 0 {
 			if wire.Error == nil {
 				return result, fmt.Errorf("OpenRouter structured call returned missing or malformed cost")

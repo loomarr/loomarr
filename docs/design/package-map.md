@@ -65,7 +65,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
-- **`fillereval`** · 1 importer
+- **`fillereval`**
   The budget arithmetic that paid filler assessment shares with certification.
 - **`fillerstructure`** · 5 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
@@ -81,6 +81,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Keeps a repeating per-item condition from flooding the log.
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
+- **`openroutermedia`** · 3 importers
+  Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`playout/packager`** · 1 importer
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
 - **`proctree`** · 1 importer
@@ -136,8 +138,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`openroutermedia`** · 3 importers · → `fillereval`
-  Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 
@@ -154,12 +154,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 3
 
-- **`fillerbakeoff`** · 2 importers · → `httpx`, `openroutermedia`
-  Binds OpenRouter capability, endpoint-price, and ZDR snapshots to the paid routes that filler assessment may use.
 - **`llm`** · 8 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
   Owns channel-neutral notification intents and delivery work (§11).
+- **`openroutercatalog`** · 2 importers · → `httpx`, `openroutermedia`
+  Fetches and validates the OpenRouter capability, endpoint-price, and ZDR snapshot that binds a paid filler assessment route, and estimates that route's charge.
 - **`playout`** · 6 importers · → `diagnostics`, `media`, `playout/packager`, `provision`, `schedule`
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`programmer`** · 3 importers · → `httpx`, `metrics`, `schedule`
@@ -205,7 +205,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`clipfetch`** · 1 importer · → `bgexec`, `filler`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerbakeoff`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutermedia`
+- **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`library`** · 10 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
@@ -268,7 +268,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 - **`binder`** · 2 importers · → `provision`, `schedule`, `store`, `suggest`
   Plans how an APPROVED proposal changes a channel (§7): create it on first approval, patch it (preserving operator-owned fields) on re-approval or refine.
-- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `fillerbakeoff`, `library`, `llm`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
+- **`eval`** · → `buildinfo`, `catalog`, `episodeevidence`, `library`, `llm`, `openroutercatalog`, `provision`, `quality`, `reference`, `schedule`, `suggest`, `testkit`, `tmdb`
   Loomarr's semantic-evaluation harness (a §14 Go test binary, NOT a service).
 - **`proposaloutlook`** · 2 importers · → `channels`, `library`, `provision`, `schedule`, `store`, `suggest`
   Explains an exact pending proposal using read-only Library observations and the same channel planner and scheduler as approval.

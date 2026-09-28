@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -20,7 +20,7 @@ import (
 func TestDeriveOpenRouterReservationUsesWorstEligiblePinnedRoutePrice(t *testing.T) {
 	snapshot := pinnedGeminiSnapshot(t)
 	reservation, err := DeriveOpenRouterReservation(OpenRouterReservationConfig{
-		Snapshot: snapshot, SnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(snapshot),
+		Snapshot: snapshot, SnapshotSHA256: openroutercatalog.OpenRouterSnapshotSHA256(snapshot),
 		At: snapshot.RetrievedAt.Add(time.Hour), Model: "google/gemini-3.7-flash", UpstreamProvider: "Google",
 		MaxInputTokens: 4700, MaxCompletionTokens: 2048,
 		RequiredParameters: []string{"response_format", "structured_outputs", "tools"},
@@ -36,7 +36,7 @@ func TestDeriveOpenRouterReservationUsesWorstEligiblePinnedRoutePrice(t *testing
 func TestPrepareCertificationRunDerivesOpenRouterReservationsFromSnapshot(t *testing.T) {
 	snapshot := pinnedGeminiSnapshot(t)
 	role := &OpenRouterReservationConfig{
-		Snapshot: snapshot, SnapshotSHA256: fillerbakeoff.OpenRouterSnapshotSHA256(snapshot),
+		Snapshot: snapshot, SnapshotSHA256: openroutercatalog.OpenRouterSnapshotSHA256(snapshot),
 		At: snapshot.RetrievedAt.Add(time.Hour), Model: "google/gemini-3.7-flash", UpstreamProvider: "Google",
 		MaxInputTokens: 4700, MaxCompletionTokens: 2048,
 		RequiredParameters: []string{"response_format", "structured_outputs", "tools"},
@@ -71,13 +71,13 @@ func TestPrepareCertificationRunDerivesOpenRouterReservationsFromSnapshot(t *tes
 	}
 }
 
-func pinnedGeminiSnapshot(t *testing.T) fillerbakeoff.OpenRouterSnapshot {
+func pinnedGeminiSnapshot(t *testing.T) openroutercatalog.OpenRouterSnapshot {
 	t.Helper()
 	blob, err := queryPilotFiles.ReadFile("testdata/query-mood-review-openrouter-snapshot-v1.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var snapshot fillerbakeoff.OpenRouterSnapshot
+	var snapshot openroutercatalog.OpenRouterSnapshot
 	if err := json.Unmarshal(blob, &snapshot); err != nil {
 		t.Fatal(err)
 	}
