@@ -1121,21 +1121,12 @@ func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time
 // DeleteClipsNotIn prunes clips absent from the given id set (the sync reconcile).
 // With an empty keep set it deletes all clips. Returns the count removed.
 func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
-	// ⚠ **The pipeline rows go with the clips, in the same call** (§10 V51b). `filler_clip_pipeline`
-	// is a sibling table with no foreign key — deliberately, so it survives a `clips` rebuild — and
-	// the price of that independence is that nothing else will ever clean it up. An orphan row is
-	// not inert either: `ListPipelineWork` would keep returning it, `advance` would fail to find
-	// the clip, and it would be re-tombstoned as "no longer in the catalog" on every pass, forever.
-	//
 	// Pruning by "no matching clip" rather than by the keep-set means one statement covers both
 	// branches below and cannot disagree with whichever DELETE ran.
-	defer func() {
-		_ = s.pruneOrphanPipelines(ctx)
-		_ = s.pruneOrphanClipFingerprints(ctx)
-	}()
+	defer func() { _ = s.pruneOrphanClipFingerprints(ctx) }()
 
-	// The split proposals, the other no-foreign-key sibling of `clips`, are the filler store's: its
-	// DeleteClipsNotIn runs this one and then prunes them (internal/fillerstore).
+	// The pipeline rows and split proposals, the no-foreign-key siblings of `clips`, are the filler
+	// store's: its DeleteClipsNotIn runs this one and then prunes them (internal/fillerstore).
 
 	if len(keepIDs) == 0 {
 		// ⚠ Reaped composites survive an EMPTY scan too. This branch fires when the drop folder is

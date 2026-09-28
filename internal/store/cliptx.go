@@ -2,9 +2,10 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
@@ -177,28 +178,42 @@ func (c ClipTx) RestoreHeld(ctx context.Context, hash string, at time.Time) (boo
 		true, false, epoch(at), hash, true)
 }
 
-// SettlePipeline settles the clip's pipeline row at `to`, done, if its disposition is one of from.
-// The pipeline is core's until it moves (#1747), so a decision settles it here.
-func (c ClipTx) SettlePipeline(ctx context.Context, hash string, from []filler.Disposition, to filler.Disposition, at time.Time) (bool, error) {
-	marks := make([]string, len(from))
-	args := make([]any, 0, len(from)+3)
-	args = append(args, string(to), epoch(at))
-	for i, disposition := range from {
-		marks[i] = "?"
-		args = append(args, string(disposition))
-	}
-	args = append(args, hash)
-	return c.affectedOne(ctx, `UPDATE filler_clip_pipeline
-		SET disposition = ?, status = 'done', next_run = 0, updated_at = ?
-		WHERE disposition IN (`+strings.Join(marks, ",")+`) AND clip_hash = ?`, args...)
+// RestoreForRetry brings the clip back as present and held whatever state it is in, for a pipeline
+// retry of a rejected clip. Unlike RestoreHeld it does not require the clip to be held or removed.
+func (c ClipTx) RestoreForRetry(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET removed_at = 0, held = ?, auto_filed = ?, updated_at = ? WHERE hash = ?`,
+		true, false, epoch(at), hash)
 }
 
-// AdvancePipeline moves the clip's pipeline row from one disposition to the next, leaving its
-// status and schedule alone. Split confirmation completes the reel's row and starts its children's.
-func (c ClipTx) AdvancePipeline(ctx context.Context, hash string, from, to filler.Disposition, at time.Time) (bool, error) {
-	return c.affectedOne(ctx, `UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ?
-		WHERE clip_hash = ? AND disposition = ?`,
-		string(to), epoch(at), hash, string(from))
+// ClipPublication is what terminal readiness checks about a clip before publishing it.
+type ClipPublication struct {
+	Held, Removed, Composite bool
+	Source, Placement        string
+}
+
+// LockPublication reads the clip's publication state. On Postgres it locks the row until the
+// transaction ends. A missing clip is ErrNotFound.
+func (c ClipTx) LockPublication(ctx context.Context, hash string) (ClipPublication, error) {
+	query := `SELECT held, removed_at, is_composite, source, placement FROM clips WHERE hash = ?`
+	if c.s.dialect == DialectPostgres {
+		query += ` FOR UPDATE`
+	}
+	var p ClipPublication
+	var removedAt int64
+	err := c.tx.QueryRowContext(ctx, c.s.ph(query), hash).Scan(&p.Held, &removedAt, &p.Composite, &p.Source, &p.Placement)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ClipPublication{}, ErrNotFound
+	}
+	p.Removed = removedAt != 0
+	return p, err
+}
+
+// PublishReady sets the placement of a held, present, non-composite clip and releases it into the
+// playable catalog.
+func (c ClipTx) PublishReady(ctx context.Context, hash, placement string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET placement = ?, held = ?, auto_filed = ?, updated_at = ?
+		WHERE hash = ? AND held = ? AND removed_at = 0 AND is_composite = ?`,
+		placement, false, false, epoch(at), hash, true, false)
 }
 
 // ReleaseSplitParent makes a held reel a released composite once its cuts are confirmed. It

@@ -340,10 +340,6 @@ type UserStore interface {
 // ClipStore is the filler clip catalog (§10).
 type ClipStore interface {
 	UpsertClip(ctx context.Context, c Clip) error
-	// CommitFillerReady atomically stores Placement, releases the held clip, settles its conveyor
-	// row, and appends the effective Ready event. It is the only non-composite publication path.
-	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error
-	GetFillerReadyEvent(ctx context.Context, clipHash string) (filler.ReadyEvent, bool, error)
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
 	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
@@ -478,48 +474,9 @@ type ClipStore interface {
 	// are omitted with an error so valid siblings remain reusable and the bad row is recomputed.
 	ListClipFingerprints(ctx context.Context, algorithm string) (map[string][]uint64, error)
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
-}
-
-// ClipPipelineStore is the per-clip ingest pipeline and the reclaim of a split reel's recording.
-// Split proposals themselves are the filler store's (internal/fillerstore).
-type ClipPipelineStore interface {
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
-	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
-	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
-
-	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
-	//
-	// ⚠ A SIBLING of `clips`, never columns on it: `clips` is a synced cache that has been dropped
-	// and recreated twice, and these rows record that Whisper seconds and a paid vision call have
-	// ALREADY been spent. This pipeline persistence surface is the table's only writer, so unlike the clip
-	// columns there is no DO UPDATE omission list to keep in step.
-
-	// UpsertClipPipeline writes an ordinary runner transition.
-	UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error
-	// RetryClipPipeline writes the recovery transition and, for an exhausted terminal failure,
-	// restores the catalog tombstone while holding the clip in the same transaction.
-	RetryClipPipeline(ctx context.Context, failed, retry filler.ClipPipeline, restore bool) error
-	// GetClipPipeline reads one row. Absence is ordinary (an un-enrolled clip), not an error.
-	GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error)
-	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
-	// total order so one clip cannot starve while another is worked repeatedly.
-	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]filler.ClipPipeline, error)
-	// PipelineOverview groups the durable state through filler.ClipPipeline.Lifecycle so API,
-	// runner telemetry and persistence cannot acquire separate ownership predicates.
-	PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error)
-	// ListClipPipelines serves the Incoming read model — what is moving, and what was refused.
-	ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error)
-	// CountClipPipelines shares ListClipPipelines' lifecycle predicate while ignoring its cursor
-	// and limit, so a bounded page and its total cannot describe different populations.
-	CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error)
-	// ListPreparationWork joins bounded pipeline facts to only the clip duration needed for local
-	// progress calibration. It never exposes paths or descriptive media content.
-	ListPreparationWork(ctx context.Context, f filler.PipelineFilter) ([]filler.PreparationWork, error)
-	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
-	// lazy and self-healing rather than a data migration.
-	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error)
 	// ClearClipVisionTags drops the vision stamp so the rung looks again (§10 V51b). ⚠ It does NOT
 	// clear brand/era/category — those are shared with the text tagger and nothing records which
 	// tier wrote them. See the implementation for why that asymmetry is the safe one.
@@ -752,7 +709,6 @@ type Store interface {
 	UserStore
 	ClipStore
 	InteractiveOperationStore
-	ClipPipelineStore
 	AiringStore
 	LibraryPathStore
 	ActivityStore

@@ -47,7 +47,7 @@ func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
 			Disposition: filler.DispositionRejected, Attempts: 1, NextRun: now.Add(time.Hour), UpdatedAt: now},
 	}
 	for _, r := range rows {
-		if err := s.UpsertClipPipeline(ctx, r); err != nil {
+		if err := insertLegacyClipPipeline(ctx, s, r); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -67,7 +67,7 @@ func TestUnparkSplitReels_MovesOnlyReelsTheGateCouldNotPass(t *testing.T) {
 
 	get := func(hash string) filler.ClipPipeline {
 		t.Helper()
-		row, ok, err := s.GetClipPipeline(ctx, hash)
+		row, ok, err := readClipPipelineRow(ctx, s, hash)
 		if err != nil || !ok {
 			t.Fatalf("get %s: (%v, %v)", hash, ok, err)
 		}

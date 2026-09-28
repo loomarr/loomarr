@@ -83,7 +83,7 @@ func testRetireFillerRuntimeRightsMigration(t *testing.T, s *sqlStore, migration
 	if err != nil || !clip.Held {
 		t.Fatalf("affected clip = %+v, err = %v; want held", clip, err)
 	}
-	if _, found, err := s.GetClipPipeline(ctx, hash); err != nil || found {
+	if _, found, err := readClipPipelineRow(ctx, s, hash); err != nil || found {
 		t.Fatalf("affected pipeline found = %t, err = %v; want re-enrolment", found, err)
 	}
 	for _, table := range []string{

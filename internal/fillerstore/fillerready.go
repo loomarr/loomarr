@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // GetFillerReadyEvent returns the effective publication event for one clip.
@@ -41,7 +42,7 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		return err
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin filler ready: %w", err)
 	}
@@ -64,41 +65,36 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		return fmt.Errorf("read filler ready event: %w", err)
 	}
 
-	clipQuery := `SELECT held, removed_at, is_composite, source, placement FROM clips WHERE hash = ?`
-	if s.dialect == DialectPostgres {
-		clipQuery += ` FOR UPDATE`
-	}
-	var held, composite bool
-	var removedAt int64
-	var source, placement string
-	if err := tx.QueryRowContext(ctx, s.ph(clipQuery), e.ClipHash).Scan(&held, &removedAt, &composite, &source, &placement); errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+	clips := s.db.Clips(tx)
+	clip, err := clips.LockPublication(ctx, e.ClipHash)
+	if errors.Is(err, store.ErrNotFound) {
+		return err
 	} else if err != nil {
 		return fmt.Errorf("lock ready clip %s: %w", e.ClipHash, err)
 	}
 
 	pipelineQuery := clipPipelineSelect + ` WHERE clip_hash = ?`
-	if s.dialect == DialectPostgres {
+	if s.dialect == store.DialectPostgres {
 		pipelineQuery += ` FOR UPDATE`
 	}
 	current, err := scanClipPipeline(tx.QueryRowContext(ctx, s.ph(pipelineQuery), e.ClipHash))
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return store.ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("lock ready pipeline %s: %w", e.ClipHash, err)
 	}
 	// A retry after the original transaction committed is already done only when BOTH persisted
 	// sides still describe that published result. The immutable event alone is insufficient: a
 	// deliberate restart keeps it while putting the clip on hold and the conveyor back in motion.
-	if readyEventExists && !held && removedAt == 0 && !composite && placement == string(e.Placement) &&
+	if readyEventExists && !clip.Held && !clip.Removed && !clip.Composite && clip.Placement == string(e.Placement) &&
 		current.Disposition == filler.DispositionReady && current.Stage == filler.StageScore &&
 		current.Status == filler.StatusDone {
 		return nil
 	}
-	if !held || removedAt != 0 || composite {
+	if !clip.Held || clip.Removed || clip.Composite {
 		return fmt.Errorf("%w: clip is not a held active non-composite", filler.ErrReadyStale)
 	}
-	if e.Enrollment.Kind == filler.EnrollmentSource && source != e.Enrollment.Reference {
+	if e.Enrollment.Kind == filler.EnrollmentSource && clip.Source != e.Enrollment.Reference {
 		return fmt.Errorf("%w: source enrollment changed", filler.ErrReadyStale)
 	}
 	if err := commit.ValidateAgainst(current); err != nil {
@@ -113,16 +109,11 @@ func (s *sqlStore) CommitFillerReady(ctx context.Context, commit filler.ReadyCom
 		raw = []byte("[]")
 	}
 
-	clipResult, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET placement = ?, held = ?, auto_filed = ?, updated_at = ?
-		WHERE hash = ? AND held = ? AND removed_at = 0 AND is_composite = ?`),
-		string(e.Placement), false, false, epoch(e.CreatedAt), e.ClipHash, true, false)
+	published, err := clips.PublishReady(ctx, e.ClipHash, string(e.Placement), e.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("publish ready clip %s: %w", e.ClipHash, err)
 	}
-	if n, countErr := clipResult.RowsAffected(); countErr != nil || n != 1 {
-		if countErr != nil {
-			return fmt.Errorf("count ready clip %s: %w", e.ClipHash, countErr)
-		}
+	if !published {
 		return fmt.Errorf("%w: clip changed before publication", filler.ErrReadyStale)
 	}
 
