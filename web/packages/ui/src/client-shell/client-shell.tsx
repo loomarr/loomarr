@@ -6,8 +6,11 @@ import { DeviceDisconnectAction } from "../device-disconnect";
 import type { ClientShellProps } from "./client-shell.type";
 
 const ClientShell = ({ active, density, onDisconnect, onNavigate, serverName }: ClientShellProps) => {
+  const navigation = <ClientNavigation active={active} density={density} onNavigate={onNavigate} />;
+  // A phone docks its platform's tab bar under the content; pointer and TV keep the row inline.
+  const phone = density === "touch";
   return (
-    <Screen density={density} gap="$section">
+    <Screen density={density} footer={phone ? navigation : undefined} gap="$section">
       <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>
         <BrandLockup size={density === "tv" ? "large" : "medium"} />
         <View style={{ alignItems: "flex-end", gap: density === "tv" ? 12 : 8 }}>
@@ -26,7 +29,7 @@ const ClientShell = ({ active, density, onDisconnect, onNavigate, serverName }: 
           changing device authority.
         </Text>
       </Surface>
-      <ClientNavigation active={active} density={density} onNavigate={onNavigate} />
+      {phone ? null : navigation}
     </Screen>
   );
 };

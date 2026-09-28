@@ -181,6 +181,8 @@ const iconography = {
   size: {
     compact: 16,
     default: 20,
+    // The Material bottom bar's glyph inside its pill (#1659 native mock 5f).
+    navigation: 22,
     control: 24,
     touch: 28,
     tv: 36,

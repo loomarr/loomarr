@@ -30,15 +30,37 @@ type ScreenProps = Omit<
   | "paddingStart"
   | "paddingTop"
   | "paddingVertical"
-> & { density?: Density };
+> & {
+  density?: Density;
+  /**
+   * Chrome docked under the content, edge to edge (a phone's TabBar). It carries the bottom inset
+   * itself, so the content stops above it with no bottom gutter.
+   */
+  footer?: ReactNode;
+};
 
 /**
  * Edge-to-edge application frame whose content always stays inside platform insets and the
  * distance-appropriate Loomarr gutter. Insets are supplied once by LoomarrProvider.
  */
-const Screen = ({ density = "pointer", ...props }: ScreenProps) => {
+const Screen = ({ density = "pointer", footer, ...props }: ScreenProps) => {
   const platformInsets = useViewportInsets();
   const insets = resolveViewportInsets(density, platformInsets);
+  if (footer)
+    return (
+      <ScreenFrame>
+        <ScreenFrame
+          {...props}
+          flex={1}
+          minHeight={0}
+          paddingBottom={0}
+          paddingLeft={insets.left}
+          paddingRight={insets.right}
+          paddingTop={insets.top}
+        />
+        {footer}
+      </ScreenFrame>
+    );
   return (
     <ScreenFrame
       {...props}
