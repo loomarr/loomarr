@@ -445,7 +445,11 @@ func (s *Syncer) Sync(ctx context.Context) (SyncResult, error) {
 		if err != nil {
 			return res, fmt.Errorf("repair clip %s path: %w", rc.ID, err)
 		}
-		if nameRepaired || pathRepaired {
+		rc, named, err := s.repairPlaceholderDisplayName(rc, existing, found)
+		if err != nil {
+			return res, fmt.Errorf("name clip %s from its evidence: %w", rc.ID, err)
+		}
+		if nameRepaired || pathRepaired || named {
 			res.Repaired++
 		}
 		keep = append(keep, rc.ID)
@@ -885,27 +889,47 @@ func (s *Syncer) repairLegacyContentPath(rc RawClip, existing StoreClip, found b
 // When there are none, it uses a neutral kind label rather than exposing an implementation id as
 // if that were a title.
 func groundedRepairName(c Clip) string {
-	base := strings.TrimSpace(c.Brand)
-	if base == "" && c.Category != "" {
-		base = strings.ReplaceAll(c.Category, "_", " ")
-		if base != "" {
-			base = strings.ToUpper(base[:1]) + base[1:] + " commercial"
-		}
+	name, _ := GroundedName(c)
+	return name
+}
+
+// repairPlaceholderDisplayName names a clip that has no source title from the evidence gathered
+// since it was catalogued (#1452). Sync first names such a clip before transcription or vision has
+// run, so "Untitled commercial" would otherwise stick after its transcript has identified it.
+//
+// ⚠ Only a name Loomarr derived is replaced: one this step recorded (nameSource), the neutral
+// "Untitled <kind>", or the pre-#1452 brand/category/era derivation. A source title or a name a
+// person gave is left alone. The derived name goes to `displayName`, never `originalName`, which
+// is the text era grounding reads.
+func (s *Syncer) repairPlaceholderDisplayName(rc RawClip, existing StoreClip, found bool) (RawClip, bool, error) {
+	if !found || rc.SidecarInvalid {
+		return rc, false, nil
 	}
-	if base == "" {
-		if c.Era > 0 && c.Kind != "" {
-			return fmt.Sprintf("%d %s", c.Era, strings.ReplaceAll(string(c.Kind), "_", " "))
-		}
-		kind := strings.TrimSpace(strings.ReplaceAll(string(c.Kind), "_", " "))
-		if kind == "" {
-			kind = "filler clip"
-		}
-		return "Untitled " + kind
+	full := filepath.Join(s.dir, filepath.FromSlash(rc.Path))
+	if SidecarTitle(full) != "" {
+		return rc, false, nil
 	}
-	if c.Era > 0 {
-		return fmt.Sprintf("%s — %d", base, c.Era)
+	tags, state := ReadSidecarTagsState(full)
+	if state == SidecarInvalid {
+		return rc, false, nil
 	}
-	return base
+	legacy := existing.Clip
+	legacy.Transcript, legacy.VisibleText = "", ""
+	legacyName, _ := GroundedName(legacy)
+	derived := tags.NameSource != "" || strings.HasPrefix(rc.Name, "Untitled ") || rc.Name == legacyName
+	if !derived {
+		return rc, false, nil
+	}
+	name, source := GroundedName(existing.Clip)
+	if name == rc.Name && tags.NameSource == string(source) {
+		return rc, false, nil
+	}
+	tags.DisplayName, tags.NameSource = name, string(source)
+	if err := WriteSidecarTags(full, tags, false); err != nil {
+		return rc, false, err
+	}
+	rc.Name = name
+	return rc, true, nil
 }
 
 func isHashDisplayName(value string) bool {

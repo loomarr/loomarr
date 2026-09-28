@@ -99,6 +99,24 @@ func TestScanDir_PrefersSidecarTitleForDisplayButGroundsEraFromFilename(t *testi
 	}
 }
 
+// #1452: a name derived from grounded evidence is displayed, while era still grounds from the
+// original filename text, and a source title (when there is one) still outranks it.
+func TestScanDir_ShowsDerivedNameButGroundsEraFromOriginalName(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "ab/cd/hash.mp4")
+	sidecar := `{"loomarr":{"originalName":"spot 1993.mp4","displayName":"“Real stories of the highway patrol”","nameSource":"transcript"}}`
+	if err := os.WriteFile(filepath.Join(dir, "ab/cd/hash.info.json"), []byte(sidecar), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clips) != 1 || clips[0].Name != "“Real stories of the highway patrol”" || clips[0].Era != 1993 {
+		t.Fatalf("clips = %+v, want the derived display name and the filename's 1993", clips)
+	}
+}
+
 // A drop-folder accumulates junk. Non-media files must be ignored silently rather than probed.
 func TestScanDir_IgnoresNonMediaFiles(t *testing.T) {
 	dir := t.TempDir()
