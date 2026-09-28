@@ -36,8 +36,12 @@ const HomePage = () => {
 
   const guide = channelsApi.useChannelGuide(defaultGuideWindow(nowMs));
   const body = unwrap(guide.data);
-  const layout = useMemo(() => (body ? layoutGuide(body, nowMs) : undefined), [body, nowMs]);
+  // Only the channels the body actually carries: a body without them reads as none, not a crash.
   const channels = body?.channels ?? [];
+  const layout = useMemo(
+    () => (body ? layoutGuide({ ...body, channels }, nowMs) : undefined),
+    [body, channels, nowMs],
+  );
   const loading = guide.isLoading;
   const hasLife = !loading && channels.length > 0;
 

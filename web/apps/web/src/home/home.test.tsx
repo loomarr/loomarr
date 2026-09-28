@@ -25,7 +25,9 @@ describe("highlightReason — the client words the server's typed reason (#1664)
 
   it("gives a marathon's end time in the guide's timezone", () => {
     const untilMs = Date.UTC(2026, 8, 28, 3, 0);
-    expect(highlightReason(highlight({ reason: "marathon", untilMs }), "UTC")).toBe("Back-to-back until 3:00 AM");
+    expect(highlightReason(highlight({ reason: "marathon", untilMs }), "UTC")).toBe(
+      "Back-to-back until 3:00 AM",
+    );
   });
 
   it("says series premiere without a number", () => {
@@ -62,7 +64,9 @@ describe("Watching now — who gets a card (#1662, Q-H2)", () => {
   it("leads with the caller's own viewing", () => {
     const cards = watchingCards({
       layout,
-      viewing: viewing({ viewers: [viewer({}), viewer({ userId: "u2", name: "Bo", you: true, device: "laptop" })] }),
+      viewing: viewing({
+        viewers: [viewer({}), viewer({ userId: "u2", name: "Bo", you: true, device: "laptop" })],
+      }),
     });
     expect(cards.map((c) => c.viewer.name)).toEqual(["You — continue watching", "Ada"]);
     expect(cards[0]?.viewer.initials).toBe("BO");
@@ -71,14 +75,20 @@ describe("Watching now — who gets a card (#1662, Q-H2)", () => {
   it("stands in the last-tuned channel when the caller isn't watching", () => {
     const cards = watchingCards({
       layout,
-      viewing: viewing({ scope: "self", continueWatching: { channelId: "c1", tunedAt: "2026-09-28T00:00:00Z" } }),
+      viewing: viewing({
+        scope: "self",
+        continueWatching: { channelId: "c1", tunedAt: "2026-09-28T00:00:00Z" },
+      }),
     });
     expect(cards).toHaveLength(1);
     expect(cards[0]?.you).toBe(true);
   });
 
   it("counts people, not devices, for an admin", () => {
-    const v = viewing({ viewers: [viewer({}), viewer({ device: "phone" }), viewer({ userId: "u2" })], watching: 3 });
+    const v = viewing({
+      viewers: [viewer({}), viewer({ device: "phone" }), viewer({ userId: "u2" })],
+      watching: 3,
+    });
     expect(watchingMeta({ viewing: v })).toBe("2 people");
   });
 

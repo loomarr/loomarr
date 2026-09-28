@@ -16,7 +16,7 @@ const YOU = "You — continue watching";
 // the header, never a card. When the caller is not watching right now, their last-tuned channel
 // stands in as the continue-watching card.
 const watchingCards = ({ viewing, layout }: Pick<WatchingNowProps, "viewing" | "layout">): WatchingCard[] => {
-  const cards: WatchingCard[] = [...viewing.viewers]
+  const cards: WatchingCard[] = [...(viewing.viewers ?? [])]
     .sort((a, b) => Number(b.you) - Number(a.you))
     .map((v) => ({
       key: `${v.userId}:${v.device}:${v.channelId}`,
@@ -39,9 +39,9 @@ const watchingCards = ({ viewing, layout }: Pick<WatchingNowProps, "viewing" | "
 
 const watchingMeta = ({ viewing }: Pick<WatchingNowProps, "viewing">): string | undefined => {
   if (viewing.scope === "household") {
-    return plural(new Set(viewing.viewers.map((v) => v.userId)).size, "person", "people");
+    return plural(new Set((viewing.viewers ?? []).map((v) => v.userId)).size, "person", "people");
   }
-  const own = viewing.viewers.length;
+  const own = viewing.viewers?.length ?? 0;
   const others = Math.max(0, viewing.watching - own);
   if (own > 0) return others > 0 ? `You and ${plural(others, "other", "others")}` : undefined;
   return others > 0 ? `${others} watching` : undefined;

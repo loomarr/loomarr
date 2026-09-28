@@ -256,7 +256,7 @@ describe("post-login redirect", () => {
   it("refuses an off-site destination and falls back to the home page", async () => {
     stubAuth(true);
     const router = renderApp("/login?redirect=https%3A%2F%2Fevil.example");
-    await waitFor(() => expect(at(router)).toBe("/dashboard"));
+    await waitFor(() => expect(at(router)).toBe("/guide"));
   });
 
   // ⚠ A router-level backslash case was written here and DELETED, because sabotaging the
