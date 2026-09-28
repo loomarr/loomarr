@@ -141,17 +141,19 @@ const meta = {
 
 type Story = StoryObj<typeof meta>;
 
-// Collapsed — the default state on a channel page.
+const CHANGE = "What to change on 90s Action";
+const SUGGEST = "Suggest changes";
+
+// Idle — the default state on a channel page: the web mock's always-open card.
 const Idle: Story = { decorators: [withStubbedRefine()] };
 
-// Expanded, mid-run and landed: play() opens the panel, submits a change, and waits for
-// the diff so the story demonstrates the actual review a reviewer would see.
+// Mid-run and landed: play() submits a change and waits for the diff so the story
+// demonstrates the actual review a reviewer would see.
 const Landed: Story = {
   decorators: [withStubbedRefine()],
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("button", { name: /refine with ai/i }));
-    await userEvent.type(canvas.getByLabelText("What to change"), "add more Schwarzenegger");
-    await userEvent.click(canvas.getByRole("button", { name: /^refine$/i }));
+    await userEvent.type(await canvas.findByLabelText(CHANGE), "add more action");
+    await userEvent.click(canvas.getByRole("button", { name: SUGGEST }));
     await canvas.findByRole("button", { name: /apply changes/i });
   },
 };
@@ -162,9 +164,8 @@ const Landed: Story = {
 const GenerationFailed: Story = {
   decorators: [withFailingRefine(), widthFrame(560)],
   play: async ({ canvas, userEvent }) => {
-    await userEvent.click(await canvas.findByRole("button", { name: /refine with ai/i }));
-    await userEvent.type(canvas.getByLabelText("What to change"), "add more Schwarzenegger");
-    await userEvent.click(canvas.getByRole("button", { name: /^refine$/i }));
+    await userEvent.type(await canvas.findByLabelText(CHANGE), "add more action");
+    await userEvent.click(canvas.getByRole("button", { name: SUGGEST }));
     StoryEventSource.last?.emit("suggestion", { jobId: "job-1", phase: "failed" });
     await canvas.findByText(/couldn't complete/i);
   },

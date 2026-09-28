@@ -562,7 +562,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     stubReachable();
     renderAt("/channels/ch-1/filler");
     expect(
-      await screen.findByText(/saved channel coverage/i, undefined, { timeout: 3000 }),
+      await screen.findByText(/what this channel can play/i, undefined, { timeout: 3000 }),
     ).toBeInTheDocument();
     // And the meter itself rendered, not just its heading.
     expect(await screen.findByText("Exact match")).toBeInTheDocument();
