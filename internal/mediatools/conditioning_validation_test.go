@@ -147,6 +147,63 @@ func TestValidateConditioningEvidenceAcceptsAvailableNegativeStreamStarts(t *tes
 	}
 }
 
+// reencodedChildMeasurement is the after-rewrite shape of #1540's 0-12000 ms cut, as the
+// DefaultMezzanine transcode leaves it: ffprobe's format.duration (12.121 s) is measured from
+// format.start_time (0.045 s, the AAC priming offset), so the audio stream ends at 12.166 s.
+func reencodedChildMeasurement() mediatools.ConditioningMeasurement {
+	available := func(ms int64) mediatools.OptionalMilliseconds {
+		return mediatools.OptionalMilliseconds{Milliseconds: ms, Available: true}
+	}
+	m := validPersistedConditioningMeasurement()
+	m.ContainerStart = available(45)
+	m.ContainerDurationMs = 12_121
+	m.Streams[0].Start, m.Streams[0].Duration = available(67), available(12_012)
+	m.Streams[1].Start, m.Streams[1].Duration = available(45), available(12_121)
+	m.AVSkew = mediatools.ConditioningSkew{Start: available(-22), End: available(87)}
+	m.Quality.DurationMs = 12_121
+	m.Quality.Black = nil
+	m.Cuts[0].Intended = mediatools.Interval{StartMs: 0, EndMs: 12_000}
+	for i := range m.Cuts[0].Streams {
+		m.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
+		m.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+	}
+	return m
+}
+
+func TestValidateConditioningEvidenceBoundsStreamsByTheContainerTimeline(t *testing.T) {
+	if err := mediatools.ValidateConditioningEvidence(reencodedChildMeasurement(), mediatools.ConditioningAfterRewrite); err != nil {
+		t.Fatalf("re-encoded child whose container starts after zero was rejected: %v", err)
+	}
+	cases := []struct {
+		name   string
+		mutate func(*mediatools.ConditioningMeasurement)
+	}{
+		{name: "stream ends after container start plus duration", mutate: func(m *mediatools.ConditioningMeasurement) {
+			m.Streams[1].Duration.Milliseconds++
+			m.AVSkew.End.Milliseconds++
+		}},
+		{name: "container starts after a stream starts", mutate: func(m *mediatools.ConditioningMeasurement) { m.ContainerStart.Milliseconds = 46 }},
+		{name: "container start overflows its end", mutate: func(m *mediatools.ConditioningMeasurement) {
+			m.ContainerStart.Milliseconds = math.MaxInt64
+		}},
+		{name: "unavailable container start carries a guessed value", mutate: func(m *mediatools.ConditioningMeasurement) {
+			m.ContainerStart.Available = false
+		}},
+		{name: "legacy evidence without a container start keeps the zero-based bound", mutate: func(m *mediatools.ConditioningMeasurement) {
+			m.ContainerStart = mediatools.OptionalMilliseconds{}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := reencodedChildMeasurement()
+			tc.mutate(&m)
+			if err := mediatools.ValidateConditioningEvidence(m, mediatools.ConditioningAfterRewrite); err == nil {
+				t.Fatal("stream timing outside the container timeline was accepted")
+			}
+		})
+	}
+}
+
 func TestDeriveConditioningParentEdgesUsesValidatedStreamIdentityAndCheckedArithmetic(t *testing.T) {
 	before := validPersistedConditioningMeasurement()
 	after := validPersistedConditioningMeasurement()

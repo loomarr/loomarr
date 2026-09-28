@@ -40,6 +40,26 @@ func TestMeasureConditioningKeepsMissingTimingAndCadenceUnavailable(t *testing.T
 	if got.AVSkew.Start.Available || got.AVSkew.End.Available {
 		t.Errorf("skew derived from unavailable timing: %+v", got.AVSkew)
 	}
+	if got.ContainerStart.Available {
+		t.Errorf("missing container start became measured zero: %+v", got.ContainerStart)
+	}
+}
+
+func TestMeasureConditioningRecordsTheContainerStart(t *testing.T) {
+	artifact := conditioningArtifact(t, "fixture.mp4")
+	probe := conditioningExactProbe(t, `{"streams":[{"index":0,"codec_type":"video","start_time":"0.067","duration":"12.012","avg_frame_rate":"30000/1001"},{"index":1,"codec_type":"audio","start_time":"0.045","duration":"12.121"}],"format":{"start_time":"0.045000","duration":"12.121000"}}`)
+	tools := mediatools.NewFFmpegTools(conditioningLoudnessExecutable(t, "-3.0"), probe, "", "", "")
+
+	got, err := tools.MeasureConditioning(context.Background(), mediatools.ConditioningRequest{Path: artifact})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (mediatools.OptionalMilliseconds{Milliseconds: 45, Available: true}); got.ContainerStart != want {
+		t.Fatalf("container start = %+v, want %+v", got.ContainerStart, want)
+	}
+	if got.ContainerDurationMs != 12_121 {
+		t.Fatalf("container duration = %d, want 12121", got.ContainerDurationMs)
+	}
 }
 
 func TestMeasureConditioningRejectsNonLocalRegularInputsBeforeTools(t *testing.T) {
@@ -952,7 +972,8 @@ func conditioningExactProbe(t *testing.T, raw string) string {
 		} `json:"streams"`
 		Frames []map[string]any `json:"frames,omitempty"`
 		Format struct {
-			Duration string `json:"duration"`
+			StartTime string `json:"start_time,omitempty"`
+			Duration  string `json:"duration"`
 		} `json:"format"`
 	}
 	if err := json.Unmarshal([]byte(raw), &probe); err != nil {
