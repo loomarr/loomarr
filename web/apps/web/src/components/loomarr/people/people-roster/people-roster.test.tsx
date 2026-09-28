@@ -22,6 +22,19 @@ describe("PeopleRoster", () => {
     expect(onSelect).toHaveBeenCalledWith(people.importedMember);
   });
 
+  it("shows when each person was last seen, and Never for someone who hasn't signed in", () => {
+    const now = Date.parse("2026-07-19T12:00:00Z");
+    render(
+      <PeopleRoster
+        users={[{ ...people.importedMember, lastSeenAt: now - 2 * 3_600_000 }, people.disabled]}
+        onSelect={() => {}}
+        now={now}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Manage Grace Hopper" })).toHaveTextContent("2h ago");
+    expect(screen.getByRole("button", { name: "Manage Alan Turing" })).toHaveTextContent("Never");
+  });
+
   it("searches and filters the loaded roster with an explicit no-results state", async () => {
     render(<PeopleRoster users={Object.values(people)} onSelect={() => {}} />);
     await userEvent.type(screen.getByLabelText("Search people"), "Grace");

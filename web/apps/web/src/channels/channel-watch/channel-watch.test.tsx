@@ -5,7 +5,7 @@ import {
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
@@ -187,7 +187,7 @@ describe("ChannelWatch pickers", () => {
         channel={live}
         isAdmin
         onSavePolicy={vi.fn()}
-        tuner={{ canSurf: true, ready, step, retry: vi.fn() }}
+        tuner={{ canSurf: true, ready, step, tune: vi.fn(), retry: vi.fn() }}
       />,
       { wrapper: makeWrapper() },
     );
@@ -304,6 +304,7 @@ describe("ChannelWatch switch readout", () => {
     requestedChannel,
     ready: vi.fn(),
     step: vi.fn(),
+    tune: vi.fn(),
     retry: vi.fn(),
   });
   const wash = () => document.querySelector<HTMLElement>("[data-wash]");
@@ -433,5 +434,77 @@ describe("ChannelWatch switch readout", () => {
     // The wash's centred channel line is the visible readout; the card would repeat it on screen.
     expect(osd).toHaveClass("sr-only");
     expect(wash()?.closest("[aria-hidden]")).toHaveTextContent("CH 12Saturday Cartoons");
+  });
+});
+
+describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
+  const rows = [
+    { id: "ch-1", number: 42, name: "Late Night Noir", now: "A detective film", minutesLeft: 20, blocks: [] },
+    { id: "ch-2", number: 7, name: "Saturday Cartoons", now: "A cartoon", minutesLeft: 11, blocks: [] },
+  ];
+  const renderWatch = (tune = vi.fn(), onTuneSettled = vi.fn(), onFavourite = vi.fn()) => {
+    hls.status = "playing";
+    render(
+      <ChannelWatch
+        channel={live}
+        isAdmin={false}
+        onSavePolicy={vi.fn()}
+        tuner={{ canSurf: true, ready: vi.fn(), step: vi.fn(), tune, retry: vi.fn() }}
+        drawer={{ channels: rows, favourites: ["ch-2"], recent: [], nowPercent: 17, onFavourite }}
+        onTuneSettled={onTuneSettled}
+      />,
+      { wrapper: makeWrapper() },
+    );
+    return { tune, onTuneSettled, onFavourite };
+  };
+
+  it("records the tune once its first frame plays", async () => {
+    stubTracks();
+    const { onTuneSettled } = renderWatch();
+    await screen.findByRole("button", { name: "Audio" });
+    expect(onTuneSettled).toHaveBeenCalledTimes(1);
+    expect(onTuneSettled).toHaveBeenCalledWith("ch-1");
+  });
+
+  it("opens the drawer from its button, lists favourites first, tunes a row and stars from beside it", async () => {
+    stubTracks();
+    const { tune, onFavourite } = renderWatch();
+    await userEvent.click(await screen.findByRole("button", { name: "Channels" }));
+    const favourites = screen.getByRole("region", { name: "FAVORITES" });
+    expect(favourites).toHaveTextContent("Saturday Cartoons");
+    expect(screen.getByRole("searchbox", { name: "Find a channel or show" })).toHaveFocus();
+
+    await userEvent.click(within(favourites).getByRole("button", { name: /^07 Saturday Cartoons/ }));
+    expect(tune).toHaveBeenCalledWith("ch-2");
+
+    const allChannels = screen.getByRole("region", { name: "ALL CHANNELS" });
+    await userEvent.click(within(allChannels).getByRole("button", { name: "Favorite Late Night Noir" }));
+    expect(onFavourite).toHaveBeenCalledWith("ch-1", true);
+  });
+
+  it("finds by name without the player taking the typed keys, and Escape hands focus back", async () => {
+    stubTracks();
+    renderWatch();
+    const opener = await screen.findByRole("button", { name: "Channels" });
+    await userEvent.click(opener);
+    // "m" mutes and "k" pauses on the player; in the find box they are letters.
+    await userEvent.type(screen.getByRole("searchbox"), "mk");
+    expect(screen.getByRole("searchbox")).toHaveValue("mk");
+    expect(screen.getByText("MATCHES")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
+
+  it("tunes a typed channel number, and names a number no channel has", async () => {
+    stubTracks();
+    const { tune } = renderWatch();
+    await screen.findByRole("button", { name: "Audio" });
+    await userEvent.keyboard("7{Enter}");
+    expect(tune).toHaveBeenCalledWith("ch-2");
+
+    await userEvent.keyboard("9{Enter}");
+    expect(await screen.findByText("NO SUCH CHANNEL")).toBeInTheDocument();
+    expect(tune).toHaveBeenCalledTimes(1);
   });
 });

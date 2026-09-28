@@ -2,6 +2,7 @@ import * as authApi from "@loomarr/api/endpoints/auth";
 import * as usersApi from "@loomarr/api/endpoints/users";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
+import { formatRelative } from "@loomarr/core/format";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -24,16 +25,6 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 //
 // A viewer sees exactly what an admin sees here. Nothing on this page is privileged:
 // it only ever acts on the caller's own account, which is why it takes no user id.
-
-const relativeTime = (ms: number): string => {
-  const diff = Date.now() - ms;
-  const mins = Math.round(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-};
 
 const AccountScreen = () => {
   const { user } = useAuth();
@@ -170,27 +161,34 @@ const AccountScreen = () => {
           )}
         </Card>
 
-        <Card className="flex flex-col gap-3 p-5">
-          <h2 className="font-medium">Where you're signed in</h2>
-          {sessions.isLoading && <p className="text-muted-foreground text-sm">Loading sessions…</p>}
+        {/* The web mock's "Where you're signed in": the client ("Firefox on macOS") over when it
+            was last used, a This device badge on your own, Sign out on the others. The mock's
+            per-session city is dropped (geo-IP; the map's call on #1659). A session the API hasn't
+            labelled yet keeps today's "Signed in …" title. */}
+        <Card className="flex flex-col overflow-hidden">
+          <h2 className="border-border border-b px-4 py-3.5 font-semibold text-sm">Where you're signed in</h2>
+          {sessions.isLoading && <p className="px-4 py-3 text-muted-foreground text-sm">Loading sessions…</p>}
           {!sessions.isLoading && sessionRows.length === 0 && (
-            <p className="text-muted-foreground text-sm">No other sessions.</p>
+            <p className="px-4 py-3 text-muted-foreground text-sm">No other sessions.</p>
           )}
-          <ul className="flex flex-col gap-2">
+          <ul>
             {sessionRows.map((s) => (
               <li
                 key={s.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                className="flex items-center gap-3 border-border border-b px-4 py-3 last:border-b-0"
               >
-                <div className="min-w-0">
-                  <p className="text-sm">
-                    Signed in {relativeTime(s.createdAt)}
-                    {s.current && <span className="ml-2 text-lock text-xs">this device</span>}
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-[13px]">
+                    {s.clientLabel ?? `Signed in ${formatRelative(s.createdAt)}`}
                   </p>
-                  <p className="font-mono text-static-400 text-xs">expires {relativeTime(s.expiresAt)}</p>
+                  {s.lastSeenAt !== undefined && (
+                    <p className="mt-0.5 font-mono text-muted-foreground text-xs">
+                      {formatRelative(s.lastSeenAt)}
+                    </p>
+                  )}
                 </div>
-                {/* No Revoke on your own session: that is what signing out is for, and a
-                  button that logs you out while labelled "Revoke" is a trap. */}
+                {s.current && <Badge variant="lock">This device</Badge>}
+                {/* No Sign out on your own session: the shell's Sign out is for that. */}
                 {!s.current && (
                   <Button
                     variant="ghost"
@@ -198,7 +196,7 @@ const AccountScreen = () => {
                     onClick={() => revoke.mutate({ hash: s.id })}
                     disabled={revoke.isPending}
                   >
-                    Revoke
+                    Sign out
                   </Button>
                 )}
               </li>
