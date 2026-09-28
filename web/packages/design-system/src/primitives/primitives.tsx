@@ -120,8 +120,22 @@ const dataRoles = new Set<TextRole>([
   "cardChannelNumber",
   "cardTime",
   "cardInitials",
+  "guideMeta",
+  "guideLabel",
+  "guideNumber",
+  "guideIdent",
 ]);
-const mutedRoles = new Set<TextRole>(["label", "section", "metadata", "time", "cardMeta", "cardTime"]);
+const mutedRoles = new Set<TextRole>([
+  "label",
+  "section",
+  "metadata",
+  "time",
+  "cardMeta",
+  "cardTime",
+  "guideMeta",
+  "guideLabel",
+]);
+const amberRoles = new Set<TextRole>(["channelNumber", "code", "cardChannelNumber", "guideNumber"]);
 const textTones = {
   danger: "$stateDanger",
   info: "$stateInfo",
@@ -143,7 +157,7 @@ const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
       color={
         tone
           ? textTones[tone]
-          : textRole === "channelNumber" || textRole === "code" || textRole === "cardChannelNumber"
+          : amberRoles.has(textRole)
             ? "$actionPrimary"
             : mutedRoles.has(textRole)
               ? "$contentSecondary"
@@ -153,7 +167,15 @@ const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
       fontSize={value.size}
       fontWeight={value.weight}
       letterSpacing={
-        textRole === "display" ? -0.8 : textRole === "title" ? -0.25 : textRole === "section" ? 2 : 0
+        textRole === "display"
+          ? -0.8
+          : textRole === "title"
+            ? -0.25
+            : textRole === "section"
+              ? 2
+              : textRole === "guideLabel"
+                ? value.size * 0.04
+                : 0
       }
       lineHeight={value.lineHeight}
     />

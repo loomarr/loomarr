@@ -44,6 +44,15 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   artworkScrim: semanticThemes[mode].artwork.scrim,
   artworkScrimStrong: semanticThemes[mode].artwork.scrimStrong,
   artworkProgressTrack: semanticThemes[mode].artwork.progressTrack,
+  guideRowRule: semanticThemes[mode].guide.rowRule,
+  guideBlockAccent: semanticThemes[mode].guide.blockAccent,
+  guidePendingFill: semanticThemes[mode].guide.pendingFill,
+  guidePendingBorder: semanticThemes[mode].guide.pendingBorder,
+  guideBreakFill: semanticThemes[mode].guide.breakFill,
+  guideClipSignal: semanticThemes[mode].guide.clipSignal,
+  guideClipTune: semanticThemes[mode].guide.clipTune,
+  guideClipSuggest: semanticThemes[mode].guide.clipSuggest,
+  guideClipPlain: semanticThemes[mode].guide.clipPlain,
 });
 
 const tamaguiTheme = (mode: keyof typeof semanticThemes) => {
@@ -106,6 +115,15 @@ const tokens = createTokens({
     artworkScrim: semanticColors.artwork.scrim,
     artworkScrimStrong: semanticColors.artwork.scrimStrong,
     artworkProgressTrack: semanticColors.artwork.progressTrack,
+    guideRowRule: semanticColors.guide.rowRule,
+    guideBlockAccent: semanticColors.guide.blockAccent,
+    guidePendingFill: semanticColors.guide.pendingFill,
+    guidePendingBorder: semanticColors.guide.pendingBorder,
+    guideBreakFill: semanticColors.guide.breakFill,
+    guideClipSignal: semanticColors.guide.clipSignal,
+    guideClipTune: semanticColors.guide.clipTune,
+    guideClipSuggest: semanticColors.guide.clipSuggest,
+    guideClipPlain: semanticColors.guide.clipPlain,
     transparent: "transparent",
   },
   radius: {
