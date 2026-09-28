@@ -971,6 +971,7 @@ type Store interface {
 	ImageStore
 	DiscoveryFeedbackStore
 	ChannelPreferenceStore
+	HiddenIdeaStore
 	DiscoveryQualityStore
 	InventoryStore
 
