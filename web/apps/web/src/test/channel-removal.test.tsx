@@ -1,4 +1,10 @@
-import { getDeleteChannelMockHandler, getGetChannelMockHandler, getMeMockHandler } from "@loomarr/api/msw";
+import {
+  getChannelsNowNextMockHandler,
+  getDeleteChannelMockHandler,
+  getGetChannelMockHandler,
+  getMeMockHandler,
+} from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -20,6 +26,8 @@ const renderDanger = () => {
   const deletes: string[] = [];
   server.use(
     getMeMockHandler(me()),
+    // ⚠ Ahead of the by-id read, which would also answer `/v1/channels/now-next`.
+    getChannelsNowNextMockHandler({ channels: [] }),
     getGetChannelMockHandler(channel({ id: "ch-1", name: "90s Action" })),
     getDeleteChannelMockHandler(({ request }) => {
       deletes.push(request.url);
@@ -36,10 +44,13 @@ const renderDanger = () => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: ["/channels/ch-1/danger"] }),
   });
+  // LoomarrProvider as main.tsx mounts it: the channel header's ident is a design-system view.
   render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </LoomarrProvider>,
   );
   return { deletes };
 };
@@ -51,8 +62,8 @@ describe("channel removal feedback", () => {
     const user = userEvent.setup();
     const { deletes } = renderDanger();
 
-    await user.click(await screen.findByRole("button", { name: "Stop managing" }));
-    await user.click(screen.getByRole("button", { name: "Stop managing" }));
+    await user.click(await screen.findByRole("button", { name: "Stop updating" }));
+    await user.click(screen.getByRole("button", { name: "Stop updating" }));
 
     await waitFor(() => expect(deletes).toHaveLength(1));
     expect(deletes[0]).toContain("purge=false");
@@ -65,8 +76,8 @@ describe("channel removal feedback", () => {
     const user = userEvent.setup();
     const { deletes } = renderDanger();
 
-    await user.click(await screen.findByRole("button", { name: "Delete from Loomarr and Tunarr" }));
-    await user.click(screen.getByRole("button", { name: "Delete from Loomarr and Tunarr" }));
+    await user.click(await screen.findByRole("button", { name: "Delete channel" }));
+    await user.click(screen.getByRole("button", { name: "Delete channel" }));
 
     await waitFor(() => expect(deletes).toHaveLength(1));
     expect(deletes[0]).toContain("purge=true");

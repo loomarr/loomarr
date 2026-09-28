@@ -1,6 +1,7 @@
 import {
   getChannelGuideMockHandler,
   getChannelPlayUrlMockHandler,
+  getChannelsNowNextMockHandler,
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
   getDeviceListMockHandler,
@@ -27,8 +28,10 @@ import {
   getListStartupReportsMockHandler,
   getListTitlesMockHandler,
   getListUsersMockHandler,
+  getMyChannelsMockHandler,
   getNotificationProvidersListMockHandler,
   getNotificationProviderTypesListMockHandler,
+  getRecordChannelTuneMockHandler,
   getSettingsListMockHandler,
   getSetupStateMockHandler,
   getSetupStatusMockHandler,
@@ -117,6 +120,10 @@ const appHandlers = (): RequestHandler[] => [
     dataKeyCount: 1,
   }),
   getListChannelsMockHandler({ channels: [] }),
+  // What's on now and next everywhere: the channel page's header line and Watch's tuner read it.
+  // ⚠ Ahead of the by-id read below: `/v1/channels/:id` also matches `/v1/channels/now-next`, and
+  // the first match answers.
+  getChannelsNowNextMockHandler({ channels: [] }),
   // A single channel read &mdash; the channel-detail routes fetch this by id.
   getGetChannelMockHandler(channel()),
   // ⚠ The WATCH surface's three reads, and they belong in the SHARED set because opening a channel
@@ -168,6 +175,10 @@ const appHandlers = (): RequestHandler[] => [
     restartRequired: false,
     streamingChannels: 0,
   }),
+  // The viewer's own channel lists: Watch's channels drawer reads them, and a settled tune
+  // records into them (#1666).
+  getMyChannelsMockHandler({ favourites: [], recent: [] }),
+  getRecordChannelTuneMockHandler({ favourites: [], recent: [] }),
   getJobsListMockHandler({ jobs: [] }),
   getListActivityMockHandler({ activity: [] }),
   // The AI connection block reads both of these on mount, and it renders on the wizard's

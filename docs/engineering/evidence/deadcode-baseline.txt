@@ -13,7 +13,6 @@
 2 internal/library
 9 internal/llm
 2 internal/logchange
-1 internal/media
 2 internal/mediatools
 1 internal/notifications
 1 internal/proctree
@@ -25,8 +24,8 @@
 1 internal/scheduler
 1 internal/settings
 1 internal/setup
-2 internal/storagegovernor
+1 internal/storagegovernor
 2 internal/suggest
 4 internal/tmdb
 2 internal/watermark
-total 93
+total 91

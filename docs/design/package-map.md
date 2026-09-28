@@ -63,6 +63,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 2 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
+- **`fillereval`**
+  The budget arithmetic that paid filler assessment shares with certification.
 - **`fillersafety`** · 1 importer
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
 - **`fillerstructure`** · 5 importers
@@ -78,7 +80,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 - **`logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
 - **`media`** · 2 importers
-  Owns host-wide resources shared by live and background media work.
+  Owns host-wide resource facts shared by media work: host memory.
 - **`openroutermedia`** · 2 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`playout/packager`** · 1 importer

@@ -60,44 +60,35 @@ const ChannelAdvanced = ({
 
   return (
     // Just the body content — the container (border + padding) is provided by the
-    // CollapsibleSection this renders inside on the channel page.
-    <div className="flex flex-col gap-5">
+    // CollapsibleSection this renders inside on the channel page. The web mock draws it as a
+    // label | value grid. Its "Last updated · took" row has no field on ChannelDTO yet, so it
+    // isn't drawn rather than faked.
+    <div className="grid grid-cols-[180px_1fr] gap-x-4 gap-y-2 text-sm">
       {/* Programming rules that were eased (the relaxation ladder). */}
-      <section className="flex flex-col gap-2">
-        <h3 className="font-medium text-sm">Programming rules</h3>
-        {applied.length > 0 ? (
-          <>
-            <p className="text-muted-foreground text-sm">
-              A few rules Loomarr relaxed so the channel always has something to play:
-            </p>
-            <ul className="flex flex-col gap-1.5">
-              {applied.map((step) => (
-                <li key={`${step.kind}:${step.from}->${step.to}`} className="flex gap-2 text-caution text-sm">
-                  <span aria-hidden>•</span>
-                  <span>{relaxationSentence(step)}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            Running exactly as specified. Nothing had to be eased.
-          </p>
-        )}
-      </section>
+      <span className="text-muted-foreground">Rules loosened</span>
+      {applied.length > 0 ? (
+        <ul className="flex flex-col gap-1.5">
+          {applied.map((step) => (
+            <li key={`${step.kind}:${step.from}->${step.to}`}>{relaxationSentence(step)}</li>
+          ))}
+        </ul>
+      ) : (
+        <span>Running exactly as specified. Nothing had to be eased.</span>
+      )}
 
-      {/* Who streams this channel, and the Tunarr link — the same subject. */}
-      <section className="flex flex-col gap-2">
-        <h3 className="font-medium text-sm">Broadcast</h3>
-
-        {/* Playout backend — orphaned until now: §9.1 promised a channel "can be moved from
-            its own page" and no page offered the move, so the per-channel override existed
-            only for a hand-written policy_json. */}
-        {onPolicyChange && (
+      {/* Playout backend — orphaned until now: §9.1 promised a channel "can be moved from its
+          own page" and no page offered the move, so the per-channel override existed only for a
+          hand-written policy_json. The mock doesn't draw it; it stays because it's the only
+          place the override can be set. It sits beside the Tunarr row: the same subject. */}
+      {onPolicyChange && (
+        <>
+          <Label
+            htmlFor="channel-playout-backend"
+            className="self-start pt-2 font-normal text-muted-foreground"
+          >
+            Streamed by
+          </Label>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="channel-playout-backend" className="text-muted-foreground text-xs">
-              Streamed by
-            </Label>
             <Select
               value={backend}
               onValueChange={(v) =>
@@ -126,16 +117,17 @@ const ChannelAdvanced = ({
               Applies the next time someone tunes in. Anyone watching now keeps their stream.
             </p>
           </div>
-        )}
+        </>
+      )}
 
-        {channel.tunarrId ? (
-          <p className="font-mono text-muted-foreground text-xs">Tunarr channel: {channel.tunarrId}</p>
-        ) : (
-          <p className="text-muted-foreground text-sm">
-            Not on Tunarr yet. It's created there automatically once Tunarr is connected.
-          </p>
-        )}
-      </section>
+      <span className="text-muted-foreground">Tunarr channel</span>
+      <span className="font-mono text-muted-foreground text-xs">
+        {channel.tunarrId
+          ? channel.tunarrId
+          : channel.inAppPlayable
+            ? "Not used — Loomarr plays this channel itself"
+            : "Not on Tunarr yet. It's created there automatically once Tunarr is connected."}
+      </span>
     </div>
   );
 };

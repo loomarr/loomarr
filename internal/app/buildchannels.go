@@ -17,7 +17,6 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/library"
-	"github.com/loomarr/loomarr/internal/media"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/programmer"
@@ -45,7 +44,6 @@ type channelBuild struct {
 	playoutCapability      func() playout.Capacity
 	playout                api.Playout
 	playoutResolverService api.PlayoutResolver
-	encodePool             *media.EncodePool
 	resourceBudget         *playout.ResourceBudget // nil without internal playout
 	playoutGuide           api.PlayoutGuide
 	playoutResolver        *playoutResolver
@@ -128,10 +126,8 @@ func buildChannels(
 	// until then so the /playout/hls routes report "not running" on an unwired install.
 	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
-	// One host-wide pool arbitrates the measured hardware slots between live playout and prepared
-	// media. It is created beside the resolver that owns capability detection, then handed to both
-	// consumers; neither may maintain a private GPU counter.
-	var encodePool *media.EncodePool
+	// The one admission ledger for hardware and software transcodes (#1505, #1562), built beside
+	// the resolver that owns capability detection.
 	var resourceBudget *playout.ResourceBudget
 	// The XMLTV guide (§9.1, V6b). Satisfied by the SAME *playoutResolver as above — one
 	// source for "what airs when", so the guide cannot advertise something the encoder does
@@ -299,7 +295,7 @@ func buildChannels(
 		playoutObserver = playoutBuilt.observer
 		playoutCapability = playoutBuilt.capability
 		playoutSvc, playoutResolverSvc = playoutBuilt.service, playoutBuilt.resolverService
-		encodePool, playoutGuideSvc = playoutBuilt.encodePool, playoutBuilt.guide
+		playoutGuideSvc = playoutBuilt.guide
 		resourceBudget = playoutBuilt.budget
 		playoutRes, backendController = playoutBuilt.resolver, playoutBuilt.backendController
 		setResidentVRAM = playoutBuilt.setResidentVRAM
@@ -321,7 +317,7 @@ func buildChannels(
 		playoutObserver:        playoutObserver,
 		playoutCapability:      playoutCapability,
 		playout:                playoutSvc,
-		playoutResolverService: playoutResolverSvc, encodePool: encodePool, resourceBudget: resourceBudget,
+		playoutResolverService: playoutResolverSvc, resourceBudget: resourceBudget,
 		playoutGuide: playoutGuideSvc, playoutResolver: playoutRes,
 		setResidentVRAM: setResidentVRAM,
 		channelNumbers:  chanNumbers,
