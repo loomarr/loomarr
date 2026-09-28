@@ -554,8 +554,8 @@ type clipCatalogAdapter struct{ st store.Store }
 // actual-airing history but cannot write it. Playout owns the sole write boundary.
 type clipExposureAdapter struct{ st store.Store }
 
-func (a clipExposureAdapter) FillerExposuresByChannel(ctx context.Context, channelID string, before time.Time) (map[string]filler.Exposure, error) {
-	return a.st.FillerExposuresByChannel(ctx, channelID, before)
+func (a clipExposureAdapter) FillerExposureRecords(ctx context.Context, channelID string) (map[string]filler.ExposureRecord, error) {
+	return a.st.FillerExposureRecords(ctx, channelID)
 }
 
 // ⚠ A ZERO filter, and that is what keeps HELD clips out of every pod (§10 V38). Pod assembly,
@@ -1326,11 +1326,26 @@ func (a podPreviewAdapter) Preview(ctx context.Context, channelID string) (fille
 // a break independently, the hover card would eventually list clips that are not the ones
 // playing, and nobody would be able to reproduce the discrepancy on demand.
 func (a podPreviewAdapter) PreviewAt(ctx context.Context, channelID string, breakStartMs int64) (filler.Pod, error) {
-	ch, err := a.store.GetChannel(ctx, channelID)
+	pods, err := a.PreviewAtMany(ctx, channelID, []int64{breakStartMs})
 	if err != nil {
 		return filler.Pod{}, err
 	}
-	return a.pods.PreviewAt(ctx, ch.ID, channels.PodSeedAt(ch.ID, breakStartMs), channels.SelectionForChannel(ch), time.UnixMilli(breakStartMs).UTC())
+	return pods[0], nil
+}
+
+// PreviewAtMany is PreviewAt for every break of one channel in a window (#1420): the channel is
+// read once and the batch shares one catalog and exposure read, while each break keeps its own
+// seed and snapshot — pod for pod what PreviewAt returns.
+func (a podPreviewAdapter) PreviewAtMany(ctx context.Context, channelID string, breakStartsMs []int64) ([]filler.Pod, error) {
+	ch, err := a.store.GetChannel(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	breaks := make([]filler.Break, len(breakStartsMs))
+	for i, ms := range breakStartsMs {
+		breaks[i] = filler.Break{Seed: channels.PodSeedAt(ch.ID, ms), Start: time.UnixMilli(ms).UTC()}
+	}
+	return a.pods.PreviewAtMany(ctx, ch.ID, channels.SelectionForChannel(ch), breaks)
 }
 
 // Coverage reports which ladder rung this channel's breaks would draw from (V29b-api).

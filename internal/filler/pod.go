@@ -14,6 +14,37 @@ type Exposure struct {
 	LastPlayedAt time.Time
 }
 
+// ExposureRecord is one clip's stored aggregate on a channel: the Exposure plus the airing before
+// the latest. That one predecessor is the bounded state that lets a break's snapshot be rebuilt
+// after its own clips start airing (no-repeat means a clip airs at most once inside one pod).
+type ExposureRecord struct {
+	PlayCount        int64
+	LastPlayedAt     time.Time
+	PreviousPlayedAt time.Time
+}
+
+// ExposuresBefore is the history strictly before `before`, cut from the stored aggregates. A zero
+// cutoff returns all history. The strict boundary keeps a break's snapshot immutable while that
+// break airs, so a rebuild cannot reshuffle its tail.
+//
+// ⚠ Pure and in the domain (#1420) so one read of the records can serve every break of a guide
+// window: the cut used to live in the store query, which forced one query per break.
+func ExposuresBefore(records map[string]ExposureRecord, before time.Time) map[string]Exposure {
+	out := make(map[string]Exposure, len(records))
+	for hash, r := range records {
+		count, last := r.PlayCount, r.LastPlayedAt
+		if !before.IsZero() && !last.Before(before) {
+			count--
+			last = r.PreviousPlayedAt
+		}
+		if count <= 0 || last.IsZero() {
+			continue
+		}
+		out[hash] = Exposure{PlayCount: count, LastPlayedAt: last}
+	}
+	return out
+}
+
 // Pod is an assembled ad break (§10): an intro bumper → matched commercials →
 // return bumper, sized to a flex gap. It's what the scheduler inserts between
 // programs via Tunarr flex + filler lists. Every entry is a real catalog clip

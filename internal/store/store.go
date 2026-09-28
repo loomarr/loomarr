@@ -732,10 +732,10 @@ type AiringStore interface {
 	// an error because the durable channel exposure intentionally survives catalog pruning and
 	// re-admission.
 	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) (recorded bool, err error)
-	// FillerExposuresByChannel returns the aggregate history strictly before `before`.
-	// A zero cutoff returns all history. The strict boundary makes a break's exposure snapshot
-	// immutable while that break is going to air, so a reconcile cannot reshuffle its tail.
-	FillerExposuresByChannel(ctx context.Context, channelID string, before time.Time) (map[string]filler.Exposure, error)
+	// FillerExposureRecords returns one channel's stored per-clip aggregates. A break's snapshot
+	// (history strictly before its start) is cut from them by filler.ExposuresBefore, so one
+	// read serves every break in a window (#1420).
+	FillerExposureRecords(ctx context.Context, channelID string) (map[string]filler.ExposureRecord, error)
 	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
 	// the programme analogue of RecordClipPlay. Written from playout only, when a programme is
 	// actually resolved for streaming; upserts one row per (channel, key) holding the LAST

@@ -36,6 +36,14 @@ func (s stubPods) PreviewAt(context.Context, string, int64) (filler.Pod, error) 
 	return s.pod, s.err
 }
 
+func (s stubPods) PreviewAtMany(_ context.Context, _ string, starts []int64) ([]filler.Pod, error) {
+	pods := make([]filler.Pod, len(starts))
+	for i := range pods {
+		pods[i] = s.pod
+	}
+	return pods, s.err
+}
+
 func (s stubPods) Coverage(context.Context, string) (filler.CoverageReport, error) {
 	return filler.CoverageReport{}, s.err
 }

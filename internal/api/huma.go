@@ -594,6 +594,10 @@ type PodPreviewer interface {
 	// channel draw from", while this answers "what plays in THIS break". Consecutive breaks
 	// must not replay the same adverts, which is only expressible with the start time.
 	PreviewAt(ctx context.Context, channelID string, breakStartMs int64) (filler.Pod, error)
+	// PreviewAtMany is PreviewAt for many breaks of one channel, pod for pod, reading the
+	// channel, catalog and play history once (#1420). The guide uses it: one call per channel
+	// row instead of one per break.
+	PreviewAtMany(ctx context.Context, channelID string, breakStartsMs []int64) ([]filler.Pod, error)
 	// Coverage reports which ladder rung this channel's breaks would draw from, and how much
 	// material each rung holds (V29a/V29b). Same catalog, same Window, same policy as Preview —
 	// it counts what is available instead of drawing from it, which is why it takes no seed.
