@@ -308,6 +308,15 @@ make agent-stop
 make agent-gc
 ```
 
+A worktree with any process still working in it, subdirectories included, stays protected as
+`running-process`. List and stop those processes first. Stop them by PID, never with `pkill -f`:
+
+```sh
+make agent-reap WORKTREE=<path>          # list
+make agent-reap WORKTREE=<path> APPLY=1  # stop them
+make agent-reap ORPHANS=1                # processes left in worktrees already deleted
+```
+
 `make agent-gc` is read-only by default. It classifies every registered worktree and explains why
 each one is protected or eligible. After reviewing that inventory, one explicit command retires
 every eligible entry:

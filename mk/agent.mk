@@ -1,6 +1,6 @@
 ## ---- agent / worktree harness --------------------------------------------
 
-.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify test-affected agent-worktree agent-gc bootstrap doctor agent-harness-test agent-assets-verify
+.PHONY: agent-start agent-status agent-renew agent-prune agent-stop agent-env agent-baseline agent-verify test-affected agent-worktree agent-gc agent-reap dev-watch bootstrap doctor agent-harness-test agent-assets-verify
 agent-start: ## register this worktree and its seams (TASK=... CLAIMS=a,b; optional DEPENDS_ON=task)
 	@./scripts/agent.sh start "$(TASK)" "$(CLAIMS)" "$(DEPENDS_ON)"
 
@@ -35,6 +35,12 @@ agent-worktree: ## create, claim, and bootstrap a sibling worktree (TOPIC=... CL
 agent-gc: ## audit worktrees; APPLY=1 retires only exact clean merged PR heads
 	@APPLY="$(or $(APPLY),0)" ./scripts/agent.sh gc
 
+agent-reap: ## list processes running in a worktree (WORKTREE=path, or ORPHANS=1 for deleted ones); APPLY=1 stops them
+	@APPLY="$(or $(APPLY),0)" ORPHANS="$(or $(ORPHANS),0)" ./scripts/dev/worktree-procs.sh "$(WORKTREE)"
+
+dev-watch: ## watch local resources, your PRs and agent lanes; prints only when something needs attention
+	@./scripts/dev/dev-watch.sh
+
 bootstrap: ## build the Rust worker and prepare frontend, isolated directories, and dev identity
 	@./scripts/agent.sh bootstrap
 
@@ -46,6 +52,7 @@ agent-harness-test: agent-assets-verify ## regression-test coordination, worktre
 	@./scripts/go-direct-impact-test.sh
 	@./scripts/codeql-impact-test.sh
 	@./scripts/test-affected-test.sh
+	@./scripts/dev/watch-test.sh
 	@./scripts/agent-harness-test.sh
 
 agent-assets-verify: ## verify the curated skill catalog and agent adapters agree
