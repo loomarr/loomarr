@@ -64,6 +64,14 @@ type FillerAcquisitionRunDTO struct {
 	UpdatedAt   string                        `json:"updatedAt" format:"date-time"`
 	Outcome     AcquisitionOutcomeDTO         `json:"outcome"`
 	Artifacts   AcquisitionArtifactOutcomeDTO `json:"artifacts"`
+	GapYield    []AcquisitionGapYieldDTO      `json:"gapYield,omitempty" doc:"The outcome split by the channel coverage gap each download was for; absent when no download was steered by a gap"`
+}
+
+// AcquisitionGapYieldDTO is what a run's downloads for one coverage gap became (#749).
+type AcquisitionGapYieldDTO struct {
+	Gap       string                `json:"gap" doc:"The coverage gap, e.g. era:1990-1999"`
+	Downloads int                   `json:"downloads"`
+	Outcome   AcquisitionOutcomeDTO `json:"outcome" doc:"The clips those downloads enrolled, including the spots a compilation was split into"`
 }
 
 type FillerReadinessDTO struct {
@@ -215,23 +223,30 @@ func pipelineOverviewDTO(overview filler.PipelineOverview) PipelineOverviewDTO {
 }
 
 func acquisitionRunDTO(run filler.AcquisitionRun) FillerAcquisitionRunDTO {
+	var gapYield []AcquisitionGapYieldDTO
+	for _, y := range run.GapYield {
+		gapYield = append(gapYield, AcquisitionGapYieldDTO{Gap: y.Gap, Downloads: y.Downloads, Outcome: acquisitionOutcomeDTO(y.Outcome)})
+	}
 	return FillerAcquisitionRunDTO{
 		ID: run.ID, Trigger: string(run.Trigger), SourceID: run.SourceID, PullID: run.PullID,
 		Status: string(run.Status), Requested: run.Requested, Fetched: run.Fetched,
 		Skipped: run.Skipped, Failed: run.Failed, Empty: run.Empty, Error: run.Error,
 		StartedAt: formatAcquisitionTime(run.StartedAt), CompletedAt: formatAcquisitionTime(run.CompletedAt),
 		UpdatedAt: formatAcquisitionTime(run.UpdatedAt),
-		Outcome: AcquisitionOutcomeDTO{
-			Enrolled: run.Outcome.Enrolled, Preparing: run.Outcome.Preparing,
-			NeedsDecision: run.Outcome.NeedsDecision, Ready: run.Outcome.Ready,
-			Complete: run.Outcome.Complete,
-			Rejected: run.Outcome.Rejected, Dismissed: run.Outcome.Dismissed,
-		},
+		Outcome:   acquisitionOutcomeDTO(run.Outcome),
 		Artifacts: AcquisitionArtifactOutcomeDTO{
 			Staged: run.Artifacts.Staged, Published: run.Artifacts.Published,
 			Consumed: run.Artifacts.Consumed, Repair: run.Artifacts.Repair,
 			RepairReason: run.Artifacts.RepairReason,
 		},
+		GapYield: gapYield,
+	}
+}
+
+func acquisitionOutcomeDTO(o filler.AcquisitionOutcome) AcquisitionOutcomeDTO {
+	return AcquisitionOutcomeDTO{
+		Enrolled: o.Enrolled, Preparing: o.Preparing, NeedsDecision: o.NeedsDecision,
+		Ready: o.Ready, Complete: o.Complete, Rejected: o.Rejected, Dismissed: o.Dismissed,
 	}
 }
 

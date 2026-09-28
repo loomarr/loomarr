@@ -193,8 +193,37 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []filler.
 	if err := artifactRows.Err(); err != nil {
 		return fmt.Errorf("list acquisition artifacts: %w", err)
 	}
+	parents, err := s.acquisitionSplitParents(ctx, placeholders, args)
+	if err != nil {
+		return err
+	}
 	for i := range runs {
 		runs[i].Artifacts = filler.AcquisitionArtifactOutcomeFrom(artifactsByID[runs[i].ID])
+		runs[i].GapYield = filler.AcquisitionGapYieldFrom(artifactsByID[runs[i].ID], byID[runs[i].ID], parents, at)
 	}
 	return nil
+}
+
+// acquisitionSplitParents maps each clip the runs enrolled that was split out of a compilation to
+// that compilation's hash, so a gap's yield counts the spots its download was cut into (#749).
+func (s *sqlStore) acquisitionSplitParents(ctx context.Context, placeholders []string, args []any) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.hash, c.parent_hash FROM clips c
+		JOIN filler_clip_pipeline p ON p.clip_hash = c.hash
+		WHERE c.parent_hash <> '' AND p.acquisition_id IN (`+strings.Join(placeholders, ",")+`)`), args...)
+	if err != nil {
+		return nil, fmt.Errorf("list acquisition split lineage: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	parents := map[string]string{}
+	for rows.Next() {
+		var hash, parent string
+		if err := rows.Scan(&hash, &parent); err != nil {
+			return nil, fmt.Errorf("scan acquisition split lineage: %w", err)
+		}
+		parents[hash] = parent
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list acquisition split lineage: %w", err)
+	}
+	return parents, nil
 }

@@ -23,6 +23,23 @@ components:
         - consumed
         - repair
       type: object
+    AcquisitionGapYieldDTO:
+      additionalProperties: false
+      properties:
+        downloads:
+          format: int64
+          type: integer
+        gap:
+          description: The coverage gap, e.g. era:1990-1999
+          type: string
+        outcome:
+          $ref: "#/components/schemas/AcquisitionOutcomeDTO"
+          description: The clips those downloads enrolled, including the spots a compilation was split into
+      required:
+        - gap
+        - downloads
+        - outcome
+      type: object
     AcquisitionIntent:
       additionalProperties: false
       properties:
@@ -3256,6 +3273,11 @@ components:
         fetched:
           format: int64
           type: integer
+        gapYield:
+          description: The outcome split by the channel coverage gap each download was for; absent when no download was steered by a gap
+          items:
+            $ref: "#/components/schemas/AcquisitionGapYieldDTO"
+          type: array
         id:
           type: string
         outcome:

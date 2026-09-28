@@ -1239,6 +1239,23 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 			t.Fatal(err)
 		}
 	}
+	// #749: "ready" was downloaded for a coverage gap and "rejected" was split out of it, so both
+	// count toward that gap; "review" was an unsteered download of the same run.
+	for _, a := range []filler.AcquisitionArtifact{
+		{ID: "gap-art", ClipHash: "ready", Gap: "era:1990-1999", MediaPath: "ready.mp4"},
+		{ID: "plain-art", ClipHash: "review", MediaPath: "review.mp4"},
+	} {
+		a.AcquisitionID, a.Provider, a.SourceURL = newer.ID, "archive", "https://archive.org/details/"+a.ID
+		a.MediaSHA256, a.MediaBytes, a.State, a.CompletedAt, a.UpdatedAt = strings.Repeat("d", 64), 1, filler.ArtifactConsumed, now, now
+		if err := s.UpsertAcquisitionArtifacts(ctx, []filler.AcquisitionArtifact{a}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	split := sampleClip("rejected", "rejected.mp4", filler.Commercial, 1994, filler.General, "")
+	split.ParentHash = "ready"
+	if err := s.UpsertClip(ctx, split); err != nil {
+		t.Fatal(err)
+	}
 
 	runs, err := s.ListAcquisitionRuns(ctx, 1, now)
 	if err != nil {
@@ -1253,6 +1270,11 @@ func testFillerAcquisitionRuns(t *testing.T, newStore NewStoreFunc) {
 	}
 	if runs[0].PullID != "pull-7" || runs[0].Fetched != 2 || !runs[0].CompletedAt.Equal(now) {
 		t.Fatalf("run facts did not round-trip: %+v", runs[0])
+	}
+	wantYield := []filler.AcquisitionGapYield{{Gap: "era:1990-1999", Downloads: 1,
+		Outcome: filler.AcquisitionOutcome{Enrolled: 2, Ready: 1, Rejected: 1}}}
+	if !reflect.DeepEqual(runs[0].GapYield, wantYield) {
+		t.Fatalf("gap yield = %+v, want %+v", runs[0].GapYield, wantYield)
 	}
 
 	newer.Status, newer.Error, newer.UpdatedAt = filler.AcquisitionError, "catalogue failed", now.Add(time.Minute)

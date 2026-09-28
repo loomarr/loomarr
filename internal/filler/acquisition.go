@@ -1,6 +1,9 @@
 package filler
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // AcquisitionTrigger says who started a filler download. It is intentionally about the
 // initiating policy, not the transport: a scheduled source refresh and an operator's explicit
@@ -47,6 +50,9 @@ type AcquisitionRun struct {
 
 	Outcome   AcquisitionOutcome
 	Artifacts AcquisitionArtifactOutcome
+	// GapYield splits Outcome by the coverage gap each download was for (#749); nil when no
+	// download in the run was steered by a gap.
+	GapYield []AcquisitionGapYield
 }
 
 // AcquisitionTarget is one URL inside an approved acquisition plan. SourceID stays per-target
@@ -108,6 +114,57 @@ func AcquisitionArtifactOutcomeFrom(artifacts []AcquisitionArtifact) Acquisition
 			}
 		}
 	}
+	return out
+}
+
+// AcquisitionGapYield is what one run's downloads for one channel coverage gap became (#749):
+// the files acquired for it and the lifecycle of every clip they enrolled.
+type AcquisitionGapYield struct {
+	Gap       string
+	Downloads int
+	Outcome   AcquisitionOutcome
+}
+
+// AcquisitionGapYieldFrom attributes a run's clips to the gap their download was for, sorted by
+// gap. A clip is a download's when its hash is the artifact's clip hash or when it was split out
+// of that clip (parents maps a split child's hash to its compilation's). Unsteered downloads and
+// clips with no artifact (dropped by hand, pre-manifest) yield no row.
+func AcquisitionGapYieldFrom(artifacts []AcquisitionArtifact, rows []ClipPipeline, parents map[string]string, at time.Time) []AcquisitionGapYield {
+	byGap := map[string]*AcquisitionGapYield{}
+	gapOfClip := map[string]string{}
+	for _, artifact := range artifacts {
+		if artifact.Gap == "" {
+			continue
+		}
+		y := byGap[artifact.Gap]
+		if y == nil {
+			y = &AcquisitionGapYield{Gap: artifact.Gap}
+			byGap[artifact.Gap] = y
+		}
+		y.Downloads++
+		if artifact.ClipHash != "" {
+			gapOfClip[artifact.ClipHash] = artifact.Gap
+		}
+	}
+	if len(byGap) == 0 {
+		return nil
+	}
+	attributed := map[string][]ClipPipeline{}
+	for _, row := range rows {
+		gap, ok := gapOfClip[row.ClipHash]
+		if !ok {
+			gap, ok = gapOfClip[parents[row.ClipHash]]
+		}
+		if ok {
+			attributed[gap] = append(attributed[gap], row)
+		}
+	}
+	out := make([]AcquisitionGapYield, 0, len(byGap))
+	for gap, y := range byGap {
+		y.Outcome = AcquisitionOutcomeFrom(attributed[gap], at)
+		out = append(out, *y)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Gap < out[j].Gap })
 	return out
 }
 

@@ -40,6 +40,8 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 			StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
 			Outcome:   filler.AcquisitionOutcome{Enrolled: 3, Preparing: 1, Ready: 2},
 			Artifacts: filler.AcquisitionArtifactOutcome{Consumed: 3},
+			GapYield: []filler.AcquisitionGapYield{{Gap: "era:1990-1999", Downloads: 2,
+				Outcome: filler.AcquisitionOutcome{Enrolled: 2, Ready: 2}}},
 		}},
 		// Two repair rows are higher-priority actionable work than the recoverable pipeline row.
 		Repairs: filler.AcquisitionRepairSummary{Count: 2, LatestReason: "latest retained repair"},
@@ -74,6 +76,9 @@ func TestFillerReadinessReturnsOneServerOwnedActionAndItsEvidence(t *testing.T) 
 	}
 	if body.Acquisitions[0].Artifacts.Consumed != 3 {
 		t.Fatalf("acquisition artifact outcome = %+v", body.Acquisitions[0].Artifacts)
+	}
+	if y := body.Acquisitions[0].GapYield; len(y) != 1 || y[0].Gap != "era:1990-1999" || y[0].Downloads != 2 || y[0].Outcome.Ready != 2 {
+		t.Fatalf("acquisition gap yield = %+v, want the 1990s gap's two ready clips", y)
 	}
 	if body.Repairs.Count != 2 || body.Repairs.LatestReason != "latest retained repair" {
 		t.Fatalf("repair summary = %+v", body.Repairs)
