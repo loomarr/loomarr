@@ -125,6 +125,10 @@ var simLoc = func() *time.Location {
 	return l
 }()
 
+// utcGrid lays the rolling-window grid on UTC, as it was before #1675, to separate the effect of
+// the grid's zone from the carry-over itself.
+var utcGrid = flag.Bool("utc-grid", false, "turn rolling windows at 00:00 UTC instead of local midnight")
+
 func main() {
 	days := flag.Int("days", 14, "days to simulate")
 	out := flag.String("out", "", "write JSON results here")
@@ -210,7 +214,11 @@ func finish(s shape, v, mech string, pool int, poolMs int64, a []kit.Airing, cut
 // between reconciles (the resolver's carry-over walk). The window grid is the household's wall
 // clock (guide.timezone). Airings are recorded per unit, at programme start, only while watched.
 func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, start, end time.Time, loc *time.Location) ([]kit.Airing, int, float64) {
-	ch := schedule.Channel{ID: "sim-" + s.Name, Name: s.Name, Number: 1, Strategy: schedule.Shuffle, DefaultWindow: window, WindowZone: loc}
+	grid := loc // guide.timezone: the household's wall clock
+	if *utcGrid {
+		grid = time.UTC
+	}
+	ch := schedule.Channel{ID: "sim-" + s.Name, Name: s.Name, Number: 1, Strategy: schedule.Shuffle, DefaultWindow: window, WindowZone: grid}
 	policy := schedule.ChannelPolicy{}
 	policy.Ordering = s.Ordering
 	var desired []schedule.Slot
@@ -224,9 +232,9 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 		return schedule.ComputeDesiredAt(c, entries, lib, schedule.PodFill, policy, at).Slots
 	}
 	reconcile := func(t time.Time) {
-		opened, epoch, _ := playout.WindowTurn(desired, anchor, window, loc, t)
+		opened, epoch, _ := playout.WindowTurn(desired, anchor, window, grid, t)
 		if opened.IsZero() {
-			opened = schedule.WindowStart(t, window, loc)
+			opened = schedule.WindowStart(t, window, grid)
 		}
 		desired, anchor = arrange(opened, t, lastAired), epoch
 	}
@@ -238,7 +246,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 		slots, epoch, last := desired, anchor, lastAired
 		var out []playout.Broadcast
 		for {
-			stop := playout.CarryOverEnd(slots, epoch, schedule.NextWindowStart(epoch, window, loc))
+			stop := playout.CarryOverEnd(slots, epoch, schedule.NextWindowStart(epoch, window, grid))
 			leg := playout.BroadcastsBetween(slots, epoch, maxTime(from, epoch), minTime(to, stop))
 			out = append(out, leg...)
 			if !stop.Before(to) {
@@ -247,7 +255,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 			if watched {
 				last = last.with(leg, from)
 			}
-			slots, epoch = arrange(schedule.WindowStart(stop, window, loc), stop, last), stop
+			slots, epoch = arrange(schedule.WindowStart(stop, window, grid), stop, last), stop
 		}
 	}
 	for t := anchor; t.Before(start); t = t.Add(time.Hour) { // the channel's life before the span
@@ -263,8 +271,10 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 		reconcile(t)
 		watched := v.Watch(t.In(loc))
 		hour := walk(t, t.Add(time.Hour), watched)
-		if schedule.WindowStart(t, window, loc).Equal(t) { // a rolling-window boundary: the guide's forecast
-			forecast = walk(t, t.Add(window), false)
+		// The guide's forecast, taken at each rolling-window boundary (and when the span opens, which
+		// is not one: the grid is local midnight) through the end of that window.
+		if forecast == nil || schedule.WindowStart(t, window, grid).Equal(t) {
+			forecast = walk(t, schedule.NextWindowStart(t, window, grid), false)
 		}
 		for m := 0; m < 60; m += 5 {
 			at := t.Add(time.Duration(m) * time.Minute)
