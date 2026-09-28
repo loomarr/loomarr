@@ -597,7 +597,7 @@ failing native result.
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go
 contracts run once in `go-contracts` and Rust contracts once in `rust-contracts`, in parallel with
-two ordinary Go test lanes, two serial media-certification lanes, and the independent release-worker
+two ordinary Go test lanes, two serial lanes for packages that must not share a runner, and the independent release-worker
 certification. Their union is the same
 assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
 requires every job, so moving a contract out of the test lanes cannot make it optional.
@@ -685,10 +685,22 @@ The budgets derive from #1570's target, a Go-only merge-queue run in at most ten
 116s median from queue start to the test step, 4s of teardown, and 11s for the `CI` aggregator.
 That leaves a 469s lane test step. An ordinary lane's summed package-seconds must fit four `-p=4`
 workers in that step (1,876s). Its bounded-worker makespan, and each serial certification lane,
-must fit the step itself. A per-package cap bounds any single package. `internal/store` alone
-exceeds a whole lane's test step. It is not exempt: the cap is temporarily its measured time plus
-10% (567s, #1570), and only a lane holding such a package is judged against the cap instead of
-469s. Splitting store's tests is the next lever; the cap then returns to the lane budget.
+must fit the step itself. No single package may exceed that step either: a package is the
+sharder's indivisible unit, so an oversized one must run its tests in parallel, move to a serial
+lane of its own, or be split, never be given a larger budget. (Until #1650 a temporary cap of
+567s, `internal/store`'s measured time plus 10%, stood in for that rule.)
+
+Pull request #1631 made the 21 heaviest `internal/store` tests (88% of its time) run in parallel. Pinned to four
+cores locally, that cut the package from 146.9s to 110.1s, but merge-group run 36359955148 measured
+it at 542s in ordinary lane 1/2: beside three other `-p=4` packages on a four-vCPU runner, its
+parallel tests only competed for the same cores. So `internal/store` now runs alone in the second
+serial lane, where one package at a time owns the runner, and the playout/capacity set shares the
+first. There, workflow-dispatch run 36366596157 measured it at 171s, which left it too light to
+balance the first lane's 405s, so `internal/integration`, whose tests are serial, shares its lane.
+The serial lanes keep their `certification-1/2` and `certification-2/2` identities (the
+workflow matrix, cache keys and release-verifier pins name them), but they now hold two kinds of
+package: media certification that must not compete for a worker while asserting latency, and
+CPU-heavy packages whose own parallelism needs a runner to themselves.
 
 `make go-shard-verify SHARDS=2` rejects missing or duplicated packages, a package above the
 per-package cap, an ordinary aggregate or a bounded-worker or serial-certification makespan above

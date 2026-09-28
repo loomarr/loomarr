@@ -283,10 +283,7 @@ example.invalid/cert-two`
 	}
 	root := filepath.Clean(filepath.Join("..", ".."))
 	budgets := goShardBudgets(t)
-	lane, capSeconds, aggregate := budgets["lane_test"], budgets["max_package"], budgets["ordinary_aggregate"]
-	if lane >= capSeconds || aggregate/4+1 > capSeconds {
-		t.Fatalf("fixture assumes lane_test < max_package and a quarter-aggregate package under the cap: %v", budgets)
-	}
+	lane, aggregate := budgets["lane_test"], budgets["ordinary_aggregate"]
 	verify := func(t *testing.T, weightRows string) (string, error) {
 		t.Helper()
 		weights := filepath.Join(t.TempDir(), "weights.tsv")
@@ -306,17 +303,18 @@ example.invalid/cert-two`
 	certs := "cert-one 1\ncert-three 1\ncert-two 2\n"
 
 	rejected := []struct{ name, weights, want string }{
-		{"package over the cap", fmt.Sprintf("a %d\n%s", capSeconds+1, certs),
-			fmt.Sprintf("exceeds the %ds per-package cap", capSeconds)},
-		{"aggregate over four workers' lane budget", fmt.Sprintf("a %[1]d\nb %[1]d\nc %[1]d\nd %[1]d\n%[2]s", aggregate/4+1, certs),
+		// A package is the sharder's indivisible unit: none may outlast a lane's whole test step.
+		{"package over a lane's test step", fmt.Sprintf("a %d\n%s", lane+1, certs),
+			fmt.Sprintf("exceeds the %ds per-package cap", lane)},
+		{"aggregate over four workers' lane budget", fmt.Sprintf("a %[1]d\nb %[1]d\nc %[1]d\nd %[1]d\ninternal/config 5\n%[2]s", lane, certs),
 			"modeled aggregate split exceeds"},
 		{"plain group pushes a lane past the lane budget", fmt.Sprintf("a %d\ninternal/config 20\n%s", lane-10, certs),
 			fmt.Sprintf("shard 1: %ds (budget %ds)", lane+10, lane)},
-		// The oversized package is not exempt: its lane is held to the cap, not waved through.
-		{"oversized package's lane past the cap", fmt.Sprintf("a %d\ninternal/config %d\n%s", lane+1, capSeconds-lane, certs),
-			fmt.Sprintf("shard 1: %ds (budget %ds)", capSeconds+1, capSeconds)},
-		{"serial certification lane past the lane budget", fmt.Sprintf("cert-one %[1]d\ncert-three %[1]d\ncert-two %[2]d\n", lane/2+10, 2*(lane/2+10)),
+		{"serial certification lane past the lane budget", fmt.Sprintf("cert-one %[1]d\ncert-three %[1]d\ncert-two %[2]d\n", lane/2+10, lane-1),
 			fmt.Sprintf("certification lane 1/2: %ds (budget %ds)", 2*(lane/2+10), lane)},
+	}
+	if aggregate != 4*lane {
+		t.Fatalf("aggregate fixture assumes ordinary_aggregate = 4 x lane_test: %v", budgets)
 	}
 	for _, tc := range rejected {
 		t.Run(tc.name, func(t *testing.T) {
@@ -330,14 +328,14 @@ example.invalid/cert-two`
 			}
 		})
 	}
-	t.Run("oversized package within the temporary cap", func(t *testing.T) {
+	t.Run("lane exactly at its test step", func(t *testing.T) {
 		t.Parallel()
-		output, err := verify(t, fmt.Sprintf("a %d\n%s", lane+1, certs))
+		output, err := verify(t, fmt.Sprintf("a %d\n%s", lane-1, certs))
 		if err != nil {
-			t.Fatalf("go shard verification rejected a package inside the cap: %v\n%s", err, output)
+			t.Fatalf("go shard verification rejected a lane at its budget: %v\n%s", err, output)
 		}
 		// +1: internal/config's one-second floor runs in the plain group after the race group.
-		if want := fmt.Sprintf("bounded-worker makespan = %ds (budget %ds)", lane+2, capSeconds); !strings.Contains(output, want) {
+		if want := fmt.Sprintf("bounded-worker makespan = %ds (budget %ds)", lane, lane); !strings.Contains(output, want) {
 			t.Fatalf("verification output =\n%s\nwant %q", output, want)
 		}
 	})
@@ -358,14 +356,9 @@ func TestGoShardBudgetsDeriveFromTheQueueTarget(t *testing.T) {
 	if b["ordinary_aggregate"] != 4*b["lane_test"] {
 		t.Fatalf("ordinary_aggregate = %d, want four -p=4 workers x lane_test %d", b["ordinary_aggregate"], b["lane_test"])
 	}
-	// The per-package cap may exceed the lane only while a measured package forces it (#1570).
-	weights := readGoRaceWeights(t, filepath.Join("..", "..", "scripts", "go-race-weights.tsv"))
-	heaviest := 0
-	for _, seconds := range weights {
-		heaviest = max(heaviest, seconds)
-	}
-	if b["max_package"] > b["lane_test"] && b["max_package"] > heaviest*110/100+1 {
-		t.Fatalf("max_package = %d exceeds lane_test %d by more than the heaviest measured package %ds + 10%%; lower it", b["max_package"], b["lane_test"], heaviest)
+	// No package gets more than a lane's test step: an outgrown package is split, not budgeted.
+	if b["max_package"] != b["lane_test"] {
+		t.Fatalf("max_package = %d, want the lane test step %d", b["max_package"], b["lane_test"])
 	}
 }
 
@@ -480,8 +473,10 @@ func TestGoCertificationLanePackageSetIsReviewed(t *testing.T) {
 	}
 	want := []string{
 		"1 internal/app",
-		"2 internal/api",
-		"2 internal/playout",
+		"1 internal/api",
+		"1 internal/playout",
+		"2 internal/store",
+		"2 internal/integration",
 	}
 	if strings.Join(packages, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("certification lane packages = %v, want reviewed set %v", packages, want)
@@ -569,12 +564,8 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 		minWorkerLoad = min(minWorkerLoad, load)
 		maxWorkerLoad = max(maxWorkerLoad, load)
 	}
-	// A lane may pass the lane budget only up to the explicit per-package cap (#1570).
-	if maxWorkerLoad > max(budgets["lane_test"], budgets["max_package"]) {
-		t.Fatalf("modeled bounded-worker shard exceeds its test-step budget: loads=%v budgets=%v", workerLoads, budgets)
-	}
-	if minWorkerLoad > budgets["lane_test"] {
-		t.Fatalf("every modeled bounded-worker shard exceeds the %ds lane budget: loads=%v", budgets["lane_test"], workerLoads)
+	if maxWorkerLoad > budgets["lane_test"] {
+		t.Fatalf("modeled bounded-worker shard exceeds the %ds lane budget: loads=%v", budgets["lane_test"], workerLoads)
 	}
 	if maxWorkerLoad*100 > minWorkerLoad*125 {
 		t.Fatalf("modeled bounded-worker shards differ by more than 25%%: loads=%v", workerLoads)
