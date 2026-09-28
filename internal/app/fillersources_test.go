@@ -3,6 +3,9 @@ package app
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -462,13 +465,21 @@ printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/wa
 type fakeArchiveCatalog struct {
 	runtimes map[string]int
 	enriched int
+	// asked is every item id whose metadata was read, across calls.
+	asked []string
+	// listed overrides the listing's ids; nil lists a reel and a spot.
+	listed []string
 	// allowed is how long the enrichment was given before its deadline.
 	allowed time.Duration
 }
 
 func (f *fakeArchiveCatalog) EnumerateCollection(context.Context, string, int) (clipfetch.DiscoveryResult, error) {
 	var out clipfetch.DiscoveryResult
-	for _, id := range []string{"reel", "spot"} {
+	listed := f.listed
+	if listed == nil {
+		listed = []string{"reel", "spot"}
+	}
+	for _, id := range listed {
 		out.Items = append(out.Items, clipfetch.DiscoveredItem{ID: id})
 	}
 	out.Total = len(out.Items)
@@ -481,7 +492,48 @@ func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.Disco
 		f.allowed = time.Until(deadline)
 	}
 	for i := range items {
+		f.asked = append(f.asked, items[i].ID)
 		items[i].DurationMS = f.runtimes[items[i].ID]
+		if items[i].DurationMS > 0 {
+			items[i].Height = 480
+		}
+	}
+}
+
+// #1773 (supervisor decision): each Archive.org item's runtime is read once and remembered on
+// disk, so a later pull (and a restarted server) reuses it instead of paying Archive.org's
+// per-item throttle again. Only what is still unknown is asked for.
+func TestRegisteredSourceEnumerator_ArchiveRuntimesAreReadOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".loomarr-remote-runtimes.json")
+	archive := &fakeArchiveCatalog{runtimes: map[string]int{"reel": 30 * 60 * 1000, "spot": 45 * 1000}, listed: []string{"reel", "spot", "unprobed"}}
+	enumerate := func() map[string]filler.DiscoveredRef {
+		t.Helper()
+		// A fresh cache over the same file each time: what a restarted server would see.
+		catalog := cachedArchiveCatalog{archiveCatalog: archive, runtimes: newRemoteRuntimeCache(path, slog.New(slog.DiscardHandler))}
+		items, _, err := (registeredSourceEnumerator{archive: catalog, archiveRuntimes: func() bool { return true }}).Enumerate(
+			t.Context(), filler.FetchSource{Kind: "archive", URI: "reels_collection"}, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]filler.DiscoveredRef{}
+		for _, item := range items {
+			got[item.ID] = item
+		}
+		return got
+	}
+
+	enumerate()
+	if !slices.Equal(archive.asked, []string{"reel", "spot", "unprobed"}) {
+		t.Fatalf("first listing asked for %v, want every item", archive.asked)
+	}
+	archive.asked = nil
+	second := enumerate()
+	// A runtime Archive.org could not give is asked for again: it may have been probed since.
+	if !slices.Equal(archive.asked, []string{"unprobed"}) {
+		t.Errorf("second listing asked for %v, want only the item whose runtime is still unknown", archive.asked)
+	}
+	if second["reel"].DurationMS != 30*60*1000 || second["spot"].DurationMS != 45*1000 || second["spot"].Height != 480 {
+		t.Errorf("remembered items came back as reel=%+v spot=%+v, want their runtimes and quality", second["reel"], second["spot"])
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -265,8 +266,15 @@ func buildFillerSubsystem(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
+	// Each Archive.org runtime is read once and kept beside the clips (#1773); with no filler
+	// folder there is nothing to download into, and the cache lives in memory only.
+	runtimesPath := ""
+	if dir := layout.ClipDir(); dir != "" {
+		runtimesPath = filepath.Join(dir, remoteRuntimesFile)
+	}
 	sourceEnumerator := registeredSourceEnumerator{
 		youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath),
+		archive: cachedArchiveCatalog{archiveCatalog: clipfetch.NewArchiveDownloader(), runtimes: newRemoteRuntimeCache(runtimesPath, log)},
 		// The compilation gate can only hold back a runtime it knows (#1773).
 		archiveRuntimes: func() bool { return !set.boolv("filler.acquisition.compilations") },
 	}

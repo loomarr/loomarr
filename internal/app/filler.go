@@ -509,7 +509,7 @@ func (a fetchStoreAdapter) FailCheck(ctx context.Context, id string, leaseUntil,
 // A returned item's host is not provider policy and must never select this lane.
 type registeredSourceEnumerator struct {
 	youtube *clipfetch.YouTubeEnumerator
-	// archive lists Archive.org collections; nil uses the live service.
+	// archive lists Archive.org collections; nil uses the live service, uncached.
 	archive archiveCatalog
 	// archiveRuntimes reports whether Archive.org items need their runtimes before selection.
 	// The collection search carries none, so while compilation reels are held back (#1773)
