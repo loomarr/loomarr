@@ -35,6 +35,8 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make test-affected` |  | run unit tests related to changed files during editing (not final evidence) |
 | `make agent-worktree` |  | create, claim, and bootstrap a sibling worktree (TOPIC=... CLAIMS=...; BASE/DEPENDS_ON for stacks) |
 | `make agent-gc` |  | audit worktrees; APPLY=1 retires only exact clean merged PR heads |
+| `make agent-reap` |  | list processes running in a worktree (WORKTREE=path, or ORPHANS=1 for deleted ones); APPLY=1 stops them |
+| `make dev-watch` |  | watch local resources, your PRs and agent lanes; prints only when something needs attention |
 | `make bootstrap` |  | build the Rust worker and prepare frontend, isolated directories, and dev identity |
 | `make doctor` |  | verify toolchain and Docker readiness; report worktrees, ports, caches, and artifacts |
 | `make agent-harness-test` | ✅ | regression-test coordination, worktree isolation, and shared-output claims <br>*runs:* `agent-assets-verify` |
