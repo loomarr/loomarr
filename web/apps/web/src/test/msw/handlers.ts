@@ -27,8 +27,10 @@ import {
   getListStartupReportsMockHandler,
   getListTitlesMockHandler,
   getListUsersMockHandler,
+  getMyChannelsMockHandler,
   getNotificationProvidersListMockHandler,
   getNotificationProviderTypesListMockHandler,
+  getRecordChannelTuneMockHandler,
   getSettingsListMockHandler,
   getSetupStateMockHandler,
   getSetupStatusMockHandler,
@@ -168,6 +170,10 @@ const appHandlers = (): RequestHandler[] => [
     restartRequired: false,
     streamingChannels: 0,
   }),
+  // The viewer's own channel lists: Watch's channels drawer reads them, and a settled tune
+  // records into them (#1666).
+  getMyChannelsMockHandler({ favourites: [], recent: [] }),
+  getRecordChannelTuneMockHandler({ favourites: [], recent: [] }),
   getJobsListMockHandler({ jobs: [] }),
   getListActivityMockHandler({ activity: [] }),
   // The AI connection block reads both of these on mount, and it renders on the wizard's

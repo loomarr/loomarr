@@ -2,7 +2,7 @@ import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { GuideAiringKind } from "@loomarr/api/models/guideAiringKind";
 import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
 import { GuideChannelTimelineStatus } from "@loomarr/api/models/guideChannelTimelineStatus";
-import type { DrawerChannel } from "./channel-drawer.type";
+import type { DrawerChannel } from "../channel-drawer";
 
 // The drawer's strip is "NOW → NEXT 2H" with a little of the show already airing before the now
 // line, which the console mock draws at 17% of the row.
