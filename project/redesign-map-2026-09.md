@@ -765,7 +765,7 @@ Row 1 waits for a mock. The rest are build requirements.
 | H1 | Build **the web mock's Home** (not 1a/1b/1c) | The strip keeps the mock's sentences |
 | H2 | **Admins see named viewing, members see counts** | #1662 enforces it server-side. Members still get their own "continue watching" |
 | H3 | Tonight's highlights = **premieres + marathons** | #1664 needs only `season_premiere`, `series_premiere` and `marathon`. The mock's "Movie · year" and "New on <channel>" rows aren't highlights |
-| H4 | Channel ideas are **members-only**, as mocked | My reading: the admin "An idea from your library" card isn't built. *Confirm in the Home PR* |
+| H4 | Channel ideas are **members-only**, as mocked | The admin "An idea from your library" card isn't built (confirmed 2026-09-28) |
 | H5 | Ideas **may** use the LLM when it's on. *(Supervisor)* they must work fully without it: library facets and the seasonal calendar first, the LLM only enriches | #1665 |
 | H6 | **No** kids/restricted role in beta.9 | Home shows members the whole catalogue, per §342 |
 | H7 | **Move** the Dashboard panels to This server → Playback / Diagnostics | `PlayoutPanel`, `ServicesPanel` and `ActivityFeed` keep working, on new routes |
