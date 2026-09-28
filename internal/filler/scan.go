@@ -207,6 +207,9 @@ func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int6
 		// Display name: the clean sidecar title when present, else the heuristic (filename) name —
 		// so a clip that lost its sidecar stays readable rather than showing a hash.
 		name := heuristicName
+		if sidecarState == SidecarValid && tags.DisplayName != "" {
+			name = tags.DisplayName // derived from grounded evidence (#1452)
+		}
 		if title := SidecarTitle(path); title != "" {
 			name = title
 		}

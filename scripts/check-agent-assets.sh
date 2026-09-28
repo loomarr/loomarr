@@ -51,4 +51,12 @@ while IFS= read -r workflow; do
 		fail "$workflow adapter does not point to its durable workflow"
 done < "$WORK/workflows"
 
+# The shared Claude settings carry hooks only. Permission grants the runtime records are personal and
+# once captured a live token, so they belong in the ignored settings.local.json.
+node -e '
+const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+const extra = Object.keys(s).filter((k) => k !== "hooks");
+if (extra.length) { console.error("keys other than hooks: " + extra.join(", ")); process.exit(1); }
+' "$ROOT/.claude/settings.json" || fail '.claude/settings.json may hold only hooks; put personal settings in .claude/settings.local.json'
+
 echo 'agent-assets-verify: ok'

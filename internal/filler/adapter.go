@@ -65,7 +65,7 @@ type CatalogReader interface {
 // Keeping it separate from CatalogReader makes previews/tests that intentionally have no history
 // explicit, and prevents assembly from acquiring any write capability.
 type ExposureReader interface {
-	FillerExposuresByChannel(ctx context.Context, channelID string, before time.Time) (map[string]Exposure, error)
+	FillerExposureRecords(ctx context.Context, channelID string) (map[string]ExposureRecord, error)
 }
 
 // Selection is a channel's per-channel filler choice in filler-native terms (§10) — the
@@ -208,18 +208,54 @@ func (a *PodAdapter) PreviewAt(ctx context.Context, channelID string, seed int64
 	return a.previewAt(ctx, channelID, seed, sel, breakStart)
 }
 
-func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64, sel Selection, breakStart time.Time) (Pod, error) {
+// Break names one break to assemble: its start and the seed derived from it.
+type Break struct {
+	Seed  int64
+	Start time.Time
+}
+
+// PreviewAtMany assembles several breaks of one channel — the guide's per-airing hover cards
+// (#1420). Each pod is exactly what PreviewAt returns for that break; the catalog, the policy and
+// the channel's exposure records are read ONCE and each break's snapshot is cut from them in
+// memory. It used to be a catalog read plus an exposure query per break, 40-80 full-catalog reads
+// for a four-hour guide once breaks were on.
+func (a *PodAdapter) PreviewAtMany(ctx context.Context, channelID string, sel Selection, breaks []Break) ([]Pod, error) {
+	if len(breaks) == 0 {
+		return nil, nil
+	}
 	clips, err := a.catalog.AllClips(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pods := make([]Pod, len(breaks))
+	if len(clips) == 0 {
+		return pods, nil
+	}
+	var records map[string]ExposureRecord
+	if a.exposures != nil {
+		if records, err = a.exposures.FillerExposureRecords(ctx, channelID); err != nil {
+			return nil, err
+		}
+	}
+	// ⚠ Resolved ONCE for the whole batch, for the same reason assemble resolves it once per pod:
+	// a concurrent settings write must not size some breaks by one policy and some by another.
+	pol := a.pol()
+	for i, b := range breaks {
+		pods[i] = a.assemble(clips, records, channelID, b.Seed, sel, b.Start, pol)
+	}
+	return pods, nil
+}
+
+func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64, sel Selection, breakStart time.Time) (Pod, error) {
+	pods, err := a.PreviewAtMany(ctx, channelID, sel, []Break{{Seed: seed, Start: breakStart}})
 	if err != nil {
 		return Pod{}, err
 	}
-	if len(clips) == 0 {
-		return Pod{}, nil
-	}
-	// ⚠ Resolved ONCE and reused below. Calling the resolver twice in one assembly could read
-	// two different snapshots if a setting is written between them — a pod sized by one policy
-	// and filled by another, which is a bug that would appear only under a concurrent write.
-	pol := a.pol()
+	return pods[0], nil
+}
+
+// assemble is the one per-break assembly every preview path runs, over inputs already loaded.
+func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, channelID string, seed int64, sel Selection, breakStart time.Time, pol Policy) Pod {
 	breakDurationMs := effectiveBreakDurationMs(sel, pol)
 	podMax := pol.PodMax
 	if podMax <= 0 {
@@ -231,15 +267,11 @@ func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64
 	// the prior behaviour (and the additive default for a channel with no filler choice).
 	w := a.windowFor(channelID, seed, sel, podMax, breakDurationMs)
 	if a.exposures != nil {
-		exposures, err := a.exposures.FillerExposuresByChannel(ctx, channelID, breakStart)
-		if err != nil {
-			return Pod{}, err
-		}
-		w.Exposures = exposures
+		w.Exposures = ExposuresBefore(records, breakStart)
 		w.SnapshotAt = breakStart
 	}
 	w.PodMax = podMaxForDuration(clips, w, pol, podMax, breakDurationMs)
-	return Assemble(clips, w, pol, map[string]bool{}), nil
+	return Assemble(clips, w, pol, map[string]bool{})
 }
 
 // effectiveBreakDurationMs resolves the per-channel override over the live global setting.
@@ -258,16 +290,15 @@ func effectiveBreakDurationMs(sel Selection, pol Policy) int64 {
 
 // podMaxForDuration makes pod_max a soft density ceiling when it is too small to plausibly
 // fill the requested break. It derives the required count from the median duration of the
-// tightest non-empty matching pool, so a 30s catalog gets about ten slots for a 5m break while
-// a 60s catalog gets about five. Assemble still owns the hard no-repeat and gap invariants.
+// whole matching ladder, so a 30s catalog gets about ten slots for a 5m break while a 60s
+// catalog gets about five. Assemble still owns the hard no-repeat and gap invariants.
+//
+// ⚠ The widest rung, because that is what a pod draws from since #1684 (the rungs nest, so it
+// holds every candidate). Sizing from the tightest rung let one long exact-era clip set the
+// density for a break filled mostly from the rungs below it.
 func podMaxForDuration(clips []Clip, w Window, pol Policy, configured int, targetMs int64) int {
-	var matched []Clip
-	for _, pool := range candidatePools(clips, w, pol) {
-		if len(pool.clips) > 0 {
-			matched = pool.clips
-			break
-		}
-	}
+	pools := candidatePools(clips, w, pol)
+	matched := pools[len(pools)-1].clips
 	if len(matched) == 0 {
 		return configured
 	}

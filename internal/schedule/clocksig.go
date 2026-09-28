@@ -31,4 +31,6 @@ func ClockSignature(policy ChannelPolicy, at time.Time) uint64 {
 
 // WindowIndex is the rolling-window index ComputeDesiredAt folds into its ordering seed for a
 // window of the given length (windowIndex, exported for cache keying).
-func WindowIndex(at time.Time, window time.Duration) int64 { return windowIndex(at, window) }
+func WindowIndex(at time.Time, window time.Duration, zone *time.Location) int64 {
+	return windowIndex(at, window, zone)
+}

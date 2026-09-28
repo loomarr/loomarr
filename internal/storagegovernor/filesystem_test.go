@@ -154,3 +154,30 @@ func TestFilesystemGovernorRestartReplacesLostReservationsWithCrashLeftUsage(t *
 		t.Fatalf("post-restart reserve = lease %v decision %+v", next, restarted)
 	}
 }
+
+// diagnostics.dir applies live (#1659), so the governor must count whichever root is
+// configured now, not the one it booted with.
+func TestLiveFilesystemGovernorFollowsRootChanges(t *testing.T) {
+	t.Parallel()
+	oldRoot, newRoot := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(oldRoot, "old.log"), make([]byte, 100), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(newRoot, "new.log"), make([]byte, 40), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	current := oldRoot
+	governor := storagegovernor.NewFilesystemLive(func() []storagegovernor.ManagedRoot {
+		return []storagegovernor.ManagedRoot{{Path: current, Domain: storagegovernor.DomainDiagnostics}}
+	}, func(storagegovernor.Domain) storagegovernor.Policy {
+		return storagegovernor.Policy{SoftBudgetBytes: storagegovernor.GiB}
+	})
+	diagnostics := storagegovernor.DomainDiagnostics
+	if got := governor.DomainSnapshot(context.Background(), oldRoot, diagnostics).Snapshot.ManagedBytes; got != 100 {
+		t.Fatalf("before the change, managed bytes = %d, want 100", got)
+	}
+	current = newRoot
+	if got := governor.DomainSnapshot(context.Background(), newRoot, diagnostics).Snapshot.ManagedBytes; got != 40 {
+		t.Fatalf("after the change, managed bytes = %d, want 40", got)
+	}
+}

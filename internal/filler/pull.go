@@ -49,6 +49,9 @@ type PullPlanRow struct {
 	Name string `json:"name"`
 	// Why is why THIS source is in the plan — the per-row half of the pull's reason.
 	Why string `json:"why"`
+	// Gap is the channel coverage gap this row was selected for (EraGapKey, #749), "" when it was
+	// selected on quality and diversity alone. Approval hands it to the download's record.
+	Gap string `json:"gap,omitempty"`
 	// EstimateClips is how many clips this row is expected to bring in.
 	//
 	// ⚠ An ESTIMATE, and it must never be rendered as a promise. What a source actually yields

@@ -125,6 +125,10 @@ var simLoc = func() *time.Location {
 	return l
 }()
 
+// utcGrid lays the rolling-window grid on UTC, as it was before #1675, to separate the effect of
+// the grid's zone from the carry-over itself.
+var utcGrid = flag.Bool("utc-grid", false, "turn rolling windows at 00:00 UTC instead of local midnight")
+
 func main() {
 	days := flag.Int("days", 14, "days to simulate")
 	out := flag.String("out", "", "write JSON results here")
@@ -203,27 +207,74 @@ func finish(s shape, v, mech string, pool int, poolMs int64, a []kit.Airing, cut
 	return r
 }
 
-// current replays today's pipeline: every hour (reconcile cadence, coarsened) the desired
-// lineup is recomputed from the channel's recorded airings, and playout walks it from the
-// channel's fixed anchor. Airings are recorded (by key, at programme start) only while watched.
+// current replays today's pipeline. Every hour (reconcile cadence, coarsened) reconcile turns the
+// rolling window with carry-over (#1675, playout.WindowTurn) and recomputes the lineup from the
+// recorded airings as of that window's start (#1674). Playout walks the accepted cycle from its
+// anchor, and the next window airs from the end of the programme crossing the boundary, even
+// between reconciles (the resolver's carry-over walk). The window grid is the household's wall
+// clock (guide.timezone). Airings are recorded per unit, at programme start, only while watched.
 func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, start, end time.Time, loc *time.Location) ([]kit.Airing, int, float64) {
-	ch := schedule.Channel{ID: "sim-" + s.Name, Name: s.Name, Number: 1, Strategy: schedule.Shuffle, DefaultWindow: window}
+	grid := loc // guide.timezone: the household's wall clock
+	if *utcGrid {
+		grid = time.UTC
+	}
+	ch := schedule.Channel{ID: "sim-" + s.Name, Name: s.Name, Number: 1, Strategy: schedule.Shuffle, DefaultWindow: window, WindowZone: grid}
 	policy := schedule.ChannelPolicy{}
 	policy.Ordering = s.Ordering
-	epoch := start.Add(-37 * time.Hour) // a channel created some time before the span
-	lastAired := map[provision.Key]time.Time{}
+	var desired []schedule.Slot
+	anchor := start.Add(-37 * time.Hour) // a channel that went live some time before the span
+	lastAired := airLog{}
+
+	arrange := func(opened, at time.Time, last airLog) []schedule.Slot {
+		c := ch
+		c.WindowOpened = opened
+		c.LastAired = last.asOf(opened)
+		return schedule.ComputeDesiredAt(c, entries, lib, schedule.PodFill, policy, at).Slots
+	}
+	reconcile := func(t time.Time) {
+		opened, epoch, _ := playout.WindowTurn(desired, anchor, window, grid, t)
+		if opened.IsZero() {
+			opened = schedule.WindowStart(t, window, grid)
+		}
+		desired, anchor = arrange(opened, t, lastAired), epoch
+	}
+	// walk is the timeline over [from, to): the accepted cycle until the programme crossing its
+	// boundary ends, then each next window from where the one before ended. A window arranged
+	// before reconcile commits it sees the airings recorded so far, as the product does (each
+	// tune-in records as it airs).
+	walk := func(from, to time.Time, watched bool) []playout.Broadcast {
+		slots, epoch, last := desired, anchor, lastAired
+		var out []playout.Broadcast
+		for {
+			stop := playout.CarryOverEnd(slots, epoch, schedule.NextWindowStart(epoch, window, grid))
+			leg := playout.BroadcastsBetween(slots, epoch, maxTime(from, epoch), minTime(to, stop))
+			out = append(out, leg...)
+			if !stop.Before(to) {
+				return out
+			}
+			if watched {
+				last = last.with(leg, from)
+			}
+			slots, epoch = arrange(schedule.WindowStart(stop, window, grid), stop, last), stop
+		}
+	}
+	for t := anchor; t.Before(start); t = t.Add(time.Hour) { // the channel's life before the span
+		reconcile(t)
+	}
+
 	seen := map[string]bool{}
 	var airings []kit.Airing
 	cuts := 0
-	var forecast []playout.Broadcast
+	var forecast, prev []playout.Broadcast
 	samples, misses := 0, 0
-
 	for t := start; t.Before(end); t = t.Add(time.Hour) {
-		ch.LastAired = copyMap(lastAired)
-		d := schedule.ComputeDesiredAt(ch, entries, lib, schedule.PodFill, policy, t)
-		hour := playout.BroadcastsBetween(d.Slots, epoch, t, t.Add(time.Hour))
-		if t.Sub(t.Truncate(window)) == 0 { // a rolling-window boundary: the guide's forecast
-			forecast = playout.BroadcastsBetween(d.Slots, epoch, t, t.Add(window))
+		reconcile(t)
+		watched := v.Watch(t.In(loc))
+		hour := walk(t, t.Add(time.Hour), watched)
+		// The guide's forecast, taken at each rolling-window boundary (and when the span opens, which
+		// is not one: the grid is local midnight) through the end of that window.
+		if forecast == nil || schedule.WindowStart(t, window, grid).Equal(t) {
+			forecast = walk(t, schedule.NextWindowStart(t, window, grid), false)
 		}
 		for m := 0; m < 60; m += 5 {
 			at := t.Add(time.Duration(m) * time.Minute)
@@ -232,46 +283,81 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 				misses++
 			}
 		}
-		for i, b := range hour {
+		// A programme the last hour walked past its end which this hour's timeline no longer airs
+		// at the same start was replaced before it ended: cut mid-programme.
+		if n := len(prev); n > 0 && prev[n-1].Kind == schedule.SlotProgram && prev[n-1].Stop.After(t) {
+			if len(hour) == 0 || hour[0].LibraryItemID != prev[n-1].LibraryItemID || !hour[0].Start.Equal(prev[n-1].Start) {
+				cuts++
+			}
+		}
+		prev = hour
+		for _, b := range hour {
 			if b.Kind != schedule.SlotProgram {
 				continue
 			}
 			id := b.LibraryItemID + "|" + b.Start.String()
-			// A block the walk returns with its true start but which is replaced before it
-			// ends (the next hour's recompute or a window boundary) was cut mid-programme.
-			if i == len(hour)-1 && b.Stop.After(t.Add(time.Hour)) {
-				next := schedule.ComputeDesiredAt(withAired(ch, lastAired, v, hour), entries, lib, schedule.PodFill, policy, t.Add(time.Hour))
-				nb := playout.BroadcastsBetween(next.Slots, epoch, t.Add(time.Hour), t.Add(time.Hour+time.Minute))
-				if len(nb) == 0 || nb[0].LibraryItemID != b.LibraryItemID || !nb[0].Start.Equal(b.Start) {
-					cuts++
-				}
-			}
 			if seen[id] {
 				continue
 			}
 			seen[id] = true
 			airings = append(airings, kit.Airing{Unit: b.LibraryItemID, Title: string(b.Key), Kind: "program", Start: b.Start, Stop: b.Stop})
 		}
-		if v.Watch(t.In(loc)) {
-			for _, b := range hour {
-				if b.Kind == schedule.SlotProgram && b.Key != "" {
-					lastAired[b.Key] = b.Start // RecordAiring: keyed by title key, stamped at programme start
-				}
-			}
+		if watched {
+			lastAired = lastAired.with(hour, t)
 		}
 	}
 	return airings, cuts, float64(misses) / float64(samples)
 }
 
-func withAired(ch schedule.Channel, last map[provision.Key]time.Time, v viewing, hour []playout.Broadcast) schedule.Channel {
-	m := copyMap(last)
-	for _, b := range hour {
-		if b.Kind == schedule.SlotProgram && b.Key != "" && v.Watch(b.Start.In(simLoc)) {
-			m[b.Key] = b.Start
+// airLog mirrors the #1674 airings table: one row per airing of a unit, with when it was recorded.
+type airLog map[string][][2]time.Time
+
+func (l airLog) record(unit string, aired, recorded time.Time) {
+	l[unit] = append(l[unit], [2]time.Time{aired, recorded})
+}
+
+func (l airLog) asOf(before time.Time) map[string]time.Time {
+	out := map[string]time.Time{}
+	if before.IsZero() {
+		return out
+	}
+	for u, rows := range l {
+		for _, r := range rows {
+			if r[1].Before(before) && r[0].After(out[u]) {
+				out[u] = r[0]
+			}
 		}
 	}
-	ch.LastAired = m
-	return ch
+	return out
+}
+
+// with is a copy of the log plus a record of every programme in bs, observed from `seen` on:
+// RecordAiring stamps the programme start and never records earlier than the programme itself.
+func (l airLog) with(bs []playout.Broadcast, seen time.Time) airLog {
+	m := make(airLog, len(l))
+	for u, rows := range l {
+		m[u] = rows[:len(rows):len(rows)]
+	}
+	for _, b := range bs {
+		if b.Kind == schedule.SlotProgram && b.LibraryItemID != "" {
+			m.record(b.LibraryItemID, b.Start, maxTime(b.Start, seen))
+		}
+	}
+	return m
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
 }
 
 func unitAt(bs []playout.Broadcast, at time.Time) string {
@@ -281,14 +367,6 @@ func unitAt(bs []playout.Broadcast, at time.Time) string {
 		}
 	}
 	return ""
-}
-
-func copyMap(m map[provision.Key]time.Time) map[provision.Key]time.Time {
-	out := make(map[provision.Key]time.Time, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
 }
 
 // ledger is the prototype: an APPEND-ONLY timeline with an airing ledger per episode/film.

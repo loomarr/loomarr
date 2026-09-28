@@ -49,17 +49,13 @@ jobs:
           push: false
           load: true
           tags: loomarr-ci:verify
-          # ⚠ READ-ONLY cache, deliberately: there is `cache-from` and NO `cache-to`.
-          # Measured — exporting it cost 462s of a 770s job, MORE than the 303s the arm64
-          # layer it was caching takes to build, because `mode=max` ships every
-          # intermediate layer including the 466MB whisper model. It also spends the 10GB
-          # repo cache quota on ~2GB per run, evicting the Go and pnpm caches that do pay
-          # for themselves.
-          #
-          # It still READS anything release.yml populates, so this is not "no caching" —
-          # it is declining to pay the export cost on every PR. Dockerfile and Rust changes
-          # invalidate only their affected layers; unchanged release layers remain reusable.
-          cache-from: type=gha,scope=release
+          # ⚠ NO BuildKit cache, deliberately. Exporting one was measured at 462s of a 770s
+          # job, MORE than the 303s the arm64 layer it was caching takes to build, because
+          # `mode=max` ships every intermediate layer including the 466MB whisper model, and
+          # it spent ~2GB of the 10GB repository cache quota per run, evicting the Go and pnpm
+          # caches that do pay for themselves. There is nothing to read either (#1679): the
+          # `cache-from: type=gha,scope=release` that used to sit here matched no writer, and
+          # release.yml's tag-scoped cache was never readable from PR or merge-queue refs.
 
       - name: Inspect packaged license and notice metadata
         shell: bash

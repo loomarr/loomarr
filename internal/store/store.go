@@ -732,19 +732,21 @@ type AiringStore interface {
 	// an error because the durable channel exposure intentionally survives catalog pruning and
 	// re-admission.
 	RecordClipPlay(ctx context.Context, channelID, clipHash string, at time.Time) (recorded bool, err error)
-	// FillerExposuresByChannel returns the aggregate history strictly before `before`.
-	// A zero cutoff returns all history. The strict boundary makes a break's exposure snapshot
-	// immutable while that break is going to air, so a reconcile cannot reshuffle its tail.
-	FillerExposuresByChannel(ctx context.Context, channelID string, before time.Time) (map[string]filler.Exposure, error)
+	// FillerExposureRecords returns one channel's stored per-clip aggregates. A break's snapshot
+	// (history strictly before its start) is cut from them by filler.ExposuresBefore, so one
+	// read serves every break in a window (#1420).
+	FillerExposureRecords(ctx context.Context, channelID string) (map[string]filler.ExposureRecord, error)
 	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
 	// the programme analogue of RecordClipPlay. Written from playout only, when a programme is
-	// actually resolved for streaming; upserts one row per (channel, key) holding the LAST
-	// airing, because the only question asked of it is "when did this last air here?".
-	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, at time.Time) error
-	// LastAiredByChannel returns the most recent airing per key on one channel, for
-	// recency-aware placement (programming-design §3.1). A key that has never aired is simply
-	// absent — callers treat absence as "least recently aired", which sorts it first.
-	LastAiredByChannel(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
+	// actually resolved for streaming; one row per airing of a unit (episode or film), written
+	// once at `recordedAt` however often playout re-resolves it.
+	RecordAiring(ctx context.Context, channelID string, key provision.Key, libraryItemID string, airedAt, recordedAt time.Time) error
+	// LastAiredByChannel returns the latest airing per unit (library item id) on one channel,
+	// counting only rows recorded strictly before `before`, for recency-aware placement
+	// (programming-design §3.1). The strict cutoff makes a window's history immutable once the
+	// window opens (#1674). A unit that has never aired is absent — callers treat absence as
+	// "least recently aired", which sorts it first.
+	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
 // LibraryPathStore caches the media server's file path per library item (#1456) so playout

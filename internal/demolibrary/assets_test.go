@@ -38,7 +38,7 @@ func TestFillerClearsTheQualityGate(t *testing.T) {
 			t.Errorf("%s is %ds; the quality gate's floor is 10s", f.ID, f.Duration)
 		}
 		out := filepath.Join(g.l.Dir, f.ID+".mp4")
-		if err := g.filler(context.Background(), f, chroma[i], out); err != nil {
+		if err := g.filler(context.Background(), f, chroma[i%len(chroma)], out); err != nil {
 			t.Fatal(err)
 		}
 		stats, err := exec.Command(g.ffmpeg, "-hide_banner", "-nostdin", "-i", out, "-vn", "-af", "volumedetect", "-f", "null", "-").CombinedOutput()

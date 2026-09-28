@@ -101,7 +101,7 @@ func TestVerifyCIContainerDownloadsBindsRequiredAuthoritiesToAbsoluteWorkflowSte
 		"move Playwright route across cache action": {
 			workflow: playwrightWorkflowName,
 			mutate: func(t *testing.T, steps []*yaml.Node) []*yaml.Node {
-				cache := workflowUsesStepIndex(t, steps, "actions/cache")
+				cache := workflowUsesStepIndex(t, steps, "actions/cache/restore")
 				visual := workflowRunStepIndex(t, steps, playwrightVisualWorkflowStep)
 				return moveWorkflowStep(steps, cache, visual+1)
 			},

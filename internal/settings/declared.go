@@ -588,9 +588,12 @@ func declared() []Setting {
 			// Empty = the viewer's own browser timezone, which is right for the household
 			// case. An operator sets it when the server and its viewers are elsewhere, or
 			// when they want the guide to read in the channels' "broadcast" timezone.
+			//
+			// It is also the wall clock the rolling-window grid is laid on (#1675), so a daily
+			// window turns at midnight in this zone. Empty there = the container's own zone.
 			Key: "guide.timezone", Label: "Timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
 			Kind: KindString, Default: "",
-			Doc: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone.",
+			Doc: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone.",
 		},
 		{
 			// How far back the guide will look (§12, V13b gap 8).
@@ -966,14 +969,14 @@ func declared() []Setting {
 		},
 		{
 			Key: "filler.structure_window_authority_path", Label: "Long-reel authority file", EnvVar: "FILLER_STRUCTURE_WINDOW_AUTHORITY_PATH", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "", Validate: storagePath(true), Advanced: true,
-			Doc:      "Optional absolute path to a separately reviewed long-reel materialization authority. Empty or invalid evidence enables no certified slice; a valid authority may create held children but cannot make them airable.",
+			Kind: KindString, Presentation: PresentationPath, Default: "", Validate: storagePath(true), Advanced: true,
+			Doc:      "Optional absolute path to a separately reviewed long-reel materialization authority. Empty or invalid evidence enables no certified slice; a valid authority may create held children but cannot make them airable. A change applies to the next split; a split already running finishes under the files it started with.",
 			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},
 		{
 			Key: "filler.structure_window_deployment_path", Label: "Long-reel deployment file", EnvVar: "FILLER_STRUCTURE_WINDOW_DEPLOYMENT_PATH", Group: GroupFiller,
-			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart, Default: "", Validate: storagePath(true), Advanced: true,
-			Doc:      "Optional absolute path to the reviewed authority's OpenRouter route and spend deployment. Empty, invalid, or mismatched evidence performs no structure inference and enables no certified slice.",
+			Kind: KindString, Presentation: PresentationPath, Default: "", Validate: storagePath(true), Advanced: true,
+			Doc:      "Optional absolute path to the reviewed authority's OpenRouter route and spend deployment. Empty, invalid, or mismatched evidence performs no structure inference and enables no certified slice. A change applies to the next split; a split already running finishes under the files it started with.",
 			ShowWhen: map[string][]string{"filler.autosplit.enabled": {"true"}},
 		},
 		// The ingest pipeline's per-run budget (§10 V51b). Every one of these bounds ONE PASS, not
@@ -1493,9 +1496,9 @@ func declared() []Setting {
 		},
 		{
 			Key: "diagnostics.dir", EnvVar: "DIAGNOSTICS_DIR", Group: GroupAdvanced,
-			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart,
+			Kind: KindString, Presentation: PresentationPath,
 			DataSubdir: "diagnostics", Validate: storagePath(false), Advanced: true,
-			Doc: "Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart.",
+			Doc: "Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart. A change applies to the next process; output already written stays where it was.",
 		},
 		{
 			Key: "diagnostics.retention", EnvVar: "DIAGNOSTICS_RETENTION", Group: GroupAdvanced,

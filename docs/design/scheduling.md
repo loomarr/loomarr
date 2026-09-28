@@ -28,9 +28,21 @@ change per channel.
   playout and the guide read it directly. `CyclePreview` is only the authoring and forecast surface:
   it depends on mutable airing history and availability, so recomputing it at playout time could
   move the same wall clock into an unrelated episode.
-- Each channel row carries one immutable **playout anchor**, stamped when a building or empty
-  channel first goes live, so a first tune starts near the first accepted programme. Reconcile,
-  lineup edits, backend changes and restarts preserve it.
+- Each channel row carries one **playout anchor**, stamped when a building or empty channel first
+  goes live, so a first tune starts near the first accepted programme. Lineup edits, backend
+  changes and restarts preserve it. It moves only when the **rolling window turns** (#1675).
+- **Rolling windows turn with carry-over.** Windows are laid on the wall clock of `guide.timezone`
+  (else the container's zone), so a daily window turns at local midnight, and a DST day is 23 or 25
+  hours long. The programme on air across the boundary finishes on the arrangement it began in;
+  the next window's slice starts at its end, and that end becomes the new anchor. One rule,
+  `playout.WindowTurn`, is shared by reconcile, which commits the new cycle and anchor, and the
+  playout resolver, which airs the next window from that end even before reconcile has run by
+  arranging it with `CyclePreview`. The guide chains windows at the same ends, so no block is
+  clipped at a boundary. If reconcile missed more than one window, the current window is walked
+  from its own opening, and that one turn may join a programme part-way. Tunarr-backed channels
+  cannot carry over: Tunarr loops the list it was given from its own clock and cannot be told
+  where a window starts, so their anchor stays fixed and their guide still cuts at the boundary
+  (#1691).
 - **Availability resolution** turns an approved entry's key into `(library item id, duration,
   available)`. Duration comes from the media server's `RunTimeTicks`; a program slot always has a
   real `duration > 0`.
@@ -93,11 +105,20 @@ After a reconcile that creates, renames or deletes channels, the scheduler pokes
 
 ## Airing history
 
-`airings` records one row per programme aired (`{channel_id, key, library_item_id, aired_at}`),
-written by the playout resolver when it resolves a programme for streaming. The write is
-best-effort: a failed insert is logged and the programme still airs. `LastAiredByChannel` returns the
-latest airing per key, which is all placement needs. It is Loomarr's own broadcast record, not
-viewer watch state, and is purged by the retention janitor.
+`airings` records one row per airing of a unit, an episode or a film
+(`{channel_id, library_item_id, aired_at, recorded_at, key}`), written by the playout resolver when
+it resolves a programme for streaming. Re-resolving the same airing writes nothing new, so
+`recorded_at` is when the airing was first observed. The write is best-effort: a failed insert is
+logged and the programme still airs. Each write prunes that unit's rows older than eight days down
+to the newest of them, so the table stays bounded by lineup size. It is Loomarr's own broadcast
+record, not viewer watch state.
+
+`LastAiredByChannel(channel, before)` returns the latest airing per unit among rows recorded
+strictly before `before`. Placement passes the start of the rolling window it is arranging, so a
+window's history is fixed when the window opens (#1674). A tune-in during the window, including one
+that first records a programme which started before the boundary, shapes the next window and
+cannot re-arrange the one on air. A channel on an unbounded window never opens a new window, so it
+reads no history.
 
 Recency is a **soft ranking signal**, not a constraint (`programming-design.md` §3.1). A 24-hour day
 consumes about 13 films, so a week without repeats needs about 168 hours of content; a hard
@@ -138,11 +159,15 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   Internal playout writes it when the channel encoder resolves the clip, keyed by scheduled start, so
   tune-ins and rebuilds cannot inflate it; preview and reconcile never write it. Assembly reads a
   snapshot cut off before the break starts and ranks within each rung: never aired, then least
-  recently aired outside `filler.cooldown_seconds`, then inside it only if needed. Cooldown never
-  causes dead air. Pins come first and may repeat. On Tunarr channels Tunarr owns rotation; Loomarr
-  writes `fillerRepeatCooldown` to the channel and leaves the list cooldown at zero.
+  recently aired outside `filler.cooldown_seconds`. A clip inside its cooldown ranks behind every
+  rested clip on any rung, so the ladder widens before a clip repeats, and cooldown relaxes only when
+  the whole ladder is resting. Cooldown never causes dead air. Pins come first and may repeat. On
+  Tunarr channels Tunarr owns rotation; Loomarr writes `fillerRepeatCooldown` to the channel and
+  leaves the list cooldown at zero.
 - **Fallback ladder:** exact era → era widened by a decade → any audience-appropriate clip → clips
-  with an ungrounded audience → the channel's bumper card. Never dead air.
+  with an ungrounded audience → the channel's bumper card. Never dead air. A pod fills from the
+  tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
+  instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
 
 **Audience is an allowlist and never weakens** (a kids and teen guardrail):
 

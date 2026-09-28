@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/config"
+	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -214,6 +216,37 @@ func TestRestartDrift(t *testing.T) {
 		want := []string{"DATABASE_URL", "filler.dir", "filler.watch_dir"}
 		if strings.Join(got, ",") != strings.Join(want, ",") {
 			t.Errorf("drift = %v, want %v", got, want)
+		}
+	})
+
+	// #1659 Q-S1: the notice names only what truly cannot apply live. Built the way Build builds
+	// it, from the registry's restart keys, so a key that goes live drops out of the notice.
+	t.Run("names only the filler folders among app settings", func(t *testing.T) {
+		set := visionSet(t, map[string]string{
+			"filler.dir":       "/clips/old",
+			"filler.watch_dir": "/watch/old",
+		})
+		frozen, applied := set.freeze(settings.NewRegistry().RestartKeys()...)
+		layout, err := filler.NewLayout(frozen.str("filler.dir"), frozen.str("filler.watch_dir"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		canonicalFillerRestartBaseline(applied, layout)
+		drift := restartDrift(nil, applied, canonicalRestartCurrent(set))
+
+		set.svc.SetDB(map[string]string{
+			"filler.dir":                              "/clips/old",
+			"filler.watch_dir":                        "/watch/old",
+			"diagnostics.dir":                         "/diagnostics/new",
+			"filler.structure_window_authority_path":  "/reviewed/authority.json",
+			"filler.structure_window_deployment_path": "/reviewed/deployment.json",
+		})
+		if got := drift(); len(got) != 0 {
+			t.Fatalf("drift = %v after editing live settings, want none", got)
+		}
+		set.svc.SetDB(map[string]string{"filler.dir": "/clips/new", "filler.watch_dir": "/watch/new"})
+		if got := strings.Join(drift(), ","); got != "filler.dir,filler.watch_dir" {
+			t.Errorf("drift = %v, want the filler folders", got)
 		}
 	})
 

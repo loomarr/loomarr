@@ -47,7 +47,10 @@ type ProcessStore interface {
 
 // ProcessOptions controls the diagnostics service's bounded process-local resources.
 type ProcessOptions struct {
-	OutputDir      string
+	OutputDir string
+	// OutputDirFunc, when set, overrides OutputDir and is read at each run's Begin, so
+	// diagnostics.dir applies live (#1659). A run keeps the directory it began with.
+	OutputDirFunc  func() string
 	InstanceID     string
 	QueueCapacity  int
 	OutputCapacity int
@@ -117,6 +120,31 @@ type ProcessManager struct {
 	closed    bool
 	closeOnce sync.Once
 	versions  sync.Map
+
+	// created is the last output directory MkdirAll succeeded for, so a live change to
+	// diagnostics.dir creates the new directory once rather than on every run.
+	createdMu sync.Mutex
+	created   string
+}
+
+// outputDir resolves the current output directory and makes sure it exists. It returns ""
+// (no output file for this run) when none is configured or it can't be created.
+func (m *ProcessManager) outputDir() string {
+	dir := m.opts.OutputDirFunc()
+	if dir == "" {
+		return ""
+	}
+	m.createdMu.Lock()
+	defer m.createdMu.Unlock()
+	if dir == m.created {
+		return dir
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		m.fail(fmt.Errorf("create process diagnostics directory: %w", err))
+		return ""
+	}
+	m.created = dir
+	return dir
 }
 
 type executableVersion struct {
@@ -135,12 +163,7 @@ func NewProcessManager(sink ProcessStore, events *Recorder, opts ProcessOptions)
 		close(m.done)
 		return m
 	}
-	if opts.OutputDir != "" {
-		if err := os.MkdirAll(opts.OutputDir, 0o750); err != nil {
-			m.fail(fmt.Errorf("create process diagnostics directory: %w", err))
-			m.opts.OutputDir = ""
-		}
-	}
+	m.outputDir()
 	go m.persist()
 	return m
 }
@@ -268,13 +291,14 @@ func (m *ProcessManager) deleteCandidate(ctx context.Context, candidate Retentio
 		return false, errors.New("diagnostic events are deleted in batches, not one by one")
 	case EvidenceProcessRun:
 		if candidate.OutputRef != "" {
-			if m.opts.OutputDir == "" {
+			dir := m.opts.OutputDirFunc()
+			if dir == "" {
 				return false, errors.New("diagnostic output root is unavailable")
 			}
 			if filepath.Base(candidate.OutputRef) != candidate.OutputRef || strings.ContainsAny(candidate.OutputRef, `/\\`) {
 				return false, fmt.Errorf("refuse unsafe diagnostic output reference %q", candidate.OutputRef)
 			}
-			if err := os.Remove(filepath.Join(m.opts.OutputDir, candidate.OutputRef)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := os.Remove(filepath.Join(dir, candidate.OutputRef)); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return false, fmt.Errorf("remove diagnostic process output %s: %w", candidate.ID, err)
 			}
 		}
@@ -302,8 +326,9 @@ func (m *ProcessManager) Begin(spec ProcessSpec) *ProcessHandle {
 	if m.closed {
 		return nil
 	}
+	dir := m.outputDir()
 	var storageLease *storagegovernor.Lease
-	if m.opts.OutputDir != "" && m.opts.Storage != nil {
+	if dir != "" && m.opts.Storage != nil {
 		reservation, ok := storagegovernor.EstimateDiagnosticOutput(m.opts.PrefixBytes, m.opts.TailBytes)
 		if !ok {
 			m.fail(fmt.Errorf("diagnostic storage paused (%s)", storagegovernor.ReasonEstimateUnknown))
@@ -311,7 +336,7 @@ func (m *ProcessManager) Begin(spec ProcessSpec) *ProcessHandle {
 		}
 		var decision storagegovernor.Decision
 		storageLease, decision = m.opts.Storage.Reserve(context.Background(), storagegovernor.Request{
-			Path: m.opts.OutputDir, Domain: storagegovernor.DomainDiagnostics,
+			Path: dir, Domain: storagegovernor.DomainDiagnostics,
 			EstimatedBytes: reservation, Mode: storagegovernor.Automatic,
 		})
 		if storageLease == nil {
@@ -327,11 +352,12 @@ func (m *ProcessManager) Begin(spec ProcessSpec) *ProcessHandle {
 	now := m.opts.Now()
 	id := newID(now)
 	ref := ""
-	if m.opts.OutputDir != "" {
+	if dir != "" {
 		ref = id + ".log"
 	}
 	h := &ProcessHandle{
 		manager:    m,
+		outputDir:  dir,
 		executable: spec.Executable,
 		run: ProcessRun{
 			ID: id, Purpose: identifier(spec.Purpose), ParentRunID: identifier(spec.ParentRunID),
@@ -414,6 +440,7 @@ func (m *ProcessManager) fail(err error) {
 // ProcessHandle is the non-blocking producer interface for one external process.
 type ProcessHandle struct {
 	manager    *ProcessManager
+	outputDir  string // resolved at Begin; a live diagnostics.dir change never splits one run
 	run        ProcessRun
 	executable string
 	lines      chan string
@@ -534,7 +561,7 @@ func (h *ProcessHandle) capture() {
 				return
 			}
 		}
-		path := filepath.Join(h.manager.opts.OutputDir, h.run.OutputRef)
+		path := filepath.Join(h.outputDir, h.run.OutputRef)
 		tmp := path + ".tmp"
 		file, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o640)
 		if err != nil {
@@ -683,6 +710,10 @@ func (h *ProcessHandle) finishMetadata(discardedRetention int64) {
 }
 
 func processDefaults(opts ProcessOptions) ProcessOptions {
+	if opts.OutputDirFunc == nil {
+		static := opts.OutputDir
+		opts.OutputDirFunc = func() string { return static }
+	}
 	if opts.QueueCapacity <= 0 {
 		opts.QueueCapacity = defaultProcessQueue
 	}

@@ -64,6 +64,9 @@ type AcquisitionTarget struct {
 	// size the storage reservation when the provider cannot report a size at download time.
 	DurationMS int64
 	Height     int
+	// Gap is the channel coverage gap this target was selected for (EraGapKey, #749), recorded
+	// on its downloaded artifact. "" when selection was not steered by a gap.
+	Gap string
 }
 
 // AcquisitionOutcome is the current lifecycle distribution of every clip enrolled from one run.

@@ -53,6 +53,11 @@ func TestSystemRestart_RequiresAdmin(t *testing.T) {
 		if resp.StatusCode != http.StatusUnauthorized {
 			t.Errorf("%s %s without admin → %d, want 401", tc.method, tc.path, resp.StatusCode)
 		}
+		// A signed-in member is refused too. The restart notice names settings only an admin can
+		// change, so it is admin-only (#1659 Q-S1).
+		if resp := do(t, srv, tc.method, tc.path, memberToken, ""); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s as a member → %d, want 403", tc.method, tc.path, resp.StatusCode)
+		}
 	}
 	// ⚠ The refusal must happen BEFORE the loop is asked to rebuild — a 403 that still
 	// restarted the process would be a denial-of-service with an error message.

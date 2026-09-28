@@ -433,14 +433,21 @@ func seriesKeyOf(s Slot) provision.Key { return s.Key }
 //
 // Empty history (a fresh install, a channel that has never aired, a store that could not answer)
 // leaves the order untouched, so placement degrades to exactly its pre-§3.1 behaviour.
-func byRecency(slots []Slot, lastAired map[provision.Key]time.Time) []Slot {
+//
+// # Per unit, not per title
+//
+// Keyed by library item id, so an aired episode moves back and its unaired siblings do not.
+// Keyed by the series (as it was until #1674), one tune-in pushed every episode of the watched
+// show behind everything else. A multi-part or franchise super-slot carries its first part's id,
+// which is the part that starts the airing.
+func byRecency(slots []Slot, lastAired map[string]time.Time) []Slot {
 	if len(lastAired) == 0 || len(slots) <= 1 {
 		return slots
 	}
 	out := append([]Slot(nil), slots...)
 	sort.SliceStable(out, func(i, j int) bool {
-		ti, oki := lastAired[out[i].Key]
-		tj, okj := lastAired[out[j].Key]
+		ti, oki := lastAired[out[i].LibraryItemID]
+		tj, okj := lastAired[out[j].LibraryItemID]
 		switch {
 		case !oki && !okj:
 			return false // both never aired — keep the seeded order

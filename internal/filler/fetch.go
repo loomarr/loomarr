@@ -211,6 +211,9 @@ type DiscoveredRef struct {
 	Height        int
 	Availability  string
 	LiveStatus    string
+	// Gap is the channel coverage gap the pass selected this item for (EraGapKey, #749). Set only
+	// on the way to ingest, where it is recorded on the downloaded artifact.
+	Gap string
 }
 
 // FetchIngestor hands URLs to the ordinary ingest path.
@@ -235,6 +238,15 @@ type Fetcher struct {
 	limits FetchLimits
 	log    *slog.Logger
 	now    func() time.Time
+	gaps   func(context.Context) ([]EraRange, error)
+}
+
+// WithCoverageGaps steers each pass toward the era windows of channels that cannot fill their
+// breaks from their own era (#749, CoverageGapEras). Optional: without it a pass ranks by
+// quality and diversity alone, as it always has.
+func (f *Fetcher) WithCoverageGaps(gaps func(context.Context) ([]EraRange, error)) *Fetcher {
+	f.gaps = gaps
+	return f
 }
 
 // NewFetcher builds the automatic-download worker. Source policy, including whether any source
@@ -395,6 +407,20 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 	inPass := make(map[string]ExistingRemoteState, len(existing))
 	for key, state := range existing {
 		inPass[key] = state
+	}
+	// Channel coverage gaps steer which items this pass takes first (#749). Read once per pass
+	// that has due work, never on an idle wake. A failed read degrades to the unsteered pass:
+	// steering is an optimisation, and the source still deserves its bounded refresh.
+	var gaps []EraRange
+	if f.gaps != nil {
+		if gaps, err = f.gaps(ctx); err != nil {
+			f.log.Warn("filler auto-fetch: coverage gaps unavailable; selecting without them", "err", err)
+			gaps = nil
+		}
+	}
+	gapReason := ""
+	if len(gaps) > 0 {
+		gapReason = " Items from " + formatEraWindows(gaps) + " go first: channels there cannot fill a break from their own era."
 	}
 
 	if max := f.limits.MaxCatalogClips(); max > 0 && len(have) >= max {
@@ -588,10 +614,10 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 				checkpoint.PendingWatermark = ""
 			}
 		}
-		selection, serr := PlanAcquisition(AcquisitionIntent{
+		selection, serr := PlanAcquisitionFor(AcquisitionIntent{
 			Count:         perRun,
-			CatalogReason: "Bounded scheduled refresh of a registered source.",
-		}, candidates, inPass)
+			CatalogReason: "Bounded scheduled refresh of a registered source." + gapReason,
+		}, candidates, inPass, gaps)
 		if serr != nil {
 			if completeErr := completeCheck(); completeErr != nil {
 				return res, completeErr
@@ -618,6 +644,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 				Title: decision.Candidate.Title, License: decision.Candidate.License,
 				ObservedYear: decision.Candidate.ObservedYear, PublishedAt: decision.Candidate.PublishedAt,
 				DurationMS: decision.Candidate.DurationMS, Height: decision.Candidate.Height,
+				Gap: decision.Gap,
 			})
 		}
 		if len(urls) == 0 {

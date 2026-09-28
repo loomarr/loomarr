@@ -342,33 +342,52 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 			MaxDuration:   func() time.Duration { return set.dur("filler.autosplit.max_duration") },
 		}
 		minClipDuration := func() time.Duration { return set.dur("filler.min_duration") }
-		materialization := &filler.StructureMaterializationPolicy{}
-		policyVersion := "production-shadow-no-certified-slices-v1"
-		windowAuthority, authorityErr := loadWindowStructureAuthority(set.str("filler.structure_window_authority_path"))
-		if authorityErr != nil {
-			log.Error("long-reel materialization authority was not loaded; certified splitting remains disabled", "err", authorityErr)
+		// The two long-reel files apply live (#1659): each path edit builds the whole runtime
+		// afresh, and the split stage reads it once per split.
+		structureRuntime := &liveStructureRuntime{
+			paths: func() (string, string) {
+				return set.str("filler.structure_window_authority_path"), set.str("filler.structure_window_deployment_path")
+			},
+			build: func(authorityPath, deploymentPath string) filler.StructureRuntime {
+				materialization := &filler.StructureMaterializationPolicy{}
+				rt := filler.StructureRuntime{Materialization: materialization}
+				policyVersion := "production-shadow-no-certified-slices-v1"
+				windowAuthority, authorityErr := loadWindowStructureAuthority(authorityPath)
+				if authorityErr != nil {
+					log.Error("long-reel materialization authority was not loaded; certified splitting remains disabled", "err", authorityErr)
+				}
+				windowDeployment, deploymentErr := loadWindowStructureDeployment(deploymentPath, windowAuthority)
+				if deploymentErr != nil {
+					log.Error("long-reel deployment was not loaded; structure inference and certified splitting remain disabled", "err", deploymentErr)
+				}
+				windowRuntime, runtimeErr := buildCertifiedWindowStructureRuntime(st, set, layout, windowAuthority, windowDeployment)
+				if runtimeErr != nil {
+					log.Error("long-reel runtime was not activated; structure inference and certified splitting remain disabled", "err", runtimeErr)
+				} else if windowRuntime != nil {
+					// ⚠ Only on success: a failed build returns a typed nil that compares non-nil.
+					rt.Decisioner = windowRuntime
+					materialization.WindowAuthority = windowAuthority
+					policyVersion = "production-window-authority-" + windowAuthority.SHA256[:12] + "-deployment-" + windowDeployment.SHA256[:12]
+					log.Info("certified long-reel runtime activated", "authority_sha256", windowAuthority.SHA256,
+						"deployment_sha256", windowDeployment.SHA256, "minimum_source_ms", windowAuthority.MinimumSourceDurationMS,
+						"maximum_source_ms", windowAuthority.MaximumSourceDurationMS)
+				}
+				// The observer records compatibility beside the complete-plan answer for measurement
+				// only. Missing or malformed authority leaves application proposals held; it never
+				// restores compatibility as application authority.
+				structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, materialization, minClipDuration, policyVersion)
+				if shadowErr != nil {
+					log.Error("could not construct filler structure split shadow", "err", shadowErr)
+				}
+				// Attach even when construction returned a nil typed pointer. Its observer methods
+				// fail closed, preserving the rule that an internal wiring fault cannot silently
+				// restore unattended compatibility publication.
+				rt.Shadow = structureShadow
+				return rt
+			},
 		}
-		windowDeployment, deploymentErr := loadWindowStructureDeployment(set.str("filler.structure_window_deployment_path"), windowAuthority)
-		if deploymentErr != nil {
-			log.Error("long-reel deployment was not loaded; structure inference and certified splitting remain disabled", "err", deploymentErr)
-		}
-		windowRuntime, runtimeErr := buildCertifiedWindowStructureRuntime(st, set, layout, windowAuthority, windowDeployment)
-		if runtimeErr != nil {
-			log.Error("long-reel runtime was not activated; structure inference and certified splitting remain disabled", "err", runtimeErr)
-		} else if windowRuntime != nil {
-			materialization.WindowAuthority = windowAuthority
-			policyVersion = "production-window-authority-" + windowAuthority.SHA256[:12] + "-deployment-" + windowDeployment.SHA256[:12]
-			log.Info("certified long-reel runtime activated", "authority_sha256", windowAuthority.SHA256,
-				"deployment_sha256", windowDeployment.SHA256, "minimum_source_ms", windowAuthority.MinimumSourceDurationMS,
-				"maximum_source_ms", windowAuthority.MaximumSourceDurationMS)
-		}
-		// The observer records compatibility beside the complete-plan answer for measurement only.
-		// Missing or malformed authority leaves application proposals held; it never restores
-		// compatibility as application authority.
-		structureShadow, shadowErr := filler.NewStructureSplitShadow(st, autoSplitPolicy, materialization, minClipDuration, policyVersion)
-		if shadowErr != nil {
-			log.Error("could not construct filler structure split shadow", "err", shadowErr)
-		}
+		// Build once at boot so a bad file is reported at startup, as before.
+		structureRuntime.Current()
 		// ⚠ Appended rather than placed in order — `NewPipeline` indexes the slice by stage id
 		// and `StageOrder` is the ONE definition of the sequence, so the order here is
 		// irrelevant. Stating that is worth a line, because a slice that looks like a pipeline
@@ -395,16 +414,10 @@ func buildPipeline(st store.Store, set resolved, layout filler.Layout, log *slog
 					return set.intv("filler.pipeline.max_split_vision")
 				},
 			})
-		if windowRuntime != nil {
-			splitStage.WithCompleteTimelineStructureAssessment(windowRuntime)
-		}
-		// Attach the gate even without a runtime. An empty policy then produces an attributable
-		// hold instead of allowing the diagnostic compatibility outcome to create children.
-		splitStage.WithStructureMaterialization(materialization)
-		// Attach even when construction returned a nil typed pointer. Its observer methods fail
-		// closed, preserving the rule that an internal wiring fault cannot silently restore
-		// unattended compatibility publication.
-		splitStage.WithStructureShadow(structureShadow)
+		// The gate is attached even without a certified runtime. An empty policy then produces an
+		// attributable hold instead of allowing the diagnostic compatibility outcome to create
+		// children.
+		splitStage.WithStructureRuntime(structureRuntime.Current)
 		pipelineStages = append(pipelineStages, splitStage)
 	}
 	fillerPipeline := filler.NewPipeline(st, fillerPipelineClipAdapter{st}, pipelineStages,

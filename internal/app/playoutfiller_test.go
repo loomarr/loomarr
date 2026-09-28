@@ -22,6 +22,14 @@ func (s stubCycle) CyclePreview(context.Context, string, time.Time) (
 	return time.Time{}, s.slots, schedule.ActiveRuleAttribution{}, 0, nil
 }
 
+func (stubCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
+	return 0, nil
+}
+
+func (stubCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
+	return true, nil
+}
+
 type stubPods struct {
 	pod filler.Pod
 	err error
@@ -34,6 +42,14 @@ func (s stubPods) PreviewDraft(context.Context, string, filler.Selection) (fille
 
 func (s stubPods) PreviewAt(context.Context, string, int64) (filler.Pod, error) {
 	return s.pod, s.err
+}
+
+func (s stubPods) PreviewAtMany(_ context.Context, _ string, starts []int64) ([]filler.Pod, error) {
+	pods := make([]filler.Pod, len(starts))
+	for i := range pods {
+		pods[i] = s.pod
+	}
+	return pods, s.err
 }
 
 func (s stubPods) Coverage(context.Context, string) (filler.CoverageReport, error) {

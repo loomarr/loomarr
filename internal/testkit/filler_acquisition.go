@@ -13,6 +13,8 @@ import (
 type FillerAcquisitionPlanner struct {
 	Store      store.Store
 	Candidates []filler.AcquisitionCandidate
+	// Gaps stand in for the channel coverage gaps the real planner reads from the pool (#749).
+	Gaps []filler.EraRange
 }
 
 func (p FillerAcquisitionPlanner) PlanAcquisition(ctx context.Context, intent filler.AcquisitionIntent) (filler.AcquisitionPlan, error) {
@@ -39,7 +41,7 @@ func (p FillerAcquisitionPlanner) PlanAcquisition(ctx context.Context, intent fi
 	if len(candidates) == 0 {
 		return filler.AcquisitionPlan{}, filler.ErrNoAcquisitionSources
 	}
-	plan, err := filler.PlanAcquisition(intent, candidates, nil)
+	plan, err := filler.PlanAcquisitionFor(intent, candidates, nil, p.Gaps)
 	if err == nil && len(plan.Selected) == 0 {
 		err = filler.ErrNoAcquisitionCandidates
 	}

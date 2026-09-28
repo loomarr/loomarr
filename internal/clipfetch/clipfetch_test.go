@@ -310,10 +310,14 @@ func TestRun_PersistsExactManifestBeforePublishing(t *testing.T) {
 
 	res := ing.Run(t.Context(), []clipfetch.Source{{
 		ID: "archive:classic", AcquisitionID: "acq-1", Kind: clipfetch.Archive,
-		URL: "https://archive.org/details/one", RemoteID: "one",
+		URL: "https://archive.org/details/one", RemoteID: "one", Gap: "era:1990-1999",
 	}})
 	if res.Failed != 0 || res.Fetched != 1 || len(res.Artifacts) != 1 {
 		t.Fatalf("result = %+v, want one published artifact", res)
+	}
+	// #749: the gap a download was for is on the manifest from its first durable write.
+	if got := writer.Inputs()[0][0].Gap; got != "era:1990-1999" {
+		t.Fatalf("staged manifest gap = %q, want the source's gap", got)
 	}
 	if targetSeen {
 		t.Fatal("download became intake-visible before its manifest was durable")

@@ -70,7 +70,8 @@ func TestRegistry_FillerLanguageOwnsTheClientOptions(t *testing.T) {
 
 func TestRegistry_RestartKeys(t *testing.T) {
 	reg := NewRegistry()
-	want := []string{"filler.dir", "filler.watch_dir", "filler.structure_window_authority_path", "filler.structure_window_deployment_path", "diagnostics.dir"}
+	// Only the filler folders wait for a restart (#1659). The long-reel files apply live.
+	want := []string{"filler.dir", "filler.watch_dir"}
 	got := reg.RestartKeys()
 	if len(got) != len(want) {
 		t.Fatalf("RestartKeys = %v, want %v", got, want)

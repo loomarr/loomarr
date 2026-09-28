@@ -40,10 +40,13 @@ type AcquisitionArtifact struct {
 	// ProviderArchiveCommitted becomes true only after that line is durable in the shared archive.
 	ProviderArchiveEntry     string
 	ProviderArchiveCommitted bool
-	State                    AcquisitionArtifactState
-	RepairReason             string
-	CompletedAt              time.Time
-	UpdatedAt                time.Time
+	// Gap is the channel coverage gap this download was acquired for (EraGapKey), "" when it was
+	// not steered by one (#749). Recorded once at download and carried through recovery.
+	Gap          string
+	State        AcquisitionArtifactState
+	RepairReason string
+	CompletedAt  time.Time
+	UpdatedAt    time.Time
 }
 
 // AcquisitionArtifactCursor is the stable ordering boundary for bounded recovery scans.

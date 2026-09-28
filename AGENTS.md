@@ -227,6 +227,13 @@ only worktrees whose exact head belongs to a merged PR on current `origin/main`.
 dirty, credential-bearing, divergent, open, and ambiguous worktrees fail closed.
 For retained worktrees, record an owner, reason, and next review trigger on the tracking issue.
 Preservation is not a retirement plan; closing a pane or completing a goal does not clean a worktree.
+Retiring a worktree includes stopping every process still working in it: `make agent-reap
+WORKTREE=<path>` lists them, `APPLY=1` stops them by PID, and `make agent-reap ORPHANS=1` finds any
+left in deleted worktrees.
+
+Supervisors and long-running agents arm the dev watchers (`make dev-watch`) for the whole session and
+act on what they report; the watchers only observe. See
+[`docs/contributing/dev-watchers.md`](docs/contributing/dev-watchers.md).
 
 Orca creates worktrees itself, under its own workspace directory. The checked-in `orca.yaml` runs the
 same registration and bootstrap from Orca's setup hook, so an Orca worktree is registered without

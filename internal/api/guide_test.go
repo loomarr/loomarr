@@ -676,6 +676,11 @@ func TestGuide_ResolvesEachBreakAtItsOwnStart(t *testing.T) {
 		t.Error("both breaks were resolved at the same instant — every break would show the " +
 			"same clips regardless of when it airs")
 	}
+	// #1420: resolved per break, but in ONE batch for the channel row. Each per-break call
+	// re-read the channel, the whole catalog and the play history.
+	if fp.batches != 1 {
+		t.Errorf("pod batches = %d, want one per channel row", fp.batches)
+	}
 }
 
 // A non-filler block has no pod: a programme is not a break, and an empty pod object would

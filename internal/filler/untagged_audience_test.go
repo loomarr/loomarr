@@ -69,14 +69,18 @@ func TestLadder_UngroundedNeverOutranksAGroundedMatch(t *testing.T) {
 		{Hash: "untagged", Path: "untagged", Kind: Commercial, Era: 1992, DurationMs: 30_000},
 	}
 
+	// Room for one clip: the grounded match takes it.
+	w.PodMax = 1
 	pod := Assemble(cat, w, Policy{}, nil)
-	if pod.MatchLevel != MatchExact {
-		t.Fatalf("match level = %s, want exact — a grounded clip was available", pod.MatchLevel)
+	if pod.MatchLevel != MatchExact || len(pod.Entries) != 1 || pod.Entries[0].Path != "grounded" {
+		t.Fatalf("level=%s entries=%+v, want the grounded clip alone on the exact rung", pod.MatchLevel, pod.Entries)
 	}
-	for _, e := range pod.Entries {
-		if e.Path == "untagged" {
-			t.Error("an unclassified clip displaced a grounded exact-era match")
-		}
+	// Room for more: the grounded clip still leads, and the untagged one only tops up the pod the
+	// exact rung cannot fill (#1684 — it used to be left out, starving the break).
+	w.PodMax = 4
+	pod = Assemble(cat, w, Policy{}, nil)
+	if len(pod.Entries) != 2 || pod.Entries[0].Path != "grounded" || pod.Entries[1].Path != "untagged" {
+		t.Fatalf("entries=%+v, want the grounded clip first and the unclassified one after it", pod.Entries)
 	}
 }
 
@@ -159,8 +163,18 @@ func TestAssemble_KidsChannelWithOnlyNonKidsClipsGetsTheBumperCard(t *testing.T)
 func TestAssemble_InWindowClipsArePreferredOnAnEraChannel(t *testing.T) {
 	cat := []Clip{commercial("in", 1992, General), commercial("out", 2015, General)}
 	pod := Assemble(cat, Window{Era: EraRange{From: 1989, To: 1999}, Audience: General, GapMs: 120_000, PodMax: 4}, Policy{}, nil)
-	if pod.MatchLevel != MatchExact || len(pod.Entries) == 0 || pod.Entries[0].Path != "in" {
-		t.Fatalf("level=%s entries=%+v, want the in-window clip on the exact rung", pod.MatchLevel, pod.Entries)
+	// The in-window clip leads; the out-of-window one only tops up the pod the exact rung could not
+	// fill (#1684 — before, it was never placed, and a one-clip exact rung aired alone every break).
+	if len(pod.Entries) != 2 || pod.Entries[0].Path != "in" || pod.Entries[1].Path != "out" {
+		t.Fatalf("entries=%+v, want the in-window clip first and the any-era one after it", pod.Entries)
+	}
+	if pod.MatchLevel != MatchAudience {
+		t.Fatalf("level=%s, want audience: 2015 is outside the widened 1979-2009 range", pod.MatchLevel)
+	}
+	// Remove the need to top up and the pod is exact again.
+	exact := Assemble(cat, Window{Era: EraRange{From: 1989, To: 1999}, Audience: General, GapMs: 120_000, PodMax: 1}, Policy{}, nil)
+	if exact.MatchLevel != MatchExact || len(exact.Entries) != 1 || exact.Entries[0].Path != "in" {
+		t.Fatalf("level=%s entries=%+v, want only the in-window clip on the exact rung", exact.MatchLevel, exact.Entries)
 	}
 }
 

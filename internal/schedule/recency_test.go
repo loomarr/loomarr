@@ -8,7 +8,23 @@ import (
 )
 
 func recSlot(id, title string, dur int64) Slot {
-	return Slot{Kind: SlotProgram, Key: provision.Key("movie:tmdb:" + id), Title: title, DurationMs: dur}
+	return Slot{Kind: SlotProgram, Key: provision.Key("movie:tmdb:" + id), LibraryItemID: "lib-" + id, Title: title, DurationMs: dur}
+}
+
+// Recency is per UNIT (#1674): one aired episode moves back, its unaired siblings keep their
+// seeded places. Keyed by series, the one airing sent the whole show behind everything else.
+func TestByRecency_IsPerEpisodeNotPerSeries(t *testing.T) {
+	ep := func(id string) Slot {
+		return Slot{Kind: SlotProgram, Key: "series:tvdb:7", LibraryItemID: id, Title: id, DurationMs: 1000}
+	}
+	slots := []Slot{ep("s-e1"), ep("s-e2"), recSlot("9", "Film", 1000), ep("s-e3")}
+	got := byRecency(slots, map[string]time.Time{"s-e1": time.Now().Add(-time.Hour)})
+	want := []string{"s-e2", "Film", "s-e3", "s-e1"}
+	for i, w := range want {
+		if got[i].Title != w {
+			t.Fatalf("order %v, want %v", titlesOf(got), want)
+		}
+	}
 }
 
 // THE GAP THIS CLOSES: separation (§3) is a WITHIN-CYCLE rule — when the deck wraps, the
@@ -22,10 +38,10 @@ func TestByRecency_LeastRecentlyAiredComesFirst(t *testing.T) {
 		recSlot("2", "Aired A Week Ago", 1000),
 		recSlot("3", "Aired An Hour Ago", 1000),
 	}
-	hist := map[provision.Key]time.Time{
-		"movie:tmdb:1": now.Add(-24 * time.Hour),
-		"movie:tmdb:2": now.Add(-168 * time.Hour),
-		"movie:tmdb:3": now.Add(-time.Hour),
+	hist := map[string]time.Time{
+		"lib-1": now.Add(-24 * time.Hour),
+		"lib-2": now.Add(-168 * time.Hour),
+		"lib-3": now.Add(-time.Hour),
 	}
 
 	got := byRecency(slots, hist)
@@ -45,7 +61,7 @@ func TestByRecency_NeverAiredSortsFirst(t *testing.T) {
 		recSlot("1", "Aired Recently", 1000),
 		recSlot("2", "Brand New", 1000),
 	}
-	hist := map[provision.Key]time.Time{"movie:tmdb:1": now.Add(-time.Hour)}
+	hist := map[string]time.Time{"lib-1": now.Add(-time.Hour)}
 
 	got := byRecency(slots, hist)
 	if got[0].Title != "Brand New" {
@@ -61,8 +77,8 @@ func TestByRecency_IsStableForEqualRecency(t *testing.T) {
 		recSlot("1", "A", 1000), recSlot("2", "B", 1000), recSlot("3", "C", 1000),
 	}
 	same := time.Now().Add(-time.Hour)
-	hist := map[provision.Key]time.Time{
-		"movie:tmdb:1": same, "movie:tmdb:2": same, "movie:tmdb:3": same,
+	hist := map[string]time.Time{
+		"lib-1": same, "lib-2": same, "lib-3": same,
 	}
 	for range 5 {
 		got := byRecency(slots, hist)
@@ -92,9 +108,9 @@ func TestSlotByPolicy_SequentialIgnoresRecency(t *testing.T) {
 	}
 	rp := ResolvedPolicy{
 		Ordering: OrderSequential,
-		LastAired: map[provision.Key]time.Time{
-			"movie:tmdb:1": now.Add(-time.Hour),       // most recent — recency would sort it LAST
-			"movie:tmdb:3": now.Add(-500 * time.Hour), // oldest — recency would sort it FIRST
+		LastAired: map[string]time.Time{
+			"lib-1": now.Add(-time.Hour),       // most recent — recency would sort it LAST
+			"lib-3": now.Add(-500 * time.Hour), // oldest — recency would sort it FIRST
 		},
 	}
 
@@ -119,9 +135,9 @@ func TestSlotByPolicy_ShuffleConsumesRecency(t *testing.T) {
 	}
 	rp := ResolvedPolicy{
 		Ordering: OrderShuffle,
-		LastAired: map[provision.Key]time.Time{
-			"movie:tmdb:1": now.Add(-time.Hour),
-			"movie:tmdb:2": now.Add(-500 * time.Hour),
+		LastAired: map[string]time.Time{
+			"lib-1": now.Add(-time.Hour),
+			"lib-2": now.Add(-500 * time.Hour),
 		},
 	}
 

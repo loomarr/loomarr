@@ -24,7 +24,8 @@ type fakePods struct {
 	// the SAME selection — which is the property V51f added CoverageDraft for. One shared slice
 	// would make "both got the draft" indistinguishable from "one got it twice".
 	draftCoverageAsked []filler.Selection
-	atAsked            []int64 // the break starts PreviewAt received
+	atAsked            []int64 // the break starts PreviewAt / PreviewAtMany received
+	batches            int     // PreviewAtMany calls: the guide's one-per-channel-row contract (#1420)
 	pod                filler.Pod
 	coverage           filler.CoverageReport
 	pool               filler.PoolReport
@@ -52,6 +53,19 @@ func (f *fakePods) PreviewAt(_ context.Context, channelID string, breakStartMs i
 	f.asked = append(f.asked, channelID)
 	f.atAsked = append(f.atAsked, breakStartMs)
 	return f.pod, f.err
+}
+
+// PreviewAtMany records the batch and every break start in it, so a test can prove the guide
+// asks once per channel row and still resolves each break individually.
+func (f *fakePods) PreviewAtMany(_ context.Context, channelID string, breakStartsMs []int64) ([]filler.Pod, error) {
+	f.batches++
+	f.asked = append(f.asked, channelID)
+	f.atAsked = append(f.atAsked, breakStartsMs...)
+	pods := make([]filler.Pod, len(breakStartsMs))
+	for i := range pods {
+		pods[i] = f.pod
+	}
+	return pods, f.err
 }
 
 // Coverage records the channel so a test can prove the route resolves the id it was given

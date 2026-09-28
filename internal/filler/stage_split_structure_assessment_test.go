@@ -41,7 +41,7 @@ func TestSplitStagePersistsCompleteTimelineDecisionOnceAndProjectsItsCuts(t *tes
 		t.Fatal(err)
 	}
 	decisioner := &capturedStructureDecisioner{artifact: structureDecisionArtifact(t, proposal.Source, 30_000, false)}
-	stage := filler.NewSplitStage(splitter, st).WithCompleteTimelineStructureAssessment(decisioner)
+	stage := filler.NewSplitStage(splitter, st).WithFixedStructureRuntime(filler.StructureRuntime{Decisioner: decisioner})
 
 	result, err := stage.Run(t.Context(), clip)
 	if err != nil || result.Verdict != filler.VerdictReview {
@@ -63,6 +63,59 @@ func TestSplitStagePersistsCompleteTimelineDecisionOnceAndProjectsItsCuts(t *tes
 	}
 	if len(decisioner.media) != 1 {
 		t.Fatalf("persisted decision was reassessed: calls=%d", len(decisioner.media))
+	}
+}
+
+// The long-reel files apply live (#1659), so the runtime can be swapped mid-split. Here it is
+// swapped on EVERY read: a stage that read each part at its point of use would assess under one
+// runtime and record the shadow under the other.
+func TestSplitStageNeverMixesTwoStructureRuntimesInOneSplit(t *testing.T) {
+	st := newSplitMemStore()
+	hash := seedCompilation(st, "comps/swapped-runtime.mp4", 60_000)
+	clip := st.clips[hash]
+	clip.IsComposite = true
+	st.clips[hash] = clip
+	tools := &fakeTools{chapters: []filler.Chapter{
+		{StartMs: 0, EndMs: 28_000}, {StartMs: 28_000, EndMs: 60_000},
+	}}
+	splitter := newSplitter(st, tools, nil, t.TempDir())
+	proposal, err := splitter.Propose(t.Context(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact := structureDecisionArtifact(t, proposal.Source, 30_000, false)
+	type runtime struct {
+		decisioner *capturedStructureDecisioner
+		shadow     *splitShadowCapture
+	}
+	runtimes := [2]runtime{
+		{&capturedStructureDecisioner{artifact: artifact}, &splitShadowCapture{}},
+		{&capturedStructureDecisioner{artifact: artifact}, &splitShadowCapture{}},
+	}
+	reads := 0
+	stage := filler.NewSplitStage(splitter, st).WithStructureRuntime(func() filler.StructureRuntime {
+		rt := runtimes[reads%2]
+		reads++
+		return filler.StructureRuntime{Decisioner: rt.decisioner, Shadow: rt.shadow}
+	})
+
+	if _, err := stage.Run(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	first, second := runtimes[0], runtimes[1]
+	if reads != 1 || len(first.decisioner.media) != 1 || first.shadow.calls != 1 ||
+		len(second.decisioner.media) != 0 || second.shadow.calls != 0 {
+		t.Fatalf("one split read the runtime %d times; assessed by first=%d second=%d, shadowed by first=%d second=%d",
+			reads, len(first.decisioner.media), len(second.decisioner.media), first.shadow.calls, second.shadow.calls)
+	}
+
+	// The next split takes the swapped runtime whole. The persisted decision is not reassessed.
+	if _, err := stage.Run(t.Context(), clip); err != nil {
+		t.Fatal(err)
+	}
+	if reads != 2 || second.shadow.calls != 1 || first.shadow.calls != 1 || len(second.decisioner.media) != 0 {
+		t.Fatalf("second split: reads=%d shadowed by first=%d second=%d, reassessed=%d",
+			reads, first.shadow.calls, second.shadow.calls, len(second.decisioner.media))
 	}
 }
 
@@ -105,7 +158,7 @@ func TestSplitStageAssessmentFailureHoldsProposalForReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	decisioner := &capturedStructureDecisioner{err: errors.New("provider unavailable at /private/provider-response.json")}
-	stage := filler.NewSplitStage(splitter, st).WithCompleteTimelineStructureAssessment(decisioner)
+	stage := filler.NewSplitStage(splitter, st).WithFixedStructureRuntime(filler.StructureRuntime{Decisioner: decisioner})
 
 	result, err := stage.Run(t.Context(), clip)
 	if err != nil || result.Verdict != filler.VerdictReview {
@@ -140,7 +193,7 @@ func TestSplitStageAssessmentCancellationRemainsResumable(t *testing.T) {
 		t.Fatal(err)
 	}
 	decisioner := &capturedStructureDecisioner{err: context.Canceled}
-	stage := filler.NewSplitStage(splitter, st).WithCompleteTimelineStructureAssessment(decisioner)
+	stage := filler.NewSplitStage(splitter, st).WithFixedStructureRuntime(filler.StructureRuntime{Decisioner: decisioner})
 
 	result, err := stage.Run(t.Context(), clip)
 	if !errors.Is(err, context.Canceled) || result.Verdict == filler.VerdictReview {
@@ -165,7 +218,9 @@ func TestSplitStageProjectsConfirmedWindowSetDecisionIntoCompilationCuts(t *test
 		t.Fatal(err)
 	}
 	artifact := structureWindowDecisionArtifact(t, proposal.Source, 150_000)
-	stage := filler.NewSplitStage(splitter, st).WithCompleteTimelineStructureAssessment(&capturedStructureDecisioner{artifact: artifact})
+	stage := filler.NewSplitStage(splitter, st).WithFixedStructureRuntime(filler.StructureRuntime{
+		Decisioner: &capturedStructureDecisioner{artifact: artifact},
+	})
 	result, err := stage.Run(t.Context(), clip)
 	if err != nil || result.Verdict != filler.VerdictReview {
 		t.Fatalf("result=%+v error=%v", result, err)

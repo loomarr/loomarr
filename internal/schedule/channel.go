@@ -118,24 +118,35 @@ type Channel struct {
 	// see a programme re-cut under them; new splits apply to later airings. Transient: reconcile
 	// derives it from the accepted Desired cycle (playout.CommittedSplits).
 	PinnedCuts map[string][]int64 `json:"-"`
-	// LastAired is when each key last aired on THIS channel (§3.1) — the recency signal
-	// placement biases on, loaded from the airings table by the caller.
+	// LastAired is when each unit (library item id: one episode or film) last aired on THIS
+	// channel (§3.1) — the recency signal placement biases on, loaded from the airings table
+	// by the caller AS OF the start of the window being arranged (#1674): anything recorded
+	// later belongs to the next window, so a tune-in cannot re-arrange the window on air.
 	//
 	// Observed state rather than configuration: nothing authors it, it has no ChannelPolicy
 	// counterpart, and an empty map is always valid (a fresh channel, or a store that could
 	// not answer) — placement then behaves exactly as it did before recency existed.
-	LastAired map[provision.Key]time.Time
+	LastAired map[string]time.Time
 	// DefaultWindow is the global rolling-window horizon (§6.5, sched.window_hours,
 	// default 24h) reconcile sets from settings before ComputeDesiredAt — the pure
 	// schedule package can't read settings, so this transient field carries the default
 	// the way BreaksPerHour does. A channel/rule Window overrides it; 0 here = the whole
 	// run (the policy-free path leaves it 0, preserving today's un-windowed behavior).
 	DefaultWindow time.Duration
-	FillerRef     string        // ref to the channel's filler list (§10); "" = none yet
-	TunarrID      string        // retained Tunarr projection id; "" until first-ever successful projection
-	Status        ChannelStatus // Loomarr-side status
-	Shuffle       ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)
-	UpdatedAt     int64         // epoch seconds (store stamps this; §5 epoch-BIGINT convention)
+	// WindowZone is the wall clock the rolling-window grid is laid on (guide.timezone, else the
+	// container's zone), so a daily window turns at local midnight, not 00:00 UTC (#1675).
+	// Transient, like DefaultWindow. Nil = UTC.
+	WindowZone *time.Location `json:"-"`
+	// WindowOpened names the rolling window being arranged by its opening instant. Zero = the
+	// window `now` falls in. Reconcile sets it while the programme that crossed a boundary is
+	// still airing: until that programme ends, the committed window is still the one it belongs
+	// to (#1675 carry-over). Transient.
+	WindowOpened time.Time     `json:"-"`
+	FillerRef    string        // ref to the channel's filler list (§10); "" = none yet
+	TunarrID     string        // retained Tunarr projection id; "" until first-ever successful projection
+	Status       ChannelStatus // Loomarr-side status
+	Shuffle      ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)
+	UpdatedAt    int64         // epoch seconds (store stamps this; §5 epoch-BIGINT convention)
 }
 
 // ShuffleParams carries the deterministic seed material for Shuffle (§9/§10). The
