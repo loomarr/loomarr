@@ -23,6 +23,9 @@ const meta = {
     steps,
     currentId: "checklist",
     statusById: { bootstrap: "done", checklist: "current" },
+    // Reached steps are buttons back to themselves; the rest of the rail stays text.
+    reachable: new Set(["bootstrap", "checklist"]),
+    onStep: noop,
     title: "Connect your services",
     description: "Loomarr live-tests each dependency. A red check tells you exactly what to fix.",
     children: body,
@@ -37,6 +40,7 @@ const FirstStep: Story = {
   args: {
     currentId: "bootstrap",
     statusById: { bootstrap: "current" },
+    reachable: new Set(["bootstrap"]),
     title: "Create your admin account",
     description: "This account owns Loomarr. You can set it up before connecting a media server.",
     onBack: undefined,
@@ -55,6 +59,7 @@ const WithSkippable: Story = {
       library: "done",
       users: "current",
     },
+    reachable: new Set(["bootstrap", "checklist", "library", "users"]),
     title: "Import media-server users",
     description: "Only imported accounts can sign in. Skippable for a solo install.",
     onSkip: noop,

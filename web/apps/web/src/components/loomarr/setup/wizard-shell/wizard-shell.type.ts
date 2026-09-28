@@ -26,6 +26,10 @@ interface WizardShellProps {
   // step body share this so clicking a sub-item reveals its section (§13 delight).
   activeSubItem?: string;
   onSubItem?: (id: string) => void;
+  // The rail's steps are buttons, as the mock draws them, but only the steps in `reachable`
+  // (the ones the operator has reached) go anywhere. The current step and the rest stay text.
+  reachable?: ReadonlySet<string>;
+  onStep?: (id: string) => void;
   // Heading + lede for the step being shown.
   title: string;
   description?: string;
