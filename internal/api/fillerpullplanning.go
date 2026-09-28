@@ -78,7 +78,7 @@ func (s *Server) proposeFillerPull(ctx context.Context, in *proposeFillerPullInp
 		plan = append(plan, filler.PullPlanRow{
 			SourceID: candidate.Identity.SourceID, Provider: candidate.Identity.Provider,
 			RemoteID: candidate.Identity.RemoteID, URL: candidate.URL, Tag: tag,
-			Name: orPlaceholder(candidate.Title, candidate.Identity.RemoteID), Why: decision.Detail,
+			Name: orPlaceholder(candidate.Title, candidate.Identity.RemoteID), Why: decision.Detail, Gap: decision.Gap,
 			License: candidate.License, ObservedYear: candidate.ObservedYear,
 			PublishedAt: candidate.PublishedAt, DurationMS: candidate.DurationMS,
 			Height: candidate.Height, Geography: candidate.Geography,

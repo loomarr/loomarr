@@ -562,7 +562,7 @@ func TestIngestSourceItems_PassesDiscoveryHintsToTheFetcher(t *testing.T) {
 		start: testInteractiveOperationLauncher,
 	}
 	if _, err := a.IngestSourceItems(t.Context(), "archive:ads", "archive", []filler.DiscoveredRef{
-		{ID: "ad-1", URL: "https://archive.org/details/ad-1", DurationMS: 30_000, Height: 480},
+		{ID: "ad-1", URL: "https://archive.org/details/ad-1", DurationMS: 30_000, Height: 480, Gap: "era:1990-1999"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -570,6 +570,10 @@ func TestIngestSourceItems_PassesDiscoveryHintsToTheFetcher(t *testing.T) {
 	case sources := <-fetched.sources:
 		if sources[0].DurationMS != 30_000 || sources[0].Height != 480 {
 			t.Fatalf("source = %+v, want the discovered duration and height", sources[0])
+		}
+		// #749: the coverage gap the pass selected the item for reaches the downloaded artifact.
+		if sources[0].Gap != "era:1990-1999" {
+			t.Fatalf("source gap = %q, want the selection's gap", sources[0].Gap)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("downloader was not called")

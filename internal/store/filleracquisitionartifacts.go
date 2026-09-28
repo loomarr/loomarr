@@ -13,7 +13,7 @@ import (
 
 const acquisitionArtifactSelect = `SELECT id, acquisition_id, source_id, provider, source_url, remote_id,
 	staging_path, media_path, sidecar_path, media_sha256, media_bytes, clip_hash, state,
-	repair_reason, completed_at, updated_at, provider_archive_entry, provider_archive_committed
+	repair_reason, completed_at, updated_at, provider_archive_entry, provider_archive_committed, gap
 	FROM filler_acquisition_artifacts`
 
 func boolInt(value bool) int64 {
@@ -42,8 +42,8 @@ func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []f
 	query := s.ph(`INSERT INTO filler_acquisition_artifacts
 		(id, acquisition_id, source_id, provider, source_url, remote_id, staging_path, media_path,
 		 sidecar_path, media_sha256, media_bytes, clip_hash, state, repair_reason, completed_at, updated_at,
-		 provider_archive_entry, provider_archive_committed)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 provider_archive_entry, provider_archive_committed, gap)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 		 acquisition_id=excluded.acquisition_id, source_id=excluded.source_id,
 		 provider=excluded.provider, source_url=excluded.source_url, remote_id=excluded.remote_id,
@@ -53,14 +53,14 @@ func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []f
 		 state=excluded.state, repair_reason=excluded.repair_reason,
 		 completed_at=excluded.completed_at, updated_at=excluded.updated_at,
 		 provider_archive_entry=excluded.provider_archive_entry,
-		 provider_archive_committed=excluded.provider_archive_committed`)
+		 provider_archive_committed=excluded.provider_archive_committed, gap=excluded.gap`)
 	for _, artifact := range artifacts {
 		if _, err := tx.ExecContext(ctx, query,
 			artifact.ID, artifact.AcquisitionID, artifact.SourceID, artifact.Provider, artifact.SourceURL, artifact.RemoteID,
 			artifact.StagingPath, artifact.MediaPath, artifact.SidecarPath, artifact.MediaSHA256,
 			artifact.MediaBytes, artifact.ClipHash, string(artifact.State), artifact.RepairReason,
 			epoch(artifact.CompletedAt), epoch(artifact.UpdatedAt), artifact.ProviderArchiveEntry,
-			boolInt(artifact.ProviderArchiveCommitted)); err != nil {
+			boolInt(artifact.ProviderArchiveCommitted), artifact.Gap); err != nil {
 			return fmt.Errorf("upsert filler acquisition artifact %s: %w", artifact.ID, err)
 		}
 	}
@@ -79,7 +79,7 @@ func scanAcquisitionArtifact(sc scannable) (filler.AcquisitionArtifact, error) {
 		&artifact.SourceURL, &artifact.RemoteID, &artifact.StagingPath, &artifact.MediaPath, &artifact.SidecarPath,
 		&artifact.MediaSHA256, &artifact.MediaBytes, &artifact.ClipHash, &state,
 		&artifact.RepairReason, &completedAt, &updatedAt, &artifact.ProviderArchiveEntry,
-		&providerArchiveCommitted,
+		&providerArchiveCommitted, &artifact.Gap,
 	); err != nil {
 		return filler.AcquisitionArtifact{}, err
 	}

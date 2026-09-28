@@ -116,7 +116,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 			return nil, errConflict("A candidate in this pull no longer matches its source",
 				"The candidate identity no longer belongs to the registered provider. Dismiss it and propose a new pull.")
 		}
-		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, RemoteID: row.RemoteID, Kind: src.Kind, URL: url})
+		targets = append(targets, filler.AcquisitionTarget{SourceID: src.ID, RemoteID: row.RemoteID, Kind: src.Kind, URL: url, Gap: row.Gap})
 	}
 
 	p.Status = filler.PullApproved

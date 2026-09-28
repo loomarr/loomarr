@@ -29,6 +29,9 @@ func TestPlanAcquisitionFor_GapEraOutranksRepresentationQuality(t *testing.T) {
 	if !strings.Contains(plan.Selected[0].Detail, "coverage gap") {
 		t.Fatalf("detail = %q, want the gap named as the reason", plan.Selected[0].Detail)
 	}
+	if got := plan.Selected[0].Gap; got != "era:1990-1999" {
+		t.Fatalf("decision gap = %q, want the gap it was selected for recorded", got)
+	}
 	// No gaps: the historical quality ranking is unchanged.
 	plain, err := filler.PlanAcquisition(filler.AcquisitionIntent{Count: 1}, input, nil)
 	if err != nil {
@@ -51,6 +54,28 @@ func TestPlanAcquisitionFor_AGapNeverRejectsACandidate(t *testing.T) {
 	}
 	if len(plan.Selected) != 2 || len(plan.Rejected) != 0 {
 		t.Fatalf("selected %d rejected %+v, want both kept: a gap ranks, it does not filter", len(plan.Selected), plan.Rejected)
+	}
+	for _, d := range plan.Selected {
+		if d.Gap != "" {
+			t.Fatalf("%s recorded gap %q, want none: it fills no gap", d.Candidate.Identity.RemoteID, d.Gap)
+		}
+	}
+}
+
+// Merged windows stay one gap, and open-ended ones keep a stable key.
+func TestGapKey(t *testing.T) {
+	for _, tc := range []struct {
+		r    filler.EraRange
+		want string
+	}{
+		{filler.EraRange{From: 1990, To: 1999}, "era:1990-1999"},
+		{filler.EraRange{From: 2005}, "era:2005-"},
+		{filler.EraRange{To: 1979}, "era:-1979"},
+		{filler.EraRange{}, ""},
+	} {
+		if got := filler.EraGapKey(tc.r); got != tc.want {
+			t.Errorf("EraGapKey(%+v) = %q, want %q", tc.r, got, tc.want)
+		}
 	}
 }
 
@@ -98,6 +123,9 @@ func TestFetch_ScheduledPassTakesGapEraItemsFirst(t *testing.T) {
 	}
 	if len(stub.queuedIDs) != 1 || stub.queuedIDs[0] != "nineties" {
 		t.Fatalf("queued %v, want the gap-era item first", stub.queuedIDs)
+	}
+	if !reflect.DeepEqual(stub.queuedGaps, []string{"era:1990-1999"}) {
+		t.Fatalf("queued gaps %q, want the download tagged with the gap it was for", stub.queuedGaps)
 	}
 }
 

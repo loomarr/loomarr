@@ -211,6 +211,9 @@ type DiscoveredRef struct {
 	Height        int
 	Availability  string
 	LiveStatus    string
+	// Gap is the channel coverage gap the pass selected this item for (EraGapKey, #749). Set only
+	// on the way to ingest, where it is recorded on the downloaded artifact.
+	Gap string
 }
 
 // FetchIngestor hands URLs to the ordinary ingest path.
@@ -641,6 +644,7 @@ func (f *Fetcher) run(ctx context.Context, sourceID string, scheduled bool) (Fet
 				Title: decision.Candidate.Title, License: decision.Candidate.License,
 				ObservedYear: decision.Candidate.ObservedYear, PublishedAt: decision.Candidate.PublishedAt,
 				DurationMS: decision.Candidate.DurationMS, Height: decision.Candidate.Height,
+				Gap: decision.Gap,
 			})
 		}
 		if len(urls) == 0 {

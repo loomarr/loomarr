@@ -27,6 +27,40 @@ func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
 	}
 }
 
+// #749: the coverage gap a candidate was selected for is kept on the pending pull and reaches
+// the approved download, so what the operator agreed to and what arrives share one record.
+func TestApproveFillerPull_TargetsCarryTheGapTheirCandidateFills(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	ff.Gaps = []filler.EraRange{{From: 1990, To: 1999}}
+	ff.Candidates = []filler.AcquisitionCandidate{
+		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "in-gap"},
+			URL: "https://archive.org/details/in-gap", ObservedYear: 1994},
+		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "modern"},
+			URL: "https://archive.org/details/modern", ObservedYear: 2015},
+	}
+	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	stored, err := st.GetPull(t.Context(), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gaps := map[string]string{}
+	for _, row := range stored.Plan {
+		gaps[row.RemoteID] = row.Gap
+	}
+	if gaps["in-gap"] != "era:1990-1999" || gaps["modern"] != "" {
+		t.Fatalf("pending plan gaps = %v, want only the 1994 item tagged", gaps)
+	}
+	decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve", `{}`, adminToken))
+	approved := map[string]string{}
+	for _, target := range ff.pullTargets {
+		approved[target.RemoteID] = target.Gap
+	}
+	if approved["in-gap"] != "era:1990-1999" || approved["modern"] != "" || len(approved) != 2 {
+		t.Fatalf("approved target gaps = %v, want the plan's gaps carried to ingest", approved)
+	}
+}
+
 func TestApproveFillerPull_NoteIsAnAnnotationForLegacySourceLevelPlan(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)

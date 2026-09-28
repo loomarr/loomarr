@@ -56,7 +56,8 @@ func PlanAcquisitionFor(intent AcquisitionIntent, candidates []AcquisitionCandid
 		eligible = eligible[1:]
 		decision.Disposition = CandidateSelected
 		decision.Detail = "selected by deterministic quality, diversity, and identity ranking"
-		if fillsGap(decision.Candidate, gaps) {
+		if gap, ok := gapFilled(decision.Candidate, gaps); ok {
+			decision.Gap = EraGapKey(gap)
 			decision.Detail = fmt.Sprintf("selected first: its year %d falls in a channel coverage gap", decision.Candidate.ObservedYear)
 		}
 		plan.Selected = append(plan.Selected, decision)
@@ -150,7 +151,9 @@ func candidateBetter(a, b AcquisitionCandidate, usedSources map[string]bool, use
 	var av, bv bool
 	// Relevance to a channel that is short of material outranks representation quality: a sharp
 	// modern spot does nothing for a channel whose breaks cannot fill from its own era.
-	if av, bv = fillsGap(a, gaps), fillsGap(b, gaps); av != bv {
+	_, av = gapFilled(a, gaps)
+	_, bv = gapFilled(b, gaps)
+	if av != bv {
 		return av
 	}
 	if a.Height != b.Height {
@@ -167,18 +170,36 @@ func candidateBetter(a, b AcquisitionCandidate, usedSources map[string]bool, use
 	return a.Identity.Key() < b.Identity.Key()
 }
 
-// fillsGap reports whether a candidate's OBSERVED year falls in a gap era. A candidate with no
+// gapFilled returns the gap era a candidate's OBSERVED year falls in. A candidate with no
 // observed year fills no gap: missing metadata never satisfies a target (see AcquisitionIntent).
-func fillsGap(c AcquisitionCandidate, gaps []EraRange) bool {
+func gapFilled(c AcquisitionCandidate, gaps []EraRange) (EraRange, bool) {
 	if c.ObservedYear <= 0 {
-		return false
+		return EraRange{}, false
 	}
 	for _, r := range gaps {
 		if !r.Any() && r.Contains(c.ObservedYear) {
-			return true
+			return r, true
 		}
 	}
-	return false
+	return EraRange{}, false
+}
+
+// EraGapKey is the stable record of an era gap an acquisition was for (#749): "era:1990-1999",
+// "era:2005-" or "era:-1979"; "" for any era, which is never a gap. The "era:" prefix leaves room
+// for the other gap kinds a download can be for, without a schema change.
+func EraGapKey(r EraRange) string {
+	if r.Any() {
+		return ""
+	}
+	key := "era:"
+	if r.From > 0 {
+		key += fmt.Sprint(r.From)
+	}
+	key += "-"
+	if r.To > 0 {
+		key += fmt.Sprint(r.To)
+	}
+	return key
 }
 
 // CoverageGapEras are the era windows of the live channels whose breaks cannot fill from their
