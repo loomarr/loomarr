@@ -124,7 +124,13 @@ type ConditioningCutStream struct {
 }
 
 // ConditioningMeasurement is evidence only. It carries no verdict or policy threshold.
+//
+// ContainerDurationMs is ffprobe's format.duration, which is measured from ContainerStart
+// (format.start_time), not from zero: a re-encoded child typically starts at the AAC priming
+// offset. Evidence persisted before ContainerStart existed leaves it unavailable, and its
+// container timeline is read as starting at zero (#1540).
 type ConditioningMeasurement struct {
+	ContainerStart      OptionalMilliseconds         `json:"containerStart"`
 	ContainerDurationMs int64                        `json:"containerDurationMs"`
 	Streams             []ConditioningStream         `json:"streams"`
 	AVSkew              ConditioningSkew             `json:"avSkew"`
@@ -136,7 +142,8 @@ type ConditioningMeasurement struct {
 type conditioningProbeJSON struct {
 	Streams []conditioningProbeStreamJSON `json:"streams"`
 	Format  struct {
-		Duration string `json:"duration"`
+		StartTime string `json:"start_time"`
+		Duration  string `json:"duration"`
 	} `json:"format"`
 }
 
@@ -189,7 +196,7 @@ func (t *FFmpegTools) MeasureConditioning(ctx context.Context, req ConditioningR
 	artifactPath, parentPath := inputs.artifact, inputs.parent
 
 	raw, err := runConditioningCommand(ctx, t.FFprobePath, conditioningProbeOutputLimit, false,
-		"-v", "error", "-show_entries", "format=duration:stream=index,codec_type,start_time,duration,avg_frame_rate,sample_rate",
+		"-v", "error", "-show_entries", "format=start_time,duration:stream=index,codec_type,start_time,duration,avg_frame_rate,sample_rate",
 		"-of", "json", artifactPath)
 	if err != nil {
 		return ConditioningMeasurement{}, fmt.Errorf("condition media probe: %w", err)
@@ -207,7 +214,12 @@ func (t *FFmpegTools) MeasureConditioning(ctx context.Context, req ConditioningR
 		return ConditioningMeasurement{}, err
 	}
 
-	measurement := ConditioningMeasurement{ContainerDurationMs: duration.Milliseconds}
+	containerStart, err := parseConditioningMilliseconds(probed.Format.StartTime)
+	if err != nil {
+		return ConditioningMeasurement{}, fmt.Errorf("%w: container start", err)
+	}
+
+	measurement := ConditioningMeasurement{ContainerStart: containerStart, ContainerDurationMs: duration.Milliseconds}
 	for _, projected := range streams {
 		stream, kind, index := projected.stream, projected.kind, projected.index
 		measured := ConditioningStream{Kind: kind, Index: index}
@@ -259,7 +271,7 @@ func (t *FFmpegTools) MeasureConditioning(ctx context.Context, req ConditioningR
 		return ConditioningMeasurement{}, fmt.Errorf("%w: audio loudness summary is incomplete", ErrConditioningOutput)
 	}
 	for _, intended := range req.IntendedCuts {
-		matched, err := t.measureConditioningCut(ctx, artifactPath, parentPath, measurement.ContainerDurationMs, measurement.Streams, intended)
+		matched, err := t.measureConditioningCut(ctx, artifactPath, parentPath, measurement.ContainerStart.Milliseconds, measurement.ContainerDurationMs, measurement.Streams, intended)
 		if err != nil {
 			return ConditioningMeasurement{}, err
 		}
@@ -1168,14 +1180,24 @@ type conditioningPacket struct {
 	hash     string
 }
 
-func (t *FFmpegTools) measureConditioningCut(ctx context.Context, childPath, parentPath string, childDurationMs int64, childStreams []ConditioningStream, intended Interval) (ConditioningCutMeasurement, error) {
+func (t *FFmpegTools) measureConditioningCut(ctx context.Context, childPath, parentPath string, childContainerStartMs, childDurationMs int64, childStreams []ConditioningStream, intended Interval) (ConditioningCutMeasurement, error) {
 	measured := ConditioningCutMeasurement{}
-	childStart, err := t.conditioningPackets(ctx, childPath, 0, min(conditioningEdgeWindowMs, childDurationMs))
+	// The child's edge windows follow its container timeline, which starts at format.start_time
+	// (never read before zero, as before #1540) and ends format.duration later.
+	childTimelineStart := max(int64(0), childContainerStartMs)
+	childTimelineEnd, err := checkedConditioningAdd(childContainerStartMs, childDurationMs)
+	if err != nil {
+		return measured, err
+	}
+	if childTimelineEnd <= childTimelineStart {
+		return measured, fmt.Errorf("%w: child container timeline is empty", ErrConditioningOutput)
+	}
+	childStart, err := t.conditioningPackets(ctx, childPath, childTimelineStart, min(childTimelineStart+conditioningEdgeWindowMs, childTimelineEnd))
 	if err != nil {
 		return measured, fmt.Errorf("measure child start edge: %w", err)
 	}
-	childEndStart := max(int64(0), childDurationMs-conditioningEdgeWindowMs)
-	childEnd, err := t.conditioningPackets(ctx, childPath, childEndStart, childDurationMs)
+	childEndStart := max(childTimelineStart, childTimelineEnd-conditioningEdgeWindowMs)
+	childEnd, err := t.conditioningPackets(ctx, childPath, childEndStart, childTimelineEnd)
 	if err != nil {
 		return measured, fmt.Errorf("measure child end edge: %w", err)
 	}

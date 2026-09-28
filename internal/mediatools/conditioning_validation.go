@@ -25,6 +25,15 @@ func ValidateConditioningEvidence(m ConditioningMeasurement, mode ConditioningEv
 	if m.ContainerDurationMs <= 0 || m.ContainerDurationMs > ConditioningMaxDurationMs {
 		return fmt.Errorf("%w: container duration is unavailable or out of bounds", ErrConditioningOutput)
 	}
+	if !validOptionalTiming(m.ContainerStart) {
+		return fmt.Errorf("%w: unavailable container start carries a guessed value", ErrConditioningOutput)
+	}
+	// format.duration is measured from format.start_time, so the container timeline ends at their
+	// sum. Evidence without a measured start keeps the zero-based timeline it was written with.
+	containerEnd, ok := checkedMillisecondsAdd(m.ContainerStart.Milliseconds, m.ContainerDurationMs)
+	if !ok {
+		return fmt.Errorf("%w: container timeline overflows", ErrConditioningOutput)
+	}
 	if len(m.Streams) != 2 {
 		return fmt.Errorf("%w: persisted conditioning requires exactly one audio/video pair", ErrConditioningOutput)
 	}
@@ -55,7 +64,8 @@ func ValidateConditioningEvidence(m ConditioningMeasurement, mode ConditioningEv
 			return fmt.Errorf("%w: stream timing is unavailable or invalid", ErrConditioningOutput)
 		}
 		end, ok := checkedMillisecondsAdd(stream.Start.Milliseconds, stream.Duration.Milliseconds)
-		if !ok || end <= 0 || end > m.ContainerDurationMs {
+		if !ok || end <= 0 || end > containerEnd ||
+			(m.ContainerStart.Available && stream.Start.Milliseconds < m.ContainerStart.Milliseconds) {
 			return fmt.Errorf("%w: stream timing is outside the container", ErrConditioningOutput)
 		}
 		switch stream.Kind {
