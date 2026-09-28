@@ -17,8 +17,11 @@ type poolBody struct {
 		ChannelID string `json:"channelId"`
 		Name      string `json:"name"`
 		Number    int    `json:"number"`
-		Level     string `json:"level"`
-		Total     int    `json:"total"`
+		Level      string `json:"level"`
+		Total      int    `json:"total"`
+		DurationMs int64  `json:"durationMs"`
+		Categories int    `json:"categories"`
+		Brands     int    `json:"brands"`
 	} `json:"channels"`
 }
 
@@ -54,7 +57,7 @@ func TestFillerPool_RendersCountsAndChannelsInOrder(t *testing.T) {
 			{ChannelID: "ch-3", Name: "Newsreel", Number: 3,
 				Report: filler.CoverageReport{Level: filler.MatchBumperCard, Total: 0}},
 			{ChannelID: "ch-42", Name: "Cartoons", Number: 42,
-				Report: filler.CoverageReport{Level: filler.MatchExact, Total: 44}},
+				Report: filler.CoverageReport{Level: filler.MatchExact, Total: 44, DurationMs: 1_320_000, Categories: 5, Brands: 17}},
 		},
 	}
 
@@ -74,6 +77,11 @@ func TestFillerPool_RendersCountsAndChannelsInOrder(t *testing.T) {
 	}
 	if body.Channels[1].Level != "exact" || body.Channels[1].Total != 44 {
 		t.Errorf("channels[1] = %+v, want exact/44", body.Channels[1])
+	}
+	// The all-channels coverage card reads "N categories · N brands" from this one response
+	// (#1667), so the distinct counts must come through for every channel, not just a total.
+	if c := body.Channels[1]; c.DurationMs != 1_320_000 || c.Categories != 5 || c.Brands != 17 {
+		t.Errorf("channels[1] = %+v, want 1320000 ms / 5 categories / 17 brands", c)
 	}
 }
 
