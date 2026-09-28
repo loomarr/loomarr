@@ -47,6 +47,9 @@ type FetchLimits struct {
 	// YouTube selection, whose flat listing can supply an honest known duration before download.
 	MinDuration func() time.Duration
 	MaxDuration func() time.Duration
+	// Compilations holds compilation reels back from every scheduled source until automatic
+	// splitting is certified (#1773). The zero gate takes them.
+	Compilations CompilationGate
 }
 
 // FetchSource is one pollable source.
@@ -782,6 +785,10 @@ func sourceVariantBetter(candidate, current AcquisitionCandidate) bool {
 }
 
 func (f *Fetcher) automaticRejection(source FetchSource, item DiscoveredRef) (SourceOutcome, bool) {
+	// Every provider: a compilation reel waits for certified splitting (#1773).
+	if f.limits.Compilations.Defers(source.Kind, int64(item.DurationMS)) {
+		return SourceOutcomeTooLong, true
+	}
 	if source.Kind != "youtube" {
 		return "", false
 	}

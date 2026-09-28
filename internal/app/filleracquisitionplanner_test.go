@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,5 +139,65 @@ func TestPlanAcquisition_ProviderPausePreventsEnumeration(t *testing.T) {
 	}
 	if called {
 		t.Error("provider enumerator ran while Archive.org was paused")
+	}
+}
+
+// #1773: a planned pull leaves compilation reels out, and says why, until the setting takes them.
+func TestPlanAcquisition_CompilationsWaitUntilTheSettingTakesThem(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	source := fillerstore.NewFillerSource("reels-archive", "archive", "reels_collection", "Reels", time.Now().UTC())
+	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	registered, err := st.ListFillerSources(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, other := range registered {
+		if other.ID != source.ID {
+			if err := st.SetFillerSourceEnabled(t.Context(), other.ID, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	enumerator := enumeratorFunc(func(context.Context, filler.FetchSource, int) ([]filler.DiscoveredRef, int, error) {
+		return []filler.DiscoveredRef{
+			{ID: "reel", URL: "https://archive.org/details/reel", DurationMS: 30 * 60 * 1000},
+			{ID: "spot", URL: "https://archive.org/details/spot", DurationMS: 45 * 1000},
+		}, 2, nil
+	})
+	for _, take := range []bool{false, true} {
+		adapter := fillerServiceAdapter{
+			pullPlanning: st,
+			sourceEnum:   enumerator,
+			compilations: filler.CompilationGate{
+				Take: func() bool { return take },
+				Over: func() time.Duration { return 2 * time.Minute },
+			},
+		}
+		plan, err := adapter.PlanAcquisition(t.Context(), filler.AcquisitionIntent{Count: 5})
+		if err != nil {
+			t.Fatal(err)
+		}
+		selected := map[string]bool{}
+		for _, d := range plan.Selected {
+			selected[d.Candidate.Identity.RemoteID] = true
+		}
+		if !selected["spot"] || selected["reel"] == !take {
+			t.Errorf("compilations taken=%v: selected %v", take, selected)
+		}
+		if take {
+			continue
+		}
+		var deferred *filler.AcquisitionDecision
+		for i, d := range plan.Rejected {
+			if d.Candidate.Identity.RemoteID == "reel" {
+				deferred = &plan.Rejected[i]
+			}
+		}
+		if deferred == nil || deferred.Disposition != filler.CandidateDurationExceeded ||
+			!strings.Contains(deferred.Detail, "filler.acquisition.compilations") {
+			t.Errorf("compilations off: the reel's rejection = %+v, want duration_exceeded naming the setting", deferred)
+		}
 	}
 }

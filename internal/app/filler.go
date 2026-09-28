@@ -507,14 +507,50 @@ func (a fetchStoreAdapter) FailCheck(ctx context.Context, id string, leaseUntil,
 
 // registeredSourceEnumerator dispatches only by the registered row's explicit provider kind.
 // A returned item's host is not provider policy and must never select this lane.
-type registeredSourceEnumerator struct{ youtube *clipfetch.YouTubeEnumerator }
+type registeredSourceEnumerator struct {
+	youtube *clipfetch.YouTubeEnumerator
+	// archive lists Archive.org collections; nil uses the live service, uncached.
+	archive archiveCatalog
+	// archiveRuntimes reports whether Archive.org items need their runtimes before selection.
+	// The collection search carries none, so while compilation reels are held back (#1773)
+	// each listed item's metadata is read to tell a reel from a single advert. nil never does.
+	archiveRuntimes func() bool
+}
+
+// archiveRuntimeBudget bounds reading one Archive.org source's item runtimes (#1773).
+const archiveRuntimeBudget = 20 * time.Second
+
+// archiveCatalog is the metadata-only half of the Archive.org downloader.
+type archiveCatalog interface {
+	EnumerateCollection(ctx context.Context, ref string, limit int) (clipfetch.DiscoveryResult, error)
+	Enrich(ctx context.Context, items []clipfetch.DiscoveredItem)
+}
 
 func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
 	switch source.Kind {
 	case "archive":
-		res, err := clipfetch.NewArchiveDownloader().EnumerateCollection(ctx, source.URI, limit)
+		archive := e.archive
+		if archive == nil {
+			archive = clipfetch.NewArchiveDownloader()
+		}
+		res, err := archive.EnumerateCollection(ctx, source.URI, limit)
 		if err != nil {
 			return nil, 0, err
+		}
+		if e.archiveRuntimes != nil && e.archiveRuntimes() {
+			// Archive.org throttles per-item metadata (clipfetch.Enrich: ~25 items in 15–25 s),
+			// so reading runtimes is bounded per source, and never to more than half the time
+			// left before the caller's deadline: a planned pull walks up to 12 sources inside one
+			// 90 s deadline, and runtimes must never be what makes it fail. Per item and
+			// non-fatal: a runtime not read in time stays unknown, the item is taken, and probe
+			// marks it a compilation on arrival if it is one.
+			wait := archiveRuntimeBudget
+			if deadline, ok := ctx.Deadline(); ok {
+				wait = min(wait, time.Until(deadline)/2)
+			}
+			budget, cancel := context.WithTimeout(ctx, wait)
+			archive.Enrich(budget, res.Items)
+			cancel()
 		}
 		out := make([]filler.DiscoveredRef, 0, len(res.Items))
 		for _, it := range res.Items {
@@ -738,8 +774,11 @@ type fillerServiceAdapter struct {
 	sources fillerSourceRegistry
 	// pullPlanning is the read side of candidate-level pull composition. It is separate from
 	// sources because approval history is evidence for "already queued/declined" selection.
-	pullPlanning  fillerPullPlanningStore
-	sourceEnum    filler.SourceEnumerator
+	pullPlanning fillerPullPlanningStore
+	sourceEnum   filler.SourceEnumerator
+	// compilations holds compilation reels out of planned pulls until automatic splitting is
+	// certified (#1773); the zero gate takes them.
+	compilations  filler.CompilationGate
 	archiveFinder *clipfetch.ArchiveSourceFinder
 	youtubeFinder *clipfetch.YouTubeSourceFinder
 	home          func() filler.Geography
