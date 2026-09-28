@@ -111,8 +111,8 @@ type TextProps = Omit<
   tone?: TextTone;
 };
 
-const dataRoles = new Set<TextRole>(["metadata", "time", "data", "channelNumber", "code"]);
-const mutedRoles = new Set<TextRole>(["label", "section", "metadata", "time"]);
+const dataRoles = new Set<TextRole>(["metadata", "time", "data", "channelNumber", "code", "cardChannelNumber"]);
+const mutedRoles = new Set<TextRole>(["label", "section", "metadata", "time", "cardMeta"]);
 const textTones = {
   danger: "$stateDanger",
   info: "$stateInfo",
@@ -134,7 +134,7 @@ const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
       color={
         tone
           ? textTones[tone]
-          : textRole === "channelNumber" || textRole === "code"
+          : textRole === "channelNumber" || textRole === "code" || textRole === "cardChannelNumber"
             ? "$actionPrimary"
             : mutedRoles.has(textRole)
               ? "$contentSecondary"
@@ -240,15 +240,24 @@ const ArtworkFrame = ({ children, density = "pointer", state, ...props }: Artwor
 
 type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
   percent: number;
-  tone?: "live" | "primary";
+  // `artwork` is drawn across a still (#1659 web mock cards): a light fill on a translucent track.
+  tone?: "artwork" | "live" | "primary";
 };
+
+const progressFill = { artwork: "$contentPrimary", live: "$stateLive", primary: "$actionPrimary" } as const;
 
 const ProgressTrack = ({ height = 4, percent, tone = "primary", ...props }: ProgressTrackProps) => {
   const bounded = Math.max(0, Math.min(100, percent));
   return (
-    <View {...props} backgroundColor="$surfaceCanvas" borderRadius="$round" height={height} overflow="hidden">
+    <View
+      {...props}
+      backgroundColor={tone === "artwork" ? "$artworkProgressTrack" : "$surfaceCanvas"}
+      borderRadius="$round"
+      height={height}
+      overflow="hidden"
+    >
       <View
-        backgroundColor={tone === "live" ? "$stateLive" : "$actionPrimary"}
+        backgroundColor={progressFill[tone]}
         borderRadius="$round"
         height="100%"
         width={`${bounded}%`}

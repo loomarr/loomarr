@@ -49,6 +49,10 @@ const semanticThemes = {
     artwork: {
       placeholder: "#1B1E24",
       scrim: "rgba(11, 12, 14, 0.66)",
+      // Over a photograph, so the same in both themes (#1659 web mock cards): the foot of the
+      // overlay card's gradient, and the progress track drawn across a still.
+      scrimStrong: "rgba(11, 12, 14, 0.92)",
+      progressTrack: "rgba(255, 255, 255, 0.15)",
     },
   },
   light: {
@@ -97,6 +101,8 @@ const semanticThemes = {
     artwork: {
       placeholder: "#E7EAF0",
       scrim: "rgba(11, 12, 14, 0.58)",
+      scrimStrong: "rgba(11, 12, 14, 0.92)",
+      progressTrack: "rgba(255, 255, 255, 0.15)",
     },
   },
 } as const;
@@ -121,6 +127,8 @@ const semanticSpace = {
 const semanticRadius = {
   control: 10,
   card: 16,
+  // The web mock's compact card (#1659): Home's Watching now and the Guide's On now.
+  cardCompact: 12,
   overlay: 24,
   round: 999,
 } as const;
@@ -175,6 +183,13 @@ const typography = {
     reading: { size: 16, lineHeight: 24, weight: "400" },
     channelNumber: { size: 28, lineHeight: 32, weight: "650" },
     code: { size: 36, lineHeight: 43, weight: "400" },
+    // The compact card (#1659 web mock), a pointer-density design. At touch and TV each role
+    // takes its nearest existing role's size (title → label, label → caption, meta and channel
+    // number → metadata), so no size is invented for a density nobody has mocked.
+    cardTitle: { size: 15, lineHeight: 20, weight: "600" },
+    cardLabel: { size: 13, lineHeight: 18, weight: "500" },
+    cardMeta: { size: 12, lineHeight: 16, weight: "400" },
+    cardChannelNumber: { size: 12, lineHeight: 16, weight: "600" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -191,6 +206,10 @@ const typography = {
     reading: { size: 17, lineHeight: 25, weight: "400" },
     channelNumber: { size: 30, lineHeight: 34, weight: "650" },
     code: { size: 40, lineHeight: 48, weight: "400" },
+    cardTitle: { size: 15, lineHeight: 21, weight: "600" },
+    cardLabel: { size: 14, lineHeight: 20, weight: "500" },
+    cardMeta: { size: 13, lineHeight: 18, weight: "400" },
+    cardChannelNumber: { size: 13, lineHeight: 18, weight: "600" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -207,6 +226,10 @@ const typography = {
     reading: { size: 24, lineHeight: 36, weight: "400" },
     channelNumber: { size: 38, lineHeight: 43, weight: "650" },
     code: { size: 52, lineHeight: 62, weight: "400" },
+    cardTitle: { size: 18, lineHeight: 25, weight: "600" },
+    cardLabel: { size: 17, lineHeight: 26, weight: "500" },
+    cardMeta: { size: 16, lineHeight: 22, weight: "400" },
+    cardChannelNumber: { size: 16, lineHeight: 22, weight: "600" },
   },
 } as const;
 
