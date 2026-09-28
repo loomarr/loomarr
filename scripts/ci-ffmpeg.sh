@@ -40,7 +40,12 @@ if [[ "$mode" == download && ! -f "$cached_archive" ]]; then
   mkdir -p "$cache_dir"
   partial="$(mktemp "$cache_dir/.ffmpeg.XXXXXX")"
   trap 'rm -f -- "$partial"' EXIT
-  curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
+  # `--retry` alone retries only timeouts and 408/429/5xx; a connection reset (curl 35, merge-group
+  # run 36360418631) failed the lane on its first attempt. `--retry-all-errors` retries every
+  # failure with curl's doubling backoff from one second, bounded by the attempt count and a
+  # five-minute retry window. curl discards a failed attempt's partial --output before retrying,
+  # and the digest check below still decides what is kept.
+  curl --fail --location --retry 5 --retry-all-errors --retry-max-time 300 --connect-timeout 20 --max-time 180 \
     --output "$partial" "https://github.com/BtbN/FFmpeg-Builds/releases/download/$release/$archive"
   actual="$(sha256sum "$partial")"
   [[ "${actual%% *}" == "$digest" ]] || { echo "FFmpeg archive checksum mismatch" >&2; exit 1; }
