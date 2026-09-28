@@ -118,10 +118,6 @@ func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
 	}
 }
 
-// hdrToSDRChain is the HDR→SDR filter chain on the default curve (prepared media and the legacy
-// arg builder); the pipeline builder calls hdrToSDR with the operator's curve.
-var hdrToSDRChain = hdrToSDR(DefaultToneCurve)
-
 // hdrToSDR is the CPU HDR→SDR filter chain on one curve (a CPU curve: see ToneCurve.cpu).
 //
 // The three steps are not interchangeable and the order is the whole trick:

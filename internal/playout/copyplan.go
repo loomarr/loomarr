@@ -83,7 +83,7 @@ func (f MediaFormat) PQ() bool {
 }
 
 // FormatProber reports a source's MediaFormat. An interface so callers are testable without exec,
-// mirroring AudioProber / TrackProber. The concrete prober (FFprobeFormatNextTo) lives in probe.go.
+// mirroring TrackProber. The concrete prober (FFprobeFormatNextTo) lives in probe.go.
 type FormatProber func(ctx context.Context, input string) (MediaFormat, error)
 
 // EncodePlan is the CANONICAL codec bucket a session is keyed on and encoded for (§9.1 V48). It is
@@ -220,16 +220,6 @@ func resolve(p DeviceProfile) EncodePlan {
 		return PlanBaseline
 	}
 }
-
-// ResolvePlan is the exported entry point callers use to bucket a client's advertised capabilities
-// into the session's EncodePlan (§9.1 V48). Thin wrapper over the pure resolve so the bucketing logic
-// stays unexported and single-sourced. (Named ResolvePlan, not Resolve, because quality.go already
-// owns Resolve for the quality-tier→Profile decision — a different resolution entirely.)
-//
-// ⚠ V50 (below) makes ServedPlan the entry point the play URL uses — it gates on the CHANNEL's codec,
-// not the client's capabilities. ResolvePlan remains the pure profile-richness helper ServedPlan
-// composes, and the one place the hevc8-vs-hevc10 (10-bit + surround) distinction lives.
-func ResolvePlan(p DeviceProfile) EncodePlan { return resolve(p) }
 
 // ServedPlan decides the EncodePlan a channel is served AS to a given client (§9.1 V50 — the
 // content-driven model). Two independent axes decide it:

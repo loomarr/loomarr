@@ -11,6 +11,19 @@ import (
 	"testing"
 )
 
+// decodeLuma decodes frame n of an H.264 elementary stream to its CODED 8-bit luma: the Y plane of
+// yuv420p, in the stream's own limited range. Never -pix_fmt gray: swscale converts to full-range
+// grey rather than copying Y (a neutral Y 171 reads 180; the check's coloured fixture reads 163
+// where Y is 170), so the expectation, a 65% blend of limited-range 235, was in the wrong space
+// (#1541).
+func decodeLuma(ctx context.Context, ffmpeg, path string, n int) ([]byte, error) {
+	yuv, err := decodeFrame(ctx, ffmpeg, path, n)
+	if err != nil {
+		return nil, err
+	}
+	return yuv[:checkWidth*checkHeight], nil
+}
+
 // THE WATERMARK SELF-CHECK ON THIS HOST'S REAL GPU (#1512 phase 1d). It runs WatermarkCheck for each
 // GPU family this ffmpeg can encode with and logs the verdict. Set PLAYOUT_TEST_WATERMARK to the
 // expected verdicts by FAMILY, e.g. "nvenc=works" for ffmpeg n9 (native or the image's) on a GeForce,

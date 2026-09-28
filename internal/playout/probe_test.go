@@ -47,9 +47,9 @@ func TestTracksOf_BucketsAndIndexesPerType(t *testing.T) {
 	}
 }
 
-func TestAudioTracksOf_InOrder(t *testing.T) {
-	// audioTracksOf feeds PickAudioTrack — the audio streams in ffmpeg's order, languages verbatim.
-	got := audioTracksOf(probeFrom(t, probeFixture).Streams)
+func TestSourceObservationAudioTracks_InOrder(t *testing.T) {
+	// AudioTracks feeds PickAudioTrack — the audio streams in ffmpeg's order, languages verbatim.
+	got := sourceObservationOf(probeFrom(t, probeFixture)).AudioTracks()
 	if len(got) != 2 || got[0].Language != "ENG" || got[1].Language != "rus" {
 		t.Fatalf("got %+v, want [ENG rus] in order", got)
 	}

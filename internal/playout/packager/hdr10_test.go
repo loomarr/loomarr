@@ -206,7 +206,7 @@ func TestHDR10SlateMatchesTheEncodersInit(t *testing.T) {
 	init, _ := hevcFixture(t)
 	slate := &Slate{init: append([]byte(nil), init...)} // the check precedes any sample
 	idle := func(context.Context, time.Time) (Item, error) { return Item{}, nil }
-	p, err := New(Config{FPS: 25, Dir: t.TempDir(), HDR10: testHDR10}, idle, ReadySlate(slate))
+	p, err := New(Config{FPS: 25, Dir: t.TempDir(), HDR10: testHDR10}, idle, readySlate(slate))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestPackagerWritesHDR10IntoInitAndSegments(t *testing.T) {
 	init, frags := hevcFixture(t)
 	dir := t.TempDir()
 	idle := func(context.Context, time.Time) (Item, error) { return Item{}, nil }
-	p, err := New(Config{FPS: 25, Dir: dir, HDR10: testHDR10}, idle, ReadySlate(nil))
+	p, err := New(Config{FPS: 25, Dir: dir, HDR10: testHDR10}, idle, readySlate(nil))
 	if err != nil {
 		t.Fatal(err)
 	}

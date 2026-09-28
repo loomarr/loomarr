@@ -76,38 +76,6 @@ func TestTierFor_UnknownDegradesToDefault(t *testing.T) {
 	}
 }
 
-// CRF is software-only. Hardware rate control handles a bitrate target far better than a
-// quality one, and v4l2m2m has no usable CRF at all — emitting it would fail at init.
-func TestQualityArgs_CrfIsSoftwareOnly(t *testing.T) {
-	sw := strings.Join(Profile{Encoder: EncoderSoftware, VideoBitrate: 5000}.qualityArgs(), " ")
-	if !strings.Contains(sw, "-crf") {
-		t.Errorf("software should get a CRF target, got %q", sw)
-	}
-	// libx265 is SOFTWARE too. Keying on the value rather than the family excluded it, so an HEVC
-	// software encode got the bitrate ladder with no `-crf` — the exact thing this function exists
-	// to override. Asserted explicitly because it is the case that was wrong.
-	swHEVC := strings.Join(Profile{Encoder: EncoderSoftwareHEVC, VideoBitrate: 5000}.qualityArgs(), " ")
-	if !strings.Contains(swHEVC, "-crf") {
-		t.Errorf("libx265 is software and should get a CRF target, got %q", swHEVC)
-	}
-
-	// ⚠ Derived from h264Engines, NOT a hand-written list. The previous version enumerated the
-	// eight h264 hardware encoders, which is why V49's nine HEVC additions were invisible to it:
-	// a test whose iteration source cannot contain the failing case is green by construction.
-	// Anything added to h264Engines is now covered here, in both codecs, with no second edit.
-	for _, base := range h264Engines {
-		if base == EncoderSoftware {
-			continue // asserted above — software is the one that DOES get CRF
-		}
-		for _, enc := range []Encoder{base, hevcVariant(base)} {
-			p := Profile{Encoder: enc, VideoBitrate: 5000}
-			if got := p.qualityArgs(); len(got) != 0 {
-				t.Errorf("%s is hardware and must not get CRF args, got %v", enc, got)
-			}
-		}
-	}
-}
-
 // The resolved profile must carry the chosen encoder through — a ladder that silently reset
 // it to software would undo the whole detection step.
 func TestResolve_KeepsTheChosenEncoder(t *testing.T) {
@@ -117,8 +85,8 @@ func TestResolve_KeepsTheChosenEncoder(t *testing.T) {
 	}
 }
 
-// lastSpeed must return the PEAK sample, not the last — a cold encoder ramps, and taking whichever
-// sample landed last collapsed a warm ~8x to ~1x and capped the box at one hardware channel.
+// lastSpeedObserved must return the PEAK sample, not the last — a cold encoder ramps, and taking
+// whichever sample landed last collapsed a warm ~8x to ~1x and capped the box at one hardware channel.
 func TestLastSpeed_TakesThePeakNotTheLast(t *testing.T) {
 	// A realistic cold ramp that then falls off at teardown: peak is 8.66, last is a cold 0.90.
 	progress := strings.NewReader(strings.Join([]string{
@@ -128,15 +96,15 @@ func TestLastSpeed_TakesThePeakNotTheLast(t *testing.T) {
 		"frame=150", "speed=0.90x", // a depressed final sample
 		"progress=end",
 	}, "\n"))
-	if got := lastSpeed(progress); got != 8.66 {
-		t.Errorf("lastSpeed = %v, want the peak 8.66", got)
+	if got := lastSpeedObserved(progress, nil); got != 8.66 {
+		t.Errorf("lastSpeedObserved = %v, want the peak 8.66", got)
 	}
 }
 
 // A trial that never emitted a usable speed (all N/A) reports 0, which channelsFromSpeed floors to 1.
 func TestLastSpeed_NoUsableSampleIsZero(t *testing.T) {
 	r := strings.NewReader("speed=N/A\nspeed=0x\nprogress=end\n")
-	if got := lastSpeed(r); got != 0 {
-		t.Errorf("lastSpeed = %v, want 0 when no usable sample", got)
+	if got := lastSpeedObserved(r, nil); got != 0 {
+		t.Errorf("lastSpeedObserved = %v, want 0 when no usable sample", got)
 	}
 }

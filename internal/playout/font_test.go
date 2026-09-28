@@ -28,10 +28,10 @@ const filtersWithoutDrawText = `Filters:
 `
 
 func TestParseHasDrawText_ReadsTheNameColumn(t *testing.T) {
-	if !parseHasDrawText([]byte(filtersWithDrawText)) {
+	if !parseHasFilter([]byte(filtersWithDrawText), "drawtext") {
 		t.Error("drawtext is listed in this build and was not found")
 	}
-	if parseHasDrawText([]byte(filtersWithoutDrawText)) {
+	if parseHasFilter([]byte(filtersWithoutDrawText), "drawtext") {
 		t.Error("drawtext is absent from this build and was reported present")
 	}
 }
@@ -41,13 +41,13 @@ func TestParseHasDrawText_ReadsTheNameColumn(t *testing.T) {
 func TestParseHasDrawText_IgnoresTheDescriptionColumn(t *testing.T) {
 	mentionOnly := ` T.. subtitles  V->V  Render text subtitles, unlike drawtext, onto the video.
 `
-	if parseHasDrawText([]byte(mentionOnly)) {
+	if parseHasFilter([]byte(mentionOnly), "drawtext") {
 		t.Error("matched the description column — a substring search, not a column match")
 	}
 }
 
 func TestParseHasDrawText_EmptyOutputIsNotAYes(t *testing.T) {
-	if parseHasDrawText(nil) {
+	if parseHasFilter(nil, "drawtext") {
 		t.Error("no output must never resolve to 'the filter is present'")
 	}
 }

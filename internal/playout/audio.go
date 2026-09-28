@@ -1,9 +1,6 @@
 package playout
 
-import (
-	"context"
-	"strings"
-)
+import "strings"
 
 // Audio track selection (§9.1) — which of a file's audio tracks the viewer actually hears.
 //
@@ -77,11 +74,3 @@ func PickAudioTrack(tracks []AudioTrack, prefer string) int {
 	}
 	return 0
 }
-
-// AudioProber reports a source's audio tracks, in the order ffmpeg will number them.
-//
-// An interface so the resolver can be tested without exec, and so a failing probe is a normal
-// return rather than a special case: nil tracks select index 0, which is what the code did
-// before this existed. The concrete prober (FFprobeAudioNextTo) lives in probe.go, where all
-// ffprobe use is consolidated.
-type AudioProber func(ctx context.Context, input string) ([]AudioTrack, error)
