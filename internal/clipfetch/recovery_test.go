@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
-func openRecoveryStore(t *testing.T) store.Store {
+func openRecoveryStore(t *testing.T) fillerstore.Store {
 	t.Helper()
-	db, err := store.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "recovery.db"), true)
+	db, err := fillerstore.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "recovery.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +21,7 @@ func openRecoveryStore(t *testing.T) store.Store {
 	return db
 }
 
-func seedRecoveryArtifact(t *testing.T, db store.Store, artifact filler.AcquisitionArtifact) {
+func seedRecoveryArtifact(t *testing.T, db fillerstore.Store, artifact filler.AcquisitionArtifact) {
 	t.Helper()
 	if err := db.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{
 		ID: artifact.AcquisitionID, Trigger: filler.AcquisitionPull, SourceID: artifact.SourceID,

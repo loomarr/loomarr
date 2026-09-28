@@ -4,14 +4,14 @@ import (
 	"context"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 // FillerAcquisitionPlanner is a shared API-test fixture that keeps source-policy
 // checks and acquisition ranking real while allowing a test to supply discovered
 // candidates where that is the subject under test.
 type FillerAcquisitionPlanner struct {
-	Store      store.Store
+	Store      fillerstore.FillerSourceStore
 	Candidates []filler.AcquisitionCandidate
 	// Gaps stand in for the channel coverage gaps the real planner reads from the pool (#749).
 	Gaps filler.CoverageGaps

@@ -219,7 +219,7 @@ func PruneBackups(dir string, retain int) (int, error) {
 func SQLiteBackuper(st Store) interface {
 	StreamBackup(ctx context.Context, w io.Writer) error
 } {
-	s, ok := st.(*sqlStore)
+	s, ok := adapterOf(st)
 	if !ok || s.dialect != DialectSQLite {
 		return nil
 	}
@@ -233,7 +233,7 @@ func SQLiteBackuper(st Store) interface {
 func BackupWriter(st Store) interface {
 	WriteBackup(ctx context.Context, dir string) (BackupFile, error)
 } {
-	s, ok := st.(*sqlStore)
+	s, ok := adapterOf(st)
 	if !ok || s.dialect != DialectSQLite {
 		return nil
 	}
@@ -247,7 +247,7 @@ func BackupWriter(st Store) interface {
 // and threading DATABASE_URL through it just to re-derive a path the store already knows
 // would widen that signature for no gain.
 func SQLitePath(st Store) string {
-	s, ok := st.(*sqlStore)
+	s, ok := adapterOf(st)
 	if !ok || s.dialect != DialectSQLite {
 		return ""
 	}
@@ -257,7 +257,7 @@ func SQLitePath(st Store) string {
 // DialectOf reports a store's backend, or "" if it is not a SQL store. The Database
 // settings page needs it to know whether to offer a migration at all.
 func DialectOf(st Store) Dialect {
-	if s, ok := st.(*sqlStore); ok {
+	if s, ok := adapterOf(st); ok {
 		return s.dialect
 	}
 	return ""
@@ -278,7 +278,7 @@ func DialectOf(st Store) Dialect {
 // second pool against the same file would reintroduce exactly the WAL write contention that
 // setting exists to avoid.
 func PoolOf(st Store) *sql.DB {
-	if s, ok := st.(*sqlStore); ok {
+	if s, ok := adapterOf(st); ok {
 		return s.db
 	}
 	return nil

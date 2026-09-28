@@ -578,18 +578,6 @@ func (s *sqlStore) ListSplitProposals(ctx context.Context) ([]filler.SplitPropos
 	return collectReadyOrAllSplitProposals(rows, 0, false)
 }
 
-// ListReadySplitProposals returns at most limit proposals that have finished detection. It scans
-// checkpoint documents without retaining them, so a large detection backlog cannot become an
-// equally large Incoming payload.
-func (s *sqlStore) ListReadySplitProposals(ctx context.Context, limit int) ([]filler.SplitProposal, error) {
-	rows, err := s.db.QueryContext(ctx, s.ph(splitProposalSelect+` ORDER BY created_at, id`))
-	if err != nil {
-		return nil, fmt.Errorf("list ready split proposals: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	return collectReadyOrAllSplitProposals(rows, limit, true)
-}
-
 // ListReadySplitProposalsAfter serves the genuine Needs-help group. Unlike the legacy oldest-first
 // reel list, this is a stable newest-first page and a detection checkpoint cannot consume a row.
 func (s *sqlStore) ListReadySplitProposalsAfter(ctx context.Context, cursor filler.SplitProposalCursor, limit int) ([]filler.SplitProposal, error) {

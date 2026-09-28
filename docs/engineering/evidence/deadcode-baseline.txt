@@ -8,6 +8,7 @@
 8 internal/fillerdecision
 1 internal/fillerenrichment
 2 internal/fillerresearch
+1 internal/fillerstore
 3 internal/fillerstructure
 1 internal/fillerstructuremedia
 2 internal/library
@@ -28,4 +29,4 @@
 2 internal/suggest
 4 internal/tmdb
 2 internal/watermark
-total 91
+total 92

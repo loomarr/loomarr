@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"io"
 
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 const structureAssessmentLedgerSelect = `SELECT request_sha256, evaluation_id, source_sha256,
@@ -61,12 +62,12 @@ func (s *sqlStore) getStructureAssessmentLedgerRow(ctx context.Context, queryer 
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, requestSHA256 string, lock bool) (structureAssessmentLedgerRow, error) {
 	query := structureAssessmentLedgerSelect + ` WHERE request_sha256 = ?`
-	if lock && s.dialect == DialectPostgres {
+	if lock && s.dialect == store.DialectPostgres {
 		query += ` FOR UPDATE`
 	}
 	row, err := scanStructureAssessmentLedgerRow(queryer.QueryRowContext(ctx, s.ph(query), requestSHA256))
 	if errors.Is(err, sql.ErrNoRows) {
-		return structureAssessmentLedgerRow{}, ErrNotFound
+		return structureAssessmentLedgerRow{}, store.ErrNotFound
 	}
 	if err != nil {
 		return structureAssessmentLedgerRow{}, fmt.Errorf("read structure assessment ledger entry: %w", err)

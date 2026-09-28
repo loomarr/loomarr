@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 const acquisitionRunSelect = `SELECT id, trigger, source_id, pull_id, status,
@@ -101,7 +102,7 @@ func scanAcquisitionRun(sc scannable) (filler.AcquisitionRun, error) {
 func (s *sqlStore) GetAcquisitionRun(ctx context.Context, id string, at time.Time) (filler.AcquisitionRun, error) {
 	run, err := scanAcquisitionRun(s.db.QueryRowContext(ctx, s.ph(acquisitionRunSelect+` WHERE id = ?`), id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return filler.AcquisitionRun{}, ErrNotFound
+		return filler.AcquisitionRun{}, store.ErrNotFound
 	}
 	if err != nil {
 		return filler.AcquisitionRun{}, fmt.Errorf("get filler acquisition %s: %w", id, err)
@@ -157,14 +158,14 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []filler.
 		placeholders[i] = "?"
 		args[i] = runs[i].ID
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(clipPipelineSelect+` WHERE acquisition_id IN (`+
+	rows, err := s.db.QueryContext(ctx, s.ph(store.ClipPipelineSelect+` WHERE acquisition_id IN (`+
 		strings.Join(placeholders, ",")+`) ORDER BY acquisition_id, clip_hash`), args...)
 	if err != nil {
 		return fmt.Errorf("list acquisition pipelines: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		row, err := scanClipPipeline(rows)
+		row, err := store.ScanClipPipeline(rows)
 		if err != nil {
 			return fmt.Errorf("scan acquisition pipeline: %w", err)
 		}

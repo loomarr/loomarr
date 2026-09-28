@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -33,14 +34,14 @@ func TestFillerBetaJourney_QueuedSourceItemResumesAfterRestartAndBecomesPlayable
 		t.Fatal(err)
 	}
 	dsn := "sqlite://" + filepath.Join(root, "loomarr.db")
-	st, err := store.Open(ctx, dsn, true)
+	st, err := fillerstore.Open(ctx, dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	now := time.Date(2026, 9, 14, 20, 0, 0, 0, time.UTC)
 	clock := now
-	if err := st.UpsertFillerSource(ctx, store.FillerSource{
+	if err := st.UpsertFillerSource(ctx, fillerstore.FillerSource{
 		ID: "youtube:retro-toys", Kind: "youtube", URI: "https://youtube.com/@retro-toys/videos",
 		Label: "Retro toy commercials", Enabled: true, CreatedAt: now,
 	}); err != nil {
@@ -170,7 +171,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		t.Fatal(err)
 	}
 	clock = now.Add(6 * time.Minute)
-	reopened, err := store.Open(ctx, dsn, true)
+	reopened, err := fillerstore.Open(ctx, dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +221,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 }
 
-func waitForAcquisition(t *testing.T, st store.Store, id string, at time.Time, want filler.AcquisitionStatus) {
+func waitForAcquisition(t *testing.T, st fillerstore.Store, id string, at time.Time, want filler.AcquisitionStatus) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

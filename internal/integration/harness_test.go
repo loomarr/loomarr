@@ -14,7 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/app"
 	"github.com/loomarr/loomarr/internal/auth"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -29,7 +29,7 @@ import (
 type harness struct {
 	t          *testing.T
 	srv        *httptest.Server
-	store      store.Store
+	store      fillerstore.Store
 	ms         *testkit.MediaServer
 	seerr      *testkit.Seerr
 	tmdb       *testkit.TMDB
@@ -84,7 +84,7 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	// Loomarr keys for the duration of the test.
 	clearLoomarrEnv(t)
 
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/e2e.db", true)
+	st, err := fillerstore.Open(context.Background(), "sqlite://"+t.TempDir()+"/e2e.db", true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ import { useAuth } from "@/auth/use-auth";
 import { defaultGuideWindow } from "@/channels/guide-window";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { ChannelIdeas } from "../channel-ideas";
 import { HomeStrip } from "../home-strip";
 import { NewThisWeek, newSince } from "../new-this-week";
 import { OnTheWay, YourRequests } from "../on-the-way";
@@ -64,6 +65,10 @@ const HomePage = () => {
           <HomeStrip channels={channels} loading={loading} isAdmin={isAdmin} />
           {hasLife && layout && viewingBody && (
             <WatchingNow viewing={viewingBody} layout={layout} nowMs={nowMs} />
+          )}
+          {/* Ideas need a library, not a channel, so an empty Home offers them too (the mock). */}
+          {!loading && !isAdmin && (
+            <ChannelIdeas empty={guide.isSuccess && channels.length === 0} nowMs={nowMs} />
           )}
           {hasLife && !isAdmin && <YourRequests />}
           {hasLife && (

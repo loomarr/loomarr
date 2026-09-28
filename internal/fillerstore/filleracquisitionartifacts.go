@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func (s *sqlStore) UpsertAcquisitionArtifacts(ctx context.Context, artifacts []f
 	if len(artifacts) == 0 {
 		return nil
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin filler acquisition artifact update: %w", err)
 	}

@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // Persisted filler pulls (§10 V35) — the approval gate for filler acquisition.
@@ -32,7 +33,7 @@ func (s *sqlStore) GetPull(ctx context.Context, id string) (filler.Pull, error) 
 	row := s.db.QueryRowContext(ctx, s.ph(fillerPullSelect+` WHERE id = ?`), id)
 	p, err := scanPull(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return filler.Pull{}, ErrNotFound
+		return filler.Pull{}, store.ErrNotFound
 	}
 	return p, err
 }

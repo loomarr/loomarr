@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -226,7 +227,7 @@ func TestDeterministicFillerEnrichmentProjectsPinnedExamplesWithoutAProvider(t *
 func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallationLocation(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_300, 0).UTC()
-	source := store.NewFillerSource("youtube:inherited", "youtube", "https://youtube.example/channel",
+	source := fillerstore.NewFillerSource("youtube:inherited", "youtube", "https://youtube.example/channel",
 		"Inherited source", at)
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
@@ -262,7 +263,7 @@ func TestDeterministicFillerEnrichmentDoesNotInventClipGeographyFromInstallation
 func TestDeterministicFillerEnrichmentKeepsAnExplicitSourceGeography(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_400, 0).UTC()
-	source := store.NewFillerSource("youtube:regional", "youtube", "https://youtube.example/channel",
+	source := fillerstore.NewFillerSource("youtube:regional", "youtube", "https://youtube.example/channel",
 		"Regional source", at)
 	source.Geography = filler.Geography{Country: "GB", Market: "London"}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
@@ -331,7 +332,7 @@ func TestFillerEnrichmentResolvesEmptySourceGeographyToHomeCountry(t *testing.T)
 	st := testkit.MigratedSQLiteStore(t)
 	at := time.Unix(1_700_000_500, 0).UTC()
 	home := func() filler.Geography { return filler.Geography{Country: "US"} }
-	source := store.NewFillerSource("archive:inherit-home", "archive", "archive.org/details/commercials",
+	source := fillerstore.NewFillerSource("archive:inherit-home", "archive", "archive.org/details/commercials",
 		"Archive source", at)
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)

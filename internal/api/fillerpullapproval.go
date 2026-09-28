@@ -9,6 +9,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -71,7 +72,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list filler sources", err)
 	}
-	live := make(map[string]store.FillerSource, len(srcs))
+	live := make(map[string]fillerstore.FillerSource, len(srcs))
 	home := s.fillerHomeGeography()
 	for _, src := range srcs {
 		if src.EffectiveEnabled() && src.Fetchable() && src.GeographicallyEligible(home) {
@@ -126,7 +127,7 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	if _, err := s.filler.IngestPull(ctx, p.ID, targets, func(commitCtx context.Context, run filler.AcquisitionRun) error {
 		return s.store.CommitPullApproval(commitCtx, p, run)
 	}); err != nil {
-		if errors.Is(err, store.ErrPullNotPending) {
+		if errors.Is(err, fillerstore.ErrPullNotPending) {
 			return nil, errConflict("That pull has already been decided or started", "Another decision or acquisition already owns this pull. Review its history before proposing a new one.")
 		}
 		if errors.Is(err, ErrIngestUnavailable) {
@@ -163,7 +164,7 @@ func (s *Server) dismissFillerPull(ctx context.Context, in *dismissFillerPullInp
 	p.DecidedAt = time.Now().UTC()
 	p.DecidedBy = auditActor(ctx)
 	if err := s.store.DismissPull(ctx, p); err != nil {
-		if errors.Is(err, store.ErrPullNotPending) {
+		if errors.Is(err, fillerstore.ErrPullNotPending) {
 			return nil, errConflict("That pull has already been decided", "Another decision won. Reload the pull to see its history.")
 		}
 		return nil, huma.Error500InternalServerError("save pull decision", err)

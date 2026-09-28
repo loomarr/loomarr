@@ -89,7 +89,7 @@ func ListenInvalidations(
 	ready func(context.Context) error,
 	handle func(context.Context, Invalidation) error,
 ) error {
-	s, ok := st.(*sqlStore)
+	s, ok := adapterOf(st)
 	if !ok || s.dialect != DialectPostgres || s.dsn == "" {
 		return fmt.Errorf("listen durable invalidations: postgres store required")
 	}

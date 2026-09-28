@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 // The source ROLL-UP (§10 V51c): three archive.org collections stop being three sibling rows and
@@ -36,9 +36,9 @@ func sourcesFrom(t *testing.T, srv *httptest.Server) []api.FillerSourceDTO {
 }
 
 // addArchive registers one archive collection.
-func addArchive(t *testing.T, st store.Store, id, label string, fetched time.Time) {
+func addArchive(t *testing.T, st fillerstore.Store, id, label string, fetched time.Time) {
 	t.Helper()
-	src := store.NewFillerSource(id, "archive", id, label, time.Unix(1_700_000_000, 0).UTC())
+	src := fillerstore.NewFillerSource(id, "archive", id, label, time.Unix(1_700_000_000, 0).UTC())
 	src.LastCheckedAt = fetched
 	if err := st.UpsertFillerSource(context.Background(), src); err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestSourceGroups_WritesToAGroupAreRefused(t *testing.T) {
 // as a row with a blank target; V51c is what makes skipping it correct rather than a loss.
 func TestSourceGroups_SeededBlankProviderRowIsNotAPeer(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	blank := store.NewFillerSource("yt-seed", "youtube", "", "", time.Unix(1_700_000_000, 0).UTC())
+	blank := fillerstore.NewFillerSource("yt-seed", "youtube", "", "", time.Unix(1_700_000_000, 0).UTC())
 	if err := st.UpsertFillerSource(context.Background(), blank); err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestSourceGroups_SeededBlankProviderRowIsNotAPeer(t *testing.T) {
 // a "Folders" container would be a row that dims and changes nothing — §10's forbidden shape.
 func TestSourceGroups_FoldersDoNotRollUp(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	extra := store.NewFillerSource("extra", "folder", "/mnt/more-ads", "More ads", time.Unix(1_700_000_000, 0).UTC())
+	extra := fillerstore.NewFillerSource("extra", "folder", "/mnt/more-ads", "More ads", time.Unix(1_700_000_000, 0).UTC())
 	if err := st.UpsertFillerSource(context.Background(), extra); err != nil {
 		t.Fatal(err)
 	}

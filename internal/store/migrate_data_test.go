@@ -378,10 +378,14 @@ func TestMigrateToPostgresRollsBackTheWholeDataCopy(t *testing.T) {
 	ctx := context.Background()
 	src := newSQLiteStore(t)
 	seedForMigration(t, src)
-	if err := src.UpsertFillerSource(ctx, FillerSource{
-		ID: "operator:keep", Kind: "archive", URI: "operator_collection",
-		Label: "Operator source", CreatedAt: time.Now(), Enabled: true,
-	}); err != nil {
+	// An operator row in filler_sources (the filler store's table, written raw here because this
+	// package cannot import it).
+	if _, err := src.(*sqlStore).db.ExecContext(ctx,
+		`INSERT INTO filler_sources (id, kind, uri, label, license, last_fetched_at, last_checked_at,
+		   check_failure_count, check_retry_at, check_lease_until, created_at, enabled,
+		   fetch_every_seconds, fetch_max_per_run, country, market)
+		 VALUES (?, ?, ?, ?, '', 0, 0, 0, 0, 0, ?, ?, NULL, NULL, '', '')`,
+		"operator:keep", "archive", "operator_collection", "Operator source", epoch(time.Now()), true); err != nil {
 		t.Fatal(err)
 	}
 	// SQLite accepts this integer, while the destination BOOLEAN coercion rejects
@@ -401,17 +405,16 @@ func TestMigrateToPostgresRollsBackTheWholeDataCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = dst.Close() }()
-	sources, err := dst.ListFillerSources(ctx)
-	if err != nil {
+	var sources, operator int
+	if err := dst.(*sqlStore).db.QueryRowContext(ctx,
+		`SELECT COUNT(*), COUNT(*) FILTER (WHERE id = 'operator:keep') FROM filler_sources`).Scan(&sources, &operator); err != nil {
 		t.Fatal(err)
 	}
-	for _, source := range sources {
-		if source.ID == "operator:keep" {
-			t.Fatal("failed migration committed an earlier table's operator row")
-		}
+	if operator != 0 {
+		t.Fatal("failed migration committed an earlier table's operator row")
 	}
-	if len(sources) != 6 {
-		t.Fatalf("target contains %d filler sources after rollback, want only 6 SQL seeds", len(sources))
+	if sources != 6 {
+		t.Fatalf("target contains %d filler sources after rollback, want only 6 SQL seeds", sources)
 	}
 	taxa, err := dst.ListTaxa(ctx)
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -52,9 +52,9 @@ func (f enumeratorFunc) Enumerate(ctx context.Context, source filler.FetchSource
 }
 
 func TestPlanAcquisition_BoundsTheWholeSourceAndCandidateSet(t *testing.T) {
-	sources := make([]store.FillerSource, maxAcquisitionPlanningSources+2)
+	sources := make([]fillerstore.FillerSource, maxAcquisitionPlanningSources+2)
 	for i := range sources {
-		sources[i] = store.NewFillerSource(fmt.Sprintf("source-%02d", i), "archive", fmt.Sprintf("https://example.test/collection-%02d", i), "", time.Unix(int64(i), 0))
+		sources[i] = fillerstore.NewFillerSource(fmt.Sprintf("source-%02d", i), "archive", fmt.Sprintf("https://example.test/collection-%02d", i), "", time.Unix(int64(i), 0))
 	}
 	st := testkit.MigratedSQLiteStore(t)
 	for _, source := range sources {
@@ -117,7 +117,7 @@ func TestPlanAcquisition_BoundsTheWholeSourceAndCandidateSet(t *testing.T) {
 
 func TestPlanAcquisition_ProviderPausePreventsEnumeration(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
-	source := store.NewFillerSource("paused-archive", "archive", "paused_archive", "Paused", time.Now().UTC())
+	source := fillerstore.NewFillerSource("paused-archive", "archive", "paused_archive", "Paused", time.Now().UTC())
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}

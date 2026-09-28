@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 const structureWindowCallLedgerSelect = `SELECT request_sha256, evaluation_id, source_sha256,
@@ -58,12 +59,12 @@ func (s *sqlStore) getStructureWindowCallLedgerRow(ctx context.Context, queryer 
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }, requestSHA256 string, lock bool) (structureWindowCallLedgerRow, error) {
 	query := structureWindowCallLedgerSelect + ` WHERE request_sha256 = ?`
-	if lock && s.dialect == DialectPostgres {
+	if lock && s.dialect == store.DialectPostgres {
 		query += ` FOR UPDATE`
 	}
 	row, err := scanStructureWindowCallLedgerRow(queryer.QueryRowContext(ctx, s.ph(query), requestSHA256))
 	if errors.Is(err, sql.ErrNoRows) {
-		return structureWindowCallLedgerRow{}, ErrNotFound
+		return structureWindowCallLedgerRow{}, store.ErrNotFound
 	}
 	if err != nil {
 		return structureWindowCallLedgerRow{}, fmt.Errorf("read structure window call ledger entry: %w", err)

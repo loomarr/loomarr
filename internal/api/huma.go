@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
@@ -32,7 +33,7 @@ import (
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
 // (§7.1, §14: code-first OpenAPI 3.1 via humago — no third-party router).
 type Server struct {
-	store   store.Store
+	store   fillerstore.Store
 	auth    Authorizer
 	log     *slog.Logger
 	metrics *metrics.Recorder
@@ -993,7 +994,7 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store                store.Store
+	Store                fillerstore.Store
 	Auth                 Authorizer
 	Log                  *slog.Logger
 	Metrics              *metrics.Recorder

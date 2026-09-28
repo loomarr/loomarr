@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // SpokenSafetyInferenceReservation is the caller-owned identity of one
@@ -79,7 +80,7 @@ func (s *sqlStore) GetSpokenSafetyRun(ctx context.Context, id string) (fillersaf
 		return fillersafety.LedgerRun{}, err
 	}
 	if !found {
-		return fillersafety.LedgerRun{}, ErrNotFound
+		return fillersafety.LedgerRun{}, store.ErrNotFound
 	}
 	return run, nil
 }
@@ -112,7 +113,7 @@ func (s *sqlStore) AppendSpokenSafetyEvent(ctx context.Context, event fillersafe
 	if event.Kind == fillersafety.LedgerInferenceReserved || event.Kind == fillersafety.LedgerInferenceSettled {
 		return fillersafety.ErrLedgerInvalid
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin spoken-safety event: %w", err)
 	}
@@ -142,7 +143,7 @@ func (s *sqlStore) ReserveSpokenSafetyInference(
 	evaluation.Modalities = slices.Clone(evaluation.Modalities)
 	slices.Sort(evaluation.Modalities)
 	requestedNanoUSD := evaluation.ReservedNanoUSD
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fmt.Errorf("begin spoken-safety inference reservation: %w", err)
 	}
@@ -162,7 +163,7 @@ func (s *sqlStore) ReserveSpokenSafetyInference(
 	run, err := scanSpokenSafetyRun(tx.QueryRowContext(ctx,
 		s.ph(spokenSafetyRunSelect+` WHERE id = ?`), command.RunID))
 	if errors.Is(err, sql.ErrNoRows) {
-		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, ErrNotFound
+		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, store.ErrNotFound
 	}
 	if err != nil {
 		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fmt.Errorf("read spoken-safety reservation run: %w", err)
@@ -239,7 +240,7 @@ func (s *sqlStore) SettleSpokenSafetyInference(
 		command.Failure != fillersafety.FailureInterrupted && settlement.RetainReservation {
 		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fillersafety.ErrLedgerInvalid
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return InferenceEvaluation{}, fillersafety.LedgerEvent{}, fmt.Errorf("begin spoken-safety inference settlement: %w", err)
 	}
