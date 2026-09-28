@@ -588,9 +588,12 @@ func declared() []Setting {
 			// Empty = the viewer's own browser timezone, which is right for the household
 			// case. An operator sets it when the server and its viewers are elsewhere, or
 			// when they want the guide to read in the channels' "broadcast" timezone.
+			//
+			// It is also the wall clock the rolling-window grid is laid on (#1675), so a daily
+			// window turns at midnight in this zone. Empty there = the container's own zone.
 			Key: "guide.timezone", Label: "Timezone", EnvVar: "GUIDE_TIMEZONE", Group: GroupPlayout,
 			Kind: KindString, Default: "",
-			Doc: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York. Leave empty to use each viewer's own device timezone.",
+			Doc: "Which timezone the TV guide's times are shown in, as an IANA name like America/New_York, and where each channel's day starts: a daily schedule turns over at midnight in this timezone. Leave empty to show each viewer's own device timezone; the schedule then turns over at midnight in the server's timezone.",
 		},
 		{
 			// How far back the guide will look (§12, V13b gap 8).
