@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { RefreshCcw } from "lucide-react";
 import { SectionHeader, SectionHeaderAction } from "./section-header";
 
 // SectionHeader — a Home section's title, meta and trailing link (#1659 web mock).
@@ -30,7 +31,11 @@ const MetaAndControls: Story = {
   args: {
     title: "Channel ideas",
     meta: "Picked from your library and what you've asked for",
-    children: <SectionHeaderAction>Different ideas</SectionHeaderAction>,
+    children: (
+      <SectionHeaderAction icon={<RefreshCcw aria-hidden className="size-3.5" />}>
+        Different ideas
+      </SectionHeaderAction>
+    ),
   },
 };
 

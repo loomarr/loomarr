@@ -20,6 +20,20 @@ describe("SectionHeader", () => {
     expect(screen.getByRole("button", { name: "Full guide" })).toBeInTheDocument();
   });
 
+  // A control ("Different ideas") leads with its icon and has no "go somewhere" arrow.
+  it("drops the arrow when the action carries an icon", () => {
+    render(
+      <SectionHeader title="Channel ideas">
+        <SectionHeaderAction icon={<svg aria-hidden data-testid="icon" />}>
+          Different ideas
+        </SectionHeaderAction>
+      </SectionHeader>,
+    );
+    const action = screen.getByRole("button", { name: "Different ideas" });
+    expect(action).toContainElement(screen.getByTestId("icon"));
+    expect(action).not.toHaveTextContent("→");
+  });
+
   // Navigation must be a real link (middle-click, open in new tab), so `render` swaps the element.
   it("renders the action as whatever element it is given", () => {
     render(

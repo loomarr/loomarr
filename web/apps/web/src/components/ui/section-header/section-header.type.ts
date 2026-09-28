@@ -17,6 +17,9 @@ interface SectionHeaderProps {
 // navigation and keep the header's look. The default is a `<button>`.
 interface SectionHeaderActionProps extends ComponentPropsWithoutRef<"button"> {
   render?: useRender.RenderProp;
+  // A control rather than a link ("⟳ Different ideas"): the icon leads and the trailing arrow is
+  // dropped, since the arrow means "go somewhere".
+  icon?: ReactNode;
 }
 
 export type { SectionHeaderActionProps, SectionHeaderProps };

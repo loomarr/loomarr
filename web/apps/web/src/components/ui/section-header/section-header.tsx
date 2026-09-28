@@ -19,9 +19,10 @@ const SectionHeader = ({ title, meta, children, id, className }: SectionHeaderPr
   </div>
 );
 
-// SectionHeaderAction — the header's quiet trailing link ("Full guide →", "All requests →").
-// The arrow is decoration beside the words, so it is hidden from assistive tech.
-const SectionHeaderAction = ({ className, render, children, ...props }: SectionHeaderActionProps) =>
+// SectionHeaderAction — the header's quiet trailing link ("Full guide →", "All requests →"), or
+// with `icon` a control ("⟳ Different ideas"). The arrow is decoration beside the words, so it is
+// hidden from assistive tech.
+const SectionHeaderAction = ({ className, render, children, icon, ...props }: SectionHeaderActionProps) =>
   useRender({
     defaultTagName: "button",
     render,
@@ -29,13 +30,20 @@ const SectionHeaderAction = ({ className, render, children, ...props }: SectionH
       {
         className: cn(
           "cursor-pointer border-none bg-transparent p-0 text-[13px] text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          icon != null && "flex items-center gap-1.5",
           className,
         ),
-        children: (
-          <>
-            {children} <span aria-hidden="true">→</span>
-          </>
-        ),
+        children:
+          icon != null ? (
+            <>
+              {icon}
+              {children}
+            </>
+          ) : (
+            <>
+              {children} <span aria-hidden="true">→</span>
+            </>
+          ),
       },
       props,
     ),
