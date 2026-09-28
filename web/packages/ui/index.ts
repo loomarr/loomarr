@@ -55,6 +55,7 @@ export {
   restoreSurfSelection,
   SurfJourney,
   SurfRail,
+  surfChannelData,
   surfGroupsFromGuide,
   surfPreviousChannel,
   watchingScheduleFromGuide,

@@ -175,7 +175,7 @@ describe("app router auth", () => {
     );
   });
 
-  it("signs in and lands on the Channels home", async () => {
+  it("signs an admin in and lands on Home", async () => {
     const { logins } = stubAuth(false);
     renderApp("/login");
 
@@ -183,12 +183,23 @@ describe("app router auth", () => {
     await userEvent.type(screen.getByLabelText("Password"), "hunter2!");
     await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
 
-    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();
     // ⚠ The old assertion dug into `fetchMock.mock.calls` for a url SUBSTRING and then checked
     // `{ method: "POST", credentials: "include" }` — i.e. it asserted the TEST STUB was called a
     // certain way. Reaching the route-bound login resolver is the stronger claim; what remains
     // worth asserting is the credential payload the form actually sent.
     expect(logins).toEqual([{ username: "ada", password: "hunter2!" }]);
+  });
+
+  it("signs a member in and lands on the Guide", async () => {
+    stubAuth(false, MEMBER);
+    renderApp("/login");
+
+    await userEvent.type(await screen.findByLabelText("Username"), "bo");
+    await userEvent.type(screen.getByLabelText("Password"), "hunter2!");
+    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
   });
 
   it("automatically uses the server-gated dev login", async () => {
@@ -253,8 +264,8 @@ describe("post-login redirect", () => {
   // ⚠ THE OPEN REDIRECT. `/login?redirect=https://evil.example` on an ALREADY-SIGNED-IN browser
   // hit `throw redirect({ href })`, which the router force-commits with `replace: true` — i.e. a
   // window.location.replace() straight off the app, gated only by an http/https scheme check.
-  it("refuses an off-site destination and falls back to the home page", async () => {
-    stubAuth(true);
+  it("refuses an off-site destination and falls back to the landing page", async () => {
+    stubAuth(true, MEMBER);
     const router = renderApp("/login?redirect=https%3A%2F%2Fevil.example");
     await waitFor(() => expect(at(router)).toBe("/guide"));
   });
