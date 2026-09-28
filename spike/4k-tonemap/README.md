@@ -1,6 +1,6 @@
 # Phase 0b spike: 4K and tone-mapping (throwaway, #1512)
 
-Measurement scripts behind `docs/engineering/SPIKE-4k-tonemap.md`. They are not production code and have no tests; delete them once phase 2 lands.
+Measurement scripts behind [`project/SPIKE-4k-tonemap.md`](../../project/SPIKE-4k-tonemap.md). They are not production code and have no tests; delete them once phase 2 lands.
 - `run.sh gpu|cpu <script> [image]`: throwaway container of the production image (or the `image/` test variant), `--cpus 4 -m 4g`, library read-only.
 - `m.sh`: helpers; `t1s` = spawn → the muxer holds 1 s of output media (ffmpeg `-progress`, 20 ms stats period).
 - `arc*.sh` G10 on the Arc; `tm*.sh`, `vk*.sh`, `vppchk*.sh` G11; `s2h*.sh`, `gapless*.sh` SDR→HDR10 and boundaries;
