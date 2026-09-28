@@ -17,11 +17,7 @@ import (
 // declare "what's in the library") + a capturing emitter, mirroring setupWithEmitter.
 func setupScan(t *testing.T) (*LibraryScan, store.Store, *testkit.MediaServer, *captureEmitter) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/scan.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
 	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
