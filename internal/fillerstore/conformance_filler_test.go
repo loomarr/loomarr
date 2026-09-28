@@ -4563,13 +4563,6 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 	t.Helper()
 	s := newStore(t)
 	ctx := context.Background()
-	counters, ok := s.(interface {
-		CountIncomingConveyor(context.Context) (int, error)
-		CountIncomingConveyorBySource(context.Context) (map[string]int, error)
-	})
-	if !ok {
-		t.Fatal("store does not expose the Incoming conveyor counter")
-	}
 
 	for _, c := range []Clip{
 		{Clip: filler.Clip{Hash: "draft-reel", Path: "reels/draft.mp4", Name: "Draft reel",
@@ -4600,19 +4593,12 @@ func testIncomingConveyorCount(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 
-	got, err := counters.CountIncomingConveyor(ctx)
+	bySource, err := s.CountIncomingConveyorBySource(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != 1 {
-		t.Errorf("Incoming conveyor count = %d, want 1 draft reel; the ready reel has its own row", got)
-	}
-	bySource, err := counters.CountIncomingConveyorBySource(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bySource["archive:test"] != 1 {
-		t.Errorf("Incoming conveyor source count = %d, want the same 1 draft reel", bySource["archive:test"])
+	if len(bySource) != 1 || bySource["archive:test"] != 1 {
+		t.Errorf("Incoming conveyor count = %v, want 1 draft reel under archive:test; the ready reel has its own row", bySource)
 	}
 }
 

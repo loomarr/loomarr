@@ -1096,19 +1096,10 @@ func (s *Server) listFillerSources(ctx context.Context, _ *struct{}) (*fillerSou
 	}
 	// The Incoming count must use the same lifecycle projection as the page it links to. Counting
 	// every held row includes terminal composite parents; counting only ordinary held clips drops
-	// active reels. Production stores expose the exact projection, while the fallback preserves a
-	// conservative answer for narrow adapters.
-	incomingBySource, err := s.store.CountClipsBySource(ctx, store.ClipFilter{HeldOnly: true})
+	// active reels.
+	incomingBySource, err := s.store.CountIncomingConveyorBySource(ctx)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("count incoming clips", err)
-	}
-	if counter, ok := s.store.(interface {
-		CountIncomingConveyorBySource(context.Context) (map[string]int, error)
-	}); ok {
-		incomingBySource, err = counter.CountIncomingConveyorBySource(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("count incoming clips", err)
-		}
 	}
 	totalClips := 0
 	for _, n := range bySource {

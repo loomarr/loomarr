@@ -382,6 +382,10 @@ type ClipStore interface {
 	// CountClipsBySource returns the per-source clip count — a GROUP BY, not a catalog load
 	// tallied in Go. Keyed by `Clip.Source`; sources with no clips are simply absent.
 	CountClipsBySource(ctx context.Context, filter ClipFilter) (map[string]int, error)
+	// CountIncomingConveyorBySource counts, per source, what the Incoming belt shows: held clips
+	// plus running/review pipeline rows, minus composites whose split proposal is ready. A plain
+	// HeldOnly count would disagree with the page it links to.
+	CountIncomingConveyorBySource(ctx context.Context) (map[string]int, error)
 	// SetClipsRemoved tombstones (or restores) clips by path — "Remove from catalog" (V35).
 	//
 	// ⚠ The ordinary tombstone writer; RetryClipPipeline is the only cross-table exception, so
