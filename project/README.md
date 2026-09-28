@@ -14,7 +14,7 @@ reviewed in PRs, and off the docs site so it doesn't bury the pages readers need
 | [`design-archive-2026-09/`](design-archive-2026-09/README.md) | Verbatim `design.md` slices with measured evidence or retired protocols, from the #779 split. Not instructions: `docs/design/` wins |
 | [`plans/`](plans/shared-client-platform.md) | Plans that live code or docs still cite |
 | [`evidence/`](evidence/ffmpeg-august-source-retention.md) | License-compliance evidence for shipped binaries; `internal/releaseverify` reads the manifest |
-| [`redesign-map-2026-09.md`](redesign-map-2026-09.md) | The beta.9 redesign map (#1659): screens, gaps, critique, open questions, PR sequence. Delete when #1659 closes |
+| [`redesign-map-2026-09.md`](redesign-map-2026-09.md) | The beta.9 redesign map (#1659): screens, gaps, critique, the maintainer's decisions, PR sequence. Delete when #1659 closes |
 | `SPIKE-*.md`, `FINDINGS-*.md` | Measurements an open issue still depends on. Delete each when its issue closes |
 
 Finished plans, dated certifications and research were deleted in #1572. Git history keeps them:

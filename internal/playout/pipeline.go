@@ -65,7 +65,8 @@ type HostProfile struct {
 	DecodeCodecs []string `json:"decodeCodecs,omitempty"`
 	// TonemapOpenCL: tonemap_opencl works. The first choice on Intel (zero-copy from VAAPI) and
 	// NVIDIA (maintainer decision). There is no tonemap_vaapi: on the household Arc it outputs a
-	// black picture at normal speed with no error (#1516), so it is never emitted.
+	// black picture at normal speed with no error (#1516), so it is never emitted. On VAAPI it also
+	// means the VAAPI→OpenCL surface mapping works, which the 10-bit letterbox needs (#1673).
 	TonemapOpenCL bool `json:"tonemapOpencl,omitempty"`
 	// Libplacebo: libplacebo on its own Vulkan device works: the first choice for the curves only it
 	// has (ToneCurve), otherwise the second GPU choice, and on every GPU family the only correct
@@ -527,6 +528,7 @@ func (b *builder) vaapi() error {
 	b.p.PreInput = []string{"-init_hw_device", "vaapi=va:" + node, "-filter_hw_device", "va"}
 	var f []string
 	hw := b.hardwareDecodes()
+	fitted := b.exactFit()
 	if hw {
 		b.p.PreInput = append(b.p.PreInput, "-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi")
 		if b.src.Interlaced {
@@ -549,7 +551,12 @@ func (b *builder) vaapi() error {
 		if err != nil {
 			return err
 		}
-		f = append(f, conv, "hwupload", "scale_vaapi="+b.fit()+":format=p010")
+		if box, ok := b.outputBox(); ok {
+			// Letterboxed at the output size in the conversion, so the 10-bit picture needs no pad.
+			f, fitted = append(f, conv+box, "hwupload"), true
+		} else {
+			f = append(f, conv, "hwupload", "scale_vaapi="+b.fit()+":format=p010")
+		}
 	case !b.tonemap:
 		f = append(f, "scale_vaapi="+b.fit()+":format="+b.scaleFormat("p010"))
 	default:
@@ -572,8 +579,22 @@ func (b *builder) vaapi() error {
 			f = append(f, tm, "hwupload")
 		}
 	}
-	// pad_vaapi places the picture at x=0:y=0 unless told to centre it.
-	f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2", b.out.Width, b.out.Height))
+	switch {
+	case !b.out.HDR:
+		// pad_vaapi places the picture at x=0:y=0 unless told to centre it.
+		f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2", b.out.Width, b.out.Height))
+	case fitted:
+		// A 10-bit picture that fills the frame has no letterbox to add.
+	case !b.host.TonemapOpenCL:
+		return fmt.Errorf("%w: a letterboxed 10-bit picture on VAAPI is padded in OpenCL, which this host cannot map to (#1673)", ErrRefused)
+	default:
+		// pad_vaapi writes Y=U=V=0 into a P010 frame's bars whatever colour it is given, which
+		// shows as green (#1673, measured on the household Arc; its NV12 bars are black). pad_opencl
+		// on the surface mapped from VAAPI, like the tone-map, writes 10-bit black at the same speed.
+		f = append(f, "hwmap=derive_device=opencl",
+			fmt.Sprintf("pad_opencl=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2:color=black", b.out.Width, b.out.Height),
+			"hwmap=derive_device=vaapi:reverse=1")
+	}
 	if b.overlay() {
 		// The shipped OpenCL kernel on the surface mapped from VAAPI, zero-copy both ways
 		// (watermark.go, #1613). Every kernel input carries the output's labels and time base.
@@ -623,13 +644,12 @@ func (b *builder) nvenc() error {
 		if err != nil {
 			return err
 		}
-		scale := "scale_cuda=" + b.fit() + ":format=p010le"
-		if box, ok := b.aspectBox(); ok {
-			// Box to the output's aspect at source size, so the GPU upscale fills the frame.
-			conv += box
-			scale, fitted = fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le", b.out.Width, b.out.Height), true
+		if box, ok := b.outputBox(); ok {
+			// Letterboxed at the output size in the conversion: pad_cuda takes 8-bit frames only.
+			f, fitted = append(f, conv+box, "hwupload_cuda"), true
+		} else {
+			f = append(f, conv, "hwupload_cuda", "scale_cuda="+b.fit()+":format=p010le")
 		}
-		f = append(f, conv, "hwupload_cuda", scale)
 	case !b.tonemap && bug:
 		f = append(f, "scale_cuda="+b.fit()+":format="+mainFormat)
 	case !b.tonemap:
@@ -691,22 +711,19 @@ func (b *builder) exactFit() bool {
 	return ok && w == b.out.Width && h == b.out.Height
 }
 
-// aspectBox is the libplacebo options that place the source, at its own size, centred in the
-// smallest box of the output's aspect (a 1440x1080 source in 1920x1080 for a 16:9 output). ok is
-// false when the source geometry is unknown.
-func (b *builder) aspectBox() (string, bool) {
-	sw, sh := b.src.Width, b.src.Height
-	if sw <= 0 || sh <= 0 {
+// outputBox is the libplacebo options that render the converted picture at the OUTPUT size,
+// fitted and centred on black: the letterbox in the same pass as the one scaling step, so its edge
+// is hard. Boxing at source size and upscaling after blended the rows beside the picture into the
+// bars (#1673: Y 142 at row 279 on the Arc, 124 on the GeForce). ok is false when the picture fills
+// the output (the GPU upscales it after, the faster path) or its geometry is unknown.
+func (b *builder) outputBox() (string, bool) {
+	w, h, ok := fitSize(b.src.Width, b.src.Height, b.out.Width, b.out.Height)
+	if !ok || (w == b.out.Width && h == b.out.Height) {
 		return "", false
 	}
-	bw, bh := sw, sh
-	if sw*b.out.Height > sh*b.out.Width { // wider than the output: add height
-		bh = even((sw*b.out.Height + b.out.Width - 1) / b.out.Width)
-	} else {
-		bw = even((sh*b.out.Width + b.out.Height - 1) / b.out.Height)
-	}
+	// Even offsets keep the edge on a chroma row boundary.
 	return fmt.Sprintf(":w=%d:h=%d:pos_x=%d:pos_y=%d:pos_w=%d:pos_h=%d:fillcolor=black",
-		bw, bh, even((bw-sw)/2), even((bh-sh)/2), sw, sh), true
+		b.out.Width, b.out.Height, even((b.out.Width-w)/2), even((b.out.Height-h)/2), w, h), true
 }
 
 // videotoolbox: VT decode and scale_vt on the GPU. VideoToolbox has no pad and no tone-map filter,

@@ -2,6 +2,8 @@ package playout
 
 import (
 	"errors"
+	"fmt"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -21,6 +23,17 @@ func premiumSources() map[string]MediaFormat {
 	return src
 }
 
+// scopeSources are pictures shorter than the 16:9 output, so every family must letterbox them
+// (#1673): a 2.40:1 4K HDR10 film and a 2.40:1 1080p SDR episode.
+func scopeSources() map[string]MediaFormat {
+	src := premiumSources()
+	hdr := src["hevc-4k-hdr-dv"]
+	hdr.Height = 1600
+	sdr := src["h264-1080p-sdr-25"]
+	sdr.Height = 800
+	return map[string]MediaFormat{"hevc-4k-hdr-scope": hdr, "h264-scope-sdr": sdr}
+}
+
 func premiumOutput(t *testing.T, class FormatClass) OutputProfile {
 	t.Helper()
 	out, ok := PremiumOutput(class, testOutput)
@@ -30,9 +43,12 @@ func premiumOutput(t *testing.T, class FormatClass) OutputProfile {
 	return out
 }
 
-// TestBuild_PremiumGolden pins each family × {4K SDR, 4K HDR passthrough, SDR→HDR10}.
+// TestBuild_PremiumGolden pins each family × {4K SDR, 4K HDR passthrough, SDR→HDR10}, full-frame
+// and letterboxed.
 func TestBuild_PremiumGolden(t *testing.T) {
 	hosts := testHosts()
+	sources := premiumSources()
+	maps.Copy(sources, scopeSources())
 	cases := []struct {
 		name  string
 		class FormatClass
@@ -41,13 +57,84 @@ func TestBuild_PremiumGolden(t *testing.T) {
 		{"4k-sdr", Format4KSDR, "hevc10-4k-sdr"},
 		{"4k-hdr", Format4KHDR, "hevc-4k-hdr-dv"},
 		{"sdr-to-hdr", Format4KHDR, "h264-1080p-sdr-25"},
+		{"4k-hdr-scope", Format4KHDR, "hevc-4k-hdr-scope"},
+		{"sdr-scope-to-hdr", Format4KHDR, "h264-scope-sdr"},
 	}
 	for _, hostName := range []string{"vaapi-intel", "nvenc-opencl", "videotoolbox", "software", "generic-qsv"} {
 		for _, tc := range cases {
 			name := hostName + "__" + tc.name
 			t.Run(name, func(t *testing.T) {
-				checkGolden(t, filepath.Join("premium", name), buildGolden(hosts[hostName], premiumSources()[tc.src], premiumOutput(t, tc.class)))
+				checkGolden(t, filepath.Join("premium", name), buildGolden(hosts[hostName], sources[tc.src], premiumOutput(t, tc.class)))
 			})
+		}
+	}
+}
+
+// TestBuild_TenBitLetterboxPadsInOpenCL (#1673): pad_vaapi writes Y=U=V=0 into a P010 frame's bars
+// whatever colour it is given (green on screen; measured on the household Arc), while its NV12 bars
+// are black. So a PQ letterbox on VAAPI is padded by pad_opencl on the surface mapped from VAAPI,
+// the tone-map's zero-copy route, and a host that cannot map to OpenCL refuses it rather than air
+// green bars or pad on the CPU. An SDR item is boxed by the libplacebo conversion it already takes,
+// as on NVENC, and a 10-bit picture that fills the frame is not padded at all.
+func TestBuild_TenBitLetterboxPadsInOpenCL(t *testing.T) {
+	hosts := testHosts()
+	hdr := premiumOutput(t, Format4KHDR)
+	scope := scopeSources()
+
+	const openCLPad = ",hwmap=derive_device=opencl,pad_opencl=w=3840:h=2160:x=(ow-iw)/2:y=(oh-ih)/2:color=black," +
+		"hwmap=derive_device=vaapi:reverse=1,fps="
+	p, err := Build(hosts["vaapi-intel"], scope["hevc-4k-hdr-scope"], hdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.VideoFilter, openCLPad) || strings.Contains(p.VideoFilter, "pad_vaapi") {
+		t.Errorf("PQ scope: want the letterbox from pad_opencl on the mapped surface, never pad_vaapi on P010: %q", p.VideoFilter)
+	}
+	checkGPUResidency(t, "vaapi-intel/hevc-4k-hdr-scope", p)
+	if _, err := Build(hosts["vaapi-amd"], scope["hevc-4k-hdr-scope"], hdr); !errors.Is(err, ErrRefused) {
+		t.Errorf("vaapi-amd PQ scope: no OpenCL mapping, so the letterbox must be refused, got %v", err)
+	}
+
+	// The SDR box is drawn at the output size in the one scaling step: boxing at source size and
+	// upscaling after blended the rows beside the picture into the bars (Arc and GeForce).
+	for hostName, upload := range map[string]string{"vaapi-intel": "hwupload", "vaapi-amd": "hwupload", "nvenc-opencl": "hwupload_cuda"} {
+		p, err := Build(hosts[hostName], scope["h264-scope-sdr"], hdr)
+		if err != nil {
+			t.Fatalf("%s SDR scope: %v", hostName, err)
+		}
+		if want := ":w=3840:h=2160:pos_x=0:pos_y=280:pos_w=3840:pos_h=1600:fillcolor=black," + upload + ",fps="; !strings.Contains(p.VideoFilter, want) ||
+			strings.Contains(p.VideoFilter, "pad") || strings.Contains(p.VideoFilter, "scale_") {
+			t.Errorf("%s SDR scope: want the letterbox drawn at 3840x2160 by the libplacebo conversion (%s), no GPU scale or pad after: %q",
+				hostName, want, p.VideoFilter)
+		}
+	}
+
+	for _, srcName := range []string{"hevc-4k-hdr-dv", "h264-1080p-sdr-25"} {
+		for _, hostName := range []string{"vaapi-intel", "vaapi-amd"} {
+			p, err := Build(hosts[hostName], premiumSources()[srcName], hdr)
+			if err != nil {
+				t.Fatalf("%s/%s: a 16:9 picture needs no letterbox, so no OpenCL: %v", hostName, srcName, err)
+			}
+			if strings.Contains(p.VideoFilter, "pad_") {
+				t.Errorf("%s/%s: the picture fills the frame, nothing to pad: %q", hostName, srcName, p.VideoFilter)
+			}
+		}
+	}
+	// The 8-bit graphs keep pad_vaapi: its NV12 bars are black (the 4K SDR premium, the tone-map).
+	for _, tc := range []struct {
+		label string
+		src   string
+		out   OutputProfile
+	}{
+		{"4K SDR premium", "h264-scope-sdr", premiumOutput(t, Format4KSDR)},
+		{"1080p tone-map", "hevc-4k-hdr-scope", testOutput},
+	} {
+		p, err := Build(hosts["vaapi-intel"], scopeSources()[tc.src], tc.out)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.label, err)
+		}
+		if want := fmt.Sprintf("pad_vaapi=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2", tc.out.Width, tc.out.Height); !strings.Contains(p.VideoFilter, want) {
+			t.Errorf("%s: want %s: %q", tc.label, want, p.VideoFilter)
 		}
 	}
 }
@@ -123,9 +210,11 @@ func TestBuild_PremiumUniformOutput(t *testing.T) {
 	}
 }
 
-// TestBuild_SDRToHDR10: SDR and HLG items on a 4K HDR channel go through libplacebo at source size,
-// then the GPU upscales. Never the Intel VPP conversion (~2,600-nit white, spike 0b), never an
-// inverse tone-map, and a PQ item never goes through the conversion.
+// TestBuild_SDRToHDR10: SDR and HLG items on a 4K HDR channel go through libplacebo. One that fills
+// the frame converts at source size and the GPU upscales (spike 0b: faster); one that needs a box
+// (letterbox or pillarbox) renders at the output size in the conversion, so the box edge is hard
+// (#1673). Never the Intel VPP conversion (~2,600-nit white, spike 0b), never an inverse tone-map,
+// and a PQ item never goes through the conversion.
 func TestBuild_SDRToHDR10(t *testing.T) {
 	out := premiumOutput(t, Format4KHDR)
 	for _, hostName := range []string{"vaapi-intel", "nvenc-opencl"} {
@@ -144,11 +233,17 @@ func TestBuild_SDRToHDR10(t *testing.T) {
 					upscale = i
 				}
 			}
+			fills := src.Width*out.Height == src.Height*out.Width
 			switch {
 			case src.PQ() && convert >= 0:
 				t.Errorf("%s: a PQ item must pass through, not convert: %q", label, p.VideoFilter)
-			case !src.PQ() && (convert < 0 || upscale < convert):
+			case src.PQ():
+			case convert < 0:
+				t.Errorf("%s: want the libplacebo conversion: %q", label, p.VideoFilter)
+			case fills && upscale < convert:
 				t.Errorf("%s: want libplacebo at source size, then the GPU scale: %q", label, p.VideoFilter)
+			case !fills && (upscale >= 0 || !strings.Contains(filters[convert], ":w=3840:h=2160:")):
+				t.Errorf("%s: want the box drawn at 3840x2160 by libplacebo, no GPU scale after: %q", label, p.VideoFilter)
 			}
 			if strings.Contains(p.VideoFilter, "out_color_transfer") || strings.Contains(p.VideoFilter, "inverse_tonemapping") ||
 				strings.Contains(p.VideoFilter, "tonemap_vaapi") {

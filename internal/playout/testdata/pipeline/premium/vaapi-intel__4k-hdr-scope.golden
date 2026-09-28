@@ -34,7 +34,7 @@ vaapi
 -frames:v
 753
 -vf
-scale_vaapi=w=3840:h=2160:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left
+scale_vaapi=w=3840:h=2160:force_original_aspect_ratio=decrease:force_divisible_by=2:format=p010,hwmap=derive_device=opencl,pad_opencl=w=3840:h=2160:x=(ow-iw)/2:y=(oh-ih)/2:color=black,hwmap=derive_device=vaapi:reverse=1,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left
 -c:v
 hevc_vaapi
 -profile:v
