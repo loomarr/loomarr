@@ -129,6 +129,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   A shared generic call recorder for isolated tests without depending on application packages.
 - **`textmatch`** · 2 importers
   Owns deterministic, Unicode-aware whole-word phrase matching.
+- **`viewing`** · 1 importer
+  Tracks who is watching which channel right now, from the players' own playlist polls (#1662).
 - **`watermark`** · 1 importer
   Renders a channel's bug (#1512 phase 1d): the small mark burned into a channel's programmes by the GPU overlay (internal/playout, watermark.go).
 - **`web`** · 1 importer
@@ -321,7 +323,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 14
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerairworthiness`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 15

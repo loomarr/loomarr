@@ -15,6 +15,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/viewing"
 	"github.com/loomarr/loomarr/internal/web"
 )
 
@@ -64,6 +65,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		startupReports:    opts.StartupReports,
 		healthRefresh:     opts.HealthRefresh,
 		now:               opts.Now,
+		viewing:           viewing.New(),
 		systemLLM:         opts.SystemLLM, database: opts.Database, encryption: opts.Encryption, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		restartDrift:             opts.RestartDrift,
 		settings:                 opts.Settings,
@@ -107,6 +109,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerProposals(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
 	srv.registerMyChannels(humaAPI)
+	srv.registerHouseholdViewing(humaAPI)
 	srv.registerProposalJourneys(humaAPI)
 	srv.registerSearch(humaAPI)
 	srv.registerMovieCollections(humaAPI)
