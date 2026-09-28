@@ -258,16 +258,15 @@ func effectiveBreakDurationMs(sel Selection, pol Policy) int64 {
 
 // podMaxForDuration makes pod_max a soft density ceiling when it is too small to plausibly
 // fill the requested break. It derives the required count from the median duration of the
-// tightest non-empty matching pool, so a 30s catalog gets about ten slots for a 5m break while
-// a 60s catalog gets about five. Assemble still owns the hard no-repeat and gap invariants.
+// whole matching ladder, so a 30s catalog gets about ten slots for a 5m break while a 60s
+// catalog gets about five. Assemble still owns the hard no-repeat and gap invariants.
+//
+// ⚠ The widest rung, because that is what a pod draws from since #1684 (the rungs nest, so it
+// holds every candidate). Sizing from the tightest rung let one long exact-era clip set the
+// density for a break filled mostly from the rungs below it.
 func podMaxForDuration(clips []Clip, w Window, pol Policy, configured int, targetMs int64) int {
-	var matched []Clip
-	for _, pool := range candidatePools(clips, w, pol) {
-		if len(pool.clips) > 0 {
-			matched = pool.clips
-			break
-		}
-	}
+	pools := candidatePools(clips, w, pol)
+	matched := pools[len(pools)-1].clips
 	if len(matched) == 0 {
 		return configured
 	}

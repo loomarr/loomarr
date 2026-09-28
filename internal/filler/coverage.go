@@ -11,8 +11,11 @@ package filler
 // unexported builder `Assemble` calls, and reports what it finds. If the ladder changes, this
 // changes with it or fails to compile; there is no second copy to drift.
 //
-// It reports pools rather than drawing from them, so it is independent of Seed, no-repeat and
-// category variety — those decide WHICH clip plays, not whether the rung can fill a break.
+// The rung counts are pools, independent of Seed, no-repeat and category variety — those decide
+// WHICH clip plays, not whether the rung can fill a break. Level alone is read off one fresh
+// assembly (#1684), because how far down the ladder a break reaches depends on the fill.
+
+import "time"
 
 // Criterion names one of the channel's break settings, for the per-criterion breakdown.
 //
@@ -74,10 +77,15 @@ type CoverageReport struct {
 	// justified is gone with it, so a rung at 0 now means what a reader would assume it means:
 	// nothing in the catalog reaches that rung.
 	Rungs []RungCoverage
-	// Level is the rung a break would actually be filled from — the tightest non-empty
-	// one — matching what Assemble would report as Pod.MatchLevel for the same input.
-	// MatchBumperCard when no rung has anything, which is the honest "this break would be
-	// the embedded card" answer rather than a zero.
+	// Level is the rung a fresh break is filled down to — what Assemble reports as
+	// Pod.MatchLevel for the same input with no pins and no play history — or, when no clip fits
+	// the gap, the tightest non-empty rung. MatchBumperCard when no rung has anything, which is
+	// the honest "this break would be the embedded card" answer rather than a zero.
+	//
+	// ⚠ Not "the tightest non-empty rung" since #1684: a pod tops up from looser rungs, and a
+	// meter reading `exact` while breaks air bottom-rung clips is the confident wrong answer
+	// the V29 gate forbids. A live break can still read looser than this when its tight rung
+	// is resting in cooldown.
 	Level MatchLevel
 	// Total is the eligible commercial count across the WIDEST rung, i.e. everything that
 	// could fill this break at any match quality. Not a sum: the rungs nest (exact ⊆
@@ -261,6 +269,15 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	// base — a row that can never say anything.
 	criteria := criterionCoverage(catalog, w, policy)
 
+	// Level is the rung a fresh break REACHES, so it is read off the same assembly rather than
+	// re-derived: since #1684 a pod tops up from looser rungs, and "tightest non-empty rung"
+	// would report `exact` for a channel whose breaks are mostly bottom-rung clips. Pins are
+	// left out (they bypass the ladder, and coverage describes the ladder), as is exposure (a
+	// cooldown moves which clips lead a given break, not which material the channel has).
+	fresh := w
+	fresh.Pinned, fresh.Exposures, fresh.SnapshotAt = nil, nil, time.Time{}
+	assembled := Assemble(catalog, fresh, policy, nil).MatchLevel
+
 	catalog = filterGeography(catalog, effectiveGeography(w.Geography, policy.Geography))
 	catalog = filterKinds(catalog, w.Kinds)
 
@@ -273,11 +290,15 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	}
 	for _, p := range pools {
 		report.Rungs = append(report.Rungs, RungCoverage{Level: p.level, Clips: len(p.clips)})
-		// Tightest non-empty wins, and only the first one — the ladder never widens
-		// further than it must, so a later rung being larger does not change the answer.
 		if len(p.clips) > 0 && report.Level == MatchBumperCard {
 			report.Level = p.level
 		}
+	}
+	// A pod never reaches tighter than the tightest non-empty rung, so the assembled level can only
+	// move Level down the ladder. When nothing fits THIS gap the pod is the bumper card, and the
+	// material still matches (TestCoverageIsAboutMaterialNotThisBreaksGap), so that is ignored.
+	if assembled != MatchBumperCard {
+		report.Level = assembled
 	}
 	if n := len(report.Rungs); n > 0 {
 		// The widest rung is the last, and the rungs nest, so its count is the total

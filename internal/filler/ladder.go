@@ -60,17 +60,28 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 	}
 }
 
-// fillCommercials draws matched commercials from the tightest non-empty pool,
+// fillCommercials draws matched commercials down the ladder, tightest rung first,
 // enforcing category variety (no same category back-to-back) and no-repeat, up to
 // PodMax clips and the flex gap. Deterministic under rng. Returns the MatchLevel
-// reached and the ordered clips.
+// reached (the loosest rung a placed clip came from) and the ordered clips.
 //
 // The invariants it holds, each with a test — change one and the pod stops being
 // reproducible or starts playing three car ads in a row:
-//   - Takes the TIGHTEST pool with any un-used clips; that pool's level is the
-//     MatchLevel returned (the ladder's whole point — never widen further than needed).
+//   - LADDER ORDER: a clip ranks by its tightest rung, so exact-era material always leads
+//     and a looser rung only TOPS UP what the tighter rungs cannot fill.
+//   - COOLDOWN BEFORE RUNG: a clip resting inside its cooldown ranks behind every rested
+//     clip on any rung. Cooldown relaxes only when the whole ladder is resting, which is the
+//     "never leave a break empty" promise the setting makes, and nothing looser.
 //   - Fills up to w.PodMax clips within w.GapMs, reserving `bumperBudgetMs` for the
 //     intro/return bumpers the caller appends.
+//
+// ⚠ #1684: this took ONLY the tightest pool with an un-used clip. `used` is per break, so that
+// pool was never exhausted and the ladder never widened: a channel whose exact rung held one
+// grounded clip aired that clip alone in every break while readiness reported the 16 clips on
+// its bottom rung. With the LLM off most clips have no grounded audience and live on that
+// bottom rung, so a real catalog hit this on most channels. Every rung is already inside the
+// channel's audience ceiling (`candidatePools`), so drawing from all three admits nothing the
+// channel could not already air.
 //   - CATEGORY VARIETY: never two clips of the same Category consecutively (§10 —
 //     "so it doesn't play three car ads back to back"). Implemented as the two-pass
 //     place(false)/place(true): the second pass tops the pod up and accepts a repeat
@@ -92,40 +103,44 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 		podMax = 4
 	}
 
-	// Pick the tightest pool that has any un-used clips; that's our MatchLevel.
-	var chosen pool
-	for _, p := range pools {
-		if hasUnused(p.clips, used) {
-			chosen = p
-			break
+	// Every un-used clip once, at the tightest rung that holds it (the rungs nest).
+	var cands []rungClip
+	seen := map[string]bool{}
+	for rung, p := range pools {
+		for _, c := range sortByID(p.clips) {
+			if used[c.ID()] || seen[c.ID()] {
+				continue
+			}
+			seen[c.ID()] = true
+			cands = append(cands, rungClip{Clip: c, rung: rung})
 		}
 	}
-	if chosen.level == "" {
+	if len(cands) == 0 {
 		return "", nil // nothing eligible → caller uses the bumper card
 	}
 
 	// Deterministic candidate order, then a seeded shuffle so selection varies by
 	// window but reproduces exactly for a given seed (§19).
-	cands := sortByID(chosen.clips)
 	rng.Shuffle(len(cands), func(i, j int) { cands[i], cands[j] = cands[j], cands[i] })
-	// Stable sorting after the seeded shuffle preserves varied tie-breaking while making durable
-	// rotation authoritative: new first, then oldest outside cooldown, then oldest recent clip.
-	sort.SliceStable(cands, func(i, j int) bool { return rotationLess(cands[i], cands[j], w, policy) })
+	// Stable sorting after the seeded shuffle preserves varied tie-breaking while making the
+	// ladder and durable rotation authoritative (see ladderLess).
+	sort.SliceStable(cands, func(i, j int) bool { return ladderLess(cands[i], cands[j], w, policy) })
 
 	var out []Clip
 	var totalMs int64
+	loosest := -1
 	lastCat := ""
-	// Two passes: first honor category variety strictly; the fallback pass allows
-	// a repeat only if the pod would otherwise be short of clips. Variety wins
-	// WITHIN the chosen pool; we don't descend the ladder just to avoid a repeat
+	// Two passes per BAND (one rung, rested or resting — see ladderBand): first honor category
+	// variety strictly; the fallback pass allows a repeat only if the pod would otherwise be short
+	// of clips. Variety wins WITHIN a band; we don't descend the ladder just to avoid a repeat
 	// (§10 — the ladder is the duration fallback, variety is a placement rule).
 	//
 	// ⚠ V45a: `c.Category` is now the DERIVED primary product leaf, so "no two back-to-back with the
 	// same Category" reads as "don't stack two clips of the same product family" — two beer ads are a
 	// repeat, a beer and a car ad are not. That is the right granularity and the rule is unchanged; a
 	// clip with no product tag ("" Category) is exempt from the repeat check, as an untagged one was.
-	place := func(allowRepeat bool) {
-		for _, c := range cands {
+	place := func(band []rungClip, allowRepeat bool) {
+		for _, c := range band {
 			if len(out) >= podMax {
 				return
 			}
@@ -141,19 +156,56 @@ func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool
 			if totalMs+c.DurationMs > budget {
 				continue // does not fit; caller's fallback card is the bounded never-dead-air answer
 			}
-			out = append(out, c)
+			out = append(out, c.Clip)
 			totalMs += c.DurationMs
 			lastCat = c.Category
+			if c.rung > loosest {
+				loosest = c.rung
+			}
 		}
 	}
-	place(false)
-	if len(out) < podMax {
-		place(true) // top up, accepting a category repeat rather than a shorter pod
+	// cands is sorted by ladderLess, so each band is one contiguous run.
+	for start := 0; start < len(cands) && len(out) < podMax; {
+		end := start + 1
+		for end < len(cands) && ladderBand(cands[end], w, policy) == ladderBand(cands[start], w, policy) {
+			end++
+		}
+		place(cands[start:end], false)
+		if len(out) < podMax {
+			place(cands[start:end], true) // top up, accepting a category repeat rather than a shorter pod
+		}
+		start = end
 	}
 	if len(out) == 0 {
 		return "", nil
 	}
-	return chosen.level, out
+	return pools[loosest].level, out
+}
+
+// rungClip is a ladder candidate: the clip and the tightest rung (index into the pools) that
+// admits it.
+type rungClip struct {
+	Clip
+	rung int
+}
+
+// ladderBand is the placement band a candidate belongs to: its rung, with every clip resting
+// inside its cooldown moved below all rested ones. Bands are what ladderLess orders.
+func ladderBand(c rungClip, w Window, policy Policy) int {
+	resting := 0
+	if tier, _ := rotationRank(c.Clip, w, policy); tier == rotationRecent {
+		resting = 1
+	}
+	return resting<<8 | c.rung // resting dominates; the rung (0-2) orders within it
+}
+
+// ladderLess orders ladder candidates: by band (rested before resting, then tightest rung
+// first), then by durable rotation inside the band (new, then least recently played).
+func ladderLess(a, b rungClip, w Window, policy Policy) bool {
+	if ab, bb := ladderBand(a, w, policy), ladderBand(b, w, policy); ab != bb {
+		return ab < bb
+	}
+	return rotationLess(a.Clip, b.Clip, w, policy)
 }
 
 const (
@@ -186,16 +238,6 @@ func rotationLess(a, b Clip, w Window, policy Policy) bool {
 		return aa.Before(ba)
 	}
 	// The caller establishes a deterministic seeded order before this stable comparison.
-	return false
-}
-
-// hasUnused reports whether any clip in the pool isn't already used this window.
-func hasUnused(clips []Clip, used map[string]bool) bool {
-	for _, c := range clips {
-		if !used[c.ID()] {
-			return true
-		}
-	}
 	return false
 }
 

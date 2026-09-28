@@ -63,10 +63,29 @@ type Filler struct {
 }
 
 // Fillers are the generated interstitials. Every one clears the quality gate's 10-second floor.
+//
+// The commercials give the demo a break-body pool (#1684): without them every demo break was the
+// bumper card, so neither the pool meter nor the #1670 repetition kit could measure filler here.
+// Their ids follow the filename convention the pipeline reads with no model (`KindFromName`,
+// `EraFromName`), so they enrol as commercials with an era and NO audience, which is what an
+// install with the LLM off holds. The eras spread across four decades so an era-targeted channel
+// has a small exact rung and a larger pool below it.
 var Fillers = []Filler{
 	{ID: "bumper-stay-tuned", Name: "Stay tuned", Duration: 15},
 	{ID: "bumper-up-next", Name: "Up next", Duration: 15},
 	{ID: "ident-always-on", Name: "Always something on", Duration: 20},
+	{ID: "commercial-breakfast-1984", Name: "Breakfast commercial 1984", Duration: 30},
+	{ID: "commercial-toy-robot-1987", Name: "Toy robot commercial 1987", Duration: 15},
+	{ID: "commercial-soda-1989", Name: "Soda commercial 1989", Duration: 30},
+	{ID: "commercial-sneakers-1993", Name: "Sneakers commercial 1993", Duration: 30},
+	{ID: "commercial-game-console-1995", Name: "Game console commercial 1995", Duration: 15},
+	{ID: "commercial-pizza-1998", Name: "Pizza commercial 1998", Duration: 30},
+	{ID: "commercial-minivan-2001", Name: "Minivan commercial 2001", Duration: 30},
+	{ID: "commercial-phone-2004", Name: "Phone commercial 2004", Duration: 15},
+	{ID: "commercial-juice-2006", Name: "Juice commercial 2006", Duration: 20},
+	{ID: "commercial-cereal-2009", Name: "Cereal commercial 2009", Duration: 30},
+	{ID: "commercial-toothpaste-2012", Name: "Toothpaste commercial 2012", Duration: 15},
+	{ID: "commercial-headphones-2015", Name: "Headphones commercial 2015", Duration: 20},
 }
 
 // Title is one invented catalogue entry.

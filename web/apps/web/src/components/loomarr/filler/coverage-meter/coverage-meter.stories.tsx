@@ -42,8 +42,8 @@ const Exact: Story = {
   },
 };
 
-// Nothing in the exact year, so breaks fall to the decade. The tightest NON-EMPTY rung is the
-// one highlighted — the ladder never widens further than it must. This is also where the
+// Nothing in the exact year, so breaks fall to the decade. The rung breaks reach is the one
+// highlighted — pods fill from the tightest rung and top up below it (#1684). This is also where the
 // "Find clips" CTA appears (F4): a widened ladder is the condition an operator can fix.
 const Widened: Story = {
   args: {
