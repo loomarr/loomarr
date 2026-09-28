@@ -1,5 +1,6 @@
 import {
   getChannelFillerCoverageMockHandler,
+  getChannelsNowNextMockHandler,
   getChannelTracksMockHandler,
   getChannelUpcomingMockHandler,
   getDiscoverFillerMockHandler,
@@ -34,6 +35,7 @@ import {
   getSystemServicesMockHandler,
   getSystemVersionMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -231,6 +233,9 @@ const stubReachable = () => {
     // id, which is NOT the URL. The old stub matched `u.includes("/pods")`, which is also true of
     // `/pods/preview`, the POST one route over.
     getPreviewChannelPodsMockHandler({ entries: [], totalMs: 0, matchLevel: "exact" }),
+    // ⚠ Ahead of the by-id read: `/v1/channels/:id` also matches `/v1/channels/now-next`, and the
+    // first match answers, so the channel header would read a ChannelDTO as the now/next list.
+    getChannelsNowNextMockHandler({ channels: [] }),
     getGetChannelMockHandler(
       channel({ id: "ch-1", name: "Cartoons", number: 42, programCount: 3, pendingCount: 1, slotCount: 4 }),
     ),
@@ -351,10 +356,13 @@ const renderAt = (path: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [path] }),
   });
+  // LoomarrProvider as main.tsx mounts it: the channel header's ident is a design-system view.
   render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </LoomarrProvider>,
   );
   // Returned so a test can assert WHERE the router settled — a redirect (the bare channel route
   // lands on Watch, §9.1 V54) is otherwise invisible to a content-only assertion. Additive: every
@@ -554,7 +562,7 @@ describe("feature-gated panels mount when their flag is on", () => {
     stubReachable();
     renderAt("/channels/ch-1/filler");
     expect(
-      await screen.findByText(/saved channel coverage/i, undefined, { timeout: 3000 }),
+      await screen.findByText(/what this channel can play/i, undefined, { timeout: 3000 }),
     ).toBeInTheDocument();
     // And the meter itself rendered, not just its heading.
     expect(await screen.findByText("Exact match")).toBeInTheDocument();

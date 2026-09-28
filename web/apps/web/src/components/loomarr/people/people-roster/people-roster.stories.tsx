@@ -3,10 +3,20 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
 import { PeopleRoster } from "./people-roster";
 
+// A fixed clock so "Last seen" is stable for the visual suite (§5.2). The disabled person has
+// never signed in, so their row shows "Never".
+const NOW = Date.parse("2026-07-19T12:00:00Z");
+const users = [
+  { ...people.localAdmin, lastSeenAt: NOW },
+  { ...people.importedMember, lastSeenAt: NOW - 2 * 3_600_000 },
+  { ...people.offlineReady, lastSeenAt: NOW - 26 * 3_600_000 },
+  people.disabled,
+];
+
 const meta = {
   title: "People/PeopleRoster",
   component: PeopleRoster,
-  args: { users: Object.values(people), selfId: people.localAdmin.id, onSelect: () => {} },
+  args: { users, selfId: people.localAdmin.id, onSelect: () => {}, now: NOW },
   decorators: [widthFrame(960)],
 } satisfies Meta<typeof PeopleRoster>;
 

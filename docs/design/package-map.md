@@ -78,7 +78,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 - **`logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
 - **`media`** · 2 importers
-  Owns host-wide resources shared by live and background media work.
+  Owns host-wide resource facts shared by media work: host memory.
 - **`openroutermedia`** · 3 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`playout/packager`** · 1 importer

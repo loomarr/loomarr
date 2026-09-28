@@ -44,7 +44,7 @@ describe("ChannelBreaks", () => {
     server.use(getPreviewChannelPodsMockHandler(pod));
     renderBreaks(<ChannelBreaks channelId="ch-1" />);
 
-    expect(await screen.findByText("In the breaks")).toBeInTheDocument();
+    expect(await screen.findByText("Between shows")).toBeInTheDocument();
     expect(screen.getByLabelText("Pod segments")).toBeInTheDocument();
     expect(
       screen.getByText("2 clips between shows, assembled exactly as the channel builds them."),

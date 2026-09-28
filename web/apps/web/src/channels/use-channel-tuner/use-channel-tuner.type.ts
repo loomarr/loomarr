@@ -22,6 +22,8 @@ interface UseChannelTuner {
   canSurf: boolean;
   ready: (channelId: string) => void;
   step: (direction: TuneDirection) => void;
+  // Tune straight to a channel by id (a typed number, a drawer pick).
+  tune: (channelId: string) => void;
   retry: () => void;
 }
 
