@@ -1,4 +1,4 @@
-import type { UserBody } from "@loomarr/api";
+import type { SessionBody, UserBody } from "@loomarr/api";
 import {
   getCreateInvitationMockHandler,
   getCreateLocalUserMockHandler,
@@ -73,13 +73,7 @@ const stubUsers = ({
     disabled: boolean;
     isAdmin: boolean;
   }>;
-  sessions?: Array<{
-    id: string;
-    userId: string;
-    createdAt: number;
-    expiresAt: number;
-    current: boolean;
-  }>;
+  sessions?: SessionBody[];
 } = {}) => {
   // Resolver-recorded request bodies. The old assertions dug through `fetchMock.mock.calls` for a
   // url substring, which only ever proved the TEST's own spelling; landing in a route-bound
@@ -469,5 +463,50 @@ describe("Users page", () => {
     stubUsers({ who: me({ id: "u2", name: "Grace", role: "member", autoApprove: false, quota: 5 }) });
     renderAt("/people");
     expect(await screen.findByText(/admins only/i)).toBeInTheDocument();
+  });
+
+  it("shows when each person was last seen (#1667)", async () => {
+    stubUsers();
+    // After stubUsers: `use()` prepends, so this overrides its roster handler.
+    server.use(
+      getListUsersMockHandler(() => ({ users: [ADA, { ...GRACE, lastSeenAt: Date.now() - 2 * 3_600_000 }] })),
+    );
+    renderAt("/people");
+    expect(await screen.findByRole("button", { name: "Manage Grace" })).toHaveTextContent("2h ago");
+    expect(screen.getByRole("button", { name: "Manage Ada" })).toHaveTextContent("Never");
+  });
+});
+
+describe("Your account", () => {
+  it("names each session's client and when it was last used, and signs out another one", async () => {
+    const now = Date.now();
+    const session = (over: Partial<SessionBody>): SessionBody => ({
+      id: "s",
+      userId: "u1",
+      createdAt: now - 5 * 3_600_000,
+      expiresAt: now + 48 * 3_600_000,
+      current: false,
+      ...over,
+    });
+    const { revokes } = stubUsers({
+      sessions: [
+        session({ id: "here", current: true, clientLabel: "Firefox on macOS", lastSeenAt: now }),
+        session({ id: "phone", clientLabel: "Safari on iPhone", lastSeenAt: now - 3 * 3_600_000 }),
+        session({ id: "fresh", createdAt: now - 2 * 3_600_000 }),
+      ],
+    });
+    renderAt("/account");
+
+    const here = (await screen.findByText("Firefox on macOS")).closest("li");
+    expect(here).toHaveTextContent("just now");
+    expect(here).toHaveTextContent("This device");
+    expect(within(here as HTMLElement).queryByRole("button")).toBeNull();
+    // A session the API hasn't labelled yet keeps the "Signed in …" title.
+    expect(screen.getByText("Signed in 2h ago")).toBeInTheDocument();
+
+    const phone = screen.getByText("Safari on iPhone").closest("li") as HTMLElement;
+    expect(phone).toHaveTextContent("3h ago");
+    await userEvent.click(within(phone).getByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(revokes).toEqual(["phone"]));
   });
 });

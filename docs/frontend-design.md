@@ -131,7 +131,7 @@ Stored as OKLCH in the source of truth (Tailwind v4/shadcn convention); hex abov
 - 4px grid (`space-1`=4 … `space-8`=32). Density: comfortable default; tables use compact row height (40px).
 - Radius: `sm` 4 (inputs, badges) · `md` 8 (cards, buttons) · `lg` 12 (dialogs, hero surfaces).
 - Elevation in dark UIs is **borders first, shadows second**: surface + `static-700` hairline; one soft shadow token reserved for overlays (dialogs, popovers, ⌘K).
-- **Non-text contrast (WCAG 1.4.11):** the `static-700` hairline is 1.3–1.4:1 — fine for *decorative* dividers and card outlines (the surface fill does the identifying), but **no control may be identified by that hairline alone.** Controls get a fill difference + the focus ring; where a border is genuinely the boundary (e.g. an unfocused outline input), use **`border-control` `#61646B`** — computed ≥3:1 on both card and page.
+- **Non-text contrast (WCAG 1.4.11):** the `static-700` hairline is 1.3–1.4:1 — fine for *decorative* dividers and card outlines (the surface fill does the identifying), but **no control may be identified by that hairline alone.** Controls get a fill difference + the focus ring; where a border is genuinely the boundary (e.g. an unfocused outline input), use **`border-control` `#666970`** — computed ≥3:1 on the page, on cards, and on the `static-800` muted/hover surface (3.04:1, the tightest).
 
 ### 2.4 Motion
 

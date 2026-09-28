@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accents, tintSurface } from "../tokens";
+import { accents, staticExtras, staticScale, tintSurface } from "../tokens";
 import { AA_SMALL, compositeTint, contrast } from "./contrast";
 
 describe("WCAG contrast", () => {
@@ -18,6 +18,17 @@ describe("WCAG contrast", () => {
       expect(contrast(a.base, tintBg), `${name} base on 15% tint should fail (why -300 exists)`).toBeLessThan(
         AA_SMALL,
       );
+    }
+  });
+
+  it("a control boundary clears 3:1 (WCAG 1.4.11) on every surface a control sits on", () => {
+    // `--input` is border-control, and controls sit on the canvas, on cards (static-900) and on
+    // the muted/accent surfaces (static-800). The last one is where it measured 2.82:1 (#1659).
+    for (const surface of ["static-950", "static-900", "static-800"] as const) {
+      expect(
+        contrast(staticExtras["border-control"], staticScale[surface]),
+        `border-control on ${surface}`,
+      ).toBeGreaterThanOrEqual(3);
     }
   });
 

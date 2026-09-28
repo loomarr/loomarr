@@ -557,10 +557,10 @@ func declared() []Setting {
 		{
 			// Host memory is a per-lease gate on hardware encodes, not a capacity term (§9.1): each
 			// encoder's device context and pipeline hold ~0.5–1 GiB of host RAM. Hot-applied because
-			// the encode pool re-reads it on every lease.
+			// the ResourceBudget re-reads it on every admission.
 			Key: "playout.memory_reserve_mb", Label: "Host memory reserve for encodes", EnvVar: "PLAYOUT_MEMORY_RESERVE_MB", Group: GroupPlayout,
 			Kind: KindInt, Default: "2048", Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "Host memory, in MiB, that hardware encoding must leave available. Background preparation stops starting new encodes before free memory would fall below this, and live playback reclaims memory from preparation before falling back to software. Set 0 to disable the host-memory check. Changes apply to the next encode without restart.",
+			Doc: "Host memory, in MiB, that hardware encoding must leave available. Loomarr does not start a hardware transcode that would take free memory below this. Set 0 to disable the host-memory check. Changes apply to the next encode without restart.",
 		},
 		{
 			Key: "playout.encode_memory_mb", Label: "Host memory per encode", EnvVar: "PLAYOUT_ENCODE_MEMORY_MB", Group: GroupPlayout,
@@ -611,7 +611,7 @@ func declared() []Setting {
 		{
 			Key: "backup.schedule", Label: "Automatic backup schedule", EnvVar: "BACKUP_SCHEDULE", Group: GroupBackup,
 			Kind: KindCron, Default: "0 30 3 * * *",
-			Doc: "When to write the nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped data keys, but not the external installation key. It does not contain filler, prepared media, cached artwork, or operator image uploads.",
+			Doc: "When to write the nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped data keys, but not the external installation key. It does not contain filler, cached artwork, or operator image uploads.",
 		},
 		{
 			Key: "backup.retain", Label: "Backups to keep", EnvVar: "BACKUP_RETAIN", Group: GroupBackup,

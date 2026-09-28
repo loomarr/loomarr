@@ -25,7 +25,6 @@ import (
 // WithLastError, while a successful attempt starts on PostgreSQL.
 type databaseService struct {
 	src     store.Store
-	dataDir string
 	backupD func() string // reads backup.dir from settings at call time (hot-applied)
 	bus     *events.Bus
 	// requestMigration must enqueue and return promptly. It is the seam to the process
@@ -45,8 +44,8 @@ type databaseService struct {
 	running     bool
 }
 
-func newDatabaseService(src store.Store, dataDir string, backupDir func() string, bus *events.Bus) *databaseService {
-	return &databaseService{src: src, dataDir: dataDir, backupD: backupDir, bus: bus, phase: "idle", parity: "unknown"}
+func newDatabaseService(src store.Store, backupDir func() string, bus *events.Bus) *databaseService {
+	return &databaseService{src: src, backupD: backupDir, bus: bus, phase: "idle", parity: "unknown"}
 }
 
 // WithMigrationRequest attaches the process-level atomic migration requester. The
@@ -180,26 +179,6 @@ func (d *databaseService) Migrate(_ context.Context, dsn string) error {
 		return err
 	}
 	return nil
-}
-
-// Switchover remains only for compatibility with clients generated from the former
-// two-call flow. The atomic path writes the bootstrap file itself after parity. Refuse
-// unless this process holds the exact old-style verified state for this target.
-func (d *databaseService) Switchover(_ context.Context, dsn string) error {
-	if store.DialectOf(d.src) != store.DialectSQLite {
-		return api.ErrNotSQLite
-	}
-	d.mu.Lock()
-	verified := !d.running && d.phase == "verified" && d.parity == "match" &&
-		d.preflighted == dsn && d.backup != nil
-	d.mu.Unlock()
-	if !verified {
-		return api.ErrMigrationNotVerified
-	}
-	if config.PinnedByEnv("DATABASE_URL") {
-		return api.ErrDatabaseURLPinned
-	}
-	return config.UpdateBootstrapFile(d.dataDir, map[string]string{"DATABASE_URL": dsn})
 }
 
 // emit announces admission-state changes. It does not claim copy progress: once the
