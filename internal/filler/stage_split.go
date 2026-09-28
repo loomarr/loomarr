@@ -52,17 +52,32 @@ type SplitStage struct {
 	// vision grounds proposed segments from their own frames so the gate has data (§10 V54).
 	// nil ⇒ propose only.
 	vision *SegmentVision
-	// structureShadow durably records the compatibility comparison beside the complete-plan gate.
-	// It is diagnostic only and never authorizes child materialization.
-	structureShadow StructureSplitShadowObserver
-	// structureDecisioner independently assesses the complete retained source once. nil leaves
-	// detector structure in place and makes no provider request.
-	structureDecisioner CompleteTimelineStructureDecisioner
-	// structureMaterialization verifies the only gate that can materialize held children. A nil
-	// policy holds the proposal; compatibility is never application authority.
-	structureMaterialization *StructureMaterializationPolicy
+	// structureRuntime returns the long-reel runtime currently in force. nil is the zero runtime:
+	// no assessment, no shadow, every proposal held.
+	structureRuntime func() StructureRuntime
 	// log reports what a grounding pass actually did (§10 V54b). nil is tolerated everywhere.
 	log *slog.Logger
+}
+
+// StructureRuntime is ONE long-reel policy: the assessment, the gate that may materialize from it,
+// and the shadow that records the comparison under that gate's identity. They are built together
+// and swapped together.
+//
+// ⚠ **A split reads it ONCE (#1659).** The two long-reel files apply live, so the runtime can be
+// replaced while a split is in flight. Reading each part at its point of use would let one pass
+// assess under the old authority and gate or record under the new one — a shadow row attributed
+// to a policy that never judged the proposal. A decision persisted under an older authority is
+// still re-verified by the gate, so it fails closed as uncertified rather than materializing.
+type StructureRuntime struct {
+	// Decisioner independently assesses the complete retained source once. nil leaves detector
+	// structure in place and makes no provider request.
+	Decisioner CompleteTimelineStructureDecisioner
+	// Materialization verifies the only gate that can materialize held children. A nil policy
+	// holds the proposal; compatibility is never application authority.
+	Materialization *StructureMaterializationPolicy
+	// Shadow durably records the compatibility comparison beside the complete-plan gate. It is
+	// diagnostic only and never authorizes child materialization.
+	Shadow StructureSplitShadowObserver
 }
 
 // NewSplitStage builds the stage. Without `WithAutoConfirm` it PROPOSES ONLY, which is the safe
@@ -112,27 +127,26 @@ func (s *SplitStage) WithSegmentVision(v *SegmentVision) *SplitStage {
 	return s
 }
 
-// WithStructureShadow attaches the durable dual-evaluation module. A recording failure is an
-// error rather than a log-only omission: unattended materialization must not erase the disagreement
-// evidence by consuming its proposal.
-func (s *SplitStage) WithStructureShadow(observer StructureSplitShadowObserver) *SplitStage {
-	s.structureShadow = observer
+// WithStructureRuntime attaches the source of the long-reel runtime in force. Merely attaching an
+// assessment cannot authorize child materialization; the complete-plan gate still requires an
+// immutable structure authority. A shadow recording failure is an error rather than a log-only
+// omission: unattended materialization must not erase the disagreement evidence by consuming its
+// proposal.
+func (s *SplitStage) WithStructureRuntime(current func() StructureRuntime) *SplitStage {
+	s.structureRuntime = current
 	return s
 }
 
-// WithCompleteTimelineStructureAssessment attaches the independently reduced whole-source
-// assessment module. Merely attaching it cannot authorize child materialization; the complete-plan
-// gate still requires an immutable structure authority.
-func (s *SplitStage) WithCompleteTimelineStructureAssessment(decisioner CompleteTimelineStructureDecisioner) *SplitStage {
-	s.structureDecisioner = decisioner
-	return s
+// WithFixedStructureRuntime attaches a runtime that never changes.
+func (s *SplitStage) WithFixedStructureRuntime(rt StructureRuntime) *SplitStage {
+	return s.WithStructureRuntime(func() StructureRuntime { return rt })
 }
 
-// WithStructureMaterialization attaches the certified complete-plan gate. The policy itself still
-// verifies explicit release authority; a nil policy deliberately leaves every proposal held.
-func (s *SplitStage) WithStructureMaterialization(policy *StructureMaterializationPolicy) *SplitStage {
-	s.structureMaterialization = policy
-	return s
+func (s *SplitStage) currentStructureRuntime() StructureRuntime {
+	if s.structureRuntime == nil {
+		return StructureRuntime{}
+	}
+	return s.structureRuntime()
 }
 
 // SegmentVision grounds proposed segments from their own frames so the auto-confirm gate has
@@ -520,6 +534,7 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	//
 	// Re-detection stays the operator's call (`POST /v1/filler/split`): a rung must not redraw a
 	// cut list a human may have open. Grounding is additive and touches no boundary.
+	rt := s.currentStructureRuntime()
 	p, err := s.pendingFor(ctx, c.Hash)
 	if err != nil {
 		return StageResult{}, err
@@ -547,8 +562,8 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 				"prepared previews for %d of %d clips", len(p.Segments)-pending, len(p.Segments))}, nil
 		}
 	}
-	if p.StructureDecision == nil && s.structureDecisioner != nil {
-		assessed, assessErr := s.splitter.AssessProposalStructure(ctx, *p, s.structureDecisioner)
+	if p.StructureDecision == nil && rt.Decisioner != nil {
+		assessed, assessErr := s.splitter.AssessProposalStructure(ctx, *p, rt.Decisioner)
 		if errors.Is(assessErr, ErrProposalGone) {
 			return StageResult{Verdict: VerdictContinue, Note: "already resolved"}, nil
 		}
@@ -630,9 +645,9 @@ func (s *SplitStage) Run(ctx context.Context, c StoreClip) (StageResult, error) 
 	//
 	// ⚠ **PER SEGMENT since V54.** This used to be one verdict for the reel, so one doubtful cut
 	// in 52 sent all 52 back and the operator's work never shrank.
-	legacy, part := s.splitPartitions(*p)
-	if s.structureShadow != nil {
-		if err := s.structureShadow.ObserveStructureSplit(ctx, *p, legacy); err != nil {
+	legacy, part := s.splitPartitions(*p, rt.Materialization)
+	if rt.Shadow != nil {
+		if err := rt.Shadow.ObserveStructureSplit(ctx, *p, legacy); err != nil {
 			return StageResult{}, err
 		}
 	}
@@ -729,9 +744,9 @@ func (s *SplitStage) persistHeldReasons(ctx context.Context, proposalID string, 
 	return err
 }
 
-func (s *SplitStage) splitPartitions(proposal SplitProposal) (SplitPartition, SplitPartition) {
+func (s *SplitStage) splitPartitions(proposal SplitProposal, materialization *StructureMaterializationPolicy) (SplitPartition, SplitPartition) {
 	compatibility := AutoConfirmable(proposal, s.autoConfirm, s.minClipFloor())
-	application := CertifiedStructureMaterializable(proposal, s.autoConfirm, s.structureMaterialization, s.minClipFloor())
+	application := CertifiedStructureMaterializable(proposal, s.autoConfirm, materialization, s.minClipFloor())
 	return compatibility, application
 }
 
@@ -755,6 +770,7 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 	if canGround && s.vision.Budget != nil && s.vision.Budget() <= 0 {
 		canGround = false
 	}
+	rt := s.currentStructureRuntime()
 	out := make(map[string]struct{})
 	for _, p := range proposals {
 		if !p.Ready() {
@@ -765,12 +781,12 @@ func (s *SplitStage) resumableReviewHashes(ctx context.Context) (map[string]stru
 			out[p.ClipHash] = struct{}{}
 			continue
 		}
-		if s.structureDecisioner != nil && p.StructureDecision == nil {
+		if rt.Decisioner != nil && p.StructureDecision == nil {
 			out[p.ClipHash] = struct{}{}
 			continue
 		}
-		if s.structureShadow != nil {
-			pending, shadowErr := s.structureShadow.NeedsStructureSplitObservation(ctx, p)
+		if rt.Shadow != nil {
+			pending, shadowErr := rt.Shadow.NeedsStructureSplitObservation(ctx, p)
 			if shadowErr != nil {
 				return nil, shadowErr
 			}

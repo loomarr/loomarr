@@ -1727,7 +1727,7 @@ func TestSplitStageRecordsStructureShadowBeforeCompatibilityPublication(t *testi
 			Enabled: func() bool { return true }, MinConfidence: func() int { return 85 },
 			MaxDuration: func() time.Duration { return 2 * time.Minute },
 		}, func() time.Duration { return 10 * time.Second }).
-		WithStructureShadow(observer)
+		WithFixedStructureRuntime(filler.StructureRuntime{Shadow: observer})
 
 	out, err := stage.Run(context.Background(), st.clips[hash])
 	if err == nil || !strings.Contains(err.Error(), "shadow store unavailable") || len(out.Spawned) != 0 {

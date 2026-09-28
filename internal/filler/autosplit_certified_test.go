@@ -187,9 +187,8 @@ func TestSplitStageAppliesCertifiedWindowPlanWithoutChangingLegacyShadowInput(t 
 		proposal.Segments[index].Audience = ""
 	}
 	stage := NewSplitStage(nil, nil).
-		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second }).
-		WithStructureMaterialization(allowCertifiedWindowStructure(t, *proposal.StructureDecision))
-	legacy, applied := stage.splitPartitions(proposal)
+		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
+	legacy, applied := stage.splitPartitions(proposal, allowCertifiedWindowStructure(t, *proposal.StructureDecision))
 	if legacy.Verdict() != RejectUntagged || len(legacy.Confirm) != 0 {
 		t.Fatalf("legacy shadow input=%+v", legacy)
 	}
@@ -203,7 +202,7 @@ func TestSplitStageNeverAppliesCompatibilityPartitionWithoutCertifiedAuthority(t
 	stage := NewSplitStage(nil, nil).
 		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
 
-	compatibility, application := stage.splitPartitions(proposal)
+	compatibility, application := stage.splitPartitions(proposal, nil)
 	if compatibility.Verdict() != AutoSplitOK || len(compatibility.Confirm) != 2 {
 		t.Fatalf("compatibility comparison = %+v", compatibility)
 	}
@@ -216,10 +215,9 @@ func TestSplitStageNeverAppliesCompatibilityPartitionWithoutDecision(t *testing.
 	proposal := certifiedStructureProposal(t)
 	proposal.StructureDecision = nil
 	stage := NewSplitStage(nil, nil).
-		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second }).
-		WithStructureMaterialization(allowCertifiedStructure(t))
+		WithAutoConfirm(*certifiedAutoPolicy(), func() time.Duration { return 10 * time.Second })
 
-	compatibility, application := stage.splitPartitions(proposal)
+	compatibility, application := stage.splitPartitions(proposal, allowCertifiedStructure(t))
 	if compatibility.Verdict() != AutoSplitOK || len(compatibility.Confirm) != 2 {
 		t.Fatalf("compatibility comparison = %+v", compatibility)
 	}

@@ -103,7 +103,8 @@ func TestPipeline_SplitReviewResumeRequeuesPendingDespiteObservedEmptyGroups(t *
 			Stages: []filler.StageRecord{{Stage: filler.StageSplit, Status: filler.StatusDone}},
 		}
 	}
-	stage := filler.NewSplitStage(nil, reviewQueue{[]filler.SplitProposal{observed, pending}}).WithStructureShadow(shadow)
+	stage := filler.NewSplitStage(nil, reviewQueue{[]filler.SplitProposal{observed, pending}}).
+		WithFixedStructureRuntime(filler.StructureRuntime{Shadow: shadow})
 	result, err := newPipe(st, []filler.Stage{stage}, filler.Budget{}).RunOnce(context.Background())
 	if err != nil {
 		t.Fatal(err)
