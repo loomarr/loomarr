@@ -10,7 +10,7 @@ import {
   layoutGuide,
   moveGuideSelection,
 } from "@loomarr/core/guide";
-import { AdaptiveSplit } from "@loomarr/design-system";
+import { AdaptiveSplit, adaptiveBreakpoints } from "@loomarr/design-system";
 import { GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -109,6 +109,12 @@ const renderArtwork = (airing: GuideAiringLayout) =>
   ) : airing.source.thumbUrl ? (
     <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
   ) : undefined;
+
+// AdaptiveSplit measures the window, but this page sits beside the shell's sidebar (md:w-56). The
+// card moves below the grid where the pointer guide's would, measured from the content area, so a
+// 900px window stacks instead of squeezing the grid to a sliver.
+const SHELL_SIDEBAR_PX = 224;
+const SPLIT_BREAKPOINT = adaptiveBreakpoints.pointer + SHELL_SIDEBAR_PX;
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
@@ -607,6 +613,7 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
             {layout && (
               <AdaptiveSplit
                 accessibilityLabel="Programme guide"
+                breakpoint={SPLIT_BREAKPOINT}
                 flex={1}
                 minHeight={0}
                 primary={

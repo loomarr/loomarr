@@ -30,6 +30,16 @@ const RAIL = 260;
 const ROW = 56;
 const RULER = 30;
 const hourMs = 3_600_000;
+// A ruler label ("12:00 PM" plus its inset) needs this much room. A long span labels every second,
+// third… hour instead of letting the labels run into each other; every hour keeps its line.
+const LABEL_MIN_PX = 80;
+const LABEL_STRIDES = [1, 2, 3, 4, 6] as const;
+
+const labelStride = (timelineWidth: number, span: number): number => {
+  const hourPx = (timelineWidth * hourMs) / span;
+  if (hourPx <= 0) return 1;
+  return LABEL_STRIDES.find((stride) => stride * hourPx >= LABEL_MIN_PX) ?? 6;
+};
 
 const arrowDirection: Record<string, GuideNavigationDirection> = {
   ArrowDown: "down",
@@ -417,6 +427,7 @@ const GuideGrid = ({
   const firstHour = Math.ceil(layout.fromMs / hourMs) * hourMs;
   const ticks: number[] = [];
   for (let t = firstHour; t < layout.toMs; t += hourMs) ticks.push(t);
+  const stride = labelStride(timelineWidth, span);
 
   const ruler = (
     <Surface
@@ -437,7 +448,7 @@ const GuideGrid = ({
         onLayout={(e: LayoutChangeEvent) => setTimelineWidth(e.nativeEvent.layout.width)}
         style={{ flex: 1, height: RULER, overflow: "hidden", position: "relative" }}
       >
-        {ticks.map((t) => (
+        {ticks.map((t, i) => (
           <Surface
             backgroundColor="$transparent"
             borderColor="$borderDecorative"
@@ -451,9 +462,11 @@ const GuideGrid = ({
             position="absolute"
             top={0}
           >
-            <Text numberOfLines={1} textRole="guideMeta">
-              {formatGuideTime(t, layout.timezone)}
-            </Text>
+            {i % stride === 0 ? (
+              <Text numberOfLines={1} textRole="guideMeta">
+                {formatGuideTime(t, layout.timezone)}
+              </Text>
+            ) : null}
           </Surface>
         ))}
         {nowRatio === undefined ? null : (
