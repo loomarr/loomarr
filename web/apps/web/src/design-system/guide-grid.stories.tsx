@@ -89,7 +89,7 @@ const genres = ["Sci-Fi", "Cartoons", "Horror", "Westerns", "Sitcoms", "Noir", "
 const hundred = layoutGuide(
   {
     channels: Array.from({ length: 100 }, (_, i) => {
-      const genre = genres[i % genres.length];
+      const genre = genres[i % genres.length] ?? "Drama";
       // Staggered starts so the rows don't line up into columns.
       const offset = (i * 17) % 60;
       return channel(i + 1, `${genre} ${i + 1}`, i % 11 === 5 ? "paused" : "live", [
