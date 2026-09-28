@@ -5,6 +5,7 @@ import { iconography } from "../tokens";
 
 type IconSize = keyof typeof iconography.size;
 type IconTone =
+  | "content"
   | "danger"
   | "disabled"
   | "info"
@@ -32,6 +33,8 @@ const Icon = ({
 }: IconProps) => {
   const theme = useTheme();
   const tones: Record<IconTone, string> = {
+    // Body-text colour, for a selected destination that isn't an action (the phone tab bars).
+    content: theme.contentPrimary.val,
     danger: theme.stateDanger.val,
     disabled: theme.actionDisabled.val,
     info: theme.stateInfo.val,

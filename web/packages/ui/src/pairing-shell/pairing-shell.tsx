@@ -190,7 +190,15 @@ const pairingContent = (
           gap={density === "tv" ? 0 : "$section"}
           width="100%"
         >
-          <Surface alignItems="center" backgroundColor="$transparent" borderWidth={0} flex={1} gap="$control">
+          {/* The halves share the TV's row. In a phone's column, flex's zero basis would give each no
+              height on native, so the QR, the code and the button drew over each other. */}
+          <Surface
+            alignItems="center"
+            backgroundColor="$transparent"
+            borderWidth={0}
+            flex={density === "tv" ? 1 : undefined}
+            gap="$control"
+          >
             <Text density={density} textRole={density === "tv" ? "section" : "title"}>
               {density === "tv" ? "SCAN QR CODE" : "Scan QR Code"}
             </Text>
@@ -208,7 +216,7 @@ const pairingContent = (
             alignItems="center"
             backgroundColor="$transparent"
             borderWidth={0}
-            flex={1}
+            flex={density === "tv" ? 1 : undefined}
             gap="$control"
             justifyContent="flex-start"
           >

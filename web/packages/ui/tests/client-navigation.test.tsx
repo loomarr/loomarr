@@ -18,6 +18,25 @@ describe("shared client navigation", () => {
     expect(markup.match(/aria-pressed="true"/g)).toHaveLength(1);
   });
 
+  it("gives a phone its platform's tab bar instead of the row of actions", () => {
+    const render = (variant?: "material") =>
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <ClientNavigation active="watching" density="touch" onNavigate={vi.fn()} variant={variant} />
+        </LoomarrProvider>,
+      );
+
+    for (const markup of [render(), render("material")]) {
+      expect(markup).toContain('role="tablist"');
+      expect(markup).not.toContain('role="button"');
+      expect(markup.match(/role="tab"/g)).toHaveLength(3);
+      expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
+    }
+    // The web build of a touch surface reads as iPhone's bar; Android's is chosen by platform.
+    expect(render()).toContain("font-size:10px");
+    expect(render("material")).toContain("font-size:12px");
+  });
+
   it("returns transient browsing to playback before allowing the host to exit", () => {
     expect(clientBackDestination("guide")).toBe("watching");
     expect(clientBackDestination("surf")).toBe("watching");

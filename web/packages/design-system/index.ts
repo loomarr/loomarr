@@ -77,8 +77,12 @@ export type {
   TabsProps,
 } from "./src/selection";
 export { Hint, MenuList, SelectControl, Tabs } from "./src/selection";
+export type { BottomSheetProps } from "./src/sheet";
+export { BottomSheet } from "./src/sheet";
 export type { AnalogSnowProps } from "./src/snow";
 export { AnalogSnow } from "./src/snow";
+export type { TabBarIdiom, TabBarItem, TabBarProps } from "./src/tab-bar";
+export { TabBar } from "./src/tab-bar";
 export type { Density, TextRole } from "./src/tokens";
 export {
   brandChroma,
