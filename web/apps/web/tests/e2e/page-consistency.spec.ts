@@ -236,6 +236,9 @@ test("Filler keeps member navigation on member-readable routes", async ({ page }
 
   await page.goto("/filler/settings/details");
   await expect(page).toHaveURL(/\/filler\/manage$/);
-  await expect(page.getByRole("heading", { level: 2, name: "Settings and tools" })).toBeVisible();
+  // The web mock's Manage list (#1659): a member sees the tools, but Settings has no Open.
+  const tools = page.getByRole("region", { name: "Filler tools" });
+  await expect(tools).toBeVisible();
+  await expect(tools.getByRole("link", { name: "Open Settings" })).toHaveCount(0);
   expect(privateReads).toEqual([]);
 });

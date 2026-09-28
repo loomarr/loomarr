@@ -10,10 +10,9 @@ test("automatic downloads expose simple defaults with optional per-source contro
 
   await page.goto("/filler/manage");
 
-  await expect(page.getByRole("heading", { name: "Filler settings" })).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.getByRole("link", { name: "Open filler settings" }).click();
+  // The web mock's Manage is one list of tools, each opened by its own row (#1659).
+  await expect(page.getByRole("region", { name: "Filler tools" })).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("link", { name: "Open Settings" }).click();
   await expect(page.getByRole("heading", { name: "Filler settings" })).toBeVisible({
     timeout: 10_000,
   });
@@ -111,7 +110,7 @@ test("automatic download controls stay usable on a narrow, zoomed screen and fro
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/filler/manage");
 
-  const settingsLink = page.getByRole("link", { name: "Open filler settings" });
+  const settingsLink = page.getByRole("link", { name: "Open Settings" });
   await settingsLink.focus();
   await page.keyboard.press("Enter");
   const downloadsLink = page.getByRole("link", { name: /^Automatic downloads/ });
