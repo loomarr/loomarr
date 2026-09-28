@@ -19,37 +19,30 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
-| `bgexec` | 11 | — |
+| `bgexec` | 7 | — |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 7 | — |
-| `filler` | 11 | `bgexec`, `diagnostics`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `mediatools`, `taxonomy` |
-| `filleradmission` | 7 | — |
-| `fillerbakeoff` | 9 | `bgexec`, `filleradmission`, `fillereval`, `httpx`, `openroutermedia` |
-| `fillercorpus` | 7 | — |
-| `fillereval` | 7 | — |
-| `fillersafety` | 8 | `bgexec`, `mediatools`, `openroutermedia` |
-| `fillerstructure` | 8 | — |
-| `fillerstructurewindow` | 6 | `fillerstructure` |
-| `fillervisualsafety` | 6 | `bgexec`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`, `openroutermedia` |
-| `httpx` | 13 | `metrics` |
+| `filler` | 8 | `bgexec`, `diagnostics`, `filleradmission`, `fillerstructure`, `llm`, `mediatools`, `taxonomy` |
+| `filleradmission` | 5 | — |
+| `fillerstructure` | 5 | — |
+| `httpx` | 10 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 6 | `contact` |
 | `library` | 10 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 8 | `httpx`, `metrics` |
-| `mediatools` | 12 | `bgexec`, `diagnostics`, `playout` |
+| `mediatools` | 6 | `bgexec`, `diagnostics`, `playout` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
-| `openroutermedia` | 7 | `fillereval` |
 | `playout` | 6 | `diagnostics`, `provision`, `schedule` |
 | `provision` | 23 | — |
 | `quality` | 7 | `provision` |
 | `recovery` | 5 | — |
 | `schedule` | 18 | `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillerstructure`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
-| `taxonomy` | 6 | — |
+| `taxonomy` | 5 | — |
 
 ## Every package, by layer
 
@@ -69,19 +62,15 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 7 importers
+- **`filleradmission`** · 5 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
-- **`fillercandidatepool`** · 2 importers
-  Owns the immutable replacement-candidate-pool contract.
-- **`fillercorpus`** · 7 importers
+- **`fillercorpus`** · 1 importer
   Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 7 importers
+- **`fillereval`** · 3 importers
   Owns the hermetic certification contract for filler admission.
-- **`fillerrelease`**
-  Evaluates one immutable filler release evidence bundle.
-- **`fillerstructure`** · 8 importers
+- **`fillerstructure`** · 5 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
@@ -113,7 +102,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
 - **`storagegovernor`** · 4 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
-- **`taxonomy`** · 6 importers
+- **`taxonomy`** · 5 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
 - **`testkit/execfixture`** · 1 importer
   Owns filesystem-backed executable test doubles without importing application packages.
@@ -138,7 +127,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 1
 
-- **`bgexec`** · 11 importers · → `proctree`
+- **`bgexec`** · 7 importers · → `proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -150,14 +139,14 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`openroutermedia`** · 7 importers · → `fillereval`
+- **`openroutermedia`** · 4 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 
 ### Layer 2
 
-- **`httpx`** · 13 importers · → `metrics`
+- **`httpx`** · 10 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`ideas`** · 2 importers · → `holidayvocab`, `provision`
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
@@ -168,7 +157,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 3
 
-- **`fillerbakeoff`** · 9 importers · → `bgexec`, `filleradmission`, `fillereval`, `httpx`, `openroutermedia`
+- **`fillerbakeoff`** · 4 importers · → `bgexec`, `filleradmission`, `fillereval`, `httpx`, `openroutermedia`
   Runs bounded, inference-spending filler admission comparisons.
 - **`llm`** · 8 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
@@ -187,7 +176,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns progressive descriptive understanding for filler clips.
 - **`fillerresearch`** · 3 importers · → `llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`mediatools`** · 12 importers · → `bgexec`, `diagnostics`, `playout`
+- **`mediatools`** · 6 importers · → `bgexec`, `diagnostics`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`playoutbench`** · → `playout`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
@@ -196,54 +185,32 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 5
 
-- **`fillerreference`** · 3 importers · → `bgexec`, `filleradmission`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `mediatools`, `taxonomy`
-  Owns the deterministic pre-screen for the production-ready filler reference cohort.
-- **`fillersafety`** · 8 importers · → `bgexec`, `mediatools`, `openroutermedia`
+- **`fillersafety`** · 3 importers · → `bgexec`, `mediatools`, `openroutermedia`
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
-- **`fillerstructuremedia`** · 4 importers · → `fillerstructure`, `mediatools`
+- **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
-- **`fillervisualsafety`** · 6 importers · → `bgexec`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`, `openroutermedia`
+- **`fillervisualsafety`** · 2 importers · → `bgexec`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`, `openroutermedia`
   Owns complete-source visual-sensitive-content evidence.
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
 
 ### Layer 6
 
-- **`fillerairworthinessprojection`** · 2 importers · → `fillerairworthiness`, `fillersafety`, `fillervisualsafety`
+- **`fillerairworthinessprojection`** · 1 importer · → `fillerairworthiness`, `fillersafety`, `fillervisualsafety`
   Authenticates safety-producer output and translates opaque certified matches into closed Airworthiness evidence.
-- **`fillersafetycert`** · 3 importers · → `fillersafety`
-  Owns deterministic, non-authorizing certification of the durable spoken-safety cascade.
-- **`fillerstructurewindow`** · 6 importers · → `fillerstructure`, `fillerstructuremedia`
+- **`fillerstructurewindow`** · 4 importers · → `fillerstructure`, `fillerstructuremedia`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
-- **`fillervisualsafety/cmd/corpusdraft`** · → `fillervisualsafety`
-  Command corpusdraft prepares one private, candidate-model-blind visual corpus review package.
-- **`fillervisualsafety/cmd/diagnostic`** · → `fillervisualsafety`
-  Command diagnostic runs one explicitly configured, development-only complete-source portable visual inference.
-- **`fillervisualsafety/cmd/openrouterreview`** · → `fillerbakeoff`, `fillervisualsafety`
-  Command openrouterreview performs one serial, candidate-blind visual-policy review over a previously verified bundle.
-- **`fillervisualsafety/cmd/reviewbundle`** · → `fillervisualsafety`
-  Command reviewbundle creates one private candidate-output-blind visual review bundle.
 
 ### Layer 7
 
-- **`filler`** · 11 importers · → `bgexec`, `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
+- **`filler`** · 8 importers · → `bgexec`, `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
-- **`fillersafetycorpus`** · 1 importer · → `bgexec`, `fillercorpus`, `fillersafety`, `fillersafetycert`
-  Prepares private real-speech cohorts for later spoken-safety authority assembly without assigning certification truth.
-- **`fillerstructurewindowcert`** · 1 importer · → `fillerstructure`, `fillerstructurewindow`
-  Certifies the long-reel window protocol against private, known-truth timelines.
 
 ### Layer 8
 
 - **`clipfetch`** · 1 importer · → `bgexec`, `filler`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
-- **`fillersafetyreview`** · → `bgexec`, `fillerbakeoff`, `fillereval`, `fillersafety`, `fillersafetycert`, `fillersafetycorpus`, `httpx`, `mediatools`, `openroutermedia`
-  Runs one independent, exhaustive model review of an assembled spoken-safety certification draft.
-- **`fillersafetyruntime`** · → `filler`, `fillerairworthinessprojection`, `fillerbakeoff`, `fillersafety`, `fillersafetycert`, `httpx`, `mediatools`
-  Owns authority-driven construction of the production spoken-safety evidence producer.
-- **`fillerstructureopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructuremedia`, `openroutermedia`
-  Adapts the bounded OpenRouter media transport to the provider-neutral complete-timeline assessor port.
-- **`fillerstructurewindowopenrouter`** · 2 importers · → `filler`, `fillerbakeoff`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutermedia`
+- **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerbakeoff`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`library`** · 10 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
@@ -260,14 +227,14 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the durable workflow that separates preparing a playout backend from publishing it to the media server.
 - **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
-- **`fillerreview`** · 3 importers · → `bgexec`, `filler`, `filleradmission`, `fillerbakeoff`, `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerreference`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructureopenrouter`, `fillerstructurewindow`, `fillerstructurewindowcert`, `fillerstructurewindowopenrouter`, `httpx`, `mediatools`, `openroutermedia`
-  Materializes identity-blind evidence for independent semantic review.
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`settings`** · 1 importer · → `config`, `library`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
+- **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/libraryfixture`** · → `library`, `provision`, `schedule`
   No-network adapters for library-facing tests.
 - **`testkit/outlookfixture`** · → `library`, `schedule`
@@ -279,8 +246,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`devbootstrap`** · → `auth`
   Prepares an isolated agent worktree for UI development.
-- **`fillerquarantine`** · 2 importers · → `fillercorpus`, `fillerreference`, `fillerreview`, `mediatools`
-  Owns the deterministic, non-promoting inspection boundary between local quarantine acquisition and a later rights review.
 - **`images`** · 2 importers · → `images/rustgen`, `logchange`, `scheduler`
   One pipeline every image in Loomarr travels (§22).
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
@@ -294,10 +259,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 11
 
-- **`fillercandidatepool/build`** · → `fillercandidatepool`, `fillercorpus`, `fillereval`, `fillerquarantine`, `fillerreview`
-  Composes the independent corpus, quarantine, review, and prior-exposure authorities into one replacement candidate pool.
-- **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `fillercorpus`, `fillerquarantine`, `fillerreference`, `fillerreview`, `images/rustgen`, `invitation`, `llm`, `mediatools`, `notifications`, `playout`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
-  The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/moviecollectionsfixture`** · → `moviecollections`
   The shared deterministic source for movie-collection resolver tests.
 - **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`

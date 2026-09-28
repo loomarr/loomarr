@@ -79,6 +79,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make go-race-weights` |  | regenerate the race-lane package weights from hosted merge-group runs (RUNS="run-id ...") |
 | `make go-race-verify` |  | every -race opt-out (scripts/go-race-policy.sh RACE_OFF) must be a real package |
 | `make test-ffmpeg` |  | media tests that EXECUTE ffmpeg (needs ffmpeg+ffprobe; not in comprehensive verification) |
+| `make research-verify` |  | compile the archived filler research module against its pinned core (all build tags; not a CI gate) |
 | `make eval-contract` |  | hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB |
 | `make eval` |  | semantic eval: real intents → real LLM → scored (needs LLM_*/LIBRARY_*/TMDB_API_KEY; NOT in the hermetic gate) |
 | `make eval-cert` |  | certify exact intents and mandatory scheduled viewer outcomes; fails closed and writes a scorecard |

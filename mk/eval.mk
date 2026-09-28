@@ -1,3 +1,11 @@
+# The filler research tooling is archived in research/, its own module pinned to the core commit it
+# was written against (#1560 D1). Its targets build and run a tool from there; nothing in CI does.
+RESEARCH_RUN = GO="$(GO)" ./scripts/research-run.sh
+
+.PHONY: research-verify
+research-verify: ## compile the archived filler research module against its pinned core (all build tags; not a CI gate)
+	$(GO) -C research vet -tags '$(CUSTOM_TAGS)' ./...
+
 eval-contract: ## hermetic semantic-evaluation contracts; never contacts a model, Library, or TMDB
 	LOOMARR_EVAL_CONTRACT_ONLY=1 $(GO) test -tags=eval ./internal/eval/ ./cmd/planner-cert-compare/ ./internal/recommend/ ./cmd/channel-recommend-cert/ ./cmd/channel-recommend-compare/ ./cmd/channel-recommend-diagnostic/
 
@@ -161,14 +169,15 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/ ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-met/ ./cmd/filler-corpus-met-rights-complete/ ./cmd/filler-corpus-met-rights-propose/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-media-integrity-prepare/ ./cmd/filler-media-integrity-score/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/ ./cmd/filler-visual-corpus-nominate/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/
+	$(GO) -C research test ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-met/ ./cmd/filler-corpus-met-rights-complete/ ./cmd/filler-corpus-met-rights-propose/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-media-integrity-prepare/ ./cmd/filler-media-integrity-score/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/ ./cmd/filler-visual-corpus-nominate/
 
 filler-temporal-truth-select: ## select the private 48-case truth-review sample from frozen history without inference
 	@for name in DRAFT SEED OUT A_PACKAGE A_MAP A_LABELS B_PACKAGE B_MAP B_LABELS C_PACKAGE C_MAP C_ADJUDICATIONS; do \
 	  value="$$(printenv "LOOMARR_FILLER_TRUTH_$$name" 2>/dev/null || true)"; \
 	  test -n "$$value" || { echo "filler-temporal-truth-select: LOOMARR_FILLER_TRUTH_$$name is required" >&2; exit 2; }; \
 	done; \
-	$(GO) run ./cmd/filler-temporal-truth-select \
+	$(RESEARCH_RUN) filler-temporal-truth-select \
 	  --draft "$$LOOMARR_FILLER_TRUTH_DRAFT" --seed "$$LOOMARR_FILLER_TRUTH_SEED" --out "$$LOOMARR_FILLER_TRUTH_OUT" \
 	  --a-package "$$LOOMARR_FILLER_TRUTH_A_PACKAGE" --a-map "$$LOOMARR_FILLER_TRUTH_A_MAP" --a-labels "$$LOOMARR_FILLER_TRUTH_A_LABELS" \
 	  --b-package "$$LOOMARR_FILLER_TRUTH_B_PACKAGE" --b-map "$$LOOMARR_FILLER_TRUTH_B_MAP" --b-labels "$$LOOMARR_FILLER_TRUTH_B_LABELS" \
@@ -179,7 +188,7 @@ filler-temporal-truth-prepare: ## build the sealed complete-span 48-case evidenc
 	  value="$$(printenv "LOOMARR_FILLER_TRUTH_$$name" 2>/dev/null || true)"; \
 	  test -n "$$value" || { echo "filler-temporal-truth-prepare: LOOMARR_FILLER_TRUTH_$$name is required" >&2; exit 2; }; \
 	done; \
-	$(GO) run ./cmd/filler-temporal-truth-prepare \
+	$(RESEARCH_RUN) filler-temporal-truth-prepare \
 	  --selection "$$LOOMARR_FILLER_TRUTH_SELECTION" --draft "$$LOOMARR_FILLER_TRUTH_DRAFT" \
 	  --download-ledger "$$LOOMARR_FILLER_TRUTH_DOWNLOAD_LEDGER" --media-root "$$LOOMARR_FILLER_TRUTH_MEDIA_ROOT" \
 	  --packets "$$LOOMARR_FILLER_TRUTH_PACKETS" --packet-root "$$LOOMARR_FILLER_TRUTH_PACKET_ROOT" \
@@ -194,7 +203,7 @@ filler-temporal-assess-ollama: ## assess the sealed temporal challenge with a di
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_MODEL_FAMILY" || { echo "filler-temporal-assess-ollama: LOOMARR_FILLER_TEMPORAL_MODEL_FAMILY is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_MODEL_DIGEST" || { echo "filler-temporal-assess-ollama: LOOMARR_FILLER_TEMPORAL_MODEL_DIGEST is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_ASSESSOR_ID" || { echo "filler-temporal-assess-ollama: LOOMARR_FILLER_TEMPORAL_ASSESSOR_ID is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-temporal-assess-ollama \
+	  $(RESEARCH_RUN) filler-temporal-assess-ollama \
 	    --package "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" \
 	    --model "$$LOOMARR_FILLER_TEMPORAL_MODEL" \
 	    --model-family "$$LOOMARR_FILLER_TEMPORAL_MODEL_FAMILY" \
@@ -209,7 +218,7 @@ filler-temporal-compare: ## compare two independent temporal assessment sets wit
 	@test -n "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" || { echo "filler-temporal-compare: LOOMARR_FILLER_TEMPORAL_PACKAGE is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_FIRST" || { echo "filler-temporal-compare: LOOMARR_FILLER_TEMPORAL_FIRST is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_SECOND" || { echo "filler-temporal-compare: LOOMARR_FILLER_TEMPORAL_SECOND is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-temporal-compare \
+	  $(RESEARCH_RUN) filler-temporal-compare \
 	    --package "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" \
 	    --first "$$LOOMARR_FILLER_TEMPORAL_FIRST" \
 	    --second "$$LOOMARR_FILLER_TEMPORAL_SECOND" \
@@ -220,7 +229,7 @@ filler-temporal-select: ## derive an immutable stratified temporal calibration s
 	@test -n "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" || { echo "filler-temporal-select: LOOMARR_FILLER_TEMPORAL_PACKAGE is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_FIRST" || { echo "filler-temporal-select: LOOMARR_FILLER_TEMPORAL_FIRST is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_SECOND" || { echo "filler-temporal-select: LOOMARR_FILLER_TEMPORAL_SECOND is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-temporal-select \
+	  $(RESEARCH_RUN) filler-temporal-select \
 	    --package "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" \
 	    --first "$$LOOMARR_FILLER_TEMPORAL_FIRST" \
 	    --second "$$LOOMARR_FILLER_TEMPORAL_SECOND" \
@@ -240,7 +249,7 @@ filler-temporal-assess-openrouter: ## run a bounded paid temporal calibration on
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_MAX_REQUESTS" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_MAX_REQUESTS is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_MAX_SPEND_NANOUSD" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_MAX_SPEND_NANOUSD is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_MAX_CHARGE_NANOUSD" || { echo "filler-temporal-assess-openrouter: LOOMARR_FILLER_TEMPORAL_MAX_CHARGE_NANOUSD is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-temporal-assess-openrouter \
+	  $(RESEARCH_RUN) filler-temporal-assess-openrouter \
 	    --package "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" \
 	    --selection "$$LOOMARR_FILLER_TEMPORAL_SELECTION" \
 	    --snapshot "$$LOOMARR_FILLER_TEMPORAL_OPENROUTER_SNAPSHOT" \
@@ -263,7 +272,7 @@ filler-temporal-calibration-report: ## compare one hosted temporal result with i
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_FIRST" || { echo "filler-temporal-calibration-report: LOOMARR_FILLER_TEMPORAL_FIRST is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_SECOND" || { echo "filler-temporal-calibration-report: LOOMARR_FILLER_TEMPORAL_SECOND is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_TEMPORAL_HOSTED_RESULT" || { echo "filler-temporal-calibration-report: LOOMARR_FILLER_TEMPORAL_HOSTED_RESULT is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-temporal-calibration-report \
+	  $(RESEARCH_RUN) filler-temporal-calibration-report \
 	    --package "$$LOOMARR_FILLER_TEMPORAL_PACKAGE" \
 	    --selection "$$LOOMARR_FILLER_TEMPORAL_SELECTION" \
 	    --first "$$LOOMARR_FILLER_TEMPORAL_FIRST" \
@@ -275,7 +284,7 @@ filler-temporal-calibration-report: ## compare one hosted temporal result with i
 
 filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-commons \
+	  $(RESEARCH_RUN) filler-corpus-commons \
 	    --category "$${LOOMARR_FILLER_CORPUS_COMMONS_CATEGORY:-Advertising videos}" \
 	    --role-hint "$${LOOMARR_FILLER_CORPUS_COMMONS_ROLE_HINT:-commercial}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_COMMONS_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-commons.json}" \
@@ -294,7 +303,7 @@ filler-corpus-commons: ## freeze bounded Commons pilot and full-inventory artifa
 
 filler-corpus-cdc: ## freeze bounded CDC pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-pages \
+	  $(RESEARCH_RUN) filler-corpus-pages \
 	    --in internal/fillercorpus/corpus/seeds/cdc.json \
 	    --out "$${LOOMARR_FILLER_CORPUS_CDC_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc.json}" \
 	    --inventory-out "$${LOOMARR_FILLER_CORPUS_CDC_INVENTORY_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-cdc-inventory.json}" \
@@ -313,7 +322,7 @@ filler-corpus-cdc: ## freeze bounded CDC pilot and full-inventory artifacts
 
 filler-corpus-loc: ## freeze bounded LOC pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-loc \
+	  $(RESEARCH_RUN) filler-corpus-loc \
 	    --query "$$LOOMARR_FILLER_CORPUS_LOC_QUERY" \
 	    --role-hint "$$LOOMARR_FILLER_CORPUS_LOC_ROLE_HINT" \
 	    --out "$${LOOMARR_FILLER_CORPUS_LOC_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-loc.json}" \
@@ -333,7 +342,7 @@ filler-corpus-met: ## freeze a bounded metadata-only Met Museum inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_USER_AGENT" || { echo "filler-corpus-met: LOOMARR_FILLER_CORPUS_USER_AGENT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_SNAPSHOT_AT" || { echo "filler-corpus-met: LOOMARR_FILLER_CORPUS_MET_SNAPSHOT_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-met \
+	  $(RESEARCH_RUN) filler-corpus-met \
 	    --terms "$${LOOMARR_FILLER_CORPUS_MET_TERMS:-internal/fillercorpus/corpus/seeds/met-positive-v1.json}" \
 	    --role-hint "$${LOOMARR_FILLER_CORPUS_MET_ROLE_HINT:-policy-positive-nomination}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_MET_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-met-inventory.json}" \
@@ -354,7 +363,7 @@ filler-corpus-met-rights-propose: ## pre-screen frozen Met rights metadata witho
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_CACHE" || { echo "filler-corpus-met-rights-propose: LOOMARR_FILLER_CORPUS_MET_CACHE is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN_PREPARED_AT" || { echo "filler-corpus-met-rights-propose: LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN_PREPARED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-met-rights-propose \
+	  $(RESEARCH_RUN) filler-corpus-met-rights-propose \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_MET_INVENTORY" \
 	    --metadata-cache "$$LOOMARR_FILLER_CORPUS_MET_CACHE" \
 	    --policy-evidence "$${LOOMARR_FILLER_CORPUS_MET_POLICY_EVIDENCE:-internal/fillercorpus/corpus/seeds/met-open-access-evidence-v1.json}" \
@@ -369,7 +378,7 @@ filler-corpus-met-rights-attestation: ## prepare one pending, digest-bound Met r
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_MET_RIGHTS_PRESCREEN is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" || { echo "filler-corpus-met-rights-attestation: LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-met-rights-complete \
+	  $(RESEARCH_RUN) filler-corpus-met-rights-complete \
 	    --mode prepare \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_MET_INVENTORY" \
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" \
@@ -384,7 +393,7 @@ filler-corpus-met-rights-complete: ## expand one accepted Met attestation into i
 	  test -n "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_MET_RIGHTS_ATTESTATION is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" || { echo "filler-corpus-met-rights-complete: LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-met-rights-complete \
+	  $(RESEARCH_RUN) filler-corpus-met-rights-complete \
 	    --mode complete \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_MET_INVENTORY" \
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_MET_RIGHTS_WORKSHEET" \
@@ -395,7 +404,7 @@ filler-corpus-met-rights-complete: ## expand one accepted Met attestation into i
 
 filler-corpus-nasa: ## freeze bounded NASA pilot and full-inventory artifacts
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-nasa \
+	  $(RESEARCH_RUN) filler-corpus-nasa \
 	    --query "$${LOOMARR_FILLER_CORPUS_NASA_QUERY:-trailer}" \
 	    --role-hint "$${LOOMARR_FILLER_CORPUS_NASA_ROLE_HINT:-trailer}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_NASA_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-nasa.json}" \
@@ -415,7 +424,7 @@ filler-corpus-pilot: ## lock the qualified metadata-only filler rights-yield pil
 	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_SNAPSHOT_AT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_SNAPSHOT_AT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT" || { echo "filler-corpus-pilot: LOOMARR_FILLER_CORPUS_PILOT_LOCKED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-pilot \
+	  $(RESEARCH_RUN) filler-corpus-pilot \
 	    --lane internal/fillercorpus/corpus/pilot/prelinger.json \
 	    --lane internal/fillercorpus/corpus/pilot/loc.json \
 	    --lane internal/fillercorpus/corpus/pilot/nasa.json \
@@ -428,7 +437,7 @@ filler-corpus-pilot: ## lock the qualified metadata-only filler rights-yield pil
 filler-corpus-pilot-rights-review: ## prepare the inert five-lane pilot review packet
 	@test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_PREPARED_AT" || { echo "filler-corpus-pilot-rights-review: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_PREPARED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-pilot-rights-review \
+	  $(RESEARCH_RUN) filler-corpus-pilot-rights-review \
 	    --pilot "$${LOOMARR_FILLER_CORPUS_PILOT:-internal/fillercorpus/corpus/pilot/locked.json}" \
 	    --out "$${LOOMARR_FILLER_CORPUS_PILOT_REVIEW_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot-rights-review.json}" \
 	    --csv-out "$${LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-pilot-rights-review.csv}" \
@@ -439,7 +448,7 @@ filler-corpus-pilot-rights-lock: ## lock completed pilot review into a non-autho
 	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV" || { echo "filler-corpus-pilot-rights-lock: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_LOCKED_AT" || { echo "filler-corpus-pilot-rights-lock: LOOMARR_FILLER_CORPUS_PILOT_REVIEW_LOCKED_AT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-pilot-rights-lock \
+	  $(RESEARCH_RUN) filler-corpus-pilot-rights-lock \
 	    --pilot "$${LOOMARR_FILLER_CORPUS_PILOT:-internal/fillercorpus/corpus/pilot/locked.json}" \
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_WORKSHEET" \
 	    --completed-csv "$$LOOMARR_FILLER_CORPUS_PILOT_REVIEW_CSV" \
@@ -449,7 +458,7 @@ filler-corpus-pilot-rights-lock: ## lock completed pilot review into a non-autho
 filler-corpus-archive: ## freeze a bounded rights-filtered Archive.org corpus inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" || { echo "filler-corpus-archive: LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-archive \
+	  $(RESEARCH_RUN) filler-corpus-archive \
 	    --collection "$$LOOMARR_FILLER_CORPUS_ARCHIVE_COLLECTION" \
 	    --query "$$LOOMARR_FILLER_CORPUS_ARCHIVE_QUERY" \
 	    --out "$${LOOMARR_FILLER_CORPUS_ARCHIVE_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-archive.json}" \
@@ -470,7 +479,7 @@ filler-corpus-inventory: ## combine strict source inventories for mixed-authorit
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  set --; \
 	  for path in $$LOOMARR_FILLER_CORPUS_INVENTORIES; do set -- "$$@" --inventory "$$path"; done; \
-	  $(GO) run ./cmd/filler-corpus-inventory "$$@" \
+	  $(RESEARCH_RUN) filler-corpus-inventory "$$@" \
 	    --out "$${LOOMARR_FILLER_CORPUS_INVENTORY:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-inventory.json}"
 
 filler-corpus-direct: ## freeze an authored local cohort with rights and provenance evidence
@@ -480,7 +489,7 @@ filler-corpus-direct: ## freeze an authored local cohort with rights and provena
 	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_ITEMS" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_ITEMS is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES" || { echo "filler-corpus-direct: LOOMARR_FILLER_CORPUS_DIRECT_MAX_BYTES is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-direct \
+	  $(RESEARCH_RUN) filler-corpus-direct \
 	    --manifest "$$LOOMARR_FILLER_CORPUS_DIRECT_MANIFEST" \
 	    --root "$$LOOMARR_FILLER_CORPUS_DIRECT_ROOT" \
 	    --out "$${LOOMARR_FILLER_CORPUS_DIRECT_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-direct.json}" \
@@ -505,7 +514,7 @@ filler-corpus-prepare: ## build an unlabeled corpus draft and bounded evidence p
 	  test -n "$$LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREP_MAX_INPUT_BYTES is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES" || { echo "filler-corpus-prepare: LOOMARR_FILLER_CORPUS_PREP_MAX_OUTPUT_BYTES is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-prepare \
+	  $(RESEARCH_RUN) filler-corpus-prepare \
 	    --profile "$$LOOMARR_FILLER_CORPUS_PROFILE" \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	    --rights-approvals "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" \
@@ -526,7 +535,7 @@ filler-corpus-prepare: ## build an unlabeled corpus draft and bounded evidence p
 
 filler-corpus-download: ## download only rights-approved corpus media under hard ceilings
 	@eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-download \
+	  $(RESEARCH_RUN) filler-corpus-download \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	    --rights-approvals "$$LOOMARR_FILLER_CORPUS_RIGHTS_APPROVALS" \
 	    --out-dir "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
@@ -547,7 +556,7 @@ filler-visual-corpus-nomination-prepare: ## prepare four-field visual nomination
 	  test -n "$$(printenv "$$name" 2>/dev/null || true)" || { echo "filler-visual-corpus-nomination-prepare: $$name is required" >&2; exit 2; }; \
 	done; \
 	eval "$$(./scripts/dev-env.sh export)"; \
-	$(GO) run ./cmd/filler-visual-corpus-nominate prepare \
+	$(RESEARCH_RUN) filler-visual-corpus-nominate prepare \
 	  --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	  --materialization-ledger "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER" \
 	  --media-root "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
@@ -559,7 +568,7 @@ filler-visual-corpus-nomination-lock: ## lock reviewed visual nominations into a
 	  test -n "$$(printenv "$$name" 2>/dev/null || true)" || { echo "filler-visual-corpus-nomination-lock: $$name is required" >&2; exit 2; }; \
 	done; \
 	eval "$$(./scripts/dev-env.sh export)"; \
-	$(GO) run ./cmd/filler-visual-corpus-nominate lock \
+	$(RESEARCH_RUN) filler-visual-corpus-nominate lock \
 	  --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	  --materialization-ledger "$$LOOMARR_FILLER_CORPUS_DOWNLOAD_LEDGER" \
 	  --media-root "$$LOOMARR_FILLER_CORPUS_MEDIA_DIR" \
@@ -572,7 +581,7 @@ filler-visual-corpus-nomination-lock: ## lock reviewed visual nominations into a
 filler-corpus-rights-review: ## prepare an inert worksheet from a frozen filler inventory
 	@test -n "$$LOOMARR_FILLER_CORPUS_INVENTORY" || { echo "filler-corpus-rights-review: LOOMARR_FILLER_CORPUS_INVENTORY is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-rights-review \
+	  $(RESEARCH_RUN) filler-corpus-rights-review \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --out "$${LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET:-$$LOOMARR_ARTIFACT_DIR/filler-corpus-rights-review.json}" \
@@ -591,7 +600,7 @@ filler-corpus-rights-lock: ## validate completed rights review CSV into approval
 	  test -n "$$LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET" || { echo "filler-corpus-rights-lock: LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_RIGHTS_CSV" || { echo "filler-corpus-rights-lock: LOOMARR_FILLER_CORPUS_RIGHTS_CSV is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-rights-lock \
+	  $(RESEARCH_RUN) filler-corpus-rights-lock \
 	    --inventory "$$LOOMARR_FILLER_CORPUS_INVENTORY" \
 	    --quarantine-inspection "$$LOOMARR_FILLER_CORPUS_QUARANTINE_INSPECTION" \
 	    --worksheet "$$LOOMARR_FILLER_CORPUS_RIGHTS_WORKSHEET" \
@@ -608,7 +617,7 @@ filler-corpus-lock: ## lock two blind filler-label batches into a certification 
 	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP_B" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_REVIEW_MAP_B is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_LOCKED_AT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_LOCKED_AT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_OUT" || { echo "filler-corpus-lock: LOOMARR_FILLER_CORPUS_OUT is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-corpus \
+	  $(RESEARCH_RUN) filler-corpus \
 	    --draft "$$LOOMARR_FILLER_CORPUS_DRAFT" \
 	    --review-a "$$LOOMARR_FILLER_CORPUS_REVIEW_A" \
 	    --map-a "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP_A" \
@@ -620,7 +629,7 @@ filler-corpus-lock: ## lock two blind filler-label batches into a certification 
 
 filler-media-integrity-prepare: ## prepare a label-free media-integrity challenge without inference
 	@test -n "$$LOOMARR_FILLER_MEDIA_INTEGRITY_AUTHORITY" || { echo "filler-media-integrity-prepare: LOOMARR_FILLER_MEDIA_INTEGRITY_AUTHORITY is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-media-integrity-prepare \
+	  $(RESEARCH_RUN) filler-media-integrity-prepare \
 	    --authority "$$LOOMARR_FILLER_MEDIA_INTEGRITY_AUTHORITY" \
 	    --media-quality "$$LOOMARR_FILLER_MEDIA_QUALITY_REPORT" \
 	    --seed "$$LOOMARR_FILLER_MEDIA_INTEGRITY_SEED" \
@@ -629,7 +638,7 @@ filler-media-integrity-prepare: ## prepare a label-free media-integrity challeng
 
 filler-media-integrity-score: ## lock the private media-integrity comparison without inference
 	@test -n "$$LOOMARR_FILLER_MEDIA_INTEGRITY_PACKAGE" || { echo "filler-media-integrity-score: LOOMARR_FILLER_MEDIA_INTEGRITY_PACKAGE is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-media-integrity-score \
+	  $(RESEARCH_RUN) filler-media-integrity-score \
 	    --package "$$LOOMARR_FILLER_MEDIA_INTEGRITY_PACKAGE" \
 	    --map "$$LOOMARR_FILLER_MEDIA_INTEGRITY_MAP" \
 	    --media-quality "$$LOOMARR_FILLER_MEDIA_QUALITY_REPORT" \
@@ -641,7 +650,7 @@ filler-corpus-review: ## prepare one opaque randomized filler-label review batch
 	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_BATCH" || { echo "filler-corpus-review: LOOMARR_FILLER_CORPUS_REVIEW_BATCH is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKET" || { echo "filler-corpus-review: LOOMARR_FILLER_CORPUS_REVIEW_PACKET is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP" || { echo "filler-corpus-review: LOOMARR_FILLER_CORPUS_REVIEW_MAP is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-corpus-review \
+	  $(RESEARCH_RUN) filler-corpus-review \
 	    --draft "$$LOOMARR_FILLER_CORPUS_DRAFT" \
 	    --batch-id "$$LOOMARR_FILLER_CORPUS_REVIEW_BATCH" \
 	    --packet-out "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKET" \
@@ -654,7 +663,7 @@ filler-corpus-review-package: ## materialize one verified identity-blind reviewe
 	  test -n "$$LOOMARR_FILLER_CORPUS_EVIDENCE_PACKETS" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_EVIDENCE_PACKETS is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_DERIVATIVES" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_DERIVATIVES is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKAGE" || { echo "filler-corpus-review-package: LOOMARR_FILLER_CORPUS_REVIEW_PACKAGE is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-corpus-review-package \
+	  $(RESEARCH_RUN) filler-corpus-review-package \
 	    --draft "$$LOOMARR_FILLER_CORPUS_DRAFT" \
 	    --review-packet "$$LOOMARR_FILLER_CORPUS_REVIEW_PACKET" \
 	    --alias-map "$$LOOMARR_FILLER_CORPUS_REVIEW_MAP" \
@@ -669,7 +678,7 @@ filler-corpus-review-ollama: ## complete one blind package with a digest-pinned 
 	  test -n "$$LOOMARR_FILLER_REVIEW_MODEL" || { echo "filler-corpus-review-ollama: LOOMARR_FILLER_REVIEW_MODEL is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_REVIEW_MODEL_DIGEST" || { echo "filler-corpus-review-ollama: LOOMARR_FILLER_REVIEW_MODEL_DIGEST is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_REVIEWER_ID" || { echo "filler-corpus-review-ollama: LOOMARR_FILLER_REVIEWER_ID is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-corpus-review-ollama \
+	  $(RESEARCH_RUN) filler-corpus-review-ollama \
 	    --package "$$LOOMARR_FILLER_REVIEW_PACKAGE" \
 	    --transcripts "$$LOOMARR_FILLER_REVIEW_TRANSCRIPTS" \
 	    --model "$$LOOMARR_FILLER_REVIEW_MODEL" \
@@ -692,7 +701,7 @@ filler-corpus-review-openrouter: ## complete one blind package through a bounded
 	  test -n "$$LOOMARR_FILLER_REVIEW_MAX_SPEND_NANOUSD" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_MAX_SPEND_NANOUSD is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_REVIEW_MAX_CHARGE_NANOUSD" || { echo "filler-corpus-review-openrouter: LOOMARR_FILLER_REVIEW_MAX_CHARGE_NANOUSD is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-corpus-review-openrouter \
+	  $(RESEARCH_RUN) filler-corpus-review-openrouter \
 	    --package "$$LOOMARR_FILLER_REVIEW_PACKAGE" \
 	    --transcripts "$$LOOMARR_FILLER_REVIEW_TRANSCRIPTS" \
 	    --snapshot "$$LOOMARR_FILLER_REVIEW_SNAPSHOT" \
@@ -712,7 +721,7 @@ filler-openrouter-snapshot: ## lock OpenRouter capability, endpoint-price, and Z
 	@test -n "$$OPENROUTER_API_KEY" || { echo "filler-openrouter-snapshot: OPENROUTER_API_KEY is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_OPENROUTER_MODELS" || { echo "filler-openrouter-snapshot: LOOMARR_FILLER_OPENROUTER_MODELS is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-openrouter-snapshot \
+	  $(RESEARCH_RUN) filler-openrouter-snapshot \
 	    --models "$$LOOMARR_FILLER_OPENROUTER_MODELS" \
 	    --out "$${LOOMARR_FILLER_OPENROUTER_SNAPSHOT:-$$LOOMARR_ARTIFACT_DIR/filler-openrouter-snapshot.json}" \
 	    --base-url "$${LOOMARR_FILLER_BAKEOFF_BASE_URL:-https://openrouter.ai/api/v1}"
@@ -725,7 +734,7 @@ filler-bakeoff-openrouter: ## capture a bounded label-blind OpenRouter predictio
 	  test -n "$$LOOMARR_FILLER_BAKEOFF_SNAPSHOT" || { echo "filler-bakeoff-openrouter: LOOMARR_FILLER_BAKEOFF_SNAPSHOT is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT" || { echo "filler-bakeoff-openrouter: LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-bakeoff-openrouter \
+	  $(RESEARCH_RUN) filler-bakeoff-openrouter \
 	    --manifest "$$LOOMARR_FILLER_BAKEOFF_MANIFEST" \
 	    --packets "$$LOOMARR_FILLER_BAKEOFF_PACKETS" \
 	    --config "$$LOOMARR_FILLER_BAKEOFF_CONFIG" \
@@ -740,7 +749,7 @@ filler-bakeoff-ollama: ## capture a digest-pinned local filler prediction ledger
 	  test -n "$$LOOMARR_FILLER_BAKEOFF_PACKETS" || { echo "filler-bakeoff-ollama: LOOMARR_FILLER_BAKEOFF_PACKETS is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_BAKEOFF_CONFIG" || { echo "filler-bakeoff-ollama: LOOMARR_FILLER_BAKEOFF_CONFIG is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT" || { echo "filler-bakeoff-ollama: LOOMARR_FILLER_BAKEOFF_CORPUS_ROOT is required" >&2; exit 2; }; \
-	  $(GO) run ./cmd/filler-bakeoff-ollama \
+	  $(RESEARCH_RUN) filler-bakeoff-ollama \
 	    --manifest "$$LOOMARR_FILLER_BAKEOFF_MANIFEST" \
 	    --packets "$$LOOMARR_FILLER_BAKEOFF_PACKETS" \
 	    --config "$$LOOMARR_FILLER_BAKEOFF_CONFIG" \
@@ -757,7 +766,7 @@ filler-bakeoff-transcribe: ## capture digest-pinned shared filler transcripts (m
 	  test -n "$$LOOMARR_FILLER_WHISPER_PATH" || { echo "filler-bakeoff-transcribe: LOOMARR_FILLER_WHISPER_PATH is required" >&2; exit 2; }; \
 	  test -n "$$LOOMARR_FILLER_WHISPER_MODEL" || { echo "filler-bakeoff-transcribe: LOOMARR_FILLER_WHISPER_MODEL is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
-	  $(GO) run ./cmd/filler-bakeoff-transcribe \
+	  $(RESEARCH_RUN) filler-bakeoff-transcribe \
 	    --manifest "$$LOOMARR_FILLER_BAKEOFF_MANIFEST" \
 	    --packets "$$LOOMARR_FILLER_BAKEOFF_PACKETS" \
 	    --config "$$LOOMARR_FILLER_BAKEOFF_CONFIG" \
@@ -774,7 +783,7 @@ filler-eval-cert: ## score captured filler decisions; never contacts a model or 
 	  test "$${LOOMARR_FILLER_EVAL_MAX_CONCURRENCY:-0}" -gt 0 || { echo "filler-eval-cert: positive LOOMARR_FILLER_EVAL_MAX_CONCURRENCY is required" >&2; exit 2; }; \
 	  eval "$$(./scripts/dev-env.sh export)"; \
 	  report="$${LOOMARR_FILLER_EVAL_OUT:-$$LOOMARR_ARTIFACT_DIR/filler-certification.json}"; \
-	  $(GO) run ./cmd/filler-cert \
+	  $(RESEARCH_RUN) filler-cert \
 	    --manifest "$${LOOMARR_FILLER_EVAL_MANIFEST:-internal/fillereval/corpus/seed-v1.json}" \
 	    --predictions "$$LOOMARR_FILLER_EVAL_PREDICTIONS" --report "$$report" \
 	    --profile "$${LOOMARR_FILLER_EVAL_PROFILE:-replay}" \
@@ -799,7 +808,7 @@ filler-release-readiness: ## produce the beta filler release GO/HOLD report with
 	  mkdir -p "$$(dirname "$$report")"; \
 	  set -- -root "$$LOOMARR_FILLER_RELEASE_ROOT" -manifest "$$LOOMARR_FILLER_RELEASE_MANIFEST" -out "$$report"; \
 	  if test -n "$$LOOMARR_FILLER_RELEASE_GENERATED_AT"; then set -- "$$@" -generated-at "$$LOOMARR_FILLER_RELEASE_GENERATED_AT"; fi; \
-	  $(GO) run ./cmd/filler-release-readiness "$$@"
+	  $(RESEARCH_RUN) filler-release-readiness "$$@"
 
 
 filler-household-cohort: ## bind the frozen beta filler seed to exact Ready playback outputs
@@ -815,7 +824,7 @@ filler-household-cohort: ## bind the frozen beta filler seed to exact Ready play
 	  test -n "$$filler_root" || { echo "filler-household-cohort: filler root is required" >&2; exit 2; }; \
 	  test -n "$$base_url" || { echo "filler-household-cohort: API base URL is required" >&2; exit 2; }; \
 	  mkdir -p "$$(dirname "$$out")"; \
-	  $(GO) run ./cmd/filler-household-cohort \
+	  $(RESEARCH_RUN) filler-household-cohort \
 	    -db "$$database" -filler-root "$$filler_root" \
 	    -seed "$$LOOMARR_FILLER_HOUSEHOLD_SEED" -families "$$LOOMARR_FILLER_HOUSEHOLD_FAMILIES" \
 	    -base-url "$$base_url" -cookie-file "$$LOOMARR_FILLER_HOUSEHOLD_COOKIE_FILE" -out "$$out"

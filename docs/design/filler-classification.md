@@ -329,7 +329,7 @@ A beta candidate is releasable only when one local, versioned manifest binds the
 and Android TV candidate identities to accepted evidence, and evaluates to a canonical **GO** or
 **HOLD** report. Issues and comments are coordination, never release authority.
 
-- `internal/fillerrelease` is one deep module: manifest bytes, an evidence filesystem and a report
+- `research/internal/fillerrelease` (archived with the rest of the filler research tooling, #1560) is one deep module: manifest bytes, an evidence filesystem and a report
   time in, the complete report out. The command owns flags, I/O and exit status; tests substitute an
   in-memory filesystem. It has no network, provider, deployment or admission authority.
 - The manifest (schema 2) names the tag, commit, image digest, Web build, Android TV artifact and
