@@ -40,7 +40,9 @@ describe.each(Object.entries(semanticThemes))("%s theme", (_name, theme) => {
   });
 
   it("keeps control boundaries and focus indicators perceptible", () => {
-    expect(contrast(theme.border.control, theme.surface.canvas)).toBeGreaterThanOrEqual(3);
+    for (const surface of [theme.surface.canvas, theme.surface.raised, theme.surface.elevated]) {
+      expect(contrast(theme.border.control, surface)).toBeGreaterThanOrEqual(3);
+    }
     expect(contrast(theme.action.focus, theme.surface.canvas)).toBeGreaterThanOrEqual(3);
   });
 });

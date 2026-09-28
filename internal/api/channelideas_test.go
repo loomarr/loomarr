@@ -271,7 +271,8 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 		t.Fatal(err)
 	}
 	if payload.ChannelName != "Comedy Movies" || payload.FromIdea != "genre:comedy" ||
-		payload.Intent.Description != comedy.Pitch || len(payload.Lineup) != 6 || len(payload.Acquisitions) != 0 {
+		payload.Intent.Description != comedy.Name || payload.Rationale != comedy.Pitch ||
+		len(payload.Lineup) != 6 || len(payload.Acquisitions) != 0 {
 		t.Fatalf("queued proposal = %+v", payload)
 	}
 	// Newest first, grounded by the key's own id, every title already in the library; the title on

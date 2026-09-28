@@ -231,11 +231,13 @@ func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (
 		}
 		name, pitch := ideas.Describe(idea, labels[idea.Reason.HolidayID])
 		proposal := suggest.Proposal{
-			ChannelName: name, FromIdea: idea.ID, Lineup: ideaLineup(idea.Titles),
+			ChannelName: name, FromIdea: idea.ID, Lineup: ideaLineup(idea.Titles), Rationale: pitch,
 			// Every title is already in the library: nothing to download.
 			Scores: suggest.Scores{AvailabilityRatio: 1},
 		}
-		jobID, err := s.suggest.SubmitBuilt(ctx, suggest.Intent{Description: pitch}, proposal, userID)
+		// The name is the request's brief, as a typed brief is for a member's own request: Your
+		// requests and the approval queue title the request with it (#1659 web mock).
+		jobID, err := s.suggest.SubmitBuilt(ctx, suggest.Intent{Description: name}, proposal, userID)
 		if err != nil {
 			return nil, err
 		}
