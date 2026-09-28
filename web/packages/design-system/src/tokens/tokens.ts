@@ -66,6 +66,9 @@ const semanticThemes = {
       clipTune: "rgba(76, 201, 232, 0.4)",
       clipSuggest: "rgba(214, 64, 159, 0.4)",
       clipPlain: "#2A2E37",
+      // The rail's on-air and reconciling dots (the brand onair red, and the lighter queued amber).
+      onAir: "#E5484D",
+      reconciling: "#FFC14D",
     },
   },
   light: {
@@ -129,6 +132,8 @@ const semanticThemes = {
       clipTune: "rgba(8, 101, 122, 0.4)",
       clipSuggest: "rgba(214, 64, 159, 0.4)",
       clipPlain: "#D2D6DE",
+      onAir: "#E5484D",
+      reconciling: "#FFC14D",
     },
   },
 } as const;
@@ -225,6 +230,8 @@ const typography = {
     guideNumber: { size: 20, lineHeight: 20, weight: "600" },
     guideClip: { size: 11, lineHeight: 14, weight: "400" },
     guideIdent: { size: 11, lineHeight: 14, weight: "600" },
+    // The now-line's time pill sets its text solid (line-height 1), as the mock does.
+    guideNow: { size: 11, lineHeight: 11, weight: "400" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -252,6 +259,7 @@ const typography = {
     guideNumber: { size: 22, lineHeight: 22, weight: "600" },
     guideClip: { size: 13, lineHeight: 18, weight: "400" },
     guideIdent: { size: 13, lineHeight: 18, weight: "600" },
+    guideNow: { size: 13, lineHeight: 13, weight: "400" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -279,6 +287,7 @@ const typography = {
     guideNumber: { size: 30, lineHeight: 30, weight: "600" },
     guideClip: { size: 16, lineHeight: 22, weight: "400" },
     guideIdent: { size: 16, lineHeight: 22, weight: "600" },
+    guideNow: { size: 16, lineHeight: 16, weight: "400" },
   },
 } as const;
 

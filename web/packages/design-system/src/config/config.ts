@@ -53,6 +53,8 @@ const themeColors = (mode: keyof typeof semanticThemes) => ({
   guideClipTune: semanticThemes[mode].guide.clipTune,
   guideClipSuggest: semanticThemes[mode].guide.clipSuggest,
   guideClipPlain: semanticThemes[mode].guide.clipPlain,
+  guideOnAir: semanticThemes[mode].guide.onAir,
+  guideReconciling: semanticThemes[mode].guide.reconciling,
 });
 
 const tamaguiTheme = (mode: keyof typeof semanticThemes) => {
@@ -124,6 +126,8 @@ const tokens = createTokens({
     guideClipTune: semanticColors.guide.clipTune,
     guideClipSuggest: semanticColors.guide.clipSuggest,
     guideClipPlain: semanticColors.guide.clipPlain,
+    guideOnAir: semanticColors.guide.onAir,
+    guideReconciling: semanticColors.guide.reconciling,
     transparent: "transparent",
   },
   radius: {

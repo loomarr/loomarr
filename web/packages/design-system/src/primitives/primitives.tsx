@@ -124,6 +124,7 @@ const dataRoles = new Set<TextRole>([
   "guideLabel",
   "guideNumber",
   "guideIdent",
+  "guideNow",
 ]);
 const mutedRoles = new Set<TextRole>([
   "label",

@@ -244,7 +244,7 @@ const Row = ({
           style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: 9, minWidth: 0 }}
         >
           <Text textRole="guideNumber">{channel.source.number}</Text>
-          <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ alignItems: "flex-start", flex: 1, minWidth: 0 }}>
             <Text numberOfLines={1} textRole="cardLabel">
               {channel.source.name}
             </Text>
@@ -264,9 +264,9 @@ const Row = ({
         <Surface
           backgroundColor={
             broadcast === "live"
-              ? "$stateLive"
+              ? "$guideOnAir"
               : broadcast === "reconciling"
-                ? "$actionPrimary"
+                ? "$guideReconciling"
                 : "$actionDisabled"
           }
           borderRadius="$round"
@@ -348,12 +348,13 @@ const GuideGrid = ({ layout, nowMs, onOpenChannel }: GuideGridProps) => {
                 borderRadius: 3,
                 left: `${nowRatio * 100}%`,
                 paddingHorizontal: 5,
+                paddingVertical: 1,
                 position: "absolute",
                 top: 4,
                 transform: [{ translateX: -20 }],
               }}
             >
-              <Text textRole="guideMeta" tone="inverse">
+              <Text textRole="guideNow" tone="inverse">
                 {formatGuideTime(nowMs, layout.timezone)}
               </Text>
             </View>
