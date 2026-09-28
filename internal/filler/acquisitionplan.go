@@ -8,6 +8,17 @@ import (
 
 // PlanAcquisition applies hard constraints first, then selects a diverse stable prefix.
 func PlanAcquisition(intent AcquisitionIntent, candidates []AcquisitionCandidate, existing map[string]ExistingRemoteState) (AcquisitionPlan, error) {
+	return PlanAcquisitionFor(intent, candidates, existing, nil)
+}
+
+// PlanAcquisitionFor is PlanAcquisition steered toward channel coverage gaps (#749): a candidate
+// whose observed year falls inside a gap era ranks ahead of every candidate that does not.
+//
+// ⚠ A PREFERENCE, never a constraint, and deliberately not part of the persisted intent. A gap
+// ranks what a bounded pass takes first; it never rejects a candidate, so a source whose items
+// carry no year still supplies the catalog, and stored pulls keep decoding under the same intent
+// version. Hard constraints still run first and are unchanged.
+func PlanAcquisitionFor(intent AcquisitionIntent, candidates []AcquisitionCandidate, existing map[string]ExistingRemoteState, gaps []EraRange) (AcquisitionPlan, error) {
 	intent = intent.Normalize()
 	if err := intent.Validate(); err != nil {
 		return AcquisitionPlan{}, fmt.Errorf("%w: %v", ErrInvalidAcquisitionIntent, err)
@@ -39,12 +50,15 @@ func PlanAcquisition(intent AcquisitionIntent, candidates []AcquisitionCandidate
 	usedYears := map[int]bool{}
 	for len(eligible) > 0 && len(plan.Selected) < intent.Count {
 		sort.SliceStable(eligible, func(a, b int) bool {
-			return candidateBetter(eligible[a].Candidate, eligible[b].Candidate, usedSources, usedYears)
+			return candidateBetter(eligible[a].Candidate, eligible[b].Candidate, usedSources, usedYears, gaps)
 		})
 		decision := eligible[0]
 		eligible = eligible[1:]
 		decision.Disposition = CandidateSelected
 		decision.Detail = "selected by deterministic quality, diversity, and identity ranking"
+		if fillsGap(decision.Candidate, gaps) {
+			decision.Detail = fmt.Sprintf("selected first: its year %d falls in a channel coverage gap", decision.Candidate.ObservedYear)
+		}
 		plan.Selected = append(plan.Selected, decision)
 		usedSources[decision.Candidate.Identity.SourceID] = true
 		if decision.Candidate.ObservedYear > 0 {
@@ -132,8 +146,13 @@ func rejectByIntent(intent AcquisitionIntent, c AcquisitionCandidate) (Candidate
 	return "", ""
 }
 
-func candidateBetter(a, b AcquisitionCandidate, usedSources map[string]bool, usedYears map[int]bool) bool {
+func candidateBetter(a, b AcquisitionCandidate, usedSources map[string]bool, usedYears map[int]bool, gaps []EraRange) bool {
 	var av, bv bool
+	// Relevance to a channel that is short of material outranks representation quality: a sharp
+	// modern spot does nothing for a channel whose breaks cannot fill from its own era.
+	if av, bv = fillsGap(a, gaps), fillsGap(b, gaps); av != bv {
+		return av
+	}
 	if a.Height != b.Height {
 		return a.Height > b.Height
 	}
@@ -146,6 +165,58 @@ func candidateBetter(a, b AcquisitionCandidate, usedSources map[string]bool, use
 		return av
 	}
 	return a.Identity.Key() < b.Identity.Key()
+}
+
+// fillsGap reports whether a candidate's OBSERVED year falls in a gap era. A candidate with no
+// observed year fills no gap: missing metadata never satisfies a target (see AcquisitionIntent).
+func fillsGap(c AcquisitionCandidate, gaps []EraRange) bool {
+	if c.ObservedYear <= 0 {
+		return false
+	}
+	for _, r := range gaps {
+		if !r.Any() && r.Contains(c.ObservedYear) {
+			return true
+		}
+	}
+	return false
+}
+
+// CoverageGapEras are the era windows of the live channels whose breaks cannot fill from their
+// own era (#749): Coverage.Level below exact, including a channel down to its bumper card. The
+// same per-channel coverage the pool strip and readiness show, so acquisition steers by the
+// answer operators see rather than a second opinion. Channels with no era target are skipped
+// (any era is their exact rung), and overlapping windows merge.
+func CoverageGapEras(pool PoolReport) []EraRange {
+	var gaps []EraRange
+	for _, ch := range pool.Channels {
+		if ch.Report.Level == MatchExact {
+			continue
+		}
+		for _, r := range ch.Report.EraWindows {
+			if !r.Any() {
+				gaps = append(gaps, r)
+			}
+		}
+	}
+	return NormalizeEraWindows(gaps)
+}
+
+// formatEraWindows renders gap windows for a reason line: "1990-1999, 2005 onwards".
+func formatEraWindows(windows []EraRange) string {
+	parts := make([]string, 0, len(windows))
+	for _, r := range windows {
+		switch {
+		case r.From > 0 && r.To > 0 && r.From == r.To:
+			parts = append(parts, fmt.Sprint(r.From))
+		case r.From > 0 && r.To > 0:
+			parts = append(parts, fmt.Sprintf("%d-%d", r.From, r.To))
+		case r.From > 0:
+			parts = append(parts, fmt.Sprintf("%d onwards", r.From))
+		case r.To > 0:
+			parts = append(parts, fmt.Sprintf("up to %d", r.To))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 func dispositionForExisting(state ExistingRemoteState) CandidateDisposition {

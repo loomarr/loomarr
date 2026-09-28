@@ -39,17 +39,20 @@ func (a fillerServiceAdapter) PlanAcquisition(ctx context.Context, intent filler
 	planningCtx, cancel := context.WithTimeout(ctx, acquisitionPlanningTimeout)
 	defer cancel()
 
-	if strings.TrimSpace(intent.CatalogReason) == "" {
-		if a.pool != nil {
-			pool, err := a.pool(planningCtx)
-			if err != nil {
-				return filler.AcquisitionPlan{}, fmt.Errorf("derive acquisition coverage intent: %w", err)
-			}
-			defaults := filler.DefaultAcquisitionIntent(pool, intent.Geography)
-			intent.CatalogReason = defaults.CatalogReason
-		} else {
-			intent.CatalogReason = "Increase the eligible filler catalog."
+	// One coverage read serves both the default reason and the gap steering (#749): candidates
+	// from the eras of channels that cannot fill their breaks rank first. Steering never rejects.
+	var gaps []filler.EraRange
+	if a.pool != nil {
+		pool, err := a.pool(planningCtx)
+		if err != nil {
+			return filler.AcquisitionPlan{}, fmt.Errorf("derive acquisition coverage intent: %w", err)
 		}
+		gaps = filler.CoverageGapEras(pool)
+		if strings.TrimSpace(intent.CatalogReason) == "" {
+			intent.CatalogReason = filler.DefaultAcquisitionIntent(pool, intent.Geography).CatalogReason
+		}
+	} else if strings.TrimSpace(intent.CatalogReason) == "" {
+		intent.CatalogReason = "Increase the eligible filler catalog."
 	}
 
 	sources, err := a.pullPlanning.ListFillerSources(planningCtx)
@@ -147,7 +150,7 @@ func (a fillerServiceAdapter) PlanAcquisition(ctx context.Context, intent filler
 			})
 		}
 	}
-	plan, err := filler.PlanAcquisition(intent, candidates, existing)
+	plan, err := filler.PlanAcquisitionFor(intent, candidates, existing, gaps)
 	if err != nil {
 		return filler.AcquisitionPlan{}, err
 	}
