@@ -247,10 +247,10 @@ bumpers and filler. On a 30-minute programme it is noise.
 
 ## Recommended bets
 
-- **Bet A: skip the probe when the facts are complete.** One argv flag in the builder, beside `minimalProbe`,
+- **Bet A: skip the probe when the facts are complete (#1656).** One argv flag in the builder, beside `minimalProbe`,
   plus a goldens update. It gains about 120 ms per H.264 item start on NVIDIA, with an identical picture.
   Confirm on the Arc with row A first.
-- **Bet B: a long-lived NVENC worker.** Phased, each phase ending at a maintainer decision:
+- **Bet B: a long-lived NVENC worker (#1657).** Phased, each phase ending at a maintainer decision:
   1. A separate executable, in C or Rust over libav*, that speaks a small stdin protocol ("air path, seek,
      frames") and writes fMP4 to stdout. NVENC SDR items only, behind a setting, with the CLI as the
      fallback. Measure `first_fragment_ms` in the dev backend's log.
