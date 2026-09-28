@@ -56,8 +56,13 @@ matches() {
 }
 
 self="$(ancestors | tr '\n' ' ')"
+# A function, because bash 3.2 (macOS) misparses a case pattern's ')' inside $(...).
+is_self() {
+	case " $self " in *" $1 "*) return 0 ;; esac
+	return 1
+}
 found="$(matches | while IFS="$(printf '\t')" read -r pid rest; do
-	case " $self " in *" $pid "*) continue ;; esac
+	is_self "$pid" && continue
 	printf '%s\t%s\n' "$pid" "$rest"
 done)"
 [ -n "$found" ] || exit 0
