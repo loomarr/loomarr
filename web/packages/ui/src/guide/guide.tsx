@@ -1,13 +1,7 @@
-import {
-  formatGuideEpisode,
-  formatGuideTime,
-  formatGuideTimeRange,
-  guideAiringLabel,
-} from "@loomarr/core/guide";
+import { formatGuideTime, formatGuideTimeRange, guideAiringLabel } from "@loomarr/core/guide";
 import {
   Action,
   AdaptiveSplit,
-  type BadgeTone,
   type Density,
   Surface,
   semanticSpace,
@@ -17,7 +11,6 @@ import {
 import { ScrollView, View } from "react-native";
 
 import { ChannelIdentity } from "../identity";
-import { ProgrammeCard } from "../programme-card";
 import { StatePanel } from "../state-panel";
 import type {
   GuideExperienceProps,
@@ -25,6 +18,7 @@ import type {
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./guide.type";
+import { GuideProgrammeDetail } from "./guide-detail";
 import { TvGuideSurface } from "./guide-tv";
 
 const defaultFilters: readonly GuideFilterOption[] = [
@@ -35,22 +29,6 @@ const defaultFilters: readonly GuideFilterOption[] = [
 
 const guideRowHeight = (density: Density) => (density === "tv" ? 84 : density === "touch" ? 68 : 60);
 const guideRailWidth = (density: Density) => (density === "tv" ? 280 : density === "touch" ? 168 : 196);
-
-const airingBadge = (kind: string, isOnNow: boolean): { label: string; tone: BadgeTone } => {
-  if (kind === "pending") return { label: "Coming soon", tone: "warning" };
-  if (kind === "filler") return { label: "Break", tone: "neutral" };
-  if (kind === "flex") return { label: "Filler", tone: "neutral" };
-  return isOnNow ? { label: "On now", tone: "live" } : { label: "Scheduled", tone: "neutral" };
-};
-
-const airingFacts = (airing: GuideSurfaceProps["layout"]["channels"][number]["airings"][number]) => {
-  const source = airing.source;
-  return [
-    source.year ? String(source.year) : undefined,
-    source.rating,
-    source.genres?.slice(0, 2).join(" · "),
-  ].filter((fact): fact is string => Boolean(fact));
-};
 
 const GuideSurface = ({
   channelWindow,
@@ -91,12 +69,6 @@ const GuideSurface = ({
   const rowHeight = guideRowHeight(density);
   const railWidth = guideRailWidth(density);
   const minimumGridWidth = railWidth + (density === "tv" ? 900 : density === "touch" ? 560 : 640);
-  const selectedChannel = layout.channels.find((channel) => channel.source.channelId === selection.channelId);
-  const selectedAiring = selectedChannel?.airings.find(
-    (airing) => airing.scheduleBlockId === selection.scheduleBlockId,
-  );
-  const artwork = selectedAiring ? renderArtwork?.(selectedAiring) : undefined;
-  const channelLogo = selectedChannel ? renderChannelLogo?.(selectedChannel) : undefined;
   const tickCount = 5;
   const span = layout.toMs - layout.fromMs;
   const ticks = Array.from(
@@ -237,43 +209,16 @@ const GuideSurface = ({
     </Surface>
   );
 
-  const detail =
-    selectedAiring && selectedChannel ? (
-      <ProgrammeCard
-        artwork={artwork}
-        channelLogo={channelLogo}
-        density={density}
-        focused
-        programme={{
-          artworkState:
-            (selectedAiring.source.thumbImage || selectedAiring.source.thumbUrl) && artwork
-              ? "ready"
-              : "missing",
-          badge: airingBadge(selectedAiring.source.kind, selectedAiring.isOnNow),
-          channelLogoState: selectedChannel.source.logo && channelLogo ? "ready" : "missing",
-          channelName: selectedChannel.source.name,
-          channelNumber: String(selectedChannel.source.number),
-          description: selectedAiring.source.description,
-          episodeLabel: formatGuideEpisode(selectedAiring.source.season, selectedAiring.source.episode),
-          facts: airingFacts(selectedAiring),
-          progressPercent:
-            selectedAiring.progressRatio === undefined ? undefined : selectedAiring.progressRatio * 100,
-          seriesTitle: selectedAiring.source.series,
-          timeLabel: formatGuideTimeRange(
-            selectedAiring.source.startMs,
-            selectedAiring.source.stopMs,
-            layout.timezone,
-          ),
-          title: selectedAiring.source.title.trim() || guideAiringLabel(selectedAiring.source),
-        }}
-      />
-    ) : (
-      <Surface alignItems="center" justifyContent="center" minHeight={rowHeight * 3} padding="$section">
-        <Text density={density} textAlign="center" textRole="body">
-          Choose a programme to see its details.
-        </Text>
-      </Surface>
-    );
+  const detail = (
+    <GuideProgrammeDetail
+      density={density}
+      layout={layout}
+      minHeight={rowHeight * 3}
+      renderArtwork={renderArtwork}
+      renderChannelLogo={renderChannelLogo}
+      selection={selection}
+    />
+  );
 
   return (
     <AdaptiveSplit

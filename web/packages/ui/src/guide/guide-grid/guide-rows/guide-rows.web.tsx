@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import type { GuideRowsProps } from "./guide-rows.type";
 
@@ -9,7 +9,15 @@ import type { GuideRowsProps } from "./guide-rows.type";
 // mounts only the rows entering the viewport each frame, so web uses it.
 const OVERSCAN = 6;
 
-const GuideRows = ({ channels, header, headerHeight, renderRow, rowHeight }: GuideRowsProps) => {
+const GuideRows = ({
+  channels,
+  focusIndex,
+  header,
+  headerHeight,
+  onKey,
+  renderRow,
+  rowHeight,
+}: GuideRowsProps) => {
   const scroller = useRef<HTMLDivElement>(null);
   const rows = useVirtualizer({
     count: channels.length,
@@ -17,14 +25,27 @@ const GuideRows = ({ channels, header, headerHeight, renderRow, rowHeight }: Gui
     getItemKey: (index) => channels[index]?.source.channelId ?? index,
     getScrollElement: () => scroller.current,
     overscan: OVERSCAN,
-    // The ruler sits above the rows inside the same scroller.
+    // The ruler sits above the rows inside the same scroller, and stays pinned over them.
     scrollMargin: headerHeight,
+    scrollPaddingStart: headerHeight,
   });
 
+  useEffect(() => {
+    if (focusIndex !== undefined && focusIndex < channels.length) rows.scrollToIndex(focusIndex);
+  }, [channels.length, focusIndex, rows]);
+
   return (
-    <div ref={scroller} style={{ flex: 1, minHeight: 0, minWidth: 900, overflowY: "auto" }}>
-      <div style={{ position: "sticky", top: 0, zIndex: 1 }}>{header}</div>
-      <div style={{ height: rows.getTotalSize(), position: "relative" }}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: keys bubble up from the focused block.
+    <div
+      onKeyDown={(event) => {
+        if (onKey?.(event.key, event.altKey || event.ctrlKey || event.metaKey)) event.preventDefault();
+      }}
+      ref={scroller}
+      // Scrolls both ways: beside the programme card the pane can be narrower than the grid.
+      style={{ flex: 1, minHeight: 0, overflow: "auto" }}
+    >
+      <div style={{ minWidth: 900, position: "sticky", top: 0, zIndex: 1 }}>{header}</div>
+      <div style={{ height: rows.getTotalSize(), minWidth: 900, position: "relative" }}>
         {rows.getVirtualItems().map((row) => {
           const channel = channels[row.index];
           return channel ? (
