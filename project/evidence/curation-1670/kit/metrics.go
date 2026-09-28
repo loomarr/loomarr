@@ -34,7 +34,7 @@ type Metrics struct {
 	PoolUnits      int     `json:"poolUnits"`      // episodes+films the channel could air (0 = unknown)
 	DistinctUnits  int     `json:"distinctUnits"`  // distinct episodes+films aired
 	DistinctTitles int     `json:"distinctTitles"` // distinct shows+films aired
-	Coverage       float64 `json:"coverage"`       // distinctUnits / poolUnits (NaN when pool unknown)
+	Coverage       float64 `json:"coverage"`       // distinctUnits / poolUnits (Undefined when pool unknown)
 
 	// RepeatRate24h is THE gate number: of the airings that start at least 24h into the span,
 	// the share whose unit had already aired in the preceding 24 hours. 0 = nothing re-airs
@@ -65,7 +65,7 @@ type Metrics struct {
 // Measure computes Metrics for one channel's airings over [from, to).
 func Measure(airings []Airing, poolUnits int, from, to time.Time) Metrics {
 	sort.SliceStable(airings, func(i, j int) bool { return airings[i].Start.Before(airings[j].Start) })
-	m := Metrics{Hours: to.Sub(from).Hours(), PoolUnits: poolUnits, Coverage: math.NaN()}
+	m := Metrics{Hours: to.Sub(from).Hours(), PoolUnits: poolUnits, Coverage: Undefined}
 
 	last := map[string]time.Time{}
 	perDay := map[string]int{}
@@ -174,9 +174,13 @@ func Measure(airings []Airing, poolUnits int, from, to time.Time) Metrics {
 	return m
 }
 
+// Undefined marks a ratio with nothing to divide by (no eligible airings, unknown pool). It is -1
+// rather than NaN because encoding/json refuses NaN.
+const Undefined = -1.0
+
 func ratio(n, d int) float64 {
 	if d == 0 {
-		return math.NaN()
+		return Undefined
 	}
 	return float64(n) / float64(d)
 }

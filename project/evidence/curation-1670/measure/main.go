@@ -243,7 +243,10 @@ func main() {
 	fmt.Printf("forecast %s → %s (%d days), %s\n\n", from.Format(time.RFC3339), to.Format(time.RFC3339), *days, c.base)
 	print(os.Stdout, results)
 	if *out != "" {
-		b, _ := json.MarshalIndent(map[string]any{"from": from, "to": to, "base": c.base, "channels": results}, "", "  ")
+		b, err := json.MarshalIndent(map[string]any{"from": from, "to": to, "base": c.base, "channels": results}, "", "  ")
+		if err != nil {
+			fail("encode: %v", err)
+		}
 		if err := os.WriteFile(*out, b, 0o644); err != nil {
 			fail("%v", err)
 		}
@@ -265,7 +268,7 @@ func print(w io.Writer, rs []Result) {
 }
 
 func pc(f float64) string {
-	if math.IsNaN(f) {
+	if f < 0 || math.IsNaN(f) {
 		return "-"
 	}
 	return fmt.Sprintf("%.0f%%", 100*f)
