@@ -1,11 +1,14 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { NowNextEntry } from "@loomarr/api/models/nowNextEntry";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { channelNumber } from "@loomarr/core/format";
+import { ChannelIdent } from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, Outlet, useLocation } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelIdentityField } from "@/channels/channel-identity-field";
@@ -14,6 +17,7 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { cn } from "@/lib/utils";
 import { ChannelDetailProvider } from "./-channel-detail-context";
 
 // Channel detail (§12). TWO AUDIENCES: the top answers a viewer's questions — is it on,
@@ -42,6 +46,24 @@ const SECTIONS = [
 ] as const;
 
 type AirState = { dot: OnAirState; label: string; detail: string };
+
+// How often the header's minutes-left moves on.
+const NOW_TICK_MS = 30_000;
+
+// headerAirLine is the line under the name (the web mock): a red dot and "On now: <title> · Nm
+// left" while a programme airs, a grey dot and "Paused" for a paused channel. The mock draws only
+// those two; any other state shows the page's own air label (Off air, Updating…) on the grey dot.
+const headerAirLine = (
+  air: AirState,
+  now: NowNextEntry | undefined,
+  nowMs: number,
+): { onAir: boolean; text: string } => {
+  if (air.dot === "live" && now && !now.gap && now.startMs <= nowMs && nowMs < now.stopMs) {
+    const left = Math.max(1, Math.round((now.stopMs - nowMs) / 60_000));
+    return { onAir: true, text: `On now: ${now.title} · ${left}m left` };
+  }
+  return { onAir: false, text: air.label };
+};
 
 const airStateOf = (ch: ChannelDTO): AirState => {
   // "Broadcasting" is backend-agnostic. Tunarr channels signal it with a pushed projection
@@ -99,6 +121,13 @@ const ChannelDetailLayout = () => {
     query: { placeholderData: pathname.endsWith("/watch") ? (previous) => previous : undefined },
   });
   useDocumentTitle(unwrap(channel.data, (b) => b.name));
+  // The header's "On now: … · Nm left" reads the shared now/next list; the minutes move on a tick.
+  const nowNextBody = unwrap(channelsApi.useChannelsNowNext({ query: { staleTime: 15_000 } }).data);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
+    return () => clearInterval(tick);
+  }, []);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(id) });
@@ -157,6 +186,8 @@ const ChannelDetailLayout = () => {
   if (!ch) return <p className="p-6 text-muted-foreground text-sm">Loading channel…</p>;
 
   const air = airStateOf(ch);
+  const onNow = nowNextBody?.channels.find((entry) => entry.channelId === id)?.now;
+  const airLine = headerAirLine(air, onNow, nowMs);
 
   // Count TITLES, not slots: slotCount includes commercial-break gaps (§10), so it would
   // read "12 of 15 shows ready" forever on a healthy channel with ad breaks. programCount +
@@ -178,28 +209,50 @@ const ChannelDetailLayout = () => {
 
   return (
     <div className="flex h-full flex-col">
+      {/* The web mock's header (#1659): back, the channel's icon (its monogram ident when it has
+          none, N8), the name over an air line, and CH n at the right. The back link gets a 24 px
+          target; the mock's 16 px glyph alone is under the minimum. */}
       <header className="flex items-center gap-3 border-border border-b px-6 py-4">
         <Link
           to="/guide"
           aria-label="Back to channels"
-          className="cursor-pointer text-muted-foreground hover:text-foreground"
+          className="-ml-1 flex size-6 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" aria-hidden />
         </Link>
-        {/* Identity. Admins edit the name/number inline with explicit Save/Cancel per field
-            (ChannelIdentityField); viewers see the plain heading. The mono channel number is
-            the anchor glyph either way (§2.2 — machine data is mono). */}
-        {isAdmin ? (
-          <div className="flex flex-1 flex-wrap items-center gap-3">
-            <ChannelIdentityField
-              label="Channel name"
-              value={ch.name}
-              variant="title"
-              validate={(v) => (v.trim().length === 0 ? "Give the channel a name." : undefined)}
-              onSave={saveName}
-            />
-            <div className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
-              <span className="font-mono uppercase tracking-wide">Ch</span>
+        {ch.logo ? (
+          <div className="relative size-12 shrink-0 overflow-hidden rounded-lg border border-border bg-static-800">
+            <img src={ch.logo} alt="" className="size-full object-cover" />
+          </div>
+        ) : (
+          <ChannelIdent name={ch.name} number={ch.number} size={48} />
+        )}
+        <div className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="flex flex-col gap-0.5">
+            {/* Admins still rename and renumber here with Save/Cancel per field, until the
+                maintainer's click-to-edit mock lands; everyone else sees the mock's text. */}
+            {isAdmin ? (
+              <ChannelIdentityField
+                label="Channel name"
+                value={ch.name}
+                variant="title"
+                validate={(v) => (v.trim().length === 0 ? "Give the channel a name." : undefined)}
+                onSave={saveName}
+              />
+            ) : (
+              <h1 className="font-semibold text-2xl leading-tight">{ch.name}</h1>
+            )}
+            <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+              <span
+                aria-hidden
+                className={cn("size-[7px] rounded-full", airLine.onAir ? "bg-onair" : "bg-static-500")}
+              />
+              {airLine.text}
+            </span>
+          </div>
+          <div className="ml-auto flex items-center gap-2 text-[13px] text-muted-foreground">
+            <span className="font-mono uppercase tracking-wide">Ch</span>
+            {isAdmin ? (
               <ChannelIdentityField
                 label="Channel number"
                 value={ch.number}
@@ -212,16 +265,11 @@ const ChannelDetailLayout = () => {
                 }}
                 onSave={saveNumber}
               />
-            </div>
+            ) : (
+              <span className="px-1.5 py-0.5 font-mono text-foreground">{channelNumber(ch.number)}</span>
+            )}
           </div>
-        ) : (
-          <>
-            <h1 className="font-semibold text-xl">{ch.name}</h1>
-            <span className="ml-auto font-mono text-muted-foreground text-sm">
-              Channel {channelNumber(ch.number)}
-            </span>
-          </>
-        )}
+        </div>
       </header>
 
       {/* A HORIZONTAL tab bar under the header. Each tab is its OWN ROUTE (V-nav-paths). An admin

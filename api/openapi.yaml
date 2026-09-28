@@ -2472,26 +2472,6 @@ components:
         - tables
         - parity
       type: object
-    DatabaseSwitchoverOutputBody:
-      additionalProperties: false
-      properties:
-        $schema:
-          description: A URL to the JSON Schema for this object.
-          examples:
-            - https://example.com/v1/schemas/DatabaseSwitchoverOutputBody.json
-          format: uri
-          readOnly: true
-          type: string
-        note:
-          description: What happens next, in operator-facing prose
-          type: string
-        restartRequired:
-          description: Always true — DATABASE_URL is a boot-time setting
-          type: boolean
-      required:
-        - restartRequired
-        - note
-      type: object
     DatabaseTable:
       additionalProperties: false
       properties:
@@ -12367,7 +12347,7 @@ paths:
         - channels
   /v1/channels/{id}/reconcile:
     post:
-      description: Admin only. Rebuilds desired programming on the channel's selected playout backend. Idempotent (§9).
+      description: "Admin only. Rebuilds desired programming on the channel's selected playout backend. Idempotent (§9). Operator and automation API: no Loomarr client calls it."
       operationId: reconcile-channel
       parameters:
         - in: path
@@ -12996,7 +12976,7 @@ paths:
         - diagnostics
   /v1/diagnostics/startup-reports:
     get:
-      description: Returns the live application-generation startup report and recent completed reports retained in Diagnostics.
+      description: "Returns the live application-generation startup report and recent completed reports retained in Diagnostics. Operator and automation API: no Loomarr client calls it."
       operationId: list-startup-reports
       parameters:
         - description: Current plus recent generations to return
@@ -14184,6 +14164,7 @@ paths:
         - filler
   /v1/filler/ingest:
     post:
+      description: "Operator and automation API: no Loomarr client calls it."
       operationId: ingest-filler
       requestBody:
         content:
@@ -15409,6 +15390,7 @@ paths:
       tags:
         - invitations
     get:
+      description: "Operator and automation API: no Loomarr client calls it."
       operationId: get-invitation
       parameters:
         - in: path
@@ -16099,12 +16081,12 @@ paths:
             examples:
               - ch_abc123
             type: string
-        - description: "Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired and always answers 204 without starting playout"
+        - description: "Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired, always answers 204 without starting playout, and is removed in v0.2.0-beta.10"
           explode: false
           in: query
           name: mode
           schema:
-            description: "Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired and always answers 204 without starting playout"
+            description: "Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired, always answers 204 without starting playout, and is removed in v0.2.0-beta.10"
             enum:
               - prepared
               - warm
@@ -16119,7 +16101,7 @@ paths:
                 type: string
           description: The HLS master playlist for the in-app and native players.
         "204":
-          description: "mode=prepared (retired): there is no prepared presentation, and live playout was not started."
+          description: "mode=prepared (retired, removed in v0.2.0-beta.10): there is no prepared presentation, and live playout was not started."
       summary: Channel HLS master playlist (signed-URL authed)
       tags:
         - playout
@@ -17051,7 +17033,7 @@ paths:
         - setup
   /v1/setup/livetv-reconnect:
     post:
-      description: Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9).
+      description: "Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9). Operator and automation API: no Loomarr client calls it."
       operationId: livetv-reconnect
       responses:
         "200":
@@ -17318,35 +17300,9 @@ paths:
       summary: Probe a candidate PostgreSQL target
       tags:
         - system
-  /v1/system/database/switchover:
-    post:
-      description: Admin only. Persists the new DATABASE_URL to the bootstrap file. Takes effect on restart; the SQLite file is left in place untouched, so reverting is a one-line change.
-      operationId: system-database-switchover
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/DatabaseTargetInputBody"
-        required: true
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DatabaseSwitchoverOutputBody"
-          description: OK
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ErrorModel"
-          description: Error
-      summary: Point the next boot at the migrated database
-      tags:
-        - system
   /v1/system/discovery-quality/export:
     get:
-      description: Admin only. Downloads privacy-safe daily aggregates and their referenced run snapshots; no raw observations or receipt keys are included.
+      description: "Admin only. Downloads privacy-safe daily aggregates and their referenced run snapshots; no raw observations or receipt keys are included. Operator and automation API: no Loomarr client calls it."
       operationId: export-discovery-quality
       responses:
         "200":
@@ -17514,7 +17470,7 @@ paths:
         - system
   /v1/system/reload:
     post:
-      description: Admin only. Re-runs the connection checks without restarting or tearing anything down — no downtime. Uses the same probe implementation as the wizard's checklist, so the two can never disagree.
+      description: "Admin only. Re-runs the connection checks without restarting or tearing anything down — no downtime. Uses the same probe implementation as the wizard's checklist, so the two can never disagree. Operator and automation API: no Loomarr client calls it."
       operationId: system-reload
       responses:
         "200":
@@ -17859,6 +17815,7 @@ paths:
       tags:
         - titles
     get:
+      description: "Operator and automation API: no Loomarr client calls it."
       operationId: get-title
       parameters:
         - in: path

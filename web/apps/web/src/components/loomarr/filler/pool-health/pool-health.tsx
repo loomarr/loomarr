@@ -36,7 +36,10 @@ const Stat = ({
 }) => (
   <div className="flex min-w-0 flex-col gap-0.5">
     <Caption className="uppercase tracking-wide">{label}</Caption>
-    <span className={cn("font-semibold text-lg tabular-nums", tone === "warn" && "text-lock")}>{value}</span>
+    {/* A warning is caution-yellow. It was `text-lock`, the green that means "good" (#1659). */}
+    <span className={cn("font-semibold text-lg tabular-nums", tone === "warn" && "text-caution")}>
+      {value}
+    </span>
     <span className="text-muted-foreground text-xs">{note}</span>
   </div>
 );

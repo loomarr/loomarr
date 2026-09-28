@@ -30,7 +30,7 @@ func (s *Server) registerSetup(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "livetv-reconnect", Method: http.MethodPost, Path: "/v1/setup/livetv-reconnect",
-		Summary: "Force-re-wire the Live TV tuner", Description: "Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9).",
+		Summary: "Force-re-wire the Live TV tuner", Description: "Admin only. Removes + re-adds Loomarr's currently applied tuner in the media server and re-scans it, clearing a stale channel→stream binding ('guide right, plays wrong'). Works for internal or Tunarr playout and is serialized with backend transitions (§6/§9). " + operatorAPI,
 		Tags: []string{"setup"},
 	}, RoleAdmin), s.livetvReconnectHandler)
 }
