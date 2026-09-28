@@ -33,6 +33,12 @@ manifest() {
 	export FLAKE_QUARANTINE_FILE="$work/manifest.tsv"
 }
 
+# The tuner job runs the script on macOS, whose /bin/bash is 3.2, while this contract runs on Linux's
+# bash 5; a bash-4-only construct passes here and fails there (#1735's first merge-group run).
+if grep -nE '(declare|local|typeset|readonly)[[:space:]]+-[[:alpha:]]*A|mapfile|readarray|coproc|\$\{[[:alnum:]_]+(,,?|\^\^?)[}]|\|&|&>>' "$quarantine"; then
+	fail "the script uses a construct bash 3.2 lacks"
+fi
+
 # The committed manifest is valid.
 env -u FLAKE_QUARANTINE_FILE "$quarantine" check || fail "the committed manifest does not validate"
 

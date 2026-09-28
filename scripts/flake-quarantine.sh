@@ -25,8 +25,9 @@ fail() {
 # entries prints the manifest's validated entries as "suite<TAB>project<TAB>spec<TAB>title<TAB>issue".
 entries() {
 	[[ -f "$manifest" ]] || fail "manifest $manifest does not exist"
-	local line number=0 suite project spec title issue extra
-	declare -A seen=()
+	# ⚠ Bash 3.2, the macOS runner's /bin/bash, runs this in the tuner job: no associative arrays.
+	# seen is one newline-delimited key per entry, matched literally (the key is quoted in the test).
+	local line number=0 suite project spec title issue extra key seen=$'\n'
 	while IFS= read -r line || [[ -n "$line" ]]; do
 		number=$((number + 1))
 		[[ -z "$line" || "$line" == \#* ]] && continue
@@ -40,8 +41,9 @@ entries() {
 		[[ "$spec" =~ ^[A-Za-z0-9._/-]+\.spec\.ts$ ]] || fail "line $number: '$spec' is not a spec file"
 		[[ "$title" =~ ^[^[:space:]](.*[^[:space:]])?$ ]] || fail "line $number: the test title is empty or padded"
 		[[ "$issue" =~ ^[1-9][0-9]*$ ]] || fail "line $number: issue '$issue' is not an issue number"
-		[[ -z "${seen[$suite/$project/$spec/$title]:-}" ]] || fail "line $number: '$title' is already quarantined for $suite/$project"
-		seen[$suite/$project/$spec/$title]=1
+		key="$suite/$project/$spec/$title"
+		[[ "$seen" != *$'\n'"$key"$'\n'* ]] || fail "line $number: '$title' is already quarantined for $suite/$project"
+		seen+="$key"$'\n'
 		printf '%s\t%s\t%s\t%s\t%s\n' "$suite" "$project" "$spec" "$title" "$issue"
 	done <"$manifest"
 }
