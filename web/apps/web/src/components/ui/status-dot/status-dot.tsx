@@ -31,6 +31,15 @@ const TONE: Record<StatusTone, string> = {
   warn: "bg-caution",
   error: "bg-onair",
   off: "bg-static-500",
+  // The redesign's Home and Requests rows (#1659 web mock). Each names what the row is WAITING
+  // on, which is what the colour tells an operator at a glance:
+  // `attention` — waiting on a person (an approval, a request to review); the suggest colour.
+  attention: "bg-suggest-300",
+  // `progress` — on its way, nobody needs to act (a download, a lineup being found).
+  progress: "bg-tune",
+  // `notice` — something to do when convenient (a restart to finish saving settings). Brand
+  // amber, static: not `pending`'s lighter queued amber, and not `live`'s motion.
+  notice: "bg-signal",
 };
 
 const StatusDot = ({ tone, label, className, ...rest }: StatusDotProps) => (

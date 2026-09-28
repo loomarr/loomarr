@@ -29,6 +29,9 @@ const TONE_LABELS: Record<StatusTone, string> = {
   warn: "Drifted",
   error: "Failed last run",
   off: "Paused",
+  attention: "Waiting for an admin",
+  progress: "Downloading",
+  notice: "Restart to finish saving",
 };
 
 const AllTones: Story = {

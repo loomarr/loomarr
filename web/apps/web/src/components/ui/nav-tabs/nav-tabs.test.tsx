@@ -126,6 +126,23 @@ describe("NavTabs", () => {
       expect(screen.getByText("0")).not.toHaveClass("bg-suggest-tint-15");
     });
 
+    // #1659 web mock: a pill bar tints waiting work too, and keeps the tint on the active tab.
+    it("tints an attention count on the pill bar, even while that tab is active", () => {
+      render(
+        <NavTabs
+          tabs={[
+            { id: "needs", label: "Needs you", to: "/requests/needs-you", count: 3, attention: true },
+            { id: "done", label: "Done", to: "/requests/done", count: 9 },
+          ]}
+          activeId="needs"
+          linkComponent={anchorLink}
+          label="Requests sections"
+        />,
+      );
+      expect(screen.getByText("3")).toHaveClass("bg-suggest-tint-15", "text-suggest-300");
+      expect(screen.getByText("9")).toHaveClass("bg-static-800", "text-static-400");
+    });
+
     it("leaves the default variant as pills", () => {
       render(<NavTabs tabs={tabs} activeId="flight" linkComponent={anchorLink} label="Queue sections" />);
       expect(screen.getByRole("link", { name: /In flight/ })).toHaveClass("bg-signal-tint-15", "rounded-md");
