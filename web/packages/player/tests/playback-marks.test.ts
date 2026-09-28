@@ -58,11 +58,11 @@ describe("playback marks", () => {
       reason: "step",
       warm: true,
     });
-    marks.held(3, "card");
+    marks.held(3, "osd");
 
     expect(lines).toEqual([
       "LoomarrCert v=1 ev=tune t=1000 att=3 ch=ch_1 key=990.3 num=104 path=warm why=step",
-      "LoomarrCert v=1 ev=held t=1000 att=3 what=card",
+      "LoomarrCert v=1 ev=held t=1000 att=3 what=osd",
     ]);
   });
 
