@@ -4,8 +4,8 @@
 **Date:** 2026-09-04
 **Decision owner:** maintainer  
 **Companion contract:** [`docs/frontend-design.md`](../../docs/frontend-design.md)
-**Current-state inventory:** [`docs/engineering/client-platform-inventory.md`](../client-platform-inventory.md)
-**Completeness ledger:** [`docs/engineering/client-design-system-coverage.md`](../client-design-system-coverage.md)
+**Current-state inventory:** [`project/client-platform-inventory.md`](../client-platform-inventory.md)
+**Completeness ledger:** [`project/client-design-system-coverage.md`](../client-design-system-coverage.md)
 
 ## Outcome
 

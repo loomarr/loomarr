@@ -160,7 +160,7 @@ the generated [settings reference](reference/settings.md) is the key reference.
 
 The image, Compose and upgrades moved to [`design/deployment.md`](design/deployment.md); backup and
 restore to [`design/storage.md`](design/storage.md#backup-and-restore). The operator runbook and
-Compose listing were deleted: the wizard, `docs/install/` and `docker/compose.yaml` own them.
+Compose listing were deleted: the wizard, `docs/guides/install-docker.md` and `docker/compose.yaml` own them.
 ---
 
 ## 17. Observability
