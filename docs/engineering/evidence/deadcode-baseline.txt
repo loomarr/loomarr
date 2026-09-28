@@ -6,7 +6,6 @@
 45 internal/filler
 2 internal/fillerairworthiness
 12 internal/fillerairworthinessprojection
-1 internal/fillerbakeoff
 8 internal/fillerdecision
 1 internal/fillerenrichment
 2 internal/fillerresearch
@@ -32,4 +31,4 @@
 2 internal/suggest
 4 internal/tmdb
 2 internal/watermark
-total 214
+total 213

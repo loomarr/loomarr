@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillerbakeoff"
+	"github.com/loomarr/loomarr/internal/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/suggest"
 )
 
@@ -38,7 +38,7 @@ func openRouterReservationsFromEnv(getenv func(string) string, generator, judge 
 	if err != nil {
 		return nil, nil, fmt.Errorf("read OpenRouter reservation snapshot: %w", err)
 	}
-	var snapshot fillerbakeoff.OpenRouterSnapshot
+	var snapshot openroutercatalog.OpenRouterSnapshot
 	decoder := json.NewDecoder(bytes.NewReader(blob))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&snapshot); err != nil {

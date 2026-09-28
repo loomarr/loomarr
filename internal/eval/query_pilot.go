@@ -15,8 +15,8 @@ import (
 	"strings"
 
 	"github.com/loomarr/loomarr/internal/catalog"
-	"github.com/loomarr/loomarr/internal/fillerbakeoff"
 	"github.com/loomarr/loomarr/internal/llm"
+	"github.com/loomarr/loomarr/internal/openroutercatalog"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -316,11 +316,11 @@ func loadQueryMoodReviewAuthority(corpus QueryPilotCorpus) (*MoodReviewAuthority
 			if snapshotBlob == nil {
 				return nil, fmt.Errorf("query mood submission lacks its bound provider snapshot")
 			}
-			var snapshot fillerbakeoff.OpenRouterSnapshot
+			var snapshot openroutercatalog.OpenRouterSnapshot
 			if err := decodeMoodReviewJSON(snapshotBlob, &snapshot); err != nil {
 				return nil, fmt.Errorf("decode query mood provider snapshot: %w", err)
 			}
-			_, capabilityDigest, err := fillerbakeoff.OpenRouterAssessorIdentity(snapshot, submission.Reviewer.Model, submission.Reviewer.Route, submission.Reviewer.RouteSlug, "disabled")
+			_, capabilityDigest, err := openroutercatalog.OpenRouterAssessorIdentity(snapshot, submission.Reviewer.Model, submission.Reviewer.Route, submission.Reviewer.RouteSlug, "disabled")
 			if err != nil || capabilityDigest != submission.Reviewer.IdentitySHA256 {
 				return nil, fmt.Errorf("query mood submission does not match its provider route snapshot")
 			}

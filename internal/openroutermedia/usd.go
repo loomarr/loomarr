@@ -1,7 +1,4 @@
-// Package fillereval holds the budget arithmetic that paid filler assessment
-// shares with certification. The certification scorer itself lives in the
-// research module (research/docs/filler-certification.md).
-package fillereval
+package openroutermedia
 
 import (
 	"fmt"

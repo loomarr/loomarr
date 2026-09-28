@@ -142,6 +142,30 @@ func TestProductionCommandsDoNotLinkTestkit(t *testing.T) {
 	}
 }
 
+// Research, evaluation and bake-off tooling never ships (#1747). The filler research tools live
+// in the research/ module (#1560); these names are the main-module packages that once carried
+// them, and the planner evaluation harness, which runs only under `make eval*`. Recreating one
+// and wiring it into the server is the regression this gate refuses. internal/fillerresearch is
+// deliberately absent: it is the production web-research enrichment step, not tooling.
+var serverForbiddenToolingPackages = []string{
+	modulePath + "/internal/eval",
+	modulePath + "/internal/fillerbakeoff",
+	modulePath + "/internal/fillercorpus",
+	modulePath + "/internal/fillereval",
+	modulePath + "/internal/fillervisualsafety",
+}
+
+func TestServerDoesNotLinkResearchOrEvalTooling(t *testing.T) {
+	pkgs := loomarrPackages(t)
+	linked := reachableFrom(pkgs, modulePath+"/cmd/loomarr")
+	for _, tooling := range serverForbiddenToolingPackages {
+		if linked[tooling] {
+			t.Errorf("cmd/loomarr links %s through %v — research and eval tooling belongs in research/ or behind the eval build tag",
+				tooling, importersOf(pkgs, linked, tooling))
+		}
+	}
+}
+
 // The Image service's pixel boundary is the required Rust worker (§22). Keeping Go's image
 // codecs out of this package prevents a certification helper or a convenient local decode from
 // quietly becoming a second production implementation. Other domains can own measured, bounded

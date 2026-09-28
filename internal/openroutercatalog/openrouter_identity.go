@@ -1,4 +1,4 @@
-package fillerbakeoff
+package openroutercatalog
 
 import (
 	"crypto/sha256"
