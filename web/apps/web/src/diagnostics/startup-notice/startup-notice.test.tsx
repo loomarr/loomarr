@@ -85,6 +85,18 @@ describe("HealthNotice", () => {
     expect(localStorage.getItem(key)).toBe("1");
   });
 
+  it("lets a degraded notice close by itself on a phone, where it covered the page (#1785)", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("max-width"), media: query }));
+    try {
+      server.use(getGetCurrentHealthMockHandler(report("degraded")));
+      renderNotice();
+      await waitFor(() => expect(mocks.warning).toHaveBeenCalledOnce());
+      expect(mocks.warning.mock.calls[0]?.[1]?.duration).toBe(6_000);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("does not replace an unchanged persistent incident after a fresh poll", async () => {
     server.use(getGetCurrentHealthMockHandler(report("degraded", 2)));
     const { client } = renderNotice();
