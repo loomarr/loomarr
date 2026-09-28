@@ -138,11 +138,15 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   Internal playout writes it when the channel encoder resolves the clip, keyed by scheduled start, so
   tune-ins and rebuilds cannot inflate it; preview and reconcile never write it. Assembly reads a
   snapshot cut off before the break starts and ranks within each rung: never aired, then least
-  recently aired outside `filler.cooldown_seconds`, then inside it only if needed. Cooldown never
-  causes dead air. Pins come first and may repeat. On Tunarr channels Tunarr owns rotation; Loomarr
-  writes `fillerRepeatCooldown` to the channel and leaves the list cooldown at zero.
+  recently aired outside `filler.cooldown_seconds`. A clip inside its cooldown ranks behind every
+  rested clip on any rung, so the ladder widens before a clip repeats, and cooldown relaxes only when
+  the whole ladder is resting. Cooldown never causes dead air. Pins come first and may repeat. On
+  Tunarr channels Tunarr owns rotation; Loomarr writes `fillerRepeatCooldown` to the channel and
+  leaves the list cooldown at zero.
 - **Fallback ladder:** exact era → era widened by a decade → any audience-appropriate clip → clips
-  with an ungrounded audience → the channel's bumper card. Never dead air.
+  with an ungrounded audience → the channel's bumper card. Never dead air. A pod fills from the
+  tightest rung first and tops up from the rungs below it, so a small exact rung leads the break
+  instead of being the whole break (#1684). The coverage level reports the rung breaks reach.
 
 **Audience is an allowlist and never weakens** (a kids and teen guardrail):
 
