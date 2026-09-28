@@ -9,6 +9,7 @@ import {
   formatGuideTimeRange,
   GUIDE_BUCKET_MS,
   guideAiringLabel,
+  guideChannelForTypeahead,
   guideChannelState,
   guideSelectionForChannel,
   guideWindow,
@@ -294,5 +295,51 @@ describe("layoutGuide", () => {
     expect(moveGuideSelection(layout, first, "down")).toEqual({
       selection: { channelId: "empty", scheduleBlockId: undefined, anchorMs: 2_000 },
     });
+  });
+});
+
+describe("guideChannelForTypeahead", () => {
+  const channel = (channelId: string, number: number, name: string): GuideChannelTimeline => ({
+    airings: [],
+    channelId,
+    name,
+    number,
+    pendingCount: 0,
+    status: "live",
+  });
+  const layout = layoutGuide(
+    {
+      channels: [
+        channel("a", 2, "Sci-Fi Nights"),
+        channel("b", 7, "Saturday Cartoons"),
+        channel("c", 12, "Cozy Autumn Horror"),
+        channel("d", 70, "Sitcom Reruns"),
+        channel("e", 120, "Silent Films"),
+      ],
+      fromMs: 0,
+      toMs: 10_000,
+    } as GuideOutputBody,
+    0,
+  );
+
+  it("jumps to the channel with exactly the typed number before any it merely prefixes", () => {
+    expect(guideChannelForTypeahead(layout, "12")).toBe("c");
+    expect(guideChannelForTypeahead(layout, "7")).toBe("b");
+    expect(guideChannelForTypeahead(layout, "1")).toBe("c");
+    expect(guideChannelForTypeahead(layout, "9")).toBeUndefined();
+  });
+
+  it("matches a name from its start, then from the start of any word, ignoring case", () => {
+    expect(guideChannelForTypeahead(layout, "sat")).toBe("b");
+    expect(guideChannelForTypeahead(layout, "HORR")).toBe("c");
+    expect(guideChannelForTypeahead(layout, "zz")).toBeUndefined();
+  });
+
+  it("cycles through the names that share a first letter from the current channel", () => {
+    expect(guideChannelForTypeahead(layout, "s", "a")).toBe("b");
+    expect(guideChannelForTypeahead(layout, "s", "b")).toBe("d");
+    expect(guideChannelForTypeahead(layout, "s", "e")).toBe("a");
+    // A longer query keeps the current channel while it still matches.
+    expect(guideChannelForTypeahead(layout, "sa", "b")).toBe("b");
   });
 });

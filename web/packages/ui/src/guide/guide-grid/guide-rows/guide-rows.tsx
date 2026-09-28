@@ -2,7 +2,8 @@ import { FlatList } from "react-native";
 
 import type { GuideRowsProps } from "./guide-rows.type";
 
-// Phone and TV: FlatList, with the ruler as its sticky header. Web resolves guide-rows.web.tsx.
+// Phone and TV: FlatList, with the ruler as its sticky header. Web resolves guide-rows.web.tsx,
+// which adds the keyboard (focusIndex, onKey).
 const GuideRows = ({ channels, header, headerHeight, renderRow, rowHeight }: GuideRowsProps) => (
   <FlatList
     data={channels}

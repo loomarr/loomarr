@@ -6,25 +6,39 @@ import {
   type GuideAiringLayout,
   type GuideChannelLayout,
   type GuideHealthState,
+  type GuideNavigationDirection,
+  type GuideSelection,
   guideAiringLabel,
+  guideChannelForTypeahead,
   guideChannelState,
+  guideSelectionForChannel,
   monogramOf,
 } from "@loomarr/core/guide";
 import { brandChroma, Surface, Text, type TextTone } from "@loomarr/design-system";
-import { memo, useState } from "react";
+import { memo, type RefObject, useEffect, useRef, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
 import type { GuideGridProps } from "./guide-grid.type";
 import { GuideRows } from "./guide-rows";
 
 // The web mock's time grid (#1659, decision N7): a 260 px channel column beside a timeline of
-// blocks, one 56 px row per channel. Render-only in this slice: keyboard, jump-to-channel and the
-// page's toolbar come next. GuideRows virtualises the rows per platform.
+// blocks, one 56 px row per channel. GuideRows virtualises the rows per platform. The keyboard
+// model is a roving tabindex: the selected block is the grid's one Tab stop, arrow keys move it
+// through the guide controller, and typing a channel number or name jumps to that channel.
 
 const RAIL = 260;
 const ROW = 56;
 const RULER = 30;
 const hourMs = 3_600_000;
+
+const arrowDirection: Record<string, GuideNavigationDirection> = {
+  ArrowDown: "down",
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowUp: "up",
+};
+// Keys typed within this gap build one query ("1", "12"); a longer pause starts a new one.
+const TYPEAHEAD_MS = 800;
 
 // Label thresholds from the mock, in pixels of block width.
 const LABEL_MIN = 74;
@@ -92,7 +106,28 @@ const Ident = ({ name, number }: { name: string; number: number }) => {
   );
 };
 
-const Block = ({ airing, px, timezone }: { airing: GuideAiringLayout; px: number; timezone?: string }) => {
+const selectionOf = (airing: GuideAiringLayout): GuideSelection => ({
+  anchorMs: airing.source.startMs + (airing.source.stopMs - airing.source.startMs) / 2,
+  channelId: airing.channelId,
+  scheduleBlockId: airing.scheduleBlockId,
+});
+
+type BlockProps = {
+  airing: GuideAiringLayout;
+  /** Set when a key moved the selection here: the block takes focus once it mounts. */
+  focusPending?: RefObject<boolean>;
+  /** The grid's one Tab stop (roving tabindex). */
+  focusable: boolean;
+  onOpen?: () => void;
+  onSelect?: (selection: GuideSelection) => void;
+  px: number;
+  selected: boolean;
+  timezone?: string;
+};
+
+const Block = ({ airing, focusPending, focusable, onOpen, onSelect, px, selected, timezone }: BlockProps) => {
+  const ref = useRef<View>(null);
+  const [focused, setFocused] = useState(false);
   const a = airing.source;
   const kind = a.kind;
   const pending = kind === "pending";
@@ -103,86 +138,120 @@ const Block = ({ airing, px, timezone }: { airing: GuideAiringLayout; px: number
   const entries = a.pod?.entries ?? [];
   const podTotal = entries.reduce((n, e) => n + (e.durationMs || 0), 0) || 1;
 
+  useEffect(() => {
+    if (selected && focusPending?.current) {
+      focusPending.current = false;
+      ref.current?.focus();
+    }
+  }, [focusPending, selected]);
+
   return (
-    <Surface
+    <Pressable
       accessibilityLabel={`${guideAiringLabel(a)}, ${when}`}
-      backgroundColor={
-        pod
-          ? "$guideBreakFill"
-          : pending
-            ? "$guidePendingFill"
-            : airingNow
-              ? "$stateAiringSurface"
-              : "$surfaceElevated"
-      }
-      borderColor={pod || airingNow ? "$borderAiring" : pending ? "$guidePendingBorder" : "$borderDecorative"}
-      borderLeftColor={
-        pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$actionPrimary" : "$guideBlockAccent"
-      }
-      borderLeftWidth={2}
-      borderRadius={4}
-      borderStyle={pending ? "dashed" : "solid"}
-      borderWidth={1}
-      bottom={6}
-      gap={1}
-      justifyContent="center"
-      left={`${airing.startRatio * 100}%`}
-      overflow="hidden"
-      paddingHorizontal={pod ? 2 : 8}
-      paddingVertical={pod ? 2 : 4}
-      position="absolute"
-      top={6}
-      width={`${airing.widthRatio * 100}%`}
+      accessibilityRole="button"
+      // tabIndex, not focusable: react-native-web ignores focusable on a Pressable.
+      tabIndex={focusable ? 0 : -1}
+      onBlur={() => setFocused(false)}
+      onFocus={() => {
+        setFocused(true);
+        if (!selected) onSelect?.(selectionOf(airing));
+      }}
+      onPress={onOpen}
+      ref={ref}
+      style={{
+        bottom: 6,
+        left: `${airing.startRatio * 100}%`,
+        position: "absolute",
+        top: 6,
+        width: `${airing.widthRatio * 100}%`,
+      }}
     >
-      {pod ? (
-        <View style={{ flexDirection: "row", gap: 1, height: "100%" }}>
-          {entries.map((entry, i) => {
-            const share = (entry.durationMs || 0) / podTotal;
-            return (
-              <Surface
-                backgroundColor={clipFill[entry.kind]}
-                borderRadius={2}
-                borderWidth={0}
-                flex={share}
-                justifyContent="center"
-                // Position is identity inside a break: one clip may legitimately repeat.
-                // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
-                key={i}
-                minWidth={0}
-                overflow="hidden"
-                paddingHorizontal={3}
-              >
-                {px * share > CLIP_LABEL_MIN ? (
-                  <Text numberOfLines={1} textRole="guideClip">
-                    {entry.name}
-                  </Text>
-                ) : null}
-              </Surface>
-            );
-          })}
-        </View>
-      ) : px > LABEL_MIN ? (
-        <>
-          {hasSeries ? (
-            <Text numberOfLines={1} textRole="guideLabel" textTransform="uppercase">
-              {a.series}
+      <Surface
+        backgroundColor={
+          pod
+            ? "$guideBreakFill"
+            : pending
+              ? "$guidePendingFill"
+              : airingNow
+                ? "$stateAiringSurface"
+                : "$surfaceElevated"
+        }
+        borderColor={
+          focused
+            ? "$actionFocus"
+            : pod || airingNow
+              ? "$borderAiring"
+              : pending
+                ? "$guidePendingBorder"
+                : "$borderDecorative"
+        }
+        borderLeftColor={
+          pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$actionPrimary" : "$guideBlockAccent"
+        }
+        borderLeftWidth={2}
+        borderRadius={4}
+        borderStyle={pending ? "dashed" : "solid"}
+        borderWidth={1}
+        flex={1}
+        gap={1}
+        justifyContent="center"
+        overflow="hidden"
+        paddingHorizontal={pod ? 2 : 8}
+        paddingVertical={pod ? 2 : 4}
+      >
+        {pod ? (
+          <View style={{ flexDirection: "row", gap: 1, height: "100%" }}>
+            {entries.map((entry, i) => {
+              const share = (entry.durationMs || 0) / podTotal;
+              return (
+                <Surface
+                  backgroundColor={clipFill[entry.kind]}
+                  borderRadius={2}
+                  borderWidth={0}
+                  flex={share}
+                  justifyContent="center"
+                  // Position is identity inside a break: one clip may legitimately repeat.
+                  // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
+                  key={i}
+                  minWidth={0}
+                  overflow="hidden"
+                  paddingHorizontal={3}
+                >
+                  {px * share > CLIP_LABEL_MIN ? (
+                    <Text numberOfLines={1} textAlign="left" textRole="guideClip">
+                      {entry.name}
+                    </Text>
+                  ) : null}
+                </Surface>
+              );
+            })}
+          </View>
+        ) : px > LABEL_MIN ? (
+          // textAlign: a role=button element centres its text on web, and the mock's labels are
+          // flush left.
+          <>
+            {hasSeries ? (
+              <Text numberOfLines={1} textAlign="left" textRole="guideLabel" textTransform="uppercase">
+                {a.series}
+              </Text>
+            ) : null}
+            <Text
+              numberOfLines={1}
+              textAlign="left"
+              textRole="cardLabel"
+              tone={pending || kind === "flex" ? "muted" : "primary"}
+            >
+              {hasSeries ? a.title : guideAiringLabel(a)}
             </Text>
-          ) : null}
-          <Text
-            numberOfLines={1}
-            textRole="cardLabel"
-            tone={pending || kind === "flex" ? "muted" : "primary"}
-          >
-            {hasSeries ? a.title : guideAiringLabel(a)}
-          </Text>
-          {!hasSeries && px >= META_MIN ? (
-            <Text numberOfLines={1} textRole="guideMeta">
-              {when}
-            </Text>
-          ) : null}
-        </>
-      ) : null}
-    </Surface>
+            {!hasSeries && px >= META_MIN ? (
+              <Text numberOfLines={1} textAlign="left" textRole="guideMeta">
+                {when}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
+      </Surface>
+    </Pressable>
   );
 };
 
@@ -205,14 +274,21 @@ const nowLine = (ratio: number) => (
 const Row = memo(
   ({
     channel,
+    focusPending,
     nowRatio,
     onOpenChannel,
+    onSelect,
+    tabStop,
     timelineWidth,
     timezone,
   }: {
     channel: GuideChannelLayout;
+    focusPending: RefObject<boolean>;
     nowRatio?: number;
     onOpenChannel?: (channelId: string) => void;
+    onSelect?: (selection: GuideSelection) => void;
+    /** The block that is the grid's Tab stop, when it is in this row. */
+    tabStop?: string;
     timelineWidth: number;
     timezone?: string;
   }) => {
@@ -244,6 +320,9 @@ const Row = memo(
           <Ident name={channel.source.name} number={channel.source.number} />
           <Pressable
             accessibilityRole="button"
+            // Out of the Tab order: Enter on any of the row's blocks opens the same channel, and
+            // a hundred rows must not mean a hundred more Tab stops.
+            tabIndex={-1}
             onPress={() => onOpenChannel?.(channel.source.channelId)}
             style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: 9, minWidth: 0 }}
           >
@@ -283,13 +362,17 @@ const Row = memo(
         </Surface>
         <View style={{ flex: 1, height: ROW, overflow: "hidden", position: "relative" }}>
           {channel.airings.map((airing) => (
-            <Pressable
+            <Block
+              airing={airing}
+              focusable={airing.scheduleBlockId === tabStop}
+              focusPending={focusPending}
               key={airing.scheduleBlockId}
-              onPress={() => onOpenChannel?.(channel.source.channelId)}
-              style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
-            >
-              <Block airing={airing} px={airing.widthRatio * timelineWidth} timezone={timezone} />
-            </Pressable>
+              onOpen={() => onOpenChannel?.(channel.source.channelId)}
+              onSelect={onSelect}
+              px={airing.widthRatio * timelineWidth}
+              selected={airing.scheduleBlockId === tabStop}
+              timezone={timezone}
+            />
           ))}
           {nowRatio === undefined ? null : nowLine(nowRatio)}
         </View>
@@ -298,8 +381,10 @@ const Row = memo(
   },
 );
 
-const GuideGrid = ({ layout, nowMs, onOpenChannel }: GuideGridProps) => {
+const GuideGrid = ({ layout, nowMs, onMove, onOpenChannel, onSelect, selection }: GuideGridProps) => {
   const [timelineWidth, setTimelineWidth] = useState(0);
+  const focusPending = useRef(false);
+  const typed = useRef({ at: 0, query: "" });
   const span = Math.max(1, layout.toMs - layout.fromMs);
   const nowRatio = nowMs >= layout.fromMs && nowMs < layout.toMs ? (nowMs - layout.fromMs) / span : undefined;
   const firstHour = Math.ceil(layout.fromMs / hourMs) * hourMs;
@@ -369,16 +454,52 @@ const GuideGrid = ({ layout, nowMs, onOpenChannel }: GuideGridProps) => {
     </Surface>
   );
 
+  // One Tab stop: the selected block, else the first block of the first row.
+  const tabStop = selection
+    ? selection
+    : layout.channels[0]?.airings[0]
+      ? selectionOf(layout.channels[0].airings[0])
+      : undefined;
+  const tabStopRow = tabStop
+    ? layout.channels.findIndex((channel) => channel.source.channelId === tabStop.channelId)
+    : -1;
+
+  const onKey = (key: string, modified: boolean): boolean => {
+    if (modified || !tabStop) return false;
+    const direction = arrowDirection[key];
+    if (direction) {
+      const moved = onMove?.(direction);
+      if (moved && !moved.boundary) focusPending.current = true;
+      return true;
+    }
+    if (key.length !== 1 || !/\S/.test(key)) return false;
+    const at = Date.now();
+    const query = at - typed.current.at < TYPEAHEAD_MS ? typed.current.query + key : key;
+    typed.current = { at, query };
+    const channelId = guideChannelForTypeahead(layout, query, tabStop.channelId);
+    const next = channelId ? guideSelectionForChannel(layout, channelId, tabStop.anchorMs) : undefined;
+    if (next && next.scheduleBlockId !== tabStop.scheduleBlockId) {
+      focusPending.current = true;
+      onSelect?.(next);
+    }
+    return true;
+  };
+
   return (
     <GuideRows
       channels={layout.channels}
+      focusIndex={tabStopRow < 0 ? undefined : tabStopRow}
       header={ruler}
       headerHeight={RULER + 1}
+      onKey={onKey}
       renderRow={(channel) => (
         <Row
           channel={channel}
+          focusPending={focusPending}
           nowRatio={nowRatio}
           onOpenChannel={onOpenChannel}
+          onSelect={onSelect}
+          tabStop={channel.source.channelId === tabStop?.channelId ? tabStop.scheduleBlockId : undefined}
           timelineWidth={timelineWidth}
           timezone={layout.timezone}
         />

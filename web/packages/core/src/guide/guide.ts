@@ -211,6 +211,39 @@ const guideSelectionForChannel = (
   };
 };
 
+/**
+ * Type-to-jump: the channel a typed query names. Digits name a channel number (an exact number
+ * before one it only prefixes). Letters name a channel from the start of its name, else from the
+ * start of any word, and search on from `fromChannelId`: one letter moves past it, so typing the
+ * same letter again cycles, while a longer query keeps it while it still matches.
+ */
+const guideChannelForTypeahead = (
+  layout: GuideLayout,
+  query: string,
+  fromChannelId?: string,
+): string | undefined => {
+  const typed = query.trim().toLowerCase();
+  if (!typed) return undefined;
+  const channels = layout.channels.map((channel) => channel.source);
+
+  if (/^\d+$/.test(typed)) {
+    const exact = channels.find((channel) => String(channel.number) === typed);
+    return (exact ?? channels.find((channel) => String(channel.number).startsWith(typed)))?.channelId;
+  }
+
+  const current = channels.findIndex((channel) => channel.channelId === fromChannelId);
+  const start = current < 0 ? 0 : typed.length === 1 ? current + 1 : current;
+  const rotated = [...channels.slice(start), ...channels.slice(0, start)];
+  const byName = rotated.find((channel) => channel.name.toLowerCase().startsWith(typed));
+  const byWord = rotated.find((channel) =>
+    channel.name
+      .toLowerCase()
+      .split(/\s+/)
+      .some((word) => word.startsWith(typed)),
+  );
+  return (byName ?? byWord)?.channelId;
+};
+
 const horizontalSelection = (
   channel: GuideChannelLayout,
   selection: GuideSelection,
@@ -275,6 +308,7 @@ export {
   formatGuideTimeRange,
   GUIDE_BUCKET_MS,
   guideAiringLabel,
+  guideChannelForTypeahead,
   guideChannelState,
   guideSelectionForChannel,
   guideTimeFormatter,
