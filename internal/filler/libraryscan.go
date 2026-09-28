@@ -46,7 +46,7 @@ type LibraryClip struct {
 // V38c) — a watched folder or a media-server library.
 //
 // ⚠ Declared here, mirroring FetchSource, so `filler` does not import `store`. The adapter at the
-// composition root maps `store.FillerSource` rows whose `Scannable()` is true onto these.
+// composition root maps `fillerstore.FillerSource` rows whose `Scannable()` is true onto these.
 type ScanSource struct {
 	// ID is the source row's id, used to attribute a failure to the row an operator can see.
 	ID string

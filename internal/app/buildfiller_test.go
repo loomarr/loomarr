@@ -14,9 +14,9 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -54,7 +54,7 @@ func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfMarketSou
 		{"canadian", "CA", ""},
 		{"unknown", "", ""},
 	} {
-		src := store.NewFillerSource(tc.id, "archive", tc.id, tc.id, time.Now().UTC())
+		src := fillerstore.NewFillerSource(tc.id, "archive", tc.id, tc.id, time.Now().UTC())
 		src.Geography = filler.Geography{Country: tc.country, Market: tc.market}
 		if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 			t.Fatal(err)
@@ -86,7 +86,7 @@ func TestFetchStoreAdapter_InheritsInstallationLocationAndDisablesOutOfMarketSou
 
 func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t *testing.T) {
 	st := testkit.MigratedSQLiteStore(t)
-	src := store.NewFillerSource("archive:local", "archive", "local", "Local", time.Now().UTC())
+	src := fillerstore.NewFillerSource("archive:local", "archive", "local", "Local", time.Now().UTC())
 	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 
 	addSource := func(id string, every *int, lastChecked time.Time) {
 		t.Helper()
-		source := store.NewFillerSource(id, "archive", id, id, now.Add(-24*time.Hour))
+		source := fillerstore.NewFillerSource(id, "archive", id, id, now.Add(-24*time.Hour))
 		if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +195,7 @@ func TestFillerFetchJobSelectsDueGlobalAndPerSourcePoliciesThroughTheApplication
 		t.Fatalf("scheduled pass = %+v, enumerated %v; want due global/default and due custom only", result, enumerated)
 	}
 
-	byID := map[string]store.FillerSource{}
+	byID := map[string]fillerstore.FillerSource{}
 	sources, err := st.ListFillerSources(t.Context())
 	if err != nil {
 		t.Fatal(err)

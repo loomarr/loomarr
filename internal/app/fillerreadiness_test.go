@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 type readinessStoreFuncs struct {
@@ -87,7 +87,7 @@ func TestFillerReadinessComposesAuthoritativeServerFacts(t *testing.T) {
 
 func TestFillerReadinessRetainsOlderRepairBeyondHistoryPage(t *testing.T) {
 	ctx := t.Context()
-	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := fillerstore.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}

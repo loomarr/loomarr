@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 func recoveryBoundaryArtifact(t *testing.T, root, id string, state filler.AcquisitionArtifactState, at time.Time) filler.AcquisitionArtifact {
@@ -45,7 +45,7 @@ func repairReason(state filler.AcquisitionArtifactState) string {
 	return ""
 }
 
-func seedBoundaryRun(t *testing.T, db store.Store, at time.Time) {
+func seedBoundaryRun(t *testing.T, db fillerstore.Store, at time.Time) {
 	t.Helper()
 	if err := db.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{ID: "acq-boundary", Trigger: filler.AcquisitionPull, SourceID: "youtube:classic", Status: filler.AcquisitionSuccess, Requested: 1, UpdatedAt: at}); err != nil {
 		t.Fatal(err)

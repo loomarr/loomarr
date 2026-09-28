@@ -39,4 +39,5 @@ type DurableWorkflow interface {
 	Claim(context.Context, time.Time, time.Duration, int) ([]WorkflowWork, error)
 	Complete(context.Context, WorkflowWork, Proposal) (WorkflowProposal, error)
 	Fail(context.Context, WorkflowWork, string, string, ...string) error
+	Record(context.Context, Intent, Proposal, string) (WorkflowProposal, error)
 }

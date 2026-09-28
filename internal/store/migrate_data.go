@@ -158,11 +158,11 @@ func lockPostgresMigrationTarget(ctx context.Context, dsn string) (func(), error
 // Postgres transaction. On any error the destination schema remains migrated, but its
 // data copy is rolled back and the source is untouched.
 func MigrateData(ctx context.Context, src, dst Store, onProgress func(MigrationProgress)) (MigrationProgress, error) {
-	s, ok := src.(*sqlStore)
+	s, ok := adapterOf(src)
 	if !ok {
 		return MigrationProgress{}, errors.New("migrate: source is not a SQL store")
 	}
-	d, ok := dst.(*sqlStore)
+	d, ok := adapterOf(dst)
 	if !ok {
 		return MigrationProgress{}, errors.New("migrate: destination is not a SQL store")
 	}

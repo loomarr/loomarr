@@ -19,6 +19,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -302,19 +303,19 @@ func (f *fakeFiller) ConfirmSplit(_ context.Context, proposalID string, segments
 	return nil
 }
 
-func newFillerServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
+func newFillerServer(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeFiller) {
 	return newFillerServerWithImages(t, nil)
 }
 
-func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, store.Store, *fakeFiller) {
+func newFillerServerWithImages(t *testing.T, imageService api.ImageService) (*httptest.Server, fillerstore.Store, *fakeFiller) {
 	return newFillerServerWithConfig(t, imageService, nil)
 }
 
-func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, store.Store, *fakeFiller) {
+func newFillerServerWithConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string) (*httptest.Server, fillerstore.Store, *fakeFiller) {
 	return newFillerServerWithRuntimeConfig(t, imageService, liveConfig, nil, nil)
 }
 
-func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, store.Store, *fakeFiller) {
+func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, now time.Time) (*httptest.Server, fillerstore.Store, *fakeFiller) {
 	return newFillerServerWithRuntimeConfig(t, nil, nil, func(key string) time.Duration {
 		if key != "filler.incoming.ready_window" {
 			t.Fatalf("unexpected duration setting %q", key)
@@ -323,7 +324,7 @@ func newFillerServerWithIncomingConfig(t *testing.T, readyWindow time.Duration, 
 	}, func() time.Time { return now })
 }
 
-func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string, liveConfigDuration func(string) time.Duration, now func() time.Time) (*httptest.Server, store.Store, *fakeFiller) {
+func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageService, liveConfig func(string) string, liveConfigDuration func(string) time.Duration, now func() time.Time) (*httptest.Server, fillerstore.Store, *fakeFiller) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
@@ -406,7 +407,7 @@ func TestListFiller_CarriesStillAndAnimatedImageServiceRecords(t *testing.T) {
 
 func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	source := store.NewFillerSource(
+	source := fillerstore.NewFillerSource(
 		"youtube:https://www.youtube.com/channel/UC123/videos",
 		"youtube", "https://www.youtube.com/channel/UC123/videos", "Friendly Channel", time.Now().UTC(),
 	)
@@ -440,7 +441,7 @@ func TestListFiller_ProjectsRegisteredSourceLabelInsteadOfItsCanonicalID(t *test
 }
 
 // clearSeededSources drops whatever migrations pre-populated, so a test describes a state it built.
-func clearSeededSources(t *testing.T, st store.Store) {
+func clearSeededSources(t *testing.T, st fillerstore.Store) {
 	t.Helper()
 	seeded, err := st.ListFillerSources(context.Background())
 	if err != nil {
@@ -453,7 +454,7 @@ func clearSeededSources(t *testing.T, st store.Store) {
 	}
 }
 
-func seedClip(t *testing.T, st store.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
+func seedClip(t *testing.T, st fillerstore.Store, id string, kind filler.Kind, era int, aud filler.Audience, cat string) {
 	t.Helper()
 	c := store.Clip{}
 	// ⚠ Identity is the HASH since V38c (§10), not the path. These tests use the readable id as
@@ -935,7 +936,7 @@ func TestFiller_Ingest(t *testing.T) {
 // source and preserves the provider's stable item id for deduplication and provenance.
 func TestFiller_QueueRegisteredSourceItem(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	source := store.NewFillerSource(
+	source := fillerstore.NewFillerSource(
 		"archive:classic",
 		"archive",
 		"https://archive.org/details/classic_tv_commercials",

@@ -31,6 +31,7 @@ import (
 	"github.com/loomarr/loomarr/internal/catalog"
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -79,7 +80,7 @@ type rig struct {
 
 func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/integration.db", true)
+	st, err := fillerstore.Open(context.Background(), "sqlite://"+t.TempDir()+"/integration.db", true)
 	if err != nil {
 		t.Fatal(err)
 	}

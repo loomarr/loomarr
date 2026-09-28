@@ -22,7 +22,7 @@ const semanticThemes = {
     },
     border: {
       decorative: "#2A2E37",
-      control: "#61646B",
+      control: "#666970",
       airing: "rgba(255, 176, 32, 0.4)",
     },
     state: {

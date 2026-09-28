@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
@@ -32,7 +33,7 @@ import (
 // Server holds the API dependencies and builds the Huma API on a stdlib mux
 // (§7.1, §14: code-first OpenAPI 3.1 via humago — no third-party router).
 type Server struct {
-	store   store.Store
+	store   fillerstore.Store
 	auth    Authorizer
 	log     *slog.Logger
 	metrics *metrics.Recorder
@@ -668,6 +669,9 @@ type SuggestService interface {
 	// refine-flavored intent, so the new proposal binds back to the same channel
 	// (§7 POST /v1/channels/{id}/refine). Returns the job id to poll.
 	Refine(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
+	// SubmitBuilt queues a proposal that needed no generation (a library channel idea, #1720)
+	// as the requester's own request, and returns its job id. The model never runs.
+	SubmitBuilt(ctx context.Context, intent suggest.Intent, proposal suggest.Proposal, createdBy string) (jobID string, err error)
 }
 
 // SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM
@@ -990,7 +994,7 @@ type BackupStreamer interface {
 
 // Options configures the API server.
 type Options struct {
-	Store                store.Store
+	Store                fillerstore.Store
 	Auth                 Authorizer
 	Log                  *slog.Logger
 	Metrics              *metrics.Recorder

@@ -17,6 +17,7 @@ import {
   getHouseholdViewingMockHandler,
   getJobsListMockHandler,
   getListActivityMockHandler,
+  getListChannelIdeasMockHandler,
   getListChannelsMockHandler,
   getListDocsMockHandler,
   getListFillerMockHandler,
@@ -167,6 +168,8 @@ const appHandlers = (): RequestHandler[] => [
   // highlighted.
   getHouseholdViewingMockHandler({ channels: [], scope: "household", viewers: [], watching: 0 }),
   getGuideHighlightsMockHandler({ fromMs: 0, highlights: [], toMs: 0 }),
+  // A member's Home reads their channel ideas even before anything is on the air: none yet.
+  getListChannelIdeasMockHandler({ ideas: [] }),
   // An admin's Home strip reads both on every visit: every service answering, no restart waiting.
   getSystemServicesMockHandler({ loomarr: { name: "loomarr", ok: true }, rows: [] }),
   getSystemRestartCostMockHandler({

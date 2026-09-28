@@ -11,6 +11,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -99,7 +100,7 @@ func (f *fakePods) Pool(context.Context) (filler.PoolReport, error) {
 	return f.pool, f.err
 }
 
-func newPodsServer(t *testing.T) (*httptest.Server, store.Store, *fakePods) {
+func newPodsServer(t *testing.T) (*httptest.Server, fillerstore.Store, *fakePods) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/p.db")
 	t.Cleanup(func() { _ = st.Close() })

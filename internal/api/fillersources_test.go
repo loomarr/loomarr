@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -68,7 +69,7 @@ type sourceSuggestionsBody struct {
 
 func TestFillerSourceSuggestionsAreReadOnlyAndMarkRegisteredCollections(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
-	if err := st.UpsertFillerSource(context.Background(), store.NewFillerSource(
+	if err := st.UpsertFillerSource(context.Background(), fillerstore.NewFillerSource(
 		"archive:classic_tv_commercials", "archive", "classic_tv_commercials", "Classic TV Commercials", time.Now(),
 	)); err != nil {
 		t.Fatal(err)
@@ -243,7 +244,7 @@ func getSources(t *testing.T, srv *httptest.Server) sourcesBody {
 
 func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
-	src := store.NewFillerSource("archive:local", "archive", "local", "Local collection", time.Now().UTC())
+	src := fillerstore.NewFillerSource("archive:local", "archive", "local", "Local collection", time.Now().UTC())
 	if err := st.UpsertFillerSource(t.Context(), src); err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +273,7 @@ func TestFillerSources_MissingInstallationLocationDoesNotPromiseAnAutomaticCheck
 func TestFillerSources_ProjectsTypedLastCheckOutcomesWithoutCursorDetails(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := t.Context()
-	src := store.NewFillerSource(
+	src := fillerstore.NewFillerSource(
 		"youtube:outcomes", "youtube", "https://www.youtube.com/@outcomes/videos", "Outcome channel", time.Now().UTC(),
 	)
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
@@ -356,7 +357,7 @@ func TestFillerSources_CountsHeldClipsByProvenance(t *testing.T) {
 func TestFillerSources_RollsHeldClipsIntoTheirRegisteredProvider(t *testing.T) {
 	srv, st, _ := newFillerServer(t)
 	ctx := context.Background()
-	registered := store.NewFillerSource(
+	registered := fillerstore.NewFillerSource(
 		"archive:tv_ads", "archive", "tv_ads", "TV Ads", time.Unix(1_700_000_000, 0).UTC(),
 	)
 	if err := st.UpsertFillerSource(ctx, registered); err != nil {

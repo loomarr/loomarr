@@ -9,16 +9,17 @@ import (
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/api"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-func newIconsServer(t *testing.T) (*httptest.Server, store.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsServer(t *testing.T) (*httptest.Server, fillerstore.Store, *testkit.IconService[api.IconSuggestion]) {
 	return newIconsServerWithConfig(t, nil)
 }
 
-func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, store.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Server, fillerstore.Store, *testkit.IconService[api.IconSuggestion]) {
 	t.Helper()
 	handler, st, fi := newIconsHandlerWithConfig(t, cfg)
 	srv := httptest.NewServer(handler)
@@ -26,7 +27,7 @@ func newIconsServerWithConfig(t *testing.T, cfg map[string]string) (*httptest.Se
 	return srv, st, fi
 }
 
-func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, store.Store, *testkit.IconService[api.IconSuggestion]) {
+func newIconsHandlerWithConfig(t *testing.T, cfg map[string]string) (http.Handler, fillerstore.Store, *testkit.IconService[api.IconSuggestion]) {
 	t.Helper()
 	st := openTestStore(t, t.TempDir()+"/icons.db")
 	t.Cleanup(func() { _ = st.Close() })
