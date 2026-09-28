@@ -538,6 +538,20 @@ fail closed rather than running less than asked, and retries stay owned by
 defaults (`all`, 1) the script prints nothing and `make tuner-e2e-host` is byte-identical to the
 merge-queue run. Other scopes ignore both inputs, and pull requests and merge groups never see them.
 
+**Flake quarantine (#1570).** A tuner test with an open flaky issue can leave the required matrix
+without being skipped. It enters quarantine only by a line in `scripts/flake-quarantine.tsv` that
+names the suite, project, spec file, exact test title and tracking issue. In pull requests and merge
+groups, `make tuner-quarantine` keeps the lines whose issue is still OPEN. The required step runs
+every other (project, test) pair, and a later non-blocking step (`make tuner-e2e-quarantine`) runs
+the quarantined pairs, with zero retries as always. Its failure shows on that step and uploads
+`tuner-quarantine-failures`, but it cannot fail `CI`.
+
+When the issue closes, the test is back in the required step on the next run; the line then only
+prints a notice until someone removes it. Every doubt resolves toward required: an issue whose state
+can't be read, a malformed line, or an unknown mode fails closed. The manual `tuner` scope turns the
+quarantine off, so it measures every test. That non-blocking step is the only source-bound step the
+workflow policy lets set `continue-on-error` (`nonBlocking` in `internal/releaseverify`).
+
 After that portability proof is green, `Apple compilation cache` is the only workflow authorized to
 publish compiler results. It is manual-only, refuses every ref except `refs/heads/main`, and builds
 the complete mobile and TV Release install-launch-liveness gates before saving. A restored seed is

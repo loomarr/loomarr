@@ -36,7 +36,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci-playwright.yml":          {jobs: map[string]int{"run": 10}},
 		"ci-postgres.yml":            {jobs: map[string]int{"run": 6}},
 		"ci-rust-contracts.yml":      {jobs: map[string]int{"run": 3}},
-		"ci-tuner.yml":               {jobs: map[string]int{"run": 7}},
+		"ci-tuner.yml":               {jobs: map[string]int{"run": 10}},
 		"ci-playout-bench.yml":       {jobs: map[string]int{"run": 9}},
 		"playout-bench.yml":          {jobs: map[string]int{"macos": 5, "gpu-t4": 8, "arc": 3, "geforce": 3}},
 		"codeql.yml": {jobs: map[string]int{
@@ -65,6 +65,9 @@ type reusableWorkflowCallerAuthority struct {
 	// with is the exact set of workflow_call inputs the caller may pass; nil means the caller
 	// passes none, and any `with:` key is then rejected.
 	with map[string]string
+	// permissions is the exact job-level grant the caller passes down; nil means the caller sets
+	// none and inherits the workflow's contents: read.
+	permissions map[string]string
 }
 
 func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerAuthority {
@@ -85,7 +88,7 @@ func reusableWorkflowCallerAuthorityEntries() map[string]reusableWorkflowCallerA
 		"apple-cache-validation": {name: "Apple compilation cache — supported-toolchain validation", condition: "github.event_name == 'workflow_dispatch' && inputs.scope == 'apple-cache-validation'"},
 
 		"playwright":    {name: "Playwright — visual + a11y + e2e", condition: "needs.changes.outputs.lane != 'pr-fast' && (needs.changes.outputs.impact_visual == 'true' || needs.changes.outputs.impact_e2e == 'true')"},
-		"tuner":         {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'", with: map[string]string{"project": "${{ inputs.project || 'all' }}", "repeat_each": "${{ inputs.repeat_each || '1' }}"}},
+		"tuner":         {name: "Tuner — Chromium + Firefox + WebKit", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'", with: map[string]string{"project": "${{ inputs.project || 'all' }}", "repeat_each": "${{ inputs.repeat_each || '1' }}", "quarantine": "${{ needs.changes.outputs.lane == 'manual-tuner' && 'off' || 'exclude' }}"}, permissions: map[string]string{"contents": "read", "issues": "read"}},
 		"image":         {name: "Image — release build", condition: "needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_image == 'true'"},
 		"docs":          {name: "Docs — links + structure + prose", condition: "needs.changes.outputs.impact_docs == 'true'"},
 		"android":       {name: "Android TV — React Native Play bundle", condition: "needs.changes.outputs.impact_android == 'true'"},
@@ -141,8 +144,17 @@ func verifyReusableWorkflowCaller(jobName string, job *yaml.Node) error {
 	if len(authority.with) > 0 {
 		allowed = append(allowed, "with")
 	}
+	if len(authority.permissions) > 0 {
+		allowed = append(allowed, "permissions")
+	}
 	if !ok || !mappingHasOnlyKeys(job, allowed...) {
 		return fmt.Errorf("reusable-workflow caller keys differ from their exact authority")
+	}
+	if len(authority.permissions) > 0 {
+		got, err := scalarMapping(job, "permissions", "reusable-workflow caller permissions")
+		if err != nil || !equalStringMaps(got, authority.permissions) {
+			return fmt.Errorf("reusable-workflow caller permissions differ from their exact authority")
+		}
 	}
 	if len(authority.with) > 0 {
 		with, present := mappingValue(job, "with")

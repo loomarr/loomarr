@@ -428,9 +428,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.lane != 'pr-fast' && needs.changes.outputs.impact_tuner == 'true'
     uses: ./.github/workflows/ci-tuner.yml
+    # issues: read lets the flake quarantine see which tracking issues are still open.
+    permissions:
+      contents: read
+      issues: read
     with:
       project: ${{ inputs.project || 'all' }}
       repeat_each: ${{ inputs.repeat_each || '1' }}
+      quarantine: ${{ needs.changes.outputs.lane == 'manual-tuner' && 'off' || 'exclude' }}
   image:
     name: Image — release build
     needs: changes
