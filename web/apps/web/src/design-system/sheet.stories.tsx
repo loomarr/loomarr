@@ -21,7 +21,8 @@ const SheetGallery = ({ theme = "dark" }: { theme?: "dark" | "light" }) => {
           boxSizing: "border-box",
           display: "grid",
           gap: 32,
-          gridTemplateColumns: "repeat(auto-fit, 390px)",
+          // A phone's width, narrowing to fit a phone viewport inside the padding.
+          gridTemplateColumns: "repeat(auto-fit, minmax(0, 390px))",
           minHeight: "100vh",
           padding: 32,
         }}
