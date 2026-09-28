@@ -42,14 +42,6 @@ func Handler() http.Handler {
 	return handlerForCached(sub, &embeddedCompressed)
 }
 
-func handlerFor(sub fs.FS) http.Handler {
-	index, err := fs.ReadFile(sub, "index.html")
-	if err != nil {
-		return notBuilt() // only .gitkeep present — `make fe` hasn't run
-	}
-	return handlerForWithIndex(sub, index, precompress(sub))
-}
-
 func (c *compressedCache) get(files fs.FS) map[string][]byte {
 	c.Do(func() {
 		compress := c.compress
