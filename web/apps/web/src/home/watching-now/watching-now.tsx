@@ -63,7 +63,8 @@ const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
   return (
     <section aria-labelledby="home-watching">
       <SectionHeader id="home-watching" title="Watching now" meta={watchingMeta({ viewing })} />
-      <div className="grid grid-cols-3 gap-3">
+      {/* Three across as the mock draws it; fewer as the page narrows, down to one on a phone (#1785). */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map(({ key, channel, programme, airing, viewer, you }) => (
           <Link
             key={key}

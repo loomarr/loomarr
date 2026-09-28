@@ -212,7 +212,7 @@ const ChannelDetailLayout = () => {
       {/* The web mock's header (#1659): back, the channel's icon (its monogram ident when it has
           none, N8), the name over an air line, and CH n at the right. The back link gets a 24 px
           target; the mock's 16 px glyph alone is under the minimum. */}
-      <header className="flex items-center gap-3 border-border border-b px-6 py-4">
+      <header className="flex items-center gap-3 border-border border-b px-4 py-4 sm:px-6">
         <Link
           to="/guide"
           aria-label="Back to channels"
@@ -227,8 +227,9 @@ const ChannelDetailLayout = () => {
         ) : (
           <ChannelIdent name={ch.name} number={ch.number} size={48} />
         )}
-        <div className="flex flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-          <div className="flex flex-col gap-0.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+          {/* On a phone the name takes the whole row and the number wraps under it (#1785). */}
+          <div className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-auto">
             {/* Admins still rename and renumber here with Save/Cancel per field, until the
                 maintainer's click-to-edit mock lands; everyone else sees the mock's text. */}
             {isAdmin ? (
@@ -282,7 +283,7 @@ const ChannelDetailLayout = () => {
         // install ever hides Watch; today a viewer always has Overview + Watch.
         if (visible.length < 2) return null;
         return (
-          <div className="px-6 pt-2">
+          <div className="px-4 pt-2 sm:px-6">
             <NavTabs
               label="Channel sections"
               linkComponent={Link}

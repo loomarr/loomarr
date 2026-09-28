@@ -81,7 +81,8 @@ const ApprovalQueueItem = ({
 
   return (
     <Card className={cn("flex flex-col gap-3 p-4", className)}>
-      <div className="flex items-start gap-4">
+      {/* On a phone the actions go under the pitch; beside it they left it a word per line (#1785). */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-medium">{title}</p>
