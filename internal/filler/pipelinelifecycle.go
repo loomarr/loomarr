@@ -121,7 +121,6 @@ func (o *PipelineOverview) AddLifecycle(lifecycle PipelineLifecycle, count int) 
 	}
 }
 
-
 // Lifecycle projects one persisted row into operator ownership and recovery semantics at `at`.
 // Disposition wins over stage status: a review or rejection is never described as machine work
 // merely because an older status survived on the current rung.

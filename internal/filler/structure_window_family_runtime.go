@@ -34,7 +34,6 @@ func NewStructureWindowFamilyRuntime(assessor CompleteWindowStructureAssessor, e
 	}, nil
 }
 
-
 // Assess runs or resumes every window and returns one replayable source-level family stitch.
 func (r *StructureWindowFamilyRuntime) Assess(ctx context.Context, prepared StructureAssessmentWindowMediaSet) (fillerstructurewindow.StitchResult, error) {
 	evidence, err := r.AssessWithEvidence(ctx, prepared)
