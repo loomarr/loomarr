@@ -28,9 +28,21 @@ change per channel.
   playout and the guide read it directly. `CyclePreview` is only the authoring and forecast surface:
   it depends on mutable airing history and availability, so recomputing it at playout time could
   move the same wall clock into an unrelated episode.
-- Each channel row carries one immutable **playout anchor**, stamped when a building or empty
-  channel first goes live, so a first tune starts near the first accepted programme. Reconcile,
-  lineup edits, backend changes and restarts preserve it.
+- Each channel row carries one **playout anchor**, stamped when a building or empty channel first
+  goes live, so a first tune starts near the first accepted programme. Lineup edits, backend
+  changes and restarts preserve it. It moves only when the **rolling window turns** (#1675).
+- **Rolling windows turn with carry-over.** Windows are laid on the wall clock of `guide.timezone`
+  (else the container's zone), so a daily window turns at local midnight, and a DST day is 23 or 25
+  hours long. The programme on air across the boundary finishes on the arrangement it began in;
+  the next window's slice starts at its end, and that end becomes the new anchor. One rule,
+  `playout.WindowTurn`, is shared by reconcile, which commits the new cycle and anchor, and the
+  playout resolver, which airs the next window from that end even before reconcile has run by
+  arranging it with `CyclePreview`. The guide chains windows at the same ends, so no block is
+  clipped at a boundary. If reconcile missed more than one window, the current window is walked
+  from its own opening, and that one turn may join a programme part-way. Tunarr-backed channels
+  cannot carry over: Tunarr loops the list it was given from its own clock and cannot be told
+  where a window starts, so their anchor stays fixed and their guide still cuts at the boundary
+  (#1691).
 - **Availability resolution** turns an approved entry's key into `(library item id, duration,
   available)`. Duration comes from the media server's `RunTimeTicks`; a program slot always has a
   real `duration > 0`.

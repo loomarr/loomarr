@@ -737,7 +737,7 @@ func (e *Engine) RollingWindow(policy schedule.ChannelPolicy, at time.Time) (tim
 // CarriesOver reports whether the channel's rolling window turns with carry-over (#1675), which
 // only internal playout can do: it walks the accepted cycle from an anchor reconcile moves.
 // Tunarr loops the list it was given from its own clock and cannot be told where a window
-// starts. The backend is resolved as reconcile resolves it, so both agree on which channels turn.
+// starts (#1691). The backend is resolved as reconcile resolves it, so both agree on which channels turn.
 func (e *Engine) CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error) {
 	backend, err := e.playoutBackendFor(ctx)
 	if err != nil {

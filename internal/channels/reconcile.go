@@ -245,7 +245,7 @@ func (e *Engine) reconcileOnce(
 	// Rolling-window carry-over (#1675): the accepted window stays on air until the programme
 	// crossing its boundary ends, and the next one is anchored at that end. Internal playout
 	// only: it walks the accepted cycle from the anchor. Tunarr loops the list it was given
-	// from its own clock and has no way to be told where a window starts.
+	// from its own clock and has no way to be told where a window starts (#1691).
 	turnAnchor := ch.PlayoutAnchor
 	if playsInternally {
 		window, zone := e.RollingWindow(ch.Policy, e.now())
