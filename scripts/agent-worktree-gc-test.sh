@@ -121,10 +121,20 @@ test -d "$eligible"
 
 kill "$runtime_pid"
 wait "$runtime_pid" 2>/dev/null || true
-runtime_pid=
+# APPLY=1 retires worktrees; it must not stop the processes it reports in a protected one.
+(cd "$dirty" && exec sleep 60) &
+runtime_pid=$!
+sleep 0.05
 
 applied="$(PATH="$fake_bin:$PATH" GH_GC_FIXTURE="$fixture" AGENT_GC_MAIN_REF=main APPLY=1 \
 	LOOMARR_REPO_ROOT="$repo" "$SCRIPT_DIR/agent-worktree-gc.sh")"
+if ! kill -0 "$runtime_pid" 2>/dev/null; then
+	echo 'agent-worktree-gc-test: APPLY=1 stopped a process in a protected worktree' >&2
+	exit 1
+fi
+kill "$runtime_pid"
+wait "$runtime_pid" 2>/dev/null || true
+runtime_pid=
 printf '%s\n' "$applied" | grep -q $'^REMOVED\teligible\t'
 printf '%s\n' "$applied" | grep -q $'^REMOVED\truntime\t'
 printf '%s\n' "$applied" | grep -q 'eligible=2 removed=2 protected=9'

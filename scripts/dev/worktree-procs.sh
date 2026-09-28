@@ -4,6 +4,7 @@
 #
 # Usage: scripts/dev/worktree-procs.sh WORKTREE [--kill]
 #        scripts/dev/worktree-procs.sh --orphans [--kill]   every process in a deleted or trashed worktree
+# make agent-reap passes ORPHANS=1 for --orphans and APPLY=1 for --kill (the agent-gc convention).
 #
 # Output: one "pid<TAB>command<TAB>cwd" line per process. --kill sends TERM, waits up to
 # WATCH_REAP_GRACE seconds (default 5), then KILLs survivors, by PID only: `pkill -f` matches its own
@@ -16,10 +17,13 @@ WATCH_SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
 . "$WATCH_SCRIPT_DIR/watch-lib.sh"
 
 target="${1:-}"
+[ "${ORPHANS:-0}" = 1 ] && target=--orphans
 kill_them=0
-[ "${2:-}" = --kill ] && kill_them=1
+if [ "${2:-}" = --kill ] || [ "${APPLY:-0}" = 1 ]; then
+	kill_them=1
+fi
 if [ -z "$target" ] || [ "$target" = --kill ]; then
-	echo 'usage: worktree-procs.sh WORKTREE|--orphans [--kill]' >&2
+	echo 'usage: worktree-procs.sh WORKTREE|--orphans [--kill]  (make agent-reap WORKTREE=<path>|ORPHANS=1 [APPLY=1])' >&2
 	exit 2
 fi
 

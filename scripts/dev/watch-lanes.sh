@@ -37,7 +37,9 @@ lanes() {
 	orca terminal list --json 2>/dev/null |
 		jq -r '.result.terminals[]? | select(.agentIdentity != null and .worktreePath != null) | [.handle, .worktreePath] | @tsv' |
 		while IFS="$(printf '\t')" read -r handle path; do
-			[ -n "$handle" ] && [ "$path" != "$primary" ] || continue
+			if [ -z "$handle" ] || [ "$path" = "$primary" ]; then
+				continue
+			fi
 			while IFS= read -r root; do
 				case $root in
 					'') ;;

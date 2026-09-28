@@ -18,12 +18,9 @@ log="$work/watch.log"
 pids=''
 failures=0
 
-cleanup() {
-	# shellcheck disable=SC2086 # One word per pid.
-	[ -z "$pids" ] || kill $pids 2>/dev/null
-	rm -rf "$work" "$probe"
-}
-trap cleanup EXIT INT TERM
+# Inline, not a function: shellcheck 0.9 (CI's) calls a trap-only function unreachable. $pids is one
+# word per pid and is read when the trap runs.
+trap 'kill $pids 2>/dev/null; rm -rf "$work" "$probe"' EXIT INT TERM
 
 check() { # name pattern
 	if grep -Eq -- "$2" "$log"; then
@@ -100,5 +97,9 @@ else
 	echo 'SKIP  /tmp full: macOS /tmp is on disk, not tmpfs, so the check does not apply'
 fi
 
-printf '\nwatch-verify: %s\n' "$([ "$failures" = 0 ] && echo 'all checks passed' || echo "$failures check(s) failed")"
-[ "$failures" = 0 ]
+if [ "$failures" = 0 ]; then
+	printf '\nwatch-verify: all checks passed\n'
+	exit 0
+fi
+printf '\nwatch-verify: %s check(s) failed\n' "$failures"
+exit 1

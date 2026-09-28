@@ -36,7 +36,7 @@ agent-gc: ## audit worktrees; APPLY=1 retires only exact clean merged PR heads
 	@APPLY="$(or $(APPLY),0)" ./scripts/agent.sh gc
 
 agent-reap: ## list processes running in a worktree (WORKTREE=path, or ORPHANS=1 for deleted ones); APPLY=1 stops them
-	@./scripts/dev/worktree-procs.sh "$(if $(filter 1,$(ORPHANS)),--orphans,$(WORKTREE))" $(if $(filter 1,$(APPLY)),--kill)
+	@APPLY="$(or $(APPLY),0)" ORPHANS="$(or $(ORPHANS),0)" ./scripts/dev/worktree-procs.sh "$(WORKTREE)"
 
 dev-watch: ## watch local resources, your PRs and agent lanes; prints only when something needs attention
 	@./scripts/dev/dev-watch.sh

@@ -71,8 +71,9 @@ report_protected() {
 
 # Any process whose cwd is in the worktree, subdirectories included, as "comm:pid,comm:pid".
 # Stop them first with `make agent-reap WORKTREE=<path> APPLY=1`.
+# List only: gc's own APPLY=1 must never reach the reaper, which would stop what it merely reports.
 running_processes() {
-	"$SCRIPT_DIR/dev/worktree-procs.sh" "$1" | awk -F '\t' '{ printf "%s%s:%s", (NR > 1 ? "," : ""), $2, $1 }'
+	APPLY=0 ORPHANS=0 "$SCRIPT_DIR/dev/worktree-procs.sh" "$1" | awk -F '\t' '{ printf "%s%s:%s", (NR > 1 ? "," : ""), $2, $1 }'
 }
 
 process_worktree() {
