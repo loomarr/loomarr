@@ -1,5 +1,6 @@
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { FillerReadinessDTO } from "@loomarr/api/models/fillerReadinessDTO";
+import type { PoolChannelDTOLevel } from "@loomarr/api/models/poolChannelDTOLevel";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatDuration, pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
@@ -121,6 +122,19 @@ const readinessAction = (readiness: FillerReadinessDTO): Action | undefined => {
   }
 };
 
+// A coverage card's level badge. The words are the web mock's ("Good match", "Years loosened",
+// "Bumpers only"; it draws no audience-only card, so that one borrows the coverage meter's
+// label). The tones are NOT the mock's: it painted the worst rung green and the best amber, and
+// the redesign map (#1659) corrects that so green means good and red means nothing to play.
+// Keyed by the generated union, so a new rung is a compile error here.
+const COVERAGE_BADGE: Record<PoolChannelDTOLevel, { label: string; variant: "lock" | "caution" | "onair" }> =
+  {
+    exact: { label: "Good match", variant: "lock" },
+    widened: { label: "Years loosened", variant: "caution" },
+    audience: { label: "Audience only", variant: "caution" },
+    bumper_card: { label: "Bumpers only", variant: "onair" },
+  };
+
 const FillerOverview = () => {
   const readinessQuery = fillerApi.useFillerReadiness();
   const readiness = unwrap(readinessQuery.data, (body) => body);
@@ -184,40 +198,37 @@ const FillerOverview = () => {
           </Button>
         </div>
         {readiness?.pool.channels.length ? (
-          <div className="grid gap-3 lg:grid-cols-2">
-            {readiness.pool.channels.map((channel) => (
-              <Card key={channel.channelId} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <Link
-                      className="font-medium hover:underline"
-                      to="/channels/$id/filler"
-                      params={{ id: channel.channelId }}
-                    >
-                      {channel.number} · {channel.name}
-                    </Link>
-                    <p className="mt-1 text-muted-foreground text-sm">
-                      {formatDuration(channel.durationMs)} playable · {pluralize(channel.total, "clip")}
-                    </p>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+            {readiness.pool.channels.map((channel) => {
+              const badge = COVERAGE_BADGE[channel.level];
+              return (
+                <Card key={channel.channelId} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        className="font-medium hover:underline"
+                        to="/channels/$id/filler"
+                        params={{ id: channel.channelId }}
+                      >
+                        {channel.number} · {channel.name}
+                      </Link>
+                      <p className="mt-1 text-muted-foreground text-sm">
+                        {channel.level === "bumper_card"
+                          ? "Only a bumper card"
+                          : `${formatDuration(channel.durationMs)} playable · ${pluralize(channel.total, "clip")}`}
+                      </p>
+                    </div>
+                    <Badge variant={badge.variant} className="shrink-0 whitespace-nowrap">
+                      {badge.label}
+                    </Badge>
                   </div>
-                  <Badge
-                    variant={
-                      channel.level === "exact"
-                        ? "signal"
-                        : channel.level === "bumper_card"
-                          ? "lock"
-                          : "caution"
-                    }
-                  >
-                    {channel.level === "bumper_card" ? "Bumper only" : channel.level.replace("_", " ")}
-                  </Badge>
-                </div>
-                <p className="mt-3 text-muted-foreground text-xs">
-                  {channel.categories} {channel.categories === 1 ? "category" : "categories"} ·{" "}
-                  {pluralize(channel.brands, "brand")}
-                </p>
-              </Card>
-            ))}
+                  <p className="mt-3 text-muted-foreground text-xs">
+                    {channel.categories} {channel.categories === 1 ? "category" : "categories"} ·{" "}
+                    {pluralize(channel.brands, "brand")}
+                  </p>
+                </Card>
+              );
+            })}
           </div>
         ) : (
           <Card className="p-4 text-muted-foreground text-sm">

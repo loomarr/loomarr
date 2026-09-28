@@ -66,6 +66,16 @@ interface VideoPlayerProps {
   // places it (fills the frame, centered) and stays ignorant of what it is; pass `undefined` to
   // show nothing. It sits UNDER the top/bottom control bars so those stay operable over it.
   overlay?: React.ReactNode;
+  // A side SLOT along the frame's right edge, ABOVE the control scrims: channel-watch's channels
+  // drawer (#1659 W1). It lives inside the frame so it goes fullscreen with the video, and while it
+  // is present the controls stay shown, as they do while a menu is open. The caller owns open and
+  // closed; pass `undefined` for closed.
+  panel?: React.ReactNode;
+  // A last row under the control row, for the caller's keyboard hints (live mode).
+  hints?: React.ReactNode;
+  // Keys the player doesn't use itself, offered to the caller (channel-watch: 0-9 and G). Return
+  // true when the key was handled. Never called while focus is in a text field or a menu.
+  onShortcut?: (key: string) => boolean;
   // Custom source binding. When provided, the primitive does NOT set `<video src>`; instead it
   // calls `attach(videoEl)` once the element is mounted and invokes the returned cleanup on
   // unmount/source-change. This is the seam the channel-watch surface uses to bind hls.js (which

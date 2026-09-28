@@ -152,6 +152,9 @@ RETIRED=(
   # "docs/help ships as instructions" failure this script exists for. ⚠ NOT the same thing as
   # /v1/setup/livetv-reconnect, which is the force-re-wire for a stale channel→stream binding.
   'setup/livetv-connect|Live TV wiring auto-runs on a Connections save (settings.go autoWireAfterSave); there is no manual route. The force-re-wire is /v1/setup/livetv-reconnect'
+  # The two-call database cutover (migrate, then switchover) became one atomic migrate in #338.
+  # The switchover route stayed for compatibility but could never succeed, and was removed (#1568).
+  'database/switchover|removed (#1568): POST /v1/system/database/migrate copies, verifies and writes the bootstrap file in one operation'
   # V50a: the primitive vendor moved Radix → Base UI (design §14). Both are headless React
   # libraries with near-identical part names, so a copy-pasted snippet or a re-added dependency
   # would look ordinary in review while quietly pulling a second vendor back into the tree — which

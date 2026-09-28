@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -45,11 +44,7 @@ func buildDatabase(st store.Store, set resolved, overrides Overrides, eventBus *
 	if st == nil {
 		return nil
 	}
-	dataDir := ""
-	if store.DialectOf(st) == store.DialectSQLite {
-		dataDir = filepath.Dir(store.SQLitePath(st))
-	}
-	return newDatabaseService(st, dataDir, func() string { return set.str("backup.dir") }, eventBus).
+	return newDatabaseService(st, func() string { return set.str("backup.dir") }, eventBus).
 		WithMigrationRequest(overrides.DatabaseMigration).
 		WithLastError(overrides.DatabaseMigrationError)
 }

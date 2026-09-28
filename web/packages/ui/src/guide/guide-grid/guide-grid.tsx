@@ -1,6 +1,4 @@
 import {
-  type ChannelIdentHue,
-  channelIdentHue,
   formatGuideTime,
   formatGuideTimeRange,
   type GuideAiringLayout,
@@ -12,12 +10,12 @@ import {
   guideChannelForTypeahead,
   guideChannelState,
   guideSelectionForChannel,
-  monogramOf,
 } from "@loomarr/core/guide";
 import { brandChroma, Surface, Text, type TextTone } from "@loomarr/design-system";
 import { memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
+import { type LayoutChangeEvent, Pressable, View } from "react-native";
 
+import { ChannelIdent } from "../../channel-ident";
 import type { GuideGridProps } from "./guide-grid.type";
 import { GuideRows } from "./guide-rows";
 
@@ -55,18 +53,6 @@ const LABEL_MIN = 74;
 const META_MIN = 132;
 const CLIP_LABEL_MIN = 54;
 
-const hueHex: Record<ChannelIdentHue, string> = {
-  tune: brandChroma[3],
-  suggest: brandChroma[4],
-  signal: brandChroma[0],
-  onair: brandChroma[5],
-};
-
-const withAlpha = (hex: string, alpha: number) => {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-};
-
 // The row chip names what is wrong or in progress; a healthy channel shows none. The mock's
 // words where it has them, and the shipped web grid's for the two it doesn't draw.
 const healthChip: Record<GuideHealthState, { label: string; tone: TextTone }> = {
@@ -85,36 +71,6 @@ const clipFill = {
   station_id: "$guideClipSuggest",
   interstitial: "$guideClipPlain",
 } as const;
-
-// The hatch the mock lays behind a monogram. CSS on web; native keeps the flat tint.
-const hatch = "repeating-linear-gradient(135deg, transparent 0 3px, rgba(255, 255, 255, 0.05) 3px 6px)";
-
-const Ident = ({ name, number }: { name: string; number: number }) => {
-  const hex = hueHex[channelIdentHue(number)];
-  return (
-    <View
-      aria-hidden
-      style={[
-        {
-          alignItems: "center",
-          backgroundColor: withAlpha(hex, 0.08),
-          borderColor: withAlpha(hex, 0.3),
-          borderRadius: 5,
-          borderWidth: 1,
-          height: 30,
-          justifyContent: "center",
-          width: 30,
-        },
-        Platform.OS === "web" ? ({ backgroundImage: hatch } as object) : null,
-      ]}
-    >
-      {/* The hue is per channel, so it can't be a text tone. */}
-      <Text style={{ color: hex }} textRole="guideIdent">
-        {monogramOf(name)}
-      </Text>
-    </View>
-  );
-};
 
 const selectionOf = (airing: GuideAiringLayout): GuideSelection => ({
   anchorMs: airing.source.startMs + (airing.source.stopMs - airing.source.startMs) / 2,
@@ -349,7 +305,7 @@ const Row = memo(
           paddingRight={4}
           width={RAIL}
         >
-          <Ident name={channel.source.name} number={channel.source.number} />
+          <ChannelIdent name={channel.source.name} number={channel.source.number} />
           <Pressable
             accessibilityRole="button"
             // Out of the Tab order: Enter on any of the row's blocks opens the same channel, and

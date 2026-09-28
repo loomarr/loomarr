@@ -24,7 +24,7 @@ const staticScale = {
 // Extra statics from the prototype (§2.1 / §2.3).
 const staticExtras = {
   "signal-400": "#FFC14D", // hover/active amber (11.3:1 on card)
-  "border-control": "#61646B", // the boundary color for controls that need ≥3:1 (§2.3)
+  "border-control": "#666970", // the boundary color for controls that need ≥3:1 on 950/900/800 (§2.3)
 } as const;
 
 // --- Broadcast accents (from the bars) ---

@@ -6,7 +6,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { PoolHealth } from "@/components/loomarr/filler/pool-health";
-import { WatchPill } from "@/components/loomarr/filler/watch-pill";
+import { WatchLine } from "@/components/loomarr/filler/watch-line";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -92,12 +92,14 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
     );
   }
 
+  // The web mock's watch line: "3 of 4 sources on · 1,284 clips · 3 need you · checked 12m ago".
+  // `held` is the clips waiting for review in Incoming, which is what "need you" counts.
   const statusLine = watch
     ? [
-        `${watch.sourcesReady} of ${watch.sourcesTotal} sources ready`,
+        `${watch.sourcesOn} of ${watch.sourcesTotal} sources on`,
         pluralize(watch.clips, "clip"),
-        ...(watch.held > 0 ? [`${watch.held} waiting`] : []),
-        ...(watch.lastScanAt ? [`last scan ${formatRelative(watch.lastScanAt)}`] : []),
+        ...(watch.held > 0 ? [`${watch.held} need you`] : []),
+        ...(watch.lastScanAt ? [`checked ${formatRelative(watch.lastScanAt)}`] : []),
       ].join(" · ")
     : "";
 
@@ -106,20 +108,16 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
       <PageHeader
         title="Filler"
         description={<FillerDescription />}
-        actions={watch && <WatchPill status={statusLine} health={watch.health} />}
+        status={watch && <WatchLine status={statusLine} health={watch.health} />}
       />
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+        {/* The web mock's three sections. Sources and Incoming open from the Manage hub, so their
+            pages light Manage, as Settings and Tags already did. */}
         <NavTabs
           label="Filler sections"
           linkComponent={Link}
           tabs={[
             { id: "overview", label: "Overview", to: "/filler" },
-            ...(isAdmin
-              ? [
-                  { id: "sources", label: "Sources", to: "/filler/sources" },
-                  { id: "incoming", label: "Incoming", to: "/filler/incoming" },
-                ]
-              : []),
             {
               id: "library",
               label: "Library",
@@ -129,7 +127,11 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
             },
             { id: "manage", label: "Manage", to: "/filler/manage" },
           ]}
-          activeId={tab === "taxonomy" || tab === "settings" ? "manage" : tab}
+          activeId={
+            tab === "taxonomy" || tab === "settings" || tab === "sources" || tab === "incoming"
+              ? "manage"
+              : tab
+          }
         />
 
         {pool && tab === "library" ? <PoolHealth pool={pool} /> : null}

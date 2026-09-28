@@ -144,7 +144,7 @@ func (s *Server) registerChannels(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "reconcile-channel", Method: http.MethodPost, Path: "/v1/channels/{id}/reconcile",
-		Summary: "Force channel convergence", Description: "Admin only. Rebuilds desired programming on the channel's selected playout backend. Idempotent (§9).",
+		Summary: "Force channel convergence", Description: "Admin only. Rebuilds desired programming on the channel's selected playout backend. Idempotent (§9). " + operatorAPI,
 		Tags: []string{"channels"},
 	}, RoleAdmin), s.reconcileChannel)
 

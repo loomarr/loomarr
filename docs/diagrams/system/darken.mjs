@@ -9,7 +9,7 @@ export const DARK = {
   "#17191D": "#E7EAF0", // content.primary
   "#515866": "#8B93A3", // content.secondary
   "#69717F": "#8B93A3", // content.muted
-  "#747C8B": "#61646B", // border.control
+  "#747C8B": "#666970", // border.control
   "#D2D6DE": "#2A2E37", // border.decorative
   "#E7EAF0": "#1B1E24", // surface.elevated
   "#F7F8FA": "#0B0C0E", // surface.canvas

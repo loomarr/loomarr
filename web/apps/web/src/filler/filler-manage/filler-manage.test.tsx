@@ -1,14 +1,17 @@
 import {
   getFillerDecisionActivityMockHandler,
   getFillerDecisionDiagnosticsMockHandler,
+  getFillerReadinessMockHandler,
+  getFillerWatchMockHandler,
   getMeMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { readiness } from "@/test/fixtures/filler";
 import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
@@ -24,6 +27,22 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 describe("FillerManage", () => {
+  // The hub reads the watch line and readiness on every visit. A quiet install by default; tests
+  // about the hub override these.
+  beforeEach(() => {
+    server.use(
+      getFillerWatchMockHandler({
+        clips: 25,
+        health: "healthy",
+        held: 0,
+        sourcesOn: 1,
+        sourcesReady: 1,
+        sourcesTotal: 1,
+      }),
+      getFillerReadinessMockHandler(readiness()),
+    );
+  });
+
   it("opens the diagnostics owner when Incoming links to it", async () => {
     server.use(
       getMeMockHandler(me({ name: "Admin" })),
@@ -52,12 +71,73 @@ describe("FillerManage", () => {
     );
     render(<FillerManage />, { wrapper });
 
-    expect(await screen.findByRole("heading", { name: "Settings and tools" })).toBeInTheDocument();
-    expect(await screen.findByRole("link", { name: "Open filler settings" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Open Settings" })).toHaveAttribute(
       "href",
       "/filler/settings",
     );
     expect(screen.queryByRole("link", { name: "Automatic download settings" })).not.toBeInTheDocument();
+  });
+
+  // The web mock's Manage hub: one row per tool, each summary read from what the server serves.
+  it("lists the admin's tools with their live state", async () => {
+    server.use(
+      getMeMockHandler(me({ name: "Admin" })),
+      getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
+      getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 2 }),
+      // `held` is what the header's "N need you" counts; Incoming's row must say the same number.
+      getFillerWatchMockHandler({
+        clips: 40,
+        health: "healthy",
+        held: 3,
+        sourcesOn: 1,
+        sourcesReady: 1,
+        sourcesTotal: 2,
+      }),
+      getFillerReadinessMockHandler(readiness({ pool: { ...readiness().pool, untagged: 5 } })),
+    );
+    render(<FillerManage />, { wrapper });
+
+    const tools = await screen.findByRole("region", { name: "Filler tools" });
+    expect(await within(tools).findByText("1 of 2 on")).toBeInTheDocument();
+    expect(await within(tools).findByText("3 clips need a choice")).toBeInTheDocument();
+    expect(
+      within(tools).getByText("Product, format, season and audience · 5 clips not tagged yet"),
+    ).toBeInTheDocument();
+    expect(await within(tools).findByText("2 items can be tried again")).toBeInTheDocument();
+    expect(within(tools).getByRole("link", { name: "Open Sources" })).toHaveAttribute(
+      "href",
+      "/filler/sources",
+    );
+    expect(within(tools).getByRole("link", { name: "Open Incoming" })).toHaveAttribute(
+      "href",
+      "/filler/incoming",
+    );
+    expect(within(tools).getByRole("link", { name: "Open Tags" })).toHaveAttribute(
+      "href",
+      "/filler/taxonomy",
+    );
+
+    await userEvent.click(within(tools).getByRole("button", { name: "Open Problems" }));
+    expect(await screen.findByRole("button", { name: "Hide issues" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("shows a member only the tools they can use", async () => {
+    server.use(
+      getMeMockHandler(me({ name: "Viewer", role: "member" })),
+      getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
+    );
+    render(<FillerManage />, { wrapper });
+
+    const tools = await screen.findByRole("region", { name: "Filler tools" });
+    expect(await within(tools).findByText("Tags")).toBeInTheDocument();
+    expect(within(tools).getByText("Settings")).toBeInTheDocument();
+    expect(within(tools).queryByText("Sources")).not.toBeInTheDocument();
+    expect(within(tools).queryByText("Incoming")).not.toBeInTheDocument();
+    expect(within(tools).queryByText("Problems")).not.toBeInTheDocument();
+    expect(within(tools).queryByRole("link", { name: "Open Settings" })).not.toBeInTheDocument();
   });
 
   it("shows automatic outcomes without exposing runtime modes", async () => {

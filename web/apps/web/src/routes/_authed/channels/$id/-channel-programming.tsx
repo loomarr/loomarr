@@ -68,7 +68,7 @@ const Block = ({
   defaultOpen?: boolean;
   children: React.ReactNode;
 }) => (
-  <CollapsibleSection title={title} description={hint} defaultOpen={defaultOpen}>
+  <CollapsibleSection title={title} description={hint} defaultOpen={defaultOpen} size="compact">
     <div className="flex flex-col gap-4">{children}</div>
   </CollapsibleSection>
 );
@@ -198,6 +198,7 @@ const ChannelProgramming = ({
       {/* One shared preview: time-travel the schedule to see exactly what airs — and which rule
           wins — at any moment. Verifies the deck, the ordering, AND the rules above. */}
       <CollapsibleSection
+        size="compact"
         title="Preview schedule"
         description="Check what airs at a specific time and which rule wins."
       >

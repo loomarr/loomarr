@@ -30,7 +30,7 @@ func (s *Server) registerInvitations(api huma.API) {
 	}, RoleAdmin), s.listInvitations)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-invitation", Method: http.MethodGet, Path: "/v1/invitations/{id}",
-		Summary: "Inspect a person invitation (admin)", Tags: []string{"invitations"},
+		Summary: "Inspect a person invitation (admin)", Description: operatorAPI, Tags: []string{"invitations"},
 	}, RoleAdmin), s.getInvitation)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "issue-invitation-grant", Method: http.MethodPost, Path: "/v1/invitations/{id}/grant",

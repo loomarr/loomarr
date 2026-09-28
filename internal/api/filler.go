@@ -103,8 +103,9 @@ func (s *Server) registerFiller(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
-		Summary: "Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)",
-		Tags:    []string{"filler"},
+		Summary:     "Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)",
+		Description: operatorAPI,
+		Tags:        []string{"filler"},
 	}, RoleAdmin), s.ingestFiller)
 
 	huma.Register(api, withRole(huma.Operation{
