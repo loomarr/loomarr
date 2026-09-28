@@ -1,7 +1,7 @@
 package catalog
 
 // Property tests for the identity-stability invariants that protect grounding
-// (§8): dedupeKey / mergeCandidate / dedupeAndOrder must treat only
+// (§8): dedupeKey / mergeCandidate / dedupeAndOrderWithPolicy must treat only
 // MediaType+(TMDBID|TVDBID|Name) as identity, must fold candidates idempotently
 // and order-independently, and must preserve source relevance inside the
 // in-library-first blend. These
@@ -249,7 +249,7 @@ func foldCorpus(cands []Candidate, limit int) []Candidate {
 		byKey[k] = &cp
 		order = append(order, k)
 	}
-	return dedupeAndOrder(byKey, order, limit)
+	return dedupeAndOrderWithPolicy(byKey, order, limit, defaultCandidateBlendPolicy())
 }
 
 // identityView reduces a candidate to the fields whose merged value is
@@ -406,7 +406,7 @@ func TestProp_Fold_IdempotentOnIdentity(t *testing.T) {
 	}
 }
 
-// Invariant (3): dedupeAndOrder keeps the first upstream occurrence as the
+// Invariant (3): dedupeAndOrderWithPolicy keeps the first upstream occurrence as the
 // relevance rank, even when a later duplicate enriches or changes ownership.
 // The owned/outside blend may partition that stream, but it must not alphabetize
 // either partition.

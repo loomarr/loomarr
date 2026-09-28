@@ -582,16 +582,13 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 	}
 }
 
-// dedupeAndOrder flattens the merged candidate map into the deterministic bounded
-// blend the tool + UI depend on. Library candidates remain first because they can
-// play immediately, but when both partitions have matches one quarter of a full
-// page is reserved for outside-Library discovery. Each partition is sorted by
+// dedupeAndOrderWithPolicy flattens the merged candidate map into the deterministic
+// bounded blend the tool + UI depend on. Library candidates remain first because
+// they can play immediately, but when both partitions have matches the policy's
+// share of a full page (by default one quarter) is reserved for outside-Library
+// discovery. Each partition is sorted by
 // upstream relevance order intact within each partition. Provider responses are
 // ordered evidence; alphabetizing here used to discard that evidence.
-func dedupeAndOrder(byKey map[string]*Candidate, order []string, limit int) []Candidate {
-	return dedupeAndOrderWithPolicy(byKey, order, limit, defaultCandidateBlendPolicy())
-}
-
 func dedupeAndOrderWithPolicy(
 	byKey map[string]*Candidate,
 	order []string,
