@@ -1016,8 +1016,9 @@ func (s *sqlStore) RecordClipPlay(ctx context.Context, channelID, id string, at 
 	return true, nil
 }
 
-// FillerExposuresByChannel returns one channel's durable aggregate rotation snapshot (§10 V58).
-func (s *sqlStore) FillerExposuresByChannel(ctx context.Context, channelID string, before time.Time) (map[string]filler.Exposure, error) {
+// FillerExposureRecords returns one channel's durable aggregate rotation records (§10 V58). The
+// per-break snapshot is cut from them by filler.ExposuresBefore, so one read serves a whole window.
+func (s *sqlStore) FillerExposureRecords(ctx context.Context, channelID string) (map[string]filler.ExposureRecord, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT clip_hash, play_count, last_played_at,
 		previous_played_at FROM filler_exposures WHERE channel_id = ?`), channelID)
 	if err != nil {
@@ -1025,29 +1026,29 @@ func (s *sqlStore) FillerExposuresByChannel(ctx context.Context, channelID strin
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := map[string]filler.Exposure{}
+	out := map[string]filler.ExposureRecord{}
 	for rows.Next() {
 		var hash string
 		var count, lastMs, previousMs int64
 		if err := rows.Scan(&hash, &count, &lastMs, &previousMs); err != nil {
 			return nil, fmt.Errorf("scan filler exposure for channel %s: %w", channelID, err)
 		}
-		// The aggregate retains one previous timestamp solely so a rebuild after a clip starts
-		// can reconstruct the immutable snapshot for that active break. No-repeat means a clip
-		// updates at most once inside one pod, so one predecessor is exactly the bounded state needed.
-		if !before.IsZero() && lastMs >= before.UnixMilli() {
-			count--
-			lastMs = previousMs
+		out[hash] = filler.ExposureRecord{
+			PlayCount: count, LastPlayedAt: exposureTime(lastMs), PreviousPlayedAt: exposureTime(previousMs),
 		}
-		if count <= 0 || lastMs <= 0 {
-			continue
-		}
-		out[hash] = filler.Exposure{PlayCount: count, LastPlayedAt: time.UnixMilli(lastMs).UTC()}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list filler exposures for channel %s: %w", channelID, err)
 	}
 	return out, nil
+}
+
+// exposureTime maps a stored epoch-ms exposure timestamp to a time; 0 (never) is the zero time.
+func exposureTime(ms int64) time.Time {
+	if ms <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms).UTC()
 }
 
 // UpdateClipKind corrects a clip's kind (§10). Kind drives pod ROLE — a bumper bookends

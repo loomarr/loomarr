@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 	"time"
 
@@ -13,20 +14,27 @@ import (
 type stubCatalog struct {
 	clips []filler.Clip
 	err   error
+	reads *int // counts AllClips calls when set
 }
 
 type stubExposures struct {
-	items   map[string]filler.Exposure
+	items   map[string]filler.ExposureRecord
 	channel string
-	before  time.Time
+	reads   int
 }
 
-func (s *stubExposures) FillerExposuresByChannel(_ context.Context, channelID string, before time.Time) (map[string]filler.Exposure, error) {
-	s.channel, s.before = channelID, before
+func (s *stubExposures) FillerExposureRecords(_ context.Context, channelID string) (map[string]filler.ExposureRecord, error) {
+	s.channel = channelID
+	s.reads++
 	return s.items, nil
 }
 
-func (s stubCatalog) AllClips(context.Context) ([]filler.Clip, error) { return s.clips, s.err }
+func (s stubCatalog) AllClips(context.Context) ([]filler.Clip, error) {
+	if s.reads != nil {
+		*s.reads++
+	}
+	return s.clips, s.err
+}
 
 func discardLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
@@ -36,8 +44,11 @@ func TestPreviewAtUsesBreakScopedExposureSnapshot(t *testing.T) {
 		{Hash: "recent", Path: "recent.mp4", Kind: filler.Commercial, DurationMs: 30_000, Category: "one"},
 		{Hash: "new", Path: "new.mp4", Kind: filler.Commercial, DurationMs: 30_000, Category: "two"},
 	}
-	history := &stubExposures{items: map[string]filler.Exposure{
+	// "new" first aired AT this break's start: that play belongs to the break itself, so the
+	// snapshot must not see it, or the clip would reshuffle the break it is airing in.
+	history := &stubExposures{items: map[string]filler.ExposureRecord{
 		"recent": {PlayCount: 1, LastPlayedAt: start.Add(-time.Minute)},
+		"new":    {PlayCount: 1, LastPlayedAt: start},
 	}}
 	adapter := filler.NewPodAdapter(stubCatalog{clips: cat}, history, func() filler.Policy {
 		return filler.Policy{PodMax: 2, Cooldown: time.Hour}
@@ -46,11 +57,74 @@ func TestPreviewAtUsesBreakScopedExposureSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if history.channel != "channel-7" || !history.before.Equal(start) {
-		t.Fatalf("history query = %q before %v, want channel and exact break start", history.channel, history.before)
+	if history.channel != "channel-7" {
+		t.Fatalf("history read for %q, want the break's channel", history.channel)
 	}
 	if len(pod.Entries) < 2 || pod.Entries[0].Hash != "new" || pod.Entries[1].Hash != "recent" {
 		t.Fatalf("rotation entries = %+v, want new before recent", pod.Entries)
+	}
+}
+
+// #1420: a window of breaks reads the catalog and the play history ONCE, and every pod is the
+// one PreviewAt assembles for that break alone — same seed, same snapshot cut.
+func TestPreviewAtManyReadsOnceAndMatchesPreviewAt(t *testing.T) {
+	start := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	var cat []filler.Clip
+	for i := 0; i < 8; i++ {
+		id := string(rune('a' + i))
+		cat = append(cat, filler.Clip{Hash: id, Path: id + ".mp4", Kind: filler.Commercial, DurationMs: 30_000})
+	}
+	// "a" aired in the second break: breaks before it must not see that play, breaks after must.
+	records := map[string]filler.ExposureRecord{
+		"a": {PlayCount: 2, LastPlayedAt: start.Add(30 * time.Minute), PreviousPlayedAt: start.Add(-3 * time.Hour)},
+		"b": {PlayCount: 1, LastPlayedAt: start.Add(-10 * time.Minute)},
+	}
+	policy := func() filler.Policy { return filler.Policy{PodMax: 3, Cooldown: time.Hour} }
+	reads := 0
+	history := &stubExposures{items: records}
+	batch := filler.NewPodAdapter(stubCatalog{clips: cat, reads: &reads}, history, policy, discardLogger())
+
+	var breaks []filler.Break
+	for i := 0; i < 6; i++ {
+		breaks = append(breaks, filler.Break{Seed: int64(100 + i), Start: start.Add(time.Duration(i) * 30 * time.Minute)})
+	}
+	pods, err := batch.PreviewAtMany(context.Background(), "channel-7", filler.Selection{}, breaks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reads != 1 || history.reads != 1 {
+		t.Fatalf("catalog reads = %d, history reads = %d for %d breaks, want one each", reads, history.reads, len(breaks))
+	}
+	single := filler.NewPodAdapter(stubCatalog{clips: cat}, &stubExposures{items: records}, policy, discardLogger())
+	for i, b := range breaks {
+		want, err := single.PreviewAt(context.Background(), "channel-7", b.Seed, filler.Selection{}, b.Start)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(pods[i], want) {
+			t.Fatalf("break %d: batch pod %+v, PreviewAt pod %+v", i, pods[i], want)
+		}
+	}
+}
+
+// The cut itself: history strictly before the cutoff, reconstructed from the one predecessor.
+func TestExposuresBeforeCutsAtTheBreakStart(t *testing.T) {
+	at := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	records := map[string]filler.ExposureRecord{
+		"twice": {PlayCount: 2, LastPlayedAt: at, PreviousPlayedAt: at.Add(-time.Hour)},
+		"once":  {PlayCount: 1, LastPlayedAt: at.Add(time.Minute)},
+		"old":   {PlayCount: 3, LastPlayedAt: at.Add(-time.Minute), PreviousPlayedAt: at.Add(-2 * time.Hour)},
+	}
+	got := filler.ExposuresBefore(records, at)
+	want := map[string]filler.Exposure{
+		"twice": {PlayCount: 1, LastPlayedAt: at.Add(-time.Hour)},
+		"old":   {PlayCount: 3, LastPlayedAt: at.Add(-time.Minute)},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("snapshot = %+v, want %+v", got, want)
+	}
+	if all := filler.ExposuresBefore(records, time.Time{}); len(all) != 3 || all["twice"].PlayCount != 2 {
+		t.Fatalf("zero cutoff = %+v, want all history", all)
 	}
 }
 

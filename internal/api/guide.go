@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -270,9 +271,32 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 				s.log.Warn("guide: timeline failed for one channel", "channel", ch.ID, "err", err)
 				return
 			}
+			// A break's composition, resolved per-airing. Only for filler, and only when the
+			// assembler is wired: an install without filler configured shows breaks with no
+			// hover detail rather than failing the request. One batch per channel row (#1420):
+			// the per-break call re-read the channel, the whole catalog and the play history for
+			// every break in the window.
+			podAt := map[int]filler.Pod{}
+			if s.pods != nil {
+				var idx []int
+				var starts []int64
+				for i, b := range bs {
+					if b.Kind == schedule.SlotFiller {
+						idx = append(idx, i)
+						starts = append(starts, b.Start.UnixMilli())
+					}
+				}
+				if len(starts) > 0 {
+					if pods, perr := s.pods.PreviewAtMany(ctx, ch.ID, starts); perr == nil {
+						for j, pod := range pods {
+							podAt[idx[j]] = pod
+						}
+					}
+				}
+			}
 			airings := make([]GuideAiring, 0, len(bs))
 			refs := make([]guideArtworkRef, 0, len(bs))
-			for _, b := range bs {
+			for i, b := range bs {
 				a := guideAiringOf(ch.ID, b)
 				ref := guideArtworkRef{}
 				if b.Kind == schedule.SlotProgram && s.timelineThumbs != nil {
@@ -280,11 +304,8 @@ func (s *Server) channelGuide(ctx context.Context, in *guideInput) (*guideOutput
 						key: string(b.Key), season: b.Season, episode: b.Episode,
 					}
 				}
-				// A break's composition, resolved per-airing. Only for filler, and only when the
-				// assembler is wired: an install without filler configured shows breaks with no
-				// hover detail rather than failing the request.
-				if b.Kind == schedule.SlotFiller && s.pods != nil {
-					if pod, perr := s.pods.PreviewAt(ctx, ch.ID, b.Start.UnixMilli()); perr == nil && len(pod.Entries) > 0 {
+				if b.Kind == schedule.SlotFiller {
+					if pod := podAt[i]; len(pod.Entries) > 0 {
 						dto := podToPoolDTO(pod)
 						a.Pod = &dto
 						for _, entry := range pod.Entries {

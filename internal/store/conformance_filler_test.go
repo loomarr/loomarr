@@ -126,6 +126,16 @@ func findSource(t *testing.T, s Store, id string) (FillerSource, bool) {
 	return FillerSource{}, false
 }
 
+// exposuresBefore is a break's rotation snapshot the way pod assembly reads it: the stored
+// records, cut strictly before `before` by the filler domain (a zero cutoff keeps everything).
+func exposuresBefore(ctx context.Context, s Store, channelID string, before time.Time) (map[string]filler.Exposure, error) {
+	records, err := s.FillerExposureRecords(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	return filler.ExposuresBefore(records, before), nil
+}
+
 // src1 is the source this suite registers first, re-read. Fatals if it has gone missing, so a
 // caller can assert on its fields without a nil check at every use.
 func src1(t *testing.T, s Store) FillerSource {
@@ -455,14 +465,14 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal("later scheduled start was not reported as a new airing")
 	}
 
-	a, err := s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	a, err := exposuresBefore(ctx, s, "channel-a", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := a[clip.Hash]; got.PlayCount != 2 || !got.LastPlayedAt.Equal(second) {
 		t.Fatalf("channel-a exposure = %+v, want count 2 at %v", got, second)
 	}
-	b, err := s.FillerExposuresByChannel(ctx, "channel-b", time.Time{})
+	b, err := exposuresBefore(ctx, s, "channel-b", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +487,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 		t.Fatalf("global clip count = %d, want the three distinct channel/start airings", storedClip.PlayCount)
 	}
 
-	beforeBreak, err := s.FillerExposuresByChannel(ctx, "channel-a", second)
+	beforeBreak, err := exposuresBefore(ctx, s, "channel-a", second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +515,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 			t.Fatalf("concurrent record: %v", err)
 		}
 	}
-	a, err = s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	a, err = exposuresBefore(ctx, s, "channel-a", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,7 +528,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	if _, err := s.RecordClipPlay(ctx, "channel-a", missing, second); err != nil {
 		t.Fatal(err)
 	}
-	a, err = s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	a, err = exposuresBefore(ctx, s, "channel-a", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +539,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertClip(ctx, restored); err != nil {
 		t.Fatal(err)
 	}
-	a, err = s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	a, err = exposuresBefore(ctx, s, "channel-a", time.Time{})
 	if err != nil || a[missing].PlayCount != 1 {
 		t.Fatalf("re-admission lost exposure: %+v (err=%v)", a[missing], err)
 	}
@@ -540,7 +550,7 @@ func testClipExposureRotation(t *testing.T, newStore NewStoreFunc) {
 	if err := s.DeleteChannel(ctx, channel.ID, channel.Revision); err != nil {
 		t.Fatal(err)
 	}
-	a, err = s.FillerExposuresByChannel(ctx, "channel-a", time.Time{})
+	a, err = exposuresBefore(ctx, s, "channel-a", time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
