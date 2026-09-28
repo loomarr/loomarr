@@ -1,5 +1,3 @@
-//go:build research
-
 // Package kit is the shared measurement kit for the curation research (#1670, #1671).
 //
 // It turns a list of airings (what a channel put on screen, and when) into the repetition and
@@ -7,8 +5,8 @@
 // (../sim) both feed it, so a number read from a live backend and a number from a simulated
 // mechanism mean exactly the same thing.
 //
-// Research code: excluded from every normal build by the `research` tag, never imported by the
-// product. Run with `go run -tags research ./project/evidence/curation-1670/<tool>`.
+// Research code: vetted and linted like the rest of the tree, never imported by the product.
+// Run with `go run ./project/evidence/curation-1670/<tool>`.
 package kit
 
 import (

@@ -1,11 +1,9 @@
-//go:build research
-
 // Command sim replays channels hour by hour through the REAL pure scheduler
 // (schedule.ComputeDesiredAt) and the REAL playout walk (playout.BroadcastsBetween), with the
 // viewing → recency feedback loop the live guide forecast cannot show, and compares the current
 // behaviour against prototype mechanisms (#1670). Nothing here is wired into the product.
 //
-//	go run -tags research ./project/evidence/curation-1670/sim -days 14 -out /tmp/sim.json
+//	go run ./project/evidence/curation-1670/sim -days 14 -out /tmp/sim.json
 //
 // Channel shapes are synthetic (no titles, only sizes and runtimes), chosen to match shapes the
 // design docs already record and the demo library.
@@ -392,10 +390,10 @@ func batch(deck []schedule.Slot, last, watched map[string]time.Time, budget time
 
 func table(runs []run) {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(tw, "shape\tpool\tpool h\tmechanism\tviewing\taired\tR24h\tR7d\tprimeR7d\tgap p10\tp50\tp90\tmax/day\tadjRep\tcuts/day\tEPG miss\t")
+	_, _ = fmt.Fprintln(tw, "shape\tpool\tpool h\tmechanism\tviewing\taired\tR24h\tR7d\tprimeR7d\tgap p10\tp50\tp90\tmax/day\tadjRep\tcuts/day\tEPG miss\t")
 	for _, r := range runs {
 		m := r.Metrics
-		fmt.Fprintf(tw, "%s\t%d\t%.0f\t%s\t%s\t%d\t%s\t%s\t%s\t%.1f\t%.1f\t%.1f\t%d\t%s\t%.1f\t%s\t\n",
+		_, _ = fmt.Fprintf(tw, "%s\t%d\t%.0f\t%s\t%s\t%d\t%s\t%s\t%s\t%.1f\t%.1f\t%.1f\t%d\t%s\t%.1f\t%s\t\n",
 			r.Shape, m.PoolUnits, r.PoolHours, r.Mechanism, r.Viewing, m.DistinctUnits, pc(m.RepeatRate24h), pc(m.RepeatRate7d),
 			pc(r.PrimeR7d), m.ReairGapP10H, m.ReairGapP50H, m.ReairGapP90H, m.MaxUnitPerDay, pc(m.RepeatedAdjacency), r.CutPerDay, pc(r.EPGMiss))
 	}
@@ -426,7 +424,7 @@ func fillerSim(start, end time.Time) []fillerRun {
 	var out []fillerRun
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight)
 	fmt.Println()
-	fmt.Fprintln(tw, "clips\tmode\tviewing\tplays\tdistinct\tC60m\tC24h\tmax/day\teve C60m\teve C24h\t")
+	_, _ = fmt.Fprintln(tw, "clips\tmode\tviewing\tplays\tdistinct\tC60m\tC24h\tmax/day\teve C60m\teve C24h\t")
 	for _, n := range []int{40, 150, 600} {
 		clips := clipPool(n)
 		for _, mode := range []string{"current", "ledger"} {
@@ -469,7 +467,7 @@ func fillerSim(start, end time.Time) []fillerRun {
 				}
 				em := kit.Measure(eve, 0, start, end)
 				out = append(out, fillerRun{PoolClips: n, Mode: mode, Viewing: v.Name, Metrics: m, Evening: em})
-				fmt.Fprintf(tw, "%d\t%s\t%s\t%d\t%d\t%s\t%s\t%d\t%s\t%s\t\n", n, mode, v.Name, m.ClipPlays, m.DistinctClips,
+				_, _ = fmt.Fprintf(tw, "%d\t%s\t%s\t%d\t%d\t%s\t%s\t%d\t%s\t%s\t\n", n, mode, v.Name, m.ClipPlays, m.DistinctClips,
 					pc(m.ClipRepeat60m), pc(m.ClipRepeat24h), m.MaxClipPerDay, pc(em.ClipRepeat60m), pc(em.ClipRepeat24h))
 			}
 		}

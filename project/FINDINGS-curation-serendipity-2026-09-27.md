@@ -40,14 +40,19 @@ running the read-only kit (§9). Nothing here changes the product. Base commit `
 
 ### 1.1 The kit
 
-Everything is under `project/evidence/curation-1670/`, behind the `research` build tag, so normal
-builds, vet and lint never see it.
+Everything is under `project/evidence/curation-1670/`: ordinary Go packages that CI vets, lints and
+tests, and that the product never imports.
 
 - `kit/`: one metrics function shared by both tools, so a live number and a simulated number mean
   the same thing.
 - `measure/`: **read-only** HTTP. It calls `GET /v1/channels`, `GET /v1/channels/{id}/cycle?at=`
-  (the pool, from the trace's placement facts) and `GET /v1/guide` one day at a time, including
-  each break's pod.
+  and `GET /v1/channels/{id}` (together, the pool), and `GET /v1/guide` one day at a time,
+  including each break's pod.
+  - The pool is derived from the trace's placement facts minus the window's commercial breaks
+    (`kit.PoolFromTrace`, pinned by a test against real scheduler traces). The trace records at
+    most 256 placement facts, so a larger deck is recovered from `factTotal`. The trace cannot
+    answer only when a deck's episode-selection facts overflow as well (more than about 760
+    episodes); the kit then reports the pool as unknown rather than guessing.
   - ⚠ The guide is a forecast from current state. Recency and filler exposure are frozen at read
     time, so it measures "if nobody watches from now on".
 - `sim/`: hour-by-hour replay through the real `schedule.ComputeDesiredAt`,
@@ -327,16 +332,15 @@ dwell. Media-server play state is a complementary source for what was watched ou
 
 | phase | scope | gate |
 |---|---|---|
-| **P1: correctness (beta.10)** | Real per-channel seed + per-pass reshuffle; history read only at window commit, keyed per unit; window boundary on `guide.timezone` with carry-over | kit sim: cuts/day = 0, EPG miss = 0 under all viewing patterns; adjRep ≤ 25% for pools ≥ 3 × window; live repro A and B no longer reproduce; existing determinism tests green |
+| **P1: correctness** (#1674 and #1675 moved to beta.8 and a fix lane; #1676 is beta.10) | Real per-channel seed + per-pass reshuffle; history read only at window commit, keyed per unit; window boundary on `guide.timezone` with carry-over | kit sim: cuts/day = 0, EPG miss = 0 under all viewing patterns; adjRep ≤ 25% for pools ≥ 3 × window; live repro A and B no longer reproduce; existing determinism tests green |
 | **P2: ledger rotation** | Unit-level airing ledger + LRU batch; watch log from playout | R24h 0% for pools > 24 h; coverage 100% within `ceil(pool/window) + 1`; household forecast re-measured with the same command |
 | **P3: household freshness + daypart novelty** | Watched-rank, viewing-hours placement, optional media-server play state | Viewer R7d within floor + 10 pts on the household |
 | **P4: deterministic evolution (#1671)** | LLM-free growth proposals, diff UX, change log, pace limit, resting, gap/overlap proposals | No lineup write outside the binder (no test pins this today; add one with P4); ≤ k%/week churn; identity check (genre mix within ±10 pts) |
 
 ## 4. Open questions for the maintainer
 
-1. **Fixed epoch vs. append-only.** Mechanism #2 changes how the guide maps to the clock. It stays
-   one shared walk, but the anchor moves each window. Is that acceptable for Tunarr-backed
-   channels too, or internal playout only?
+1. ~~Fixed epoch vs. append-only, per backend.~~ **Settled (supervisor, 2026-09-28):** apply to both
+   backends wherever Tunarr can express it.
 2. **What "aired" means with on-demand playout.** Nothing encodes when nobody watches. Should the
    ledger count scheduled airings (the linear illusion: the guide said it aired) or only watched
    ones? The sim says both matter: aired for tiling, watched for freshness.
@@ -350,12 +354,35 @@ dwell. Media-server play state is a complementary source for what was watched ou
 ```
 cd <a checkout of this branch>
 LOOMARR_TOKEN=<the install's API token> \
-  go run -tags research ./project/evidence/curation-1670/measure \
+  go run ./project/evidence/curation-1670/measure \
   -base <household base URL> -days 14 -out /tmp/curation-household.json
 ```
 
-This issues GETs only: `/v1/channels`, `/v1/channels/{id}/cycle`, and 14 × `/v1/guide` a quarter
-of a second apart. Each guide call recomputes every channel and assembles each break's pod, the
-same work as scrolling the guide a day at a time.
+This issues GETs only: `/v1/channels`, and per channel `/v1/channels/{id}/cycle` and
+`/v1/channels/{id}`, then 14 × `/v1/guide` a quarter of a second apart. Each guide call recomputes
+every channel and assembles each break's pod, the same work as scrolling the guide a day at a time.
 
-Reproduce the rest: `go run -tags research ./project/evidence/curation-1670/sim -days 14`.
+Reproduce the rest: `go run ./project/evidence/curation-1670/sim -days 14`.
+
+### 5.1 First household run (supervisor, 14 days from 2026-09-27 23:00 local)
+
+| ch | order | aired | R24h | R7d | gap p50 (h) | adjRep | clips/h | clips | C60m | C24h |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 5 | sequential | 226 | 0% | 99% | 87 | 71% | 10.1 | 5 | 100% | 100% |
+| 6 | sequential | 5 | 100% | 100% | 10.3 | 95% | 0.4 | 1 | 0% | 99% |
+| 7 | syndication | 263 | 2% | 99% | 101.5 | 66% | 2.3 | 1 | 100% | 100% |
+| 8 | syndication | 725 | 1% | 2% | 261 | 13% | 10.3 | 6 | 95% | 100% |
+| 9 | syndication | 735 | 2% | 9% | 135.9 | 3% | 10.3 | 9 | 68% | 100% |
+| 10 | syndication | 428 | 0% | 4% | 25.0 | 0% | 4.8 | 11 | 32% | 99% |
+
+- **The household's repetition is filler.** Five channels air 2–10 clips an hour from pools of 1–11
+  clips, so the same commercial comes back within the hour (C60m 32–100%). Programme repetition is
+  modest on 8–10 and weekly on 5 and 7 (R7d 99%, a ~4-day loop). That matches §1.3 item 6: the
+  lever is filler pool size, not selection.
+- **Pool read 0 on five channels: a kit bug, fixed.** Their decks exceed the trace's 256
+  placement facts, and the first kit gave up on any truncated trace. It also counted the window's
+  commercial breaks as pool, which is likely why channel 6 read 9 (it airs 5 films; with breaks
+  the count inflates). Both are fixed in `kit.PoolFromTrace`, with a test against real scheduler
+  traces. Re-run the same command for the corrected pool and coverage columns.
+- **Channel 6** re-airs every ~10 h: a pool shorter than a day (§1.3 item 1). Only more titles
+  fix that.

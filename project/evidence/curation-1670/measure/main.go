@@ -1,10 +1,8 @@
-//go:build research
-
 // Command measure reads a Loomarr backend's forecast through the HTTP API and reports how
 // repetitive each channel is (#1670). It is READ-ONLY: it issues GETs only (plus, for a lane's
 // own dev backend, the dev-login POST that creates a session and changes no data).
 //
-//	go run -tags research ./project/evidence/curation-1670/measure \
+//	go run ./project/evidence/curation-1670/measure \
 //	  -base http://localhost:8080 -days 14 -out /tmp/curation-baseline.json
 //
 // Auth: a bearer token from $LOOMARR_TOKEN (any signed-in role can read the guide), or
@@ -12,8 +10,9 @@
 //
 // What it reads, per channel:
 //   - GET /v1/channels                  the channel list
-//   - GET /v1/channels/{id}/cycle?at=   the pool: every episode/film the builder placed in the
-//     full ordered deck (trace placement facts), before the rolling-window slice
+//   - GET /v1/channels/{id}/cycle?at=   the pool: every episode/film in the full ordered deck,
+//     before the rolling-window slice, from the trace's placement facts (kit.PoolFromTrace)
+//   - GET /v1/channels/{id}                 breakCount, to take commercial breaks out of that count
 //   - GET /v1/guide?from=&to=           the forecast timeline, one day per request, including
 //     each break's assembled commercial pod
 //
@@ -50,16 +49,8 @@ type channel struct {
 }
 
 type cycle struct {
-	WindowMs int64 `json:"windowMs"`
-	Trace    struct {
-		Ordering    string            `json:"ordering"`
-		Seed        string            `json:"seed"`
-		Truncated   bool              `json:"truncated"`
-		Relaxations []json.RawMessage `json:"relaxations"`
-		Facts       []struct {
-			Stage string `json:"stage"`
-		} `json:"facts"`
-	} `json:"trace"`
+	WindowMs int64     `json:"windowMs"`
+	Trace    kit.Trace `json:"trace"`
 }
 
 type guide struct {
@@ -171,17 +162,17 @@ func main() {
 		if err := c.get("/v1/channels/"+ch.ID+"/cycle?at="+url.QueryEscape(from.Format(time.RFC3339)), &cy); err != nil {
 			fmt.Fprintf(os.Stderr, "cycle %s: %v\n", ch.ID, err)
 		} else {
-			r.Ordering, r.Seed, r.Relaxations = cy.Trace.Ordering, cy.Trace.Seed, len(cy.Trace.Relaxations)
+			r.Ordering, r.Relaxations = cy.Trace.Ordering, len(cy.Trace.Relaxations)
+			r.Seed = strings.Trim(string(cy.Trace.Seed), `"`)
 			r.WindowH = float64(cy.WindowMs) / 3.6e6
-			n := 0
-			for _, f := range cy.Trace.Facts {
-				if f.Stage == "placement" {
-					n++
-				}
+			var detail struct {
+				BreakCount int `json:"breakCount"`
 			}
-			r.PoolKnown = !cy.Trace.Truncated && n > 0
-			if r.PoolKnown {
-				r.Metrics.PoolUnits = n
+			if err := c.get("/v1/channels/"+ch.ID, &detail); err != nil {
+				fmt.Fprintf(os.Stderr, "channel %s: %v\n", ch.ID, err)
+			}
+			if n, ok := kit.PoolFromTrace(cy.Trace, detail.BreakCount); ok {
+				r.PoolKnown, r.Metrics.PoolUnits = true, n
 			}
 		}
 		pools[ch.ID] = r
@@ -241,7 +232,7 @@ func main() {
 	sort.Slice(results, func(i, j int) bool { return results[i].Number < results[j].Number })
 
 	fmt.Printf("forecast %s → %s (%d days), %s\n\n", from.Format(time.RFC3339), to.Format(time.RFC3339), *days, c.base)
-	print(os.Stdout, results)
+	printTable(os.Stdout, results)
 	if *out != "" {
 		b, err := json.MarshalIndent(map[string]any{"from": from, "to": to, "base": c.base, "channels": results}, "", "  ")
 		if err != nil {
@@ -253,12 +244,12 @@ func main() {
 	}
 }
 
-func print(w io.Writer, rs []Result) {
+func printTable(w io.Writer, rs []Result) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(tw, "ch\torder\twin h\tpool\taired\tcover\tR24h\tR7d\tgap p10\tp50\tp90\tmax/day\tadjRep\tclips/h\tclips\tC60m\tC24h\t")
+	_, _ = fmt.Fprintln(tw, "ch\torder\twin h\tpool\taired\tcover\tR24h\tR7d\tgap p10\tp50\tp90\tmax/day\tadjRep\tclips/h\tclips\tC60m\tC24h\t")
 	for _, r := range rs {
 		m := r.Metrics
-		fmt.Fprintf(tw, "%d\t%s\t%.0f\t%d\t%d\t%s\t%s\t%s\t%.1f\t%.1f\t%.1f\t%d\t%s\t%.1f\t%d\t%s\t%s\t\n",
+		_, _ = fmt.Fprintf(tw, "%d\t%s\t%.0f\t%d\t%d\t%s\t%s\t%s\t%.1f\t%.1f\t%.1f\t%d\t%s\t%.1f\t%d\t%s\t%s\t\n",
 			r.Number, r.Ordering, r.WindowH, m.PoolUnits, m.DistinctUnits, pc(m.Coverage),
 			pc(m.RepeatRate24h), pc(m.RepeatRate7d), m.ReairGapP10H, m.ReairGapP50H, m.ReairGapP90H,
 			m.MaxUnitPerDay, pc(m.RepeatedAdjacency), m.ClipsPerHour, m.DistinctClips,
