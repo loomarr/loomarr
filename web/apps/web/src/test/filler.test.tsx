@@ -250,12 +250,13 @@ describe("Filler page", () => {
     renderAt("/filler/incoming");
 
     const sectionNavigation = await screen.findByRole("navigation", { name: "Filler sections" });
-    const incoming = within(sectionNavigation).getByRole("link", { name: /^incoming/i });
+    // Incoming opens from the Manage hub (#1659), so Manage is the current section.
+    const manage = within(sectionNavigation).getByRole("link", { name: /^manage$/i });
 
     expect(screen.getByRole("heading", { level: 1, name: "Filler" })).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(within(sectionNavigation).getAllByRole("link", { current: "page" })).toHaveLength(1);
-    expect(incoming).toHaveAttribute("aria-current", "page");
+    expect(manage).toHaveAttribute("aria-current", "page");
   });
   it("lists the catalog with each clip's match tags", async () => {
     stubFiller();
@@ -316,7 +317,7 @@ describe("Filler page", () => {
     renderAt("/filler/library");
     await screen.findByText("Frosted Flakes");
 
-    expect(await screen.findByText(/\d+ of \d+ sources ready/i)).toBeInTheDocument();
+    expect(await screen.findByText(/\d+ of \d+ sources on/i)).toBeInTheDocument();
   });
 
   // ⚠ **A held clip must not read as a missing clip.** Auto-fetch holds everything it downloads
@@ -327,17 +328,17 @@ describe("Filler page", () => {
   //
   // The two counts stay SEPARATE clauses. Summing them would be the opposite lie: it would claim a
   // channel can play clips nobody has approved yet.
-  it("says how many clips are waiting rather than reporting an empty catalog", async () => {
+  it("says how many clips need you rather than reporting an empty catalog", async () => {
     stubFiller({
       clips: [],
       watch: { health: "healthy", sourcesOn: 5, sourcesReady: 5, sourcesTotal: 5, clips: 0, held: 12 },
     });
     renderAt("/filler/library");
 
-    expect(await screen.findByText(/0 clips · 12 waiting/i)).toBeInTheDocument();
+    expect(await screen.findByText(/0 clips · 12 need you/i)).toBeInTheDocument();
   });
 
-  // The mirror: with nothing held the clause is absent entirely, not "0 waiting". A permanent
+  // The mirror: with nothing held the clause is absent entirely, not "0 need you". A permanent
   // zero is noise on the many installs that never hold anything, and noise in a status line is
   // how an operator learns to stop reading it.
   it("omits the waiting clause when nothing is held", async () => {
@@ -347,7 +348,7 @@ describe("Filler page", () => {
     renderAt("/filler/library");
 
     await screen.findByText(/9 clips/i);
-    expect(screen.queryByText(/waiting/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/need you/i)).not.toBeInTheDocument();
   });
 
   it("explains rather than listing when no filler folder is configured", async () => {

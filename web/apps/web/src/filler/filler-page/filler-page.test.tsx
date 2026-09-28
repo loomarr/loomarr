@@ -9,6 +9,7 @@ import {
   getSettingsListMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useLocation } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
@@ -207,13 +208,25 @@ describe("FillerPage shell", () => {
     expect(incomingReads).toBe(1);
   });
 
-  it("makes Sources a routine top-level destination", async () => {
+  // The web mock's three sections (#1659). Sources and Incoming open from the Manage hub, and
+  // their pages light Manage.
+  it("keeps the web mock's three sections, with Sources and Incoming under Manage", async () => {
     stubFillerPage();
     renderPage("library");
 
-    expect(await screen.findByRole("link", { name: /^sources$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^incoming/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^manage$/i })).toBeInTheDocument();
+    const sections = await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(
+      within(sections)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Overview", expect.stringMatching(/^Library/), "Manage"]);
+  });
+
+  it.each(["sources", "incoming"] as const)("lights Manage on %s", async (tab) => {
+    stubFillerPage();
+    renderPage(tab);
+
+    expect(await screen.findByRole("link", { name: /^manage$/i })).toHaveAttribute("aria-current", "page");
   });
 
   it("treats section links as navigation without an orphan tabpanel role", async () => {
@@ -245,19 +258,30 @@ describe("FillerPage shell", () => {
 
   it("takes an empty Library back to Sources rather than requesting an acquisition", async () => {
     stubFillerPage({ clips: [], total: 0 });
-    renderPage("library");
-    await userEvent.click(await screen.findByRole("button", { name: "Open sources" }));
-    await waitFor(() =>
-      expect(screen.getByRole("link", { name: /^sources$/i })).toHaveAttribute("aria-current", "page"),
+    // The harness pins the page's tab, so the probe reports where the button actually went.
+    const LocationProbe = () => <output aria-label="Location">{useLocation().pathname}</output>;
+    render(
+      <RouterHarness
+        content={
+          <>
+            <FillerPage tab="library" />
+            <LocationProbe />
+          </>
+        }
+        initialPath="/filler/library"
+      />,
+      { wrapper: makeWrapper() },
     );
+    await userEvent.click(await screen.findByRole("button", { name: "Open sources" }));
+    await waitFor(() => expect(screen.getByLabelText("Location")).toHaveTextContent("/filler/sources"));
   });
 
   it("hides the pool strip on Sources", async () => {
     stubFillerPage();
     renderPage("sources");
 
-    // Wait for the tab to be up, so this cannot pass merely by asserting before the render.
-    await screen.findByRole("link", { name: /^sources$/i });
+    // Wait for the page to be up, so this cannot pass merely by asserting before the render.
+    await screen.findByRole("link", { name: /^manage$/i, current: "page" });
     expect(screen.queryByLabelText("Catalog health")).not.toBeInTheDocument();
   });
 

@@ -322,11 +322,12 @@ test("a fetched arrival becomes playable automatically after its checks complete
   await expect(page.getByText(/licen[cs]/i)).toHaveCount(0);
   expect(requestedPaths).not.toContain("/v1/filler/decisions/overview");
   const fillerNav = page.getByRole("navigation", { name: "Filler sections" });
+  // The web mock's three sections; Sources and Incoming open from the Manage hub (#1659).
   await expect(fillerNav.getByRole("link", { name: "Overview" })).toBeVisible();
-  await expect(fillerNav.getByRole("link", { name: "Incoming" })).toBeVisible();
   await expect(fillerNav.getByRole("link", { name: /Library/ })).toBeVisible();
   await expect(fillerNav.getByRole("link", { name: "Manage" })).toBeVisible();
-  await expect(fillerNav.getByRole("link", { name: "Sources" })).toBeVisible();
+  await expect(fillerNav.getByRole("link", { name: "Incoming" })).toHaveCount(0);
+  await expect(fillerNav.getByRole("link", { name: "Sources" })).toHaveCount(0);
 
   await page.goto("/filler/manage");
   await expect(page.getByText("Nothing has happened yet.")).toBeVisible();

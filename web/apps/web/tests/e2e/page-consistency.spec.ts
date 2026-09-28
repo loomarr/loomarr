@@ -142,8 +142,9 @@ test("Filler stays simple, discoverable, and accessible at desktop and mobile wi
   });
   const destinations = [
     { path: "/filler", current: "Overview", title: "Filler" },
-    { path: "/filler/sources", current: "Sources", title: "Filler" },
-    { path: "/filler/incoming", current: "Incoming", title: "Filler" },
+    // Sources and Incoming open from the Manage hub, so they light Manage (#1659).
+    { path: "/filler/sources", current: "Manage", title: "Filler" },
+    { path: "/filler/incoming", current: "Manage", title: "Filler" },
     { path: "/filler/library", current: "Library", title: "Filler" },
     { path: "/filler/manage", current: "Manage", title: "Filler" },
     // Focused settings retain the same Filler workspace header and Manage destination.
