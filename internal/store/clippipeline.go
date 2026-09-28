@@ -376,56 +376,6 @@ func clipPipelineWhere(f filler.PipelineFilter, includeCursor bool) (string, []a
 	return "", args, nil
 }
 
-// CountIncomingConveyorBySource counts, per clip source, the exact union rendered by the Incoming
-// belt: held legacy clips plus running/review pipeline rows, minus READY reels that have their own
-// row. A split detection checkpoint is still machine work and therefore stays on the belt; only a
-// complete proposal claims its composite into the reels list. Sources uses this instead of
-// counting every held row: completed composite parents stay held for lineage and re-splitting but
-// are no longer Incoming work.
-//
-// Readiness lives inside the versioned proposal document, so SQL returns one narrow row per belt
-// candidate and only intersecting proposal documents are decoded here. One query matters: counting
-// candidates and reading proposals separately can race a pipeline transition and briefly return a
-// negative or inflated total. This also stays dialect-neutral; teaching shared store code two JSON
-// syntaxes would make SQLite and Postgres capable of reporting different Incoming totals.
-func (s *sqlStore) CountIncomingConveyorBySource(ctx context.Context) (map[string]int, error) {
-	args := []any{true, false, string(filler.DispositionRunning), string(filler.DispositionReview)}
-	const candidate = `((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
-		OR EXISTS (SELECT 1 FROM filler_clip_pipeline p
-		  WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?)))`
-	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.source, sp.id, sp.segments_json
-		FROM clips c
-		LEFT JOIN filler_split_proposals sp ON sp.clip_hash = c.hash
-		WHERE `+candidate), args...)
-	if err != nil {
-		return nil, fmt.Errorf("count incoming conveyor by source: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	counts := map[string]int{}
-	for rows.Next() {
-		var source string
-		var id, raw sql.NullString
-		if err := rows.Scan(&source, &id, &raw); err != nil {
-			return nil, fmt.Errorf("scan incoming conveyor by source: %w", err)
-		}
-		counts[source]++
-		if !raw.Valid {
-			continue
-		}
-		var proposal filler.SplitProposal
-		if err := unmarshalSplitProposal(raw.String, &proposal); err != nil {
-			return nil, fmt.Errorf("split proposal %s document corrupt: %w", id.String, err)
-		}
-		if proposal.Ready() {
-			counts[source]--
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("count incoming conveyor by source: %w", err)
-	}
-	return counts, nil
-}
-
 // ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet.
 //
 // ⚠ **`NOT EXISTS`, deliberately NOT a LEFT JOIN.** `clipSelect` names its columns unqualified and

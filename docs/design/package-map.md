@@ -24,7 +24,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `contact` | 5 | — |
 | `diagnostics` | 7 | — |
 | `filler` | 9 | `bgexec`, `diagnostics`, `fillerstructure`, `llm`, `mediatools`, `taxonomy` |
-| `fillerstructure` | 6 | — |
+| `fillerstructure` | 5 | — |
 | `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 6 | `contact` |
@@ -39,7 +39,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 18 | `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 15 | `contact`, `diagnostics`, `filler`, `fillerstructure`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 15 | `contact`, `diagnostics`, `filler`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
 
@@ -65,7 +65,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
-- **`fillerstructure`** · 6 importers
+- **`fillerstructure`** · 5 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
   Concrete adapter for Loomarr's required Rust image worker (§22).
@@ -209,7 +209,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
 - **`library`** · 10 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
-- **`store`** · 15 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `fillerstructure`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
+- **`store`** · 15 importers · → `contact`, `diagnostics`, `episodeevidence`, `filler`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
 
 ### Layer 9

@@ -8,9 +8,12 @@
 // Handle.Begin, so a write that also touches core tables can share one transaction. Dependencies
 // point this way only: the core store never imports this package (#1747).
 //
-// Enrichment and research live here too, and write the clip columns they project only through
-// the core's store.ClipTx, inside their own transaction. The filler state still in internal/store
-// (clips' pipeline, decisions, split proposals) moves here in later steps of #1747.
+// Enrichment, research, admission decisions and split proposals live here too, and write the clip
+// columns and pipeline rows they change only through the core's store.ClipTx, inside their own
+// transaction. The clips' pipeline is still internal/store's (#1747).
+//
+// ⚠ The filler store overrides one core method, DeleteClipsNotIn, to prune the split proposals a
+// clip prune orphans. A caller that must keep that cleanup holds this Store, not store.Store.
 package fillerstore
 
 import (
@@ -151,6 +154,47 @@ type FillerResearchStore interface {
 	FillerResearchWebUsage(ctx context.Context, month string) (fillerresearch.WebUsage, error)
 }
 
+// FillerSplitProposalStore is the persisted split-proposal surface (§10, V34) —
+// detector-authored, reviewer-edited cut lists that are NOT clips until
+// confirmed. One proposal per compilation clip (re-detection replaces). Confirmation's clip and
+// pipeline writes go through the core's store.ClipTx, inside the confirmation's transaction.
+type FillerSplitProposalStore interface {
+	UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error
+	// GetSplitProposal reads one proposal by id (the review's reconnect truth).
+	GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error)
+	AcquireSplitProposalClaim(ctx context.Context, id, token string, at, expiresAt time.Time) (filler.SplitProposal, error)
+	RenewSplitProposalClaim(ctx context.Context, id, token string, expiresAt time.Time) error
+	ReleaseSplitProposalClaim(ctx context.Context, id, token string) error
+	// ListSplitProposals returns every pending proposal, oldest first — the Incoming tab's
+	// "reels" (V35). One read behind that tab, so a restart cannot lose the queue.
+	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
+	// ListReadySplitProposalsAfter is the bounded, newest-first Needs-help read. Detection
+	// checkpoints are skipped without consuming the page limit.
+	ListReadySplitProposalsAfter(ctx context.Context, cursor filler.SplitProposalCursor, limit int) ([]filler.SplitProposal, error)
+	CountReadySplitProposals(ctx context.Context) (int, error)
+	// CountIncomingConveyorBySource counts, per source, what the Incoming belt shows: held clips
+	// plus running/review pipeline rows, minus composites whose split proposal is ready. A plain
+	// HeldOnly count would disagree with the page it links to.
+	CountIncomingConveyorBySource(ctx context.Context) (map[string]int, error)
+	// DeleteSplitProposal removes a proposal after confirm or on reject.
+	DeleteSplitProposal(ctx context.Context, id string) error
+	// UpdateSplitProposal replaces an EXISTING proposal document; ErrNotFound if the row is gone.
+	// Never inserts — see the implementation for why that matters (§10 V54).
+	UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error
+	CompletePartialSplitConfirmation(ctx context.Context, completion filler.SplitPartialCompletion) error
+	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
+	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
+	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
+	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
+	// parent, replacement pipelines, and selected child generation (§10 V65).
+	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)
+	// Put/ListStructureSplitShadowDecisions own the immutable V67 compatibility-versus-complete-
+	// plan history. It survives proposal consumption so publication cannot erase disagreement.
+	PutStructureSplitShadowDecision(ctx context.Context, decision filler.StructureSplitShadowDecision) error
+	GetStructureSplitShadowDecision(ctx context.Context, id string) (filler.StructureSplitShadowDecision, bool, error)
+	ListStructureSplitShadowDecisions(ctx context.Context, clipHash string, limit int) ([]filler.StructureSplitShadowDecision, error)
+}
+
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -206,6 +250,7 @@ type Store interface {
 	FillerEnrichmentStore
 	FillerResearchStore
 	FillerDecisionStore
+	FillerSplitProposalStore
 
 	// Core returns the store this one extends, for the core functions that need its adapter
 	// (backups, migration, schema version); store.Store's own methods are already promoted.

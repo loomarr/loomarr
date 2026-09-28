@@ -193,6 +193,26 @@ func (c ClipTx) SettlePipeline(ctx context.Context, hash string, from []filler.D
 		WHERE disposition IN (`+strings.Join(marks, ",")+`) AND clip_hash = ?`, args...)
 }
 
+// AdvancePipeline moves the clip's pipeline row from one disposition to the next, leaving its
+// status and schedule alone. Split confirmation completes the reel's row and starts its children's.
+func (c ClipTx) AdvancePipeline(ctx context.Context, hash string, from, to filler.Disposition, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ?
+		WHERE clip_hash = ? AND disposition = ?`,
+		string(to), epoch(at), hash, string(from))
+}
+
+// ReleaseSplitParent makes a held reel a released composite once its cuts are confirmed. It
+// reports false for a clip that is not held.
+func (c ClipTx) ReleaseSplitParent(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET is_composite = ?, held = ?, auto_filed = ?, updated_at = ? WHERE hash = ? AND held = ?`,
+		true, false, false, epoch(at), hash, true)
+}
+
+// ReplaceSplitChildren is ReplaceSplitChildren inside the caller's transaction.
+func (c ClipTx) ReplaceSplitChildren(ctx context.Context, parentHash string, keepHashes []string, at time.Time) (int, error) {
+	return c.s.replaceSplitChildrenTx(ctx, c.tx, parentHash, keepHashes, at)
+}
+
 func (c ClipTx) affectedOne(ctx context.Context, query string, args ...any) (bool, error) {
 	result, err := c.tx.ExecContext(ctx, c.s.ph(query), args...)
 	if err != nil {

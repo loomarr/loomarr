@@ -1,15 +1,17 @@
-package store
+package fillerstore
 
 import (
 	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The persisted split proposal (§10, V34 — migration 00025). Detection runs
@@ -276,8 +278,8 @@ func (s *sqlStore) ReleaseSplitProposalClaim(ctx context.Context, id, token stri
 func (s *sqlStore) splitProposalClaimMiss(ctx context.Context, id string) error {
 	var exists int
 	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT 1 FROM filler_split_proposals WHERE id = ?`), id).Scan(&exists); err != nil {
-		if err == sql.ErrNoRows {
-			return ErrNotFound
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
 		}
 		return fmt.Errorf("read split proposal claim %s: %w", id, err)
 	}
@@ -294,8 +296,8 @@ func (s *sqlStore) GetSplitProposal(ctx context.Context, id string) (filler.Spli
 	)
 	err := s.db.QueryRowContext(ctx, s.ph(splitProposalSelect+` WHERE id = ?`), id).
 		Scan(&p.ID, &p.ClipHash, &raw, &createdAt)
-	if err == sql.ErrNoRows {
-		return filler.SplitProposal{}, ErrNotFound
+	if errors.Is(err, sql.ErrNoRows) {
+		return filler.SplitProposal{}, store.ErrNotFound
 	}
 	if err != nil {
 		return filler.SplitProposal{}, fmt.Errorf("get split proposal %s: %w", id, err)
@@ -358,22 +360,11 @@ func (s *sqlStore) ListSweepableSplitProposals(ctx context.Context, before time.
 	return out, rows.Err()
 }
 
-// MarkClipReaped records that a composite's recording has been reclaimed (§10 V54). The row stays;
-// only the bytes are gone.
-func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
-	res, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE clips SET reaped_at = ?, updated_at = ? WHERE hash = ?`), epoch(at), epoch(at), hash)
-	if err != nil {
-		return fmt.Errorf("mark clip %s reaped: %w", hash, err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("mark clip %s reaped: %w", hash, err)
-	}
-	if n == 0 {
-		return ErrNotFound
-	}
-	return nil
+// DeleteClipsNotIn is the core clip prune followed by pruneOrphanSplitProposals, so every prune
+// through the filler store also removes the proposals it orphaned.
+func (e extended) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
+	defer func() { _ = e.pruneOrphanSplitProposals(ctx) }()
+	return e.Store.DeleteClipsNotIn(ctx, keepIDs)
 }
 
 // pruneOrphanSplitProposals deletes proposals whose compilation is gone.
@@ -393,7 +384,7 @@ func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time
 // swallowed by the caller for the same reason as the pipeline prune: the clips ARE gone by then,
 // and failing the sync over leftover bookkeeping turns a tidy-up into an outage.
 func (s *sqlStore) pruneOrphanSplitProposals(ctx context.Context) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("prune orphan split proposals: %w", err)
 	}
@@ -469,7 +460,7 @@ func (s *sqlStore) CompletePartialSplitConfirmation(ctx context.Context, complet
 	if err != nil {
 		return fmt.Errorf("marshal partial split proposal document: %w", err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("complete partial split confirmation %s: %w", completion.Proposal.ID, err)
 	}
@@ -491,19 +482,13 @@ func (s *sqlStore) CompletePartialSplitConfirmation(ctx context.Context, complet
 	if claimed != 1 {
 		return filler.ErrProposalClaimed
 	}
+	clips := s.db.Clips(tx)
 	for _, hash := range completion.ActivateHashes {
-		res, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ?
-			  WHERE clip_hash = ? AND disposition = ?`),
-			string(filler.DispositionRunning), epoch(completion.At), hash, string(filler.DispositionReview))
+		activated, err := clips.AdvancePipeline(ctx, hash, filler.DispositionReview, filler.DispositionRunning, completion.At)
 		if err != nil {
 			return fmt.Errorf("complete partial split confirmation %s activate child %s: %w", completion.Proposal.ID, hash, err)
 		}
-		n, countErr := res.RowsAffected()
-		if countErr != nil {
-			return fmt.Errorf("complete partial split confirmation %s count child %s: %w", completion.Proposal.ID, hash, countErr)
-		}
-		if n != 1 {
+		if !activated {
 			return fmt.Errorf("complete partial split confirmation %s: child %s is not staged for review", completion.Proposal.ID, hash)
 		}
 	}
@@ -541,24 +526,6 @@ func (s *sqlStore) DeleteSplitProposal(ctx context.Context, id string) error {
 	}
 	if n == 0 {
 		return s.splitProposalClaimMiss(ctx, id)
-	}
-	return nil
-}
-
-// DeleteClip removes ONE clip by identity. Used by split confirm: the
-// compilation's identity is a path that after the cut means twenty clips, not
-// one (§10 V34). ErrNotFound for an unknown path.
-func (s *sqlStore) DeleteClip(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM clips WHERE path = ?`), id)
-	if err != nil {
-		return fmt.Errorf("delete clip %s: %w", id, err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("delete clip %s: %w", id, err)
-	}
-	if n == 0 {
-		return ErrNotFound
 	}
 	return nil
 }
@@ -625,6 +592,57 @@ func (s *sqlStore) CountReadySplitProposals(ctx context.Context) (int, error) {
 		}
 	}
 	return n, rows.Err()
+}
+
+// CountIncomingConveyorBySource counts, per clip source, the exact union rendered by the Incoming
+// belt: held legacy clips plus running/review pipeline rows, minus READY reels that have their own
+// row. A split detection checkpoint is still machine work and therefore stays on the belt; only a
+// complete proposal claims its composite into the reels list. Sources uses this instead of
+// counting every held row: completed composite parents stay held for lineage and re-splitting but
+// are no longer Incoming work.
+//
+// Readiness lives inside the versioned proposal document, so SQL returns one narrow row per belt
+// candidate and only intersecting proposal documents are decoded here. One query matters: counting
+// candidates and reading proposals separately can race a pipeline transition and briefly return a
+// negative or inflated total. This also stays dialect-neutral; teaching shared store code two JSON
+// syntaxes would make SQLite and Postgres capable of reporting different Incoming totals. It reads
+// the core's clips and pipeline tables and writes nothing.
+func (s *sqlStore) CountIncomingConveyorBySource(ctx context.Context) (map[string]int, error) {
+	args := []any{true, false, string(filler.DispositionRunning), string(filler.DispositionReview)}
+	const candidate = `((c.removed_at = 0 AND c.held = ? AND c.is_composite = ?)
+		OR EXISTS (SELECT 1 FROM filler_clip_pipeline p
+		  WHERE p.clip_hash = c.hash AND p.disposition IN (?, ?)))`
+	rows, err := s.db.QueryContext(ctx, s.ph(`SELECT c.source, sp.id, sp.segments_json
+		FROM clips c
+		LEFT JOIN filler_split_proposals sp ON sp.clip_hash = c.hash
+		WHERE `+candidate), args...)
+	if err != nil {
+		return nil, fmt.Errorf("count incoming conveyor by source: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	counts := map[string]int{}
+	for rows.Next() {
+		var source string
+		var id, raw sql.NullString
+		if err := rows.Scan(&source, &id, &raw); err != nil {
+			return nil, fmt.Errorf("scan incoming conveyor by source: %w", err)
+		}
+		counts[source]++
+		if !raw.Valid {
+			continue
+		}
+		var proposal filler.SplitProposal
+		if err := unmarshalSplitProposal(raw.String, &proposal); err != nil {
+			return nil, fmt.Errorf("split proposal %s document corrupt: %w", id.String, err)
+		}
+		if proposal.Ready() {
+			counts[source]--
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("count incoming conveyor by source: %w", err)
+	}
+	return counts, nil
 }
 
 func collectReadyOrAllSplitProposals(rows *sql.Rows, limit int, readyOnly bool) ([]filler.SplitProposal, error) {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -24,7 +25,7 @@ func (passStage) Run(context.Context, filler.StoreClip) (filler.StageResult, err
 // releasedClipRunningRow seeds the production shape from #1445: a clip an older path already
 // published (held=0, not removed, break_body) whose conveyor row was never settled and still sits
 // running at the score rung with every earlier rung complete.
-func releasedClipRunningRow(t *testing.T, st store.Store, hash string) {
+func releasedClipRunningRow(t *testing.T, st fillerstore.Store, hash string) {
 	t.Helper()
 	ctx := context.Background()
 	at := time.Now().UTC().Add(-time.Hour)
@@ -47,7 +48,7 @@ func releasedClipRunningRow(t *testing.T, st store.Store, hash string) {
 	}
 }
 
-func releasedClipPipeline(st store.Store) *filler.Pipeline {
+func releasedClipPipeline(st fillerstore.Store) *filler.Pipeline {
 	stages := make([]filler.Stage, 0, len(filler.StageOrder))
 	for _, id := range filler.StageOrder {
 		stages = append(stages, passStage{id: id})

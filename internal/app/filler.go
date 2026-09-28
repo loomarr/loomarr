@@ -86,7 +86,7 @@ func (a fillerSourceAdapter) LocalClipIDsByName(ctx context.Context) (map[string
 }
 
 // fillerStoreAdapter bridges the store's clip methods → filler.Store (the sync).
-type fillerStoreAdapter struct{ st store.Store }
+type fillerStoreAdapter struct{ st fillerstore.Store }
 
 func (a fillerStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) error {
 	return a.st.UpsertClip(ctx, store.Clip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
@@ -112,7 +112,7 @@ func (a fillerStoreAdapter) DeleteClipsNotIn(ctx context.Context, keep []string)
 // directly, because those five methods already speak `filler.ClipPipeline`. This adapter exists
 // only for the clip-row translation (`store.Clip` ⇄ `filler.StoreClip`) every other filler
 // adapter here performs.
-type fillerPipelineClipAdapter struct{ st store.Store }
+type fillerPipelineClipAdapter struct{ st fillerstore.Store }
 
 func (a fillerPipelineClipAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
 	return fillerStoreAdapter(a).GetClip(ctx, id)
@@ -145,7 +145,7 @@ func (a fillerPipelineClipAdapter) SetClipComposite(ctx context.Context, hash st
 // ⚠ Every method here is an EXISTING single writer, called with the "not yet" value it already
 // defines. Rewind introduces no new writer of any clip column, which is what keeps the
 // single-writer story the store conformance suite pins.
-type fillerRewindAdapter struct{ st store.Store }
+type fillerRewindAdapter struct{ st fillerstore.Store }
 
 func (a fillerRewindAdapter) SetClipLanguage(ctx context.Context, path, language string, at time.Time) error {
 	return a.st.SetClipLanguage(ctx, path, language, at)
@@ -172,7 +172,7 @@ func (a fillerRewindAdapter) DeleteSplitProposal(ctx context.Context, id string)
 // ⚠ It exists for ONE translation: `store.SweepableProposal` → `filler.SweepableProposal`. The
 // domain must not import the store (Tier 3), and the store's row type is a query result rather
 // than a domain concept, so the two are deliberately separate structs with the same shape.
-type fillerSweepStoreAdapter struct{ st store.Store }
+type fillerSweepStoreAdapter struct{ st fillerstore.Store }
 
 func (a fillerSweepStoreAdapter) ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]filler.SweepableProposal, error) {
 	rows, err := a.st.ListSweepableSplitProposals(ctx, before)
@@ -579,7 +579,7 @@ func (a clipCatalogAdapter) AllClips(ctx context.Context) ([]filler.Clip, error)
 // proposal methods pass filler.SplitProposal straight through — the store
 // persists exactly that type, so there is nothing to translate.
 type fillerSplitStoreAdapter struct {
-	st   store.Store
+	st   fillerstore.Store
 	wake *fillerChannelWake
 }
 
