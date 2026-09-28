@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Channel-surf certification (#1037, #1512 G3): presses a remote key every INTERVAL seconds for
 # MINUTES minutes on one device and reports key-to-first-frame latency (warm and cold), the held
-# frame (switch card) and the still, as p50/p95, from the TV app's LoomarrCert logcat marks.
+# frame (the switch readout, OSD) and the still, as p50/p95, from the TV app's LoomarrCert logcat marks.
 #
 #   ADB_SERIAL=<serial> scripts/shield-cert/surf.sh
 #

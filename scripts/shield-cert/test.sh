@@ -30,7 +30,7 @@ analyse() {
 
 # Surf: five surfs after the boot tune. Warm 400, 550, 300 and one that never framed (it counts
 # as unfinished, so warm p95 fails rather than hiding it); the number jump is timed from its
-# commit (31300 - 30003); the held card is 30, 40, 50, 120, 20; the v=2 line is ignored.
+# commit (31300 - 30003); the held OSD is 30, 40, 50, 120, 20; the v=2 line is ignored.
 check 'surf report' \
 	'{"mode":"surf","surfs":5,"unfinished":1,"unkeyed":0,"otherTunes":1,"warm":{"n":4,"p50":400,"p95":null,"max":null},"cold":{"n":1,"p50":1297,"p95":1297,"max":1297},"held":{"n":5,"p50":40,"p95":120,"max":120},"still":{"n":1,"p50":90,"p95":90,"max":90},"keyToTune":{"n":4,"p50":1,"p95":2,"max":2},"stalls":0,"errors":0,"gates":{"warmP95Max600":"FAIL","coldP95Max1500":"PASS","heldP95Max100":"FAIL"}}' \
 	"$(analyse "$here/testdata/surf.log" -v mode=surf)"

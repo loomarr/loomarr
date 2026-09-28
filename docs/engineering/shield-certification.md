@@ -10,7 +10,7 @@ adb and turn those lines into the gate numbers:
 | --- | --- | --- | --- |
 | G3 warm surf | p95 ≤ 600 ms | `scripts/shield-cert/surf.sh` | remote key → first decoded frame, tunes that reused a warmed neighbour |
 | G3 cold surf | p95 ≤ 1.5 s | `surf.sh` with `JUMP` | number entry commit → first decoded frame, tunes that minted |
-| G3 held frame / OSD | p95 ≤ 100 ms | `surf.sh` | remote key → switch card committed (`held card`); the still is reported beside it |
+| G3 held frame / OSD | p95 ≤ 100 ms | `surf.sh` | remote key → switch readout committed (`held OSD`); the still is reported beside it |
 | G4 stalls | < 1 per viewer-hour over 24 h | `scripts/shield-cert/soak.sh` | buffering after an attempt's first frame while not paused |
 | G4 codec re-inits | 0 at programme ↔ commercial boundaries | `soak.sh` | decoder instantiations outside a tune window |
 
@@ -28,7 +28,7 @@ LoomarrCert v=1 ev=tune t=748024.4 att=39 ch=<channel id> key=748024.3 num=102 p
 | `ev` | Written when | Fields |
 | --- | --- | --- |
 | `tune` | an attempt starts (the controller published its tuning snapshot) | `att`, `ch`, `num`, `why` (step, number, channel, previous, retry, catalog), `path` (warm = a warmed neighbour's source, cold = minted), `key` (the remote key's time, when a key caused it) |
-| `held` | the switch overlay committed its card (`what=card`) or its still finished loading (`what=still`) | `att`, `what` |
+| `held` | the switch overlay committed its "CH n / TUNING IN" readout (`what=osd`) or its still finished loading (`what=still`) | `att`, `what` |
 | `first-frame` | the native view rendered the attempt's first frame | `att` |
 | `stall-start` / `stall-end` | ExoPlayer went back to buffering after the first frame while the viewer had not paused, and came back | `att`; end adds `dur` and `why` (resumed, retuned, released, error) |
 | `error` | the player reported an error | `att`, `cause` (a closed token such as `http_404` or `network`; never the native message, which can carry the signed URL) |
@@ -105,8 +105,8 @@ the foreground. `MINUTES` shortens a soak for a trial; the verdict still judges 
   A number jump runs from the entry's commit instead, so the deliberate 1.2 s entry window is not counted.
 - **Unfinished surfs** (no first frame before the next key) count as infinitely slow: they can raise a
   percentile, never hide. Give `INTERVAL` room above the cold threshold.
-- **Held card** is when React committed the switch overlay, not when the panel lit: allow a frame or two.
-  **Held still** is when the channel's still image finished loading behind the card.
+- **Held OSD** is when React committed the switch overlay, not when the panel lit: allow a frame or two.
+  **Held still** is when the channel's still image finished loading behind the readout.
 - **Codec re-inits.** ExoPlayer logs `DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter
   for track type video|audio` each time it creates a decoder, whatever the vendor stack (OMX or Codec2),
   in release builds too. The soak counts those lines from the app's own process: inside a tune window
@@ -124,8 +124,9 @@ the foreground. `MINUTES` shortens a soak for a trial; the verdict still judges 
 ## Emulator reference run
 
 The Android 11 x86_64 TV emulator (`loomarr-tv-x64`, software GPU) against a lane backend with the demo
-library, release APK built as above, 2026-09-28. The emulator decodes differently from the Shield, so
-these numbers prove the tooling, not the gates.
+library, release APK built as above, 2026-09-28, with the previous card-style switch overlay (#1770
+has since replaced it with the B4 readout). The emulator decodes differently from the Shield, so these
+numbers prove the tooling, not the gates.
 
 | Run | Result |
 | --- | --- |

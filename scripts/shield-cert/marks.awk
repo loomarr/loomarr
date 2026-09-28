@@ -138,7 +138,7 @@ BEGIN {
 	} else if (event == "first-frame") {
 		if (!(id in a_ff)) a_ff[id] = t
 	} else if (event == "held") {
-		if (kv["what"] == "card" && !(id in a_card)) a_card[id] = t
+		if (kv["what"] == "osd" && !(id in a_card)) a_card[id] = t
 		if (kv["what"] == "still" && !(id in a_still)) a_still[id] = t
 	} else if (event == "stall-start") {
 		stalls++
@@ -223,7 +223,7 @@ END {
 		printf "surfs            %d (%d unfinished before the next key, %d without a key time; %d other tunes ignored)\n", surfs, unfinished, unkeyed + 0, boot
 		printf "warm key->frame  n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 600 ms: %s]\n", count["warm"] + 0, human(percentile("warm", 50)), human(percentile("warm", 95)), human(percentile("warm", 100)), g_warm
 		printf "cold key->frame  n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 1500 ms: %s]\n", count["cold"] + 0, human(percentile("cold", 50)), human(percentile("cold", 95)), human(percentile("cold", 100)), g_cold
-		printf "held card        n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 100 ms: %s]\n", count["held"] + 0, human(percentile("held", 50)), human(percentile("held", 95)), human(percentile("held", 100)), g_held
+		printf "held OSD         n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 100 ms: %s]\n", count["held"] + 0, human(percentile("held", 50)), human(percentile("held", 95)), human(percentile("held", 100)), g_held
 		printf "held still       n=%d p50 %s  p95 %s  max %s\n", count["still"] + 0, human(percentile("still", 50)), human(percentile("still", 95)), human(percentile("still", 100))
 		printf "key->tune (JS)   n=%d p50 %s  p95 %s\n", count["dispatch"] + 0, human(percentile("dispatch", 50)), human(percentile("dispatch", 95))
 		printf "stalls %d  errors %d\n", stalls + 0, errors + 0
