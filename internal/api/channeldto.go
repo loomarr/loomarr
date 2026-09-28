@@ -44,10 +44,14 @@ type ChannelDTO struct {
 	InAppPlayable bool   `json:"inAppPlayable" doc:"True when this channel can be tuned by Loomarr's in-app player"`
 	TunarrID      string `json:"tunarrId,omitempty" doc:"Server-assigned id of the retained managed Tunarr projection; empty until the first-ever successful Tunarr projection and retained after a later switch to internal playout"`
 	IntentRef     string `json:"intentRef,omitempty"`
-	ProgramCount  int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
-	PendingCount  int    `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
-	BreakCount    int    `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
-	SlotCount     int    `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
+	// CreatedAtMs and RequestedBy are Home's "New channel" card (#1663): "added Tuesday",
+	// "requested by …". Both absent when unknown (a hand-made channel has no requester).
+	CreatedAtMs  int64  `json:"createdAtMs,omitempty" doc:"When the channel was created (Unix ms); absent for an older channel no approval dates"`
+	RequestedBy  string `json:"requestedBy,omitempty" doc:"Name of the person whose request made this channel; absent for a hand-made channel"`
+	ProgramCount int    `json:"programCount" doc:"Real playable programs (available titles) in the desired lineup"`
+	PendingCount int    `json:"pendingCount" doc:"Lineup titles not yet available — awaiting acquisition (coming-soon gaps + pod-fill placeholders). Health keys on this: pendingCount==0 means every title is ready, even on a channel full of commercial breaks."`
+	BreakCount   int    `json:"breakCount" doc:"Commercial-break gaps (§10) — NOT titles; a healthy break-heavy channel has a large breakCount and zero pendingCount"`
+	SlotCount    int    `json:"slotCount" doc:"Total desired slots incl. breaks + placeholders. NOT a readiness signal — use programCount/pendingCount (a break gap inflates this without any title pending). Kept for diagnostics."`
 	// Policy is the channel's ChannelPolicy (programming-design §2): scope/audience/
 	// separation/ordering/seasonal, plus the relaxation-ladder steps the last
 	// reconcile applied (policy.applied) — the UI renders these as policy chips and
@@ -147,13 +151,29 @@ func channelToDTO(ch store.Channel, entryState func(provision.Key) entryAcq, log
 	if logoImage != nil && ch.Logo != "" {
 		out.LogoImage = logoImage(ch.Logo)
 	}
+	if !ch.CreatedAt.IsZero() {
+		out.CreatedAtMs = ch.CreatedAt.UnixMilli()
+	}
 	return out
 }
 
-func (s *Server) channelDTOAt(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, checkpoint BackendCheckpoint) ChannelDTO {
+// channelDTOAt is every handler's channel rendering. requesters comes from channelRequesters, so
+// each response that carries a channel names its requester the same way.
+func (s *Server) channelDTOAt(ch store.Channel, entryState func(provision.Key) entryAcq, logoImage func(string) *ImageDTO, requesters map[string]string, checkpoint BackendCheckpoint) ChannelDTO {
 	out := channelToDTO(ch, entryState, logoImage)
 	out.InAppPlayable = inAppPlayableAt(ch, checkpoint)
+	out.RequestedBy = requesters[ch.ID]
 	return out
+}
+
+// channelRequesters is one read naming every channel's requester. It only decorates the response,
+// so a failure leaves requestedBy out rather than failing the request.
+func (s *Server) channelRequesters(ctx context.Context) map[string]string {
+	requesters, err := s.store.ChannelRequesters(ctx)
+	if err != nil {
+		s.log.Warn("channel requesters unavailable", "err", err)
+	}
+	return requesters
 }
 
 func inAppPlayableAt(ch store.Channel, checkpoint BackendCheckpoint) bool {

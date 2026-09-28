@@ -41,6 +41,14 @@ TMDB-only is keyed `series:tmdb:<id>` while the server exposes both ids on the s
 the TVDB key would never confirm it. The queue pollers (`arr-queue-poll`, `seerr-queue-poll`) move a
 title with a live download to `downloading` (`Grabbed`) and record its progress.
 
+**Arrival.** `LibraryConfirmed` stamps the record's `availableAt`, once (the state is terminal after
+it). That is Home's **New this week** (#1663): `GET /v1/titles?since=<ms>` lists titles that arrived
+from then, newest first, each with the channels whose lineup holds it (detached channels excluded;
+one channel read, joined server-side). A title a channel picked from the library is written straight
+to `available` with no stamp: it was already there, so it never reads as new, and a later unstamped
+write keeps an earlier arrival. A channel likewise carries `createdAtMs` (stamped on insert, never
+moved) and `requestedBy`, the name of the person whose request produced it, read through its job.
+
 ### Invariants
 
 1. **Terminal states do not regress** within the acquisition lifecycle. `available` describes a

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/loomarr/loomarr/internal/provision"
+	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -97,16 +99,33 @@ type TitleDTO struct {
 	// LastError is why the reconciler gave up on an `unavailable` title (e.g. "deadline
 	// exceeded"), so a client can say so instead of describing it as queued.
 	LastError string `json:"lastError,omitempty" example:"deadline exceeded" doc:"Why the title was given up on (unavailable only)"`
+	// AvailableAtMs is the title's arrival (Home's New this week, #1663): when the library
+	// confirmed a title Loomarr acquired. Absent for a title a channel picked from the library.
+	AvailableAtMs int64 `json:"availableAtMs,omitempty" doc:"When the library confirmed this acquired title (Unix ms); absent if it was already in the library"`
+	// Channels are the channels whose lineup holds the title, by number, on the list and get
+	// reads. Joined server-side from one channel read so no client walks every lineup.
+	Channels []TitleChannelDTO `json:"channels,omitempty" doc:"Channels whose lineup holds this title, by number (detached channels excluded)"`
+}
+
+// TitleChannelDTO names a channel a title plays on.
+type TitleChannelDTO struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Number int    `json:"number"`
 }
 
 func toDTO(r provision.Record) TitleDTO {
+	var availableAtMs int64
+	if !r.AvailableAt.IsZero() {
+		availableAtMs = r.AvailableAt.UnixMilli()
+	}
 	return TitleDTO{
 		Key: string(r.Key), MediaType: string(r.Title.MediaType),
 		TMDBID: r.Title.TMDBID, TVDBID: r.Title.TVDBID,
 		Name: r.Title.Name, Year: r.Title.Year,
 		State: string(r.State), LibraryID: r.LibraryID,
 		Progress: r.Progress, ETAText: r.ETAText, DownloadStatus: r.DownloadStatus,
-		LastError: r.LastError,
+		LastError: r.LastError, AvailableAtMs: availableAtMs,
 	}
 }
 
@@ -187,11 +206,41 @@ func (s *Server) getTitle(ctx context.Context, in *keyInput) (*titleOutput, erro
 	if err != nil {
 		return nil, err
 	}
-	return &titleOutput{Body: toDTO(rec)}, nil
+	on, err := s.titleChannels(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dto := toDTO(rec)
+	dto.Channels = on[rec.Key]
+	return &titleOutput{Body: dto}, nil
+}
+
+// titleChannels maps each title key to the channels whose lineup holds it, by number, from one
+// channel read. A detached channel no longer plays anything.
+func (s *Server) titleChannels(ctx context.Context) (map[provision.Key][]TitleChannelDTO, error) {
+	channels, err := s.store.ListChannels(ctx) // ordered by number
+	if err != nil {
+		return nil, err
+	}
+	out := map[provision.Key][]TitleChannelDTO{}
+	for _, ch := range channels {
+		if ch.Status == schedule.StatusDetached {
+			continue
+		}
+		seen := map[provision.Key]bool{}
+		for _, e := range ch.Lineup {
+			if !seen[e.Key] {
+				seen[e.Key] = true
+				out[e.Key] = append(out[e.Key], TitleChannelDTO{ID: ch.ID, Name: ch.Name, Number: ch.Number})
+			}
+		}
+	}
+	return out, nil
 }
 
 type listInput struct {
 	State string `query:"state" enum:"wanted,requested,downloading,available,unavailable" doc:"Filter by state"`
+	Since int64  `query:"since" minimum:"0" doc:"Unix ms. Lists the titles that arrived at or after this time, newest first (Home's New this week). state may be omitted or 'available'."`
 }
 type listOutput struct {
 	Body struct {
@@ -200,17 +249,34 @@ type listOutput struct {
 }
 
 func (s *Server) listTitles(ctx context.Context, in *listInput) (*listOutput, error) {
-	if in.State == "" {
+	var (
+		recs []provision.Record
+		err  error
+	)
+	switch {
+	case in.Since > 0 && in.State != "" && provision.State(in.State) != provision.Available:
+		return nil, errBadRequest("Arrivals are available titles",
+			"Only an available title has arrived. Leave out the state, or ask for available ones.")
+	case in.Since > 0:
+		recs, err = s.store.ListTitlesAvailableSince(ctx, time.UnixMilli(in.Since))
+	case in.State == "":
 		return nil, errBadRequest("State required", "Choose a state to filter titles by.")
+	default:
+		recs, err = s.store.ListTitlesByState(ctx, provision.State(in.State))
 	}
-	recs, err := s.store.ListTitlesByState(ctx, provision.State(in.State))
+	if err != nil {
+		return nil, err
+	}
+	on, err := s.titleChannels(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := &listOutput{}
 	out.Body.Titles = make([]TitleDTO, 0, len(recs))
 	for _, r := range recs {
-		out.Body.Titles = append(out.Body.Titles, toDTO(r))
+		dto := toDTO(r)
+		dto.Channels = on[r.Key]
+		out.Body.Titles = append(out.Body.Titles, dto)
 	}
 	return out, nil
 }

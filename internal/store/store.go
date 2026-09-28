@@ -122,6 +122,8 @@ type TitleStore interface {
 	// leaving state-machine columns untouched so it never races the state Upsert.
 	UpdateTitleProgress(ctx context.Context, key provision.Key, progress float64, eta, status string) error
 	ListTitlesByState(ctx context.Context, state provision.State) ([]provision.Record, error)
+	// ListTitlesAvailableSince lists titles that arrived at or after since, newest first (#1663).
+	ListTitlesAvailableSince(ctx context.Context, since time.Time) ([]provision.Record, error)
 	// ClaimDueTitles atomically claims up to limit non-terminal records
 	// (wanted/requested/downloading) whose deadline is at/before now, for the
 	// reconciler (§4: wanted→retry, in-flight→give-up; §5 concurrency).
@@ -152,6 +154,8 @@ type ChannelStore interface {
 	// a targeted revision-checked write used after the lineup is bound.
 	SetChannelBroadcastCodec(ctx context.Context, id string, expectedRevision int64, codec string) (int64, error)
 	ListChannels(ctx context.Context) ([]Channel, error)
+	// ChannelRequesters maps channel id to the name of the person whose request made it (#1663).
+	ChannelRequesters(ctx context.Context) (map[string]string, error)
 	// DeleteChannel hard-deletes the revision-matched Channel and only its channel-scoped
 	// discovery feedback in one transaction. A detached Channel is retained through SaveChannel.
 	DeleteChannel(ctx context.Context, id string, expectedRevision int64) error

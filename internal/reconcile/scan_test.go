@@ -66,6 +66,15 @@ func TestLibraryScan_ConfirmsRequestedMovie(t *testing.T) {
 	if len(emit.events) != 1 || emit.events[0].State != provision.Available {
 		t.Errorf("events = %+v, want one available event", emit.events)
 	}
+	// The confirmation is the arrival Home's New this week lists (#1663), stamped by the scan's clock
+	// and persisted.
+	if !rec.AvailableAt.Equal(now) {
+		t.Errorf("AvailableAt = %v, want the scan time %v", rec.AvailableAt, now)
+	}
+	arrivals, err := st.ListTitlesAvailableSince(context.Background(), now.Add(-time.Hour))
+	if err != nil || len(arrivals) != 1 || arrivals[0].Key != key {
+		t.Errorf("arrivals since an hour ago = %+v (err %v), want %s", arrivals, err, key)
+	}
 }
 
 func TestLibraryScanRecordsPlayableQualityAfterCommittedConfirmation(t *testing.T) {

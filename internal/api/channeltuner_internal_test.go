@@ -115,7 +115,7 @@ func TestTunerReturnsUnavailableWhenCheckpointReadFails(t *testing.T) {
 
 func TestChannelDTOCarriesServerResolvedInAppPlayable(t *testing.T) {
 	s := &Server{}
-	got := s.channelDTOAt(store.Channel{Channel: schedule.Channel{Status: schedule.StatusLive}}, nil, nil,
+	got := s.channelDTOAt(store.Channel{Channel: schedule.Channel{Status: schedule.StatusLive}}, nil, nil, nil,
 		BackendCheckpoint{Applied: schedule.PlayoutBackendInternal})
 	if !got.InAppPlayable {
 		t.Fatal("ChannelDTO.InAppPlayable = false for a live internally played channel")

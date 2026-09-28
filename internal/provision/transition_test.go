@@ -92,6 +92,28 @@ func TestLibraryConfirmFromAnyInflight(t *testing.T) {
 		if len(ev) != 1 {
 			t.Errorf("LibraryConfirmed from %s should emit once, got %d", from, len(ev))
 		}
+		// Arrival is when the library confirmed it (Home's New this week, #1663).
+		if !out.AvailableAt.Equal(t0) {
+			t.Errorf("LibraryConfirmed from %s: AvailableAt = %v, want %v", from, out.AvailableAt, t0)
+		}
+	}
+}
+
+// Nothing but the library confirming an in-flight title is an arrival: no other event stamps
+// AvailableAt, and a terminal record keeps the stamp it has (invariant 1).
+func TestAvailableAtOnlyOnArrival(t *testing.T) {
+	for _, from := range []State{Wanted, Requested, Downloading} {
+		for _, k := range []EventKind{RequestAccepted, SubmitFailed, Grabbed, DeadlineExceeded} {
+			out, _ := Apply(rec(from, t0), Event{Kind: k, Deadline: dlTTL}, t0.Add(time.Hour))
+			if !out.AvailableAt.IsZero() {
+				t.Errorf("%s from %s stamped AvailableAt %v", k, from, out.AvailableAt)
+			}
+		}
+	}
+	arrived, _ := Apply(rec(Downloading, dlTTL), Event{Kind: LibraryConfirmed, LibraryID: "x"}, t0)
+	again, _ := Apply(arrived, Event{Kind: LibraryConfirmed, LibraryID: "y"}, t0.Add(24*time.Hour))
+	if !again.AvailableAt.Equal(t0) {
+		t.Errorf("a second confirmation moved AvailableAt to %v, want %v", again.AvailableAt, t0)
 	}
 }
 
