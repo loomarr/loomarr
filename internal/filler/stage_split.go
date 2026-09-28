@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/llm"
@@ -149,6 +148,13 @@ func (s *SplitStage) currentStructureRuntime() StructureRuntime {
 	return s.structureRuntime()
 }
 
+// SegmentRoleEscalator is the split stage's complete interface to temporal model evidence.
+// The implementation owns derivative extraction, request limits, strict decoding, and evidence
+// attribution; the caller knows only that an exact unresolved span may gain one role observation.
+type SegmentRoleEscalator interface {
+	EscalateRole(context.Context, SplitSourceAsset, string, SplitSegment, time.Time) (*StructureRoleEvidence, error)
+}
+
 // SegmentVision grounds proposed segments from their own frames so the auto-confirm gate has
 // something to judge.
 type SegmentVision struct {
@@ -178,20 +184,12 @@ type TaxaLister interface {
 	ListTaxa(ctx context.Context) ([]taxonomy.Taxon, error)
 }
 
-// ground stamps Category/Era onto each segment it can see, in place.
+// groundFromSource stamps Category/Era onto each segment it can see, in place.
 //
 // Best-effort throughout: a frame-extraction or model failure leaves that segment ungrounded,
 // which the gate then refuses — a reel that could not be judged goes to review rather than being
 // confirmed on missing data. That direction is the safety property, so every error path here
 // degrades toward review and never toward confirm.
-func (s *SplitStage) ground(ctx context.Context, c StoreClip, segs []SplitSegment) groundPass {
-	file := ""
-	if s.vision != nil {
-		file = filepath.Join(s.vision.ClipDir, filepath.FromSlash(c.Path))
-	}
-	return s.groundAt(ctx, c, file, SplitSourceAsset{}, segs)
-}
-
 func (s *SplitStage) groundFromSource(ctx context.Context, c StoreClip, source SplitSourceAsset, segs []SplitSegment) groundPass {
 	if s.vision == nil {
 		return s.groundAt(ctx, c, "", source, segs)

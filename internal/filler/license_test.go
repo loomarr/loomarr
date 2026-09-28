@@ -73,24 +73,6 @@ func TestLicenseBeside(t *testing.T) {
 	})
 }
 
-// SidecarLicense is the fs.FS twin, for the tagger's drop-folder view. Same rules.
-func TestSidecarLicense(t *testing.T) {
-	fsys := fstest.MapFS{
-		"a.info.json": {Data: []byte(`{"license":"https://creativecommons.org/publicdomain/zero/1.0/"}`)},
-		"b.info.json": {Data: []byte(`{"title":"no licence here"}`)},
-	}
-
-	if got, want := SidecarLicense(fsys, "a.mp4"), "https://creativecommons.org/publicdomain/zero/1.0/"; got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-	if got := SidecarLicense(fsys, "b.mp4"); got != "" {
-		t.Errorf("got %q, want empty for a sidecar with no licence", got)
-	}
-	if got := SidecarLicense(fsys, "missing.mp4"); got != "" {
-		t.Errorf("got %q, want empty when there is no sidecar", got)
-	}
-}
-
 // ⚠ A licence must NOT leak into the tagger's prompt. It says nothing about whether a clip is a
 // cereal advert, so it would burn tokens — and it could not survive the trip anyway, because
 // `isBoilerplate` drops any line starting with http(s)://. This pins the separation so nobody

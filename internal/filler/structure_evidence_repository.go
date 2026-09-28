@@ -153,5 +153,3 @@ func (r *FileStructureAssessmentEvidenceRepository) GetStructureAssessmentEviden
 func (r *FileStructureAssessmentEvidenceRepository) blobPath(kind, digest string) string {
 	return filepath.Join(r.root, kind, digest[:2], digest+".json")
 }
-
-var _ StructureAssessmentEvidenceRepository = (*FileStructureAssessmentEvidenceRepository)(nil)

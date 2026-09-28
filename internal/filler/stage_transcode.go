@@ -889,7 +889,7 @@ func publishHiddenMediaPair(stagedMedia, finalMedia string) error {
 	if err := prepareHiddenSidecar(stagedMedia, finalMedia); err != nil {
 		return err
 	}
-	if err := publishPreparedMedia(stagedMedia, finalMedia); err != nil {
+	if err := publishStagedMedia(stagedMedia, finalMedia); err != nil {
 		_ = os.Remove(sidecarPathFor(finalMedia))
 		return err
 	}
@@ -914,7 +914,7 @@ func prepareHiddenSidecar(stagedMedia, finalMedia string) error {
 	return nil
 }
 
-func publishPreparedMedia(stagedMedia, finalMedia string) error {
+func publishStagedMedia(stagedMedia, finalMedia string) error {
 	if err := os.Link(stagedMedia, finalMedia); err != nil {
 		return err
 	}

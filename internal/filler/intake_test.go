@@ -338,27 +338,6 @@ func TestMove_MissingSourceFailsForMediaAndPassesForSidecars(t *testing.T) {
 	}
 }
 
-// The derived default (§10 V38c). ⚠ It is derived rather than a literal `/data/filler/_watch`
-// precisely so that pointing the clip folder at another disk MOVES the watch folder with it —
-// a literal would leave arrivals landing under /data while the catalog looked elsewhere, and the
-// drop-folder would appear broken with both settings looking correct.
-func TestWatchDir_DerivesFromTheClipFolderUnlessSetExplicitly(t *testing.T) {
-	for _, tc := range []struct {
-		name, clipDir, watchDir, want string
-	}{
-		{"derived from the clip folder", "/data/filler", "", "/data/filler/" + WatchDirName},
-		{"follows the clip folder elsewhere", "/mnt/library", "", "/mnt/library/" + WatchDirName},
-		{"an explicit inbox wins", "/data/filler", "/mnt/inbox", "/mnt/inbox"},
-		{"nothing configured stays nothing", "", "", ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := WatchDir(tc.clipDir, tc.watchDir); got != tc.want {
-				t.Errorf("WatchDir(%q, %q) = %q, want %q", tc.clipDir, tc.watchDir, got, tc.want)
-			}
-		})
-	}
-}
-
 // ⚠ **THE case every unit test missed until the real binary was run.** `FILLER_DIR` has always
 // been documented as *the* drop-folder — an operator copies `Frosted Flakes 1993.mp4` straight
 // into it, and every release before V38c worked that way.

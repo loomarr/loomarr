@@ -139,13 +139,13 @@ func TestArchive_DownloadsItemAndSidecar(t *testing.T) {
 	// every auto-fetched clip went straight to air unreviewed. Found by running auto-fetch
 	// against real archive.org collections and reading `held=false` off every row.
 	//
-	// Asserted through `filler.SidecarFetchedMark()` rather than a literal, so this test and the
+	// Asserted through `filler.SidecarFetchedMarkForAcquisition` rather than a literal, so this test and the
 	// sync's `wasFetchedByUs` cannot drift apart into two spellings of the same key.
 	ours, ok := sc[filler.SidecarLoomarrKey()].(map[string]any)
 	if !ok {
 		t.Fatalf("downloaded clip is not marked as ours — it would file WITHOUT REVIEW: %+v", sc)
 	}
-	for k, want := range filler.SidecarFetchedMark() {
+	for k, want := range filler.SidecarFetchedMarkForAcquisition("", "") {
 		if ours[k] != want {
 			t.Errorf("fetched mark %s = %v, want %v", k, ours[k], want)
 		}

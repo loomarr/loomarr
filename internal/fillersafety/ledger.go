@@ -65,6 +65,12 @@ type SourcePlanned struct {
 	Video Span `json:"video"`
 }
 
+// Span is one complete source-relative media interval.
+type Span struct {
+	StartMS int64 `json:"startMs"`
+	EndMS   int64 `json:"endMs"`
+}
+
 type ProposalCompleted struct {
 	State          ProposalState `json:"state"`
 	ProposerSHA256 string        `json:"proposerSha256"`

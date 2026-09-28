@@ -354,6 +354,21 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// in PartIndex order) afterward.
 	collapsed, expand := collapseGroups(slots)
 
+	// A windowed shuffle or syndication deck is NOT put in recency order (#1694). The window slice
+	// tiles the seeded deck, so consecutive windows air consecutive tiles. Sorting by recency first
+	// moved the just-aired units to the tail, where some windows' slice offsets landed, and moved
+	// every other unit off its tile, so a slice overran into the next window's tile and re-aired
+	// films nobody watched (the history never records those); syndication shuffled the sorted
+	// deck, so each new record dealt a different deck. Recency instead guards the slice: see
+	// tradeRecent. A deck that fits one window has no tiles (it airs whole every window), so
+	// recency still orders it; with no window or no history, ordering is as before.
+	history := rp.LastAired
+	guardSlice := (rp.Ordering == OrderShuffle || rp.Ordering == OrderSyndication) && len(history) > 0 && window > 0 &&
+		programRuntime(collapsed) > window.Milliseconds()
+	if guardSlice {
+		rp.LastAired = nil
+	}
+
 	// Policy-aware ordering + separation (§3/§5), then the relaxation ladder (§7)
 	// records any windows it had to loosen to fill the cycle.
 	ordered, applied := slotWithRelaxation(collapsed, rp, seed)
@@ -365,7 +380,12 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// (backward compat + the "full binge" sentinel). Runs on the collapsed deck, so a
 	// super-slot (two-parter/franchise) is kept whole and never split by the window seam.
 	orderedAll := append([]Slot(nil), ordered...)
-	ordered = windowSlice(ordered, window, windowIdx)
+	if guardSlice {
+		since := windowOpening(windowIdx-1, window, ch.WindowZone)
+		ordered = tradeRecent(ordered, windowSlice(ordered, window, windowIdx), history, since, window)
+	} else {
+		ordered = windowSlice(ordered, window, windowIdx)
+	}
 
 	// Expand super-slots back into their real parts now that ordering + windowing are done.
 	orderedAll = expandGroups(orderedAll, expand)
@@ -562,6 +582,17 @@ func windowSlice(slots []Slot, window time.Duration, index int64) []Slot {
 // runtime budget — the per-window rotation stride (§6.5). Counts whole programs whose summed
 // runtime first meets the budget (the same "first meets, then stop" rule windowSlice fills
 // with), so a window and its stride stay consistent. Non-program slots don't count.
+// programRuntime is the summed runtime of the program slots, in milliseconds.
+func programRuntime(slots []Slot) int64 {
+	var total int64
+	for _, s := range slots {
+		if s.IsProgram() {
+			total += s.DurationMs
+		}
+	}
+	return total
+}
+
 func programsPerWindow(slots []Slot, budgetMs int64) int {
 	var acc int64
 	n := 0

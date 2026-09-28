@@ -6,49 +6,9 @@ import (
 	"time"
 )
 
-const (
-	EvaluationReportSchemaVersion   = 1
-	EvaluationReportContractVersion = "filler-spoken-safety-evaluation-report-v1"
-)
-
-var (
-	// ErrEvaluationInvalid reports an invalid operation dependency or request
-	// without carrying source identity, paths, or provider detail.
-	ErrEvaluationInvalid = errors.New("spoken-safety evaluation: invalid")
-	// ErrEvaluationIncomplete requires recovery and a new run identity. An
-	// incomplete durable run is never resumed or silently replayed in place.
-	ErrEvaluationIncomplete = errors.New("spoken-safety evaluation: incomplete run")
-)
-
-// EvaluationOperation is the one external spoken-safety execution seam. Its
-// result is evidence only and cannot grant filler admission or ingestion.
-type EvaluationOperation interface {
-	Evaluate(context.Context, EvaluationRequest) (EvaluationReport, error)
-}
-
-// EvaluationRequest binds a stable attempt identity to one complete-source
-// request. Source.Path is used only while the operation owns its private file
-// snapshot and is excluded from every returned and durable value.
-type EvaluationRequest struct {
-	RunID               string
-	StartedAt           time.Time
-	CertificationSHA256 string
-	Source              SourceRequest
-}
-
-// EvaluationReport is the canonical path-free result of one terminal run.
-type EvaluationReport struct {
-	SchemaVersion     int       `json:"schemaVersion"`
-	ContractVersion   string    `json:"contractVersion"`
-	Run               LedgerRun `json:"run"`
-	Evidence          Evidence  `json:"evidence"`
-	Result            Result    `json:"result"`
-	TerminalEventID   string    `json:"terminalEventId"`
-	TerminalEventIDs  []string  `json:"terminalEventIds"`
-	TerminalCreatedAt time.Time `json:"terminalCreatedAt"`
-	TerminalSHA256    string    `json:"terminalSha256"`
-	SHA256            string    `json:"sha256"`
-}
+// ErrEvaluationInvalid reports an invalid hosted-call command without carrying source identity,
+// paths, or provider detail.
+var ErrEvaluationInvalid = errors.New("spoken-safety evaluation: invalid")
 
 // HostedCallBudget carries the existing V62 spend ceilings into the domain-
 // owned persistence port.
@@ -113,11 +73,4 @@ type ExecutionRepository interface {
 	ListSpokenSafetyEvents(context.Context, string) ([]LedgerEvent, error)
 	ReserveSpokenSafetyCall(context.Context, HostedCallReservation) (LedgerEvent, error)
 	SettleSpokenSafetyCall(context.Context, HostedCallSettlement) (LedgerEvent, error)
-}
-
-type hostedCallIdentity struct {
-	RequestedProvider, RequestedModel                 string
-	ResolvedProvider, ResolvedModel, UpstreamProvider string
-	CapabilitySHA256, PromptSHA256, SchemaSHA256      string
-	MaxChargeNanoUSD                                  int64
 }

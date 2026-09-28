@@ -158,24 +158,6 @@ func PreviewPathFor(clipPath string) string {
 	return strings.TrimSuffix(clipPath, ext) + ".webp"
 }
 
-// GenerateArtwork fills in Thumbnail and Preview for every clip missing either, and returns how
-// many failed.
-//
-// Existing files are NOT regenerated: a scan runs periodically (FILLER_SYNC_EVERY), and
-// re-rendering each pass would spend an ffmpeg exec per clip per cycle forever to reproduce files
-// that are already correct. A changed clip changes its hash — which is its identity — so
-// stale-but-matching artwork is not a state this can be in.
-//
-// ⚠ Failures must be COUNTED, not swallowed. The scan already has a cautionary tale: an earlier
-// version handed the ffmpeg path to something that ran it as ffprobe, every probe failed, and
-// because unprobeable files are skipped by design the catalog came back silently empty with no
-// error anywhere (see FFprobeNextTo). This pass has exactly that shape — best-effort, failures
-// skipped — so it returns a count and the caller logs it. A misconfigured ffmpeg then reads as
-// "0 of 412 generated" rather than as artwork mysteriously not existing.
-func GenerateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer) (failed int) {
-	return generateArtwork(ctx, dir, clips, render, nil).Failed
-}
-
 // maxReportedArtworkErrors bounds the per-clip errors carried in one warning.
 const maxReportedArtworkErrors = 3
 
@@ -196,6 +178,20 @@ func (r artworkReport) AllRendersFailed() bool {
 	return r.Attempted > 0 && r.RenderFailed == r.Attempted
 }
 
+// generateArtwork fills in Thumbnail and Preview for every clip missing either, and reports how
+// many failed.
+//
+// Existing files are NOT regenerated: a scan runs periodically (FILLER_SYNC_EVERY), and
+// re-rendering each pass would spend an ffmpeg exec per clip per cycle forever to reproduce files
+// that are already correct. A changed clip changes its hash — which is its identity — so
+// stale-but-matching artwork is not a state this can be in.
+//
+// ⚠ Failures must be COUNTED, not swallowed. The scan already has a cautionary tale: an earlier
+// version handed the ffmpeg path to something that ran it as ffprobe, every probe failed, and
+// because unprobeable files are skipped by design the catalog came back silently empty with no
+// error anywhere (see FFprobeNextTo). This pass has exactly that shape — best-effort, failures
+// skipped — so it returns a count and the caller logs it. A misconfigured ffmpeg then reads as
+// "0 of 412 generated" rather than as artwork mysteriously not existing.
 func generateArtwork(ctx context.Context, dir string, clips []RawClip, render ArtworkRenderer, governor *storagegovernor.Governor) (report artworkReport) {
 	if dir == "" || len(clips) == 0 {
 		return report
