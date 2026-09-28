@@ -248,5 +248,3 @@ func runStructureAssessmentDecode(ctx context.Context, ffmpegPath, path string) 
 		"-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-",
 	})
 }
-
-var _ StructureAssessmentMediaPreparer = (*FFmpegStructureAssessmentMediaPreparer)(nil)
