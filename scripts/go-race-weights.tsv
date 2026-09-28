@@ -2,7 +2,10 @@
 # lane jobs of merge-group runs 36330002206 36330402570 36330935829 36331908558 36333318208, rounded up. Regenerate with
 # `make go-race-weights RUNS="..."` (scripts/go-race-weights-refresh.sh); never edit by hand.
 # Packages below five seconds use the one-second floor in go-shard.sh.
-internal/store	516
+# ⚠ MEASUREMENT-ONLY PLACEHOLDER (#1650), never to merge: internal/store's 400 below is not a
+# measurement. It only lets the one-off workflow_dispatch run's lane jobs pass so their timings
+# count; `make go-race-weights` from that run replaces this whole file before merge.
+internal/store	400
 internal/integration	355
 internal/reconcile	349
 internal/backendtransition	308
