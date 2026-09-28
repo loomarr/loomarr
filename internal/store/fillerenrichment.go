@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -136,12 +135,10 @@ func (s *sqlStore) ApplyFillerEnrichment(ctx context.Context, candidate filleren
 }
 
 func (s *sqlStore) requireEnrichmentClipTx(ctx context.Context, tx *sql.Tx, clipHash string) error {
-	var clipExists int
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips WHERE hash = ?`), clipHash).Scan(&clipExists); err != nil {
-		return fmt.Errorf("apply filler enrichment: find clip: %w", err)
-	}
-	if clipExists == 0 {
-		return ErrNotFound
+	if err := s.clipsIn(tx).Require(ctx, clipHash); err != nil && !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("apply filler enrichment: %w", err)
+	} else if err != nil {
+		return err
 	}
 	return nil
 }
@@ -223,61 +220,40 @@ func (s *sqlStore) groundEnrichmentStateTx(ctx context.Context, tx *sql.Tx, stat
 
 func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx *sql.Tx, state fillerenrichment.State, updatedAt time.Time) error {
 	var err error
+	clips := s.clipsIn(tx)
 	switch state.Axis {
 	case fillerenrichment.AxisKind:
 		if kind := filler.Kind(state.Value.Text); kind == filler.Commercial || kind == filler.Bumper ||
 			kind == filler.StationID || kind == filler.PSA || kind == filler.Trailer || kind == filler.Interstitial {
-			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET kind = ?, updated_at = ? WHERE hash = ? AND kind = ?`),
-				string(kind), epoch(updatedAt), state.ClipHash, string(filler.Unclassified))
+			err = clips.ClassifyKind(ctx, state.ClipHash, kind, updatedAt)
 		}
 	case fillerenrichment.AxisEra:
 		if state.Value.Year > 0 {
-			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET era = ?, updated_at = ? WHERE hash = ?`), state.Value.Year, epoch(updatedAt), state.ClipHash)
+			err = clips.SetEra(ctx, state.ClipHash, state.Value.Year, updatedAt)
 		}
 	case fillerenrichment.AxisAudience:
 		if audience := filler.AudienceFromString(state.Value.Text); audience != "" {
-			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET audience = ?, updated_at = ? WHERE hash = ? AND audience = ''`), string(audience), epoch(updatedAt), state.ClipHash)
+			err = clips.FillAudience(ctx, state.ClipHash, string(audience), updatedAt)
 		}
 	case fillerenrichment.AxisBrand:
 		if state.Value.Text != "" {
-			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET brand = ?, updated_at = ? WHERE hash = ?`), state.Value.Text, epoch(updatedAt), state.ClipHash)
+			err = clips.SetBrand(ctx, state.ClipHash, state.Value.Text, updatedAt)
 		}
 	case fillerenrichment.AxisLanguage:
 		if state.Value.Text != "" {
-			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET language = ?, updated_at = ? WHERE hash = ? AND language = ''`), state.Value.Text, epoch(updatedAt), state.ClipHash)
+			err = clips.FillLanguage(ctx, state.ClipHash, state.Value.Text, updatedAt)
 		}
 	case fillerenrichment.AxisGeography:
 		g := state.Value.Geography
 		if g != (fillerenrichment.Geography{}) {
-			_, err = tx.ExecContext(ctx, s.ph(`UPDATE clips SET geographic_scope = ?, country = ?, market = ?,
-				network = ?, station = ?, air_date = ?, geo_evidence = ?, updated_at = ?
-				WHERE hash = ? AND (geographic_scope = '' OR geographic_scope = 'unknown') AND country = ''`),
-				g.Scope, g.Country, g.Market, g.Network, g.Station, g.AirDate, state.Evidence.Reference,
-				epoch(updatedAt), state.ClipHash)
+			err = clips.FillGeography(ctx, state.ClipHash, ClipGeography{
+				Scope: g.Scope, Country: g.Country, Market: g.Market,
+				Network: g.Network, Station: g.Station, AirDate: g.AirDate,
+			}, state.Evidence.Reference, updatedAt)
 		}
 	default:
 		if taxonomyEnrichmentAxis(state.Axis) && len(state.Value.Tags) > 0 {
-			if s.dialect == DialectPostgres {
-				if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(hashtext('loomarr-taxonomy'))`); err != nil {
-					return fmt.Errorf("project filler enrichment taxonomy lock: %w", err)
-				}
-			}
-			leaves, err := getClipTagsFrom(ctx, tx, s.ph, state.ClipHash, true)
-			if err != nil {
-				return err
-			}
-			seen := make(map[string]bool, len(leaves)+len(state.Value.Tags))
-			for _, leaf := range leaves {
-				seen[leaf] = true
-			}
-			for _, tag := range state.Value.Tags {
-				if !seen[tag] {
-					leaves = append(leaves, tag)
-					seen[tag] = true
-				}
-			}
-			sort.Strings(leaves)
-			if err := s.setClipTagsTx(ctx, tx, state.ClipHash, leaves); err != nil {
+			if err := clips.AddLeafTags(ctx, state.ClipHash, state.Value.Tags); err != nil {
 				return err
 			}
 		}
@@ -300,13 +276,8 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 	if err := s.requireEnrichmentClipTx(ctx, tx, pass.ClipHash); err != nil {
 		return 0, err
 	}
-	revisionQuery := `SELECT enrichment_revision FROM clips WHERE hash = ?`
-	if s.dialect == DialectPostgres {
-		revisionQuery += ` FOR UPDATE`
-	}
-	var inputRevision int64
-	if err := tx.QueryRowContext(ctx, s.ph(revisionQuery),
-		pass.ClipHash).Scan(&inputRevision); err != nil {
+	inputRevision, err := s.clipsIn(tx).EnrichmentRevision(ctx, pass.ClipHash)
+	if err != nil {
 		return 0, fmt.Errorf("apply filler enrichment pass: read input revision: %w", err)
 	}
 	changed := 0
@@ -318,28 +289,13 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 		}
 	}
 	if pass.Observation != nil && pass.Observation.Transcript != nil {
-		transcript := *pass.Observation.Transcript
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET
-			enrichment_revision = CASE WHEN transcript <> ? THEN enrichment_revision + 1 ELSE enrichment_revision END,
-			transcript = ?, updated_at = ? WHERE hash = ?`),
-			transcript, transcript, epoch(pass.CompletedAt), pass.ClipHash); err != nil {
+		if err := s.clipsIn(tx).RecordTranscript(ctx, pass.ClipHash, *pass.Observation.Transcript, pass.CompletedAt); err != nil {
 			return 0, fmt.Errorf("apply filler enrichment pass: record transcript observation: %w", err)
 		}
 	}
 	if pass.Observation != nil && pass.Observation.Vision != nil {
 		vision := pass.Observation.Vision
-		if _, err := tx.ExecContext(ctx, s.ph(`UPDATE clips SET
-			enrichment_revision = CASE
-				WHEN visible_text <> ? OR vision_tagged = ? THEN enrichment_revision + 1
-				ELSE enrichment_revision END,
-			visible_text = ?, vision_tagged = ?,
-			suggested_era = CASE
-				WHEN era > 0 THEN 0
-				WHEN ? > 0 AND suggested_era = 0 THEN ?
-				ELSE suggested_era END,
-			updated_at = ? WHERE hash = ?`),
-			vision.VisibleText, false, vision.VisibleText, true,
-			vision.SuggestedEra, vision.SuggestedEra, epoch(pass.CompletedAt), pass.ClipHash); err != nil {
+		if err := s.clipsIn(tx).RecordVision(ctx, pass.ClipHash, vision.VisibleText, vision.SuggestedEra, pass.CompletedAt); err != nil {
 			return 0, fmt.Errorf("apply filler enrichment pass: record vision observation: %w", err)
 		}
 	}

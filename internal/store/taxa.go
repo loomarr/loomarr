@@ -459,7 +459,7 @@ func (s *sqlStore) SetClipTags(ctx context.Context, clipHash string, leaves []st
 
 // setClipTagsTx is the transactional taxonomy projection primitive shared by direct clip edits and
 // semantic classifier writes. The caller owns the transaction and the shared taxonomy lock.
-func (s *sqlStore) setClipTagsTx(ctx context.Context, tx *sql.Tx, clipHash string, leaves []string) error {
+func (s *sqlStore) setClipTagsTx(ctx context.Context, tx Querier, clipHash string, leaves []string) error {
 	var clipExists int
 	if err := tx.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM clips WHERE hash = ?`), clipHash).Scan(&clipExists); err != nil {
 		return fmt.Errorf("set clip tags: find clip: %w", err)
@@ -618,7 +618,7 @@ func (s *sqlStore) rebuildRollupsTx(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-func (s *sqlStore) rebuildClipRollupsTx(ctx context.Context, tx *sql.Tx, clipHash string) error {
+func (s *sqlStore) rebuildClipRollupsTx(ctx context.Context, tx Querier, clipHash string) error {
 	if _, err := tx.ExecContext(ctx, s.ph(
 		`INSERT INTO clip_tags (clip_hash, taxon, leaf)
 		 SELECT DISTINCT l.clip_hash, c.ancestor, FALSE
@@ -639,7 +639,7 @@ func (s *sqlStore) rebuildClipRollupsTx(ctx context.Context, tx *sql.Tx, clipHas
 // One correlated UPDATE is deliberately used on both dialects. taxa_closure includes each node's
 // self-pair, so its row count is the node's stable depth measure; ties use slug order exactly like
 // taxonomy.Forest.PrimaryProductLeaf.
-func (s *sqlStore) rebuildCategoryShadowsTx(ctx context.Context, tx *sql.Tx, clipHash string) error {
+func (s *sqlStore) rebuildCategoryShadowsTx(ctx context.Context, tx Querier, clipHash string) error {
 	query := `UPDATE clips SET category = COALESCE((
 		SELECT ct.taxon
 		FROM clip_tags ct
