@@ -103,6 +103,26 @@ After a reconcile that creates, renames or deletes channels, the scheduler pokes
 - **Guide refresh** (the `RefreshGuide` task) updates programme data for channels the server
   already knows. A lineup change on an existing channel needs only this.
 
+## Tonight's highlights
+
+`GET /v1/guide/highlights?from&to&limit` picks the few airings Home's **Tonight** calls out
+(#1664), from the same real-airtime walk the XMLTV guide uses (no pending placeholders). Each
+carries a typed `reason` the client words; no client ranks airings. What counts is premieres and
+marathons (#1659 H3); movies and "new on this channel" don't.
+
+- A **run** is one show's episodes back to back on a Channel. Breaks and dead air inside it don't
+  end it; any other programme does.
+- A run holding an episode 1 of season 1 or later is a `series_premiere` (season 1) or
+  `season_premiere`. Specials (season 0) are not premieres. When three or more episodes follow from
+  it, the premiere also carries the run (`episodes`, `untilMs`).
+- Otherwise a run of three or more is a `marathon`.
+- One highlight per run. Premieres outrank marathons and longer marathons outrank shorter; every
+  Channel gets one before any gets a second, and the chosen few come back in airtime order.
+  Paused and detached Channels are skipped.
+
+The window defaults to six hours from now and is capped at 24; the client sends "tonight" in its
+own clock. Artwork is resolved only for the chosen airings, in one batch.
+
 ## Airing history
 
 `airings` records one row per airing of a unit, an episode or a film
