@@ -1,21 +1,30 @@
-import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import * as channelsApi from "@loomarr/api/endpoints/channels";
-import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import { unwrap } from "@loomarr/api/unwrap";
+import {
+  type GuideAiringLayout,
+  type GuideChannelLayout,
+  type GuideLayout,
+  type GuideNavigationDirection,
+  type GuideSelection,
+  guideSelectionForChannel,
+  layoutGuide,
+  moveGuideSelection,
+} from "@loomarr/core/guide";
+import { AdaptiveSplit, adaptiveBreakpoints } from "@loomarr/design-system";
+import { GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { SlidersHorizontal, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { SlidersHorizontal, Sparkles, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { GuideDetailCard } from "@/components/loomarr/guide/guide-detail-card";
-import { GuideGrid } from "@/components/loomarr/guide/guide-grid";
 import { ColorBars } from "@/components/loomarr/shell/color-bars";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { TvStatic } from "@/components/loomarr/shell/tv-static";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
+import { Image } from "@/components/ui/image";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLoomarrEventListener } from "@/events/events-provider";
 import { cn } from "@/lib/utils";
@@ -43,17 +52,8 @@ import type { GuidePageProps } from "./guide-page.type";
 // block, so a programme, a commercial pod and a still-acquiring slot render as three different
 // things rather than as one undifferentiated "gap".
 
-// Zoom magnifies the TIME AXIS: at 2× an hour occupies twice the pixels, so the grid overflows
-// its viewport and scrolls horizontally. It no longer scales chrome (rail, row height, type) —
-// that made zooming out shrink titles to ~9px, and it is the reason titles were unreadable.
-//
-// 1 means "the whole requested window fits the viewport exactly", which is where the guide
-// opens and the only stop with no horizontal scrolling. Below it the window still fits (the
-// grid just gets denser, useful for scanning a long day); above it you are genuinely zoomed in.
-// The ceiling is 4× — beyond that a 4-hour window is a dozen screens wide and the day-picker is
-// the better tool.
-const ZOOM_STOPS = [0.75, 1, 1.5, 2, 3, 4] as const;
-const DEFAULT_ZOOM_INDEX = 1;
+// The grid is the shared `ui/guide` one (#1659, N7). The window always fits the grid's width, and
+// the span picker below is how you see more or less time (it replaced zoom, #1659).
 
 // How far a window may span. Kept as compact chips because this is the everyday view choice;
 // the longer phrase remains in each chip's accessible name.
@@ -87,6 +87,35 @@ const hourLabel = (h: number) => {
   return `${twelve} ${suffix}`;
 };
 
+// The selection survives a new window or a refetch: the same channel, at the block nearest the
+// same time, as the shared guide controller does. Otherwise the block airing now on the first
+// channel.
+const reconcileSelection = (
+  layout: GuideLayout | undefined,
+  selection: GuideSelection | undefined,
+  atMs: number,
+): GuideSelection | undefined => {
+  if (!layout) return undefined;
+  const kept = selection && guideSelectionForChannel(layout, selection.channelId, selection.anchorMs);
+  const first = layout.channels[0]?.source.channelId;
+  return kept ?? (first ? guideSelectionForChannel(layout, first, atMs) : undefined);
+};
+
+// The programme card's art: the same Image (ThumbHash placeholder, sized sources) the old
+// detail card used, contained rather than cropped so it still identifies what will air.
+const renderArtwork = (airing: GuideAiringLayout) =>
+  airing.source.thumbImage ? (
+    <Image image={airing.source.thumbImage} alt="" sizes="360px" className="size-full object-contain" />
+  ) : airing.source.thumbUrl ? (
+    <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
+  ) : undefined;
+
+// AdaptiveSplit measures the window, but this page sits beside the shell's sidebar (md:w-56). The
+// card moves below the grid where the pointer guide's would, measured from the content area, so a
+// 900px window stacks instead of squeezing the grid to a sliver.
+const SHELL_SIDEBAR_PX = 224;
+const SPLIT_BREAKPOINT = adaptiveBreakpoints.pointer + SHELL_SIDEBAR_PX;
+
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
 // The day picker's label: relative for the days people actually mean, absolute beyond that.
@@ -102,12 +131,11 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
-  const [zoomIndex, setZoomIndex] = useState<number>(DEFAULT_ZOOM_INDEX);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [inspected, setInspected] = useState<GuideAiring | null>(null);
-  // The real inspected block, not an estimated row/percentage. The floating positioner reads
-  // its current viewport geometry, follows Guide scrolling and resolves edge collisions.
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  // The keyboard's block (the grid's one Tab stop) and the block under the pointer. The
+  // programme card beside the grid shows the hovered one, else the selected one.
+  const [selection, setSelection] = useState<GuideSelection>();
+  const [hovered, setHovered] = useState<GuideSelection>();
   const [dayOffset, setDayOffset] = useState<number>(0);
   const [windowMinutes, setWindowMinutes] = useState<number>(DEFAULT_WINDOW_MINUTES);
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
@@ -116,11 +144,11 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
   // null = "follow now" (the default). A number pins the window to that hour of the shown day,
   // which is how you ask "what airs at 7am?" without stepping there an hour at a time.
   const [startHour, setStartHour] = useState<number | null>(null);
-  // Precise start and zoom are useful planning tools, but not the questions most people ask on
-  // every visit. Keep them in one secondary row and announce when a hidden non-default remains
-  // active, so progressive disclosure never turns into invisible state.
+  // A precise start is a useful planning tool, but not a question most people ask on every
+  // visit. It lives in a secondary row, and the trigger announces when a hidden non-default
+  // remains active, so progressive disclosure never turns into invisible state.
   const [viewOptionsOpen, setViewOptionsOpen] = useState(false);
-  const hasCustomView = startHour !== null || zoomIndex !== DEFAULT_ZOOM_INDEX;
+  const hasCustomView = startHour !== null;
   // The inline "describe a channel" surface. Creating a channel IS describing one (Suggest),
   // so the create path is the ChannelSuggestPanel expanded in place — no separate empty-shell
   // dialog. `adding` toggles it open.
@@ -237,6 +265,35 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
   // and treating that as empty would flash the empty state (and hide the header button)
   // before the guide has answered.
   const isEmpty = channels.length === 0 && !guide.isLoading;
+
+  // The now-line and "on now" belong to TODAY: another day's window never contains nowMs, so
+  // the shared layout draws neither there.
+  // Laid out only when there are channels to lay out: an empty guide shows Dead air, and a body
+  // without `channels` (which `channels` above already reads defensively) must not reach it.
+  const layout = useMemo(
+    () => (body && channels.length > 0 ? layoutGuide(body, nowMs) : undefined),
+    [body, channels, nowMs],
+  );
+  const selected = useMemo(() => reconcileSelection(layout, selection, nowMs), [layout, selection, nowMs]);
+  const onMove = useCallback(
+    (direction: GuideNavigationDirection) => {
+      if (!layout || !selected) return undefined;
+      const moved = moveGuideSelection(layout, selected, direction);
+      if (!moved.boundary) setSelection(moved.selection);
+      return moved;
+    },
+    [layout, selected],
+  );
+  const onOpenChannel = useCallback(
+    (id: string) => void navigate({ to: "/channels/$id", params: { id } }),
+    [navigate],
+  );
+  const renderRowMenu = useCallback(
+    (ch: GuideChannelLayout["source"]) => (
+      <ChannelRowMenu channel={{ id: ch.channelId, name: ch.name, status: ch.status }} />
+    ),
+    [],
+  );
 
   const dayChoices = useMemo(() => {
     const out: number[] = [];
@@ -480,46 +537,6 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="flex items-center gap-1.75">
-                <Caption shout className="tracking-[0.06em]">
-                  Zoom
-                </Caption>
-                <div className="flex items-center gap-1">
-                  {/* Magnifier icons distinguish view scaling from add/remove actions. */}
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="size-6.5"
-                    aria-label="Zoom out"
-                    disabled={zoomIndex === 0}
-                    onClick={() => setZoomIndex((i) => Math.max(0, i - 1))}
-                  >
-                    <ZoomOut className="size-3.5" aria-hidden />
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => setZoomIndex(DEFAULT_ZOOM_INDEX)}
-                    aria-label="Reset zoom to 100%"
-                    className={cn(
-                      "w-9 cursor-pointer text-center font-mono text-2xs transition-colors hover:text-static-0",
-                      zoomIndex === DEFAULT_ZOOM_INDEX ? "text-static-400" : "text-signal",
-                    )}
-                  >
-                    {Math.round((ZOOM_STOPS[zoomIndex] ?? 1) * 100)}%
-                  </button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="size-6.5"
-                    aria-label="Zoom in"
-                    disabled={zoomIndex === ZOOM_STOPS.length - 1}
-                    onClick={() => setZoomIndex((i) => Math.min(ZOOM_STOPS.length - 1, i + 1))}
-                  >
-                    <ZoomIn className="size-3.5" aria-hidden />
-                  </Button>
-                </div>
-              </div>
             </div>
           )}
         </>
@@ -587,8 +604,7 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
             />
           </div>
         ) : (
-          // The detail card floats over the grid rather than displacing it: inspecting a block
-          // must not reflow the schedule under the pointer.
+          // The pointer guide's programme card sits beside the grid, in its AdaptiveSplit.
           <div className="relative flex min-h-0 flex-1">
             {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
@@ -599,47 +615,33 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
                 className="pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-signal"
               />
             )}
-            <GuideGrid
-              channels={channels}
-              fromMs={body?.fromMs ?? from}
-              toMs={body?.toMs ?? to}
-              timezone={body?.timezone}
-              zoom={ZOOM_STOPS[zoomIndex]}
-              // The now-line belongs to TODAY. Drawing it on another day would mark an instant
-              // that is not in the window being shown.
-              nowMs={dayOffset === 0 ? nowMs : undefined}
-              onInspect={(a, _channelId, at) => {
-                setInspected(a);
-                if (a && at) setAnchor(at);
-              }}
-              onSelectChannel={(id) => navigate({ to: "/channels/$id", params: { id } })}
-              renderRowMenu={(ch) => (
-                <ChannelRowMenu channel={{ id: ch.channelId, name: ch.name, status: ch.status }} />
-              )}
-            />
-            {/* A portal keeps the readout clear of the Guide's overflow container. The actual
-              block is its anchor, and Base UI flips then shifts the card against the browser
-              viewport — no row-number threshold can account for virtualization, browser
-              height, or the different heights of programme and filler cards. */}
-            <TooltipPrimitive.Root open={inspected !== null && anchor !== null}>
-              <TooltipPrimitive.Portal>
-                <TooltipPrimitive.Positioner
-                  anchor={anchor}
-                  side="bottom"
-                  align="start"
-                  sideOffset={4}
-                  positionMethod="fixed"
-                  collisionBoundary={document.documentElement}
-                  collisionPadding={8}
-                  data-testid="guide-detail-positioner"
-                  className="pointer-events-none z-40"
-                >
-                  <TooltipPrimitive.Popup className="pointer-events-none">
-                    <GuideDetailCard airing={inspected} timezone={body?.timezone} />
-                  </TooltipPrimitive.Popup>
-                </TooltipPrimitive.Positioner>
-              </TooltipPrimitive.Portal>
-            </TooltipPrimitive.Root>
+            {layout && (
+              <AdaptiveSplit
+                breakpoint={SPLIT_BREAKPOINT}
+                flex={1}
+                minHeight={0}
+                primary={
+                  <GuideGrid
+                    layout={layout}
+                    nowMs={nowMs}
+                    onHover={setHovered}
+                    onMove={onMove}
+                    onOpenChannel={onOpenChannel}
+                    onSelect={setSelection}
+                    renderRowMenu={renderRowMenu}
+                    selection={selected}
+                  />
+                }
+                secondary={
+                  <GuideProgrammeDetail
+                    layout={layout}
+                    renderArtwork={renderArtwork}
+                    selection={hovered ?? selected}
+                  />
+                }
+                secondaryWidth={360}
+              />
+            )}
           </div>
         ))}
     </div>

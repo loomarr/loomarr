@@ -188,4 +188,4 @@ const Disclosure = ({
 };
 
 export type { AdaptiveDirection, AdaptiveSplitProps, DisclosureProps, ScrollFrameProps };
-export { AdaptiveSplit, Disclosure, resolveAdaptiveDirection, ScrollFrame };
+export { AdaptiveSplit, adaptiveBreakpoints, Disclosure, resolveAdaptiveDirection, ScrollFrame };

@@ -43,8 +43,8 @@ globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
 //       view. Removing it fails 31 tests. The old comment credited this to Radix; it was ours.
 //
 //   ResizeObserver
-//       KEPT. The suite passes without it today, but `guide-grid` constructs two of them in app
-//       code, so its absence is one un-exercised render away from a confusing throw. `??=` makes
+//       KEPT. The Guide's rows (react-virtual, in `ui/guide`) observe their scroller with one,
+//       so its absence is one un-exercised render away from a confusing throw. `??=` makes
 //       keeping it free.
 Element.prototype.scrollIntoView ??= () => {};
 globalThis.ResizeObserver ??= class {

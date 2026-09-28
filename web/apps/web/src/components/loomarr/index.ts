@@ -10,7 +10,6 @@ export * from "./channels";
 export * from "./dashboard";
 export * from "./feedback";
 export * from "./filler";
-export * from "./guide";
 export * from "./people";
 export * from "./settings";
 export * from "./setup";
