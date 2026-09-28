@@ -15,7 +15,7 @@ import {
   monogramOf,
 } from "@loomarr/core/guide";
 import { brandChroma, Surface, Text, type TextTone } from "@loomarr/design-system";
-import { memo, type RefObject, useEffect, useRef, useState } from "react";
+import { memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
 import type { GuideGridProps } from "./guide-grid.type";
@@ -118,6 +118,7 @@ type BlockProps = {
   focusPending?: RefObject<boolean>;
   /** The grid's one Tab stop (roving tabindex). */
   focusable: boolean;
+  onHover?: (selection: GuideSelection | undefined) => void;
   onOpen?: () => void;
   onSelect?: (selection: GuideSelection) => void;
   px: number;
@@ -125,7 +126,17 @@ type BlockProps = {
   timezone?: string;
 };
 
-const Block = ({ airing, focusPending, focusable, onOpen, onSelect, px, selected, timezone }: BlockProps) => {
+const Block = ({
+  airing,
+  focusPending,
+  focusable,
+  onHover,
+  onOpen,
+  onSelect,
+  px,
+  selected,
+  timezone,
+}: BlockProps) => {
   const ref = useRef<View>(null);
   const [focused, setFocused] = useState(false);
   const a = airing.source;
@@ -156,6 +167,8 @@ const Block = ({ airing, focusPending, focusable, onOpen, onSelect, px, selected
         setFocused(true);
         if (!selected) onSelect?.(selectionOf(airing));
       }}
+      onHoverIn={() => onHover?.(selectionOf(airing))}
+      onHoverOut={() => onHover?.(undefined)}
       onPress={onOpen}
       ref={ref}
       style={{
@@ -276,8 +289,10 @@ const Row = memo(
     channel,
     focusPending,
     nowRatio,
+    onHover,
     onOpenChannel,
     onSelect,
+    renderRowMenu,
     tabStop,
     timelineWidth,
     timezone,
@@ -285,8 +300,10 @@ const Row = memo(
     channel: GuideChannelLayout;
     focusPending: RefObject<boolean>;
     nowRatio?: number;
+    onHover?: (selection: GuideSelection | undefined) => void;
     onOpenChannel?: (channelId: string) => void;
     onSelect?: (selection: GuideSelection) => void;
+    renderRowMenu?: (channel: GuideChannelLayout["source"]) => ReactNode;
     /** The block that is the grid's Tab stop, when it is in this row. */
     tabStop?: string;
     timelineWidth: number;
@@ -357,8 +374,8 @@ const Row = memo(
             height={8}
             width={8}
           />
-          {/* The ⋯ channel menu waits on the maintainer's mock of its contents. */}
-          <View style={{ width: 28 }} />
+          {/* The ⋯ slot: the page's channel menu until the maintainer mocks its contents. */}
+          <View style={{ alignItems: "center", width: 28 }}>{renderRowMenu?.(channel.source)}</View>
         </Surface>
         <View style={{ flex: 1, height: ROW, overflow: "hidden", position: "relative" }}>
           {channel.airings.map((airing) => (
@@ -367,6 +384,7 @@ const Row = memo(
               focusable={airing.scheduleBlockId === tabStop}
               focusPending={focusPending}
               key={airing.scheduleBlockId}
+              onHover={onHover}
               onOpen={() => onOpenChannel?.(channel.source.channelId)}
               onSelect={onSelect}
               px={airing.widthRatio * timelineWidth}
@@ -381,7 +399,16 @@ const Row = memo(
   },
 );
 
-const GuideGrid = ({ layout, nowMs, onMove, onOpenChannel, onSelect, selection }: GuideGridProps) => {
+const GuideGrid = ({
+  layout,
+  nowMs,
+  onHover,
+  onMove,
+  onOpenChannel,
+  onSelect,
+  renderRowMenu,
+  selection,
+}: GuideGridProps) => {
   const [timelineWidth, setTimelineWidth] = useState(0);
   const focusPending = useRef(false);
   const typed = useRef({ at: 0, query: "" });
@@ -498,7 +525,9 @@ const GuideGrid = ({ layout, nowMs, onMove, onOpenChannel, onSelect, selection }
           focusPending={focusPending}
           nowRatio={nowRatio}
           onOpenChannel={onOpenChannel}
+          onHover={onHover}
           onSelect={onSelect}
+          renderRowMenu={renderRowMenu}
           tabStop={channel.source.channelId === tabStop?.channelId ? tabStop.scheduleBlockId : undefined}
           timelineWidth={timelineWidth}
           timezone={layout.timezone}

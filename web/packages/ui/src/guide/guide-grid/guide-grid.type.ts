@@ -1,9 +1,11 @@
 import type {
+  GuideChannelLayout,
   GuideLayout,
   GuideNavigationDirection,
   GuideNavigationResult,
   GuideSelection,
 } from "@loomarr/core/guide";
+import type { ReactNode } from "react";
 
 interface GuideGridProps {
   layout: GuideLayout;
@@ -16,8 +18,12 @@ interface GuideGridProps {
   onMove?: (direction: GuideNavigationDirection) => GuideNavigationResult | undefined;
   /** Opens a channel from its row or one of its blocks. */
   onOpenChannel?: (channelId: string) => void;
+  /** The pointer entered a block (its selection) or left one (undefined). */
+  onHover?: (selection: GuideSelection | undefined) => void;
   /** A block took focus, or type-to-jump chose a channel. Wire it to the controller's `select`. */
   onSelect?: (selection: GuideSelection) => void;
+  /** The row's ⋯ menu, in the channel column's last slot. Keep it stable (useCallback). */
+  renderRowMenu?: (channel: GuideChannelLayout["source"]) => ReactNode;
   /** The selected block: the grid's one Tab stop. Without one, the first block is. */
   selection?: GuideSelection;
 }
