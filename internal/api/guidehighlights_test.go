@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,11 +14,24 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 func episodeAt(series string, season, episode int, start time.Time) playout.Broadcast {
 	return playout.Broadcast{Kind: schedule.SlotProgram, SeriesTitle: series, Title: fmt.Sprintf("Episode %d", episode),
 		Key: provision.Key("series:tvdb:" + series), Season: season, Episode: episode, Start: start, Stop: start.Add(30 * time.Minute)}
+}
+
+func setChannelStrategy(t *testing.T, st store.Store, id string, strategy schedule.Strategy) {
+	t.Helper()
+	ch, err := st.GetChannel(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch.Strategy = strategy
+	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
+		t.Fatal(err)
+	}
 }
 
 type highlightsWire struct {
@@ -48,6 +62,10 @@ func TestGuideHighlightsOverHTTP(t *testing.T) {
 				episodeAt("Space Show", 2, 9, start.Add(time.Hour)),
 				episodeAt("Space Show", 2, 10, start.Add(90*time.Minute)),
 			},
+			// Channels dealing episodes out of order: an episode 1 there is chance, not a premiere.
+			// A shuffle strategy, and a channel with no strategy (a syndication deck).
+			"ch-shuffle": {episodeAt("Cop Show", 1, 1, start), episodeAt("Cop Show", 1, 2, start.Add(30*time.Minute))},
+			"ch-deck":    {episodeAt("Quiz Show", 3, 1, start)},
 			// A paused channel airs nothing, whatever its schedule says.
 			"ch-paused": {episodeAt("Paused Show", 1, 1, start)},
 		},
@@ -59,7 +77,11 @@ func TestGuideHighlightsOverHTTP(t *testing.T) {
 	seedChannel(t, h.Store, "ch-scifi", "Sci-Fi", 7, "internal")
 	seedChannel(t, h.Store, "ch-paused", "Paused", 9, "internal")
 	seedChannel(t, h.Store, "ch-broken", "Broken", 11, "internal")
+	seedChannel(t, h.Store, "ch-shuffle", "Shuffle", 13, "internal")
+	seedChannel(t, h.Store, "ch-deck", "Deck", 15, "internal")
 	setChannelStatus(t, h.Store, "ch-paused", schedule.StatusPaused)
+	setChannelStrategy(t, h.Store, "ch-comedy", schedule.Sequential)
+	setChannelStrategy(t, h.Store, "ch-shuffle", schedule.Shuffle)
 
 	res := do(t, h.Server, http.MethodGet, "/v1/guide/highlights", adminToken, "")
 	if res.StatusCode != http.StatusOK {

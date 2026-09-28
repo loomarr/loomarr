@@ -115,6 +115,10 @@ marathons (#1659 H3); movies and "new on this channel" don't.
 - A run holding an episode 1 of season 1 or later is a `series_premiere` (season 1) or
   `season_premiere`. Specials (season 0) are not premieres. When three or more episodes follow from
   it, the premiere also carries the run (`episodes`, `untilMs`).
+- Premieres count only where the Channel airs episodes in order at that airing's time
+  (`schedule.OrderingAt`: the active rule's ordering, else the policy's, else the strategy's).
+  Only `sequential` qualifies: `shuffle` and `syndication` (the default) deal a deck, so an episode 1
+  there is chance. A run on such a Channel can still be a marathon.
 - Otherwise a run of three or more is a `marathon`.
 - One highlight per run. Premieres outrank marathons and longer marathons outrank shorter; every
   Channel gets one before any gets a second, and the chosen few come back in airtime order.

@@ -545,6 +545,10 @@ const (
 	OrderSyndication OrderingMode = "syndication" // deck-deal (default for a policy that omits ordering intent)
 )
 
+// AirsInOrder reports whether a resolved ordering airs a show's episodes in episode order. Only
+// sequential does: shuffle and syndication both deal a seeded deck (slotByPolicy).
+func (o OrderingMode) AirsInOrder() bool { return o == OrderSequential }
+
 func (o OrderingMode) valid() bool {
 	switch o {
 	case OrderInherit, OrderSequential, OrderShuffle, OrderSyndication:

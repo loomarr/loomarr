@@ -83,6 +83,22 @@ func TestHighlightsARunIsOneShowBackToBack(t *testing.T) {
 	}
 }
 
+// On a channel dealing its episodes out of order, an episode 1 is chance, not a premiere. The
+// ordering is asked at each airing's own start: a rule can shuffle one part of the evening only.
+func TestHighlightsNoPremieresWhileShuffled(t *testing.T) {
+	firstHourShuffled := func(at time.Time) bool { return at.Before(hlT0.Add(time.Hour)) }
+	always := func(time.Time) bool { return true }
+	got := pickHighlights([]channelAirings{
+		// Shuffled at 0: the episode 1 opens a plain marathon. In order again by 2h: a premiere.
+		{channelID: "ch-a", shuffledAt: firstHourShuffled, broadcasts: lineup("Show A", "S1E1", "S1E2", "S1E3", "M", "S2E1")},
+		// Always shuffled and too short for a marathon: nothing.
+		{channelID: "ch-b", shuffledAt: always, broadcasts: lineup("Show B", "S1E1", "S1E2")},
+	}, 10)
+	if want := "ch-a:marathon@0sx3-until-1h30m0s ch-a:season_premiere@2h0m0s"; describePicks(got) != want {
+		t.Fatalf("highlights = %s, want %s", describePicks(got), want)
+	}
+}
+
 // Home shows a handful: premieres outrank marathons, one per channel before any channel gets a
 // second, and the chosen few come back in airtime order.
 func TestHighlightsRankSpreadAndOrder(t *testing.T) {
@@ -116,7 +132,16 @@ func TestHighlightsInvariantsProperty(t *testing.T) {
 					script = append(script, fmt.Sprintf("X:%s:S%dE%d", shows[rng.IntN(len(shows))], rng.IntN(3), 1+rng.IntN(4)))
 				}
 			}
-			channels = append(channels, channelAirings{channelID: fmt.Sprintf("ch-%d", c), broadcasts: lineup("", script...)})
+			ch := channelAirings{channelID: fmt.Sprintf("ch-%d", c), broadcasts: lineup("", script...)}
+			if rng.IntN(2) == 0 {
+				cut := hlT0.Add(time.Duration(rng.IntN(16)) * 30 * time.Minute)
+				ch.shuffledAt = func(at time.Time) bool { return at.Before(cut) }
+			}
+			channels = append(channels, ch)
+		}
+		shuffledAt := map[string]func(time.Time) bool{}
+		for _, ch := range channels {
+			shuffledAt[ch.channelID] = ch.shuffledAt
 		}
 		limit := 1 + rng.IntN(5)
 		picks := pickHighlights(channels, limit)
@@ -140,6 +165,11 @@ func TestHighlightsInvariantsProperty(t *testing.T) {
 			pickedChannels[p.channelID] = true
 			if p.airing.Kind != schedule.SlotProgram || p.airing.SeriesTitle == "" {
 				t.Fatalf("seed %d: non-episode highlight %+v", seed, p.airing)
+			}
+			if p.reason != highlightMarathon {
+				if shuffled := shuffledAt[p.channelID]; shuffled != nil && shuffled(p.airing.Start) {
+					t.Fatalf("seed %d: %s on a shuffle: %s", seed, p.reason, describePicks(picks))
+				}
 			}
 			switch p.reason {
 			case highlightSeriesPremiere:

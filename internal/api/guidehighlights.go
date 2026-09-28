@@ -28,8 +28,9 @@ import (
 //   - A run holding an episode 1 (season 1 or later; specials don't count) is a premiere: a series
 //     premiere for season 1, a season premiere after. If three or more episodes follow from it,
 //     the premiere carries the run ("Season 4 premiere, back-to-back until 11"). Only where the
-//     channel airs episodes in order at that time (schedule.OrderingAt): on a shuffling channel an
-//     episode 1 is chance, and every shuffle would be full of "premieres".
+//     channel airs episodes in order at that time (schedule.OrderingAt, sequential only): shuffle
+//     and syndication deal a deck, where an episode 1 is chance and every deal would be full of
+//     "premieres".
 //   - Otherwise a run of three or more is a marathon.
 //
 // One highlight per run. Premieres outrank marathons, longer marathons outrank shorter; every
@@ -57,8 +58,8 @@ const (
 type channelAirings struct {
 	channelID  string
 	broadcasts []playout.Broadcast
-	// shuffledAt reports whether the channel lays its episodes out in random order at a time. An
-	// episode 1 turning up in a shuffle is chance, not a premiere. nil means never shuffled.
+	// shuffledAt reports whether the channel deals its episodes out of order at a time (shuffle or
+	// syndication). An episode 1 turning up in a deal is chance, not a premiere. nil means in order.
 	shuffledAt func(time.Time) bool
 }
 
@@ -265,7 +266,7 @@ func (s *Server) guideHighlights(ctx context.Context, in *guideHighlightsInput) 
 	for i, ch := range channels {
 		airings[i].channelID = ch.ID
 		airings[i].shuffledAt = func(at time.Time) bool {
-			return schedule.OrderingAt(ch.Policy, ch.Strategy, at) == schedule.OrderShuffle
+			return !schedule.OrderingAt(ch.Policy, ch.Strategy, at).AirsInOrder()
 		}
 		wg.Add(1)
 		go func(i int, id string) {

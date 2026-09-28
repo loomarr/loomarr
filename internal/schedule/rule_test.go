@@ -166,6 +166,7 @@ func TestOrderingAt_RuleThenPolicyThenStrategy(t *testing.T) {
 		want     OrderingMode
 	}{
 		{"strategy when nothing overrides", ChannelPolicy{}, Shuffle, thu9am, OrderShuffle},
+		{"a channel with no strategy deals a syndication deck", ChannelPolicy{}, "", thu9am, OrderSyndication},
 		{"time-slot strategy airs in order", ChannelPolicy{}, TimeSlot, thu9am, OrderSequential},
 		{"policy beats strategy", ChannelPolicy{Ordering: OrderSyndication}, Shuffle, thu9am, OrderSyndication},
 		{"active rule beats policy", ChannelPolicy{Ordering: OrderSequential, Rules: []SchedulingRule{weekendShuffle}}, Sequential, satNoon, OrderShuffle},
@@ -173,6 +174,16 @@ func TestOrderingAt_RuleThenPolicyThenStrategy(t *testing.T) {
 	} {
 		if got := OrderingAt(tc.policy, tc.strategy, tc.at); got != tc.want {
 			t.Errorf("%s: OrderingAt = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Shuffle and syndication both deal a seeded deck (slotting.go), so only sequential airs a
+// show's episodes in order.
+func TestOrderingMode_AirsInOrder(t *testing.T) {
+	for mode, want := range map[OrderingMode]bool{OrderSequential: true, OrderShuffle: false, OrderSyndication: false} {
+		if got := mode.AirsInOrder(); got != want {
+			t.Errorf("%q.AirsInOrder() = %v, want %v", mode, got, want)
 		}
 	}
 }
