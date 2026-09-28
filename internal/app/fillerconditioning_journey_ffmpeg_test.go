@@ -140,13 +140,17 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	if conditioned.Hash == "" {
 		t.Fatalf("conditioning pipeline did not prepare a child: %+v", clips)
 	}
+	// Since #1255 an enrolled clip whose ladder finishes clean is published automatically: the
+	// conditioned child settles Ready, released from hold, with a playable placement.
 	pipelineRow, found, err := st.GetClipPipeline(ctx, conditioned.Hash)
 	if err != nil || !found || pipelineRow.Status != filler.StatusDone ||
-		pipelineRow.Disposition != filler.DispositionReview || !conditioned.Held {
-		t.Fatalf("durable conditioned review = %+v, held=%v found=%v err=%v", pipelineRow, conditioned.Held, found, err)
+		pipelineRow.Disposition != filler.DispositionReady || conditioned.Held ||
+		conditioned.Placement == filler.PlacementNotPlayable {
+		t.Fatalf("durable conditioned publication = %+v, held=%v placement=%q found=%v err=%v",
+			pipelineRow, conditioned.Held, conditioned.Placement, found, err)
 	}
 	if conditioned.Kind != filler.Commercial {
-		t.Fatalf("reviewed child kind = %q, want inherited commercial", conditioned.Kind)
+		t.Fatalf("conditioned child kind = %q, want inherited commercial", conditioned.Kind)
 	}
 	if conditioned.Hash == childHash || conditioned.DurationMs <= 0 {
 		t.Fatalf("real conditioned transcode = %+v", conditioned)
@@ -182,9 +186,9 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		t.Fatalf("real conditioning sidecar = %+v, ok=%v", tags, ok)
 	}
 
-	// Exercise the conditioned bytes through the production encoder/mux boundary without
-	// publishing the held row. Terminal admission is independently covered by its transaction
-	// suite; this test owns media compatibility, not release authority.
+	// Exercise the conditioned bytes through the production encoder/mux boundary. Terminal
+	// admission is independently covered by its transaction suite; this test owns media
+	// compatibility, not release authority.
 	epoch := time.Unix(1_900_000_000, 0).UTC()
 	first := playout.Airing{StartedAt: epoch, Kind: schedule.SlotProgram, Remaining: 2 * time.Second}
 	fillerAiring := playout.Airing{

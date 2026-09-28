@@ -67,6 +67,10 @@ func TestParseHasFilter_UnreadableListingIsNo(t *testing.T) {
 	}
 }
 
+// hdrToSDRChain is the CPU HDR→SDR chain on the default curve, as the pipeline builder emits it for
+// an operator who never picked a curve.
+var hdrToSDRChain = hdrToSDR(DefaultToneCurve)
+
 // THE TONE-MAP CHAIN'S SHAPE, asserted so a future edit cannot quietly break the colour pipeline.
 //
 // The three steps are order-dependent in a way that produces no error if they are wrong — just a

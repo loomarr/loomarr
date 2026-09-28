@@ -49,7 +49,7 @@ func TestPlanCopy(t *testing.T) {
 
 // resolve buckets a DeviceProfile into the richest plan it FULLY satisfies, rounding DOWN, and NEVER
 // grants a capability the profile did not advertise (§9.1 V48 — the black-frame guard).
-func TestResolvePlan(t *testing.T) {
+func TestResolve(t *testing.T) {
 	cases := []struct {
 		name string
 		p    DeviceProfile
@@ -72,8 +72,8 @@ func TestResolvePlan(t *testing.T) {
 		{"case-insensitive codecs", DeviceProfile{Video: []string{"HEVC"}, Audio: []string{"EAC3"}, Video10Bit: true}, PlanHEVC10},
 	}
 	for _, c := range cases {
-		if got := ResolvePlan(c.p); got != c.want {
-			t.Errorf("%s: ResolvePlan = %v, want %v", c.name, got, c.want)
+		if got := resolve(c.p); got != c.want {
+			t.Errorf("%s: resolve = %v, want %v", c.name, got, c.want)
 		}
 	}
 }

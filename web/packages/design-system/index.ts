@@ -30,7 +30,13 @@ export type {
   DisclosureProps,
   ScrollFrameProps,
 } from "./src/layout";
-export { AdaptiveSplit, Disclosure, resolveAdaptiveDirection, ScrollFrame } from "./src/layout";
+export {
+  AdaptiveSplit,
+  adaptiveBreakpoints,
+  Disclosure,
+  resolveAdaptiveDirection,
+  ScrollFrame,
+} from "./src/layout";
 export type { ActivityIndicatorProps, SignalLoaderProps, SkeletonProps, SkeletonShape } from "./src/loading";
 export {
   ActivityIndicator,

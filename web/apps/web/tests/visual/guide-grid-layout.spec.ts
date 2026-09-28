@@ -1,19 +1,20 @@
 import { expect, test } from "@playwright/test";
 
-test("the default four-channel Guide fits a 1440 by 900 desktop", async ({ page }) => {
+// #1202 made the default desktop Guide fit without scrolling sideways. The shared grid (#1659)
+// sizes blocks as fractions of the window, so it should fit any width it's given: nothing in its
+// frame, nor the page, may scroll horizontally. The story's own baseline covers how it looks.
+test("the Guide grid fits its frame on a 1440 by 900 desktop", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/iframe.html?id=guide-guidegrid--desktop-four-channels&viewMode=story");
+  await page.goto("/iframe.html?id=loomarr-components-guide-grid--evening&viewMode=story");
+  await expect(page.getByRole("button", { name: /The pilot/ })).toBeVisible();
 
-  const grid = page.getByTestId("guide-grid");
-  await expect(grid).toBeVisible();
-  await expect(page.getByText("1980s Action Heroes", { exact: true })).toBeVisible();
-  await expect(page.getByText("Saturday Night Comedy", { exact: true })).toBeVisible();
-
-  const widths = await grid.evaluate((element) => ({
-    client: element.clientWidth,
-    scroll: element.scrollWidth,
-  }));
-  expect(widths.scroll).toBeLessThanOrEqual(widths.client);
-
-  await expect(grid).toHaveScreenshot("guide-four-channel-default-1440x900.png");
+  const overflowing = await page.evaluate(() => {
+    const frame = document.querySelector("#storybook-root > div") as HTMLElement | null;
+    const all = [document.scrollingElement, frame, ...(frame?.querySelectorAll("*") ?? [])];
+    return all
+      .filter((el): el is HTMLElement => el instanceof HTMLElement)
+      .filter((el) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX !== "hidden")
+      .map((el) => `${el.tagName} ${el.scrollWidth}>${el.clientWidth}`);
+  });
+  expect(overflowing).toEqual([]);
 });

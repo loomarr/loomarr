@@ -1,7 +1,6 @@
 package playout
 
 import (
-	"fmt"
 	"math"
 	"strconv"
 )
@@ -140,42 +139,8 @@ func hevcVariant(h264 Encoder) Encoder {
 	}
 }
 
-// encoderFamily groups an encoder (h264 OR hevc variant) by the hardware engine whose preset/rate
-// vocabulary it uses — nvenc's `-preset p7` and CQ mode are identical for h264_nvenc and hevc_nvenc,
-// libx26x share `-preset veryfast`, and so on. videoEncodeArgs switches on the FAMILY so an hevc
-// variant reuses its h264 sibling's argument logic without a parallel switch.
-type encoderFamily int
-
-const (
-	familyOther    encoderFamily = iota // takes quality from bitrate args alone (vaapi/vt/rkmpp/v4l2/vulkan)
-	familySoftware                      // libx264 / libx265
-	familyNVENC                         // h264_nvenc / hevc_nvenc
-	familyQSV                           // h264_qsv / hevc_qsv
-	familyAMF                           // h264_amf / hevc_amf
-)
-
-func familyOf(e Encoder) encoderFamily {
-	switch e {
-	case EncoderSoftware, EncoderSoftwareHEVC:
-		return familySoftware
-	case EncoderNVENC, EncoderNVENCHEVC:
-		return familyNVENC
-	case EncoderQSV, EncoderQSVHEVC:
-		return familyQSV
-	case EncoderAMF, EncoderAMFHEVC:
-		return familyAMF
-	default:
-		return familyOther
-	}
-}
-
-// Profile is the normalized output every program is encoded to.
-//
-// Normalization is not cosmetic — it is what makes the continuous copy mux legal. The
-// mux consumes per-program streams with `-c copy`, which is only valid
-// if every child produced identical resolution, framerate, codec and pixel format.
-// A child that quietly differs produces a stream players reject mid-program, and the
-// symptom (a channel that dies a few minutes in) points nowhere near the cause.
+// Profile is the operator-facing output target: a ladder rung's size, frame rate and bitrates on
+// one encoder. ChannelOutput turns it into the OutputProfile the live pipeline (Build) encodes to.
 type Profile struct {
 	Width     int
 	Height    int
@@ -197,166 +162,6 @@ func DefaultProfile() Profile {
 	return Profile{
 		Width: 1280, Height: 720, Framerate: 25,
 		VideoBitrate: 4000, Encoder: EncoderSoftware, AudioBitrate: 128,
-	}
-}
-
-// videoEncodeArgs returns the codec + rate-control args for the profile's encoder.
-//
-// One switch, dispatching per encoder — the shape both reference implementations use.
-// Families differ enough in rate control that a shared "just set -b:v" would be wrong,
-// but they share the bitrate/GOP helpers below.
-func (p Profile) videoEncodeArgs() []string {
-	args := []string{"-c:v", string(p.Encoder)}
-	// Each family has its OWN preset vocabulary, and an unknown preset name fails at init
-	// rather than being ignored. That is why this is a switch over families and not a
-	// shared "-preset" line: libx264's "veryfast" is meaningless to nvenc, and nvenc's
-	// "p4" is meaningless to everything else. Keyed on the FAMILY (familyOf) so an hevc
-	// variant (hevc_nvenc, libx265, …) reuses its h264 sibling's args — the preset/rate
-	// vocabulary is identical within a hardware engine regardless of the output codec.
-	switch familyOf(p.Encoder) {
-	case familySoftware:
-		// veryfast because playout is realtime and a dropped frame is worse than a
-		// slightly larger one. `-tune zerolatency` stops the encoder buffering frames it
-		// would rather reorder — for live, latency beats compression. (libx264 and libx265
-		// share these option names.)
-		args = append(args, "-preset", "veryfast", "-tune", "zerolatency")
-	case familyNVENC:
-		// p7 (slowest/best) rather than p4. Measured with SSIM against a near-lossless
-		// reference of a hard scene — dark, grainy, 4K HDR source:
-		//
-		//	p4  SSIM 0.98262   1656ms per 20s of 1080p
-		//	p7  SSIM 0.98295   3721ms per 20s of 1080p  ← 5.4x realtime, still ample
-		//
-		// The quality gain from the preset alone is small; the reason to take it is that a
-		// GPU sitting at ~14% utilisation has the headroom for free, and it compounds with
-		// the CQ rate control below. p1/ll is still avoided: viewra found it produced
-		// visible grain artifacts in tone-mapped content (prior-art, viewra §6).
-		args = append(args, "-preset", "p7", "-tune", "hq")
-	case familyAMF:
-		// AMF speaks quality presets, not numbered ones.
-		args = append(args, "-quality", "balanced")
-	case familyQSV:
-		// QSV's preset names overlap libx264's spelling but are its own enum.
-		args = append(args, "-preset", "veryfast")
-	case familyOther:
-		// vaapi / videotoolbox / rkmpp / v4l2m2m / vulkan (h264 AND hevc) take their quality from
-		// the bitrate args alone. Adding a preset from another family's vocabulary is an init
-		// failure, and several (notably v4l2m2m on a Pi) are strict about unknown options.
-	}
-	args = append(args, p.rateControlArgs()...)
-	return append(args, p.gopArgs()...)
-}
-
-// rateControlArgs decides how the encoder spends its bits.
-//
-// THE ARTIFACTS THIS FIXES. The first hardware-encoded channel looked worse than the software
-// one, and the cause was capped CBR: `-b:v N -maxrate N` gives the encoder no headroom at all,
-// so every hard scene — grain, fast motion, the shadow detail in a dark HDR film — is crushed
-// to fit the same budget as an easy one. Software never had this problem because it also got a
-// CRF target, and an earlier comment here claimed hardware could not use one. That was simply
-// wrong about NVENC, and SSIM against a near-lossless reference of a hard scene shows by how
-// much:
-//
-//	CBR 5000k          (shipped)  SSIM 0.98262   12MB / 20s
-//	VBR, cq 23, cap 8M            SSIM 0.98444   17MB
-//	VBR, cq 21, cap 10M           SSIM 0.98581   23MB  ← chosen
-//	VBR, cq 19, cap 12M           SSIM 0.98681   29MB
-//
-// cq 21 takes most of the available gain; 19 costs another 26% bitrate for a quarter as much
-// improvement. The MAXRATE CAP IS STILL THERE — quality-targeted does not mean unbounded, and
-// a live stream that spikes arbitrarily blows a client's buffer.
-func (p Profile) rateControlArgs() []string {
-	if p.VideoBitrate <= 0 {
-		return nil
-	}
-	kbps := strconv.Itoa(p.VideoBitrate) + "k"
-
-	if cq := p.constantQuality(); cq > 0 {
-		// Quality-targeted with a ceiling: the encoder holds picture quality steady and
-		// spends up to `maxrate` when a scene needs it. The cap is 2x the ladder's target
-		// rather than the target itself, which is what buys the headroom.
-		//
-		// `-b:v 0` is REQUIRED, not decorative: with a non-zero bitrate set, nvenc treats cq
-		// as an upper quality bound on a bitrate-targeted encode and the result is nearly
-		// indistinguishable from plain CBR.
-		return []string{
-			"-rc", "vbr", "-cq", strconv.Itoa(cq), "-b:v", "0",
-			"-maxrate", strconv.Itoa(p.VideoBitrate*2) + "k",
-			"-bufsize", strconv.Itoa(p.VideoBitrate*4) + "k",
-		}
-	}
-
-	// Bitrate-targeted for families with no usable quality mode. maxrate+bufsize as well as
-	// -b:v: without a cap a live encoder can spike far above target on a hard scene.
-	args := []string{"-b:v", kbps, "-maxrate", kbps, "-bufsize",
-		strconv.Itoa(p.VideoBitrate*2) + "k"}
-	// Software gets a CRF target on top; with maxrate/bufsize still set, libx264 holds
-	// quality steady and only spends bits up to the cap.
-	return append(args, p.qualityArgs()...)
-}
-
-// constantQuality returns the CQ/QP value for encoders with a usable quality mode, or 0.
-//
-// Only NVENC for now, and deliberately so — this is the one family measured. VAAPI has
-// `-rc_mode CQP`, QSV has `-global_quality`, and both are plausible next steps, but each needs
-// its own SSIM run against real content before being switched on: a wrong quality value is a
-// channel that either looks bad or saturates the operator's uplink, and neither fails loudly.
-func (p Profile) constantQuality() int {
-	// NVENC's VBR+CQ rate control is identical for h264_nvenc and hevc_nvenc (same engine), so both
-	// get the measured CQ ladder; every other family stays bitrate-targeted until measured.
-	if familyOf(p.Encoder) != familyNVENC {
-		return 0
-	}
-	// Derived from the ladder rung so the operator's tier choice still governs. The rungs
-	// descend in bitrate, so a lower rung means a busier box and a correspondingly looser
-	// quality target — the same "adapt to load" policy the ladder itself implements.
-	switch {
-	case p.VideoBitrate >= 6000:
-		return 19
-	case p.VideoBitrate >= 4000:
-		return 21
-	case p.VideoBitrate >= 2000:
-		return 23
-	default:
-		return 26
-	}
-}
-
-// gopKeyframeSeconds is how often a keyframe is forced.
-//
-// TWO seconds, not one. Keyframes are the most expensive frames in a stream, so a 1-second GOP
-// spends a large share of the bitrate re-sending full pictures instead of detail — measurable,
-// though modest next to the rate-control fix (SSIM 0.98262 → 0.98269 on its own).
-//
-// Two seconds is still short enough that a viewer tuning in mid-program waits at most ~2s for
-// a decodable frame, which is well inside the time a media server spends buffering anyway.
-const gopKeyframeSeconds = 2
-
-// gopArgs pins the keyframe interval.
-//
-// Every HLS segment boundary must land on a keyframe or a client joining mid-stream sees
-// nothing until the next one. `-sc_threshold 0` disables scene-change detection, which would
-// otherwise insert keyframes at unpredictable places and make segment durations vary — and a
-// TARGETDURATION that lies is a player error, not a warning.
-//
-// ⚠ **A keyframe is forced on FRAME 0, and this is the cold-start black-screen fix (measured).**
-// The HLS remux (`-c copy -f hls`) can only cut a `.ts` segment on a keyframe. With only the 2s GOP
-// below, a cold transcode child's first keyframe lands up to a full GOP in — and on a slow cold
-// encoder init it lands late enough that `awaitPlaylist` (45s) times out with NO segment and the
-// viewer gets a 502 / black frame (a channel measured at 45s vs 0.4s for a direct-play channel).
-// `-forced-idr 1` makes the forced points real IDRs (not just P-frames flagged as keyframes, which
-// some encoders emit and the remux cannot cut on), and the `eq(n,0)` term puts one on the very first
-// frame so segment 0 cuts immediately. The `gte(t,prev_forced_t+GOP)` term keeps the steady 2s
-// cadence. Output-side keyframe control, so it is hardware-agnostic — works for nvenc/vaapi/qsv/
-// vulkan/software alike, and only ever emitted on the transcode path (a `-c copy` program never
-// calls videoEncodeArgs).
-func (p Profile) gopArgs() []string {
-	gop := strconv.Itoa(p.Framerate * gopKeyframeSeconds)
-	return []string{
-		"-g", gop, "-keyint_min", gop, "-sc_threshold", "0",
-		// Force a keyframe on the first frame (instant segment 0), then every gopKeyframeSeconds.
-		"-forced-idr", "1",
-		"-force_key_frames", fmt.Sprintf("expr:if(eq(n,0),1,gte(t,prev_forced_t+%d))", gopKeyframeSeconds),
 	}
 }
 

@@ -15,7 +15,7 @@ import {
   monogramOf,
 } from "@loomarr/core/guide";
 import { brandChroma, Surface, Text, type TextTone } from "@loomarr/design-system";
-import { memo, type RefObject, useEffect, useRef, useState } from "react";
+import { memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
 import type { GuideGridProps } from "./guide-grid.type";
@@ -30,6 +30,16 @@ const RAIL = 260;
 const ROW = 56;
 const RULER = 30;
 const hourMs = 3_600_000;
+// A ruler label ("12:00 PM" plus its inset) needs this much room. A long span labels every second,
+// third… hour instead of letting the labels run into each other; every hour keeps its line.
+const LABEL_MIN_PX = 80;
+const LABEL_STRIDES = [1, 2, 3, 4, 6] as const;
+
+const labelStride = (timelineWidth: number, span: number): number => {
+  const hourPx = (timelineWidth * hourMs) / span;
+  if (hourPx <= 0) return 1;
+  return LABEL_STRIDES.find((stride) => stride * hourPx >= LABEL_MIN_PX) ?? 6;
+};
 
 const arrowDirection: Record<string, GuideNavigationDirection> = {
   ArrowDown: "down",
@@ -118,6 +128,9 @@ type BlockProps = {
   focusPending?: RefObject<boolean>;
   /** The grid's one Tab stop (roving tabindex). */
   focusable: boolean;
+  /** The channel is paused: nothing airs, so no block wears the airing amber. */
+  offAir?: boolean;
+  onHover?: (selection: GuideSelection | undefined) => void;
   onOpen?: () => void;
   onSelect?: (selection: GuideSelection) => void;
   px: number;
@@ -125,14 +138,27 @@ type BlockProps = {
   timezone?: string;
 };
 
-const Block = ({ airing, focusPending, focusable, onOpen, onSelect, px, selected, timezone }: BlockProps) => {
+const Block = ({
+  airing,
+  focusPending,
+  focusable,
+  offAir = false,
+  onHover,
+  onOpen,
+  onSelect,
+  px,
+  selected,
+  timezone,
+}: BlockProps) => {
   const ref = useRef<View>(null);
   const [focused, setFocused] = useState(false);
   const a = airing.source;
   const kind = a.kind;
   const pending = kind === "pending";
   const pod = kind === "filler";
-  const airingNow = airing.isOnNow && (kind === "program" || kind === "flex");
+  // A paused channel's current block is neutral (maintainer, 2026-09-28): amber means "on the air
+  // now", and the row's grey dot and Paused chip already say it isn't.
+  const airingNow = !offAir && airing.isOnNow && (kind === "program" || kind === "flex");
   const when = formatGuideTimeRange(a.startMs, a.stopMs, timezone);
   const hasSeries = kind === "program" && Boolean(a.series) && Boolean(a.title.trim());
   const entries = a.pod?.entries ?? [];
@@ -156,6 +182,8 @@ const Block = ({ airing, focusPending, focusable, onOpen, onSelect, px, selected
         setFocused(true);
         if (!selected) onSelect?.(selectionOf(airing));
       }}
+      onHoverIn={() => onHover?.(selectionOf(airing))}
+      onHoverOut={() => onHover?.(undefined)}
       onPress={onOpen}
       ref={ref}
       style={{
@@ -276,8 +304,10 @@ const Row = memo(
     channel,
     focusPending,
     nowRatio,
+    onHover,
     onOpenChannel,
     onSelect,
+    renderRowMenu,
     tabStop,
     timelineWidth,
     timezone,
@@ -285,8 +315,10 @@ const Row = memo(
     channel: GuideChannelLayout;
     focusPending: RefObject<boolean>;
     nowRatio?: number;
+    onHover?: (selection: GuideSelection | undefined) => void;
     onOpenChannel?: (channelId: string) => void;
     onSelect?: (selection: GuideSelection) => void;
+    renderRowMenu?: (channel: GuideChannelLayout["source"]) => ReactNode;
     /** The block that is the grid's Tab stop, when it is in this row. */
     tabStop?: string;
     timelineWidth: number;
@@ -357,8 +389,8 @@ const Row = memo(
             height={8}
             width={8}
           />
-          {/* The ⋯ channel menu waits on the maintainer's mock of its contents. */}
-          <View style={{ width: 28 }} />
+          {/* The ⋯ slot: the page's channel menu until the maintainer mocks its contents. */}
+          <View style={{ alignItems: "center", width: 28 }}>{renderRowMenu?.(channel.source)}</View>
         </Surface>
         <View style={{ flex: 1, height: ROW, overflow: "hidden", position: "relative" }}>
           {channel.airings.map((airing) => (
@@ -367,6 +399,8 @@ const Row = memo(
               focusable={airing.scheduleBlockId === tabStop}
               focusPending={focusPending}
               key={airing.scheduleBlockId}
+              offAir={health === "paused"}
+              onHover={onHover}
               onOpen={() => onOpenChannel?.(channel.source.channelId)}
               onSelect={onSelect}
               px={airing.widthRatio * timelineWidth}
@@ -381,7 +415,16 @@ const Row = memo(
   },
 );
 
-const GuideGrid = ({ layout, nowMs, onMove, onOpenChannel, onSelect, selection }: GuideGridProps) => {
+const GuideGrid = ({
+  layout,
+  nowMs,
+  onHover,
+  onMove,
+  onOpenChannel,
+  onSelect,
+  renderRowMenu,
+  selection,
+}: GuideGridProps) => {
   const [timelineWidth, setTimelineWidth] = useState(0);
   const focusPending = useRef(false);
   const typed = useRef({ at: 0, query: "" });
@@ -390,6 +433,7 @@ const GuideGrid = ({ layout, nowMs, onMove, onOpenChannel, onSelect, selection }
   const firstHour = Math.ceil(layout.fromMs / hourMs) * hourMs;
   const ticks: number[] = [];
   for (let t = firstHour; t < layout.toMs; t += hourMs) ticks.push(t);
+  const stride = labelStride(timelineWidth, span);
 
   const ruler = (
     <Surface
@@ -410,7 +454,7 @@ const GuideGrid = ({ layout, nowMs, onMove, onOpenChannel, onSelect, selection }
         onLayout={(e: LayoutChangeEvent) => setTimelineWidth(e.nativeEvent.layout.width)}
         style={{ flex: 1, height: RULER, overflow: "hidden", position: "relative" }}
       >
-        {ticks.map((t) => (
+        {ticks.map((t, i) => (
           <Surface
             backgroundColor="$transparent"
             borderColor="$borderDecorative"
@@ -424,9 +468,11 @@ const GuideGrid = ({ layout, nowMs, onMove, onOpenChannel, onSelect, selection }
             position="absolute"
             top={0}
           >
-            <Text numberOfLines={1} textRole="guideMeta">
-              {formatGuideTime(t, layout.timezone)}
-            </Text>
+            {i % stride === 0 ? (
+              <Text numberOfLines={1} textRole="guideMeta">
+                {formatGuideTime(t, layout.timezone)}
+              </Text>
+            ) : null}
           </Surface>
         ))}
         {nowRatio === undefined ? null : (
@@ -498,7 +544,9 @@ const GuideGrid = ({ layout, nowMs, onMove, onOpenChannel, onSelect, selection }
           focusPending={focusPending}
           nowRatio={nowRatio}
           onOpenChannel={onOpenChannel}
+          onHover={onHover}
           onSelect={onSelect}
+          renderRowMenu={renderRowMenu}
           tabStop={channel.source.channelId === tabStop?.channelId ? tabStop.scheduleBlockId : undefined}
           timelineWidth={timelineWidth}
           timezone={layout.timezone}

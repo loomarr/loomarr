@@ -1,4 +1,4 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { observeElementRect, useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useRef } from "react";
 
 import type { GuideRowsProps } from "./guide-rows.type";
@@ -8,6 +8,7 @@ import type { GuideRowsProps } from "./guide-rows.type";
 // 217 ms (383 ms at 6x); a window small enough to virtualise stalled at 1x instead. react-virtual
 // mounts only the rows entering the viewport each frame, so web uses it.
 const OVERSCAN = 6;
+const FALLBACK_RECT = { height: 800, width: 1280 };
 
 const GuideRows = ({
   channels,
@@ -24,6 +25,17 @@ const GuideRows = ({
     estimateSize: () => rowHeight,
     getItemKey: (index) => channels[index]?.source.channelId ?? index,
     getScrollElement: () => scroller.current,
+    initialRect: FALLBACK_RECT,
+    // jsdom measures every element as 0×0, and a zero-height viewport mounts no rows, so unit
+    // tests would assert against an empty grid. A zero measurement falls back to a usable
+    // rect; a real browser never reports one, so the app takes the same path as the tests.
+    observeElementRect: (instance, report) =>
+      observeElementRect(instance, (rect) =>
+        report({
+          height: rect.height || FALLBACK_RECT.height,
+          width: rect.width || FALLBACK_RECT.width,
+        }),
+      ),
     overscan: OVERSCAN,
     // The ruler sits above the rows inside the same scroller, and stays pinned over them.
     scrollMargin: headerHeight,
