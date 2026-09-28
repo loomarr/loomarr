@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
@@ -206,7 +207,7 @@ func (a fillerSweepStoreAdapter) MarkPipelineComplete(ctx context.Context, hash 
 // fetch path puts its `Enabled && Fetchable()` check. Both predicates are the store's domain
 // knowledge about a row; re-deriving them inside the job is how the two start disagreeing about
 // what a source is for.
-type fillerScanSourceAdapter struct{ st store.Store }
+type fillerScanSourceAdapter struct{ st fillerstore.FillerSourceStore }
 
 func (a fillerScanSourceAdapter) ListScanSources(ctx context.Context) ([]filler.ScanSource, error) {
 	srcs, err := a.st.ListFillerSources(ctx)
@@ -419,7 +420,7 @@ func (a fillerVisionStoreAdapter) ListTaxa(ctx context.Context) ([]taxonomy.Taxo
 
 // fetchStoreAdapter bridges the store → filler.FetchStore (auto-fetch, §10 V38b).
 type fetchStoreAdapter struct {
-	st store.Store
+	st fillerstore.Store
 	// fetchEvery is the GLOBAL poll interval a source's override resolves against (§10 V38c).
 	// A closure so it hot-applies — an operator changing it expects the next pass to honour it.
 	fetchEvery func() time.Duration
@@ -808,9 +809,9 @@ var _ fillerdecision.DiagnosticRecoveryExecutor = fillerServiceAdapter{}
 // fillerSourceRegistry is the acquisition-side source slice. Readiness is deliberately absent:
 // this adapter registers and fetches sources but cannot publish a Clip by itself.
 type fillerSourceRegistry interface {
-	ListFillerProviders(context.Context) ([]store.FillerProvider, error)
-	ListFillerSources(context.Context) ([]store.FillerSource, error)
-	UpsertFillerSource(context.Context, store.FillerSource) error
+	ListFillerProviders(context.Context) ([]fillerstore.FillerProvider, error)
+	ListFillerSources(context.Context) ([]fillerstore.FillerSource, error)
+	UpsertFillerSource(context.Context, fillerstore.FillerSource) error
 }
 
 type fillerAcquisitionWriter interface {
@@ -1642,7 +1643,7 @@ func (a fillerServiceAdapter) rememberSources(ctx context.Context, urls []string
 		// proceeds either way, which is the property that matters.
 		// NewFillerSource, not a struct literal: `Enabled` is a bool, so a literal that omits
 		// it registers the source SWITCHED OFF (see the store).
-		_ = a.sources.UpsertFillerSource(ctx, store.NewFillerSource(id, "archive", u, id, now()))
+		_ = a.sources.UpsertFillerSource(ctx, fillerstore.NewFillerSource(id, "archive", u, id, now()))
 	}
 }
 

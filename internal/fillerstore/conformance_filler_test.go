@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -2097,16 +2098,16 @@ func testTaxonomy(t *testing.T, newStore NewStoreFunc) {
 		}
 	}
 	concurrentForest := taxonomy.New(mustList(t, s, ctx))
-	sqls, ok := s.(*sqlStore)
-	if !ok {
-		t.Fatalf("taxonomy conformance store = %T, want *sqlStore", s)
+	sqls := store.HandleOf(s)
+	if sqls == nil {
+		t.Fatalf("taxonomy conformance store = %T, want a SQL store", s)
 	}
 	for _, slug := range []string{"sports-drink", "sparkling-water"} {
 		if got := concurrentForest.Ancestors(slug); len(got) != 1 || got[0] != "drinks" {
 			t.Errorf("concurrent taxon %q ancestors = %v, want [drinks]", slug, got)
 		}
 		var closureRows int
-		if err := sqls.db.QueryRowContext(ctx, sqls.ph(
+		if err := sqls.QueryRowContext(ctx, sqls.Rebind(
 			`SELECT COUNT(*) FROM taxa_closure WHERE ancestor = ? AND descendant = ?`), "drinks", slug).Scan(&closureRows); err != nil {
 			t.Fatal(err)
 		}
@@ -5968,43 +5969,30 @@ func testFillerSpokenSafetyLedger(t *testing.T, newStore NewStoreFunc) {
 // assertion, so SQLite and Postgres prove the same restart/reconnect property.
 func openSecondConformanceStore(t *testing.T, s Store) Store {
 	t.Helper()
-	impl := s.(*sqlStore)
-	var (
-		second *sqlStore
-		err    error
-	)
-	if impl.dialect == DialectPostgres {
-		second, err = openPostgres(t.Context(), impl.dsn)
-	} else {
-		var opened Store
-		opened, err = Open(t.Context(), "sqlite://"+impl.path, true)
-		if err == nil {
-			return opened
-		}
-	}
+	second, err := reopenConformanceStore(t, s)
 	if err != nil {
 		t.Fatalf("open second conformance store: %v", err)
 	}
+	t.Cleanup(func() { _ = second.Close() })
 	return second
 }
 
 func restartConformanceStore(t *testing.T, s Store) Store {
 	t.Helper()
-	impl := s.(*sqlStore)
-	dialect, path, dsn := impl.dialect, impl.path, impl.dsn
 	if err := s.Close(); err != nil {
 		t.Fatalf("close conformance store for restart: %v", err)
 	}
-	if dialect == DialectPostgres {
-		reopened, err := openPostgres(t.Context(), dsn)
-		if err != nil {
-			t.Fatalf("reopen Postgres conformance store: %v", err)
-		}
-		return reopened
-	}
-	reopened, err := Open(t.Context(), "sqlite://"+path, true)
+	reopened, err := reopenConformanceStore(t, s)
 	if err != nil {
-		t.Fatalf("reopen SQLite conformance store: %v", err)
+		t.Fatalf("reopen conformance store: %v", err)
 	}
 	return reopened
+}
+
+// reopenConformanceStore opens a new pool on s's database: SQLite through the full boot path
+// (migrations are already applied, so it only re-runs startup healing), Postgres as a bare pool.
+func reopenConformanceStore(t *testing.T, s Store) (Store, error) {
+	t.Helper()
+	url := reopenURL(t, s)
+	return openExtended(t.Context(), url, store.DialectOf(s) != DialectPostgres)
 }

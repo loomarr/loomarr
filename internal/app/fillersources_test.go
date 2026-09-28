@@ -8,14 +8,14 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // recordingSources captures what got registered, and can fail on demand.
 type recordingSources struct {
-	upserted []store.FillerSource
+	upserted []fillerstore.FillerSource
 	err      error
 }
 
@@ -105,13 +105,13 @@ func (r recordingAcquisitions) UpsertAcquisitionRun(_ context.Context, run fille
 	return nil
 }
 
-func (r *recordingSources) ListFillerSources(context.Context) ([]store.FillerSource, error) {
+func (r *recordingSources) ListFillerSources(context.Context) ([]fillerstore.FillerSource, error) {
 	return r.upserted, nil
 }
-func (r *recordingSources) ListFillerProviders(context.Context) ([]store.FillerProvider, error) {
-	return []store.FillerProvider{{Kind: "archive", Enabled: true}, {Kind: "youtube", Enabled: true}}, nil
+func (r *recordingSources) ListFillerProviders(context.Context) ([]fillerstore.FillerProvider, error) {
+	return []fillerstore.FillerProvider{{Kind: "archive", Enabled: true}, {Kind: "youtube", Enabled: true}}, nil
 }
-func (r *recordingSources) UpsertFillerSource(_ context.Context, s store.FillerSource) error {
+func (r *recordingSources) UpsertFillerSource(_ context.Context, s fillerstore.FillerSource) error {
 	if r.err != nil {
 		return r.err
 	}

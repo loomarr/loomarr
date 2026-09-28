@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -38,7 +39,7 @@ type Application struct {
 func Build(parent context.Context, st store.Store, log *slog.Logger, ov Overrides) (*Application, error) {
 	lifecycle := newGenerationLifecycle(parent)
 	var resolver *playoutResolver
-	handler, generationLog, serverPublicURL, err := buildHandler(lifecycle.ctx, st, log, ov, lifecycle, func(built *playoutResolver) {
+	handler, generationLog, serverPublicURL, err := buildHandler(lifecycle.ctx, fillerstore.Extend(st), log, ov, lifecycle, func(built *playoutResolver) {
 		resolver = built
 	})
 	if err != nil {

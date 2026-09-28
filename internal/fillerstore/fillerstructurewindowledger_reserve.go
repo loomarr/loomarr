@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func (s *sqlStore) ReserveStructureWindowCall(ctx context.Context, reservation f
 	if err := validateInferenceReservation(evaluation, budget); err != nil {
 		return "", err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return "", fmt.Errorf("begin structure window call reservation: %w", err)
 	}

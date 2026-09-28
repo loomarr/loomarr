@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
@@ -267,7 +268,7 @@ func (r fillerDetailRunner) Run(ctx context.Context) (fillerenrichment.RunResult
 }
 
 type fillerEnrichmentSignals struct {
-	store store.FillerSourceStore
+	store fillerstore.FillerSourceStore
 	files fs.FS
 	// home is the installation geography an empty-country source inherits.
 	home func() filler.Geography

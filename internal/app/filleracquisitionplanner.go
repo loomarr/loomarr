@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 const (
@@ -18,7 +18,7 @@ const (
 )
 
 type fillerPullPlanningStore interface {
-	ListFillerSources(context.Context) ([]store.FillerSource, error)
+	ListFillerSources(context.Context) ([]fillerstore.FillerSource, error)
 	ListPulls(context.Context, filler.PullStatus) ([]filler.Pull, error)
 	ListAcquisitionRemoteStates(context.Context) (map[string]filler.ExistingRemoteState, error)
 }
@@ -75,7 +75,7 @@ func (a fillerServiceAdapter) PlanAcquisition(ctx context.Context, intent filler
 	}
 
 	type eligibleSource struct {
-		source        store.FillerSource
+		source        fillerstore.FillerSource
 		decisionIndex int
 	}
 	decisions := make([]filler.AcquisitionSourceDecision, 0, len(sources))

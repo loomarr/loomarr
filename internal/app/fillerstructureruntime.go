@@ -7,14 +7,14 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindowopenrouter"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 type productionStructureWindowLedger struct {
-	store  store.FillerStructureAssessmentStore
-	budget store.InferenceBudget
+	store  fillerstore.FillerStructureAssessmentStore
+	budget fillerstore.InferenceBudget
 }
 
 func (l productionStructureWindowLedger) Reserve(ctx context.Context, reservation fillerstructurewindow.CallReservation) (fillerstructurewindow.CallReservationState, error) {
@@ -54,7 +54,7 @@ func (l *liveStructureRuntime) Current() filler.StructureRuntime {
 	return l.current
 }
 
-func buildCertifiedWindowStructureRuntime(st store.Store, set resolved, layout filler.Layout,
+func buildCertifiedWindowStructureRuntime(st fillerstore.Store, set resolved, layout filler.Layout,
 	authority *fillerstructurewindow.MaterializationAuthority,
 	deployment *fillerstructurewindowopenrouter.Deployment,
 ) (filler.CompleteTimelineStructureDecisioner, error) {
@@ -73,7 +73,7 @@ func buildCertifiedWindowStructureRuntime(st store.Store, set resolved, layout f
 		Authority: *authority, Deployment: *deployment, APIKey: apiKey,
 		SourceRoot: layout.ClipDir(), MediaRoot: filepath.Join(root, "media"), EvidenceRoot: filepath.Join(root, "evidence"),
 		FFmpegPath: resolveTool(set.str("playout.ffmpeg_path"), "ffmpeg"),
-		Ledger: productionStructureWindowLedger{store: st, budget: store.InferenceBudget{
+		Ledger: productionStructureWindowLedger{store: st, budget: fillerstore.InferenceBudget{
 			PerClipNanoUSD: deployment.PerSourceBudgetNanoUSD, PerDayNanoUSD: deployment.PerDayBudgetNanoUSD,
 		}},
 	})

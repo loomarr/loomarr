@@ -119,7 +119,7 @@ func highestMigration(dir string) (int64, error) {
 // API omits rather than rendering as a real schema 0 — a wrong number in a bug report is
 // worse than an absent one.
 func SchemaVersion(st Store) int64 {
-	s, ok := st.(*sqlStore)
+	s, ok := adapterOf(st)
 	if !ok || s.db == nil {
 		return 0
 	}

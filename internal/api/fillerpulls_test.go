@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 type pullBody struct {
@@ -39,10 +39,10 @@ func decodePull(t *testing.T, res *http.Response) pullBody {
 	return b
 }
 
-func seedSource(t *testing.T, st store.Store, id, uri string, enabled bool) {
+func seedSource(t *testing.T, st fillerstore.Store, id, uri string, enabled bool) {
 	t.Helper()
 	ctx := context.Background()
-	src := store.NewFillerSource(id, "archive", uri, id, time.Now().UTC())
+	src := fillerstore.NewFillerSource(id, "archive", uri, id, time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
 		t.Fatal(err)
 	}

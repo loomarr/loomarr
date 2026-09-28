@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -13,7 +13,7 @@ func (s *sqlStore) SettleStructureAssessment(ctx context.Context, record fillers
 	if err := fillerstructure.ValidateAssessmentRecord(record); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin structure assessment settlement: %w", err)
 	}

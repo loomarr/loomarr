@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 )
 
@@ -29,7 +30,7 @@ const (
 // row, and a secret outside the folder entirely. All three are load-bearing: the secret is what
 // makes a traversal assertion mean something, and the uncatalogued file is what proves the
 // catalog check is a real gate rather than a lookup.
-func newMediaServer(t *testing.T) (*httptest.Server, string, store.Store) {
+func newMediaServer(t *testing.T) (*httptest.Server, string, fillerstore.Store) {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()

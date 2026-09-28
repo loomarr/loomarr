@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -8,9 +8,10 @@ import (
 	"slices"
 
 	"github.com/loomarr/loomarr/internal/fillersafety"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
-func (s *sqlStore) appendSpokenSafetyEvent(ctx context.Context, tx *sql.Tx, event fillersafety.LedgerEvent) error {
+func (s *sqlStore) appendSpokenSafetyEvent(ctx context.Context, tx store.Tx, event fillersafety.LedgerEvent) error {
 	payload, err := fillersafety.CanonicalLedgerEvent(event)
 	if err != nil {
 		return err

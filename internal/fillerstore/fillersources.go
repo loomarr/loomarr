@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // FillerProvider is persisted policy shared by every source of one remote kind.
@@ -341,7 +342,7 @@ func (s *sqlStore) SetFillerProviderEnabled(ctx context.Context, kind string, en
 		return fmt.Errorf("set filler provider enabled rows: %w", err)
 	}
 	if n == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -400,7 +401,7 @@ func (s *sqlStore) SetFillerSourceGeography(ctx context.Context, id string, geog
 		return fmt.Errorf("set filler source geography %s: %w", id, err)
 	}
 	if n == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -436,7 +437,7 @@ func (s *sqlStore) SetFillerSourceFetchPolicy(ctx context.Context, id string, ev
 		return fmt.Errorf("set filler source fetch policy %s: %w", id, err)
 	}
 	if n == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -456,12 +457,12 @@ func (s *sqlStore) DeleteFillerSource(ctx context.Context, id string) error {
 		return fmt.Errorf("delete filler source %s: %w", id, err)
 	}
 	if n == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
 
-// MarkFillerSourceFetched stamps a successful fetch. Returns ErrNotFound for an unknown id
+// MarkFillerSourceFetched stamps a successful fetch. Returns store.ErrNotFound for an unknown id
 // rather than silently doing nothing, so a caller cannot believe it recorded something.
 func (s *sqlStore) MarkFillerSourceFetched(ctx context.Context, id string, at time.Time) error {
 	res, err := s.db.ExecContext(ctx,
@@ -474,7 +475,7 @@ func (s *sqlStore) MarkFillerSourceFetched(ctx context.Context, id string, at ti
 		return fmt.Errorf("mark filler source fetched %s: %w", id, err)
 	}
 	if n == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -502,7 +503,7 @@ func (s *sqlStore) ClaimFillerSourceCheck(
 func (s *sqlStore) CompleteFillerSourceCheck(
 	ctx context.Context, id string, leaseUntil time.Time, completion filler.SourceCheckCompletion,
 ) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin filler source check completion %s: %w", id, err)
 	}
@@ -566,7 +567,7 @@ func (s *sqlStore) FailFillerSourceCheck(
 	return nil
 }
 
-// SetFillerSourceEnabled switches a source on or off. Returns ErrNotFound for an unknown id
+// SetFillerSourceEnabled switches a source on or off. Returns store.ErrNotFound for an unknown id
 // rather than silently doing nothing, so a caller cannot believe it recorded something.
 //
 // A targeted UPDATE rather than a read-modify-Upsert: the switch is the one field the Sources
@@ -583,7 +584,7 @@ func (s *sqlStore) SetFillerSourceEnabled(ctx context.Context, id string, enable
 		return fmt.Errorf("set filler source enabled %s: %w", id, err)
 	}
 	if n == 0 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }

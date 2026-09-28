@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
@@ -24,7 +25,6 @@ import (
 	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 type fillerBuild struct {
@@ -36,7 +36,7 @@ type fillerBuild struct {
 }
 
 func buildFillerSubsystem(
-	st store.Store,
+	st fillerstore.Store,
 	set resolved,
 	layout filler.Layout,
 	log *slog.Logger,

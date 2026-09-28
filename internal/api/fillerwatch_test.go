@@ -10,10 +10,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
-func completeSourceCheck(t *testing.T, st store.Store, id string, checkedAt time.Time) {
+func completeSourceCheck(t *testing.T, st fillerstore.Store, id string, checkedAt time.Time) {
 	t.Helper()
 	claimAt, leaseUntil := checkedAt.Add(-time.Minute), checkedAt.Add(29*time.Minute)
 	claimed, err := st.ClaimFillerSourceCheck(t.Context(), id, time.Time{}, claimAt, leaseUntil)
@@ -33,7 +33,7 @@ func TestFillerWatch_CountsAppliedLayoutUntilRestart(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 	clearSeededSources(t, st)
 	if err := st.UpsertFillerSource(t.Context(),
-		store.NewFillerSource("folder", "folder", "", "Drop folder", time.Now().UTC())); err != nil {
+		fillerstore.NewFillerSource("folder", "folder", "", "Drop folder", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 	layout, err := filler.NewLayout("/data/filler", "")
@@ -100,7 +100,7 @@ type watchBody struct {
 	} `json:"autoFetch"`
 }
 
-func newFillerWatchServer(t *testing.T) (*httptest.Server, store.Store, *fakeFiller) {
+func newFillerWatchServer(t *testing.T) (*httptest.Server, fillerstore.Store, *fakeFiller) {
 	t.Helper()
 	return newFillerServerWithConfig(t, nil, func(key string) string {
 		if key == "filler.home_country" {
@@ -127,7 +127,7 @@ func TestFillerWatch_ReportsTheLiveFetchCeiling(t *testing.T) {
 }
 
 // seedHeldClip is a clip that arrived but has not been terminally admitted.
-func seedHeldClip(t *testing.T, st store.Store, id string) {
+func seedHeldClip(t *testing.T, st fillerstore.Store, id string) {
 	t.Helper()
 	seedClip(t, st, id, filler.Commercial, 1992, filler.Kids, "toys")
 	// HoldClips is the ordinary one-way writer; terminal applied admission is the atomic release.
@@ -197,7 +197,7 @@ func TestFillerWatch_AllSourcesOffAsksForAttention(t *testing.T) {
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 
-	src := store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
+	src := fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())
 	if err := st.UpsertFillerSource(ctx, src); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestFillerWatch_AllSourcesOffAsksForAttention(t *testing.T) {
 func TestFillerWatch_OnButEmptyAsksForAttention(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
 	if err := st.UpsertFillerSource(t.Context(),
-		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -238,7 +238,7 @@ func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
 
 	for _, id := range []string{"classic", "retro"} {
 		if err := st.UpsertFillerSource(ctx,
-			store.NewFillerSource(id, "archive", id, id, time.Now().UTC())); err != nil {
+			fillerstore.NewFillerSource(id, "archive", id, id, time.Now().UTC())); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -270,7 +270,7 @@ func TestFillerWatch_ReportsCountsAndHealth(t *testing.T) {
 func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
 	if err := st.UpsertFillerSource(t.Context(),
-		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"a.mp4", "b.mp4", "c.mp4"} {
@@ -297,7 +297,7 @@ func TestFillerWatch_HeldClipsAreCountedSeparatelyNotAsNothing(t *testing.T) {
 func TestFillerWatch_NoClipsAtAllIsStillAttention(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
 	if err := st.UpsertFillerSource(t.Context(),
-		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -317,7 +317,7 @@ func TestFillerWatch_NeverFetchedIsNotStale(t *testing.T) {
 	srv, st, _ := newFillerWatchServer(t)
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	if err := st.UpsertFillerSource(t.Context(),
-		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -336,7 +336,7 @@ func TestFillerWatch_LongSilenceAsksForAttention(t *testing.T) {
 	ctx := t.Context()
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	if err := st.UpsertFillerSource(ctx,
-		store.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
+		fillerstore.NewFillerSource("classic", "archive", "classic", "Classic", time.Now().UTC())); err != nil {
 		t.Fatal(err)
 	}
 	completeSourceCheck(t, st, "classic", time.Now().UTC().Add(-5*24*time.Hour))
@@ -358,7 +358,7 @@ func TestFillerWatch_OneCurrentSourceKeepsItHealthy(t *testing.T) {
 	seedClip(t, st, "a.mp4", filler.Commercial, 1992, filler.Kids, "toys")
 	for _, id := range []string{"stale", "fresh"} {
 		if err := st.UpsertFillerSource(ctx,
-			store.NewFillerSource(id, "archive", id, id, time.Now().UTC())); err != nil {
+			fillerstore.NewFillerSource(id, "archive", id, id, time.Now().UTC())); err != nil {
 			t.Fatal(err)
 		}
 	}
