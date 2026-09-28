@@ -106,6 +106,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerSetup(humaAPI)
 	srv.registerProposals(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
+	srv.registerMyChannels(humaAPI)
 	srv.registerProposalJourneys(humaAPI)
 	srv.registerSearch(humaAPI)
 	srv.registerMovieCollections(humaAPI)

@@ -3187,6 +3187,19 @@ components:
         - aggregates
         - runSnapshots
       type: object
+    FavouriteChannelDTO:
+      additionalProperties: false
+      properties:
+        addedAt:
+          description: When the person starred it
+          format: date-time
+          type: string
+        channelId:
+          type: string
+      required:
+        - channelId
+        - addedAt
+      type: object
     FetchFillerSourceOutputBody:
       additionalProperties: false
       properties:
@@ -6457,6 +6470,30 @@ components:
         - collections
         - complete
       type: object
+    MyChannelsOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/MyChannelsOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        favourites:
+          description: Starred channels, oldest first
+          items:
+            $ref: "#/components/schemas/FavouriteChannelDTO"
+          type: array
+        recent:
+          description: Recently tuned channels, newest first, at most 20
+          items:
+            $ref: "#/components/schemas/RecentChannelDTO"
+          type: array
+      required:
+        - favourites
+        - recent
+      type: object
     NotificationDestinationDeleteInputBody:
       additionalProperties: false
       properties:
@@ -8350,6 +8387,19 @@ components:
       required:
         - ready
         - detail
+      type: object
+    RecentChannelDTO:
+      additionalProperties: false
+      properties:
+        channelId:
+          type: string
+        tunedAt:
+          description: The person's latest tune of this channel, from any of their devices
+          format: date-time
+          type: string
+      required:
+        - channelId
+        - tunedAt
       type: object
     RedeemInvitationInputBody:
       additionalProperties: false
@@ -15265,6 +15315,109 @@ paths:
       summary: Suggest an approximate installation location
       tags:
         - settings
+  /v1/me/channels:
+    get:
+      description: "Any signed-in person, or a TV they paired. Both of the caller's channel lists in one read: favourites in the order they were starred, and up to 20 recents, newest first. The filter counts are the list lengths."
+      operationId: my-channels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyChannelsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Your favourite and recent channels
+      tags:
+        - channels
+  /v1/me/favourites/{channelId}:
+    delete:
+      description: Removes the channel from the caller's favourites; removing one that isn't starred is not an error. Returns both lists.
+      operationId: remove-favourite-channel
+      parameters:
+        - in: path
+          name: channelId
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyChannelsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Unstar a channel
+      tags:
+        - channels
+    put:
+      description: Adds the channel to the caller's favourites. Idempotent. Returns both lists.
+      operationId: add-favourite-channel
+      parameters:
+        - in: path
+          name: channelId
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyChannelsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Star a channel
+      tags:
+        - channels
+  /v1/me/recent-channels/{channelId}:
+    put:
+      description: Moves the channel to the front of the caller's recents. Call it once a tune settles (the first decoded frame), never when warming or prefetching a neighbour. Returns both lists.
+      operationId: record-channel-tune
+      parameters:
+        - in: path
+          name: channelId
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyChannelsOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Record that you tuned a channel
+      tags:
+        - channels
   /v1/metrics:
     get:
       description: "Requires the Prometheus scrape token as `Authorization: Bearer <LOOMARR_METRICS_TOKEN>` — not a session or the API token. 401 for a missing or wrong token; 403 when no token is configured (fail closed). Go runtime collectors plus Loomarr's §17 series. Also served at `/metrics`."

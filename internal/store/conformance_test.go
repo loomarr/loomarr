@@ -63,6 +63,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("SeriesEpisodesCache", func(t *testing.T) { testSeriesEpisodes(t, newStore) })
 		t.Run("AiringHistory", func(t *testing.T) { testAiringHistory(t, newStore) })
 		t.Run("LibraryItemPaths", func(t *testing.T) { testLibraryItemPaths(t, newStore) })
+		t.Run("FavouriteChannels", func(t *testing.T) { testFavouriteChannels(t, newStore) })
+		t.Run("RecentChannels", func(t *testing.T) { testRecentChannels(t, newStore) })
 	})
 
 	t.Run("Jobs", func(t *testing.T) {

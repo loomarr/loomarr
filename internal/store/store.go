@@ -964,6 +964,7 @@ type Store interface {
 	CountStore
 	ImageStore
 	DiscoveryFeedbackStore
+	ChannelPreferenceStore
 	DiscoveryQualityStore
 	InventoryStore
 

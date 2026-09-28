@@ -47,6 +47,21 @@ under 100 ms; warm change p95 under 600 ms; cold tune to first frame p50 ≤ 1.0
 SDR (≤ 2.5 s for 4K HDR); a burst of twenty requests plays only the last target and starts no
 adjacent encoder. Not all are measured yet; the Shield run and 24 h soak are #1037.
 
+## Favourites and recents
+
+The guide's **All · Favourites · Recent** filters, the surf rail's groups and the watch console's star
+read one per-person contract (#1666). The lists belong to the person, not the device: a paired TV acts
+as the person who paired it, so a Channel starred on the TV shows on their phone. A break-glass
+`API_TOKEN` caller has no person and gets 401.
+
+- `GET /v1/me/channels` returns both lists in one read: favourites in the order they were starred,
+  and up to 20 recents, newest first. The filter counts are the list lengths.
+- `PUT` / `DELETE /v1/me/favourites/{channelId}` star and unstar, idempotently, and return both lists.
+- `PUT /v1/me/recent-channels/{channelId}` records a tune. A client calls it once a tune settles
+  (first decoded frame), never for warming: minting a play URL is not a tune, because the warmer
+  mints them for the neighbouring Channels. A late report never moves a Channel backwards.
+- Both lists die with their person or their Channel.
+
 ## Pause
 
 Pause is shared time-shift, not a private playback stack (decision
@@ -80,8 +95,9 @@ the user's home-screen ordering.
   identity and the programme bar appear together and clear after five seconds. During filler the
   label is `Commercials · <clip title>` when the Guide supplies one; content hashes and paths are
   never shown. Nothing the server did not supply (codec, captions, resolution) is invented.
-- **Surf** overlays the still-mounted player: favourites (empty until a preference contract exists),
-  session recents, then every playable Channel. Its footer shows client and server versions.
+- **Surf** overlays the still-mounted player: the person's favourites and recents (see
+  [Favourites and recents](#favourites-and-recents)), then every playable Channel. Its footer shows
+  client and server versions.
 - **Guide** is a Channel-by-time grid opening on two hours with thirty minutes of lookback. Clocks use
   the time zone `GET /v1/guide` echoes, as 12-hour AM/PM. Up from the first row enters the filter
   row; disabled filters are skipped. The focused programme card shows artwork, titles, time, and
