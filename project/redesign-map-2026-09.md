@@ -5,8 +5,9 @@
 design system and the API already have, a critique with severities, keep/change/drop calls, the
 questions only you can answer, and a proposed PR sequence.
 
-Phase 0 of #1659. Nothing is built from this until the [open questions](#open-questions) are
-answered. Delete this file when #1659 closes.
+Phase 0 of #1659. The maintainer answered the open questions on 2026-09-28. The
+[Decisions](#decisions) section records the answers, and they win over any earlier recommendation
+here. Delete this file when #1659 closes.
 
 ## How this was made
 
@@ -38,7 +39,8 @@ answered. Delete this file when #1659 closes.
 | New or rebuilt | **Home** (replaces the admin Dashboard and becomes the landing page for both roles), the Watch nav entry, the sidebar mini-player, member channel ideas, native favourites/recents, phone watching + detail sheet, the iPad split view |
 | API gaps filed | [#1662](https://github.com/loomarr/loomarr/issues/1662) viewing · [#1663](https://github.com/loomarr/loomarr/issues/1663) new this week · [#1664](https://github.com/loomarr/loomarr/issues/1664) tonight highlights · [#1665](https://github.com/loomarr/loomarr/issues/1665) channel ideas · [#1666](https://github.com/loomarr/loomarr/issues/1666) favourites/recents · [#1667](https://github.com/loomarr/loomarr/issues/1667) small gaps |
 | Critique | 4 blockers, 27 majors, 9 minors in the [roll-up](#critique-roll-up), plus TV B4's dependency on the #1627 primitives |
-| Biggest risks | No phone layout on web · household viewing privacy · the Home direction isn't chosen · prepared media, withdrawn in beta.8, is back in the mock · the LLM-off path isn't designed |
+| Biggest risks | The web phone layout waits for its mock · Home waits on four API issues (#1662–#1665) · the Guide becomes a migration to `ui/guide` · native Requests has no mock yet |
+| Decided | Every open question, 2026-09-28 ([Decisions](#decisions)) |
 
 Severity: **blocker** = can't build this screen until it's decided or fixed. **Major** = would
 ship a real usability, accessibility, privacy or correctness defect. **Minor** = polish or
@@ -194,9 +196,9 @@ badges, and the disabled bulk "Approve" label (3.18:1). Type sizes rendered: 11 
 - **Blocker: household viewing privacy.** Watching now names the person, the device and exactly
   what they're watching, and shows it to every member, including other members' viewing and, if
   kids have accounts, kids'. §342 makes *titles and channels* globally readable, but that's the
-  catalogue, not a record of who watched what. *Recommend:* admins see channel-level viewer counts
-  only; each person sees their own "continue watching"; showing named viewing to others is opt-in
-  per person and enforced server-side (Q-H2, #1662).
+  catalogue, not a record of who watched what. **Decided (Q-H2):** admins see named viewing,
+  members see counts. Each person still sees their own "continue watching". The server enforces it
+  (#1662), not the UI.
 - **Major: a viewer's home and an operator dashboard in one page.** Approvals, restart and
   "couldn't be built" sit above what's on. The Requests badge already carries the approval count,
   so the strip repeats it. *Recommend:* one Home for everyone, led by what's on. The admin strip
@@ -623,13 +625,13 @@ web" can mean **shared code**, not just a shared look.
 
 **Critique**
 
-- **Blocker: it contradicts a standing rule.** The maintainer's 2026-08-07 rule is that player
-  controls **overlay the frame** (a scrim that auto-hides), not a bar below it. 5e does the
-  opposite. Portrait phone may be a deliberate exception (there's room below the video), but it
-  has to be decided, not inherited (Q-N5).
+- **Settled (Q-N5): controls under the picture.** The 2026-08-07 rule is that player controls
+  overlay the frame. The maintainer made **portrait phone** an intended exception: landscape and
+  TV still overlay.
 - **Major: guide cells at phone width.** In the mock, titles already truncate to a word or a word
-  and an ellipsis, and short programmes will be narrower than 44 pt. *Recommend:* on phones, a now/next **list** per
-  channel with the grid behind a toggle, or a wider time scale (Q-N6).
+  and an ellipsis, and short programmes will be narrower than 44 pt. **Decided (Q-N6):** keep the
+  compact grid, so each cell's hit area must still reach 44 pt, with the detail sheet carrying the
+  full title.
 - **Minor:** the search icon in 5d has no destination defined (a channel filter? the web palette?).
 
 ### Android phone
@@ -643,10 +645,8 @@ web" can mean **shared code**, not just a shared look.
 
 - **5h:** landscape 1180×820. The tabs become a side rail, and Watching (player + controls) sits
   left with the full guide, channel names included, on the right.
-- **Critique:**
-  - **Major:** portrait isn't shown.
-  - **Major:** controls again sit under the picture (Q-N5).
-  - Whether iPad is in scope at all is Q-N1.
+- **Decided (Q-N1):** iPad runs the **phone layout scaled**, so 5h's split view isn't built, and
+  its portrait gap and controls placement are moot.
 
 ### Native: shared with web
 
@@ -655,7 +655,7 @@ web" can mean **shared code**, not just a shared look.
 | Guide grid | `components/loomarr/guide/guide-grid` | `ui/guide`, `ui/guide/guide-tv` | Two grids exist. The redesign is the moment to decide whether web adopts `ui/guide` through react-native-web (Q-N7) |
 | Now/next card with progress | Home WatchingCard, Guide OnNowCard, mini-player | `ui/programme-card`, surf card | one card model, per-density rendering |
 | Channel drawer (watch console) | new | `ui/surf-rail` | the same rail model: Favorites, Recent, All |
-| Channel identity | the Guide uses **monogram idents** ("LN") | native uses **numbers only** | pick one identity (Q-N8) |
+| Channel identity | the Guide uses **monogram idents** ("LN") | native uses **numbers only** | decided: the monogram ident everywhere (Q-N8) |
 | Filters All/Favorites/Recent | the console's star toggles | `GuideFilter`, disabled | one data source (#1666) |
 
 ---
@@ -664,14 +664,14 @@ web" can mean **shared code**, not just a shared look.
 
 | State | Where | Needed |
 | --- | --- | --- |
-| Phone and tablet web layout | everywhere | a mock (Q-X1) |
+| Phone and tablet web layout | everywhere | a bottom bar, once the maintainer mocks it (Q-X1) |
 | LLM not configured / unreachable | Add a channel, Refine, the wizard's last step, ideas | a design (Q-G2) |
 | Missing artwork | every poster, still and channel icon | a code-drawn token fallback |
 | Media server not connected (dead air) | Home, Guide, Watch | the dead-air card exists; Home needs its pointer |
 | Huge household (60+ channels, 10+ viewers, 1,000 requests) | Guide, Home, Requests | virtualisation and caps |
 | Partial failure per section | Home (one section errors, others fine) | a per-section error, not a page error |
 | Offline / server restarting | shell | the restart overlay exists; a general "can't reach Loomarr" state doesn't |
-| Kids / restricted viewer | Home, Guide, native | depends on Q-H6 |
+| Kids / restricted viewer | Home, Guide, native | not in beta.9 (Q-H6) |
 | TV: server unreachable, pairing expired | TV | `ui/device-disconnect` exists and isn't in the mock. Keep today's |
 
 ## Accessibility (measured on the web mock)
@@ -694,9 +694,9 @@ web" can mean **shared code**, not just a shared look.
 | Mock | Standing decision | Recommendation |
 | --- | --- | --- |
 | Prepared-media space, the prepare task, the help page, the Home prep panel | prepared media **withdrawn** in beta.8 (#1512) | drop |
-| Phone controls under the picture (5e, 5g, 5h) | controls overlay the frame (maintainer, 2026-08-07) | ask (Q-N5) |
+| Phone controls under the picture (5e, 5g, 5h) | controls overlay the frame (maintainer, 2026-08-07) | decided: portrait phone is an exception; landscape and TV overlay (Q-N5) |
 | Encoder/speed telemetry on the viewer watch console | §12 rejected the operator-console channel detail | drop it from viewers |
-| Named household viewing shown to all | #186 (viewer identity) was never built; §342 covers the catalogue, not viewing | ask (Q-H2) |
+| Named household viewing shown to all | #186 (viewer identity) was never built; §342 covers the catalogue, not viewing | decided: admins see names, members see counts (Q-H2) |
 | "…models Loomarr uses for **suggestions**" | the artifact is a **Proposal** (CONTEXT.md, V41) | reword |
 | Watch nav target hard-wired to one channel | the backend is the source; no hard-coded data | last-tuned channel ([#1662](https://github.com/loomarr/loomarr/issues/1662)) or first channel |
 | "Open in Jellyfin" as literal copy | the server kind is a setting (Emby or Jellyfin) | read it from settings |
@@ -749,105 +749,74 @@ web" can mean **shared code**, not just a shared look.
 
 ---
 
-## Open questions
+## Decisions
 
-Each one is needed before the PR that depends on it. The recommendation is mine; the answer is yours.
+The maintainer answered every open question on 2026-09-28
+([#1659 comment](https://github.com/loomarr/loomarr/issues/1659#issuecomment-5862244089)).
+Conditions the supervisor added are marked *(supervisor)*. Where a recommendation earlier in this
+map differs, **the decision wins**. A reference like "(Q-H2)" in the body points to row H2 below. Roll-up rows 2–4, 7, 9, 11, 18, 22, 27 and 31 are settled here.
+Row 1 waits for a mock. The rest are build requirements.
 
-**Cross-cutting**
+| Q | Decision | What it changes in the build |
+| --- | --- | --- |
+| X1 | Web gets a **bottom bar** at phone width. The supervisor drafts a brief; the maintainer mocks it | **Don't build the phone layout until the mock exists.** Until then the shell keeps today's 56 px icon rail below `md` |
+| X2 | Watch = the **last-tuned channel**. Channel management highlights **Guide**. Watch is **hidden** until there's a channel | Needs a per-user last channel (#1662) |
+| X3 | **Drop** the mini-player | none |
+| H1 | Build **the web mock's Home** (not 1a/1b/1c) | The strip keeps the mock's sentences |
+| H2 | **Admins see named viewing, members see counts** | #1662 enforces it server-side. Members still get their own "continue watching" |
+| H3 | Tonight's highlights = **premieres + marathons** | #1664 needs only `season_premiere`, `series_premiere` and `marathon`. The mock's "Movie · year" and "New on <channel>" rows aren't highlights |
+| H4 | Channel ideas are **members-only**, as mocked | My reading: the admin "An idea from your library" card isn't built. *Confirm in the Home PR* |
+| H5 | Ideas **may** use the LLM when it's on. *(Supervisor)* they must work fully without it: library facets and the seasonal calendar first, the LLM only enriches | #1665 |
+| H6 | **No** kids/restricted role in beta.9 | Home shows members the whole catalogue, per §342 |
+| H7 | **Move** the Dashboard panels to This server → Playback / Diagnostics | `PlayoutPanel`, `ServicesPanel` and `ActivityFeed` keep working, on new routes |
+| G1 | Design for **100 channels**, with jump-to-number/name and virtualised rows | Guide PR |
+| G2 | With the LLM off: **starter templates plus a manual lineup**, with a one-line reason | Guide, Programming and the wizard's last step |
+| W1 | **Tab player**, plus the console's **channel drawer** and **0–9 direct tune**; **no encoder readout** | Channel-detail PR |
+| R1 | **Group** filler downloads, with bulk approve per group | Requests PR |
+| S1 | Make the **five restart-apply keys hot-apply** and retire the banner. *(Supervisor)* a key that truly can't apply live keeps an **admin-only** restart notice; the PR names which | Its own backend PR (see below) |
+| N1 | **Android TV, iPhone, Android phone**, plus **Apple TV**. iPad uses the **phone layout scaled**. *(Supervisor)* Apple TV is **beta.10** (devices): `apps/tv` is Android-TV-only and tvOS needs react-native-tvos | No iPad layout (roll-up 31 drops). The iPad split view (5h) isn't built |
+| N2 | **Phones can request: native gets Requests** | New PR. **Needs a native Requests mock** (none exists) |
+| N3 | A paired TV **acts as the person who paired it** (favourites, recents, ceiling) | #1666 keys favourites and recents to the pairing user |
+| N4 | D-pad at the guide edges **as described in the map** | TV PR |
+| N5 | **Portrait phone with controls under the picture is an intended exception** to the overlay rule. Landscape and TV still overlay | Phone Watching. Roll-up 4 is settled |
+| N6 | The phone guide keeps the **compact grid** | Phone Guide. Cells still need 44 pt targets |
+| N7 | Web's guide **moves to the shared `ui/guide`** via react-native-web | The Guide PR becomes a migration (larger; see below) |
+| N8 | Channel identity is the **monogram ident** | Native adopts the ident: `ui/guide`, the surf rail and the watching chrome |
 
-- **Q-X1** Web at phone and tablet width: will there be a mock? If not, is today's 56 px icon rail
-  the floor, or should web use the native bottom bar? *Recommend:* mock a bottom bar that matches
-  `ClientNavigation`.
-- **Q-X2** What is "Watch" in the nav: the player for the last-tuned channel? And should channel
-  management always highlight Guide? *Recommend:* yes to both, and hide Watch until there's a
-  channel.
-- **Q-X3** Mini-player: keep, make it a still "Resume" link, or drop? *Recommend:* drop, or a still
-  link with no stream.
-
-**Home**
-
-- **Q-H1** Which direction: the web mock, 1a on-now board, 1b living room, or 1c console? And does
-  the admin status strip stay as sentences, or become counts that link out? *Recommend:* 1b, since
-  it's closest to the web mock, with a counts-only strip.
-- **Q-H2** Who may see whose viewing? Options: (a) everyone sees named viewing; (b) admins see
-  names, members see counts; (c) everyone sees only counts plus their own "continue watching",
-  with named viewing opt-in per person. *Recommend:* (c). Gates #1662.
-- **Q-H3** Which airings are "Tonight's highlights": premieres, marathons, new-to-channel, movies,
-  and how many? Gates #1664.
-- **Q-H4** Channel ideas: members only (as in the web mock), or admins too (the single admin card,
-  "Make this channel")?
-- **Q-H5** May ideas use the LLM when it's on, or must they always be LLM-free? *Recommend:*
-  LLM-free, from library facets and the seasonal calendar. Gates #1665.
-- **Q-H6** Is a kids/restricted viewer in scope for beta.9? If yes, it's a role that limits a
-  person to ceilinged channels everywhere (Home, Guide, TV). That's API work, not a Home variant.
-- **Q-H7** Today's Dashboard panels (playout telemetry, services, activity): move them to This
-  server → Playback / Diagnostics, or retire them? *Recommend:* move.
-
-**Guide and channel**
-
-- **Q-G1** Largest channel count to design for? *Recommend:* 100 (native mocks show 54), with
-  jump-to-number/name and virtualised rows.
-- **Q-G2** When the LLM is off: should Add a channel, Refine and the wizard's last step offer the §13
-  starter templates plus a manual lineup, or hide those doors? *Recommend:* templates + manual,
-  with a one-line reason.
-- **Q-W1** Watch page: today's tab player or the console variant? *Recommend:* the tab player,
-  plus the console's channels drawer and 0–9 direct tune, without the encoder readout.
-
-**Requests, settings**
-
-- **Q-R1** Keep filler clip downloads in the same approval queue as channel proposals, or group
-  them? *Recommend:* group, with a bulk approve per group.
-- **Q-S1** Should the five restart-apply keys become hot-apply (which would retire the banner),
-  or keep the banner admin-only?
-
-**Native**
-
-- **Q-N1** Which platforms do we commit to for beta.9–10: Android TV (Shield), iPhone, Android
-  phone, **iPad**, **Apple TV**? The TV frame says "Android TV / Shield · Apple TV", but
-  `apps/tv` targets Android TV only (`androidTVRequired`), and iPad has a frame but no portrait.
-  *Recommend:* Android TV + iPhone + Android phone committed; iPad as a scaled phone layout, not
-  its own layout, until asked; Apple TV not in beta.9.
-- **Q-N2** Native is viewer-only (Watching, Guide, Surf). Confirm there's no Requests or "Request
-  a channel" on phones.
-- **Q-N3** A paired TV "gets member access": does it act as the person who paired it (their
-  favourites, recents, ceiling), or as a shared household device?
-- **Q-N4** TV guide D-pad at the edges: ◀ at the first cell, ▶ past the window, ▲ to the filters.
-- **Q-N5** Phone and iPad: controls **under** the picture (5e/5g/5h) against the overlay rule. Is
-  portrait phone an intended exception?
-- **Q-N6** Phone guide: keep the compact grid, or a now/next list with the grid as a toggle?
-- **Q-N7** Should web's guide move to the shared `ui/guide` through react-native-web, or stay a
-  separate web grid?
-- **Q-N8** Channel identity: the monogram ident (web Guide) or number only (native)?
+**Required regardless:** fix the measured WCAG failures (tertiary text and outline contrast, the
+45 nested-interactive nodes) **as part of the build, not as a follow-up**.
 
 ---
 
-## Proposed PR sequence
+## PR sequence
 
 Each screen PR brings demo-library screenshots next to the mock for approval, axe and keyboard
 checks, and CI visual baselines. Sizes are rough (S ≤ 300 lines, M ≤ 800, L > 800, excluding
-generated files).
+generated files). "Mock?" says whether a new mock has to exist first.
 
-| # | PR | Depends on | Size |
-| --- | --- | --- | --- |
-| 0 | This map | none | S |
-| 1 | **Tokens and a11y floor**: tertiary text lifted to 4.5:1, a control outline that reaches 3:1 on elevated, an input focus ring, a 12 px content floor, a skip link. Visual baselines refresh | none | S, with a large baseline diff |
-| 2 | **Shared web primitives**: SectionHeader, StatusStrip, list row (dot, progress, action), WatchingCard/OnNowCard (one card), PosterRail, HighlightRow, IdeaCard, count tabs through `NavTabs`, a stretched-link card, the artwork fallback | 1 | M |
-| 3 | **Shell**: Dashboard → Home, Watch entry, member Home route, Ctrl-K label, the narrow layout | Q-X1–X3 | M |
-| 4 | **Home** in the chosen direction, sections behind the data they need (sections without their API ship hidden, not faked) | 2, 3, Q-H1–H7, #1662–#1665 | L (split admin/member if needed) |
-| 5 | **Guide**: On now cards, span picker, block focus and names, grid arrow keys, jump-to-channel, paused styling, the LLM-off describe panel | 2, Q-G1, Q-G2 | M–L |
-| 6 | **Channel detail**: Watch (drawer, direct tune), Info, Programming LLM-off, Filler, Danger deltas | 5, Q-W1 | M |
-| 7 | **Requests**: grouped approvals, locale dates, the disabled bulk button | 2, Q-R1 | S–M |
-| 8 | **Filler**: coverage cards with corrected tones, Manage hub | 2, #1667 | S–M |
-| 9 | **Settings / This server**: drop prepared media, move the operator panels here, dedupe location | Q-S1, Q-H7 | M |
-| 10 | **People + Account**: last seen, session labels, no city | #1667 | S |
-| 11 | **Help, sign-in, pair, wizard**: copy fixes, wizard step gating, starter templates on the last step | Q-G2, Q-N3 | S–M |
-| 12 | **RN design-system primitives**: Text tracking and halo, snow, label-less bars (#1627), BottomSheet, ClientNavigation rail and Material variants | none | M |
-| 13 | **Native favourites/recents** across TV, phone and web | #1666 | M |
-| 14 | **TV** deltas: digit-entry readout, guide edges, adjustable auto-tune | 12, 13, Q-N4 | M |
-| 15 | **Phone** Watching and Guide (sheet / docked strip) | 12, 13, Q-N5, Q-N6 | M–L |
-| 16 | **iPad** (if committed) | 15, Q-N1 | M |
+| # | PR | Depends on | Mock? | Size |
+| --- | --- | --- | --- | --- |
+| 0 | The map and these decisions | none | no | S |
+| 1 | **Tokens and a11y floor**: tertiary text and control outline to AA on every surface, an input focus ring, a skip link | none | no | S, with a large baseline diff |
+| 2 | **Restart-apply keys hot-apply** (S1): the five keys apply live, the banner retires, any key that can't stays behind an admin-only notice | none | no | S–M (backend) |
+| 3 | **Shared web primitives**: SectionHeader, StatusStrip, list row (dot, progress, action), WatchingCard/OnNowCard (one card), PosterRail, HighlightRow, IdeaCard, count tabs through `NavTabs`, a stretched-link card (fixes nested-interactive), the artwork fallback | 1 | no | M |
+| 4 | **Shell**: Dashboard → Home, Watch (last-tuned, hidden until a channel), member Home route, Ctrl-K label, no mini-player | 3, #1662 (last channel) | no | M |
+| 5 | **This server**: move the playout, services and activity panels (H7); drop prepared media; dedupe location | 4 | no | M |
+| 6 | **Home** (the web mock's), sections behind their data; sections without their API ship hidden, not faked | 3, 4, #1662–#1665 | no | L |
+| 7 | **Guide on `ui/guide`** (N7): monogram idents, On now cards, span picker, block focus and names, arrow keys, jump-to-channel, virtualised 100 rows, paused styling, the LLM-off describe panel | 3 | no | L (migration) |
+| 8 | **Channel detail**: Watch drawer and 0–9 direct tune, Info, Programming LLM-off, Filler, Danger | 7 | no | M |
+| 9 | **Requests (web)**: grouped approvals with per-group bulk approve, locale dates, the disabled bulk button | 3 | no | S–M |
+| 10 | **Filler**: coverage cards with corrected tones, Manage hub | 3, #1667 | no | S–M |
+| 11 | **People + Account**: last seen, session labels, no city | #1667 | no | S |
+| 12 | **Help, sign-in, pair, wizard**: copy fixes, wizard step gating, starter templates on the last step | none | no | S–M |
+| 13 | **RN design-system primitives**: Text tracking and halo, snow, label-less bars (#1627), BottomSheet, the Material ClientNavigation variant | none | no | M |
+| 14 | **Favourites/recents** across TV, phone and web, keyed to the pairing user (N3) | #1666 | no | M |
+| 15 | **TV** deltas: digit-entry readout, guide edges (N4), adjustable auto-tune, monogram idents | 13, 14 | no | M |
+| 16 | **Phone** Watching (controls under the picture in portrait, overlay in landscape) and the compact Guide with sheet / docked strip; iPad runs it scaled | 13, 14 | no | M–L |
+| 17 | **Native Requests** (N2) | 16, **a native Requests mock** | **yes** | M |
+| 18 | **Web phone layout** (X1): bottom bar | **the maintainer's mock** | **yes** | M |
+| — | **Apple TV** (N1): react-native-tvos target for `apps/tv` | **beta.10**, not this milestone | n/a | L |
 
-Rough total: about 16 PRs, around 8–11k changed lines in the clients (plus the six API issues,
-sized by their own lanes). The critical path is **the Q-H answers → #1662–#1665 → Home**.
-Guide, Requests, Filler, Settings and the RN primitives can proceed as soon as their own questions
-are answered.
+Rough total: 18 PRs in beta.9, around 9–12k changed lines in the clients, plus the six API issues
+sized by their own lanes. The critical path is **#1662–#1665 → Home**. PRs 1, 2, 3, 9, 12 and 13
+can start now. PRs 17 and 18 wait for their mocks.
