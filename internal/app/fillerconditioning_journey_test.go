@@ -15,17 +15,6 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
-type conditioningJourneySource struct{ dir string }
-
-func (s conditioningJourneySource) EnsureLocalSource(context.Context, string) error { return nil }
-
-func (s conditioningJourneySource) ListLocalClips(ctx context.Context) ([]filler.RawClip, error) {
-	clips, _, err := filler.ScanDir(ctx, s.dir, func(context.Context, string) (filler.Probed, error) {
-		return filler.Probed{DurationMs: 30_000, Height: 480}, nil
-	})
-	return clips, err
-}
-
 type conditioningRekeyCrashStore struct {
 	st         store.Store
 	afterRekey bool
@@ -194,7 +183,13 @@ func runFillerConditioningRestartJourney(t *testing.T, openStore func(*testing.T
 				if err != nil {
 					t.Fatal(err)
 				}
-				if _, err := filler.NewSyncer(conditioningJourneySource{dir: dir}, fillerStoreAdapter{st}, layout, time.Now, nil).Sync(ctx); err != nil {
+				source := filler.DirSource{Layout: layout,
+					Probe: func(context.Context, string) (filler.Probed, error) {
+						return filler.Probed{DurationMs: 30_000, Height: 480}, nil
+					},
+					Artwork: func(context.Context, string, string, string, float64) error { return nil },
+				}
+				if _, err := filler.NewSyncer(source, fillerStoreAdapter{st}, layout, time.Now, nil).Sync(ctx); err != nil {
 					t.Fatal(err)
 				}
 				if target, err := st.GetClip(ctx, crashStore.target.Hash); err != nil || !target.Held {

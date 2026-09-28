@@ -34,12 +34,6 @@ func NewStructureWindowFamilyRuntime(assessor CompleteWindowStructureAssessor, e
 	}, nil
 }
 
-func (r *StructureWindowFamilyRuntime) Profile() fillerstructure.AssessorProfile {
-	if r == nil {
-		return fillerstructure.AssessorProfile{}
-	}
-	return r.profile
-}
 
 // Assess runs or resumes every window and returns one replayable source-level family stitch.
 func (r *StructureWindowFamilyRuntime) Assess(ctx context.Context, prepared StructureAssessmentWindowMediaSet) (fillerstructurewindow.StitchResult, error) {

@@ -202,13 +202,9 @@ func validateMediaAssetIdentity(asset MediaAssetIdentity, role MediaAssetRole, t
 	return nil
 }
 
-// preserveSourceMaster snapshots the exact transcode input before any derivative is built. The
-// returned hidden pathname is the stable input for all later recipes, so a concurrent mutation of
-// the visible name cannot mix bytes between evidence and playback.
-func preserveSourceMaster(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags) (MediaAssetIdentity, error) {
-	return preserveSourceMasterWithStorage(ctx, clipDir, sourcePath, clipHash, tags, nil)
-}
-
+// preserveSourceMasterWithStorage snapshots the exact transcode input before any derivative is
+// built. The returned hidden pathname is the stable input for all later recipes, so a concurrent
+// mutation of the visible name cannot mix bytes between evidence and playback.
 func preserveSourceMasterWithStorage(ctx context.Context, clipDir, sourcePath, clipHash string, tags SidecarTags, storage *storageWriteTracker) (MediaAssetIdentity, error) {
 	if err := ctx.Err(); err != nil {
 		return MediaAssetIdentity{}, err

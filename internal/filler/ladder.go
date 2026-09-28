@@ -270,10 +270,6 @@ type EraRange struct {
 // Any reports whether the range constrains nothing.
 func (r EraRange) Any() bool { return r.From <= 0 && r.To <= 0 }
 
-// Year is the single-year range — what a channel targeting "1992" means, and the shape every
-// call site had before V51f when the field was one int.
-func Year(y int) EraRange { return EraRange{From: y, To: y} }
-
 // Contains reports whether a clip's year falls in the window. A zero bound is unbounded on that
 // end, so {1990, 0} is "1990 onwards" and {0, 1999} is "up to 1999".
 //

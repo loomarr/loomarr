@@ -57,8 +57,6 @@ func NewBrave(config BraveConfig) (*Brave, error) {
 		endpoint: endpoint, now: config.Now}, nil
 }
 
-func (*Brave) Identity() (string, string) { return "brave", BraveAdapterVersion }
-
 func (b *Brave) Retrieve(ctx context.Context, lookup Lookup) (Packet, error) {
 	if err := lookup.Validate(); err != nil {
 		return Packet{}, err

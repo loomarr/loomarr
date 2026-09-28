@@ -20,13 +20,13 @@ func (p *siteProvider) Chat(ctx context.Context, _ []llm.Message, _ llm.ChatOpti
 	return llm.Response{Content: `{}`}, nil
 }
 
-func TestClassifyText_NamesItsLLMCallSite(t *testing.T) {
+func TestClassifyTextBatch_NamesItsLLMCallSite(t *testing.T) {
 	provider := &siteProvider{}
 	forest := taxonomy.New([]taxonomy.Taxon{{Slug: "commercial", Label: "Commercial", Axis: taxonomy.AxisFormat}})
 	signals := Signals{ClipHash: "c", Title: "T", ObservedAt: time.Unix(500, 0).UTC()}
 	// The reply content is irrelevant: the site is fixed before the response is parsed.
-	_, _ = classifyText(t.Context(), provider, forest, textAxes, signals, "m", "p", "t")
-	if len(provider.sites) != 1 || provider.sites[0] != "filler.text_single" {
-		t.Fatalf("call sites = %v, want [filler.text_single]", provider.sites)
+	_, _, _ = classifyTextBatch(t.Context(), provider, forest, []textBatchInput{{Axes: textAxes, Signals: signals}}, "m", "p", "t")
+	if len(provider.sites) != 1 || provider.sites[0] != "filler.text_batch" {
+		t.Fatalf("call sites = %v, want [filler.text_batch]", provider.sites)
 	}
 }

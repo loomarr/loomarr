@@ -85,17 +85,6 @@ type Budget struct {
 	MaxSplits     func() int
 }
 
-// DefaultBudget is the budget with the historical batch sizes.
-func DefaultBudget() Budget {
-	return Budget{
-		MaxClips:      func() int { return 25 },
-		MaxTranscodes: func() int { return 3 },
-		MaxWhisper:    func() int { return 10 },
-		MaxVision:     func() int { return 5 },
-		MaxSplits:     func() int { return 3 },
-	}
-}
-
 // spend tracks what a single pass has used.
 type spend struct {
 	clips, transcodes, whisper, vision, splits int

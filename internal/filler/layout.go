@@ -40,6 +40,11 @@ func NewLayout(root, watch string) (Layout, error) {
 	if err != nil {
 		return Layout{}, err
 	}
+	// ⚠ The DERIVED default is the point (§10 V38c). `filler.watch_dir` defaults to empty rather
+	// than to a literal `/data/filler/_watch`, because a literal silently stops tracking the moment
+	// an operator points `filler.dir` at a library on another disk: arrivals keep landing under
+	// `/data` while the catalog looks elsewhere, and the drop-folder appears broken with both
+	// settings looking right. An explicit watch folder wins.
 	if watch == "" {
 		watch = filepath.Join(clipDir, WatchDirName)
 	}
