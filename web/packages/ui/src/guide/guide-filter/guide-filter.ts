@@ -1,7 +1,7 @@
 import type { GuideLayout } from "@loomarr/core/guide";
 import type { MyChannels } from "@loomarr/core/my-channels";
 
-import type { GuideFilter, GuideFilterOption } from "./guide.type";
+import type { GuideFilter, GuideFilterOption } from "../guide.type";
 
 /**
  * The three filters with their counts, as the native mock writes them ("All · 54", "★ Favorites · 6",
