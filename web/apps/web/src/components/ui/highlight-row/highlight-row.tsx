@@ -25,7 +25,7 @@ const HighlightRow = ({
     props: {
       onClick,
       className: cn(
-        "grid w-full cursor-pointer grid-cols-[auto_36px_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 border-none sm:grid-cols-[80px_36px_minmax(0,1fr)_auto] sm:gap-3 bg-transparent px-4 py-3 text-left text-foreground hover:bg-static-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+        "grid w-full cursor-pointer grid-cols-[auto_36px_minmax(0,1fr)] items-center gap-x-3 gap-y-0.5 border-none bg-transparent px-4 py-3 text-left text-foreground hover:bg-static-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:grid-cols-[80px_36px_minmax(0,1fr)_auto] sm:gap-3",
         className,
       ),
       children: (
