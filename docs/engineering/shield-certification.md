@@ -105,6 +105,10 @@ the foreground. `MINUTES` shortens a soak for a trial; the verdict still judges 
   A number jump runs from the entry's commit instead, so the deliberate 1.2 s entry window is not counted.
 - **Unfinished surfs** (no first frame before the next key) count as infinitely slow: they can raise a
   percentile, never hide. Give `INTERVAL` room above the cold threshold.
+- **Refused surfs** logged an error (the server's `http_503`, say) and never framed, not even through the
+  player's own retries. They have no latency to time, so they sit outside the percentiles, are counted by
+  cause (`refusedBy`), and fail their own gate (`refusedMax0`). A surf that a retry recovered is timed
+  from its key to the retry's first frame.
 - **Held OSD** is when React committed the switch overlay, not when the panel lit: allow a frame or two.
   **Held still** is when the channel's still image finished loading behind the readout.
 - **Codec re-inits.** ExoPlayer logs `DMCodecAdapterFactory: Creating an asynchronous MediaCodec adapter

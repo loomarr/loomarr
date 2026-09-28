@@ -138,7 +138,7 @@ BEGIN {
 	} else if (event == "first-frame") {
 		if (!(id in a_ff)) a_ff[id] = t
 	} else if (event == "held") {
-		if (kv["what"] == "osd" && !(id in a_card)) a_card[id] = t
+		if (kv["what"] == "osd" && !(id in a_osd)) a_osd[id] = t
 		if (kv["what"] == "still" && !(id in a_still)) a_still[id] = t
 	} else if (event == "stall-start") {
 		stalls++
@@ -152,6 +152,7 @@ BEGIN {
 	} else if (event == "error") {
 		errors++
 		cause = kv["cause"]
+		if (!(id in a_err)) a_err[id] = cause
 		if (!(cause in error_by)) {
 			error_causes++
 			error_name[error_causes] = cause
@@ -190,8 +191,11 @@ END {
 	if (mode == "surf") {
 		boot = 0
 		unfinished = 0
+		refused = 0
 		for (i = 1; i <= attempts; i++) {
 			id = order[i]
+			# The player's own retries belong to the surf they follow.
+			if (a_why[id] == "retry") continue
 			if (!(a_why[id] in surf_reason)) {
 				boot++
 				continue
@@ -201,13 +205,31 @@ END {
 			start = (a_key[id] != "" && a_why[id] != "number") ? a_key[id] : a_tune[id]
 			path = (a_path[id] == "warm") ? "warm" : "cold"
 			surfs++
-			if (id in a_ff) {
-				push(path, a_ff[id] - start)
+			# A surf is served by its own first frame or a retry's; one that never framed after an
+			# error mark was refused (first cause wins); one with neither simply ran out of time.
+			framed = (id in a_ff) ? a_ff[id] : ""
+			cause = (id in a_err) ? a_err[id] : ""
+			for (j = i + 1; framed == "" && j <= attempts; j++) {
+				retry = order[j]
+				if (a_pid[retry] != a_pid[id] || a_why[retry] != "retry") break
+				if (retry in a_ff) framed = a_ff[retry]
+				if (cause == "" && (retry in a_err)) cause = a_err[retry]
+			}
+			if (framed != "") {
+				push(path, framed - start)
+			} else if (cause != "") {
+				# Refused surfs have no latency; the refusal gate fails on them instead.
+				refused++
+				if (!(cause in refused_by)) {
+					refused_causes++
+					refused_name[refused_causes] = cause
+				}
+				refused_by[cause]++
 			} else {
 				push(path, UNFINISHED)
 				unfinished++
 			}
-			if (id in a_card) push("held", a_card[id] - start)
+			if (id in a_osd) push("held", a_osd[id] - start)
 			if (id in a_still) push("still", a_still[id] - start)
 			if (a_key[id] == "") unkeyed++
 			else if (a_why[id] != "number") push("dispatch", a_tune[id] - a_key[id])
@@ -215,12 +237,20 @@ END {
 		g_warm = verdict("warm", 600)
 		g_cold = verdict("cold", 1500)
 		g_held = verdict("held", 100)
-		printf "{\"mode\":\"surf\",\"surfs\":%d,\"unfinished\":%d,\"unkeyed\":%d,\"otherTunes\":%d,", surfs, unfinished, unkeyed + 0, boot > json
+		g_refused = (surfs + 0 == 0) ? "NO-DATA" : (refused ? "FAIL" : "PASS")
+		refused_json = ""
+		refused_text = ""
+		for (e = 1; e <= refused_causes; e++) {
+			refused_json = refused_json sprintf("%s\"%s\":%d", (e > 1 ? "," : ""), refused_name[e], refused_by[refused_name[e]])
+			refused_text = refused_text sprintf("%s%s x%d", (e > 1 ? ", " : ""), refused_name[e], refused_by[refused_name[e]])
+		}
+		printf "{\"mode\":\"surf\",\"surfs\":%d,\"unfinished\":%d,\"refused\":%d,\"refusedBy\":{%s},\"unkeyed\":%d,\"otherTunes\":%d,", surfs, unfinished, refused, refused_json, unkeyed + 0, boot > json
 		printf "\"warm\":%s,\"cold\":%s,\"held\":%s,\"still\":%s,\"keyToTune\":%s,", stats_json("warm"), stats_json("cold"), stats_json("held"), stats_json("still"), stats_json("dispatch") > json
 		printf "\"stalls\":%d,\"errors\":%d,", stalls + 0, errors + 0 > json
-		printf "\"gates\":{\"warmP95Max600\":\"%s\",\"coldP95Max1500\":\"%s\",\"heldP95Max100\":\"%s\"}}\n", g_warm, g_cold, g_held > json
+		printf "\"gates\":{\"warmP95Max600\":\"%s\",\"coldP95Max1500\":\"%s\",\"heldP95Max100\":\"%s\",\"refusedMax0\":\"%s\"}}\n", g_warm, g_cold, g_held, g_refused > json
 
-		printf "surfs            %d (%d unfinished before the next key, %d without a key time; %d other tunes ignored)\n", surfs, unfinished, unkeyed + 0, boot
+		printf "surfs            %d (%d refused, %d unfinished before the next key, %d without a key time; %d other tunes ignored)\n", surfs, refused, unfinished, unkeyed + 0, boot
+		printf "refused          %d%s   [G3 none refused: %s]\n", refused, (refused_text == "" ? "" : " (" refused_text ")"), g_refused
 		printf "warm key->frame  n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 600 ms: %s]\n", count["warm"] + 0, human(percentile("warm", 50)), human(percentile("warm", 95)), human(percentile("warm", 100)), g_warm
 		printf "cold key->frame  n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 1500 ms: %s]\n", count["cold"] + 0, human(percentile("cold", 50)), human(percentile("cold", 95)), human(percentile("cold", 100)), g_cold
 		printf "held OSD         n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 100 ms: %s]\n", count["held"] + 0, human(percentile("held", 50)), human(percentile("held", 95)), human(percentile("held", 100)), g_held

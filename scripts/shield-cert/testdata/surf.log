@@ -17,3 +17,12 @@
 1790000030.020  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=40020 att=6 what=osd
 1790000030.300  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=40300 att=6
 1790000031.000  4242  4260 I ReactNativeJS: LoomarrCert v=2 ev=first-frame t=41000 att=6
+1790000035.002  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=45002 att=7 ch=ch_b key=45000 num=102 path=warm why=step
+1790000035.030  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=45030 att=7 what=osd
+1790000035.400  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=error t=45400 att=7 cause=http_503
+1790000036.400  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=46400 att=8 ch=ch_b num=102 path=cold why=retry
+1790000040.001  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=50001 att=9 ch=ch_c key=50000 num=103 path=warm why=step
+1790000040.025  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=50025 att=9 what=osd
+1790000040.300  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=error t=50300 att=9 cause=network
+1790000041.300  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=51300 att=10 ch=ch_c num=103 path=cold why=retry
+1790000041.500  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=51500 att=10
