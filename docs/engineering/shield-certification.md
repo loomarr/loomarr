@@ -131,6 +131,7 @@ these numbers prove the tooling, not the gates.
 | --- | --- |
 | Step surf, `CHANNEL_UP` every 5 s, 3 min | 36 of 36 surfs warm; warm p50 524 ms, p95 653 ms; held card p50 7 ms, p95 13 ms; still p50 220 ms, p95 412 ms; 0 stalls |
 | Jump surf, 6 channels, every 6 s, 2 min | 20 surfs, 17 cold; cold p50 532 ms, p95 2482 ms; held card p95 29 ms; still p95 515 ms |
+| Soak, 8 min, rotating every 2 min, one forced adb disconnect and one app kill | 0.132 viewer-hours, 5 tunes, 2 app processes, 1 reconnect, 1 relaunch; 0 stalls; 4 decoder inits, all at tunes (ExoPlayer reused decoders across some tunes), 0 mid-play; verdict `INCOMPLETE` (short run) |
 
 ## Known gap
 
