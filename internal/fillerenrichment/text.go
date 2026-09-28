@@ -19,12 +19,11 @@ import (
 const (
 	textPromptVersion  = "filler-progressive-text-v3"
 	textModelBatchSize = 8
-	// The response contracts are small JSON records. Keep an explicit ceiling so a
+	// The response contract is a small JSON record per clip. Keep an explicit ceiling so a
 	// provider that fails to terminate JSON cannot occupy the one household model
-	// slot until the transport deadline. The batch allowance covers eight complete
+	// slot until the transport deadline. The allowance covers eight complete
 	// records, including their 64-character clip identities.
-	textSingleMaxTokens = 512
-	textBatchMaxTokens  = 2048
+	textBatchMaxTokens = 2048
 )
 
 var textAxes = []Axis{
@@ -326,36 +325,6 @@ func (s *stringList) UnmarshalJSON(raw []byte) error {
 		*s = []string{value}
 	}
 	return nil
-}
-
-func classifyText(ctx context.Context, provider llm.Provider, forest *taxonomy.Forest, axes []Axis,
-	signals Signals, producer, producerVersion, taxonomyVersion string) ([]State, error) {
-	requested := make(map[Axis]bool, len(axes))
-	axisNames := make([]string, 0, len(axes))
-	for _, axis := range axes {
-		requested[axis] = true
-		axisNames = append(axisNames, string(axis))
-	}
-	system := `Classify only the requested filler details from the supplied text. Return one JSON object and no prose.
-Use only taxonomy slugs from the vocabulary. Use an empty string or array when the text does not support an answer.
-Do not guess a year, country, location, safety rating, or facts based only on nostalgia, visual style, or general knowledge.
-Kind must be one of commercial, bumper, station_id, psa, trailer, interstitial, or empty.
-Audience must be one of kids, family, general, late_night, or empty. Brand must appear literally in the supplied text.
-Confidence must be an integer percentage from 0 through 80.
-The product, format, seasonal, audienceCue, and presentation values must always be JSON arrays, even for one item.
-JSON keys: kind, audience, brand, product, format, seasonal, audienceCue, presentation, confidence.`
-	user := fmt.Sprintf("Requested axes: %s\nTaxonomy:\n%s\n\nClip text:\n%s",
-		strings.Join(axisNames, ", "), forest.Vocab(), signalText(signals))
-	response, err := provider.Chat(llm.WithCallSite(ctx, "filler.text_single"), []llm.Message{{Role: llm.System, Content: system}, {Role: llm.User, Content: user}},
-		withLowTemperature(textSingleMaxTokens))
-	if err != nil {
-		return nil, err
-	}
-	var output textOutput
-	if err := json.Unmarshal([]byte(llm.ExtractJSONObject(response.Content)), &output); err != nil {
-		return nil, fmt.Errorf("model output is not JSON: %w", err)
-	}
-	return statesFromTextOutput(forest, requested, signals, output, producer, producerVersion, taxonomyVersion), nil
 }
 
 func classifyTextBatch(ctx context.Context, provider llm.Provider, forest *taxonomy.Forest, inputs []textBatchInput,

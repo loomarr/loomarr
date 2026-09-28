@@ -80,27 +80,17 @@ const (
 	fetchedByUs  = "loomarr"
 )
 
-// SidecarFetchedMark is the `loomarr` block a downloader writes into the info-JSON beside a clip.
+// SidecarFetchedMarkForAcquisition is the `loomarr` block a downloader writes into the info-JSON
+// beside a clip. It carries the registered source responsible for the acquisition and the durable
+// acquisition run responsible for the fetched bytes. The two are intentionally separate: the
+// source identifies acquisition provenance, while the acquisition identifies one observable
+// attempt that may be retried.
 //
 // ⚠ **Exported because the mark has to be written by whoever DOWNLOADED the file**, and that is
 // `clipfetch`, which must not import this package's internals. Both sides reading one definition
 // is the point: recovery and provenance checks read exactly this shape, and a second hand-rolled
-// copy in the downloader is how the two silently stop agreeing.
-//
-// The marker remains required for exact acquisition recovery even though it no longer decides
-// catalog eligibility.
-func SidecarFetchedMark() map[string]any {
-	return SidecarFetchedMarkFor("")
-}
-
-// SidecarFetchedMarkFor also carries the exact registered source responsible for the acquisition.
-func SidecarFetchedMarkFor(sourceID string) map[string]any {
-	return SidecarFetchedMarkForAcquisition(sourceID, "")
-}
-
-// SidecarFetchedMarkForAcquisition also records the durable acquisition run responsible for the
-// fetched bytes. It is intentionally separate from SourceID: the source identifies acquisition
-// provenance, while the acquisition identifies one observable attempt that may be retried.
+// copy in the downloader is how the two silently stop agreeing. The marker remains required for
+// exact acquisition recovery even though it no longer decides catalog eligibility.
 func SidecarFetchedMarkForAcquisition(sourceID, acquisitionID string) map[string]any {
 	mark := map[string]any{fetchedByKey: fetchedByUs}
 	if sourceID != "" {
@@ -670,30 +660,6 @@ func isBoilerplate(line string) bool {
 		return true
 	}
 	return false
-}
-
-// SidecarLicense reads the licence URL a source declared for a clip (V33). Returns "" when
-// there is no sidecar, it does not parse, or the source declared none.
-//
-// ⚠ **Empty means UNKNOWN, never "public domain".** About 92% of Archive items carry no
-// licence at all (667 of 8362 in `classic_tv_commercials` — measured during the 2026-07-31
-// fixture capture), so absence is the common case and says nothing about permission. Callers
-// render "unknown", never a reassuring default.
-//
-// ⚠ Separate from SidecarText, deliberately. That function builds PROSE for the tagger, and a
-// licence is a catalog fact — "CC BY-NC-SA 4.0" tells a model nothing about whether a clip is a
-// cereal advert, and it would burn prompt tokens. Worse, it would not survive the trip:
-// `isBoilerplate` drops any line starting with http(s)://, which is every licence URL.
-func SidecarLicense(fsys fs.FS, mediaPath string) string {
-	raw, err := fs.ReadFile(fsys, sidecarPathFor(mediaPath))
-	if err != nil {
-		return "" // no sidecar is normal — drop-folder clips never had one
-	}
-	var info sidecarInfo
-	if err := json.Unmarshal(raw, &info); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(info.License)
 }
 
 // PlaybackLoudness is the integrated loudness measured for the clip's playback rendition at

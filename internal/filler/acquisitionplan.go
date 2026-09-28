@@ -7,12 +7,8 @@ import (
 	"strings"
 )
 
-// PlanAcquisition applies hard constraints first, then selects a diverse stable prefix.
-func PlanAcquisition(intent AcquisitionIntent, candidates []AcquisitionCandidate, existing map[string]ExistingRemoteState) (AcquisitionPlan, error) {
-	return PlanAcquisitionFor(intent, candidates, existing, CoverageGaps{})
-}
-
-// PlanAcquisitionFor is PlanAcquisition steered toward channel coverage gaps (#749): a candidate
+// PlanAcquisitionFor applies hard constraints first, then selects a diverse stable prefix,
+// steered toward channel coverage gaps (#749): a candidate
 // that fills a gap (its observed year in a gap era, or its observed role a missing role) ranks
 // ahead of every candidate that does not.
 //

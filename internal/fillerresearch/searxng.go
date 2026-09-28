@@ -43,8 +43,6 @@ func NewSearXNG(config SearXNGConfig) (*SearXNG, error) {
 	return &SearXNG{client: sameOriginClient(config.Client, endpoint), endpoint: endpoint, now: config.Now}, nil
 }
 
-func (*SearXNG) Identity() (string, string) { return "searxng", SearXNGAdapterVersion }
-
 func (s *SearXNG) Retrieve(ctx context.Context, lookup Lookup) (Packet, error) {
 	if err := lookup.Validate(); err != nil {
 		return Packet{}, err

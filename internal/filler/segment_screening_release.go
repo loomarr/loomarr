@@ -44,6 +44,10 @@ type SegmentScreeningCertification struct {
 	evidence  SegmentScreeningCertificationEvidenceReader
 }
 
+// NewSegmentScreeningCertification is deliberately unreached by the server (deadcode reports it).
+// Production wires the screening stage with a nil certification, so a rendered child that passes
+// every axis still goes to review ("production release is not authorized"). This constructor is
+// the one way to authorize release, and it stays until a reviewed release authority is wired.
 func NewSegmentScreeningCertification(authority SegmentScreeningReleaseAuthority, evidence SegmentScreeningCertificationEvidenceReader) (*SegmentScreeningCertification, error) {
 	if err := ValidateSegmentScreeningReleaseAuthority(authority); err != nil {
 		return nil, err

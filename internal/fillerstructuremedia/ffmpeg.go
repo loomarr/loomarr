@@ -19,11 +19,6 @@ func PartArguments(source string, startMS, durationMS int64, output string) []st
 	})
 }
 
-// ConcatArguments joins canonical parts without another lossy encode.
-func ConcatArguments(list, output string) []string {
-	return replaceTokens(concatArgumentTemplate(), map[string]string{listToken: list, outputToken: output})
-}
-
 func partArgumentTemplate() []string {
 	// -t is deliberately an output option after -i. As an input option it capped audio while
 	// the fps filter emitted video through the source's full timeline on real MP4 inputs.
@@ -43,6 +38,8 @@ func partArgumentTemplate() []string {
 	}
 }
 
+// concatArgumentTemplate joins canonical parts without another lossy encode. The server only
+// digests it into the media profile; the research review tool runs it.
 func concatArgumentTemplate() []string {
 	return []string{
 		"-nostdin", "-hide_banner", "-v", "error", "-y",

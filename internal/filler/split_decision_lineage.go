@@ -1,23 +1,16 @@
 package filler
 
-// structureDecisionSHA256ForInterval returns provenance only when the proposal is an exact
-// projection of one confirmed artifact and this child is one of that decision's keep spans.
-// Manual boundary edits and detector-only cuts deliberately return no model-decision identity.
-func structureDecisionSHA256ForInterval(proposal SplitProposal, segment SplitSegment) string {
-	authority, ok := structureDecisionAuthorityForInterval(proposal, segment)
-	if !ok {
-		return ""
-	}
-	return authority.sha256
-}
-
 type structureDecisionIntervalAuthority struct {
 	sha256 string
 	role   StructureSegmentRole
 }
 
-// structureDecisionAuthorityForInterval returns the exact role as well as the artifact identity.
-// Materialization must not preserve the decision digest while throwing away the decision's answer.
+// structureDecisionAuthorityForInterval returns provenance only when the proposal is an exact
+// projection of one confirmed artifact and this child is one of that decision's keep spans.
+// Manual boundary edits and detector-only cuts deliberately return no model-decision identity.
+//
+// It returns the exact role as well as the artifact identity: materialization must not preserve
+// the decision digest while throwing away the decision's answer.
 func structureDecisionAuthorityForInterval(proposal SplitProposal, segment SplitSegment) (structureDecisionIntervalAuthority, bool) {
 	if proposal.Structure == nil || proposal.StructureDecision == nil ||
 		proposal.Structure.Source != proposal.Source ||

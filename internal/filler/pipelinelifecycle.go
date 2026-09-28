@@ -121,16 +121,6 @@ func (o *PipelineOverview) AddLifecycle(lifecycle PipelineLifecycle, count int) 
 	}
 }
 
-// SummarizePipelines is the in-memory adapter for tests and small stores. Production SQL groups
-// equivalent facts before calling Add, but both paths cross Lifecycle for the actual decision.
-func SummarizePipelines(rows []ClipPipeline, at time.Time) PipelineOverview {
-	var out PipelineOverview
-	for _, row := range rows {
-		out.AddLifecycle(row.Lifecycle(at), 1)
-	}
-	return out
-}
-
 // Lifecycle projects one persisted row into operator ownership and recovery semantics at `at`.
 // Disposition wins over stage status: a review or rejection is never described as machine work
 // merely because an older status survived on the current rung.

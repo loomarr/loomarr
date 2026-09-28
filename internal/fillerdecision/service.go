@@ -14,7 +14,6 @@ import (
 
 type Service struct {
 	repo       Repository
-	applied    AppliedActionExecutor
 	diagnostic DiagnosticRecoveryExecutor
 }
 
@@ -25,15 +24,6 @@ func New(repo Repository) (*Service, error) {
 	return &Service{repo: repo}, nil
 }
 
-// WithAppliedActions installs the one terminal executor permitted to publish applied decisions.
-// A nil executor deliberately leaves applied rows fail-closed while shadow audit remains usable.
-func (s *Service) WithAppliedActions(executor AppliedActionExecutor) *Service {
-	if s != nil {
-		s.applied = executor
-	}
-	return s
-}
-
 // WithDiagnosticRecovery attaches the pipeline-owned status and retry seam. Configuration and
 // inspection destinations remain available without it; executable retries fail closed.
 func (s *Service) WithDiagnosticRecovery(executor DiagnosticRecoveryExecutor) *Service {
@@ -41,72 +31,6 @@ func (s *Service) WithDiagnosticRecovery(executor DiagnosticRecoveryExecutor) *S
 		s.diagnostic = executor
 	}
 	return s
-}
-
-func (s *Service) Record(ctx context.Context, record Record) error {
-	if err := ValidateRecord(record); err != nil {
-		return err
-	}
-	return s.repo.PutFillerDecision(ctx, record)
-}
-
-func (s *Service) Act(ctx context.Context, action Action) error {
-	if err := ValidateAction(action); err != nil {
-		return err
-	}
-	record, err := s.repo.GetFillerDecision(ctx, action.DecisionID)
-	if err != nil {
-		return err
-	}
-	switch record.ApplicationMode {
-	case ApplicationModeShadow:
-		return s.repo.CommitFillerDecisionAction(ctx, action)
-	case ApplicationModeApplied:
-		existing, found, err := s.repo.FindFillerDecisionAction(ctx, action.ID)
-		if err != nil {
-			return err
-		}
-		if found {
-			if SameAction(existing, action) {
-				return nil
-			}
-			return ErrConflict
-		}
-		if s.applied == nil {
-			return ErrAppliedUnavailable
-		}
-		return s.applied.ActOnAppliedFillerDecision(ctx, record, action)
-	default:
-		return ErrActionMode
-	}
-}
-
-// ActOnAttention accepts only an action advertised by the current typed task. Persistence still
-// owns the transactional stale/current check, so a race between projection and action fails closed.
-func (s *Service) ActOnAttention(ctx context.Context, action Action) error {
-	if err := ValidateAction(action); err != nil {
-		return err
-	}
-	record, err := s.repo.GetFillerDecision(ctx, action.DecisionID)
-	if err != nil {
-		return err
-	}
-	if record.ApplicationMode == ApplicationModeApplied {
-		existing, found, err := s.repo.FindFillerDecisionAction(ctx, action.ID)
-		if err != nil {
-			return err
-		}
-		if found {
-			if SameAction(existing, action) {
-				return nil
-			}
-			return ErrConflict
-		}
-	}
-	if !containsAction(s.attentionActions(record), action.Kind) {
-		return ErrActionNotAllowed
-	}
-	return s.Act(ctx, action)
 }
 
 func (s *Service) Overview(ctx context.Context) (Overview, error) {
@@ -127,70 +51,6 @@ func (s *Service) Overview(ctx context.Context) (Overview, error) {
 		overview.ActionCount = counts.UnresolvedReviews
 	}
 	return overview, nil
-}
-
-// Attention is the one typed projection of unresolved semantic work that
-// genuinely requires a person. Operational holds never enter this interface.
-func (s *Service) Attention(ctx context.Context, cursor Cursor, limit int) (AttentionPage, error) {
-	limit, err := validLimit(limit)
-	if err != nil {
-		return AttentionPage{}, err
-	}
-	page, err := s.repo.ListFillerDecisions(ctx, DecisionFilter{
-		Kind: OutcomeSemantic, Verdict: filleradmission.VerdictReview,
-		CurrentOnly: true, UnresolvedOnly: true, Cursor: cursor, Limit: limit,
-	})
-	if err != nil {
-		return AttentionPage{}, err
-	}
-	out := AttentionPage{Tasks: make([]AttentionTask, 0, len(page.Rows)), Total: page.Total}
-	for _, record := range page.Rows {
-		decision := record.Result.Decision
-		out.Tasks = append(out.Tasks, AttentionTask{
-			ID: record.ID, ClipHash: record.ClipHash, Question: decision.ReviewQuestion,
-			Kind:            attentionTaskKind(decision.ReasonCodes),
-			ApplicationMode: record.ApplicationMode,
-			AllowedActions:  s.attentionActions(record),
-			ReasonCodes:     append([]filleradmission.ReasonCode{}, decision.ReasonCodes...),
-			EvidenceRefs:    append([]string{}, decision.EvidenceRefs...),
-			Conflicts:       append([]filleradmission.Conflict{}, decision.Conflicts...),
-			CreatedAt:       record.CreatedAt,
-		})
-	}
-	return out, nil
-}
-
-func attentionTaskKind(reasons []filleradmission.ReasonCode) AttentionTaskKind {
-	for _, reason := range reasons {
-		if reason == filleradmission.ReasonInsufficientSensitiveEvidence {
-			return AttentionSuitabilityException
-		}
-	}
-	return AttentionIdentityRole
-}
-
-func (s *Service) attentionActions(record Record) []ActionKind {
-	decision := record.Result.Decision
-	if decision == nil || decision.Verdict != filleradmission.VerdictReview || strings.TrimSpace(decision.ReviewQuestion) == "" {
-		return []ActionKind{}
-	}
-	if record.ApplicationMode == ApplicationModeApplied && s.applied == nil {
-		return []ActionKind{}
-	}
-	actions := []ActionKind{ActionAbandon}
-	if attentionTaskKind(decision.ReasonCodes) != AttentionIdentityRole {
-		return actions
-	}
-	return []ActionKind{ActionAdmit, ActionReject, ActionCorrect, ActionAbandon}
-}
-
-func containsAction(actions []ActionKind, wanted ActionKind) bool {
-	for _, action := range actions {
-		if action == wanted {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *Service) Diagnostics(ctx context.Context, cursor Cursor, limit int) (DiagnosticPage, error) {
