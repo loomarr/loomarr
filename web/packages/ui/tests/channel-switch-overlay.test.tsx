@@ -186,6 +186,31 @@ describe("TV channel switch overlay (B4, #1627)", () => {
     vi.useRealTimers();
   });
 
+  it("reports the readout once per switch and the still once it loads", () => {
+    vi.useFakeTimers();
+    class LoadingImage {
+      onload?: () => void;
+      set src(_value: string) {
+        setTimeout(() => this.onload?.(), 0);
+      }
+    }
+    vi.stubGlobal("Image", LoadingImage);
+    const onSwitchShown = vi.fn();
+    const { root } = mount();
+    const next = { id: "eight", inAppPlayable: true, name: "Eight", number: 8 };
+
+    act(() => root.render(surface(tuning, { onSwitchShown })));
+    act(() => vi.advanceTimersByTime(5));
+    act(() => root.render(surface({ ...tuning, attemptId: 4 }, { onSwitchShown })));
+    // A second switch made while the overlay is still up is its own switch.
+    act(() => root.render(surface({ ...tuning, attemptId: 5, channel: next }, { onSwitchShown })));
+
+    expect(onSwitchShown.mock.calls.map(([what]) => what)).toEqual(["osd", "still", "osd"]);
+    act(() => root.unmount());
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
   it("does not cover a recovery retry or the initial catalog tune", () => {
     const { container, root } = mount();
     act(() => root.render(surface({ ...tuning, tuneReason: "retry" })));

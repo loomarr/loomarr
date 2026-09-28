@@ -74,6 +74,7 @@ android-emulator-acceptance	scripts/test-android-release-emulator.sh	android
 release-image	Dockerfile	contracts,go,go_full,image,policy
 observability-bundle	observability/metrics-manifest.txt	contracts
 docs-capture	scripts/docs-capture/capture.mjs;scripts/docs-capture/frame.html;scripts/docs-capture/frame.mjs	contracts
+shield-cert	scripts/shield-cert/surf.sh;scripts/shield-cert/marks.awk;scripts/shield-cert/testdata/soak.log	contracts
 documentation	docs/contributing/testing.md	docs
 graphify-scope	.graphifyignore	docs
 design-contract	docs/design.md	docs,policy

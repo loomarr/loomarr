@@ -532,6 +532,9 @@ classify() {
         # The docs screenshot capture (`make docs-capture`) is a manual operator helper; no gate
         # runs it, and its output is committed images the docs gates already check.
         scripts/docs-capture/*) select_gate contracts ;;
+        # The Shield certification runners (#1037) drive a device by hand; the contracts job
+        # lints them and runs their analyser test (release-verify).
+        scripts/shield-cert/*) select_gate contracts ;;
         scripts/generate-diagrams.sh) select_gate contracts ;;
         scripts/merge-release-digests.sh) select_gate contracts ;;
         scripts/observability-dev-runtime-test.sh) select_gate contracts ;;

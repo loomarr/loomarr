@@ -454,6 +454,48 @@ describe("player controller warmed-source reuse", () => {
       expect.anything(),
     );
   });
+
+  it("reports each attempt as warm or cold the moment it starts", async () => {
+    const list: PlayerChannel[] = [1, 2, 3, 4, 5].map((n) => ({
+      id: `ch${n}`,
+      inAppPlayable: true,
+      name: `Channel ${n}`,
+      number: n,
+    }));
+    const mint = vi.fn((channel: PlayerChannel) =>
+      Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?fresh` }),
+    );
+    const warm = vi.fn((channel: PlayerChannel) =>
+      Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?warmed`, warmed: true }),
+    );
+    const onTune = vi.fn();
+    const { controller } = harness({ mint, warm }, { onTune });
+    await controller.reconcile(list);
+    await vi.waitFor(() => expect(warm).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    await controller.step(1);
+    await controller.tuneNumber("4");
+
+    expect(onTune.mock.calls.map(([report]) => [report.channel.id, report.reason, report.warm])).toEqual([
+      ["ch1", "catalog", false],
+      ["ch2", "step", true],
+      ["ch4", "number", false],
+    ]);
+    expect(onTune.mock.calls.map(([report]) => report.attemptId)).toEqual([1, 2, 3]);
+  });
+
+  it("keeps tuning when the tune reporter throws", async () => {
+    const { controller, transport } = harness(undefined, {
+      onTune: () => {
+        throw new Error("instrumentation broke");
+      },
+    });
+
+    await controller.reconcile(channels);
+
+    expect(transport.replace).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("player controller channel still", () => {

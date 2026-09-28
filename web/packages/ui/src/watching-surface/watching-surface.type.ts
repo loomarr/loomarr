@@ -45,6 +45,8 @@ interface WatchingSurfaceProps {
   onPrevious: () => void;
   onRetry: () => void;
   onShowControls: () => void;
+  /** Instrumentation (TV): the channel switch overlay showed its readout or its still. */
+  onSwitchShown?: (what: "osd" | "still") => void;
   player: ReactNode;
   schedule?: WatchingScheduleData;
   snapshot: PlayerSnapshot;
