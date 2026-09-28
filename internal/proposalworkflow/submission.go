@@ -20,6 +20,31 @@ type submissionRepository interface {
 	SubmitIntent(context.Context, suggest.Intent, string, time.Time) (suggest.WorkflowSubmission, error)
 	RequeueIntent(context.Context, string, suggest.Intent, string) error
 	ReviseIntent(context.Context, string, string, int, suggest.Intent) error
+	RecordProposal(context.Context, suggest.Intent, suggest.Proposal, string) (suggest.WorkflowProposal, error)
+}
+
+// Record creates a fresh caller-owned lifecycle for a Proposal that needed no generation: a
+// library channel idea whose titles the library already grounded (#1720). It lands exactly where a
+// generated Proposal does (done, one succeeded Attempt, submitted for approval), so the queue,
+// the requester's journey and the approval gate treat it the same. Every item must carry a
+// grounded identity, as a generated Proposal's must.
+func (w *Workflow) Record(
+	ctx context.Context,
+	intent suggest.Intent,
+	proposal suggest.Proposal,
+	createdBy string,
+) (suggest.WorkflowProposal, error) {
+	if len(proposal.Lineup) == 0 {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: a recorded Proposal needs a lineup", ErrInvalidState)
+	}
+	if err := validateProposalIdentities(proposal); err != nil {
+		return suggest.WorkflowProposal{}, err
+	}
+	repository, ok := w.repository.(submissionRepository)
+	if !ok {
+		return suggest.WorkflowProposal{}, fmt.Errorf("%w: submission repository unavailable", ErrInvalidState)
+	}
+	return repository.RecordProposal(ctx, intent, proposal, createdBy)
 }
 
 // Submit creates a fresh caller-owned lifecycle. cacheSince only saves the
@@ -108,6 +133,39 @@ func (r *storeRepository) SubmitIntent(
 		return suggest.WorkflowSubmission{}, err
 	}
 	return suggest.WorkflowSubmission{JobID: job.ID}, nil
+}
+
+func (r *storeRepository) RecordProposal(
+	ctx context.Context,
+	intent suggest.Intent,
+	proposal suggest.Proposal,
+	createdBy string,
+) (suggest.WorkflowProposal, error) {
+	proposal.Intent = intent
+	intentBlob, err := json.Marshal(intent)
+	if err != nil {
+		return suggest.WorkflowProposal{}, fmt.Errorf("marshal Intent: %w", err)
+	}
+	proposalBlob, err := json.Marshal(proposal)
+	if err != nil {
+		return suggest.WorkflowProposal{}, fmt.Errorf("marshal Proposal: %w", err)
+	}
+	now := r.now()
+	job := store.Job{
+		ID: r.newID(), Kind: jobKindSuggest, Status: "done", IntentJSON: string(intentBlob),
+		IntentHash: suggest.IntentHash(intent), CreatedBy: createdBy,
+		WorkflowVersion: WorkflowVersion1, Deadline: now, CreatedAt: now, UpdatedAt: now,
+	}
+	row := store.Proposal{
+		ID: r.newID(), JobID: job.ID, Status: "submitted", CreatedBy: createdBy,
+		ProposalJSON: string(proposalBlob), CreatedAt: now, UpdatedAt: now,
+	}
+	if err := r.store.CreateSuggestionResult(ctx, job, row); err != nil {
+		return suggest.WorkflowProposal{}, err
+	}
+	return suggest.WorkflowProposal{
+		ID: row.ID, JobID: job.ID, CreatedBy: createdBy, Proposal: proposal, CreatedAt: now,
+	}, nil
 }
 
 func (r *storeRepository) RequeueIntent(ctx context.Context, jobID string, intent suggest.Intent, kind string) error {

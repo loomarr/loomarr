@@ -61,9 +61,9 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 4 importers
+- **`filleradmission`** · 3 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
-- **`fillerairworthiness`** · 3 importers
+- **`fillerairworthiness`** · 2 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
 - **`fillereval`**
   The budget arithmetic that paid filler assessment shares with certification.
@@ -130,7 +130,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
-- **`fillerdecision`** · 4 importers · → `filleradmission`
+- **`fillerdecision`** · 3 importers · → `filleradmission`
   Owns the durable lifecycle and operator projections for filler-admission results.
 - **`holidayvocab`** · 4 importers · → `textmatch`
   Owns Loomarr's immutable built-in holiday identities and aliases.
@@ -184,7 +184,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 5
 
-- **`fillersafety`** · 3 importers · → `bgexec`, `mediatools`, `openroutermedia`
+- **`fillersafety`** · 1 importer · → `bgexec`, `mediatools`, `openroutermedia`
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
 - **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
@@ -193,14 +193,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 6
 
-- **`fillerairworthinessprojection`** · 1 importer · → `fillerairworthiness`, `fillersafety`
-  Authenticates safety-producer output and translates opaque certified matches into closed Airworthiness evidence.
 - **`fillerstructurewindow`** · 4 importers · → `fillerstructure`, `fillerstructuremedia`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
 
 ### Layer 7
 
-- **`filler`** · 9 importers · → `bgexec`, `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
+- **`filler`** · 9 importers · → `bgexec`, `diagnostics`, `fillerairworthiness`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 ### Layer 8

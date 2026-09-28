@@ -669,6 +669,9 @@ type SuggestService interface {
 	// refine-flavored intent, so the new proposal binds back to the same channel
 	// (§7 POST /v1/channels/{id}/refine). Returns the job id to poll.
 	Refine(ctx context.Context, jobID string, intent suggest.Intent) (string, error)
+	// SubmitBuilt queues a proposal that needed no generation (a library channel idea, #1720)
+	// as the requester's own request, and returns its job id. The model never runs.
+	SubmitBuilt(ctx context.Context, intent suggest.Intent, proposal suggest.Proposal, createdBy string) (jobID string, err error)
 }
 
 // SearchService backs GET /v1/search (§7.2) — the SAME catalog impl as the LLM

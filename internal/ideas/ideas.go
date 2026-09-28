@@ -57,13 +57,15 @@ type Reason struct {
 
 // Idea is one channel idea. ID is stable across calls ("genre:comedy", "decade:1990",
 // "holiday:halloween"), so a person's hide sticks. Keys are the titles, newest first and capped at
-// MaxKeys; Movies and Series count all of them.
+// MaxKeys; Titles are the same titles in the same order, which a request turns into a lineup.
+// Movies and Series count all of them.
 type Idea struct {
 	ID     string
 	Facet  Facet
 	Value  string // the genre as the library spells it, the decade's first year, or the holiday id
 	Reason Reason
 	Keys   []provision.Key
+	Titles []Item
 	Movies int
 	Series int
 }
@@ -191,6 +193,7 @@ func newIdea(facet Facet, idPart, value string, items []Item) Idea {
 		}
 		if len(idea.Keys) < MaxKeys && len(it.Keys) > 0 {
 			idea.Keys = append(idea.Keys, it.Keys[0])
+			idea.Titles = append(idea.Titles, it)
 		}
 	}
 	return idea
