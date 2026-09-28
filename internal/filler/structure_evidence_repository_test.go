@@ -11,9 +11,44 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 )
 
+// recordedAssessmentFixture is one accepted complete-timeline assessment of source, as an assessor
+// records it before the repository persists it.
+func recordedAssessmentFixture(source SplitSourceAsset) fillerstructure.RecordedAssessment {
+	coreSource := fillerstructure.Source{SHA256: source.SHA256, Bytes: source.Bytes, DurationMS: source.DurationMs}
+	profile := fillerstructure.AssessorProfile{
+		ID: "assessor-a", ModelFamily: "family-a", Provider: "captured", Model: "video-model",
+		ModelDigest: strings.Repeat("b", 64), CapabilitySHA256: strings.Repeat("c", 64),
+		PromptVersion: "prompt-v1", EvidenceContract: "assessment-v1",
+	}
+	recorded, err := fillerstructure.NewAssessmentRecord(fillerstructure.AssessmentRecordInput{
+		Source: coreSource,
+		Media: fillerstructure.AssessmentMedia{
+			SHA256: strings.Repeat("9", 64), Bytes: 1_024, DurationMS: source.DurationMs,
+			ProfileSHA256: strings.Repeat("8", 64), LineageSHA256: strings.Repeat("7", 64),
+		},
+		Assessor:               profile,
+		MetadataSnapshotSHA256: strings.Repeat("f", 64),
+		PromptSHA256:           fillerstructure.DirectVideoPromptSHA256(coreSource.DurationMS),
+		SchemaSHA256:           fillerstructure.DirectVideoSchemaSHA256(coreSource.DurationMS),
+		RequestSHA256:          strings.Repeat("1", 64), RawResponse: []byte(`{"id":"generation"}`),
+		StructuredOutput: `{"segments":[{"endMs":5000,"role":"commercial","decisiveAtMs":[1000],"reason":"offer"},{"endMs":10000,"role":"promo","decisiveAtMs":[7000],"reason":"promotion"}]}`,
+		ResolvedProvider: "captured", ResolvedModel: "video-model-revision",
+		UpstreamProvider: "provider", UpstreamProviderSlug: "provider-slug", GenerationID: "generation",
+		Tokens:           fillerstructure.AssessmentTokenUsage{Prompt: 100, Completion: 20, Video: 90},
+		RequestedNanoUSD: 1_000, ReservedNanoUSD: 1_000, ChargedAmountUSD: "0.0000005",
+		ChargedNanoUSD: 500, AccountedNanoUSD: 500, ChargeKnown: true,
+		State:      fillerstructure.AssessmentRecordAccepted,
+		AssessedAt: time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		panic(err)
+	}
+	return recorded
+}
+
 func TestFileStructureAssessmentEvidenceRepositoryRoundTripsAndReplays(t *testing.T) {
 	repository := structureEvidenceRepositoryFixture(t)
-	recorded := runtimeAssessorFixtures(structureSource(10_000), &[]string{})[0].(*capturedStructureAssessor).recorded
+	recorded := recordedAssessmentFixture(structureSource(10_000))
 	if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +83,7 @@ func TestFileStructureAssessmentEvidenceRepositoryRoundTripsAndReplays(t *testin
 }
 
 func TestFileStructureAssessmentEvidenceRepositoryRejectsConflictingOrMissingBlobs(t *testing.T) {
-	recorded := runtimeAssessorFixtures(structureSource(10_000), &[]string{})[0].(*capturedStructureAssessor).recorded
+	recorded := recordedAssessmentFixture(structureSource(10_000))
 	t.Run("conflicting output prevents record publication", func(t *testing.T) {
 		repository := structureEvidenceRepositoryFixture(t)
 		path := repository.blobPath("outputs", recorded.Record.StructuredOutputSHA256)
@@ -107,7 +142,7 @@ func TestFileStructureAssessmentEvidenceRepositoryRejectsSymlinkedRoot(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	recorded := runtimeAssessorFixtures(structureSource(10_000), &[]string{})[0].(*capturedStructureAssessor).recorded
+	recorded := recordedAssessmentFixture(structureSource(10_000))
 	if err := repository.PutStructureAssessmentEvidence(t.Context(), recorded); err == nil {
 		t.Fatal("symlinked evidence root was accepted")
 	}
