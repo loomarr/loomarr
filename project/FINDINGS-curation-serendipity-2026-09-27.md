@@ -253,9 +253,12 @@ A channel moves through these states; it never mutates silently:
 - **Seeded:** the approved proposal.
 - **Growing:** below the rotation target (¾ of the cap, §8.2a). It only adds.
 - **Established:** at the target; the turnstile trades weakest for better.
-- **Resting (new):** a title benched from rotation for N weeks after a full run. This is scheduler
-  state in the ledger (#3), *not* a lineup removal, so it needs no approval and the binder stays
-  the only writer.
+- **Resting (organic; maintainer decision 2026-09-28: no fixed rest length):** there is no bench
+  and no constant. With the least-recently-aired ledger (#3), a title that just aired sits behind
+  everything that has not, so it rests until the rotation naturally returns to it. The rest length
+  therefore scales with pool size ÷ daily airtime, and a title the household *watched* ranks behind
+  merely aired ones (#4), so it rests longer. This is scheduler state, *not* a lineup removal: it
+  needs no approval, and the binder stays the only writer.
 - **Seasonal arc:** the existing seasonal engine overlays the pool; no change.
 - **Split / merge / retire:** proposals only.
 
@@ -280,8 +283,9 @@ Deterministic, LLM-free signals over the library and the channel set:
   overlapping content in correlated order.
 - **Daypart coverage:** the household's viewing hours (§2.3) against the channels with kids or
   primetime rules.
-- **Retire a channel:** it goes unwatched (tune-ins) for N weeks. Growing never needs a trigger
-  from viewing.
+- **Retire a channel:** it goes unwatched through its own rotation, measured in the channel's
+  units (full rotations of its pool), not calendar weeks. Growing never needs a trigger from
+  viewing.
 
 ### 2.3 Signals: what exists today (checked on the lane backend)
 
@@ -290,14 +294,20 @@ Deterministic, LLM-free signals over the library and the channel set:
 | Airing history (`airings`) | One row per channel × *title key*, last airing only, written only while watched. No API read. It feeds recency, and is the source of defect §1.3(2). |
 | Filler exposure (V58) | Per clip × channel play count + last played, viewer-fed. Good. |
 | Tune-ins and dwell | `GET /v1/playout/sessions` is a live snapshot only; nothing is persisted. **Missing.** |
-| Media-server play state | Not read: the inventory fetch sets `EnableUserData=false`. Available if we opt in: per-user watched and last played. This is the cheapest household-freshness source. |
+| Media-server play state | Not read today: the inventory fetch sets `EnableUserData=false`. **Approved (maintainer, 2026-09-28)** as a freshness signal. It is per user, so it is combined into one household signal that never exposes who watched what: members see counts only, per the redesign's H2. |
 | Library growth | The library scan exists. Per-title "date added" was not checked in this lane. |
 | Requests | The Seerr queue poll exists. |
 | Seasonal calendar | `builtinCalendar` + `holidayvocab` (shared, tested). |
 
-The minimum new signal is a **unit-level watch log**: channel, unit, start, and seconds watched,
-written by playout. It serves the ledger (#3), household freshness (#4), channel retirement and
-dwell. Media-server play state is a complementary source for what was watched outside Loomarr.
+**"Aired" means both, as two separate signals (maintainer, 2026-09-28):**
+- The **airing ledger** records what was *scheduled*, watched or not. It keeps the rotation even:
+  tiling, coverage, and no starvation.
+- The **watch log** records what was *actually watched*: channel, unit, start, seconds watched,
+  written by playout. It keeps the rotation fresh, and it also serves channel retirement and
+  dwell.
+
+The media server's play state feeds the watched signal for viewing outside Loomarr, combined per
+household as above.
 
 ### 2.4 Using the existing paths: no second lineup writer
 
@@ -311,14 +321,27 @@ dwell. Media-server play state is a complementary source for what was watched ou
   under the target, exactly as today. The binder applies every change.
 - **With the LLM on,** the same proposal gets a reason line and can reorder candidates. It never
   adds a candidate the deterministic step did not surface: grounding stays the chokepoint.
-- **Diff-shaped proposals.** `+6 titles, −2, rested 3, why: never aired in 9 weeks / matches era
+- **Diff-shaped proposals.** `+6 titles, −2, why: never watched through 3 rotations / matches era
   1980–89 / 4 of 5 lineup neighbours recommend it`. The reasons are templated from the facts that
   produced them.
-- **History and pace.**
-  - A per-channel change log comes from `Proposal` + binder applies; the binder is already the
-    single point.
-  - A pace limit: at most k% of the pool changed per week. Identity stays recognisable because
-    scope and rules are unchanged, and calibration keeps genre proportions within ±10 points.
+- **History.** A per-channel change log comes from `Proposal` + binder applies; the binder is
+  already the single point.
+- **Pace (organic; maintainer decision 2026-09-28: no user-facing constants).** How much a channel
+  changes follows its own signals, not a fixed "k% a week":
+  - **Supply:** only titles that are in the library, in scope and under the ceiling can be added.
+    No library growth means nothing to add, and the channel stays as it is.
+  - **Exhaustion:** additions track how much of the pool the household has *watched* since the
+    last change. A channel nobody watches has no reason to change; one watched through its pool
+    has asked for more.
+  - **Neglect:** retirement candidates are titles that have gone through full rotations in the
+    household's viewing hours and were never watched. They trade out only against a better
+    addition, so the channel's size is kept (the §8.2a turnstile).
+  - **Stability:** damping by time since the last change, measured in the channel's own
+    rotations, so a channel that just changed settles before it changes again.
+  - **Internal bounds only:** a runaway guard (e.g. one proposal never replaces most of the pool)
+    exists in code, is never shown, and is never a target.
+  - **Identity** stays recognisable because scope and rules are unchanged, and calibration keeps
+    the genre mix close to the channel's own.
 
 **UX in words (the maintainer makes the mocks):**
 
@@ -333,21 +356,22 @@ dwell. Media-server play state is a complementary source for what was watched ou
 | phase | scope | gate |
 |---|---|---|
 | **P1: correctness** (#1674 and #1675 moved to beta.8 and a fix lane; #1676 is beta.10) | Real per-channel seed + per-pass reshuffle; history read only at window commit, keyed per unit; window boundary on `guide.timezone` with carry-over | kit sim: cuts/day = 0, EPG miss = 0 under all viewing patterns; adjRep ≤ 25% for pools ≥ 3 × window; live repro A and B no longer reproduce; existing determinism tests green |
-| **P2: ledger rotation** | Unit-level airing ledger + LRU batch; watch log from playout | R24h 0% for pools > 24 h; coverage 100% within `ceil(pool/window) + 1`; household forecast re-measured with the same command |
-| **P3: household freshness + daypart novelty** | Watched-rank, viewing-hours placement, optional media-server play state | Viewer R7d within floor + 10 pts on the household |
-| **P4: deterministic evolution (#1671)** | LLM-free growth proposals, diff UX, change log, pace limit, resting, gap/overlap proposals | No lineup write outside the binder (no test pins this today; add one with P4); ≤ k%/week churn; identity check (genre mix within ±10 pts) |
+| **P2: ledger rotation** | Unit-level airing ledger (scheduled) + LRU batch; watch log from playout (watched), kept as a separate signal | R24h 0% for pools > 24 h; coverage 100% within `ceil(pool/window) + 1`; household forecast re-measured with the same command |
+| **P3: household freshness + daypart novelty** | Watched-rank, viewing-hours placement, media-server play state combined per household (members see counts only) | Viewer R7d within floor + 10 pts on the household; no per-member watch data reachable by other members |
+| **P4: deterministic evolution (#1671)** | LLM-free growth proposals, diff UX, change log, organic pace (supply, exhaustion, neglect, stability), gap/overlap proposals | No lineup write outside the binder (no test pins this today; add one with P4). **The resulting pace is shown before ship:** the sim gains a lifecycle mode (library growth + viewing over months), and the kit reports changes per rotation and genre-mix drift per shape and for the household forecast, for the maintainer to judge. No pace constant is a gate. |
 
-## 4. Open questions for the maintainer
+## 4. Decisions (2026-09-28; all four open questions settled)
 
-1. ~~Fixed epoch vs. append-only, per backend.~~ **Settled (supervisor, 2026-09-28):** apply to both
-   backends wherever Tunarr can express it.
-2. **What "aired" means with on-demand playout.** Nothing encodes when nobody watches. Should the
-   ledger count scheduled airings (the linear illusion: the guide said it aired) or only watched
-   ones? The sim says both matter: aired for tiling, watched for freshness.
-3. **Media-server play state.** OK to read per-user watched data (`EnableUserData`)? It is the
-   cheapest household-freshness signal, but it is per user, not per household.
-4. **Resting and pace.** Defaults for the rest length (e.g. 4 weeks after a full run) and the
-   weekly change cap (e.g. 15% of the pool).
+1. **Fixed epoch vs. append-only:** apply to both backends wherever Tunarr can express it
+   (supervisor).
+2. **"Aired" means both:** scheduled (the ledger, for an even rotation) and watched (the watch
+   log, for freshness), as separate signals (maintainer; §2.3).
+3. **Media-server per-user watched state is approved**, combined per household without exposing
+   who watched what; members see counts only (maintainer; §2.3).
+4. **Resting and pace are organic, not hard rules** (maintainer): rest emerges from the ledger
+   rotation (§2.1), and pace from supply, exhaustion, neglect and stability (§2.4). Internal safety
+   bounds only. The resulting pace must be shown on real and simulated channels before it ships
+   (P4 gate).
 
 ## 5. Household measurement (the supervisor runs it; read-only)
 
