@@ -859,9 +859,12 @@ type guideLeg struct {
 func (r *playoutResolver) carryOverLegs(ctx context.Context, channelID string, live airingCycle, from, to time.Time) []guideLeg {
 	var legs []guideLeg
 	liveOpened := schedule.WindowStart(live.epoch, live.window, live.zone)
-	for opened := schedule.WindowStart(from, live.window, live.zone); opened.Before(liveOpened) && opened.Before(to) && len(legs) < maxGuideSegments; {
+	// A `from` between the live window's opening and its anchor still needs the window before:
+	// that stretch is its carried-over programme.
+	first := schedule.WindowStart(earlier(from, liveOpened.Add(-time.Nanosecond)), live.window, live.zone)
+	for opened := first; from.Before(live.epoch) && opened.Before(liveOpened) && opened.Before(to) && len(legs) < maxGuideSegments; {
 		next := schedule.NextWindowStart(opened, live.window, live.zone)
-		slots, _, err := r.cycleAt(ctx, channelID, later(from, opened))
+		slots, _, err := r.cycleAt(ctx, channelID, opened)
 		if err != nil {
 			break
 		}
