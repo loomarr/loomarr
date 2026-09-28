@@ -25,8 +25,6 @@ type fakeDatabase struct {
 	migratedTo   string
 	backupErr    error
 	backupHit    bool
-	switchErr    error
-	switchedTo   string
 }
 
 func (f *fakeDatabase) Status(context.Context) (api.DatabaseStatus, error) { return f.status, nil }
@@ -49,14 +47,6 @@ func (f *fakeDatabase) Migrate(_ context.Context, dsn string) error {
 		return f.migrateErr
 	}
 	f.migratedTo = dsn
-	return nil
-}
-
-func (f *fakeDatabase) Switchover(_ context.Context, dsn string) error {
-	if f.switchErr != nil {
-		return f.switchErr
-	}
-	f.switchedTo = dsn
 	return nil
 }
 
@@ -85,7 +75,6 @@ func TestSystemDatabase_RequiresAdmin(t *testing.T) {
 		{http.MethodPost, "/v1/system/database/preflight", `{"dsn":"postgres://u:p@h:5432/d"}`},
 		{http.MethodPost, "/v1/system/database/backup", ""},
 		{http.MethodPost, "/v1/system/database/migrate", `{"dsn":"postgres://u:p@h:5432/d"}`},
-		{http.MethodPost, "/v1/system/database/switchover", `{"dsn":"postgres://u:p@h:5432/d"}`},
 	} {
 		resp := do(t, srv, tc.method, tc.path, "", tc.body) // no token
 		if resp.StatusCode != http.StatusUnauthorized {
@@ -153,8 +142,8 @@ func TestSystemDatabase_PostgresMutationsFailAsConflicts(t *testing.T) {
 			configure: func(f *fakeDatabase) { f.preflightErr = api.ErrNotSQLite },
 		},
 		{
-			name: "switchover", path: "/v1/system/database/switchover",
-			configure: func(f *fakeDatabase) { f.switchErr = api.ErrNotSQLite },
+			name: "migrate", path: "/v1/system/database/migrate",
+			configure: func(f *fakeDatabase) { f.migrateErr = api.ErrNotSQLite },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -257,46 +246,5 @@ func TestSystemDatabase_MigrationRequesterMustExist(t *testing.T) {
 		`{"dsn":"postgres://u:p@h:5432/d"}`)
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Fatalf("migration without process requester → %d, want 501", resp.StatusCode)
-	}
-}
-
-// Switchover always reports restartRequired: DATABASE_URL is a boot-time setting, so a
-// response that did not say so would leave the operator thinking the move was live.
-func TestSystemDatabase_SwitchoverRequiresRestart(t *testing.T) {
-	fake := &fakeDatabase{}
-	srv := newSystemDatabaseHarness(t, fake).Server
-	resp := do(t, srv, http.MethodPost, "/v1/system/database/switchover", adminToken,
-		`{"dsn":"postgres://u:p@h:5432/d"}`)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("switchover → %d, want 200", resp.StatusCode)
-	}
-	var body struct {
-		RestartRequired bool   `json:"restartRequired"`
-		Note            string `json:"note"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatal(err)
-	}
-	if !body.RestartRequired {
-		t.Error("switchover must report restartRequired")
-	}
-	if body.Note == "" {
-		t.Error("switchover must explain what happens next")
-	}
-	if fake.switchedTo != "postgres://u:p@h:5432/d" {
-		t.Errorf("switched to %q, want the requested DSN", fake.switchedTo)
-	}
-}
-
-func TestSystemDatabase_LegacySwitchoverFailsClosedWithoutVerification(t *testing.T) {
-	fake := &fakeDatabase{switchErr: api.ErrMigrationNotVerified}
-	srv := newSystemDatabaseHarness(t, fake).Server
-	resp := do(t, srv, http.MethodPost, "/v1/system/database/switchover", adminToken,
-		`{"dsn":"postgres://u:p@h:5432/d"}`)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("unverified switchover → %d, want 409", resp.StatusCode)
-	}
-	if fake.switchedTo != "" {
-		t.Fatal("unverified switchover was accepted")
 	}
 }
