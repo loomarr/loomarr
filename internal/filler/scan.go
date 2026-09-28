@@ -65,33 +65,13 @@ func QualityFromHeight(h int) string {
 	}
 }
 
-// ScanDir walks dir and returns one RawClip per playable file found.
+// scanDir walks dir, excluding the generation's applied watch folder, and returns one RawClip per
+// playable file found. DirSource is its storage-layout-aware caller.
 //
 // Errors on individual files are SKIPPED, not fatal. A drop-folder is operator-managed and
 // will contain junk, a half-copied file, or something with no video stream; refusing to build
 // a catalog because one file is bad would mean one stray download silently costs a channel all
 // of its commercials. What is skipped is reported so the caller can log a count.
-// ⚠ `minDurationMs` is VARIADIC rather than a fourth parameter, and that is a deliberate
-// trade. Ten callers exist, nine of them tests that care nothing about the floor; making it
-// required would have meant touching all of them to write `0` — a diff that says nothing and
-// buries the one call site that matters. Omitted ⇒ no floor, which is exactly what a test
-// asserting "this file is catalogued" wants.
-func ScanDir(ctx context.Context, dir string, probe Prober, minDurationMs ...int64) (clips []RawClip, skipped int, err error) {
-	if dir == "" {
-		return nil, 0, nil // filler not configured — an empty catalog, not an error
-	}
-	if probe == nil {
-		probe = FFprobe
-	}
-	var minMs int64
-	if len(minDurationMs) > 0 {
-		minMs = minDurationMs[0]
-	}
-	return scanDir(ctx, dir, "", probe, minMs)
-}
-
-// scanDir is ScanDir with the generation's applied watch folder excluded. The public ScanDir
-// remains the small standalone filesystem helper; DirSource is the storage-layout-aware module.
 func scanDir(ctx context.Context, dir, watchDir string, probe Prober, minMs int64) (clips []RawClip, skipped int, err error) {
 	if dir == "" {
 		return nil, 0, nil
@@ -612,15 +592,15 @@ func (d DirSource) ListLocalClips(ctx context.Context) ([]RawClip, error) {
 	return clips, nil
 }
 
-// licenseBeside reads the licence URL from the info-JSON sitting next to a clip file.
-//
-// A direct os.ReadFile rather than SidecarLicense's fs.FS: ScanDir walks real paths and already
-// holds this clip's, so there is nothing to resolve. The fs.FS variant exists for the tagger,
-// which is handed a drop-folder FS and a possibly-renamed display name.
+// licenseBeside reads the licence URL from the info-JSON sitting next to a clip file (V33).
 //
 // Every failure is "" — no sidecar (the normal case for a hand-copied clip), unreadable, or
 // malformed. A licence we cannot read is UNKNOWN, and unknown is the honest default; a scan must
 // never fail over a missing optional file.
+//
+// ⚠ **Empty means UNKNOWN, never "public domain".** About 92% of Archive items carry no licence
+// at all (measured during the 2026-07-31 fixture capture), so absence is the common case and says
+// nothing about permission. Callers render "unknown", never a reassuring default.
 func licenseBeside(mediaPath string) string {
 	raw, err := os.ReadFile(sidecarPathFor(mediaPath))
 	if err != nil {

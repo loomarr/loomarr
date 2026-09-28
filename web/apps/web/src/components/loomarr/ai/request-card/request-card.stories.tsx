@@ -12,6 +12,8 @@ const meta = {
     jobId: "job-1",
     title: "Saturday morning cartoons for the kids",
     createdAt: "2026-09-24T18:00:00Z",
+    // Two hours later, fixed, so "Requested 2h ago" holds still in the snapshots.
+    now: Date.parse("2026-09-24T20:00:00Z"),
   },
 } satisfies Meta<typeof RequestCard>;
 

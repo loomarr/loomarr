@@ -39,24 +39,6 @@ import (
 // Loomarr's, not theirs.
 const WatchDirName = "_watch"
 
-// WatchDir resolves the watch folder from the two settings (§10 V38c).
-//
-// ⚠ The DERIVED default is the point. `filler.watch_dir` defaults to empty rather than to a
-// literal `/data/filler/_watch`, because a literal silently stops tracking the moment an operator
-// points `filler.dir` at a library on another disk: arrivals keep landing under `/data` while the
-// catalog looks elsewhere, and the drop-folder appears broken with both settings looking right.
-//
-// An explicit watch_dir wins — an operator who mounts a real inbox somewhere else means it.
-func WatchDir(clipDir, watchDir string) string {
-	if watchDir != "" {
-		return watchDir
-	}
-	if clipDir == "" {
-		return "" // nothing configured at all; intake no-ops rather than inventing a path
-	}
-	return filepath.Join(clipDir, WatchDirName)
-}
-
 // IntakeResult reports what one intake pass did.
 type IntakeResult struct {
 	// Taken counts files moved into the clip folder.
@@ -70,30 +52,18 @@ type IntakeResult struct {
 	Skipped int
 }
 
-// TakeIn drains the watch folder into the clip folder.
+// takeInFrom drains the watch folder into the clip folder.
 //
 // `fetched` marks the whole pass as Loomarr's own download so the sidecar records acquisition
-// provenance. It does not affect admission; every new clip starts held.
-func TakeIn(watchDir, clipDir string, fetched bool, log func(string, ...any)) (IntakeResult, error) {
-	return takeInFrom(context.Background(), watchDir, clipDir, fetched, "", log, nil, nil)
-}
-
-// TakeInWithAcquisitionBinding files watch-folder media while allowing durable acquisition
-// authority to verify a claimed arrival and bind its content-addressed destination before any
-// move or duplicate deletion. The callback receives both filesystem paths for exact-byte checks
-// and their durable relative names; it is never invoked for an unfiled operator clip found
-// directly in clipDir.
-func TakeInWithAcquisitionBinding(watchDir, clipDir string, fetched bool, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error) (IntakeResult, error) {
-	return takeInFrom(context.Background(), watchDir, clipDir, fetched, "", log, bind, nil)
-}
-
-// TakeInFrom preserves the registered source responsible for an unattended arrival. Registered
-// folder/library scans set fetched=true; a direct hand-copy uses false because its provenance is
-// different, not because it receives different publication authority.
-func TakeInFrom(watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any)) (IntakeResult, error) {
-	return takeInFrom(context.Background(), watchDir, clipDir, fetched, sourceID, log, nil, nil)
-}
-
+// provenance. It does not affect admission; every new clip starts held. `sourceID` preserves the
+// registered source responsible for an unattended arrival: registered folder/library scans set
+// fetched=true, and a direct hand-copy uses false because its provenance is different, not because
+// it receives different publication authority.
+//
+// `bind`, when set, lets durable acquisition authority verify a claimed arrival and bind its
+// content-addressed destination before any move or duplicate deletion. It receives both filesystem
+// paths for exact-byte checks and their durable relative names; it is never invoked for an unfiled
+// operator clip found directly in clipDir.
 func takeInFrom(ctx context.Context, watchDir, clipDir string, fetched bool, sourceID string, log func(string, ...any), bind func(sourcePath, destinationPath, previousPath, filedPath, clipHash string) error, governor *storagegovernor.Governor) (IntakeResult, error) {
 	var res IntakeResult
 	if watchDir == "" || clipDir == "" {
@@ -267,7 +237,7 @@ func collectMedia(dir string, excludedDirs ...string) ([]string, error) {
 	return out, nil
 }
 
-// movePath renames, falling back to copy+delete.
+// movePathWithStorage renames, falling back to copy+delete.
 //
 // ⚠ The fallback is not optional: `os.Rename` fails with EXDEV when the watch folder and the clip
 // folder are on different filesystems, which is the NORMAL container setup (two bind mounts). A
@@ -276,11 +246,7 @@ func collectMedia(dir string, excludedDirs ...string) ([]string, error) {
 // ⚠ A MISSING SOURCE IS AN ERROR HERE. It reads like a no-op worth tolerating, and for the
 // optional sidecar it is — but the media move runs through this same function, and a vanished
 // clip reported as success would be counted as Taken and catalogued as a row pointing at nothing.
-// Callers that genuinely do not care use moveIfPresent, which names that choice.
-func movePath(src, dst string) error {
-	return movePathWithStorage(context.Background(), src, dst, nil)
-}
-
+// Callers that genuinely do not care use moveIfPresentWithStorage, which names that choice.
 func movePathWithStorage(ctx context.Context, src, dst string, governor *storagegovernor.Governor) error {
 	err := os.Rename(src, dst)
 	if err == nil {
@@ -294,12 +260,8 @@ func movePathWithStorage(ctx context.Context, src, dst string, governor *storage
 	return os.Remove(src)
 }
 
-// moveIfPresent moves a file that may legitimately not exist — the sidecar, which most
+// moveIfPresentWithStorage moves a file that may legitimately not exist — the sidecar, which most
 // hand-dropped clips arrive without. Absence is success; anything else is the caller's problem.
-func moveIfPresent(src, dst string) error {
-	return moveIfPresentWithStorage(context.Background(), src, dst, nil)
-}
-
 func moveIfPresentWithStorage(ctx context.Context, src, dst string, governor *storagegovernor.Governor) error {
 	if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
 		return nil

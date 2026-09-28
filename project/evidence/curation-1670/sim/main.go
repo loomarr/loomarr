@@ -222,40 +222,55 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 	policy := schedule.ChannelPolicy{}
 	policy.Ordering = s.Ordering
 	var desired []schedule.Slot
+	var desiredOpened time.Time
 	anchor := start.Add(-37 * time.Hour) // a channel that went live some time before the span
 	lastAired := airLog{}
+	var ex *explainer
+	if *explainFlag {
+		ex = newExplainer()
+	}
 
 	arrange := func(opened, at time.Time, last airLog) []schedule.Slot {
 		c := ch
 		c.WindowOpened = opened
 		c.LastAired = last.asOf(opened)
-		return schedule.ComputeDesiredAt(c, entries, lib, schedule.PodFill, policy, at).Slots
+		slots := schedule.ComputeDesiredAt(c, entries, lib, schedule.PodFill, policy, at).Slots
+		if ex != nil {
+			whole := c
+			whole.DefaultWindow = 0
+			ex.arranged(opened, c.LastAired, schedule.ComputeDesiredAt(whole, entries, lib, schedule.PodFill, policy, at).Slots, slots)
+		}
+		return slots
 	}
 	reconcile := func(t time.Time) {
 		opened, epoch, _ := playout.WindowTurn(desired, anchor, window, grid, t)
 		if opened.IsZero() {
 			opened = schedule.WindowStart(t, window, grid)
 		}
-		desired, anchor = arrange(opened, t, lastAired), epoch
+		desired, anchor, desiredOpened = arrange(opened, t, lastAired), epoch, opened
 	}
 	// walk is the timeline over [from, to): the accepted cycle until the programme crossing its
 	// boundary ends, then each next window from where the one before ended. A window arranged
 	// before reconcile commits it sees the airings recorded so far, as the product does (each
-	// tune-in records as it airs).
-	walk := func(from, to time.Time, watched bool) []playout.Broadcast {
-		slots, epoch, last := desired, anchor, lastAired
+	// tune-in records as it airs). record attributes what aired to its window (-explain).
+	walk := func(from, to time.Time, watched, record bool) []playout.Broadcast {
+		slots, epoch, last, opened := desired, anchor, lastAired, desiredOpened
 		var out []playout.Broadcast
 		for {
 			stop := playout.CarryOverEnd(slots, epoch, schedule.NextWindowStart(epoch, window, grid))
 			leg := playout.BroadcastsBetween(slots, epoch, maxTime(from, epoch), minTime(to, stop))
 			out = append(out, leg...)
+			if record {
+				ex.leg(opened, leg)
+			}
 			if !stop.Before(to) {
 				return out
 			}
 			if watched {
 				last = last.with(leg, from)
 			}
-			slots, epoch = arrange(schedule.WindowStart(stop, window, grid), stop, last), stop
+			opened = schedule.WindowStart(stop, window, grid)
+			slots, epoch = arrange(opened, stop, last), stop
 		}
 	}
 	for t := anchor; t.Before(start); t = t.Add(time.Hour) { // the channel's life before the span
@@ -270,11 +285,11 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 	for t := start; t.Before(end); t = t.Add(time.Hour) {
 		reconcile(t)
 		watched := v.Watch(t.In(loc))
-		hour := walk(t, t.Add(time.Hour), watched)
+		hour := walk(t, t.Add(time.Hour), watched, true)
 		// The guide's forecast, taken at each rolling-window boundary (and when the span opens, which
 		// is not one: the grid is local midnight) through the end of that window.
 		if forecast == nil || schedule.WindowStart(t, window, grid).Equal(t) {
-			forecast = walk(t, schedule.NextWindowStart(t, window, grid), false)
+			forecast = walk(t, schedule.NextWindowStart(t, window, grid), false, false)
 		}
 		for m := 0; m < 60; m += 5 {
 			at := t.Add(time.Duration(m) * time.Minute)
@@ -305,6 +320,20 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 		if watched {
 			lastAired = lastAired.with(hour, t)
 		}
+	}
+	if ex != nil {
+		var xs []struct {
+			unit  string
+			start time.Time
+		}
+		for _, a := range airings {
+			xs = append(xs, struct {
+				unit  string
+				start time.Time
+			}{a.Unit, a.Start})
+		}
+		pool, _ := poolOf(lib)
+		ex.report(s.Name+" "+v.Name, xs, start, pool)
 	}
 	return airings, cuts, float64(misses) / float64(samples)
 }

@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+// NewAssessmentRecord builds a recorded assessment. No binary calls it (deadcode reports it): the
+// server only stores and validates records, which the research assessor writes. It stays because
+// it is the one constructor that stamps the schema and contract versions, and the store's
+// conformance suite uses it to write valid ledger rows.
 func NewAssessmentRecord(input AssessmentRecordInput) (RecordedAssessment, error) {
 	record := AssessmentRecord{
 		SchemaVersion: AssessmentRecordSchemaVersion, ContractVersion: AssessmentRecordContractVersion,

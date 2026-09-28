@@ -68,6 +68,10 @@ type AssessmentLedgerEntry struct {
 	Record      *AssessmentRecord     `json:"record,omitempty"`
 }
 
+// NewAssessmentReservation builds a paid-assessment reservation. No binary calls it (deadcode
+// reports it): the server only stores and validates reservations, which the research assessor
+// writes. It stays because it is the one constructor that stamps the schema and contract versions,
+// and the store's conformance suite uses it to write valid ledger rows.
 func NewAssessmentReservation(input AssessmentReservationInput) (AssessmentReservation, error) {
 	reservation := AssessmentReservation{
 		SchemaVersion: AssessmentReservationSchemaVersion, ContractVersion: AssessmentReservationContractVersion,
