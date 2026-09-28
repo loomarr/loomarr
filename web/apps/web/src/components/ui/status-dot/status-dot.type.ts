@@ -1,6 +1,6 @@
 import type { ComponentPropsWithoutRef } from "react";
 
-type StatusTone = "live" | "pending" | "ok" | "warn" | "error" | "off";
+type StatusTone = "live" | "pending" | "ok" | "warn" | "error" | "off" | "attention" | "progress" | "notice";
 
 // Extends span props so callers can attach the test/data hooks a state indicator naturally
 // wants (`data-testid`, `data-onair`) without the primitive enumerating them.
