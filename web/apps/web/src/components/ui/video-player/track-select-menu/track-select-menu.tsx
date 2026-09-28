@@ -23,7 +23,18 @@ import type { TrackSelectMenuProps } from "./track-select-menu.type";
 //
 // While open it HOLDS the player's controls shown (useHoldControls) — otherwise the auto-hide would
 // pull the bar (and this trigger) away from under the open menu.
-const TrackSelectMenu = ({ icon: Icon, label, options, value, onChange, readOnly }: TrackSelectMenuProps) => {
+//
+// `toggles` are the viewer's OWN settings (the channel-change sound), so they sit under a separator
+// and stay enabled for a member.
+const TrackSelectMenu = ({
+  icon: Icon,
+  label,
+  options,
+  value,
+  onChange,
+  readOnly,
+  toggles = [],
+}: TrackSelectMenuProps) => {
   const { hold } = useHoldControls();
   return (
     <DropdownMenu onOpenChange={hold}>
@@ -69,6 +80,22 @@ const TrackSelectMenu = ({ icon: Icon, label, options, value, onChange, readOnly
             <p className="px-2 py-1.5 text-2xs text-muted-foreground leading-snug">
               Set for the whole channel — an admin changes it for everyone.
             </p>
+          </>
+        )}
+        {toggles.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              {toggles.map((t) => (
+                <DropdownMenuCheckboxItem
+                  key={t.label}
+                  checked={t.checked}
+                  onCheckedChange={t.onCheckedChange}
+                >
+                  {t.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuGroup>
           </>
         )}
       </DropdownMenuContent>

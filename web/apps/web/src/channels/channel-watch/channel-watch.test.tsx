@@ -46,6 +46,13 @@ vi.mock("../use-hls-player", () => ({
   },
 }));
 vi.mock("@/diagnostics/client-reporter", () => ({ clientDiagnostics: { record: diagnosticsRecord } }));
+const staticLock = vi.hoisted(() => vi.fn());
+const switchSound = vi.hoisted(() =>
+  vi.fn<(video: HTMLVideoElement, options: { enabled: boolean }) => { lock: () => void } | undefined>(() => ({
+    lock: staticLock,
+  })),
+);
+vi.mock("../switch-sound", () => ({ startChannelSwitchSound: switchSound }));
 
 const makeWrapper = () => {
   const client = new QueryClient({
@@ -285,5 +292,146 @@ describe("ChannelWatch — Open in media server hand-off", () => {
 
     await screen.findByRole("button", { name: "Audio" });
     expect(screen.queryByRole("button", { name: /Open in/ })).not.toBeInTheDocument();
+  });
+});
+
+// The switch readout (#1620 B4). The wash drains the picture under the loader only when there IS one:
+// the previous channel's held frame. A cold start has nothing to drain.
+describe("ChannelWatch switch readout", () => {
+  const next = channel({ id: "ch-2", name: "Saturday Cartoons", number: 12, status: "live" });
+  const tunerFor = (requestedChannel?: typeof next) => ({
+    canSurf: true,
+    requestedChannel,
+    ready: vi.fn(),
+    step: vi.fn(),
+    retry: vi.fn(),
+  });
+  const wash = () => document.querySelector<HTMLElement>("[data-wash]");
+  // Every VISIBLE place the channel is named: not the decorative readout, not the SR-only OSD.
+  const visibleNames = (name: string) =>
+    screen
+      .queryAllByText(name)
+      .filter((el) => !el.closest("[aria-hidden='true']") && !el.closest("[role='status']"));
+  const switchTo = async (target: typeof next) => {
+    hls.status = "playing";
+    const view = render(
+      <ChannelWatch channel={live} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />,
+      {
+        wrapper: makeWrapper(),
+      },
+    );
+    await screen.findByRole("button", { name: "Audio" });
+    hls.status = "loading";
+    view.rerender(
+      <ChannelWatch channel={target} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor(target)} />,
+    );
+    await waitFor(() => expect(wash()).not.toBeNull());
+    return view;
+  };
+
+  beforeEach(() => {
+    stubTracks();
+    switchSound.mockClear();
+    staticLock.mockClear();
+    localStorage.clear();
+  });
+
+  it("hides the player's channel title while the readout names the channel, and restores it with the picture", async () => {
+    const view = await switchTo(next);
+    expect(visibleNames("Saturday Cartoons")).toEqual([]);
+
+    hls.status = "playing";
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />);
+    await waitFor(() => expect(visibleNames("Saturday Cartoons")).toHaveLength(1));
+  });
+
+  it("starts the dial set once when a switch begins, on the player's own element", async () => {
+    await switchTo(next);
+    expect(switchSound).toHaveBeenCalledTimes(1);
+    expect(switchSound).toHaveBeenCalledWith(expect.any(HTMLVideoElement), { enabled: true });
+  });
+
+  it("mutes the programme under the static, then cuts the static and restores it when the picture locks", async () => {
+    const view = await switchTo(next);
+    const video = document.querySelector("video") as HTMLVideoElement;
+    expect(video.muted).toBe(true);
+    expect(staticLock).not.toHaveBeenCalled();
+
+    hls.status = "playing";
+    view.rerender(<ChannelWatch channel={next} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />);
+    await waitFor(() => expect(staticLock).toHaveBeenCalledTimes(1));
+    expect(video.muted).toBe(false);
+  });
+
+  it("leaves the programme alone when the sound is off", async () => {
+    localStorage.setItem("loomarr.player.channel-change-sound", "off");
+    switchSound.mockReturnValueOnce(undefined);
+    await switchTo(next);
+    expect((document.querySelector("video") as HTMLVideoElement).muted).toBe(false);
+  });
+
+  it("stays silent on a cold start", async () => {
+    hls.status = "loading";
+    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+      wrapper: makeWrapper(),
+    });
+    await screen.findByText("Tuning in…");
+    expect(switchSound).not.toHaveBeenCalled();
+  });
+
+  it("lets any viewer turn the sound off from the Audio menu, and remembers it", async () => {
+    hls.status = "playing";
+    render(<ChannelWatch channel={live} isAdmin={false} onSavePolicy={vi.fn()} tuner={tunerFor()} />, {
+      wrapper: makeWrapper(),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Audio" }));
+    const toggle = await screen.findByRole("menuitemcheckbox", { name: "Channel-change sound" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(toggle).not.toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(toggle);
+    expect(localStorage.getItem("loomarr.player.channel-change-sound")).toBe("off");
+  });
+
+  it("passes the preference through when the viewer has turned the sound off", async () => {
+    localStorage.setItem("loomarr.player.channel-change-sound", "off");
+    await switchTo(next);
+    expect(switchSound).toHaveBeenCalledWith(expect.any(HTMLVideoElement), { enabled: false });
+  });
+
+  it("drains the held frame when switching from a channel that played", async () => {
+    hls.status = "playing";
+    const { rerender } = render(
+      <ChannelWatch channel={live} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor()} />,
+      { wrapper: makeWrapper() },
+    );
+    await screen.findByRole("button", { name: "Audio" });
+
+    hls.status = "loading";
+    rerender(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />);
+
+    await waitFor(() => expect(wash()).toHaveAttribute("data-wash", "draining"));
+  });
+
+  it("does not drain on a cold start, where no frame is held", async () => {
+    hls.status = "loading";
+    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+      wrapper: makeWrapper(),
+    });
+
+    await screen.findByText("Tuning in…");
+    expect(wash()).toHaveAttribute("data-wash", "rest");
+  });
+
+  it("names the channel in the readout and keeps the OSD for screen readers only", async () => {
+    hls.status = "loading";
+    render(<ChannelWatch channel={next} isAdmin onSavePolicy={vi.fn()} tuner={tunerFor(next)} />, {
+      wrapper: makeWrapper(),
+    });
+
+    const osd = await screen.findByRole("status");
+    expect(osd).toHaveTextContent("CH 12");
+    // The wash's centred channel line is the visible readout; the card would repeat it on screen.
+    expect(osd).toHaveClass("sr-only");
+    expect(wash()?.closest("[aria-hidden]")).toHaveTextContent("CH 12Saturday Cartoons");
   });
 });

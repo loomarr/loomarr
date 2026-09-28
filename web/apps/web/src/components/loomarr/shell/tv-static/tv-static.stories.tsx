@@ -20,5 +20,9 @@ type Story = StoryObj<typeof meta>;
 
 const Default: Story = {};
 
+// The tuner's channel-switch snow (#1620): dense and soft at half strength. Unlike the idle snow it
+// is present under reduced motion, as a still (seeded) field, so the baseline shows it.
+const Wash: Story = { args: { variant: "wash" } };
+
 export default meta;
-export { Default };
+export { Default, Wash };

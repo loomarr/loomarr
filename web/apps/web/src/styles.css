@@ -47,6 +47,11 @@
      as one block. `steps(4)` in the first half keeps the snow phase discrete (real static jumps);
      the tail eases so the amber settles rather than pings. Off under reduced-motion. */
   --animate-signal-lock: signal-lock 1.6s steps(4, end) infinite;
+  /* Held-frame drain — a channel switch's outgoing picture greys, flattens and fades into the
+     tuner's snow (#1620 B4). One shot, not a loop: it runs once as the switch starts. */
+  --animate-held-drain: held-drain 448ms ease-in both;
+  /* The switch wash thickening over the draining frame: the snow comes up as the picture goes. */
+  --animate-wash-thicken: wash-thicken 260ms ease-in both;
   --animate-select-in: select-in 120ms ease-out;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -210,6 +215,38 @@ body {
     height: 64%;
     background-color: var(--color-signal-400);
     box-shadow: 0 0 8px 0 var(--color-signal-400);
+  }
+}
+
+/* Held-frame drain — the tuner's wash over the previous channel's held frame (#1620 B4). The wash is
+   a layer ABOVE the picture, so it drains it through `backdrop-filter` (grey, flatter) while its own
+   ground darkens: a static-950 layer at 88% leaves the picture at the mock's 12%. Most of the drain
+   lands in the first ~260 ms (the picture at 55%), the rest settles by 448 ms, so the readout always
+   lands on snow. The wash's resting style is this 100% frame, which is what reduced motion (and a
+   cold start, with nothing to drain) shows. */
+/* The switch wash (snow + its dark layer) thickening in over the draining held frame (#1620). Its
+   resting opacity is 1, which is what a cold start and reduced motion show. */
+@keyframes wash-thicken {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes held-drain {
+  0% {
+    backdrop-filter: none;
+    background-color: transparent;
+  }
+  57% {
+    backdrop-filter: grayscale(1) contrast(0.7);
+    background-color: color-mix(in srgb, var(--color-static-950) 45%, transparent);
+  }
+  100% {
+    backdrop-filter: grayscale(1) contrast(0.6);
+    background-color: color-mix(in srgb, var(--color-static-950) 88%, transparent);
   }
 }
 

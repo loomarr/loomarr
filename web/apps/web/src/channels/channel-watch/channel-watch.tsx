@@ -14,9 +14,11 @@ import { VideoPlayer } from "@/components/ui/video-player";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
+import { type SwitchSound, startChannelSwitchSound } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
 import type { TuneAttempt } from "../tuner-timing";
 import type { TuneDirection } from "../use-channel-tuner";
+import { useSwitchSoundPreference } from "../use-switch-sound-preference";
 import { languageLabel } from "./language-label";
 
 // ChannelWatch — the Watch sub-section: play a channel live in the browser (§9.1, V46).
@@ -129,6 +131,17 @@ const ChannelWatch = ({
   // manifest and first segments (#1484). It is still well ahead of the first frame.
   const onManifest = useCallback(() => tunerReady?.(channel.id), [channel.id, tunerReady]);
   const player = useHlsPlayer(channel.id, tuner?.attempt, onManifest);
+  // The player's own <video>, caught at the attach seam, so the channel-change sound can follow the
+  // player's volume and mute without VideoPlayer knowing about it.
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerAttach = player.attach;
+  const attach = useCallback(
+    (el: HTMLVideoElement) => {
+      videoRef.current = el;
+      return playerAttach(el);
+    },
+    [playerAttach],
+  );
   const expiryNoticeRef = useRef({ channelId: channel.id, revision: 0 });
   useEffect(() => {
     if (expiryNoticeRef.current.channelId !== channel.id) {
@@ -153,6 +166,15 @@ const ChannelWatch = ({
   // The poster is kept for the paused/off-air case below, which is a different claim: nothing to
   // play at all, rather than something waiting for permission to start.
   const [active, setActive] = useState(true);
+
+  // Whether the player holds a picture: once any channel has played here, a switch leaves its last
+  // frame held in the <video> while the next one loads (VideoPlayer's held poster), and the tuner's
+  // wash drains it. ChannelWatch stays mounted across a switch, so this outlives the channel prop.
+  // Before the first frame (a cold start) there is nothing under the loader to drain.
+  const [heldFrame, setHeldFrame] = useState(false);
+  useEffect(() => {
+    if (player.status === "playing") setHeldFrame(true);
+  }, [player.status]);
 
   const paused = channel.status === "paused" || channel.status === "detached";
 
@@ -259,6 +281,44 @@ const ChannelWatch = ({
   // the schedule (the player has no source for programme time, so channel-watch derives it).
   const timeLeft = programmeTime(airings, player.liveTransport.state.viewerTimeMs);
   const osdChannel = tuner?.requestedChannel ?? channel;
+  const tuning = player.status === "loading";
+
+  // The channel-change sound (#1620), a dial set: a clunk, then static until the new channel's first
+  // frame, cut at lock. It starts as the tuned channel changes — the moment the viewer asks, not when
+  // transport catches up — and only once a picture has played here: a cold start is not a channel
+  // change, and an autoplayed first tune has had no gesture. The module owns the rest of the gate
+  // (the viewer's preference, the player's mute and volume, the page's user activation).
+  //
+  // While the static plays, the programme's own audio is muted, as a set's is; it comes back at lock.
+  // That is a mute of the element alone: the player's own mute state is untouched, so its button
+  // still shows the viewer's choice, and the element is only unmuted again if the static muted it.
+  const [switchSoundOn, setSwitchSoundOn] = useSwitchSoundPreference();
+  const soundedChannelRef = useRef(osdChannel.id);
+  const switchSoundRef = useRef<{ sound: SwitchSound; programmeMuted: boolean } | undefined>(undefined);
+  const endSwitchSound = useCallback(() => {
+    const running = switchSoundRef.current;
+    if (!running) return;
+    switchSoundRef.current = undefined;
+    running.sound.lock();
+    if (videoRef.current?.muted) videoRef.current.muted = running.programmeMuted;
+  }, []);
+  useEffect(() => {
+    if (soundedChannelRef.current === osdChannel.id) return;
+    soundedChannelRef.current = osdChannel.id;
+    const video = videoRef.current;
+    if (!heldFrame || !video) return;
+    // Surfing on while the static still runs: that one ends, and the new clunk takes over.
+    endSwitchSound();
+    const sound = startChannelSwitchSound(video, { enabled: switchSoundOn });
+    if (!sound) return;
+    switchSoundRef.current = { sound, programmeMuted: video.muted };
+    video.muted = true;
+  }, [osdChannel.id, heldFrame, switchSoundOn, endSwitchSound]);
+  // Lock: the first frame has decoded (or the tune failed), so the static cuts off.
+  useEffect(() => {
+    if (!tuning) endSwitchSound();
+  }, [tuning, endSwitchSound]);
+  useEffect(() => endSwitchSound, [endSwitchSound]);
 
   // The player's live top bar: "CH {n}" (left, after the LIVE badge) + the channel name, matching the
   // mock's "CH 3" line. The encoder line ("h264 · 1080p") the mock also shows is admin telemetry not
@@ -309,6 +369,9 @@ const ChannelWatch = ({
         value={audioValue || AUTO_SENTINEL}
         onChange={(v) => savePlayout({ audioLanguage: v === AUTO_SENTINEL ? "" : v })}
         readOnly={!isAdmin}
+        toggles={[
+          { label: "Channel-change sound", checked: switchSoundOn, onCheckedChange: setSwitchSoundOn },
+        ]}
       />
     </>
   );
@@ -321,7 +384,8 @@ const ChannelWatch = ({
       live
       liveTransport={player.liveTransport}
       scrubber={scrubber}
-      topBar={topBar}
+      // While the wash is up its readout names the channel; the title returns with the picture.
+      topBar={tuning ? undefined : topBar}
       timeLeft={timeLeft}
       barControls={barControls}
       // The tuner "acquiring signal" overlay covers the warm-up beat (cold encoder, first segment
@@ -329,17 +393,19 @@ const ChannelWatch = ({
       // an error shows its own message below, and a playing stream needs no overlay.
       // Under it, the tuned channel's still (decoded on demand for a cold channel) replaces the
       // previous channel's held frame, so the picture already belongs to the channel being tuned.
+      // The loader's wash covers both (#1620): it drains a held frame on a switch, and a still that
+      // lands later arrives already under the snow, so the readout never sits on a picture.
       overlay={
-        player.status === "loading" ? (
+        tuning ? (
           <>
             {player.stillURL && (
               <img src={player.stillURL} alt="" className="absolute inset-0 h-full w-full object-contain" />
             )}
-            <TunerLoader />
+            <TunerLoader channel={osdChannel} heldFrame={heldFrame} />
           </>
         ) : undefined
       }
-      attach={player.attach}
+      attach={attach}
       onChannelStep={tuner?.step}
       className="overflow-hidden rounded-xl border border-border bg-black"
     />
@@ -357,12 +423,14 @@ const ChannelWatch = ({
           <div className="flex flex-col gap-3 p-3">
             <div className="relative">
               {playerEl}
-              {(player.status === "loading" || tuner?.acknowledging) && tuner && (
+              {/* While the wash is up, its centred channel line is the visible readout, so the OSD
+                  card would only repeat it; it stays as the screen-reader announcement. */}
+              {(tuning || tuner?.acknowledging) && tuner && (
                 <TunerOSD
                   number={osdChannel.number}
                   name={osdChannel.name}
                   currentTitle={tuner.currentTitle}
-                  className="absolute top-4 left-4 z-[2]"
+                  className={tuning ? "sr-only" : "absolute top-4 left-4 z-[2]"}
                 />
               )}
             </div>

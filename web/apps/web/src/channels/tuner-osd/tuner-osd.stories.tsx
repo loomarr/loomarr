@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { TunerLoader } from "@/components/loomarr/shell";
 import { TunerOSD } from "./tuner-osd";
 
+// The OSD card shows while a tune is being acknowledged over the still-playing channel (black here).
+// Once the stream loads, the tuner's wash names the channel and this card becomes screen-reader only
+// (#1620), so the two are never drawn together.
 const meta = {
   title: "Channels/TunerOSD",
   component: TunerOSD,
@@ -9,7 +11,6 @@ const meta = {
   decorators: [
     (Story) => (
       <div className="relative aspect-video w-[calc(100vw-2rem)] max-w-[720px] overflow-hidden rounded-xl border border-border bg-black">
-        <TunerLoader />
         <Story />
       </div>
     ),
