@@ -39,9 +39,6 @@ var (
 	// ErrMigrationUnavailable: this handler has no process-level migration callback
 	// behind it, so accepting the request would be a lie (→ 501).
 	ErrMigrationUnavailable = errors.New("atomic database migration is unavailable")
-	// ErrMigrationNotVerified: the compatibility switchover route was called without
-	// an exact, verified in-memory migration result (→ 409).
-	ErrMigrationNotVerified = errors.New("the target has not been verified for switchover")
 )
 
 // DatabaseService backs /v1/system/database*. Implemented in the composition root over
@@ -60,9 +57,6 @@ type DatabaseService interface {
 	// Migrate validates the server-owned preconditions and queues one atomic
 	// migrate-and-restart request. It does not perform the copy on the HTTP request.
 	Migrate(ctx context.Context, dsn string) error
-	// Switchover is retained for wire compatibility. The atomic Migrate path does not
-	// need it; implementations must fail closed unless this exact target is verified.
-	Switchover(ctx context.Context, dsn string) error
 }
 
 // DatabaseCheck is one preflight result, rendered verbatim under its name.
@@ -139,14 +133,6 @@ func (s *Server) registerSystemDatabase(api huma.API) {
 			"Progress streams over /v1/events as `database` frames.",
 		Tags: []string{"system"},
 	}, RoleAdmin), s.databaseMigrate)
-
-	huma.Register(api, withRole(huma.Operation{
-		OperationID: "system-database-switchover", Method: http.MethodPost, Path: "/v1/system/database/switchover",
-		Summary: "Point the next boot at the migrated database",
-		Description: "Admin only. Persists the new DATABASE_URL to the bootstrap file. Takes effect on " +
-			"restart; the SQLite file is left in place untouched, so reverting is a one-line change.",
-		Tags: []string{"system"},
-	}, RoleAdmin), s.databaseSwitchover)
 }
 
 type databaseStatusOutput struct {
@@ -249,28 +235,4 @@ func (s *Server) databaseMigrate(ctx context.Context, in *databaseTargetInput) (
 		return nil, huma.Error500InternalServerError("database status", err)
 	}
 	return &databaseMigrateOutput{Body: st}, nil
-}
-
-type databaseSwitchoverOutput struct {
-	Body struct {
-		RestartRequired bool   `json:"restartRequired" doc:"Always true — DATABASE_URL is a boot-time setting"`
-		Note            string `json:"note" doc:"What happens next, in operator-facing prose"`
-	}
-}
-
-func (s *Server) databaseSwitchover(ctx context.Context, in *databaseTargetInput) (*databaseSwitchoverOutput, error) {
-	if s.database == nil {
-		return nil, huma.Error501NotImplemented("database migration is not available on this build")
-	}
-	if err := s.database.Switchover(ctx, in.Body.DSN); err != nil {
-		if errors.Is(err, ErrMigrationNotVerified) || errors.Is(err, ErrDatabaseURLPinned) || errors.Is(err, ErrNotSQLite) {
-			return nil, huma.Error409Conflict(err.Error())
-		}
-		return nil, huma.Error500InternalServerError("switchover", err)
-	}
-	out := &databaseSwitchoverOutput{}
-	out.Body.RestartRequired = true
-	out.Body.Note = "Loomarr will use the migrated database on its next start. " +
-		"Your SQLite file is left in place, untouched, as a fallback."
-	return out, nil
 }

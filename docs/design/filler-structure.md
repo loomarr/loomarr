@@ -234,8 +234,8 @@ hand-dropped clip.
   `0s` never): it drops the proposal and deletes the recording, only if the reel already produced
   clips. The catalog row survives with `clips.reaped_at` (written before the unlink, and skipped by
   `DeleteClipsNotIn`), so provenance and inherited context survive while re-splitting does not. The
-  pipeline row is set to `filed` so the reel is not re-detected. `docs/help/filler.md` says so to
-  operators.
+  pipeline row is set to `filed` so the reel is not re-detected. The operator guide
+  (`docs/guides/filler.md`) does not say so yet: it tells operators the original file is kept.
 
 **Splitting keys on identity, not location (V51a).** A proposal carries the compilation's hash
 (`clipHash`) and derives its file location. A segment is hashed as soon as it is cut and filed at

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/mediatools"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -58,8 +59,11 @@ func TestMeasureConditioningRealFixtureTimingCadenceSkewAndLoudness(t *testing.T
 	if math.Abs(got.Loudness.TruePeak.DBTP-(-54.2)) > 1.0 {
 		t.Errorf("true peak = %.1f dBTP, want about -54.2", got.Loudness.TruePeak.DBTP)
 	}
-	if len(got.Quality.Silence) == 0 || got.Quality.Silence[0].StartMs != 0 {
-		t.Errorf("non-zero-start audio silence is not artifact-relative: %+v", got.Quality.Silence)
+	// Evidence is on the container timeline (#1719): the delayed audio's silence starts where the
+	// audio does, not at its own first frame.
+	if len(got.Quality.Silence) == 0 || !got.ContainerStart.Available ||
+		got.Quality.Silence[0].StartMs != audio.Start.Milliseconds-got.ContainerStart.Milliseconds {
+		t.Errorf("delayed audio silence = %+v, want it to start at the audio's %dms on the container timeline", got.Quality.Silence, audio.Start.Milliseconds)
 	}
 }
 
@@ -186,6 +190,66 @@ func TestMeasureConditioningRealFixtureMatchesCutEdgesWithoutEchoingRequest(t *t
 		if !stream.EndError.Available || stream.EndError.Milliseconds <= 0 || stream.EndError.Milliseconds > 80 {
 			t.Errorf("%s:%d end = %+v, want measured one-packet overshoot", stream.Kind, stream.Index, stream.EndError)
 		}
+	}
+}
+
+// A production mezzanine starts at the AAC priming offset, not zero, and its audio's first decoded
+// frame carries the priming. Detector intervals go on the file's container timeline, like every
+// other conditioning fact (#1540), so a silence that runs to the end stays inside the container
+// and stays aligned with the picture (#1719).
+func TestMeasureConditioningRealPrimedMezzanineKeepsTrailingSilenceOnTheContainerTimeline(t *testing.T) {
+	tools := conditioningRealTools(t)
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.mp4")
+	mezzanine := filepath.Join(dir, "mezzanine.mp4")
+	// 8 s of tone, then 4 s of digital silence to the end of the file.
+	if raw, err := exec.Command(ffmpeg, "-nostdin", "-v", "error",
+		"-f", "lavfi", "-i", "testsrc=size=320x240:rate=30",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+		"-filter_complex", "[1:a]volume=enable='gte(t,8)':volume=0[a]",
+		"-map", "0:v", "-map", "[a]", "-t", "12",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", source).CombinedOutput(); err != nil {
+		t.Fatalf("build source fixture: %v: %s", err, raw)
+	}
+	probe := filler.FFprobeNextTo(ffmpeg)
+	input, err := probe(context.Background(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceQuality, err := mediatools.Transcode(context.Background(), mediatools.TranscodeRequest{
+		In: source, Out: mezzanine, DurationMs: input.DurationMs, HadAudio: true, InputProbe: &input,
+		TargetLUFS: -23, Profile: mediatools.DefaultMezzanine(), Probe: probe,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sourceQuality.Silence) != 1 {
+		t.Fatalf("transcode detector silence = %+v, want the one trailing span", sourceQuality.Silence)
+	}
+
+	got, err := tools.MeasureConditioning(context.Background(), mediatools.ConditioningRequest{Path: mezzanine})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.ContainerStart.Available || got.ContainerStart.Milliseconds <= 0 {
+		t.Fatalf("container start = %+v, want the measured priming offset of a real mezzanine", got.ContainerStart)
+	}
+	if err := mediatools.ValidateMediaQualityEvidence(got.Quality); err != nil {
+		t.Fatalf("primed mezzanine quality %+v of %dms: %v", got.Quality, got.ContainerDurationMs, err)
+	}
+	if len(got.Quality.Silence) != 1 || got.Quality.Silence[0].EndMs != got.ContainerDurationMs {
+		t.Fatalf("silence = %+v, want one span ending at the container end %dms", got.Quality.Silence, got.ContainerDurationMs)
+	}
+	// The picture starts where the source's did, shifted onto the container timeline; the silence
+	// must move with it rather than with the audio's primed first frame.
+	video := measuredConditioningStream(t, got.Streams, mediatools.StreamVideo)
+	want := sourceQuality.Silence[0].StartMs + video.Start.Milliseconds - got.ContainerStart.Milliseconds
+	if drift := got.Quality.Silence[0].StartMs - want; drift < -2 || drift > 2 {
+		t.Fatalf("silence start = %dms, want %dms (source %dms on the container timeline)", got.Quality.Silence[0].StartMs, want, sourceQuality.Silence[0].StartMs)
 	}
 }
 

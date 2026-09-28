@@ -910,6 +910,87 @@ func TestTranscodeStage_PersistsConditioningBeforeAndAfterWithRekeyedLineage(t *
 	}
 }
 
+// The transcode's own detector pass watches the source on the source's timeline; the post-rewrite
+// measurement watches the staged file on its container timeline, which a production mezzanine
+// starts at the AAC priming offset. They cannot agree interval for interval, so a conditioned child
+// persists the staged file's own measurement (#1719). The staged file's probed duration must still
+// be the measured container's.
+func TestTranscodeStage_ConditionedChildPersistsTheStagedFilesQualityEvidence(t *testing.T) {
+	sourceTimeline := MediaQuality{
+		EvidenceVersion: mediatools.MediaQualityEvidenceV1,
+		Provenance:      mediatools.MediaQualityProvenanceFFmpegDetectors,
+		DurationMs:      30_000,
+		Silence:         []mediatools.Interval{{StartMs: 25_999, EndMs: 30_000}},
+	}
+	for name, tc := range map[string]struct {
+		probedMs    int64
+		wantVerdict Verdict
+	}{
+		"publishes the staged measurement":         {probedMs: 30_000, wantVerdict: VerdictContinue},
+		"holds when the probe disagrees on length": {probedMs: 30_021, wantVerdict: VerdictReview},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			parentHash := writeContentAddressedClip(t, dir, []byte("immutable parent compilation"), ".mp4")
+			parentRel := filepath.ToSlash(ClipRelPath(parentHash, ".mp4"))
+			childHash := writeContentAddressedClip(t, dir, []byte("reviewed stream-copy child"), ".mkv")
+			childRel := filepath.ToSlash(ClipRelPath(childHash, ".mkv"))
+			lineage := &ConditioningLineage{ChildHash: childHash, ParentHash: parentHash, IntendedStartMs: 10_000, IntendedEndMs: 40_000}
+			if err := WriteSidecarTags(filepath.Join(dir, filepath.FromSlash(childRel)), SidecarTags{
+				OriginalName: "Reviewed advert", ConditioningLineage: lineage,
+			}, false); err != nil {
+				t.Fatal(err)
+			}
+			stored := &transcodeStore{clips: map[string]StoreClip{parentHash: {Clip: Clip{
+				Hash: parentHash, Path: parentRel, Name: "Compilation", IsComposite: true,
+			}}}}
+			stage := NewTranscodeStage(stored, func(context.Context, string) (Probed, error) {
+				return Probed{DurationMs: tc.probedMs, Height: 480}, nil
+			}, dir, mediatools.DefaultMezzanine(), nil, nil, time.Now)
+			before := completeConditioningMeasurement(-28.4)
+			after := completeConditioningMeasurement(-23.1)
+			before.Cuts[0].Intended = mediatools.Interval{StartMs: 10_000, EndMs: 40_000}
+			after.Cuts[0].Intended = before.Cuts[0].Intended
+			for i := range after.Cuts[0].Streams {
+				after.Cuts[0].Streams[i].StartError = mediatools.OptionalMilliseconds{}
+				after.Cuts[0].Streams[i].EndError = mediatools.OptionalMilliseconds{}
+			}
+			// The same trailing silence, on the staged file's container timeline.
+			after.Quality.Silence = []mediatools.Interval{{StartMs: 26_021, EndMs: 30_000}}
+			stage.transcode = func(_ context.Context, req mediatools.TranscodeRequest, _ func(int)) (MediaQuality, error) {
+				return sourceTimeline, os.WriteFile(req.Out, []byte("measured mezzanine"), 0o644)
+			}
+			measurements := 0
+			stage.WithConditioning(func(context.Context, mediatools.ConditioningRequest) (mediatools.ConditioningMeasurement, error) {
+				measurements++
+				if measurements%2 == 1 {
+					return before, nil
+				}
+				return after, nil
+			})
+
+			out, err := stage.Run(context.Background(), StoreClip{Clip: Clip{
+				Hash: childHash, Path: childRel, Name: "Reviewed advert", Kind: Commercial, ParentHash: parentHash,
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if out.Verdict != tc.wantVerdict {
+				t.Fatalf("verdict = %v (%s), want %v", out.Verdict, out.Detail, tc.wantVerdict)
+			}
+			if tc.wantVerdict != VerdictContinue {
+				return
+			}
+			tags, ok := ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(out.Clip.Path)))
+			if !ok || tags.MediaQuality == nil || tags.Conditioning == nil ||
+				!reflect.DeepEqual(*tags.MediaQuality, after.Quality) ||
+				!reflect.DeepEqual(tags.Conditioning.AfterRewrite.Quality, after.Quality) {
+				t.Fatalf("persisted quality = %+v, want the staged file's measurement %+v", tags.MediaQuality, after.Quality)
+			}
+		})
+	}
+}
+
 func TestTranscodeStage_RecoversAPublishedPairAfterStoreFailure(t *testing.T) {
 	dir := t.TempDir()
 	oldHash := writeContentAddressedClip(t, dir, []byte("original"), ".mkv")

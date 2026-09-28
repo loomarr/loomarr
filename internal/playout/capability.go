@@ -140,7 +140,7 @@ type Capacity struct {
 	// option, measured" and an operator can see WHY their GPU was skipped.
 	All []Capability
 	// EncodeHostBytes is the measured host memory one encode of the chosen encoder holds (its warm
-	// trial's peak RSS), 0 when unmeasured. It sizes the encode pool's host-memory gate.
+	// trial's peak RSS), 0 when unmeasured. It sizes the ResourceBudget's host-memory gate.
 	EncodeHostBytes int64
 }
 
@@ -573,8 +573,9 @@ func renderNode() string {
 // Structured k=v on its own pipe, NOT stderr scraping: viewra read stderr in 4096-byte
 // chunks looking for substrings, and a chunked read can split a token across the buffer
 // boundary. A bufio.Scanner over the progress pipe cannot.
-// lastSpeed returns the PEAK realtime multiple across a trial encode's progress samples — the
-// encoder's sustained capability once warmed, not whichever sample happened to be last.
+// lastSpeedObserved returns the PEAK realtime multiple across a trial encode's progress samples —
+// the encoder's sustained capability once warmed, not whichever sample happened to be last — and
+// reports each complete sample to run when it is non-nil.
 //
 // ⚠ **Peak, not last, and that is the fix for a capacity under-count.** ffmpeg's early progress
 // samples are depressed by cold encoder init (CUDA/VAAPI context setup, filter-graph warmup); for a
@@ -582,10 +583,6 @@ func renderNode() string {
 // Taking the last collapsed a warm ~8x NVENC to ~1x → channelsFromSpeed → 1 hardware channel on a
 // GPU that sustains several, which then made the admission gate cap the box at one transcode. The
 // peak is stable against the cold ramp and is the honest "how fast can this encoder go" signal.
-func lastSpeed(r interface{ Read([]byte) (int, error) }) float64 {
-	return lastSpeedObserved(r, nil)
-}
-
 func lastSpeedObserved(r interface{ Read([]byte) (int, error) }, run *diagnostics.ProcessHandle) float64 {
 	var speed float64
 	var current Progress

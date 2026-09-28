@@ -16,7 +16,7 @@ import (
 
 func TestEpisodeRefreshSnapshotsResolverOnceAcrossRun(t *testing.T) {
 	ctx := context.Background()
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	now := time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC)
 
 	shows := []struct {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,12 +17,7 @@ import (
 
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "b.db"), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return testkit.MigratedSQLiteStore(t)
 }
 
 func movieKey(tmdbID int) provision.Key {
