@@ -268,7 +268,12 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
 
   // The now-line and "on now" belong to TODAY: another day's window never contains nowMs, so
   // the shared layout draws neither there.
-  const layout = useMemo(() => (body ? layoutGuide(body, nowMs) : undefined), [body, nowMs]);
+  // Laid out only when there are channels to lay out: an empty guide shows Dead air, and a body
+  // without `channels` (which `channels` above already reads defensively) must not reach it.
+  const layout = useMemo(
+    () => (body && channels.length > 0 ? layoutGuide(body, nowMs) : undefined),
+    [body, channels, nowMs],
+  );
   const selected = useMemo(() => reconcileSelection(layout, selection, nowMs), [layout, selection, nowMs]);
   const onMove = useCallback(
     (direction: GuideNavigationDirection) => {

@@ -438,6 +438,17 @@ describe("Guide", () => {
     expect(screen.queryByRole("button", { name: /describe your first channel/i })).not.toBeInTheDocument();
   });
 
+  // The e2e mock backend answers unknown endpoints with `{}`. The page reads `channels`
+  // defensively, and laying out a body without them crashed the whole route (#1707's queue run).
+  it("shows Dead air, not an error, when the guide answers without channels", async () => {
+    stubGuide(me(), { empty: true });
+    server.use(http.get("*/v1/guide", () => HttpResponse.json({})));
+    renderAt("/guide");
+
+    expect(await screen.findByText("Dead air")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
+  });
+
   // ⚠ The dead end this avoids: the header button becomes "Close" once the panel is open,
   // and an empty guide is exactly when someone is most likely to have opened it. Hiding it
   // unconditionally would leave the panel with no way out.
