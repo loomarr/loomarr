@@ -9,8 +9,10 @@ Go owns image identity, policy, jobs, authorization, storage records and publica
 Rust `loomarr-image` worker owns every operation that interprets pixels: validation, inspection,
 static or animated decode, compositing, resize, encode, ThumbHash and dominant colour. There is one
 production renderer and **no Go codec fallback**. The schema lives in the migrations, the width
-ladders in code, and the image jobs in the scheduler registry. The frontend `Image` contract and the
-worker's runtime certification are still in [`design.md` §22](../design.md#22-image-service--one-pipeline-for-every-image).
+ladders in code, and the image jobs in the scheduler registry. The frontend `Image` contract is in
+[`frontend-design.md`](../frontend-design.md#8-the-image-primitive-formerly-designmd-22s-frontend-contract),
+and the worker's runtime certification in
+[`contributing/releasing.md`](../contributing/releasing.md#image-worker-certification).
 
 ## The service
 
