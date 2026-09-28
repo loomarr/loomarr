@@ -612,7 +612,6 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
             )}
             {layout && (
               <AdaptiveSplit
-                accessibilityLabel="Programme guide"
                 breakpoint={SPLIT_BREAKPOINT}
                 flex={1}
                 minHeight={0}
