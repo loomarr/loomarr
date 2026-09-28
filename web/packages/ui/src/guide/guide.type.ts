@@ -11,6 +11,8 @@ type GuideFocusTarget =
   | { kind: "airing"; selection: GuideSelection };
 
 type GuideFilterOption = {
+  /** How many channels the filter shows; drawn after the label ("Recent · 4"). */
+  count?: number;
   disabled?: boolean;
   label: string;
   value: GuideFilter;

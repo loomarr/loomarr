@@ -51,6 +51,33 @@ describe("GuideJourney", () => {
     expect(output).toContain('accessibilityLabel="Programme guide"');
   });
 
+  it("counts the person's filters over the served guide, and keeps an empty one off", async () => {
+    const controller = createGuideController({
+      now: () => 900_000,
+      source: { load: vi.fn().mockResolvedValue(sourceGuide) },
+    });
+    await controller.refresh("springfield");
+    const render = (myChannels?: { favouriteIds: string[]; recentIds: string[] }) =>
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <GuideJourney controller={controller} myChannels={myChannels} onTune={vi.fn()} />
+        </LoomarrProvider>,
+      );
+
+    // A starred channel the guide no longer serves isn't counted.
+    const output = render({ favouriteIds: ["springfield", "retired"], recentIds: [] });
+    expect(output).toContain(">All · 1<");
+    expect(output).toContain(">★ Favorites · 1<");
+    expect(output).toContain(">Recent · 0<");
+    expect(output).toContain('aria-label="Recent, 0 channels"');
+    expect(output.match(/aria-disabled="true"/g)).toHaveLength(1);
+
+    // Before the lists arrive, both personal filters are off and uncounted.
+    const unknown = render();
+    expect(unknown).toContain(">★ Favorites<");
+    expect(unknown.match(/aria-disabled="true"/g)).toHaveLength(2);
+  });
+
   it("lets a platform adapter bound the rendered Channel rows", async () => {
     const controller = createGuideController({
       now: () => 900_000,

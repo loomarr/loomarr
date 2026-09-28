@@ -57,6 +57,37 @@ describe("Guide controller", () => {
     });
   });
 
+  it("narrows to a filter's channels in guide order, and moves only among them", async () => {
+    const lineup: GuideOutputBody = {
+      ...guide(),
+      channels: ["two", "four", "seven", "nine"].flatMap((id, index) =>
+        guide(id).channels.map((channel) => ({ ...channel, number: index + 1 })),
+      ),
+    };
+    const controller = createGuideController({
+      now: () => 2_000,
+      source: { load: vi.fn().mockResolvedValue(lineup) },
+    });
+    await controller.refresh("four");
+    const rows = () => controller.getSnapshot().layout?.channels.map((channel) => channel.source.channelId);
+
+    // Recent arrives newest first; the Guide still reads by number.
+    controller.restrict(["nine", "two"]);
+    expect(rows()).toEqual(["two", "nine"]);
+    expect(controller.getSnapshot().selection).toMatchObject({ anchorMs: 2_000, channelId: "two" });
+    expect(controller.move("down")?.selection.channelId).toBe("nine");
+    expect(controller.move("down")?.boundary).toBe("down");
+
+    controller.restrict(undefined);
+    expect(rows()).toEqual(["two", "four", "seven", "nine"]);
+    expect(controller.getSnapshot().selection?.channelId).toBe("nine");
+
+    // A filter set before the guide loads applies to it.
+    controller.restrict(["seven"]);
+    await controller.refresh();
+    expect(rows()).toEqual(["seven"]);
+  });
+
   it("keeps only the latest refresh authoritative", async () => {
     const first = deferred<GuideOutputBody>();
     const second = deferred<GuideOutputBody>();

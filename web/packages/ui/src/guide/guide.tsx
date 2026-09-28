@@ -19,11 +19,12 @@ import type {
   GuideUnavailableState,
 } from "./guide.type";
 import { GuideProgrammeDetail } from "./guide-detail";
+import { guideFilterText } from "./guide-filter";
 import { TvGuideSurface } from "./guide-tv";
 
 const defaultFilters: readonly GuideFilterOption[] = [
   { label: "All", value: "all" },
-  { disabled: true, label: "Favourites", value: "favourites" },
+  { disabled: true, label: "Favorites", value: "favourites" },
   { disabled: true, label: "Recent", value: "recent" },
 ];
 
@@ -82,19 +83,22 @@ const GuideSurface = ({
   const grid = (
     <Surface gap="$inline" overflow="hidden" padding="$control" width="100%">
       <View accessibilityLabel="Guide filters" role="toolbar" style={{ flexDirection: "row", gap: 8 }}>
-        {filters.map((option) => (
-          <Action
-            accessibilityLabel={`${option.label} channels`}
-            density={density}
-            disabled={option.disabled}
-            key={option.value}
-            onPress={() => onFilterChange?.(option.value)}
-            selected={filter === option.value}
-            tone="secondary"
-          >
-            {option.label}
-          </Action>
-        ))}
+        {filters.map((option) => {
+          const { accessibilityLabel, text } = guideFilterText(option);
+          return (
+            <Action
+              accessibilityLabel={accessibilityLabel}
+              density={density}
+              disabled={option.disabled}
+              key={option.value}
+              onPress={() => onFilterChange?.(option.value)}
+              selected={filter === option.value}
+              tone="secondary"
+            >
+              {text}
+            </Action>
+          );
+        })}
       </View>
 
       <ScrollView

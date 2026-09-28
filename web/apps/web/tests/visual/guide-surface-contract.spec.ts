@@ -19,6 +19,6 @@ test("guide focus updates rich detail and empty filters stay unavailable", async
   await expect(page.getByText("Lisa Gets an A", { exact: true }).last()).toBeVisible();
   await expect(page.getByText("S10E07", { exact: false })).toBeVisible();
 
-  await expect(page.getByRole("button", { name: "Favourites channels" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Favorites channels" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Recent channels" })).toBeDisabled();
 });

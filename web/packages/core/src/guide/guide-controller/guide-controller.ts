@@ -2,6 +2,7 @@ import { getChannelGuideUrl } from "@loomarr/api/endpoints/channels";
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
 
 import { defaultGuideWindow, guideSelectionForChannel, layoutGuide, moveGuideSelection } from "../guide";
+import type { GuideLayout } from "../guide.type";
 import type {
   GuideController,
   GuideControllerOptions,
@@ -25,11 +26,27 @@ const createGuideController = ({
   let disposed = false;
   let request: AbortController | undefined;
   let snapshot: GuideControllerSnapshot = { status: "loading" };
+  // The whole served guide; the snapshot's layout is this, narrowed to `only` when a filter is set.
+  let full: GuideLayout | undefined;
+  let only: ReadonlySet<string> | undefined;
   const listeners = new Set<() => void>();
 
   const publish = (next: GuideControllerSnapshot) => {
     snapshot = next;
     for (const listener of listeners) listener();
+  };
+
+  const narrow = (layout: GuideLayout): GuideLayout =>
+    only
+      ? { ...layout, channels: layout.channels.filter((channel) => only?.has(channel.source.channelId)) }
+      : layout;
+
+  // Keep the requested channel when it's in view, else the first row, at the same time column.
+  const settle = (layout: GuideLayout, channelId: string | undefined, anchorMs: number) => {
+    const requested = channelId ? guideSelectionForChannel(layout, channelId, anchorMs) : undefined;
+    const first = layout.channels[0]?.source.channelId;
+    const selection = requested ?? (first ? guideSelectionForChannel(layout, first, anchorMs) : undefined);
+    publish({ layout, selection, status: layout.channels.length ? "ready" : "empty" });
   };
 
   return {
@@ -60,19 +77,12 @@ const createGuideController = ({
         const sourceGuide = await source.load(resolveWindow(at), nextRequest.signal);
         if (disposed || nextRequest.signal.aborted || request !== nextRequest) return;
 
-        const layout = layoutGuide(sourceGuide, at);
-        const anchorMs = snapshot.selection?.anchorMs ?? at;
-        const requestedChannelId =
-          preferredChannelId ?? snapshot.selection?.channelId ?? layout.channels[0]?.source.channelId;
-        const requestedSelection = requestedChannelId
-          ? guideSelectionForChannel(layout, requestedChannelId, anchorMs)
-          : undefined;
-        const fallbackChannelId = layout.channels[0]?.source.channelId;
-        const selection =
-          requestedSelection ??
-          (fallbackChannelId ? guideSelectionForChannel(layout, fallbackChannelId, anchorMs) : undefined);
-
-        publish({ layout, selection, status: layout.channels.length ? "ready" : "empty" });
+        full = layoutGuide(sourceGuide, at);
+        settle(
+          narrow(full),
+          preferredChannelId ?? snapshot.selection?.channelId,
+          snapshot.selection?.anchorMs ?? at,
+        );
       } catch (error) {
         if (disposed || nextRequest.signal.aborted || request !== nextRequest) return;
         publish({
@@ -81,6 +91,12 @@ const createGuideController = ({
           status: "error",
         });
       }
+    },
+    restrict: (channelIds) => {
+      if (disposed) return;
+      only = channelIds ? new Set(channelIds) : undefined;
+      if (!full || (snapshot.status !== "ready" && snapshot.status !== "empty")) return;
+      settle(narrow(full), snapshot.selection?.channelId, snapshot.selection?.anchorMs ?? now());
     },
     select: (selection) => {
       if (disposed || snapshot.status !== "ready") return;
