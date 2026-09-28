@@ -488,7 +488,9 @@ Split children are measured, not trusted (V64, V65). Structure decisions are in
   duration and start, exact video cadence, A/V start and end skew, integrated loudness and true peak
   (a closed finite or digital-silence state), black, silence and freeze intervals, and signed
   per-stream edge errors against each cut. Unavailable is a first-class result, never zero. It has
-  no verdict, threshold, rewrite or admission authority.
+  no verdict, threshold, rewrite or admission authority. Every fact is on the file's container
+  timeline, which starts at `format.start_time` (a mezzanine starts at the AAC priming offset), and
+  a conditioned child's durable quality evidence is its staged file's own measurement.
 - **Its limits are part of the interface:** each input at most 1 GiB and 120 seconds, at most eight
   streams and eight cuts. Inputs are opened once without following links in any path component and
   snapshotted, so every tool reads the same bytes. Tool output must match the exact anchored

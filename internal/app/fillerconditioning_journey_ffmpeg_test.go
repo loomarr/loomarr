@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -42,7 +43,23 @@ func (t realReviewedSplitTools) Boundaries(ctx context.Context, file string, sta
 	return t.ffmpeg.Boundaries(ctx, file, startMs, endMs)
 }
 
-func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t *testing.T) {
+// conditionedJourney is one reviewed child of the real compilation fixture, split, conditioned by
+// the production transcode and published by the pipeline.
+type conditionedJourney struct {
+	ctx         context.Context
+	dir         string
+	ffmpeg      string
+	ffprobe     string
+	fixtures    testkit.FillerConditioningFixtures
+	conditioned store.Clip
+	mezzanine   string
+	tags        filler.SidecarTags
+}
+
+// conditionReviewedCompilationChild splits the compilation's first segment at reviewedEnd, runs the
+// real ladder over the child, and requires it to publish with complete conditioning evidence.
+func conditionReviewedCompilationChild(t *testing.T, reviewedEnd int64) conditionedJourney {
+	t.Helper()
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +69,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	dir := t.TempDir()
 	fixtures := testkit.FillerConditioningMedia(t, dir)
 	tools := mediatools.NewFFmpegTools(ffmpeg, ffprobe, "", "", "")
@@ -90,7 +107,7 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 	// Detection produced the candidate; the reviewed operator edit trims its transition tail to the
 	// measured content interval used by this fixture. No chapter is supplied to Propose.
 	reviewed := append([]filler.SplitSegment(nil), proposal.Segments[0])
-	reviewed[0].EndMs = 12_000
+	reviewed[0].EndMs = reviewedEnd
 	childHashes, err := splitter.Confirm(ctx, proposal.ID, reviewed)
 	if err != nil || len(childHashes) != 1 {
 		t.Fatalf("reviewed real split = %v, %v", childHashes, err)
@@ -185,6 +202,51 @@ func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t
 		!tags.Conditioning.DerivedParentEdgesAfterRewrite.Streams[0].EndError.Available {
 		t.Fatalf("real conditioning sidecar = %+v, ok=%v", tags, ok)
 	}
+	return conditionedJourney{
+		ctx: ctx, dir: dir, ffmpeg: ffmpeg, ffprobe: ffprobe, fixtures: fixtures,
+		conditioned: conditioned, mezzanine: mezzanine, tags: tags,
+	}
+}
+
+// The reviewed interval keeps the segment's transition tail, so the child ends in black and
+// silence. A production mezzanine starts at the AAC priming offset; that detected interval near
+// the end must stay inside the container and still publish (#1719).
+func TestFillerConditioningJourneyFFmpeg_ChildEndingInBlackAndSilencePublishes(t *testing.T) {
+	const reviewedEnd = 12_500 // 12 s of content, then the fixture's 0.5 s black, silent transition.
+	journey := conditionReviewedCompilationChild(t, reviewedEnd)
+	after := journey.tags.Conditioning.AfterRewrite
+	if !after.ContainerStart.Available || after.ContainerStart.Milliseconds <= 0 {
+		t.Fatalf("mezzanine container start = %+v, want the measured priming offset", after.ContainerStart)
+	}
+	// The stream-copy cut overshoots into the next segment by a packet, so each tail ends where its
+	// own stream ends on the container timeline: the audio decodes past the container end and is
+	// bounded by it, the video ends earlier.
+	video := after.Streams[0]
+	videoEnd := video.Start.Milliseconds + video.Duration.Milliseconds - after.ContainerStart.Milliseconds
+	for name, want := range map[string]struct {
+		spans []mediatools.Interval
+		end   int64
+	}{
+		"black":   {after.Quality.Black, videoEnd},
+		"silence": {after.Quality.Silence, after.ContainerDurationMs},
+	} {
+		if len(want.spans) == 0 {
+			t.Fatalf("%s evidence = %+v, want the transition tail", name, after.Quality)
+		}
+		tail := want.spans[len(want.spans)-1]
+		if tail.EndMs < want.end-1 || tail.EndMs > want.end || tail.EndMs-tail.StartMs < 400 {
+			t.Fatalf("%s tail = %+v of %dms, want the 0.5s transition ending at %dms", name, tail, after.ContainerDurationMs, want.end)
+		}
+	}
+	if !reflect.DeepEqual(*journey.tags.MediaQuality, after.Quality) {
+		t.Fatalf("persisted quality = %+v, want the staged file's measurement %+v", *journey.tags.MediaQuality, after.Quality)
+	}
+}
+
+func TestFillerConditioningJourneyFFmpeg_MidBreakClipReturnsToDecodableProgram(t *testing.T) {
+	journey := conditionReviewedCompilationChild(t, 12_000)
+	ctx, dir, ffmpeg, ffprobe := journey.ctx, journey.dir, journey.ffmpeg, journey.ffprobe
+	fixtures, conditioned, mezzanine, tags := journey.fixtures, journey.conditioned, journey.mezzanine, journey.tags
 
 	// Exercise the conditioned bytes through the production encoder/mux boundary. Terminal
 	// admission is independently covered by its transaction suite; this test owns media
