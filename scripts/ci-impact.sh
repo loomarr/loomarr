@@ -369,9 +369,9 @@ classify() {
       known=true
       select_gate docs
       ;;
-    .graphifyignore|graphify-out/*)
-      # The committed graph is developer documentation and query data. It cannot
-      # affect a product binary, native client, database, or runtime contract.
+    .graphifyignore)
+      # Graphify's scan scope. The graph itself is generated on demand and never
+      # committed (#1565), so this file cannot affect a binary, client or contract.
       known=true
       select_gate docs
       ;;
