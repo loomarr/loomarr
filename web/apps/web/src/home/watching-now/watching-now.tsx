@@ -74,6 +74,7 @@ const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
             <ProgrammeCard
               layout="overlay"
               highlighted={you}
+              hoverHighlight
               viewer={viewer}
               programme={programme}
               artwork={
