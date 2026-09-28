@@ -161,23 +161,40 @@ func TestRunPublishesJobLifecycleToGenerationMetrics(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	go scheduler.Run(ctx)
-	waitFor(t, func() bool {
-		job, err := st.GetScheduledJob(ctx, "health-check")
-		return err == nil && job.LastResult == "ok"
-	})
 
-	scrape := httptest.NewRecorder()
-	recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	for _, want := range []string{
+	// Poll the scrape itself, not the store (GH #1686): execute persists LastResult before it
+	// notifies the observer, so a scrape taken as soon as the store says "ok" could land between
+	// the two and miss the finished-job series.
+	wants := []string{
 		`loomarr_scheduler_job_executions_total{job="health-check",result="success",trigger="scheduled"} 1`,
 		`loomarr_scheduler_job_duration_seconds_count{job="health-check"} 1`,
 		`loomarr_scheduler_jobs_running{job="health-check"} 0`,
 		`loomarr_scheduler_job_last_success_timestamp_seconds{job="health-check"} 1000`,
-	} {
-		if !strings.Contains(scrape.Body.String(), want) {
+	}
+	var body string
+	for i := 0; i < 100; i++ {
+		scrape := httptest.NewRecorder()
+		recorder.Handler().ServeHTTP(scrape, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		body = scrape.Body.String()
+		if containsAll(body, wants) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for _, want := range wants {
+		if !strings.Contains(body, want) {
 			t.Errorf("generation scrape does not contain %q", want)
 		}
 	}
+}
+
+func containsAll(s string, subs []string) bool {
+	for _, sub := range subs {
+		if !strings.Contains(s, sub) {
+			return false
+		}
+	}
+	return true
 }
 
 func TestExecutePublishesBoundedFailureKinds(t *testing.T) {
