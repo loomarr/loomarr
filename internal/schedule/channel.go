@@ -141,12 +141,12 @@ type Channel struct {
 	// window `now` falls in. Reconcile sets it while the programme that crossed a boundary is
 	// still airing: until that programme ends, the committed window is still the one it belongs
 	// to (#1675 carry-over). Transient.
-	WindowOpened time.Time `json:"-"`
-	FillerRef     string        // ref to the channel's filler list (§10); "" = none yet
-	TunarrID      string        // retained Tunarr projection id; "" until first-ever successful projection
-	Status        ChannelStatus // Loomarr-side status
-	Shuffle       ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)
-	UpdatedAt     int64         // epoch seconds (store stamps this; §5 epoch-BIGINT convention)
+	WindowOpened time.Time     `json:"-"`
+	FillerRef    string        // ref to the channel's filler list (§10); "" = none yet
+	TunarrID     string        // retained Tunarr projection id; "" until first-ever successful projection
+	Status       ChannelStatus // Loomarr-side status
+	Shuffle      ShuffleParams // shuffle seed material (used only when Strategy==Shuffle)
+	UpdatedAt    int64         // epoch seconds (store stamps this; §5 epoch-BIGINT convention)
 }
 
 // ShuffleParams carries the deterministic seed material for Shuffle (§9/§10). The
