@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -68,6 +69,30 @@ func newYearWindow(year int) (time.Time, time.Time) {
 	start := time.Date(year, time.December, 27, 0, 0, 0, 0, time.UTC)
 	end := time.Date(year+1, time.January, 3, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
 	return start, end
+}
+
+// HolidayWindow is one built-in holiday's window, inclusive of End.
+type HolidayWindow struct {
+	ID         string
+	Start, End time.Time
+}
+
+// UpcomingHolidays lists the built-in holidays whose window is on at `now` or starts within
+// `horizon`, soonest first (#1665 channel ideas). It reads builtinCalendar, so an idea never
+// announces a holiday the seasonal policy wouldn't honour.
+func UpcomingHolidays(now time.Time, horizon time.Duration) []HolidayWindow {
+	var out []HolidayWindow
+	for _, h := range builtinCalendar {
+		for _, y := range []int{now.Year() - 1, now.Year(), now.Year() + 1} {
+			start, end := h.window(y)
+			if !end.Before(now) && !start.After(now.Add(horizon)) {
+				out = append(out, HolidayWindow{ID: h.id, Start: start, End: end})
+				break
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start.Before(out[j].Start) })
+	return out
 }
 
 // activeHolidays returns the calendar holidays whose window contains `now`, limited
