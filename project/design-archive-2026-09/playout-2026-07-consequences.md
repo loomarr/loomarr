@@ -1,7 +1,7 @@
 # Consequences of taking over playout (archived)
 
 Archived verbatim from `docs/design.md` §9.1 in #779 (2026-09-27). Not current guidance: the rules
-that still bind are in [`docs/design/playout.md`](../../../design/playout.md#constraints-that-follow-from-owning-playout).
+that still bind are in [`docs/design/playout.md`](../../docs/design/playout.md#constraints-that-follow-from-owning-playout).
 
 1. **`ffmpeg` becomes a core runtime dependency** (§14) and ships in the single image (§16). The
    previous "two tags, one binary" split — a 31 MB default plus a 549 MB `loomarr:filler` (retired-ok) — collapses

@@ -22,4 +22,4 @@ reel. Running out of time is a deferral that keeps progress, never a failure.
 - Partly-grounded reels defer and resume from their persisted proposal instead of starting over.
 - Every rung must be able to make progress within one pass, or it must persist partial work.
 - The incident is archived in
-  [`filler-v51g-budget-incident.md`](../../engineering/archive/design-2026-09/filler-v51g-budget-incident.md).
+  [`filler-v51g-budget-incident.md`](../../../project/design-archive-2026-09/filler-v51g-budget-incident.md).

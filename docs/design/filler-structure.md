@@ -131,7 +131,7 @@ and bounds pass. Model training waits until measurement names a residual error c
 
 The V34 detector is now a proposal and shadow input under V67; where they conflict, V67 governs.
 Its design and measurements are archived in
-[`filler-splitting-v34.md`](../engineering/archive/design-2026-09/filler-splitting-v34.md).
+[`filler-splitting-v34.md`](../../project/design-archive-2026-09/filler-splitting-v34.md).
 
 1. **Triage.** Chapters split for free, but most sources have none.
 2. **Coarse split.** `blackdetect` and `silencedetect`, parsed in Go. Segments under the detection

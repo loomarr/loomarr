@@ -6,7 +6,7 @@ covers what Loomarr learns about a clip, how sure it is, and what may make a cli
 fields and grounding ladder are in [filler](filler.md#the-catalog); the pipeline stages are in
 [filler-pipeline](filler-pipeline.md); structure and splitting are in
 [filler-structure](filler-structure.md). The certification protocol is archived in
-[`filler-certification-protocol.md`](../engineering/archive/design-2026-09/filler-certification-protocol.md).
+[`filler-certification-protocol.md`](../../project/design-archive-2026-09/filler-certification-protocol.md).
 
 ## Readiness is evidence-based; confidence never publishes
 

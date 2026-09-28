@@ -470,7 +470,7 @@ For Loomarr's channels to appear in the family's TV guide, the media server cons
 ## Constraints that follow from owning playout
 
 The consequences recorded when Loomarr took over playout are archived in
-[`playout-2026-07-consequences.md`](../engineering/archive/design-2026-09/playout-2026-07-consequences.md).
+[`playout-2026-07-consequences.md`](../../project/design-archive-2026-09/playout-2026-07-consequences.md).
 These still bind:
 
 - **ffmpeg and ffprobe are core runtime dependencies** and ship in the single image.

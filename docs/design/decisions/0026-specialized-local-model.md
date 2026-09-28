@@ -27,4 +27,4 @@ this repository or its image.
 - A new model version is pulled explicitly, verified by digest, probed and canaried before
   activation, and the previous one stays available for rollback.
 - The experiment protocol is archived in
-  [`local-model-experiment.md`](../../engineering/archive/design-2026-09/local-model-experiment.md).
+  [`local-model-experiment.md`](../../../project/design-archive-2026-09/local-model-experiment.md).

@@ -1,8 +1,8 @@
 # The split-budget incident (V51g, archived)
 
 Archived verbatim from `docs/design.md` §10 in #779 (2026-09-27). Not current guidance: the rules are
-in [`docs/design/filler-pipeline.md`](../../../design/filler-pipeline.md#budgets-are-per-clip) and decision
-[0019](../../../design/decisions/0019-stage-budget-is-per-clip-rate.md).
+in [`docs/design/filler-pipeline.md`](../../docs/design/filler-pipeline.md#budgets-are-per-clip) and decision
+[0019](../../docs/design/decisions/0019-stage-budget-is-per-clip-rate.md).
 
 
 **Found on a live catalog, not by a test.** `<local station> Commercial Breaks (1995)` — a 16m47s

@@ -72,7 +72,7 @@ Moved to [`design/library.md`](design/library.md#search).
 
 Grounding, reference-backed Intent, providers, §8.1 model selection and §8.2 model residency moved
 to [`design/suggester.md`](design/suggester.md). The specialized local model experiment is archived
-in [`engineering/archive/design-2026-09/`](engineering/archive/design-2026-09/README.md). Approval,
+in [`project/design-archive-2026-09/`](../project/design-archive-2026-09/README.md). Approval,
 Proposal execution and the decision traces moved to
 [`design/proposal-workflow.md`](design/proposal-workflow.md).
 
@@ -303,7 +303,7 @@ Moved to [`design/dependencies.md`](design/dependencies.md); §14.1's structure 
 [`design/overview.md`](design/overview.md#backend-structure-rules). The suggester certification rules
 that followed §14.1 moved to [`design/suggester.md`](design/suggester.md#evaluation) (discovery
 feedback and evaluation) and the archive
-([`suggester-certification.md`](engineering/archive/design-2026-09/suggester-certification.md)).
+([`suggester-certification.md`](../project/design-archive-2026-09/suggester-certification.md)).
 
 ### 14.2 The package map
 
