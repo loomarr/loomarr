@@ -104,6 +104,9 @@ type userBody struct {
 	// never verified one. ContactReplacement is populated only while a verified address is retained.
 	ContactAddress     *contactAddressBody `json:"contactAddress,omitempty"`
 	ContactReplacement *contactAddressBody `json:"contactReplacement,omitempty"`
+	// LastSeenAt is the People roster's "Last seen" (#1667): the person's latest authenticated use,
+	// from a browser session or a TV they paired.
+	LastSeenAt int64 `json:"lastSeenAt,omitempty" doc:"Unix ms of the person's latest use (browser or paired TV); absent if never seen"`
 }
 
 type contactAddressBody struct {
@@ -113,12 +116,27 @@ type contactAddressBody struct {
 	VerifiedAt int64  `json:"verifiedAt,omitempty" doc:"Unix ms; absent until possession is verified"`
 }
 
-func toUserBody(u store.User) userBody {
-	return userBody{
+// toUserBody renders a user; lastSeen comes from userLastSeen (zero: never seen).
+func toUserBody(u store.User, lastSeen time.Time) userBody {
+	body := userBody{
 		ID: u.ID, Name: u.Name, Role: string(u.Role), Disabled: u.Disabled,
 		Quota: u.Quota, AutoApprove: u.AutoApprove, Local: !u.MediaServerLinked && u.PasswordHash != "",
 		OfflineLogin: u.MediaServerLinked && u.PasswordHash != "",
 	}
+	if !lastSeen.IsZero() {
+		body.LastSeenAt = lastSeen.UnixMilli()
+	}
+	return body
+}
+
+// userLastSeen is one read of everyone's last-seen. It only decorates the response, so a failure
+// leaves lastSeenAt out rather than failing the request.
+func (s *Server) userLastSeen(ctx context.Context) map[string]time.Time {
+	seen, err := s.store.UserLastSeen(ctx)
+	if err != nil {
+		s.log.Warn("user last-seen unavailable", "err", err)
+	}
+	return seen
 }
 
 func withContacts(body userBody, set contact.Set) userBody {
@@ -169,10 +187,11 @@ func (s *Server) listUsers(ctx context.Context, _ *struct{}) (*listUsersOutput, 
 		}
 		contactsByUser[address.OwnerID] = set
 	}
+	lastSeen := s.userLastSeen(ctx)
 	out := &listUsersOutput{}
 	out.Body.Users = make([]userBody, 0, len(users))
 	for _, u := range users {
-		out.Body.Users = append(out.Body.Users, s.withUsage(ctx, withContacts(toUserBody(u), contactsByUser[u.ID]), u))
+		out.Body.Users = append(out.Body.Users, s.withUsage(ctx, withContacts(toUserBody(u, lastSeen[u.ID]), contactsByUser[u.ID]), u))
 	}
 	return out, nil
 }
@@ -297,7 +316,7 @@ func (s *Server) patchUser(ctx context.Context, in *patchUserInput) (*patchUserO
 	if err := s.store.UpsertUser(ctx, u); err != nil {
 		return nil, err
 	}
-	return &patchUserOutput{Body: toUserBody(u)}, nil
+	return &patchUserOutput{Body: toUserBody(u, s.userLastSeen(ctx)[u.ID])}, nil
 }
 
 // sessionBody is one live session as an admin sees it (§11). ID is the stored SHA-256
@@ -310,6 +329,9 @@ type sessionBody struct {
 	CreatedAt int64  `json:"createdAt" doc:"Unix ms"`
 	ExpiresAt int64  `json:"expiresAt" doc:"Unix ms"`
 	Current   bool   `json:"current" doc:"This is the caller's own session — revoking it signs them out"`
+	// ClientLabel and LastSeenAt are "Where you're signed in" (#1667). No city: geo-IP was dropped.
+	ClientLabel string `json:"clientLabel,omitempty" doc:"Coarse client, e.g. 'Firefox on macOS'; absent until the session is used"`
+	LastSeenAt  int64  `json:"lastSeenAt,omitempty" doc:"Unix ms of the session's latest use; absent until it is used"`
 }
 
 type listUserSessionsInput struct {
@@ -348,13 +370,18 @@ func (s *Server) listUserSessions(ctx context.Context, in *listUserSessionsInput
 	out := &listUserSessionsOutput{}
 	out.Body.Sessions = make([]sessionBody, 0, len(live))
 	for _, sess := range live {
-		out.Body.Sessions = append(out.Body.Sessions, sessionBody{
-			ID:        sess.TokenHash,
-			UserID:    sess.UserID,
-			CreatedAt: sess.CreatedAt.UnixMilli(),
-			ExpiresAt: sess.ExpiresAt.UnixMilli(),
-			Current:   auth.IsCurrent(sess.TokenHash, callerToken),
-		})
+		body := sessionBody{
+			ID:          sess.TokenHash,
+			UserID:      sess.UserID,
+			CreatedAt:   sess.CreatedAt.UnixMilli(),
+			ExpiresAt:   sess.ExpiresAt.UnixMilli(),
+			Current:     auth.IsCurrent(sess.TokenHash, callerToken),
+			ClientLabel: sess.ClientLabel,
+		}
+		if !sess.LastSeenAt.IsZero() {
+			body.LastSeenAt = sess.LastSeenAt.UnixMilli()
+		}
+		out.Body.Sessions = append(out.Body.Sessions, body)
 	}
 	return out, nil
 }
