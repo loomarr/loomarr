@@ -42,6 +42,11 @@ jobs:
             docs project 'design/*.md' .agents .claude
           fail: true
 
+      # lychee checks links, not inline code: a doc naming `internal/…` in backticks is checked
+      # here. History (PROGRESS.md, project/, design/) is out of scope; see the script.
+      - name: Inline repo paths
+        run: ./scripts/check-doc-paths.sh
+
       # Repo vocabulary only — no stock style package. See .vale.ini for why.
       - name: Prose
         uses: vale-cli/vale-action@518a9136acc6e6668ce7c00d367051e0941e87ff # v3

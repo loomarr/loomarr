@@ -520,9 +520,16 @@ func (s *TranscodeStage) Run(ctx context.Context, c StoreClip) (StageResult, err
 		return conditioningReview(c, "conditioning transcode was cancelled"), nil
 	}
 	quality.DurationMs = out.DurationMs
-	if conditioningBefore != nil && (mediatools.ValidateMediaQualityEvidence(quality) != nil ||
-		!reflect.DeepEqual(quality, conditioningAfter.Quality)) {
-		return conditioningReview(c, "transcode media-quality evidence does not match post-rewrite measurement"), nil
+	if conditioningBefore != nil {
+		// A conditioned child's quality evidence is the staged file's own measurement, on the
+		// file's container timeline. The transcode's detector pass watched the source on the
+		// source's timeline; a mezzanine starts at the AAC priming offset, so the two cannot
+		// agree interval for interval (#1719). The file's probed length must still be the
+		// measured container's, since the sidecar pairs the two.
+		if out.DurationMs != conditioningAfter.ContainerDurationMs {
+			return conditioningReview(c, "staged file duration does not match post-rewrite measurement"), nil
+		}
+		quality = conditioningAfter.Quality
 	}
 	var playbackQC mediatools.DerivativeQC
 	if evidence != nil {

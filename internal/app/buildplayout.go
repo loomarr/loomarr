@@ -35,7 +35,6 @@ type playoutBuild struct {
 	capability        func() playout.Capacity
 	service           api.Playout
 	resolverService   api.PlayoutResolver
-	encodePool        *media.EncodePool
 	guide             api.PlayoutGuide
 	resolver          *playoutResolver
 	backendController *backendtransition.Controller
@@ -82,7 +81,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var playoutObserver api.PlayoutObserver
 	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
-	var encodePool *media.EncodePool
 	var playoutGuideSvc api.PlayoutGuide
 	var playoutRes *playoutResolver
 	var backendController *backendtransition.Controller
@@ -157,6 +155,20 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	} else if moved {
 		log.Info("playout: moved the encoder measurement to the state directory", "dir", stateDir)
 	}
+	// With the evidence out, the rest of the retired library is media nothing reads (decision 0040).
+	// Reclaim it once the generation has built, off the critical path: an upgraded install can hold
+	// hundreds of GB there. Only what that library wrote goes (#1563).
+	owner.goRunAfterBuild(func(context.Context) {
+		got, err := playout.ReclaimRetiredPrepared(legacyPrepared)
+		if got.Entries > 0 {
+			log.Info("playout: removed the retired prepared-media library",
+				"dir", legacyPrepared, "entries", got.Entries, "reclaimed_bytes", got.Bytes, "dir_removed", got.DirRemoved)
+		}
+		if err != nil {
+			log.Warn("playout: could not remove all of the retired prepared-media library; delete what is left by hand",
+				"dir", legacyPrepared, "err", err)
+		}
+	})
 	playoutRes = &playoutResolver{
 		// The library client with the server-path cache (#1456): airtime input resolution reads
 		// the remembered path locally and only asks the media server on a cold or stale entry.
@@ -262,23 +274,12 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		})
 	}
 
-	encodePool = newPreparedEncodePool(
-		func() playout.Encoder { return playout.Encoder(set.str("playout.encoder")) },
-		func() int { return playoutRes.HWEncodeSlots(rootCtx) }, // runs the lazy capability probe
-		func(measured int) int {
-			if measured <= 0 {
-				return 0
-			}
-			// The pool is the budget's lowest-priority client: its capacity is the budget's.
-			return resourceBudget.BackgroundSlots()
-		},
-	).WithMemoryGate(encodeMemoryGate(
+	resourceBudget.WithMemoryGate(encodeMemoryGate(
 		media.HostMemAvailable,
 		func() int { return set.intv("playout.memory_reserve_mb") },
 		func() int { return set.intv("playout.encode_memory_mb") },
 		playoutRes.EncodeHostBytes,
 	))
-	resourceBudget.WithEncodePool(encodePool)
 
 	// The capacity probe (#1512 G5/G11) runs at boot, off the critical path: until it publishes, the
 	// budget keeps the whole-stream measurement. Its tone-map self-check reports to Current Health.
@@ -416,7 +417,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	return playoutBuild{
 		observer: playoutObserver, capability: playoutRes.PublishedCapability,
 		service:         playoutSvc,
-		resolverService: playoutResolverSvc, encodePool: encodePool, guide: playoutGuideSvc,
+		resolverService: playoutResolverSvc, guide: playoutGuideSvc,
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },
 		budget:          resourceBudget,
@@ -482,22 +483,4 @@ func playoutBudgetFacts(
 		facts.FirstRung = len(rungs) - 1
 	}
 	return facts
-}
-
-func newPreparedEncodePool(
-	encoder func() playout.Encoder,
-	measuredCapacity func() int,
-	effectiveCapacity func(int) int,
-) *media.EncodePool {
-	return media.NewDynamicEncodePool(func() int {
-		if encoder() == playout.EncoderSoftware {
-			return 0 // an explicit software choice must not start hardware preparation.
-		}
-		// Preparation and live children share the same effective host budget. Using the raw
-		// probe result here bypassed the operator cap and VRAM shading: a measured-twelve host
-		// capped at four launched eleven background encodes and starved foreground playback.
-		// Resolve the memoized measurement before applying those live limits so a cold start's
-		// conservative one-slot floor cannot become the process-lifetime preparation capacity.
-		return effectiveCapacity(measuredCapacity())
-	})
 }

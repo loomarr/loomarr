@@ -1,3 +1,4 @@
+// Package media owns host-wide resource facts shared by media work: host memory.
 package media
 
 import (
@@ -7,6 +8,18 @@ import (
 	"strconv"
 	"strings"
 )
+
+// MemoryGate describes the host-memory bound on hardware encode admission (design §9.1); the
+// playout ResourceBudget applies it per admission.
+type MemoryGate struct {
+	// Available is the host memory available for new work, in bytes; ok=false means unknown, which
+	// leaves the gate open.
+	Available func() (bytes int64, ok bool)
+	// Reserve is the host memory, in bytes, that admission must leave available.
+	Reserve func() int64
+	// PerEncode is the host memory, in bytes, one hardware encode is expected to hold.
+	PerEncode func() int64
+}
 
 // HostMemAvailable reports the kernel's estimate of memory available for new work without
 // swapping (Linux MemAvailable), in bytes. ok is false when the host does not expose it (non-Linux,

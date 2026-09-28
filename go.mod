@@ -5,6 +5,7 @@ go 1.27
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/adhocore/gronx v1.20.3
+	github.com/bluenviron/mediacommon/v2 v2.9.5
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/danielgtaylor/huma/v2 v2.39.1
@@ -18,7 +19,6 @@ require (
 	github.com/riverqueue/river/riverdriver/riverdatabasesql v0.45.0
 	github.com/riverqueue/river/riverdriver/riversqlite v0.45.0
 	github.com/riverqueue/river/rivertype v0.45.0
-	github.com/robfig/cron/v3 v3.0.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	github.com/wneessen/go-mail v0.8.1
@@ -41,7 +41,6 @@ require (
 	github.com/asticode/go-astikit v0.30.0 // indirect
 	github.com/asticode/go-astits v1.16.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bluenviron/mediacommon/v2 v2.9.5 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
