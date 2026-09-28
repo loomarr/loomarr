@@ -34,6 +34,10 @@ const roleMetaKey = "loomarr:role"
 // Each must work before a session can exist.
 const RolePublic Role = "public"
 
+// operatorAPI marks an operation that no Loomarr client calls on purpose: it serves operators,
+// scripts and support work, so the client-coverage audit (#1568) should not flag it.
+const operatorAPI = "Operator and automation API: no Loomarr client calls it."
+
 // withRole stamps the required role onto an operation. Every huma.Register call in this
 // package goes through it.
 func withRole(op huma.Operation, role Role) huma.Operation {
