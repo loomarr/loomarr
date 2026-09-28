@@ -13,11 +13,11 @@ import type { FillerWatchOutputBodyHealth } from "@loomarr/api/models/fillerWatc
  */
 type WatchHealth = FillerWatchOutputBodyHealth;
 
-interface WatchPillProps {
-  /** The mock's `watchLine` — "4 of 5 sources on · 9 clips · last scan 2m ago". */
+interface WatchLineProps {
+  /** The web mock's `watchLine` — "3 of 4 sources on · 1,284 clips · checked 12m ago". */
   status: string;
   health: WatchHealth;
   className?: string;
 }
 
-export type { WatchHealth, WatchPillProps };
+export type { WatchHealth, WatchLineProps };

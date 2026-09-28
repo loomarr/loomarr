@@ -459,9 +459,10 @@ describe("feature-gated panels mount when their flag is on", () => {
     // Automatic outcomes remain visible as plain activity without exposing the runtime mode that
     // produced them. Keeping this route-level assertion prevents unattended work from disappearing.
     ["/filler/manage", /added automatically/i, "automatic filler activity"],
-    // ⚠ And the tab itself must be reachable FROM the catalog, or the assertions above only
-    // prove a deep link works. This is the V1/V17a/V23 failure in tab form.
-    ["/filler", /^incoming/i, "the incoming workbench's own entry point"],
+    // ⚠ And Incoming itself must be reachable FROM Filler's own navigation, or the assertions
+    // above only prove a deep link works. This is the V1/V17a/V23 failure in tab form. The web
+    // mock moved it off the tab bar into the Manage hub (#1659), so its entry point is there.
+    ["/filler/manage", /^incoming$/i, "the incoming workbench's own entry point"],
     // V35: catalog health is a strip above the tabs rather than a tab of its own, so it has
     // no nav entry to assert — it must simply BE on the page, on every tab.
     ["/filler/library", /fits a break/i, "the pool-health strip"],

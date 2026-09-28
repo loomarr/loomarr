@@ -1,22 +1,18 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { widthFrame } from "@/test/story-utils";
-import { WatchPill } from "./watch-pill";
+import { WatchLine } from "./watch-line";
 
-// The Filler page header's live status — the mock's `watchLine` (§10 V38c).
+// The Filler page header's live status — the web mock's `watchLine` (#1659): a 7px dot and a mono
+// line under the page description.
 //
-// The card is the mock's, measured off the rendered prototype: `bg-card` on a 1px border, 8px
-// radius, 8/13px padding, a 9px gap, a 7px dot and 11px mono text.
-//
-// ⚠ **The DOT is an addition the mock does not specify.** The prototype draws it unconditionally
-// green because a static mock has no failure states. Shipping that verbatim would mean a healthy
-// green pulse on an install with every source switched off — the one moment an operator most
-// needs to be told otherwise. These three stories are the states that replaced it, and the
-// verdict comes from `GET /v1/filler/watch` rather than from the client.
+// ⚠ **The dot's colour is the server's verdict** (`GET /v1/filler/watch`), never unconditionally
+// green: a healthy pulse on an install with every source switched off would hide the one thing an
+// operator most needs to see. These stories are its states.
 const meta = {
-  title: "Filler/WatchPill",
-  component: WatchPill,
+  title: "Filler/WatchLine",
+  component: WatchLine,
   decorators: [widthFrame(420)],
-} satisfies Meta<typeof WatchPill>;
+} satisfies Meta<typeof WatchLine>;
 
 type Story = StoryObj<typeof meta>;
 
