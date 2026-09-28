@@ -42,6 +42,10 @@ func TestKeyframesIn_UsesBoundedSemanticWindowsIncludingTheEndCard(t *testing.T)
 		if !strings.Contains(call, "min(iw,1920)") {
 			t.Fatalf("semantic evidence has no bounded near-full-resolution scale: %s", call)
 		}
+		// #1488: the window must bound the INPUT, or thumbnail never flushes a short window.
+		if limit, input := strings.Index(call, "-t "), strings.Index(call, "-i "); limit < 0 || limit > input {
+			t.Fatalf("window length is not an input option before -i: %s", call)
+		}
 	}
 	if !strings.Contains(calls[len(calls)-1], "-ss 27.000") {
 		t.Fatalf("last semantic window is not end-card biased: %s", calls[len(calls)-1])
@@ -78,6 +82,45 @@ func TestKeyframesIn_ProducesDecodableNativeSizeFrames(t *testing.T) {
 		if cfg.Width != 1280 || cfg.Height != 720 {
 			t.Fatalf("frame %d dimensions = %dx%d, want native 1280x720", i, cfg.Width, cfg.Height)
 		}
+	}
+}
+
+// #1488: `thumbnail=n=90` emits a frame only after 90 input frames OR when its input ends. With
+// the window length as an OUTPUT option (`-i file -t 3`), ffmpeg closed the output at 3 s before
+// the filter saw end of input, so a window holding fewer than 90 frames (a 3 s window below
+// 30 fps) returned nothing unless it happened to run into the end of the file. These 640x480
+// fixtures are the issue's: at 24 fps the opening window was lost, at 10 fps the first two.
+func TestKeyframesIn_EveryWindowReturnsAFrameBelowThirtyFPS(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	dir := t.TempDir()
+	tools := NewFFmpegTools(ffmpeg, "", "", "", "")
+	for _, rate := range []string{"24", "10"} {
+		t.Run(rate+"fps", func(t *testing.T) {
+			clip := filepath.Join(dir, rate+".mp4")
+			cmd := exec.Command(ffmpeg, "-nostdin", "-v", "error",
+				"-f", "lavfi", "-i", "testsrc2=size=640x480:rate="+rate+":duration=6",
+				"-c:v", "mpeg4", "-y", clip)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("build fixture: %v: %s", err, out)
+			}
+			frames, err := tools.KeyframesIn(context.Background(), clip, 0, 6000, 4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(frames) != 4 {
+				t.Fatalf("frames = %d, want one per window (4)", len(frames))
+			}
+			vision, err := tools.VisionKeyframesIn(context.Background(), clip, 0, 6000, 4)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(vision) != 4 {
+				t.Fatalf("vision frames = %d, want one per window (4)", len(vision))
+			}
+		})
 	}
 }
 
