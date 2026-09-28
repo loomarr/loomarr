@@ -35,8 +35,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Enable pnpm (pinned via web/package.json packageManager)
         run: corepack enable
-      - name: Cache pnpm store
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      - name: Restore pnpm store
+        id: pnpm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
@@ -49,3 +50,12 @@ jobs:
       - name: Token artifacts are committed and current
         if: matrix.shard == 1
         run: make fe-tokens-verify
+      # ⚠ Never from the merge queue (#1679). A cache is readable only from its own ref and the
+      # default branch, and every queue batch has a unique `gh-readonly-queue/…` ref, so a queue save
+      # is written once, read by nothing, and spends the 10 GB quota that evicts the Go caches.
+      - name: Save pnpm store (not from the merge queue)
+        if: github.event_name != 'merge_group' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ steps.pnpm-cache.outputs.cache-primary-key }}

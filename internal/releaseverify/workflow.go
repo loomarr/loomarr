@@ -600,8 +600,8 @@ func verifyDigestOnlyBuild(step *yaml.Node) error {
 		"build-args": "VERSION=${{ github.ref_name }}\nCOMMIT=${{ github.sha }}",
 		"provenance": "mode=max",
 		"sbom":       "true",
-		"cache-from": "type=gha,scope=release-${{ matrix.arch }}",
-		"cache-to":   "type=gha,scope=release-${{ matrix.arch }},mode=max",
+		// No cache-from/cache-to (#1679): a tag-scoped BuildKit export is unreadable by the next
+		// release and evicted the merge queue's Go caches, so any cache input is unaudited.
 	}
 	if len(with.Content) != len(required)*2 {
 		return errors.New("release image build contains unaudited inputs")

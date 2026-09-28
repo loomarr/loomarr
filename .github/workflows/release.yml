@@ -87,8 +87,10 @@ jobs:
             COMMIT=${{ github.sha }}
           provenance: mode=max
           sbom: true
-          cache-from: type=gha,scope=release-${{ matrix.arch }}
-          cache-to: type=gha,scope=release-${{ matrix.arch }},mode=max
+          # ⚠ No BuildKit cache, deliberately (#1679). A tag run's cache is scoped to that tag, so
+          # only a retry of the same release could read it, while its `mode=max` export wrote
+          # ~6 GB per release into the 10 GB repository quota and evicted the Go caches the merge
+          # queue restores (rc.3: 77 entries, then cold Go lanes). Releases build from scratch.
 
       - name: Record the digest for the publish job
         shell: bash

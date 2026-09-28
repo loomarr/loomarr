@@ -29,9 +29,9 @@ jobs:
       - name: Resolve production FFmpeg pin
         id: ffmpeg-pin
         run: ./scripts/ci-ffmpeg.sh metadata >> "$GITHUB_OUTPUT"
-      - name: Cache production FFmpeg archive
+      - name: Restore production FFmpeg archive
         id: ffmpeg-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/loomarr-ffmpeg
           key: ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ steps.ffmpeg-pin.outputs.sha256 }}
@@ -61,3 +61,10 @@ jobs:
             ${{ runner.temp }}/playout-bench/playout-bench-*.md
           if-no-files-found: ignore
           retention-days: 30
+      # ⚠ Never from the merge queue (#1679): a queue batch's unique ref makes the save unreadable.
+      - name: Save production FFmpeg archive (not from the merge queue)
+        if: github.event_name != 'merge_group' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/loomarr-ffmpeg
+          key: ${{ steps.ffmpeg-cache.outputs.cache-primary-key }}
