@@ -1,3 +1,4 @@
+import { formatRelative } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,20 @@ import type { RequestCardProps } from "./request-card.type";
 //
 // ⚠ The action is a SIBLING of the link, not a child: a button or link nested inside a link is
 // invalid HTML and makes both controls unreliable for keyboard and assistive-tech users.
-const RequestCard = ({ jobId, title, line, tone, createdAt, hint, action, className }: RequestCardProps) => (
+//
+// The date reads relative ("Requested 2h ago"), like the rest of the app. The full date shows in
+// the viewer's locale on hover, and the `<time>` element carries it machine-readable (#1659 map).
+const RequestCard = ({
+  jobId,
+  title,
+  line,
+  tone,
+  createdAt,
+  hint,
+  action,
+  now,
+  className,
+}: RequestCardProps) => (
   <Card className={cn("flex items-center gap-3 transition-colors hover:bg-accent", className)}>
     <Link
       to="/requests/$jobId"
@@ -24,9 +38,13 @@ const RequestCard = ({ jobId, title, line, tone, createdAt, hint, action, classN
         <p className="font-medium">{title}</p>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={tone}>{line}</Badge>
-          <span className="text-muted-foreground text-xs">
-            Requested {new Date(createdAt).toLocaleDateString()}
-          </span>
+          <time
+            dateTime={createdAt}
+            title={new Date(createdAt).toLocaleString()}
+            className="text-muted-foreground text-xs"
+          >
+            Requested {formatRelative(createdAt, now)}
+          </time>
         </div>
         {hint && <p className="text-muted-foreground text-sm">{hint}</p>}
       </div>
