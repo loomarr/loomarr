@@ -10,3 +10,7 @@
 # internal/store is CPU-heavy, not latency-sensitive: its SQLite tests run in parallel (#1631), and
 # beside three other packages in an ordinary -p=4 lane they only competed for the same cores.
 2	internal/store
+# internal/integration is here for balance: alone, store measured 171s (run 36366596157) against lane
+# 1's 405s, and no split of the four packages above fits the 125% bound. Its tests are serial, so it
+# gains little from a runner of its own and keeps the lanes balanced when measured at -p=1.
+2	internal/integration

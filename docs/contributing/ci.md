@@ -695,7 +695,9 @@ cores locally, that cut the package from 146.9s to 110.1s, but merge-group run 3
 it at 542s in ordinary lane 1/2: beside three other `-p=4` packages on a four-vCPU runner, its
 parallel tests only competed for the same cores. So `internal/store` now runs alone in the second
 serial lane, where one package at a time owns the runner, and the playout/capacity set shares the
-first. There, workflow-dispatch run 36366596157 measured it at 171s. The serial lanes keep their `certification-1/2` and `certification-2/2` identities (the
+first. There, workflow-dispatch run 36366596157 measured it at 171s, which left it too light to
+balance the first lane's 405s, so `internal/integration`, whose tests are serial, shares its lane.
+The serial lanes keep their `certification-1/2` and `certification-2/2` identities (the
 workflow matrix, cache keys and release-verifier pins name them), but they now hold two kinds of
 package: media certification that must not compete for a worker while asserting latency, and
 CPU-heavy packages whose own parallelism needs a runner to themselves.
