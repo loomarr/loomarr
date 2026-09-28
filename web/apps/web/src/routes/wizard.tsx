@@ -87,7 +87,7 @@ const COPY: Record<string, { title: string; description: string }> = {
 // The blocking set is "the shortest honest path to a live channel" (§13, config-design §6),
 // which since §9.1 depends on the playout backend (see requiredChecks). A step that gates on
 // a check the operator cannot satisfy is a dead end, because the wizard offers only
-// Back/Continue and the rail is not clickable: they'd be stranded on that screen for good.
+// Back/Continue and the rail goes back, never ahead: they'd be stranded on that screen for good.
 // It bit hardest on `library`, whose entire purpose (§6) is to stop channels scheduling slots
 // with no programme, and hardest of all on `tunarr`, which an internal-playout install can
 // never turn green. (Live TV is no longer a step, it auto-wires on the Tunarr save, so it
@@ -191,6 +191,8 @@ const WizardScreen = () => {
   const steps = wizardSteps(backend);
   const currentId = resolveStep(requestedStep, stepCtx);
   const statusById = deriveStepStatuses({ ...stepCtx, currentId, skipped });
+  // The rail may go wherever a `?step=` link may: the steps resolveStep would honour.
+  const reachable = new Set(steps.filter((s) => resolveStep(s.id, stepCtx) === s.id).map((s) => s.id));
   const index = steps.findIndex((s) => s.id === currentId);
   const step = steps[index];
   const copy = COPY[currentId];
@@ -279,6 +281,8 @@ const WizardScreen = () => {
       // meaningful on the Connections step; other steps carry no subItems.
       activeSubItem={currentId === "checklist" ? openConn : undefined}
       onSubItem={toggleConn}
+      reachable={reachable}
+      onStep={goTo}
       title={copy?.title ?? step?.title ?? "Setup"}
       description={copy?.description}
       onBack={index > 0 ? () => goTo(steps[index - 1]?.id) : undefined}

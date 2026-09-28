@@ -128,9 +128,9 @@ const firstIncompleteStep = (ctx: StepContext): string =>
 // ⚠ THE URL IS A REQUEST, NOT A LOCATION — server truth still decides. A link is written by
 // whoever pastes it and read whenever someone clicks it, so it can easily name a step the
 // operator cannot yet complete (`?step=users` before an admin account exists). Honouring it
-// verbatim would STRAND them: the wizard offers only Back/Continue, the rail is not
-// clickable, and Continue on an unmet required step is disabled — a screen with no way
-// forward. This is the same reasoning SKIPPABLE encodes in the route.
+// verbatim would STRAND them: the wizard offers only Back/Continue, the rail reaches only
+// the steps this honours, and Continue on an unmet required step is disabled — a screen with
+// no way forward. This is the same reasoning SKIPPABLE encodes in the route.
 //
 // So a request beyond the frontier clamps to the frontier. Anything at or before it is
 // honoured, which is what makes a link to an EARLIER step (the support case — "open your
