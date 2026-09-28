@@ -252,7 +252,11 @@ func (t *FFmpegTools) MeasureConditioning(ctx context.Context, req ConditioningR
 	if err != nil {
 		return ConditioningMeasurement{}, fmt.Errorf("condition decoded frame probe: %w", err)
 	}
-	if err := bindConditioningDetectorEOFs(&detectorStreams, probed.Streams, frames); err != nil {
+	origin, err := parseConditioningContainerOrigin(probed.Format.StartTime)
+	if err != nil {
+		return ConditioningMeasurement{}, err
+	}
+	if err := bindConditioningDetectorEOFs(&detectorStreams, probed.Streams, origin, frames); err != nil {
 		return ConditioningMeasurement{}, err
 	}
 	detectorOutput, err := t.conditioningDetectorOutput(ctx, artifactPath, detectorStreams)
@@ -680,9 +684,26 @@ func selectConditioningDetectorStreams(streams []ConditioningStream) (conditioni
 	return selected, nil
 }
 
-func bindConditioningDetectorEOFs(selected *conditioningDetectorStreams, probedStreams []conditioningProbeStreamJSON, frames []conditioningProbeFrameJSON) error {
+// parseConditioningContainerOrigin is format.start_time as an exact rational. Quality evidence is on
+// the container timeline, like every other conditioning fact (#1540): the detector decode runs
+// without -copyts, so ffmpeg already reports each detector time as pts minus this origin, and the
+// decoded stream ends are put on the same timeline here (#1719). An unavailable start leaves
+// ffmpeg's timeline unshifted, so the origin is zero.
+func parseConditioningContainerOrigin(raw string) (*big.Rat, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.EqualFold(trimmed, "N/A") {
+		return new(big.Rat), nil
+	}
+	origin, ok := new(big.Rat).SetString(trimmed)
+	if !ok {
+		return nil, fmt.Errorf("%w: invalid container start %q", ErrConditioningOutput, raw)
+	}
+	return origin, nil
+}
+
+func bindConditioningDetectorEOFs(selected *conditioningDetectorStreams, probedStreams []conditioningProbeStreamJSON, origin *big.Rat, frames []conditioningProbeFrameJSON) error {
 	if selected.video != nil {
-		eof, err := conditioningDecodedStreamEOF(StreamVideo, selected.video.Index, "", frames)
+		eof, err := conditioningDecodedStreamEOF(StreamVideo, selected.video.Index, "", origin, frames)
 		if err != nil {
 			return err
 		}
@@ -701,7 +722,7 @@ func bindConditioningDetectorEOFs(selected *conditioningDetectorStreams, probedS
 				break
 			}
 		}
-		eof, err := conditioningDecodedStreamEOF(StreamAudio, selected.audio.Index, sampleRate, frames)
+		eof, err := conditioningDecodedStreamEOF(StreamAudio, selected.audio.Index, sampleRate, origin, frames)
 		if err != nil {
 			return err
 		}
@@ -710,7 +731,7 @@ func bindConditioningDetectorEOFs(selected *conditioningDetectorStreams, probedS
 	return nil
 }
 
-func conditioningDecodedStreamEOF(kind StreamKind, index int, sampleRateRaw string, frames []conditioningProbeFrameJSON) (conditioningDetectorScalar, error) {
+func conditioningDecodedStreamEOF(kind StreamKind, index int, sampleRateRaw string, origin *big.Rat, frames []conditioningProbeFrameJSON) (conditioningDetectorScalar, error) {
 	var first, last *big.Rat
 	var sampleRate int64
 	if kind == StreamAudio {
@@ -759,26 +780,35 @@ func conditioningDecodedStreamEOF(kind StreamKind, index int, sampleRateRaw stri
 	if spanSeconds.Cmp(big.NewRat(ConditioningMaxDurationMs, 1_000)) > 0 {
 		return conditioningDetectorScalar{}, fmt.Errorf("%w: selected %s stream %d decoded EOF exceeds %dms", ErrConditioningResourceLimit, kind, index, ConditioningMaxDurationMs)
 	}
-	spanMs := new(big.Rat).Mul(spanSeconds, big.NewRat(1_000, 1))
-	eof, ok := roundPositiveConditioningRational(spanMs)
+	// The decoded end on the container timeline, where the detectors report (#1719).
+	endSeconds := new(big.Rat).Sub(last, origin)
+	if endSeconds.Sign() <= 0 {
+		return conditioningDetectorScalar{}, fmt.Errorf("%w: selected %s stream %d decoded EOF is out of range", ErrConditioningOutput, kind, index)
+	}
+	endMs := new(big.Rat).Mul(endSeconds, big.NewRat(1_000, 1))
+	eof, ok := roundPositiveConditioningRational(endMs)
 	if !ok || eof <= 0 || eof > ConditioningMaxDurationMs {
 		return conditioningDetectorScalar{}, fmt.Errorf("%w: selected %s stream %d decoded EOF is out of range", ErrConditioningOutput, kind, index)
 	}
-	return conditioningDetectorScalar{seconds: spanSeconds, ms: eof}, nil
+	return conditioningDetectorScalar{seconds: endSeconds, ms: eof}, nil
 }
 
 func (t *FFmpegTools) conditioningDetectorOutput(ctx context.Context, path string, streams conditioningDetectorStreams) (string, error) {
+	// No -copyts and no per-stream rebase: ffmpeg subtracts format.start_time from every input
+	// timestamp, so each detector reports on the container timeline. Rebasing each stream to its own
+	// first frame put a primed mezzanine's audio (and a delayed stream's intervals) on a different
+	// timeline from the container it is bounded by (#1719).
 	args := []string{"-nostdin", "-threads", strconv.Itoa(BackgroundThreads), "-hide_banner", "-nostats", "-v", "info", "-i", path}
 	if streams.video != nil {
 		// One black frame followed by one white frame guarantees a change regardless of the final
 		// artifact pixels. Evidence is clamped to the selected video's exact decoded EOF, so these
 		// syntax-closing frames cannot become conditioning facts.
-		args = append(args, "-map", fmt.Sprintf("0:%d", streams.video.Index), "-vf", "setpts=PTS-STARTPTS,"+conditioningDetectorTail+qualityVideoFilters)
+		args = append(args, "-map", fmt.Sprintf("0:%d", streams.video.Index), "-vf", conditioningDetectorTail+qualityVideoFilters)
 	} else {
 		args = append(args, "-vn")
 	}
 	if streams.audio != nil {
-		args = append(args, "-map", fmt.Sprintf("0:%d", streams.audio.Index), "-af", "asetpts=PTS-STARTPTS,"+qualityAudioFilter+",ebur128=peak=true:framelog=quiet")
+		args = append(args, "-map", fmt.Sprintf("0:%d", streams.audio.Index), "-af", qualityAudioFilter+",ebur128=peak=true:framelog=quiet")
 	} else {
 		args = append(args, "-an")
 	}
@@ -812,9 +842,13 @@ type conditioningDetectorScalar struct {
 	ms      int64
 }
 
+// conditioningDetectorTimeline bounds one stream's detector events on the container timeline. eof
+// is the stream's decoded end, which may pass the container end: an AAC stream decodes its final
+// frame's padding (#1719). Evidence stops at the earlier of the two, boundMs.
 type conditioningDetectorTimeline struct {
-	eof    conditioningDetectorScalar
-	tailMs int64
+	eof     conditioningDetectorScalar
+	tailMs  int64
+	boundMs int64
 }
 
 func (t conditioningDetectorTimeline) maximumSeconds() *big.Rat {
@@ -854,6 +888,8 @@ func parseConditioningDetectorEvents(raw string, containerDurationMs int64, stre
 	if streams.audio != nil {
 		audioTimeline.eof = streams.audioEOF
 	}
+	videoTimeline.boundMs = min(videoTimeline.eof.ms, containerDurationMs)
+	audioTimeline.boundMs = min(audioTimeline.eof.ms, containerDurationMs)
 	var silence, freeze *conditioningOpenDetectorEvent
 	seen := make(map[conditioningDetectorIntervalKey]struct{})
 	identities := make(map[string]conditioningDetectorIdentity)
@@ -952,9 +988,9 @@ func parseConditioningDetectorEvents(raw string, containerDurationMs int64, stre
 	if silence != nil || freeze != nil {
 		return MediaQuality{}, fmt.Errorf("%w: detector event has no matching end", ErrConditioningOutput)
 	}
-	quality.Black = normaliseIntervals(quality.Black, videoTimeline.eof.ms)
-	quality.Silence = normaliseIntervals(quality.Silence, audioTimeline.eof.ms)
-	quality.Freeze = normaliseIntervals(quality.Freeze, videoTimeline.eof.ms)
+	quality.Black = normaliseIntervals(quality.Black, videoTimeline.boundMs)
+	quality.Silence = normaliseIntervals(quality.Silence, audioTimeline.boundMs)
+	quality.Freeze = normaliseIntervals(quality.Freeze, videoTimeline.boundMs)
 	return quality, nil
 }
 
@@ -1004,8 +1040,8 @@ func completeConditioningDetectorIntervalFromScalars(kind string, start conditio
 		return nil, fmt.Errorf("%w: duplicate complete detector interval", ErrConditioningOutput)
 	}
 	seen[key] = struct{}{}
-	clampedStart := min(start.ms, timeline.eof.ms)
-	clampedEnd := min(end.ms, timeline.eof.ms)
+	clampedStart := min(start.ms, timeline.boundMs)
+	clampedEnd := min(end.ms, timeline.boundMs)
 	if clampedEnd <= clampedStart {
 		return nil, nil
 	}

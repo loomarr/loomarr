@@ -826,12 +826,14 @@ EOF`)
 	}
 }
 
-func TestMeasureConditioningNormalizesDetectorTimelines(t *testing.T) {
+// Detector evidence is on the container timeline (#1719): the decode neither rebases each stream to
+// its own first frame nor keeps raw timestamps with -copyts, so ffmpeg reports every time as pts
+// minus format.start_time, and the decoded stream ends are bounded on that same timeline.
+func TestMeasureConditioningPutsDetectorEvidenceOnTheContainerTimeline(t *testing.T) {
 	artifact := conditioningArtifact(t, "offset.mp4")
-	probe := conditioningExactProbe(t, `{"streams":[{"index":0,"codec_type":"video","start_time":"5","duration":"2","avg_frame_rate":"25/1"},{"index":1,"codec_type":"audio","start_time":"5","duration":"2"}],"format":{"duration":"2"}}`)
+	probe := conditioningExactProbe(t, `{"streams":[{"index":0,"codec_type":"video","start_time":"5","duration":"2","avg_frame_rate":"25/1"},{"index":1,"codec_type":"audio","start_time":"5","duration":"2"}],"format":{"start_time":"5","duration":"2"}}`)
 	ffmpeg := testkit.POSIXExecutable(t, "conditioning-tool", `case " $* " in
-  *"setpts=PTS-STARTPTS"*"asetpts=PTS-STARTPTS"*) ;;
-  *) exit 91 ;;
+  *"STARTPTS"*|*" -copyts "*) exit 91 ;;
 esac
 cat >&2 <<'EOF'
 [Parsed_blackdetect_2 @ 0xabc] black_start:0 black_end:0.5 black_duration:0.5
@@ -847,8 +849,10 @@ EOF`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Quality.Black[0].StartMs != 0 || got.Quality.Silence[0].StartMs != 0 || got.Quality.Freeze[0].StartMs != 0 {
-		t.Fatalf("detector timelines are not artifact-relative: %+v", got.Quality)
+	if len(got.Quality.Black) != 1 || got.Quality.Black[0] != (mediatools.Interval{StartMs: 0, EndMs: 500}) ||
+		len(got.Quality.Silence) != 1 || got.Quality.Silence[0] != (mediatools.Interval{StartMs: 0, EndMs: 500}) ||
+		len(got.Quality.Freeze) != 1 || got.Quality.Freeze[0] != (mediatools.Interval{StartMs: 0, EndMs: 1_000}) {
+		t.Fatalf("detector evidence is not on the container timeline: %+v", got.Quality)
 	}
 }
 
@@ -987,12 +991,17 @@ func conditioningExactProbe(t *testing.T, raw string) string {
 		if stream.Index == nil || stream.Duration == "" {
 			continue
 		}
+		// Decoded frames carry real timestamps, so the fake's single frame starts at the stream.
+		pts := stream.StartTime
+		if pts == "" {
+			pts = "0"
+		}
 		switch stream.CodecType {
 		case "video":
 			if !haveVideo || *stream.Index < videoIndex {
 				haveVideo = true
 				videoIndex = *stream.Index
-				videoFrame = "0|0|" + stream.Duration
+				videoFrame = pts + "|" + pts + "|" + stream.Duration
 			}
 		case "audio":
 			seconds, ok := new(big.Rat).SetString(stream.Duration)
@@ -1007,7 +1016,7 @@ func conditioningExactProbe(t *testing.T, raw string) string {
 			if !haveAudio || *stream.Index < audioIndex {
 				haveAudio = true
 				audioIndex = *stream.Index
-				audioFrame = "0|0|" + samples.Num().String()
+				audioFrame = pts + "|" + pts + "|" + samples.Num().String()
 			}
 		}
 	}
