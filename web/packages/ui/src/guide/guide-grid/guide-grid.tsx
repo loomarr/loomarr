@@ -128,6 +128,8 @@ type BlockProps = {
   focusPending?: RefObject<boolean>;
   /** The grid's one Tab stop (roving tabindex). */
   focusable: boolean;
+  /** The channel is paused: nothing airs, so no block wears the airing amber. */
+  offAir?: boolean;
   onHover?: (selection: GuideSelection | undefined) => void;
   onOpen?: () => void;
   onSelect?: (selection: GuideSelection) => void;
@@ -140,6 +142,7 @@ const Block = ({
   airing,
   focusPending,
   focusable,
+  offAir = false,
   onHover,
   onOpen,
   onSelect,
@@ -153,7 +156,9 @@ const Block = ({
   const kind = a.kind;
   const pending = kind === "pending";
   const pod = kind === "filler";
-  const airingNow = airing.isOnNow && (kind === "program" || kind === "flex");
+  // A paused channel's current block is neutral (maintainer, 2026-09-28): amber means "on the air
+  // now", and the row's grey dot and Paused chip already say it isn't.
+  const airingNow = !offAir && airing.isOnNow && (kind === "program" || kind === "flex");
   const when = formatGuideTimeRange(a.startMs, a.stopMs, timezone);
   const hasSeries = kind === "program" && Boolean(a.series) && Boolean(a.title.trim());
   const entries = a.pod?.entries ?? [];
@@ -394,6 +399,7 @@ const Row = memo(
               focusable={airing.scheduleBlockId === tabStop}
               focusPending={focusPending}
               key={airing.scheduleBlockId}
+              offAir={health === "paused"}
               onHover={onHover}
               onOpen={() => onOpenChannel?.(channel.source.channelId)}
               onSelect={onSelect}
