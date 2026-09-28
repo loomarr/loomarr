@@ -149,6 +149,13 @@ func (s *SplitStage) currentStructureRuntime() StructureRuntime {
 	return s.structureRuntime()
 }
 
+// SegmentRoleEscalator is the split stage's complete interface to temporal model evidence.
+// The implementation owns derivative extraction, request limits, strict decoding, and evidence
+// attribution; the caller knows only that an exact unresolved span may gain one role observation.
+type SegmentRoleEscalator interface {
+	EscalateRole(context.Context, SplitSourceAsset, string, SplitSegment, time.Time) (*StructureRoleEvidence, error)
+}
+
 // SegmentVision grounds proposed segments from their own frames so the auto-confirm gate has
 // something to judge.
 type SegmentVision struct {

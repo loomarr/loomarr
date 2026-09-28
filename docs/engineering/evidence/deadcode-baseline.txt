@@ -3,19 +3,18 @@
 4 internal/app
 1 internal/catalog
 1 internal/clipfetch
-26 internal/filler
+21 internal/filler
 2 internal/fillerairworthiness
 8 internal/fillerdecision
 1 internal/fillerenrichment
 2 internal/fillerresearch
-78 internal/fillersafety
 3 internal/fillerstructure
 1 internal/fillerstructuremedia
 2 internal/library
 9 internal/llm
 2 internal/logchange
 1 internal/media
-4 internal/mediatools
+2 internal/mediatools
 1 internal/notifications
 1 internal/proctree
 1 internal/programmer
@@ -30,4 +29,4 @@
 2 internal/suggest
 4 internal/tmdb
 2 internal/watermark
-total 178
+total 93
