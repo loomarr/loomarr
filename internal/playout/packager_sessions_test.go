@@ -69,7 +69,7 @@ func newTestPackagerHLS(t *testing.T, source PackagerSource, grace time.Duration
 
 func tune(t *testing.T, m *PackagerHLS, channelID string) func() {
 	t.Helper()
-	_, release, err := m.acquire(channelID, FormatBaseline)
+	_, release, err := m.acquire(channelID, FormatBaseline, false)
 	if err != nil {
 		t.Fatal(err)
 	}

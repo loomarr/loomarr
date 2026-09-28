@@ -106,6 +106,12 @@ type packagedChannel struct {
 	done    chan struct{}
 	viewers int
 	idle    *time.Timer
+	// lease is the packager's admission (#1520); nil without a budget.
+	lease *Lease
+	// speculative marks a packager a neighbour warm started that no viewer has joined yet (#1780).
+	speculative bool
+	// idleSince is when the last viewer left; zero while one is fetching (#1780).
+	idleSince time.Time
 }
 
 // DefaultGrace is how long a channel packager survives its last viewer.
@@ -142,8 +148,9 @@ func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
 // PlanBaseline browser on a channel whose profile is HEVC still gets H.264 (#1512 phase 2). Beside
 // it the master names the channel's premium format when it airs one here and the ledger has room
 // (#1512 G10). The premium is described from its output alone: only a client that plays it starts
-// its packager. Its lineup lookup runs beside the baseline's cold start, off the tune path.
-func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, _ bool) (hlsPlaylistLease, error) {
+// its packager. Its lineup lookup runs beside the baseline's cold start, off the tune path. A
+// speculative tune (a neighbour warm) starts the packager only into spare room (#1780).
+func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculative bool) (hlsPlaylistLease, error) {
 	premium, found := new(*hlsVariant), make(chan struct{})
 	go func() {
 		defer close(found)
@@ -151,7 +158,7 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, _ bool) (h
 		defer cancel()
 		*premium = m.premiumVariant(ctx, channelID)
 	}()
-	c, release, err := m.acquire(channelID, FormatBaseline)
+	c, release, err := m.acquire(channelID, FormatBaseline, speculative)
 	if err != nil {
 		return hlsPlaylistLease{}, err
 	}
@@ -228,7 +235,7 @@ func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ Enc
 	default:
 		return nil, false, nil
 	}
-	c, release, err := m.acquire(channelID, class)
+	c, release, err := m.acquire(channelID, class, false)
 	if err != nil {
 		return nil, false, err
 	}
@@ -240,7 +247,9 @@ func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ Enc
 }
 
 // acquire counts a viewer (browser or tuner) on a channel format's packager, starting it if needed.
-func (m *PackagerHLS) acquire(channelID string, class FormatClass) (*packagedChannel, func(), error) {
+// A speculative acquire (a neighbour warm) never evicts anything, and the packager it starts stays
+// speculative until a real viewer joins it (#1780).
+func (m *PackagerHLS) acquire(channelID string, class FormatClass, speculative bool) (*packagedChannel, func(), error) {
 	key := packagedKey{channel: channelID, format: class}
 	m.mu.Lock()
 	c := m.channels[key]
@@ -253,11 +262,13 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass) (*packagedCha
 		}
 	}
 	m.mu.Unlock()
-	if c == nil {
+	fresh := c == nil
+	if fresh {
 		// Admission is the ledger's (#1520): start books the packager's lease, and a full host
-		// refuses it with ErrAtCapacity. Viewers of a running packager never count against it.
+		// refuses it with ErrAtCapacity once no idle work is left to evict (#1780). Viewers of a
+		// running packager never count against it.
 		var err error
-		if c, err = m.start(key); err != nil {
+		if c, err = m.start(key, speculative); err != nil {
 			result := "spawn_error"
 			if errors.Is(err, ErrAtCapacity) {
 				result = "capacity"
@@ -267,17 +278,29 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass) (*packagedCha
 		}
 	}
 	m.mu.Lock()
-	if cur := m.channels[key]; cur != c { // lost a start race: use the winner
-		if cur != nil {
-			c.cancel()
+	if cur := m.channels[key]; cur != c {
+		switch {
+		case cur != nil: // lost a start race: use the winner
+			if fresh {
+				c.cancel()
+			}
 			c = cur
-		} else {
+		case fresh:
 			m.channels[key] = c
 			m.observe(func(o SessionObserver) { o.PlayoutSessionStarted("success"); o.PlayoutSessionActive(1) })
 			m.changed()
+		default:
+			// The running packager was evicted or ended its grace between the two locks, and is
+			// already cancelled: start afresh rather than reviving it.
+			m.mu.Unlock()
+			return m.acquire(channelID, class, speculative)
 		}
 	}
 	c.viewers++
+	c.idleSince = time.Time{}
+	if !speculative {
+		c.speculative = false
+	}
 	if c.idle != nil {
 		c.idle.Stop()
 		c.idle = nil
@@ -286,7 +309,7 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass) (*packagedCha
 	return c, onceRelease(func() { m.release(key, c) }), nil
 }
 
-func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
+func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Admission (#1520) is priced for the item airing now: the first manifest waits for the first
 	// real item anyway, so resolving it here costs the tune nothing, and the schedule's first lookup
@@ -306,13 +329,10 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 	if ferr == nil {
 		pre = &prefetchedItem{at: resolvedAt, item: first}
 	}
-	var lease *Lease
-	if m.budget != nil {
-		var err error
-		if lease, err = m.budget.Admit(ctx, req); err != nil {
-			cancel()
-			return nil, err
-		}
+	lease, err := m.admit(ctx, req, speculative)
+	if err != nil {
+		cancel()
+		return nil, err
 	}
 	rung := 0
 	if lease != nil {
@@ -343,7 +363,8 @@ func (m *PackagerHLS) start(key packagedKey) (*packagedChannel, error) {
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
-	c := &packagedChannel{p: p, host: host, out: out, started: t0, dir: dir, cancel: cancel, done: make(chan struct{})}
+	c := &packagedChannel{p: p, host: host, out: out, started: t0, dir: dir, cancel: cancel, done: make(chan struct{}),
+		lease: lease, speculative: speculative}
 	go func() {
 		defer close(c.done)
 		defer lease.Release() // before done: a restart must not count this run
@@ -680,10 +701,14 @@ func (m *PackagerHLS) release(key packagedKey, c *packagedChannel) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c.viewers--
-	if c.viewers > 0 || c.idle != nil {
+	if c.viewers > 0 {
 		return
 	}
-	c.idle = time.AfterFunc(m.grace, func() {
+	c.idleSince = time.Now()
+	if c.idle != nil {
+		return
+	}
+	c.idle = time.AfterFunc(m.graceFor(key), func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if c.viewers == 0 && m.channels[key] == c {
