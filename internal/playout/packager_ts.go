@@ -13,7 +13,7 @@ import (
 // TV is one encode; each tuner gets its own TSWriter (its own continuity counters), joins at the
 // segment airing now, and is paced by the listing gate like a player.
 func (m *PackagerHLS) Attach(ctx context.Context, channelID string, _ EncodePlan) (Stream, func(), error) {
-	c, release, err := m.acquire(channelID, FormatBaseline)
+	c, release, err := m.acquire(channelID, FormatBaseline, false)
 	if err != nil {
 		return nil, nil, err
 	}

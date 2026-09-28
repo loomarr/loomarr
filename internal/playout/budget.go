@@ -141,7 +141,9 @@ type BudgetFacts struct {
 // so a channel watched at two plans (baseline transcode + HEVC copy) costs one stream.
 //
 // Refusing is deliberate. Admitting an N+1th transcode that makes all N stutter is worse than
-// declining it; and a live session is never evicted to make room (the bound viewra lacked).
+// declining it; and a watched session is never evicted to make room (the bound viewra lacked).
+// Idle work is: a viewer's tune on a full host first stops neighbour warms, sessions lingering in
+// their grace and unfetched premium variants (PackagerHLS.admit, #1780), and only then is refused.
 //
 // The ledger is the only count. A hardware transcode also passes the host-memory gate (memory),
 // which the retired encode pool used to apply behind a second, rung-0 slot count that could refuse

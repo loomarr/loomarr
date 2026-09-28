@@ -166,13 +166,13 @@ func TestPackagerAdmissionHoldsAndReturnsTheLedger(t *testing.T) {
 	m.WithBudget(budget)
 
 	for _, ch := range []string{"a", "b"} {
-		c, release, err := m.acquire(ch, FormatBaseline)
+		c, release, err := m.acquire(ch, FormatBaseline, false)
 		if err != nil || c == nil {
 			t.Fatalf("acquire %s: %v", ch, err)
 		}
 		defer release()
 	}
-	if _, _, err := m.acquire("c", FormatBaseline); !errors.Is(err, ErrAtCapacity) {
+	if _, _, err := m.acquire("c", FormatBaseline, false); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("third transcode: err = %v, want ErrAtCapacity", err)
 	}
 	if budget.Fits(AdmitRequest{Class: ClassSDR}) {
