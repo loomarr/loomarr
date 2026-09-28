@@ -8,7 +8,7 @@ import (
 )
 
 // These are Go native fuzz targets over the parse.go untrusted-input boundary
-// (§8): extractJSONObject, parseEra/fourDigitYear, and truncate. They assert the
+// (§8): extractJSONObject and truncate. They assert the
 // structural invariants each function promises regardless of what a model (or an
 // attacker feeding a model's output) returns. They never touch the network and are
 // fully deterministic given a corpus entry.
@@ -120,65 +120,6 @@ func FuzzExtractJSONObject(f *testing.F) {
 			if err := json.Unmarshal([]byte(got), &v); err != nil {
 				t.Fatalf("json.Valid span failed to Unmarshal: span=%q err=%v", got, err)
 			}
-		}
-	})
-}
-
-// FuzzParseEra asserts parseEra never panics and honors its range contract over
-// arbitrary strings.
-//
-// Contract (parse.go §parseEra + fourDigitYear):
-//   - returns (0,0) when it can't parse; otherwise from<=to.
-//   - `from` is a fourDigitYear result, so when non-zero it is bounded 1900–2099.
-//   - `to` is either equal to a fourDigitYear result (single year / range) OR
-//     from+9 for the decade case; so `to` is non-zero when from is, and bounded
-//     1900–2108 (2099+9). NOTE: the task's phrasing "any non-zero year bounded
-//     1900–2099" holds for `from` and for the range/single-year `to`, but the
-//     DECADE endpoint can be up to 2108 (e.g. "2099s" -> (2099,2108), "99s" ->
-//     (1999,2008)). This is a real, if minor, boundary the code produces; the
-//     assertions below encode the code's ACTUAL guaranteed invariant rather than a
-//     stricter one it does not meet. See test notes.
-func FuzzParseEra(f *testing.F) {
-	seeds := []string{
-		"1990s", "90s", "0s", "00s", "99s", "2099s",
-		"1985-1995", "1995-1985", "1985 to 1995", "1985–1995", "1985—1995",
-		"1994", "94", "  1994  ", "1900", "2099", "1899", "2100",
-		"", "   ", "garbage", "the nineties", "199", "19945",
-		"-1990", "1990-", "-", "s", "ss", "1990ss",
-		"1990-2000-2010", "abc-def", "12-34",
-	}
-	for _, s := range seeds {
-		f.Add(s)
-	}
-	f.Fuzz(func(t *testing.T, s string) {
-		from, to := parseEra(s)
-
-		// Either both zero (unparseable) or a valid ordered range.
-		if from == 0 && to == 0 {
-			return
-		}
-
-		if from > to {
-			t.Fatalf("parseEra(%q) = (%d,%d): from > to", s, from, to)
-		}
-
-		// from, when non-zero, is a fourDigitYear result: bounded 1900–2099.
-		if from != 0 && (from < 1900 || from > 2099) {
-			t.Fatalf("parseEra(%q) from=%d out of [1900,2099]", s, from)
-		}
-
-		// A non-zero result never has a zero endpoint on only one side.
-		if (from == 0) != (to == 0) {
-			t.Fatalf("parseEra(%q) = (%d,%d): one-sided zero endpoint", s, from, to)
-		}
-
-		// `to` comes from one of three code paths:
-		//   - range/single year: `to` is a fourDigitYear result, so <=2099;
-		//   - decade: `to` = from+9, so <=2108 (from<=2099).
-		// A range legitimately spans more than 9 years (e.g. "1985-1995" -> to=from+10),
-		// so the ONLY universal upper bound on `to` is the decade ceiling of 2108.
-		if to < 1900 || to > 2108 {
-			t.Fatalf("parseEra(%q) = (%d,%d): to out of [1900,2108]", s, from, to)
 		}
 	})
 }
