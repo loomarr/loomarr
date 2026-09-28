@@ -16,7 +16,11 @@ test("TV Guide D-pad crosses grid and enabled filters without stranding focus", 
   await expect(page.getByText("recent filter focused")).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.getByText("recent filter applied")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Recent channels" })).toHaveAttribute("aria-pressed", "true");
+  // The ten-foot row counts its filters ("Recent, 0 channels"); the narrow viewport's row does not.
+  await expect(page.getByRole("button", { name: /^Recent(, \d+)? channels$/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
