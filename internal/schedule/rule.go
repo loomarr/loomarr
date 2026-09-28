@@ -300,6 +300,15 @@ func ActiveRuleAt(rules []SchedulingRule, now time.Time) ActiveRuleAttribution {
 	return ActiveRuleAttribution{ID: r.ID, Label: r.Describe(), Priority: r.Priority, Matched: true}
 }
 
+// OrderingAt is the ordering a channel lays its pool out with at `at`: the active rule's HOW if
+// it sets one, else the policy's, else the Strategy's. The same two steps ComputeDesiredAt takes,
+// so a reader asking "are these episodes airing in order?" (Tonight's premieres, #1664) gets the
+// scheduler's own answer.
+func OrderingAt(policy ChannelPolicy, strategy Strategy, at time.Time) OrderingMode {
+	rule, _ := pickRule(policy.Rules, at)
+	return applyRuleHow(policy.Resolved(strategy, false), rule.How).Ordering
+}
+
 // Describe returns the rule's display label: its explicit Label if set, else a synthesized
 // one from the WHEN predicate + HOW ordering (so a rule authored before the Label field, or
 // one the LLM left unnamed, still reads sensibly in the preview). Deterministic + I/O-free.

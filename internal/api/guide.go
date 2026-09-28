@@ -461,4 +461,5 @@ func (s *Server) registerGuide(api huma.API) {
 			"Read-only: any authenticated user (§8.1 viewer-facing).",
 		Tags: []string{"channels"},
 	}, RoleMember), s.channelGuide)
+	s.registerGuideHighlights(api)
 }
