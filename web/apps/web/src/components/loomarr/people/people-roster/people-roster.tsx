@@ -1,3 +1,4 @@
+import { formatRelative } from "@loomarr/core/format";
 import { KeyRound, Search, Server } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -15,7 +16,7 @@ const credentialLabel = (local: boolean, offlineLogin: boolean) => {
     : "Media-server account · sign in once to enable offline login";
 };
 
-const PeopleRoster = ({ users, selectedId, selfId, onSelect }: PeopleRosterProps) => {
+const PeopleRoster = ({ users, selectedId, selfId, onSelect, now = Date.now() }: PeopleRosterProps) => {
   const searchId = useId();
   const roleId = useId();
   const statusId = useId();
@@ -109,13 +110,14 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect }: PeopleRosterProps
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-card">
           <div
-            className="hidden grid-cols-[minmax(0,2fr)_8rem_8rem_8rem] gap-4 border-static-800 border-b px-4 py-2 font-mono text-static-400 text-xs uppercase tracking-wide md:grid"
+            className="hidden grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] gap-4 border-static-800 border-b px-4 py-2 font-mono text-static-400 text-xs uppercase tracking-wide md:grid"
             aria-hidden
           >
             <span>Person</span>
             <span>Role</span>
             <span>Requests</span>
             <span>Status</span>
+            <span>Last seen</span>
           </div>
           <ul>
             {filtered.map((user) => (
@@ -126,7 +128,7 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect }: PeopleRosterProps
                   aria-current={selectedId === user.id ? "true" : undefined}
                   onClick={() => onSelect(user)}
                   className={cn(
-                    "grid w-full cursor-pointer grid-cols-1 gap-3 p-4 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset md:grid-cols-[minmax(0,2fr)_8rem_8rem_8rem] md:items-center",
+                    "grid w-full cursor-pointer grid-cols-1 gap-3 p-4 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset md:grid-cols-[minmax(0,2fr)_8rem_8rem_8rem_8rem] md:items-center",
                     user.disabled && "bg-static-900/40",
                     selectedId === user.id && "bg-accent",
                   )}
@@ -156,6 +158,14 @@ const PeopleRoster = ({ users, selectedId, selfId, onSelect }: PeopleRosterProps
                   <span className="flex items-center justify-between gap-3 md:block">
                     <span className="text-muted-foreground text-xs md:hidden">Status</span>
                     {user.disabled ? <Badge variant="onair">Disabled</Badge> : <Badge>Enabled</Badge>}
+                  </span>
+                  {/* The web mock's Last seen: mono, muted. The API leaves it out for someone who
+                      has never signed in (#1667). */}
+                  <span className="flex items-center justify-between gap-3 md:block">
+                    <span className="text-muted-foreground text-xs md:hidden">Last seen</span>
+                    <span className="font-mono text-muted-foreground text-xs">
+                      {user.lastSeenAt === undefined ? "Never" : formatRelative(user.lastSeenAt, now)}
+                    </span>
                   </span>
                 </button>
               </li>
