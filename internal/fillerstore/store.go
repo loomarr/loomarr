@@ -136,8 +136,12 @@ type extended struct {
 func (e extended) Core() store.Store { return e.Store }
 
 // Extend builds the filler store over core's handle and returns the two as one Store. An
-// already-extended store is returned as it is.
+// already-extended store is returned as it is, and no store extends to none: app.Build without a
+// database still serves readiness.
 func Extend(core store.Store) Store {
+	if core == nil {
+		return nil
+	}
 	if s, ok := core.(Store); ok {
 		return s
 	}
