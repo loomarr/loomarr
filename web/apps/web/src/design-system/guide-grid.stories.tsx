@@ -83,6 +83,29 @@ const layout = layoutGuide(
   now,
 );
 
+// A hundred channels in a viewport-tall frame: the fixture the FlatList measurement on #1705
+// ran against, and the virtualised-rows case the Guide page lands in.
+const genres = ["Sci-Fi", "Cartoons", "Horror", "Westerns", "Sitcoms", "Noir", "Anime", "Drama"];
+const hundred = layoutGuide(
+  {
+    channels: Array.from({ length: 100 }, (_, i) => {
+      const genre = genres[i % genres.length];
+      // Staggered starts so the rows don't line up into columns.
+      const offset = (i * 17) % 60;
+      return channel(i + 1, `${genre} ${i + 1}`, i % 11 === 5 ? "paused" : "live", [
+        program(at(19, 30 + offset), at(20, 45 + offset), `A ${genre.toLowerCase()} series`, "Part one"),
+        pod(at(20, 45 + offset), at(20, 49 + offset)),
+        program(at(20, 49 + offset), at(22, 15), `A ${genre.toLowerCase()} film`),
+        program(at(22, 15), at(24), `A late ${genre.toLowerCase()} film`),
+      ]);
+    }),
+    fromMs: at(20),
+    timezone: "UTC",
+    toMs: at(24),
+  } as Parameters<typeof layoutGuide>[0],
+  now,
+);
+
 const meta = {
   title: "Loomarr Components/Guide Grid",
   component: GuideGrid,
@@ -101,5 +124,16 @@ type Story = StoryObj<typeof meta>;
 
 const Evening: Story = {};
 
+const HundredChannels: Story = {
+  args: { layout: hundred },
+  decorators: [
+    (Story) => (
+      <div style={{ display: "flex", flexDirection: "column", height: 720 }}>
+        <Story />
+      </div>
+    ),
+  ],
+};
+
 export default meta;
-export { Evening };
+export { Evening, HundredChannels };

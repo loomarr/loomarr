@@ -11,14 +11,15 @@ import {
   monogramOf,
 } from "@loomarr/core/guide";
 import { brandChroma, Surface, Text, type TextTone } from "@loomarr/design-system";
-import { useState } from "react";
-import { FlatList, type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
+import { memo, useState } from "react";
+import { type LayoutChangeEvent, Platform, Pressable, View } from "react-native";
 
 import type { GuideGridProps } from "./guide-grid.type";
+import { GuideRows } from "./guide-rows";
 
 // The web mock's time grid (#1659, decision N7): a 260 px channel column beside a timeline of
 // blocks, one 56 px row per channel. Render-only in this slice: keyboard, jump-to-channel and the
-// page's toolbar come next. Rows are a FlatList so web, phone and TV share one virtualiser.
+// page's toolbar come next. GuideRows virtualises the rows per platform.
 
 const RAIL = 260;
 const ROW = 56;
@@ -199,99 +200,103 @@ const nowLine = (ratio: number) => (
   />
 );
 
-const Row = ({
-  channel,
-  nowRatio,
-  onOpenChannel,
-  timelineWidth,
-  timezone,
-}: {
-  channel: GuideChannelLayout;
-  nowRatio?: number;
-  onOpenChannel?: (channelId: string) => void;
-  timelineWidth: number;
-  timezone?: string;
-}) => {
-  const { broadcast, health } = guideChannelState(channel.source);
-  const chip = health ? healthChip[health] : undefined;
-  return (
-    <Surface
-      backgroundColor="$transparent"
-      borderBottomColor="$guideRowRule"
-      borderBottomWidth={1}
-      borderWidth={0}
-      flexDirection="row"
-      height={ROW + 1}
-      // A channel that is off the air recedes, as in the mock.
-      opacity={broadcast === "off" ? 0.55 : 1}
-    >
+// Memoised: the web virtualiser re-renders on every scroll frame, and a row that stays in view
+// shouldn't render again.
+const Row = memo(
+  ({
+    channel,
+    nowRatio,
+    onOpenChannel,
+    timelineWidth,
+    timezone,
+  }: {
+    channel: GuideChannelLayout;
+    nowRatio?: number;
+    onOpenChannel?: (channelId: string) => void;
+    timelineWidth: number;
+    timezone?: string;
+  }) => {
+    const { broadcast, health } = guideChannelState(channel.source);
+    const chip = health ? healthChip[health] : undefined;
+    return (
       <Surface
-        alignItems="center"
-        backgroundColor="$surfaceCanvas"
-        borderColor="$borderDecorative"
-        borderRightWidth={1}
+        backgroundColor="$transparent"
+        borderBottomColor="$guideRowRule"
+        borderBottomWidth={1}
         borderWidth={0}
         flexDirection="row"
-        gap={9}
-        paddingLeft={12}
-        paddingRight={4}
-        width={RAIL}
+        height={ROW + 1}
+        // A channel that is off the air recedes, as in the mock.
+        opacity={broadcast === "off" ? 0.55 : 1}
       >
-        <Ident name={channel.source.name} number={channel.source.number} />
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => onOpenChannel?.(channel.source.channelId)}
-          style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: 9, minWidth: 0 }}
-        >
-          <Text textRole="guideNumber">{channel.source.number}</Text>
-          <View style={{ alignItems: "flex-start", flex: 1, minWidth: 0 }}>
-            <Text numberOfLines={1} textRole="cardLabel">
-              {channel.source.name}
-            </Text>
-            {chip ? (
-              <Text
-                marginTop={2}
-                numberOfLines={1}
-                textRole="guideLabel"
-                textTransform="uppercase"
-                tone={chip.tone}
-              >
-                {chip.label}
-              </Text>
-            ) : null}
-          </View>
-        </Pressable>
         <Surface
-          backgroundColor={
-            broadcast === "live"
-              ? "$guideOnAir"
-              : broadcast === "reconciling"
-                ? "$guideReconciling"
-                : "$actionDisabled"
-          }
-          borderRadius="$round"
+          alignItems="center"
+          backgroundColor="$surfaceCanvas"
+          borderColor="$borderDecorative"
+          borderRightWidth={1}
           borderWidth={0}
-          height={8}
-          width={8}
-        />
-        {/* The ⋯ channel menu waits on the maintainer's mock of its contents. */}
-        <View style={{ width: 28 }} />
-      </Surface>
-      <View style={{ flex: 1, height: ROW, overflow: "hidden", position: "relative" }}>
-        {channel.airings.map((airing) => (
+          flexDirection="row"
+          gap={9}
+          paddingLeft={12}
+          paddingRight={4}
+          width={RAIL}
+        >
+          <Ident name={channel.source.name} number={channel.source.number} />
           <Pressable
-            key={airing.scheduleBlockId}
+            accessibilityRole="button"
             onPress={() => onOpenChannel?.(channel.source.channelId)}
-            style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+            style={{ alignItems: "center", flex: 1, flexDirection: "row", gap: 9, minWidth: 0 }}
           >
-            <Block airing={airing} px={airing.widthRatio * timelineWidth} timezone={timezone} />
+            <Text textRole="guideNumber">{channel.source.number}</Text>
+            <View style={{ alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} textRole="cardLabel">
+                {channel.source.name}
+              </Text>
+              {chip ? (
+                <Text
+                  marginTop={2}
+                  numberOfLines={1}
+                  textRole="guideLabel"
+                  textTransform="uppercase"
+                  tone={chip.tone}
+                >
+                  {chip.label}
+                </Text>
+              ) : null}
+            </View>
           </Pressable>
-        ))}
-        {nowRatio === undefined ? null : nowLine(nowRatio)}
-      </View>
-    </Surface>
-  );
-};
+          <Surface
+            backgroundColor={
+              broadcast === "live"
+                ? "$guideOnAir"
+                : broadcast === "reconciling"
+                  ? "$guideReconciling"
+                  : "$actionDisabled"
+            }
+            borderRadius="$round"
+            borderWidth={0}
+            height={8}
+            width={8}
+          />
+          {/* The ⋯ channel menu waits on the maintainer's mock of its contents. */}
+          <View style={{ width: 28 }} />
+        </Surface>
+        <View style={{ flex: 1, height: ROW, overflow: "hidden", position: "relative" }}>
+          {channel.airings.map((airing) => (
+            <Pressable
+              key={airing.scheduleBlockId}
+              onPress={() => onOpenChannel?.(channel.source.channelId)}
+              style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}
+            >
+              <Block airing={airing} px={airing.widthRatio * timelineWidth} timezone={timezone} />
+            </Pressable>
+          ))}
+          {nowRatio === undefined ? null : nowLine(nowRatio)}
+        </View>
+      </Surface>
+    );
+  },
+);
 
 const GuideGrid = ({ layout, nowMs, onOpenChannel }: GuideGridProps) => {
   const [timelineWidth, setTimelineWidth] = useState(0);
@@ -365,22 +370,20 @@ const GuideGrid = ({ layout, nowMs, onOpenChannel }: GuideGridProps) => {
   );
 
   return (
-    <FlatList
-      data={layout.channels}
-      getItemLayout={(_, index) => ({ index, length: ROW + 1, offset: RULER + 1 + (ROW + 1) * index })}
-      keyExtractor={(channel) => channel.source.channelId}
-      ListHeaderComponent={ruler}
-      renderItem={({ item }) => (
+    <GuideRows
+      channels={layout.channels}
+      header={ruler}
+      headerHeight={RULER + 1}
+      renderRow={(channel) => (
         <Row
-          channel={item}
+          channel={channel}
           nowRatio={nowRatio}
           onOpenChannel={onOpenChannel}
           timelineWidth={timelineWidth}
           timezone={layout.timezone}
         />
       )}
-      stickyHeaderIndices={[0]}
-      style={{ minWidth: 900 }}
+      rowHeight={ROW + 1}
     />
   );
 };
