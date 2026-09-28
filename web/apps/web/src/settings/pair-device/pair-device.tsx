@@ -122,11 +122,10 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         </div>
       ) : null}
 
-      {/* ⚠ A paired device acts AS the person who approved it, with their role (sessionauth.go,
-          decision N3 on #1659), so an admin's TV is an admin. This line used to promise "not
-          administrator access", which was false for exactly the people who pair TVs most. */}
+      {/* A paired device acts as the person who approved it, capped at member (#1772, decision N3
+          on #1659), so even an admin's TV is a member. The web mock says so in the same words. */}
       <p className="mt-10 text-center text-muted-foreground text-sm leading-relaxed">
-        The device gets the same access you have. Removing it later signs out only that device.
+        The device gets member access. Removing it later signs out only that device.
       </p>
     </div>
   );
