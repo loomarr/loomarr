@@ -15,6 +15,11 @@ status; pull requests and GitHub Releases carry the durable delivery record.
   `Authorization: Bearer <LOOMARR_METRICS_TOKEN>` (or `LOOMARR_METRICS_TOKEN_FILE`) and are refused
   with `403` until one is configured. **Upgrade note:** an existing Prometheus job goes `down` until
   the token is set and added to its `scrape_config`; see `docs/install/monitoring.md`.
+- **Upgrade — the retired prepared-media library is reclaimed (#1563).** Releases before
+  0.2.0-beta.8 encoded programs ahead of time into `<data dir>/prepared`, and nothing removed them
+  after prepared media was withdrawn. On first start Loomarr now removes the publications and
+  staging workspaces that library wrote, and logs the bytes reclaimed. Other files there are kept.
+  A custom `PLAYOUT_PREPARED_DIR` is not touched; delete it by hand.
 
 ## [v0.1.0-beta.1] — 2026-08-18
 
