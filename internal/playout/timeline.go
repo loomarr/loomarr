@@ -323,6 +323,50 @@ func SegmentsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broadca
 	return walkBroadcasts(slots, epoch, from, to, false)
 }
 
+// CarryOverEnd is when this cycle's timeline hands over at a rolling-window boundary (#1675): the
+// end of whatever it airs across `boundary` (a programme with all its mid-roll parts, or a break),
+// or `boundary` itself when nothing with a duration airs. The next window's slice is walked from
+// this instant, so the programme crossing the boundary airs whole and the next one starts at its
+// end. Something that merely STARTS on the boundary belongs to the next window, not this one.
+//
+// It walks the SAME arithmetic as the encoder and the guide, so reconcile, AiringAt and the guide
+// all hand over at the same instant.
+func CarryOverEnd(slots []schedule.Slot, epoch, boundary time.Time) time.Time {
+	bs := BroadcastsBetween(slots, epoch, boundary, boundary.Add(time.Nanosecond))
+	if len(bs) == 0 || !bs[0].Start.Before(boundary) || !bs[0].Stop.After(boundary) {
+		return boundary
+	}
+	return bs[0].Stop
+}
+
+// WindowTurn is THE rolling-window turn rule (#1675), shared by reconcile (which commits it) and
+// the playout resolver (which airs it before reconcile has run). Given the accepted cycle and its
+// anchor, it reports which window airs at `at` and the instant that window's timeline is walked
+// from:
+//
+//   - Until the programme crossing the next boundary ends, the accepted window is still on air:
+//     (its opening, anchor, false). The crossing programme finishes on the arrangement it began in.
+//   - After it ends, the next window airs from that end: (next opening, carry-over end, true).
+//   - If more than one window has passed (reconcile was paused or down), the chain of missed
+//     windows is not recoverable, so the current window is walked from its own opening:
+//     (current opening, current opening, true). That one turn may join a programme part-way.
+//
+// An unbounded window, a channel without an anchor, or an empty cycle never turns.
+func WindowTurn(accepted []schedule.Slot, anchor time.Time, window time.Duration, zone *time.Location, at time.Time) (opened, epoch time.Time, turned bool) {
+	if window <= 0 || anchor.IsZero() || len(accepted) == 0 {
+		return time.Time{}, anchor, false
+	}
+	end := CarryOverEnd(accepted, anchor, schedule.NextWindowStart(anchor, window, zone))
+	if at.Before(end) {
+		return schedule.WindowStart(anchor, window, zone), anchor, false
+	}
+	current := schedule.WindowStart(at, window, zone)
+	if schedule.WindowStart(end, window, zone).Equal(current) {
+		return current, end, true
+	}
+	return current, current, true
+}
+
 // CommittedSplits is what a re-schedule must not change (§10 mid-roll): every programme on air or
 // starting in [from, to) of this accepted cycle, mapped from library item id to the cuts it airs
 // with (nil = it airs whole). It walks the SAME cycle as the encoder and the guide, so a pin is

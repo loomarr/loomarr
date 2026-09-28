@@ -10,6 +10,7 @@ package channels
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -135,6 +136,7 @@ type Engine struct {
 	breaksPerHourFor  func() int                                        // live §10 commercial-break default
 	breakDurationFor  func() time.Duration                              // live §10 commercial-break length default
 	defaultWindowFor  func() time.Duration                              // live §6.5 rolling-window default
+	windowZoneFor     func() *time.Location                             // wall clock of the window grid (#1675)
 	playoutBackendFor func(context.Context) (string, error)             // durable §9.1 transition target
 	naturalBreaks     func(context.Context) schedule.NaturalBreakSource // §10 mid-roll candidates; nil = none
 	now               func() time.Time
@@ -178,6 +180,9 @@ type Config struct {
 	// A per-channel/-rule Window overrides it; 0 = schedule the whole run.
 	DefaultWindow        time.Duration
 	ResolveDefaultWindow func() time.Duration
+	// ResolveWindowZone is the wall clock the rolling-window grid is laid on (guide.timezone,
+	// else the container's zone), so a daily window turns at local midnight (#1675). Nil = UTC.
+	ResolveWindowZone func() *time.Location
 	// ResolvePlayoutBackendContext reads the durable transition checkpoint once per reconcile
 	// attempt so Postgres replicas observe Prepared. Nil fails closed through the empty backend.
 	ResolvePlayoutBackendContext func(context.Context) (string, error)
@@ -207,6 +212,9 @@ func New(st EngineStore, prog programmer.Programmer, avail Availability, guide G
 	if cfg.ResolveDefaultWindow == nil {
 		cfg.ResolveDefaultWindow = func() time.Duration { return cfg.DefaultWindow }
 	}
+	if cfg.ResolveWindowZone == nil {
+		cfg.ResolveWindowZone = func() *time.Location { return time.UTC }
+	}
 	if cfg.ResolvePlayoutBackendContext == nil {
 		cfg.ResolvePlayoutBackendContext = func(context.Context) (string, error) { return "", nil }
 	}
@@ -224,6 +232,7 @@ func New(st EngineStore, prog programmer.Programmer, avail Availability, guide G
 		breaksPerHourFor:  cfg.ResolveBreaksPerHour,
 		breakDurationFor:  cfg.ResolveBreakDuration,
 		defaultWindowFor:  cfg.ResolveDefaultWindow,
+		windowZoneFor:     cfg.ResolveWindowZone,
 		playoutBackendFor: cfg.ResolvePlayoutBackendContext,
 		naturalBreaks:     cfg.NaturalBreaks,
 		now:               now,
@@ -717,9 +726,30 @@ func (s *storeAvailability) memoEpisodes(libraryID string, resolution schedule.E
 	s.mu.Unlock()
 }
 
+// RollingWindow is the rolling-window length a channel with this policy resolves to at `at` (rule
+// > channel > the live default), and the wall clock its grid is laid on: exactly what reconcile
+// resolves. Pure and cheap, so the playout resolver can apply the window turn (#1675) on every
+// airing lookup without arranging a cycle.
+func (e *Engine) RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location) {
+	return schedule.ResolveWindow(schedule.Channel{DefaultWindow: e.defaultWindowFor()}, policy, at), e.windowZoneFor()
+}
+
+// CarriesOver reports whether the channel's rolling window turns with carry-over (#1675), which
+// only internal playout can do: it walks the accepted cycle from an anchor reconcile moves.
+// Tunarr loops the list it was given from its own clock and cannot be told where a window
+// starts (#1691). The backend is resolved as reconcile resolves it, so both agree on which channels turn.
+func (e *Engine) CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error) {
+	backend, err := e.playoutBackendFor(ctx)
+	if err != nil {
+		return false, fmt.Errorf("resolve playout backend: %w", err)
+	}
+	return schedule.PlaysInternally(policy, backend), nil
+}
+
 // lastAiredFor loads the channel's airing history for recency-aware placement (§3.1), as of the
-// start of the rolling window that `at` falls in. `ch` must already carry DefaultWindow, so the
-// window resolves exactly as ComputeDesiredAt will resolve it.
+// start of the rolling window being arranged: ch.WindowOpened when set, else the window `at`
+// falls in. `ch` must already carry DefaultWindow and WindowZone, so the window resolves exactly
+// as ComputeDesiredAt will resolve it.
 //
 // AS OF THE WINDOW START (#1674): the history is the one input to a window's arrangement that
 // changes while the window airs, since every tune-in records an airing. Read live, each reconcile
@@ -741,7 +771,14 @@ func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy s
 	if e.store == nil {
 		return nil
 	}
-	opened := schedule.WindowStart(at, schedule.ResolveWindow(ch, policy, at))
+	window := schedule.ResolveWindow(ch, policy, at)
+	if window <= 0 {
+		return nil
+	}
+	opened := ch.WindowOpened
+	if opened.IsZero() {
+		opened = schedule.WindowStart(at, window, ch.WindowZone)
+	}
 	if opened.IsZero() {
 		return nil
 	}

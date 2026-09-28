@@ -22,6 +22,14 @@ func (s stubCycle) CyclePreview(context.Context, string, time.Time) (
 	return time.Time{}, s.slots, schedule.ActiveRuleAttribution{}, 0, nil
 }
 
+func (stubCycle) RollingWindow(schedule.ChannelPolicy, time.Time) (time.Duration, *time.Location) {
+	return 0, nil
+}
+
+func (stubCycle) CarriesOver(context.Context, schedule.ChannelPolicy) (bool, error) {
+	return true, nil
+}
+
 type stubPods struct {
 	pod filler.Pod
 	err error

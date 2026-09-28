@@ -112,20 +112,21 @@ func newCycleCache(now func() time.Time) *cycleCache {
 	return &cycleCache{entries: map[uint64]cycleEntry{}, windows: map[uint64]windowNote{}, now: now}
 }
 
-// windowKey folds the rolling-window index of `at` into the base key.
-func windowKey(base uint64, at time.Time, window time.Duration) uint64 {
+// windowKey folds the rolling-window index of `at`, on the grid's wall clock `zone`, into the base
+// key.
+func windowKey(base uint64, at time.Time, window time.Duration, zone *time.Location) uint64 {
 	h := fnv.New64a()
 	var num [8]byte
 	binary.LittleEndian.PutUint64(num[:], base)
 	_, _ = h.Write(num[:])
-	binary.LittleEndian.PutUint64(num[:], uint64(schedule.WindowIndex(at, window)))
+	binary.LittleEndian.PutUint64(num[:], uint64(schedule.WindowIndex(at, window, zone)))
 	_, _ = h.Write(num[:])
 	return h.Sum64()
 }
 
 // get returns a live entry for this input set at `at`, if one exists. A base key never stored has
 // no known window length, so it simply misses.
-func (c *cycleCache) get(base uint64, at time.Time) ([]schedule.Slot, time.Duration, bool) {
+func (c *cycleCache) get(base uint64, at time.Time, zone *time.Location) ([]schedule.Slot, time.Duration, bool) {
 	if c == nil {
 		return nil, 0, false
 	}
@@ -135,7 +136,7 @@ func (c *cycleCache) get(base uint64, at time.Time) ([]schedule.Slot, time.Durat
 	if !ok || c.now().Sub(note.stored) > cycleCacheTTL {
 		return nil, 0, false
 	}
-	e, ok := c.entries[windowKey(base, at, note.window)]
+	e, ok := c.entries[windowKey(base, at, note.window, zone)]
 	if !ok || c.now().Sub(e.stored) > cycleCacheTTL {
 		return nil, 0, false
 	}
@@ -146,7 +147,7 @@ func (c *cycleCache) get(base uint64, at time.Time) ([]schedule.Slot, time.Durat
 //
 // Pruning on WRITE rather than on a timer keeps this free of a background goroutine: the cache
 // is only touched by requests, so a cache nobody reads costs nothing rather than ticking.
-func (c *cycleCache) put(base uint64, at time.Time, slots []schedule.Slot, window time.Duration) {
+func (c *cycleCache) put(base uint64, at time.Time, zone *time.Location, slots []schedule.Slot, window time.Duration) {
 	if c == nil {
 		return
 	}
@@ -174,7 +175,7 @@ func (c *cycleCache) put(base uint64, at time.Time, slots []schedule.Slot, windo
 		delete(c.entries, oldest)
 	}
 	c.windows[base] = windowNote{window: window, stored: now}
-	c.entries[windowKey(base, at, window)] = cycleEntry{slots: slots, window: window, stored: now}
+	c.entries[windowKey(base, at, window, zone)] = cycleEntry{slots: slots, window: window, stored: now}
 }
 
 // fingerprintChannel hashes everything ComputeDesiredAt's answer depends on, other than the

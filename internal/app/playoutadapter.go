@@ -39,13 +39,17 @@ import (
 
 // cyclePreviewer is the scheduling surface the resolver needs — satisfied by *channels.Engine.
 //
-// Narrowed to the one method deliberately: the resolver must not be able to reconcile, push to
-// Tunarr, or mutate anything. Playout is a READ of the schedule, and a narrow interface makes
-// that structural rather than a rule someone has to remember.
+// Narrowed to reads deliberately: the resolver must not be able to reconcile, push to Tunarr, or
+// mutate anything. Playout is a READ of the schedule, and a narrow interface makes that
+// structural rather than a rule someone has to remember.
 type cyclePreviewer interface {
 	CyclePreview(ctx context.Context, channelID string, at time.Time) (
 		resolvedAt time.Time, slots []schedule.Slot, active schedule.ActiveRuleAttribution,
 		window time.Duration, err error)
+	// RollingWindow and CarriesOver are the inputs of the rolling-window turn (#1675), resolved
+	// exactly as reconcile resolves them, so the resolver turns the window where reconcile will.
+	RollingWindow(policy schedule.ChannelPolicy, at time.Time) (time.Duration, *time.Location)
+	CarriesOver(ctx context.Context, policy schedule.ChannelPolicy) (bool, error)
 }
 
 // titleReader is the one store method provenance needs.
@@ -218,7 +222,7 @@ func (r *playoutResolver) AiringNow(ctx context.Context, channelID string) (play
 // AiringAt is AiringNow at a given instant. The channel packager asks for the item that airs at
 // its timeline's end, up to its run-ahead (~12 s) after now.
 func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now time.Time) (playout.Airing, string, error) {
-	slots, epoch, err := r.acceptedCycle(ctx, channelID)
+	slots, epoch, err := r.acceptedCycle(ctx, channelID, now)
 	if err != nil {
 		return playout.Airing{}, "", err
 	}
@@ -301,11 +305,12 @@ func (r *playoutResolver) AiringAt(ctx context.Context, channelID string, now ti
 // round trip, runs once per airing on the still cache's miss. A break has no still: resolving its
 // clip would pick, and count, filler.
 func (r *playoutResolver) StillAiring(ctx context.Context, channelID string) (playout.StillAiring, bool, error) {
-	slots, epoch, err := r.acceptedCycle(ctx, channelID)
+	now := r.now()
+	slots, epoch, err := r.acceptedCycle(ctx, channelID, now)
 	if err != nil {
 		return playout.StillAiring{}, false, err
 	}
-	airing := playout.AiringAt(slots, epoch, r.now())
+	airing := playout.AiringAt(slots, epoch, now)
 	if airing.Kind == schedule.SlotFiller || !airing.Playable() || r.lib == nil {
 		return playout.StillAiring{}, false, nil
 	}
@@ -379,10 +384,11 @@ func (r *playoutResolver) inventoryHDR(ctx context.Context, libraryItemID string
 	return false
 }
 
-// acceptedCycle is the broadcast commit boundary. Reconciliation owns the write; the encoder and
-// current guide own reads. Keeping the seam here makes it impossible for a programme boundary to
-// accidentally call the mutable authoring preview again.
-func (r *playoutResolver) acceptedCycle(ctx context.Context, channelID string) ([]schedule.Slot, time.Time, error) {
+// acceptedCycle is the broadcast commit boundary: the cycle the channel airs at `at` and the
+// instant it is walked from. Reconciliation owns the write; the encoder and the guide own reads.
+// Keeping the seam here makes it impossible for a programme boundary to accidentally call the
+// mutable authoring preview again.
+func (r *playoutResolver) acceptedCycle(ctx context.Context, channelID string, at time.Time) ([]schedule.Slot, time.Time, error) {
 	if r.channels == nil {
 		return nil, time.Time{}, errors.New("read accepted channel schedule: channel reader is not configured")
 	}
@@ -390,11 +396,56 @@ func (r *playoutResolver) acceptedCycle(ctx context.Context, channelID string) (
 	if err != nil {
 		return nil, time.Time{}, fmt.Errorf("read accepted channel schedule %s: %w", channelID, err)
 	}
+	c, err := r.airingCycle(ctx, ch, at)
+	return c.slots, c.epoch, err
+}
+
+// airingCycle is one channel's accepted cycle as it airs at `at`, plus the rolling-window inputs
+// the guide needs to walk past it.
+type airingCycle struct {
+	slots       []schedule.Slot
+	epoch       time.Time
+	window      time.Duration
+	zone        *time.Location
+	carriesOver bool
+}
+
+// airingCycle resolves what the channel airs at `at`: normally the persisted Desired cycle walked
+// from the playout anchor.
+//
+// The one exception is the rolling-window turn (#1675). Once the programme crossing the window
+// boundary has ended, the next window airs from that end whether or not reconcile has run yet to
+// commit it. Until it does, the next window is arranged here with CyclePreview, the computation
+// reconcile commits, so the handoff lands when the programme ends rather than at the next
+// reconcile (up to its cooldown later), which would swap the slice in mid-programme. Reconcile
+// applies the same rule (playout.WindowTurn) and commits the same anchor, and from then on this
+// reads Desired again.
+func (r *playoutResolver) airingCycle(ctx context.Context, ch store.Channel, at time.Time) (airingCycle, error) {
 	epoch, err := effectivePlayoutAnchor(ch)
 	if err != nil {
-		return nil, time.Time{}, err
+		return airingCycle{}, err
 	}
-	return ch.Desired, epoch, nil
+	c := airingCycle{slots: ch.Desired, epoch: epoch}
+	if r.engine == nil { // no scheduler wired: nothing can turn the window, so Desired airs as is
+		return c, nil
+	}
+	c.window, c.zone = r.engine.RollingWindow(ch.Policy, at)
+	if c.carriesOver, err = r.engine.CarriesOver(ctx, ch.Policy); err != nil {
+		return airingCycle{}, fmt.Errorf("read accepted channel schedule %s: %w", ch.ID, err)
+	}
+	if !c.carriesOver {
+		return c, nil
+	}
+	_, turnEpoch, turned := playout.WindowTurn(ch.Desired, epoch, c.window, c.zone, at)
+	if !turned {
+		return c, nil
+	}
+	_, slots, _, _, err := r.engine.CyclePreview(ctx, ch.ID, at)
+	if err != nil {
+		return airingCycle{}, fmt.Errorf("arrange channel %s's next window: %w", ch.ID, err)
+	}
+	c.slots, c.epoch = slots, turnEpoch
+	return c, nil
 }
 
 // ComputeChannelCodec derives the channel's uniform BROADCAST CODEC (§9.1 V50) from its library
@@ -613,8 +664,8 @@ func majorityBroadcastCodec(codecs []string) string {
 
 // BroadcastsBetween resolves a channel's programme timeline for the XMLTV guide (§9.1, V6b).
 //
-// Deliberately on the SAME type as AiringNow. The rolling window containing now reads the SAME
-// persisted Desired cycle as the encoder; only other windows use CyclePreview as a forecast.
+// Deliberately on the SAME type as AiringNow. The rolling window on air reads the SAME cycle as
+// the encoder (airingCycle); only other windows use CyclePreview as a forecast.
 //
 // `at` is the window's START, not `now`. CyclePreview evaluates curation rules at an instant —
 // a rule that switches the channel to horror at 21:00 changes the lineup — and a guide built at
@@ -622,7 +673,9 @@ func majorityBroadcastCodec(codecs []string) string {
 // listings reflect what the rules said when the window opened; a window spanning a rule
 // boundary is a known limitation rather than a silent wrong answer (the mid-window portion
 // shows the earlier rule's programmes).
-// cycleAt is CyclePreview with the arranged cycle memoised (cyclecache.go).
+//
+// cycleAt is CyclePreview with the arranged cycle memoised (cyclecache.go). It is always a
+// FORECAST: the window on air comes from airingCycle, which segmentedBroadcasts reads first.
 //
 // GUIDE PATHS ONLY. AiringNow deliberately does not use this: it is what ffmpeg streams, and
 // §9.1's one-source rule is worth more on the broadcast path than the milliseconds a cache would
@@ -641,14 +694,7 @@ func (r *playoutResolver) cycleAt(
 ) ([]schedule.Slot, time.Duration, error) {
 	if r.cycles == nil || r.channels == nil {
 		_, slots, _, window, err := r.engine.CyclePreview(ctx, channelID, at)
-		if err != nil || r.channels == nil {
-			return slots, window, err
-		}
-		ch, cerr := r.channels.GetChannel(ctx, channelID)
-		if cerr == nil && ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
-			return ch.Desired, window, nil
-		}
-		return slots, window, nil
+		return slots, window, err
 	}
 
 	ch, err := r.channels.GetChannel(ctx, channelID)
@@ -668,10 +714,8 @@ func (r *playoutResolver) cycleAt(
 		return slots, window, cerr
 	}
 
-	if slots, window, hit := r.cycles.get(key, at); hit {
-		if ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
-			return ch.Desired, window, nil
-		}
+	_, zone := r.engine.RollingWindow(ch.Policy, at)
+	if slots, window, hit := r.cycles.get(key, at, zone); hit {
 		return slots, window, nil
 	}
 
@@ -679,25 +723,8 @@ func (r *playoutResolver) cycleAt(
 	if err != nil {
 		return nil, 0, err
 	}
-	r.cycles.put(key, at, slots, window)
-	if ch.Desired != nil && sameRollingWindow(at, r.now(), window) {
-		return ch.Desired, window, nil
-	}
+	r.cycles.put(key, at, zone, slots, window)
 	return slots, window, nil
-}
-
-// sameRollingWindow identifies the one forecast segment that is observed state: the segment that
-// contains the resolver's current wall clock. An unbounded cycle has only one window. Window
-// boundaries use Unix time, matching schedule.windowIndex and segmentedBroadcasts.
-func sameRollingWindow(a, b time.Time, window time.Duration) bool {
-	if window <= 0 {
-		return true
-	}
-	seconds := int64(window / time.Second)
-	if seconds <= 0 {
-		return true
-	}
-	return a.Unix()/seconds == b.Unix()/seconds
 }
 
 // maxGuideSegments bounds how many rolling windows one guide request will re-resolve.
@@ -710,7 +737,9 @@ func sameRollingWindow(a, b time.Time, window time.Duration) bool {
 const maxGuideSegments = 8
 
 // segmentedBroadcasts walks [from, to) one ROLLING WINDOW at a time, re-resolving the channel's
-// cycle at each boundary, and concatenates the results.
+// cycle at each turn, and concatenates the results. The window on air is the encoder's own
+// (airingCycle). With carry-over (#1675) a window turns where the programme crossing its boundary
+// ends, not on the boundary itself (carryOverLegs).
 //
 // # Why this exists
 //
@@ -755,67 +784,147 @@ func (r *playoutResolver) segmentedBroadcasts(
 	if ch.PlayoutAnchor.IsZero() && ch.Status != schedule.StatusLive && ch.Status != schedule.StatusDrifted {
 		return nil, nil
 	}
-	epoch, err := effectivePlayoutAnchor(ch)
+	live, err := r.airingCycle(ctx, ch, r.now())
 	if err != nil {
 		return nil, err
 	}
-
-	slots, window, err := r.cycleAt(ctx, channelID, from)
-	if err != nil {
-		return nil, err
+	if live.slots == nil { // nothing accepted yet: forecast the window on air, from its opening
+		now := r.now()
+		if live.slots, _, err = r.cycleAt(ctx, channelID, now); err != nil {
+			return nil, err
+		}
+		if live.carriesOver && live.window > 0 {
+			live.epoch = later(live.epoch, schedule.WindowStart(now, live.window, live.zone))
+		}
 	}
 	// Unbounded window ⇒ no rotation ⇒ nothing to segment.
-	if window <= 0 {
-		return project(slots, epoch, from, to), nil
+	if live.window <= 0 {
+		return project(live.slots, live.epoch, from, to), nil
 	}
 
+	var legs []guideLeg
+	if live.carriesOver {
+		legs = r.carryOverLegs(ctx, channelID, live, from, to)
+	} else {
+		legs = r.fixedAnchorLegs(ctx, channelID, live, from, to)
+	}
 	out := make([]playout.Broadcast, 0, 32)
-	segFrom := from
-	for i := 0; i < maxGuideSegments && segFrom.Before(to); i++ {
-		// The end of the rolling window `segFrom` falls in — the instant the deck rotates.
-		// Truncate on the window grid so segments land on the SAME boundaries windowIndex uses,
-		// rather than on offsets from an arbitrary request time.
-		segTo := segFrom.Truncate(window).Add(window)
-		if !segTo.After(segFrom) { // Truncate is a no-op on a boundary; step a whole window
-			segTo = segFrom.Add(window)
+	for _, leg := range legs {
+		segFrom, segTo := later(from, leg.from), earlier(to, leg.to)
+		if !segTo.After(segFrom) {
+			continue
 		}
-		if segTo.After(to) {
-			segTo = to
-		}
-
-		// The first segment's cycle is already resolved; later ones re-resolve AT THE SEGMENT,
-		// which is what makes the rotation visible.
-		segSlots := slots
-		if i > 0 {
-			segSlots, _, err = r.cycleAt(ctx, channelID, segFrom)
-			if err != nil {
-				// One segment failing must not empty the guide — keep what we have. The grid
-				// renders a shorter forecast rather than nothing, the same posture the
-				// per-channel failure takes in api.channelGuide.
-				break
-			}
-		}
-		segment := project(segSlots, epoch, segFrom, segTo)
 		// Project keeps the true start/stop of a programme crossing the requested viewport.
-		// That is correct at the OUTER Guide edges, but an INTERNAL rolling-window boundary
-		// changes which arranged cycle is authoritative. Clip both sides there or the outgoing
-		// cycle's tail and incoming cycle's head occupy the same wall-clock time.
-		clipFrom := time.Time{}
-		if i > 0 {
-			clipFrom = segFrom
+		// That is correct at the OUTER Guide edges, but an INTERNAL leg edge changes which
+		// arranged cycle is authoritative. Clip there or the outgoing cycle's tail and the
+		// incoming cycle's head occupy the same wall-clock time. A carry-over edge is a programme
+		// boundary, so the clip is a no-op there; it cuts only where the channel really cuts.
+		clipFrom, clipTo := time.Time{}, time.Time{}
+		if leg.from.After(from) {
+			clipFrom = leg.from
 		}
-		clipTo := time.Time{}
-		if segTo.Before(to) {
-			clipTo = segTo
+		if leg.to.Before(to) {
+			clipTo = leg.to
 		}
-		for _, broadcast := range segment {
+		for _, broadcast := range project(leg.slots, leg.epoch, segFrom, segTo) {
 			if clipped, ok := broadcast.ClipTo(clipFrom, clipTo); ok {
 				out = append(out, clipped)
 			}
 		}
-		segFrom = segTo
 	}
 	return out, nil
+}
+
+// guideLeg is one stretch of a channel's timeline: `slots` walked from `epoch`, airing over
+// [from, to).
+type guideLeg struct {
+	slots    []schedule.Slot
+	epoch    time.Time
+	from, to time.Time
+}
+
+// carryOverLegs lays out the timeline of a channel whose rolling window turns with carry-over
+// (#1675): the window on air runs until the programme crossing its boundary ends, and each later
+// window is forecast from where the one before it ends, through the same turn rule reconcile
+// commits (playout.CarryOverEnd). No programme is cut at a boundary and none is joined part-way.
+//
+// Windows BEFORE the one on air are no longer in state (each turn moved the anchor), so each is
+// walked from its own opening, the closest estimate of where it began, and the last runs to where
+// the window on air began. The past is a reconstruction either way: it is recomputed from the
+// current lineup, which is why the guide's lookback is bounded.
+//
+// One segment failing must not empty the guide — keep what we have. The grid renders a shorter
+// forecast rather than nothing, the same posture the per-channel failure takes in
+// api.channelGuide.
+func (r *playoutResolver) carryOverLegs(ctx context.Context, channelID string, live airingCycle, from, to time.Time) []guideLeg {
+	var legs []guideLeg
+	liveOpened := schedule.WindowStart(live.epoch, live.window, live.zone)
+	// A `from` between the live window's opening and its anchor still needs the window before:
+	// that stretch is its carried-over programme.
+	first := schedule.WindowStart(earlier(from, liveOpened.Add(-time.Nanosecond)), live.window, live.zone)
+	for opened := first; from.Before(live.epoch) && opened.Before(liveOpened) && opened.Before(to) && len(legs) < maxGuideSegments; {
+		next := schedule.NextWindowStart(opened, live.window, live.zone)
+		slots, _, err := r.cycleAt(ctx, channelID, opened)
+		if err != nil {
+			break
+		}
+		leg := guideLeg{slots: slots, epoch: opened, from: opened, to: next}
+		if !next.Before(liveOpened) {
+			leg.to = live.epoch
+		}
+		legs = append(legs, leg)
+		opened = next
+	}
+
+	leg := guideLeg{slots: live.slots, epoch: live.epoch, from: live.epoch}
+	for {
+		leg.to = playout.CarryOverEnd(leg.slots, leg.epoch, schedule.NextWindowStart(leg.epoch, live.window, live.zone))
+		legs = append(legs, leg)
+		if !leg.to.Before(to) || len(legs) >= maxGuideSegments {
+			break
+		}
+		slots, _, err := r.cycleAt(ctx, channelID, leg.to)
+		if err != nil {
+			break
+		}
+		leg = guideLeg{slots: slots, epoch: leg.to, from: leg.to}
+	}
+	return legs
+}
+
+// fixedAnchorLegs lays out the timeline of a channel that cannot carry over (Tunarr-backed; see
+// CarriesOver): every rolling window is walked from the channel's one fixed anchor and cut at the
+// window's edges, because that is where the backend swaps the list.
+func (r *playoutResolver) fixedAnchorLegs(ctx context.Context, channelID string, live airingCycle, from, to time.Time) []guideLeg {
+	var legs []guideLeg
+	onAir := schedule.WindowStart(r.now(), live.window, live.zone)
+	for segFrom := from; segFrom.Before(to) && len(legs) < maxGuideSegments; {
+		next := schedule.NextWindowStart(segFrom, live.window, live.zone)
+		slots := live.slots
+		if !schedule.WindowStart(segFrom, live.window, live.zone).Equal(onAir) {
+			var err error
+			if slots, _, err = r.cycleAt(ctx, channelID, segFrom); err != nil {
+				break
+			}
+		}
+		legs = append(legs, guideLeg{slots: slots, epoch: live.epoch, from: segFrom, to: next})
+		segFrom = next
+	}
+	return legs
+}
+
+func later(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+func earlier(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
 }
 
 func (r *playoutResolver) BroadcastsBetween(

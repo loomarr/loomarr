@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/activity"
@@ -237,6 +239,7 @@ func buildChannels(
 			ResolveBreaksPerHour: func() int { return set.intv("filler.breaks_per_hour") },
 			ResolveBreakDuration: func() time.Duration { return set.dur("filler.break_duration") },
 			ResolveDefaultWindow: func() time.Duration { return set.dur("sched.window_hours") },
+			ResolveWindowZone:    windowZone(func() string { return set.str("guide.timezone") }, log),
 			// Backend selection is durable and per-channel-aware inside the engine: this closure
 			// supplies the durable in-progress target when one exists, otherwise the applied
 			// global fallback, while schedule.PlaysInternally applies a channel's policy override.
@@ -323,4 +326,34 @@ func buildChannels(
 		setResidentVRAM: setResidentVRAM,
 		channelNumbers:  chanNumbers,
 	}, nil
+}
+
+// windowZone resolves the wall clock the rolling-window grid is laid on (#1675): guide.timezone,
+// the zone the guide is read in, else the container's own zone, so a daily window turns at local
+// midnight. The setting hot-applies; the last lookup is kept so a reconcile does not re-read the
+// zone database. A name that will not load falls back to the container's zone, logged when the
+// setting changes.
+func windowZone(name func() string, log *slog.Logger) func() *time.Location {
+	var (
+		mu     sync.Mutex
+		loaded string
+		zone   = time.Local
+	)
+	return func() *time.Location {
+		want := strings.TrimSpace(name())
+		mu.Lock()
+		defer mu.Unlock()
+		if want == loaded {
+			return zone
+		}
+		loaded, zone = want, time.Local
+		if want != "" {
+			if loc, err := time.LoadLocation(want); err == nil {
+				zone = loc
+			} else if log != nil {
+				log.Warn("guide.timezone does not load; rolling windows turn on the container's zone", "timezone", want, "err", err)
+			}
+		}
+		return zone
+	}
 }

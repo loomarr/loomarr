@@ -273,7 +273,14 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	rp.LastAired = ch.LastAired
 	window := resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
 	seed := ch.Shuffle.Seed
-	windowIdx := windowIndex(now, window)
+	// The window being arranged is the one `now` falls in, unless the caller names it: while the
+	// programme that crossed a boundary is still airing (#1675 carry-over), reconcile keeps
+	// arranging the window that programme belongs to.
+	arranged := now
+	if !ch.WindowOpened.IsZero() {
+		arranged = ch.WindowOpened
+	}
+	windowIdx := windowIndex(arranged, window, ch.WindowZone)
 	// A movie typically emits hard-filter + availability + placement. Use that exact common
 	// shape as the initial capacity; series can grow it, but ordinary channels avoid repeatedly
 	// reallocating the bounded trace on the guide's hot path.
@@ -425,24 +432,62 @@ func resolveWindow(ruleW, channelW Duration, defaultW time.Duration) time.Durati
 // reconciles in the same window fold the SAME value into the seed → identical order →
 // no Tunarr re-push) and +1 across a boundary (advancing the deck to the next slice).
 // A zero window or zero clock ⇒ 0 (no advance), preserving the un-windowed behavior.
-func windowIndex(now time.Time, window time.Duration) int64 {
-	if window <= 0 || now.IsZero() {
+//
+// The grid is laid on the WALL CLOCK of `zone` (nil = UTC), so a 24 h window turns at local
+// midnight rather than at 00:00 UTC, which is primetime in the Americas (#1675). A DST day makes
+// that window 23 h or 25 h long; the index still advances by exactly one per local day.
+func windowIndex(now time.Time, window time.Duration, zone *time.Location) int64 {
+	sec := int64(window / time.Second)
+	if sec <= 0 || now.IsZero() {
 		return 0
 	}
-	return now.Unix() / int64(window/time.Second)
+	wall := wallSeconds(now, zone)
+	idx := wall / sec
+	if wall%sec < 0 {
+		idx-- // floor, so an instant before the Unix epoch still maps to the window it is in
+	}
+	return idx
+}
+
+// wallSeconds is `t` read on zone's wall clock, counted in seconds as though that clock were UTC.
+func wallSeconds(t time.Time, zone *time.Location) int64 {
+	if zone == nil {
+		return t.Unix()
+	}
+	_, offset := t.In(zone).Zone()
+	return t.Unix() + int64(offset)
+}
+
+// windowOpening is the instant window `idx` opens on zone's wall clock.
+func windowOpening(idx int64, window time.Duration, zone *time.Location) time.Time {
+	civil := time.Unix(idx*int64(window/time.Second), 0).UTC()
+	if zone == nil {
+		return civil
+	}
+	return time.Date(civil.Year(), civil.Month(), civil.Day(), civil.Hour(), civil.Minute(), civil.Second(), 0, zone).UTC()
 }
 
 // WindowStart is the instant the rolling window containing `at` opened: the boundary at which
-// windowIndex last advanced. Zero for an unbounded window or a zero clock, which never advance.
+// windowIndex last advanced, on the wall clock of `zone` (nil = UTC). Zero for an unbounded
+// window or a zero clock, which never advance.
 //
 // It is the cutoff for everything a window's arrangement reads that changes while the window airs
 // (airing history, #1674): read as of this instant, the input is the same on every reconcile in
 // the window, exactly like the slice offset windowIndex drives.
-func WindowStart(at time.Time, window time.Duration) time.Time {
+func WindowStart(at time.Time, window time.Duration, zone *time.Location) time.Time {
 	if window <= 0 || at.IsZero() {
 		return time.Time{}
 	}
-	return time.Unix(windowIndex(at, window)*int64(window/time.Second), 0).UTC()
+	return windowOpening(windowIndex(at, window, zone), window, zone)
+}
+
+// NextWindowStart is the boundary that closes the rolling window containing `at`. Zero for an
+// unbounded window or a zero clock.
+func NextWindowStart(at time.Time, window time.Duration, zone *time.Location) time.Time {
+	if window <= 0 || at.IsZero() {
+		return time.Time{}
+	}
+	return windowOpening(windowIndex(at, window, zone)+1, window, zone)
 }
 
 // windowSlice keeps a ROTATING ~window-of-runtime slice of the ordered deck, advancing its

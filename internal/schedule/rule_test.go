@@ -246,20 +246,56 @@ func TestWindowIndex_ConstantWithinAdvancesAcross(t *testing.T) {
 	// Two moments in the SAME 24h window → identical index (idempotent seed → no re-push).
 	a := base.Add(1 * time.Hour)
 	b := base.Add(23 * time.Hour)
-	if windowIndex(a, win) != windowIndex(b, win) {
-		t.Errorf("indices differ within a window: %d vs %d", windowIndex(a, win), windowIndex(b, win))
+	if windowIndex(a, win, nil) != windowIndex(b, win, nil) {
+		t.Errorf("indices differ within a window: %d vs %d", windowIndex(a, win, nil), windowIndex(b, win, nil))
 	}
 	// A moment in the NEXT window → index advances by exactly 1.
 	next := base.Add(25 * time.Hour)
-	if windowIndex(next, win) != windowIndex(a, win)+1 {
-		t.Errorf("next window index = %d, want %d", windowIndex(next, win), windowIndex(a, win)+1)
+	if windowIndex(next, win, nil) != windowIndex(a, win, nil)+1 {
+		t.Errorf("next window index = %d, want %d", windowIndex(next, win, nil), windowIndex(a, win, nil)+1)
 	}
 	// Zero window or zero clock → 0 (un-windowed behavior preserved).
-	if windowIndex(a, 0) != 0 {
+	if windowIndex(a, 0, nil) != 0 {
 		t.Error("zero window should yield index 0")
 	}
-	if windowIndex(time.Time{}, win) != 0 {
+	if windowIndex(time.Time{}, win, nil) != 0 {
 		t.Error("zero clock should yield index 0")
+	}
+}
+
+// #1675: the window grid is laid on the guide's wall clock. On a UTC grid a daily window turned at
+// 00:00 UTC, which is 20:00 in New York in summer: primetime. It must turn at local midnight, and
+// across a DST change the local day is 23 h or 25 h long while the index still advances by one.
+func TestWindowGrid_TurnsAtLocalMidnightAcrossDST(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("zone database unavailable: %v", err)
+	}
+	const day = 24 * time.Hour
+	primetime := time.Date(2026, time.July, 23, 20, 30, 0, 0, ny) // 00:30 UTC the next day
+	if got, want := WindowStart(primetime, day, ny), time.Date(2026, time.July, 23, 0, 0, 0, 0, ny); !got.Equal(want) {
+		t.Errorf("window containing 20:30 New York opened %v, want local midnight %v", got, want)
+	}
+	if got, want := NextWindowStart(primetime, day, ny), time.Date(2026, time.July, 24, 0, 0, 0, 0, ny); !got.Equal(want) {
+		t.Errorf("window containing 20:30 New York closes %v, want the next local midnight %v", got, want)
+	}
+
+	for _, tc := range []struct {
+		name string
+		day  time.Time // local midnight opening the DST day
+		long time.Duration
+	}{
+		{"spring forward", time.Date(2026, time.March, 8, 0, 0, 0, 0, ny), 23 * time.Hour},
+		{"fall back", time.Date(2026, time.November, 1, 0, 0, 0, 0, ny), 25 * time.Hour},
+	} {
+		noon := tc.day.Add(12 * time.Hour)
+		opened, closes := WindowStart(noon, day, ny), NextWindowStart(noon, day, ny)
+		if !opened.Equal(tc.day) || closes.Sub(opened) != tc.long {
+			t.Errorf("%s: window %v → %v (%v), want %v lasting %v", tc.name, opened, closes, closes.Sub(opened), tc.day, tc.long)
+		}
+		if windowIndex(closes, day, ny) != windowIndex(noon, day, ny)+1 {
+			t.Errorf("%s: index did not advance by exactly one across the day", tc.name)
+		}
 	}
 }
 
