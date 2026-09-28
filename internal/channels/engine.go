@@ -51,7 +51,7 @@ type EngineStore interface {
 	GetJob(ctx context.Context, id string) (store.Job, error)
 	SaveChannel(ctx context.Context, ch store.Channel) (store.Channel, error)
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)
-	LastAiredByChannel(ctx context.Context, channelID string) (map[provision.Key]time.Time, error)
+	LastAiredByChannel(ctx context.Context, channelID string, before time.Time) (map[string]time.Time, error)
 }
 
 // AvailabilityStore is the title and episode cache used to resolve scheduled
@@ -717,7 +717,19 @@ func (s *storeAvailability) memoEpisodes(libraryID string, resolution schedule.E
 	s.mu.Unlock()
 }
 
-// lastAiredFor loads the channel's airing history for recency-aware placement (§3.1).
+// lastAiredFor loads the channel's airing history for recency-aware placement (§3.1), as of the
+// start of the rolling window that `at` falls in. `ch` must already carry DefaultWindow, so the
+// window resolves exactly as ComputeDesiredAt will resolve it.
+//
+// AS OF THE WINDOW START (#1674): the history is the one input to a window's arrangement that
+// changes while the window airs, since every tune-in records an airing. Read live, each reconcile
+// re-sorted the deck and the same wall-clock instant mapped to a different programme. Read as of
+// the boundary, it is constant for the whole window, like the slice offset, and what aired during
+// the window shapes the next one.
+//
+// An UNBOUNDED window never opens a new window, so there is no boundary at which a re-sort could
+// land without rewriting what is on air: the deck loops from the channel's anchor forever. Such a
+// channel keeps its seeded order and reads no history.
 //
 // BEST-EFFORT: a store that cannot answer yields an empty map, and placement falls back to the
 // positional rotation it used before the signal existed. A history read must never be able to
@@ -725,14 +737,18 @@ func (s *storeAvailability) memoEpisodes(libraryID string, resolution schedule.E
 //
 // Called from BOTH reconcile and CyclePreview, through this one helper, so the preview cannot
 // disagree with what actually ships (§8.1's one-code-path rule).
-func (e *Engine) lastAiredFor(ctx context.Context, channelID string) map[provision.Key]time.Time {
+func (e *Engine) lastAiredFor(ctx context.Context, ch schedule.Channel, policy schedule.ChannelPolicy, at time.Time) map[string]time.Time {
 	if e.store == nil {
 		return nil
 	}
-	hist, err := e.store.LastAiredByChannel(ctx, channelID)
+	opened := schedule.WindowStart(at, schedule.ResolveWindow(ch, policy, at))
+	if opened.IsZero() {
+		return nil
+	}
+	hist, err := e.store.LastAiredByChannel(ctx, ch.ID, opened)
 	if err != nil {
 		e.log.Debug("recency: airing history unavailable; placement falls back to positional rotation",
-			"channel", channelID, "err", err)
+			"channel", ch.ID, "err", err)
 		return nil
 	}
 	return hist

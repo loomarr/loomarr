@@ -129,10 +129,10 @@ func (e *Engine) PreviewPlannedChannel(ctx context.Context, ch store.Channel, at
 		}
 	}
 	chDomain := ch.Channel
-	chDomain.LastAired = e.lastAiredFor(ctx, ch.ID)
 	chDomain.BreaksPerHour = BreaksPerHourFor(ch.Policy, hasFillerPool, e.breaksPerHourFor())
 	chDomain.BreakDurationMs = BreakDurationFor(ch.Policy, e.breakDurationFor()).Milliseconds()
 	chDomain.DefaultWindow = e.defaultWindowFor()
+	chDomain.LastAired = e.lastAiredFor(ctx, chDomain, ch.Policy, at)
 	chDomain.NaturalBreaks = e.naturalBreaksFor(ctx, ch.Policy, playsInternally)
 	chDomain.PinnedCuts = pinnedCutsAt(ch, playsInternally, at)
 

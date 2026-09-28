@@ -159,8 +159,16 @@ scheduler's memory resets to nothing — so a title recurs on a fixed positional
 programmed one. Reported from the dev channel: Akira at Tue 21:53, Fri 13:33, Sat 02:10, Mon 01:30
 — four airings in a week, at no interval anyone chose.
 
-Recency closes that loop using `airings` (design.md §5): the last time each key aired **on this
-channel**, consumed at placement.
+Recency closes that loop using `airings` (design.md §5): the last time each episode or film aired
+**on this channel**, consumed at placement.
+
+- **Per episode, not per title.** An aired episode moves back; its unaired siblings keep their
+  places. Keyed by the series, one tune-in pushed a whole show behind everything else (#1674).
+- **Read as of the window's start.** A window's arrangement reads the history recorded before the
+  window opened, so it is constant for the whole window, like the slice offset. What airs during
+  the window shapes the next one. Read live, every reconcile after a tune-in re-sorted the deck and
+  the guide rewrote the programme on air (#1674). An unbounded window never opens a new one, so it
+  reads no history.
 
 - **A SOFT RANKING SIGNAL, not a constraint.** Among candidates that are equally valid under every
   §3 rule, the least-recently-aired wins; a title that has never aired sorts first. It cannot be

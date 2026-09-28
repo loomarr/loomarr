@@ -93,11 +93,20 @@ After a reconcile that creates, renames or deletes channels, the scheduler pokes
 
 ## Airing history
 
-`airings` records one row per programme aired (`{channel_id, key, library_item_id, aired_at}`),
-written by the playout resolver when it resolves a programme for streaming. The write is
-best-effort: a failed insert is logged and the programme still airs. `LastAiredByChannel` returns the
-latest airing per key, which is all placement needs. It is Loomarr's own broadcast record, not
-viewer watch state, and is purged by the retention janitor.
+`airings` records one row per airing of a unit, an episode or a film
+(`{channel_id, library_item_id, aired_at, recorded_at, key}`), written by the playout resolver when
+it resolves a programme for streaming. Re-resolving the same airing writes nothing new, so
+`recorded_at` is when the airing was first observed. The write is best-effort: a failed insert is
+logged and the programme still airs. Each write prunes that unit's rows older than eight days down
+to the newest of them, so the table stays bounded by lineup size. It is Loomarr's own broadcast
+record, not viewer watch state.
+
+`LastAiredByChannel(channel, before)` returns the latest airing per unit among rows recorded
+strictly before `before`. Placement passes the start of the rolling window it is arranging, so a
+window's history is fixed when the window opens (#1674). A tune-in during the window, including one
+that first records a programme which started before the boundary, shapes the next window and
+cannot re-arrange the one on air. A channel on an unbounded window never opens a new window, so it
+reads no history.
 
 Recency is a **soft ranking signal**, not a constraint (`programming-design.md` §3.1). A 24-hour day
 consumes about 13 films, so a week without repeats needs about 168 hours of content; a hard
