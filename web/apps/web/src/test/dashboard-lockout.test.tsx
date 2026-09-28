@@ -98,4 +98,16 @@ describe("Dashboard — member lockout (V16)", () => {
       expect(seen.some((u) => u.includes("/v1/playout/sessions"))).toBe(false);
     });
   });
+
+  // The restart notice is admin-only (#1659 Q-S1): it names settings only an admin can change.
+  it("never asks for or shows the restart notice", async () => {
+    const seen = stubAs(MEMBER);
+    renderAt("/dashboard");
+
+    await screen.findByText(/dashboard is for admins/i);
+    await waitFor(() => {
+      expect(seen.some((u) => u.includes("/v1/system/restart"))).toBe(false);
+    });
+    expect(screen.queryByText(/restart needed/i)).not.toBeInTheDocument();
+  });
 });
