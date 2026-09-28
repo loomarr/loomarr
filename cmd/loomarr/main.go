@@ -23,6 +23,7 @@ import (
 	"github.com/loomarr/loomarr/internal/buildinfo"
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/diagnostics"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/landiscovery"
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -163,7 +164,7 @@ func runOnce(log *slog.Logger, generation int, databaseMigration *databaseMigrat
 	// phases require it; readiness reflects the truth either way).
 	var st store.Store
 	if cfg.DatabaseURL != "" {
-		st, err = store.Open(context.Background(), cfg.DatabaseURL, cfg.AutoMigrate)
+		st, err = fillerstore.Open(context.Background(), cfg.DatabaseURL, cfg.AutoMigrate)
 		if err != nil {
 			if databaseMigration.fallbackSQLiteURL != "" {
 				if restoreErr := databaseMigration.restoreSQLite(fmt.Errorf("open first PostgreSQL generation: %w", err)); restoreErr != nil {

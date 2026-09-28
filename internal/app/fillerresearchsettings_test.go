@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerresearch"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 func TestFillerResearchSettingsAdapterTestsSavedProviderWithoutReturningItsSecret(t *testing.T) {
@@ -20,7 +20,7 @@ func TestFillerResearchSettingsAdapterTestsSavedProviderWithoutReturningItsSecre
 	}))
 	defer server.Close()
 
-	st, err := store.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := fillerstore.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}

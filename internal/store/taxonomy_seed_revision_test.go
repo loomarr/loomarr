@@ -4,8 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
@@ -44,56 +42,5 @@ func TestTaxonomySeedRevisionConvergesOnceWithoutOverwritingOperatorChoice(t *te
 	}
 	if _, ok := taxonomy.New(taxa).Get("animated"); ok {
 		t.Fatal("applied revision recreated a term the operator removed")
-	}
-}
-
-func TestFillerEnrichmentBackfillCapturesExistingCatalogFactsOnce(t *testing.T) {
-	st := newSQLiteStore(t).(*sqlStore)
-	ctx := t.Context()
-	at := time.Unix(1_700_000_000, 0).UTC()
-	clip := Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "Existing",
-		Kind: filler.Commercial, Era: 1999, Audience: filler.General, Brand: "HP Sauce",
-		GeographicScope: filler.GeographicNational, Country: "GB", Network: "Five", GeoEvidence: "operator"},
-		UpdatedAt: at, CreatedAt: at}
-	if err := st.UpsertClip(ctx, clip); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.SetClipTags(ctx, clip.Hash, []string{"condiments"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.db.ExecContext(ctx, `DELETE FROM filler_enrichment_backfills WHERE version = ?`, catalogProjectionBackfillVersion); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.backfillFillerEnrichment(ctx, at.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	states, err := st.ListFillerEnrichment(ctx, clip.Hash)
-	if err != nil {
-		t.Fatal(err)
-	}
-	byAxis := make(map[fillerenrichment.Axis]fillerenrichment.State, len(states))
-	for _, state := range states {
-		byAxis[state.Axis] = state
-	}
-	if byAxis[fillerenrichment.AxisKind].Value.Text != "commercial" ||
-		byAxis[fillerenrichment.AxisEra].Value.Year != 1999 || byAxis[fillerenrichment.AxisBrand].Value.Text != "HP Sauce" ||
-		byAxis[fillerenrichment.AxisGeography].Evidence.Kind != fillerenrichment.EvidenceOperator ||
-		len(byAxis[fillerenrichment.AxisProduct].Value.Tags) != 1 {
-		t.Fatalf("backfilled states = %+v", states)
-	}
-	if _, err := st.db.ExecContext(ctx, `DELETE FROM filler_enrichment_axes WHERE clip_hash = 'existing' AND axis = 'brand'`); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.backfillFillerEnrichment(ctx, at.Add(2*time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	states, err = st.ListFillerEnrichment(ctx, clip.Hash)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, state := range states {
-		if state.Axis == fillerenrichment.AxisBrand {
-			t.Fatal("completed backfill recreated a deliberately removed axis row")
-		}
 	}
 }

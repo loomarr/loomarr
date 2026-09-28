@@ -10,8 +10,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/config"
 	"github.com/loomarr/loomarr/internal/devbootstrap"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/secretprotection"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 func main() {
@@ -26,7 +26,7 @@ func main() {
 		log.Fatalf("dev-bootstrap: prepare isolated encryption key: %v", err)
 	}
 	ctx := context.Background()
-	st, err := store.Open(ctx, cfg.DatabaseURL, true)
+	st, err := fillerstore.Open(ctx, cfg.DatabaseURL, true)
 	if err != nil {
 		log.Fatalf("dev-bootstrap: open isolated store: %v", err)
 	}

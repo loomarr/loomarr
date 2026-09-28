@@ -35,6 +35,5 @@ var (
 	ErrNotFound                        = store.ErrNotFound
 	ErrTaxonConflict                   = store.ErrTaxonConflict
 	ErrUnknownClipSort                 = store.ErrUnknownClipSort
-	ErrFillerResearchStale             = store.ErrFillerResearchStale
 	ErrConditioningPublicationMismatch = store.ErrConditioningPublicationMismatch
 )

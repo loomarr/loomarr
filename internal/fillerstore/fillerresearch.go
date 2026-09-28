@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -13,8 +13,11 @@ import (
 
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
+// ErrFillerResearchStale reports a report researched against an input revision the clip has since
+// moved past.
 var ErrFillerResearchStale = errors.New("filler context inputs changed during research")
 
 func (s *sqlStore) ReserveFillerResearchWebRequest(ctx context.Context, month string,
@@ -26,7 +29,7 @@ func (s *sqlStore) ReserveFillerResearchWebRequest(ctx context.Context, month st
 		strings.TrimSpace(attempt.AdapterVersion) != "" || !attempt.ReservedAt.IsZero()) && !attempt.Tracked() {
 		return fillerresearch.WebUsage{}, fillerresearch.ErrInvalid
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fillerresearch.WebUsage{}, fmt.Errorf("reserve filler web search: begin: %w", err)
 	}
@@ -90,7 +93,7 @@ func (s *sqlStore) CompleteFillerResearchWebRequest(ctx context.Context, month s
 		return fmt.Errorf("complete filler web search: affected rows: %w", err)
 	}
 	if updated != 1 {
-		return ErrNotFound
+		return store.ErrNotFound
 	}
 	return nil
 }
@@ -158,7 +161,7 @@ func (s *sqlStore) ListFillerResearchCandidates(ctx context.Context, producer, p
 	}
 	out := make([]fillerresearch.Candidate, 0, len(identities))
 	for _, identity := range identities {
-		clip, err := s.GetClip(ctx, identity.hash)
+		clip, err := s.core.GetClip(ctx, identity.hash)
 		if err != nil {
 			return nil, fmt.Errorf("load filler context candidate %s: %w", identity.hash, err)
 		}
@@ -176,19 +179,15 @@ func (s *sqlStore) SaveFillerResearchReport(ctx context.Context, report fillerre
 	if err != nil {
 		return fmt.Errorf("encode filler context report: %w", err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("save filler context report: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	query := `SELECT enrichment_revision FROM clips WHERE hash = ?`
-	if s.dialect == DialectPostgres {
-		query += ` FOR UPDATE`
-	}
-	var revision int64
-	if err := tx.QueryRowContext(ctx, s.ph(query), report.ClipHash).Scan(&revision); err != nil {
+	revision, err := s.db.Clips(tx).EnrichmentRevision(ctx, report.ClipHash)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return store.ErrNotFound
 		}
 		return fmt.Errorf("save filler context report: read input revision: %w", err)
 	}
@@ -223,7 +222,7 @@ func (s *sqlStore) PromoteStoredFillerResearchCountries(ctx context.Context, lim
 	}
 	countryPredicate := `COALESCE(json_extract(report_json, '$.suggestion.countryCode'), '') <> ''
 		AND COALESCE(json_extract(report_json, '$.suggestion.confidence'), 0) >= ?`
-	if s.dialect == DialectPostgres {
+	if s.dialect == store.DialectPostgres {
 		countryPredicate = `COALESCE(report_json::jsonb #>> '{suggestion,countryCode}', '') <> ''
 			AND COALESCE((report_json::jsonb #>> '{suggestion,confidence}')::integer, 0) >= ?`
 	}
@@ -269,7 +268,7 @@ func (s *sqlStore) PromoteStoredFillerResearchCountries(ctx context.Context, lim
 		if !ok {
 			continue
 		}
-		tx, err := s.db.BeginTx(ctx, nil)
+		tx, err := s.db.Begin(ctx)
 		if err != nil {
 			return promoted, fmt.Errorf("promote stored filler context country: begin: %w", err)
 		}
@@ -323,7 +322,7 @@ func (s *sqlStore) LatestFillerResearchReport(ctx context.Context, clipHash stri
 	err := s.db.QueryRowContext(ctx, s.ph(`SELECT report_json FROM filler_context_reports
 		WHERE clip_hash = ? ORDER BY completed_at DESC, producer_version DESC LIMIT 1`), clipHash).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return fillerresearch.Report{}, ErrNotFound
+		return fillerresearch.Report{}, store.ErrNotFound
 	}
 	if err != nil {
 		return fillerresearch.Report{}, fmt.Errorf("load filler context report: %w", err)

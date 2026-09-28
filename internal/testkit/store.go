@@ -192,7 +192,7 @@ func buildTemplate() (string, error) {
 	}
 	path := filepath.Join(dir, "template.db")
 
-	st, err := store.Open(context.Background(), "sqlite://"+path, true)
+	st, err := fillerstore.Open(context.Background(), "sqlite://"+path, true)
 	if err != nil {
 		return "", fmt.Errorf("build migrated template store: %w", err)
 	}

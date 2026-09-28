@@ -21,6 +21,7 @@ import (
 	"github.com/loomarr/loomarr/internal/auth"
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/demolibrary"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -78,7 +79,7 @@ func seed(ctx context.Context, cfg seedConfig, log *slog.Logger) error {
 		return fmt.Errorf("the stand-in media server is not answering at %s (run `make demo-library` first): %w", cfg.libraryURL, err)
 	}
 
-	st, err := store.Open(ctx, cfg.databaseURL, true)
+	st, err := fillerstore.Open(ctx, cfg.databaseURL, true)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}

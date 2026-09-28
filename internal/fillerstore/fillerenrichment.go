@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 const catalogProjectionBackfillVersion = 2
@@ -36,7 +37,7 @@ func (s *sqlStore) ListFillerEnrichment(ctx context.Context, clipHash string) ([
 	return out, rows.Err()
 }
 
-func (s *sqlStore) ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error) {
+func (s *sqlStore) ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error) {
 	return s.listFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit, true)
 }
 
@@ -44,19 +45,21 @@ func (s *sqlStore) ListFillerEnrichmentCandidates(ctx context.Context, producer,
 // Unlike free/text projections, transcript and frame work does not become payable again merely
 // because another descriptive input advanced the clip revision. A changed provider/model/prompt or
 // taxonomy has a different identity and is therefore selected once in its own right.
-func (s *sqlStore) ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error) {
+func (s *sqlStore) ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error) {
 	return s.listFillerEnrichmentCandidates(ctx, producer, producerVersion, taxonomyVersion, limit, false)
 }
 
-func (s *sqlStore) listFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int, currentRevision bool) ([]Clip, error) {
+// listFillerEnrichmentCandidates picks the candidate identities here, where the pass table is, and
+// loads the clips through the core's batch read, which owns how a clip and its tags are read.
+func (s *sqlStore) listFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int, currentRevision bool) ([]store.Clip, error) {
 	if limit <= 0 {
-		return []Clip{}, nil
+		return []store.Clip{}, nil
 	}
 	revisionPredicate := ""
 	if currentRevision {
 		revisionPredicate = " AND p.input_revision = clips.enrichment_revision"
 	}
-	query := clipSelect + ` WHERE removed_at = 0 AND is_composite = false
+	query := `SELECT hash FROM clips WHERE removed_at = 0 AND is_composite = false
 		AND NOT EXISTS (
 			SELECT 1 FROM filler_enrichment_passes p
 			WHERE p.clip_hash = clips.hash AND p.producer = ? AND p.producer_version = ? AND p.taxonomy_version = ?
@@ -68,12 +71,35 @@ func (s *sqlStore) listFillerEnrichmentCandidates(ctx context.Context, producer,
 		return nil, fmt.Errorf("list filler enrichment candidates: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	clips, err := scanClips(rows)
-	if err != nil {
-		return nil, err
+	var hashes []string
+	for rows.Next() {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
+			return nil, fmt.Errorf("list filler enrichment candidates: %w", err)
+		}
+		hashes = append(hashes, hash)
 	}
-	if err := s.attachTags(ctx, clips); err != nil {
-		return nil, err
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list filler enrichment candidates: %w", err)
+	}
+	if len(hashes) == 0 {
+		return []store.Clip{}, nil
+	}
+	// Held clips are enrichment work too, so the batch read lifts its held exclusion; removed and
+	// composite clips stay excluded, as the selection above already required.
+	loaded, err := s.core.ListClips(ctx, store.ClipFilter{Hashes: hashes, IncludeHeld: true})
+	if err != nil {
+		return nil, fmt.Errorf("load filler enrichment candidates: %w", err)
+	}
+	byHash := make(map[string]store.Clip, len(loaded))
+	for _, clip := range loaded {
+		byHash[clip.Hash] = clip
+	}
+	clips := make([]store.Clip, 0, len(hashes))
+	for _, hash := range hashes {
+		if clip, ok := byHash[hash]; ok {
+			clips = append(clips, clip)
+		}
 	}
 	return clips, nil
 }
@@ -116,7 +142,7 @@ func (s *sqlStore) ApplyFillerEnrichment(ctx context.Context, candidate filleren
 	if candidate.Status == fillerenrichment.StatusMissing {
 		return fillerenrichment.State{}, false, fmt.Errorf("%w: missing enrichment state is not persisted", fillerenrichment.ErrInvalidState)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fillerenrichment.State{}, false, fmt.Errorf("apply filler enrichment: begin: %w", err)
 	}
@@ -134,8 +160,8 @@ func (s *sqlStore) ApplyFillerEnrichment(ctx context.Context, candidate filleren
 	return accepted, true, nil
 }
 
-func (s *sqlStore) requireEnrichmentClipTx(ctx context.Context, tx *sql.Tx, clipHash string) error {
-	if err := s.clipsIn(tx).Require(ctx, clipHash); err != nil && !errors.Is(err, ErrNotFound) {
+func (s *sqlStore) requireEnrichmentClipTx(ctx context.Context, tx store.Tx, clipHash string) error {
+	if err := s.db.Clips(tx).Require(ctx, clipHash); err != nil && !errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("apply filler enrichment: %w", err)
 	} else if err != nil {
 		return err
@@ -143,14 +169,14 @@ func (s *sqlStore) requireEnrichmentClipTx(ctx context.Context, tx *sql.Tx, clip
 	return nil
 }
 
-func (s *sqlStore) applyFillerEnrichmentTx(ctx context.Context, tx *sql.Tx, candidate fillerenrichment.State, updatedAt time.Time) (fillerenrichment.State, bool, error) {
+func (s *sqlStore) applyFillerEnrichmentTx(ctx context.Context, tx store.Tx, candidate fillerenrichment.State, updatedAt time.Time) (fillerenrichment.State, bool, error) {
 	grounded, err := s.groundEnrichmentStateTx(ctx, tx, candidate)
 	if err != nil {
 		return fillerenrichment.State{}, false, err
 	}
 	candidate = grounded
 	query := `SELECT ` + enrichmentColumns + ` FROM filler_enrichment_axes WHERE clip_hash = ? AND axis = ?`
-	if s.dialect == DialectPostgres {
+	if s.dialect == store.DialectPostgres {
 		query += ` FOR UPDATE`
 	}
 	current, err := scanEnrichment(tx.QueryRowContext(ctx, s.ph(query), candidate.ClipHash, string(candidate.Axis)))
@@ -200,7 +226,7 @@ func taxonomyEnrichmentAxis(axis fillerenrichment.Axis) bool {
 	}
 }
 
-func (s *sqlStore) groundEnrichmentStateTx(ctx context.Context, tx *sql.Tx, state fillerenrichment.State) (fillerenrichment.State, error) {
+func (s *sqlStore) groundEnrichmentStateTx(ctx context.Context, tx store.Tx, state fillerenrichment.State) (fillerenrichment.State, error) {
 	if !taxonomyEnrichmentAxis(state.Axis) || len(state.Value.Tags) == 0 {
 		return state, nil
 	}
@@ -218,9 +244,9 @@ func (s *sqlStore) groundEnrichmentStateTx(ctx context.Context, tx *sql.Tx, stat
 	return state, nil
 }
 
-func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx *sql.Tx, state fillerenrichment.State, updatedAt time.Time) error {
+func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx store.Tx, state fillerenrichment.State, updatedAt time.Time) error {
 	var err error
-	clips := s.clipsIn(tx)
+	clips := s.db.Clips(tx)
 	switch state.Axis {
 	case fillerenrichment.AxisKind:
 		if kind := filler.Kind(state.Value.Text); kind == filler.Commercial || kind == filler.Bumper ||
@@ -246,7 +272,7 @@ func (s *sqlStore) projectFillerEnrichmentTx(ctx context.Context, tx *sql.Tx, st
 	case fillerenrichment.AxisGeography:
 		g := state.Value.Geography
 		if g != (fillerenrichment.Geography{}) {
-			err = clips.FillGeography(ctx, state.ClipHash, ClipGeography{
+			err = clips.FillGeography(ctx, state.ClipHash, store.ClipGeography{
 				Scope: g.Scope, Country: g.Country, Market: g.Market,
 				Network: g.Network, Station: g.Station, AirDate: g.AirDate,
 			}, state.Evidence.Reference, updatedAt)
@@ -268,7 +294,7 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 	if err := pass.Validate(); err != nil {
 		return 0, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("apply filler enrichment pass: begin: %w", err)
 	}
@@ -276,7 +302,8 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 	if err := s.requireEnrichmentClipTx(ctx, tx, pass.ClipHash); err != nil {
 		return 0, err
 	}
-	inputRevision, err := s.clipsIn(tx).EnrichmentRevision(ctx, pass.ClipHash)
+	clips := s.db.Clips(tx)
+	inputRevision, err := clips.EnrichmentRevision(ctx, pass.ClipHash)
 	if err != nil {
 		return 0, fmt.Errorf("apply filler enrichment pass: read input revision: %w", err)
 	}
@@ -289,20 +316,19 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 		}
 	}
 	if pass.Observation != nil && pass.Observation.Transcript != nil {
-		if err := s.clipsIn(tx).RecordTranscript(ctx, pass.ClipHash, *pass.Observation.Transcript, pass.CompletedAt); err != nil {
+		if err := clips.RecordTranscript(ctx, pass.ClipHash, *pass.Observation.Transcript, pass.CompletedAt); err != nil {
 			return 0, fmt.Errorf("apply filler enrichment pass: record transcript observation: %w", err)
 		}
 	}
 	if pass.Observation != nil && pass.Observation.Vision != nil {
 		vision := pass.Observation.Vision
-		if err := s.clipsIn(tx).RecordVision(ctx, pass.ClipHash, vision.VisibleText, vision.SuggestedEra, pass.CompletedAt); err != nil {
+		if err := clips.RecordVision(ctx, pass.ClipHash, vision.VisibleText, vision.SuggestedEra, pass.CompletedAt); err != nil {
 			return 0, fmt.Errorf("apply filler enrichment pass: record vision observation: %w", err)
 		}
 	}
 	// The pass owns the exact input revision it just committed. Reading again after raw media
 	// observations prevents that same expensive result from immediately waking its own runner.
-	if err := tx.QueryRowContext(ctx, s.ph(`SELECT enrichment_revision FROM clips WHERE hash = ?`),
-		pass.ClipHash).Scan(&inputRevision); err != nil {
+	if inputRevision, err = clips.EnrichmentRevision(ctx, pass.ClipHash); err != nil {
 		return 0, fmt.Errorf("apply filler enrichment pass: refresh input revision: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_enrichment_passes
@@ -323,6 +349,7 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 // backfillFillerEnrichment captures pre-axis catalog facts once so the new rank-aware module cannot
 // mistake a real operator/item/content fact for an empty axis. It is restart-idempotent and records
 // only the current projection; the old clip-wide origin flags are not used after this conversion.
+// Open runs it after the core's own boot seeds, so the taxonomy it reads is already converged.
 func (s *sqlStore) backfillFillerEnrichment(ctx context.Context, completedAt time.Time) error {
 	var applied int
 	if err := s.db.QueryRowContext(ctx, s.ph(`SELECT COUNT(*) FROM filler_enrichment_backfills WHERE version = ?`), catalogProjectionBackfillVersion).Scan(&applied); err != nil {
@@ -331,11 +358,11 @@ func (s *sqlStore) backfillFillerEnrichment(ctx context.Context, completedAt tim
 	if applied > 0 {
 		return nil
 	}
-	clips, err := s.ListClips(ctx, ClipFilter{IncludeHeld: true, IncludeRemoved: true, IncludeComposites: true})
+	clips, err := s.core.ListClips(ctx, store.ClipFilter{IncludeHeld: true, IncludeRemoved: true, IncludeComposites: true})
 	if err != nil {
 		return fmt.Errorf("backfill filler enrichment: list clips: %w", err)
 	}
-	taxa, err := s.ListTaxa(ctx)
+	taxa, err := s.core.ListTaxa(ctx)
 	if err != nil {
 		return fmt.Errorf("backfill filler enrichment: list taxonomy: %w", err)
 	}

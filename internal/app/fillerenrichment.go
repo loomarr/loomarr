@@ -19,9 +19,11 @@ import (
 	"github.com/loomarr/loomarr/internal/taxonomy"
 )
 
-type fillerEnrichmentRepository struct{ st store.Store }
+type fillerEnrichmentRepository struct{ st fillerstore.Store }
 
-type fillerResearchRepository struct{ st store.Store }
+type fillerResearchRepository struct {
+	st fillerstore.FillerResearchStore
+}
 
 func activeFillerTextSelection(set resolved, recorder *metrics.Recorder) fillerenrichment.TextSelection {
 	selection := resolveSelection(set)
@@ -96,7 +98,7 @@ type fillerVisionObserver interface {
 // already decided that useful work remains, and this adapter can load media and produce observations
 // but has no readiness, persistence, or conveyor mutation in its interface.
 type fillerMediaExecutor struct {
-	store      store.Store
+	store      fillerstore.Store
 	transcript fillerTranscriptObserver
 	vision     fillerVisionObserver
 	kind       fillerenrichment.Capability

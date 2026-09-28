@@ -8,19 +8,19 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/fillerresearch"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/store"
 )
 
 type fillerResearchSettingsAdapter struct {
-	store  store.Store
+	store  fillerstore.FillerResearchStore
 	set    resolved
 	client *http.Client
 	now    func() time.Time
 }
 
-func newFillerResearchSettingsAdapter(st store.Store, set resolved, recorder *metrics.Recorder) *fillerResearchSettingsAdapter {
+func newFillerResearchSettingsAdapter(st fillerstore.FillerResearchStore, set resolved, recorder *metrics.Recorder) *fillerResearchSettingsAdapter {
 	return &fillerResearchSettingsAdapter{store: st, set: set,
 		client: httpx.NewNamedObserved("filler_web_search", httpx.TimeoutReference, recorder), now: time.Now}
 }

@@ -8,8 +8,9 @@
 // Handle.Begin, so a write that also touches core tables can share one transaction. Dependencies
 // point this way only: the core store never imports this package (#1747).
 //
-// The filler state still in internal/store (clips' pipeline, decisions, enrichment, research,
-// split proposals) moves here in later steps of #1747.
+// Enrichment and research live here too, and write the clip columns they project only through
+// the core's store.ClipTx, inside their own transaction. The filler state still in internal/store
+// (clips' pipeline, decisions, split proposals) moves here in later steps of #1747.
 package fillerstore
 
 import (
@@ -18,6 +19,8 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerenrichment"
+	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillersafety"
 	"github.com/loomarr/loomarr/internal/fillerstructure"
 	"github.com/loomarr/loomarr/internal/fillerstructurewindow"
@@ -116,6 +119,29 @@ type FillerSafetyStore interface {
 	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
 }
 
+// FillerEnrichmentStore owns the accepted per-axis descriptive evidence for clips. Applying a
+// candidate is rank-aware and idempotent inside the adapter so no caller can overwrite an item fact
+// with weaker inference by choosing a different write path. What it projects onto the clip itself
+// goes through the core's store.ClipTx, inside the same transaction.
+type FillerEnrichmentStore interface {
+	ListFillerEnrichment(ctx context.Context, clipHash string) ([]fillerenrichment.State, error)
+	ApplyFillerEnrichment(ctx context.Context, candidate fillerenrichment.State, updatedAt time.Time) (fillerenrichment.State, bool, error)
+	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error)
+	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]store.Clip, error)
+	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
+}
+
+// FillerResearchStore owns cited context reports and their narrowly bounded country projection.
+type FillerResearchStore interface {
+	ListFillerResearchCandidates(ctx context.Context, producer, producerVersion, adapter, adapterVersion string, limit int) ([]fillerresearch.Candidate, error)
+	SaveFillerResearchReport(ctx context.Context, report fillerresearch.Report) error
+	PromoteStoredFillerResearchCountries(ctx context.Context, limit int) (int, error)
+	LatestFillerResearchReport(ctx context.Context, clipHash string) (fillerresearch.Report, error)
+	ReserveFillerResearchWebRequest(ctx context.Context, month string, provider fillerresearch.WebProvider, limit int, attempt fillerresearch.WebAttempt) (fillerresearch.WebUsage, error)
+	CompleteFillerResearchWebRequest(ctx context.Context, month string, success bool, at time.Time) error
+	FillerResearchWebUsage(ctx context.Context, month string) (fillerresearch.WebUsage, error)
+}
+
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -168,6 +194,8 @@ type Store interface {
 	FillerSourceStore
 	FillerPullStore
 	FillerAcquisitionStore
+	FillerEnrichmentStore
+	FillerResearchStore
 
 	// Core returns the store this one extends, for the core functions that need its adapter
 	// (backups, migration, schema version); store.Store's own methods are already promoted.
@@ -180,6 +208,8 @@ type sqlStore struct {
 	db      store.Handle
 	dialect store.Dialect
 	ph      placeholder
+	// core reads clips and the taxonomy through the core's own methods, which own how they are read.
+	core store.Store
 }
 
 // extended is Store: the core store's methods promoted, the filler half's methods beside them.
@@ -201,16 +231,26 @@ func Extend(core store.Store) Store {
 		return s
 	}
 	h := store.HandleOf(core)
-	return extended{Store: core, sqlStore: &sqlStore{db: h, dialect: h.Dialect(), ph: h.Rebind}}
+	return extended{Store: core, sqlStore: &sqlStore{db: h, dialect: h.Dialect(), ph: h.Rebind, core: core}}
 }
 
-// Open opens the core store (store.Open) and extends it.
+// Open opens the core store (store.Open) and extends it. With autoMigrate it then runs this
+// half's boot backfill, after the core's own boot seeds, as store.Open did while enrichment lived
+// there. Every opener that migrates opens here, or the backfill would run late, on clips a seed
+// tool wrote before the server first opened the database.
 func Open(ctx context.Context, databaseURL string, autoMigrate bool) (Store, error) {
 	core, err := store.Open(ctx, databaseURL, autoMigrate)
 	if err != nil {
 		return nil, err
 	}
-	return Extend(core), nil
+	st := Extend(core)
+	if autoMigrate {
+		if err := st.(extended).backfillFillerEnrichment(ctx, time.Now()); err != nil {
+			_ = core.Close()
+			return nil, err
+		}
+	}
+	return st, nil
 }
 
 // placeholder rewrites a query written with `?` markers into the dialect's style.

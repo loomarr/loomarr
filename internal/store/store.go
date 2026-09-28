@@ -15,8 +15,6 @@ import (
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
-	"github.com/loomarr/loomarr/internal/fillerenrichment"
-	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
@@ -576,28 +574,6 @@ type FillerDecisionStore interface {
 	fillerdecision.AppliedActionRepository
 }
 
-// FillerEnrichmentStore owns the accepted per-axis descriptive evidence for clips. Applying a
-// candidate is rank-aware and idempotent inside the adapter so no caller can overwrite an item fact
-// with weaker inference by choosing a different write path.
-type FillerEnrichmentStore interface {
-	ListFillerEnrichment(ctx context.Context, clipHash string) ([]fillerenrichment.State, error)
-	ApplyFillerEnrichment(ctx context.Context, candidate fillerenrichment.State, updatedAt time.Time) (fillerenrichment.State, bool, error)
-	ListFillerEnrichmentCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error)
-	ListFillerEnrichmentCapabilityCandidates(ctx context.Context, producer, producerVersion, taxonomyVersion string, limit int) ([]Clip, error)
-	ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenrichment.Pass) (int, error)
-}
-
-// FillerResearchStore owns cited context reports and their narrowly bounded country projection.
-type FillerResearchStore interface {
-	ListFillerResearchCandidates(ctx context.Context, producer, producerVersion, adapter, adapterVersion string, limit int) ([]fillerresearch.Candidate, error)
-	SaveFillerResearchReport(ctx context.Context, report fillerresearch.Report) error
-	PromoteStoredFillerResearchCountries(ctx context.Context, limit int) (int, error)
-	LatestFillerResearchReport(ctx context.Context, clipHash string) (fillerresearch.Report, error)
-	ReserveFillerResearchWebRequest(ctx context.Context, month string, provider fillerresearch.WebProvider, limit int, attempt fillerresearch.WebAttempt) (fillerresearch.WebUsage, error)
-	CompleteFillerResearchWebRequest(ctx context.Context, month string, success bool, at time.Time) error
-	FillerResearchWebUsage(ctx context.Context, month string) (fillerresearch.WebUsage, error)
-}
-
 // AiringStore records what actually went to air — written from playout only.
 type AiringStore interface {
 	// RecordClipPlay counts a filler clip having AIRED globally and on one channel (V58).
@@ -815,8 +791,6 @@ type Store interface {
 	ScheduledJobStore
 	UserStore
 	ClipStore
-	FillerEnrichmentStore
-	FillerResearchStore
 	InteractiveOperationStore
 	FillerDecisionStore
 	SplitProposalStore
