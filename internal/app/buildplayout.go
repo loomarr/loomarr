@@ -35,7 +35,6 @@ type playoutBuild struct {
 	capability        func() playout.Capacity
 	service           api.Playout
 	resolverService   api.PlayoutResolver
-	encodePool        *media.EncodePool
 	guide             api.PlayoutGuide
 	resolver          *playoutResolver
 	backendController *backendtransition.Controller
@@ -82,7 +81,6 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	var playoutObserver api.PlayoutObserver
 	var playoutSvc api.Playout
 	var playoutResolverSvc api.PlayoutResolver
-	var encodePool *media.EncodePool
 	var playoutGuideSvc api.PlayoutGuide
 	var playoutRes *playoutResolver
 	var backendController *backendtransition.Controller
@@ -276,23 +274,12 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		})
 	}
 
-	encodePool = newPreparedEncodePool(
-		func() playout.Encoder { return playout.Encoder(set.str("playout.encoder")) },
-		func() int { return playoutRes.HWEncodeSlots(rootCtx) }, // runs the lazy capability probe
-		func(measured int) int {
-			if measured <= 0 {
-				return 0
-			}
-			// The pool is the budget's lowest-priority client: its capacity is the budget's.
-			return resourceBudget.BackgroundSlots()
-		},
-	).WithMemoryGate(encodeMemoryGate(
+	resourceBudget.WithMemoryGate(encodeMemoryGate(
 		media.HostMemAvailable,
 		func() int { return set.intv("playout.memory_reserve_mb") },
 		func() int { return set.intv("playout.encode_memory_mb") },
 		playoutRes.EncodeHostBytes,
 	))
-	resourceBudget.WithEncodePool(encodePool)
 
 	// The capacity probe (#1512 G5/G11) runs at boot, off the critical path: until it publishes, the
 	// budget keeps the whole-stream measurement. Its tone-map self-check reports to Current Health.
@@ -430,7 +417,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	return playoutBuild{
 		observer: playoutObserver, capability: playoutRes.PublishedCapability,
 		service:         playoutSvc,
-		resolverService: playoutResolverSvc, encodePool: encodePool, guide: playoutGuideSvc,
+		resolverService: playoutResolverSvc, guide: playoutGuideSvc,
 		resolver: playoutRes, backendController: backendController,
 		setResidentVRAM: func(probe func(context.Context) (float64, string)) { residentVRAM = probe },
 		budget:          resourceBudget,
@@ -496,22 +483,4 @@ func playoutBudgetFacts(
 		facts.FirstRung = len(rungs) - 1
 	}
 	return facts
-}
-
-func newPreparedEncodePool(
-	encoder func() playout.Encoder,
-	measuredCapacity func() int,
-	effectiveCapacity func(int) int,
-) *media.EncodePool {
-	return media.NewDynamicEncodePool(func() int {
-		if encoder() == playout.EncoderSoftware {
-			return 0 // an explicit software choice must not start hardware preparation.
-		}
-		// Preparation and live children share the same effective host budget. Using the raw
-		// probe result here bypassed the operator cap and VRAM shading: a measured-twelve host
-		// capped at four launched eleven background encodes and starved foreground playback.
-		// Resolve the memoized measurement before applying those live limits so a cold start's
-		// conservative one-slot floor cannot become the process-lifetime preparation capacity.
-		return effectiveCapacity(measuredCapacity())
-	})
 }
