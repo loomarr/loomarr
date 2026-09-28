@@ -525,6 +525,8 @@ classify() {
         scripts/check-compose.sh) select_gate contracts ;;
         scripts/check-release-image-absence.sh) select_gate contracts ;;
         scripts/check-retired.sh) select_gate contracts ;;
+        # The docs gate's inline-path check (ci-docs.yml, `make docs-lint-paths`) and its allowlist.
+        scripts/check-doc-paths*) select_gate docs ;;
         # The docs screenshot capture (`make docs-capture`) is a manual operator helper; no gate
         # runs it, and its output is committed images the docs gates already check.
         scripts/docs-capture/*) select_gate contracts ;;

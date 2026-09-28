@@ -28,7 +28,7 @@ diagrams-verify: diagrams ## regenerated D2 sources and SVG diagrams must match 
 	@git diff --exit-code -- docs/diagrams
 
 .PHONY: docs-lint
-docs-lint: diagrams-verify docs-lint-md docs-lint-links docs-lint-prose ## D2 + markdownlint + lychee (offline) + Vale
+docs-lint: diagrams-verify docs-lint-md docs-lint-links docs-lint-paths docs-lint-prose ## D2 + markdownlint + lychee (offline) + inline repo paths + Vale
 
 .PHONY: docs-lint-md
 docs-lint-md: ## markdown structure (globs + rules live in .markdownlint-cli2.jsonc)
@@ -37,6 +37,10 @@ docs-lint-md: ## markdown structure (globs + rules live in .markdownlint-cli2.js
 .PHONY: docs-lint-links
 docs-lint-links: ## relative-link check, offline, over the WIDE set (see lychee.toml for why)
 	$(DOCKER_DOC) $(LYCHEE_IMAGE) --offline --no-progress $(LINK_GLOBS)
+
+.PHONY: docs-lint-paths
+docs-lint-paths: ## inline-code repo paths in the live docs must exist (allowlist: scripts/check-doc-paths.allow)
+	./scripts/check-doc-paths.sh
 
 .PHONY: docs-lint-prose
 docs-lint-prose: ## repo vocabulary + proper-noun casing (.vale.ini — no stock style package)
