@@ -524,7 +524,12 @@ const ChannelWatch = ({
         {paused ? (
           <IdleFrame
             title={`${channel.name} is off air`}
-            sub="Paused channels broadcast nothing, so there is no stream to join."
+            // The web mock's words; the way back is an admin's, so members get the first sentence.
+            sub={
+              isAdmin
+                ? "This channel is paused, so there's nothing to watch. Resume it under Danger zone."
+                : "This channel is paused, so there's nothing to watch."
+            }
           />
         ) : active ? (
           <div className="flex flex-col gap-3 p-3">
@@ -578,8 +583,7 @@ const ChannelWatch = ({
         <div className="flex items-center justify-between gap-4 border-border border-t bg-static-900/40 p-4">
           {isAdmin ? (
             <p className="text-muted-foreground text-xs">
-              Audio is set for the whole channel — everyone watching hears the same track, because one encoder
-              serves them all.
+              The audio language you pick applies to everyone watching this channel.
             </p>
           ) : (
             <span />
