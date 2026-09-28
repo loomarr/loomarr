@@ -26,7 +26,7 @@ func TestUpcomingHolidays(t *testing.T) {
 		for _, h := range schedule.UpcomingHolidays(tc.now, 6*7*24*time.Hour) {
 			got = append(got, fmt.Sprintf("%s@%s", h.ID, h.Start.Format("2006-01-02")))
 		}
-		if fmt.Sprint(got) != tc.want && !(len(got) == 0 && tc.want == "[]") {
+		if fmt.Sprint(got) != tc.want {
 			t.Errorf("UpcomingHolidays(%s) = %v, want %s", tc.now.Format("2006-01-02"), got, tc.want)
 		}
 	}
