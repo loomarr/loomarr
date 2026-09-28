@@ -260,11 +260,16 @@ func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, end
 			continue
 		}
 		var stdout bytes.Buffer
+		// ⚠ `-t` is an INPUT option here, before `-i` (#1488). `thumbnail` emits once it holds
+		// semanticThumbnailFrames frames or its input ends. As an output option, ffmpeg closed the
+		// output at the window's end without ever ending the filter's input, so a window with
+		// fewer frames than that (any 3 s window below 30 fps) returned nothing unless it ran
+		// into the end of the file. Bounding the input ends it, and the filter flushes its pick.
 		cmd := bgexec.FFmpeg(ctx, t.FFmpegPath,
 			"-nostdin",
 			"-ss", fmt.Sprintf("%.3f", float64(seekMs)/1000),
-			"-i", file,
 			"-t", fmt.Sprintf("%.3f", float64(windowMs)/1000),
+			"-i", file,
 			"-an",
 			"-vf", fmt.Sprintf("thumbnail=n=%d,scale=w='%s':h=-2", semanticThumbnailFrames, widthExpr),
 			"-frames:v", "1",
@@ -287,7 +292,9 @@ func (t *FFmpegTools) keyframesIn(ctx context.Context, file string, startMs, end
 const SemanticFrameMaxWidth = 1920
 
 // About three seconds at ordinary broadcast frame rates. The window itself is also capped at
-// three seconds, so this never grows with clip duration or buffers an entire reel.
+// three seconds, so this never grows with clip duration or buffers an entire reel. Below 30 fps
+// a window holds fewer frames than this, and the filter picks from what the window has when its
+// bounded input ends (see keyframesIn).
 const semanticThumbnailFrames = 90
 
 var showinfoPTSRE = regexp.MustCompile(`\bpts_time:([0-9]+(?:\.[0-9]+)?)`)
