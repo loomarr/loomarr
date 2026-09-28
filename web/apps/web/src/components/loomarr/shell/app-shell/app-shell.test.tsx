@@ -54,11 +54,13 @@ describe("AppShell", () => {
   // §12: TWO AUTHORED NAVS, not one list filtered by role. The member's is a different
   // product, not the admin's with gaps — so the admin-only surfaces are absent entirely
   // rather than present-and-greyed.
-  it("gives a member their own three, not the admin's list minus items", async () => {
+  // Home leads it too since #1659: the member Home carries no machine state.
+  it("gives a member their own list, not the admin's list minus items", async () => {
     renderShell(false);
-    expect(await screen.findByRole("link", { name: /guide/i })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /^home$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /guide/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /help/i })).toBeInTheDocument();
-    for (const gone of [/settings/i, /people/i, /filler/i, /channels/i, /^home$/i]) {
+    for (const gone of [/settings/i, /people/i, /filler/i, /channels/i]) {
       expect(screen.queryByRole("link", { name: gone })).not.toBeInTheDocument();
     }
   });

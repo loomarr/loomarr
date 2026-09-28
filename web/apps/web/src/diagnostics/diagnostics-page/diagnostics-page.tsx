@@ -21,11 +21,14 @@ const DiagnosticsPage = ({
   search,
   onSearchChange,
   playout,
+  health,
   onOpenRelated,
 }: {
   search: DiagnosticsSearch;
   onSearchChange: (search: DiagnosticsSearch) => void;
   playout?: ReactNode;
+  // Live server state over the startup report: connected services, activity, restart (Q-H7).
+  health?: ReactNode;
   onOpenRelated?: (kind: "channel" | "job", id: string) => void;
 }) => {
   const tabs = [
@@ -84,7 +87,12 @@ const DiagnosticsPage = ({
             onOpenRelated={onOpenRelated}
           />
         )}
-        {search.view === "health" && <StartupReportPage embedded />}
+        {search.view === "health" && (
+          <>
+            {health}
+            <StartupReportPage embedded />
+          </>
+        )}
         {search.view === "process" && playout}
       </div>
     </div>

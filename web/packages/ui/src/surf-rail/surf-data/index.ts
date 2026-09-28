@@ -1,5 +1,6 @@
 export {
   restoreSurfSelection,
+  surfChannelData,
   surfGroupsFromGuide,
   surfPreviousChannel,
   watchingScheduleFromGuide,

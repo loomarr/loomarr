@@ -1,6 +1,7 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
 import * as setupApi from "@loomarr/api/endpoints/setup";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { MeBodyRole } from "@loomarr/api/models/meBodyRole";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { meQueryOptions } from "@/auth/me-query";
 import { safeRedirectPath } from "@/auth/safe-redirect-path";
@@ -12,8 +13,16 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 // Login — the public sign-in screen (§11, §13). An idle surface (dark broadcast frame).
 // beforeLoad bounces an already-signed-in visitor to where they were headed; the
 // component wires useLogin and, on success, refreshes identity (the app's source of
-// truth) and returns them there — or the Channels home. The `redirect` search param is
+// truth) and returns them there — or their landing page. The `redirect` search param is
 // typed (replaces react-router's location.state) and set by the _authed guard.
+
+// Where sign-in lands when no deep link was asked for (#1659, maintainer 2026-09-28): an admin on
+// Home, which `/` resolves (or the wizard on an unfinished install), and a member on the Guide.
+// An identity that can't be read lands on the Guide, which every role can open.
+const landingPath = async (queryClient: QueryClient): Promise<string> => {
+  const me = await queryClient.fetchQuery(meQueryOptions()).catch(() => undefined);
+  return me?.status === 200 && me.data.role === MeBodyRole.admin ? "/" : "/guide";
+};
 interface LoginSearch {
   redirect?: string;
   // A reason code from a refused SSO round trip. A CODE, never a message — the callback
@@ -37,7 +46,7 @@ const LoginScreen = () => {
   // having been careful.
   const landing = async () => {
     await queryClient.invalidateQueries({ queryKey: authApi.getMeQueryKey() });
-    router.history.replace(safeRedirectPath(dest) ?? "/guide");
+    router.history.replace(safeRedirectPath(dest) ?? (await landingPath(queryClient)));
   };
 
   const login = authApi.useLogin({ mutation: { onSuccess: landing } });
@@ -118,7 +127,9 @@ const Route = createFileRoute("/login")({
         });
         if (res.ok) {
           await context.queryClient.invalidateQueries({ queryKey: authApi.getMeQueryKey() });
-          throw redirect({ href: safeRedirectPath(search.redirect) ?? "/guide" });
+          throw redirect({
+            href: safeRedirectPath(search.redirect) ?? (await landingPath(context.queryClient)),
+          });
         }
       }
       return; // signed out on a claimed install → show the form
@@ -127,7 +138,7 @@ const Route = createFileRoute("/login")({
     // beforeLoad redirect with `replace: true`, so an off-site `href` became a
     // window.location.replace() straight off the app. Re-validated for the same reason `landing`
     // is — this is the second navigation, not the same one.
-    throw redirect({ href: safeRedirectPath(search.redirect) ?? "/guide" });
+    throw redirect({ href: safeRedirectPath(search.redirect) ?? (await landingPath(context.queryClient)) });
   },
   component: LoginScreen,
 });
