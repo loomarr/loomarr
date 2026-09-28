@@ -24,4 +24,4 @@ pods and approval gate stay backend-agnostic.
 - Every "what is on now" reader must answer for the backend actually streaming the channel.
 - Hardware that cannot transcode can still use Tunarr; an install that works is never forced to
   migrate. The full consequences are archived in
-  [`playout-2026-07-consequences.md`](../../engineering/archive/design-2026-09/playout-2026-07-consequences.md).
+  [`playout-2026-07-consequences.md`](../../../project/design-archive-2026-09/playout-2026-07-consequences.md).

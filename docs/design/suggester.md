@@ -220,7 +220,7 @@ upstream route (no fallbacks, no data collection); it refuses to start unless
 playback. Empty proposals are classified (`no_tool_call`, `retrieval_empty`, `selection_empty`,
 `generation_error`, `provider_error`) so retrieval, provider and curation problems can be separated.
 The full certification protocol is archived in
-[`suggester-certification.md`](../engineering/archive/design-2026-09/suggester-certification.md).
+[`suggester-certification.md`](../../project/design-archive-2026-09/suggester-certification.md).
 
 ## Tests that pin this
 

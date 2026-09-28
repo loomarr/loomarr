@@ -1,8 +1,8 @@
 # Specialized local model experiment and release contract (archived)
 
 Archived verbatim from `docs/design.md` §8 in #779 (2026-09-27). Not current guidance: see
-[`docs/design/suggester.md`](../../../design/suggester.md) and decision
-[0026](../../../design/decisions/0026-specialized-local-model.md).
+[`docs/design/suggester.md`](../../docs/design/suggester.md) and decision
+[0026](../../docs/design/decisions/0026-specialized-local-model.md).
 
 
 A Loomarr-specific local model is an **optional optimization of the existing Suggester**, not a

@@ -1,7 +1,7 @@
 # Suggester certification rules (archived)
 
 Archived verbatim from `docs/design.md` §14.1 in #779 (2026-09-27). Not current guidance: the
-current rules are in [`docs/design/suggester.md`](../../../design/suggester.md#evaluation), and the
+current rules are in [`docs/design/suggester.md`](../../docs/design/suggester.md#evaluation), and the
 evaluator in `internal/eval` is the source of truth.
 
 **Semantic query development is not certification.** The authored query pilot is a

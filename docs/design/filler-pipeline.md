@@ -52,7 +52,7 @@ per clip** (decision [0019](decisions/0019-stage-budget-is-per-clip-rate.md)).
   from the persisted proposal, and failure bookkeeping is written even when the run is cancelled.
 
 The incident behind these rules is archived in
-[`filler-v51g-budget-incident.md`](../engineering/archive/design-2026-09/filler-v51g-budget-incident.md).
+[`filler-v51g-budget-incident.md`](../../project/design-archive-2026-09/filler-v51g-budget-incident.md).
 
 ## Progressive enrichment
 

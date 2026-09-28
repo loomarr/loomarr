@@ -2,7 +2,7 @@
 
 Archived verbatim from `docs/design.md` §10 (V61, "Evidence-based classification and terminal
 readiness") in #779 (2026-09-27). Not current guidance: the runtime readiness rules, routing and
-accounting are in [`docs/design/filler-classification.md`](../../../design/filler-classification.md).
+accounting are in [`docs/design/filler-classification.md`](../../docs/design/filler-classification.md).
 This is the certification-artifact, bakeoff, corpus, spoken-safety, review-packaging and
 rights-review protocol that the dated certification reports in `docs/engineering/` cite.
 

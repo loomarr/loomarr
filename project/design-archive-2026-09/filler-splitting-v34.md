@@ -2,7 +2,7 @@
 
 Archived verbatim from `docs/design.md` §10 in #779 (2026-09-27). Not current guidance: V67 governs
 where they conflict, and the current rules are in
-[`docs/design/filler-structure.md`](../../../design/filler-structure.md).
+[`docs/design/filler-structure.md`](../../docs/design/filler-structure.md).
 
 V67 supersedes V34's assumption that every duration-quarantined source is a compilation and its
 lossy drop tally. The V34 detector remains a shadow/proposal input while the V67 structure assessment

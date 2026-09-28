@@ -19,6 +19,117 @@ major * 100000000 + minor * 1000000 + patch * 10000 + channel
 `0.1.0-beta.1` is code `1000001`. The mapping is monotonic across beta, release candidate, stable,
 and the next patch. Unsupported names fail before signing.
 
+## Artifact and build contract
+
+Moved verbatim from `design.md` §9.1 (#1572). The TV client's design is in
+[`docs/design/playback-clients.md`](../docs/design/playback-clients.md).
+
+`loomarr.media` is the permanent production application id for the accepted React Native Shield
+replacement. Ordinary development and Storybook builds retain the isolated prototype identity;
+only an explicit Shield release configuration may select the production id, application name,
+launcher icon, and TV banner. Both the sideload and Play configurations use that release identity
+and fail closed unless they receive a supported SemVer name and its valid derived Android version
+code.
+
+Shield client releases use SemVer names and a deterministic, increasing `versionCode`. The code
+allocates two decimal digits each to minor and patch and four release slots within a patch:
+`major * 100000000 + minor * 1000000 + patch * 10000 + channel`, where `beta.N` occupies 1–7999,
+`rc.N` occupies 8001–8999, and the stable release is 9999. Major is bounded to 20 so every result
+stays below Android's version-code ceiling. The build derives the code from the version name; an
+operator does not type two independent identities that can drift.
+
+The sideload artifact is a signed APK containing the production React Native entry and only the
+`arm64-v8a` native libraries required by the Shield. The Play producer compiles one unsigned Android
+App Bundle from the same React Native TV source, the exact merge-result commit, and a
+source-controlled release identity. It contains `armeabi-v7a`, `arm64-v8a`, `x86`, and
+`x86_64`; every packaged 64-bit ELF LOAD segment is aligned for 16 KiB pages. Android's 16 KiB
+devices are 64-bit, so the required `arm64-v8a` and `x86_64` libraries carry that alignment while
+the separately required 32-bit TV ABIs retain their platform alignment. CI verifies package, name,
+code, launcher activity, TV launcher metadata, icon/banner resources, embedded startup identity,
+JavaScript bundle, ABI set, and the unsigned artifact digest, then retains that bundle with evidence
+bound to the exact workflow run and commit. Before release dispatch, the maintainer's compile-free
+emulator harness verifies the same digest, installs device-specific splits, and supplies the visible
+clean-install, discovery, manual fallback, startup-animation, pairing, playback, and playbar evidence
+that archive inspection cannot. The protected Internal-release job downloads that immutable artifact
+by id, rejects missing/expired/ambiguous provenance, digest drift, any pre-existing signature, and
+unexpected `META-INF` material, signs it with the durable upload key using the pinned JDK, proves
+every non-signature ZIP entry is unchanged, and re-runs the certificate-bound verifier before
+optional publication. It performs no Gradle, CMake, Expo prebuild, Node installation, or Apple build.
+There is no rebuild fallback and no name-only/latest-artifact selection. The sideload path still
+requires all four keystore inputs and records the same applicable artifact evidence. Local release
+tests create ephemeral signing material. The sideload test
+also cleanly uninstalls any prior `loomarr.media` package from a Loomarr-owned Android TV emulator,
+installs the APK, and cold-launches the Leanback activity.
+
+Android build performance (#1050) is measured without changing the artifact contract. The
+`android-profile` Make target runs the normal four-ABI Android gate, retaining runner identity,
+wall time, actual Gradle settings and local `--profile` reports in a separate diagnostic artifact.
+It never uses an externally uploaded build scan or adds diagnostic files to the unsigned promotion
+artifact. Local builds default to one native worker and one Gradle worker. CI runs at most two
+Gradle projects in parallel while retaining one native compiler/link slot inside each task; the
+wrapper rejects any Gradle worker count other than one or two. The bounded hosted experiment cut
+fresh-source builds from the 30m56s one-worker cold control to 19m13s and 16m15s with zero OOM event
+deltas, all four ABIs, and the same verified artifact. A measured three-worker candidate regressed to
+19m07s and is rejected. Release continues to promote the already verified producer artifact.
+
+The TV application does not import Reanimated or Worklets and therefore must not declare either as
+a direct dependency. Expo autolinking treats a direct declaration as native application authority:
+the otherwise-unused modules added 9m39s and 3m29s respectively to a measured warm four-ABI build,
+and 832 precompiled-header compiler calls bypassed ccache. The workspace compatibility overrides
+still pin their exact Expo-supported versions for transitive development tooling. The Android gate
+verifies the generated TV graph and complete artifact rather than shipping unused native modules as
+a compatibility precaution.
+
+The mobile application likewise does not import Reanimated or Worklets. Expo Router retains them as
+transitive optional peers, and SDK 54 or newer searches transitive React Native dependencies, so
+removing only the direct manifest entries does not remove them from the generated native graph. The
+mobile manifest must both omit the unused direct dependencies and exclude the two package names from
+**Android** autolinking. The exclusion is application-scoped and platform-scoped rather than a
+workspace package removal: exact workspace overrides keep the supported versions available to
+Storybook and other transitive tooling. Apple excludes only Reanimated, while Gesture Handler can
+still satisfy its conditional `RNWorklets` dependency. The standalone embedded mobile APK remains
+the Android native acceptance artifact.
+
+The producer may additionally use the §14-pinned ccache executable through the generated Expo/CMake
+plugin. CI requires an absolute verified launcher, content-based compiler identity, a checkout-relative
+base directory, no permissive sloppiness, and a bounded dedicated cache directory. Local release tests
+acquire the same exact macOS or Linux pin into the worktree artifacts by default, reuse compiler results
+on later builds, and retain an explicit or acquisition-failure cold path. Only compiler results are
+restored across source identities. Generated Android projects, `.cxx` trees, bundles, keys, and
+promotion evidence are never cached. The profiler retains exact version/configuration, zeroed pre/post
+JSON statistics, and every primary generated Ninja rules file used to prove launcher propagation
+across app and library projects. Nested compiler-capability probes are not application/library rules
+and do not participate in that proof. Pull-request and merge-queue refs restore compiler objects from
+the default-branch cache but cannot publish into that shared scope. After a successful Android
+merge-queue build lands, that producer transfers only its bounded ccache directory plus a
+commit/run/workflow/key/tree-digest manifest. A trusted `push` workflow on the exact admitted main
+commit validates the successful merge-group run, immutable transfer, and manifest before publishing
+one rolling default-branch cache generation. It performs no Gradle, CMake, Expo, Node, or product
+build, deletes the one-day transfer, and retires superseded Android main-cache generations.
+
+On Linux, the observer records its inherited cgroup v2 memory scope, limits, lifetime peak and
+OOM/limit event counters before and after the build, plus sampled current usage and host available
+memory. The lifetime peak is an upper bound for that scope, not a reset or isolated phase peak;
+sampled peaks can miss short spikes. Unavailable metrics remain explicit and cannot qualify a
+memory-safety claim. A single process's RSS is not aggregate compiler/Gradle memory. Observation does
+not change cgroup limits, build concurrency, JVM heap, caches, ABI scope or artifact checks.
+
+The accepted replacement is installed on the maintainer's Shield by removing the Kotlin application,
+sideloading the React Native APK, and pairing again. That physical journey has been accepted. The
+same permanent package now also has an Internal-testing-only Google Play path: Google manages the
+app-signing key, Loomarr protects a durable upload key in the reviewed GitHub environment, the first
+bundle may be uploaded manually for Console bootstrap, and later uploads use a package-scoped service
+account with no Production permission. The workflow has no open, closed, staged, or Production track
+choice. Because the accepted sideload used an intentionally ephemeral key, a Play install may require
+one more uninstall and fresh pairing; cross-channel signature continuity is not promised.
+
+Kotlin/Compose source, Gradle build files, generated Kotlin tokens, JVM screenshot references, and
+their dedicated CI lane are deleted only after the React Native sideload acceptance and React Native
+Play bundle verification exist in the same ancestry. Distribution-neutral store descriptions and
+artwork remain generated from the shared brand contract outside the retired Kotlin tree. Preserving
+installed credentials, public Play distribution, staged rollout, cross-channel in-place updates, and
+rollback machinery remain outside this program.
+
 ## One-time Play Console bootstrap
 
 An account owner must do these steps; the Publishing API cannot create an application or accept

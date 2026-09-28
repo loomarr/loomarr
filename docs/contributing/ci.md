@@ -768,6 +768,14 @@ cache usage, unrelated-cache headroom, and main-ref retention are checked before
 may save. PR and merge-queue consumers remain restore-only, and a warm-required validation cannot
 turn its cold fallback into a passing cache claim.
 
+## Go runtime workers use the image's ffmpeg
+
+Go runtime workers install the production Dockerfile's retained ffmpeg build, pinned by
+architecture-specific SHA-256 for both `ffmpeg` and `ffprobe`, never the runner's distribution
+package. The archive is cached by its exact digest and verified on every use before extraction or
+execution, and the installed pair must report the declared build. A change to the installer, the
+Go workflow or the Dockerfile's pin source selects the complete Go runtime gate.
+
 ## Hand-maintained lists, and what guards them
 
 Three lists in this repo are written by hand and would rot silently. Each has an executable guard

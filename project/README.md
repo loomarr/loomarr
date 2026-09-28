@@ -11,6 +11,7 @@ reviewed in PRs, and off the docs site so it doesn't bury the pages readers need
 | [`roadmap.md`](roadmap.md) | Release sequencing for the next betas |
 | [`release/`](release/README.md) | Hand-written release-note headers; `scripts/generate-release-notes.sh` reads them |
 | [`android-release.md`](android-release.md) | The Android TV signing and Play Console runbook |
+| [`design-archive-2026-09/`](design-archive-2026-09/README.md) | Verbatim `design.md` slices with measured evidence or retired protocols, from the #779 split. Not instructions: `docs/design/` wins |
 | [`plans/`](plans/shared-client-platform.md) | Plans that live code or docs still cite |
 | [`evidence/`](evidence/ffmpeg-august-source-retention.md) | License-compliance evidence for shipped binaries; `internal/releaseverify` reads the manifest |
 | `SPIKE-*.md`, `FINDINGS-*.md` | Measurements an open issue still depends on. Delete each when its issue closes |
