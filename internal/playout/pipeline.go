@@ -65,7 +65,8 @@ type HostProfile struct {
 	DecodeCodecs []string `json:"decodeCodecs,omitempty"`
 	// TonemapOpenCL: tonemap_opencl works. The first choice on Intel (zero-copy from VAAPI) and
 	// NVIDIA (maintainer decision). There is no tonemap_vaapi: on the household Arc it outputs a
-	// black picture at normal speed with no error (#1516), so it is never emitted.
+	// black picture at normal speed with no error (#1516), so it is never emitted. On VAAPI it also
+	// means the VAAPI→OpenCL surface mapping works, which the 10-bit letterbox needs (#1673).
 	TonemapOpenCL bool `json:"tonemapOpencl,omitempty"`
 	// Libplacebo: libplacebo on its own Vulkan device works: the first choice for the curves only it
 	// has (ToneCurve), otherwise the second GPU choice, and on every GPU family the only correct
@@ -527,6 +528,7 @@ func (b *builder) vaapi() error {
 	b.p.PreInput = []string{"-init_hw_device", "vaapi=va:" + node, "-filter_hw_device", "va"}
 	var f []string
 	hw := b.hardwareDecodes()
+	fitted := b.exactFit()
 	if hw {
 		b.p.PreInput = append(b.p.PreInput, "-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi")
 		if b.src.Interlaced {
@@ -549,7 +551,14 @@ func (b *builder) vaapi() error {
 		if err != nil {
 			return err
 		}
-		f = append(f, conv, "hwupload", "scale_vaapi="+b.fit()+":format=p010")
+		scale := "scale_vaapi=" + b.fit() + ":format=p010"
+		if box, ok := b.aspectBox(); ok {
+			// Box to the output's aspect at source size, as on NVENC, so the GPU upscale fills the
+			// frame and the 10-bit picture needs no pad.
+			conv += box
+			scale, fitted = fmt.Sprintf("scale_vaapi=w=%d:h=%d:format=p010", b.out.Width, b.out.Height), true
+		}
+		f = append(f, conv, "hwupload", scale)
 	case !b.tonemap:
 		f = append(f, "scale_vaapi="+b.fit()+":format="+b.scaleFormat("p010"))
 	default:
@@ -572,8 +581,22 @@ func (b *builder) vaapi() error {
 			f = append(f, tm, "hwupload")
 		}
 	}
-	// pad_vaapi places the picture at x=0:y=0 unless told to centre it.
-	f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2", b.out.Width, b.out.Height))
+	switch {
+	case !b.out.HDR:
+		// pad_vaapi places the picture at x=0:y=0 unless told to centre it.
+		f = append(f, fmt.Sprintf("pad_vaapi=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2", b.out.Width, b.out.Height))
+	case fitted:
+		// A 10-bit picture that fills the frame has no letterbox to add.
+	case !b.host.TonemapOpenCL:
+		return fmt.Errorf("%w: a letterboxed 10-bit picture on VAAPI is padded in OpenCL, which this host cannot map to (#1673)", ErrRefused)
+	default:
+		// pad_vaapi writes Y=U=V=0 into a P010 frame's bars whatever colour it is given, which
+		// shows as green (#1673, measured on the household Arc; its NV12 bars are black). pad_opencl
+		// on the surface mapped from VAAPI, like the tone-map, writes 10-bit black at the same speed.
+		f = append(f, "hwmap=derive_device=opencl",
+			fmt.Sprintf("pad_opencl=w=%d:h=%d:x=(ow-iw)/2:y=(oh-ih)/2:color=black", b.out.Width, b.out.Height),
+			"hwmap=derive_device=vaapi:reverse=1")
+	}
 	if b.overlay() {
 		// The shipped OpenCL kernel on the surface mapped from VAAPI, zero-copy both ways
 		// (watermark.go, #1613). Every kernel input carries the output's labels and time base.
