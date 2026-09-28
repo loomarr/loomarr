@@ -1,0 +1,51 @@
+          shape  pool  pool h    mechanism    viewing  aired  R24h   R7d  primeR7d  gap p10    p50    p90  max/day  adjRep  cuts/day  EPG miss
+  demo-cartoons    36       7      current     nobody     36  100%  100%      100%      6.6    6.6    6.6        4     98%       0.0        0%
+  demo-cartoons    36       7      current   evenings     36  100%  100%       99%      3.3    6.6    8.8        6     94%       3.6       79%
+  demo-cartoons    36       7      current  always-on     36   97%  100%       98%      1.1    3.3   12.1        8     89%      18.2       82%
+  demo-cartoons    36       7   ledger-lru        any     36  100%  100%       99%      2.9    6.4   10.6        5     48%       0.0        0%
+  demo-cartoons    36       7  watched-lru   evenings     36  100%  100%      100%      2.9    6.4   10.6        5     48%       0.0        0%
+  demo-cartoons    36       7  watched-lru  always-on     36  100%  100%       99%      2.9    6.4   10.6        5     48%       0.0        0%
+       films-27    27      50      current     nobody     27    1%  100%       67%     26.2   48.5   57.7        1     69%       0.9        0%
+       films-27    27      50      current   evenings     27   26%  100%       76%      8.6   39.0   64.0        3     49%       5.1       78%
+       films-27    27      50      current  always-on     27   70%  100%       87%      1.9   11.3   43.4        7     35%      21.5       90%
+       films-27    27      50   ledger-lru        any     27    0%  100%       44%     36.1   48.0   65.1        1     17%       0.0        0%
+       films-27    27      50  watched-lru   evenings     27   40%   93%       13%     18.0   26.7   67.1        2     34%       0.0        0%
+       films-27    27      50  watched-lru  always-on     27    0%  100%       44%     36.5   50.0   64.9        1     17%       0.0        0%
+       films-60    60     112      current     nobody     60    2%  100%       26%     86.6  109.2  124.2        1     53%       1.0        0%
+       films-60    60     112      current   evenings     60    9%   93%       57%     15.9   81.5  126.4        2     33%       5.4       85%
+       films-60    60     112      current  always-on     60   53%   97%       40%      3.2   17.6   85.0        6     19%      22.9       92%
+       films-60    60     112   ledger-lru        any     60    0%   99%       14%     96.7  110.2  124.5        1     10%       0.0        0%
+       films-60    60     112  watched-lru   evenings     60    0%   99%        0%     64.3   88.2  109.5        1     19%       0.0        0%
+       films-60    60     112  watched-lru  always-on     60    0%   99%       14%     98.8  111.8  124.1        1     11%       0.0        0%
+      kids-6x26   156      29      current     nobody    156   20%  100%       85%      4.6   28.6   52.6        2     90%       0.9        0%
+      kids-6x26   156      29      current   evenings    156   44%  100%       70%      7.7   25.7   50.2        3     15%       3.2       80%
+      kids-6x26   156      29      current  always-on    156   58%  100%       75%      3.7   18.3   52.6        5     20%      18.1       81%
+      kids-6x26   156      29   ledger-lru        any    156   25%  100%       69%     16.3   26.9   41.8        2     18%       0.0        0%
+      kids-6x26   156      29  watched-lru   evenings    156   54%  100%       58%     14.7   23.1   57.4        2     19%       0.0        0%
+      kids-6x26   156      29  watched-lru  always-on    156   25%  100%       69%     16.7   28.2   42.0        2     18%       0.0        0%
+   sitcom-5x100   500     183      current     nobody    500    0%   43%        2%    159.1  183.3  207.5        1     43%       0.9        0%
+   sitcom-5x100   500     183      current   evenings    444    7%   59%       17%     19.8   78.5  185.5        2      2%       3.6       73%
+   sitcom-5x100   500     183      current  always-on    471   10%   69%       13%     11.7   76.3  183.3        3      3%      17.7       77%
+   sitcom-5x100   500     183   ledger-lru        any    500    0%    7%        4%    168.3  182.6  195.8        1      3%       0.0        0%
+   sitcom-5x100   500     183  watched-lru   evenings    500    0%   55%        0%    148.9  165.0  184.4        1      3%       0.0        0%
+   sitcom-5x100   500     183  watched-lru  always-on    500    0%    7%        4%    169.8  183.3  196.2        1      3%       0.0        0%
+  mixed-3x40+20   140     124      current     nobody    137    0%   96%       11%     78.5  102.7  126.9        1     60%       0.9        0%
+  mixed-3x40+20   140     124      current   evenings    138    7%   92%       35%     23.4  101.9  126.9        2     42%       2.4       71%
+  mixed-3x40+20   140     124      current  always-on    139   36%   91%       22%      0.7   77.7  125.4        4     33%      16.5       73%
+  mixed-3x40+20   140     124   ledger-lru        any    140    0%   99%       20%    111.4  121.6  135.6        1      8%       0.0        0%
+  mixed-3x40+20   140     124  watched-lru   evenings    140    0%  100%        0%     73.1   97.8  120.9        1     16%       0.0        0%
+  mixed-3x40+20   140     124  watched-lru  always-on    140    0%   99%       10%    111.4  123.9  134.1        1      9%       0.0        0%
+
+  clips     mode    viewing  plays  distinct  C60m  C24h  max/day  eve C60m  eve C24h
+     40  current     nobody   2534        40   16%   97%       12       12%       51%
+     40  current   evenings   2503        40   73%   84%       41        0%        0%
+     40  current  always-on   2463        40    0%   98%        5        0%       44%
+     40   ledger     nobody   2463        40    0%   98%        5        0%       44%
+    150  current     nobody   2483       150    4%   69%        7        3%       18%
+    150  current   evenings   2378       150   53%   81%       41        0%        0%
+    150  current  always-on   2348       150    0%   94%        2        0%       37%
+    150   ledger     nobody   2348       150    0%   94%        2        0%       37%
+    600  current     nobody   2466       585    1%   26%        4        1%        5%
+    600  current   evenings   2379       599    2%   31%        4        0%        0%
+    600  current  always-on   2298       600    0%    0%        1        0%        0%
+    600   ledger     nobody   2298       600    0%    0%        1        0%        0%
