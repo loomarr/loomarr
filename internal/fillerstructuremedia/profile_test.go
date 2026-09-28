@@ -38,8 +38,8 @@ func TestPartArgumentsPinJoinCompatibleProfile(t *testing.T) {
 	}
 }
 
-func TestConcatArgumentsPinMetadataFreeCopy(t *testing.T) {
-	arguments := strings.Join(ConcatArguments("concat.txt", "result.mp4"), " ")
+func TestConcatRecipePinsMetadataFreeCopy(t *testing.T) {
+	arguments := strings.Join(concatArgumentTemplate(), " ")
 	for _, required := range []string{"-safe 1", "-map_metadata -1", "-map_chapters -1", "-c copy", "-fflags +bitexact", "creation_time=", "encoder="} {
 		if !strings.Contains(arguments, required) {
 			t.Fatalf("concat arguments omit %q: %s", required, arguments)

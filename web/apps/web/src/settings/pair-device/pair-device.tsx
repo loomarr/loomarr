@@ -122,8 +122,10 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         </div>
       ) : null}
 
+      {/* A paired device acts as the person who approved it, capped at member (#1772, decision N3
+          on #1659), so even an admin's TV is a member. The web mock says so in the same words. */}
       <p className="mt-10 text-center text-muted-foreground text-sm leading-relaxed">
-        The device gets your access, not administrator access. Removing it later signs out only that device.
+        The device gets member access. Removing it later signs out only that device.
       </p>
     </div>
   );

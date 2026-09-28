@@ -122,6 +122,80 @@ func TestDevicePairingEndToEndOverHTTP(t *testing.T) {
 	}
 }
 
+// A paired TV's role is capped at member (maintainer decision on #1659, 2026-09-28): an admin who
+// pairs a TV gets a TV that acts as them for their lists, but not one that can administer the
+// house. The admin's own session reaching the same routes proves the 403s come from the cap, not
+// from a route the harness can't serve.
+func TestAdminPairedDeviceIsCappedAtMember(t *testing.T) {
+	t.Parallel()
+	h := newDeviceHarness(t, nil)
+	srv := h.Server
+	seedGridChannel(t, h.Store, "ch-news", 1)
+	seedGridChannel(t, h.Store, "ch-films", 2)
+	boss := login(t, srv, "boss", "pw")
+	tv := pairDevice(t, srv, boss)
+
+	send := func(method, path string, session *http.Cookie, bearer string) int {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		if session != nil {
+			req.AddCookie(session)
+			req.Header.Set("X-Loomarr-Csrf", "1")
+		}
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		res, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		return res.StatusCode
+	}
+	for _, call := range [][2]string{
+		{http.MethodGet, "/v1/users"},
+		{http.MethodGet, "/v1/settings"},
+		{http.MethodGet, "/v1/users/u-kid/sessions"},
+		{http.MethodPatch, "/v1/users/u-kid"},
+	} {
+		if code := send(call[0], call[1], nil, tv); code != http.StatusForbidden {
+			t.Errorf("admin-paired TV %s %s = %d, want 403", call[0], call[1], code)
+		}
+	}
+	if code := send(http.MethodGet, "/v1/users", boss, ""); code != http.StatusOK {
+		t.Fatalf("the admin's own session GET /v1/users = %d, want 200", code)
+	}
+
+	// The TV is still the admin as a person: /me names them, with the member role it actually has.
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer "+tv)
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var me map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&me)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK || me["id"] != "u-boss" || me["role"] != "member" {
+		t.Fatalf("admin-paired TV /v1/auth/me = %d %v, want u-boss as member", res.StatusCode, me)
+	}
+
+	// N3 holds: what the TV stars and tunes lands in the admin's own lists.
+	if code, got := myChannelsCall(t, srv, http.MethodPut, "/v1/me/favourites/ch-news", nil, tv); code != http.StatusOK ||
+		got.String() != "favourites=[ch-news] recent=[]" {
+		t.Fatalf("admin-paired TV stars ch-news = %d %s", code, got)
+	}
+	if code, got := myChannelsCall(t, srv, http.MethodPut, "/v1/me/recent-channels/ch-films", nil, tv); code != http.StatusOK ||
+		got.String() != "favourites=[ch-news] recent=[ch-films]" {
+		t.Fatalf("admin-paired TV tunes ch-films = %d %s", code, got)
+	}
+	if code, got := myChannelsCall(t, srv, http.MethodGet, "/v1/me/channels", boss, ""); code != http.StatusOK ||
+		got.String() != "favourites=[ch-news] recent=[ch-films]" {
+		t.Fatalf("the admin's session after the TV's writes = %d %s, want the TV's star and tune", code, got)
+	}
+}
+
 // Approving requires a session — an anonymous caller must not be able to approve its own pairing.
 func TestDeviceApproveRejectsAnonymous(t *testing.T) {
 	t.Parallel()

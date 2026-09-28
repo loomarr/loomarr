@@ -1,9 +1,19 @@
 package fillersafety
 
 import (
+	"encoding/hex"
 	"slices"
 	"strings"
 )
+
+// ValidPolicyRuleID reports whether value is an opaque 96-bit rule identifier.
+func ValidPolicyRuleID(value string) bool {
+	if len(value) != len("rule-")+24 || !strings.HasPrefix(value, "rule-") {
+		return false
+	}
+	_, err := hex.DecodeString(value[len("rule-"):])
+	return err == nil
+}
 
 func validateEvidence(evidence Evidence) ([]Reason, bool) {
 	if evidence.ProposalState != ProposalComplete && evidence.ProposalState != ProposalFailed {

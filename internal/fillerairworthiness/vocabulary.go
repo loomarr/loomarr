@@ -60,6 +60,9 @@ var policyFlags = []Flag{
 var axisOrder = []Axis{AxisVisual, AxisSpoken, AxisWritten}
 
 // Vocabulary returns the complete closed version-one suitability vocabulary.
+//
+// No binary calls it (deadcode reports it): it is exported for the api and filler tests that
+// enumerate every flag, which cannot see the unexported table.
 func Vocabulary() []Flag { return slices.Clone(vocabulary) }
 
 func validFlag(value Flag) bool { return slices.Contains(vocabulary, value) }
@@ -100,6 +103,9 @@ func flagOwners(flag Flag) []Axis {
 
 // AxesForFlag returns the safety modalities whose certified coverage can
 // support one closed suitability flag.
+//
+// No binary calls it (deadcode reports it): it is exported for the api and filler tests that
+// build per-axis fixtures, which cannot see flagOwners.
 func AxesForFlag(flag Flag) []Axis { return slices.Clone(flagOwners(flag)) }
 
 func axisOwnsFlag(axis Axis, flag Flag) bool { return slices.Contains(flagOwners(flag), axis) }

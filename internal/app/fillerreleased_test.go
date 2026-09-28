@@ -53,7 +53,18 @@ func releasedClipPipeline(st fillerstore.Store) *filler.Pipeline {
 	for _, id := range filler.StageOrder {
 		stages = append(stages, passStage{id: id})
 	}
-	return filler.NewPipeline(st, fillerPipelineClipAdapter{st}, stages, filler.DefaultBudget(), nil, time.Now, nil)
+	return filler.NewPipeline(st, fillerPipelineClipAdapter{st}, stages, testFillerBudget(), nil, time.Now, nil)
+}
+
+// testFillerBudget is the historical per-pass batch sizes; production reads them from settings.
+func testFillerBudget() filler.Budget {
+	return filler.Budget{
+		MaxClips:      func() int { return 25 },
+		MaxTranscodes: func() int { return 3 },
+		MaxWhisper:    func() int { return 10 },
+		MaxVision:     func() int { return 5 },
+		MaxSplits:     func() int { return 3 },
+	}
 }
 
 func TestPipeline_RunningRowForAlreadyReleasedClipSettlesWithoutRepublishing(t *testing.T) {

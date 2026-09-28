@@ -157,6 +157,178 @@ func TestComputeDesiredAt_MoviePoolRotatesThroughWholeCatalog(t *testing.T) {
 	}
 }
 
+// #1694: on a watched channel the next window airs what has waited longest. 36 films × 2h = 72h,
+// so a 24h window holds 12 and the films aired yesterday are never needed today. Before the fix
+// the history re-ordered the deck the window slices: shuffle sorted it by recency, so some
+// windows' slice offsets landed on the just-aired tail; syndication (the default ordering)
+// shuffled the recency-sorted deck, dealing a different deck every window. Each day records its
+// whole slice as aired (always-on), as of the window's opening (#1674), on the household's
+// local-midnight grid (#1675).
+func TestComputeDesiredAt_WatchedChannelNeverReairsYesterdayWhileOthersWait(t *testing.T) {
+	const nFilms = 36
+	avail := durAvail{}
+	var entries []schedule.LineupEntry
+	for i := 0; i < nFilms; i++ {
+		key := provision.Key("movie:tmdb:" + itoa(3000+i))
+		avail[key] = struct {
+			id  string
+			dur int64
+		}{id: "lib-" + itoa(i), dur: 2 * 60 * 60 * 1000}
+		entries = append(entries, schedule.LineupEntry{Key: key, Title: "Film " + itoa(i)})
+	}
+	zone, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip("no tzdata:", err)
+	}
+	for _, ordering := range []schedule.OrderingMode{schedule.OrderShuffle, schedule.OrderSyndication} {
+		t.Run(string(ordering), func(t *testing.T) {
+			ch := schedule.Channel{ID: "films", Name: "Films", Number: 4, Strategy: schedule.Shuffle,
+				Shuffle: schedule.ShuffleParams{Seed: 7}, DefaultWindow: 24 * time.Hour, WindowZone: zone}
+			pol := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: ordering}}
+
+			lastAired := map[string]time.Time{}
+			var yesterday map[string]bool
+			for day := 0; day < 9; day++ {
+				opened := time.Date(2026, 10, 5+day, 0, 0, 0, 0, zone)
+				c := ch
+				c.WindowOpened = opened
+				c.LastAired = map[string]time.Time{}
+				for id, at := range lastAired {
+					c.LastAired[id] = at
+				}
+				d := schedule.ComputeDesiredAt(c, entries, avail, schedule.PodFill, pol, opened.Add(time.Hour))
+				today := map[string]bool{}
+				at := opened
+				for _, s := range d.Slots {
+					if !s.IsProgram() {
+						continue
+					}
+					if yesterday[s.LibraryItemID] {
+						t.Errorf("day %d re-airs %s from the day before while %d films wait", day, s.Title, nFilms-2*d.ProgramCount())
+					}
+					today[s.LibraryItemID] = true
+					lastAired[s.LibraryItemID] = at
+					at = at.Add(time.Duration(s.DurationMs) * time.Millisecond)
+				}
+				yesterday = today
+			}
+		})
+	}
+}
+
+// #1694, the other half: when only an evening is watched, most of each day's films are never
+// recorded, yet they aired. The window must keep tiling the deck through them, never re-airing
+// yesterday's unwatched films and never leading every day with the same ones: 40 films, 12 a
+// day, all air within 4 days. 40 doesn't divide into 12-film tiles, so tiles wrap unevenly and
+// a film watched days ago turns up in a later tile; trading it out anyway moves other films off
+// their tiles, and one the history never saw airs two days running.
+func TestComputeDesiredAt_PartlyWatchedShuffleStillRotatesUnseenFilms(t *testing.T) {
+	const nFilms = 40
+	avail := durAvail{}
+	var entries []schedule.LineupEntry
+	for i := 0; i < nFilms; i++ {
+		key := provision.Key("movie:tmdb:" + itoa(4000+i))
+		avail[key] = struct {
+			id  string
+			dur int64
+		}{id: "lib-" + itoa(i), dur: 2 * 60 * 60 * 1000}
+		entries = append(entries, schedule.LineupEntry{Key: key, Title: "Film " + itoa(i)})
+	}
+	ch := schedule.Channel{ID: "films", Name: "Films", Number: 4, Strategy: schedule.Shuffle,
+		Shuffle: schedule.ShuffleParams{Seed: 7}, DefaultWindow: 24 * time.Hour}
+	pol := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: "shuffle"}}
+
+	lastAired := map[string]time.Time{}
+	seen := map[string]bool{}
+	var yesterday map[string]bool
+	for day := 0; day < 7; day++ { // two full turns of the deck, and into a third
+		if day == 4 && len(seen) != nFilms {
+			t.Fatalf("%d/%d films aired in 4 days of a partly watched channel: unseen films are not rotating", len(seen), nFilms)
+		}
+		opened := time.Date(2026, 10, 5+day, 0, 0, 0, 0, time.UTC)
+		c := ch
+		c.WindowOpened = opened
+		c.LastAired = map[string]time.Time{}
+		for id, at := range lastAired {
+			c.LastAired[id] = at
+		}
+		d := schedule.ComputeDesiredAt(c, entries, avail, schedule.PodFill, pol, opened.Add(time.Hour))
+		watched := 0
+		today := map[string]bool{}
+		for _, s := range d.Slots {
+			if !s.IsProgram() {
+				continue
+			}
+			// The films nobody watched yesterday aired all the same; the history just can't say so.
+			if yesterday[s.LibraryItemID] {
+				t.Errorf("day %d re-airs %s from the day before", day, s.Title)
+			}
+			today[s.LibraryItemID] = true
+			seen[s.LibraryItemID] = true
+			if watched < 2 { // someone watches the first two films of the day, then turns off
+				lastAired[s.LibraryItemID] = opened.Add(time.Duration(watched) * 2 * time.Hour)
+				watched++
+			}
+		}
+		yesterday = today
+	}
+}
+
+// #1694, what recency is still for: an edited lineup reshuffles the seeded deck, so the next
+// window's slice of it can hold films that aired yesterday. The history knows they did, and it
+// knows films that aired days ago wait outside the slice, so it trades them. 36 films watched
+// around the clock for three days; on day 3 six films join and the deck is dealt afresh.
+func TestComputeDesiredAt_EditedLineupDoesNotReairYesterday(t *testing.T) {
+	avail := durAvail{}
+	film := func(i int) schedule.LineupEntry {
+		key := provision.Key("movie:tmdb:" + itoa(5000+i))
+		avail[key] = struct {
+			id  string
+			dur int64
+		}{id: "lib-" + itoa(i), dur: 2 * 60 * 60 * 1000}
+		return schedule.LineupEntry{Key: key, Title: "Film " + itoa(i)}
+	}
+	var entries []schedule.LineupEntry
+	for i := 0; i < 36; i++ {
+		entries = append(entries, film(i))
+	}
+	ch := schedule.Channel{ID: "films", Name: "Films", Number: 4, Strategy: schedule.Shuffle,
+		Shuffle: schedule.ShuffleParams{Seed: 7}, DefaultWindow: 24 * time.Hour}
+	pol := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Ordering: "shuffle"}}
+
+	lastAired := map[string]time.Time{}
+	var yesterday map[string]bool
+	for day := 0; day < 6; day++ {
+		if day == 3 {
+			for i := 36; i < 42; i++ {
+				entries = append(entries, film(i))
+			}
+		}
+		opened := time.Date(2026, 10, 5+day, 0, 0, 0, 0, time.UTC)
+		c := ch
+		c.WindowOpened = opened
+		c.LastAired = map[string]time.Time{}
+		for id, at := range lastAired {
+			c.LastAired[id] = at
+		}
+		d := schedule.ComputeDesiredAt(c, entries, avail, schedule.PodFill, pol, opened.Add(time.Hour))
+		today := map[string]bool{}
+		at := opened
+		for _, s := range d.Slots {
+			if !s.IsProgram() {
+				continue
+			}
+			if yesterday[s.LibraryItemID] {
+				t.Errorf("day %d re-airs %s from the day before", day, s.Title)
+			}
+			today[s.LibraryItemID] = true
+			lastAired[s.LibraryItemID] = at
+			at = at.Add(time.Duration(s.DurationMs) * time.Millisecond)
+		}
+		yesterday = today
+	}
+}
+
 // A single window over the movie pool must be a manageable slice (~12 films of 24h), not the
 // whole 15-film run — the window still bounds the horizon; rotation just moves WHICH slice.
 func TestComputeDesiredAt_MovieWindowIsBounded(t *testing.T) {

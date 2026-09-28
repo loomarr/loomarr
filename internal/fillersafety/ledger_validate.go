@@ -1,11 +1,26 @@
 package fillersafety
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"reflect"
 	"slices"
 	"strings"
 	"unicode/utf8"
 )
+
+const (
+	maxProposedCandidates = 4096
+	maxProposedIntervalMS = 30_000
+)
+
+func validSHA256(value string) bool {
+	if len(value) != sha256.Size*2 || value != strings.ToLower(value) {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
 
 func ValidateLedgerRun(run LedgerRun) error {
 	if !boundedLedgerID(run.ID) || !boundedLedgerID(run.ClipHash) ||

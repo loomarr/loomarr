@@ -70,25 +70,6 @@ func NewStructureWindowAssessmentRuntime(assessors []CompleteWindowStructureAsse
 	}, nil
 }
 
-func (r *StructureWindowAssessmentRuntime) Assess(ctx context.Context, input StructureAssessmentSource) (fillerstructure.Artifact, error) {
-	if r == nil || len(r.families) < 2 || len(r.profiles) != len(r.families) || r.preparer == nil || r.evidence == nil || r.now == nil {
-		return fillerstructure.Artifact{}, errors.New("structure window runtime is unavailable")
-	}
-	if err := input.Source.validate(); err != nil || !filepath.IsAbs(input.FullPath) || filepath.Clean(input.FullPath) != input.FullPath {
-		return fillerstructure.Artifact{}, errors.New("structure window runtime source is invalid")
-	}
-	source := fillerstructure.Source{SHA256: input.Source.SHA256, Bytes: input.Source.Bytes, DurationMS: input.Source.DurationMs}
-	plan, err := fillerstructurewindow.NewPlan(source)
-	if err != nil {
-		return fillerstructure.Artifact{}, fmt.Errorf("plan structure windows: %w", err)
-	}
-	prepared, err := r.preparer.PrepareWindows(ctx, input, plan)
-	if err != nil {
-		return fillerstructure.Artifact{}, fmt.Errorf("prepare structure windows: %w", err)
-	}
-	return r.AssessPrepared(ctx, input, prepared)
-}
-
 // AssessPrepared executes the independent families over one already verified media set. Hosted
 // adapters use this seam after local preparation succeeds, so capability refresh and paid calls
 // cannot happen before media preflight. The full source and plan are rederived here rather than
@@ -163,5 +144,3 @@ func structureWindowSetReusesSourcePath(prepared StructureAssessmentWindowMediaS
 	}
 	return false
 }
-
-var _ CompleteTimelineStructureDecisioner = (*StructureWindowAssessmentRuntime)(nil)

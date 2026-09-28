@@ -1,4 +1,4 @@
-import { isWeb, styled, Text as TamaguiText, View } from "@tamagui/core";
+import { isWeb, styled, Text as TamaguiText, useTheme, View } from "@tamagui/core";
 import type { ComponentProps, ReactNode } from "react";
 
 import { type Density, type TextRole, typography } from "../tokens";
@@ -107,8 +107,22 @@ type TextProps = Omit<
   "color" | "fontFamily" | "fontSize" | "fontWeight" | "letterSpacing" | "lineHeight" | "role"
 > & {
   density?: Density;
+  /**
+   * A readout over snow or a picture (#1627 B4): the canvas as a two-layer halo, tight under the
+   * glyphs and wide around them, so the text holds on any ground. React Native takes one text
+   * shadow, so the wide layer is a second, hidden copy of the text behind the first.
+   */
+  halo?: boolean;
   textRole: TextRole;
   tone?: TextTone;
+  /** Letter spacing in em, for tracked-out mono readouts ("CH 7" at 0.16, "TUNING IN" at 0.24). Overrides the role's own. */
+  tracking?: number;
+};
+
+// "#0B0C0E" + 0.9 → "rgba(11,12,14,0.9)": the halo is the theme's canvas, part-transparent.
+const withAlpha = (hex: string, alpha: number) => {
+  const n = Number.parseInt(hex.slice(1, 7), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 };
 
 const dataRoles = new Set<TextRole>([
@@ -150,36 +164,62 @@ const textTones = {
   warning: "$stateWarning",
 } as const;
 
-const Text = ({ density = "pointer", textRole, tone, ...props }: TextProps) => {
+const roleTracking = (textRole: TextRole, size: number) =>
+  textRole === "display"
+    ? -0.8
+    : textRole === "title"
+      ? -0.25
+      : textRole === "section"
+        ? 2
+        : textRole === "guideLabel"
+          ? size * 0.04
+          : 0;
+
+const Text = ({ density = "pointer", halo, textRole, tone, tracking, ...props }: TextProps) => {
+  const theme = useTheme();
   const value = typography[density][textRole];
+  const face = {
+    color: tone
+      ? textTones[tone]
+      : amberRoles.has(textRole)
+        ? "$actionPrimary"
+        : mutedRoles.has(textRole)
+          ? "$contentSecondary"
+          : "$contentPrimary",
+    fontFamily: dataRoles.has(textRole) ? "$data" : "$body",
+    fontSize: value.size,
+    fontWeight: value.weight,
+    letterSpacing: tracking === undefined ? roleTracking(textRole, value.size) : value.size * tracking,
+    lineHeight: value.lineHeight,
+  } as const;
+  if (!halo) return <TamaguiText {...props} {...face} />;
+
+  const canvas = theme.surfaceCanvas.val;
   return (
-    <TamaguiText
-      {...props}
-      color={
-        tone
-          ? textTones[tone]
-          : amberRoles.has(textRole)
-            ? "$actionPrimary"
-            : mutedRoles.has(textRole)
-              ? "$contentSecondary"
-              : "$contentPrimary"
-      }
-      fontFamily={dataRoles.has(textRole) ? "$data" : "$body"}
-      fontSize={value.size}
-      fontWeight={value.weight}
-      letterSpacing={
-        textRole === "display"
-          ? -0.8
-          : textRole === "title"
-            ? -0.25
-            : textRole === "section"
-              ? 2
-              : textRole === "guideLabel"
-                ? value.size * 0.04
-                : 0
-      }
-      lineHeight={value.lineHeight}
-    />
+    <View position="relative">
+      {/* The wide layer: the same glyphs, hidden, glowing canvas around the text. */}
+      <TamaguiText
+        {...face}
+        aria-hidden
+        numberOfLines={props.numberOfLines}
+        position="absolute"
+        top={0}
+        left={0}
+        right={0}
+        textShadowColor={withAlpha(canvas, 0.85)}
+        textShadowOffset={{ height: 0, width: 0 }}
+        textShadowRadius={18}
+      >
+        {props.children}
+      </TamaguiText>
+      <TamaguiText
+        {...props}
+        {...face}
+        textShadowColor={withAlpha(canvas, 0.9)}
+        textShadowOffset={{ height: 1, width: 0 }}
+        textShadowRadius={2}
+      />
+    </View>
   );
 };
 

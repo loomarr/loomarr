@@ -19,18 +19,16 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
-| `bgexec` | 5 | — |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 7 | — |
-| `filler` | 9 | `bgexec`, `diagnostics`, `fillerstructure`, `llm`, `mediatools`, `taxonomy` |
+| `filler` | 9 | `diagnostics`, `fillerstructure`, `llm`, `taxonomy` |
 | `fillerstructure` | 5 | — |
 | `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 6 | `contact` |
 | `library` | 10 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 8 | `httpx`, `metrics` |
-| `mediatools` | 5 | `bgexec`, `diagnostics`, `playout` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `playout` | 6 | `diagnostics`, `provision`, `schedule` |
@@ -67,6 +65,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
 - **`fillereval`**
   The budget arithmetic that paid filler assessment shares with certification.
+- **`fillersafety`** · 1 importer
+  Owns the fail-closed spoken-safety cascade and its shadow evidence.
 - **`fillerstructure`** · 5 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
@@ -81,7 +81,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Keeps a repeating per-item condition from flooding the log.
 - **`media`** · 2 importers
   Owns host-wide resource facts shared by media work: host memory.
-- **`openroutermedia`** · 3 importers
+- **`openroutermedia`** · 2 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`playout/packager`** · 1 importer
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
@@ -126,7 +126,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 1
 
-- **`bgexec`** · 5 importers · → `proctree`
+- **`bgexec`** · 4 importers · → `proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -175,7 +175,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns progressive descriptive understanding for filler clips.
 - **`fillerresearch`** · 3 importers · → `llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`mediatools`** · 5 importers · → `bgexec`, `diagnostics`, `playout`
+- **`mediatools`** · 4 importers · → `bgexec`, `diagnostics`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`playoutbench`** · → `playout`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
@@ -184,8 +184,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 5
 
-- **`fillersafety`** · 1 importer · → `bgexec`, `mediatools`, `openroutermedia`
-  Owns the fail-closed spoken-safety cascade and its shadow evidence.
 - **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediatools`

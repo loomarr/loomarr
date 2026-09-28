@@ -126,7 +126,8 @@ rendering, retries, retention, and one adapter per **Delivery means**.
 ## Devices
 
 **Paired clients** hold a durable, member-scoped bearer credential from the device-code flow, kept in
-the platform secure store. **Disconnect this device** calls `DELETE /v1/auth/device` with that
+the platform secure store. The device acts as the person who paired it (their favourites, recents
+and audience) but its role is capped at member, even when an admin paired it. **Disconnect this device** calls `DELETE /v1/auth/device` with that
 credential and may revoke only that device; a session or `API_TOKEN` cannot substitute. The client
 clears its credential only after the server confirms or a 401 proves it is dead.
 

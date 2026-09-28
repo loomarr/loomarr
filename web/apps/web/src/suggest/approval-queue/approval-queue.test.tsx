@@ -325,4 +325,23 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
     await waitFor(() => expect(first).toBeDisabled());
     expect(other).toBeEnabled();
   });
+
+  // The bulk Approve is dimmed with nothing selected, and it must also BE disabled, so assistive
+  // tech and the keyboard skip it rather than offering a dead button (#1659 map, Requests).
+  it("disables bulk Approve until something is selected", async () => {
+    stub({ proposals: [proposal, second] });
+    render(<ApprovalQueue />);
+
+    const selectAll = await screen.findByRole("checkbox", { name: "Select all for bulk approve" });
+    const [list] = screen.getAllByRole("list");
+    const bulkApprove = screen
+      .getAllByRole("button", { name: /^Approve/ })
+      .find((b) => !list?.contains(b)) as HTMLElement;
+    expect(screen.getByText("None selected")).toBeInTheDocument();
+    expect(bulkApprove).toBeDisabled();
+
+    await userEvent.click(selectAll);
+    expect(bulkApprove).toBeEnabled();
+    expect(bulkApprove).toHaveAccessibleName("Approve 2");
+  });
 });

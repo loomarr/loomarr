@@ -106,7 +106,7 @@ func (p *splitPublication) publish(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := publishPreparedMedia(cut.staged, cut.final); err != nil {
+		if err := publishStagedMedia(cut.staged, cut.final); err != nil {
 			return fmt.Errorf("split confirm: publish segment %d: %w", i, err)
 		}
 	}

@@ -9,19 +9,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { WatchingSurface } from "../index";
 
-// Layout is native-only (the DOM never reports onLayout), so the chrome bar's measured height is
-// driven through the very Surface props the TV renders: record every Surface's latest props.
-const surfaces = vi.hoisted(() => ({ latest: [] as Array<Record<string, unknown>> }));
-vi.mock("@loomarr/design-system", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@loomarr/design-system")>();
-  const { createElement } = await import("react");
-  const RecordingSurface = (props: Record<string, unknown>) => {
-    surfaces.latest.push(props);
-    return createElement(actual.Surface as never, props);
-  };
-  return { ...actual, Surface: RecordingSurface };
-});
-
 (
   globalThis as typeof globalThis & {
     IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -51,6 +38,7 @@ const schedule = {
 
 // This package compiles without the DOM lib, so type just the jsdom surface these tests use.
 type DomElement = {
+  getAttribute: (name: string) => string | null;
   innerHTML: string;
   parentElement: DomElement;
   querySelector: (selector: string) => DomElement | null;
@@ -90,21 +78,23 @@ const surface = (snapshot: PlayerSnapshot, props: Partial<Parameters<typeof Watc
   </LoomarrProvider>
 );
 
-const overlay = (container: DomElement) => container.querySelector('[aria-label="Channel switch"]');
+const overlay = (container: DomElement) => container.querySelector('[aria-label^="Tuning in to channel"]');
 
-describe("TV channel switch overlay", () => {
-  it("shows the surf card and the channel's still the moment a channel switch starts", () => {
+describe("TV channel switch overlay (B4, #1627)", () => {
+  it("shows the channel line and TUNING IN over snow and the channel's still the moment a switch starts", () => {
     const { container, root } = mount();
     act(() => root.render(surface(tuning)));
 
     const shown = overlay(container);
-    expect(shown).not.toBeNull();
-    // The exact surf-list card: number, name, live dot's programme, time left and progress.
-    expect(shown?.textContent).toContain("07");
+    expect(shown?.getAttribute("aria-label")).toBe("Tuning in to channel 7, Science Fiction");
+    expect(shown?.textContent).toContain("CH 7");
     expect(shown?.textContent).toContain("Science Fiction");
-    expect(shown?.textContent).toContain("The Current Frontier");
-    expect(shown?.textContent).toContain("12m left");
-    expect(shown?.innerHTML).toContain("The Current Frontier"); // the progress track is labelled with the programme
+    expect(shown?.textContent).toContain("TUNING IN");
+    // The surf card is dropped (maintainer, 2026-09-27): its programme no longer shows here.
+    expect(shown?.textContent).not.toContain("The Current Frontier");
+    // The snow is drawn, not filtered: FeTurbulence renders nothing on native.
+    expect(shown?.innerHTML).toContain("loomarr-snow-");
+    expect(shown?.innerHTML).not.toContain("feTurbulence");
     expect(container.innerHTML).toContain(encodeURIComponent("still/seven").replaceAll("%2F", "/"));
     act(() => root.unmount());
   });
@@ -125,7 +115,7 @@ describe("TV channel switch overlay", () => {
     vi.useRealTimers();
   });
 
-  it("falls back to the card on the plain background when there is no still", () => {
+  it("falls back to the readout over snow alone when there is no still", () => {
     const { container, root } = mount();
     act(() => root.render(surface({ ...tuning, stillUri: undefined })));
 
@@ -135,7 +125,7 @@ describe("TV channel switch overlay", () => {
     act(() => root.unmount());
   });
 
-  it("drops a still that fails to load, keeping the card, so a broken image never shows", () => {
+  it("drops a still that fails to load, keeping the readout, so a broken image never shows", () => {
     vi.useFakeTimers();
     // The native image loader reports failure through the platform Image's onerror.
     class FailingImage {
@@ -169,27 +159,6 @@ describe("TV channel switch overlay", () => {
     act(() => root.unmount());
   });
 
-  it("lifts the card above the chrome bar by the bar's measured height, not an assumed one", () => {
-    const { root } = mount();
-    surfaces.latest.length = 0;
-    act(() => root.render(surface(tuning)));
-    const card = () => surfaces.latest.filter((props) => props.width === 360).at(-1);
-    const measureBar = (height: number) => {
-      const onLayout = surfaces.latest
-        .filter((props) => typeof props.onLayout === "function")
-        .at(-1)?.onLayout;
-      if (typeof onLayout !== "function") throw new Error("the chrome bar registered no onLayout");
-      act(() => onLayout({ nativeEvent: { layout: { height } } }));
-    };
-
-    measureBar(260);
-    expect(card()?.bottom).toBe(260 + 16);
-
-    measureBar(132);
-    expect(card()?.bottom).toBe(132 + 16);
-    act(() => root.unmount());
-  });
-
   it("centres the loading spinner (its own align-self must not undo the container's centring)", () => {
     const dom = globalThis as unknown as {
       document: { body: { appendChild: (node: unknown) => void } };
@@ -215,6 +184,7 @@ describe("TV channel switch overlay", () => {
   });
 
   it("is never drawn on touch density (the web Watch page adopts it separately)", () => {
-    expect(renderToStaticMarkup(surface(tuning, { density: "touch" }))).not.toContain("Channel switch");
+    expect(renderToStaticMarkup(surface(tuning, { density: "touch" }))).not.toContain("Tuning in to channel");
+    expect(renderToStaticMarkup(surface(tuning))).toContain("Tuning in to channel");
   });
 });

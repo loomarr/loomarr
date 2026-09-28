@@ -1,7 +1,6 @@
 package fillerstructure
 
 import (
-	"errors"
 	"slices"
 	"strings"
 )
@@ -58,33 +57,6 @@ func AssessDirectVideoResponse(response DirectVideoResponse, durationMS int64) (
 	}
 	assessment.Unit, assessment.Role = deriveDirectVideoClaims(assessment.Segments)
 	return assessment, validateDirectVideoAssessment(assessment, durationMS)
-}
-
-// DirectVideoCandidate projects the shared parsed assessment into the reducer input after the
-// adapter has persisted the response and supplied its complete immutable assessor identity.
-func DirectVideoCandidate(source Source, media AssessmentMedia, assessor Assessor, assessment DirectVideoAssessment) (Candidate, error) {
-	input, err := NewCompleteVideoInput(source, media)
-	if err != nil {
-		return Candidate{}, err
-	}
-	segments := make([]Segment, 0, len(assessment.Segments))
-	for _, segment := range assessment.Segments {
-		segments = append(segments, Segment{
-			StartMS: segment.StartMS, EndMS: segment.EndMS, Role: segment.Role,
-		})
-	}
-	candidate, err := NewCandidate(source, input.SHA256, assessor, "", segments)
-	if err != nil {
-		return Candidate{}, err
-	}
-	wantRole := Role("")
-	if assessment.Role != nil {
-		wantRole = Role(assessment.Role.Kind)
-	}
-	if candidate.Unit != Unit(assessment.Unit.Kind) || candidate.Role != wantRole {
-		return Candidate{}, errors.New("direct-video candidate claims do not reproduce from timeline")
-	}
-	return candidate, nil
 }
 
 func deriveDirectVideoClaims(segments []DirectVideoAssessmentSegment) (DirectVideoClaim, *DirectVideoClaim) {
