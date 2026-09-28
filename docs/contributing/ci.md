@@ -669,7 +669,7 @@ the sharder modeled longest-processing-time workers, then restored `go list` ord
 policy sorted that order lexically again. `internal/store` and `internal/recurate` consequently
 started about 6m21s and 6m34s into their test steps. Four large, fixture-isolated packages also ran
 all top-level tests serially. The runner now emits and preserves descending measured-cost order,
-and `internal/fillerreview`, `internal/backendtransition`'s non-integration tests,
+and `research/internal/fillerreview`, `internal/backendtransition`'s non-integration tests,
 `internal/recurate`, and `internal/binder` use bounded `t.Parallel` execution. The PostgreSQL-tagged
 backend tests remain serial because they mutate process environment. Same-machine four-CPU race
 controls measured `fillerreview` at 115.237s serial versus 41.154s parallel; the other three

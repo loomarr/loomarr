@@ -92,6 +92,13 @@ func walkLoomarrPackages(root string) (map[string]*build.Package, error) {
 		if rel, rerr := filepath.Rel(root, path); rerr == nil && rootBuildOutput[filepath.ToSlash(rel)] {
 			return filepath.SkipDir
 		}
+		// A nested go.mod starts another module, where `go list ./...` stops too: the frozen
+		// research/ archive (#1560) and spikes are not this module and answer to none of its gates.
+		if path != root {
+			if _, serr := os.Stat(filepath.Join(path, "go.mod")); serr == nil {
+				return filepath.SkipDir
+			}
+		}
 
 		// A directory with no buildable Go files (a fixtures dir, a parent of packages, or one
 		// whose files are all behind build tags) yields an error rather than a package. That is
