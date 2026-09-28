@@ -103,22 +103,30 @@ type ProcessReadStore interface {
 
 type ProcessReadOptions struct {
 	OutputDir string
-	Now       func() time.Time
+	// OutputDirFunc, when set, overrides OutputDir and is read per lookup (diagnostics.dir
+	// applies live, #1659).
+	OutputDirFunc func() string
+	Now           func() time.Time
 }
 
 // ProcessLog is the only read seam for Process-run metadata, progress, and output. It owns query
 // bounds, public projection, opaque output references, and filesystem containment.
 type ProcessLog struct {
-	store     ProcessReadStore
-	outputDir string
-	now       func() time.Time
+	store ProcessReadStore
+	dir   func() string
+	now   func() time.Time
 }
 
 func NewProcessLog(store ProcessReadStore, opts ProcessReadOptions) *ProcessLog {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &ProcessLog{store: store, outputDir: opts.OutputDir, now: opts.Now}
+	dir := opts.OutputDirFunc
+	if dir == nil {
+		static := opts.OutputDir
+		dir = func() string { return static }
+	}
+	return &ProcessLog{store: store, dir: dir, now: opts.Now}
 }
 
 func (l *ProcessLog) Query(ctx context.Context, query ProcessQuery) (ProcessPage, error) {
@@ -193,10 +201,11 @@ func (l *ProcessLog) Output(ctx context.Context, id string) (ProcessOutput, erro
 	if err != nil {
 		return ProcessOutput{}, err
 	}
-	if l.outputDir == "" || run.OutputRef == "" || filepath.Base(run.OutputRef) != run.OutputRef || strings.ContainsAny(run.OutputRef, `/\\`) {
+	outputDir := l.dir()
+	if outputDir == "" || run.OutputRef == "" || filepath.Base(run.OutputRef) != run.OutputRef || strings.ContainsAny(run.OutputRef, `/\\`) {
 		return ProcessOutput{}, ErrProcessOutputUnavailable
 	}
-	path := filepath.Join(l.outputDir, run.OutputRef)
+	path := filepath.Join(outputDir, run.OutputRef)
 	content, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

@@ -150,11 +150,18 @@ func buildFoundation(
 				return storagegovernor.Policy{}
 			}
 		}
-		result.storageGovernor, err = storagegovernor.NewFilesystem([]storagegovernor.ManagedRoot{
-			{Path: result.fillerLayout.ClipDir(), Domain: storagegovernor.DomainFiller},
-			{Path: result.fillerLayout.WatchDir(), Domain: storagegovernor.DomainFiller},
-			{Path: result.set.str("diagnostics.dir"), Domain: storagegovernor.DomainDiagnostics},
-		}, storagePolicy)
+		// diagnostics.dir applies live (#1659), so its root is re-read on every measurement;
+		// the filler folders stay restart-scoped. The boot check still refuses overlapping roots.
+		managedRoots := func() []storagegovernor.ManagedRoot {
+			return []storagegovernor.ManagedRoot{
+				{Path: result.fillerLayout.ClipDir(), Domain: storagegovernor.DomainFiller},
+				{Path: result.fillerLayout.WatchDir(), Domain: storagegovernor.DomainFiller},
+				{Path: result.set.str("diagnostics.dir"), Domain: storagegovernor.DomainDiagnostics},
+			}
+		}
+		if _, err = storagegovernor.NewFilesystem(managedRoots(), storagePolicy); err == nil {
+			result.storageGovernor = storagegovernor.NewFilesystemLive(managedRoots, storagePolicy)
+		}
 		if err != nil {
 			// Keep one fail-closed authority even when the configured roots are ambiguous. Callers
 			// receive capacity_unavailable rather than silently returning to ungoverned writes.
@@ -205,13 +212,14 @@ func buildFoundation(
 		} else if n > 0 {
 			fallbackLog.Info("diagnostics: finalized process runs left running by a previous process", "count", n)
 		}
+		diagnosticsDir := func() string { return result.set.str("diagnostics.dir") }
 		result.processDiagnostics = diagnostics.NewProcessManager(st, result.diagnostics, diagnostics.ProcessOptions{
-			OutputDir: result.set.str("diagnostics.dir"), InstanceID: instanceID,
+			OutputDirFunc: diagnosticsDir, InstanceID: instanceID,
 			Storage:   result.storageGovernor,
 			OnFailure: func(err error) { fallbackLog.Error("diagnostics: process recorder failed", "err", err) },
 		})
 		result.diagnosticProcesses = diagnostics.NewProcessLog(st, diagnostics.ProcessReadOptions{
-			OutputDir: result.set.str("diagnostics.dir"), Now: time.Now,
+			OutputDirFunc: diagnosticsDir, Now: time.Now,
 		})
 		owner.addStop(result.processDiagnostics.Close)
 	} else {

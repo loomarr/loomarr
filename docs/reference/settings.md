@@ -141,7 +141,7 @@ To replace the installation key, supply the new current key and provide the old 
 | `jobs.retention` (`JOBS_RETENTION`) | Advanced settings | duration | `720h` | How long finished suggestion jobs are kept before they're cleaned up. |
 | `proposals.retention` (`PROPOSALS_RETENTION`) | Advanced settings | duration | `2160h` | How long suggested lineups are kept before they're cleaned up. |
 | `activity.retention` (`ACTIVITY_RETENTION`) | Advanced settings | duration | `720h` | How long the Dashboard's recent-activity entries are kept before they're cleaned up. |
-| `diagnostics.dir` (`DIAGNOSTICS_DIR`) | Diagnostics | string | `<data dir>/diagnostics` | Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart. _(advanced; applies after restart)_ |
+| `diagnostics.dir` (`DIAGNOSTICS_DIR`) | Diagnostics | string | `<data dir>/diagnostics` | Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart. A change applies to the next process; output already written stays where it was. _(advanced)_ |
 | `diagnostics.retention` (`DIAGNOSTICS_RETENTION`) | Diagnostics | duration | `168h` | How long Diagnostic events and completed Process runs are kept. Active Process runs are never removed by age. |
 | `diagnostics.max_storage_mb` (`DIAGNOSTICS_MAX_STORAGE_MB`) | Diagnostics | int | `512` | Soft global storage budget in MiB for retained Diagnostic events and bounded Process output. Active Process runs remain protected. |
 | `job.housekeeping.schedule` (`JOB_HOUSEKEEPING_SCHEDULE`) | Background tasks | cron | `0 30 4 * * *` | When Loomarr removes expired sessions and operational records beyond their retention periods. |

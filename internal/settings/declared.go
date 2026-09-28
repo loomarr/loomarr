@@ -1493,9 +1493,9 @@ func declared() []Setting {
 		},
 		{
 			Key: "diagnostics.dir", EnvVar: "DIAGNOSTICS_DIR", Group: GroupAdvanced,
-			Kind: KindString, Presentation: PresentationPath, Apply: ApplyRestart,
+			Kind: KindString, Presentation: PresentationPath,
 			DataSubdir: "diagnostics", Validate: storagePath(false), Advanced: true,
-			Doc: "Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart.",
+			Doc: "Where Loomarr keeps bounded ffmpeg and streaming-process output. The directory must be persistent if logs should survive a restart. A change applies to the next process; output already written stays where it was.",
 		},
 		{
 			Key: "diagnostics.retention", EnvVar: "DIAGNOSTICS_RETENTION", Group: GroupAdvanced,
