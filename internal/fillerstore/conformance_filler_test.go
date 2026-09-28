@@ -5196,6 +5196,11 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	if err != nil || !found || pipeline.Disposition != filler.DispositionReady || pipeline.Status != filler.StatusDone {
 		t.Fatalf("applied admit pipeline = %+v, found = %v, err = %v", pipeline, found, err)
 	}
+	// The clip and pipeline rows keep their tables' Unix-seconds codec; only the decision ledger's own
+	// rows are nanoseconds. A nanosecond value there reads back millions of years in the future.
+	if !clip.UpdatedAt.Equal(action.CreatedAt.Truncate(time.Second)) || !pipeline.UpdatedAt.Equal(action.CreatedAt.Truncate(time.Second)) {
+		t.Fatalf("applied admit stamped clip %v, pipeline %v; want the action's time %v", clip.UpdatedAt, pipeline.UpdatedAt, action.CreatedAt)
+	}
 	actions, err := s.ListFillerDecisionActions(ctx, fillerdecision.ActionFilter{DecisionID: decision.ID, Limit: 10})
 	if err != nil || actions.Total != 1 || actions.Rows[0].ID != action.ID {
 		t.Fatalf("applied admit actions = %+v, err = %v", actions, err)
@@ -5271,6 +5276,9 @@ func testFillerAppliedAdmissionTransaction(t *testing.T, newStore NewStoreFunc) 
 	pipeline, _, _ = s.GetClipPipeline(ctx, rejectedHash)
 	if pipeline.Disposition != filler.DispositionDismissed {
 		t.Fatalf("applied reject pipeline = %+v", pipeline)
+	}
+	if removed, err := s.GetClip(ctx, rejectedHash); err != nil || !removed.RemovedAt.Equal(reject.CreatedAt.Truncate(time.Second)) {
+		t.Fatalf("applied reject removed the clip at %v, want %v (err %v)", removed.RemovedAt, reject.CreatedAt, err)
 	}
 	restoreRejected := fillerdecision.Action{
 		ID: "applied-restore-rejected", DecisionID: rejectedDecision.ID, Kind: fillerdecision.ActionRestore,

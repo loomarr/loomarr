@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
@@ -143,4 +144,63 @@ func (c ClipTx) RecordVision(ctx context.Context, hash, visibleText string, sugg
 		visibleText, false, visibleText, true,
 		suggestedEra, suggestedEra, epoch(at), hash)
 	return err
+}
+
+// The lifecycle transitions an admission decision applies. Each reports whether it changed the
+// clip: false means the clip was not in the state the transition starts from.
+//
+// ⚠ Held and composite flags are bound, never literals (BOOLEAN on Postgres, INTEGER on SQLite).
+
+// Admit files a held, present, classified clip into the playable catalog.
+func (c ClipTx) Admit(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ?
+		WHERE hash = ? AND held = ? AND removed_at = 0 AND kind <> ?`,
+		false, false, epoch(at), hash, true, string(filler.Unclassified))
+}
+
+// Unfile takes a filed clip out of the catalog and holds it for review again.
+func (c ClipTx) Unfile(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ? WHERE hash = ? AND held = ?`,
+		true, false, epoch(at), hash, false)
+}
+
+// Reject holds the clip and removes it from the catalog.
+func (c ClipTx) Reject(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, removed_at = ?, updated_at = ? WHERE hash = ?`,
+		true, false, epoch(at), epoch(at), hash)
+}
+
+// RestoreHeld brings a held or removed clip back as present and held, for review.
+func (c ClipTx) RestoreHeld(ctx context.Context, hash string, at time.Time) (bool, error) {
+	return c.affectedOne(ctx, `UPDATE clips SET held = ?, auto_filed = ?, removed_at = 0, updated_at = ?
+		WHERE hash = ? AND (held = ? OR removed_at <> 0)`,
+		true, false, epoch(at), hash, true)
+}
+
+// SettlePipeline settles the clip's pipeline row at `to`, done, if its disposition is one of from.
+// The pipeline is core's until it moves (#1747), so a decision settles it here.
+func (c ClipTx) SettlePipeline(ctx context.Context, hash string, from []filler.Disposition, to filler.Disposition, at time.Time) (bool, error) {
+	marks := make([]string, len(from))
+	args := make([]any, 0, len(from)+3)
+	args = append(args, string(to), epoch(at))
+	for i, disposition := range from {
+		marks[i] = "?"
+		args = append(args, string(disposition))
+	}
+	args = append(args, hash)
+	return c.affectedOne(ctx, `UPDATE filler_clip_pipeline
+		SET disposition = ?, status = 'done', next_run = 0, updated_at = ?
+		WHERE disposition IN (`+strings.Join(marks, ",")+`) AND clip_hash = ?`, args...)
+}
+
+func (c ClipTx) affectedOne(ctx context.Context, query string, args ...any) (bool, error) {
+	result, err := c.tx.ExecContext(ctx, c.s.ph(query), args...)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("inspect affected rows: %w", err)
+	}
+	return affected == 1, nil
 }

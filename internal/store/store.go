@@ -14,7 +14,6 @@ import (
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/diagnostics"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
@@ -570,13 +569,6 @@ type InteractiveOperationStore interface {
 	RecoverInterruptedInteractiveOperations(ctx context.Context, at time.Time) (int, error)
 }
 
-// FillerDecisionStore owns immutable V63 admission results and append-only
-// operator actions. Projection rules remain in fillerdecision.Service.
-type FillerDecisionStore interface {
-	fillerdecision.Repository
-	fillerdecision.AppliedActionRepository
-}
-
 // AiringStore records what actually went to air — written from playout only.
 type AiringStore interface {
 	// RecordClipPlay counts a filler clip having AIRED globally and on one channel (V58).
@@ -795,7 +787,6 @@ type Store interface {
 	UserStore
 	ClipStore
 	InteractiveOperationStore
-	FillerDecisionStore
 	SplitProposalStore
 	AiringStore
 	LibraryPathStore
