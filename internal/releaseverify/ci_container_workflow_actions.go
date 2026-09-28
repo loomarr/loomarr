@@ -98,6 +98,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "ci-image.yml", job: "run", step: 0}:                  `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "ci-image.yml", job: "run", step: 1}:                  `{"uses":"docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e"}`,
 		{workflow: "ci-image.yml", job: "run", step: 2}:                  `{"name":"Build (${{ matrix.platform }})","uses":"docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a","with":{"context":".","platforms":"${{ matrix.platform }}","push":false,"load":true,"tags":"loomarr-ci:verify"}}`,
+		{workflow: "ci-image.yml", job: "run", step: 4}:                  `{"uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version":"${{ env.GO_VERSION }}","cache":false}}`,
 		{workflow: "ci-playwright.yml", job: "run", step: 0}:             `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "ci-playwright.yml", job: "run", step: 1}:             `{"uses":"actions/setup-node@820762786026740c76f36085b0efc47a31fe5020","with":{"node-version":"${{ env.NODE_VERSION }}"}}`,
 		{workflow: "ci-playwright.yml", job: "run", step: 3}:             `{"name":"Restore pnpm store","id":"pnpm-cache","uses":"actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9","with":{"path":"~/.local/share/pnpm/store","key":"pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}","restore-keys":"pnpm-${{ runner.os }}-"}}`,

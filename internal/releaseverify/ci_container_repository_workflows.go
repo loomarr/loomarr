@@ -31,14 +31,28 @@ cmp LICENSE "$RUNNER_TEMP/LICENSE"
 cmp THIRD_PARTY_NOTICES.md "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
 `
 
+// shippedFFmpegExtraction copies the ffmpeg and ffprobe the image just built ships, so the
+// unchanged `make test-ffmpeg` gate runs against those exact bytes (#661).
+const shippedFFmpegExtraction = `set -euo pipefail
+dir="$RUNNER_TEMP/image-ffmpeg"
+mkdir -p "$dir"
+container=$(docker create loomarr-ci:verify)
+trap 'docker rm -f "$container" >/dev/null' EXIT
+docker cp "$container:/usr/local/bin/ffmpeg" "$dir/ffmpeg"
+docker cp "$container:/usr/local/bin/ffprobe" "$dir/ffprobe"
+"$dir/ffmpeg" -version | head -1
+"$dir/ffprobe" -version | head -1
+echo "$dir" >> "$GITHUB_PATH"
+`
+
 var (
 	shellVariableToken = regexp.MustCompile(`^\$\$?(?:[A-Za-z_][A-Za-z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\})$`)
 )
 
 // verifyRepositoryWorkflowContainerAcquisition parses every workflow and
-// reserves container acquisition for the exact audited Make route. The one
-// ci-image exception operates only on the image built by its preceding action
-// and is source-exact so it cannot become a general pull path.
+// reserves container acquisition for the exact audited Make route. The two
+// ci-image exceptions operate only on the image built by their preceding action
+// and are source-exact so they cannot become a general pull path.
 func verifyRepositoryWorkflowContainerAcquisition(workflowsDir string, protectedTargets map[string]struct{}, scripts *repositoryScriptAudit) error {
 	catalog := workflowAuthorityCatalog()
 	if err := verifyWorkflowAuthorityCatalog(catalog); err != nil {

@@ -72,3 +72,27 @@ jobs:
           docker cp "$container:/usr/share/doc/loomarr/THIRD_PARTY_NOTICES.md" "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
           cmp LICENSE "$RUNNER_TEMP/LICENSE"
           cmp THIRD_PARTY_NOTICES.md "$RUNNER_TEMP/THIRD_PARTY_NOTICES.md"
+
+      # The unchanged `make test-ffmpeg` gate, run against the ffmpeg and ffprobe this image
+      # actually ships on this architecture (#661): the same bytes the GPL source releases in
+      # THIRD_PARTY_NOTICES.md correspond to, copied out of the image just built. release.yml
+      # refuses a tag whose release-candidate run did not pass this job on both platforms.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Put the image's own ffmpeg and ffprobe on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/image-ffmpeg"
+          mkdir -p "$dir"
+          container=$(docker create loomarr-ci:verify)
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          docker cp "$container:/usr/local/bin/ffmpeg" "$dir/ffmpeg"
+          docker cp "$container:/usr/local/bin/ffprobe" "$dir/ffprobe"
+          "$dir/ffmpeg" -version | head -1
+          "$dir/ffprobe" -version | head -1
+          echo "$dir" >> "$GITHUB_PATH"
+      - name: FFmpeg acceptance against the shipped binaries
+        run: make test-ffmpeg
