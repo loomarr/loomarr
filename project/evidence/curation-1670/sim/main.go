@@ -211,7 +211,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 	policy := schedule.ChannelPolicy{}
 	policy.Ordering = s.Ordering
 	epoch := start.Add(-37 * time.Hour) // a channel created some time before the span
-	lastAired := map[provision.Key]time.Time{}
+	lastAired := airLog{}
 	seen := map[string]bool{}
 	var airings []kit.Airing
 	cuts := 0
@@ -219,7 +219,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 	samples, misses := 0, 0
 
 	for t := start; t.Before(end); t = t.Add(time.Hour) {
-		ch.LastAired = copyMap(lastAired)
+		ch.LastAired = lastAired.asOf(schedule.WindowStart(t, window)) // #1674: per unit, as of the window start
 		d := schedule.ComputeDesiredAt(ch, entries, lib, schedule.PodFill, policy, t)
 		hour := playout.BroadcastsBetween(d.Slots, epoch, t, t.Add(time.Hour))
 		if t.Sub(t.Truncate(window)) == 0 { // a rolling-window boundary: the guide's forecast
@@ -240,7 +240,7 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 			// A block the walk returns with its true start but which is replaced before it
 			// ends (the next hour's recompute or a window boundary) was cut mid-programme.
 			if i == len(hour)-1 && b.Stop.After(t.Add(time.Hour)) {
-				next := schedule.ComputeDesiredAt(withAired(ch, lastAired, v, hour), entries, lib, schedule.PodFill, policy, t.Add(time.Hour))
+				next := schedule.ComputeDesiredAt(withAired(ch, lastAired, v, hour, t.Add(time.Hour)), entries, lib, schedule.PodFill, policy, t.Add(time.Hour))
 				nb := playout.BroadcastsBetween(next.Slots, epoch, t.Add(time.Hour), t.Add(time.Hour+time.Minute))
 				if len(nb) == 0 || nb[0].LibraryItemID != b.LibraryItemID || !nb[0].Start.Equal(b.Start) {
 					cuts++
@@ -254,8 +254,8 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 		}
 		if v.Watch(t.In(loc)) {
 			for _, b := range hour {
-				if b.Kind == schedule.SlotProgram && b.Key != "" {
-					lastAired[b.Key] = b.Start // RecordAiring: keyed by title key, stamped at programme start
+				if b.Kind == schedule.SlotProgram && b.LibraryItemID != "" {
+					lastAired.record(b.LibraryItemID, b.Start, maxTime(b.Start, t))
 				}
 			}
 		}
@@ -263,14 +263,46 @@ func current(s shape, entries []schedule.LineupEntry, lib library, v viewing, st
 	return airings, cuts, float64(misses) / float64(samples)
 }
 
-func withAired(ch schedule.Channel, last map[provision.Key]time.Time, v viewing, hour []playout.Broadcast) schedule.Channel {
-	m := copyMap(last)
-	for _, b := range hour {
-		if b.Kind == schedule.SlotProgram && b.Key != "" && v.Watch(b.Start.In(simLoc)) {
-			m[b.Key] = b.Start
+// airLog mirrors the #1674 airings table: one row per airing of a unit, with when it was recorded.
+type airLog map[string][][2]time.Time
+
+func (l airLog) record(unit string, aired, recorded time.Time) {
+	l[unit] = append(l[unit], [2]time.Time{aired, recorded})
+}
+
+func (l airLog) asOf(before time.Time) map[string]time.Time {
+	out := map[string]time.Time{}
+	if before.IsZero() {
+		return out
+	}
+	for u, rows := range l {
+		for _, r := range rows {
+			if r[1].Before(before) && r[0].After(out[u]) {
+				out[u] = r[0]
+			}
 		}
 	}
-	ch.LastAired = m
+	return out
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
+}
+
+func withAired(ch schedule.Channel, last airLog, v viewing, hour []playout.Broadcast, next time.Time) schedule.Channel {
+	m := airLog{}
+	for u, rows := range last {
+		m[u] = append([][2]time.Time(nil), rows...)
+	}
+	for _, b := range hour {
+		if b.Kind == schedule.SlotProgram && b.LibraryItemID != "" && v.Watch(b.Start.In(simLoc)) {
+			m.record(b.LibraryItemID, b.Start, maxTime(b.Start, next.Add(-time.Hour)))
+		}
+	}
+	ch.LastAired = m.asOf(schedule.WindowStart(next, window))
 	return ch
 }
 
