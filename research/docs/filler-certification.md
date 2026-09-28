@@ -1,6 +1,7 @@
 # Filler admission certification
 
-This package scores captured filler-admission decisions. It deliberately has no provider, network,
+The certification scorer (`fillereval` in the pinned core this module requires) scores captured
+filler-admission decisions; the main module no longer carries it (#1747). It deliberately has no provider, network,
 media-decoder, store, or application dependency: the same decision JSONL can be replayed after a
 prompt, model, policy, or scorer change without spending money or changing production state.
 

@@ -459,10 +459,6 @@ classify() {
       select_gate go
       select_gate image
       ;;
-    internal/fillereval/*.md)
-      known=true
-      select_gate docs
-      ;;
     internal/releaseverify/testdata/*)
       # Release verification is policy-only above; its golden inputs must retain that boundary
       # instead of falling through to the generic Go-package fixture rule.

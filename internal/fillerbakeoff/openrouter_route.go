@@ -14,12 +14,6 @@ func ValidateOpenRouterVideoRoute(snapshot OpenRouterSnapshot, modelID, upstream
 	return validateOpenRouterMediaRoute(snapshot, modelID, upstreamProvider, upstreamProviderSlug, "video", at, maximumCompletionTokens)
 }
 
-// ValidateOpenRouterAudioRoute proves that one fresh exact route can accept strict native-audio
-// input under the same ZDR, one-upstream, and structured-output contract as video.
-func ValidateOpenRouterAudioRoute(snapshot OpenRouterSnapshot, modelID, upstreamProvider, upstreamProviderSlug string, at time.Time, maximumCompletionTokens int64) (OpenRouterModelSnapshot, OpenRouterEndpointSnapshot, error) {
-	return validateOpenRouterMediaRoute(snapshot, modelID, upstreamProvider, upstreamProviderSlug, "audio", at, maximumCompletionTokens)
-}
-
 func validateOpenRouterMediaRoute(snapshot OpenRouterSnapshot, modelID, upstreamProvider, upstreamProviderSlug, modality string, at time.Time, maximumCompletionTokens int64) (OpenRouterModelSnapshot, OpenRouterEndpointSnapshot, error) {
 	if err := ValidateOpenRouterSnapshot(snapshot); err != nil {
 		return OpenRouterModelSnapshot{}, OpenRouterEndpointSnapshot{}, err

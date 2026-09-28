@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillereval"
 	"github.com/loomarr/loomarr/internal/testkit/httpfixture"
 )
 
@@ -125,55 +124,6 @@ func TestFetchOpenRouterSnapshotFiltersTheTranscriptionCatalog(t *testing.T) {
 	}
 }
 
-func TestValidateOpenRouterRunSnapshotBindsDigestFreshnessAndRoute(t *testing.T) {
-	t.Parallel()
-	snapshot := validOpenRouterSnapshot()
-	digest := OpenRouterSnapshotSHA256(snapshot)
-	run := fillereval.RunIdentity{CapabilitySnapshot: digest, PriceSnapshot: digest, GeneratedAt: snapshot.RetrievedAt.Add(time.Hour)}
-	route := Route{Provider: "openrouter", Model: "vendor/model-1", ResolvedModel: "vendor/model-1-20260826", Rung: "text", UpstreamProviderSlug: "pinned-provider/variant", UpstreamProvider: "Pinned Provider", Modalities: []string{"text"}}
-	if err := ValidateOpenRouterRunSnapshot(run, []Route{route}, snapshot); err != nil {
-		t.Fatal(err)
-	}
-	for name, mutate := range map[string]func(*fillereval.RunIdentity, *Route, *OpenRouterSnapshot){
-		"digest": func(run *fillereval.RunIdentity, _ *Route, _ *OpenRouterSnapshot) {
-			run.PriceSnapshot = strings.Repeat("0", 64)
-		},
-		"stale": func(run *fillereval.RunIdentity, _ *Route, snapshot *OpenRouterSnapshot) {
-			run.GeneratedAt = snapshot.RetrievedAt.Add(25 * time.Hour)
-		},
-		"selector": func(_ *fillereval.RunIdentity, route *Route, _ *OpenRouterSnapshot) {
-			route.UpstreamProviderSlug = "other"
-		},
-		"provider": func(_ *fillereval.RunIdentity, route *Route, _ *OpenRouterSnapshot) { route.UpstreamProvider = "Other" },
-		"model revision": func(_ *fillereval.RunIdentity, route *Route, _ *OpenRouterSnapshot) {
-			route.ResolvedModel = "vendor/model-1-other"
-		},
-		"modality": func(_ *fillereval.RunIdentity, route *Route, _ *OpenRouterSnapshot) {
-			route.Modalities = []string{"video"}
-		},
-		"privacy": func(_ *fillereval.RunIdentity, _ *Route, snapshot *OpenRouterSnapshot) {
-			snapshot.Models[0].Endpoints[0].ZDR = false
-		},
-		"parameters": func(_ *fillereval.RunIdentity, _ *Route, snapshot *OpenRouterSnapshot) {
-			snapshot.Models[0].Endpoints[0].SupportedParameters = []string{"response_format"}
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			changedRun, changedRoute, changedSnapshot := run, route, snapshot
-			changedSnapshot.Models = append([]OpenRouterModelSnapshot(nil), snapshot.Models...)
-			changedSnapshot.Models[0].Endpoints = append([]OpenRouterEndpointSnapshot(nil), snapshot.Models[0].Endpoints...)
-			mutate(&changedRun, &changedRoute, &changedSnapshot)
-			if name != "digest" && name != "stale" {
-				changedDigest := OpenRouterSnapshotSHA256(changedSnapshot)
-				changedRun.CapabilitySnapshot, changedRun.PriceSnapshot = changedDigest, changedDigest
-			}
-			if err := ValidateOpenRouterRunSnapshot(changedRun, []Route{changedRoute}, changedSnapshot); err == nil {
-				t.Fatal("invalid snapshot binding accepted")
-			}
-		})
-	}
-}
-
 func TestValidateOpenRouterSnapshotPreservesInactiveSiblingRoutes(t *testing.T) {
 	t.Parallel()
 	snapshot := validOpenRouterSnapshot()
@@ -185,11 +135,6 @@ func TestValidateOpenRouterSnapshotPreservesInactiveSiblingRoutes(t *testing.T) 
 	snapshot.Models[0].Endpoints = append([]OpenRouterEndpointSnapshot{inactive}, snapshot.Models[0].Endpoints...)
 	if err := ValidateOpenRouterSnapshot(snapshot); err != nil {
 		t.Fatal(err)
-	}
-	run := fillereval.RunIdentity{CapabilitySnapshot: OpenRouterSnapshotSHA256(snapshot), PriceSnapshot: OpenRouterSnapshotSHA256(snapshot), GeneratedAt: snapshot.RetrievedAt.Add(time.Hour)}
-	route := Route{Provider: "openrouter", Model: "vendor/model-1", ResolvedModel: "vendor/model-1-20260826", Rung: "text", UpstreamProviderSlug: inactive.ProviderSlug, UpstreamProvider: inactive.ProviderName, Modalities: []string{"text"}}
-	if err := ValidateOpenRouterRunSnapshot(run, []Route{route}, snapshot); err == nil || !strings.Contains(err.Error(), "not live") {
-		t.Fatalf("inactive selected route error = %v", err)
 	}
 }
 

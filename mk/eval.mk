@@ -169,7 +169,7 @@ eval-matrix: ## explicitly certify local + OpenRouter generation sequentially (m
 	  exit "$$status"
 
 filler-eval-contract: ## hermetic filler-admission corpus and selective-risk contracts
-	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillercorpus/ ./internal/fillereval/
+	$(GO) test ./internal/filleradmission/ ./internal/fillerbakeoff/ ./internal/fillereval/
 	$(GO) -C research test ./internal/fillerreview/ ./cmd/filler-bakeoff-ollama/ ./cmd/filler-bakeoff-openrouter/ ./cmd/filler-bakeoff-transcribe/ ./cmd/filler-cert/ ./cmd/filler-openrouter-snapshot/ ./cmd/filler-corpus/ ./cmd/filler-corpus-archive/ ./cmd/filler-corpus-commons/ ./cmd/filler-corpus-direct/ ./cmd/filler-corpus-download/ ./cmd/filler-corpus-inventory/ ./cmd/filler-corpus-loc/ ./cmd/filler-corpus-met/ ./cmd/filler-corpus-met-rights-complete/ ./cmd/filler-corpus-met-rights-propose/ ./cmd/filler-corpus-nasa/ ./cmd/filler-corpus-pages/ ./cmd/filler-corpus-pilot/ ./cmd/filler-corpus-pilot-rights-lock/ ./cmd/filler-corpus-pilot-rights-review/ ./cmd/filler-corpus-prepare/ ./cmd/filler-corpus-review/ ./cmd/filler-corpus-review-ollama/ ./cmd/filler-corpus-review-openrouter/ ./cmd/filler-corpus-rights-review/ ./cmd/filler-corpus-rights-lock/ ./cmd/filler-media-integrity-prepare/ ./cmd/filler-media-integrity-score/ ./cmd/filler-temporal-assess-ollama/ ./cmd/filler-temporal-assess-openrouter/ ./cmd/filler-temporal-calibration-report/ ./cmd/filler-temporal-compare/ ./cmd/filler-temporal-select/ ./cmd/filler-temporal-truth-select/ ./cmd/filler-temporal-truth-prepare/ ./cmd/filler-visual-corpus-nominate/
 
 filler-temporal-truth-select: ## select the private 48-case truth-review sample from frozen history without inference
