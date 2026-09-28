@@ -275,20 +275,19 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
       <div>
         <h2 className="font-semibold text-lg">Filler</h2>
         <p className="text-muted-foreground text-sm">
-          This channel inherits sensible filler automatically. Check the saved result first, then narrow it
-          only when the channel needs something different.
+          This channel picks its commercials and clips automatically. Only change these settings if it needs
+          something different.
         </p>
       </div>
 
       {/* Saved truth comes before authoring. An operator should see whether this channel already
           works before meeting the controls that can make its pool narrower. This is intentionally
-          not collapsed: coverage is the primary answer, not advanced diagnosis. */}
-      <section className="flex flex-col gap-3 rounded-lg border border-border p-5">
+          not collapsed: coverage is the primary answer, not advanced diagnosis. The headings and
+          sentences on this page are the web mock's. */}
+      <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
         <div>
-          <h3 className="font-semibold text-base">Saved channel coverage</h3>
-          <p className="text-muted-foreground text-sm">
-            The material this channel can use now, after its inherited and saved matching rules.
-          </p>
+          <h3 className="font-semibold text-base">What this channel can play</h3>
+          <p className="text-muted-foreground text-sm">Clips that fit this channel's settings right now.</p>
         </div>
         {coverageQuery.isLoading ? (
           <p className="text-muted-foreground text-sm">Checking saved coverage…</p>
@@ -305,9 +304,9 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
         )}
       </section>
 
-      <section className="flex flex-col gap-5 rounded-lg border border-border p-5">
+      <section className="flex flex-col gap-5 rounded-lg border border-border bg-card p-5">
         <div>
-          <h3 className="font-semibold text-base">Match this channel</h3>
+          <h3 className="font-semibold text-base">Choose what fits</h3>
           <p className="text-muted-foreground text-sm">
             Start broad. Add only the filters this channel really needs. Clips come from your{" "}
             <Link to="/filler/library" className="text-signal underline-offset-2 hover:underline">
@@ -344,8 +343,13 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
       </section>
 
       <CollapsibleSection
-        title="Clip preferences (advanced)"
-        description={`${pluralize(pinned.length + excluded.length, "saved override")}. Prefer or exclude individual clips only when matching rules are not enough.`}
+        size="compact"
+        title="Specific clips (advanced)"
+        description={`${
+          pinned.length + excluded.length === 0
+            ? "None set."
+            : `${pluralize(pinned.length + excluded.length, "saved override")}.`
+        } Always include, or never include, particular clips.`}
       >
         <div className="flex flex-col gap-4">
           <FillerClipList
@@ -372,7 +376,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
       </CollapsibleSection>
 
       {/* The live break — the ground-truth preview of the current draft. */}
-      <section className="flex flex-col gap-2 rounded-lg border border-border p-5">
+      <section className="flex flex-col gap-2 rounded-lg border border-border bg-card p-5">
         <h3 className="font-semibold text-base">Preview break</h3>
         {previewError ? (
           <p className="text-onair-300 text-sm">
@@ -397,7 +401,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
           <div className={cn("transition-opacity", isPreviewing && "opacity-60")}>
             <PodTimeline entries={entries} matchLevel={preview?.matchLevel} onPreview={setPreviewingClip} />
             <p className="mt-2 text-muted-foreground text-sm">
-              {`${pluralize(entries.length, "clip")} in this break, assembled exactly as the channel builds it. Select a segment to play it.`}
+              {`A sample break of ${pluralize(entries.length, "clip")}, put together the way this channel does it. Click a clip to play it.`}
             </p>
           </div>
         )}
