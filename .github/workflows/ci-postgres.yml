@@ -15,13 +15,13 @@ jobs:
     name: Store conformance (Postgres, ${{ matrix.lane }})
     runs-on: ubuntu-latest
     # One suite per runner (#1570): each still runs alone (-p=1) under the race detector, so the
-    # gate's isolation holds while the three suites stop queuing behind each other. The matrix is
+    # gate's isolation holds while the suites stop queuing behind each other. The matrix is
     # the gate's completeness: releaseverify requires exactly these suites, and fail-fast off so a
     # failure never hides a sibling's result.
     strategy:
       fail-fast: false
       matrix:
-        lane: ["store", "backendtransition", "app"]
+        lane: ["store", "backendtransition", "app", "fillerstore"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
