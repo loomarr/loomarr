@@ -1,5 +1,5 @@
 import { getChannelGuideMockHandler } from "@loomarr/api/msw";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
@@ -40,7 +40,8 @@ describe("Home's strip links to Needs you (#1659)", () => {
     expect(await screen.findByText("1 of your requests couldn’t be built")).toBeInTheDocument();
     expect(screen.getByText("Everything’s playing")).toBeInTheDocument();
     expect(screen.queryByText(/need you/)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("link", { name: "Edit and retry" }));
+    // The strip's, not the Your requests row's: both offer it, as the mock draws.
+    await userEvent.click(within(screen.getByRole("status")).getByRole("link", { name: "Edit and retry" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/requests/needs-you"));
   });
 });

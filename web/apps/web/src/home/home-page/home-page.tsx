@@ -1,5 +1,6 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
+import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { unwrap } from "@loomarr/api/unwrap";
 import { layoutGuide } from "@loomarr/core/guide";
 import { Link } from "@tanstack/react-router";
@@ -9,6 +10,8 @@ import { defaultGuideWindow } from "@/channels/guide-window";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { HomeStrip } from "../home-strip";
+import { NewThisWeek, newSince } from "../new-this-week";
+import { OnTheWay, YourRequests } from "../on-the-way";
 import { Tonight } from "../tonight";
 import { WatchingNow } from "../watching-now";
 
@@ -31,7 +34,7 @@ const useMinuteClock = () => {
 // reads (and `/` prefetches), so arriving here warms the Guide and vice versa.
 const HomePage = () => {
   useDocumentTitle("Home");
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const nowMs = useMinuteClock();
 
   const guide = channelsApi.useChannelGuide(defaultGuideWindow(nowMs));
@@ -49,6 +52,9 @@ const HomePage = () => {
   const viewing = dashboardApi.useHouseholdViewing({ query: { enabled: hasLife, refetchInterval: 30_000 } });
   const highlights = channelsApi.useGuideHighlights(undefined, { query: { enabled: hasLife } });
   const viewingBody = unwrap(viewing.data);
+  const since = newSince(nowMs);
+  const arrivals = titlesApi.useListTitles({ since }, { query: { enabled: hasLife } });
+  const allChannels = channelsApi.useListChannels({ query: { enabled: hasLife } });
 
   return (
     <div className="flex h-full flex-col">
@@ -59,12 +65,23 @@ const HomePage = () => {
           {hasLife && layout && viewingBody && (
             <WatchingNow viewing={viewingBody} layout={layout} nowMs={nowMs} />
           )}
+          {hasLife && !isAdmin && <YourRequests />}
           {hasLife && (
             <Tonight
               highlights={unwrap(highlights.data, (b) => b.highlights) ?? []}
               timeZone={body?.timezone}
             />
           )}
+          {hasLife && (
+            <NewThisWeek
+              titles={unwrap(arrivals.data, (b) => b.titles) ?? []}
+              channels={unwrap(allChannels.data, (b) => b.channels) ?? []}
+              since={since}
+              viewerName={user?.name}
+              timeZone={body?.timezone}
+            />
+          )}
+          {hasLife && isAdmin && <OnTheWay />}
           {isAdmin && (
             <p className="m-0 text-static-400 text-xs">
               Encoder, storage and service details are in{" "}
