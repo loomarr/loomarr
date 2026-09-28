@@ -95,14 +95,17 @@ func TestBuild_TenBitLetterboxPadsInOpenCL(t *testing.T) {
 		t.Errorf("vaapi-amd PQ scope: no OpenCL mapping, so the letterbox must be refused, got %v", err)
 	}
 
-	for _, hostName := range []string{"vaapi-intel", "vaapi-amd"} {
+	// The SDR box is drawn at the output size in the one scaling step: boxing at source size and
+	// upscaling after blended the rows beside the picture into the bars (Arc and GeForce).
+	for hostName, upload := range map[string]string{"vaapi-intel": "hwupload", "vaapi-amd": "hwupload", "nvenc-opencl": "hwupload_cuda"} {
 		p, err := Build(hosts[hostName], scope["h264-scope-sdr"], hdr)
 		if err != nil {
 			t.Fatalf("%s SDR scope: %v", hostName, err)
 		}
-		if !strings.Contains(p.VideoFilter, ":pos_y=140:pos_w=1920:pos_h=800:fillcolor=black,hwupload,scale_vaapi=w=3840:h=2160:format=p010,fps=") ||
-			strings.Contains(p.VideoFilter, "pad_") {
-			t.Errorf("%s SDR scope: want the letterbox boxed by the libplacebo conversion, no pad: %q", hostName, p.VideoFilter)
+		if want := ":w=3840:h=2160:pos_x=0:pos_y=280:pos_w=3840:pos_h=1600:fillcolor=black," + upload + ",fps="; !strings.Contains(p.VideoFilter, want) ||
+			strings.Contains(p.VideoFilter, "pad") || strings.Contains(p.VideoFilter, "scale_") {
+			t.Errorf("%s SDR scope: want the letterbox drawn at 3840x2160 by the libplacebo conversion (%s), no GPU scale or pad after: %q",
+				hostName, want, p.VideoFilter)
 		}
 	}
 
@@ -207,9 +210,11 @@ func TestBuild_PremiumUniformOutput(t *testing.T) {
 	}
 }
 
-// TestBuild_SDRToHDR10: SDR and HLG items on a 4K HDR channel go through libplacebo at source size,
-// then the GPU upscales. Never the Intel VPP conversion (~2,600-nit white, spike 0b), never an
-// inverse tone-map, and a PQ item never goes through the conversion.
+// TestBuild_SDRToHDR10: SDR and HLG items on a 4K HDR channel go through libplacebo. One that fills
+// the frame converts at source size and the GPU upscales (spike 0b: faster); one that needs a box
+// (letterbox or pillarbox) renders at the output size in the conversion, so the box edge is hard
+// (#1673). Never the Intel VPP conversion (~2,600-nit white, spike 0b), never an inverse tone-map,
+// and a PQ item never goes through the conversion.
 func TestBuild_SDRToHDR10(t *testing.T) {
 	out := premiumOutput(t, Format4KHDR)
 	for _, hostName := range []string{"vaapi-intel", "nvenc-opencl"} {
@@ -228,11 +233,17 @@ func TestBuild_SDRToHDR10(t *testing.T) {
 					upscale = i
 				}
 			}
+			fills := src.Width*out.Height == src.Height*out.Width
 			switch {
 			case src.PQ() && convert >= 0:
 				t.Errorf("%s: a PQ item must pass through, not convert: %q", label, p.VideoFilter)
-			case !src.PQ() && (convert < 0 || upscale < convert):
+			case src.PQ():
+			case convert < 0:
+				t.Errorf("%s: want the libplacebo conversion: %q", label, p.VideoFilter)
+			case fills && upscale < convert:
 				t.Errorf("%s: want libplacebo at source size, then the GPU scale: %q", label, p.VideoFilter)
+			case !fills && (upscale >= 0 || !strings.Contains(filters[convert], ":w=3840:h=2160:")):
+				t.Errorf("%s: want the box drawn at 3840x2160 by libplacebo, no GPU scale after: %q", label, p.VideoFilter)
 			}
 			if strings.Contains(p.VideoFilter, "out_color_transfer") || strings.Contains(p.VideoFilter, "inverse_tonemapping") ||
 				strings.Contains(p.VideoFilter, "tonemap_vaapi") {

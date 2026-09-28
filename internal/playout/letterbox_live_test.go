@@ -4,6 +4,7 @@ package playout
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -70,6 +71,53 @@ func cropRange(t *testing.T, bin, path string, w, h, x, y int) planeRange {
 		}
 	}
 	return r
+}
+
+// rowFrame is the decoded frame whose rows rowMeans reads.
+const rowFrame = 12
+
+// rowMeans decodes frame rowFrame of path in SOFTWARE and returns the mean of every row of each
+// plane (Y: h rows, U and V: h/2), area-scaled to two columns so the chroma keeps one.
+func rowMeans(t *testing.T, bin, path string, h int, tenBit bool) [3][]float64 {
+	t.Helper()
+	pix, size := "yuv420p", 1
+	if tenBit {
+		pix, size = "yuv420p10le", 2
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	vf := fmt.Sprintf("select=eq(n\\,%d),scale=w=2:h=%d:flags=area,format=%s", rowFrame, h, pix)
+	out, err := exec.CommandContext(ctx, bin, "-hide_banner", "-loglevel", "error", "-i", path,
+		"-vf", vf, "-frames:v", "1", "-f", "rawvideo", "-").Output()
+	if err != nil {
+		t.Fatalf("row means %s: %v", path, err)
+	}
+	if want := (2*h + h) * size; len(out) != want { // Y 2×h, U and V 1×h/2 each
+		t.Fatalf("row means %s: %d bytes, want %d", path, len(out), want)
+	}
+	sample := func(i int) float64 {
+		if size == 2 {
+			return float64(binary.LittleEndian.Uint16(out[2*i:]))
+		}
+		return float64(out[i])
+	}
+	var m [3][]float64
+	for r := range h {
+		m[0] = append(m[0], (sample(2*r)+sample(2*r+1))/2)
+	}
+	for p := 1; p <= 2; p++ {
+		for r := range h / 2 {
+			m[p] = append(m[p], sample(2*h+(p-1)*h/2+r))
+		}
+	}
+	return m
+}
+
+func abs(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
 }
 
 var psnrRe = regexp.MustCompile(`PSNR .*average:([0-9.]+|inf)`)
@@ -165,6 +213,23 @@ func TestLiveLetterbox_BarsAreBlack(t *testing.T) {
 					}
 				}
 			}
+			// Every bar row, including the ones beside the picture that the blocks above leave out:
+			// an upscale after the box blends the edge row into the bar (#1673, Y 142 on the Arc).
+			rows := rowMeans(t, bin, path, h, tc.out.HDR)
+			off := 0
+			for p, plane := range []string{"Y", "U", "V"} {
+				step := 1 // luma rows per row of this plane
+				if p > 0 {
+					step = 2
+				}
+				for r, m := range rows[p] {
+					if y := r * step; (y < bar || y >= bar+tc.fitted) && abs(m-black[p]) > barPixelTolerance*scale {
+						t.Errorf("%s row %d (output row %d) mean %.1f, want %.0f±%.0f (black)", plane, r, y, m, black[p], barPixelTolerance*scale)
+						off++
+					}
+				}
+			}
+			t.Logf("rows: %d bar rows off black on frame %d", off, rowFrame)
 			crop := fmt.Sprintf("crop=w=%d:h=%d:x=0:y=%d", w, tc.fitted, bar)
 			score := pictureScore(t, bin, path, crop, ref)
 			t.Logf("picture rows %d-%d: PSNR %.1f dB against the unpadded graph; %.2fx; output %s",

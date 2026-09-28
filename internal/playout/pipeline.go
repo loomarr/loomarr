@@ -551,14 +551,12 @@ func (b *builder) vaapi() error {
 		if err != nil {
 			return err
 		}
-		scale := "scale_vaapi=" + b.fit() + ":format=p010"
-		if box, ok := b.aspectBox(); ok {
-			// Box to the output's aspect at source size, as on NVENC, so the GPU upscale fills the
-			// frame and the 10-bit picture needs no pad.
-			conv += box
-			scale, fitted = fmt.Sprintf("scale_vaapi=w=%d:h=%d:format=p010", b.out.Width, b.out.Height), true
+		if box, ok := b.outputBox(); ok {
+			// Letterboxed at the output size in the conversion, so the 10-bit picture needs no pad.
+			f, fitted = append(f, conv+box, "hwupload"), true
+		} else {
+			f = append(f, conv, "hwupload", "scale_vaapi="+b.fit()+":format=p010")
 		}
-		f = append(f, conv, "hwupload", scale)
 	case !b.tonemap:
 		f = append(f, "scale_vaapi="+b.fit()+":format="+b.scaleFormat("p010"))
 	default:
@@ -646,13 +644,12 @@ func (b *builder) nvenc() error {
 		if err != nil {
 			return err
 		}
-		scale := "scale_cuda=" + b.fit() + ":format=p010le"
-		if box, ok := b.aspectBox(); ok {
-			// Box to the output's aspect at source size, so the GPU upscale fills the frame.
-			conv += box
-			scale, fitted = fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le", b.out.Width, b.out.Height), true
+		if box, ok := b.outputBox(); ok {
+			// Letterboxed at the output size in the conversion: pad_cuda takes 8-bit frames only.
+			f, fitted = append(f, conv+box, "hwupload_cuda"), true
+		} else {
+			f = append(f, conv, "hwupload_cuda", "scale_cuda="+b.fit()+":format=p010le")
 		}
-		f = append(f, conv, "hwupload_cuda", scale)
 	case !b.tonemap && bug:
 		f = append(f, "scale_cuda="+b.fit()+":format="+mainFormat)
 	case !b.tonemap:
@@ -714,22 +711,19 @@ func (b *builder) exactFit() bool {
 	return ok && w == b.out.Width && h == b.out.Height
 }
 
-// aspectBox is the libplacebo options that place the source, at its own size, centred in the
-// smallest box of the output's aspect (a 1440x1080 source in 1920x1080 for a 16:9 output). ok is
-// false when the source geometry is unknown.
-func (b *builder) aspectBox() (string, bool) {
-	sw, sh := b.src.Width, b.src.Height
-	if sw <= 0 || sh <= 0 {
+// outputBox is the libplacebo options that render the converted picture at the OUTPUT size,
+// fitted and centred on black: the letterbox in the same pass as the one scaling step, so its edge
+// is hard. Boxing at source size and upscaling after blended the rows beside the picture into the
+// bars (#1673: Y 142 at row 279 on the Arc, 124 on the GeForce). ok is false when the picture fills
+// the output (the GPU upscales it after, the faster path) or its geometry is unknown.
+func (b *builder) outputBox() (string, bool) {
+	w, h, ok := fitSize(b.src.Width, b.src.Height, b.out.Width, b.out.Height)
+	if !ok || (w == b.out.Width && h == b.out.Height) {
 		return "", false
 	}
-	bw, bh := sw, sh
-	if sw*b.out.Height > sh*b.out.Width { // wider than the output: add height
-		bh = even((sw*b.out.Height + b.out.Width - 1) / b.out.Width)
-	} else {
-		bw = even((sh*b.out.Width + b.out.Height - 1) / b.out.Height)
-	}
+	// Even offsets keep the edge on a chroma row boundary.
 	return fmt.Sprintf(":w=%d:h=%d:pos_x=%d:pos_y=%d:pos_w=%d:pos_h=%d:fillcolor=black",
-		bw, bh, even((bw-sw)/2), even((bh-sh)/2), sw, sh), true
+		b.out.Width, b.out.Height, even((b.out.Width-w)/2), even((b.out.Height-h)/2), w, h), true
 }
 
 // videotoolbox: VT decode and scale_vt on the GPU. VideoToolbox has no pad and no tone-map filter,

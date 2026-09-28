@@ -66,7 +66,8 @@ anything else gets the baseline alone. A channel therefore costs at most two enc
 range never changes mid-stream: on an HDR stream, SDR and HLG items are converted on the GPU
 (libplacebo, no inverse tone-map) and the channel's static HDR10 SEI is the packager's to write. The
 10-bit letterbox is never `pad_vaapi`, which writes all-zero (green) bars into P010 frames (#1673): the
-libplacebo conversion boxes an SDR or HLG item itself, and a letterboxed PQ item is padded by
+libplacebo conversion draws an SDR or HLG item's box itself at the output size (boxing at source size
+and upscaling after blended the edge row into the bar), and a letterboxed PQ item is padded by
 `pad_opencl` on the surface mapped from VAAPI, or refused on a host without that mapping. A host
 drops a premium format, and says why, when it is software-only, when its encoder has no GPU graph
 (QSV, AMF and other generic families) or, for HDR, when libplacebo is missing. `GET
