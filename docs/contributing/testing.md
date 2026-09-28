@@ -76,6 +76,49 @@ wouldn't catch it either, since `go build` skips `_test.go` and most tagged file
 
 Store conformance is one suite over two backends — don't fork the assertions per dialect.
 
+### Playback certification is layered
+
+Moved from `design.md` §9.1 (V58). Three layers each prove one claim, so one green test can't
+stand in for another: the controller contract, a real Loomarr process packaging real bytes, and
+shipping browsers on real hardware.
+
+**Controller matrix.** The same 100-Channel catalog runs through Playwright Chromium, Firefox and
+WebKit, as a dedicated serial macOS CI job with zero retries.
+
+- Every engine must keep latest-request-wins, one video element, exact warmed-URL reuse,
+  still-only adjacent warming, and a genuinely decoded H.264 frame.
+- Chromium and Firefox enforce the first-frame budgets per engine, never pooled. Playwright WebKit
+  only records them: it runs the non-shipping hls.js fallback, not Safari's native HLS. It still
+  keeps every correctness, OSD, manifest and raw-runner gate.
+- Each engine completes one bounded cold decode first; the surf samples measure an
+  already-running tuner.
+- A raw MediaSource control on the same bytes and the same persistent element: two unmeasured
+  replacements, then twenty whose nearest-rank p95 must be under 500 ms. It checks the runner, and
+  never adjusts the product budgets. A fresh element per sample would hide the lifecycle it
+  measures.
+- Join time comes from media-event timestamps inside the browser, and the frame-to-`playing`
+  interval must stay under 250 ms. Navigation starts its clock in the browser's trusted input
+  handler, so driver latency never counts as product time.
+
+**Real-runtime gate.** The real composition root over an isolated SQLite store, the real packager
+and HLS origin, and real ffmpeg and ffprobe. Only true external systems (the media-server API and
+its library) may be doubles, serving pinned representative media, never prebuilt HLS. The browser
+signs in through the real API, tunes a real Channel, gets a Loomarr-made manifest and reports a
+decoded frame. Then a process restart repeats the tune, to prove a cold boot. Missing and corrupt
+inputs must reach the designed offline or retry state, never an unexplained black frame.
+
+A secondary worktree must set `server.public_url` to its own backend. Otherwise ffmpeg re-opens the
+primary port, writes zero bytes, and every HLS request hides the routing error behind a 45-second
+readiness timeout.
+
+**Shipping-browser and hardware soak.** Maintainer-run: current Chrome, Firefox and Safari against
+the isolated runtime, with representative H.264, HEVC 10-bit, multichannel audio, and corrupt or
+missing inputs, while GPU capacity is contended. It records boot-to-ready and
+request-to-first-decoded-frame, with each channel's format and pipeline, against the **1.5 s**
+arbitrary and **750 ms** adjacent budgets. Only this run certifies Safari. It never touches the
+maintainer's normal database or media-server configuration, and no agent runs the `make smoke*`
+targets.
+
 ### Semantic evaluation versus certification
 
 `make eval` is exploratory and exits cleanly when its real library, TMDB, or LLM configuration is

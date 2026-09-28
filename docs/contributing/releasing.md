@@ -86,3 +86,75 @@ is unaffected.
 After both workflows finish, verify the GitHub Release body, the GHCR manifest, signature, SBOM, and
 provenance against the tagged commit. The tag-specific header remains the place to state limitations
 that cannot be derived from pull requests.
+
+## Image-worker certification
+
+Moved verbatim from `design.md` §22 (#1572). The image service's design is in
+[`design/images.md`](../design/images.md).
+
+The required worker is release infrastructure, so its gate is broader than unit codec coverage.
+`make image-cert` drives the installed `loomarr-image` executable through the same bounded protocol
+and manifest validation used by the application, then writes a machine-readable report under this
+worktree's `.artifacts/<instance>/` directory. It has two corpus modes:
+
+- With no arguments, it uses the repository's deterministic certification corpus. That corpus
+  covers opaque JPEG, transparent PNG, static WebP, animated GIF, APNG and WebP, finite and infinite
+  loops, fractional and zero frame delays, a one-frame animated container, corrupt input, and every
+  resource ceiling whose refusal is observable without allocating the forbidden resource.
+- `make image-cert IMAGE_CERT_CORPUS=/absolute/read-only/path` scans an operator's existing raster
+  corpus. It never modifies source files, follows no symlinks, performs no network I/O, and treats a
+  supported-looking file that cannot complete inspection plus the requested ladder as a failure.
+  Unsupported files are reported as skipped; stable budget refusals are reported separately from
+  crashes, malformed manifests, and I/O failures.
+
+Every accepted case produces an inspection plus a 320-pixel JPEG/WebP/AVIF ladder. Motion-preserving
+WebP is required for an animated source; JPEG and AVIF must be the first composited presentation
+frame. The certifier independently verifies the source hash, output signatures, dimensions, hashes,
+motion flag, and that staging is empty after each case. A run fails on a worker crash, protocol or
+manifest violation, unexpected refusal, leaked staging file, incorrect visible timeline, or a
+resource ceiling breach.
+
+The deterministic gate is intentionally generous enough to survive shared CI hardware while still
+catching runaway work: each static case must complete within 10 seconds, each animated case within
+30 seconds, and a worker process must remain below 768 MiB peak resident memory. The report records
+per-case wall time, source and output bytes, peak RSS where the host exposes it, plus p50/p95/max
+summaries. These are certification ceilings, not product SLOs; lowering them requires corpus evidence
+and raising them is a design change.
+
+Production exposes the same boundary at `/metrics`: worker operations and stable outcomes, wall
+time, input/output bytes, peak RSS, queue wait, and in-flight count. Labels are bounded vocabulary
+(`inspect`/`render` and stable result classes), never an image hash, path, URL, MIME supplied by a
+caller, or free-form error text.
+
+Those measurements are also the admission gate for another Rust capability. A proposal must name
+the production operation that dominates a captured worker-duration, queue-wait, peak-RSS, byte, or
+failure distribution, then reproduce it through the certification or benchmark seam. An operation
+does not move merely because it handles media or because a Rust implementation is possible. The
+Image service itself imports no Go `image` package; its deterministic corpus generator lives only in
+`cmd/image-cert`, and a source architecture test keeps that boundary closed. Filler-era frame hints
+remain in `internal/mediatools`: they sample at most 1,024 pixels per keyframe in background work and
+no captured Image-worker evidence identifies them as a bottleneck. Therefore V59b selects no next
+capability. A future measured case extends this worker protocol and resource boundary rather than
+creating a second Rust service.
+
+`make image-bench` is the performance companion to certification. It drives the installed release
+worker through `internal/images/rustgen` with deterministic poster, backdrop, and icon sources and
+the complete AVIF width ladder for each role. Source creation and the capabilities self-test happen
+outside the timed region. After one warm-up per role, three runs record the recipe, host architecture
+and logical CPU count, process/Rendition counts, output bytes, complete-ladder throughput,
+p50/p95/max worker time, median ladder time, and maximum child peak RSS in a machine-readable report
+under the worktree artifact directory. The current baseline deliberately performs one worker request
+per missing AVIF Rendition, matching the background job shape that later batching will replace.
+
+The benchmark is opt-in locally and manually dispatched on native amd64 and arm64 CI runners. It is
+not part of comprehensive verification and has no wall-clock pass/fail threshold: shared-runner timing is comparative
+evidence, not a product SLO or correctness gate. Comparisons are valid only for the same corpus,
+recipe, release profile, architecture, and CPU profile. `make image-cert` remains the authority for
+protocol, output, and resource-ceiling correctness.
+
+The consumer half of the gate is observable through public seams. Guide programme art, Watch
+timeline art, and Filler still/hover art must carry a real Image record through their HTTP DTO and
+render through the shared frontend `Image` primitive. An animated filler hover must offer an
+animated WebP rendition while its still fallback remains non-animated. Tests exercise those HTTP
+responses and rendered elements; querying image tables or asserting private renderer calls is not
+certification evidence.
