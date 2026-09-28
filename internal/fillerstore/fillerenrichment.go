@@ -303,8 +303,9 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 		return 0, err
 	}
 	clips := s.db.Clips(tx)
-	inputRevision, err := clips.EnrichmentRevision(ctx, pass.ClipHash)
-	if err != nil {
+	// Read for its lock, not its value: on Postgres it holds the clip row until commit, so no other
+	// write moves the revision between here and the refresh below.
+	if _, err := clips.EnrichmentRevision(ctx, pass.ClipHash); err != nil {
 		return 0, fmt.Errorf("apply filler enrichment pass: read input revision: %w", err)
 	}
 	changed := 0
@@ -328,7 +329,8 @@ func (s *sqlStore) ApplyFillerEnrichmentPass(ctx context.Context, pass fillerenr
 	}
 	// The pass owns the exact input revision it just committed. Reading again after raw media
 	// observations prevents that same expensive result from immediately waking its own runner.
-	if inputRevision, err = clips.EnrichmentRevision(ctx, pass.ClipHash); err != nil {
+	inputRevision, err := clips.EnrichmentRevision(ctx, pass.ClipHash)
+	if err != nil {
 		return 0, fmt.Errorf("apply filler enrichment pass: refresh input revision: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, s.ph(`INSERT INTO filler_enrichment_passes
