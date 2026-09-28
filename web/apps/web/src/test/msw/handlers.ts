@@ -35,6 +35,8 @@ import {
   getSystemEncryptionStatusMockHandler,
   getSystemLlmDiscoverMockHandler,
   getSystemLlmStatusMockHandler,
+  getSystemRestartCostMockHandler,
+  getSystemServicesMockHandler,
   getSystemVersionMockHandler,
 } from "@loomarr/api/msw";
 import type { RequestHandler } from "msw";
@@ -158,6 +160,14 @@ const appHandlers = (): RequestHandler[] => [
   // highlighted.
   getHouseholdViewingMockHandler({ channels: [], scope: "household", viewers: [], watching: 0 }),
   getGuideHighlightsMockHandler({ fromMs: 0, highlights: [], toMs: 0 }),
+  // An admin's Home strip reads both on every visit: every service answering, no restart waiting.
+  getSystemServicesMockHandler({ loomarr: { name: "loomarr", ok: true }, rows: [] }),
+  getSystemRestartCostMockHandler({
+    available: true,
+    pendingKeys: [],
+    restartRequired: false,
+    streamingChannels: 0,
+  }),
   getJobsListMockHandler({ jobs: [] }),
   getListActivityMockHandler({ activity: [] }),
   // The AI connection block reads both of these on mount, and it renders on the wizard's
