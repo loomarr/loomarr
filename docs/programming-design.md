@@ -54,6 +54,13 @@ is unavailable passes the era check: scope is a taste filter rather than a safet
 stale pre-year episode cache must not empty a Channel until its next refresh. An explicit
 per-Lineup season window still narrows independently and wins by intersection.
 
+`scope.genres` matches case-insensitively across two vocabularies. The suggester writes TMDB's,
+whose TV genres include compounds (`Action & Adventure`, `Sci-Fi & Fantasy`, `War & Politics`),
+while an in-library entry carries the media server's separate names (`Action`, `Science Fiction`).
+A compound therefore matches its parts in both directions, for include and exclude alike, but two
+parts never match each other. Exact-name matching excluded every series on a household channel
+scoped `Sci-Fi & Fantasy` / `Action & Adventure` and left it `empty` (#1630).
+
 For newly interpreted date constraints, `scope.dates` preserves separate movie-release,
 series-premiere, and series-airing range lists under the [date contract](design.md). Each list is a
 union; applicable lists compose by intersection. Title axes are checked before series expansion,

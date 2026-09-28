@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -248,28 +249,51 @@ func seriesAllowSet(series []provision.Key) map[provision.Key]struct{} {
 }
 
 // genreOK applies the include/exclude genre filter (§2). Exclude wins; a non-empty
-// Include requires a match. Matching is case-insensitive.
+// Include requires a match. Matching is case-insensitive, and a TV compound genre
+// matches the genres it is made of (tvCompoundGenres).
 func genreOK(genres []string, f GenreFilter) bool {
-	if len(f.Exclude) > 0 {
-		for _, g := range genres {
-			for _, x := range f.Exclude {
-				if strings.EqualFold(g, x) {
-					return false
-				}
-			}
-		}
+	if genresOverlap(genres, f.Exclude) {
+		return false
 	}
 	if len(f.Include) > 0 {
-		for _, g := range genres {
-			for _, in := range f.Include {
-				if strings.EqualFold(g, in) {
+		return genresOverlap(genres, f.Include) // Include set: something must match
+	}
+	return true
+}
+
+// tvCompoundGenres are TMDB's TV-only genres, each naming two of its movie genres.
+//
+// ⚠ Two vocabularies meet in genreOK. A policy scope is authored in TMDB's (the suggester
+// grounds series against TMDB TV genres), while an in-library entry carries the media
+// server's, which tags the same show with the separate names. #1630: a scope of
+// "Sci-Fi & Fantasy" / "Action & Adventure" excluded four series tagged "Science Fiction",
+// "Action", "Adventure" as out_of_scope, and the channel sat `empty` with nothing to air.
+// A compound therefore matches its parts in both directions; the parts never match each
+// other, so the scope still narrows.
+var tvCompoundGenres = map[string][]string{
+	"action & adventure": {"action", "adventure"},
+	"sci-fi & fantasy":   {"science fiction", "fantasy"},
+	"war & politics":     {"war", "politics"},
+}
+
+// genresOverlap reports whether any entry genre and any filter term share a genre term.
+func genresOverlap(genres, terms []string) bool {
+	for _, g := range genres {
+		for _, a := range genreTerms(g) {
+			for _, t := range terms {
+				if slices.Contains(genreTerms(t), a) {
 					return true
 				}
 			}
 		}
-		return false // Include set but nothing matched
 	}
-	return true
+	return false
+}
+
+// genreTerms folds a genre name to the terms it covers: itself, plus a TV compound's parts.
+func genreTerms(g string) []string {
+	g = strings.ToLower(strings.TrimSpace(g))
+	return append([]string{g}, tvCompoundGenres[g]...)
 }
 
 // boxSetOK reports whether an entry satisfies a media-server collection scope
