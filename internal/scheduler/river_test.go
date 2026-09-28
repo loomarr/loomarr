@@ -49,6 +49,70 @@ func TestLiveCronGateReadsTheCurrentSettingAndEmitsEachTickOnce(t *testing.T) {
 	}
 }
 
+// savedCronDialect is what the settings layer accepts for a KindCron value: settings validates
+// with gronx, the same parser effectiveCron and nextRun use. GH #1724: River parsed with a
+// second library (robfig/cron) that rejects the last six, so a saved value either failed boot
+// or never fired while the Tasks page showed a next run.
+var savedCronDialect = []string{
+	"0 */5 * * * *",
+	"0 0 3 * * *",
+	"0 0 0 * * MON-FRI",
+	"0 0 0 L * *",
+	"0 0 0 * * 5L",
+	"0 0 0 * * 1#2",
+	"0 0 0 15W * *",
+	"@daily",
+	"0 0 0 * * 7",
+}
+
+// Whatever the Tasks page says is the next run is when River fires, for every expression an
+// operator can save.
+func TestLiveCronGateFiresWhenTheTasksPageSaysForEverySavableExpression(t *testing.T) {
+	from := time.Date(2026, time.September, 28, 12, 0, 0, 0, time.UTC)
+	for _, expr := range savedCronDialect {
+		t.Run(expr, func(t *testing.T) {
+			job := Job{
+				Name: "probe", Group: GroupSystem, Title: "Probe", Description: "Runs the probe.",
+				DefaultCron: everyMinute, ScheduleKey: "job.probe.schedule",
+				Run: func(context.Context) error { return nil },
+			}
+			s := New(newFakeStore(), NewRegistry().Add(job), func(_, _ string) string { return expr }, time.Now, testLog())
+			if got := s.effectiveCron(job); got != expr {
+				t.Fatalf("effectiveCron = %q, want the saved %q (the settings dialect must not fall back)", got, expr)
+			}
+			next := s.nextRun(job, from)
+			gate := &liveCronGate{scheduler: s, job: job}
+			if gate.due(next.Add(-time.Second)) {
+				t.Fatalf("River fired before the Tasks page's next run %v", next)
+			}
+			if !gate.due(next.Add(time.Second)) {
+				t.Fatalf("River did not fire at the Tasks page's next run %v", next)
+			}
+		})
+	}
+}
+
+// A saved expression from the settings dialect never fails boot.
+func TestPeriodicJobsAcceptEverySavableExpression(t *testing.T) {
+	for _, expr := range savedCronDialect {
+		t.Run(expr, func(t *testing.T) {
+			job := Job{
+				Name: "probe", Group: GroupSystem, Title: "Probe", Description: "Runs the probe.",
+				DefaultCron: everyMinute, ScheduleKey: "job.probe.schedule",
+				Run: func(context.Context) error { return nil },
+			}
+			s := New(newFakeStore(), NewRegistry().Add(job), func(_, _ string) string { return expr }, time.Now, testLog())
+			jobs, err := s.periodicJobs()
+			if err != nil {
+				t.Fatalf("periodicJobs with saved %q: %v", expr, err)
+			}
+			if len(jobs) != 1 {
+				t.Fatalf("periodic jobs = %d, want 1", len(jobs))
+			}
+		})
+	}
+}
+
 func TestRiverWorkerManualRunBypassesPause(t *testing.T) {
 	st := newFakeStore()
 	var ran atomic.Int64

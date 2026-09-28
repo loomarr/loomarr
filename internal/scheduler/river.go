@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/adhocore/gronx"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver"
 	"github.com/riverqueue/river/riverdriver/riverdatabasesql"
 	"github.com/riverqueue/river/riverdriver/riversqlite"
 	"github.com/riverqueue/river/rivermigrate"
 	"github.com/riverqueue/river/rivertype"
-	"github.com/robfig/cron/v3"
 
 	"github.com/loomarr/loomarr/internal/store"
 )
@@ -30,14 +30,13 @@ import (
 // already write once per run. It also keeps `paused` (an operator preference about a task) out
 // of a table that models attempts.
 //
-// ⚠ **Cron: NEVER `cron.ParseStandard`.** River's docs point at it and it is FIVE-field, while
-// every schedule Loomarr has is six-field seconds-leading (`0 */5 * * * *`, Overseerr-shaped).
-// Those values are operator-editable settings already in the database, so following the
-// documented example would reject every saved schedule at boot on installs that were working
-// fine. Verified in the River spike findings (git history before #1572).
-var cronParser = cron.NewParser(
-	cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow,
-)
+// ⚠ **Cron: ONE dialect, gronx's (GH #1724).** Settings validate a schedule with gronx and the
+// Tasks page's next run (`nextRun`) comes from gronx, so River's gate asks gronx too. It used to
+// parse with robfig/cron, which rejects `L`, `W`, `#`, `@daily` and `7` for Sunday, all of
+// which settings accept: a saved value like that failed boot with "invalid default cron", or,
+// saved while running, never fired while the Tasks page showed a next run. Don't add a second
+// parser, and don't follow River's docs to `cron.ParseStandard` (five-field: every Loomarr
+// schedule is six-field seconds-leading, `0 */5 * * * *`).
 
 // jobArgs is the River job payload. One kind per registered job name, so River's own history
 // is readable ("kind: library-scan") rather than a single opaque "run" kind.
@@ -348,14 +347,13 @@ type liveCronGate struct {
 func (*liveCronGate) Next(current time.Time) time.Time { return current.Add(liveCronPollInterval) }
 
 func (g *liveCronGate) due(now time.Time) bool {
-	parsed, err := cronParser.Parse(g.scheduler.effectiveCron(g.job))
-	if err != nil {
-		g.scheduler.log.Error("scheduler: live cron parse", "job", g.job.Name, "err", err)
-		return false
-	}
 	// Two poll widths tolerate an enqueuer waking slightly late. lastTick prevents the overlap
 	// from inserting the same cron occurrence twice even when the preceding job finished fast.
-	tick := parsed.Next(now.Add(-2 * liveCronPollInterval))
+	tick, err := gronx.NextTickAfter(g.scheduler.effectiveCron(g.job), now.Add(-2*liveCronPollInterval), false)
+	if err != nil {
+		g.scheduler.log.Error("scheduler: live cron tick", "job", g.job.Name, "err", err)
+		return false
+	}
 	if tick.After(now) {
 		return false
 	}
@@ -399,12 +397,11 @@ func (s *Scheduler) periodicJobs() ([]*river.PeriodicJob, error) {
 		if j.Disabled() {
 			continue
 		}
-		_, err := cronParser.Parse(s.effectiveCron(j))
-		if err != nil {
+		if !s.cron.IsValid(s.effectiveCron(j)) {
 			// effectiveCron already falls back to the code default, so reaching here means the
 			// DEFAULT is invalid — a programming error worth failing the boot for, not a bad
 			// operator value to warn about.
-			return nil, fmt.Errorf("scheduler: job %q has an invalid default cron %q: %w", j.Name, j.DefaultCron, err)
+			return nil, fmt.Errorf("scheduler: job %q has an invalid default cron %q", j.Name, j.DefaultCron)
 		}
 		name := name // captured by the constructor below
 		gate := &liveCronGate{scheduler: s, job: j}

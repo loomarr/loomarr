@@ -193,8 +193,6 @@ github.com/riverqueue/river/rivershared v0.45.0 h1:xWEqjaNBhqpE5QpPcCcPTXZNzPajI
 github.com/riverqueue/river/rivershared v0.45.0/go.mod h1:55trQ+PMQPBrn8Za4J8NeNrkPdncxCIRfktO4Xr26WY=
 github.com/riverqueue/river/rivertype v0.45.0 h1:AITFM9ZB+kkd/PsWT7YuQ211V/kPCSv4awjSfnHVWMs=
 github.com/riverqueue/river/rivertype v0.45.0/go.mod h1:XKkcRQR6zm8RR/JQa1Q2ywpj8uXQu21quPa4Lpw1Xhw=
-github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
-github.com/robfig/cron/v3 v3.0.1/go.mod h1:eQICP3HwyT7UooqI/z+Ov+PtYAWygg1TEWWzGIFLtro=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/sethvargo/go-retry v0.4.0 h1:9qy1OoIAxBL+gBYnkTnTnWle5wlfsXQlwRzIbbpdqPw=
