@@ -113,7 +113,7 @@ libplacebo-only curves run libplacebo and then the CPU with a declared Mobius su
 - Intel HDR maps the surface into OpenCL (`tonemap_opencl`) and back, zero-copy. `tonemap_vaapi` is
   banned from every path after it aired an all-black picture. The image ships Intel's compute runtime
   and an NVIDIA OpenCL ICD file; Intel Gen8–11 iGPUs would need a legacy runtime too large to ship, so
-  they use the CPU tone-map (`docs/install/hardware.md`).
+  they use the CPU tone-map (`docs/reference/hardware.md`).
 - NVENC tries `tonemap_opencl`, then `libplacebo` on its own Vulkan device, then the CPU.
 - A tone-mapper whose runtime is missing fails before any output, and the retry ladder demotes exactly
   that tone-mapper.
