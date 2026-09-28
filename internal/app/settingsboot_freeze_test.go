@@ -21,9 +21,12 @@ func TestResolvedFreezeKeepsAppliedValuesAcrossLiveWrites(t *testing.T) {
 	if applied["filler.dir"] != "/clips/old" || applied["filler.watch_dir"] != "/watch/old" {
 		t.Fatalf("applied = %v, want canonical generation values", applied)
 	}
-	if applied["diagnostics.dir"] != "/data/diagnostics" || applied["filler.structure_window_authority_path"] != "/authority/old.json" ||
-		applied["filler.structure_window_deployment_path"] != "/deployment/old.json" || len(applied) != 5 {
+	if applied["filler.structure_window_authority_path"] != "/authority/old.json" ||
+		applied["filler.structure_window_deployment_path"] != "/deployment/old.json" || len(applied) != 4 {
 		t.Fatalf("applied = %v, want all restart-scoped storage keys", applied)
+	}
+	if _, frozenDiagnostics := applied["diagnostics.dir"]; frozenDiagnostics {
+		t.Fatal("diagnostics.dir applies live (#1659); it must not be frozen for the generation")
 	}
 
 	set.svc.SetDB(map[string]string{

@@ -25,11 +25,18 @@ func NewFilesystem(roots []ManagedRoot, policy func(Domain) Policy) (*Governor, 
 	if err != nil {
 		return nil, err
 	}
-	return New(&filesystemMeter{roots: normalized}, policy), nil
+	return New(&filesystemMeter{roots: func() ([]ManagedRoot, error) { return normalized, nil }}, policy), nil
+}
+
+// NewFilesystemLive is NewFilesystem for roots that follow a live setting (diagnostics.dir,
+// #1659). Roots are normalized on every measurement, so an edit that makes two domains
+// overlap fails closed: the measurement errors and reservations are refused until it's fixed.
+func NewFilesystemLive(roots func() []ManagedRoot, policy func(Domain) Policy) *Governor {
+	return New(&filesystemMeter{roots: func() ([]ManagedRoot, error) { return normalizeRoots(roots()) }}, policy)
 }
 
 type filesystemMeter struct {
-	roots []ManagedRoot
+	roots func() ([]ManagedRoot, error)
 }
 
 func (m *filesystemMeter) Measure(_ context.Context, path string) (Measurement, error) {
@@ -40,8 +47,12 @@ func (m *filesystemMeter) ManagedBytes(ctx context.Context, filesystemID string,
 	if filesystemID == "" {
 		return 0, errors.New("filesystem identity is empty")
 	}
+	roots, err := m.roots()
+	if err != nil {
+		return 0, err
+	}
 	var total int64
-	for _, configuredRoot := range m.roots {
+	for _, configuredRoot := range roots {
 		if configuredRoot.Domain != domain {
 			continue
 		}

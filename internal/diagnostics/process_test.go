@@ -295,3 +295,41 @@ func TestProcessManagerCachesExecutableVersionAcrossRuns(t *testing.T) {
 		t.Fatalf("version resolver calls = %d, want 1", got)
 	}
 }
+
+// diagnostics.dir applies live (#1659): a run started after the setting changes writes its
+// output under the new directory, creating it, and the reader follows too.
+func TestProcessManagerFollowsLiveOutputDir(t *testing.T) {
+	sink := &processSinkMemory{}
+	oldDir := t.TempDir()
+	newDir := filepath.Join(t.TempDir(), "moved")
+	current := oldDir
+	live := func() string { return current }
+	manager := NewProcessManager(sink, nil, ProcessOptions{OutputDirFunc: live, FlushInterval: time.Hour})
+	runOnce := func() string {
+		handle := manager.Begin(ProcessSpec{Purpose: "playout_program", Executable: "/usr/bin/ffmpeg"})
+		if handle == nil {
+			t.Fatal("Begin returned nil")
+		}
+		handle.RecordOutput("line")
+		handle.Finish(ProcessResult{})
+		return handle.ID()
+	}
+	first := runOnce()
+	current = newDir
+	second := runOnce()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	if err := manager.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(oldDir, sink.get(first).OutputRef)); err != nil {
+		t.Fatalf("first run's output is not under the old dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(newDir, sink.get(second).OutputRef)); err != nil {
+		t.Fatalf("second run's output is not under the new dir: %v", err)
+	}
+	reader := NewProcessLog(nil, ProcessReadOptions{OutputDirFunc: live})
+	if reader.dir() != newDir {
+		t.Fatalf("reader dir = %q, want %q", reader.dir(), newDir)
+	}
+}
