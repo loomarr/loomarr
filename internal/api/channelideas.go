@@ -78,7 +78,7 @@ type channelIdeaReasonDTO struct {
 type channelIdeaDTO struct {
 	ID    string `json:"id" example:"genre:comedy" doc:"Stable across calls; the handle for hide, undo and request"`
 	Name  string `json:"name" example:"Comedy Movies" doc:"The card's name, built from the facet and the seasonal calendar without the LLM"`
-	Pitch string `json:"pitch" example:"Comedy from your library that no channel plays yet: 12 movies." doc:"One sentence saying where the titles come from and how many, built without the LLM"`
+	Pitch string `json:"pitch" example:"Every comedy title in your library that no channel plays yet, on one channel." doc:"One sentence saying what the channel would be, built without the LLM; the counts are separate fields"`
 	// Requested and RequestJobID say the caller's request for this idea is waiting for an admin.
 	Requested    bool                 `json:"requested" doc:"The caller has requested this idea and it is waiting for approval"`
 	RequestJobID string               `json:"requestJobId,omitempty" doc:"The waiting request's job, for its journey (/v1/proposal-jobs/{jobId})"`

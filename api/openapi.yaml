@@ -1297,9 +1297,9 @@ components:
             - Comedy Movies
           type: string
         pitch:
-          description: One sentence saying where the titles come from and how many, built without the LLM
+          description: One sentence saying what the channel would be, built without the LLM; the counts are separate fields
           examples:
-            - "Comedy from your library that no channel plays yet: 12 movies."
+            - Every comedy title in your library that no channel plays yet, on one channel.
           type: string
         reason:
           $ref: "#/components/schemas/ChannelIdeaReasonDTO"

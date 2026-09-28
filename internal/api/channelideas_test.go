@@ -246,7 +246,7 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 		t.Fatalf("ideas = %d %v", code, got.ids())
 	}
 	comedy := got.Ideas[0]
-	if comedy.Name != "Comedy Movies" || comedy.Pitch != "Comedy from your library that no channel plays yet: 6 movies." ||
+	if comedy.Name != "Comedy Movies" || comedy.Pitch != "Every comedy title in your library that no channel plays yet, on one channel." ||
 		comedy.Requested || comedy.RequestJobID != "" {
 		t.Fatalf("comedy card = %+v", comedy)
 	}

@@ -103,7 +103,7 @@ func TestStoreWorkflowRecordsAGroundedProposalAwaitingApproval(t *testing.T) {
 	var next atomic.Int64
 	workflow := New(st, func() string { return "record-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
 
-	intent := suggest.Intent{Description: "Comedy from your library that no channel plays yet: 6 movies."}
+	intent := suggest.Intent{Description: "Every comedy title in your library that no channel plays yet, on one channel."}
 	proposal := suggest.Proposal{ChannelName: "Comedy Movies", FromIdea: "genre:comedy", Lineup: []suggest.ProposalItem{
 		{MediaType: provision.Movie, TMDBID: 1, Name: "Comedy One", Year: 1994, InLibrary: true},
 		{MediaType: provision.Series, TVDBID: 2, Name: "Sitcom Two", Year: 1996, InLibrary: true},

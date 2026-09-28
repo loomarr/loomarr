@@ -6,34 +6,33 @@ import (
 	"strings"
 )
 
-// Describe names an idea and pitches it in one sentence (#1720), from its facet, the seasonal
-// calendar's label and its counts alone, so a card reads the same whether or not the LLM is on.
-// holidayLabel is the calendar's display name ("Halloween") and is read for holiday ideas only.
+// Describe names an idea and pitches it in one sentence (#1720), from its facet and the seasonal
+// calendar's label alone, so a card reads the same whether or not the LLM is on. holidayLabel is
+// the calendar's display name ("Halloween") and is read for holiday ideas only.
 //
 // The name says what plays: Movies when every title is a movie, Shows when every title is a
-// series, Channel for a mix. The pitch says where the titles come from and how many there are;
-// it never claims a schedule or a mood the data doesn't carry.
+// series, Channel for a mix. The pitch says what the channel would be. It carries no counts (the
+// card shows those beside it) and never claims a schedule or a mood the data doesn't carry.
 func Describe(idea Idea, holidayLabel string) (name, pitch string) {
-	counts := countPhrase(idea.Movies, idea.Series)
 	switch idea.Facet {
 	case FacetHoliday:
 		label := holidayLabel
 		if label == "" {
 			label = sentenceStart(idea.Value)
 		}
-		return label + " " + mixNoun(idea), fmt.Sprintf("Titles about %s from your library, for the season: %s.", label, counts)
+		return label + " " + mixNoun(idea), fmt.Sprintf("Your library's %s titles, on one channel for the season.", label)
 	case FacetDecade:
 		year, err := strconv.Atoi(idea.Value)
 		if err != nil {
 			break
 		}
 		return decadeLabel(year) + " " + mixNoun(idea),
-			fmt.Sprintf("Titles from the %ds in your library that no channel plays yet: %s.", year, counts)
+			fmt.Sprintf("Your library's %ds titles that no channel plays yet, on one channel.", year)
 	case FacetGenre:
 		return sentenceStart(idea.Value) + " " + mixNoun(idea),
-			fmt.Sprintf("%s from your library that no channel plays yet: %s.", sentenceStart(idea.Value), counts)
+			fmt.Sprintf("Every %s title in your library that no channel plays yet, on one channel.", strings.ToLower(idea.Value))
 	}
-	return idea.Value, fmt.Sprintf("Titles from your library: %s.", counts)
+	return idea.Value, "Titles from your library, on one channel."
 }
 
 func mixNoun(idea Idea) string {
@@ -55,26 +54,8 @@ func decadeLabel(year int) string {
 	return fmt.Sprintf("%ds", year)
 }
 
-func countPhrase(movies, series int) string {
-	var parts []string
-	if movies > 0 {
-		parts = append(parts, plural(movies, "movie", "movies"))
-	}
-	if series > 0 {
-		parts = append(parts, plural(series, "show", "shows"))
-	}
-	return strings.Join(parts, " and ")
-}
-
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return strconv.Itoa(n) + " " + many
-}
-
-// sentenceStart capitalises a library genre's first letter so it can open a sentence; the rest
-// keeps the library's spelling ("Sci-Fi & Fantasy").
+// sentenceStart capitalises a library genre's first letter for a name; the rest keeps the
+// library's spelling ("Sci-Fi & Fantasy").
 func sentenceStart(s string) string {
 	if s == "" {
 		return s
