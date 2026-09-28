@@ -797,7 +797,7 @@ generated files). "Mock?" says whether a new mock has to exist first.
 | # | PR | Depends on | Mock? | Size |
 | --- | --- | --- | --- | --- |
 | 0 | The map and these decisions | none | no | S |
-| 1 | **Tokens and a11y floor**: tertiary text and control outline to AA on every surface, an input focus ring, a skip link | none | no | S, with a large baseline diff |
+| 1 | **Tokens and a11y floor**: `border-control` to 3:1 on every surface a control sits on (today 2.82:1 on `static-800`), plus a skip link. The other two mock findings aren't defects in today's app. Its inputs already have a `focus-visible` ring, and `static-500` is documented disabled-only and used only decoratively. Screen PRs keep it off information text, and axe on stories enforces that | none | no | S, with a baseline diff |
 | 2 | **Restart-apply keys hot-apply** (S1): the five keys apply live, the banner retires, any key that can't stays behind an admin-only notice | none | no | S–M (backend) |
 | 3 | **Shared web primitives**: SectionHeader, StatusStrip, list row (dot, progress, action), WatchingCard/OnNowCard (one card), PosterRail, HighlightRow, IdeaCard, count tabs through `NavTabs`, a stretched-link card (fixes nested-interactive), the artwork fallback | 1 | no | M |
 | 4 | **Shell**: Dashboard → Home, Watch (last-tuned, hidden until a channel), member Home route, Ctrl-K label, no mini-player | 3, #1662 (last channel) | no | M |
