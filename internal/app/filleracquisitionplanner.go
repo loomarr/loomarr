@@ -40,14 +40,14 @@ func (a fillerServiceAdapter) PlanAcquisition(ctx context.Context, intent filler
 	defer cancel()
 
 	// One coverage read serves both the default reason and the gap steering (#749): candidates
-	// from the eras of channels that cannot fill their breaks rank first. Steering never rejects.
-	var gaps []filler.EraRange
+	// that fill what the channels' breaks are short of rank first. Steering never rejects.
+	var gaps filler.CoverageGaps
 	if a.pool != nil {
 		pool, err := a.pool(planningCtx)
 		if err != nil {
 			return filler.AcquisitionPlan{}, fmt.Errorf("derive acquisition coverage intent: %w", err)
 		}
-		gaps = filler.CoverageGapEras(pool)
+		gaps = filler.CoverageGapsFrom(pool)
 		if strings.TrimSpace(intent.CatalogReason) == "" {
 			intent.CatalogReason = filler.DefaultAcquisitionIntent(pool, intent.Geography).CatalogReason
 		}

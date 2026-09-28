@@ -100,6 +100,31 @@ func TestPool_AgreesWithPerChannelCoverage(t *testing.T) {
 }
 
 // Worst first, so the strip's diagnosis line can name a channel without the caller sorting.
+// #749: the pool counts the bookends pod assembly can open and close a break on, so a catalog
+// with none reads as a role gap and acquisition takes bumpers and station IDs first.
+func TestPool_CountsTheBookendsAssemblyPicksFrom(t *testing.T) {
+	t.Parallel()
+	ident := commercial("ident.mp4", 1992, filler.General)
+	ident.Kind = filler.StationID
+	chans := []store.Channel{liveChannel("ch-90s", "Saturday Mornings", 42, 1990)}
+	without, _ := newPoolAdapter(t, []filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids)}, chans)
+	with, _ := newPoolAdapter(t, []filler.Clip{commercial("1992/toys.mp4", 1992, filler.Kids), ident}, chans)
+	for _, tc := range []struct {
+		a         podPreviewAdapter
+		bookends  int
+		roleGapTo int
+	}{{without, 0, 2}, {with, 1, 0}} {
+		report, err := tc.a.Pool(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if report.Bookends != tc.bookends || len(filler.CoverageGapsFrom(report).Roles) != tc.roleGapTo {
+			t.Fatalf("bookends = %d, role gaps = %v; want %d and %d roles", report.Bookends,
+				filler.CoverageGapsFrom(report).Roles, tc.bookends, tc.roleGapTo)
+		}
+	}
+}
+
 func TestPool_ListsChannelsWorstFirst(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

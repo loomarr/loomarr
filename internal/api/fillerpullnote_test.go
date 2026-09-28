@@ -32,7 +32,7 @@ func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
 func TestApproveFillerPull_TargetsCarryTheGapTheirCandidateFills(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	ff.Gaps = []filler.EraRange{{From: 1990, To: 1999}}
+	ff.Gaps = filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}}
 	ff.Candidates = []filler.AcquisitionCandidate{
 		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "in-gap"},
 			URL: "https://archive.org/details/in-gap", ObservedYear: 1994},
