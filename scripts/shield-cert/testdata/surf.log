@@ -1,0 +1,19 @@
+1789999999.990  4242  4260 I ReactNativeJS: Running "main"
+1790000000.000  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=10000 att=1 ch=ch_a num=101 path=cold why=catalog
+1790000001.200  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=11200 att=1
+1790000010.002  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=20002 att=2 ch=ch_b key=20000 num=102 path=warm why=step
+1790000010.030  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=20030 att=2 what=card
+1790000010.090  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=20090 att=2 what=still
+1790000010.400  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=20400 att=2
+1790000015.001  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=25001 att=3 ch=ch_c key=25000 num=103 path=warm why=step
+1790000015.040  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=25040 att=3 what=card
+1790000015.550  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=25550 att=3
+1790000020.003  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=30003 att=4 ch=ch_e key=30000 num=105 path=cold why=number
+1790000020.050  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=30050 att=4 what=card
+1790000021.300  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=31300 att=4
+1790000025.002  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=35002 att=5 ch=ch_f key=35000 num=106 path=warm why=step
+1790000025.120  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=35120 att=5 what=card
+1790000030.001  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=40001 att=6 ch=ch_a key=40000 num=101 path=warm why=step
+1790000030.020  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=40020 att=6 what=card
+1790000030.300  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=40300 att=6
+1790000031.000  4242  4260 I ReactNativeJS: LoomarrCert v=2 ev=first-frame t=41000 att=6
