@@ -8,6 +8,7 @@ export * from "./contracts";
 export * from "./events";
 export * from "./format";
 export * from "./guide";
+export * from "./my-channels";
 export * from "./pairing";
 export * from "./provision";
 export * from "./schemas";

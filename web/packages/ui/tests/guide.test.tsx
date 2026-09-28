@@ -74,7 +74,7 @@ describe("GuideSurface", () => {
   it("publishes one labelled tuning action and disables empty optional filters", () => {
     const output = markup();
     expect(output).toContain("Springfield Classics, The Simpsons · Bart the Mother, 12:00 AM–12:30 AM");
-    expect(output).toContain('aria-label="Favourites channels"');
+    expect(output).toContain('aria-label="Favorites channels"');
     expect(output).toContain('aria-label="Recent channels"');
     expect(output.match(/aria-disabled="true"/g)).toHaveLength(2);
   });
@@ -97,7 +97,7 @@ describe("GuideSurface", () => {
       </LoomarrProvider>,
     );
 
-    expect(output).toMatch(/aria-label="Recent channels"[^>]*aria-pressed="true"/);
+    expect(output).toMatch(/aria-label="Recent, 0 channels"[^>]*aria-pressed="true"/);
   });
 
   it("bounds TV rows around focus while preserving detail and artwork fallback", () => {

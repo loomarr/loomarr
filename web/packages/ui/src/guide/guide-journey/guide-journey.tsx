@@ -1,8 +1,10 @@
 import { Surface } from "@loomarr/design-system";
 import type { ReactNode } from "react";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { GuideExperience } from "../guide";
+import type { GuideFilter } from "../guide.type";
+import { guideFilterChannelIds, guideFilterOptions } from "../guide-filter";
 import type { GuideJourneyProps } from "./guide-journey.type";
 
 const GuideJourney = ({
@@ -10,12 +12,22 @@ const GuideJourney = ({
   controller,
   density = "pointer",
   focusRegistry,
+  myChannels,
   onTune,
   preferredChannelId,
   renderArtwork,
   renderChannelLogo,
 }: GuideJourneyProps) => {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const [chosenFilter, setFilter] = useState<GuideFilter>("all");
+  const filters = snapshot.layout ? guideFilterOptions(snapshot.layout, myChannels) : undefined;
+  // A personal filter that empties (the last favourite unstarred) falls back to All.
+  const filter = filters?.find((option) => option.value === chosenFilter)?.disabled ? "all" : chosenFilter;
+  const restrictTo = guideFilterChannelIds(filter, myChannels);
+
+  useEffect(() => {
+    controller.restrict(restrictTo);
+  }, [controller, restrictTo]);
 
   useEffect(() => {
     void controller.refresh(preferredChannelId);
@@ -55,8 +67,11 @@ const GuideJourney = ({
       <GuideExperience
         channelWindow={channelWindow?.(snapshot.layout, snapshot.selection)}
         density={density}
+        filter={filter}
+        filters={filters}
         focusRegistry={focusRegistry}
         layout={snapshot.layout}
+        onFilterChange={setFilter}
         onSelectionChange={controller.select}
         onTune={(selection) => onTune(selection.channelId)}
         renderArtwork={renderArtwork}

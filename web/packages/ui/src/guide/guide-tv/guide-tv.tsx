@@ -5,6 +5,7 @@ import { forwardRef, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
 import type { GuideFilterOption, GuideSurfaceProps } from "../guide.type";
+import { guideFilterText } from "../guide-filter";
 
 const tvCanvasWidth = 960;
 const channelRailWidth = 298;
@@ -121,12 +122,14 @@ const TvGuideSurface = ({
           Guide
         </Text>
         {filters.map((option) => {
-          const count = option.value === "all" ? layout.channels.length : 0;
-          const name = option.value === "favourites" ? "Favorites" : option.label;
-          const label = `${option.value === "favourites" ? "★ " : ""}${name} · ${count}`;
+          // The ten-foot row always counts (5b): "All · 54", "★ Favorites · 0" before lists arrive.
+          const { accessibilityLabel, text: label } = guideFilterText({
+            ...option,
+            count: option.count ?? (option.value === "all" ? layout.channels.length : 0),
+          });
           return (
             <FilterButton
-              accessibilityLabel={`${name} channels`}
+              accessibilityLabel={accessibilityLabel}
               disabled={option.disabled}
               key={option.value}
               onPress={() => onFilterChange?.(option.value)}

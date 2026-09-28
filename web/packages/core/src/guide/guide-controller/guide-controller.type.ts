@@ -24,6 +24,11 @@ interface GuideController {
   getSnapshot: () => GuideControllerSnapshot;
   move: (direction: GuideNavigationDirection) => GuideNavigationResult | undefined;
   refresh: (preferredChannelId?: string) => Promise<void>;
+  /**
+   * Show only these channels, in guide order (the Favorites and Recent filters); undefined shows all.
+   * Moves and selection follow the filtered rows, so the D-pad never lands on a hidden channel.
+   */
+  restrict: (channelIds: readonly string[] | undefined) => void;
   select: (selection: GuideSelection) => void;
   subscribe: (listener: () => void) => () => void;
 }
