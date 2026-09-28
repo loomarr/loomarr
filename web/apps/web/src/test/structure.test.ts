@@ -75,9 +75,11 @@ const violations = (root: string, pkgRoot = join(root, "..")): string[] => {
         if (!ROOT_FILES.has(file)) found.push(`${rel} — a module must live in its own folder`);
         continue;
       }
-      // Elsewhere, an implementation file must be named for the folder holding it.
+      // Elsewhere, an implementation file must be named for the folder holding it. A
+      // `.web` variant is the same module: the resolvers pick `name.web.tsx` over
+      // `name.tsx` on web, so both halves of a platform split share one folder.
       const folder = dir.split("/").pop();
-      if (file.replace(/\.tsx?$/, "") !== folder) {
+      if (file.replace(/(\.web)?\.tsx?$/, "") !== folder) {
         found.push(`${rel} — should be named for its folder (${folder}) or live in its own`);
       }
       // An entry point needs no barrel — importing it would run it.
