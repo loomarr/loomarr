@@ -77,6 +77,8 @@ export type {
   TabsProps,
 } from "./src/selection";
 export { Hint, MenuList, SelectControl, Tabs } from "./src/selection";
+export type { AnalogSnowProps } from "./src/snow";
+export { AnalogSnow } from "./src/snow";
 export type { Density, TextRole } from "./src/tokens";
 export {
   brandChroma,

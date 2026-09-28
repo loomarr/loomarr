@@ -81,13 +81,16 @@ func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 	// device token would be compared against the household admin secret; ordering it this way means
 	// the admin comparison only ever sees credentials that are not device tokens.
 	//
-	// A device acts AS the member who approved it and inherits that member's role — never admin by
-	// virtue of being a device. That is the whole point of this path: the alternative was shipping
-	// the admin break-glass token to every TV in the house.
+	// A device acts AS the person who approved it (their favourites, recents and audience, #1659
+	// N3) but its role is capped at member, even when an admin paired it (maintainer decision on
+	// #1659, 2026-09-28): a TV left in a shared room must not administer the house. The cap is on
+	// the threaded user too, so no handler reading userFrom(ctx).Role, and no /v1/auth/me reply,
+	// can see an admin behind a device token.
 	if a.devices != nil && len(h) > len(prefix) && h[:len(prefix)] == prefix {
 		if principal, err := a.devices.ResolveDevice(r.Context(), h[len(prefix):]); err == nil {
 			user := principal.User
-			return requestIdentity{deviceID: principal.ID, role: roleOf(user), user: &user}
+			user.Role = store.RoleMember
+			return requestIdentity{deviceID: principal.ID, role: RoleMember, user: &user}
 		}
 	}
 
