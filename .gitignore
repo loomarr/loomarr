@@ -70,7 +70,9 @@ web/apps/web/dist/
 .DS_Store
 *.swp
 .playwright-mcp/
-.claude/settings.json
+# Personal Claude Code settings: permission grants the runtime records (once including a live token).
+# The shared .claude/settings.json is tracked and holds only hooks; agent-assets-verify enforces that.
+.claude/settings.local.json
 .claude/scheduled_tasks.lock
 
 # Claude Code's worktree directory. Contents are whole checkouts — never committable — and

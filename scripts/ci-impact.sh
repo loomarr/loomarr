@@ -359,6 +359,12 @@ classify() {
       select_gate docs
       select_gate policy
       ;;
+    # The shared Claude settings run a session-start hook; agent-assets-verify guards what they hold.
+    .claude/settings.json)
+      known=true
+      select_gate docs
+      select_gate agent
+      ;;
     docs/*|project/*|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|SECURITY.md|CLAUDE.md|AGENTS.md|CONTEXT.md|PROGRESS.md|docs-site/*|.agents/*|.claude/*|.vale|.vale/*|.vale.ini|lychee.toml|.markdownlint*|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE.md)
       known=true
       select_gate docs
@@ -493,6 +499,8 @@ classify() {
         scripts/ci-impact.sh) select_gate policy ;;
         scripts/ci-impact*|scripts/ci-diff-base*|scripts/ci-dispatch-scope*|scripts/ci-run-metrics*|scripts/ci-merge-queue-policy*|scripts/testdata/ci-*) select_gate policy ;;
         scripts/dev-*) select_gate contracts; select_gate agent ;;
+        # Local-only dev watchers; the agent gate runs their tests and shellcheck.
+        scripts/dev/*) select_gate agent ;;
         # Release admission and artifact download inspect existing evidence; changing them does
         # not change the bundle. The signer is exercised by the Android build and remains an input.
         scripts/validate-android-release-source*|scripts/download-android-ci-artifact.sh) select_gate policy ;;
