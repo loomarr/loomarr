@@ -114,6 +114,9 @@ func (a fillerServiceAdapter) PlanAcquisition(ctx context.Context, intent filler
 	}
 
 	candidates := make([]filler.AcquisitionCandidate, 0, maxAcquisitionPlanningCandidates)
+	// Compilation reels held back until automatic splitting is certified (#1773). They are
+	// reported with the plan's other rejections so the pull says why they are missing.
+	var deferred []filler.AcquisitionDecision
 	for sourceIndex, eligibleSource := range eligible {
 		if err := planningCtx.Err(); err != nil {
 			return filler.AcquisitionPlan{}, fmt.Errorf("filler acquisition planning exceeded %s: %w", acquisitionPlanningTimeout, err)
@@ -142,18 +145,25 @@ func (a fillerServiceAdapter) PlanAcquisition(ctx context.Context, intent filler
 			if license == "" {
 				license = source.License
 			}
-			candidates = append(candidates, filler.AcquisitionCandidate{
+			candidate := filler.AcquisitionCandidate{
 				Identity: filler.RemoteIdentity{Provider: source.Kind, SourceID: source.ID, RemoteID: item.ID},
 				URL:      item.URL, Title: item.Title, License: license,
 				ObservedYear: item.ObservedYear, PublishedAt: item.PublishedAt,
 				DurationMS: item.DurationMS, Height: item.Height, Geography: source.Geography,
-			})
+			}
+			if a.compilations.Defers(source.Kind, int64(item.DurationMS)) {
+				deferred = append(deferred, filler.AcquisitionDecision{Candidate: candidate,
+					Disposition: filler.CandidateDurationExceeded, Detail: a.compilations.Detail(int64(item.DurationMS))})
+				continue
+			}
+			candidates = append(candidates, candidate)
 		}
 	}
 	plan, err := filler.PlanAcquisitionFor(intent, candidates, existing, gaps)
 	if err != nil {
 		return filler.AcquisitionPlan{}, err
 	}
+	plan.Rejected = append(plan.Rejected, deferred...)
 	plan.Sources = decisions
 	if len(plan.Selected) == 0 {
 		return plan, filler.ErrNoAcquisitionCandidates

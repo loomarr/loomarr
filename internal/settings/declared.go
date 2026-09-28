@@ -1047,6 +1047,16 @@ func declared() []Setting {
 			Doc: "The most clips each enabled source may add in one automatic check.",
 		},
 		{
+			// ⚠ OFF until automatic splitting is certified (#952, #963; #1773). Every filler item
+			// waiting on a person was a compilation reel whose cut points needed confirming, and
+			// review should be a last resort. Off holds back only NEW reels from sources and
+			// planned pulls (a known runtime over filler.autosplit.max_duration, the same signal
+			// probe uses); nothing already downloaded is dropped, and the drop folder is exempt.
+			Key: "filler.acquisition.compilations", Label: "Download compilation reels", EnvVar: "FILLER_ACQUISITION_COMPILATIONS", Group: GroupFiller,
+			Kind: KindBool, Default: false,
+			Doc: "Also download recordings of several adverts in one video. Off until Loomarr can split them without asking you; sources then add single adverts only. Your drop folder is never affected.",
+		},
+		{
 			// ⚠ Bounds the UNATTENDED path only. An admin queueing a clip or approving a pull is
 			// a deliberate act and is not stopped by this — a ceiling on what happens while
 			// nobody is looking is not a ceiling on what someone chooses to do.

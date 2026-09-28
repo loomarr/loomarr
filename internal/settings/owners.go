@@ -59,8 +59,9 @@ var fillerOwners = map[string]Owner{
 	"filler.sync_every":            OwnerFillerFolders,
 	"filler.source.folder.enabled": OwnerFillerFolders,
 
-	"filler.fetch.every":       OwnerFillerDownloads,
-	"filler.fetch.max_per_run": OwnerFillerDownloads,
+	"filler.fetch.every":              OwnerFillerDownloads,
+	"filler.fetch.max_per_run":        OwnerFillerDownloads,
+	"filler.acquisition.compilations": OwnerFillerDownloads,
 
 	"filler.fetch.max_catalog_clips":    OwnerFillerStorage,
 	"filler.storage.library_budget_gb":  OwnerFillerStorage,

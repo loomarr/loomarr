@@ -738,8 +738,11 @@ type fillerServiceAdapter struct {
 	sources fillerSourceRegistry
 	// pullPlanning is the read side of candidate-level pull composition. It is separate from
 	// sources because approval history is evidence for "already queued/declined" selection.
-	pullPlanning  fillerPullPlanningStore
-	sourceEnum    filler.SourceEnumerator
+	pullPlanning fillerPullPlanningStore
+	sourceEnum   filler.SourceEnumerator
+	// compilations holds compilation reels out of planned pulls until automatic splitting is
+	// certified (#1773); the zero gate takes them.
+	compilations  filler.CompilationGate
 	archiveFinder *clipfetch.ArchiveSourceFinder
 	youtubeFinder *clipfetch.YouTubeSourceFinder
 	home          func() filler.Geography

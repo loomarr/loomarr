@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -424,6 +426,49 @@ func TestFetch_StopsAtMaxPerRun(t *testing.T) {
 	}
 	if len(stub.queuedIDs) != 3 {
 		t.Fatalf("queued remote ids = %v, want exact identities retained", stub.queuedIDs)
+	}
+}
+
+// #1773: until automatic splitting is certified, a scheduled pass leaves compilation reels (known
+// to run longer than the longest single clip) where they are, and takes them once the setting is
+// on. An item of unknown length can't be judged before download, so it is still taken; probe
+// marks it a compilation if it is one.
+func TestFetch_CompilationsWaitUntilTheSettingTakesThem(t *testing.T) {
+	offers := []filler.DiscoveredRef{
+		{ID: "reel", URL: "https://archive.org/details/reel", DurationMS: 30 * 60 * 1000},
+		{ID: "spot", URL: "https://archive.org/details/spot", DurationMS: 45 * 1000},
+		{ID: "unknown", URL: "https://archive.org/details/unknown"},
+	}
+	for _, tc := range []struct {
+		take bool
+		want []string
+	}{
+		{take: false, want: []string{"spot", "unknown"}},
+		{take: true, want: []string{"reel", "spot", "unknown"}},
+	} {
+		stub := &fetchStub{
+			sources: []filler.FetchSource{{ID: "s1", Kind: "archive", URI: "coll", Enabled: true}},
+			offers:  offers,
+		}
+		l := limits(10, 2000)
+		take := tc.take
+		l.Compilations = filler.CompilationGate{
+			Take: func() bool { return take },
+			Over: func() time.Duration { return 2 * time.Minute },
+		}
+		if _, err := newFetcher(t, stub, l).Run(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		got := append([]string(nil), stub.queuedIDs...)
+		sort.Strings(got)
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("compilations taken=%v: queued %v, want %v", tc.take, got, tc.want)
+		}
+		if !tc.take {
+			if n := stub.completions["s1"].Outcomes[filler.SourceOutcomeTooLong]; n != 1 {
+				t.Errorf("compilations off: too_long outcomes = %d, want the reel counted once", n)
+			}
+		}
 	}
 }
 
