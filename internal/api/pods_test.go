@@ -162,7 +162,7 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 		t.Error("entry lost its Tunarr program id — the FE cannot deep-link the clip without it")
 	}
 	if body.Entries[1].Hash != "h2" {
-		t.Error("entry lost its clip hash — the FE cannot address the prepared media preview")
+		t.Error("entry lost its clip hash — the FE cannot address the clip's preview")
 	}
 	if body.TotalMs != 35000 {
 		t.Errorf("totalMs = %d, want 35000", body.TotalMs)
