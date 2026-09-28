@@ -185,11 +185,13 @@ const typography = {
     code: { size: 36, lineHeight: 43, weight: "400" },
     // The compact card (#1659 web mock), a pointer-density design. At touch and TV each role
     // takes its nearest existing role's size (title → label, label → caption, meta and channel
-    // number → metadata), so no size is invented for a density nobody has mocked.
+    // number, time and initials → metadata), so no size is invented for a density nobody has mocked.
     cardTitle: { size: 15, lineHeight: 20, weight: "600" },
     cardLabel: { size: 13, lineHeight: 18, weight: "500" },
     cardMeta: { size: 12, lineHeight: 16, weight: "400" },
     cardChannelNumber: { size: 12, lineHeight: 16, weight: "600" },
+    cardTime: { size: 12, lineHeight: 16, weight: "400" },
+    cardInitials: { size: 11, lineHeight: 14, weight: "500" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -210,6 +212,8 @@ const typography = {
     cardLabel: { size: 14, lineHeight: 20, weight: "500" },
     cardMeta: { size: 13, lineHeight: 18, weight: "400" },
     cardChannelNumber: { size: 13, lineHeight: 18, weight: "600" },
+    cardTime: { size: 13, lineHeight: 18, weight: "400" },
+    cardInitials: { size: 13, lineHeight: 18, weight: "500" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -230,6 +234,8 @@ const typography = {
     cardLabel: { size: 17, lineHeight: 26, weight: "500" },
     cardMeta: { size: 16, lineHeight: 22, weight: "400" },
     cardChannelNumber: { size: 16, lineHeight: 22, weight: "600" },
+    cardTime: { size: 16, lineHeight: 22, weight: "400" },
+    cardInitials: { size: 16, lineHeight: 22, weight: "500" },
   },
 } as const;
 

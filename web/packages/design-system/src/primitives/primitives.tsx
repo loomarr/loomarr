@@ -111,8 +111,17 @@ type TextProps = Omit<
   tone?: TextTone;
 };
 
-const dataRoles = new Set<TextRole>(["metadata", "time", "data", "channelNumber", "code", "cardChannelNumber"]);
-const mutedRoles = new Set<TextRole>(["label", "section", "metadata", "time", "cardMeta"]);
+const dataRoles = new Set<TextRole>([
+  "metadata",
+  "time",
+  "data",
+  "channelNumber",
+  "code",
+  "cardChannelNumber",
+  "cardTime",
+  "cardInitials",
+]);
+const mutedRoles = new Set<TextRole>(["label", "section", "metadata", "time", "cardMeta", "cardTime"]);
 const textTones = {
   danger: "$stateDanger",
   info: "$stateInfo",
@@ -242,23 +251,32 @@ type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
   percent: number;
   // `artwork` is drawn across a still (#1659 web mock cards): a light fill on a translucent track.
   tone?: "artwork" | "live" | "primary";
+  // `square` runs edge to edge along a still's foot (the web mock's On now card).
+  ends?: "round" | "square";
 };
 
 const progressFill = { artwork: "$contentPrimary", live: "$stateLive", primary: "$actionPrimary" } as const;
 
-const ProgressTrack = ({ height = 4, percent, tone = "primary", ...props }: ProgressTrackProps) => {
+const ProgressTrack = ({
+  ends = "round",
+  height = 4,
+  percent,
+  tone = "primary",
+  ...props
+}: ProgressTrackProps) => {
   const bounded = Math.max(0, Math.min(100, percent));
+  const borderRadius = ends === "round" ? "$round" : 0;
   return (
     <View
       {...props}
       backgroundColor={tone === "artwork" ? "$artworkProgressTrack" : "$surfaceCanvas"}
-      borderRadius="$round"
+      borderRadius={borderRadius}
       height={height}
       overflow="hidden"
     >
       <View
         backgroundColor={progressFill[tone]}
-        borderRadius="$round"
+        borderRadius={borderRadius}
         height="100%"
         width={`${bounded}%`}
       />

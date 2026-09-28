@@ -25,7 +25,13 @@ const programmeLine = (programme: ProgrammeCardData) =>
 
 // The channel line both web layouts share: the amber mono number, then the name.
 const ChannelLine = ({ density, programme }: { density: Density; programme: ProgrammeCardData }) => (
-  <Surface alignItems="center" backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
+  <Surface
+    alignItems="center"
+    backgroundColor="$transparent"
+    borderWidth={0}
+    flexDirection="row"
+    gap="$inline"
+  >
     <Text density={density} textRole="cardChannelNumber">
       {programme.channelNumber}
     </Text>
@@ -46,12 +52,19 @@ const StackedCard = ({ artwork, density, programme }: ProgrammeCardProps & { den
     width="100%"
   >
     <Surface backgroundColor="$transparent" borderWidth={0} position="relative" width="100%">
-      <ArtworkFrame borderRadius={0} borderWidth={0} density={density} state={programme.artworkState} width="100%">
+      <ArtworkFrame
+        borderRadius={0}
+        borderWidth={0}
+        density={density}
+        state={programme.artworkState}
+        width="100%"
+      >
         {artwork}
       </ArtworkFrame>
       {programme.progressPercent === undefined ? null : (
         <ProgressTrack
           bottom={0}
+          ends="square"
           height={3}
           left={0}
           percent={programme.progressPercent}
@@ -73,7 +86,7 @@ const StackedCard = ({ artwork, density, programme }: ProgrammeCardProps & { den
       <Text density={density} numberOfLines={1} textRole="cardTitle">
         {programmeLine(programme)}
       </Text>
-      <Text density={density} textRole="metadata">
+      <Text density={density} textRole="cardTime">
         {programme.timeLabel}
       </Text>
     </Surface>
@@ -85,7 +98,13 @@ const StackedCard = ({ artwork, density, programme }: ProgrammeCardProps & { den
 const scrimGradient = `linear-gradient(180deg, rgba(11, 12, 14, 0) 35%, ${semanticColors.artwork.scrimStrong})`;
 
 const ViewerLine = ({ density, viewer }: { density: Density; viewer: ProgrammeCardViewer }) => (
-  <Surface alignItems="center" backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
+  <Surface
+    alignItems="center"
+    backgroundColor="$transparent"
+    borderWidth={0}
+    flexDirection="row"
+    gap="$inline"
+  >
     <Surface
       alignItems="center"
       backgroundColor="$borderDecorative"
@@ -95,7 +114,7 @@ const ViewerLine = ({ density, viewer }: { density: Density; viewer: ProgrammeCa
       justifyContent="center"
       width={22}
     >
-      <Text density={density} textRole="metadata" tone="primary">
+      <Text density={density} textRole="cardInitials">
         {viewer.initials}
       </Text>
     </Surface>

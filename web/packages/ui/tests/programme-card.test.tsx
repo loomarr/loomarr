@@ -2,7 +2,7 @@ import { LoomarrProvider } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { type ProgrammeCardData, ProgrammeCard } from "../index";
+import { ProgrammeCard, type ProgrammeCardData } from "../index";
 
 const programme: ProgrammeCardData = {
   artworkState: "ready",
@@ -15,7 +15,8 @@ const programme: ProgrammeCardData = {
   title: "The pilot",
 };
 
-const render = (element: React.ReactElement) => renderToStaticMarkup(<LoomarrProvider>{element}</LoomarrProvider>);
+const render = (element: React.ReactElement) =>
+  renderToStaticMarkup(<LoomarrProvider>{element}</LoomarrProvider>);
 
 // One card model, three layouts (#1659): each draws the same data, and missing artwork is the
 // frame's own state in all of them.
