@@ -125,12 +125,12 @@ const useChannelTuner = ({
 
   const ready = useCallback((channelId: string) => setReadyId(channelId), []);
 
-  const step = useCallback(
-    (direction: TuneDirection) => {
-      const target = adjacentChannel(catalog, pendingId.current, direction);
-      if (!target || (catalog.length === 1 && target.id === pendingId.current)) return;
+  // One tune path for every way of asking: a step, a typed number, a pick from the channels drawer.
+  // `adjacent` says whether the target is a neighbour the warmer could have prepared.
+  const tuneTo = useCallback(
+    (target: ChannelDTO, adjacent: boolean) => {
       const warm = warmed.current.get(target.id);
-      const attempt = beginTune(true, warm?.warmed, warm?.url, warm?.stillURL);
+      const attempt = beginTune(adjacent, warm?.warmed, warm?.url, warm?.stillURL);
       latestAttemptId.current = attempt.id;
       pendingId.current = target.id;
       requestedId.current = target.id;
@@ -151,7 +151,33 @@ const useChannelTuner = ({
         },
       );
     },
-    [catalog, onTune],
+    [onTune],
+  );
+
+  const step = useCallback(
+    (direction: TuneDirection) => {
+      const target = adjacentChannel(catalog, pendingId.current, direction);
+      if (!target || (catalog.length === 1 && target.id === pendingId.current)) return;
+      tuneTo(target, true);
+    },
+    [catalog, tuneTo],
+  );
+
+  // A direct tune: the channel the viewer named, by number or from the drawer. One that can't play
+  // in the app (paused, still building) is still a place to go: its Watch page says why it is off,
+  // so the route navigates without a tune attempt. Asking for the channel already tuned is a no-op.
+  const tune = useCallback(
+    (channelId: string) => {
+      if (channelId === pendingId.current) return;
+      const target = catalog.find((channel) => channel.id === channelId);
+      if (target) {
+        tuneTo(target, false);
+        return;
+      }
+      const offAir = channels.find((channel) => channel.id === channelId);
+      if (offAir) onTune(offAir);
+    },
+    [catalog, channels, onTune, tuneTo],
   );
 
   const retry = useCallback(() => {
@@ -190,6 +216,7 @@ const useChannelTuner = ({
     canSurf: catalog.length > 1,
     ready,
     step,
+    tune,
     retry,
   };
 };

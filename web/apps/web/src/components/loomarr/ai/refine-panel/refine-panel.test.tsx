@@ -89,24 +89,31 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const CHANGE = "What to change on 90s Action";
+const SUGGEST = "Suggest changes";
+
 describe("RefinePanel", () => {
-  it("starts collapsed with the entry point only", () => {
+  // The web mock's card is always open: no disclosure to click before typing.
+  it("shows the input straight away and disables Suggest changes until there's text", async () => {
     stubRefine({ proposals: [] });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
-    expect(screen.getByRole("button", { name: /refine with ai/i })).toBeInTheDocument();
-    expect(screen.queryByLabelText("What to change")).not.toBeInTheDocument();
+
+    expect(screen.getByRole("region", { name: "Refine with AI" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: SUGGEST })).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    expect(screen.getByRole("button", { name: SUGGEST })).toBeEnabled();
   });
 
-  it("opens the textarea on click and disables Refine until there's text", async () => {
-    stubRefine({ proposals: [] });
+  it("submits on Enter", async () => {
+    stubRefine({
+      proposals: [{ id: "p1", jobId: "job-1", status: "submitted", proposal }],
+    });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
 
-    await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
-    expect(screen.getByLabelText("What to change")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^refine$/i })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action{Enter}");
 
-    await userEvent.type(screen.getByLabelText("What to change"), "add more action");
-    expect(screen.getByRole("button", { name: /^refine$/i })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: /apply changes/i })).toBeInTheDocument();
   });
 
   it("runs the full idle -> running -> landed flow and applies the diff", async () => {
@@ -118,9 +125,8 @@ describe("RefinePanel", () => {
       wrapper: makeWrapper(),
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
-    await userEvent.type(screen.getByLabelText("What to change"), "add more Schwarzenegger");
-    await userEvent.click(screen.getByRole("button", { name: /^refine$/i }));
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
 
     // Landed: the diff shows the new pick, with Apply available.
     const applyButton = await screen.findByRole("button", { name: /apply changes/i });
@@ -129,36 +135,25 @@ describe("RefinePanel", () => {
     await userEvent.click(applyButton);
 
     await waitFor(() => expect(onApplied).toHaveBeenCalledOnce());
-    // Applying closes the panel back to its idle entry point.
+    // Applying returns the card to an empty input.
     expect(screen.queryByText("Predator")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(CHANGE)).toHaveValue("");
   });
 
-  it("discarding a landed proposal returns to idle without applying", async () => {
+  it("discarding a landed proposal returns to an empty input without applying", async () => {
     stubRefine({
       proposals: [{ id: "p1", jobId: "job-1", status: "submitted", proposal }],
     });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
 
-    await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
-    await userEvent.type(screen.getByLabelText("What to change"), "add more Schwarzenegger");
-    await userEvent.click(screen.getByRole("button", { name: /^refine$/i }));
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
 
     await screen.findByRole("button", { name: /apply changes/i });
     await userEvent.click(screen.getByRole("button", { name: /discard/i }));
 
     expect(screen.queryByText("Predator")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("What to change")).not.toBeInTheDocument();
-  });
-
-  it("cancel from the open textarea returns to idle", async () => {
-    stubRefine({ proposals: [] });
-    render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
-
-    await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
-    await userEvent.type(screen.getByLabelText("What to change"), "something");
-    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
-
-    expect(screen.queryByLabelText("What to change")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(CHANGE)).toHaveValue("");
   });
 
   // A generation FAILURE restored from the durable Journey (never a proposal)
@@ -169,17 +164,16 @@ describe("RefinePanel", () => {
     stubRefine({ proposals: [], failed: true });
     render(<RefinePanel channelId="ch-1" channelName="90s Action" />, { wrapper: makeWrapper() });
 
-    await userEvent.click(screen.getByRole("button", { name: /refine with ai/i }));
-    await userEvent.type(screen.getByLabelText("What to change"), "add more Schwarzenegger");
-    await userEvent.click(screen.getByRole("button", { name: /^refine$/i }));
+    await userEvent.type(screen.getByLabelText(CHANGE), "add more action");
+    await userEvent.click(screen.getByRole("button", { name: SUGGEST }));
     // Back on the form, with a recoverable error and the text intact — no diff, no Apply.
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("AI is temporarily unavailable");
     expect(alert).toHaveTextContent("Loomarr couldn't reach the AI service right now.");
     expect(alert).not.toHaveTextContent(/provider|generation/i);
-    expect(screen.getByLabelText("What to change")).toHaveValue("add more Schwarzenegger");
+    expect(screen.getByLabelText(CHANGE)).toHaveValue("add more action");
     expect(screen.queryByRole("button", { name: /apply changes/i })).not.toBeInTheDocument();
     // And the retry affordance is right there.
-    expect(screen.getByRole("button", { name: /^refine$/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: SUGGEST })).toBeEnabled();
   });
 });

@@ -1,3 +1,5 @@
+export type { ChannelIdentProps } from "./src/channel-ident";
+export { ChannelIdent } from "./src/channel-ident";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";

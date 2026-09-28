@@ -24,31 +24,6 @@ func EstimateArtwork() int64 {
 	return artworkReservationBytes
 }
 
-// EstimatePrepared translates an exact scheduled duration and rendition bitrate into the peak
-// allowance for one immutable prepared publication. The fixed floor covers playlists, init
-// segments, metadata, and bitrate variation without teaching the prepared-media package storage
-// arithmetic.
-func EstimatePrepared(durationMS int64, videoBitrateKbps, audioBitrateKbps int) (int64, bool) {
-	if durationMS <= 0 || videoBitrateKbps <= 0 || audioBitrateKbps < 0 {
-		return 0, false
-	}
-	bitrate := saturatingAdd(int64(videoBitrateKbps), int64(audioBitrateKbps))
-	const maximumInt64 = int64(^uint64(0) >> 1)
-	if bitrate <= 0 || durationMS > maximumInt64/bitrate {
-		return 0, false
-	}
-	// milliseconds × kilobits/second ÷ 8 is bytes: both SI factors are 1,000.
-	bytes := durationMS * bitrate / 8
-	if bytes <= 0 {
-		return 0, false
-	}
-	reservation := saturatingAdd(bytes, max(bytes/mediaEstimateMarginDenom, mediaDerivativeFloor))
-	if reservation <= bytes {
-		return 0, false
-	}
-	return reservation, true
-}
-
 // EstimateDiagnosticOutput reserves the atomic-rewrite peak for one bounded process log: the
 // current retained file and its replacement temp can coexist during a flush. The fixed overhead
 // covers timestamps, the discard marker, and filesystem metadata.
@@ -78,7 +53,7 @@ const UnknownAcquisitionCeilingBytes = 512 << 20
 //	ceiling     = source + max(source/4, 32 MiB)   (25% margin for sidecars and container overhead)
 //	reservation = ceiling
 //
-// Later stages (transcode, split, prepared media, artwork) each reserve their own peak through
+// Later stages (transcode, split, artwork) each reserve their own peak through
 // Reserve when they run, so this lease deliberately does not pre-reserve their derivatives. The
 // old shared formula (ceiling×4 + 64 MiB, ~5× the source) held budget for work that had not
 // started and made auto-fetch pause on library_limit long before the disk was actually full.

@@ -76,6 +76,12 @@ describe("ChannelAdvanced — playout backend", () => {
     render(<ChannelAdvanced channel={CHANNEL} />);
     expect(screen.queryByLabelText("Streamed by")).not.toBeInTheDocument();
     // The rest of the diagnostics still render.
-    expect(screen.getByText(/Tunarr channel: tun-abc/)).toBeInTheDocument();
+    expect(screen.getByText("Tunarr channel")).toBeInTheDocument();
+    expect(screen.getByText("tun-abc")).toBeInTheDocument();
+  });
+
+  it("says Tunarr isn't used when Loomarr plays the channel itself", () => {
+    render(<ChannelAdvanced channel={{ ...CHANNEL, tunarrId: undefined, inAppPlayable: true }} />);
+    expect(screen.getByText("Not used — Loomarr plays this channel itself")).toBeInTheDocument();
   });
 });

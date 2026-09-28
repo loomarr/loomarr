@@ -46,6 +46,24 @@ describe("channel tuner", () => {
     expect(result.current.attempt?.id).toBeGreaterThan(0);
   });
 
+  it("tunes straight to a named channel, and goes to one that can't play without a tune attempt", () => {
+    const onTune = vi.fn();
+    const { result } = renderHook(() =>
+      useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune, warmChannel: noWarm }),
+    );
+
+    act(() => result.current.tune("ch-10"));
+    expect(onTune).not.toHaveBeenCalled();
+
+    act(() => result.current.tune("ch-30"));
+    expect(onTune.mock.calls.map(([target]) => target.id)).toEqual(["ch-30"]);
+    expect(result.current.attempt?.adjacent).toBe(false);
+
+    act(() => result.current.tune("ch-20"));
+    expect(onTune.mock.calls.map(([target]) => target.id)).toEqual(["ch-30", "ch-20"]);
+    expect(result.current.requestedChannel?.id).toBe("ch-30");
+  });
+
   it("acknowledges the requested channel before replacing the active presentation", () => {
     const frames: FrameRequestCallback[] = [];
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {

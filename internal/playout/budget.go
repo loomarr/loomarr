@@ -143,12 +143,12 @@ type BudgetFacts struct {
 // Refusing is deliberate. Admitting an N+1th transcode that makes all N stutter is worse than
 // declining it; and a live session is never evicted to make room (the bound viewra lacked).
 //
-// Prepared media is its lowest-priority client until phase 4 removes it: background leases come
-// from the encode pool, whose capacity is derived from this ledger, and a foreground hardware lease
-// takes a pool slot so preparation is preempted and host memory gated exactly as before.
+// The ledger is the only count. A hardware transcode also passes the host-memory gate (memory),
+// which the retired encode pool used to apply behind a second, rung-0 slot count that could refuse
+// what the ledger admitted at a dropped rung (#1562, the #1505 class).
 type ResourceBudget struct {
-	facts func() BudgetFacts
-	pool  *media.EncodePool
+	facts  func() BudgetFacts
+	memory *hostMemory
 
 	mu     sync.Mutex
 	leases map[*Lease]struct{}
@@ -314,15 +314,12 @@ func NewResourceBudget(facts func() BudgetFacts) *ResourceBudget {
 	return &ResourceBudget{facts: facts, leases: map[*Lease]struct{}{}}
 }
 
-// WithEncodePool attaches the hardware encode pool (preemption of preparation and the host-memory
-// gate). Call before the budget is shared.
-func (b *ResourceBudget) WithEncodePool(pool *media.EncodePool) *ResourceBudget {
-	b.pool = pool
+// WithMemoryGate bounds hardware transcode admission by host memory. Call before the budget is
+// shared.
+func (b *ResourceBudget) WithMemoryGate(gate media.MemoryGate) *ResourceBudget {
+	b.memory = &hostMemory{gate: gate}
 	return b
 }
-
-// EncodePool returns the attached pool; background clients lease from it.
-func (b *ResourceBudget) EncodePool() *media.EncodePool { return b.pool }
 
 // AdmitRequest asks for one stream.
 type AdmitRequest struct {
@@ -339,7 +336,7 @@ type Lease struct {
 	software SoftwareRung // the software ladder rung (#1517) the current item encodes at
 	class    StreamClass
 	demand   demand
-	release  func() // the pool slot of a hardware transcode, nil otherwise
+	release  func() // the host-memory admission of a hardware transcode, nil otherwise
 	released bool
 }
 
@@ -471,25 +468,24 @@ func (b *ResourceBudget) placeLocked(facts BudgetFacts, req AdmitRequest) (int, 
 	return 0, demand{}, RungFull, false
 }
 
-// Hold takes a reserved hardware transcode's encode-pool slot: preparation is preempted (waiting
-// briefly for it to drain) and the host-memory gate applies. False means the host has no memory
-// for another encode; the caller releases the lease.
-func (l *Lease) Hold(ctx context.Context) bool { return l.takePoolSlot(ctx, l.b.currentFacts()) }
+// Hold applies the host-memory gate to a reserved hardware transcode. False means the host has no
+// memory for another encode; the caller releases the lease. It never blocks.
+func (l *Lease) Hold(context.Context) bool { return l.holdMemory(l.b.currentFacts()) }
 
 // Reclass moves a lease to another class at its pinned rung (a programme boundary). Starting to
 // transcode must fit, like a new session. A lease that already transcodes always moves: refusing it
 // would stop a watched channel mid-lineup, and the overcommit shows in the next admission instead.
-func (l *Lease) Reclass(ctx context.Context, class StreamClass) bool {
-	return l.reclass(ctx, class, false)
+func (l *Lease) Reclass(_ context.Context, class StreamClass) bool {
+	return l.reclass(class, false)
 }
 
 // ReclassItem is Reclass at an item boundary: the software rung is re-picked for the ledger as it is
 // now even when the class is unchanged, so an item starts on the best rung that fits today.
-func (l *Lease) ReclassItem(ctx context.Context, class StreamClass) bool {
-	return l.reclass(ctx, class, true)
+func (l *Lease) ReclassItem(_ context.Context, class StreamClass) bool {
+	return l.reclass(class, true)
 }
 
-func (l *Lease) reclass(ctx context.Context, class StreamClass, repick bool) bool {
+func (l *Lease) reclass(class StreamClass, repick bool) bool {
 	b := l.b
 	facts := b.currentFacts()
 	b.mu.Lock()
@@ -530,7 +526,7 @@ func (l *Lease) reclass(ctx context.Context, class StreamClass, repick bool) boo
 	if class == ClassCopy && release != nil {
 		release()
 	}
-	if starting && !l.takePoolSlot(ctx, facts) {
+	if starting && !l.holdMemory(facts) {
 		b.mu.Lock()
 		l.class, l.demand = ClassCopy, demand{}
 		b.mu.Unlock()
@@ -539,13 +535,13 @@ func (l *Lease) reclass(ctx context.Context, class StreamClass, repick bool) boo
 	return true
 }
 
-// takePoolSlot holds a hardware pool slot for a transcode: it preempts preparation and applies the
-// host-memory gate. The pool never refuses on count, because its capacity follows this ledger.
-func (l *Lease) takePoolSlot(ctx context.Context, facts BudgetFacts) bool {
-	if l.b.pool == nil || !facts.Hardware || l.class == ClassCopy {
+// holdMemory admits a hardware transcode past the host-memory gate and keeps the admission's
+// release on the lease. A copy or a software encode holds no hardware encoder.
+func (l *Lease) holdMemory(facts BudgetFacts) bool {
+	if l.b.memory == nil || !facts.Hardware || l.class == ClassCopy {
 		return true
 	}
-	release, ok := l.b.pool.AcquireForeground(ctx)
+	release, ok := l.b.memory.admit()
 	if !ok {
 		return false
 	}
@@ -593,16 +589,6 @@ func (b *ResourceBudget) PlaybackBusy() (bool, string) {
 		return true, fmt.Sprintf("live playout is transcoding %d stream(s)", n)
 	}
 	return false, ""
-}
-
-// BackgroundSlots is the encode pool's capacity: the whole SDR streams that fit an empty ledger.
-// The pool keeps one of them as its live reserve and admits no preparation while playback runs.
-func (b *ResourceBudget) BackgroundSlots() int {
-	facts := b.currentFacts()
-	if !facts.Hardware {
-		return 0 // software preparation would compete with playback for the CPU
-	}
-	return facts.capacity(ClassSDR, facts.rungHeight(0))
 }
 
 func (b *ResourceBudget) fitsLocked(facts BudgetFacts, d demand, except *Lease) bool {
