@@ -291,10 +291,7 @@ func (r proposalApprovalTxReader) ListProposalsByCreator(ctx context.Context, us
 }
 
 func (r proposalApprovalTxReader) GetTitle(ctx context.Context, key provision.Key) (provision.Record, error) {
-	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(
-		`SELECT key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
-		        progress, eta_text, download_status
-		 FROM titles WHERE key = ?`), string(key)))
+	return scanTitle(r.tx.QueryRowContext(ctx, r.s.ph(`SELECT `+titleColumns+` FROM titles WHERE key = ?`), string(key)))
 }
 
 // isConstraintViolation recognizes the portable driver contracts without coupling the
