@@ -279,11 +279,12 @@ const TvWatchingSurface = ({
   return (
     <View style={{ backgroundColor: "#000", flex: 1 }}>
       <View style={{ bottom: 0, left: 0, position: "absolute", right: 0, top: 0 }}>{player}</View>
-      {chromeVisible && snapshot.channel ? (
+      {/* Mounted from the first channel on, hidden, so a switch key only has to show it (#1781). */}
+      {snapshot.channel ? (
         <ChannelSwitchOverlay
           channel={{ channelName: snapshot.channel.name, channelNumber: String(snapshot.channel.number) }}
           stillUri={snapshot.stillUri}
-          visible={switching}
+          visible={chromeVisible && switching}
         />
       ) : null}
       {chromeVisible ? (

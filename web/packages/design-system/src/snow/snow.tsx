@@ -92,10 +92,37 @@ const AnalogSnow = ({ reducedMotion, seed = 4 }: AnalogSnowProps) => {
   }, [prefersReducedMotion, step]);
 
   // Stepped, not interpolated: each offset holds for its whole step, then jumps.
-  const inputRange = FLICKER_OFFSETS.flatMap((_, i) => [i, i + 0.999]);
-  const along = (axis: 0 | 1) =>
-    step.interpolate({ inputRange, outputRange: FLICKER_OFFSETS.flatMap((o) => [o[axis], o[axis]]) });
+  const flicker = useMemo(() => {
+    const inputRange = FLICKER_OFFSETS.flatMap((_, i) => [i, i + 0.999]);
+    const along = (axis: 0 | 1) =>
+      step.interpolate({ inputRange, outputRange: FLICKER_OFFSETS.flatMap((o) => [o[axis], o[axis]]) });
+    return [{ translateX: along(0) }, { translateY: along(1) }];
+  }, [step]);
   const patternId = `loomarr-snow-${seed}`;
+  // The tile is ~600 native views. Built once per seed, so a re-render (a readout's motion
+  // switching on at a key) never reconciles them again (#1781).
+  const tile = useMemo(
+    () => (
+      <Svg height="100%" width="100%">
+        <Defs>
+          <Pattern height={TILE.height} id={patternId} patternUnits="userSpaceOnUse" width={TILE.width}>
+            {cells.map((cell) => (
+              <Rect
+                fill={cell.color}
+                height={CELL.height}
+                key={`${cell.x}-${cell.y}`}
+                width={CELL.width}
+                x={cell.x}
+                y={cell.y}
+              />
+            ))}
+          </Pattern>
+        </Defs>
+        <Rect fill={`url(#${patternId})`} height="100%" width="100%" />
+      </Svg>
+    ),
+    [cells, patternId],
+  );
 
   return (
     <View
@@ -115,26 +142,10 @@ const AnalogSnow = ({ reducedMotion, seed = 4 }: AnalogSnowProps) => {
           position: "absolute",
           right: -OVERSIZE,
           top: -OVERSIZE,
-          transform: [{ translateX: along(0) }, { translateY: along(1) }],
+          transform: flicker,
         }}
       >
-        <Svg height="100%" width="100%">
-          <Defs>
-            <Pattern height={TILE.height} id={patternId} patternUnits="userSpaceOnUse" width={TILE.width}>
-              {cells.map((cell) => (
-                <Rect
-                  fill={cell.color}
-                  height={CELL.height}
-                  key={`${cell.x}-${cell.y}`}
-                  width={CELL.width}
-                  x={cell.x}
-                  y={cell.y}
-                />
-              ))}
-            </Pattern>
-          </Defs>
-          <Rect fill={`url(#${patternId})`} height="100%" width="100%" />
-        </Svg>
+        {tile}
       </Animated.View>
       {/* The dark between the snow and the readout: the canvas at 90%, as on web. */}
       <View

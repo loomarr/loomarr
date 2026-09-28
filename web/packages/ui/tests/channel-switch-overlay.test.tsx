@@ -115,6 +115,44 @@ describe("TV channel switch overlay (B4, #1627)", () => {
     vi.useRealTimers();
   });
 
+  // #1781: on a Shield the readout painted 312 ms after the key, the cost of mounting it (the snow
+  // is ~600 native views) at the key. It's built with the first channel and a key only shows it.
+  it("is built before the key and shown by it, without remounting the snow", () => {
+    vi.useFakeTimers();
+    const { container, root } = mount();
+    const snow = () => container.querySelector('[aria-hidden="true"] svg');
+    act(() => root.render(surface(playing)));
+    const built = snow();
+    expect(built).not.toBeNull();
+    expect(overlay(container)).toBeNull();
+    expect(container.textContent).not.toContain("TUNING IN");
+
+    act(() => root.render(surface({ ...tuning, attemptId: 5 })));
+    const shown = overlay(container);
+    expect(shown?.textContent).toContain("CH 7");
+    expect(shown?.getAttribute("style")).toContain("opacity: 1");
+    expect(snow()).toBe(built);
+
+    // Faded and hidden again, it stays built for the next key.
+    act(() => root.render(surface(playing)));
+    act(() => vi.advanceTimersByTime(400));
+    expect(overlay(container)).toBeNull();
+    expect(snow()).toBe(built);
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("stays built while a journey hides the chrome, so a tune from Surf shows it at once", () => {
+    const { container, root } = mount();
+    act(() => root.render(surface(playing, { chromeVisible: false })));
+    const built = container.querySelector('[aria-hidden="true"] svg');
+    expect(built).not.toBeNull();
+    act(() => root.render(surface({ ...tuning, attemptId: 6 }, { chromeVisible: true })));
+    expect(overlay(container)?.textContent).toContain("TUNING IN");
+    expect(container.querySelector('[aria-hidden="true"] svg')).toBe(built);
+    act(() => root.unmount());
+  });
+
   it("falls back to the readout over snow alone when there is no still", () => {
     const { container, root } = mount();
     act(() => root.render(surface({ ...tuning, stillUri: undefined })));
