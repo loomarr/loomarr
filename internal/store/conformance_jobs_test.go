@@ -1658,3 +1658,65 @@ func testLookupByNonID(t *testing.T, newStore NewStoreFunc) {
 		t.Errorf("status with no rows = %v, want ErrNotFound", err)
 	}
 }
+
+// testCreateSuggestionResult: a proposal that needed no generation lands as a whole finished
+// lifecycle (done job, succeeded Attempt 1, submitted proposal in the queue), and a refused
+// record leaves nothing behind.
+func testCreateSuggestionResult(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0).UTC()
+	job := sampleJob("job-idea", "hash-idea", now, now)
+	job.Status = "done"
+	proposal := Proposal{
+		ID: "proposal-idea", JobID: job.ID, Status: "submitted", CreatedBy: job.CreatedBy,
+		ProposalJSON: `{"channelName":"Comedy Movies","lineup":[{"mediaType":"movie","tmdbId":1,"name":"A","inLibrary":true}]}`,
+		CreatedAt:    now, UpdatedAt: now,
+	}
+	if err := s.CreateSuggestionResult(ctx, job, proposal); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := s.GetProposalJob(ctx, job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Job.Status != "done" || snapshot.Job.Attempts != 1 || snapshot.Job.WorkflowVersion != ProposalWorkflowVersion {
+		t.Fatalf("job = %+v", snapshot.Job)
+	}
+	if len(snapshot.Attempts) != 1 || snapshot.Attempts[0].Attempt != 1 || snapshot.Attempts[0].Status != "succeeded" {
+		t.Fatalf("attempts = %+v", snapshot.Attempts)
+	}
+	if snapshot.Proposal == nil || snapshot.Proposal.ID != proposal.ID || snapshot.Proposal.Status != "submitted" ||
+		snapshot.Proposal.ProposalJSON != proposal.ProposalJSON {
+		t.Fatalf("proposal = %+v", snapshot.Proposal)
+	}
+	queue, err := s.ListProposalsByStatus(ctx, "submitted")
+	if err != nil || len(queue) != 1 || queue[0].ID != proposal.ID {
+		t.Fatalf("approval queue = %+v, %v", queue, err)
+	}
+
+	// A proposal that isn't the job's own is refused, and the refusal writes nothing.
+	stray := sampleJob("job-stray", "hash-stray", now, now)
+	stray.Status = "done"
+	foreign := proposal
+	foreign.ID, foreign.CreatedBy = "proposal-stray", "someone-else"
+	foreign.JobID = stray.ID
+	if err := s.CreateSuggestionResult(ctx, stray, foreign); err == nil {
+		t.Fatal("recorded a proposal owned by someone other than the job's requester")
+	}
+	if _, err := s.GetJob(ctx, stray.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("refused record left a job behind: %v", err)
+	}
+	// And a failure inside the transaction (a duplicate proposal id) leaves no job either.
+	dup := sampleJob("job-dup", "hash-dup", now, now)
+	dup.Status = "done"
+	again := proposal
+	again.JobID = dup.ID
+	if err := s.CreateSuggestionResult(ctx, dup, again); err == nil {
+		t.Fatal("recorded a duplicate proposal id")
+	}
+	if _, err := s.GetJob(ctx, dup.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("failed record left a half-created job: %v", err)
+	}
+}

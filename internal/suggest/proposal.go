@@ -246,6 +246,10 @@ type Proposal struct {
 	// Trace is immutable evidence from the original grounded proposal run. It is
 	// never updated by approval edits or later scheduler/channel decisions.
 	Trace DecisionTrace `json:"trace"`
+	// FromIdea is the library channel idea this proposal was built from (#1720), e.g.
+	// "genre:comedy": its lineup came from the library, not the model. Set by the server only;
+	// no request body carries a Proposal, so a client can't claim one.
+	FromIdea string `json:"fromIdea,omitempty" doc:"The library channel idea this request came from, if any"`
 }
 
 // RefusedPick is one grounded pick the extracted policy will not air, with the exclusion

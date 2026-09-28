@@ -232,6 +232,9 @@ type JobStore interface {
 	// caller-owned done job and submitted proposal. It never reuses the source
 	// request's identity, requester, or decision state.
 	CloneSuggestionSuccess(ctx context.Context, sourceJobID string, job Job, proposalID string) (Proposal, error)
+	// CreateSuggestionResult records a proposal that needed no generation (a library channel
+	// idea, #1720) as a done job, its succeeded Attempt 1 and the submitted proposal, atomically.
+	CreateSuggestionResult(ctx context.Context, job Job, p Proposal) error
 	// PurgeFinishedJobs removes done/failed jobs older than `before` (§5 JOBS_RETENTION).
 	// In-flight jobs (queued/running) are never removed by age.
 	PurgeFinishedJobs(ctx context.Context, before time.Time) (int, error)

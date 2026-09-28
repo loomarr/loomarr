@@ -1275,7 +1275,7 @@ components:
             - holiday
           type: string
         id:
-          description: Stable across calls; the handle for hide and undo
+          description: Stable across calls; the handle for hide, undo and request
           examples:
             - genre:comedy
           type: string
@@ -1291,8 +1291,24 @@ components:
         movies:
           format: int64
           type: integer
+        name:
+          description: The card's name, built from the facet and the seasonal calendar without the LLM
+          examples:
+            - Comedy Movies
+          type: string
+        pitch:
+          description: One sentence saying where the titles come from and how many, built without the LLM
+          examples:
+            - "Comedy from your library that no channel plays yet: 12 movies."
+          type: string
         reason:
           $ref: "#/components/schemas/ChannelIdeaReasonDTO"
+        requestJobId:
+          description: The waiting request's job, for its journey (/v1/proposal-jobs/{jobId})
+          type: string
+        requested:
+          description: The caller has requested this idea and it is waiting for approval
+          type: boolean
         series:
           format: int64
           type: integer
@@ -1305,6 +1321,9 @@ components:
           type: string
       required:
         - id
+        - name
+        - pitch
+        - requested
         - facet
         - value
         - reason
@@ -7853,6 +7872,9 @@ components:
           type: array
         channelName:
           type: string
+        fromIdea:
+          description: The library channel idea this request came from, if any
+          type: string
         intent:
           $ref: "#/components/schemas/Intent"
         lineup:
@@ -8728,6 +8750,22 @@ components:
         - enabled
         - label
         - uri
+      type: object
+    RequestChannelIdeaOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/RequestChannelIdeaOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        jobId:
+          description: The request's job; its journey is /v1/proposal-jobs/{jobId}
+          type: string
+      required:
+        - jobId
       type: object
     RequestPasswordRecoveryInputBody:
       additionalProperties: false
@@ -13226,6 +13264,35 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Channel ideas from your library
+      tags:
+        - discovery
+  /v1/discovery/ideas/{ideaId}/request:
+    post:
+      description: "Puts the idea in the approval queue as the caller's own channel request (#1720): the idea's name, its pitch and its library titles become the proposal an admin approves. No LLM is involved, so it works with the AI off. Members only (maintainer H4); an admin makes channels directly. While the caller's request for this idea waits for approval, asking again returns that request rather than a second one."
+      operationId: request-channel-idea
+      parameters:
+        - in: path
+          name: ideaId
+          required: true
+          schema:
+            examples:
+              - genre:comedy
+            maxLength: 200
+            type: string
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestChannelIdeaOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Request a channel from an idea
       tags:
         - discovery
   /v1/docs:
