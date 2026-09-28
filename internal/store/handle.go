@@ -89,19 +89,12 @@ func (h sqlHandle) Clips(tx Tx) ClipTx { return h.s.clipsIn(tx) }
 // Scannable is the one method *sql.Row and *sql.Rows share, so one scan function reads either.
 type Scannable = scannable
 
-// Epoch and FromEpoch are the store's Unix-seconds time-column codec; EpochNano and FromEpochNano
-// are the nanosecond one the decision and safety ledgers use. Exported so extension stores encode
-// time exactly as the core does.
+// Epoch and FromEpoch are the store's Unix-seconds time-column codec, exported so extension stores
+// encode time exactly as the core does.
 func Epoch(t time.Time) int64 { return epoch(t) }
 
 // FromEpoch decodes Epoch.
 func FromEpoch(n int64) time.Time { return fromEpoch(n) }
-
-// EpochNano encodes a time as Unix nanoseconds; the zero time encodes to 0.
-func EpochNano(t time.Time) int64 { return fillerDecisionEpoch(t) }
-
-// FromEpochNano decodes EpochNano.
-func FromEpochNano(n int64) time.Time { return fromFillerDecisionEpoch(n) }
 
 // ClipPipelineSelect and ScanClipPipeline read filler_clip_pipeline rows for the acquisition
 // history, which attributes each run's clips by their pipeline rows. The pipeline stays here while

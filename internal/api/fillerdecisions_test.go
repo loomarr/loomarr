@@ -10,7 +10,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 type decisionListBody[T any] struct {
@@ -180,7 +180,7 @@ func TestFillerDecisionProjectionsUseLatestOutcomeWithoutErasingHistory(t *testi
 	}
 }
 
-func seedDecisionAPI(t *testing.T, st store.Store) {
+func seedDecisionAPI(t *testing.T, st fillerstore.FillerDecisionStore) {
 	t.Helper()
 	at := time.Date(2026, 8, 25, 5, 0, 0, 0, time.UTC)
 	if err := st.PutFillerDecision(t.Context(), fillerdecision.Record{

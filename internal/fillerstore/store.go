@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerdecision"
 	"github.com/loomarr/loomarr/internal/fillerenrichment"
 	"github.com/loomarr/loomarr/internal/fillerresearch"
 	"github.com/loomarr/loomarr/internal/fillersafety"
@@ -119,6 +120,14 @@ type FillerSafetyStore interface {
 	RecoverInterruptedSpokenSafetyRuns(context.Context, time.Time) (int, error)
 }
 
+// FillerDecisionStore owns immutable V63 admission results and append-only
+// operator actions. Projection rules remain in fillerdecision.Service. An applied action's effect on
+// the clip and its pipeline row goes through the core's store.ClipTx, inside the action's transaction.
+type FillerDecisionStore interface {
+	fillerdecision.Repository
+	fillerdecision.AppliedActionRepository
+}
+
 // FillerEnrichmentStore owns the accepted per-axis descriptive evidence for clips. Applying a
 // candidate is rank-aware and idempotent inside the adapter so no caller can overwrite an item fact
 // with weaker inference by choosing a different write path. What it projects onto the clip itself
@@ -196,6 +205,7 @@ type Store interface {
 	FillerAcquisitionStore
 	FillerEnrichmentStore
 	FillerResearchStore
+	FillerDecisionStore
 
 	// Core returns the store this one extends, for the core functions that need its adapter
 	// (backups, migration, schema version); store.Store's own methods are already promoted.
@@ -259,10 +269,9 @@ type placeholder func(query string) string
 // scannable is the one method *sql.Row and *sql.Rows share.
 type scannable = store.Scannable
 
-// The core's time-column codecs, under the names the moved code already uses.
+// The core's Unix-seconds time-column codec, under the names the moved code already uses. The
+// nanosecond codec the decision and safety ledgers use is this package's own (fillerDecisionEpoch).
 var (
-	epoch                   = store.Epoch
-	fromEpoch               = store.FromEpoch
-	fillerDecisionEpoch     = store.EpochNano
-	fromFillerDecisionEpoch = store.FromEpochNano
+	epoch     = store.Epoch
+	fromEpoch = store.FromEpoch
 )

@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/filleradmission"
 	"github.com/loomarr/loomarr/internal/fillerdecision"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 const fillerDecisionSelect = `SELECT id, clip_hash, evidence_hash, evidence_version,
@@ -35,7 +36,7 @@ func (s *sqlStore) PutFillerDecision(ctx context.Context, record fillerdecision.
 		return fmt.Errorf("encode filler decision: %w", err)
 	}
 	kind, verdict, holdCode, retryable := decisionColumns(record)
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin filler decision: %w", err)
 	}
@@ -128,7 +129,7 @@ func sameFillerDecision(existing, proposed fillerdecision.Record, payload []byte
 func (s *sqlStore) GetFillerDecision(ctx context.Context, id string) (fillerdecision.Record, error) {
 	record, err := scanFillerDecision(s.db.QueryRowContext(ctx, s.ph(fillerDecisionSelect+` WHERE id = ?`), id))
 	if errors.Is(err, sql.ErrNoRows) {
-		return fillerdecision.Record{}, ErrNotFound
+		return fillerdecision.Record{}, store.ErrNotFound
 	}
 	if err != nil {
 		return fillerdecision.Record{}, fmt.Errorf("get filler decision %s: %w", id, err)
@@ -267,7 +268,7 @@ func (s *sqlStore) commitFillerDecisionAction(
 	if err := fillerdecision.ValidateAction(action); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin filler decision action: %w", err)
 	}
@@ -278,7 +279,7 @@ func (s *sqlStore) commitFillerDecisionAction(
 		AND NOT EXISTS (SELECT 1 FROM filler_admission_decisions newer
 			WHERE newer.clip_hash = d.clip_hash AND (newer.created_at > d.created_at
 			OR (newer.created_at = d.created_at AND newer.id > d.id)))`
-	if s.dialect == DialectPostgres {
+	if s.dialect == store.DialectPostgres {
 		lock += ` FOR UPDATE`
 	}
 	if err := tx.QueryRowContext(ctx, s.ph(lock), action.DecisionID).Scan(&outcome, &verdict, &applicationMode, &clipHash); errors.Is(err, sql.ErrNoRows) {
@@ -289,7 +290,7 @@ func (s *sqlStore) commitFillerDecisionAction(
 		if exists > 0 {
 			return fillerdecision.ErrActionStale
 		}
-		return ErrNotFound
+		return store.ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("lock filler decision: %w", err)
 	}
@@ -360,7 +361,7 @@ func (s *sqlStore) CommitFillerDiagnosticRecovery(ctx context.Context, request f
 	if err := fillerdecision.ValidateDiagnosticRecovery(request); err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin filler diagnostic recovery: %w", err)
 	}
@@ -381,7 +382,7 @@ func (s *sqlStore) CommitFillerDiagnosticRecovery(ctx context.Context, request f
 		WHERE d.id = ? AND NOT EXISTS (SELECT 1 FROM filler_admission_decisions newer
 			WHERE newer.clip_hash = d.clip_hash AND (newer.created_at > d.created_at
 			OR (newer.created_at = d.created_at AND newer.id > d.id)))`
-	if s.dialect == DialectPostgres {
+	if s.dialect == store.DialectPostgres {
 		current += ` FOR UPDATE`
 	}
 	var outcome, holdCode string
@@ -394,7 +395,7 @@ func (s *sqlStore) CommitFillerDiagnosticRecovery(ctx context.Context, request f
 		if exists > 0 {
 			return fillerdecision.ErrActionStale
 		}
-		return ErrNotFound
+		return store.ErrNotFound
 	} else if err != nil {
 		return fmt.Errorf("lock filler diagnostic: %w", err)
 	}
@@ -428,67 +429,48 @@ func getFillerDiagnosticRecovery(ctx context.Context, q actionRowQueryer, ph pla
 	return request, true, nil
 }
 
-func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx *sql.Tx, clipHash string, action fillerdecision.Action) error {
-	timestamp := fillerDecisionEpoch(action.CreatedAt)
-	clipQuery := ""
-	var clipArgs []any
+// applyFillerDecisionCatalogEffect applies an applied-mode action to the clip and settles its
+// pipeline row, both through the core's ClipTx inside the action's transaction. Either one finding
+// the clip no longer in the state the action starts from makes the whole action stale.
+//
+// The clip and pipeline rows take the action's time in their own tables' Unix-seconds codec; only
+// the decision ledger's rows are nanoseconds (fillerDecisionEpoch).
+func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx store.Tx, clipHash string, action fillerdecision.Action) error {
+	clips := s.db.Clips(tx)
+	at := action.CreatedAt
+	var transition func(context.Context, string, time.Time) (bool, error)
 	var pipelineFrom []filler.Disposition
 	pipelineTo := filler.Disposition("")
 	switch {
 	case action.Kind == fillerdecision.ActionAdmit ||
 		action.Kind == fillerdecision.ActionCorrect && action.CorrectedVerdict == filleradmission.VerdictAdmit:
-		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ?
-			WHERE hash = ? AND held = ? AND removed_at = 0 AND kind <> ?`
-		clipArgs = []any{false, false, timestamp, clipHash, true, string(filler.Unclassified)}
+		transition = clips.Admit
 		pipelineFrom, pipelineTo = []filler.Disposition{filler.DispositionReview}, filler.DispositionReady
 	case action.Kind == fillerdecision.ActionRestore:
-		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, removed_at = 0, updated_at = ?
-			WHERE hash = ? AND (held = ? OR removed_at <> 0)`
-		clipArgs = []any{true, false, timestamp, clipHash, true}
+		transition = clips.RestoreHeld
 		pipelineFrom, pipelineTo = []filler.Disposition{
 			filler.DispositionReview, filler.DispositionRejected, filler.DispositionDismissed,
 		}, filler.DispositionReview
 	case action.Kind == fillerdecision.ActionReject ||
 		action.Kind == fillerdecision.ActionCorrect && action.CorrectedVerdict == filleradmission.VerdictReject:
-		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, removed_at = ?, updated_at = ? WHERE hash = ?`
-		clipArgs = []any{true, false, timestamp, timestamp, clipHash}
+		transition = clips.Reject
 		pipelineFrom, pipelineTo = []filler.Disposition{filler.DispositionReview}, filler.DispositionDismissed
 	case action.Kind == fillerdecision.ActionReverse:
-		clipQuery = `UPDATE clips SET held = ?, auto_filed = ?, updated_at = ? WHERE hash = ? AND held = ?`
-		clipArgs = []any{true, false, timestamp, clipHash, false}
+		transition = clips.Unfile
 		pipelineFrom, pipelineTo = []filler.Disposition{filler.DispositionReady}, filler.DispositionReview
 	case action.Kind == fillerdecision.ActionAbandon:
 		return nil
 	default:
 		return fillerdecision.ErrActionNotAllowed
 	}
-	result, err := tx.ExecContext(ctx, s.ph(clipQuery), clipArgs...)
-	if err != nil {
+	if changed, err := transition(ctx, clipHash, at); err != nil {
 		return fmt.Errorf("apply filler decision catalog effect: %w", err)
-	}
-	if affected, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("inspect filler decision catalog effect: %w", err)
-	} else if affected != 1 {
+	} else if !changed {
 		return fillerdecision.ErrActionStale
 	}
-
-	from := make([]string, len(pipelineFrom))
-	args := make([]any, 0, len(from)+4)
-	args = append(args, string(pipelineTo), timestamp)
-	for index, disposition := range pipelineFrom {
-		from[index] = "?"
-		args = append(args, string(disposition))
-	}
-	args = append(args, clipHash)
-	result, err = tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline
-		SET disposition = ?, status = 'done', next_run = 0, updated_at = ?
-		WHERE disposition IN (`+strings.Join(from, ",")+`) AND clip_hash = ?`), args...)
-	if err != nil {
+	if settled, err := clips.SettlePipeline(ctx, clipHash, pipelineFrom, pipelineTo, at); err != nil {
 		return fmt.Errorf("settle applied filler decision pipeline: %w", err)
-	}
-	if affected, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("inspect applied filler decision pipeline effect: %w", err)
-	} else if affected != 1 {
+	} else if !settled {
 		return fillerdecision.ErrActionStale
 	}
 	return nil
