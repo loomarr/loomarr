@@ -461,3 +461,85 @@ func byRecency(slots []Slot, lastAired map[string]time.Time) []Slot {
 	})
 	return out
 }
+
+// tradeRecent is how recency shapes a windowed shuffle channel (§3.1, #1694). slice is the
+// window's tile of the seeded deck. A unit in it that the history shows aired after `since` (the
+// window before this one opened) would be a next-day repeat, so it is traded for the recorded
+// unit waiting outside the slice that aired longest ago, as long as that one aired earlier. On a
+// steady deck consecutive tiles don't meet, so nothing trades; when an edited lineup deals the
+// deck afresh, this is what keeps yesterday's films out of today.
+//
+// Only units the history records can trade in. A unit with no record may still have aired (the
+// history holds only watched airings), so it is never assumed older than one that has a record.
+// Trading only next-day repeats keeps the tiling intact otherwise: a trade moves a unit off its
+// tile, and the unit that then airs twice is usually one the history can't see. If trades
+// shorten the slice below the window, it is topped up from the deck after the tile.
+func tradeRecent(deck, slice []Slot, lastAired map[string]time.Time, since time.Time, window time.Duration) []Slot {
+	inSlice := map[string]bool{}
+	var recorded []int // slice positions of programmes recorded as aired after since
+	for i, s := range slice {
+		if !s.IsProgram() {
+			continue
+		}
+		inSlice[s.LibraryItemID] = true
+		if at, ok := lastAired[s.LibraryItemID]; ok && at.After(since) {
+			recorded = append(recorded, i)
+		}
+	}
+	var waiting []Slot // recorded programmes outside the slice
+	for _, s := range deck {
+		if _, ok := lastAired[s.LibraryItemID]; ok && s.IsProgram() && !inSlice[s.LibraryItemID] {
+			waiting = append(waiting, s)
+		}
+	}
+	if len(recorded) == 0 || len(waiting) == 0 {
+		return slice
+	}
+	sort.SliceStable(recorded, func(a, b int) bool {
+		return lastAired[slice[recorded[a]].LibraryItemID].After(lastAired[slice[recorded[b]].LibraryItemID])
+	})
+	sort.SliceStable(waiting, func(a, b int) bool {
+		return lastAired[waiting[a].LibraryItemID].Before(lastAired[waiting[b].LibraryItemID])
+	})
+	out := append([]Slot(nil), slice...)
+	traded := false
+	for k := 0; k < len(recorded) && k < len(waiting); k++ {
+		if !lastAired[slice[recorded[k]].LibraryItemID].After(lastAired[waiting[k].LibraryItemID]) {
+			break
+		}
+		out[recorded[k]] = waiting[k]
+		inSlice[waiting[k].LibraryItemID] = true
+		traded = true
+	}
+	if !traded {
+		return slice
+	}
+	var runtime int64
+	for _, s := range out {
+		if s.IsProgram() {
+			runtime += s.DurationMs
+		}
+	}
+	// Top up from where the tile ended in the deck, wrapping, with units not already kept.
+	last := slice[recorded[0]].LibraryItemID
+	for _, s := range slice {
+		if s.IsProgram() {
+			last = s.LibraryItemID
+		}
+	}
+	end := 0
+	for i, s := range deck {
+		if s.IsProgram() && s.LibraryItemID == last {
+			end = i
+		}
+	}
+	for n := 1; n < len(deck) && runtime < window.Milliseconds(); n++ {
+		s := deck[(end+n)%len(deck)]
+		if s.IsProgram() && !inSlice[s.LibraryItemID] {
+			out = append(out, s)
+			inSlice[s.LibraryItemID] = true
+			runtime += s.DurationMs
+		}
+	}
+	return out
+}
