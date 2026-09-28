@@ -88,7 +88,8 @@ const barNames = ["one", "two", "three", "four", "five", "six", "seven", "eight"
 type SignalLoaderProps = Omit<ComponentProps<typeof View>, "children"> & {
   density?: Density;
   detail?: string;
-  label?: string;
+  /** `null` draws the bars alone, for a caller that sets its own readout (the TV switch, #1627). */
+  label?: string | null;
   reducedMotion?: boolean;
 };
 
@@ -176,9 +177,11 @@ const SignalLoader = ({
           <Animated.View aria-hidden key={barNames[index]} style={style} />
         ))}
       </View>
-      <Text marginTop={dimensions.labelMargin} density={density} textRole="label">
-        {label}
-      </Text>
+      {label === null ? null : (
+        <Text marginTop={dimensions.labelMargin} density={density} textRole="label">
+          {label}
+        </Text>
+      )}
       {detail ? (
         <Text marginTop="$inline" density={density} textRole="metadata">
           {detail}
