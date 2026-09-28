@@ -131,7 +131,7 @@ watch_repo_root() {
 # Linux reads every cwd in one `find` pass (a readlink fork per process took a second on a busy box) and
 # leaves comm as "-"; list_orphans reads comm only for the few matches.
 list_cwds() {
-	local proc="${WATCH_PROC:-/proc}"
+	local proc="${WATCH_PROC:-/proc}" d
 	if [ "$WATCH_OS" = Darwin ]; then
 		lsof -w -a -d cwd -Fpcn 2>/dev/null | awk '
 			/^p/ { pid = substr($0, 2) }
@@ -139,8 +139,15 @@ list_cwds() {
 			/^n/ { printf "%s\t%s\t%s\n", pid, comm, substr($0, 2) }'
 		return 0
 	fi
-	find "$proc"/ -mindepth 2 -maxdepth 2 -name cwd -type l -printf '%h\t-\t%l\n' 2>/dev/null |
-		awk -F '\t' -v OFS='\t' '{ sub(/.*\//, "", $1); if ($1 ~ /^[0-9]+$/) print }' | sort -n
+	if find / -maxdepth 0 -printf '' 2>/dev/null; then
+		find "$proc"/ -mindepth 2 -maxdepth 2 -name cwd -type l -printf '%h\t-\t%l\n' 2>/dev/null |
+			awk -F '\t' -v OFS='\t' '{ sub(/.*\//, "", $1); if ($1 ~ /^[0-9]+$/) print }' | sort -n
+		return 0
+	fi
+	# BSD find has no -printf (the test harness runs this branch on macOS against a fake tree).
+	for d in "$proc"/[0-9]*; do
+		[ -L "$d/cwd" ] && printf '%s\t-\t%s\n' "${d##*/}" "$(readlink "$d/cwd")"
+	done | sort -n
 	return 0
 }
 

@@ -5,7 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
-tmp="$(mktemp -d)"
+# Canonical, because macOS reports process cwds under /private/var while mktemp says /var.
+tmp="$(CDPATH='' cd -- "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
 failures=0
@@ -158,6 +159,13 @@ case $out in *103* | *104*) fail "live or unrelated cwd reported: $out" ;; esac
 expect_none "$(res)"
 fake_proc 105 vite "$tmp/worktrees/lane-gone/web/apps/web (deleted)"
 expect "$(res)" '101:air 102:node 105:vite'
+# Same answer from the BSD-find branch (no -printf), which the harness takes on macOS.
+mkdir -p "$tmp/bsdfind"
+real_find="$(command -v find)"
+printf '#!/usr/bin/env bash\ncase " $* " in *" -printf "*) exit 1 ;; esac\nexec %s "$@"\n' "$real_find" > "$tmp/bsdfind/find"
+chmod +x "$tmp/bsdfind/find"
+rm -rf "$tmp/state"
+expect "$(PATH="$tmp/bsdfind:$PATH" res)" 'ORPHANS in deleted worktrees: 101:air 102:node 105:vite'
 rm -rf "$P/101" "$P/102" "$P/105"
 expect "$(res)" 'orphans: back to normal'
 
