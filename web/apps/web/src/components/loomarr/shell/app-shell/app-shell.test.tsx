@@ -58,13 +58,13 @@ describe("AppShell", () => {
     renderShell(false);
     expect(await screen.findByRole("link", { name: /guide/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /help/i })).toBeInTheDocument();
-    for (const gone of [/settings/i, /people/i, /filler/i, /channels/i, /dashboard/i]) {
+    for (const gone of [/settings/i, /people/i, /filler/i, /channels/i, /^home$/i]) {
       expect(screen.queryByRole("link", { name: gone })).not.toBeInTheDocument();
     }
   });
 
-  // The v2 mock's `navDefs` verbatim: Dashboard · Guide · Requests · Filler · People · Settings
-  // · Help. Counted, not just spot-checked, because the count IS the claim — `Channels` and
+  // The v2 mock's `navDefs`, with #1659's rename: Home · Guide · Requests · Filler · People ·
+  // Settings · Help. Counted, not just spot-checked, because the count IS the claim — `Channels` and
   // `Suggest` folding into `/guide` is what took this from nine to seven, and a regression
   // would most likely show up as an extra entry rather than a wrong one.
   it("gives an admin exactly the mock's seven", async () => {
@@ -79,7 +79,16 @@ describe("AppShell", () => {
       // name ("OPOperator") and would silently stop matching if either changed.
       .filter((a) => a.getAttribute("aria-label") !== "Your account")
       .map((a) => a.textContent?.trim());
-    expect(labels).toEqual(["Dashboard", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
+    expect(labels).toEqual(["Home", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
+  });
+
+  // The palette opens on ⌘K or Ctrl K everywhere; the hint names the one this keyboard has.
+  it("names the search shortcut for the viewer's platform", async () => {
+    renderShell(true);
+    const search = await screen.findByRole("button", { name: "Open global search" });
+    const apple = /mac|iphone|ipad|ipod/i.test(navigator.platform);
+    expect(search).toHaveTextContent(apple ? "⌘K" : "Ctrl K");
+    expect(search).toHaveAttribute("aria-keyshortcuts", apple ? "Meta+K" : "Control+K");
   });
 
   // #1405: one name for everyone. Members used to see "My requests" and admins "Queue"; the page
