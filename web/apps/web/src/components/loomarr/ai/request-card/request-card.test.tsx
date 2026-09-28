@@ -23,6 +23,26 @@ describe("RequestCard", () => {
     expect(link).toHaveTextContent("Getting 2 titles (1 downloading, 1 waiting)");
   });
 
+  it("says when it was requested relative to now, with the exact time machine-readable", async () => {
+    render(
+      <RouterHarness
+        content={
+          <RequestCard
+            jobId="job-9"
+            title="90s action night"
+            line="Waiting for an admin"
+            tone="suggest"
+            createdAt="2026-09-24T18:00:00Z"
+            now={Date.parse("2026-09-27T18:00:00Z")}
+          />
+        }
+      />,
+    );
+    const when = await screen.findByText("Requested 3d ago");
+    expect(when.tagName).toBe("TIME");
+    expect(when).toHaveAttribute("dateTime", "2026-09-24T18:00:00Z");
+  });
+
   it("keeps the fix action outside the detail link", async () => {
     render(
       <RouterHarness

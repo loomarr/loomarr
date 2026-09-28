@@ -12,6 +12,9 @@ interface RequestCardProps {
   hint?: string;
   /** The one thing to do about this request. Sits OUTSIDE the detail link so it is its own control. */
   action?: ReactNode;
+  // Injectable clock (§5.2) for the relative "Requested 2h ago", so stories and their visual
+  // snapshots don't drift as real time moves past a fixed `createdAt`.
+  now?: number;
   className?: string;
 }
 
