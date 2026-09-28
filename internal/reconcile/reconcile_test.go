@@ -19,11 +19,7 @@ var now = time.Date(2026, 7, 13, 20, 0, 0, 0, time.UTC)
 
 func setup(t *testing.T) (*Reconciler, store.Store, *testkit.Requester, *testkit.MediaServer) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/r.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 	req := &testkit.Requester{}
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
@@ -45,11 +41,7 @@ func (c *captureEmitter) Emit(_ context.Context, ev provision.DomainEvent) {
 // setupWithEmitter is setup() with a capturing emitter wired in.
 func setupWithEmitter(t *testing.T) (*Reconciler, store.Store, *testkit.MediaServer, *captureEmitter) {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+t.TempDir()+"/r.db", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := testkit.MigratedSQLiteStore(t)
 	req := &testkit.Requester{}
 	ms := testkit.NewMediaServer(t)
 	t.Cleanup(ms.Close)
@@ -193,7 +185,7 @@ func TestReconcilerRecordsTerminalAcquisitionQualityAfterCommit(t *testing.T) {
 }
 
 func TestTickSnapshotsLibraryOnceAcrossClaimedBatch(t *testing.T) {
-	st := testkit.SQLiteStore(t)
+	st := testkit.MigratedSQLiteStore(t)
 	primary := libraryfixture.NewLookup(map[string]libraryfixture.LookupResult{
 		"101": {ItemID: "item-101", Present: true},
 		"202": {ItemID: "item-202", Present: true},

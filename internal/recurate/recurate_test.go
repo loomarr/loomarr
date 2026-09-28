@@ -3,7 +3,6 @@ package recurate_test
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,12 +17,7 @@ import (
 
 func newStore(t *testing.T) store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "r.db"), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	return st
+	return testkit.MigratedSQLiteStore(t)
 }
 
 func newCurator(t *testing.T, st store.Store, th fixedThresholds) *recurate.Curator {
