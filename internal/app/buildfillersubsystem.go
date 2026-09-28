@@ -265,7 +265,11 @@ func buildFillerSubsystem(
 		fillerSweepStoreAdapter{st}, layout.ClipDir(),
 		func() time.Duration { return set.dur("filler.split.review_window") }, time.Now, log,
 	)))
-	sourceEnumerator := registeredSourceEnumerator{youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath)}
+	sourceEnumerator := registeredSourceEnumerator{
+		youtube: clipfetch.NewYouTubeEnumerator(ytDlpPath),
+		// The compilation gate can only hold back a runtime it knows (#1773).
+		archiveRuntimes: func() bool { return !set.boolv("filler.acquisition.compilations") },
+	}
 	adapter.sourceEnum = sourceEnumerator
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{

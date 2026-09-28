@@ -457,6 +457,53 @@ printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/wa
 	}
 }
 
+// fakeArchiveCatalog lists items without runtimes, as Archive.org's one-request search does, and
+// fills them in only when asked for per-item metadata.
+type fakeArchiveCatalog struct {
+	runtimes map[string]int
+	enriched int
+}
+
+func (f *fakeArchiveCatalog) EnumerateCollection(context.Context, string, int) (clipfetch.DiscoveryResult, error) {
+	var out clipfetch.DiscoveryResult
+	for _, id := range []string{"reel", "spot"} {
+		out.Items = append(out.Items, clipfetch.DiscoveredItem{ID: id})
+	}
+	out.Total = len(out.Items)
+	return out, nil
+}
+
+func (f *fakeArchiveCatalog) Enrich(_ context.Context, items []clipfetch.DiscoveredItem) {
+	f.enriched++
+	for i := range items {
+		items[i].DurationMS = f.runtimes[items[i].ID]
+	}
+}
+
+// #1773: with compilations held back, an Archive.org listing is enriched with runtimes before
+// selection, since the search carries none and the gate can only hold back what it can measure.
+// With compilations taken, the listing stays one request.
+func TestRegisteredSourceEnumerator_ArchiveRuntimesWhenCompilationsWait(t *testing.T) {
+	for _, hold := range []bool{true, false} {
+		archive := &fakeArchiveCatalog{runtimes: map[string]int{"reel": 30 * 60 * 1000, "spot": 45 * 1000}}
+		items, _, err := (registeredSourceEnumerator{archive: archive, archiveRuntimes: func() bool { return hold }}).Enumerate(
+			t.Context(), filler.FetchSource{Kind: "archive", URI: "reels_collection"}, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]int{}
+		for _, item := range items {
+			got[item.ID] = item.DurationMS
+		}
+		if hold && (archive.enriched != 1 || got["reel"] != 30*60*1000 || got["spot"] != 45*1000) {
+			t.Errorf("compilations held back: enriched %d times, runtimes %v; want one enrichment and both runtimes", archive.enriched, got)
+		}
+		if !hold && archive.enriched != 0 {
+			t.Errorf("compilations taken: enriched %d times, want the listing left at one request", archive.enriched)
+		}
+	}
+}
+
 func TestIngest_RefusesAJobThatCannotBePersisted(t *testing.T) {
 	a := fillerServiceAdapter{
 		fetcher:      successfulClipIngestor{},
