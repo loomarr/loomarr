@@ -157,6 +157,20 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 	} else if moved {
 		log.Info("playout: moved the encoder measurement to the state directory", "dir", stateDir)
 	}
+	// With the evidence out, the rest of the retired library is media nothing reads (decision 0040).
+	// Reclaim it once the generation has built, off the critical path: an upgraded install can hold
+	// hundreds of GB there. Only what that library wrote goes (#1563).
+	owner.goRunAfterBuild(func(context.Context) {
+		got, err := playout.ReclaimRetiredPrepared(legacyPrepared)
+		if got.Entries > 0 {
+			log.Info("playout: removed the retired prepared-media library",
+				"dir", legacyPrepared, "entries", got.Entries, "reclaimed_bytes", got.Bytes, "dir_removed", got.DirRemoved)
+		}
+		if err != nil {
+			log.Warn("playout: could not remove all of the retired prepared-media library; delete what is left by hand",
+				"dir", legacyPrepared, "err", err)
+		}
+	})
 	playoutRes = &playoutResolver{
 		// The library client with the server-path cache (#1456): airtime input resolution reads
 		// the remembered path locally and only asks the media server on a cold or stale entry.
