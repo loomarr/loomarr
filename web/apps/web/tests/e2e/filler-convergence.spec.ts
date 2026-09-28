@@ -322,17 +322,18 @@ test("a fetched arrival becomes playable automatically after its checks complete
   await expect(page.getByText(/licen[cs]/i)).toHaveCount(0);
   expect(requestedPaths).not.toContain("/v1/filler/decisions/overview");
   const fillerNav = page.getByRole("navigation", { name: "Filler sections" });
+  // The web mock's three sections; Sources and Incoming open from the Manage hub (#1659).
   await expect(fillerNav.getByRole("link", { name: "Overview" })).toBeVisible();
-  await expect(fillerNav.getByRole("link", { name: "Incoming" })).toBeVisible();
   await expect(fillerNav.getByRole("link", { name: /Library/ })).toBeVisible();
   await expect(fillerNav.getByRole("link", { name: "Manage" })).toBeVisible();
-  await expect(fillerNav.getByRole("link", { name: "Sources" })).toBeVisible();
+  await expect(fillerNav.getByRole("link", { name: "Incoming" })).toHaveCount(0);
+  await expect(fillerNav.getByRole("link", { name: "Sources" })).toHaveCount(0);
 
   await page.goto("/filler/manage");
   await expect(page.getByText("Nothing has happened yet.")).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
-  await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What this channel can play" })).toBeVisible();
   await expect(page.getByText(/No clips match these choices yet\. Breaks use the bumper card/)).toBeVisible();
   await expect(page.getByRole("link", { name: "browse your filler library" })).toHaveAttribute(
     "href",
@@ -354,7 +355,7 @@ test("a fetched arrival becomes playable automatically after its checks complete
   await expect(page.getByRole("heading", { name: "Ready" })).toBeVisible();
 
   await page.goto("/channels/ch-1/filler");
-  await expect(page.getByRole("heading", { name: "Saved channel coverage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What this channel can play" })).toBeVisible();
   await expect(page.getByLabel("Pod segments")).toContainText("Trusted Toy Spot");
   await expect(page.getByRole("button", { name: /apply filler/i })).toHaveCount(0);
   expect(calls).toEqual(["bounded source fetch", "automatic break preview"]);

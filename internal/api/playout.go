@@ -82,7 +82,8 @@ const playoutPlanParam = "plan"
 
 // playoutModeParam is an unsigned least-privilege modifier on the signed HLS master route. `warm`
 // permits a bounded live snapshot but forbids reclaiming another Channel's retained session.
-// `prepared` is retired with prepared media (#1512) and always answers 204 for older clients.
+// `prepared` is retired with prepared media (#1512) and always answers 204 for beta.7 TV and
+// mobile installs, whose player probed it first. It is removed in v0.2.0-beta.10 (#1742).
 // Neither expands what the channel-scoped signature authorizes.
 const playoutModeParam = "mode"
 
@@ -804,7 +805,7 @@ func (s *Server) registerPlayout(api huma.API) {
 		Summary: "Channel HLS master playlist (signed-URL authed)", Tags: []string{"playout"},
 	}, "The HLS master playlist for the in-app and native players.",
 		"application/vnd.apple.mpegurl")
-	hlsMaster.Responses["204"] = &huma.Response{Description: "mode=prepared (retired): there is no prepared presentation, and live playout was not started."}
+	hlsMaster.Responses["204"] = &huma.Response{Description: "mode=prepared (retired, removed in v0.2.0-beta.10): there is no prepared presentation, and live playout was not started."}
 	streamOp[playoutHLSInput](s, api, hlsMaster, s.hlsPlaylistHandler)
 	// Every asset is a bare file beside the master, so it fits a single `{asset}` segment.
 	//
@@ -838,7 +839,7 @@ type playoutAssetInput struct {
 // avoids claiming that the MPEG-TS route accepts the hint.
 type playoutHLSInput struct {
 	ID   string `path:"id" example:"ch_abc123" doc:"Loomarr channel id"`
-	Mode string `query:"mode" enum:"prepared,warm" doc:"Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired and always answers 204 without starting playout"`
+	Mode string `query:"mode" enum:"prepared,warm" doc:"Optional least-privilege lookup: warm permits speculative live startup without reclaiming another Channel; prepared is retired, always answers 204 without starting playout, and is removed in v0.2.0-beta.10"`
 }
 
 // streamOp registers one playout streaming route on the Huma API: method + path, the shared playout

@@ -87,6 +87,57 @@ func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 	}
 }
 
+// A library idea's Proposal needs no generation (#1720). Recorded, it must read exactly like a
+// generated one: the requester's Journey is awaiting approval, the claimable queue stays empty
+// (nothing re-runs it through the model), and an ungrounded item is refused before any write.
+func TestStoreWorkflowRecordsAGroundedProposalAwaitingApproval(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+filepath.Join(t.TempDir(), "record.db"), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, time.September, 28, 18, 0, 0, 0, time.UTC)
+	var next atomic.Int64
+	workflow := New(st, func() string { return "record-" + strconv.FormatInt(next.Add(1), 10) }, func() time.Time { return now })
+
+	intent := suggest.Intent{Description: "Every comedy title in your library that no channel plays yet, on one channel."}
+	proposal := suggest.Proposal{ChannelName: "Comedy Movies", FromIdea: "genre:comedy", Lineup: []suggest.ProposalItem{
+		{MediaType: provision.Movie, TMDBID: 1, Name: "Comedy One", Year: 1994, InLibrary: true},
+		{MediaType: provision.Series, TVDBID: 2, Name: "Sitcom Two", Year: 1996, InLibrary: true},
+	}}
+	recorded, err := workflow.Record(ctx, intent, proposal, "member-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorded.JobID == "" || recorded.ID == "" || recorded.Proposal.FromIdea != "genre:comedy" ||
+		recorded.Proposal.Intent.Description != intent.Description {
+		t.Fatalf("Record = %+v", recorded)
+	}
+	journey, err := workflow.Inspect(ctx, Viewer{UserID: "member-1"}, recorded.JobID)
+	if err != nil || journey.Milestone != MilestoneAwaitingApproval || journey.Proposal == nil ||
+		journey.Proposal.ID != recorded.ID || journey.Proposal.Status != ProposalSubmitted {
+		t.Fatalf("recorded Journey = %+v, %v", journey, err)
+	}
+	if work, err := workflow.Claim(ctx, now.Add(time.Hour), time.Minute, 5); err != nil || len(work) != 0 {
+		t.Fatalf("a recorded Proposal became claimable model work: %+v, %v", work, err)
+	}
+
+	ungrounded := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, Name: "No Identity"}}}
+	if _, err := workflow.Record(ctx, intent, ungrounded, "member-1"); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("ungrounded Record = %v, want ErrInvalidState", err)
+	}
+	if _, err := workflow.Record(ctx, intent, suggest.Proposal{}, "member-1"); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("empty Record = %v, want ErrInvalidState", err)
+	}
+	queue, err := st.ListProposalsByStatus(ctx, "submitted")
+	if err != nil || len(queue) != 1 {
+		t.Fatalf("refused records reached the queue: %+v, %v", queue, err)
+	}
+}
+
 func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 	t.Parallel()
 

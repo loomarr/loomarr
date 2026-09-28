@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/loomarr/loomarr/internal/ideas"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
 )
 
 // Home's Channel ideas (#1665): channels the household's own library could make, built without
@@ -40,6 +43,16 @@ func (s *Server) registerChannelIdeas(api huma.API) {
 		Tags: []string{"discovery"},
 	}, RoleMember), s.listChannelIdeas)
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "request-channel-idea", Method: http.MethodPost, Path: "/v1/discovery/ideas/{ideaId}/request",
+		Summary: "Request a channel from an idea",
+		Description: "Puts the idea in the approval queue as the caller's own channel request (#1720): the idea's name, " +
+			"its pitch and its library titles become the proposal an admin approves. No LLM is involved, so it works with " +
+			"the AI off. Members only (maintainer H4); an admin makes channels directly. While the caller's request for " +
+			"this idea waits for approval, asking again returns that request rather than a second one.",
+		DefaultStatus: http.StatusAccepted,
+		Tags:          []string{"discovery"},
+	}, RoleMember), s.requestChannelIdea)
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "hide-channel-idea", Method: http.MethodPut, Path: "/v1/me/hidden-ideas/{ideaId}",
 		Summary:     "Hide a channel idea",
 		Description: "Hides the idea for the caller only. Idempotent. DELETE is the undo.",
@@ -63,15 +76,20 @@ type channelIdeaReasonDTO struct {
 }
 
 type channelIdeaDTO struct {
-	ID         string               `json:"id" example:"genre:comedy" doc:"Stable across calls; the handle for hide and undo"`
-	Facet      string               `json:"facet" enum:"genre,decade,holiday"`
-	Value      string               `json:"value" doc:"The genre as the library spells it, the decade's first year ('1990'), or the holiday id"`
-	Reason     channelIdeaReasonDTO `json:"reason"`
-	Keys       []string             `json:"keys" doc:"Title keys, newest first, at most 100. The first four are the posters; artwork comes from /v1/images."`
-	Movies     int                  `json:"movies"`
-	Series     int                  `json:"series"`
-	InLibrary  int                  `json:"inLibrary" doc:"Titles already in the library"`
-	ToDownload int                  `json:"toDownload" doc:"Titles the idea would have to request. Library-grounded ideas need none."`
+	ID    string `json:"id" example:"genre:comedy" doc:"Stable across calls; the handle for hide, undo and request"`
+	Name  string `json:"name" example:"Comedy Movies" doc:"The card's name, built from the facet and the seasonal calendar without the LLM"`
+	Pitch string `json:"pitch" example:"Every comedy title in your library that no channel plays yet, on one channel." doc:"One sentence saying what the channel would be, built without the LLM; the counts are separate fields"`
+	// Requested and RequestJobID say the caller's request for this idea is waiting for an admin.
+	Requested    bool                 `json:"requested" doc:"The caller has requested this idea and it is waiting for approval"`
+	RequestJobID string               `json:"requestJobId,omitempty" doc:"The waiting request's job, for its journey (/v1/proposal-jobs/{jobId})"`
+	Facet        string               `json:"facet" enum:"genre,decade,holiday"`
+	Value        string               `json:"value" doc:"The genre as the library spells it, the decade's first year ('1990'), or the holiday id"`
+	Reason       channelIdeaReasonDTO `json:"reason"`
+	Keys         []string             `json:"keys" doc:"Title keys, newest first, at most 100. The first four are the posters; artwork comes from /v1/images."`
+	Movies       int                  `json:"movies"`
+	Series       int                  `json:"series"`
+	InLibrary    int                  `json:"inLibrary" doc:"Titles already in the library"`
+	ToDownload   int                  `json:"toDownload" doc:"Titles the idea would have to request. Library-grounded ideas need none."`
 }
 
 type listChannelIdeasOutput struct {
@@ -102,39 +120,152 @@ func (s *Server) listChannelIdeas(ctx context.Context, _ *struct{}) (*listChanne
 	if err != nil {
 		return nil, err
 	}
+	built, labels, err := s.buildChannelIdeas(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	requested, err := s.requestedIdeas(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := &listChannelIdeasOutput{}
+	out.Body.Ideas = make([]channelIdeaDTO, 0, len(built))
+	for _, idea := range built {
+		dto := channelIdeaToDTO(idea, labels)
+		dto.RequestJobID = requested[idea.ID]
+		dto.Requested = dto.RequestJobID != ""
+		out.Body.Ideas = append(out.Body.Ideas, dto)
+	}
+	return out, nil
+}
+
+// buildChannelIdeas builds the caller's ideas (their hides left out) and returns the seasonal
+// calendar's display labels by holiday id, which names and pitches read.
+func (s *Server) buildChannelIdeas(ctx context.Context, userID string) ([]ideas.Idea, map[string]string, error) {
 	if s.ideaLibrary == nil || s.libraryUnconfigured() {
-		return nil, errNotImplemented("Channel ideas aren't available", "Connect your media library in Settings to get channel ideas.")
+		return nil, nil, errNotImplemented("Channel ideas aren't available", "Connect your media library in Settings to get channel ideas.")
 	}
 	items, err := s.ideaLibrary.IdeaItems(ctx)
 	if err != nil {
-		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't load channel ideas",
+		return nil, nil, apiErrWithCause(http.StatusBadGateway, "Couldn't load channel ideas",
 			"The media library didn't answer. Check the connection in Settings and try again.", err)
 	}
 	hidden, err := s.store.HiddenIdeas(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	onChannel, err := s.keysOnChannels(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	now := s.clock()
 	var holidays []ideas.Holiday
 	for _, h := range schedule.UpcomingHolidays(now, ideaHolidayHorizon) {
 		holidays = append(holidays, ideas.Holiday{ID: h.ID, Start: h.Start, End: h.End})
 	}
-
-	built := ideas.Build(ideas.Input{Library: items, OnChannel: onChannel, Holidays: holidays, Hidden: hidden, Now: now})
 	labels := map[string]string{}
 	for _, d := range holidayvocab.Definitions() {
 		labels[d.ID] = d.Label
 	}
-	out := &listChannelIdeasOutput{}
-	out.Body.Ideas = make([]channelIdeaDTO, 0, len(built))
-	for _, idea := range built {
-		out.Body.Ideas = append(out.Body.Ideas, channelIdeaToDTO(idea, labels))
+	built := ideas.Build(ideas.Input{Library: items, OnChannel: onChannel, Holidays: holidays, Hidden: hidden, Now: now})
+	return built, labels, nil
+}
+
+// requestedIdeas maps each idea the caller has requested, and that still waits for approval, to
+// that request's job. Once an admin decides it, the idea is requestable again: approved, its
+// titles are on a channel; denied, the person may ask again.
+func (s *Server) requestedIdeas(ctx context.Context, userID string) (map[string]string, error) {
+	waiting, err := s.store.ListProposalsByStatus(ctx, "submitted")
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, p := range waiting {
+		if p.CreatedBy != userID {
+			continue
+		}
+		var provenance struct {
+			FromIdea string `json:"fromIdea"`
+		}
+		if json.Unmarshal([]byte(p.ProposalJSON), &provenance) == nil && provenance.FromIdea != "" {
+			out[provenance.FromIdea] = p.JobID
+		}
 	}
 	return out, nil
+}
+
+type requestChannelIdeaOutput struct {
+	Body struct {
+		JobID string `json:"jobId" doc:"The request's job; its journey is /v1/proposal-jobs/{jobId}"`
+	}
+}
+
+func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (*requestChannelIdeaOutput, error) {
+	userID, err := s.ideasUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if u, ok := userFrom(ctx); ok && u.Role == store.RoleAdmin {
+		return nil, apiErr(http.StatusForbidden, "Channel ideas are for members",
+			"Requests go to an admin for approval. As an admin, make the channel yourself from the guide.")
+	}
+	if s.suggest == nil {
+		return nil, errFeatureNotConfigured("Channel requests unavailable", "The request queue isn't running on this server.")
+	}
+	out := &requestChannelIdeaOutput{}
+	requested, err := s.requestedIdeas(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if jobID := requested[in.IdeaID]; jobID != "" {
+		out.Body.JobID = jobID
+		return out, nil
+	}
+	built, labels, err := s.buildChannelIdeas(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, idea := range built {
+		if idea.ID != in.IdeaID {
+			continue
+		}
+		name, pitch := ideas.Describe(idea, labels[idea.Reason.HolidayID])
+		proposal := suggest.Proposal{
+			ChannelName: name, FromIdea: idea.ID, Lineup: ideaLineup(idea.Titles),
+			// Every title is already in the library: nothing to download.
+			Scores: suggest.Scores{AvailabilityRatio: 1},
+		}
+		jobID, err := s.suggest.SubmitBuilt(ctx, suggest.Intent{Description: pitch}, proposal, userID)
+		if err != nil {
+			return nil, err
+		}
+		out.Body.JobID = jobID
+		return out, nil
+	}
+	return nil, errNotFound("Idea not available", "That idea isn't available any more. Refresh Home for today's ideas.")
+}
+
+// ideaLineup turns an idea's library titles into proposal items, in the idea's order (newest
+// first). Each carries the id its key names, which is what grounds it for the approval gate.
+func ideaLineup(titles []ideas.Item) []suggest.ProposalItem {
+	out := make([]suggest.ProposalItem, 0, len(titles))
+	for _, it := range titles {
+		if len(it.Keys) == 0 {
+			continue
+		}
+		mt, provider, id, ok := provision.ParseKey(it.Keys[0])
+		if !ok {
+			continue
+		}
+		item := suggest.ProposalItem{MediaType: mt, Name: it.Name, Year: it.Year, InLibrary: true, Genres: it.Genres}
+		if provider == "tvdb" {
+			item.TVDBID = id
+		} else {
+			item.TMDBID = id
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 // keysOnChannels is every key on a channel that is, or will be, airing. A detached channel's
@@ -166,8 +297,9 @@ func channelIdeaToDTO(idea ideas.Idea, holidayLabels map[string]string) channelI
 		reason.HolidayID, reason.HolidayLabel = idea.Reason.HolidayID, holidayLabels[idea.Reason.HolidayID]
 		reason.StartsAtMs, reason.EndsAtMs = idea.Reason.StartsAt.UnixMilli(), idea.Reason.EndsAt.UnixMilli()
 	}
+	name, pitch := ideas.Describe(idea, holidayLabels[idea.Reason.HolidayID])
 	return channelIdeaDTO{
-		ID: idea.ID, Facet: string(idea.Facet), Value: idea.Value, Reason: reason, Keys: keys,
+		ID: idea.ID, Name: name, Pitch: pitch, Facet: string(idea.Facet), Value: idea.Value, Reason: reason, Keys: keys,
 		Movies: idea.Movies, Series: idea.Series, InLibrary: idea.Movies + idea.Series,
 	}
 }

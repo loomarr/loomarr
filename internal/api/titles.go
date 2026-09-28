@@ -145,7 +145,7 @@ func (s *Server) registerTitles(api huma.API) {
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-title", Method: http.MethodGet, Path: "/v1/titles/{key}",
-		Summary: "Get a title's provisioning state", Tags: []string{"titles"},
+		Summary: "Get a title's provisioning state", Description: operatorAPI, Tags: []string{"titles"},
 	}, RoleMember), s.getTitle)
 
 	huma.Register(api, withRole(huma.Operation{

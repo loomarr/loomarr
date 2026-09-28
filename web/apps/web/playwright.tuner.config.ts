@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { applyFlakeQuarantine } from "./playwright.quarantine";
 import { DETERMINISM } from "./playwright.shared";
 
 // The controller certification is deliberately separate from the page-snapshot suite. It drives
@@ -19,7 +20,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
   use: { ...DETERMINISM.use, baseURL: `http://127.0.0.1:${PORT}` },
-  projects: [
+  // A (project, test) pair with an open flaky issue runs in the non-blocking quarantine job
+  // instead (scripts/flake-quarantine.tsv); retries stay 0 in both.
+  projects: applyFlakeQuarantine([
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], viewport },
@@ -32,7 +35,7 @@ export default defineConfig({
       name: "webkit",
       use: { ...devices["Desktop Safari"], viewport, launchOptions: { args: [] } },
     },
-  ],
+  ]),
   webServer: {
     command: "node --experimental-strip-types tests/e2e/tuner-backend.ts",
     url: `http://127.0.0.1:${PORT}/`,

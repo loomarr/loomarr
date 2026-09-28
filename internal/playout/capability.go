@@ -140,7 +140,7 @@ type Capacity struct {
 	// option, measured" and an operator can see WHY their GPU was skipped.
 	All []Capability
 	// EncodeHostBytes is the measured host memory one encode of the chosen encoder holds (its warm
-	// trial's peak RSS), 0 when unmeasured. It sizes the encode pool's host-memory gate.
+	// trial's peak RSS), 0 when unmeasured. It sizes the ResourceBudget's host-memory gate.
 	EncodeHostBytes int64
 }
 

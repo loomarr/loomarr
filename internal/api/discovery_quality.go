@@ -14,7 +14,7 @@ func (s *Server) registerDiscoveryQuality(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "export-discovery-quality", Method: http.MethodGet, Path: "/v1/system/discovery-quality/export",
 		Summary:     "Export local discovery-quality measurements",
-		Description: "Admin only. Downloads privacy-safe daily aggregates and their referenced run snapshots; no raw observations or receipt keys are included.",
+		Description: "Admin only. Downloads privacy-safe daily aggregates and their referenced run snapshots; no raw observations or receipt keys are included. " + operatorAPI,
 		Tags:        []string{"system"},
 	}, RoleAdmin), s.discoveryQualityExport)
 }

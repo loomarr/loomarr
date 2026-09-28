@@ -155,9 +155,33 @@ e2e: fe-build ensure-playwright-image ## wizard e2e smoke vs a mocked backend, i
 tuner-e2e: fe-build ensure-playwright-image ## 100-Channel tuner controller matrix in Chromium, Firefox, and WebKit (§9.1)
 	./scripts/run-playwright-container.sh tuner-e2e
 
+# Flake quarantine (#1570 step 3). TUNER_QUARANTINE picks the run: off (default: everything),
+# exclude (the required matrix, minus tests listed in scripts/flake-quarantine.tsv with an OPEN
+# issue), or only (just those, in CI's non-blocking quarantine job). `tuner-quarantine` resolves
+# the open issues first, which needs gh.
+TUNER_QUARANTINE_FILE ?= $(CURDIR)/.artifacts/tuner-quarantine.tsv
+
+.PHONY: tuner-quarantine
+tuner-quarantine: ## resolve the tuner tests the flake quarantine holds out (TUNER_QUARANTINE=exclude|only; needs gh)
+	cd web/apps/web && node --experimental-strip-types --test playwright.quarantine.test.ts
+	@mkdir -p "$$(dirname "$(TUNER_QUARANTINE_FILE)")"
+	@case "$${TUNER_QUARANTINE:-off}" in \
+		off) : >"$(TUNER_QUARANTINE_FILE)" ;; \
+		exclude | only) scripts/flake-quarantine.sh active tuner >"$(TUNER_QUARANTINE_FILE)" ;; \
+		*) echo "tuner-quarantine: TUNER_QUARANTINE must be off, exclude, or only" >&2; exit 2 ;; \
+	esac
+
 .PHONY: tuner-e2e-host
 tuner-e2e-host: fe-build ## 100-Channel tuner controller matrix in host-installed browsers (§9.1); TUNER_PROJECT / TUNER_REPEAT_EACH narrow a manual rerun
-	args=$$(scripts/tuner-args.sh) && cd web/apps/web && node_modules/.bin/playwright test --config=playwright.tuner.config.ts $$args
+	@if [ "$${TUNER_QUARANTINE:-off}" = only ] && [ ! -s "$(TUNER_QUARANTINE_FILE)" ]; then \
+		echo "tuner-e2e-host: no tuner test is quarantined; nothing to run"; exit 0; fi; \
+	args=$$(scripts/tuner-args.sh) && cd web/apps/web && \
+	PLAYWRIGHT_QUARANTINE="$${TUNER_QUARANTINE:-off}" PLAYWRIGHT_QUARANTINE_FILE="$(TUNER_QUARANTINE_FILE)" \
+	node_modules/.bin/playwright test --config=playwright.tuner.config.ts $$args
+
+.PHONY: tuner-e2e-quarantine
+tuner-e2e-quarantine: export TUNER_QUARANTINE = only
+tuner-e2e-quarantine: tuner-e2e-host ## only the tuner tests the flake quarantine holds out (after tuner-quarantine)
 
 .PHONY: e2e-update
 e2e-update: fe-build ensure-playwright-image ## regenerate the committed e2e page snapshots (sanctioned update path)

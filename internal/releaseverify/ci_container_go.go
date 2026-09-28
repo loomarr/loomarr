@@ -88,6 +88,13 @@ func verifyPostgresContainerSeams(root string) error {
 			if relative != "." && excludedContainerScanDirectory(entry.Name()) {
 				return filepath.SkipDir
 			}
+			// A nested go.mod starts another module (the frozen research/ archive, spikes). Its tests
+			// are not this module's CI, so its sources are not this module's container seams.
+			if relative != "." {
+				if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+					return filepath.SkipDir
+				}
+			}
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 || filepath.Ext(path) != ".go" {
