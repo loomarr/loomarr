@@ -65,6 +65,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		startupReports:    opts.StartupReports,
 		healthRefresh:     opts.HealthRefresh,
 		now:               opts.Now,
+		ideaLibrary:       opts.IdeaLibrary,
 		viewing:           viewing.New(),
 		systemLLM:         opts.SystemLLM, database: opts.Database, encryption: opts.Encryption, backups: opts.Backups, restart: opts.Restart, activity: opts.Activity, sso: opts.SSO,
 		restartDrift:             opts.RestartDrift,
@@ -109,6 +110,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 	srv.registerProposals(humaAPI)
 	srv.registerDiscoveryFeedback(humaAPI)
 	srv.registerMyChannels(humaAPI)
+	srv.registerChannelIdeas(humaAPI)
 	srv.registerHouseholdViewing(humaAPI)
 	srv.registerProposalJourneys(humaAPI)
 	srv.registerSearch(humaAPI)

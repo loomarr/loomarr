@@ -35,6 +35,7 @@ type suggestionBuild struct {
 	search           api.SearchService
 	movieCollections api.MovieCollectionService
 	collections      api.CollectionService
+	ideaLibrary      api.IdeaLibrary
 	systemLLM        api.SystemLLMService
 	icons            api.IconService
 	images           *images.Service
@@ -100,6 +101,7 @@ func buildSuggestions(
 	})
 	result.movieCollections = movieCollectionAdapter{resolver: collectionResolver}
 	result.collections = libraryCollections{lib: libraryClient}
+	result.ideaLibrary = &libraryIdeaItems{lib: libraryClient, now: time.Now}
 	result.icons = iconAdapter{
 		store: st, tmdb: tmdbClient, images: result.images, fetch: result.imageFetcher, log: log,
 	}
