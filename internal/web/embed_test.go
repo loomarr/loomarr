@@ -82,7 +82,7 @@ func TestHandlerNegotiatesCompressedAssets(t *testing.T) {
 		"index.html":    &fstest.MapFile{Data: []byte("<h1>Loomarr</h1>")},
 		"assets/app.js": &fstest.MapFile{Data: []byte(javascript)},
 	}
-	handler := handlerFor(assets)
+	handler := handlerForCached(assets, &compressedCache{})
 
 	request := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
 	request.Header.Set("Accept-Encoding", "br, gzip")
@@ -124,7 +124,7 @@ func TestHandlerFallsBackToIdentityEncoding(t *testing.T) {
 		"index.html":    &fstest.MapFile{Data: []byte("<h1>Loomarr</h1>")},
 		"assets/app.js": &fstest.MapFile{Data: []byte(javascript)},
 	}
-	handler := handlerFor(assets)
+	handler := handlerForCached(assets, &compressedCache{})
 
 	for _, acceptEncoding := range []string{"", "gzip;q=0, br"} {
 		request := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
@@ -143,9 +143,9 @@ func TestHandlerFallsBackToIdentityEncoding(t *testing.T) {
 
 func TestHandlerCompressesSPAFallbackWithoutCachingIt(t *testing.T) {
 	const index = "<!doctype html><h1>Loomarr</h1>"
-	handler := handlerFor(fstest.MapFS{
+	handler := handlerForCached(fstest.MapFS{
 		"index.html": &fstest.MapFile{Data: []byte(index)},
-	})
+	}, &compressedCache{})
 	request := httptest.NewRequest(http.MethodGet, "/guide", nil)
 	request.Header.Set("Accept-Encoding", "gzip")
 	response := httptest.NewRecorder()
