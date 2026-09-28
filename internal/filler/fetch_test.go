@@ -17,6 +17,7 @@ type fetchStub struct {
 	offers      []filler.DiscoveredRef
 	queued      []string
 	queuedIDs   []string
+	queuedGaps  []string
 	sourceID    string
 	sourceKind  string
 	calls       int
@@ -62,6 +63,7 @@ func (f *fetchStub) IngestSourceItems(ctx context.Context, sourceID, sourceKind 
 	urls := make([]string, 0, len(items))
 	for _, item := range items {
 		f.queuedIDs = append(f.queuedIDs, item.ID)
+		f.queuedGaps = append(f.queuedGaps, item.Gap)
 		urls = append(urls, item.URL)
 	}
 	return f.IngestSource(ctx, sourceID, sourceKind, urls)

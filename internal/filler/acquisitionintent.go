@@ -180,6 +180,9 @@ type AcquisitionDecision struct {
 	Candidate   AcquisitionCandidate `json:"candidate"`
 	Disposition CandidateDisposition `json:"disposition"`
 	Detail      string               `json:"detail"`
+	// Gap is the channel coverage gap this candidate was selected for (EraGapKey), "" when it was
+	// selected on quality and diversity alone (#749).
+	Gap string `json:"gap,omitempty"`
 }
 
 type AcquisitionPlan struct {

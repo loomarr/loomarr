@@ -1311,6 +1311,7 @@ func testFillerAcquisitionArtifacts(t *testing.T, newStore NewStoreFunc) {
 			StagingPath: ".loomarr-acquisitions/acq-manifest/one.mp4", MediaPath: "one.mp4",
 			SidecarPath: "one.info.json", MediaSHA256: strings.Repeat("a", 64), MediaBytes: 42,
 			ProviderArchiveEntry: "youtube artifact-one", ProviderArchiveCommitted: true,
+			Gap:   "era:1990-1999", // #749: which coverage gap this download was for
 			State: filler.ArtifactStaged, CompletedAt: now, UpdatedAt: now,
 		},
 		{

@@ -59,6 +59,9 @@ type Source struct {
 	// size the fallback reservation when the provider cannot report a size at download time.
 	DurationMS int64
 	Height     int
+	// Gap is the channel coverage gap this item was selected for (filler.EraGapKey, #749). Metadata
+	// only, like AcquisitionID: it is recorded on the artifact and never changes admission.
+	Gap string
 	// PublicationDir is set only by the Ingestor while downloading into hidden staging. It lets
 	// adapters retain their provider-specific idempotency index without publishing into it.
 	PublicationDir string
@@ -469,8 +472,8 @@ func (i *Ingestor) manifests(src Source, outputDir string, outputs []Output) []f
 			Provider: string(src.Kind), SourceURL: src.URL, RemoteID: src.RemoteID, StagingPath: stagingPath,
 			MediaPath: mediaPath, SidecarPath: sidecarPath, MediaSHA256: output.SHA256,
 			MediaBytes: output.Bytes, ClipHash: output.ClipHash, State: state,
-			ProviderArchiveEntry: output.ArchiveEntry,
-			RepairReason:         output.Repair, CompletedAt: now, UpdatedAt: now,
+			ProviderArchiveEntry: output.ArchiveEntry, Gap: src.Gap,
+			RepairReason: output.Repair, CompletedAt: now, UpdatedAt: now,
 		})
 	}
 	return manifests
