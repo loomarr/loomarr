@@ -100,4 +100,4 @@ const createNativePlaybackDiagnostics = (
 };
 
 export type { NativeDiagnosticsRecorder, NativePlaybackDiagnostics };
-export { createNativePlaybackDiagnostics };
+export { causeOf as nativeErrorCause, createNativePlaybackDiagnostics };

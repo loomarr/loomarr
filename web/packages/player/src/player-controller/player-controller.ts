@@ -21,6 +21,7 @@ const playableCatalog = (channels: readonly PlayerChannel[]): PlayerChannel[] =>
 const createPlayerController = ({
   initialTune = "first",
   onPlayerError,
+  onTune,
   prefetchStill,
   profile,
   recovery,
@@ -122,6 +123,9 @@ const createPlayerController = ({
     // Read before anything cancels or takes the warmed entry: this is what lets the switch overlay
     // paint in the same snapshot that starts the tune, with no request.
     const stillUri = recovering ? undefined : warmer.stillFor(channel.id);
+    // A warmed neighbour's exact signed source skips the mint round trip and keeps the asset URLs
+    // the warm already fetched. Recovery always mints fresh: the warmed one just failed.
+    const warmedSource = recovering ? undefined : warmer.take(channel.id);
     // A stale prediction must not compete with the channel now being tuned.
     warmer.cancel();
     const request = new AbortController();
@@ -145,12 +149,14 @@ const createPlayerController = ({
       stillUri,
       tuneReason: reason,
     });
+    try {
+      onTune?.({ attemptId, channel, reason, warm: Boolean(warmedSource) });
+    } catch {
+      // Instrumentation must never affect playback.
+    }
 
     try {
-      // A warmed neighbour's exact signed source skips the mint round trip and keeps the asset URLs
-      // the warm already fetched. Recovery always mints fresh: the warmed one just failed.
-      const nextSource =
-        (!recovering && warmer.take(channel.id)) || (await source.mint(channel, profile, request.signal));
+      const nextSource = warmedSource || (await source.mint(channel, profile, request.signal));
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       // A channel nobody warmed gets its picture from its own mint: the server decodes a cold
       // channel's still on demand, so the overlay can show it while the stream starts.

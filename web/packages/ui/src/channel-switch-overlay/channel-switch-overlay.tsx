@@ -30,7 +30,13 @@ const fill = { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 } as c
  *
  * Reduced motion: no drain, still snow, locked bars, a steady cursor.
  */
-const ChannelSwitchOverlay = ({ channel, reducedMotion, stillUri, visible }: ChannelSwitchOverlayProps) => {
+const ChannelSwitchOverlay = ({
+  channel,
+  onShown,
+  reducedMotion,
+  stillUri,
+  visible,
+}: ChannelSwitchOverlayProps) => {
   const prefersReducedMotion = useReducedMotionPreference(reducedMotion);
   const still = prefersReducedMotion !== false;
   // Derived in render, so the frame that hides the readout already fades rather than popping out.
@@ -46,6 +52,17 @@ const ChannelSwitchOverlay = ({ channel, reducedMotion, stillUri, visible }: Cha
   const drain = useRef(new Animated.Value(still ? DRAIN.end.opacity : 1)).current;
   const wash = useRef(new Animated.Value(still ? 1 : THICKEN.from)).current;
   const cursor = useRef(new Animated.Value(1)).current;
+  const onShownRef = useRef(onShown);
+
+  useEffect(() => {
+    onShownRef.current = onShown;
+  }, [onShown]);
+
+  // Once per switch, including a second switch made while the overlay is still up.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new channel number IS a new switch
+  useEffect(() => {
+    if (visible) onShownRef.current?.("osd");
+  }, [channel.channelNumber, visible]);
 
   // Once hidden, set the next switch's opening frame: opaque, the still undrained, the snow thin.
   useEffect(() => {
@@ -133,6 +150,11 @@ const ChannelSwitchOverlay = ({ channel, reducedMotion, stillUri, visible }: Cha
           <Animated.View style={[fill, { filter: GREYED, opacity: drain }]}>
             <Image
               onError={() => setFailedUri(stillUri)}
+              // The readout stays mounted after a switch, so a still that lands once it is hidden
+              // was never held on screen: no mark.
+              onLoad={() => {
+                if (shown) onShownRef.current?.("still");
+              }}
               resizeMode="cover"
               source={{ uri: stillUri }}
               style={fill}

@@ -21,6 +21,7 @@ import {
   createExpoVideoTransport,
   createNativeEventStreamFactory,
   createNativePlayerLifecycle,
+  createPlaybackMarks,
   NativePlayerView,
   PairedNativeImage,
 } from "@loomarr/player/native";
@@ -61,6 +62,14 @@ void SplashScreen.preventAutoHideAsync();
 const clientVersion = process.env.EXPO_PUBLIC_LOOMARR_CLIENT_VERSION ?? appConfig.expo.version;
 const launchMinimumMs = 1_200;
 
+// Shield certification marks (#1037, docs/engineering/shield-certification.md): always on in a
+// development build; a release build writes them only when bundled with EXPO_PUBLIC_LOOMARR_CERT_MARKS=1.
+const certMarks = createPlaybackMarks({
+  enabled: __DEV__ || process.env.EXPO_PUBLIC_LOOMARR_CERT_MARKS === "1",
+});
+/** A remote key older than this did not cause the tune (a guide pick, a retry, the boot tune). */
+const keyToTuneMaxMs = 1_500;
+
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
   getItem: SecureStore.getItemAsync,
@@ -82,7 +91,8 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [serverVersion, setServerVersion] = useState<string>();
   const versionRequest = useRef<AbortController | undefined>(undefined);
-  const transport = useMemo(createExpoVideoTransport, []);
+  const transport = useMemo(() => createExpoVideoTransport(certMarks), []);
+  const lastKeyAtMs = useRef<number | undefined>(undefined);
   const diagnostics = useMemo(() => {
     const reporter: ClientDiagnosticsReporter = new ClientDiagnosticsReporter(
       createAuthenticatedBatchSender(runtime.request, (events) => reporter.wireBatch(events)),
@@ -94,6 +104,19 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     () =>
       createPlayerController({
         onPlayerError: diagnostics.playback.playerError,
+        onTune: ({ attemptId, channel, reason, warm }) => {
+          const keyAtMs = lastKeyAtMs.current;
+          lastKeyAtMs.current = undefined;
+          certMarks.tune({
+            attemptId,
+            channelId: channel.id,
+            channelNumber: channel.number,
+            keyAtMs:
+              keyAtMs !== undefined && certMarks.now() - keyAtMs <= keyToTuneMaxMs ? keyAtMs : undefined,
+            reason,
+            warm,
+          });
+        },
         // The signed still needs no auth header, so the platform image cache can hold it for the overlay.
         prefetchStill: (uri) => void Image.prefetch(uri).catch(() => undefined),
         profile: {},
@@ -249,6 +272,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
   }, []);
   const dispatchRemoteEvent = useCallback(
     (event: TvWatchingRemoteEvent) => {
+      if (certMarks.enabled && event.key !== "timeout") lastKeyAtMs.current = certMarks.now();
       const result = reduceTvWatchingRemote(remoteStateRef.current, event);
       remoteStateRef.current = result.state;
       setRemoteState(result.state);
@@ -282,6 +306,10 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
     snapshot.livePlayback?.viewerTimeMs ?? Date.now(),
   );
   const dismissControls = useCallback(() => setControlsVisible(false), []);
+  const markSwitchShown = useCallback(
+    (what: "osd" | "still") => certMarks.held(controller.getSnapshot().attemptId, what),
+    [controller],
+  );
   return (
     <View style={{ flex: 1 }}>
       <WatchingSurface
@@ -306,6 +334,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
           else void controller.retry();
         }}
         onShowControls={showControlsForActivity}
+        onSwitchShown={certMarks.enabled ? markSwitchShown : undefined}
         numberEntry={tvNumberEntryPresentation(remoteState, snapshot.catalog)}
         player={<NativePlayerView style={{ flex: 1 }} transport={transport} />}
         schedule={schedule}

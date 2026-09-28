@@ -2,6 +2,8 @@ import type { PairingCredential } from "@loomarr/core/pairing";
 import { createVideoPlayer, type VideoPlayer, VideoView, type VideoViewProps } from "expo-video";
 import { useSyncExternalStore } from "react";
 import { Image, type ImageProps } from "react-native";
+import { nativeErrorCause } from "../native-playback-diagnostics";
+import { createPlaybackMarks, type PlaybackMarks } from "../playback-marks";
 import type {
   LivePlaybackMode,
   LivePlaybackState,
@@ -52,6 +54,7 @@ const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
 const createNativePlayerTransport = (
   initialPlayer: VideoPlayer,
   recreatePlayer?: () => VideoPlayer,
+  marks: PlaybackMarks = createPlaybackMarks({ enabled: false }),
 ): NativePlayerTransport => {
   let disposed = false;
   let activeAttemptId: number | undefined;
@@ -62,6 +65,10 @@ const createNativePlayerTransport = (
   let playingSubscription: { remove: () => void } | undefined;
   let statusSubscription: { remove: () => void } | undefined;
   let timeSubscription: { remove: () => void } | undefined;
+  let trackSubscription: { remove: () => void } | undefined;
+  // A stall is buffering after the attempt's first frame while the viewer has not paused.
+  let framedAttemptId: number | undefined;
+  let stalledSinceMs: number | undefined;
   let liveMode: LivePlaybackMode = "live";
   let noticeRevision = 0;
   let serverClockOffsetMs: number | undefined;
@@ -106,6 +113,13 @@ const createNativePlayerTransport = (
     });
   };
 
+  const endStall = (why: "error" | "released" | "resumed" | "retuned") => {
+    if (stalledSinceMs !== undefined && activeAttemptId !== undefined) {
+      marks.stallEnd(activeAttemptId, marks.now() - stalledSinceMs, why);
+    }
+    stalledSinceMs = undefined;
+  };
+
   const attachPlayer = (next: VideoPlayer) => {
     player = next;
     next.loop = false;
@@ -117,14 +131,36 @@ const createNativePlayerTransport = (
     // the whole object; the fields left out keep their defaults.
     next.bufferOptions = { minBufferForPlayback: 1 };
     statusSubscription = next.addListener("statusChange", ({ error, status }) => {
-      if (status === "error" && activeAttemptId !== undefined) {
-        emit({
-          attemptId: activeAttemptId,
-          error: error?.message ?? "Native playback failed.",
-          type: "error",
-        });
+      if (activeAttemptId === undefined) return;
+      if (status === "error") {
+        const message = error?.message ?? "Native playback failed.";
+        endStall("error");
+        marks.error(activeAttemptId, nativeErrorCause(message));
+        emit({ attemptId: activeAttemptId, error: message, type: "error" });
+      } else if (status === "loading") {
+        if (framedAttemptId === activeAttemptId && stalledSinceMs === undefined && liveMode !== "paused") {
+          stalledSinceMs = marks.now();
+          marks.stallStart(activeAttemptId);
+        }
+      } else if (status === "readyToPlay") {
+        endStall("resumed");
       }
     });
+    if (marks.enabled) {
+      trackSubscription = next.addListener("videoTrackChange", ({ videoTrack }) => {
+        if (activeAttemptId === undefined) return;
+        marks.format(
+          activeAttemptId,
+          videoTrack && {
+            bitrate: videoTrack.bitrate,
+            frameRate: videoTrack.frameRate,
+            height: videoTrack.size.height,
+            mimeType: videoTrack.mimeType,
+            width: videoTrack.size.width,
+          },
+        );
+      });
+    }
     playingSubscription = next.addListener("playingChange", ({ isPlaying }) => {
       if (!isPlaying || activeAttemptId === undefined) return;
       emit({ attemptId: activeAttemptId, type: "playing" });
@@ -139,12 +175,15 @@ const createNativePlayerTransport = (
     const current = player;
     if (!current) return;
     current.pause();
+    endStall("released");
     statusSubscription?.remove();
     playingSubscription?.remove();
     timeSubscription?.remove();
+    trackSubscription?.remove();
     statusSubscription = undefined;
     playingSubscription = undefined;
     timeSubscription = undefined;
+    trackSubscription = undefined;
     activeAttemptId = undefined;
     player = undefined;
     current.release();
@@ -162,7 +201,10 @@ const createNativePlayerTransport = (
       playerListeners.clear();
     },
     firstFrame: () => {
-      if (activeAttemptId !== undefined) emit({ attemptId: activeAttemptId, type: "first-frame" });
+      if (activeAttemptId === undefined) return;
+      if (framedAttemptId !== activeAttemptId) marks.firstFrame(activeAttemptId);
+      framedAttemptId = activeAttemptId;
+      emit({ attemptId: activeAttemptId, type: "first-frame" });
     },
     getPlayer: () => player,
     goLive: () => {
@@ -221,6 +263,7 @@ const createNativePlayerTransport = (
           if (disposed || context.signal.aborted) return;
           const current = player;
           if (!current) throw new Error("Native player is unavailable.");
+          endStall("retuned");
           activeAttemptId = context.attemptId;
           liveMode = "live";
           noticeRevision = 0;
@@ -260,8 +303,8 @@ const createNativePlayerTransport = (
   };
 };
 
-const createExpoVideoTransport = (): NativePlayerTransport =>
-  createNativePlayerTransport(createVideoPlayer(null), () => createVideoPlayer(null));
+const createExpoVideoTransport = (marks?: PlaybackMarks): NativePlayerTransport =>
+  createNativePlayerTransport(createVideoPlayer(null), () => createVideoPlayer(null), marks);
 
 const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
   const player = useSyncExternalStore(transport.subscribePlayer, transport.getPlayer, transport.getPlayer);

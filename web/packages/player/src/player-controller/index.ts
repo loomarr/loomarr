@@ -11,6 +11,7 @@ export type {
   PlayerStatus,
   PlayerTransport,
   PlayerTransportEvent,
+  PlayerTuneReport,
   TuneDirection,
   TuneReason,
 } from "./player-controller.type";

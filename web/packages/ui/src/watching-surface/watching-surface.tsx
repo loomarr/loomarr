@@ -244,6 +244,7 @@ const TvWatchingSurface = ({
   onOpenGuide,
   onPlay,
   onRetry,
+  onSwitchShown,
   player,
   schedule,
   snapshot,
@@ -283,6 +284,7 @@ const TvWatchingSurface = ({
       {snapshot.channel ? (
         <ChannelSwitchOverlay
           channel={{ channelName: snapshot.channel.name, channelNumber: String(snapshot.channel.number) }}
+          onShown={onSwitchShown}
           stillUri={snapshot.stillUri}
           visible={chromeVisible && switching}
         />

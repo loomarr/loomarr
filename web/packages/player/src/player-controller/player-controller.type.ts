@@ -55,6 +55,15 @@ interface PlayerErrorReport {
   fatal: boolean;
 }
 
+/** One tune attempt as it starts, for client instrumentation. */
+interface PlayerTuneReport {
+  attemptId: number;
+  channel: PlayerChannel;
+  reason: TuneReason;
+  /** True when the tune reuses a warmed neighbour's source instead of minting one (a cold tune). */
+  warm: boolean;
+}
+
 interface PlayerRecoveryOptions {
   /** Delay before each automatic retry; its length is the retry budget. */
   backoffMs?: readonly number[];
@@ -93,6 +102,8 @@ interface PlayerController {
 interface PlayerControllerOptions {
   initialTune?: "first" | "none";
   onPlayerError?: (report: PlayerErrorReport) => void;
+  /** Called once per attempt, right after the tuning snapshot is published. */
+  onTune?: (report: PlayerTuneReport) => void;
   /** Fetches a warmed neighbour's still image ahead of time (e.g. `Image.prefetch`), so the switch overlay paints it from cache. */
   prefetchStill?: (uri: string) => void;
   profile: DevicePlaybackProfile;
@@ -115,6 +126,7 @@ export type {
   PlayerStatus,
   PlayerTransport,
   PlayerTransportEvent,
+  PlayerTuneReport,
   TuneDirection,
   TuneReason,
 };
