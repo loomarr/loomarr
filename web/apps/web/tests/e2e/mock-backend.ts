@@ -594,6 +594,11 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       }
       return json(route, { id: `ch-${state.channelCreationRequests.length}` }, 201);
     }
+    // The channel page's header reads the shared now/next list; `channels` is required, so the
+    // catch-all `{}` would crash it.
+    if (path === "/v1/channels/now-next" && method === "GET") {
+      return json(route, { channels: [] });
+    }
     if (path === "/v1/discovery/feedback" && method === "GET") {
       return json(route, []);
     }
