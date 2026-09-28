@@ -86,3 +86,10 @@ backup-restore-verify: ## isolated SQLite backup, destructive replacement, resto
 
 backup-restore-drill: backup-restore-verify ## SQLite + Docker-backed Postgres backup/restore drills
 	$(GO) test -race -tags=integration ./internal/store -run '^TestPostgresBackupRestoreDrill$$' -count=1
+
+.PHONY: graph
+graph: ## build the local Graphify index in graphify-out/ (never committed; needs graphifyy, see docs/agents/graphify.md)
+	@command -v graphify >/dev/null || { echo "graphify is not installed: uv tool install 'graphifyy[sql]==0.9.64'" >&2; exit 2; }
+	graphify extract . --code-only --force --no-cluster
+	graphify cluster-only . --no-viz
+	graphify export html
