@@ -53,7 +53,7 @@ const UnknownAcquisitionCeilingBytes = 512 << 20
 //	ceiling     = source + max(source/4, 32 MiB)   (25% margin for sidecars and container overhead)
 //	reservation = ceiling
 //
-// Later stages (transcode, split, prepared media, artwork) each reserve their own peak through
+// Later stages (transcode, split, artwork) each reserve their own peak through
 // Reserve when they run, so this lease deliberately does not pre-reserve their derivatives. The
 // old shared formula (ceiling×4 + 64 MiB, ~5× the source) held budget for work that had not
 // started and made auto-fetch pause on library_limit long before the disk was actually full.
