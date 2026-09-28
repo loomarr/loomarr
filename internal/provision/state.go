@@ -45,4 +45,8 @@ type Record struct {
 	Progress       float64 // 0..1 completion fraction
 	ETAText        string  // the arr's human time-left string
 	DownloadStatus string  // the arr's queue status ("downloading"/"warning"/"stalled"/…)
+	// EpisodesHave of EpisodesWanted is a downloading series' "8 of 36 episodes" (#1667), from
+	// the same poll. Zero for a movie, on the Seerr path, or when the arr didn't say.
+	EpisodesHave   int
+	EpisodesWanted int
 }

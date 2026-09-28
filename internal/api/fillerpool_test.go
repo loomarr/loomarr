@@ -14,9 +14,9 @@ type poolBody struct {
 	Eligible  int `json:"eligible"`
 	Untagged  int `json:"untagged"`
 	Channels  []struct {
-		ChannelID string `json:"channelId"`
-		Name      string `json:"name"`
-		Number    int    `json:"number"`
+		ChannelID  string `json:"channelId"`
+		Name       string `json:"name"`
+		Number     int    `json:"number"`
 		Level      string `json:"level"`
 		Total      int    `json:"total"`
 		DurationMs int64  `json:"durationMs"`

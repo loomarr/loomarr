@@ -114,15 +114,26 @@ func (s *sqlStore) UpsertTitle(ctx context.Context, rec provision.Record) error 
 	return nil
 }
 
+// TitleProgress is one poll's download status for a title (§18.1): the fraction, the download
+// client's time-left and status, and for a series its episodes on disk of those wanted (#1667).
+type TitleProgress struct {
+	Progress       float64
+	ETAText        string
+	Status         string
+	EpisodesHave   int
+	EpisodesWanted int
+}
+
 // UpdateTitleProgress writes ONLY the poll-updated download fields for a title, leaving the
 // state-machine columns untouched (§18.1). The arr-queue-poll job owns these; keeping the
 // write targeted means a concurrent reconcile/scan Upsert never clobbers the latest progress
 // and vice versa. A no-op (no matching key) is not an error — a title may have moved to
 // available between the poll and the write.
-func (s *sqlStore) UpdateTitleProgress(ctx context.Context, key provision.Key, progress float64, eta, status string) error {
+func (s *sqlStore) UpdateTitleProgress(ctx context.Context, key provision.Key, p TitleProgress) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE titles SET progress = ?, eta_text = ?, download_status = ? WHERE key = ?`),
-		progress, eta, status, string(key))
+		`UPDATE titles SET progress = ?, eta_text = ?, download_status = ?, episodes_have = ?, episodes_wanted = ?
+		 WHERE key = ?`),
+		p.Progress, p.ETAText, p.Status, p.EpisodesHave, p.EpisodesWanted, string(key))
 	if err != nil {
 		return fmt.Errorf("update title progress %s: %w", key, err)
 	}
@@ -500,7 +511,7 @@ type scannable interface {
 // titleColumns is the column list scanTitle reads, in its order. Every titles read uses it; the
 // Postgres claim spells it with its `t.` alias (postgres.go) and must stay in step.
 const titleColumns = `key, title_json, state, library_id, requested_at, deadline, attempts, last_error, updated_at,
-	progress, eta_text, download_status, available_at`
+	progress, eta_text, download_status, available_at, episodes_have, episodes_wanted`
 
 func scanTitle(sc scannable) (provision.Record, error) {
 	var (
@@ -510,7 +521,7 @@ func scanTitle(sc scannable) (provision.Record, error) {
 	)
 	err := sc.Scan(&rec.Key, &blob, &rec.State, &rec.LibraryID,
 		&reqAt, &deadline, &rec.Attempts, &rec.LastError, &updatedAt,
-		&rec.Progress, &rec.ETAText, &rec.DownloadStatus, &availableAt)
+		&rec.Progress, &rec.ETAText, &rec.DownloadStatus, &availableAt, &rec.EpisodesHave, &rec.EpisodesWanted)
 	if err == sql.ErrNoRows {
 		return provision.Record{}, ErrNotFound
 	}

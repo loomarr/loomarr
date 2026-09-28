@@ -9339,6 +9339,9 @@ components:
     SessionBody:
       additionalProperties: false
       properties:
+        clientLabel:
+          description: Coarse client, e.g. 'Firefox on macOS'; absent until the session is used
+          type: string
         createdAt:
           description: Unix ms
           format: int64
@@ -9353,6 +9356,10 @@ components:
         id:
           description: Opaque session handle (the stored token hash); pass to DELETE /v1/sessions/{hash}
           type: string
+        lastSeenAt:
+          description: Unix ms of the session's latest use; absent until it is used
+          format: int64
+          type: integer
         userId:
           type: string
       required:
@@ -10895,6 +10902,14 @@ components:
         downloadStatus:
           description: Download-client status (downloading/warning/stalled/…)
           type: string
+        episodesHave:
+          description: A downloading series' episodes on disk (arr poll); absent for a movie or when unknown
+          format: int64
+          type: integer
+        episodesWanted:
+          description: The episodes the arr wants for this series (monitored and aired); absent for a movie or when unknown
+          format: int64
+          type: integer
         etaText:
           description: Human time-left from the download client
           type: string
@@ -11168,6 +11183,10 @@ components:
           type: integer
         id:
           type: string
+        lastSeenAt:
+          description: Unix ms of the person's latest use (browser or paired TV); absent if never seen
+          format: int64
+          type: integer
         local:
           type: boolean
         name:

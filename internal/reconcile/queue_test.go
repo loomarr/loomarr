@@ -108,6 +108,30 @@ func TestQueuePoll_UpdatesProgressWhenAlreadyDownloading(t *testing.T) {
 	}
 }
 
+// A downloading series' episode counts ride the same targeted write as its progress (#1667).
+func TestQueuePoll_PersistsSeriesEpisodeCounts(t *testing.T) {
+	st := newQueueStore(t)
+	key := provision.Key("series:tvdb:90001")
+	if err := st.UpsertTitle(context.Background(), provision.Record{
+		Key: key, State: provision.Downloading, Deadline: now.Add(12 * time.Hour),
+		Title: provision.Title{MediaType: provision.Series, TVDBID: 90001},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fq := &fakeQueue{items: []requester.QueueItem{
+		{Key: key, Grabbed: true, Progress: 0.3, Status: "downloading", EpisodesHave: 8, EpisodesWanted: 36},
+	}}
+	p := NewQueuePoll(st, fq, &captureEmitter{}, 12*time.Hour, func() time.Time { return now }, slog.New(slog.DiscardHandler))
+
+	if _, err := p.Poll(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetTitle(context.Background(), key)
+	if got.EpisodesHave != 8 || got.EpisodesWanted != 36 || got.Progress != 0.3 {
+		t.Errorf("episode counts not persisted with progress: %+v", got)
+	}
+}
+
 // With nothing in-flight the poll short-circuits and never calls the arr.
 func TestQueuePoll_NoInflightNoQueueCall(t *testing.T) {
 	st := newQueueStore(t)

@@ -97,7 +97,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 		!strings.HasPrefix(activated.PasswordHash, "$argon2id$") {
 		t.Fatalf("activated account did not preserve local admin credentials: %+v", activated)
 	}
-	if _, err := mgr.Resolve(ctx, activationToken); err != nil {
+	if _, err := mgr.Resolve(ctx, activationToken, ""); err != nil {
 		t.Fatalf("activation session is unusable before recovery: %v", err)
 	}
 	addresses, err := st.GetContactAddresses(ctx, activated.ID)
@@ -115,7 +115,7 @@ func TestAccountAccessLifecycleCertification(t *testing.T) {
 	if err := recoveryCoordinator.Redeem(ctx, recoveryBearer, recoveredPassword, "127.0.0.1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mgr.Resolve(ctx, activationToken); !errors.Is(err, store.ErrNotFound) {
+	if _, err := mgr.Resolve(ctx, activationToken, ""); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("activation session survived recovery: %v", err)
 	}
 
