@@ -4,9 +4,9 @@
 adoption authorized by #970 and owned by P4-P8
 **Owner:** shared client platform
 **Parent plan:**
-[`docs/engineering/plans/shared-client-platform.md`](plans/shared-client-platform.md)
+[`project/plans/shared-client-platform.md`](plans/shared-client-platform.md)
 **Shipping-surface inventory:**
-[`docs/engineering/client-platform-inventory.md`](client-platform-inventory.md)
+[`project/client-platform-inventory.md`](client-platform-inventory.md)
 
 ## Purpose
 
