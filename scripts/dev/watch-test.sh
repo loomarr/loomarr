@@ -229,6 +229,140 @@ expect "$out" 'ORPHANS in deleted worktrees: 401:node'
 case $out in *GPU* | *RAM*) fail "macOS reported a Linux-only check: $out" ;; esac
 export WATCH_OS=Linux WATCH_CORES=10
 
+# ---------------------------------------------------------------- watch-prs
+
+cat > "$BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+	'repo view') echo example/repo ;;
+	'api graphql') printf '%s\n' "$@" > "$FIX/gh-args"; jq -s '{data: {search: {nodes: .}}}' "$FIX/prs" ;;
+esac
+EOF
+chmod +x "$BIN/gh"
+
+# pr NUMBER HEAD STATE AUTO QUEUED LAST-QUEUE-EVENT FAILED-CHECK UPDATED [DRAFT] [BASE]
+pr() {
+	jq -n --argjson n "$1" --arg head "$2" --arg state "$3" --argjson auto "$4" --argjson queued "$5" \
+		--arg mq "$6" --arg failed "$7" --arg updated "$8" --argjson draft "${9:-false}" --arg base "${10:-main}" '{
+		number: $n, title: ("PR \($n) title"), isDraft: $draft, baseRefName: $base, headRefOid: $head,
+		mergeStateStatus: $state, updatedAt: $updated,
+		autoMergeRequest: (if $auto then {enabledAt: $updated} else null end),
+		mergeQueueEntry: (if $queued then {state: "AWAITING_CHECKS"} else null end),
+		timelineItems: {nodes: (if $mq == "removed" then [{__typename: "RemovedFromMergeQueueEvent", reason: "failed checks"}]
+			elif $mq == "added" then [{__typename: "AddedToMergeQueueEvent"}] else [] end)},
+		commits: {nodes: [{commit: {statusCheckRollup: {contexts: {nodes: ([
+			{__typename: "CheckRun", name: "Docs / links", conclusion: "SUCCESS"},
+			{__typename: "CheckRun", name: "superseded", conclusion: "CANCELLED"}]
+			+ (if $failed == "" then [] else [{__typename: "CheckRun", name: $failed, conclusion: "FAILURE"},
+				{__typename: "StatusContext", context: "legacy/status", state: "ERROR"}] end))}}}}]}}'
+}
+old=2020-01-01T00:00:00Z
+new=2099-01-01T00:00:00Z
+prs() { WATCH_STATE_DIR="$tmp/state" "$SCRIPT_DIR/watch-prs.sh" --once; }
+rm -rf "$tmp/state"
+{
+	pr 1 aaa DIRTY true false "" "" "$old"
+	pr 2 bbb BLOCKED true false "" "Go / contracts" "$old"
+	pr 3 ccc BEHIND true false "" "" "$old"
+	pr 4 ddd CLEAN false false "" "" "$old"
+	pr 5 eee CLEAN false false "" "" "$new"
+	pr 6 fff BLOCKED false false removed "" "$old"
+	pr 7 ggg CLEAN false true added "" "$old"
+	pr 8 hhh DIRTY false false "" "" "$old" true
+	pr 9 iii DIRTY false false "" "" "$old" false feature-base
+} > "$FIX/prs"
+out="$(prs)"
+expect "$out" '#1 CONFLICTS with main \(PR 1 title\)'
+expect "$out" '#2 CHECKS FAILED: Go / contracts, legacy/status \(PR 2 title\)'
+expect "$out" '#3 is BEHIND main with auto-merge on and will not queue itself: gh pr update-branch 3'
+expect "$out" '#4 has auto-merge OFF and is not queued'
+expect "$out" '#6 was DROPPED from the merge queue \(failed checks\)'
+case $out in *'#5 '* | *'#7 '* | *'#8 '* | *'#9 '* | *superseded* | *'#6 has auto-merge'* | *'#1 has auto-merge'*)
+	fail "reported a PR that is fine, recent, queued, draft, stacked, or already reported: $out" ;;
+esac
+grep -Fqx 'q=repo:example/repo is:pr is:open author:@me base:main' "$FIX/gh-args" || fail "search query: $(cat "$FIX/gh-args")"
+# Dedupe per (PR, condition, head): silent on the same heads, again on a new push.
+expect_none "$(prs)"
+pr 1 aaa2 DIRTY true false "" "" "$old" > "$FIX/prs"
+out="$(prs)"
+expect "$out" '#1 CONFLICTS with main'
+[ "$(printf '%s\n' "$out" | grep -c .)" = 1 ] || fail "expected one alert for the new head, got: $out"
+# gh failing (offline) is quiet, not fatal.
+printf 'not json' > "$FIX/prs"
+expect_none "$(prs 2>&1)"
+
+# ---------------------------------------------------------------- watch-lanes
+
+cat > "$BIN/orca" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+	'terminal list') cat "$FIX/orca-list" ;;
+	'terminal read') cat "$FIX/orca-read-$4" ;;
+esac
+EOF
+chmod +x "$BIN/orca"
+export CLAUDE_CONFIG_DIR="$tmp/claude"
+lane_a="$tmp/worktrees/lane-a"
+lane_dir="$CLAUDE_CONFIG_DIR/projects/$(printf '%s' "$lane_a" | sed 's/[^A-Za-z0-9]/-/g')"
+mkdir -p "$lane_dir/sess1/subagents"
+jq -n --arg a "$lane_a" --arg b "$tmp/elsewhere/other-repo" '{result: {terminals: [
+	{handle: "t1", worktreePath: $a, agentIdentity: "claude"},
+	{handle: "t2", worktreePath: $a, agentIdentity: null},
+	{handle: "t3", worktreePath: $b, agentIdentity: "claude"}]}}' > "$FIX/orca-list"
+screen() { # handle text
+	jq -n --arg t "$2" '{result: {terminal: {tail: ["line one", $t]}}}' > "$FIX/orca-read-$1"
+}
+# message ID TOKENS: one API message written as two transcript lines repeating the same usage.
+message() {
+	local line
+	line="$(jq -cn --arg id "$1" --argjson n "$2" '{type: "assistant", message: {id: $id, usage: {output_tokens: $n}}}')"
+	printf '%s\n%s\n{"type":"user"}\n' "$line" "$line"
+}
+lanes_once() { WATCH_STATE_DIR="$tmp/state" "$SCRIPT_DIR/watch-lanes.sh" --once; }
+rm -rf "$tmp/state"
+{ message m1 100000; message m2 40000; } > "$lane_dir/sess1.jsonl"
+message s1 5000 > "$lane_dir/sess1/subagents/agent-1.jsonl"
+screen t1 '✻ Working… (esc to interrupt)'
+expect_none "$(lanes_once)"
+message m3 10000 >> "$lane_dir/sess1.jsonl"
+out="$(lanes_once)"
+expect "$out" 'lane-a: 155000 output tokens \(warning at 150000\)'
+case $out in *t3* | *other-repo*) fail "reported a terminal outside this repo: $out" ;; esac
+expect_none "$(lanes_once)"
+message m4 40000 >> "$lane_dir/sess1.jsonl"
+expect "$(lanes_once)" 'lane-a: 195000 output tokens: CUTOFF \(190000\) reached'
+# An old finished marker in the scrollback while the lane is working again is not idle.
+screen t1 '✻ Baked for 1m 2s  > next task  ✻ Working… (esc to interrupt)'
+expect_none "$(lanes_once)"
+screen t1 '✻ Cogitated for 3m 12s'
+expect "$(lanes_once)" 'lane-a: turn finished, waiting'
+expect_none "$(lanes_once)"
+screen t1 '❯ 1. Yes  2. No   Enter to select'
+expect "$(lanes_once)" 'lane-a: WAITING ON A QUESTION MENU'
+screen t1 'API Error: 529 overloaded'
+expect "$(lanes_once)" 'lane-a: API trouble'
+# A newer session is a new checkpoint: it re-arms the levels and meters only itself.
+sleep 1
+message n1 160000 > "$lane_dir/sess2.jsonl"
+expect "$(lanes_once)" 'lane-a: 160000 output tokens \(warning'
+# An explicit checkpoint meters every transcript born since, across sessions.
+mkdir -p "$tmp/ckpt"
+echo $(($(date +%s) - 60)) > "$tmp/ckpt/lane-a"
+out="$(WATCH_LANES_CHECKPOINTS="$tmp/ckpt" lanes_once)"
+expect "$out" 'lane-a: 355000 output tokens: LIMIT \(240000\) exceeded'
+# A session born before the checkpoint but flushed after it (its /exit write) is not counted.
+# Needs a filesystem that records birth times; skipped where stat cannot report one.
+if [ "$(stat -c %W "$lane_dir/sess1.jsonl" 2>/dev/null || echo 0)" != 0 ]; then
+	later=$(($(date +%s) + 100))
+	echo "$later" > "$tmp/ckpt/lane-a"
+	rm "$lane_dir/sess2.jsonl"
+	touch -d "@$((later + 100))" "$lane_dir/sess1.jsonl" "$lane_dir/sess1/subagents/agent-1.jsonl"
+	expect_none "$(WATCH_LANES_CHECKPOINTS="$tmp/ckpt" lanes_once)"
+fi
+# No orca: skip cleanly.
+out="$(PATH=/usr/bin:/bin WATCH_STATE_DIR="$tmp/state" "$SCRIPT_DIR/watch-lanes.sh" --once 2>&1)" || fail "watch-lanes failed without orca"
+expect "$out" 'orca CLI not found; skipping'
+
 if [ "$failures" -gt 0 ]; then
 	printf 'watch-test: %s failure(s)\n' "$failures" >&2
 	exit 1
