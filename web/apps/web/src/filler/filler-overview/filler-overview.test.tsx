@@ -3,45 +3,10 @@ import { getFillerReadinessMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { readiness } from "@/test/fixtures/filler";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerOverview, readinessAction } from "./filler-overview";
-
-const readiness = (over: Partial<FillerReadinessDTO> = {}): FillerReadinessDTO => {
-  const { repairs, ...rest } = over;
-  return {
-    ready: true,
-    nextAction: "none",
-    repairs: repairs ?? { count: 0 },
-    fetch: { enabled: true, catalogClips: 25 },
-    storage: {
-      automatic: true,
-      state: "healthy",
-      totalBytes: 500 * 1024 ** 3,
-      freeBytes: 200 * 1024 ** 3,
-      managedBytes: 2 * 1024 ** 3,
-      reservedBytes: 0,
-      filesystemReservedBytes: 0,
-      softBudgetBytes: 20 * 1024 ** 3,
-      hardReserveBytes: 10 * 1024 ** 3,
-      availableBytes: 18 * 1024 ** 3,
-    },
-    pipeline: {
-      runnable: 0,
-      scheduled: 0,
-      inProgress: 0,
-      needsDecision: 0,
-      recoverable: 0,
-      ready: 25,
-      complete: 0,
-      rejected: 0,
-      dismissed: 0,
-    },
-    pool: { clips: 25, breakBody: 20, eligible: 18, untagged: 0, channels: [] },
-    acquisitions: [],
-    ...rest,
-  };
-};
 
 const show = (coverage: FillerReadinessDTO = readiness()) => {
   server.use(getFillerReadinessMockHandler(coverage));
@@ -163,5 +128,65 @@ describe("FillerOverview", () => {
     );
     expect(await screen.findByText("6m playable · 12 clips")).toBeInTheDocument();
     expect(screen.getByText("3 categories · 7 brands")).toBeInTheDocument();
+  });
+
+  // The mock painted the worst rung green and the best amber. Green has to mean "good" and red
+  // "nothing to play", so the tone is pinned per rung, with the mock's words.
+  it.each([
+    ["exact", "Good match", "text-lock"],
+    ["widened", "Years loosened", "text-caution"],
+    ["audience", "Audience only", "text-caution"],
+    ["bumper_card", "Bumpers only", "text-onair-300"],
+  ] as const)("badges a %s channel %s in %s", async (level, label, tone) => {
+    show(
+      readiness({
+        pool: {
+          clips: 25,
+          breakBody: 20,
+          eligible: 18,
+          untagged: 0,
+          channels: [
+            {
+              channelId: "ch-42",
+              name: "Saturday Mornings",
+              number: 42,
+              level,
+              total: level === "bumper_card" ? 0 : 12,
+              durationMs: level === "bumper_card" ? 0 : 360_000,
+              categories: 0,
+              brands: 0,
+            },
+          ],
+        },
+      }),
+    );
+    expect(await screen.findByText(label)).toHaveClass(tone);
+  });
+
+  it("says a bumper-only channel has only the card, not zero minutes", async () => {
+    show(
+      readiness({
+        pool: {
+          clips: 25,
+          breakBody: 20,
+          eligible: 18,
+          untagged: 0,
+          channels: [
+            {
+              channelId: "ch-7",
+              name: "Late Horror",
+              number: 7,
+              level: "bumper_card",
+              total: 0,
+              durationMs: 0,
+              categories: 0,
+              brands: 0,
+            },
+          ],
+        },
+      }),
+    );
+    expect(await screen.findByText("Only a bumper card")).toBeInTheDocument();
+    expect(screen.queryByText(/playable/)).not.toBeInTheDocument();
   });
 });

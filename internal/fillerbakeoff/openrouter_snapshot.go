@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/fillereval"
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/openroutermedia"
 )
@@ -28,6 +27,7 @@ const (
 	maxSnapshotResponseBytes        = 8 << 20
 	maxSnapshotTotalBytes           = 32 << 20
 	maxSnapshotAge                  = 24 * time.Hour
+	maxFieldBytes                   = 512
 )
 
 // OpenRouterSnapshot is the immutable capability, endpoint-price, and ZDR
@@ -395,51 +395,6 @@ func OpenRouterSnapshotSHA256(snapshot OpenRouterSnapshot) string {
 
 func ValidateOpenRouterSnapshot(snapshot OpenRouterSnapshot) error {
 	return openroutermedia.ValidateCapabilitySnapshot(snapshot)
-}
-
-func ValidateOpenRouterRunSnapshot(run fillereval.RunIdentity, routes []Route, snapshot OpenRouterSnapshot) error {
-	if err := ValidateOpenRouterSnapshot(snapshot); err != nil {
-		return err
-	}
-	digest := OpenRouterSnapshotSHA256(snapshot)
-	if snapshot.SourceBaseURL != OpenRouterBaseURL {
-		return fmt.Errorf("OpenRouter certification requires a snapshot from the canonical API base")
-	}
-	if run.CapabilitySnapshot != digest || run.PriceSnapshot != digest {
-		return fmt.Errorf("OpenRouter run capability and price identities must equal snapshot digest %s", digest)
-	}
-	age := run.GeneratedAt.Sub(snapshot.RetrievedAt)
-	if age < 0 || age > maxSnapshotAge {
-		return fmt.Errorf("OpenRouter run time is outside the snapshot's 24-hour certification window")
-	}
-	for _, route := range routes {
-		if route.Provider != "openrouter" {
-			continue
-		}
-		model, ok := snapshotModel(snapshot, route.Model)
-		if !ok {
-			return fmt.Errorf("OpenRouter route model %q is absent from the locked snapshot", route.Model)
-		}
-		if route.ResolvedModel != model.CanonicalSlug {
-			return fmt.Errorf("OpenRouter route model %q does not bind canonical revision %q", route.Model, model.CanonicalSlug)
-		}
-		endpoint, ok := snapshotEndpoint(model, route.UpstreamProviderSlug, route.UpstreamProvider)
-		if !ok {
-			return fmt.Errorf("OpenRouter route %q endpoint identity is absent from the locked snapshot", route.Rung)
-		}
-		if !endpoint.ZDR || endpoint.Status != 0 || endpoint.MaxCompletionTokens < maxOpenRouterOutputTokens || !slices.Contains(endpoint.SupportedParameters, "response_format") || !slices.Contains(endpoint.SupportedParameters, "structured_outputs") {
-			return fmt.Errorf("OpenRouter route %q endpoint is not live, ZDR, and strict-output compatible", route.Rung)
-		}
-		for _, modality := range route.Modalities {
-			if !slices.Contains(model.InputModalities, modality) {
-				return fmt.Errorf("OpenRouter route %q modality %q is absent from the locked snapshot", route.Rung, modality)
-			}
-		}
-		if endpoint.Pricing["prompt"] == "" || endpoint.Pricing["completion"] == "" {
-			return fmt.Errorf("OpenRouter route %q endpoint lacks prompt or completion pricing", route.Rung)
-		}
-	}
-	return nil
 }
 
 func snapshotModel(snapshot OpenRouterSnapshot, id string) (OpenRouterModelSnapshot, bool) {

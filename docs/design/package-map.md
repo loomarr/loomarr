@@ -19,19 +19,18 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 
 | Package | Direct importers | Depends on |
 | --- | ---: | --- |
-| `bgexec` | 7 | — |
+| `bgexec` | 5 | — |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
 | `diagnostics` | 7 | — |
-| `filler` | 8 | `bgexec`, `diagnostics`, `filleradmission`, `fillerstructure`, `llm`, `mediatools`, `taxonomy` |
-| `filleradmission` | 5 | — |
+| `filler` | 8 | `bgexec`, `diagnostics`, `fillerstructure`, `llm`, `mediatools`, `taxonomy` |
 | `fillerstructure` | 5 | — |
-| `httpx` | 10 | `metrics` |
+| `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 6 | `contact` |
 | `library` | 10 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 8 | `httpx`, `metrics` |
-| `mediatools` | 6 | `bgexec`, `diagnostics`, `playout` |
+| `mediatools` | 5 | `bgexec`, `diagnostics`, `playout` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
 | `playout` | 6 | `diagnostics`, `provision`, `schedule` |
@@ -40,7 +39,7 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 18 | `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
-| `store` | 14 | `contact`, `diagnostics`, `filler`, `filleradmission`, `fillerstructure`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
+| `store` | 14 | `contact`, `diagnostics`, `filler`, `fillerstructure`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
 | `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
 | `taxonomy` | 5 | — |
 
@@ -62,14 +61,12 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns playable structure and bounded editorial facts used for episode curation.
 - **`events`** · 2 importers
   In-memory event bus behind SSE (§7 /v1/events, §8).
-- **`filleradmission`** · 5 importers
+- **`filleradmission`** · 4 importers
   Owns the deterministic semantic boundary between versioned filler evidence and a catalog-admission decision.
 - **`fillerairworthiness`** · 3 importers
   Owns deterministic audience-policy evaluation over closed, authority-bound filler suitability evidence.
-- **`fillercorpus`** · 1 importer
-  Owns the source-neutral, non-authorizing inventory contract used to qualify certification corpus lanes.
-- **`fillereval`** · 3 importers
-  Owns the hermetic certification contract for filler admission.
+- **`fillereval`** · 1 importer
+  The budget arithmetic that paid filler assessment shares with certification.
 - **`fillerstructure`** · 5 importers
   Owns the provider-neutral complete-timeline agreement policy shared by certification and production.
 - **`images/rustgen`** · 4 importers
@@ -127,7 +124,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 1
 
-- **`bgexec`** · 7 importers · → `proctree`
+- **`bgexec`** · 5 importers · → `proctree`
   ONE way filler-owned code runs an external media tool (#1512 G5).
 - **`diagnostics`** · 7 importers · → `storagegovernor`
   Records bounded, redacted technical evidence for Loomarr's operator and support surfaces (§17).
@@ -139,14 +136,14 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns administrator admission decisions and their bearer grants (§11).
 - **`metrics`** · 8 importers · → `images/rustgen`, `provision`
   Owns Loomarr's generation-scoped Prometheus surface (design §7 /metrics, §17).
-- **`openroutermedia`** · 4 importers · → `fillereval`
+- **`openroutermedia`** · 3 importers · → `fillereval`
   Owns Loomarr's bounded OpenRouter structured-media transport.
 - **`quality`** · 7 importers · → `provision`
   Owns Loomarr's privacy-safe discovery-quality vocabulary.
 
 ### Layer 2
 
-- **`httpx`** · 10 importers · → `metrics`
+- **`httpx`** · 9 importers · → `metrics`
   Shared outbound HTTP client factory (design §6, §21 phase 1).
 - **`ideas`** · 2 importers · → `holidayvocab`, `provision`
   Builds library-grounded channel ideas for Home (#1665): what the household's own library could make into a channel that nothing plays yet, and what a holiday ahead could fill.
@@ -157,8 +154,8 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 3
 
-- **`fillerbakeoff`** · 4 importers · → `bgexec`, `filleradmission`, `fillereval`, `httpx`, `openroutermedia`
-  Runs bounded, inference-spending filler admission comparisons.
+- **`fillerbakeoff`** · 2 importers · → `httpx`, `openroutermedia`
+  Binds OpenRouter capability, endpoint-price, and ZDR snapshots to the paid routes that filler assessment may use.
 - **`llm`** · 8 importers · → `httpx`, `metrics`
   LLM provider abstraction (design §8): one provider-neutral Chat primitive with tool-use, implemented by exactly TWO wire kinds — Ollama (the homelab default) and OpenAI-compatible.
 - **`notifications`** · 5 importers · → `httpx`, `secretprotection`
@@ -176,7 +173,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns progressive descriptive understanding for filler clips.
 - **`fillerresearch`** · 3 importers · → `llm`
   Owns bounded external context lookup for publicly sourced filler.
-- **`mediatools`** · 6 importers · → `bgexec`, `diagnostics`, `playout`
+- **`mediatools`** · 5 importers · → `bgexec`, `diagnostics`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
 - **`playoutbench`** · → `playout`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
@@ -189,21 +186,19 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns the fail-closed spoken-safety cascade and its shadow evidence.
 - **`fillerstructuremedia`** · 2 importers · → `fillerstructure`, `mediatools`
   Owns the exact media contract shared by complete-timeline structure qualification and production assessment.
-- **`fillervisualsafety`** · 2 importers · → `bgexec`, `fillerbakeoff`, `fillercorpus`, `fillereval`, `httpx`, `mediatools`, `openroutermedia`
-  Owns complete-source visual-sensitive-content evidence.
 - **`mediameasure`** · 1 importer · → `bgexec`, `inventory`, `mediatools`
   Loomarr's own measurement of a media source (beta.8 G7): the keyframe index, loudness and natural break candidates that playout, the packager and the scheduler need, measured once per source revision with Loomarr's ffprobe/ffmpeg so nothing is asked of the media server, or re-probed, at airtime.
 
 ### Layer 6
 
-- **`fillerairworthinessprojection`** · 1 importer · → `fillerairworthiness`, `fillersafety`, `fillervisualsafety`
+- **`fillerairworthinessprojection`** · 1 importer · → `fillerairworthiness`, `fillersafety`
   Authenticates safety-producer output and translates opaque certified matches into closed Airworthiness evidence.
 - **`fillerstructurewindow`** · 4 importers · → `fillerstructure`, `fillerstructuremedia`
   Owns the complete-coverage plan used to assess long filler reels without pretending that independently processed windows are independent model votes.
 
 ### Layer 7
 
-- **`filler`** · 8 importers · → `bgexec`, `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `fillervisualsafety`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
+- **`filler`** · 8 importers · → `bgexec`, `diagnostics`, `filleradmission`, `fillerairworthiness`, `fillerairworthinessprojection`, `fillerdecision`, `fillersafety`, `fillerstructure`, `fillerstructuremedia`, `fillerstructurewindow`, `llm`, `logchange`, `mediatools`, `storagegovernor`, `taxonomy`
   Commercials & filler domain (design §10): the clip catalog model and pod assembly.
 
 ### Layer 8
@@ -233,7 +228,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
 - **`setup`** · 1 importer · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
-- **`testkit`** · 1 importer · → `filler`, `fillerbakeoff`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
+- **`testkit`** · 1 importer · → `filler`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `programmer`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
 - **`testkit/libraryfixture`** · → `library`, `provision`, `schedule`
   No-network adapters for library-facing tests.
