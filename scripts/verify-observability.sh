@@ -6,6 +6,8 @@ prometheus_dir="$repo_root/observability/prometheus"
 grafana_dir="$repo_root/observability/grafana"
 manifest="$repo_root/observability/metrics-manifest.txt"
 dashboard="$grafana_dir/dashboards/loomarr-overview.json"
+prometheus_image="prom/prometheus:v3.14.0"
+grafana_image="grafana/grafana:13.2.0"
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
 
@@ -29,12 +31,19 @@ if [[ -s "$work_dir/unknown" ]]; then
   exit 1
 fi
 
+# Pull first, quietly, with the output going nowhere (GH #1702). Left to `docker run`, the pull
+# streams layer progress into make's stdout, and one CI run died there with
+# `make[1]: write error: stdout` before any check had started.
+for image in "$prometheus_image" "$grafana_image"; do
+  docker pull --quiet "$image" >/dev/null
+done
+
 docker run --rm --entrypoint /bin/promtool \
   -v "$prometheus_dir:/work:ro" -w /work \
-  prom/prometheus:v3.14.0 check rules alerts.yml recording-rules.yml
+  "$prometheus_image" check rules alerts.yml recording-rules.yml
 docker run --rm --entrypoint /bin/promtool \
   -v "$prometheus_dir:/work:ro" -w /work \
-  prom/prometheus:v3.14.0 test rules rules.test.yml
+  "$prometheus_image" test rules rules.test.yml
 
 docker run --rm \
   -e PROMETHEUS_URL=http://prometheus:9090 \
@@ -42,7 +51,7 @@ docker run --rm \
   -e GF_PLUGINS_PREINSTALL_DISABLED=true \
   -v "$grafana_dir/provisioning:/etc/grafana/provisioning:ro" \
   -v "$grafana_dir/dashboards:/var/lib/grafana/dashboards:ro" \
-  --entrypoint sh grafana/grafana:13.2.0 -ec '
+  --entrypoint sh "$grafana_image" -ec '
     grafana server --homepath=/usr/share/grafana >/tmp/grafana.log 2>&1 &
     server_pid=$!
     i=0
