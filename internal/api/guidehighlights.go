@@ -27,7 +27,9 @@ import (
 //     them don't end it, any other programme does.
 //   - A run holding an episode 1 (season 1 or later; specials don't count) is a premiere: a series
 //     premiere for season 1, a season premiere after. If three or more episodes follow from it,
-//     the premiere carries the run ("Season 4 premiere, back-to-back until 11").
+//     the premiere carries the run ("Season 4 premiere, back-to-back until 11"). Only where the
+//     channel airs episodes in order at that time (schedule.OrderingAt): on a shuffling channel an
+//     episode 1 is chance, and every shuffle would be full of "premieres".
 //   - Otherwise a run of three or more is a marathon.
 //
 // One highlight per run. Premieres outrank marathons, longer marathons outrank shorter; every
@@ -55,6 +57,9 @@ const (
 type channelAirings struct {
 	channelID  string
 	broadcasts []playout.Broadcast
+	// shuffledAt reports whether the channel lays its episodes out in random order at a time. An
+	// episode 1 turning up in a shuffle is chance, not a premiere. nil means never shuffled.
+	shuffledAt func(time.Time) bool
 }
 
 type highlightPick struct {
@@ -129,7 +134,7 @@ func channelHighlights(ch channelAirings) []highlightPick {
 		if len(run) == 0 {
 			return
 		}
-		if pick, ok := runHighlight(ch.channelID, run); ok {
+		if pick, ok := runHighlight(ch, run); ok {
 			out = append(out, pick)
 		}
 		run = nil
@@ -154,9 +159,10 @@ func channelHighlights(ch channelAirings) []highlightPick {
 	return out
 }
 
-func runHighlight(channelID string, run []playout.Broadcast) (highlightPick, bool) {
+func runHighlight(ch channelAirings, run []playout.Broadcast) (highlightPick, bool) {
+	channelID := ch.channelID
 	for i, b := range run {
-		if b.Episode != 1 || b.Season < 1 {
+		if b.Episode != 1 || b.Season < 1 || (ch.shuffledAt != nil && ch.shuffledAt(b.Start)) {
 			continue
 		}
 		pick := highlightPick{channelID: channelID, airing: b, reason: highlightSeasonPremiere}
@@ -258,6 +264,9 @@ func (s *Server) guideHighlights(ctx context.Context, in *guideHighlightsInput) 
 	var wg sync.WaitGroup
 	for i, ch := range channels {
 		airings[i].channelID = ch.ID
+		airings[i].shuffledAt = func(at time.Time) bool {
+			return schedule.OrderingAt(ch.Policy, ch.Strategy, at) == schedule.OrderShuffle
+		}
 		wg.Add(1)
 		go func(i int, id string) {
 			defer wg.Done()

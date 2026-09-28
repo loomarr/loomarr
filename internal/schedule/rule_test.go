@@ -155,6 +155,28 @@ func TestPickRule_HighestPriorityThenListOrder(t *testing.T) {
 	})
 }
 
+func TestOrderingAt_RuleThenPolicyThenStrategy(t *testing.T) {
+	weekendShuffle := SchedulingRule{ID: "w", Priority: 10, When: WhenPredicate{Weekend: true},
+		How: RuleOrdering{Ordering: OrderShuffle}}
+	for _, tc := range []struct {
+		name     string
+		policy   ChannelPolicy
+		strategy Strategy
+		at       time.Time
+		want     OrderingMode
+	}{
+		{"strategy when nothing overrides", ChannelPolicy{}, Shuffle, thu9am, OrderShuffle},
+		{"time-slot strategy airs in order", ChannelPolicy{}, TimeSlot, thu9am, OrderSequential},
+		{"policy beats strategy", ChannelPolicy{Ordering: OrderSyndication}, Shuffle, thu9am, OrderSyndication},
+		{"active rule beats policy", ChannelPolicy{Ordering: OrderSequential, Rules: []SchedulingRule{weekendShuffle}}, Sequential, satNoon, OrderShuffle},
+		{"inactive rule leaves the policy", ChannelPolicy{Ordering: OrderSequential, Rules: []SchedulingRule{weekendShuffle}}, Sequential, thu9am, OrderSequential},
+	} {
+		if got := OrderingAt(tc.policy, tc.strategy, tc.at); got != tc.want {
+			t.Errorf("%s: OrderingAt = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
 // ActiveRuleAt is the exported attribution window onto pickRule (§8.1): it must name the
 // SAME rule pickRule selects, and report base-policy (matched:false) when nothing matches.
 func TestActiveRuleAt_Attribution(t *testing.T) {
