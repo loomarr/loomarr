@@ -5,8 +5,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/loomarr/loomarr/internal/media"
 )
 
 // nvencFacts is the dev GeForce shape from phase 0: 0.034 cores and ~19x per 1080p SDR stream, a
@@ -156,16 +154,14 @@ func TestResourceBudget_ReclassFromCopyMustFitButATranscodeNeverStops(t *testing
 	}
 }
 
-// #1505: session admission and the hardware encode pool counted separately, so a session could pass
-// admission and then find the pool full (its programme dropped to software). A channel packager
-// holds the pool slot its lease admitted, so the pool is full exactly when the budget is, and a
-// stopped packager returns its slot.
-func TestPackagerAdmissionAndEncodePoolAgree(t *testing.T) {
+// #1505: session admission and the hardware encode pool once counted separately, so a session could
+// pass admission and then find the pool full (its programme dropped to software). The ledger is now
+// the only count (#1562): a channel packager holds the lease it was admitted with, so the budget is
+// full exactly when the packagers hold it, and a stopped packager returns its lease.
+func TestPackagerAdmissionHoldsAndReturnsTheLedger(t *testing.T) {
 	facts := nvencFacts()
 	facts.OperatorCap = 2
 	budget := NewResourceBudget(func() BudgetFacts { return facts })
-	pool := media.NewDynamicEncodePool(budget.BackgroundSlots)
-	budget.WithEncodePool(pool)
 	m := newTestPackagerHLS(t, slowItemSource{}, time.Hour)
 	m.WithBudget(budget)
 
@@ -179,18 +175,16 @@ func TestPackagerAdmissionAndEncodePoolAgree(t *testing.T) {
 	if _, _, err := m.acquire("c", FormatBaseline); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("third transcode: err = %v, want ErrAtCapacity", err)
 	}
-	if release, ok := pool.AcquireForeground(t.Context()); ok {
-		release()
-		t.Fatal("the encode pool granted a hardware slot the budget had already given to packagers")
+	if budget.Fits(AdmitRequest{Class: ClassSDR}) {
+		t.Fatal("the budget has room for a transcode it already gave to packagers")
 	}
 	m.StopChannel("a")
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		if release, ok := pool.AcquireForeground(t.Context()); ok {
-			release()
+		if budget.Fits(AdmitRequest{Class: ClassSDR}) {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("a stopped packager did not return its pool slot")
+			t.Fatal("a stopped packager did not return its lease")
 		}
 	}
 }
