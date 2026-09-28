@@ -31,7 +31,8 @@ import (
 // rather than restated. The rule: a claim about behaviour belongs next to a test, or it belongs
 // in prose that does not assert. Adding a fourth claim is cheaper than finding a fourth wrong page.
 //
-// ⚠ SCOPE IS docs/help/ ONLY — deliberately. design.md and the engineering notes quote wrong
+// ⚠ SCOPE IS THE EMBEDDED HELP SET ONLY (embed.go's //go:embed list: get-started.md, guides/,
+// explanation/; docs/help/ until #1572) — deliberately. design.md and the engineering notes quote wrong
 // claims in order to correct them ("this used to say X"), which is exactly how the repo records
 // its own history; banning the phrase everywhere would ban the correction too.
 
@@ -366,7 +367,7 @@ func releaseKey(version string) []int {
 // ---------------------------------------------------------------------------
 
 // TestClaimsCoverEveryHelpPage does not check content — it checks that this file's assumption
-// (that it can see the whole embedded set) still holds. A page added under docs/help/ is
+// (that it can see the whole embedded set) still holds. A page added to the embedded set is
 // automatically in scope above; this fails loudly if the embed ever stops returning pages,
 // which would make all three claims pass against nothing.
 func TestClaimsCoverEveryHelpPage(t *testing.T) {

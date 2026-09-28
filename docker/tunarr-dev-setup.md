@@ -18,7 +18,8 @@ docker compose -f docker/compose.dev.yaml down       # stop (keeps the volume)
 ```
 
 - Image pinned to **1.3.8** (`@sha256:88122a21…`) — matches `api/vendor/tunarr-openapi.json`.
-  If you bump it, re-vendor the spec and update `docs/engineering/phase-0-findings.md`.
+  If you bump it, re-vendor the spec. The original compatibility notes were deleted in #1572; they
+  are in [`phase-0-findings.md` at `e9d9f9cc`](https://github.com/loomarr/loomarr/blob/e9d9f9cc/docs/engineering/phase-0-findings.md).
 - Config persists in the named volume `tunarr-dev-config`. `restart: unless-stopped`.
 - UI/API at http://localhost:8000 · version probe: `curl -s localhost:8000/api/version`.
 
