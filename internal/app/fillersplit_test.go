@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
@@ -110,7 +111,7 @@ const (
 	compPath = "a3/f9/" + compHash + ".mp4"
 )
 
-func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerServiceAdapter, store.Store) {
+func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerServiceAdapter, fillerstore.Store) {
 	t.Helper()
 	st := testkit.MigratedSQLiteStore(t)
 	// A compilation to split.
@@ -207,7 +208,7 @@ func TestSplit_IsOwnedByApplicationGenerationNotRequest(t *testing.T) {
 }
 
 type markPipelineFiledFailureStore struct {
-	store.Store
+	fillerstore.Store
 	calls int
 }
 
@@ -625,7 +626,7 @@ func TestConfirmSplit_DurableClaimAllowsOnlyOnePublisher(t *testing.T) {
 // defect was never "the column says review" — it was "nothing claims this row, ever", and a test
 // that reads the field it just wrote passes against an un-park that leaves `next_run` in the
 // future, which is the same dead end wearing a different value.
-func parkReel(t *testing.T, st store.Store) func() bool {
+func parkReel(t *testing.T, st fillerstore.Store) func() bool {
 	t.Helper()
 	ctx := context.Background()
 	if err := st.UpsertClipPipeline(ctx, filler.ClipPipeline{

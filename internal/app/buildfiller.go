@@ -136,7 +136,7 @@ func buildFetcher(set resolved, layout filler.Layout, log *slog.Logger, artifact
 // rather than guessed (§15).
 //
 // The LLM provider wires whenever one is configured because splitting is operator-invoked.
-func buildSplitter(st store.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
+func buildSplitter(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger, wake *fillerChannelWake, recorder *metrics.Recorder, governor *storagegovernor.Governor, imageService *images.Service) *filler.Splitter {
 	dir := layout.ClipDir()
 	if dir == "" {
 		return nil

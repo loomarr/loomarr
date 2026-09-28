@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 const structureSplitShadowSelect = `SELECT id, proposal_id, clip_hash, source_sha256,
@@ -54,7 +55,7 @@ func (s *sqlStore) GetStructureSplitShadowDecision(ctx context.Context, id strin
 		return filler.StructureSplitShadowDecision{}, false, fmt.Errorf("get structure split shadow decision: id is required")
 	}
 	decision, err := scanStructureSplitShadowDecision(s.db.QueryRowContext(ctx, s.ph(structureSplitShadowSelect+` WHERE id = ?`), id))
-	if errors.Is(err, ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) {
 		return filler.StructureSplitShadowDecision{}, false, nil
 	}
 	if err != nil {
@@ -99,7 +100,7 @@ func scanStructureSplitShadowDecision(scanner scannable) (filler.StructureSplitS
 	var observedAt int64
 	if err := scanner.Scan(&id, &proposalID, &clipHash, &sourceSHA, &assessmentSHA, &policyVersion, &raw, &observedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return filler.StructureSplitShadowDecision{}, ErrNotFound
+			return filler.StructureSplitShadowDecision{}, store.ErrNotFound
 		}
 		return filler.StructureSplitShadowDecision{}, err
 	}

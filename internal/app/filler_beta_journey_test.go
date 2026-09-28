@@ -84,7 +84,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 		}
 		return filler.Probed{DurationMs: 30_000, Height: 480}, nil
 	}
-	newPipeline := func(database store.Store, probe filler.Prober) *filler.Pipeline {
+	newPipeline := func(database fillerstore.Store, probe filler.Prober) *filler.Pipeline {
 		clipStore := fillerPipelineClipAdapter{st: database}
 		return filler.NewPipeline(database, clipStore, []filler.Stage{
 			filler.NewProbeStage(probe, clipStore, layout.ClipDir(), func() int64 { return 10_000 }, nil, func() time.Time { return clock }),

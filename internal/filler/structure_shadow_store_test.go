@@ -8,14 +8,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 // realShadowStore is the production adapter: the decision crosses a JSON column, so empty span
 // groups (omitempty) come back as nil slices, unlike the in-memory adapter.
-func realShadowStore(t *testing.T) store.Store {
+func realShadowStore(t *testing.T) fillerstore.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "shadow.db"), true)
+	st, err := fillerstore.Open(context.Background(), "sqlite://"+filepath.Join(t.TempDir(), "shadow.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,7 +23,7 @@ func realShadowStore(t *testing.T) store.Store {
 	return st
 }
 
-func shadowProposal(t *testing.T, id string) (filler.SplitProposal, *filler.StructureSplitShadow, store.Store) {
+func shadowProposal(t *testing.T, id string) (filler.SplitProposal, *filler.StructureSplitShadow, fillerstore.Store) {
 	t.Helper()
 	proposal, auto, materialization := filler.CertifiedShadowFixture(t)
 	proposal.ID = id
@@ -53,7 +53,7 @@ func TestStructureSplitShadow_StoredDecisionWithEmptyGroupsIsNotAConflict(t *tes
 }
 
 // tamperedRepository returns the stored decision with one span edited: same id, different content.
-type tamperedRepository struct{ store.Store }
+type tamperedRepository struct{ fillerstore.Store }
 
 func (r tamperedRepository) GetStructureSplitShadowDecision(ctx context.Context, id string) (filler.StructureSplitShadowDecision, bool, error) {
 	d, found, err := r.Store.GetStructureSplitShadowDecision(ctx, id)

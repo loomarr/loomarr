@@ -1082,6 +1082,42 @@ func (s *sqlStore) UpdateClipGeography(ctx context.Context, hash, scope, country
 	return nil
 }
 
+// DeleteClip removes ONE clip by identity. Used by split confirm: the
+// compilation's identity is a path that after the cut means twenty clips, not
+// one (§10 V34). ErrNotFound for an unknown path.
+func (s *sqlStore) DeleteClip(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM clips WHERE path = ?`), id)
+	if err != nil {
+		return fmt.Errorf("delete clip %s: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete clip %s: %w", id, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// MarkClipReaped records that a composite's recording has been reclaimed (§10 V54). The row stays;
+// only the bytes are gone.
+func (s *sqlStore) MarkClipReaped(ctx context.Context, hash string, at time.Time) error {
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE clips SET reaped_at = ?, updated_at = ? WHERE hash = ?`), epoch(at), epoch(at), hash)
+	if err != nil {
+		return fmt.Errorf("mark clip %s reaped: %w", hash, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("mark clip %s reaped: %w", hash, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // DeleteClipsNotIn prunes clips absent from the given id set (the sync reconcile).
 // With an empty keep set it deletes all clips. Returns the count removed.
 func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
@@ -1098,13 +1134,8 @@ func (s *sqlStore) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int,
 		_ = s.pruneOrphanClipFingerprints(ctx)
 	}()
 
-	// ⚠ **And the proposals, for the same reason** (§10 V54). `filler_split_proposals` is the other
-	// no-foreign-key sibling of `clips`, and it had the same hole: a wipe left 48 proposals behind,
-	// which Incoming rendered as 48 "compilations to review" titled with raw content hashes, each
-	// opening a review of a deleted file. Two separate defers rather than one combined closure, so
-	// each table's rationale sits beside its own call; the tables are independent, so LIFO order
-	// between them does not matter.
-	defer func() { _ = s.pruneOrphanSplitProposals(ctx) }()
+	// The split proposals, the other no-foreign-key sibling of `clips`, are the filler store's: its
+	// DeleteClipsNotIn runs this one and then prunes them (internal/fillerstore).
 
 	if len(keepIDs) == 0 {
 		// ⚠ Reaped composites survive an EMPTY scan too. This branch fires when the drop folder is
@@ -1407,7 +1438,7 @@ func (s *sqlStore) ReplaceSplitChildren(ctx context.Context, parentHash string, 
 	return n, nil
 }
 
-func (s *sqlStore) replaceSplitChildrenTx(ctx context.Context, tx *sql.Tx, parentHash string, keepHashes []string, at time.Time) (int, error) {
+func (s *sqlStore) replaceSplitChildrenTx(ctx context.Context, tx Querier, parentHash string, keepHashes []string, at time.Time) (int, error) {
 	query := `SELECT policy_json FROM channels`
 	if s.dialect == DialectPostgres {
 		query += ` FOR UPDATE`

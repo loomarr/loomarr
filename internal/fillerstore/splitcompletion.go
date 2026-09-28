@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -6,11 +6,13 @@ import (
 	"fmt"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // CompleteSplitConfirmation is V65's single durable commit. Reversible media publication happens
 // before this call; proposal consumption, parent completion, child activation, and generation selection
-// either all commit or all remain at their pre-confirm values.
+// either all commit or all remain at their pre-confirm values. The clip and pipeline writes go
+// through the core's store.ClipTx, inside this transaction.
 func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error) {
 	if completion.ProposalID == "" || completion.ClaimToken == "" || completion.ParentHash == "" || len(completion.ChildHashes) == 0 {
 		return 0, errors.New("complete split confirmation: proposal, claim token, parent, and children are required")
@@ -36,7 +38,7 @@ func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion fil
 		activate[hash] = struct{}{}
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("complete split confirmation %s: %w", completion.ProposalID, err)
 	}
@@ -55,47 +57,33 @@ func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion fil
 		return 0, fmt.Errorf("complete split confirmation %s: proposal parent changed", completion.ProposalID)
 	}
 
-	res, err := tx.ExecContext(ctx, s.ph(
-		`UPDATE clips SET is_composite = ?, held = ?, auto_filed = ?, updated_at = ? WHERE hash = ? AND held = ?`),
-		true, false, false, epoch(completion.At), completion.ParentHash, true)
+	clips := s.db.Clips(tx)
+	released, err := clips.ReleaseSplitParent(ctx, completion.ParentHash, completion.At)
 	if err != nil {
 		return 0, fmt.Errorf("complete split confirmation %s release parent: %w", completion.ProposalID, err)
 	}
-	if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
-		if countErr != nil {
-			return 0, fmt.Errorf("complete split confirmation %s count parent: %w", completion.ProposalID, countErr)
-		}
-		return 0, ErrNotFound
+	if !released {
+		return 0, store.ErrNotFound
 	}
 
-	res, err = tx.ExecContext(ctx, s.ph(
-		`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ? WHERE clip_hash = ? AND disposition = ?`),
-		string(filler.DispositionComplete), epoch(completion.At), completion.ParentHash, string(filler.DispositionReview))
+	settled, err := clips.AdvancePipeline(ctx, completion.ParentHash, filler.DispositionReview, filler.DispositionComplete, completion.At)
 	if err != nil {
 		return 0, fmt.Errorf("complete split confirmation %s settle parent pipeline: %w", completion.ProposalID, err)
 	}
-	if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
-		if countErr != nil {
-			return 0, fmt.Errorf("complete split confirmation %s count parent pipeline: %w", completion.ProposalID, countErr)
-		}
+	if !settled {
 		return 0, fmt.Errorf("complete split confirmation %s: parent pipeline is not awaiting review", completion.ProposalID)
 	}
 	for _, hash := range completion.ActivateHashes {
-		res, err := tx.ExecContext(ctx, s.ph(
-			`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ? WHERE clip_hash = ? AND disposition = ?`),
-			string(filler.DispositionRunning), epoch(completion.At), hash, string(filler.DispositionReview))
+		activated, err := clips.AdvancePipeline(ctx, hash, filler.DispositionReview, filler.DispositionRunning, completion.At)
 		if err != nil {
 			return 0, fmt.Errorf("complete split confirmation %s activate child %s: %w", completion.ProposalID, hash, err)
 		}
-		if n, countErr := res.RowsAffected(); countErr != nil || n != 1 {
-			if countErr != nil {
-				return 0, fmt.Errorf("complete split confirmation %s count child %s: %w", completion.ProposalID, hash, countErr)
-			}
+		if !activated {
 			return 0, fmt.Errorf("complete split confirmation %s: child %s is not staged for review", completion.ProposalID, hash)
 		}
 	}
 
-	res, err = tx.ExecContext(ctx, s.ph(`DELETE FROM filler_split_proposals WHERE id = ? AND claim_token = ?`), completion.ProposalID, completion.ClaimToken)
+	res, err := tx.ExecContext(ctx, s.ph(`DELETE FROM filler_split_proposals WHERE id = ? AND claim_token = ?`), completion.ProposalID, completion.ClaimToken)
 	if err != nil {
 		return 0, fmt.Errorf("complete split confirmation %s consume proposal: %w", completion.ProposalID, err)
 	}
@@ -103,10 +91,10 @@ func (s *sqlStore) CompleteSplitConfirmation(ctx context.Context, completion fil
 		if countErr != nil {
 			return 0, fmt.Errorf("complete split confirmation %s count proposal: %w", completion.ProposalID, countErr)
 		}
-		return 0, ErrNotFound
+		return 0, store.ErrNotFound
 	}
 
-	retired, err := s.replaceSplitChildrenTx(ctx, tx, completion.ParentHash, completion.ChildHashes, completion.At)
+	retired, err := clips.ReplaceSplitChildren(ctx, completion.ParentHash, completion.ChildHashes, completion.At)
 	if err != nil {
 		return 0, err
 	}

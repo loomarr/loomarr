@@ -379,10 +379,6 @@ type ClipStore interface {
 	// CountClipsBySource returns the per-source clip count — a GROUP BY, not a catalog load
 	// tallied in Go. Keyed by `Clip.Source`; sources with no clips are simply absent.
 	CountClipsBySource(ctx context.Context, filter ClipFilter) (map[string]int, error)
-	// CountIncomingConveyorBySource counts, per source, what the Incoming belt shows: held clips
-	// plus running/review pipeline rows, minus composites whose split proposal is ready. A plain
-	// HeldOnly count would disagree with the page it links to.
-	CountIncomingConveyorBySource(ctx context.Context) (map[string]int, error)
 	// SetClipsRemoved tombstones (or restores) clips by path — "Remove from catalog" (V35).
 	//
 	// ⚠ The ordinary tombstone writer; RetryClipPipeline is the only cross-table exception, so
@@ -484,45 +480,14 @@ type ClipStore interface {
 	UpsertClipFingerprint(ctx context.Context, clipHash, algorithm string, frames []uint64) error
 }
 
-// SplitProposalStore is the persisted split-proposal surface (§10, V34) —
-// detector-authored, reviewer-edited cut lists that are NOT clips until
-// confirmed. One proposal per compilation clip (re-detection replaces).
-type SplitProposalStore interface {
-	UpsertSplitProposal(ctx context.Context, p filler.SplitProposal) error
-	// GetSplitProposal reads one proposal by id (the review's reconnect truth).
-	GetSplitProposal(ctx context.Context, id string) (filler.SplitProposal, error)
-	AcquireSplitProposalClaim(ctx context.Context, id, token string, at, expiresAt time.Time) (filler.SplitProposal, error)
-	RenewSplitProposalClaim(ctx context.Context, id, token string, expiresAt time.Time) error
-	ReleaseSplitProposalClaim(ctx context.Context, id, token string) error
-	// ListSplitProposals returns every pending proposal, oldest first — the Incoming tab's
-	// "reels" (V35). One read behind that tab, so a restart cannot lose the queue.
-	ListSplitProposals(ctx context.Context) ([]filler.SplitProposal, error)
-	// ListReadySplitProposalsAfter is the bounded, newest-first Needs-help read. Detection
-	// checkpoints are skipped without consuming the page limit.
-	ListReadySplitProposalsAfter(ctx context.Context, cursor filler.SplitProposalCursor, limit int) ([]filler.SplitProposal, error)
-	CountReadySplitProposals(ctx context.Context) (int, error)
-	// DeleteSplitProposal removes a proposal after confirm or on reject.
-	DeleteSplitProposal(ctx context.Context, id string) error
-	// UpdateSplitProposal replaces an EXISTING proposal document; ErrNotFound if the row is gone.
-	// Never inserts — see the implementation for why that matters (§10 V54).
-	UpdateSplitProposal(ctx context.Context, p filler.SplitProposal) error
-	CompletePartialSplitConfirmation(ctx context.Context, completion filler.SplitPartialCompletion) error
-	// ListSweepableSplitProposals finds reels whose leftover cuts nobody reviewed inside the
-	// window AND which have already produced clips — the only ones the sweep may retire (§10 V54).
-	ListSweepableSplitProposals(ctx context.Context, before time.Time) ([]SweepableProposal, error)
+// ClipPipelineStore is the per-clip ingest pipeline and the reclaim of a split reel's recording.
+// Split proposals themselves are the filler store's (internal/fillerstore).
+type ClipPipelineStore interface {
 	// MarkClipReaped records that a composite's recording was reclaimed. The row survives so
 	// `parent_hash` keeps resolving; `DeleteClipsNotIn` skips it.
 	MarkClipReaped(ctx context.Context, hash string, at time.Time) error
 	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
 	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
-	// CompleteSplitConfirmation atomically transitions a fully reviewed split proposal, retained
-	// parent, replacement pipelines, and selected child generation (§10 V65).
-	CompleteSplitConfirmation(ctx context.Context, completion filler.SplitCompletion) (int, error)
-	// Put/ListStructureSplitShadowDecisions own the immutable V67 compatibility-versus-complete-
-	// plan history. It survives proposal consumption so publication cannot erase disagreement.
-	PutStructureSplitShadowDecision(ctx context.Context, decision filler.StructureSplitShadowDecision) error
-	GetStructureSplitShadowDecision(ctx context.Context, id string) (filler.StructureSplitShadowDecision, bool, error)
-	ListStructureSplitShadowDecisions(ctx context.Context, clipHash string, limit int) ([]filler.StructureSplitShadowDecision, error)
 
 	// --- The per-clip ingest pipeline (§10 V51b, migration 00044) ---
 	//
@@ -787,7 +752,7 @@ type Store interface {
 	UserStore
 	ClipStore
 	InteractiveOperationStore
-	SplitProposalStore
+	ClipPipelineStore
 	AiringStore
 	LibraryPathStore
 	ActivityStore
