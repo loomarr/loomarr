@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/loomarr/loomarr/internal/provision"
 )
@@ -21,6 +22,19 @@ type QueueItem struct {
 	// Status is the arr's queue status ("downloading", "queued", "warning", "completed", …) —
 	// exposed so a stalled/errored download is visible rather than looking like healthy progress.
 	Status string
+	// EpisodesHave of EpisodesWanted is a series' "8 of 36 episodes" (#1667): Sonarr's files on
+	// disk of the episodes it wants (monitored and aired). Both 0 for a movie or when unknown.
+	EpisodesHave   int
+	EpisodesWanted int
+}
+
+// arrSeriesStats is the slice of Sonarr's GET /api/v3/series/{id} we read. The lookup the poll
+// already makes carries no statistics, so a grabbed series costs this one extra read.
+type arrSeriesStats struct {
+	Statistics struct {
+		EpisodeFileCount int `json:"episodeFileCount"`
+		EpisodeCount     int `json:"episodeCount"`
+	} `json:"statistics"`
 }
 
 // arrQueueRecord is the slice of an /api/v3/queue record we read. movieId/seriesId correlate
@@ -101,15 +115,34 @@ func (a *Arr) QueueStatus(ctx context.Context, titles []provision.Title) ([]Queu
 			out = append(out, QueueItem{Key: key}) // not in the queue → not grabbed
 			continue
 		}
-		out = append(out, QueueItem{
+		item := QueueItem{
 			Key:      key,
 			Grabbed:  true,
 			Progress: progressFraction(rec.Size, rec.SizeLeft),
 			ETAText:  rec.TimeLeft,
 			Status:   rec.Status,
-		})
+		}
+		if ep.kind == "series" {
+			item.EpisodesHave, item.EpisodesWanted = a.seriesEpisodeCounts(ctx, ep, arrID)
+		}
+		out = append(out, item)
 	}
 	return out, nil
+}
+
+// seriesEpisodeCounts reads a series' files-on-disk and wanted episode counts. The counts only
+// decorate the progress, so a failed read reports none rather than failing the poll.
+func (a *Arr) seriesEpisodeCounts(ctx context.Context, ep arrEndpoint, arrID int) (have, wanted int) {
+	resp, err := a.do(ctx, ep, http.MethodGet, "/api/v3/series/"+strconv.Itoa(arrID), nil)
+	if err != nil {
+		return 0, 0
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var series arrSeriesStats
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&series) != nil {
+		return 0, 0
+	}
+	return series.Statistics.EpisodeFileCount, series.Statistics.EpisodeCount
 }
 
 // progressFraction converts size/sizeleft to a 0..1 completion fraction; unknown size ⇒ 0.
