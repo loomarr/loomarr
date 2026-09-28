@@ -539,10 +539,16 @@ func (e registeredSourceEnumerator) Enumerate(ctx context.Context, source filler
 		}
 		if e.archiveRuntimes != nil && e.archiveRuntimes() {
 			// Archive.org throttles per-item metadata (clipfetch.Enrich: ~25 items in 15–25 s),
-			// so reading runtimes is bounded per source rather than allowed to spend a planned
-			// pull's whole deadline. Per item and non-fatal: a runtime not read in time stays
-			// unknown, the item is taken, and probe marks it a compilation on arrival if it is one.
-			budget, cancel := context.WithTimeout(ctx, archiveRuntimeBudget)
+			// so reading runtimes is bounded per source, and never to more than half the time
+			// left before the caller's deadline: a planned pull walks up to 12 sources inside one
+			// 90 s deadline, and runtimes must never be what makes it fail. Per item and
+			// non-fatal: a runtime not read in time stays unknown, the item is taken, and probe
+			// marks it a compilation on arrival if it is one.
+			wait := archiveRuntimeBudget
+			if deadline, ok := ctx.Deadline(); ok {
+				wait = min(wait, time.Until(deadline)/2)
+			}
+			budget, cancel := context.WithTimeout(ctx, wait)
 			archive.Enrich(budget, res.Items)
 			cancel()
 		}

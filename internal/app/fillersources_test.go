@@ -462,6 +462,8 @@ printf '%s\n' '{"entries":[{"id":"one","webpage_url":"https://www.youtube.com/wa
 type fakeArchiveCatalog struct {
 	runtimes map[string]int
 	enriched int
+	// allowed is how long the enrichment was given before its deadline.
+	allowed time.Duration
 }
 
 func (f *fakeArchiveCatalog) EnumerateCollection(context.Context, string, int) (clipfetch.DiscoveryResult, error) {
@@ -473,8 +475,11 @@ func (f *fakeArchiveCatalog) EnumerateCollection(context.Context, string, int) (
 	return out, nil
 }
 
-func (f *fakeArchiveCatalog) Enrich(_ context.Context, items []clipfetch.DiscoveredItem) {
+func (f *fakeArchiveCatalog) Enrich(ctx context.Context, items []clipfetch.DiscoveredItem) {
 	f.enriched++
+	if deadline, ok := ctx.Deadline(); ok {
+		f.allowed = time.Until(deadline)
+	}
 	for i := range items {
 		items[i].DurationMS = f.runtimes[items[i].ID]
 	}
@@ -501,6 +506,21 @@ func TestRegisteredSourceEnumerator_ArchiveRuntimesWhenCompilationsWait(t *testi
 		if !hold && archive.enriched != 0 {
 			t.Errorf("compilations taken: enriched %d times, want the listing left at one request", archive.enriched)
 		}
+	}
+}
+
+// Reading runtimes never spends more than half of what is left of the caller's deadline, so a
+// planned pull over many Archive.org sources can't fail its own 90 s deadline on runtimes.
+func TestRegisteredSourceEnumerator_ArchiveRuntimesLeaveTheCallerTime(t *testing.T) {
+	archive := &fakeArchiveCatalog{}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if _, _, err := (registeredSourceEnumerator{archive: archive, archiveRuntimes: func() bool { return true }}).Enumerate(
+		ctx, filler.FetchSource{Kind: "archive", URI: "reels_collection"}, 10); err != nil {
+		t.Fatal(err)
+	}
+	if archive.allowed <= 0 || archive.allowed > 5*time.Second {
+		t.Fatalf("runtimes were given %s of a 10 s deadline, want at most half", archive.allowed)
 	}
 }
 
