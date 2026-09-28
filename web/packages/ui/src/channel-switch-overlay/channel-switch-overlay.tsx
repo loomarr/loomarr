@@ -22,29 +22,46 @@ const fill = { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 } as c
  * switch begins and fades once the first frame decodes. It renders only from data the client
  * already holds, so it needs no request at the switch itself.
  *
+ * It stays mounted between switches, hidden, so a key only flips its opacity (#1781). Mounting the
+ * readout at the key (the snow alone is ~600 native views) held its first paint 312 ms on a Shield.
+ * The shown opacity is a plain prop committed with the key's own render, never a value an effect or
+ * the native animation driver sets afterwards. The fade-out runs on an inner layer, and the next
+ * switch's starting values are set once the overlay is hidden, so every switch opens on the same frame.
+ *
  * Reduced motion: no drain, still snow, locked bars, a steady cursor.
  */
 const ChannelSwitchOverlay = ({ channel, reducedMotion, stillUri, visible }: ChannelSwitchOverlayProps) => {
   const prefersReducedMotion = useReducedMotionPreference(reducedMotion);
   const still = prefersReducedMotion !== false;
-  const [mounted, setMounted] = useState(visible);
+  // Derived in render, so the frame that hides the readout already fades rather than popping out.
+  const [wasVisible, setWasVisible] = useState(visible);
+  const [fading, setFading] = useState(false);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    setFading(!visible);
+  }
+  const shown = visible || fading;
   const [failedUri, setFailedUri] = useState<string>();
-  const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const fade = useRef(new Animated.Value(1)).current;
   const drain = useRef(new Animated.Value(still ? DRAIN.end.opacity : 1)).current;
   const wash = useRef(new Animated.Value(still ? 1 : THICKEN.from)).current;
   const cursor = useRef(new Animated.Value(1)).current;
 
+  // Once hidden, set the next switch's opening frame: opaque, the still undrained, the snow thin.
+  useEffect(() => {
+    if (shown) return;
+    fade.setValue(1);
+    drain.setValue(still ? DRAIN.end.opacity : 1);
+    wash.setValue(still ? 1 : THICKEN.from);
+  }, [drain, fade, shown, still, wash]);
+
   useEffect(() => {
     if (visible) {
-      setMounted(true);
-      opacity.setValue(1);
-      if (still) {
-        drain.setValue(DRAIN.end.opacity);
-        wash.setValue(1);
-        return undefined;
-      }
-      drain.setValue(1);
-      wash.setValue(THICKEN.from);
+      // Already the case unless the key came mid-fade; then this lifts the readout back up.
+      fade.setValue(1);
+      drain.setValue(still ? DRAIN.end.opacity : 1);
+      wash.setValue(still ? 1 : THICKEN.from);
+      if (still) return undefined;
       const switching = Animated.parallel([
         Animated.sequence([
           Animated.timing(drain, {
@@ -70,10 +87,15 @@ const ChannelSwitchOverlay = ({ channel, reducedMotion, stillUri, visible }: Cha
       switching.start();
       return () => switching.stop();
     }
-    Animated.timing(opacity, { duration: FADE_MS, toValue: 0, useNativeDriver: true }).start();
-    const timeout = setTimeout(() => setMounted(false), FADE_MS);
-    return () => clearTimeout(timeout);
-  }, [drain, opacity, still, visible, wash]);
+    if (!fading) return undefined;
+    const fadeOut = Animated.timing(fade, { duration: FADE_MS, toValue: 0, useNativeDriver: true });
+    fadeOut.start();
+    const timeout = setTimeout(() => setFading(false), FADE_MS);
+    return () => {
+      fadeOut.stop();
+      clearTimeout(timeout);
+    };
+  }, [drain, fade, fading, still, visible, wash]);
 
   useEffect(() => {
     if (still || !visible) {
@@ -92,56 +114,64 @@ const ChannelSwitchOverlay = ({ channel, reducedMotion, stillUri, visible }: Cha
     return () => blink.stop();
   }, [cursor, still, visible]);
 
-  if (!mounted && !visible) return null;
+  // Hidden, nothing in it animates: the snow's flicker and the bars hold still until the next key.
+  const motion = shown ? reducedMotion : true;
 
   return (
-    <Animated.View
-      accessibilityLabel={`Tuning in to channel ${channel.channelNumber}, ${channel.channelName}`}
+    <View
+      accessibilityElementsHidden={!shown}
+      accessibilityLabel={
+        shown ? `Tuning in to channel ${channel.channelNumber}, ${channel.channelName}` : undefined
+      }
+      aria-hidden={!shown}
+      importantForAccessibility={shown ? "auto" : "no-hide-descendants"}
       pointerEvents="none"
-      style={[fill, { backgroundColor: "#0B0C0E", opacity }]}
+      style={[fill, { opacity: shown ? 1 : 0 }]}
     >
-      {stillUri && failedUri !== stillUri ? (
-        <Animated.View style={[fill, { filter: GREYED, opacity: drain }]}>
-          <Image
-            onError={() => setFailedUri(stillUri)}
-            resizeMode="cover"
-            source={{ uri: stillUri }}
-            style={fill}
-          />
-        </Animated.View>
-      ) : null}
-      <Animated.View style={[fill, { opacity: wash }]}>
-        <AnalogSnow reducedMotion={reducedMotion} />
-      </Animated.View>
-      <View
-        style={[fill, { alignItems: "center", gap: 12, justifyContent: "center", paddingHorizontal: 48 }]}
-      >
-        <SignalLoader
-          accessibilityLabel="Tuning in"
-          density="tv"
-          label={null}
-          reducedMotion={reducedMotion}
-        />
-        <View style={{ alignItems: "baseline", flexDirection: "row", gap: 12 }}>
-          <Text density="tv" halo textRole="cardChannelNumber" tracking={0.16}>
-            CH {channel.channelNumber}
-          </Text>
-          <Text density="tv" halo numberOfLines={1} textRole="title">
-            {channel.channelName}
-          </Text>
-        </View>
-        <View style={{ flexDirection: "row" }}>
-          <Text density="tv" halo textRole="metadata" tone="signal" tracking={0.24}>
-            TUNING IN
-          </Text>
-          <Animated.View style={{ opacity: cursor }}>
-            <Text density="tv" halo textRole="metadata" tone="signal">
-              _
-            </Text>
+      <Animated.View style={[fill, { backgroundColor: "#0B0C0E", opacity: fade }]}>
+        {stillUri && failedUri !== stillUri ? (
+          <Animated.View style={[fill, { filter: GREYED, opacity: drain }]}>
+            <Image
+              onError={() => setFailedUri(stillUri)}
+              resizeMode="cover"
+              source={{ uri: stillUri }}
+              style={fill}
+            />
           </Animated.View>
+        ) : null}
+        <Animated.View style={[fill, { opacity: wash }]}>
+          <AnalogSnow reducedMotion={motion} />
+        </Animated.View>
+        <View
+          style={[fill, { alignItems: "center", gap: 12, justifyContent: "center", paddingHorizontal: 48 }]}
+        >
+          <SignalLoader accessibilityLabel="Tuning in" density="tv" label={null} reducedMotion={motion} />
+          {/* The readout's few lines of text render with the key itself; hidden, no chrome text remains. */}
+          {shown ? (
+            <>
+              <View style={{ alignItems: "baseline", flexDirection: "row", gap: 12 }}>
+                <Text density="tv" halo textRole="cardChannelNumber" tracking={0.16}>
+                  CH {channel.channelNumber}
+                </Text>
+                <Text density="tv" halo numberOfLines={1} textRole="title">
+                  {channel.channelName}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row" }}>
+                <Text density="tv" halo textRole="metadata" tone="signal" tracking={0.24}>
+                  TUNING IN
+                </Text>
+                <Animated.View style={{ opacity: cursor }}>
+                  <Text density="tv" halo textRole="metadata" tone="signal">
+                    _
+                  </Text>
+                </Animated.View>
+              </View>
+            </>
+          ) : null}
         </View>
-      </View>
-    </Animated.View>
+      </Animated.View>
+    </View>
   );
 };
 
