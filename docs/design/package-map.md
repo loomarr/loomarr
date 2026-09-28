@@ -83,7 +83,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 - **`logchange`** · 2 importers
   Keeps a repeating per-item condition from flooding the log.
 - **`media`** · 2 importers
-  Owns host-wide resources shared by live and background media work.
+  Owns host-wide resource facts shared by media work: host memory.
 - **`playout/packager`** · 1 importer
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
 - **`proctree`** · 1 importer

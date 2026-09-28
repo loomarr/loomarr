@@ -74,7 +74,7 @@ func (s *Server) registerSystemRestart(api huma.API) {
 		Summary: "Re-probe every configured service",
 		Description: "Admin only. Re-runs the connection checks without restarting or tearing anything " +
 			"down — no downtime. Uses the same probe implementation as the wizard's checklist, so the two " +
-			"can never disagree.",
+			"can never disagree. " + operatorAPI,
 		Tags: []string{"system"},
 	}, RoleAdmin), s.systemReload)
 }
