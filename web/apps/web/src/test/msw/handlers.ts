@@ -12,6 +12,8 @@ import {
   getFillerWatchMockHandler,
   getGetChannelMockHandler,
   getGetCurrentHealthMockHandler,
+  getGuideHighlightsMockHandler,
+  getHouseholdViewingMockHandler,
   getJobsListMockHandler,
   getListActivityMockHandler,
   getListChannelsMockHandler,
@@ -152,6 +154,10 @@ const appHandlers = (): RequestHandler[] => [
   // The guide grid's window read. `fromMs`/`toMs` are required, so an empty grid still has to
   // carry a coherent window rather than `{}`.
   getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }),
+  // Home's Watching now and Tonight, read once the guide has a channel: nobody watching, nothing
+  // highlighted.
+  getHouseholdViewingMockHandler({ channels: [], scope: "household", viewers: [], watching: 0 }),
+  getGuideHighlightsMockHandler({ fromMs: 0, highlights: [], toMs: 0 }),
   getJobsListMockHandler({ jobs: [] }),
   getListActivityMockHandler({ activity: [] }),
   // The AI connection block reads both of these on mount, and it renders on the wizard's

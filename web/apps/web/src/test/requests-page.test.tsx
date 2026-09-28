@@ -1,42 +1,47 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { getChannelGuideMockHandler } from "@loomarr/api/msw";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ADMIN, failed, journey, MEMBER, proposal, renderAt, stub, title } from "@/test/requests-harness";
+import { server } from "@/test/msw/server";
+import { ADMIN, failed, journey, MEMBER, proposal, renderAt, stub } from "@/test/requests-harness";
 
-// #1405 — the Requests page's entry points, driven through the real router the way the Dashboard
-// cards and a bookmark reach it. The lists, the detail and the nav badge have colocated specs
-// under queue/.
+// #1405 — the Requests page's entry points, driven through the real router the way Home's strip
+// and a bookmark reach it. The lists, the detail and the nav badge have colocated specs under
+// queue/.
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("Dashboard cards link to the tab they name", () => {
-  it("'Needs you' lands on Needs you and 'Acquiring' on In progress", async () => {
+// One live channel, so Home has life and its strip lists what needs someone.
+const withOneChannel = () =>
+  server.use(
+    getChannelGuideMockHandler({
+      channels: [{ airings: [], channelId: "c1", name: "Test", number: 1, pendingCount: 0, status: "live" }],
+      fromMs: 0,
+      toMs: 0,
+    }),
+  );
+
+describe("Home's strip links to Needs you (#1659)", () => {
+  it("an admin's 'requests need you' Review lands on Needs you", async () => {
     stub({ me: ADMIN, proposals: [proposal] });
+    withOneChannel();
     const router = renderAt("/dashboard");
 
-    await userEvent.click(await screen.findByRole("link", { name: /Acquiring/ }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/in-progress"));
-
-    await router.navigate({ to: "/dashboard" });
-    await userEvent.click(await screen.findByRole("link", { name: /Needs you/ }));
+    expect(await screen.findByText("1 request needs you")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "Review" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/requests/needs-you"));
   });
 
-  it("'Acquiring' counts only what is in flight, not landed or given-up titles", async () => {
-    stub({
-      me: ADMIN,
-      titles: {
-        wanted: [title("a", "wanted")],
-        requested: [title("b", "requested")],
-        downloading: [title("c", "downloading")],
-        available: [title("d", "available")],
-        unavailable: [title("e", "unavailable", { lastError: "deadline exceeded" })],
-      },
-    });
-    renderAt("/dashboard");
+  it("a member's failed request offers Edit and retry, and no admin items", async () => {
+    stub({ me: MEMBER, journeys: [failed("j-bad")] });
+    withOneChannel();
+    const router = renderAt("/dashboard");
 
-    const card = await screen.findByRole("link", { name: /Acquiring/ });
-    await waitFor(() => expect(within(card).getByText("3")).toBeInTheDocument());
+    expect(await screen.findByText("1 of your requests couldn’t be built")).toBeInTheDocument();
+    expect(screen.getByText("Everything’s playing")).toBeInTheDocument();
+    expect(screen.queryByText(/need you/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "Edit and retry" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/requests/needs-you"));
   });
 });
 
