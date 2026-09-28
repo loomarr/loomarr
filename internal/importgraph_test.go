@@ -3,7 +3,9 @@ package internal_test
 import (
 	"go/build"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -39,7 +41,23 @@ func loomarrPackages(t *testing.T) map[string]*build.Package {
 	if err != nil {
 		t.Fatalf("repo root: %v", err)
 	}
+	pkgs, err := walkLoomarrPackages(root)
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if len(pkgs) == 0 {
+		t.Fatal("package graph is empty — the walk found no packages, so every gate built on it " +
+			"would vacuously pass (the exact shape #282 was about)")
+	}
+	return pkgs
+}
 
+// rootBuildOutput is the repository-root build output the walk never enters: Cargo's `target`
+// and the gitignored `/bin/`, `/dist/` and `/tmp/`.
+var rootBuildOutput = map[string]bool{"target": true, "bin": true, "dist": true, "tmp": true}
+
+// walkLoomarrPackages is loomarrPackages over an explicit repository root.
+func walkLoomarrPackages(root string) (map[string]*build.Package, error) {
 	pkgs := map[string]*build.Package{}
 	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -65,6 +83,15 @@ func loomarrPackages(t *testing.T) map[string]*build.Package {
 		case "node_modules", "testdata", "web":
 			return filepath.SkipDir
 		}
+		// ⚠ Build output at the repository root is skipped by PATH, not by name. Cargo writes
+		// `target/` while a composition package in the same race lane builds the Rust worker,
+		// and a scratch dir it deletes between the walk's listing and its open failed the
+		// gates with ENOENT (GH #1646). No Loomarr package lives in these root output dirs,
+		// but a nested package may legitimately be called `build` or `bin`, so a name match
+		// would silently drop it from every gate.
+		if rel, rerr := filepath.Rel(root, path); rerr == nil && rootBuildOutput[filepath.ToSlash(rel)] {
+			return filepath.SkipDir
+		}
 
 		// A directory with no buildable Go files (a fixtures dir, a parent of packages, or one
 		// whose files are all behind build tags) yields an error rather than a package. That is
@@ -86,14 +113,7 @@ func loomarrPackages(t *testing.T) map[string]*build.Package {
 		pkgs[importPath] = pkg
 		return nil
 	})
-	if walkErr != nil {
-		t.Fatalf("walk: %v", walkErr)
-	}
-	if len(pkgs) == 0 {
-		t.Fatal("package graph is empty — the walk found no packages, so every gate built on it " +
-			"would vacuously pass (the exact shape #282 was about)")
-	}
-	return pkgs
+	return pkgs, walkErr
 }
 
 // reachableFrom returns every Loomarr package transitively imported by root, INCLUDING root —
@@ -180,4 +200,57 @@ func TestPackageGraph_IsReadFromSource(t *testing.T) {
 		t.Errorf("only %d Loomarr packages reachable from cmd/loomarr — the transitive walk is "+
 			"not walking; gates built on it would pass vacuously", len(linked))
 	}
+}
+
+// GH #1646: the walk listed Cargo's `target/debug/deps/rmeta*` scratch directories while a
+// composition package in the same race lane was building the Rust worker, and failed with
+// ENOENT when cargo deleted one before the walk opened it. An unreadable directory takes the
+// same path (listed, then the open fails) deterministically; the stray Go file catches a walk
+// that descends where no Loomarr package lives even when chmod has no effect (running as root).
+func TestPackageWalkSkipsBuildOutput(t *testing.T) {
+	root := t.TempDir()
+	writeGoFile := func(dir, pkg string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		src := "package " + pkg + "\n"
+		if err := os.WriteFile(filepath.Join(root, dir, pkg+".go"), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeGoFile("internal/kept", "kept")
+	for _, output := range []string{"target", "bin", "dist", "tmp"} {
+		writeGoFile(output+"/debug/build/stray", "stray")
+		vanishing := filepath.Join(root, output, "debug", "deps", "rmetaVanishing")
+		if err := os.MkdirAll(vanishing, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(vanishing, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(vanishing, 0o755) })
+	}
+
+	pkgs, err := walkLoomarrPackages(root)
+	if err != nil {
+		t.Fatalf("walk entered build output: %v", err)
+	}
+	if _, ok := pkgs[modulePath+"/internal/kept"]; !ok {
+		t.Fatalf("walk lost a real package: got %v", sortedKeys(pkgs))
+	}
+	for path := range pkgs {
+		if strings.Contains(path, "/stray") {
+			t.Errorf("walk mapped build output %s as a Loomarr package", path)
+		}
+	}
+}
+
+func sortedKeys(pkgs map[string]*build.Package) []string {
+	keys := make([]string, 0, len(pkgs))
+	for k := range pkgs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
