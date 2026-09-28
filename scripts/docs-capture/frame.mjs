@@ -29,8 +29,17 @@ let over = 0;
 for (const f of readdirSync(raw).filter((f) => f.endsWith(".png") && ROUTES[f.slice(0, -4)])) {
   const name = f.slice(0, -4);
   const src = pathToFileURL(join(raw, f));
-  await page.goto(`${frame}?src=${encodeURIComponent(src)}&w=1280&path=${encodeURIComponent(ROUTES[name])}`);
-  await page.locator("#i").evaluate((img) => img.decode());
+  await page.goto(frame.href);
+  await page.evaluate(
+    async ({ src, route }) => {
+      const img = document.getElementById("i");
+      img.style.width = "1280px";
+      img.src = src;
+      document.getElementById("u").textContent = `loomarr.local${route}`;
+      await img.decode();
+    },
+    { src: src.href, route: ROUTES[name] },
+  );
   const png = join(raw, `${name}-framed.png`);
   await page.locator(".pad").screenshot({ path: png, omitBackground: true });
   const webp = join(out, `${name}-dark.webp`);
