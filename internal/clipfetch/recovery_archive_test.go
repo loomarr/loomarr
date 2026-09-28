@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -40,7 +40,7 @@ fi
 		ID: "youtube:restart", AcquisitionID: "acq-restart", Kind: clipfetch.YouTube,
 		URL: "https://youtube.com/watch?v=owned-id",
 	}
-	firstStore, err := store.Open(t.Context(), dsn, true)
+	firstStore, err := fillerstore.Open(t.Context(), dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ fi
 	if err := firstStore.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := store.Open(t.Context(), dsn, true)
+	reopened, err := fillerstore.Open(t.Context(), dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ if test -f "$watch/.fail-provider-archive-once"; then
 fi
 `)
 	source := clipfetch.Source{ID: "youtube:missing-sidecar", AcquisitionID: "acq-missing-sidecar", Kind: clipfetch.YouTube, URL: "https://youtube.com/watch?v=owned-id"}
-	firstStore, err := store.Open(t.Context(), dsn, true)
+	firstStore, err := fillerstore.Open(t.Context(), dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ fi
 		t.Fatal(err)
 	}
 
-	reopened, err := store.Open(t.Context(), dsn, true)
+	reopened, err := fillerstore.Open(t.Context(), dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ fi
 	}
 }
 
-func seedArchiveRecoveryRun(t *testing.T, db store.Store, source clipfetch.Source) {
+func seedArchiveRecoveryRun(t *testing.T, db fillerstore.Store, source clipfetch.Source) {
 	t.Helper()
 	if err := db.UpsertAcquisitionRun(t.Context(), filler.AcquisitionRun{
 		ID: source.AcquisitionID, SourceID: source.ID, Trigger: filler.AcquisitionPull,

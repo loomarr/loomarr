@@ -9,7 +9,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 func TestIngestPull_RequiresApprovalCommit(t *testing.T) {
@@ -48,7 +48,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			dsn := "sqlite://" + filepath.Join(t.TempDir(), "pull.db")
-			st, err := store.Open(t.Context(), dsn, true)
+			st, err := fillerstore.Open(t.Context(), dsn, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -98,7 +98,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 			if err := st.Close(); err != nil {
 				t.Fatal(err)
 			}
-			st, err = store.Open(t.Context(), dsn, true)
+			st, err = fillerstore.Open(t.Context(), dsn, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,7 +106,7 @@ func TestIngestPull_PostCommitInterruption(t *testing.T) {
 				t.Fatal(err)
 			}
 			a.acquisitions = st
-			if _, err := a.IngestPull(t.Context(), p.ID, targets, commit); !errors.Is(err, store.ErrPullNotPending) {
+			if _, err := a.IngestPull(t.Context(), p.ID, targets, commit); !errors.Is(err, fillerstore.ErrPullNotPending) {
 				t.Fatalf("retry after reopening = %v, want conflict before launch", err)
 			}
 			decision, err := st.GetPull(t.Context(), p.ID)

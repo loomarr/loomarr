@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"errors"
@@ -129,7 +129,7 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 			old.ID, old.Status = id, filler.AcquisitionError
 			// Imported historical snapshots are seeded directly; the live writer
 			// now requires an approval commit before creating a bound run.
-			impl := s.(*sqlStore)
+			impl := s.(extended).sqlStore
 			if _, err := impl.db.ExecContext(t.Context(), impl.ph(acquisitionRunInsert), acquisitionRunArgs(old)...); err != nil {
 				t.Fatal(err)
 			}
@@ -163,7 +163,7 @@ func testFillerPullCommit(t *testing.T, newStore NewStoreFunc) {
 		if err := s.UpsertAcquisitionRun(t.Context(), prior); err != nil {
 			t.Fatal(err)
 		}
-		impl := s.(*sqlStore)
+		impl := s.(extended).sqlStore
 		if _, err := impl.db.ExecContext(t.Context(), impl.ph(`INSERT INTO filler_pull_commits (pull_id, acquisition_id) VALUES (?, ?)`), p.ID, prior.ID); err != nil {
 			t.Fatal(err)
 		}

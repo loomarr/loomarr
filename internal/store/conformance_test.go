@@ -178,12 +178,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		})
 	})
 
-	// The rest of the filler suite runs in internal/fillerstore against the extended store, the
-	// value the app holds. These two stay while the methods they cover live here (#1747).
-	t.Run("Filler", func(t *testing.T) {
-		t.Run("FillerPullCommit", func(t *testing.T) { testFillerPullCommit(t, newStore) })
-		t.Run("FillerAcquisitionRepairSummary", func(t *testing.T) { testFillerAcquisitionRepairSummary(t, newStore) })
-	})
+	// The filler suite runs in internal/fillerstore against the extended store, the value the app
+	// holds (#1747).
 
 	t.Run("Ops", func(t *testing.T) {
 		t.Run("DiscoveryQualityLedger", func(t *testing.T) { testDiscoveryQualityLedger(t, newStore) })

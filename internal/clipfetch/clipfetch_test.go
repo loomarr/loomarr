@@ -12,8 +12,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/clipfetch"
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
-	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/recordfixture"
 )
@@ -384,7 +384,7 @@ printf '{"id":"current-id","title":"download"}\n' > "$stage/download.info.json"
 printf 'youtube current-id\n' > "$archive"
 printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 `)
-	closed, err := store.Open(t.Context(), dsn, true)
+	closed, err := fillerstore.Open(t.Context(), dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +406,7 @@ printf 'current-id\t"%s"\n' "$stage/download.mp4" >> "$result"
 		t.Fatalf("failed manifest advanced shared archive: %v", err)
 	}
 
-	reopened, err := store.Open(t.Context(), dsn, true)
+	reopened, err := fillerstore.Open(t.Context(), dsn, true)
 	if err != nil {
 		t.Fatal(err)
 	}
