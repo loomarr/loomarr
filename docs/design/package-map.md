@@ -223,7 +223,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 - **`catalog`** · 7 importers · → `library`, `provision`
   Catalog boundary (design §7.2, §8): federated search over the library + TMDB + the clip catalog, returning grounded Candidates with real external ids and an in_library flag.
 - **`fillerstore`** · 3 importers · → `filler`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `store`
-  Persists the filler pipeline's own state: the remote source registry, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
+  Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`scheduler`** · 6 importers · → `store`
   Runs Loomarr's recurring background work as named, tunable, on-demand JOBS (design §18.1) — the model Sonarr/Radarr/Overseerr expose as System → Tasks.
 - **`settings`** · 1 importer · → `config`, `library`

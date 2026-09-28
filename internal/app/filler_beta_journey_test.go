@@ -221,7 +221,7 @@ printf 'retro-toy\t"%s"\n' "$stage/retro-toy.mp4" >> "$result"
 	}
 }
 
-func waitForAcquisition(t *testing.T, st store.Store, id string, at time.Time, want filler.AcquisitionStatus) {
+func waitForAcquisition(t *testing.T, st fillerstore.Store, id string, at time.Time, want filler.AcquisitionStatus) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for {

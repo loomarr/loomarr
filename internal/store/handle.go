@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	"github.com/loomarr/loomarr/internal/filler"
 )
 
 // Querier runs statements, on the pool or inside one transaction. *sql.DB and *sql.Tx both
@@ -95,3 +97,11 @@ func EpochNano(t time.Time) int64 { return fillerDecisionEpoch(t) }
 
 // FromEpochNano decodes EpochNano.
 func FromEpochNano(n int64) time.Time { return fromFillerDecisionEpoch(n) }
+
+// ClipPipelineSelect and ScanClipPipeline read filler_clip_pipeline rows for the acquisition
+// history, which attributes each run's clips by their pipeline rows. The pipeline stays here while
+// clip writes and pipeline writes share core transactions; both go when it moves (#1747).
+const ClipPipelineSelect = clipPipelineSelect
+
+// ScanClipPipeline reads one row selected by ClipPipelineSelect.
+func ScanClipPipeline(sc Scannable) (filler.ClipPipeline, error) { return scanClipPipeline(sc) }

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/fillerstore"
 )
 
 // A manifest binds the bytes Loomarr published into the watch folder. Replacing those bytes
@@ -39,7 +39,7 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	st, err := store.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := fillerstore.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing
 	}
 	t.Cleanup(func() { _ = os.Chmod(failedDestinationDir, 0o755) })
 
-	st, err := store.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := fillerstore.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestSync_ClaimedArrivalSurvivesSparseHashCollisionAtDestination(t *testing.
 		t.Fatalf("fixture does not isolate sparse/full identity: sparse %q/%q full %q/%q", clipHash, collidingHash, digest, collidingDigest)
 	}
 
-	st, err := store.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
+	st, err := fillerstore.Open(t.Context(), "sqlite://"+filepath.Join(t.TempDir(), "loomarr.db"), true)
 	if err != nil {
 		t.Fatal(err)
 	}

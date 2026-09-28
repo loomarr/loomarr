@@ -1,4 +1,4 @@
-package store
+package fillerstore
 
 import (
 	"context"
@@ -19,7 +19,7 @@ func (s *sqlStore) CommitPullApproval(ctx context.Context, p filler.Pull, run fi
 	if err != nil {
 		return fmt.Errorf("encode pull decision: %w", err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin pull decision: %w", err)
 	}

@@ -42,9 +42,6 @@ var ErrConditioningPublicationMismatch = filler.ErrConditioningOwnershipMismatch
 // never retry the same write blindly.
 var ErrTaxonConflict = errors.New("store: taxonomy conflict")
 
-// ErrPullNotPending reports a losing pull decision or a pending pull with prior acquisition work.
-var ErrPullNotPending = errors.New("store: pull already decided or acquired")
-
 // ErrProposalNotSubmitted reports a terminal proposal decision that lost the
 // submitted -> approved/denied compare-and-swap. It is distinct from ErrNotFound:
 // the proposal exists, but another decision already won.
@@ -567,55 +564,6 @@ type SplitProposalStore interface {
 	ClearClipVisionTags(ctx context.Context, path string, at time.Time) error
 }
 
-// FillerPullStore is the filler approval gate (§10 V35).
-//
-// Separate from FillerSourceStore on purpose: a pull is an APPROVAL object that happens to
-// reference sources, and folding it in would make "the thing that lists where clips come from"
-// also the thing that records what a human agreed to download.
-//
-// ⚠ There is no Delete. A decided pull is KEPT — the queue's History answers "what did we agree
-// to download, and when, and who said so", which a delete erases. Same reason §7 keeps deny
-// reasons on title proposals.
-type FillerPullStore interface {
-	GetPull(ctx context.Context, id string) (filler.Pull, error)
-	// ListPulls returns pulls with the given status, newest first; an empty status means all.
-	ListPulls(ctx context.Context, status filler.PullStatus) ([]filler.Pull, error)
-	UpsertPull(ctx context.Context, p filler.Pull) error
-	// CommitPullApproval atomically saves the pending decision and its one queued run.
-	// Existing historical runs and losing decisions return ErrPullNotPending.
-	CommitPullApproval(ctx context.Context, p filler.Pull, run filler.AcquisitionRun) error
-	// DismissPull compares-and-sets pending without overwriting a concurrent approval.
-	DismissPull(ctx context.Context, p filler.Pull) error
-}
-
-// FillerAcquisitionStore is the reconnect truth for filler downloads and their resulting clip
-// lifecycle. It is separate from sources and pulls because one run is an execution record, not a
-// source definition or approval decision.
-type FillerAcquisitionStore interface {
-	// UpsertAcquisitionRun creates unbound runs and updates existing snapshots.
-	// Pull-bound creation belongs to CommitPullApproval; execution ownership is immutable.
-	UpsertAcquisitionRun(ctx context.Context, run filler.AcquisitionRun) error
-	// UpsertAcquisitionArtifacts atomically records the exact downloaded-byte manifest before
-	// publication makes any artifact eligible for intake.
-	UpsertAcquisitionArtifacts(ctx context.Context, artifacts []filler.AcquisitionArtifact) error
-	// AcquisitionArtifactForClip resolves provenance and recovery state for a discovered clip.
-	AcquisitionArtifactForClip(ctx context.Context, mediaPath, clipHash string) (filler.AcquisitionArtifact, bool, error)
-	// ListRecoverableAcquisitionArtifacts exposes bounded staged/published/repair work.
-	ListRecoverableAcquisitionArtifacts(ctx context.Context, limit int) ([]filler.AcquisitionArtifact, error)
-	// ListRecoverableAcquisitionArtifactsAfter continues a stable bounded recovery scan.
-	ListRecoverableAcquisitionArtifactsAfter(ctx context.Context, after filler.AcquisitionArtifactCursor, limit int) ([]filler.AcquisitionArtifact, error)
-	// ListAcquisitionRemoteStates is the acquisition planner's exact-item high-water mark.
-	ListAcquisitionRemoteStates(ctx context.Context) (map[string]filler.ExistingRemoteState, error)
-	// RecoverInterruptedAcquisitionRuns marks work orphaned by the previous process as failed.
-	// The beta is single-replica; startup is therefore the exact ownership boundary.
-	RecoverInterruptedAcquisitionRuns(ctx context.Context, at time.Time) (int, error)
-	GetAcquisitionRun(ctx context.Context, id string, at time.Time) (filler.AcquisitionRun, error)
-	ListAcquisitionRuns(ctx context.Context, limit int, at time.Time) ([]filler.AcquisitionRun, error)
-	// AcquisitionRepairSummary reports all currently unresolved artifact repairs without loading
-	// the bounded acquisition history page.
-	AcquisitionRepairSummary(ctx context.Context) (filler.AcquisitionRepairSummary, error)
-}
-
 // InteractiveOperationStore is the reconnect truth for request-launched asynchronous work. It
 // stores snapshots only; recurring/distributed scheduling remains owned by ScheduledJobStore.
 type InteractiveOperationStore interface {
@@ -872,8 +820,6 @@ type Store interface {
 	ClipStore
 	FillerEnrichmentStore
 	FillerResearchStore
-	FillerPullStore
-	FillerAcquisitionStore
 	InteractiveOperationStore
 	FillerDecisionStore
 	SplitProposalStore
