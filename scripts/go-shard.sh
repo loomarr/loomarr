@@ -5,7 +5,7 @@
 #   ./scripts/go-shard.sh          -> "./..."   (the whole tree — the default, always)
 #   ./scripts/go-shard.sh 2/2      -> the 2nd ordinary measured-weight slice
 #   ./scripts/go-shard.sh --certification 2/2
-#                                  -> the second reviewed media-certification lane
+#                                  -> the second reviewed serial lane (scripts/go-certification-lanes.tsv)
 #   ./scripts/go-shard.sh --plan 2 -> print each ordinary shard's modeled package-seconds
 #   ./scripts/go-shard.sh --worker-plan 2
 #                                  -> print each shard's bounded four-worker makespan
@@ -20,9 +20,11 @@
 # `go list` order after modeling LPT left expensive packages waiting behind cheap compilations and
 # made the modeled worker bound fictional. This replaces alphabetical placement, which drifted from
 # a balanced 2026-09-01 sample to 1430/657/583 package-seconds in merge-group run 35472062915.
-# Latency-sensitive media packages live in two reviewed serial lanes; the remaining weighted
-# packages are balanced across two ordinary lanes. Separate runners let the two certification
-# groups overlap without allowing package concurrency inside either group.
+# Packages that must not share a runner live in two reviewed serial lanes, still identified as
+# `certification`: latency-sensitive media packages, and CPU-heavy packages whose own parallel tests
+# need every core (internal/store, #1570). The remaining weighted packages are balanced across two
+# ordinary lanes. Separate runners let the two serial groups overlap without allowing package
+# concurrency inside either group.
 #
 # ⚠ THE --verify MODE IS NOT OPTIONAL DECORATION. A sharding bug that DROPS a package does not
 # fail anything: the dropped tests simply never run and every shard stays green, which is the

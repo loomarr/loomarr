@@ -597,7 +597,7 @@ failing native result.
 
 Go tests, frontend and Playwright split across runners for wall-clock only. Repository-wide Go
 contracts run once in `go-contracts` and Rust contracts once in `rust-contracts`, in parallel with
-two ordinary Go test lanes, two serial media-certification lanes, and the independent release-worker
+two ordinary Go test lanes, two serial lanes for packages that must not share a runner, and the independent release-worker
 certification. Their union is the same
 assurance as `make verify SCOPE=all` plus the existing CI-only certification. The `ci-ok` aggregate
 requires every job, so moving a contract out of the test lanes cannot make it optional.
@@ -688,7 +688,18 @@ workers in that step (1,876s). Its bounded-worker makespan, and each serial cert
 must fit the step itself. A per-package cap bounds any single package. `internal/store` alone
 exceeds a whole lane's test step. It is not exempt: the cap is temporarily its measured time plus
 10% (567s, #1570), and only a lane holding such a package is judged against the cap instead of
-469s. Splitting store's tests is the next lever; the cap then returns to the lane budget.
+469s.
+
+#1631 made the 21 heaviest `internal/store` tests (88% of its time) run in parallel. Pinned to four
+cores locally, that cut the package from 146.9s to 110.1s, but merge-group run 36359955148 measured
+it at 542s in ordinary lane 1/2: beside three other `-p=4` packages on a four-vCPU runner, its
+parallel tests only competed for the same cores. So `internal/store` now runs alone in the second
+serial lane, where one package at a time owns the runner, and the playout/capacity set shares the
+first. The serial lanes keep their `certification-1/2` and `certification-2/2` identities (the
+workflow matrix, cache keys and release-verifier pins name them), but they now hold two kinds of
+package: media certification that must not compete for a worker while asserting latency, and
+CPU-heavy packages whose own parallelism needs a runner to themselves. The cap returns to the lane
+budget once hosted runs measure store in its own lane.
 
 `make go-shard-verify SHARDS=2` rejects missing or duplicated packages, a package above the
 per-package cap, an ordinary aggregate or a bounded-worker or serial-certification makespan above

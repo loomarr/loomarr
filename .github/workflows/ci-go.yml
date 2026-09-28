@@ -22,7 +22,9 @@ jobs:
     # repeating Rust, lint, vet, harness, cross-compilation, and release checks in every lane spent
     # runner time and inflated each lane's cache without adding assurance.
     #
-    # TWO measured-weight ordinary lanes plus two serial media-certification lanes. Merge-group run
+    # TWO measured-weight ordinary lanes plus two serial `certification` lanes, which hold the media
+    # certification packages and CPU-heavy packages that need a runner to themselves (scripts/
+    # go-certification-lanes.tsv). Merge-group run
     # 35472062915 showed the former three-way alphabetical split at 1430/657/583 package-seconds and
     # a 31m10s critical path. The weights in scripts/go-race-weights.tsv are measured seconds
     # regenerated from hosted runs (`make go-race-weights`); longest-processing-time assignment
@@ -135,7 +137,7 @@ jobs:
           ffmpeg -version
           ffprobe -version
       - run: make test GO_TEST_LANE=${{ matrix.lane }}
-        # The lane runner pins ordinary packages to -p=4 and both reviewed media-certification
+        # The lane runner pins ordinary packages to -p=4 and both reviewed serial `certification`
         # lanes to -p=1. It rejects caller-controlled GOFLAGS and retains race coverage.
       # ⚠ SAVE ONLY ON main, which is why this is cache/save rather than the round-trip
       # `actions/cache`. A PR's cache is scoped to `refs/pull/N/merge` and can never be
