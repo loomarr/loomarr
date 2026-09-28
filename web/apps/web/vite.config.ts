@@ -104,6 +104,10 @@ export default defineConfig({
     alias: {
       "hls.js": fileURLToPath(new URL("./src/test/hls.mock.ts", import.meta.url)),
     },
+    // The Guide renders ui/guide, whose design-system icons come from lucide-react-native. Left
+    // external, Node requires its `react-native` directly and meets the Flow source; inlined, the
+    // react-native-web alias above applies, as in vitest.universal.config.ts.
+    server: { deps: { inline: ["lucide-react-native"] } },
     css: false,
     // jsdom units only — Playwright visual specs (tests/visual/*.spec.ts) run under
     // Playwright, not vitest, and Storybook stories are exercised by the visual suite.

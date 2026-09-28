@@ -9,6 +9,7 @@ import {
   getMeMockHandler,
   getSettingsListMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen } from "@testing-library/react";
@@ -76,8 +77,8 @@ const GUIDE = {
       airings: [
         {
           kind: "program" as const,
-          scheduleBlockId: "block_matrix",
-          title: "The Matrix",
+          scheduleBlockId: "block_western",
+          title: "Space Western",
           startMs: NOW,
           stopMs: NOW + 7_200_000,
           runtimeMs: 7_200_000,
@@ -145,10 +146,13 @@ const renderAt = (path: string) => {
   // Returns the render RESULT so a test can scope its queries to its own tree. `screen`
   // searches the shared document.body, and a query that reaches a neighbouring test's markup
   // clicks a detached button, which silently does nothing.
+  // LoomarrProvider as main.tsx mounts it: the grid and the programme card are design-system views.
   return render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </LoomarrProvider>,
   );
 };
 
@@ -159,8 +163,33 @@ describe("Guide", () => {
     // The heading is "Channels", not "Guide": one surface, and the mock names it for the
     // objects it lists rather than the view it uses (§12).
     expect(await screen.findByRole("heading", { name: "Channels", level: 1 })).toBeInTheDocument();
-    expect(await screen.findByText("Saturday Cartoons")).toBeInTheDocument();
-    expect(await screen.findByText(/The Matrix/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Space Western,/ })).toBeInTheDocument();
+  });
+
+  // The span picker replaced zoom (#1659): the grid always fits its width, so seeing more or less
+  // time means asking the server for a longer or shorter window.
+  it("changes how much time the guide shows with the span picker, not zoom", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const spans: number[] = [];
+    server.use(
+      getChannelGuideMockHandler(({ request }) => {
+        const params = new URL(request.url).searchParams;
+        spans.push(Number(params.get("to")) - Number(params.get("from")));
+        return GUIDE;
+      }),
+    );
+    const view = renderAt("/guide");
+    expect(await view.findByRole("button", { name: /actions for saturday cartoons/i })).toBeInTheDocument();
+
+    expect(view.getByRole("button", { name: "Show 4 hours" })).toHaveAttribute("aria-pressed", "true");
+    expect(view.queryByRole("button", { name: /zoom/i })).not.toBeInTheDocument();
+
+    await user.click(view.getByRole("button", { name: "Show 2 hours" }));
+    expect(view.getByRole("button", { name: "Show 2 hours" })).toHaveAttribute("aria-pressed", "true");
+    expect(view.getByRole("button", { name: "Show 4 hours" })).toHaveAttribute("aria-pressed", "false");
+    await vi.waitFor(() => expect(spans).toContain(2 * 3_600_000));
   });
 
   // #1396: every window change is a new react-query key. Without placeholder data the grid went
@@ -253,14 +282,13 @@ describe("Guide", () => {
 
     // Planning controls do not compete with the everyday toolbar until asked for.
     expect(view.queryByLabelText("Start hour")).not.toBeInTheDocument();
-    expect(view.queryByRole("button", { name: "Zoom in" })).not.toBeInTheDocument();
 
     const viewTrigger = view.getByRole("button", { name: "View options" });
     expect(viewTrigger).toHaveAttribute("aria-expanded", "false");
     await user.click(viewTrigger);
 
-    expect(view.getByLabelText("Start hour")).toBeInTheDocument();
-    await user.click(view.getByRole("button", { name: "Zoom in" }));
+    await user.click(view.getByLabelText("Start hour"));
+    await user.click(await screen.findByRole("option", { name: "9 PM" }));
     expect(viewTrigger).toHaveAccessibleName("View options, custom");
 
     // Closing the row keeps its non-default state legible on the trigger.
@@ -272,14 +300,74 @@ describe("Guide", () => {
     );
   });
 
-  it("keeps the floating airing detail from blocking nearby guide rows", async () => {
+  // The programme card beside the grid replaced the floating hover card: it shows the block under
+  // the pointer, else the keyboard's block, which starts on what the first channel airs now.
+  it("shows the programme airing now beside the grid, and the hovered one while the pointer is on it", async () => {
     const user = userEvent.setup();
     stubGuide();
-    renderAt("/guide");
+    const now = Date.now();
+    const HALF_HOUR = 1_800_000;
+    server.use(
+      getChannelGuideMockHandler({
+        fromMs: now - 2 * HALF_HOUR,
+        toMs: now + 6 * HALF_HOUR,
+        channels: [
+          {
+            channelId: "ch-live",
+            name: "Saturday Cartoons",
+            number: 42,
+            status: "live",
+            pendingCount: 0,
+            airings: [
+              {
+                kind: "program",
+                scheduleBlockId: "block_on_now",
+                title: "Space Western",
+                startMs: now - HALF_HOUR,
+                stopMs: now + HALF_HOUR,
+                runtimeMs: 2 * HALF_HOUR,
+              },
+              {
+                kind: "program",
+                scheduleBlockId: "block_next",
+                title: "Harbour Mystery",
+                startMs: now + HALF_HOUR,
+                stopMs: now + 3 * HALF_HOUR,
+                runtimeMs: 2 * HALF_HOUR,
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const view = renderAt("/guide");
 
-    await user.hover(await screen.findByRole("button", { name: /The Matrix/ }));
-    expect(await screen.findByTestId("guide-detail-card")).toBeInTheDocument();
-    expect(screen.getByTestId("guide-detail-positioner")).toHaveClass("pointer-events-none");
+    // Blocks name themselves by label (jsdom lays out no width for their text), so a title shown
+    // as text is the card's.
+    expect(await view.findByText("On now")).toBeInTheDocument();
+    expect(view.getByText("Space Western")).toBeInTheDocument();
+    expect(view.queryByText("Harbour Mystery")).not.toBeInTheDocument();
+
+    const next = view.getByRole("button", { name: /^Harbour Mystery,/ });
+    await user.hover(next);
+    expect(await view.findByText("Scheduled")).toBeInTheDocument();
+    expect(view.getByText("Harbour Mystery")).toBeInTheDocument();
+    expect(view.queryByText("Space Western")).not.toBeInTheDocument();
+
+    await user.unhover(next);
+    expect(await view.findByText("On now")).toBeInTheDocument();
+    expect(view.getByText("Space Western")).toBeInTheDocument();
+  });
+
+  // Today's channel row menu fills the grid's ⋯ slot until the maintainer mocks its contents.
+  it("puts each channel's actions menu in its row's ⋯ slot", async () => {
+    const user = userEvent.setup();
+    stubGuide();
+    const view = renderAt("/guide");
+
+    await user.click(await view.findByRole("button", { name: /actions for saturday cartoons/i }));
+    expect(await screen.findByRole("menuitem", { name: /pause/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /delete/i })).toBeInTheDocument();
   });
 
   it("has no manual rebuild/refresh — edits are seamless (§9) — and each row opens its channel", async () => {
