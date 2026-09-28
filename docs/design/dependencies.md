@@ -73,6 +73,7 @@ replace local transcription and vision; those modalities stay operator choices.
 | Unused code | `knip` 6 (root devDependency, `web/knip.ts`) and Go `deadcode` (`go run`, never a `go.mod` dependency) | knip fails `make fe` on a new unused file, export or dependency; `deadcode` cannot see code reached only from build-tagged tests, so it reports monthly against a committed baseline (`deadcode.yml`) instead of gating. Neither ships in the product |
 | Web routing | TanStack Router | typed routes sharing the Query client |
 | Legacy web styling | Tailwind + shadcn/ui on Base UI + CVA | only on surfaces not yet migrated (#970); removed when migration completes |
+| Legacy usage ledger | `@babel/parser` (root devDependency; TypeScript 7 has no JS parser API) | `web/scripts/check-legacy-usage.mjs` counts the legacy stack per production file against `web/apps/web/legacy-usage.json`; `make fe` fails when a count rises or a new file appears, and `pnpm legacy:update` only shrinks it (#970). Never ships in the product |
 | Lineup reordering | `@dnd-kit` | accessible, keyboard-capable sortable list |
 | Guide rows | `@tanstack/react-virtual` | windows the guide's rows |
 | Image placeholders | `thumbhash` | decodes the placeholder the server stores, without a canvas |
