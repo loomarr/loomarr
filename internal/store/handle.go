@@ -40,6 +40,9 @@ type Handle interface {
 	Dialect() Dialect
 	// Rebind rewrites a query written with ? markers into the backend's placeholder style.
 	Rebind(query string) string
+	// Clips writes clip columns and tags inside tx, which Begin started. Extension stores write
+	// the clips table only through it.
+	Clips(tx Tx) ClipTx
 }
 
 // HandleOf lends st's database handle to an extension store, or returns nil for a non-SQL store.
@@ -80,6 +83,8 @@ func (h sqlHandle) Begin(ctx context.Context) (Tx, error) { return h.s.db.BeginT
 func (h sqlHandle) Dialect() Dialect { return h.s.dialect }
 
 func (h sqlHandle) Rebind(query string) string { return h.s.ph(query) }
+
+func (h sqlHandle) Clips(tx Tx) ClipTx { return h.s.clipsIn(tx) }
 
 // Scannable is the one method *sql.Row and *sql.Rows share, so one scan function reads either.
 type Scannable = scannable
