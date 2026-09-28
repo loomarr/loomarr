@@ -45,6 +45,8 @@ func TestVerifyReleaseWorkflow(t *testing.T) {
 		{name: "build job cannot sign", workflow: strings.Replace(good, "      - name: Upload digest", "      - name: Install cosign\n        uses: sigstore/cosign-installer@"+testSHA+"\n        with:\n          cosign-release: v2.6.5\n      - name: Upload digest", 1), wantErr: true},
 		{name: "publish job cannot build", workflow: strings.Replace(good, "      - name: Protect", "      - name: Build\n        id: bypass\n        uses: docker/build-push-action@"+testSHA+"\n        with:\n          context: .\n          target: runtime\n          platforms: linux/amd64\n          push: true\n          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true\n          build-args: |\n            VERSION=${{ github.ref_name }}\n            COMMIT=${{ github.sha }}\n          provenance: mode=max\n          sbom: true\n          cache-from: type=gha,scope=release-bypass\n          cache-to: type=gha,scope=release-bypass,mode=max\n      - name: Protect", 1), wantErr: true},
 		{name: "setup-qemu is rejected", workflow: strings.Replace(good, "      - uses: docker/setup-buildx-action@"+testSHA+"\n      - name: Login", "      - uses: docker/setup-qemu-action@"+testSHA+"\n      - uses: docker/setup-buildx-action@"+testSHA+"\n      - name: Login", 1), wantErr: true},
+		// #1679: a tag-scoped BuildKit export only ever became eviction pressure on the queue's caches.
+		{name: "release build cannot export a BuildKit cache", workflow: strings.Replace(good, "          sbom: true\n", "          sbom: true\n          cache-to: type=gha,scope=release-${{ matrix.arch }},mode=max\n", 1), wantErr: true},
 		{name: "merge step cannot be replaced", workflow: strings.Replace(good, "run: ./scripts/merge-release-digests.sh", "run: docker buildx imagetools create ghcr.io/example/other:latest", 1), wantErr: true},
 		{name: "a third job fails", workflow: strings.Replace(good, "        run: ./scripts/publish-release-image.sh\n", "        run: ./scripts/publish-release-image.sh\n  bypass:\n    runs-on: ubuntu-latest\n    steps:\n      - run: docker push ghcr.io/example/other:latest\n", 1), wantErr: true},
 	}
@@ -145,8 +147,6 @@ jobs:
             COMMIT=${{ github.sha }}
           provenance: mode=max
           sbom: true
-          cache-from: type=gha,scope=release-${{ matrix.arch }}
-          cache-to: type=gha,scope=release-${{ matrix.arch }},mode=max
       - name: Record digest
         shell: bash
         env:

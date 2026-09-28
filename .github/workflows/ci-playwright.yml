@@ -49,8 +49,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
-      - name: Cache pnpm store
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      - name: Restore pnpm store
+        id: pnpm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.local/share/pnpm/store
           key: pnpm-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
@@ -102,3 +103,10 @@ jobs:
           # Long enough to debug a PR over a weekend, short enough not to accumulate: these
           # are screenshots of a failing run, worthless once it is fixed.
           retention-days: 7
+      # ⚠ Never from the merge queue (#1679): a queue batch's unique ref makes the save unreadable.
+      - name: Save pnpm store (not from the merge queue)
+        if: github.event_name != 'merge_group' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ steps.pnpm-cache.outputs.cache-primary-key }}
