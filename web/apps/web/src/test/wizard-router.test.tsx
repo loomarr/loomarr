@@ -239,10 +239,11 @@ describe("first-run routing", () => {
     expect(await screen.findByText(/first-run setup/i)).toBeInTheDocument();
   });
 
-  it("goes straight to Channels once setup is completed", async () => {
+  // Home is the landing page once setup is done (#1659).
+  it("goes straight to Home once setup is completed", async () => {
     stubWizard({ authed: true, setupCompleted: true });
     renderAt("/");
-    expect(await screen.findByRole("heading", { name: "Channels" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Home", level: 1 })).toBeInTheDocument();
   });
 });
 

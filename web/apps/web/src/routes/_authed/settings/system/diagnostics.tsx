@@ -3,6 +3,7 @@ import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { DEFAULT_APPLICATION_FILTERS, DiagnosticsPage, type DiagnosticsSearch } from "@/diagnostics";
 import { PlayoutDiagnostics } from "@/diagnostics/playout-diagnostics";
+import { ServerStatus } from "@/diagnostics/server-status";
 
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
   typeof value === "string" && allowed.includes(value as T) ? (value as T) : fallback;
@@ -83,6 +84,7 @@ const DiagnosticsRoute = () => {
           void navigate({ to: "/settings/system/tasks" });
         }
       }}
+      health={<ServerStatus />}
       playout={
         <PlayoutDiagnostics
           filters={normalized}

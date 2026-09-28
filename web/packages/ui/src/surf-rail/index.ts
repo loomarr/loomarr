@@ -1,6 +1,7 @@
 export type { SurfGroupsArgs } from "./surf-data";
 export {
   restoreSurfSelection,
+  surfChannelData,
   surfGroupsFromGuide,
   surfPreviousChannel,
   watchingScheduleFromGuide,

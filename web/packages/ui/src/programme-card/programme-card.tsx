@@ -135,6 +135,7 @@ const OverlayCard = ({
   artwork,
   density,
   highlighted = false,
+  hoverHighlight = false,
   programme,
   viewer,
 }: ProgrammeCardProps & { density: Density }) => (
@@ -142,6 +143,7 @@ const OverlayCard = ({
     aspectRatio={16 / 9}
     backgroundColor="$surfaceElevated"
     borderColor={highlighted ? "$actionFocus" : "$borderDecorative"}
+    hoverStyle={hoverHighlight ? { borderColor: "$actionFocus" } : undefined}
     borderRadius="$cardCompact"
     overflow="hidden"
     position="relative"
