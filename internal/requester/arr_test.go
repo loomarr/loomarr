@@ -28,6 +28,9 @@ type arrStub struct {
 	queueTime   string         // queue record timeleft
 	profileName string         // name of the single quality profile (id 7)
 	lookupTerm  string         // the last lookup ?term= (proves tmdb/tvdb routing)
+	// seriesStats is GET /api/v3/series/{id}'s statistics by series id (Sonarr only); a
+	// missing id answers 404.
+	seriesStats map[int]map[string]any
 }
 
 func newArrStub(t *testing.T, kind string) *arrStub {
@@ -53,6 +56,17 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 			_, _ = w.Write([]byte(`{"id":42}`))
 		}
 	})
+	if kind == "series" {
+		mux.HandleFunc("/api/v3/series/", func(w http.ResponseWriter, r *http.Request) {
+			id, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/api/v3/series/"))
+			stats, ok := s.seriesStats[id]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "statistics": stats})
+		})
+	}
 	mux.HandleFunc("/api/v3/queue", func(w http.ResponseWriter, r *http.Request) {
 		field := "movieId"
 		if kind == "series" {

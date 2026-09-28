@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -116,7 +117,7 @@ func (s *Server) createLocalUser(ctx context.Context, in *createLocalUserInput) 
 	case err != nil:
 		return nil, err
 	}
-	return &createLocalUserOutput{Body: toUserBody(u)}, nil
+	return &createLocalUserOutput{Body: toUserBody(u, time.Time{})}, nil // new: never seen
 }
 
 type resetPasswordInput struct {

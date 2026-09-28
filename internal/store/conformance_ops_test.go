@@ -317,6 +317,58 @@ func testSettings(t *testing.T, newStore NewStoreFunc) {
 // eventual, and disabling a user kills every session at once. None of this had store
 // conformance coverage before — it is the one area where a dialect difference would be
 // a security bug rather than a correctness bug, so it belongs in the shared suite.
+// testLastSeen (#1667): a session remembers when it was last used and from what client, and a
+// person's last-seen follows both their browser sessions and their paired TV (a paired TV acts
+// as the person who paired it).
+func testLastSeen(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	t0 := time.Unix(1_800_000_000, 0).UTC()
+	for _, id := range []string{"u-seen", "u-never"} {
+		if err := s.UpsertUser(ctx, User{ID: id, Name: id, Role: RoleMember}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.CreateSession(ctx, Session{TokenHash: "h1", UserID: "u-seen", CreatedAt: t0, ExpiresAt: t0.Add(24 * time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "d1", UserID: "u-seen", DeviceName: "Lounge TV", CreatedAt: t0}); err != nil {
+		t.Fatal(err)
+	}
+	touch := func(at time.Time, label string) {
+		t.Helper()
+		if err := s.TouchSession(ctx, "h1", SessionSeen{At: at, ExpiresAt: at.Add(24 * time.Hour), ClientLabel: label}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	touch(t0.Add(time.Hour), "Firefox on macOS")
+	touch(t0.Add(2*time.Hour), "") // a request without a recognisable client keeps the label
+	sessions, err := s.ListSessionsForUser(ctx, "u-seen", t0.Add(2*time.Hour))
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions = %+v (err %v), want one", sessions, err)
+	}
+	if got := sessions[0]; !got.LastSeenAt.Equal(t0.Add(2*time.Hour)) || got.ClientLabel != "Firefox on macOS" {
+		t.Errorf("session seen %v from %q, want %v from Firefox on macOS", got.LastSeenAt, got.ClientLabel, t0.Add(2*time.Hour))
+	}
+	lastSeen := func() string {
+		t.Helper()
+		seen, err := s.UserLastSeen(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fmt.Sprint(seen)
+	}
+	if got, want := lastSeen(), fmt.Sprint(map[string]time.Time{"u-seen": t0.Add(2 * time.Hour)}); got != want {
+		t.Errorf("after browser use: last seen %s, want %s (never-seen users absent)", got, want)
+	}
+	if err := s.TouchDeviceToken(ctx, "d1", t0.Add(3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := lastSeen(), fmt.Sprint(map[string]time.Time{"u-seen": t0.Add(3 * time.Hour)}); got != want {
+		t.Errorf("after TV use: last seen %s, want %s", got, want)
+	}
+}
+
 func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

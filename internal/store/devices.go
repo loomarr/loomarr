@@ -146,10 +146,14 @@ func (s *sqlStore) GetDeviceToken(ctx context.Context, tokenHash string) (Device
 
 // TouchDeviceToken records that a device was seen, so the revocation UI can show what is actually in
 // use. Best-effort by design: a failure here must never fail the request that carried the token.
+//
+// A paired TV acts as the person who paired it, so its use is that person's last-seen too (#1667).
 func (s *sqlStore) TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE device_tokens SET last_seen_at = ? WHERE token_hash = ?`), epoch(at), tokenHash)
-	return err
+	if _, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE device_tokens SET last_seen_at = ? WHERE token_hash = ?`), epoch(at), tokenHash); err != nil {
+		return err
+	}
+	return s.bumpUserLastSeen(ctx, `SELECT user_id FROM device_tokens WHERE token_hash = ?`, tokenHash, at)
 }
 
 // ListDeviceTokensForUser returns a user's paired devices, newest first — the revocation UI's read.

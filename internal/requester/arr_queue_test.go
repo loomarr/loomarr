@@ -79,3 +79,45 @@ func TestArr_QueueStatus_SurfacesWarning(t *testing.T) {
 		t.Errorf("stalled download should be grabbed with warning status + 0 progress: %+v", items[0])
 	}
 }
+
+// A downloading series reports "8 of 36 episodes" (Home's On the way, #1667) from Sonarr's own
+// series statistics: files on disk of the episodes it wants (monitored and aired). The bytes
+// progress is one release's; the counts are the series'.
+func TestArr_QueueStatus_SeriesEpisodeCounts(t *testing.T) {
+	stub := newArrStub(t, "series")
+	stub.lookupID, stub.queueForID, stub.queueRecID = 42, 42, 5
+	stub.queueSize, stub.queueLeft = 100, 50
+	stub.seriesStats = map[int]map[string]any{
+		42: {"episodeFileCount": 8, "episodeCount": 36, "totalEpisodeCount": 40},
+	}
+	a := arrFor("series", stub.server.URL, "", "")
+
+	items, err := a.QueueStatus(context.Background(), []provision.Title{
+		{MediaType: provision.Series, TVDBID: 90001, Name: "A sitcom"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := items[0]; !got.Grabbed || got.EpisodesHave != 8 || got.EpisodesWanted != 36 {
+		t.Errorf("series item = %+v, want grabbed with 8 of 36 episodes", got)
+	}
+}
+
+// Counts decorate the progress, so a statistics read that fails leaves them out and keeps the
+// progress: the poll must not lose a download's percentage over a missing count.
+func TestArr_QueueStatus_SeriesCountsMissingKeepProgress(t *testing.T) {
+	stub := newArrStub(t, "series")
+	stub.lookupID, stub.queueForID, stub.queueRecID = 42, 42, 5
+	stub.queueSize, stub.queueLeft = 100, 50 // no seriesStats → the series read 404s
+	a := arrFor("series", stub.server.URL, "", "")
+
+	items, err := a.QueueStatus(context.Background(), []provision.Title{
+		{MediaType: provision.Series, TVDBID: 90001, Name: "A sitcom"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := items[0]; !got.Grabbed || got.Progress != 0.5 || got.EpisodesHave != 0 || got.EpisodesWanted != 0 {
+		t.Errorf("series item = %+v, want grabbed at 0.5 with no counts", got)
+	}
+}

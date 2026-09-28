@@ -120,7 +120,7 @@ type TitleStore interface {
 	UpsertTitle(ctx context.Context, rec provision.Record) error
 	// UpdateTitleProgress writes only the poll-updated download fields (§18.1 arr-queue-poll),
 	// leaving state-machine columns untouched so it never races the state Upsert.
-	UpdateTitleProgress(ctx context.Context, key provision.Key, progress float64, eta, status string) error
+	UpdateTitleProgress(ctx context.Context, key provision.Key, p TitleProgress) error
 	ListTitlesByState(ctx context.Context, state provision.State) ([]provision.Record, error)
 	// ListTitlesAvailableSince lists titles that arrived at or after since, newest first (#1663).
 	ListTitlesAvailableSince(ctx context.Context, since time.Time) ([]provision.Record, error)
@@ -320,7 +320,9 @@ type UserStore interface {
 	CreateSession(ctx context.Context, sess Session) error
 	GetSession(ctx context.Context, tokenHash string, now time.Time) (Session, error)
 	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]Session, error)
-	TouchSession(ctx context.Context, tokenHash string, expiresAt time.Time) error
+	TouchSession(ctx context.Context, tokenHash string, seen SessionSeen) error
+	// UserLastSeen maps each person seen (browser session or paired TV) to when (#1667).
+	UserLastSeen(ctx context.Context) (map[string]time.Time, error)
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)

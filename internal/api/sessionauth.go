@@ -68,7 +68,7 @@ func (a *sessionAuthorizer) AuthorizeIdentity(r *http.Request) requestIdentity {
 func (a *sessionAuthorizer) authorizeIdentity(r *http.Request) requestIdentity {
 	// Session cookie (the normal human path).
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
-		if u, err := a.mgr.Resolve(r.Context(), c.Value); err == nil {
+		if u, err := a.mgr.Resolve(r.Context(), c.Value, clientLabel(r.UserAgent())); err == nil {
 			user := u
 			return requestIdentity{role: roleOf(u), user: &user}
 		}

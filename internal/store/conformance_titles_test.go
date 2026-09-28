@@ -99,26 +99,38 @@ func testUpdateTitleProgress(t *testing.T, newStore NewStoreFunc) {
 	if err := s.UpsertTitle(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateTitleProgress(ctx, rec.Key, 0.42, "00:14:32", "downloading"); err != nil {
+	if err := s.UpdateTitleProgress(ctx, rec.Key, TitleProgress{
+		Progress: 0.42, ETAText: "00:14:32", Status: "downloading", EpisodesHave: 8, EpisodesWanted: 36,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.GetTitle(ctx, rec.Key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Progress != 0.42 || got.ETAText != "00:14:32" || got.DownloadStatus != "downloading" {
+	if got.Progress != 0.42 || got.ETAText != "00:14:32" || got.DownloadStatus != "downloading" ||
+		got.EpisodesHave != 8 || got.EpisodesWanted != 36 {
 		t.Errorf("progress not persisted: got %+v", got)
+	}
+	// Every titles read carries the counts, not only GetTitle: Home's On the way lists by state.
+	byState, err := s.ListTitlesByState(ctx, provision.Downloading)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byState) != 1 || byState[0].EpisodesHave != 8 || byState[0].EpisodesWanted != 36 {
+		t.Errorf("ListTitlesByState lost the episode counts: %+v", byState)
 	}
 	// State-machine fields survive the targeted write.
 	if got.State != provision.Downloading || !got.Deadline.Equal(rec.Deadline) {
 		t.Errorf("progress write clobbered state/deadline: got state=%s dl=%v", got.State, got.Deadline)
 	}
 	// Updating with zeros clears it (e.g. an import completed) without touching state.
-	if err := s.UpdateTitleProgress(ctx, rec.Key, 0, "", ""); err != nil {
+	if err := s.UpdateTitleProgress(ctx, rec.Key, TitleProgress{}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = s.GetTitle(ctx, rec.Key)
-	if got.Progress != 0 || got.ETAText != "" || got.State != provision.Downloading {
+	if got.Progress != 0 || got.ETAText != "" || got.EpisodesHave != 0 || got.EpisodesWanted != 0 ||
+		got.State != provision.Downloading {
 		t.Errorf("progress reset failed or clobbered state: got %+v", got)
 	}
 }

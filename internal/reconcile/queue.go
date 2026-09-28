@@ -82,7 +82,10 @@ func (p *QueuePoll) Poll(ctx context.Context) (int, error) {
 			p.persist(ctx, next, emitted)
 		}
 		// Persist progress via the targeted write (never clobbers state-machine columns).
-		if err := p.store.UpdateTitleProgress(ctx, it.Key, it.Progress, it.ETAText, it.Status); err != nil {
+		if err := p.store.UpdateTitleProgress(ctx, it.Key, store.TitleProgress{
+			Progress: it.Progress, ETAText: it.ETAText, Status: it.Status,
+			EpisodesHave: it.EpisodesHave, EpisodesWanted: it.EpisodesWanted,
+		}); err != nil {
 			p.log.Error("queue-poll: progress", "key", it.Key, "err", err)
 		}
 	}

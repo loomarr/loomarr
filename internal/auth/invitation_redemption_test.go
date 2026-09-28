@@ -57,7 +57,7 @@ func TestInvitationRedemption_LocalCreatesArgon2idUserAndSession(t *testing.T) {
 	if expires != at.Add(time.Minute).Add(time.Hour) {
 		t.Fatalf("session expiry = %v", expires)
 	}
-	resolved, err := mgr.Resolve(ctx, token)
+	resolved, err := mgr.Resolve(ctx, token, "")
 	if err != nil || resolved.ID != user.ID {
 		t.Fatalf("session resolve = %+v, %v", resolved, err)
 	}
@@ -154,7 +154,7 @@ func TestInvitationRedemption_LibraryProvesPinnedIdentityAndStoresOfflineVerifie
 		!user.MediaServerLinked || !verifyPassword(user.PasswordHash, "provider-password") {
 		t.Fatalf("redeemed user = %+v", user)
 	}
-	resolved, err := mgr.Resolve(ctx, token)
+	resolved, err := mgr.Resolve(ctx, token, "")
 	if err != nil || resolved.ID != invited.LibraryUserID {
 		t.Fatalf("session resolve = %+v, %v", resolved, err)
 	}

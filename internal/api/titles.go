@@ -96,6 +96,9 @@ type TitleDTO struct {
 	Progress       float64 `json:"progress,omitempty" doc:"Download completion 0..1 (arr queue poll)"`
 	ETAText        string  `json:"etaText,omitempty" doc:"Human time-left from the download client"`
 	DownloadStatus string  `json:"downloadStatus,omitempty" doc:"Download-client status (downloading/warning/stalled/…)"`
+	// EpisodesHave of EpisodesWanted is Home's On the way "8 of 36 episodes" (#1667).
+	EpisodesHave   int `json:"episodesHave,omitempty" doc:"A downloading series' episodes on disk (arr poll); absent for a movie or when unknown"`
+	EpisodesWanted int `json:"episodesWanted,omitempty" doc:"The episodes the arr wants for this series (monitored and aired); absent for a movie or when unknown"`
 	// LastError is why the reconciler gave up on an `unavailable` title (e.g. "deadline
 	// exceeded"), so a client can say so instead of describing it as queued.
 	LastError string `json:"lastError,omitempty" example:"deadline exceeded" doc:"Why the title was given up on (unavailable only)"`
@@ -125,6 +128,7 @@ func toDTO(r provision.Record) TitleDTO {
 		Name: r.Title.Name, Year: r.Title.Year,
 		State: string(r.State), LibraryID: r.LibraryID,
 		Progress: r.Progress, ETAText: r.ETAText, DownloadStatus: r.DownloadStatus,
+		EpisodesHave: r.EpisodesHave, EpisodesWanted: r.EpisodesWanted,
 		LastError: r.LastError, AvailableAtMs: availableAtMs,
 	}
 }
