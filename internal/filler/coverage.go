@@ -97,6 +97,9 @@ type CoverageReport struct {
 	DurationMs int64
 	Categories int
 	Brands     int
+	// EraWindows is the era target the ladder read for this channel (normalized), nil when the
+	// channel takes any era. Acquisition steers by it when the channel has a gap (#749).
+	EraWindows []EraRange
 }
 
 // ChannelCoverage is one channel's coverage answer, labelled for display (§10 V35).
@@ -287,6 +290,9 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 		Criteria: criteria,
 		Rungs:    make([]RungCoverage, 0, len(pools)),
 		Level:    MatchBumperCard,
+	}
+	if windows := w.eraWindows(); len(windows) > 0 && !windows[0].Any() {
+		report.EraWindows = NormalizeEraWindows(windows)
 	}
 	for _, p := range pools {
 		report.Rungs = append(report.Rungs, RungCoverage{Level: p.level, Clips: len(p.clips)})
