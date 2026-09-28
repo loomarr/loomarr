@@ -271,7 +271,7 @@ Every secondary worktree receives deterministic, distinct values for:
 
 - backend, Vite, Storybook, and Tunarr ports;
 - Compose project and volumes;
-- SQLite database, filler drop, prepared-media, and artifact directories;
+- SQLite database, filler drop, and artifact directories;
 - the public URL used by internal Playout; and
 - an isolated automatic developer login.
 

@@ -76,7 +76,7 @@ To replace the installation key, supply the new current key and provide the old 
 
 | Setting (env) | Owner task | Kind | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `backup.schedule` (`BACKUP_SCHEDULE`) | Backups | cron | `0 30 3 * * *` | When to write the nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped data keys, but not the external installation key. It does not contain filler, prepared media, cached artwork, or operator image uploads. |
+| `backup.schedule` (`BACKUP_SCHEDULE`) | Backups | cron | `0 30 3 * * *` | When to write the nightly database backup. It contains settings, channels, people, encrypted secrets, and wrapped data keys, but not the external installation key. It does not contain filler, cached artwork, or operator image uploads. |
 | `backup.retain` (`BACKUP_RETAIN`) | Backups | int | `7` | How many backups to keep before pruning the oldest. |
 | `backup.dir` (`BACKUP_DIR`) | Backups | string | `<data dir>/backups` | Where backups are written. Defaults to a directory beside the database (/data in the container) so its volume carries them; point it elsewhere to keep backups off the same disk as the database. |
 
