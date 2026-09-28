@@ -133,10 +133,16 @@ type SidecarTags struct {
 	// so without this every clip whose era came from its filename would become ungrounded. The
 	// tagger reads it from here instead of from the path.
 	OriginalName string `json:"originalName,omitempty"`
-	Kind         string `json:"kind,omitempty"`
-	Era          int    `json:"era,omitempty"`
-	Audience     string `json:"audience,omitempty"`
-	Category     string `json:"category,omitempty"`
+	// DisplayName is the name Loomarr derived for a clip whose source gave no title, and NameSource
+	// the evidence it came from (#1452, GroundedName). The scan shows it ahead of originalName, but
+	// a source-declared title still wins. Kept apart from originalName so era grounding never
+	// reads a derived name as if it were the clip's own filename.
+	DisplayName string `json:"displayName,omitempty"`
+	NameSource  string `json:"nameSource,omitempty"`
+	Kind        string `json:"kind,omitempty"`
+	Era         int    `json:"era,omitempty"`
+	Audience    string `json:"audience,omitempty"`
+	Category    string `json:"category,omitempty"`
 	// Brand is the GROUNDED advertiser (§10 V44) — carried here so a catalog rebuild restores it
 	// rather than re-running the tagger (or, for a vision-grounded brand, re-paying for the vision
 	// call) over the whole folder. Only a grounded brand is ever written to a clip in the first

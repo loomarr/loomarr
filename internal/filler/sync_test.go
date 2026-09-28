@@ -1297,6 +1297,67 @@ func TestSync_RepairsOpaqueTitleAtCanonicalPathWithoutInventingMetadata(t *testi
 	}
 }
 
+// #1452: a clip that arrived with no title was named "Untitled commercial" before transcription.
+// Once its transcript exists, the next sync names it from that evidence and records which evidence
+// produced the name. A name a person or the source gave is never replaced.
+func TestSync_NamesUntitledClipFromItsEvidence(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string, tags filler.SidecarTags) (string, string) {
+		t.Helper()
+		probe := filepath.Join(dir, name+".probe")
+		if err := os.WriteFile(probe, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		id, err := filler.ClipID(probe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Remove(probe)
+		rel := filepath.ToSlash(filler.ClipRelPath(id, ".mp4"))
+		full := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := filler.WriteSidecarTags(full, tags, false); err != nil {
+			t.Fatal(err)
+		}
+		return id, rel
+	}
+	const transcript = "real stories of the highway patrol. troopers close in on a desperate gunman"
+	untitled, untitledRel := write("untitled", "untitled spot", filler.SidecarTags{OriginalName: "Untitled commercial"})
+	named, namedRel := write("named", "operator named spot", filler.SidecarTags{OriginalName: "Summer Sale Spot"})
+	source := &fakeSource{clips: []filler.RawClip{
+		{ID: untitled, Path: untitledRel, Name: "Untitled commercial", Kind: filler.Commercial, DurationMs: 30_000},
+		{ID: named, Path: namedRel, Name: "Summer Sale Spot", Kind: filler.Commercial, DurationMs: 30_000},
+	}}
+	st := newMemStore()
+	st.clips[untitled] = filler.StoreClip{Clip: filler.Clip{Hash: untitled, Path: untitledRel,
+		Name: "Untitled commercial", Kind: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
+	st.clips[named] = filler.StoreClip{Clip: filler.Clip{Hash: named, Path: namedRel,
+		Name: "Summer Sale Spot", Kind: filler.Commercial, DurationMs: 30_000, Transcript: transcript}}
+
+	if _, err := filler.NewSyncer(source, st, testLayout(dir), time.Now, discardLog()).Sync(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	const want = "“Real stories of the highway patrol”"
+	if got := st.clips[untitled].Name; got != want {
+		t.Fatalf("untitled clip name = %q, want %q", got, want)
+	}
+	tags, ok := filler.ReadSidecarTags(filepath.Join(dir, filepath.FromSlash(untitledRel)))
+	if !ok || tags.DisplayName != want || tags.NameSource != string(filler.NameFromTranscript) {
+		t.Fatalf("sidecar = %+v, want the derived name and its evidence recorded", tags)
+	}
+	if tags.OriginalName != "Untitled commercial" {
+		t.Fatalf("originalName = %q, want the grounding text left alone", tags.OriginalName)
+	}
+	if got := st.clips[named].Name; got != "Summer Sale Spot" {
+		t.Fatalf("operator-named clip = %q, want its name kept", got)
+	}
+}
+
 // A hand-dropped clip is an acquisition request, not an admission decision.
 func TestSync_AWatchFolderDropStartsHeld(t *testing.T) {
 	clipDir := t.TempDir()
