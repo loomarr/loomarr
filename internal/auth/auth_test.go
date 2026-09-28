@@ -47,7 +47,7 @@ func TestResolveValid(t *testing.T) {
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	token, _, _ := mgr.Issue(ctx, "u1")
 
-	u, err := mgr.Resolve(ctx, token)
+	u, err := mgr.Resolve(ctx, token, "")
 	if err != nil || u.ID != "u1" || u.Role != store.RoleAdmin {
 		t.Fatalf("Resolve = %+v, %v; want admin u1", u, err)
 	}
@@ -66,7 +66,7 @@ func TestResolveDisabledUser(t *testing.T) {
 	u.Disabled = true
 	_ = st.UpsertUser(ctx, u)
 
-	if _, err := mgr.Resolve(ctx, token); err == nil {
+	if _, err := mgr.Resolve(ctx, token, ""); err == nil {
 		t.Error("disabled user's session still resolved (§11 — sessions die on disable)")
 	}
 }
@@ -89,14 +89,14 @@ func TestDisableRevokesSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mgr.Resolve(ctx, token); err != nil {
+	if _, err := mgr.Resolve(ctx, token, ""); err != nil {
 		t.Fatalf("fresh session should resolve: %v", err)
 	}
 
 	if err := svc.Disable(ctx, "u-bob"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mgr.Resolve(ctx, token); err == nil {
+	if _, err := mgr.Resolve(ctx, token, ""); err == nil {
 		t.Error("session survived Disable (§11 — must be revoked immediately)")
 	}
 }
@@ -305,7 +305,7 @@ func TestImportedLogin_ProviderDisablePersistsAndRevokes(t *testing.T) {
 	if !u.Disabled {
 		t.Fatal("provider disable observed during login was not persisted")
 	}
-	if _, err := mgr.Resolve(ctx, token); err == nil {
+	if _, err := mgr.Resolve(ctx, token, ""); err == nil {
 		t.Fatal("session survived provider disable observed during login")
 	}
 }

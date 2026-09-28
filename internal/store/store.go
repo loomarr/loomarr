@@ -320,7 +320,9 @@ type UserStore interface {
 	CreateSession(ctx context.Context, sess Session) error
 	GetSession(ctx context.Context, tokenHash string, now time.Time) (Session, error)
 	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]Session, error)
-	TouchSession(ctx context.Context, tokenHash string, expiresAt time.Time) error
+	TouchSession(ctx context.Context, tokenHash string, seen SessionSeen) error
+	// UserLastSeen maps each person seen (browser session or paired TV) to when (#1667).
+	UserLastSeen(ctx context.Context) (map[string]time.Time, error)
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeSessionsForUser(ctx context.Context, userID string) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)

@@ -25,7 +25,7 @@ type SessionStore interface {
 	CreateSession(ctx context.Context, sess store.Session) error
 	GetSession(ctx context.Context, tokenHash string, now time.Time) (store.Session, error)
 	GetUser(ctx context.Context, id string) (store.User, error)
-	TouchSession(ctx context.Context, tokenHash string, expiresAt time.Time) error
+	TouchSession(ctx context.Context, tokenHash string, seen store.SessionSeen) error
 	RevokeSession(ctx context.Context, tokenHash string) error
 	ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]store.Session, error)
 }
@@ -95,7 +95,9 @@ func (m *Manager) prepare(userID string) (string, store.Session, error) {
 // returns store.ErrNotFound for an unknown/expired token, and enforces that the
 // user still exists and is not disabled (§11: a disabled user's sessions must
 // not authenticate — belt-and-suspenders with immediate revocation on disable).
-func (m *Manager) Resolve(ctx context.Context, token string) (store.User, error) {
+// clientLabel names the requesting client ("Firefox on macOS", "" if unknown); the
+// session keeps it with the time of this use for "Where you're signed in" (#1667).
+func (m *Manager) Resolve(ctx context.Context, token, clientLabel string) (store.User, error) {
 	now := m.now()
 	sess, err := m.store.GetSession(ctx, hashToken(token), now)
 	if err != nil {
@@ -110,8 +112,8 @@ func (m *Manager) Resolve(ctx context.Context, token string) (store.User, error)
 		// never authenticates.
 		return store.User{}, store.ErrNotFound
 	}
-	// Slide the expiry (§11 sliding TTL).
-	_ = m.store.TouchSession(ctx, hashToken(token), now.Add(m.ttl))
+	// Slide the expiry (§11 sliding TTL) and record the use.
+	_ = m.store.TouchSession(ctx, hashToken(token), store.SessionSeen{At: now, ExpiresAt: now.Add(m.ttl), ClientLabel: clientLabel})
 	return u, nil
 }
 

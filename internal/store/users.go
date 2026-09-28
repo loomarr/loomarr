@@ -42,6 +42,10 @@ type Session struct {
 	UserID    string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+	// LastSeenAt and ClientLabel ("Firefox on macOS") are the last authenticated use (#1667);
+	// zero and "" until the session is first used after the column arrived.
+	LastSeenAt  time.Time
+	ClientLabel string
 }
 
 // --- users ---
@@ -176,27 +180,78 @@ func (s *sqlStore) CreateSession(ctx context.Context, sess Session) error {
 // eventually; this makes expiry immediate for auth).
 func (s *sqlStore) GetSession(ctx context.Context, tokenHash string, now time.Time) (Session, error) {
 	row := s.db.QueryRowContext(ctx, s.ph(
-		`SELECT token_hash, user_id, created_at, expires_at
-		 FROM sessions WHERE token_hash = ? AND expires_at > ?`), tokenHash, epoch(now))
-	var sess Session
-	var created, expires int64
-	err := row.Scan(&sess.TokenHash, &sess.UserID, &created, &expires)
+		`SELECT `+sessionColumns+` FROM sessions WHERE token_hash = ? AND expires_at > ?`), tokenHash, epoch(now))
+	sess, err := scanSession(row)
 	if err == sql.ErrNoRows {
 		return Session{}, ErrNotFound
 	}
-	if err != nil {
+	return sess, err
+}
+
+const sessionColumns = `token_hash, user_id, created_at, expires_at, last_seen_at, client_label`
+
+func scanSession(sc scannable) (Session, error) {
+	var sess Session
+	var created, expires, seen int64
+	if err := sc.Scan(&sess.TokenHash, &sess.UserID, &created, &expires, &seen, &sess.ClientLabel); err != nil {
 		return Session{}, err
 	}
-	sess.CreatedAt = fromEpoch(created)
-	sess.ExpiresAt = fromEpoch(expires)
+	sess.CreatedAt, sess.ExpiresAt, sess.LastSeenAt = fromEpoch(created), fromEpoch(expires), fromEpoch(seen)
 	return sess, nil
 }
 
-// TouchSession extends a session's sliding expiry (§11).
-func (s *sqlStore) TouchSession(ctx context.Context, tokenHash string, expiresAt time.Time) error {
+// SessionSeen is one authenticated use of a session: when, the slid expiry, and the client's
+// coarse label ("" when the request didn't say, which keeps the label the session has).
+type SessionSeen struct {
+	At          time.Time
+	ExpiresAt   time.Time
+	ClientLabel string
+}
+
+// lastSeenGranularity throttles the person-level write: "Last seen" reads "now", "2h ago", so a
+// minute is plenty and most requests skip the users write.
+const lastSeenGranularity = time.Minute
+
+// TouchSession records a use of a session: it slides the expiry (§11) and notes when and from what
+// client it was used, plus the person's last-seen (#1667).
+func (s *sqlStore) TouchSession(ctx context.Context, tokenHash string, seen SessionSeen) error {
+	if _, err := s.db.ExecContext(ctx, s.ph(
+		`UPDATE sessions SET expires_at = ?, last_seen_at = ?,
+		   client_label = CASE WHEN ? <> '' THEN ? ELSE client_label END
+		 WHERE token_hash = ?`),
+		epoch(seen.ExpiresAt), epoch(seen.At), seen.ClientLabel, seen.ClientLabel, tokenHash); err != nil {
+		return err
+	}
+	return s.bumpUserLastSeen(ctx, `SELECT user_id FROM sessions WHERE token_hash = ?`, tokenHash, seen.At)
+}
+
+// bumpUserLastSeen moves the owner of a session or device token (ownerQuery) to `at`, at most
+// once per lastSeenGranularity.
+func (s *sqlStore) bumpUserLastSeen(ctx context.Context, ownerQuery, tokenHash string, at time.Time) error {
 	_, err := s.db.ExecContext(ctx, s.ph(
-		`UPDATE sessions SET expires_at = ? WHERE token_hash = ?`), epoch(expiresAt), tokenHash)
+		`UPDATE users SET last_seen_at = ? WHERE id = (`+ownerQuery+`) AND last_seen_at < ?`),
+		epoch(at), tokenHash, epoch(at.Add(-lastSeenGranularity)))
 	return err
+}
+
+// UserLastSeen maps each person who has been seen to when (#1667, the People roster). One query;
+// someone never seen since the column arrived has no entry.
+func (s *sqlStore) UserLastSeen(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, last_seen_at FROM users WHERE last_seen_at > 0`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]time.Time{}
+	for rows.Next() {
+		var id string
+		var at int64
+		if err := rows.Scan(&id, &at); err != nil {
+			return nil, err
+		}
+		out[id] = fromEpoch(at)
+	}
+	return out, rows.Err()
 }
 
 // ListSessionsForUser returns a user's live sessions, newest first. Expired rows are
@@ -205,8 +260,7 @@ func (s *sqlStore) TouchSession(ctx context.Context, tokenHash string, expiresAt
 // authenticate, or they would revoke things that were already dead and mistrust the list.
 func (s *sqlStore) ListSessionsForUser(ctx context.Context, userID string, now time.Time) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx, s.ph(
-		`SELECT token_hash, user_id, created_at, expires_at
-		 FROM sessions WHERE user_id = ? AND expires_at > ?
+		`SELECT `+sessionColumns+` FROM sessions WHERE user_id = ? AND expires_at > ?
 		 ORDER BY created_at DESC`), userID, epoch(now))
 	if err != nil {
 		return nil, err
@@ -215,12 +269,10 @@ func (s *sqlStore) ListSessionsForUser(ctx context.Context, userID string, now t
 
 	var out []Session
 	for rows.Next() {
-		var sess Session
-		var created, expires int64
-		if err := rows.Scan(&sess.TokenHash, &sess.UserID, &created, &expires); err != nil {
+		sess, err := scanSession(rows)
+		if err != nil {
 			return nil, err
 		}
-		sess.CreatedAt, sess.ExpiresAt = fromEpoch(created), fromEpoch(expires)
 		out = append(out, sess)
 	}
 	return out, rows.Err()
