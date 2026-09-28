@@ -10,6 +10,8 @@ export type {
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./guide.type";
+export type { GuideProgrammeDetailProps } from "./guide-detail";
+export { GuideProgrammeDetail } from "./guide-detail";
 export type { GuideGridProps } from "./guide-grid";
 export { GuideGrid } from "./guide-grid";
 export type { GuideJourneyProps } from "./guide-journey";

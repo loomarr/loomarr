@@ -16,10 +16,11 @@ export type {
   GuideGridProps,
   GuideJourneyProps,
   GuideLogoRenderer,
+  GuideProgrammeDetailProps,
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./src/guide";
-export { GuideExperience, GuideGrid, GuideJourney, GuideSurface } from "./src/guide";
+export { GuideExperience, GuideGrid, GuideJourney, GuideProgrammeDetail, GuideSurface } from "./src/guide";
 export type {
   ChannelIdentityData,
   ChannelIdentityProps,

@@ -7,7 +7,8 @@ import {
   type GuideControllerSnapshot,
   layoutGuide,
 } from "@loomarr/core/guide";
-import { GuideGrid } from "@loomarr/ui";
+import { AdaptiveSplit } from "@loomarr/design-system";
+import { GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
 import { expect, waitFor } from "storybook/test";
@@ -90,7 +91,7 @@ const evening = {
 const layout = layoutGuide(evening, now);
 
 // The grid as the Guide page drives it: selection and keys go through the shared controller.
-const Controlled = ({ source }: { source: GuideOutputBody }) => {
+const Controlled = ({ detail = false, source }: { detail?: boolean; source: GuideOutputBody }) => {
   const [guide, setGuide] = useState<{ controller: GuideController; snapshot: GuideControllerSnapshot }>();
   useEffect(() => {
     const controller = createGuideController({ now: () => now, source: { load: async () => source } });
@@ -104,7 +105,7 @@ const Controlled = ({ source }: { source: GuideOutputBody }) => {
     };
   }, [source]);
   if (!guide?.snapshot.layout) return null;
-  return (
+  const grid = (
     <GuideGrid
       layout={guide.snapshot.layout}
       nowMs={now}
@@ -112,6 +113,17 @@ const Controlled = ({ source }: { source: GuideOutputBody }) => {
       onSelect={guide.controller.select}
       selection={guide.snapshot.selection}
     />
+  );
+  // The web Guide page's shape: the pointer guide's programme card beside the grid.
+  return detail ? (
+    <AdaptiveSplit
+      accessibilityLabel="Programme guide"
+      primary={grid}
+      secondary={<GuideProgrammeDetail layout={guide.snapshot.layout} selection={guide.snapshot.selection} />}
+      secondaryWidth={360}
+    />
+  ) : (
+    grid
   );
 };
 
@@ -190,8 +202,10 @@ const Keyboard: Story = {
     await userEvent.keyboard("55");
     expect(focusedName()).toMatch(/^A frontier western/);
     expect(canvasElement.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    // The programme card follows focus: the block's label and the card's title.
+    expect(canvas.getAllByText("A frontier western")).toHaveLength(2);
   },
-  render: () => <Controlled source={evening} />,
+  render: () => <Controlled detail source={evening} />,
 };
 
 // Type-to-jump reaches a row the virtualiser hasn't mounted: it scrolls there, then focuses it.

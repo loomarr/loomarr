@@ -41,10 +41,11 @@ const GuideRows = ({
         if (onKey?.(event.key, event.altKey || event.ctrlKey || event.metaKey)) event.preventDefault();
       }}
       ref={scroller}
-      style={{ flex: 1, minHeight: 0, minWidth: 900, overflowY: "auto" }}
+      // Scrolls both ways: beside the programme card the pane can be narrower than the grid.
+      style={{ flex: 1, minHeight: 0, overflow: "auto" }}
     >
-      <div style={{ position: "sticky", top: 0, zIndex: 1 }}>{header}</div>
-      <div style={{ height: rows.getTotalSize(), position: "relative" }}>
+      <div style={{ minWidth: 900, position: "sticky", top: 0, zIndex: 1 }}>{header}</div>
+      <div style={{ height: rows.getTotalSize(), minWidth: 900, position: "relative" }}>
         {rows.getVirtualItems().map((row) => {
           const channel = channels[row.index];
           return channel ? (
