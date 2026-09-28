@@ -498,3 +498,31 @@ func TestChannelOutput_RateScalesWithRungPixels(t *testing.T) {
 		}
 	}
 }
+
+// Every engine, in both codecs, pins its GOP to the output's so each packager fragment is one
+// closed GOP (the frame-0 IDR and the cadence are measured in TestLive_FragmentStartsOnAnIDR…),
+// takes CRF only in software (hardware rate control has no CRF, and v4l2m2m rejects the option at
+// init), and encodes HEVC on its own h264 engine's sibling (#1561 ported these rules from the
+// retired chain's builder). Derived from h264Engines so a new engine is covered with no edit here.
+func TestVideoEncoderArgs_EveryEnginePinsTheGOPAndKeepsCRFInSoftware(t *testing.T) {
+	out := OutputProfile{Width: 1280, Height: 720, FPS: 25, Quality: 23, TargetKbps: 3000, MaxKbps: 4500, GOPSeconds: 2, AudioKbps: 128}
+	for _, base := range h264Engines {
+		host := HostFor(base, false, GPUFilters{})
+		h264 := videoEncoderArgs(host, out)
+		hevcOut := out
+		hevcOut.HEVC = true
+		hevc := videoEncoderArgs(host, hevcOut)
+		codec, _ := argsAfter(h264, "-c:v")
+		if got, _ := argsAfter(hevc, "-c:v"); got != string(hevcVariant(Encoder(codec))) {
+			t.Errorf("%s: HEVC encoder %q, want %s's sibling %s", base, got, codec, hevcVariant(Encoder(codec)))
+		}
+		for name, args := range map[string][]string{"h264": h264, "hevc": hevc} {
+			if g, _ := argsAfter(args, "-g"); g != strconv.Itoa(out.gop()) {
+				t.Errorf("%s %s: -g %q, want the output GOP %d: %q", base, name, g, out.gop(), args)
+			}
+			if _, crf := argsAfter(args, "-crf"); crf != (host.Family == FamilySoftware) {
+				t.Errorf("%s %s (%s): -crf present=%v, want it only in software: %q", base, name, host.Family, crf, args)
+			}
+		}
+	}
+}

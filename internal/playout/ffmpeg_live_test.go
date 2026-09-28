@@ -52,14 +52,19 @@ func TestLive_EveryLadderRungEncodes(t *testing.T) {
 	for _, tier := range []Tier{TierQuality, TierBalanced, TierEfficient} {
 		for rung := range LadderHeights(tier) {
 			p := Resolve(tier, enc, rung)
+			// The live pipeline, as the capability trial builds it: testsrc's CPU frames take the
+			// family's upload, GPU scale and encoder, so a rung the graph cannot carry fails here.
+			pipe, err := Build(HostFor(enc, false, GPUFilters{}), MediaFormat{}, ChannelOutput(p))
+			if err != nil {
+				t.Errorf("%s rung=%d: build: %v", tier, rung, err)
+				continue
+			}
 			args := []string{"-hide_banner", "-loglevel", "error"}
-			args = append(args, deviceInitArgs(enc)...)
+			args = append(args, pipe.PreInput...)
 			args = append(args, "-f", "lavfi", "-i",
 				"testsrc=duration=1:size="+strconv.Itoa(p.Width)+"x"+strconv.Itoa(p.Height)+":rate="+strconv.Itoa(p.Framerate))
-			if vf := hardwareUploadFilter(enc); vf != "" {
-				args = append(args, "-vf", vf)
-			}
-			args = append(args, p.videoEncodeArgs()...)
+			args = append(args, "-vf", pipe.VideoFilter)
+			args = append(args, pipe.VideoEncode...)
 			args = append(args, "-frames:v", "10", "-f", "null", "-")
 
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

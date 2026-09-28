@@ -251,7 +251,7 @@ type ObservedStream struct {
 }
 
 // SourceProber returns the complete cheap ffprobe observation used by Inventory and derives audio
-// selection from that same launch. It is the persistence-capable form of AudioProber.
+// selection from that same launch (SourceObservation.AudioTracks).
 type SourceProber func(context.Context, string) (SourceObservation, error)
 
 func FFprobeSourceNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) SourceProber {
@@ -355,33 +355,7 @@ func ffprobeBesideFFmpeg(ffmpegPath string) string {
 	return filepath.Join(dir, strings.Replace(base, "ffmpeg", "ffprobe", 1))
 }
 
-// --- Consumer 1: audio-track selection (audio.go's PickAudioTrack input) ------------------------
-
-// FFprobeAudioNextTo returns an AudioProber built on the shared probe. The audio streams, in the
-// order ffmpeg numbers them — which is what PickAudioTrack's audio-relative index needs.
-func FFprobeAudioNextTo(ffmpegPath string, observers ...*diagnostics.ProcessManager) AudioProber {
-	probe := FFprobeSourceNextTo(ffmpegPath, observers...)
-	return func(ctx context.Context, input string) ([]AudioTrack, error) {
-		observation, err := probe(ctx, input)
-		if err != nil {
-			return nil, err
-		}
-		return observation.AudioTracks(), nil
-	}
-}
-
-// audioTracksOf extracts the audio streams in order — pure, testable over a stream slice.
-func audioTracksOf(streams []probedStream) []AudioTrack {
-	var out []AudioTrack
-	for _, s := range streams {
-		if s.CodecType == "audio" {
-			out = append(out, AudioTrack{SourceIndex: s.Index, Language: s.Tags.Language})
-		}
-	}
-	return out
-}
-
-// --- Consumer 2: the Watch pickers' tracks (tracks.go's MediaTracks) ----------------------------
+// --- The Watch pickers' tracks (tracks.go's MediaTracks) -----------------------------------------
 
 // FFprobeTracksNextTo returns a TrackProber built on the shared probe — the audio + subtitle tracks
 // the Watch surface offers.

@@ -93,17 +93,6 @@ func TestBroadcastsWithPendingStepsOverSplitProgrammes(t *testing.T) {
 	t.Fatalf("no pending entry in %+v", bs)
 }
 
-// Per-item callers (preparation) see every part and mid-roll break at the start AiringAt gives it.
-func TestSegmentsBetweenKeepsEachPart(t *testing.T) {
-	segs := SegmentsBetween(midRollCycle(), midRollEpoch, at(33), at(34))
-	if len(segs) != 1 || !segs[0].Start.Equal(at(32)) || !segs[0].Stop.Equal(at(57)) {
-		t.Fatalf("segments = %+v, want film part 2 at 32m–57m", segs)
-	}
-	if all := SegmentsBetween(midRollCycle(), midRollEpoch, at(0), at(68)); len(all) != 7 {
-		t.Fatalf("got %d segments, want 7", len(all))
-	}
-}
-
 // The pins a re-schedule must honour: every programme on air or starting inside [from, to), with
 // the cuts the accepted cycle gave it (nil = whole). Later programmes are left free to re-split.
 func TestCommittedSplitsPinsWhatIsOnAirOrAboutToBe(t *testing.T) {

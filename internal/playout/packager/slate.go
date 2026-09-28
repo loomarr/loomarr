@@ -74,11 +74,6 @@ func (s *Slate) Init() []byte { return s.init }
 // asks only when the timeline needs slate, so the encode is never on the tune path (#1512 G2).
 type SlateSource func(ctx context.Context) (*Slate, error)
 
-// ReadySlate is the SlateSource of a slate already in hand.
-func ReadySlate(s *Slate) SlateSource {
-	return func(context.Context) (*Slate, error) { return s, nil }
-}
-
 // loadSlate fetches the slate on first need; a failure stops the packager (its next viewer starts
 // it afresh).
 func (p *Packager) loadSlate(ctx context.Context) error {

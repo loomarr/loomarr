@@ -37,6 +37,6 @@ type MediaTracks struct {
 }
 
 // TrackProber reports a source's audio + subtitle tracks. An interface so the API handler is
-// testable without exec, mirroring AudioProber. The concrete prober (FFprobeTracksNextTo) and the
+// testable without exec, mirroring FormatProber. The concrete prober (FFprobeTracksNextTo) and the
 // stream→tracks derivation (tracksOf) live in probe.go, where all ffprobe use is consolidated.
 type TrackProber func(ctx context.Context, input string) (MediaTracks, error)

@@ -69,7 +69,7 @@ func fileExists(path string) bool {
 }
 
 // CardFontFor returns the font a card should be labelled with, or "" when this host cannot
-// render text at all — bound to an ffmpeg path the same way FFprobeAudioNextTo is, and for
+// render text at all — bound to an ffmpeg path the same way FFprobeTracksNextTo is, and for
 // the same reason.
 //
 // ⚠ A FONT FILE IS NOT ENOUGH. `drawtext` is a compile-time option (libfreetype, plus
@@ -105,7 +105,3 @@ func CardFontFor(ffmpegPath string) func() string {
 // because "can this build draw text?" is the question CardFontFor asks, and spelling it out here
 // keeps that reasoning next to the font list it guards.
 func hasDrawText(ffmpegPath string) bool { return hasFilter(ffmpegPath, "drawtext") }
-
-// parseHasDrawText is the pure half, retained so the existing column-matching tests keep their
-// subject. The matching itself lives in parseHasFilter.
-func parseHasDrawText(raw []byte) bool { return parseHasFilter(raw, "drawtext") }

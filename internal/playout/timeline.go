@@ -311,16 +311,9 @@ func (b Broadcast) Duration() time.Duration { return b.Stop.Sub(b.Start) }
 // of its two callers.
 //
 // A programme split at natural breaks (§10 mid-roll) is ONE entry spanning its parts and the
-// breaks between them. SegmentsBetween is the per-item walk for callers that encode each part.
+// breaks between them.
 func BroadcastsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {
-	return walkBroadcasts(slots, epoch, from, to, true)
-}
-
-// SegmentsBetween is BroadcastsBetween with every scheduled item its own entry: each part of a
-// split programme and each mid-roll break. Its entries start where AiringAt's do, which is what
-// a caller preparing or joining per-item encodes needs.
-func SegmentsBetween(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {
-	return walkBroadcasts(slots, epoch, from, to, false)
+	return walkBroadcasts(slots, epoch, from, to)
 }
 
 // CarryOverEnd is when this cycle's timeline hands over at a rolling-window boundary (#1675): the
@@ -399,7 +392,7 @@ func CommittedSplits(slots []schedule.Slot, epoch, from, to time.Time) map[strin
 	return pins
 }
 
-func walkBroadcasts(slots []schedule.Slot, epoch, from, to time.Time, mergeParts bool) []Broadcast {
+func walkBroadcasts(slots []schedule.Slot, epoch, from, to time.Time) []Broadcast {
 	total := cycleDuration(slots)
 	if total <= 0 || !to.After(from) {
 		return nil
@@ -430,9 +423,7 @@ func walkBroadcasts(slots []schedule.Slot, epoch, from, to time.Time, mergeParts
 		idx++
 	}
 	// A window opening inside a split programme starts from its first part (one guide entry).
-	if mergeParts {
-		idx, cursor = rewindToProgrammeStart(slots, idx, cursor)
-	}
+	idx, cursor = rewindToProgrammeStart(slots, idx, cursor)
 
 	var out []Broadcast
 	// A hard cap on iterations, not on output: a lineup of very short items over a long window
@@ -453,7 +444,7 @@ func walkBroadcasts(slots []schedule.Slot, epoch, from, to time.Time, mergeParts
 		// A programme split at natural breaks is ONE entry (§10: the guide does not advertise
 		// mid-roll breaks): absorb its mid-roll breaks and later parts, even past `to`, so the
 		// entry stops when the programme really ends.
-		for mergeParts && idx+1 < len(slots) && continuesProgramme(slots[idx+1]) {
+		for idx+1 < len(slots) && continuesProgramme(slots[idx+1]) {
 			idx++
 			stop = stop.Add(slotDuration(slots[idx]))
 		}
