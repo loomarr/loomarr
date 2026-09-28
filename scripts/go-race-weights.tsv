@@ -20,14 +20,12 @@ internal/proposalworkflow	41
 internal/auth	34
 internal/channels	29
 internal/notifications	26
-internal/fillervisualsafety	25
 cmd/seed	24
 internal/playout	22
 internal/schedule	21
 internal/demolibrary	19
 internal/scheduler	19
 internal/devbootstrap	12
-internal/fillereval	12
 internal/installationlocation	12
 internal	11
 internal/inventory	11

@@ -13,6 +13,8 @@ while that core moves on. Its evidence stays recorded in `docs/engineering/`.
 - Run a tool from the repository root with its `make` target (`mk/eval.mk`), or
   `scripts/research-run.sh <tool> [args]`. Relative paths resolve from the repository root, as before.
 - `make research-verify` compiles the module with every build tag. No CI job runs it.
+- [`docs/filler-certification.md`](docs/filler-certification.md) is the operator guide to the
+  corpus, review and certification workflow.
 - Two tests read the main repository's pilot corpus by relative path
   (`../../../internal/fillercorpus/corpus/pilot/locked.json`), so they see the current copy of
   that file, not the pinned one.
