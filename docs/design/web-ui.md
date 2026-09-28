@@ -23,7 +23,7 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
 
 | Role | Items |
 | --- | --- |
-| admin | Dashboard · Guide · Requests · Filler · People · Settings · Help |
+| admin | Home · Guide · Requests · Filler · People · Settings · Help |
 | member | Guide · Requests · Notifications · Help |
 
 - **Guide** (`/guide`, headed "Channels") is the single channels surface: a cross-channel time grid,
@@ -31,12 +31,14 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
   routes redirect to it.
 - **Requests** (`/requests`) is one surface for everyone (#1405). Its nav count is what waits on the
   viewer, the same number as its **Needs you** tab.
-- **Dashboard** (admin) answers "is everything alright?": four linked stat cards over live playout
-  telemetry. Members do not get it; its content is machine state.
+- **Home** (admin, `/dashboard`) answers "is everything alright?": four linked stat cards over live
+  playout telemetry. Members do not get it yet; its content is machine state until the redesign's
+  Home replaces it (#1659).
 - **People** is admins managing other accounts; **Account** (`/account`) is any user's own password
   and sessions. **Settings** is a searchable task home, with **Advanced settings** as the raw-key
   escape hatch. **Help** renders the embedded help pages offline.
-- Global search (⌘K) is a hand-rolled combobox over `/v1/search`, channels and help.
+- Global search (⌘K, or Ctrl K; the rail names the one the viewer's platform uses) is a
+  hand-rolled combobox over `/v1/search`, channels and help.
 
 ## Cross-view rules
 

@@ -21,7 +21,8 @@ import { useRestartWatchContext } from "@/dashboard/restart-watch-provider";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { usePendingApprovals } from "@/queue/pending-approvals";
 
-// Dashboard (§12, V16) — "is everything alright?" in one screen.
+// Dashboard (§12, V16) — "is everything alright?" in one screen. Titled Home since #1659 (the web
+// mock's name); the route stays `/dashboard`, and the mock's Home replaces this content later.
 //
 // Four cards answering the questions an operator opens the app with, over the live transcoding
 // panel. Each card LINKS to the surface it summarizes: a dashboard that only reports is a wall
@@ -33,7 +34,7 @@ import { usePendingApprovals } from "@/queue/pending-approvals";
 // implementation detail they should not have to interpret (V16's gate).
 
 const DashboardScreen = () => {
-  useDocumentTitle("Dashboard");
+  useDocumentTitle("Home");
   const { isAdmin } = useAuth();
 
   // The queries are all admin-gated server-side, so they are not even issued for a member —
@@ -113,7 +114,7 @@ const DashboardScreen = () => {
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Dashboard" />
+      <PageHeader title="Home" />
 
       {/* ⚠ `[&>*]:shrink-0` is load-bearing: the column is a flex-col that scrolls (overflow-auto).
           Without it, when the stacked panels are taller than the viewport, flex SHRINKS each panel

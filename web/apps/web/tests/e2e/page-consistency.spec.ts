@@ -6,7 +6,7 @@ import { installMockBackend } from "./mock-backend";
 // inspecting class strings. A route may fill its body however it needs, but its navigation,
 // semantic title, page-edge gutter, and mobile overflow behavior stay invariant.
 const pages = [
-  { path: "/dashboard", title: "Dashboard" },
+  { path: "/dashboard", title: "Home" },
   { path: "/guide", title: "Channels" },
   // Requests replaced Queue (#1405). With no requests in this mock, the page shows its empty state
   // under the same header, which is all the shell contract needs.
