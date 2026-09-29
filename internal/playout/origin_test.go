@@ -46,11 +46,13 @@ type tuneHLS struct {
 	path        string
 	stopped     string
 	speculative bool
+	viewer      string
 }
 
-func (h *tuneHLS) acquirePlaylist(channel string, _ EncodePlan, speculative bool) (hlsPlaylistLease, error) {
+func (h *tuneHLS) acquirePlaylist(channel string, _ EncodePlan, speculative bool, viewer string) (hlsPlaylistLease, error) {
 	h.channel = channel
 	h.speculative = speculative
+	h.viewer = viewer
 	return hlsPlaylistLease{path: h.path, release: func() {}, await: func(ctx context.Context) error { return ctx.Err() }}, nil
 }
 

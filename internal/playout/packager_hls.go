@@ -90,6 +90,8 @@ type PackagerHLS struct {
 
 	mu       sync.Mutex
 	channels map[packagedKey]*packagedChannel
+	// premiumTakers is when each viewer (WithViewer) last requested a premium playlist (#1037).
+	premiumTakers map[string]time.Time
 
 	// observer and onChange see packagers start and stop. Both are set before the first tune.
 	observer SessionObserver
@@ -112,6 +114,9 @@ type packagedChannel struct {
 	speculative bool
 	// idleSince is when the last viewer left; zero while one is fetching (#1780).
 	idleSince time.Time
+	// warmHeld is set while the last acquire was a neighbour warm's, not a viewer's: the packager is
+	// adjacent to where a viewer is. A premium keeps the baseline's grace while it is (#1037).
+	warmHeld bool
 }
 
 // DefaultGrace is how long a channel packager survives its last viewer.
@@ -149,16 +154,25 @@ func (m *PackagerHLS) WithBudget(budget *ResourceBudget) *PackagerHLS {
 // it the master names the channel's premium format when it airs one here and the ledger has room
 // (#1512 G10). The premium is described from its output alone: only a client that plays it starts
 // its packager. Its lineup lookup runs beside the baseline's cold start, off the tune path. A
-// speculative tune (a neighbour warm) starts the packager only into spare room (#1780).
-func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculative bool) (hlsPlaylistLease, error) {
+// speculative tune (a neighbour warm) starts the packager only into spare room (#1780), and for a
+// viewer whose client takes the premium it warms the channel's premium too, once the baseline is
+// admitted, so the premium never takes the baseline's room (#1037).
+func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculative bool, viewer string) (hlsPlaylistLease, error) {
 	premium, found := new(*hlsVariant), make(chan struct{})
+	warmPremium := speculative && m.takesPremium(viewer)
+	admitted := make(chan bool, 1) // the baseline's admission, read only by a premium warm
 	go func() {
 		defer close(found)
 		ctx, cancel := context.WithTimeout(m.life, premiumLookupTimeout)
 		defer cancel()
-		*premium = m.premiumVariant(ctx, channelID)
+		class := m.source.Premium(ctx, channelID)
+		if warmPremium && class != "" && <-admitted {
+			m.warmPremium(channelID, class)
+		}
+		*premium = m.premiumVariant(ctx, channelID, class)
 	}()
 	c, release, err := m.acquire(channelID, FormatBaseline, speculative)
+	admitted <- err == nil
 	if err != nil {
 		return hlsPlaylistLease{}, err
 	}
@@ -185,11 +199,61 @@ func (m *PackagerHLS) acquirePlaylist(channelID string, _ EncodePlan, speculativ
 // fails or times out lists the baseline alone.
 const premiumLookupTimeout = 5 * time.Second
 
-// premiumVariant is the master's entry for the channel's premium format, or nil when it airs none
-// on this host or the ledger has no room for another one now (#1520: premium is admitted only on
-// its own measured cost). A running premium is described from its own init.
-func (m *PackagerHLS) premiumVariant(ctx context.Context, channelID string) *hlsVariant {
-	class := m.source.Premium(ctx, channelID)
+// premiumTakerMemory is how long a viewer counts as taking the premium after its last premium
+// playlist request. Whether a client plays the premium is its device's capability, so the memory
+// spans the 1080p channels a surf passes between two premium ones; a viewer that stopped taking it
+// costs at most spare-room warms until it lapses.
+const premiumTakerMemory = 15 * time.Minute
+
+// notePremiumTaker records that viewer's client requested a premium playlist.
+func (m *PackagerHLS) notePremiumTaker(viewer string) {
+	if viewer == "" {
+		return
+	}
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.premiumTakers == nil {
+		m.premiumTakers = map[string]time.Time{}
+	}
+	for v, at := range m.premiumTakers {
+		if now.Sub(at) >= premiumTakerMemory {
+			delete(m.premiumTakers, v)
+		}
+	}
+	m.premiumTakers[viewer] = now
+}
+
+// takesPremium reports whether viewer's client requested a premium playlist within
+// premiumTakerMemory.
+func (m *PackagerHLS) takesPremium(viewer string) bool {
+	if viewer == "" {
+		return false
+	}
+	m.mu.Lock()
+	at, ok := m.premiumTakers[viewer]
+	m.mu.Unlock()
+	return ok && time.Since(at) < premiumTakerMemory
+}
+
+// warmPremium warms a neighbour's premium for a viewer whose client takes it (#1037), under the
+// warm's own admission: into spare room only, evicting nothing. Its warm hold gives it the
+// baseline's grace, renewed by every warm while the channel stays adjacent to the viewer.
+func (m *PackagerHLS) warmPremium(channelID string, class FormatClass) {
+	_, release, err := m.acquire(channelID, class, true)
+	if err != nil {
+		if !errors.Is(err, ErrAtCapacity) { // a refusal is logged by admit
+			m.log.Warn("packager hls: premium warm failed", "channel", channelID, "format", string(class), "err", err)
+		}
+		return
+	}
+	release()
+}
+
+// premiumVariant is the master's entry for the channel's premium format class, or nil when it airs
+// none on this host ("") or the ledger has no room for another one now (#1520: premium is admitted
+// only on its own measured cost). A running premium is described from its own init.
+func (m *PackagerHLS) premiumVariant(ctx context.Context, channelID string, class FormatClass) *hlsVariant {
 	if class == "" {
 		return nil
 	}
@@ -232,6 +296,7 @@ func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ Enc
 		if !running && m.source.Premium(ctx, channelID) != class {
 			return nil, false, nil
 		}
+		m.notePremiumTaker(ViewerFrom(ctx))
 	default:
 		return nil, false, nil
 	}
@@ -298,6 +363,7 @@ func (m *PackagerHLS) acquire(channelID string, class FormatClass, speculative b
 	}
 	c.viewers++
 	c.idleSince = time.Time{}
+	c.warmHeld = speculative
 	if !speculative {
 		c.speculative = false
 	}
@@ -329,7 +395,7 @@ func (m *PackagerHLS) start(key packagedKey, speculative bool) (*packagedChannel
 	if ferr == nil {
 		pre = &prefetchedItem{at: resolvedAt, item: first}
 	}
-	lease, err := m.admit(ctx, req, speculative)
+	lease, err := m.admit(ctx, key, req, speculative)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -708,7 +774,7 @@ func (m *PackagerHLS) release(key packagedKey, c *packagedChannel) {
 	if c.idle != nil {
 		return
 	}
-	c.idle = time.AfterFunc(m.graceFor(key), func() {
+	c.idle = time.AfterFunc(m.graceFor(key, c), func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if c.viewers == 0 && m.channels[key] == c {

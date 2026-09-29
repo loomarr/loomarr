@@ -27,7 +27,7 @@ type fakeHLSOrigin struct {
 
 var errFakeAcquire = errors.New("fake acquire")
 
-func (f *fakeHLSOrigin) acquirePlaylist(ch string, _ EncodePlan, _ bool) (hlsPlaylistLease, error) {
+func (f *fakeHLSOrigin) acquirePlaylist(ch string, _ EncodePlan, _ bool, _ string) (hlsPlaylistLease, error) {
 	f.acquired = append(f.acquired, ch)
 	return hlsPlaylistLease{}, errFakeAcquire
 }
@@ -397,7 +397,7 @@ func TestChannelStartDoesNotWaitForTheSlate(t *testing.T) {
 	t.Cleanup(m.Stop)
 	started := make(chan error, 1)
 	go func() {
-		lease, err := m.acquirePlaylist("ch", PlanBaseline, false)
+		lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
 		if err == nil {
 			lease.release()
 		}
@@ -438,7 +438,7 @@ func TestSlateEncodeWaitsForTheFirstItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(m.Stop)
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false)
+	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	lease, err := m.acquirePlaylist("ch1", PlanBaseline, false)
+	lease, err := m.acquirePlaylist("ch1", PlanBaseline, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -502,7 +502,7 @@ func TestPackagerHLSIsAdmittedByTheResourceBudget(t *testing.T) {
 		t.Fatalf("ledger = %+v, want one HDR transcode at rung 1", use)
 	}
 	// A second channel: even SDR keyframes-only (0.297) does not fit beside 3.42 on 3.5.
-	if _, err := m.acquirePlaylist("ch2", PlanBaseline, false); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("ch2", PlanBaseline, false, ""); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("second channel: err = %v, want ErrAtCapacity", err)
 	}
 	m.StopChannel("ch1")
@@ -549,7 +549,7 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	if _, err := m.acquirePlaylist("ch", PlanBaseline, false); !errors.Is(err, ErrAtCapacity) {
+	if _, err := m.acquirePlaylist("ch", PlanBaseline, false, ""); !errors.Is(err, ErrAtCapacity) {
 		t.Fatalf("4K HDR first item on a nearly full host: err = %v, want ErrAtCapacity", err)
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -559,7 +559,7 @@ func TestPackagerHLSAdmitsForTheFirstItemBeforeAnyEncoder(t *testing.T) {
 
 	held.Release()
 	allowance = 3.5
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false)
+	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -741,7 +741,7 @@ func TestPackagerHLSMasterListsThePremiumWithoutStartingIt(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	lease, err := m.acquirePlaylist("ch", PlanBaseline, false)
+	lease, err := m.acquirePlaylist("ch", PlanBaseline, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -847,7 +847,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 			if _, err := os.Stat(ran); err == nil {
 				t.Fatal("an encoder started for a refused premium")
 			}
-			if v := m.premiumVariant(t.Context(), "ch"); v != nil {
+			if v := m.premiumVariant(t.Context(), "ch", Format4KHDR); v != nil {
 				t.Fatalf("master offers %+v, want the premium dropped", *v)
 			}
 		})
