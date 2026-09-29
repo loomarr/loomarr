@@ -300,7 +300,8 @@ const GuideCompact = ({
                 <Text density={density} numberOfLines={2} textRole="cardTitle">
                   {programmeLine(selectedAiring)}
                 </Text>
-                <Text density={density} numberOfLines={1} textRole="guideMeta">
+                {/* Two lines: a range across the hour ("12:05 AM–12:49 AM") would cut off the rating. */}
+                <Text density={density} numberOfLines={2} textRole="guideMeta">
                   {sheetTimeLine(selectedAiring, nowMs, layout.timezone)}
                 </Text>
               </View>

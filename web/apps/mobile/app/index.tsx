@@ -25,7 +25,11 @@ const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
 
 const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("guide");
-  const { controller, guide, myChannelsSnapshot, snapshot } = usePairedClient({ credential, session });
+  const { controller, guide, myChannelsSnapshot, snapshot } = usePairedClient({
+    credential,
+    guideWindowMinutes: 120,
+    session,
+  });
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -99,7 +103,8 @@ const Index = () => {
         )}
         session={session}
       />
-      <StatusBar style="auto" />
+      {/* Light glyphs: the provider draws the dark theme whatever the system's appearance. */}
+      <StatusBar style="light" />
     </>
   );
 };
