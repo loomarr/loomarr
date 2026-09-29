@@ -3,7 +3,9 @@
 # next channel every ROTATE_MINUTES, and counts stalls per viewer-hour and decoder
 # re-instantiations mid-play (a programme <-> commercial boundary must not re-init the codec).
 # Survives adb disconnects (network or USB) and app restarts; rewrites the report every
-# REPORT_MINUTES so an interrupted run still leaves one. Ctrl-C stops early and reports.
+# REPORT_MINUTES so an interrupted run still leaves one. Ctrl-C stops early and reports; a run
+# started in the background (nohup, &) begins with SIGINT ignored, so stop it with the
+# `kill -TERM <pid>` it prints at start.
 #
 #   ADB_SERIAL=<serial> scripts/shield-cert/soak.sh
 #
@@ -72,7 +74,7 @@ start_capture() {
 	mkfifo "$fifo"
 	adb -s "$ADB_SERIAL" logcat -v epoch -T "$since.000" >"$fifo" 2>/dev/null &
 	adb_pid=$!
-	awk -v after="${last:-0}" '$1 + 0 > after + 0' <"$fifo" | cert_logcat_filter >>"$marks" &
+	awk -v after="${last:-0}" '$1 + 0 > after + 0 { print; fflush() }' <"$fifo" | cert_logcat_filter >>"$marks" &
 	filter_pid=$!
 }
 
@@ -108,12 +110,14 @@ trap 'finish; exit 130' INT TERM
 
 if [ "${LAUNCH:-1}" = 1 ]; then cert_launch "$package"; fi
 start_capture
-printf 'soaking %s on %s for %s min, rotating every %s min\n' "$package" "$ADB_SERIAL" "$minutes" "$rotate" >&2
+printf 'soaking %s on %s for %s min, rotating every %s min (stop early: kill -TERM %d)\n' "$package" "$ADB_SERIAL" "$minutes" "$rotate" "$$" >&2
 
 next_rotate=$((started + rotate * 60))
 next_report=$((started + report_every * 60))
 while :; do
-	sleep 30
+	# Waited on rather than run in the foreground, so a TERM reaches the trap at once.
+	sleep 30 &
+	wait "$!" || true
 	if ! cert_online || ! kill -0 "$adb_pid" 2>/dev/null; then reattach; fi
 	now=$(cert_device_epoch 2>/dev/null || true)
 	case "$now" in '' | *[!0-9]*) continue ;; esac
