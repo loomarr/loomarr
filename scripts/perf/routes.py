@@ -23,14 +23,16 @@ import urllib.request
 
 SCREENS = {
     "guide": ["/v1/guide?from={now-30m}&to={now+4h}", "/v1/channels/now-next", "/v1/channels"],
-    "home": ["/v1/guide/highlights", "/v1/discovery/ideas", "/v1/household/viewing", "/v1/titles", "/v1/channels/now-next"],
+    "home": ["/v1/guide/highlights", "/v1/discovery/ideas", "/v1/household/viewing", "/v1/titles?since={now-7d}",
+             "/v1/titles?state=downloading", "/v1/channels/now-next"],
     "watch": ["/v1/channels/{channel}", "/v1/channels/now-next"],
 }
 
 
 def expand(path, channel):
     now = int(time.time() * 1000)
-    return path.replace("{now-30m}", str(now - 1800000)).replace("{now+4h}", str(now + 14400000)).replace("{channel}", channel)
+    return (path.replace("{now-30m}", str(now - 1800000)).replace("{now+4h}", str(now + 14400000))
+            .replace("{now-7d}", str(now - 7 * 86400000)).replace("{channel}", channel))
 
 
 def fanout(base, token):
@@ -104,7 +106,7 @@ def main():
             calls = (f[0] - b[0]) / (f[1] - b[1]) if f[1] > b[1] else None
             if not ms:
                 continue
-            rows.append({"screen": screen, "route": route, "first_ms": round(ms[0], 1), "p50_ms": round(pct(ms[1:], .5), 1),
+            rows.append({"screen": screen, "route": p, "first_ms": round(ms[0], 1), "p50_ms": round(pct(ms[1:], .5), 1),
                          "p95_ms": round(pct(ms[1:], .95), 1), "p99_ms": round(pct(ms[1:], .99), 1),
                          "kb": round(sum(sizes) / len(sizes) / 1000, 1), "outbound_per_req": None if calls is None else round(calls, 2)})
     stamp = time.strftime("%Y-%m-%d %H:%M %Z")
