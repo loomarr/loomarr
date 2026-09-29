@@ -1,5 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
+import { formatGuideTime, layoutGuide } from "@loomarr/core/guide";
+import { surfGroupsFromGuide, surfPreviousChannel, watchingScheduleFromGuide } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -72,6 +74,34 @@ const WatchScreen = () => {
     [guide.data, nowMs],
   );
 
+  // A portrait phone's panel under the picture (#1785, mock 5e) reads the same guide the way the
+  // native Watching does: now and next for the tuned channel, the favourites with what each has on,
+  // and Previous as the newest recent that isn't this channel.
+  const favouriteIds = useMemo(() => mineBody?.favourites.map((f) => f.channelId) ?? [], [mineBody]);
+  const recentIds = useMemo(() => mineBody?.recent.map((r) => r.channelId) ?? [], [mineBody]);
+  const phone = useMemo(() => {
+    const body = unwrap(guide.data);
+    // Read defensively, as the drawer does: a body without `channels` must not reach the layout.
+    const layout = body?.channels ? layoutGuide(body, nowMs) : undefined;
+    const playable = (body?.channels ?? []).filter((c) => c.status === "live").map((c) => c.channelId);
+    const groups = layout
+      ? surfGroupsFromGuide({
+          layout,
+          nowMs,
+          currentChannelId: tunedChannel.id,
+          favoriteChannelIds: favouriteIds,
+          playableChannelIds: playable,
+          recentChannelIds: recentIds,
+        })
+      : [];
+    return {
+      schedule: watchingScheduleFromGuide(layout, tunedChannel.id, nowMs),
+      favourites: groups.find((g) => g.kind === "favourites")?.channels ?? [],
+      previousId: surfPreviousChannel(tunedChannel.id, recentIds, playable),
+      clockLabel: formatGuideTime(nowMs, layout?.timezone),
+    };
+  }, [guide.data, nowMs, tunedChannel.id, favouriteIds, recentIds]);
+
   return (
     <>
       {/* A visually-hidden heading, same as filler.tsx. The Watch surface labels itself visibly through
@@ -105,6 +135,7 @@ const WatchScreen = () => {
             (favourite ? addFavourite : removeFavourite).mutate({ channelId }),
         }}
         onTuneSettled={(channelId) => recordTune.mutate({ channelId })}
+        phone={phone}
       />
     </>
   );

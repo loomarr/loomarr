@@ -16,7 +16,7 @@ export default defineConfig({
   // The tuner scenario owns a real same-origin HLS fixture and its own three-engine config.
   // Keeping it out of this wizard-only suite prevents it from being discovered against the
   // wizard route-mock server before the dedicated tuner gate runs.
-  testIgnore: "tuner-surf.spec.ts",
+  testIgnore: ["tuner-surf.spec.ts", "tuner-phone.spec.ts"],
   fullyParallel: true,
   // ⚠ LOCAL ONLY — `E2E_WORKERS` is undefined under CI, leaving Playwright's own default in
   // place, because this suite's CI concurrency is not ours to retune. Locally it had no cap at

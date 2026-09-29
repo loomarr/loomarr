@@ -11,7 +11,7 @@ const viewport = { width: 1280, height: 800 };
 export default defineConfig({
   ...DETERMINISM,
   testDir: "./tests/e2e",
-  testMatch: "tuner-surf.spec.ts",
+  testMatch: ["tuner-surf.spec.ts", "tuner-phone.spec.ts"],
   fullyParallel: false,
   // This is a behavioral/performance gate, not a screenshot suite: engines run alone so their
   // timings are independent, and a black start fails instead of being reclassified as flaky.

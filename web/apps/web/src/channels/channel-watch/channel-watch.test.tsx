@@ -4,6 +4,7 @@ import {
   getChannelTimelineMockHandler,
   getChannelTracksMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -506,5 +507,61 @@ describe("ChannelWatch channels drawer and direct tune (#1659 W1)", () => {
     await userEvent.keyboard("9{Enter}");
     expect(await screen.findByText("NO SUCH CHANNEL")).toBeInTheDocument();
     expect(tune).toHaveBeenCalledTimes(1);
+  });
+});
+
+// A portrait phone (#1785, native mock 5e): nothing drawn on the picture, the controls under it.
+describe("ChannelWatch at phone width", () => {
+  beforeEach(() => {
+    hls.status = "playing";
+    hls.liveTransport.state = { mode: "live", lagSeconds: 0, viewerTimeMs: 1_000_000, noticeRevision: 0 };
+    // Below the tablet breakpoint: `(min-width: 48rem)` does not match.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    return () => vi.unstubAllGlobals();
+  });
+
+  const renderPhone = () => {
+    stubTracks();
+    const step = vi.fn();
+    const tune = vi.fn();
+    render(
+      // The panel under the picture is the shared @loomarr/ui one, which main.tsx themes app-wide.
+      <LoomarrProvider theme="dark">
+        <ChannelWatch
+          channel={live}
+          isAdmin={false}
+          onSavePolicy={vi.fn()}
+          tuner={{ canSurf: true, ready: vi.fn(), step, tune, retry: vi.fn() }}
+          phone={{ favourites: [], previousId: "ch-9", clockLabel: "8:26 PM" }}
+        />
+      </LoomarrProvider>,
+      { wrapper: makeWrapper() },
+    );
+    return { step, tune };
+  };
+
+  it("mounts no overlay controls on the picture, and the four controls under it", async () => {
+    renderPhone();
+    expect(await screen.findByRole("button", { name: "Pause" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Playback controls" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Channels" })).not.toBeInTheDocument();
+    for (const name of ["Previous", "Channel −", "Channel +"])
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+  });
+
+  it("steps and returns through the tuner, and pauses through the live transport", async () => {
+    const { step, tune } = renderPhone();
+    await userEvent.click(await screen.findByRole("button", { name: "Channel +" }));
+    await userEvent.click(screen.getByRole("button", { name: "Channel −" }));
+    await userEvent.click(screen.getByRole("button", { name: "Previous" }));
+    await userEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(step.mock.calls.map(([direction]) => direction)).toEqual([1, -1]);
+    expect(tune).toHaveBeenCalledWith("ch-9");
+    expect(hls.liveTransport.pause).toHaveBeenCalledWith(expect.any(HTMLVideoElement));
   });
 });

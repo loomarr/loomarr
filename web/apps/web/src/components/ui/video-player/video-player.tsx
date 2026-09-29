@@ -81,6 +81,7 @@ const VideoPlayer = ({
   onShortcut,
   attach,
   onChannelStep,
+  chrome = true,
   className,
 }: VideoPlayerProps) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -247,7 +248,7 @@ const VideoPlayer = ({
         {/* TOP BAR — over a scrim, fading with the controls. Live keeps this focused on Channel
           identity; live-edge transport belongs beside Play below. Non-live uses `leading` (left) +
           `title` (right), the clip player's existing chrome. */}
-        {(live ? topBar : title || leading) && (
+        {chrome && (live ? topBar : title || leading) && (
           <div
             className={cn(
               "pointer-events-none absolute top-0 right-0 left-0 flex items-center gap-2.5 bg-linear-to-b from-black/70 to-transparent p-3 transition-opacity duration-200",
@@ -271,61 +272,63 @@ const VideoPlayer = ({
 
         {/* CONTROL BAR — over a bottom scrim, auto-hiding. A COLUMN: the live scrubber gets its own
           FULL-WIDTH row above the buttons (the mock); the buttons row follows. */}
-        <div
-          className={cn(
-            "absolute right-0 bottom-0 left-0 flex flex-col gap-2.5 bg-linear-to-t from-black/80 via-black/40 to-transparent px-4 pt-8 pb-3 transition-opacity duration-200",
-            controlsShown ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-        >
-          {/* Row 1 (live): the full-width mini-guide scrubber. */}
-          {live && scrubber && <div className="w-full">{scrubber}</div>}
-
-          {/* Row 2 — the mock's control row: LEFT-PACKED play → volume → time, with only fullscreen
-            pushed to the far right (ml-auto). No stretching spacer: everything sits next to play. */}
-          <fieldset className="flex min-w-0 items-center gap-2 border-0 p-0 sm:gap-3">
-            <legend className="sr-only">Playback controls</legend>
-            <PlayToggle playing={playing} onToggle={toggle} />
-            <VolumeControl
-              volume={volume}
-              muted={muted}
-              onVolumeChange={setVolume}
-              onMutedChange={setMuted}
-            />
-            {live && (
-              <LiveIndicator
-                state={liveTransport?.state ?? LIVE_EDGE_STATE}
-                onGoLive={() => {
-                  const video = videoRef.current;
-                  if (video && liveTransport) void liveTransport.goLive(video);
-                }}
-              />
+        {chrome && (
+          <div
+            className={cn(
+              "absolute right-0 bottom-0 left-0 flex flex-col gap-2.5 bg-linear-to-t from-black/80 via-black/40 to-transparent px-4 pt-8 pb-3 transition-opacity duration-200",
+              controlsShown ? "opacity-100" : "pointer-events-none opacity-0",
             )}
+          >
+            {/* Row 1 (live): the full-width mini-guide scrubber. */}
+            {live && scrubber && <div className="w-full">{scrubber}</div>}
 
-            {/* Time, right after volume (mock order). Live: the caller's programme time (schedule);
+            {/* Row 2 — the mock's control row: LEFT-PACKED play → volume → time, with only fullscreen
+            pushed to the far right (ml-auto). No stretching spacer: everything sits next to play. */}
+            <fieldset className="flex min-w-0 items-center gap-2 border-0 p-0 sm:gap-3">
+              <legend className="sr-only">Playback controls</legend>
+              <PlayToggle playing={playing} onToggle={toggle} />
+              <VolumeControl
+                volume={volume}
+                muted={muted}
+                onVolumeChange={setVolume}
+                onMutedChange={setMuted}
+              />
+              {live && (
+                <LiveIndicator
+                  state={liveTransport?.state ?? LIVE_EDGE_STATE}
+                  onGoLive={() => {
+                    const video = videoRef.current;
+                    if (video && liveTransport) void liveTransport.goLive(video);
+                  }}
+                />
+              )}
+
+              {/* Time, right after volume (mock order). Live: the caller's programme time (schedule);
               non-live (a clip): the video's own elapsed / total. */}
-            {live
-              ? timeLeft && (
-                  <span className="hidden shrink-0 font-mono text-static-300 text-xs tabular-nums lg:inline-flex">
-                    {timeLeft}
-                  </span>
-                )
-              : ready && (
-                  <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">
-                    {mmss(current)} <span className="text-muted-foreground">/ {mmss(duration)}</span>
-                  </span>
-                )}
+              {live
+                ? timeLeft && (
+                    <span className="hidden shrink-0 font-mono text-static-300 text-xs tabular-nums lg:inline-flex">
+                      {timeLeft}
+                    </span>
+                  )
+                : ready && (
+                    <span className="shrink-0 font-mono text-static-300 text-xs tabular-nums">
+                      {mmss(current)} <span className="text-muted-foreground">/ {mmss(duration)}</span>
+                    </span>
+                  )}
 
-            {/* The right cluster (ml-auto): the caller's bar controls (audio/subtitles) then fullscreen
+              {/* The right cluster (ml-auto): the caller's bar controls (audio/subtitles) then fullscreen
               at the far edge — the "controls beside fullscreen" the maintainer asked for. */}
-            <div className="ml-auto flex items-center gap-1.5">
-              {barControls}
-              <FullscreenButton active={fullscreen} onToggle={toggleFullscreen} />
-            </div>
-          </fieldset>
+              <div className="ml-auto flex items-center gap-1.5">
+                {barControls}
+                <FullscreenButton active={fullscreen} onToggle={toggleFullscreen} />
+              </div>
+            </fieldset>
 
-          {/* Row 3 (live): the caller's keyboard hints. */}
-          {live && hints}
-        </div>
+            {/* Row 3 (live): the caller's keyboard hints. */}
+            {live && hints}
+          </div>
+        )}
 
         {/* PANEL SLOT — the caller's side panel, over the controls' scrims so it takes the pointer. */}
         {panel && <div className="absolute inset-y-0 right-0 z-10 flex max-w-full">{panel}</div>}
