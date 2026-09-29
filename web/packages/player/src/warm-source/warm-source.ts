@@ -16,10 +16,18 @@ interface WarmResult {
 
 /** The URIs of a multivariant playlist's variants, in order; empty for a media playlist. */
 const variantUris = (manifest: string): string[] => {
-  const lines = manifest.replaceAll("\r\n", "\n").split("\n");
-  return lines.flatMap((line, index) =>
-    line.startsWith("#EXT-X-STREAM-INF:") && lines[index + 1] ? [lines[index + 1].trim()] : [],
-  );
+  const uris: string[] = [];
+  let variantNext = false;
+  for (const raw of manifest.replaceAll("\r\n", "\n").split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith("#EXT-X-STREAM-INF:")) {
+      variantNext = true;
+    } else if (variantNext && line && !line.startsWith("#")) {
+      uris.push(line);
+      variantNext = false;
+    }
+  }
+  return uris;
 };
 
 /**
@@ -55,9 +63,9 @@ const warmSource = async (uri: string, get: WarmGet): Promise<WarmResult> => {
     }),
   );
   const warmed = assets.length > 0 && fetched.every(Boolean);
-  const variants = variantUris(manifest);
-  return warmed && variants.length === 1
-    ? { mediaUri: new URL(variants[0], base).toString(), warmed }
+  const [only, ...others] = variantUris(manifest);
+  return warmed && only !== undefined && others.length === 0
+    ? { mediaUri: new URL(only, base).toString(), warmed }
     : { warmed };
 };
 

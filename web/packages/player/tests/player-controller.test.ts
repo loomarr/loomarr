@@ -474,7 +474,7 @@ describe("player controller warmed-source reuse", () => {
     await vi.waitFor(() => expect(warm).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
     const order: string[] = [];
-    transport.replace.mockImplementation(() => {
+    vi.mocked(transport.replace).mockImplementation(() => {
       order.push(`replace ${controller.getSnapshot().channel?.id}`);
       return Promise.resolve();
     });
