@@ -78,6 +78,9 @@ class Viewer(threading.Thread):
         super().__init__(daemon=True)
         self.n, self.c, self.channels, self.a, self.stop, self.log = n, client, channels, a, stop, log
         self.tunes, self.segments, self.bytes, self.stalls, self.errors = [], 0, 0, 0, []
+        # Media playlist reloads: how often, how big, how many signed entries (every entry is
+        # re-signed per reload server-side, and the list grows with the DVR horizon).
+        self.reloads, self.playlist_bytes, self.playlist_max_bytes, self.playlist_max_entries = 0, 0, 0, 0
         self.last_fetch = 0.0
 
     def tune(self, ch):
@@ -103,6 +106,10 @@ class Viewer(threading.Thread):
                 while not self.stop.is_set() and time.monotonic() < dwell_end:
                     text, murl = self.c.req(media)
                     target, init, segs = parse_media(text.decode(), murl)
+                    self.reloads += 1
+                    self.playlist_bytes += len(text)
+                    self.playlist_max_bytes = max(self.playlist_max_bytes, len(text))
+                    self.playlist_max_entries = max(self.playlist_max_entries, len(segs))
                     if init and not init_done:
                         b, _ = self.c.req(init)
                         self.bytes += len(b)
@@ -190,6 +197,9 @@ def main():
         "tunes": len(tunes), "tune_errors": sum(1 for t in tunes if "error" in t),
         "first_segment_s": {"p50": firsts[len(firsts) // 2] if firsts else None, "max": firsts[-1] if firsts else None},
         "segments": sum(v.segments for v in vs), "mb": round(sum(v.bytes for v in vs) / 1e6, 1),
+        "playlist_reloads": sum(v.reloads for v in vs), "playlist_mb": round(sum(v.playlist_bytes for v in vs) / 1e6, 1),
+        "playlist_max_kb": round(max((v.playlist_max_bytes for v in vs), default=0) / 1e3, 1),
+        "playlist_max_entries": max((v.playlist_max_entries for v in vs), default=0),
         "stalls": sum(v.stalls for v in vs), "last_fetch_epoch": last, "errors": sorted({e for v in vs for e in v.errors})[:10],
         "tune_log": tunes,
     }

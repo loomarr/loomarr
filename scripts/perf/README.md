@@ -26,6 +26,7 @@ Export `METRICS_TOKEN_FILE` (or `LOOMARR_METRICS_TOKEN`) with the same token for
 | `viewers.py` | HLS viewers as the web player does them on the wire: play-url, master, media playlist, segments; `--surf N` changes channel every N s; `--premium` takes the 4K HEVC HDR variant |
 | `drain.py` | seconds from the last viewer fetch until sessions, playout ffmpeg and GPU encode are all gone |
 | `routes.py` | latency (first, p50/p95/p99) and outbound calls per request for the routes Guide, Home and Watch load |
+| `tv-app.sh` (`MODE=surf\|soak`) | the TV app over adb: JS, UI and RenderThread CPU per key press (the 1.25 s tune window), `gfxinfo` frame percentiles while surfing, `meminfo` every minute over a long watch |
 | `web-client.mjs routes\|soak` | Chromium: cold per-screen transfer by type, long tasks, TBT, LCP; and a watch-then-surf soak sampling heap, detached DOM nodes, listeners, renderer PSS and the hls.js buffer |
 
 ## States
