@@ -42,8 +42,23 @@ const programmeLine = (airing: GuideAiringLayout) =>
     ? `${airing.source.series} “${airing.source.title.trim()}”`
     : guideAiringLabel(airing.source);
 
+// The sheet's time line (5d): "8:50–9:39 PM · in 24m · TV-G". A programme on now counts down as
+// Watching's rows do ("34m left"); one that has ended says nothing more.
+const sheetTimeLine = (airing: GuideAiringLayout, nowMs: number, timezone?: string) => {
+  const { rating, startMs, stopMs } = airing.source;
+  const minutes = (ms: number) => `${Math.max(1, Math.ceil(ms / 60_000))}m`;
+  const when =
+    nowMs < startMs
+      ? `in ${minutes(startMs - nowMs)}`
+      : nowMs < stopMs
+        ? `${minutes(stopMs - nowMs)} left`
+        : undefined;
+  return [formatGuideTimeRange(startMs, stopMs, timezone), when, rating].filter(Boolean).join(" · ");
+};
+
 const GuideCompact = ({
   density = "touch",
+  dock = "strip",
   filter: chosenFilter,
   layout,
   myChannels,
@@ -54,6 +69,8 @@ const GuideCompact = ({
   renderArtwork,
   selection,
 }: GuideCompactProps) => {
+  // The iPhone sheet drags down to close; tapping a programme brings it back.
+  const [dismissedBlockId, setDismissedBlockId] = useState<string>();
   const filters = guideFilterOptions(layout, myChannels);
   // A personal filter that empties (the last favourite unstarred) falls back to All.
   const filter = filters.find((option) => option.value === chosenFilter)?.disabled ? "all" : chosenFilter;
@@ -79,6 +96,7 @@ const GuideCompact = ({
   const selectedAiring = selectedChannel?.airings.find(
     (a) => a.scheduleBlockId === selection?.scheduleBlockId,
   );
+  const Dock = dock === "strip" ? undefined : dock;
 
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
@@ -187,7 +205,10 @@ const GuideCompact = ({
                         accessibilityState={{ selected }}
                         aria-pressed={selected}
                         key={airing.scheduleBlockId}
-                        onPress={() => onSelect(selectionOf(airing))}
+                        onPress={() => {
+                          setDismissedBlockId(undefined);
+                          onSelect(selectionOf(airing));
+                        }}
                         style={{
                           bottom: 0,
                           left: `${airing.startRatio * 100}%`,
@@ -250,7 +271,51 @@ const GuideCompact = ({
         </View>
       </ScrollView>
 
-      {selectedChannel && selectedAiring ? (
+      {selectedChannel && selectedAiring && Dock ? (
+        dismissedBlockId === selectedAiring.scheduleBlockId ? null : (
+          <Dock
+            accessibilityLabel="Selected programme"
+            onDismiss={() => setDismissedBlockId(selectedAiring.scheduleBlockId)}
+          >
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              {renderArtwork ? (
+                <Surface
+                  backgroundColor="$surfaceElevated"
+                  borderRadius={6}
+                  borderWidth={0}
+                  height={63}
+                  overflow="hidden"
+                  width={112}
+                >
+                  {renderArtwork(selectedAiring)}
+                </Surface>
+              ) : null}
+              <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+                <Text density={density} numberOfLines={1} textRole="cardMeta">
+                  <Text density={density} textRole="cardTime" tone="primary">
+                    {String(selectedChannel.source.number)}
+                  </Text>
+                  {` · ${selectedChannel.source.name}`}
+                </Text>
+                <Text density={density} numberOfLines={2} textRole="cardTitle">
+                  {programmeLine(selectedAiring)}
+                </Text>
+                <Text density={density} numberOfLines={1} textRole="guideMeta">
+                  {sheetTimeLine(selectedAiring, nowMs, layout.timezone)}
+                </Text>
+              </View>
+            </View>
+            <Action
+              accessibilityLabel={`Watch ${selectedChannel.source.number} ${selectedChannel.source.name} now`}
+              density={density}
+              onPress={() => onWatch(selectedChannel.source.channelId)}
+              tone="primary"
+            >
+              {`Watch ${selectedChannel.source.number} now`}
+            </Action>
+          </Dock>
+        )
+      ) : selectedChannel && selectedAiring ? (
         <Surface
           alignItems="center"
           backgroundColor="$surfaceRaised"
