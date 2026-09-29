@@ -49,7 +49,9 @@ const CollapsibleSection = ({
     render={
       <section
         className={cn(
-          "overflow-hidden rounded-lg border border-border",
+          // shrink-0: overflow-hidden drops a flex item's minimum height to zero, so a scrolling
+          // page column would squeeze the section and clip its body instead of scrolling (#1785).
+          "shrink-0 overflow-hidden rounded-lg border border-border",
           size === "compact" && "bg-card",
           className,
         )}

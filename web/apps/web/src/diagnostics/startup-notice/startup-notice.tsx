@@ -4,6 +4,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
+// Below Tailwind's `sm` breakpoint (640 px): the widths the app lays out for a phone.
+const PHONE_QUERY = "(max-width: 639.98px)";
+
 const acknowledgedKey = (id: string) => `loomarr.health.ack.${id}`;
 const signatureKey = (generationID: string) => `loomarr.health.signature.${generationID}`;
 const sequenceKey = (generationID: string) => `loomarr.health.sequence.${generationID}`;
@@ -59,7 +62,12 @@ const HealthNotice = ({ enabled }: { enabled: boolean }) => {
         void navigate({ to: "/settings/system/diagnostics" });
       },
     };
-    const duration = state === "healthy" ? 6_000 : Number.POSITIVE_INFINITY;
+    // A warning stays until dismissed, except on a phone, where it covered the bottom 158 px of
+    // every page; there it closes like the healthy notice, and Home's status strip and Diagnostics
+    // keep the incident (#1785, the maintainer's call). The width is read once: a toast's duration
+    // is fixed when it is raised.
+    const phone = typeof window.matchMedia === "function" && window.matchMedia(PHONE_QUERY).matches;
+    const duration = state === "healthy" || phone ? 6_000 : Number.POSITIVE_INFINITY;
     const options = {
       description: `${version}${affected > 0 ? ` · ${affected} check${affected === 1 ? "" : "s"} need attention` : ""}`,
       duration,

@@ -165,7 +165,8 @@ const AccountScreen = () => {
             was last used, a This device badge on your own, Sign out on the others. The mock's
             per-session city is dropped (geo-IP; the map's call on #1659). A session the API hasn't
             labelled yet keeps today's "Signed in …" title. */}
-        <Card className="flex flex-col overflow-hidden">
+        {/* shrink-0: in the scrolling column, an overflow-hidden card would shrink and clip its rows (#1785). */}
+        <Card className="flex shrink-0 flex-col overflow-hidden">
           <h2 className="border-border border-b px-4 py-3.5 font-semibold text-sm">Where you're signed in</h2>
           {sessions.isLoading && <p className="px-4 py-3 text-muted-foreground text-sm">Loading sessions…</p>}
           {!sessions.isLoading && sessionRows.length === 0 && (

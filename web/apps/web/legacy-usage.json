@@ -28,7 +28,7 @@
       "legacyUi": 2
     },
     "src/components/loomarr/ai/approval-queue-item/approval-queue-item.tsx": {
-      "tailwindClasses": 96,
+      "tailwindClasses": 99,
       "legacyUi": 4
     },
     "src/components/loomarr/ai/hosted-model-picker/hosted-model-picker.tsx": {
@@ -151,7 +151,7 @@
       "legacyUi": 2
     },
     "src/components/loomarr/feedback/collapsible-section/collapsible-section.tsx": {
-      "tailwindClasses": 49,
+      "tailwindClasses": 50,
       "baseUi": 1
     },
     "src/components/loomarr/feedback/empty-state/empty-state.tsx": {
@@ -407,7 +407,7 @@
       "baseUi": 2
     },
     "src/components/ui/highlight-row/highlight-row.tsx": {
-      "tailwindClasses": 35,
+      "tailwindClasses": 40,
       "baseUi": 1
     },
     "src/components/ui/highlight-row/highlight-row.type.ts": {
@@ -436,7 +436,7 @@
       "tailwindClasses": 54
     },
     "src/components/ui/panel-row/panel-row.tsx": {
-      "tailwindClasses": 19
+      "tailwindClasses": 21
     },
     "src/components/ui/progress/progress.tsx": {
       "tailwindClasses": 11
@@ -673,7 +673,7 @@
       "legacyUi": 3
     },
     "src/home/watching-now/watching-now.tsx": {
-      "tailwindClasses": 12,
+      "tailwindClasses": 14,
       "legacyUi": 2
     },
     "src/lib/utils/utils.ts": {
@@ -700,7 +700,7 @@
       "legacyUi": 1
     },
     "src/routes/_authed/account.tsx": {
-      "tailwindClasses": 92,
+      "tailwindClasses": 93,
       "legacyUi": 5
     },
     "src/routes/_authed/channels/$id/-channel-advanced.tsx": {
@@ -715,7 +715,7 @@
       "tailwindClasses": 38
     },
     "src/routes/_authed/channels/$id/route.tsx": {
-      "tailwindClasses": 79,
+      "tailwindClasses": 85,
       "legacyUi": 1
     },
     "src/routes/_authed/channels/$id/watch.tsx": {

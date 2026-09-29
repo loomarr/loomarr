@@ -39,9 +39,10 @@ const Main = ({ children, className }: PanelRowProps) => (
 );
 
 // Meta — the trailing cluster (numbers, badges, actions). Stays intact as one unit and drops to its
-// own line when the row wraps, so it is never clipped.
+// own line when the row wraps, so it is never clipped; a cluster wider than a whole phone row wraps
+// within itself too (#1785).
 const Meta = ({ children, className }: PanelRowProps) => (
-  <div className={cn("flex shrink-0 items-center gap-3", className)}>{children}</div>
+  <div className={cn("flex max-w-full shrink-0 flex-wrap items-center gap-3", className)}>{children}</div>
 );
 
 PanelRow.Main = Main;
