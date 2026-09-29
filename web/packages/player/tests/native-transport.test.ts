@@ -97,6 +97,23 @@ describe("Expo video transport", () => {
     expect(events.map(({ type }) => type)).toEqual(["first-frame", "playing", "live-state", "error"]);
   });
 
+  // #1037: a warm already read the master, so native playback starts from its only variant, and an
+  // idle transport calls native playback in the same task, before any overlay render can intervene.
+  it("starts a warmed source from its variant playlist, synchronously when nothing is queued", async () => {
+    const { player, raw } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+
+    const replaced = transport.replace(
+      { mediaUri: "https://loomarr.test/1080p.m3u8?sig=s", uri: "https://loomarr.test/master.m3u8?sig=s" },
+      { attemptId: 1, signal: new AbortController().signal },
+    );
+
+    expect(raw.replaceAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ uri: "https://loomarr.test/1080p.m3u8?sig=s" }),
+    );
+    await replaced;
+  });
+
   it("advances the live wall clock when native HLS omits programme-date-time metadata", async () => {
     vi.useFakeTimers();
     const deviceTime = new Date("2026-09-21T20:00:00Z");

@@ -455,6 +455,36 @@ describe("player controller warmed-source reuse", () => {
     );
   });
 
+  // #1037: the native start must not queue behind the switch overlay's render on the main thread.
+  it("hands a warmed source to the player before it publishes the tuning snapshot", async () => {
+    const list: PlayerChannel[] = [1, 2, 3].map((n) => ({
+      id: `ch${n}`,
+      inAppPlayable: true,
+      name: `Channel ${n}`,
+      number: n,
+    }));
+    const warm = vi.fn((channel: PlayerChannel) =>
+      Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?warmed`, warmed: true }),
+    );
+    const mint = vi.fn((channel: PlayerChannel) =>
+      Promise.resolve({ uri: `https://loomarr.test/${channel.id}.m3u8?fresh` }),
+    );
+    const { controller, transport } = harness({ mint, warm });
+    await controller.reconcile(list);
+    await vi.waitFor(() => expect(warm).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const order: string[] = [];
+    vi.mocked(transport.replace).mockImplementation(() => {
+      order.push(`replace ${controller.getSnapshot().channel?.id}`);
+      return Promise.resolve();
+    });
+    controller.subscribe(() => order.push(`publish ${controller.getSnapshot().channel?.id}`));
+
+    await controller.step(1);
+
+    expect(order.slice(0, 2)).toEqual(["replace ch1", "publish ch2"]);
+  });
+
   it("reports each attempt as warm or cold the moment it starts", async () => {
     const list: PlayerChannel[] = [1, 2, 3, 4, 5].map((n) => ({
       id: `ch${n}`,
