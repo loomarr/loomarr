@@ -1,6 +1,6 @@
 import { ClientDiagnosticsReporter, createAuthenticatedBatchSender } from "@loomarr/core/client-diagnostics";
 import { openEventStream } from "@loomarr/core/events";
-import { createGuideController, createGuideSourcePort } from "@loomarr/core/guide";
+import { createGuideController, createGuideSourcePort, guideWindow } from "@loomarr/core/guide";
 import { createMyChannelsController, createMyChannelsPort } from "@loomarr/core/my-channels";
 import { createAuthenticatedFetch } from "@loomarr/core/pairing";
 import { createServerVersionSource } from "@loomarr/core/system-version";
@@ -29,6 +29,7 @@ const newPlaybackSessionId = (platform: string) =>
 const usePairedClient = ({
   credential,
   diagnostics,
+  guideWindowMinutes,
   marks,
   onTune,
   session,
@@ -76,7 +77,23 @@ const usePairedClient = ({
     catalogRefresher.getState,
   );
   const version = useMemo(() => createServerVersionSource(request), [request]);
-  const guide = useMemo(() => createGuideController({ source: createGuideSourcePort(request) }), [request]);
+  const guide = useMemo(
+    () =>
+      createGuideController({
+        resolveWindow: guideWindowMinutes
+          ? (at) =>
+              guideWindow({
+                at,
+                dayOffset: 0,
+                hourShift: 0,
+                startHour: null,
+                windowMinutes: guideWindowMinutes,
+              })
+          : undefined,
+        source: createGuideSourcePort(request),
+      }),
+    [guideWindowMinutes, request],
+  );
   const myChannels = useMemo(
     () => createMyChannelsController({ port: createMyChannelsPort(request) }),
     [request],

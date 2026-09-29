@@ -15,6 +15,8 @@ interface PairedClientOptions {
    * client without one (the phone, until the API lists it) runs without them.
    */
   diagnostics?: ClientDiagnosticsIdentity;
+  /** How much of the schedule the guide loads from now; the phone reads 2 hours, as the web phone does. */
+  guideWindowMinutes?: number;
   /** Shield certification marks (#1037): the transport and the tunes write them when enabled. */
   marks?: PlaybackMarks;
   /** Every tune the controller starts; the latest function is always called. */
