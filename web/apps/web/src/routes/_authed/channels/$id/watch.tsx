@@ -81,7 +81,8 @@ const WatchScreen = () => {
   const recentIds = useMemo(() => mineBody?.recent.map((r) => r.channelId) ?? [], [mineBody]);
   const phone = useMemo(() => {
     const body = unwrap(guide.data);
-    const layout = body ? layoutGuide(body, nowMs) : undefined;
+    // Read defensively, as the drawer does: a body without `channels` must not reach the layout.
+    const layout = body?.channels ? layoutGuide(body, nowMs) : undefined;
     const playable = (body?.channels ?? []).filter((c) => c.status === "live").map((c) => c.channelId);
     const groups = layout
       ? surfGroupsFromGuide({

@@ -1,8 +1,7 @@
 import { Action, ProgressTrack, Surface, Text } from "@loomarr/design-system";
 import { Pressable, View } from "react-native";
-
+import { behindLabel } from "../watching-surface-state";
 import type { WatchingPanelProps } from "./watching-panel.type";
-import { behindLabel } from "./watching-surface-state";
 
 // WatchingPanel — what sits UNDER the picture on a portrait phone (#1659 native mock 5e, maintainer
 // decision N5): the controls are not drawn on the picture there, so this panel carries them. The

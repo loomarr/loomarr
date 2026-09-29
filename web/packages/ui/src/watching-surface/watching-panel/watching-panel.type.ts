@@ -1,7 +1,7 @@
 import type { Density } from "@loomarr/design-system";
 
-import type { SurfChannelData } from "../surf-rail";
-import type { WatchingScheduleData } from "./watching-surface.type";
+import type { SurfChannelData } from "../../surf-rail";
+import type { WatchingScheduleData } from "../watching-surface.type";
 
 interface WatchingPanelProps {
   /** A channel was tuned before this one, so Previous has somewhere to go. */
