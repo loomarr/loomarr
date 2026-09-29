@@ -28,13 +28,14 @@ analyse() {
 	cat "$work/out.json"
 }
 
-# Surf: seven surfs after the boot tune. Warm 400, 550, 300, one that never framed (it counts as
+# Surf: eight surfs after the boot tune. Warm 400, 550, 300, one that never framed (it counts as
 # unfinished, so warm p95 fails rather than hiding it) and one a retry recovered (51500 - 50000);
-# one more got a 503 and its retry never framed, so it is refused, not timed. The number jump is
-# timed from its commit (31300 - 30003); the held OSD is 30, 40, 50, 120, 20, 30, 25; retries are
-# part of their surf, not other tunes; the v=2 line is ignored.
+# one more got a 503 and its retry never framed, so it is refused, not timed. The number jumps are
+# timed from their commit: a 1080p one (31300 - 30003) judged against the cold baseline, and a
+# 2160-line one (57100 - 55002) that only the 4K premium ceiling passes. The held OSD is 30, 40,
+# 50, 120, 20, 30, 25, 28; retries are part of their surf, not other tunes; the v=2 line is ignored.
 check 'surf report' \
-	'{"mode":"surf","surfs":7,"unfinished":1,"refused":1,"refusedBy":{"http_503":1},"unkeyed":0,"otherTunes":1,"warm":{"n":5,"p50":550,"p95":null,"max":null},"cold":{"n":1,"p50":1297,"p95":1297,"max":1297},"held":{"n":7,"p50":30,"p95":120,"max":120},"still":{"n":1,"p50":90,"p95":90,"max":90},"keyToTune":{"n":6,"p50":1,"p95":2,"max":2},"stalls":0,"errors":2,"gates":{"warmP95Max600":"FAIL","coldP95Max1500":"PASS","heldP95Max100":"FAIL","refusedMax0":"FAIL"}}' \
+	'{"mode":"surf","surfs":8,"unfinished":1,"refused":1,"refusedBy":{"http_503":1},"unkeyed":0,"otherTunes":1,"warm":{"n":5,"p50":550,"p95":null,"max":null},"cold":{"n":1,"p50":1297,"p95":1297,"max":1297},"cold4k":{"n":1,"p50":2098,"p95":2098,"max":2098},"held":{"n":8,"p50":30,"p95":120,"max":120},"still":{"n":1,"p50":90,"p95":90,"max":90},"keyToTune":{"n":6,"p50":1,"p95":2,"max":2},"stalls":0,"errors":2,"gates":{"warmP95Max600":"FAIL","coldP95Max1500":"PASS","cold4kP95Max2500":"PASS","heldP95Max100":"FAIL","refusedMax0":"FAIL"}}' \
 	"$(analyse "$here/testdata/surf.log" -v mode=surf)"
 check 'surf summary names the refusal' 'refused          1 (http_503 x1)   [G3 none refused: FAIL]' \
 	"$(grep '^refused ' "$work/summary.txt")"

@@ -105,6 +105,9 @@ the foreground. `MINUTES` shortens a soak for a trial; the verdict still judges 
   A number jump runs from the entry's commit instead, so the deliberate 1.2 s entry window is not counted.
 - **Unfinished surfs** (no first frame before the next key) count as infinitely slow: they can raise a
   percentile, never hide. Give `INTERVAL` room above the cold threshold.
+- **Cold by format.** A cold surf whose first picture is 2160 lines or taller (the 4K premium) is judged
+  against its own 2.5 s ceiling (`cold4k`, `cold4kP95Max2500`); every other cold surf, and one that
+  never reported a picture, against the 1.5 s baseline. Warm has one 600 ms ceiling for every format.
 - **Refused surfs** logged an error (the server's `http_503`, say) and never framed, not even through the
   player's own retries. They have no latency to time, so they sit outside the percentiles, are counted by
   cause (`refusedBy`), and fail their own gate (`refusedMax0`). A surf that a retry recovered is timed

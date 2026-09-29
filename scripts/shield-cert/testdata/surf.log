@@ -10,6 +10,7 @@
 1790000015.550  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=25550 att=3
 1790000020.003  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=30003 att=4 ch=ch_e key=30000 num=105 path=cold why=number
 1790000020.050  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=30050 att=4 what=osd
+1790000021.250  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=format t=31250 att=4 br=8160000 fps=25 h=1080 mime=video/avc w=1920
 1790000021.300  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=31300 att=4
 1790000025.002  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=35002 att=5 ch=ch_f key=35000 num=106 path=warm why=step
 1790000025.120  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=35120 att=5 what=osd
@@ -26,3 +27,8 @@
 1790000040.300  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=error t=50300 att=9 cause=network
 1790000041.300  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=51300 att=10 ch=ch_c num=103 path=cold why=retry
 1790000041.500  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=51500 att=10
+1790000045.002  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=55002 att=11 ch=ch_d key=55000 num=104 path=cold why=number
+1790000045.030  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=held t=55030 att=11 what=osd
+1790000045.100  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=format t=55100 att=11 mime=none
+1790000046.500  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=format t=56500 att=11 br=16160000 fps=25 h=2160 mime=video/hevc w=3840
+1790000047.100  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=first-frame t=57100 att=11
