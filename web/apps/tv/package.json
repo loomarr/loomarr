@@ -40,6 +40,13 @@
     "typescript": "7.0.2"
   },
   "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-video"
+        ]
+      }
+    },
     "install": {
       "exclude": [
         "typescript"
