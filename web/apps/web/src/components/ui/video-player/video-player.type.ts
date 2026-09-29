@@ -85,6 +85,10 @@ interface VideoPlayerProps {
   // Live-tuner navigation. Kept as a direction callback so this transport-agnostic primitive does
   // not learn channel ids/catalog order. Arrow/Page/media Channel keys all lower to this seam.
   onChannelStep?: (direction: -1 | 1) => void;
+  // False leaves the picture bare: no top bar or control bar over it. A portrait phone draws its
+  // controls under the picture instead (#1785, native mock 5e). Tap-to-pause, the overlay and panel
+  // slots, and the keyboard shortcuts still work. Default true.
+  chrome?: boolean;
   className?: string;
 }
 

@@ -4,6 +4,7 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { GuideAiring } from "@loomarr/api/models/guideAiring";
 import type { TrackDTO } from "@loomarr/api/models/trackDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { type SurfChannelData, WatchingPanel, type WatchingScheduleData } from "@loomarr/ui";
 import { ChevronDown, ChevronUp, Play, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ import { VideoPlayer } from "@/components/ui/video-player";
 import { TimelineScrubber } from "@/components/ui/video-player/timeline-scrubber";
 import { TrackSelectMenu } from "@/components/ui/video-player/track-select-menu";
 import { clientDiagnostics } from "@/diagnostics/client-reporter";
+import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { type SwitchSound, startChannelSwitchSound } from "../switch-sound";
 import { TunerOSD } from "../tuner-osd";
@@ -74,6 +76,15 @@ interface ChannelWatchProps {
   };
   // A tune has settled on this channel (its first frame played): the viewer's recents record it.
   onTuneSettled?: (channelId: string) => void;
+  // What a portrait phone shows under the picture (#1785, native mock 5e), read from the guide: the
+  // tuned channel's now and next, the viewer's favourites, the channel Previous returns to, and the
+  // wall clock.
+  phone?: {
+    schedule?: WatchingScheduleData;
+    favourites: readonly SurfChannelData[];
+    previousId?: string;
+    clockLabel?: string;
+  };
 }
 
 // withSaved keeps the currently-saved value present in an options list even when the airing does
@@ -141,7 +152,12 @@ const ChannelWatch = ({
   tuner,
   drawer,
   onTuneSettled,
+  phone,
 }: ChannelWatchProps) => {
+  // A portrait phone (#1785, native mock 5e, decision N5): the picture edge to edge with nothing
+  // drawn on it, and the controls, what's next and the favourites under it. Wider keeps the frame
+  // with the overlay controls, the channels drawer and the keyboard hints.
+  const onPhone = usePhoneWidth() && phone !== undefined;
   const tunerReady = tuner?.ready;
   // The tuner warms this Channel's neighbours once its own manifest has arrived, not before: the
   // warm requests would otherwise share the browser's per-host connections with the target's
@@ -514,13 +530,45 @@ const ChannelWatch = ({
       onShortcut={onShortcut}
       attach={attach}
       onChannelStep={tuner?.step}
-      className="overflow-hidden rounded-xl border border-border bg-black"
+      chrome={!onPhone}
+      className={cn("bg-black", !onPhone && "overflow-hidden rounded-xl border border-border")}
     />
   );
 
+  // The phone's controls act on the player's own <video> through the live transport, as the overlay's
+  // play toggle and live indicator do.
+  const withVideo = (act: (video: HTMLVideoElement) => unknown) => {
+    const video = videoRef.current;
+    if (video) void act(video);
+  };
+  const phonePanel =
+    onPhone && phone && tuner ? (
+      <WatchingPanel
+        density="touch"
+        channel={{ name: osdChannel.name, number: String(osdChannel.number) }}
+        schedule={phone.schedule}
+        clockLabel={phone.clockLabel}
+        live={player.liveTransport.state}
+        canPrevious={phone.previousId !== undefined}
+        canSurf={tuner.canSurf}
+        onPrevious={() => phone.previousId && tuner.tune(phone.previousId)}
+        onChannelDown={() => tuner.step(-1)}
+        onChannelUp={() => tuner.step(1)}
+        onPause={() => withVideo((video) => player.liveTransport.pause(video))}
+        onPlay={() => withVideo((video) => player.liveTransport.play(video))}
+        onGoLive={() => withVideo((video) => player.liveTransport.goLive(video))}
+        favourites={phone.favourites}
+        onTune={tuner.tune}
+      />
+    ) : undefined;
+
   return (
     <div className="flex flex-col gap-4">
-      <section className="overflow-hidden rounded-xl border border-border bg-card">
+      {/* On a phone the section drops its card and cancels the page's gutter, so the picture runs
+          edge to edge under the tabs (the channel page pads its content by 24 px). */}
+      <section
+        className={onPhone ? "-mx-6 -mt-6" : "overflow-hidden rounded-xl border border-border bg-card"}
+      >
         {paused ? (
           <IdleFrame
             title={`${channel.name} is off air`}
@@ -532,7 +580,7 @@ const ChannelWatch = ({
             }
           />
         ) : active ? (
-          <div className="flex flex-col gap-3 p-3">
+          <div className={cn("flex flex-col", !onPhone && "gap-3 p-3")}>
             <div className="relative">
               {playerEl}
               {/* While the wash is up, its centred channel line is the visible readout, so the OSD
@@ -551,15 +599,21 @@ const ChannelWatch = ({
                 control in the playback bar owns live/paused/behind state without duplicating it in
                 a second status line below the picture. */}
             {player.status !== "playing" && (
-              <p className="px-1 text-muted-foreground text-xs">
+              <p className={cn("text-muted-foreground text-xs", onPhone ? "px-4 pt-3" : "px-1")}>
                 {player.status === "error" ? (player.error ?? "The stream stopped.") : "Tuning in…"}
               </p>
             )}
             {player.status === "error" && tuner && (
-              <Button variant="outline" size="sm" onClick={tuner.retry} className="self-start">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={tuner.retry}
+                className={cn("self-start", onPhone && "mx-4 mt-3")}
+              >
                 Retry channel
               </Button>
             )}
+            {phonePanel}
           </div>
         ) : (
           <button

@@ -64,8 +64,9 @@ export {
 } from "./src/surf-rail";
 export type {
   ChannelNumberEntry,
+  WatchingPanelProps,
   WatchingProgrammeData,
   WatchingScheduleData,
   WatchingSurfaceProps,
 } from "./src/watching-surface";
-export { WatchingSurface } from "./src/watching-surface";
+export { WatchingPanel, WatchingSurface } from "./src/watching-surface";

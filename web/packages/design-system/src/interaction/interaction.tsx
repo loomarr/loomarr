@@ -12,6 +12,11 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
   children: ReactNode;
   density?: Density;
   icon?: IconName;
+  /**
+   * `stacked` puts the icon over a small label, on a tile with no outline until focused: the row of
+   * player controls under a phone's picture (#1659 native mock 5e). Give it an icon.
+   */
+  layout?: "inline" | "stacked";
   selected?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
   tone?: "danger" | "primary" | "secondary";
@@ -25,6 +30,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
       density = "pointer",
       disabled = false,
       icon,
+      layout = "inline",
       onBlur,
       onFocus,
       selected = false,
@@ -40,6 +46,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     const isDisabled = disabled === true;
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
+    const stacked = layout === "stacked" && icon !== undefined;
     const backgroundColor =
       tone === "danger"
         ? theme.stateDanger.val
@@ -55,7 +62,9 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           ? theme.stateDanger.val
           : tone === "primary"
             ? theme.actionPrimary.val
-            : theme.borderControl.val;
+            : stacked
+              ? backgroundColor
+              : theme.borderControl.val;
     return (
       <Pressable
         {...props}
@@ -86,7 +95,8 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             justifyContent: "center",
             minHeight: tv ? 0 : semanticTargets[density],
             opacity: isDisabled ? 0.55 : state.pressed ? 0.82 : 1,
-            paddingHorizontal: tv ? 24 : semanticSpace.control,
+            // A stacked tile shares its row with three others on a phone, so its label gets the width.
+            paddingHorizontal: tv ? 24 : stacked ? 4 : semanticSpace.control,
             paddingVertical: tv ? 8 : 0,
             transform: [
               { scale: tv ? (state.pressed ? 0.98 : 1) : focused ? 1.025 : state.pressed ? 0.98 : 1 },
@@ -95,7 +105,25 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           typeof style === "function" ? style(state) : style,
         ]}
       >
-        {icon ? (
+        {stacked && icon ? (
+          <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
+            <Icon
+              decorative
+              glyph={icons[icon]}
+              size="default"
+              tone={tone === "secondary" && !selected ? "content" : "inverse"}
+            />
+            <TamaguiText
+              color={tone === "secondary" ? "$contentSecondary" : "$contentInverse"}
+              fontFamily="$body"
+              fontSize={typography[density].cardMeta.size}
+              lineHeight={typography[density].cardMeta.lineHeight}
+              numberOfLines={1}
+            >
+              {children}
+            </TamaguiText>
+          </View>
+        ) : icon ? (
           <View alignItems="center" flexDirection="row" gap="$inline">
             <Icon
               decorative

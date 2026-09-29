@@ -1,6 +1,8 @@
 import BookOpen from "lucide-react-native/icons/book-open";
 import Check from "lucide-react-native/icons/check";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import Clock3 from "lucide-react-native/icons/clock-3";
 import House from "lucide-react-native/icons/house";
@@ -20,6 +22,8 @@ import X from "lucide-react-native/icons/x";
 
 const icons = {
   back: ChevronLeft,
+  channelDown: ChevronDown,
+  channelUp: ChevronUp,
   channels: Tv,
   close: X,
   guide: BookOpen,
