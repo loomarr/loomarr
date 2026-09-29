@@ -65,6 +65,8 @@ const MEMBER_NAV: NavItem[] = [
   { to: "/help", label: "Help", icon: ListChecks },
 ];
 
+const MAIN_ID = "main-content";
+
 const AppShell = ({
   children,
   isAdmin = true,
@@ -80,6 +82,14 @@ const AppShell = ({
   // invisible on short pages and breaks anything that needs a real viewport: the Guide's
   // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
   <div className="grid h-screen grid-cols-[auto_1fr] overflow-hidden bg-background text-foreground">
+    {/* WCAG 2.4.1: the rail puts nine-plus stops before any page content, so the first Tab stop
+        jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
+    <a
+      href={`#${MAIN_ID}`}
+      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-signal focus:px-3 focus:py-2 focus:font-medium focus:text-sm focus:text-static-950"
+    >
+      Skip to content
+    </a>
     <aside className="flex w-14 flex-col gap-1 border-border border-r bg-card px-1 py-4 md:w-56 md:px-3">
       <nav aria-label="Primary" className="-mx-1 flex w-14 flex-col gap-1 px-1 md:-mx-3 md:w-56 md:px-3">
         <div className="mb-4 px-2 text-center md:text-left">
@@ -204,7 +214,14 @@ const AppShell = ({
         to its content instead — which silently turns any inner `overflow-auto` region into a
         non-scrolling div. `min-h-0` lets this shrink below its content so the OVERFLOW lands
         on the region that asked for it. */}
-    <main className="flex min-h-0 min-w-0 flex-col overflow-auto">{children}</main>
+    {/* `tabIndex={-1}` so the skip link moves focus here, not just the scroll position. */}
+    <main
+      id={MAIN_ID}
+      tabIndex={-1}
+      className="flex min-h-0 min-w-0 flex-col overflow-auto focus:outline-none"
+    >
+      {children}
+    </main>
   </div>
 );
 
