@@ -624,7 +624,10 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         })),
       });
     }
-    if (opts.guideChannels && path === "/v1/me/channels" && method === "GET") {
+    // The phone Guide and Watch read the viewer's lists; both are required, so the catch-all `{}`
+    // would crash the page. Empty unless a guide is served.
+    if (path === "/v1/me/channels" && method === "GET") {
+      if (!opts.guideChannels) return json(route, { favourites: [], recent: [] });
       return json(route, {
         favourites: ["ch-1", "ch-2"].map((channelId) => ({ channelId, addedAt: new Date().toISOString() })),
         recent: [{ channelId: "ch-3", tunedAt: new Date().toISOString() }],
