@@ -76,9 +76,12 @@ if [ "$MODE" = surf ]; then
 				v[p] = wj
 			}
 			asort(v)
+			i50 = int(np * 0.5) + 1
+			i95 = int(np * 0.95) + 1
+			if (i95 > np) i95 = np
 			printf "\n| presses | JS ms in %.2fs window, mean | p50 | p95 | max | JS ms per %ss interval | UI ms in window | RenderThread ms in window |\n", w, iv
 			print "|---|---|---|---|---|---|---|---|"
-			printf "| %d | %.0f | %.0f | %.0f | %.0f | %.0f | %.0f | %.0f |\n", np, sj/np, v[int(np*0.5)+1], v[int(np*0.95)+1 > np ? np : int(np*0.95)+1], mj, si/np, su/np, sr/np
+			printf "| %d | %.0f | %.0f | %.0f | %.0f | %.0f | %.0f | %.0f |\n", np, sj/np, v[i50], v[i95], mj, si/np, su/np, sr/np
 		}' "$OUT/presses.txt" "$OUT/threads.txt"
 	echo
 	echo "gfxinfo while surfing:"
