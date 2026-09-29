@@ -43,6 +43,10 @@ interface MockOptions {
   // Expose the configured Filler shell for page-level navigation and accessibility
   // contracts. Most wizard flows intentionally leave this capability out of scope.
   fillerEnabled?: boolean;
+  // Serve a guide of `guideChannels` channels of half-hour programmes around the request's
+  // window, and the viewer's lists (the first two starred, the third recent), so the Guide lays
+  // out rows instead of Dead air.
+  guideChannels?: number;
 }
 
 interface MockBackend {
@@ -593,6 +597,38 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
         return json(route, { title: "Forbidden", detail: "Creating channels is an admin action." }, 403);
       }
       return json(route, { id: `ch-${state.channelCreationRequests.length}` }, 201);
+    }
+    if (opts.guideChannels && path === "/v1/guide" && method === "GET") {
+      const url = new URL(route.request().url());
+      const fromMs = Number(url.searchParams.get("from") ?? Date.now());
+      const toMs = Number(url.searchParams.get("to") ?? fromMs + 2 * 3_600_000);
+      const halfHour = 1_800_000;
+      const first = Math.floor(fromMs / halfHour) * halfHour;
+      return json(route, {
+        fromMs,
+        toMs,
+        channels: Array.from({ length: opts.guideChannels }, (_, i) => ({
+          channelId: `ch-${i + 1}`,
+          name: `Guide channel ${i + 1}`,
+          number: i + 1,
+          pendingCount: 0,
+          status: "live",
+          airings: Array.from({ length: Math.ceil((toMs - first) / halfHour) }, (_, j) => ({
+            kind: "program",
+            scheduleBlockId: `ch-${i + 1}-${j}`,
+            startMs: first + j * halfHour,
+            stopMs: first + (j + 1) * halfHour,
+            series: `A series ${i + 1}`,
+            title: `Episode ${j + 1}`,
+          })),
+        })),
+      });
+    }
+    if (opts.guideChannels && path === "/v1/me/channels" && method === "GET") {
+      return json(route, {
+        favourites: ["ch-1", "ch-2"].map((channelId) => ({ channelId, addedAt: new Date().toISOString() })),
+        recent: [{ channelId: "ch-3", tunedAt: new Date().toISOString() }],
+      });
     }
     // The channel page's header reads the shared now/next list; `channels` is required, so the
     // catch-all `{}` would crash it.
