@@ -235,6 +235,10 @@ type FillerPipelineStore interface {
 	// row, and appends the effective Ready event. It is the only non-composite publication path.
 	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error
 	GetFillerReadyEvent(ctx context.Context, clipHash string) (filler.ReadyEvent, bool, error)
+	// CommitConditioningPublication checks the transcode rung's owner-bound publication record,
+	// then has the core adopt the conditioned target (store.AdoptConditionedClip). Any mismatch
+	// is filler.ErrConditioningOwnershipMismatch.
+	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target store.Clip) error
 }
 
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).

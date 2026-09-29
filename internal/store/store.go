@@ -11,9 +11,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/loomarr/loomarr/internal/clipcatalog"
 	"github.com/loomarr/loomarr/internal/contact"
 	"github.com/loomarr/loomarr/internal/diagnostics"
-	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/inventory"
 	"github.com/loomarr/loomarr/internal/invitation"
 	"github.com/loomarr/loomarr/internal/notifications"
@@ -29,10 +29,10 @@ import (
 // it before committing any dependent row.
 var ErrNotFound = errors.New("store: not found")
 
-// ErrConditioningPublicationMismatch reports a pending conditioned publication whose catalog
-// rows are not one of the exact source-only, source-plus-held-reconstruction, or target-only
-// states the owner-bound recovery protocol permits. Callers must hold it for review.
-var ErrConditioningPublicationMismatch = filler.ErrConditioningOwnershipMismatch
+// ErrConditionedClipMismatch reports a conditioned clip adoption whose catalog rows are not one
+// of the exact source-only, source-plus-held-reconstruction, or target-only states the owner-bound
+// recovery protocol permits. Callers must hold it for review.
+var ErrConditionedClipMismatch = errors.New("store: conditioned clip does not match the catalog")
 
 // ErrTaxonConflict marks a taxonomy mutation that cannot safely apply: create over an existing
 // slug, or delete of a taxon still directly asserted on clips. The caller should reload/retag,
@@ -343,10 +343,11 @@ type ClipStore interface {
 	// ReplaceClipIdentity atomically moves every durable reference when an internal transform
 	// changes a clip's content hash (§10). Metadata and operator overrides follow the bytes.
 	ReplaceClipIdentity(ctx context.Context, oldHash string, c Clip) error
-	// CommitConditioningPublication is the exact owner-bound variant used after a conditioned
-	// target is visible. It atomically adopts a held Sync reconstruction, performs an ordinary
-	// source-only re-key, or recognizes the exact target-only post-rekey state (§10 V65).
-	CommitConditioningPublication(ctx context.Context, publication filler.ConditioningPublication, target Clip) error
+	// AdoptConditionedClip is the exact owner-bound variant used after a conditioned target is
+	// visible. It atomically adopts a held Sync reconstruction, performs an ordinary source-only
+	// re-key, or recognizes the exact target-only post-rekey state (§10 V65). The filler store's
+	// CommitConditioningPublication proves ownership and calls it.
+	AdoptConditionedClip(ctx context.Context, sourceHash string, target Clip) error
 	GetClip(ctx context.Context, libraryItemID string) (Clip, error)
 	// GetClipByPath looks a clip up by its location under FILLER_DIR, NOT by its identity.
 	//
@@ -502,7 +503,7 @@ type AiringStore interface {
 	// FillerExposureRecords returns one channel's stored per-clip aggregates. A break's snapshot
 	// (history strictly before its start) is cut from them by filler.ExposuresBefore, so one
 	// read serves every break in a window (#1420).
-	FillerExposureRecords(ctx context.Context, channelID string) (map[string]filler.ExposureRecord, error)
+	FillerExposureRecords(ctx context.Context, channelID string) (map[string]clipcatalog.ExposureRecord, error)
 	// RecordAiring stamps that a PROGRAMME aired on a channel (§5, programming-design §3.1) —
 	// the programme analogue of RecordClipPlay. Written from playout only, when a programme is
 	// actually resolved for streaming; one row per airing of a unit (episode or film), written
