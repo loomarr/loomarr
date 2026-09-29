@@ -37,7 +37,7 @@ func testQuarantineLegacyFillerMigration(t *testing.T, s Store, db *sql.DB, migr
 			t.Fatal(err)
 		}
 		if disposition != "" {
-			if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{
+			if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{
 				ClipHash: hash, Stage: filler.StageScore, Status: filler.StatusDone,
 				Progress: 100, Disposition: disposition, EnrolledAt: at, UpdatedAt: at,
 			}); err != nil {
@@ -76,12 +76,12 @@ func testQuarantineLegacyFillerMigration(t *testing.T, s Store, db *sql.DB, migr
 			t.Errorf("%s = held:%v err:%v, want lifecycle unchanged", hash, clip.Held, err)
 		}
 	}
-	row, found, err := s.GetClipPipeline(ctx, "legacy-playable")
+	row, found, err := readClipPipelineRow(ctx, s, "legacy-playable")
 	if err != nil || !found || row.Disposition != filler.DispositionReview || row.Status != filler.StatusDone {
 		t.Errorf("legacy playable pipeline = %+v found:%v err:%v, want done/review", row, found, err)
 	}
 	for _, hash := range []string{"already-held", "composite", "removed"} {
-		row, found, err := s.GetClipPipeline(ctx, hash)
+		row, found, err := readClipPipelineRow(ctx, s, hash)
 		want := filler.DispositionReview
 		if hash != "already-held" {
 			want = filler.Disposition("filed")

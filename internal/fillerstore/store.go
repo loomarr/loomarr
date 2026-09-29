@@ -8,12 +8,13 @@
 // Handle.Begin, so a write that also touches core tables can share one transaction. Dependencies
 // point this way only: the core store never imports this package (#1747).
 //
-// Enrichment, research, admission decisions and split proposals live here too, and write the clip
-// columns and pipeline rows they change only through the core's store.ClipTx, inside their own
-// transaction. The clips' pipeline is still internal/store's (#1747).
+// Enrichment, research, admission decisions, split proposals and the per-clip ingest pipeline live
+// here too, and write the clip columns they change only through the core's store.ClipTx, inside
+// their own transaction (#1747).
 //
-// ⚠ The filler store overrides one core method, DeleteClipsNotIn, to prune the split proposals a
-// clip prune orphans. A caller that must keep that cleanup holds this Store, not store.Store.
+// ⚠ The filler store overrides one core method, DeleteClipsNotIn, to prune the pipeline rows and
+// split proposals a clip prune orphans. A caller that must keep that cleanup holds this Store, not
+// store.Store.
 package fillerstore
 
 import (
@@ -195,6 +196,47 @@ type FillerSplitProposalStore interface {
 	ListStructureSplitShadowDecisions(ctx context.Context, clipHash string, limit int) ([]filler.StructureSplitShadowDecision, error)
 }
 
+// FillerPipelineStore is the per-clip ingest pipeline (§10 V51b, migration 00044) and terminal
+// readiness, the one non-composite publication path.
+//
+// ⚠ A SIBLING of `clips`, never columns on it: `clips` is a synced cache that has been dropped
+// and recreated twice, and these rows record that Whisper seconds and a paid vision call have
+// ALREADY been spent. This surface is the table's only writer, so unlike the clip columns there is
+// no DO UPDATE omission list to keep in step. The clip columns a transition changes go through the
+// core's store.ClipTx, inside the transition's transaction.
+type FillerPipelineStore interface {
+	// UpsertClipPipeline writes an ordinary runner transition.
+	UpsertClipPipeline(ctx context.Context, p filler.ClipPipeline) error
+	// RetryClipPipeline writes the recovery transition and, for an exhausted terminal failure,
+	// restores the catalog tombstone while holding the clip in the same transaction.
+	RetryClipPipeline(ctx context.Context, failed, retry filler.ClipPipeline, restore bool) error
+	// GetClipPipeline reads one row. Absence is ordinary (an un-enrolled clip), not an error.
+	GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error)
+	// MarkPipelineComplete gives a processed composite its distinct non-playable terminal state.
+	MarkPipelineComplete(ctx context.Context, hash string, at time.Time) error
+	// ListPipelineWork returns non-terminal rows due at or before `now`, oldest first, with a
+	// total order so one clip cannot starve while another is worked repeatedly.
+	ListPipelineWork(ctx context.Context, now time.Time, limit int) ([]filler.ClipPipeline, error)
+	// PipelineOverview groups the durable state through filler.ClipPipeline.Lifecycle so API,
+	// runner telemetry and persistence cannot acquire separate ownership predicates.
+	PipelineOverview(ctx context.Context, at time.Time) (filler.PipelineOverview, error)
+	// ListClipPipelines serves the Incoming read model — what is moving, and what was refused.
+	ListClipPipelines(ctx context.Context, f filler.PipelineFilter) ([]filler.ClipPipeline, error)
+	// CountClipPipelines shares ListClipPipelines' lifecycle predicate while ignoring its cursor
+	// and limit, so a bounded page and its total cannot describe different populations.
+	CountClipPipelines(ctx context.Context, f filler.PipelineFilter) (int, error)
+	// ListPreparationWork joins bounded pipeline facts to only the clip duration needed for local
+	// progress calibration. It never exposes paths or descriptive media content.
+	ListPreparationWork(ctx context.Context, f filler.PipelineFilter) ([]filler.PreparationWork, error)
+	// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, so enrolment is
+	// lazy and self-healing rather than a data migration.
+	ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error)
+	// CommitFillerReady atomically stores Placement, releases the held clip, settles its conveyor
+	// row, and appends the effective Ready event. It is the only non-composite publication path.
+	CommitFillerReady(ctx context.Context, commit filler.ReadyCommit) error
+	GetFillerReadyEvent(ctx context.Context, clipHash string) (filler.ReadyEvent, bool, error)
+}
+
 // FillerSourceStore is the persisted REMOTE filler-source registry (§10, V33).
 //
 // ⚠ Remote sources only. The drop-folder and the media-server library stay DERIVED from config
@@ -251,6 +293,7 @@ type Store interface {
 	FillerResearchStore
 	FillerDecisionStore
 	FillerSplitProposalStore
+	FillerPipelineStore
 
 	// Core returns the store this one extends, for the core functions that need its adapter
 	// (backups, migration, schema version); store.Store's own methods are already promoted.

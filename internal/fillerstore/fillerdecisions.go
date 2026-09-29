@@ -468,7 +468,7 @@ func (s *sqlStore) applyFillerDecisionCatalogEffect(ctx context.Context, tx stor
 	} else if !changed {
 		return fillerdecision.ErrActionStale
 	}
-	if settled, err := clips.SettlePipeline(ctx, clipHash, pipelineFrom, pipelineTo, at); err != nil {
+	if settled, err := s.settlePipelineTx(ctx, tx, clipHash, pipelineFrom, pipelineTo, at); err != nil {
 		return fmt.Errorf("settle applied filler decision pipeline: %w", err)
 	} else if !settled {
 		return fillerdecision.ErrActionStale

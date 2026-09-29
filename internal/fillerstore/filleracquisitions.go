@@ -158,14 +158,14 @@ func (s *sqlStore) attachAcquisitionOutcomes(ctx context.Context, runs []filler.
 		placeholders[i] = "?"
 		args[i] = runs[i].ID
 	}
-	rows, err := s.db.QueryContext(ctx, s.ph(store.ClipPipelineSelect+` WHERE acquisition_id IN (`+
+	rows, err := s.db.QueryContext(ctx, s.ph(clipPipelineSelect+` WHERE acquisition_id IN (`+
 		strings.Join(placeholders, ",")+`) ORDER BY acquisition_id, clip_hash`), args...)
 	if err != nil {
 		return fmt.Errorf("list acquisition pipelines: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		row, err := store.ScanClipPipeline(rows)
+		row, err := scanClipPipeline(rows)
 		if err != nil {
 			return fmt.Errorf("scan acquisition pipeline: %w", err)
 		}

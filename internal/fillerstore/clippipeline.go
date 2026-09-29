@@ -1,14 +1,16 @@
-package store
+package fillerstore
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
+	"github.com/loomarr/loomarr/internal/store"
 )
 
 // The per-clip ingest pipeline's persistence (§10 V51b, migration 00044).
@@ -126,25 +128,59 @@ func (s *sqlStore) writeClipPipeline(ctx context.Context, exec pipelineExecer, p
 	return nil
 }
 
+// settlePipelineTx settles the clip's pipeline row at `to`, done, if its disposition is one of
+// from. It reports whether the row changed. An admission decision settles the row in its own
+// transaction.
+func (s *sqlStore) settlePipelineTx(ctx context.Context, tx store.Tx, hash string, from []filler.Disposition, to filler.Disposition, at time.Time) (bool, error) {
+	marks := make([]string, len(from))
+	args := make([]any, 0, len(from)+3)
+	args = append(args, string(to), epoch(at))
+	for i, disposition := range from {
+		marks[i] = "?"
+		args = append(args, string(disposition))
+	}
+	args = append(args, hash)
+	return affectedOne(tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline
+		SET disposition = ?, status = 'done', next_run = 0, updated_at = ?
+		WHERE disposition IN (`+strings.Join(marks, ",")+`) AND clip_hash = ?`), args...))
+}
+
+// advancePipelineTx moves the clip's pipeline row from one disposition to the next, leaving its
+// status and schedule alone, and reports whether it moved. Split confirmation completes the reel's
+// row and starts its children's.
+func (s *sqlStore) advancePipelineTx(ctx context.Context, tx store.Tx, hash string, from, to filler.Disposition, at time.Time) (bool, error) {
+	return affectedOne(tx.ExecContext(ctx, s.ph(`UPDATE filler_clip_pipeline SET disposition = ?, updated_at = ?
+		WHERE clip_hash = ? AND disposition = ?`),
+		string(to), epoch(at), hash, string(from)))
+}
+
+// affectedOne reports whether a statement changed exactly one row.
+func affectedOne(result sql.Result, err error) (bool, error) {
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("inspect affected rows: %w", err)
+	}
+	return affected == 1, nil
+}
+
 // RetryClipPipeline commits the cross-table recovery boundary. A terminal execution failure has
 // been tombstoned; it must become present and queued together, and it remains held until the
 // downstream score stage admits it. If invalidation failed, the caller never reaches this method.
 func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p filler.ClipPipeline, restore bool) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin clip pipeline retry: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if restore {
-		res, err := tx.ExecContext(ctx, s.ph(`UPDATE clips
-			SET removed_at = 0, held = ?, auto_filed = ?, updated_at = ? WHERE hash = ?`),
-			true, false, epoch(p.UpdatedAt), p.ClipHash)
+		restored, err := s.db.Clips(tx).RestoreForRetry(ctx, p.ClipHash, p.UpdatedAt)
 		if err != nil {
 			return fmt.Errorf("hold restored retry clip %s: %w", p.ClipHash, err)
 		}
-		if n, err := res.RowsAffected(); err != nil {
-			return fmt.Errorf("count restored retry clip %s: %w", p.ClipHash, err)
-		} else if n != 1 {
+		if !restored {
 			return fmt.Errorf("restore retry clip %s: clip is not in the catalog", p.ClipHash)
 		}
 	}
@@ -376,22 +412,20 @@ func clipPipelineWhere(f filler.PipelineFilter, includeCursor bool) (string, []a
 	return "", args, nil
 }
 
-// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet.
+// ListClipsWithoutPipeline returns catalogued clips with no pipeline row yet, in hash order.
 //
-// ⚠ **`NOT EXISTS`, deliberately NOT a LEFT JOIN.** `clipSelect` names its columns unqualified and
-// ends in `FROM clips`, and BOTH tables have an `updated_at` — so joining `filler_clip_pipeline`
-// makes that column ambiguous and the query fails on both dialects. A correlated subquery adds no
-// columns to resolve, so the shared select stays reusable exactly as written.
-//
-// (It is also not the bind-list hazard `attachTags` hit: that one builds one placeholder per clip
-// and dies past Postgres's 65535-parameter cap. A subquery sends no binds at all.)
+// It picks the batch's hashes here, where the pipeline table is, and reads the clips themselves
+// through the core's ListClips, which owns how a clip row is read. `NOT EXISTS` rather than a join
+// keeps the pick to one column. The batch is bounded by limit, so the Hashes read stays far below
+// Postgres's 65535-parameter cap.
 //
 // ⚠ Removed clips are excluded. A tombstoned clip is not work: enrolling it would run the whole
-// ladder against something deliberately taken out of rotation.
+// ladder against something deliberately taken out of rotation. Held clips and composites are
+// work, so the read includes them.
 func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]filler.StoreClip, error) {
-	q := clipSelect + ` WHERE clips.removed_at = 0 AND NOT EXISTS (
+	q := `SELECT hash FROM clips WHERE removed_at = 0 AND NOT EXISTS (
 			SELECT 1 FROM filler_clip_pipeline p WHERE p.clip_hash = clips.hash)
-		ORDER BY clips.hash`
+		ORDER BY hash`
 	var args []any
 	if limit > 0 {
 		q += ` LIMIT ?`
@@ -402,19 +436,36 @@ func (s *sqlStore) ListClipsWithoutPipeline(ctx context.Context, limit int) ([]f
 		return nil, fmt.Errorf("list clips without pipeline: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-
-	var out []filler.StoreClip
+	var hashes []string
 	for rows.Next() {
-		c, err := scanClip(rows)
-		if err != nil {
+		var hash string
+		if err := rows.Scan(&hash); err != nil {
 			return nil, fmt.Errorf("scan clip without pipeline: %w", err)
 		}
+		hashes = append(hashes, hash)
+	}
+	if err := rows.Err(); err != nil || len(hashes) == 0 {
+		return nil, err
+	}
+	clips, err := s.core.ListClips(ctx, store.ClipFilter{Hashes: hashes, IncludeHeld: true, IncludeComposites: true})
+	if err != nil {
+		return nil, fmt.Errorf("list clips without pipeline: %w", err)
+	}
+	sort.Slice(clips, func(i, j int) bool { return clips[i].Hash < clips[j].Hash })
+	out := make([]filler.StoreClip, 0, len(clips))
+	for _, c := range clips {
 		out = append(out, filler.StoreClip{Clip: c.Clip, UpdatedAt: c.UpdatedAt})
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // pruneOrphanPipelines deletes pipeline rows whose clip is gone.
+//
+// ⚠ `filler_clip_pipeline` is a sibling of `clips` with no foreign key — deliberately, so it
+// survives a `clips` rebuild — and the price of that independence is that nothing else will ever
+// clean it up. An orphan row is not inert either: `ListPipelineWork` would keep returning it,
+// `advance` would fail to find the clip, and it would be re-tombstoned as "no longer in the
+// catalog" on every pass, forever.
 //
 // ⚠ Called from `DeleteClipsNotIn`, which is the sync's prune — the one place clips disappear in
 // bulk. It is written as "no matching clip" rather than "not in the keep set" so it stays correct

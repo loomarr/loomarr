@@ -360,10 +360,14 @@ func (s *sqlStore) ListSweepableSplitProposals(ctx context.Context, before time.
 	return out, rows.Err()
 }
 
-// DeleteClipsNotIn is the core clip prune followed by pruneOrphanSplitProposals, so every prune
-// through the filler store also removes the proposals it orphaned.
+// DeleteClipsNotIn is the core clip prune followed by pruneOrphanPipelines and
+// pruneOrphanSplitProposals, so every prune through the filler store also removes the pipeline
+// rows and proposals it orphaned.
 func (e extended) DeleteClipsNotIn(ctx context.Context, keepIDs []string) (int, error) {
-	defer func() { _ = e.pruneOrphanSplitProposals(ctx) }()
+	defer func() {
+		_ = e.pruneOrphanPipelines(ctx)
+		_ = e.pruneOrphanSplitProposals(ctx)
+	}()
 	return e.Store.DeleteClipsNotIn(ctx, keepIDs)
 }
 
@@ -482,9 +486,8 @@ func (s *sqlStore) CompletePartialSplitConfirmation(ctx context.Context, complet
 	if claimed != 1 {
 		return filler.ErrProposalClaimed
 	}
-	clips := s.db.Clips(tx)
 	for _, hash := range completion.ActivateHashes {
-		activated, err := clips.AdvancePipeline(ctx, hash, filler.DispositionReview, filler.DispositionRunning, completion.At)
+		activated, err := s.advancePipelineTx(ctx, tx, hash, filler.DispositionReview, filler.DispositionRunning, completion.At)
 		if err != nil {
 			return fmt.Errorf("complete partial split confirmation %s activate child %s: %w", completion.Proposal.ID, hash, err)
 		}

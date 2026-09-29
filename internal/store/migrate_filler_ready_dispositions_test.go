@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -209,7 +212,11 @@ func testRetireFillerTaggingPathMigration(t *testing.T, s *sqlStore, migrationDi
 
 // insertLegacyClipPipeline deliberately writes the pre-00113 shape used by migration fixtures.
 // The production writer always speaks the current schema and must not grow a compatibility path.
-func insertLegacyClipPipeline(ctx context.Context, s *sqlStore, p filler.ClipPipeline) error {
+func insertLegacyClipPipeline(ctx context.Context, st Store, p filler.ClipPipeline) error {
+	s, ok := adapterOf(st)
+	if !ok {
+		return fmt.Errorf("%T is not the SQL store", st)
+	}
 	raw := "[]"
 	if len(p.Stages) > 0 {
 		encoded, err := json.Marshal(p.Stages)
@@ -226,4 +233,29 @@ func insertLegacyClipPipeline(ctx context.Context, s *sqlStore, p filler.ClipPip
 		string(p.Disposition), string(p.RejectReason), p.RejectDetail, p.Attempts, p.ForceRun,
 		epoch(p.NextRun), raw, epoch(p.EnrolledAt), epoch(p.UpdatedAt))
 	return err
+}
+
+// readClipPipelineRow reads the pipeline columns the migration tests assert on. The pipeline's own
+// methods are the filler store's (internal/fillerstore), which a core test cannot import, so the
+// tests seed with insertLegacyClipPipeline and read back here.
+func readClipPipelineRow(ctx context.Context, st Store, hash string) (filler.ClipPipeline, bool, error) {
+	s, ok := adapterOf(st)
+	if !ok {
+		return filler.ClipPipeline{}, false, fmt.Errorf("%T is not the SQL store", st)
+	}
+	var p filler.ClipPipeline
+	var stage, status, disposition string
+	var nextRun, updatedAt int64
+	err := s.db.QueryRowContext(ctx, s.ph(`SELECT clip_hash, stage, status, disposition, attempts, next_run, updated_at
+		FROM filler_clip_pipeline WHERE clip_hash = ?`), hash).
+		Scan(&p.ClipHash, &stage, &status, &disposition, &p.Attempts, &nextRun, &updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return filler.ClipPipeline{}, false, nil
+	}
+	if err != nil {
+		return filler.ClipPipeline{}, false, err
+	}
+	p.Stage, p.Status, p.Disposition = filler.StageID(stage), filler.StageStatus(status), filler.Disposition(disposition)
+	p.NextRun, p.UpdatedAt = fromEpoch(nextRun), fromEpoch(updatedAt)
+	return p, true, nil
 }

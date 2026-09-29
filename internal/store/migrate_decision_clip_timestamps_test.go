@@ -33,7 +33,7 @@ func TestDecisionClipTimestampsMigrationSQLite(t *testing.T) {
 			Kind: filler.Commercial}, UpdatedAt: untouchedAt}); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.UpsertClipPipeline(ctx, filler.ClipPipeline{ClipHash: hash, Stage: filler.StageID("admission"),
+		if err := insertLegacyClipPipeline(ctx, s, filler.ClipPipeline{ClipHash: hash, Stage: filler.StageID("admission"),
 			Status: filler.StatusDone, Disposition: filler.DispositionDismissed, UpdatedAt: untouchedAt}); err != nil {
 			t.Fatal(err)
 		}
@@ -58,7 +58,7 @@ func TestDecisionClipTimestampsMigrationSQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		pipeline, _, err := s.GetClipPipeline(ctx, hash)
+		pipeline, _, err := readClipPipelineRow(ctx, s, hash)
 		if err != nil {
 			t.Fatal(err)
 		}
