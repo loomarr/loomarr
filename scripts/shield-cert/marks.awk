@@ -160,6 +160,8 @@ BEGIN {
 		error_by[cause]++
 	} else if (event == "format" && kv["mime"] != "none") {
 		# A replace reports no track ("none") before the new one: that is the tune, not a change.
+		# The first picture's height sets which cold ceiling the surf is judged against.
+		if (kv["mime"] ~ /^video\// && !(id in a_height) && isnum(kv["h"])) a_height[id] = kv["h"] + 0
 		signature = kv["mime"] "/" kv["w"] "x" kv["h"]
 		if ((id in a_format) && a_format[id] != signature) format_changes++
 		a_format[id] = signature
@@ -203,18 +205,26 @@ END {
 			# A number entry commits after the app's deliberate 1.2 s wait (or on OK): time it from
 			# that commit. Every other surf is timed from its key.
 			start = (a_key[id] != "" && a_why[id] != "number") ? a_key[id] : a_tune[id]
-			path = (a_path[id] == "warm") ? "warm" : "cold"
 			surfs++
 			# A surf is served by its own first frame or a retry's; one that never framed after an
 			# error mark was refused (first cause wins); one with neither simply ran out of time.
 			framed = (id in a_ff) ? a_ff[id] : ""
+			served = id
 			cause = (id in a_err) ? a_err[id] : ""
 			for (j = i + 1; framed == "" && j <= attempts; j++) {
 				retry = order[j]
 				if (a_pid[retry] != a_pid[id] || a_why[retry] != "retry") break
-				if (retry in a_ff) framed = a_ff[retry]
+				if (retry in a_ff) {
+					framed = a_ff[retry]
+					served = retry
+				}
 				if (cause == "" && (retry in a_err)) cause = a_err[retry]
 			}
+			# Warm has one ceiling for every format. Cold allows a 4K premium (2160 lines or more)
+			# its own; a cold surf that never reported a picture is held to the baseline.
+			if (a_path[id] == "warm") path = "warm"
+			else if (a_height[served] >= 2160) path = "cold4k"
+			else path = "cold"
 			if (framed != "") {
 				push(path, framed - start)
 			} else if (cause != "") {
@@ -236,6 +246,7 @@ END {
 		}
 		g_warm = verdict("warm", 600)
 		g_cold = verdict("cold", 1500)
+		g_cold4k = verdict("cold4k", 2500)
 		g_held = verdict("held", 100)
 		g_refused = (surfs + 0 == 0) ? "NO-DATA" : (refused ? "FAIL" : "PASS")
 		refused_json = ""
@@ -245,14 +256,15 @@ END {
 			refused_text = refused_text sprintf("%s%s x%d", (e > 1 ? ", " : ""), refused_name[e], refused_by[refused_name[e]])
 		}
 		printf "{\"mode\":\"surf\",\"surfs\":%d,\"unfinished\":%d,\"refused\":%d,\"refusedBy\":{%s},\"unkeyed\":%d,\"otherTunes\":%d,", surfs, unfinished, refused, refused_json, unkeyed + 0, boot > json
-		printf "\"warm\":%s,\"cold\":%s,\"held\":%s,\"still\":%s,\"keyToTune\":%s,", stats_json("warm"), stats_json("cold"), stats_json("held"), stats_json("still"), stats_json("dispatch") > json
+		printf "\"warm\":%s,\"cold\":%s,\"cold4k\":%s,\"held\":%s,\"still\":%s,\"keyToTune\":%s,", stats_json("warm"), stats_json("cold"), stats_json("cold4k"), stats_json("held"), stats_json("still"), stats_json("dispatch") > json
 		printf "\"stalls\":%d,\"errors\":%d,", stalls + 0, errors + 0 > json
-		printf "\"gates\":{\"warmP95Max600\":\"%s\",\"coldP95Max1500\":\"%s\",\"heldP95Max100\":\"%s\",\"refusedMax0\":\"%s\"}}\n", g_warm, g_cold, g_held, g_refused > json
+		printf "\"gates\":{\"warmP95Max600\":\"%s\",\"coldP95Max1500\":\"%s\",\"cold4kP95Max2500\":\"%s\",\"heldP95Max100\":\"%s\",\"refusedMax0\":\"%s\"}}\n", g_warm, g_cold, g_cold4k, g_held, g_refused > json
 
 		printf "surfs            %d (%d refused, %d unfinished before the next key, %d without a key time; %d other tunes ignored)\n", surfs, refused, unfinished, unkeyed + 0, boot
 		printf "refused          %d%s   [G3 none refused: %s]\n", refused, (refused_text == "" ? "" : " (" refused_text ")"), g_refused
 		printf "warm key->frame  n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 600 ms: %s]\n", count["warm"] + 0, human(percentile("warm", 50)), human(percentile("warm", 95)), human(percentile("warm", 100)), g_warm
 		printf "cold key->frame  n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 1500 ms: %s]\n", count["cold"] + 0, human(percentile("cold", 50)), human(percentile("cold", 95)), human(percentile("cold", 100)), g_cold
+		printf "cold 4K premium  n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 2500 ms: %s]\n", count["cold4k"] + 0, human(percentile("cold4k", 50)), human(percentile("cold4k", 95)), human(percentile("cold4k", 100)), g_cold4k
 		printf "held OSD         n=%d p50 %s  p95 %s  max %s   [G3 p95 <= 100 ms: %s]\n", count["held"] + 0, human(percentile("held", 50)), human(percentile("held", 95)), human(percentile("held", 100)), g_held
 		printf "held still       n=%d p50 %s  p95 %s  max %s\n", count["still"] + 0, human(percentile("still", 50)), human(percentile("still", 95)), human(percentile("still", 100))
 		printf "key->tune (JS)   n=%d p50 %s  p95 %s\n", count["dispatch"] + 0, human(percentile("dispatch", 50)), human(percentile("dispatch", 95))
