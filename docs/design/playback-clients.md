@@ -31,10 +31,15 @@ playback.
 - **The playhead describes the decoded frame,** from the program-date-time mapping of the frame on
   screen, not `Date.now()`. A stalled frame freezes programme context instead of claiming a break
   has begun.
-- **Warming is still-first and never encodes.** The client keeps signed play URLs for the previous and
-  next Channels and prefetches their stills (`GET /playout/still/{id}`); a tune paints that still as
-  the poster until the first decoded frame. Warming starts only after the current Channel's first
-  frame, and a new tune aborts it.
+- **Warming is still-first and uses only spare room.** The client keeps signed play URLs for the
+  previous and next Channels and prefetches their stills (`GET /playout/still/{id}`); a tune paints
+  that still as the poster until the first decoded frame. Warming starts only after the current
+  Channel's first frame, and a new tune aborts it. Its `mode=warm` master starts the neighbour's
+  baseline packager under speculative admission: into spare room only, and a viewer's tune evicts it
+  first (#1780). For a viewer whose client took a premium playlist in the last 15 minutes, the warm
+  starts the neighbour's premium too, after its baseline. A premium warm evicts nothing, and any
+  baseline, even another warm, may reclaim its room (#1037). Every admit, refuse and evict decision is
+  logged at INFO as `packager hls: admission`.
 - **hls.js settings** match the packager: `lowLatencyMode: false`, `liveSyncDuration: 6` (its
   `HOLD-BACK`), `startFragPrefetch: true`. The TV player sets `minBufferForPlayback: 1`.
 - **Web source swaps.** Safari-family WebKit uses native HLS when it exposes it; Chromium and Firefox
