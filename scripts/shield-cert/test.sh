@@ -66,6 +66,23 @@ printf '%s\n' \
 	>"$work/raw.log"
 check 'capture filter' '1790000000.000 1790000000.002' "$(cert_logcat_filter <"$work/raw.log" | awk '{ printf "%s%s", sep, $1; sep = " " }')"
 
+# A running soak keeps each mark on disk as it arrives (a sparse capture must not sit in a block
+# buffer), and a TERM stops it at once with a report, as a detached run on the Shield is stopped.
+soak_out="$work/soak"
+PATH="$here/testdata/fake-adb:$PATH" ADB_SERIAL=fake MINUTES=5 ROTATE_MINUTES=0 OUT="$soak_out" \
+	bash "$here/soak.sh" </dev/null >"$work/soak.log" 2>&1 &
+soak_pid=$!
+for _ in $(seq 50); do
+	[ -s "$soak_out/marks.log" ] && break
+	sleep 0.1
+done
+check 'soak keeps a mark while running' 1 "$(wc -l <"$soak_out/marks.log" 2>/dev/null | tr -d ' ' || echo 0)"
+stop_at=$SECONDS
+kill -TERM "$soak_pid"
+wait "$soak_pid" || true
+check 'soak stops within 5 s of TERM' yes "$([ $((SECONDS - stop_at)) -le 5 ] && echo yes || echo "no ($((SECONDS - stop_at)) s)")"
+check 'soak stopped by TERM reports the tune' '"tunes":1' "$(grep -o '"tunes":[0-9]*' "$soak_out/soak.json")"
+
 if [ "$failures" -gt 0 ]; then
 	printf '%d shield-cert check(s) failed\n' "$failures" >&2
 	exit 1

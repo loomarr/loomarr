@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# A fake always-online device for test.sh: its logcat prints one mark, then stays quiet the way a
+# soak's device does between tunes.
+shift 2 # -s SERIAL
+case "$1" in
+get-state) echo device ;;
+logcat)
+	printf '%s.100  4242  4260 I ReactNativeJS: LoomarrCert v=1 ev=tune t=1000 att=1 ch=ch_a num=101 path=cold why=catalog\n' "$(date +%s)"
+	exec sleep 600
+	;;
+shell)
+	case "$2" in
+	date) date +%s ;;
+	pm) echo package:loomarr.media ;;
+	dumpsys) echo 'ResumedActivity: loomarr.media/.MainActivity' ;;
+	cmd) echo loomarr.media/.MainActivity ;;
+	esac
+	;;
+esac

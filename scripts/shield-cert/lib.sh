@@ -77,7 +77,8 @@ cert_keyevent() {
 }
 
 # The marks and the codec lines only: nothing else from the device reaches the capture, so no
-# URL or title can.
+# URL or title can. Each kept line is flushed at once: marks are sparse, so a block buffer would
+# hold them from a running soak's reports and lose them when the run is killed.
 cert_logcat_filter() {
-	awk -v re="${CODEC_INIT_RE:-$default_codec_re}" '/ LoomarrCert v=/ || $0 ~ re'
+	awk -v re="${CODEC_INIT_RE:-$default_codec_re}" '/ LoomarrCert v=/ || $0 ~ re { print; fflush() }'
 }
