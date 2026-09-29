@@ -189,6 +189,24 @@ const chromePss = () => {
   return byType;
 };
 
+// Listeners by target and event type (window, document, the <video>), to name a listener leak.
+// JSEventListeners counts them all; this says where they are.
+const listenerTypes = async (cdp) => {
+  const out = {};
+  for (const [name, expr] of [
+    ["window", "window"],
+    ["document", "document"],
+    ["video", "document.querySelector('video')"],
+  ]) {
+    const { result } = await cdp.send("Runtime.evaluate", { expression: expr });
+    if (!result.objectId) continue;
+    const { listeners } = await cdp.send("DOMDebugger.getEventListeners", { objectId: result.objectId });
+    for (const l of listeners) out[`${name}:${l.type}`] = (out[`${name}:${l.type}`] ?? 0) + 1;
+    await cdp.send("Runtime.releaseObject", { objectId: result.objectId });
+  }
+  return out;
+};
+
 const soak = async (browser) => {
   const context = await session(browser);
   const [first] = await demoChannels(context);
@@ -207,6 +225,7 @@ const soak = async (browser) => {
   const watchMs = Number(opt("watch-min", 20)) * 60_000;
   const surfMs = Number(opt("surf-min", 10)) * 60_000;
   const surfEvery = Number(opt("surf-every", 20)) * 1000;
+  const listenersAtStart = await listenerTypes(cdp);
   const t0 = Date.now();
   const timeline = [];
   let nextSample = 0;
@@ -289,6 +308,8 @@ const soak = async (browser) => {
     }
     await page.waitForTimeout(1000);
   }
+  await cdp.send("HeapProfiler.collectGarbage");
+  const listenersAtEnd = await listenerTypes(cdp);
   await context.close();
   const pick = timeline.filter((_, i) => i % 10 === 0 || i === timeline.length - 1);
   const cols = Object.keys(timeline[0]);
@@ -297,7 +318,20 @@ const soak = async (browser) => {
   );
   console.log(`| ${cols.join(" | ")} |\n|${cols.map(() => "---").join("|")}|`);
   for (const r of pick) console.log(`| ${cols.map((c) => r[c]).join(" | ")} |`);
-  return { at: new Date(t0).toISOString(), watchMs, surfMs, surfEvery, timeline };
+  const grown = Object.keys({ ...listenersAtStart, ...listenersAtEnd })
+    .map((k) => [k, listenersAtStart[k] ?? 0, listenersAtEnd[k] ?? 0])
+    .filter(([, a, b]) => a !== b);
+  console.log("\n| listener (target:type) | start | end |\n|---|---|---|");
+  for (const [k, a, b] of grown) console.log(`| ${k} | ${a} | ${b} |`);
+  return {
+    at: new Date(t0).toISOString(),
+    watchMs,
+    surfMs,
+    surfEvery,
+    timeline,
+    listenersAtStart,
+    listenersAtEnd,
+  };
 };
 
 const browser = await chromium.launch({
