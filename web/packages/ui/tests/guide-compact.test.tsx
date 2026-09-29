@@ -82,13 +82,13 @@ describe("GuideCompact", () => {
     });
     expect(upcoming).toContain("Selected programme");
     expect(upcoming).toContain(" · Channel 2");
-    expect(upcoming).toContain("9:00 PM–9:30 PM · in 34m");
+    expect(upcoming).toContain("9:00–9:30 PM · in 34m");
     expect(upcoming).toContain("Watch 2 now");
     const onNow = markup({
       dock: BottomSheet,
       selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-0" },
     });
-    expect(onNow).toContain("8:00 PM–8:30 PM · 4m left");
+    expect(onNow).toContain("8:00–8:30 PM · 4m left");
   });
 
   it("badges now on the ruler", () => {
