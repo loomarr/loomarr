@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { RouterHarness } from "@/test/story-utils";
 import { AppShell } from "./app-shell";
@@ -7,6 +8,17 @@ const renderShell = (isAdmin: boolean) =>
   render(<RouterHarness content={<AppShell isAdmin={isAdmin}>content</AppShell>} />);
 
 describe("AppShell", () => {
+  it("offers a skip link as the first Tab stop, targeting the main content", async () => {
+    renderShell(true);
+    const main = await screen.findByRole("main");
+    const skip = screen.getByRole("link", { name: "Skip to content" });
+
+    expect(skip).toHaveAttribute("href", `#${main.id}`);
+    expect(main).toHaveAttribute("tabindex", "-1");
+    await userEvent.tab();
+    expect(skip).toHaveFocus();
+  });
+
   it("shows the server identity above the account footer and links admins to About", async () => {
     render(
       <RouterHarness
