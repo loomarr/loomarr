@@ -535,6 +535,9 @@ classify() {
         # The Shield certification runners (#1037) drive a device by hand; the contracts job
         # lints them and runs their analyser test (release-verify).
         scripts/shield-cert/*) select_gate contracts ;;
+        # The resource-pass tools (#1794) run by hand against a live backend, like latency-sweep;
+        # no gate runs them, and the contracts job lints them.
+        scripts/perf/*) select_gate contracts ;;
         scripts/generate-diagrams.sh) select_gate contracts ;;
         scripts/merge-release-digests.sh) select_gate contracts ;;
         scripts/observability-dev-runtime-test.sh) select_gate contracts ;;
