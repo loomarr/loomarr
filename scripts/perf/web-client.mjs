@@ -212,11 +212,20 @@ const soak = async (browser) => {
   let nextSample = 0;
   let nextSurf = watchMs;
   let surfs = 0;
+  let surfFailures = 0;
   while (Date.now() - t0 < watchMs + surfMs) {
     const t = Date.now() - t0;
     if (t >= nextSurf) {
-      await page.getByRole("button", { name: "Channel up" }).click();
-      surfs += 1;
+      // The controls hide while the picture plays; a pointer move brings them back, as for a user.
+      await page.mouse.move(900 + (surfs % 2) * 40, 500);
+      await page.mouse.move(960, 540, { steps: 4 });
+      try {
+        await page.getByRole("button", { name: "Channel up" }).click({ timeout: 5_000 });
+        surfs += 1;
+      } catch (e) {
+        surfFailures += 1;
+        console.error(`surf failed: ${e.message.split("\n")[0]}`);
+      }
       nextSurf += surfEvery;
     }
     if (t >= nextSample) {
@@ -258,6 +267,7 @@ const soak = async (browser) => {
         min: Math.round(t / 6000) / 10,
         phase: t < watchMs ? "watch" : "surf",
         surfs,
+        surfFailures,
         heapMB: Math.round((m.JSHeapUsedSize ?? 0) / 1e5) / 10,
         nodes: m.Nodes,
         attachedNodes: dom.attached,
