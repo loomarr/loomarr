@@ -11,7 +11,7 @@ import {
   moveGuideSelection,
 } from "@loomarr/core/guide";
 import { AdaptiveSplit, adaptiveBreakpoints } from "@loomarr/design-system";
-import { GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
+import { GuideCompact, type GuideFilter, GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { SlidersHorizontal, Sparkles, X } from "lucide-react";
@@ -27,6 +27,7 @@ import { Caption } from "@/components/ui/caption";
 import { Image } from "@/components/ui/image";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLoomarrEventListener } from "@/events/events-provider";
+import { usePhoneWidth } from "@/lib/use-phone-width";
 import { cn } from "@/lib/utils";
 import { type ChannelSuggestionStage, ChannelSuggestPanel } from "@/suggest/channel-suggest-panel";
 import {
@@ -137,7 +138,12 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
   const [selection, setSelection] = useState<GuideSelection>();
   const [hovered, setHovered] = useState<GuideSelection>();
   const [dayOffset, setDayOffset] = useState<number>(0);
-  const [windowMinutes, setWindowMinutes] = useState<number>(DEFAULT_WINDOW_MINUTES);
+  // A phone opens on the shortest span: the compact grid (mocks 5d/5f) shows about an hour and a
+  // half across, and four hours leave a half-hour programme a few pixels wide.
+  const phoneWidth = usePhoneWidth();
+  const [windowMinutes, setWindowMinutes] = useState<number>(() =>
+    phoneWidth ? Number(WINDOW_CHOICES[0].value) : DEFAULT_WINDOW_MINUTES,
+  );
   // Nudges the window by whole hours without changing the day — the ‹ › stepper. Kept separate
   // from `startHour` so stepping away from a chosen start hour is still relative to it.
   const [hourShift, setHourShift] = useState<number>(0);
@@ -275,6 +281,19 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
     [body, channels, nowMs],
   );
   const selected = useMemo(() => reconcileSelection(layout, selection, nowMs), [layout, selection, nowMs]);
+
+  // The phone grid's filters read the viewer's favourites and recents (#1778's lists).
+  const [filter, setFilter] = useState<GuideFilter>("all");
+  const mine = channelsApi.useMyChannels({ query: { retry: false, enabled: phoneWidth } });
+  const mineBody = unwrap(mine.data);
+  const myChannels = useMemo(
+    () =>
+      mineBody && {
+        favouriteIds: mineBody.favourites.map((f) => f.channelId),
+        recentIds: mineBody.recent.map((r) => r.channelId),
+      },
+    [mineBody],
+  );
   const onMove = useCallback(
     (direction: GuideNavigationDirection) => {
       if (!layout || !selected) return undefined;
@@ -615,7 +634,21 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
                 className="pointer-events-none absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-signal"
               />
             )}
-            {layout && (
+            {layout && phoneWidth ? (
+              // A phone gets the native compact grid (#1785, mocks 5d/5f, decision N6): the number
+              // column, the filter chips, and the tapped programme docked with Watch.
+              <GuideCompact
+                layout={layout}
+                nowMs={nowMs}
+                myChannels={myChannels}
+                filter={filter}
+                onFilterChange={setFilter}
+                selection={selected}
+                onSelect={setSelection}
+                onWatch={(id) => void navigate({ to: "/channels/$id/watch", params: { id } })}
+                renderArtwork={renderArtwork}
+              />
+            ) : layout ? (
               <AdaptiveSplit
                 breakpoint={SPLIT_BREAKPOINT}
                 flex={1}
@@ -641,7 +674,7 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
                 }
                 secondaryWidth={360}
               />
-            )}
+            ) : null}
           </div>
         ))}
     </div>

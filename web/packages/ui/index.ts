@@ -11,6 +11,7 @@ export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-tar
 export type {
   GuideArtworkRenderer,
   GuideChannelWindow,
+  GuideCompactProps,
   GuideExperienceProps,
   GuideFilter,
   GuideFilterOption,
@@ -22,7 +23,14 @@ export type {
   GuideSurfaceProps,
   GuideUnavailableState,
 } from "./src/guide";
-export { GuideExperience, GuideGrid, GuideJourney, GuideProgrammeDetail, GuideSurface } from "./src/guide";
+export {
+  GuideCompact,
+  GuideExperience,
+  GuideGrid,
+  GuideJourney,
+  GuideProgrammeDetail,
+  GuideSurface,
+} from "./src/guide";
 export type {
   ChannelIdentityData,
   ChannelIdentityProps,
