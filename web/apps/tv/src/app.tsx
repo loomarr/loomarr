@@ -1,31 +1,18 @@
-import { ClientDiagnosticsReporter, createAuthenticatedBatchSender } from "@loomarr/core/client-diagnostics";
-import { openEventStream } from "@loomarr/core/events";
-import { createGuideController, createGuideSourcePort } from "@loomarr/core/guide";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
-  createAuthenticatedFetch,
   createPairingCredentialStore,
   createPairingTransport,
   PairingSession,
   validatePairingCredential,
 } from "@loomarr/core/pairing";
-import { createServerVersionSource } from "@loomarr/core/system-version";
 import { BrandLaunch, LoomarrProvider } from "@loomarr/design-system";
 import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
-  createCatalogRefresher,
-  createNativePlaybackDiagnostics,
-  createPlayerController,
-} from "@loomarr/player";
-import {
-  createExpoVideoTransport,
-  createNativeEventStreamFactory,
-  createNativePlayerLifecycle,
   createPlaybackMarks,
   NativePlayerView,
   PairedNativeImage,
+  usePairedClient,
 } from "@loomarr/player/native";
-import { createChannelCatalogPort, createPlayUrlSourcePort } from "@loomarr/player/server";
 import type { ClientDestination } from "@loomarr/ui";
 import {
   clientBackDestination,
@@ -52,8 +39,8 @@ import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppState, BackHandler, Image, useTVEventHandler, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, BackHandler, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
 
@@ -76,168 +63,45 @@ const credentialStore = createPairingCredentialStore({
   setItem: SecureStore.setItemAsync,
 });
 
-// Hermes has no crypto.randomUUID; the id only groups one TV session's diagnostics, it is not a secret.
-const newPlaybackSessionId = () => `tv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+const tvDiagnostics = { clientVersion, platform: "android_tv", source: "android_tv" } as const;
 
-type TvPairedRuntime = {
-  credential: PairingCredential;
-  request: typeof globalThis.fetch;
-  session: PairingSession;
-};
-
-const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
+const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
   const [controlsActivityKey, setControlsActivityKey] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [serverVersion, setServerVersion] = useState<string>();
-  const versionRequest = useRef<AbortController | undefined>(undefined);
-  const transport = useMemo(() => createExpoVideoTransport(certMarks), []);
   const lastKeyAtMs = useRef<number | undefined>(undefined);
-  const diagnostics = useMemo(() => {
-    const reporter: ClientDiagnosticsReporter = new ClientDiagnosticsReporter(
-      createAuthenticatedBatchSender(runtime.request, (events) => reporter.wireBatch(events)),
-      { clientVersion, platform: "android_tv", source: "android_tv" },
-    );
-    return { playback: createNativePlaybackDiagnostics(reporter, newPlaybackSessionId()), reporter };
-  }, [runtime.request]);
-  const controller = useMemo(
-    () =>
-      createPlayerController({
-        onPlayerError: diagnostics.playback.playerError,
-        onTune: ({ attemptId, channel, reason, warm }) => {
-          const keyAtMs = lastKeyAtMs.current;
-          lastKeyAtMs.current = undefined;
-          certMarks.tune({
-            attemptId,
-            channelId: channel.id,
-            channelNumber: channel.number,
-            keyAtMs:
-              keyAtMs !== undefined && certMarks.now() - keyAtMs <= keyToTuneMaxMs ? keyAtMs : undefined,
-            reason,
-            warm,
-          });
-        },
-        // The signed still needs no auth header, so the platform image cache can hold it for the overlay.
-        prefetchStill: (uri) => void Image.prefetch(uri).catch(() => undefined),
-        profile: {},
-        source: createPlayUrlSourcePort({
-          baseUrl: runtime.credential.serverUrl,
-          fetch: runtime.request,
-        }),
-        transport,
-      }),
-    [diagnostics, runtime.credential.serverUrl, runtime.request, transport],
-  );
-  const catalog = useMemo(() => createChannelCatalogPort(runtime.request), [runtime.request]);
-  const catalogRefresher = useMemo(
-    () => createCatalogRefresher({ controller, list: catalog.list }),
-    [catalog, controller],
-  );
-  const catalogState = useSyncExternalStore(
-    catalogRefresher.subscribe,
-    catalogRefresher.getState,
-    catalogRefresher.getState,
-  );
-  const version = useMemo(() => createServerVersionSource(runtime.request), [runtime.request]);
-  const guide = useMemo(
-    () => createGuideController({ source: createGuideSourcePort(runtime.request) }),
-    [runtime.request],
-  );
+  const {
+    catalogState,
+    controller,
+    guide,
+    guideSnapshot,
+    myChannelsSnapshot,
+    refresh,
+    serverVersion,
+    snapshot,
+    transport,
+  } = usePairedClient({
+    credential,
+    diagnostics: tvDiagnostics,
+    marks: certMarks,
+    onTune: ({ attemptId, channel, reason, warm }) => {
+      const keyAtMs = lastKeyAtMs.current;
+      lastKeyAtMs.current = undefined;
+      certMarks.tune({
+        attemptId,
+        channelId: channel.id,
+        channelNumber: channel.number,
+        keyAtMs: keyAtMs !== undefined && certMarks.now() - keyAtMs <= keyToTuneMaxMs ? keyAtMs : undefined,
+        reason,
+        warm,
+      });
+    },
+    session,
+  });
   const guideFocusRegistry = useMemo(createTvGuideFocusRegistry, []);
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const remoteStateRef = useRef<TvWatchingRemoteState>(initialTvWatchingRemoteState);
   const [remoteState, setRemoteState] = useState<TvWatchingRemoteState>(initialTvWatchingRemoteState);
-  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  const guideSnapshot = useSyncExternalStore(guide.subscribe, guide.getSnapshot, guide.getSnapshot);
-  const loadServerVersion = useCallback(async () => {
-    versionRequest.current?.abort();
-    const request = new AbortController();
-    versionRequest.current = request;
-    try {
-      const loaded = await version.load(request.signal);
-      if (request.signal.aborted) return;
-      setServerVersion(loaded);
-    } catch {
-      if (!request.signal.aborted) setServerVersion(undefined);
-    }
-  }, [version]);
-  const refresh = useCallback(async () => {
-    await catalogRefresher.refresh();
-    void loadServerVersion();
-  }, [catalogRefresher, loadServerVersion]);
-  const refreshSafely = useCallback(() => {
-    void refresh().catch(() => undefined);
-  }, [refresh]);
-  const lifecycle = useMemo(
-    () => createNativePlayerLifecycle({ controller, refresh, transport }),
-    [controller, refresh, transport],
-  );
-  useEffect(() => {
-    if (AppState.currentState === "active") refreshSafely();
-    else lifecycle.enterBackground();
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        void lifecycle.enterForeground().catch(() => undefined);
-      } else {
-        catalogRefresher.abort();
-        versionRequest.current?.abort();
-        lifecycle.enterBackground();
-      }
-    });
-    return () => {
-      catalogRefresher.abort();
-      versionRequest.current?.abort();
-      subscription.remove();
-      guide.dispose();
-      controller.dispose();
-    };
-  }, [catalogRefresher, controller, guide, lifecycle, refreshSafely]);
-  useEffect(() => {
-    const unsubscribe = transport.subscribe(diagnostics.playback.transportEvent);
-    return () => {
-      unsubscribe();
-      diagnostics.playback.dispose();
-      diagnostics.reporter.dispose();
-    };
-  }, [diagnostics, transport]);
-  useEffect(() => {
-    const channelId = snapshot.channel?.id;
-    diagnostics.playback.channelChanged(channelId);
-    if (channelId) void guide.refresh(channelId);
-  }, [diagnostics, guide, snapshot.channel?.id]);
-  useEffect(() => {
-    const createStream = createNativeEventStreamFactory({
-      headers: { Authorization: `Bearer ${runtime.credential.token}` },
-      onUnauthorized: () => runtime.session.revoked(),
-    });
-    let closeStream: (() => void) | undefined;
-    const openStream = () => {
-      if (closeStream) return;
-      closeStream = openEventStream(
-        {
-          onChannel: () => {
-            refreshSafely();
-            void guide.refresh();
-          },
-        },
-        new URL("/v1/events", runtime.credential.serverUrl).toString(),
-        createStream,
-      );
-    };
-    const closeActiveStream = () => {
-      closeStream?.();
-      closeStream = undefined;
-    };
-    if (AppState.currentState === "active") openStream();
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") openStream();
-      else closeActiveStream();
-    });
-    return () => {
-      subscription.remove();
-      closeActiveStream();
-    };
-  }, [guide, refreshSafely, runtime.credential.serverUrl, runtime.credential.token, runtime.session]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -321,7 +185,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
         loadError={catalogState.error}
         onChannelDown={() => void controller.step(-1)}
         onChannelUp={() => void controller.step(1)}
-        onChangeServer={() => runtime.session.chooseServer()}
+        onChangeServer={() => session.chooseServer()}
         onDismissControls={dismissControls}
         onGoLive={() => void controller.goLive()}
         onOpenGuide={() => dispatchRemoteEvent({ key: "select" })}
@@ -330,7 +194,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
         onPlay={() => void controller.play()}
         onPrevious={() => void controller.previous()}
         onRetry={() => {
-          if (catalogState.error) refreshSafely();
+          if (catalogState.error) refresh();
           else void controller.retry();
         }}
         onShowControls={showControlsForActivity}
@@ -357,6 +221,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               controller={guide}
               density="tv"
               focusRegistry={guideFocusRegistry}
+              myChannels={myChannelsSnapshot}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
                 showControlsForActivity();
@@ -367,7 +232,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
                 const uri = airing.source.thumbImage?.src ?? airing.source.thumbUrl;
                 return uri ? (
                   <PairedNativeImage
-                    credential={runtime.credential}
+                    credential={credential}
                     style={{ height: "100%", width: "100%" }}
                     uri={uri}
                   />
@@ -376,7 +241,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               renderChannelLogo={(channel) =>
                 channel.source.logo ? (
                   <PairedNativeImage
-                    credential={runtime.credential}
+                    credential={credential}
                     resizeMode="contain"
                     style={{ height: "100%", width: "100%" }}
                     uri={channel.source.logo}
@@ -391,8 +256,8 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               currentChannelId={snapshot.channel?.id}
               density="tv"
               focusRegistry={surfFocusRegistry}
-              onDisconnect={() => runtime.session.disconnect()}
-              onForget={() => runtime.session.forgetServer()}
+              onDisconnect={() => session.disconnect()}
+              onForget={() => session.forgetServer()}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
                 showControlsForActivity();
@@ -403,7 +268,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               renderArtwork={(channel) =>
                 channel.now?.artworkUri ? (
                   <PairedNativeImage
-                    credential={runtime.credential}
+                    credential={credential}
                     style={{ height: "100%", width: "100%" }}
                     uri={channel.now.artworkUri}
                   />
@@ -412,7 +277,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
               renderChannelLogo={(channel) =>
                 channel.channelLogoUri ? (
                   <PairedNativeImage
-                    credential={runtime.credential}
+                    credential={credential}
                     resizeMode="contain"
                     style={{ height: "100%", width: "100%" }}
                     uri={channel.channelLogoUri}
@@ -420,7 +285,7 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
                 ) : undefined
               }
               restoreSelection={restoreTvSurfSelection}
-              serverName={runtime.credential.serverUrl}
+              serverName={credential.serverUrl}
               serverVersion={serverVersion}
             />
           )}
@@ -428,21 +293,6 @@ const TvShell = ({ runtime }: { runtime: TvPairedRuntime }) => {
       )}
     </View>
   );
-};
-
-const TvPairedRoot = ({
-  credential,
-  session,
-}: {
-  credential: PairingCredential;
-  session: PairingSession;
-}) => {
-  const onRevoked = useCallback(() => session.revoked(), [session]);
-  const runtime = useMemo<TvPairedRuntime>(
-    () => ({ credential, request: createAuthenticatedFetch(credential, onRevoked), session }),
-    [credential, onRevoked, session],
-  );
-  return <TvShell key={credential.token} runtime={runtime} />;
 };
 
 const TvClient = () => {
@@ -489,7 +339,9 @@ const TvClient = () => {
           discovery={discovery}
           discoveryForeground={appForeground}
           initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
-          renderPaired={(credential) => <TvPairedRoot credential={credential} session={session} />}
+          renderPaired={(credential) => (
+            <TvShell credential={credential} key={credential.token} session={session} />
+          )}
           session={session}
         />
         {launchAnimationFinished && launchMinimumElapsed ? null : (
