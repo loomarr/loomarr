@@ -614,6 +614,43 @@ func (b *ResourceBudget) fitsLocked(facts BudgetFacts, d demand, except *Lease) 
 	return facts.CPUAllowance <= 0 || use.CPUCores+d.cpu <= facts.CPUAllowance+capacityEpsilon
 }
 
+// BudgetUsage is what the live leases hold against the host's limits, as admission logs report it.
+type BudgetUsage struct {
+	Use          BudgetUse
+	CPUAllowance float64 // 0 = none
+	EncoderLimit int     // the tighter of the session limit and the operator cap; 0 = none
+}
+
+// Usage reports the ledger's use against its limits.
+func (b *ResourceBudget) Usage() BudgetUsage {
+	f := b.currentFacts()
+	b.mu.Lock()
+	use := b.useLocked(nil)
+	b.mu.Unlock()
+	limit := f.SessionLimit
+	if f.OperatorCap > 0 && (limit == 0 || f.OperatorCap < limit) {
+		limit = f.OperatorCap
+	}
+	return BudgetUsage{Use: use, CPUAllowance: f.CPUAllowance, EncoderLimit: limit}
+}
+
+// LogValue renders each term as used/total, "-" for a term with no limit. The GPU term is a share
+// of the measured whole.
+func (u BudgetUsage) LogValue() slog.Value {
+	encoders, cpu := "-", "-"
+	if u.EncoderLimit > 0 {
+		encoders = fmt.Sprint(u.EncoderLimit)
+	}
+	if u.CPUAllowance > 0 {
+		cpu = fmt.Sprintf("%.2f", u.CPUAllowance)
+	}
+	return slog.GroupValue(
+		slog.String("encoders", fmt.Sprintf("%d/%s", u.Use.Transcodes, encoders)),
+		slog.String("gpu", fmt.Sprintf("%.2f/1", u.Use.GPUShare)),
+		slog.String("cpu", fmt.Sprintf("%.2f/%s", u.Use.CPUCores, cpu)),
+	)
+}
+
 // BudgetUse is what the live leases hold.
 type BudgetUse struct {
 	Sessions   int     `json:"sessions" doc:"Admitted sessions, copies included"`

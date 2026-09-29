@@ -42,6 +42,24 @@ type TuneRequest struct {
 	Speculative bool
 }
 
+type viewerContextKey struct{}
+
+// WithViewer names the viewer a playout request is for: an opaque key that is stable for one person
+// on one device (the API's signed viewer tag). Playout uses it only to learn what that viewer's
+// client plays (#1037), so a request that names nobody is served exactly the same.
+func WithViewer(ctx context.Context, viewer string) context.Context {
+	if viewer == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, viewerContextKey{}, viewer)
+}
+
+// ViewerFrom is the viewer WithViewer named, or "".
+func ViewerFrom(ctx context.Context) string {
+	viewer, _ := ctx.Value(viewerContextKey{}).(string)
+	return viewer
+}
+
 // Presentation is one tuned Channel. Exactly one of Stream or Manifest is populated according
 // to the requested Delivery. Release must be called when the caller is finished with this snapshot.
 type Presentation struct {
@@ -110,7 +128,8 @@ type sessionAttacher interface {
 }
 
 type hlsOrigin interface {
-	acquirePlaylist(string, EncodePlan, bool) (hlsPlaylistLease, error)
+	// acquirePlaylist(channel, plan, speculative, viewer)
+	acquirePlaylist(string, EncodePlan, bool, string) (hlsPlaylistLease, error)
 	AssetPath(string, EncodePlan, string) (string, bool)
 	StopChannel(channelID string)
 	StopAll()
@@ -239,7 +258,7 @@ func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presenta
 		if o.hls == nil {
 			return Presentation{}, nil, ErrUnsupportedDelivery
 		}
-		lease, err := o.hls.acquirePlaylist(request.ChannelID, request.Plan, request.Speculative)
+		lease, err := o.hls.acquirePlaylist(request.ChannelID, request.Plan, request.Speculative, ViewerFrom(ctx))
 		return Presentation{}, &lease, err
 	default:
 		return Presentation{}, nil, ErrUnsupportedDelivery

@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/viewing"
 )
 
 type modeProbePlayout struct {
@@ -22,6 +23,7 @@ type modeProbePlayout struct {
 	err          error
 	asset        playout.Asset
 	assetOK      bool
+	viewer       string // playout.ViewerFrom the last call's context
 }
 
 func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Server {
@@ -41,12 +43,13 @@ func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Server {
 	return &Server{playout: probe, store: st}
 }
 
-func (p *modeProbePlayout) Tune(_ context.Context, request playout.TuneRequest) (playout.Presentation, error) {
-	p.tuned, p.request = true, request
+func (p *modeProbePlayout) Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error) {
+	p.tuned, p.request, p.viewer = true, request, playout.ViewerFrom(ctx)
 	return p.presentation, p.err
 }
 
-func (p *modeProbePlayout) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
+func (p *modeProbePlayout) OpenAsset(ctx context.Context, _ string, _ playout.EncodePlan, _ string) (playout.Asset, bool, error) {
+	p.viewer = playout.ViewerFrom(ctx)
 	return p.asset, p.assetOK, nil
 }
 
@@ -97,6 +100,48 @@ func TestHLSWarmModeMarksSpeculativeLiveAdmission(t *testing.T) {
 	}
 	if !strings.Contains(body, "plan=hevc8") || !strings.Contains(body, "sig=signed") {
 		t.Fatalf("asset URL lost auth or rendition selectors: %q", body)
+	}
+}
+
+// #1037: playout warms a neighbour's premium only for a viewer whose client takes the premium, so
+// the warm master and every media playlist tell it who asked: the signed viewer tag's person and
+// device. A tag signed for another channel, or not at all, names nobody.
+func TestHLSMasterAndPlaylistRequestsCarryTheSignedViewer(t *testing.T) {
+	const key = "playout-key"
+	tv := viewing.Viewer{UserID: "u-1", DeviceKey: "device:tv", DeviceLabel: "Living room"}
+	tag := url.QueryEscape(signViewerTag(key, "ch-one", tv))
+	forged := url.QueryEscape(signViewerTag(key, "ch-other", tv))
+	playlist := func() playout.Asset {
+		return playout.Asset{Content: stringAsset{strings.NewReader("#EXTM3U\n")}, Playlist: true}
+	}
+	for _, tc := range []struct {
+		name, path, want string
+	}{
+		{"warm master", "master.m3u8?mode=warm&sig=s&viewer=" + tag, "u-1\ndevice:tv"},
+		{"media playlist", "4k-hevc-hdr.m3u8?sig=s&viewer=" + tag, "u-1\ndevice:tv"},
+		{"another channel's tag", "4k-hevc-hdr.m3u8?sig=s&viewer=" + forged, ""},
+		{"untagged", "master.m3u8?mode=warm&sig=s", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			probe := &modeProbePlayout{presentation: liveManifest(), asset: playlist(), assetOK: true, viewer: "unset"}
+			s := modeHandlerServer(t, probe)
+			s.playoutSecret = func() string { return key }
+			req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/"+tc.path, nil)
+			req.SetPathValue("id", "ch-one")
+			w := httptest.NewRecorder()
+			if rel, _, _ := strings.Cut(tc.path, "?"); rel == "master.m3u8" {
+				s.hlsPlaylistHandler(w, req)
+			} else {
+				req.SetPathValue("asset", rel)
+				s.hlsAssetHandler(w, req)
+			}
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", w.Code)
+			}
+			if probe.viewer != tc.want {
+				t.Fatalf("playout saw viewer %q, want %q", probe.viewer, tc.want)
+			}
+		})
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/viewing"
 )
 
 const atCapacityDetail = "Loomarr is already using its measured transcode capacity. " +
@@ -545,7 +546,8 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	presentation, err := s.playout.Tune(r.Context(), playout.TuneRequest{
+	viewer, tagged := s.requestViewer(r.Context(), channelID, r.URL.Query())
+	presentation, err := s.playout.Tune(withPlayoutViewer(r.Context(), viewer, tagged), playout.TuneRequest{
 		ChannelID: channelID, Plan: clientPlan(r), Delivery: playout.DeliveryHLS,
 		Speculative: mode == "warm",
 	})
@@ -680,7 +682,16 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, ok, err := s.playout.OpenAsset(r.Context(), channelID, clientPlan(r), rel)
+	// A media playlist names its viewer: to playout (which premium it takes) and to household viewing.
+	// Segments don't, so the tag is verified once per poll, not per fetch.
+	ctx := r.Context()
+	var viewer viewing.Viewer
+	var tagged bool
+	if strings.HasSuffix(rel, ".m3u8") {
+		viewer, tagged = s.requestViewer(ctx, channelID, r.URL.Query())
+		ctx = withPlayoutViewer(ctx, viewer, tagged)
+	}
+	asset, ok, err := s.playout.OpenAsset(ctx, channelID, clientPlan(r), rel)
 	if err != nil || !ok {
 		http.NotFound(w, r)
 		return
@@ -695,7 +706,9 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// A player re-reads its media playlist every segment while it plays: that poll is the
 		// household-viewing signal (#1662). Segments are not, so one viewing isn't counted per fetch.
-		s.observeViewerPoll(r.Context(), channelID, r.URL.Query())
+		if tagged && s.viewing != nil {
+			s.viewing.Observe(viewer, channelID, s.clock())
+		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write(rewritePlaylistAuth(body, hlsAssetQuery(r.URL.Query())))

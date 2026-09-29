@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/viewing"
 )
 
@@ -106,18 +107,26 @@ func (s *Server) viewerOf(ctx context.Context) (viewing.Viewer, bool) {
 	return viewing.Viewer{UserID: user.ID, DeviceKey: "browser:" + label, DeviceLabel: label}, true
 }
 
-// observeViewerPoll attributes one media-playlist poll to the viewer its URL was minted for.
-// Best-effort by design: no tracker, no key or a bad tag leaves the poll unattributed, never failed.
-func (s *Server) observeViewerPoll(ctx context.Context, channelID string, query url.Values) {
+// requestViewer is the viewer a playout request's URL was minted for, from its signed tag.
+// Best-effort by design: no key or a bad tag names nobody, and the request is served all the same.
+func (s *Server) requestViewer(ctx context.Context, channelID string, query url.Values) (viewing.Viewer, bool) {
 	raw := query.Get(viewerQueryParam)
-	if s.viewing == nil || raw == "" {
-		return
+	if raw == "" {
+		return viewing.Viewer{}, false
 	}
 	key, err := s.currentPlayoutToken(ctx)
 	if err != nil {
-		return
+		return viewing.Viewer{}, false
 	}
-	if v, ok := verifyViewerTag(key, channelID, raw); ok {
-		s.viewing.Observe(v, channelID, s.clock())
+	return verifyViewerTag(key, channelID, raw)
+}
+
+// withPlayoutViewer names the request's viewer to playout (playout.WithViewer), which learns from it
+// whether that viewer's client takes the premium (#1037). The key is the person and the device,
+// never the label, which the household may rename.
+func withPlayoutViewer(ctx context.Context, v viewing.Viewer, ok bool) context.Context {
+	if !ok {
+		return ctx
 	}
+	return playout.WithViewer(ctx, v.UserID+"\n"+v.DeviceKey)
 }
