@@ -10,7 +10,7 @@ import type { WarmedChannel } from "./channel-warmer.type";
 const warmChannel = async (channelId: string, signal: AbortSignal): Promise<WarmedChannel | undefined> => {
   const source = await mintChannelPlaySource(channelId, signal);
   if (!source) return undefined;
-  const warmed = await warmSource(new URL(source.url, window.location.href).toString(), (url, kind) =>
+  const { warmed } = await warmSource(new URL(source.url, window.location.href).toString(), (url, kind) =>
     fetch(url, {
       signal,
       credentials: "same-origin",

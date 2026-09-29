@@ -215,6 +215,30 @@ describe("play URL source warm", () => {
     expect(warmed?.uri).toContain("sig=one");
   });
 
+  // #1037: a native tune may skip the master a warm already read, but only when the master offers
+  // no choice; beside a premium variant the player must still choose.
+  it("hands back the master's only variant, signed, and none when the master offers a choice", async () => {
+    const variant = (uri: string) => [`#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1920x1080`, uri];
+    const master = (...variants: string[]) => ["#EXTM3U", ...variants.flatMap(variant)].join("\n");
+    const warmWith = async (body: string) => {
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce(mint())
+        .mockResolvedValueOnce(new Response(body, { status: 200 }))
+        .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
+      return port(request).warm?.(channel, {}, new AbortController().signal);
+    };
+
+    const single = await warmWith(master("1080p-h264-sdr.m3u8?sig=one&viewer=v"));
+    const choice = await warmWith(master("1080p-h264-sdr.m3u8?sig=one", "4k-hevc-hdr.m3u8?sig=one"));
+
+    expect(single?.mediaUri).toBe(
+      "http://living-room:8080/v1/playout/hls/science/1080p-h264-sdr.m3u8?sig=one&viewer=v",
+    );
+    expect(single?.uri).toContain("master.m3u8");
+    expect(choice?.mediaUri).toBeUndefined();
+  });
+
   it("treats a busy host as a harmless miss that still hands back the signed URL", async () => {
     const request = vi
       .fn()

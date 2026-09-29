@@ -60,6 +60,7 @@ const createNativePlayerTransport = (
   let activeAttemptId: number | undefined;
   let player: VideoPlayer | undefined;
   let replacement = Promise.resolve();
+  let replacing = 0; // replacements queued or running
   const listeners = new Set<(event: PlayerTransportEvent) => void>();
   const playerListeners = new Set<() => void>();
   let playingSubscription: { remove: () => void } | undefined;
@@ -257,30 +258,37 @@ const createNativePlayerTransport = (
       player.play();
     },
     replace: async (source: PlayerSource, context: { attemptId: number; signal: AbortSignal }) => {
-      const queued = replacement
-        .catch(() => undefined)
-        .then(async () => {
-          if (disposed || context.signal.aborted) return;
-          const current = player;
-          if (!current) throw new Error("Native player is unavailable.");
-          endStall("retuned");
-          activeAttemptId = context.attemptId;
-          liveMode = "live";
-          noticeRevision = 0;
-          serverClockOffsetMs =
-            source.serverTimeMs !== undefined && Number.isFinite(source.serverTimeMs)
-              ? source.serverTimeMs - Date.now()
-              : undefined;
-          viewerTimeMs = liveNow();
-          await current.replaceAsync({
-            contentType: "hls",
-            headers: source.headers ? { ...source.headers } : undefined,
-            uri: source.uri,
-            useCaching: false,
-          });
+      const run = async () => {
+        if (disposed || context.signal.aborted) return;
+        const current = player;
+        if (!current) throw new Error("Native player is unavailable.");
+        endStall("retuned");
+        activeAttemptId = context.attemptId;
+        liveMode = "live";
+        noticeRevision = 0;
+        serverClockOffsetMs =
+          source.serverTimeMs !== undefined && Number.isFinite(source.serverTimeMs)
+            ? source.serverTimeMs - Date.now()
+            : undefined;
+        viewerTimeMs = liveNow();
+        await current.replaceAsync({
+          contentType: "hls",
+          headers: source.headers ? { ...source.headers } : undefined,
+          // A warm read the master already: start from its only variant and skip that fetch (#1037).
+          uri: source.mediaUri ?? source.uri,
+          useCaching: false,
         });
+      };
+      // With nothing queued, the native call goes out in this same task, ahead of the switch
+      // overlay's render and mount, so the player starts before the main thread is busy (#1037).
+      const queued = replacing === 0 ? run() : replacement.catch(() => undefined).then(run);
+      replacing += 1;
       replacement = queued;
-      await queued;
+      try {
+        await queued;
+      } finally {
+        replacing -= 1;
+      }
     },
     resume: () => {
       if (disposed || player) return;

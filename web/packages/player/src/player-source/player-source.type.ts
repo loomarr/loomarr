@@ -15,6 +15,11 @@ interface PlayerSource {
   /** Signed address of the channel's latest still frame, for the switch overlay. Absent when the server sent none. */
   stillUri?: string;
   uri: string;
+  /**
+   * The master's only variant, signed, as a warm read it (#1037). A native player starts from it
+   * and skips the master fetch; the browser keeps `uri`. Absent when the master offers a choice.
+   */
+  mediaUri?: string;
 }
 
 /** A source minted for a neighbour, plus whether its playlist and first assets were all fetched. */

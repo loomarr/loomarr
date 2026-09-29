@@ -132,6 +132,12 @@ const createPlayerController = ({
     activeRequest = request;
     attempt += 1;
     const attemptId = attempt;
+    // A warmed source goes to the player before the tuning snapshot renders the switch overlay, so
+    // the native start is not queued behind the overlay's mount on the main thread (#1037).
+    const replacing = warmedSource
+      ? transport.replace(warmedSource, { attemptId, signal: request.signal })
+      : undefined;
+    replacing?.catch(() => undefined); // awaited below; never an unhandled rejection meanwhile
     publish({
       attemptId,
       catalog: snapshot.catalog,
@@ -156,14 +162,18 @@ const createPlayerController = ({
     }
 
     try {
-      const nextSource = warmedSource || (await source.mint(channel, profile, request.signal));
-      if (!isCurrentAttempt(attemptId, request.signal)) return;
-      // A channel nobody warmed gets its picture from its own mint: the server decodes a cold
-      // channel's still on demand, so the overlay can show it while the stream starts.
-      if (!recovering && !snapshot.stillUri && nextSource.stillUri && snapshot.status === "tuning") {
-        publish({ ...snapshot, stillUri: nextSource.stillUri });
+      if (replacing) {
+        await replacing;
+      } else {
+        const nextSource = await source.mint(channel, profile, request.signal);
+        if (!isCurrentAttempt(attemptId, request.signal)) return;
+        // A channel nobody warmed gets its picture from its own mint: the server decodes a cold
+        // channel's still on demand, so the overlay can show it while the stream starts.
+        if (!recovering && !snapshot.stillUri && nextSource.stillUri && snapshot.status === "tuning") {
+          publish({ ...snapshot, stillUri: nextSource.stillUri });
+        }
+        await transport.replace(nextSource, { attemptId, signal: request.signal });
       }
-      await transport.replace(nextSource, { attemptId, signal: request.signal });
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       // The viewer's own stream is on its way; only now may neighbours start their sessions.
       warmer.retarget(snapshot.catalog, channel.id);

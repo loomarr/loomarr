@@ -77,8 +77,10 @@ const createPlayUrlSourcePort = ({ baseUrl, fetch: request }: PlayUrlSourceOptio
     // Warms on the exact signed URL the real tune will reuse (see warmSource for the protocol).
     warm: async (channel, profile, signal) => {
       const minted = await mint(channel, profile, signal);
-      const warmed = await warmSource(minted.uri, (url) => request(url, { method: "GET", signal }));
-      return { ...minted, warmed };
+      const { mediaUri, warmed } = await warmSource(minted.uri, (url) =>
+        request(url, { method: "GET", signal }),
+      );
+      return { ...minted, ...(mediaUri ? { mediaUri } : {}), warmed };
     },
   };
 };
