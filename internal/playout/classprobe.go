@@ -212,7 +212,7 @@ func ProbeClassCosts(ctx context.Context, cfg ClassProbeConfig) ClassProbeResult
 				continue
 			}
 			measured[out.Height] = true
-			cost, pipe, err := measureWithDemotion(ctx, cfg, clip, path, out, &gpu)
+			cost, pipe, err := measureClassEnvelope(ctx, cfg, clip, path, out, &gpu)
 			if hdr && !res.Tonemap.Ran && ctx.Err() == nil {
 				stage := pipe.Tonemapper
 				if err == nil {
@@ -270,7 +270,7 @@ func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool,
 	}
 	out, _ := FormatOutput(class, cfg.Outputs[0])
 	var worst ClassCost
-	for _, clip := range probeClips {
+	for _, clip := range premiumProbeClips(cfg) {
 		src := clip.source()
 		if src.HDR() && !out.HDR {
 			continue // a 4K SDR channel never carries an HDR item
@@ -294,7 +294,48 @@ func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool,
 		}
 		worst.CPUCores = max(worst.CPUCores, cost.CPUCores)
 	}
+	worst.ConservativeCPU = true
 	return worst, true, nil
+}
+
+// fallbackProbeClip exercises the CPU decode/deinterlace graph on the cached source. bwdif's
+// default deint=all processes every frame, including this progressive synthetic input. Pricing
+// each class for the costlier graph avoids borrowing GPU-only costs for interlaced items.
+func fallbackProbeClip(cfg ClassProbeConfig, clip probeClip) (probeClip, bool) {
+	if cfg.Encoder != EncoderVideoToolbox || cfg.GPU.VideoToolboxDeinterlace {
+		return probeClip{}, false
+	}
+	clip.format.Interlaced = true
+	return clip, true
+}
+
+func premiumProbeClips(cfg ClassProbeConfig) []probeClip {
+	clips := append([]probeClip(nil), probeClips...)
+	for _, clip := range probeClips {
+		if fallback, ok := fallbackProbeClip(cfg, clip); ok {
+			clips = append(clips, fallback)
+		}
+	}
+	return clips
+}
+
+func measureClassEnvelope(
+	ctx context.Context, cfg ClassProbeConfig, clip probeClip, path string, out Profile, gpu *GPUFilters,
+) (ClassCost, Pipeline, error) {
+	cost, pipe, err := measureWithDemotion(ctx, cfg, clip, path, out, gpu)
+	if err != nil {
+		return cost, pipe, err
+	}
+	if fallback, ok := fallbackProbeClip(cfg, clip); ok {
+		fallbackCost, _, err := measureWithDemotion(ctx, cfg, fallback, path, out, gpu)
+		if err != nil {
+			return ClassCost{}, pipe, fmt.Errorf("interlaced fallback: %w", err)
+		}
+		cost.Speed = min(cost.Speed, fallbackCost.Speed)
+		cost.CPUCores = max(cost.CPUCores, fallbackCost.CPUCores)
+		cost.ConservativeCPU = true
+	}
+	return cost, pipe, nil
 }
 
 func wantClass(classes []StreamClass, c StreamClass) bool {

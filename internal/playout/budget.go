@@ -104,6 +104,9 @@ type ClassCost struct {
 	Speed float64 `json:"speed"`
 	// CPUCores is the host CPU one stream uses at 1x: process CPU time over media time.
 	CPUCores float64 `json:"cpuCores"`
+	// ConservativeCPU means CPUCores covers multiple item graphs. Live refinement may raise it,
+	// but a run of cheaper items cannot lower admission below the measured envelope.
+	ConservativeCPU bool `json:"conservativeCPU,omitempty"`
 }
 
 // BudgetFacts are the inputs of one admission decision, re-read every time so settings, cgroup
@@ -288,7 +291,11 @@ func (l *Lease) ObserveCPU(class StreamClass, cpu, media time.Duration) {
 		// The cell is rung 0's cost: a programme on a cheaper software rung counts at its rung-0 worth.
 		perSecond /= rungCostsOf(class)[l.SoftwareRung()]
 	}
-	observed := min(max(perSecond, base.CPUCores/refineBound), base.CPUCores*refineBound)
+	floor := base.CPUCores / refineBound
+	if base.ConservativeCPU {
+		floor = base.CPUCores
+	}
+	observed := min(max(perSecond, floor), base.CPUCores*refineBound)
 	b.rmu.Lock()
 	if b.refined == nil {
 		b.refined = map[CostKey]refinement{}
