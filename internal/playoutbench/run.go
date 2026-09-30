@@ -222,8 +222,10 @@ func (r *run) exec(ctx context.Context, args []string, sink io.Writer) (timed, e
 
 func tail(s string) string {
 	s = strings.TrimSpace(s)
-	if len(s) > 400 {
-		s = s[len(s)-400:]
+	// Keep the initial decoder/filter error as well as ffmpeg's final encoder failure. The
+	// terminal "Could not open encoder before EOF" alone hides the cause of a no-output run.
+	if len(s) > 4096 {
+		s = s[:2048] + "\n[diagnostics truncated]\n" + s[len(s)-2048:]
 	}
 	return s
 }

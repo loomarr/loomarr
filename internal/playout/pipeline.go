@@ -63,6 +63,9 @@ type HostProfile struct {
 	// DecodeCodecs are the source codecs the GPU decodes, lowercased as ffprobe names them. A codec
 	// outside the set takes the decode fallback. Empty means the GPU decodes nothing.
 	DecodeCodecs []string `json:"decodeCodecs,omitempty"`
+	// VideoToolboxDeinterlace: this ffmpeg build carries yadif_videotoolbox. Without it,
+	// interlaced sources use declared CPU decode/deinterlace before the hardware encoder.
+	VideoToolboxDeinterlace bool `json:"videoToolboxDeinterlace,omitempty"`
 	// TonemapOpenCL: tonemap_opencl works. The first choice on Intel (zero-copy from VAAPI) and
 	// NVIDIA (maintainer decision). There is no tonemap_vaapi: on the household Arc it outputs a
 	// black picture at normal speed with no error (#1516), so it is never emitted. On VAAPI it also
@@ -79,11 +82,12 @@ type HostProfile struct {
 	Overlay bool `json:"overlay,omitempty"`
 }
 
-// GPUFilters is which GPU tone-mappers this ffmpeg BUILD carries (GPUFiltersFor). Whether the
+// GPUFilters is which optional GPU filters this ffmpeg BUILD carries (GPUFiltersFor). Whether the
 // host can run them is a runtime fact: tonemap_opencl needs an OpenCL ICD for the GPU (the image
 // ships Intel's; NVIDIA's comes from the container runtime), libplacebo a Vulkan device.
 type GPUFilters struct {
 	TonemapOpenCL, Libplacebo bool
+	VideoToolboxDeinterlace   bool
 }
 
 // Hardware decode sets per family: the codecs the certified hardware decodes. Anything else takes
@@ -114,6 +118,7 @@ func HostFor(enc Encoder, cpuTonemap bool, gpu GPUFilters) HostProfile {
 	case EncoderVideoToolbox:
 		h.Family, h.DecodeCodecs = FamilyVideoToolbox, vtDecodes
 		h.Libplacebo = gpu.Libplacebo
+		h.VideoToolboxDeinterlace = gpu.VideoToolboxDeinterlace
 	case EncoderSoftware:
 		h.Family = FamilySoftware
 	default:
@@ -733,12 +738,19 @@ func (b *builder) outputBox() (string, bool) {
 func (b *builder) videotoolbox() error {
 	fw, fh, sized := fitSize(b.src.Width, b.src.Height, b.out.Width, b.out.Height)
 	var f []string
-	if sized && b.hardwareDecodes() {
+	hardwareDecode := sized && b.hardwareDecodes()
+	if hardwareDecode && b.src.Interlaced && !b.host.VideoToolboxDeinterlace {
+		b.fallback("deinterlace", "this build has no yadif_videotoolbox; CPU decode and deinterlace before scaling")
+		hardwareDecode = false
+	}
+	if hardwareDecode {
 		b.p.PreInput = []string{"-hwaccel", "videotoolbox", "-hwaccel_output_format", "videotoolbox_vld"}
 		if b.src.Interlaced {
-			f = append(f, "yadif_videotoolbox")
+			f = append(f, "yadif_videotoolbox=mode=send_frame")
 		}
-		f = append(f, fmt.Sprintf("scale_vt=w=%d:h=%d", fw, fh), "hwdownload")
+		// scale_vt preserves the decoded surface's pixel format. hwdownload cannot convert
+		// P010 to NV12; download P010 first, then convert for the channel's output below.
+		f = append(f, fmt.Sprintf("scale_vt=w=%d:h=%d", fw, fh), "hwdownload", "format="+b.decodedPixelFormat())
 	} else {
 		if !sized {
 			b.fallback("decode", "source geometry unknown")
@@ -761,9 +773,16 @@ func (b *builder) videotoolbox() error {
 			return fmt.Errorf("%w: HDR source and no tone-mapper", ErrRefused)
 		}
 		b.fallback("tonemap", "VideoToolbox has no tone-map filter")
-		f = append(f, "format=p010le", b.cpuChain())
+		if !hardwareDecode {
+			f = append(f, "format=p010le")
+		}
+		f = append(f, b.cpuChain())
 	}
-	f = append(f, "format="+b.scaleFormat("p010le"), fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), b.tail())
+	format := "format=" + b.scaleFormat("p010le")
+	if f[len(f)-1] != format {
+		f = append(f, format)
+	}
+	f = append(f, fmt.Sprintf("pad=%d:%d:-1:-1", b.out.Width, b.out.Height), b.tail())
 	b.p.VideoFilter = strings.Join(f, ",")
 	return nil
 }

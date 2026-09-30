@@ -100,7 +100,7 @@ func TonemapperFor(ffmpegPath string) func() bool {
 	}
 }
 
-// GPUFiltersFor reports which GPU tone-mappers this ffmpeg build carries, memoised like
+// GPUFiltersFor reports which optional GPU filters this ffmpeg build carries, memoised like
 // TonemapperFor. The pipeline builder picks between them per family (pipeline.go).
 func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
 	var (
@@ -110,8 +110,9 @@ func GPUFiltersFor(ffmpegPath string) func() GPUFilters {
 	return func() GPUFilters {
 		once.Do(func() {
 			f = GPUFilters{
-				TonemapOpenCL: hasFilter(ffmpegPath, "tonemap_opencl"),
-				Libplacebo:    hasFilter(ffmpegPath, "libplacebo"),
+				TonemapOpenCL:           hasFilter(ffmpegPath, "tonemap_opencl"),
+				Libplacebo:              hasFilter(ffmpegPath, "libplacebo"),
+				VideoToolboxDeinterlace: hasFilter(ffmpegPath, "yadif_videotoolbox"),
 			}
 		})
 		return f

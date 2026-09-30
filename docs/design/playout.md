@@ -101,6 +101,12 @@ tone-mapping, and padding stays on the GPU.
 | VideoToolbox | `scale_vt` and `h264_videotoolbox`, HDR tone-mapped on the CPU | unverified: no Mac has run it |
 | Generic (QSV, Vulkan, AMF, RKMPP, V4L2M2M) | CPU filters and the encoder's own upload | unverified fallback |
 
+VideoToolbox uses GPU deinterlacing only when the configured ffmpeg binary advertises
+`yadif_videotoolbox`. Otherwise interlaced sources use a declared CPU decode/deinterlace fallback
+before scaling, retaining the hardware encoder. GPU-decoded frames download in their original
+software pixel format before any conversion to the channel's output; 10-bit SDR therefore downloads
+as P010 before converting to NV12. These fallbacks still require measured host-capacity evidence.
+
 Rate control is quality-based VBR at quality 22 on every rung. The 1080p budget is an 8 Mbit/s target
 with a 12 Mbit/s cap, and lower rungs scale both by pixel count (720p 3.6/5.3 Mbit/s, 480p 1.6/2.4,
 floor 1.0/1.5). Host capability profiles are data, so every family is golden-tested on any machine.
