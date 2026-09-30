@@ -906,3 +906,55 @@ func testRetentionPurge(t *testing.T, newStore func(t *testing.T) Store) {
 		t.Error("the old denied proposal survived a purge that should have removed it")
 	}
 }
+
+// Both retention page modes share terminal eligibility and stable ending-time ordering.
+func testDiagnosticRetentionOrder(t *testing.T, newStore NewStoreFunc) {
+	t.Helper()
+	st := newStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		id     string
+		ended  time.Time
+		status diagnostics.ProcessStatus
+		output string
+	}{
+		{"old-z", base.Add(-2 * time.Hour), diagnostics.ProcessSucceeded, ""},
+		{"old-a", base.Add(-2 * time.Hour), diagnostics.ProcessFailed, ""},
+		{"oldest", base.Add(-3 * time.Hour), diagnostics.ProcessSucceeded, "file.log"},
+		{"new", base.Add(-30 * time.Minute), diagnostics.ProcessSucceeded, ""},
+		{"active", base.Add(-4 * time.Hour), diagnostics.ProcessRunning, ""},
+		{"zero-end", time.UnixMilli(0), diagnostics.ProcessSucceeded, ""},
+	} {
+		row := diagnostics.ProcessRun{ID: tc.id, Purpose: "program_encode", Status: tc.status,
+			StartedAt: base.Add(-5 * time.Hour).UnixMilli(), EndedAt: tc.ended.UnixMilli(), UpdatedAt: base.UnixMilli(), OutputRef: tc.output}
+		if err := st.UpsertDiagnosticProcessRun(ctx, row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name   string
+		before time.Time
+		want   []string
+	}{
+		{"expiry", base.Add(-time.Hour), []string{"oldest", "old-a", "old-z"}},
+		{"budget", time.Time{}, []string{"oldest", "old-a", "old-z", "new"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidates, err := st.ListDiagnosticRetentionCandidates(ctx, tc.before, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var ids []string
+			for _, c := range candidates {
+				ids = append(ids, c.ID)
+			}
+			if fmt.Sprint(ids) != fmt.Sprint(tc.want) {
+				t.Fatalf("retention order=%v, want %v", ids, tc.want)
+			}
+			if candidates[0].OutputRef != "file.log" {
+				t.Fatal("file-backed candidate lost its cleanup reference")
+			}
+		})
+	}
+}
