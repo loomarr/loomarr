@@ -282,33 +282,85 @@ var premiumAdmission = AdmitRequest{Class: ClassPremium4K, NoRungDrop: true}
 // player polls it, not the master, so each poll counts as a viewer and keeps the packager past its
 // grace. A premium playlist is the client's opt-in (#1512 G10): it starts the channel's premium
 // packager, and only for the premium the channel airs on this host.
-func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string) ([]byte, bool, error) {
-	class := FormatClass(strings.TrimSuffix(rel, ".m3u8"))
-	if filepath.Base(rel) != rel || !strings.HasSuffix(rel, ".m3u8") {
-		return nil, false, nil
+func (m *PackagerHLS) MediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string, speculative bool) ([]byte, bool, error) {
+	lease, ok, err := m.acquireMediaPlaylist(ctx, channelID, PlanBaseline, rel, speculative)
+	if err != nil || !ok {
+		return nil, false, err
 	}
-	switch class {
-	case FormatBaseline:
-	case Format4KSDR, Format4KHDR:
-		m.mu.Lock()
-		running := m.channels[packagedKey{channel: channelID, format: class}] != nil
-		m.mu.Unlock()
-		if !running && m.source.Premium(ctx, channelID) != class {
-			return nil, false, nil
-		}
-		m.notePremiumTaker(ViewerFrom(ctx))
-	default:
-		return nil, false, nil
-	}
-	c, release, err := m.acquire(channelID, class, false)
+	body, release, err := lease.readManifest(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	defer release()
-	if err := c.p.AwaitPlaylist(ctx); err != nil {
-		return nil, false, err
+	return body, true, nil
+}
+
+func (m *PackagerHLS) acquireMediaPlaylist(ctx context.Context, channelID string, _ EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
+	class := FormatClass(strings.TrimSuffix(rel, ".m3u8"))
+	if filepath.Base(rel) != rel || !strings.HasSuffix(rel, ".m3u8") {
+		return hlsPlaylistLease{}, false, nil
 	}
-	return c.p.Playlist(), true, nil
+	switch class {
+	case FormatBaseline, Format4KSDR, Format4KHDR:
+	default:
+		return hlsPlaylistLease{}, false, nil
+	}
+	if speculative {
+		return m.acquireWarmMediaPlaylist(ctx, channelID, class)
+	}
+	if class != FormatBaseline {
+		m.mu.Lock()
+		running := m.channels[packagedKey{channel: channelID, format: class}] != nil
+		m.mu.Unlock()
+		if !running && m.source.Premium(ctx, channelID) != class {
+			return hlsPlaylistLease{}, false, nil
+		}
+		m.notePremiumTaker(ViewerFrom(ctx))
+	}
+	c, release, err := m.acquire(channelID, class, false)
+	if err != nil {
+		return hlsPlaylistLease{}, false, err
+	}
+	return mediaPlaylistLease(c, release), true, nil
+}
+
+// acquireWarmMediaPlaylist retains only work the warm master already admitted. In particular, an
+// advertised premium is not permission to start it, choose it for the viewer, or evict another
+// channel. Hold the reference across readiness so expiry cannot retire it during this fetch.
+func (m *PackagerHLS) acquireWarmMediaPlaylist(ctx context.Context, channelID string, class FormatClass) (hlsPlaylistLease, bool, error) {
+	if class != FormatBaseline && !m.takesPremium(ViewerFrom(ctx)) {
+		return hlsPlaylistLease{}, false, nil
+	}
+	key := packagedKey{channel: channelID, format: class}
+	m.mu.Lock()
+	c := m.channels[key]
+	if c == nil {
+		m.mu.Unlock()
+		return hlsPlaylistLease{}, false, nil
+	}
+	select {
+	case <-c.done:
+		m.mu.Unlock()
+		return hlsPlaylistLease{}, false, nil
+	default:
+	}
+	c.viewers++
+	c.idleSince = time.Time{}
+	c.warmHeld = true
+	if c.idle != nil {
+		c.idle.Stop()
+		c.idle = nil
+	}
+	m.mu.Unlock()
+	return mediaPlaylistLease(c, onceRelease(func() { m.release(key, c) })), true, nil
+}
+
+func mediaPlaylistLease(c *packagedChannel, release func()) hlsPlaylistLease {
+	return hlsPlaylistLease{
+		release:  release,
+		await:    c.p.AwaitPlaylist,
+		snapshot: func(context.Context) ([]byte, error) { return c.p.Playlist(), nil },
+	}
 }
 
 // acquire counts a viewer (browser or tuner) on a channel format's packager, starting it if needed.
@@ -1128,7 +1180,7 @@ func (l *limitedWriter) Write(b []byte) (int, error) {
 // mediaPlaylister is an hlsOrigin whose Tune answer is a master playlist: its variant playlists are
 // live documents, rendered per request, not files.
 type mediaPlaylister interface {
-	MediaPlaylist(ctx context.Context, channelID string, plan EncodePlan, rel string) ([]byte, bool, error)
+	acquireMediaPlaylist(ctx context.Context, channelID string, plan EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error)
 }
 
 // hlsVariant is one EXT-X-STREAM-INF entry of a channel's master playlist.

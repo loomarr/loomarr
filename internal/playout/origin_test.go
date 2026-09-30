@@ -36,7 +36,7 @@ func TestOriginTuneReportsUnavailableDelivery(t *testing.T) {
 	if !errors.Is(err, ErrUnsupportedDelivery) {
 		t.Fatalf("Tune error = %v, want ErrUnsupportedDelivery", err)
 	}
-	if _, ok, err := origin.OpenAsset(context.Background(), "ch-one", PlanBaseline, "segment.ts"); err != nil || ok {
+	if _, ok, err := origin.OpenAsset(context.Background(), "ch-one", PlanBaseline, "segment.ts", false); err != nil || ok {
 		t.Fatal("asset resolved without an HLS delivery")
 	}
 }
@@ -109,7 +109,7 @@ func TestOriginLifecycleGateFailsClosedAndStopAllIsReusable(t *testing.T) {
 	}); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Tune while lifecycle unavailable error = %v, want ErrUnavailable", err)
 	}
-	if _, ok, err := origin.OpenAsset(context.Background(), "ch-one", PlanBaseline, "segment.ts"); !errors.Is(err, ErrUnavailable) || ok {
+	if _, ok, err := origin.OpenAsset(context.Background(), "ch-one", PlanBaseline, "segment.ts", false); !errors.Is(err, ErrUnavailable) || ok {
 		t.Fatalf("OpenAsset while lifecycle unavailable = (_, %v, %v), want false, ErrUnavailable", ok, err)
 	}
 	origin.StopAll()
@@ -263,5 +263,76 @@ func TestOriginStopAllOrdersAgainstTuneAdmission(t *testing.T) {
 	}
 	if !sessions.stopped.Load() {
 		t.Fatal("session attached during admission close escaped StopAll")
+	}
+}
+
+func TestOriginWarmVariantReadinessDoesNotBlockLifecycleTeardown(t *testing.T) {
+	for _, operation := range []string{"StopChannel", "StopAll", "Quiesce"} {
+		t.Run(operation, func(t *testing.T) {
+			m, err := NewPackagerHLS(&premiumSource{premium: Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(m.Stop)
+			c, release, err := m.acquire("neighbour", Format4KHDR, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			release()
+			m.notePremiumTaker("tv")
+			origin := newOrigin(nil, m)
+			ctx, cancel := context.WithTimeout(WithViewer(t.Context(), "tv"), 3*time.Second)
+			defer cancel()
+			readDone := make(chan error, 1)
+			go func() {
+				_, _, err := origin.OpenAsset(ctx, "neighbour", PlanBaseline, string(Format4KHDR)+".m3u8", true)
+				readDone <- err
+			}()
+			deadline := time.Now().Add(time.Second)
+			for {
+				m.mu.Lock()
+				fetching := c.viewers > 0
+				m.mu.Unlock()
+				if fetching {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("warm read never reached readiness wait")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			stopped := make(chan struct{})
+			go func() {
+				switch operation {
+				case "StopChannel":
+					origin.StopChannel("neighbour")
+				case "StopAll":
+					origin.StopAll()
+				case "Quiesce":
+					origin.Quiesce()
+				}
+				close(stopped)
+			}()
+			select {
+			case <-stopped:
+				t.Log("lifecycle teardown canceled warm readiness without client cancellation")
+			case <-time.After(time.Second):
+				t.Error("lifecycle teardown blocked by warm readiness; request context must be canceled to release Origin read lock")
+			}
+			select {
+			case err := <-readDone:
+				if err == nil || ctx.Err() != nil {
+					t.Error("stopped unready rendition was served")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("warm read did not finish after lifecycle cancellation")
+			}
+			m.mu.Lock()
+			viewers := c.viewers
+			m.mu.Unlock()
+			if viewers != 0 || len(m.runningChannels()) != 0 {
+				t.Fatal("lifecycle cancellation retained the warm lease")
+			}
+		})
 	}
 }

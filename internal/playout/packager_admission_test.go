@@ -164,7 +164,7 @@ func takePremium(t *testing.T, m *PackagerHLS, viewer, channelID string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(WithViewer(t.Context(), viewer), 200*time.Millisecond)
 	defer cancel()
-	if _, _, err := m.MediaPlaylist(ctx, channelID, PlanBaseline, string(Format4KHDR)+".m3u8"); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := m.MediaPlaylist(ctx, channelID, PlanBaseline, string(Format4KHDR)+".m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("premium play on %s: err = %v, want the wait for its first segment", channelID, err)
 	}
 }
@@ -225,6 +225,64 @@ func TestPackagerHLS_APremiumViewersWarmAlsoWarmsTheNeighboursPremium(t *testing
 	m.mu.Unlock()
 	if grace != DefaultGrace {
 		t.Fatalf("a warmed premium's grace = %s, want the baseline's %s", grace, DefaultGrace)
+	}
+}
+
+func TestPackagerHLS_WarmVariantReadNeverPromotesOrStarts(t *testing.T) {
+	m, err := NewPackagerHLS(&premiumSource{premium: Format4KHDR}, sleepingFFmpeg(t), t.TempDir(), DefaultGrace, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.WithBudget(NewResourceBudget(func() BudgetFacts { return warmFacts(2) }))
+	t.Cleanup(m.Stop)
+	m.notePremiumTaker("tv")
+	for _, class := range []FormatClass{FormatBaseline, Format4KHDR} {
+		c, release, err := m.acquire("neighbour", class, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		release()
+		ctx, cancel := context.WithTimeout(WithViewer(t.Context(), "tv"), 50*time.Millisecond)
+		_, _, err = m.MediaPlaylist(ctx, "neighbour", PlanBaseline, string(class)+".m3u8", true)
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("warm %s: %v", class, err)
+		}
+		m.mu.Lock()
+		speculative, held, viewers := c.speculative, c.warmHeld, c.viewers
+		grace := m.graceFor(packagedKey{channel: "neighbour", format: class}, c)
+		m.mu.Unlock()
+		if !speculative || !held || viewers != 0 || grace != DefaultGrace {
+			t.Fatalf("warm %s promoted or lost its hold: speculative=%v held=%v viewers=%d grace=%s", class, speculative, held, viewers, grace)
+		}
+	}
+	for _, tc := range []struct {
+		viewer, channel string
+		class           FormatClass
+	}{
+		{"tv", "cold", FormatBaseline}, {"tv", "cold", Format4KHDR}, {"unknown", "neighbour", Format4KHDR},
+	} {
+		ctx := WithViewer(t.Context(), tc.viewer)
+		if _, ok, err := m.MediaPlaylist(ctx, tc.channel, PlanBaseline, string(tc.class)+".m3u8", true); ok || err != nil {
+			t.Fatalf("warm miss %+v = %v, %v", tc, ok, err)
+		}
+	}
+	if m.takesPremium("unknown") || len(m.runningChannels()) != 2 {
+		t.Fatal("warm read learned premium, evicted work, or started a new packager")
+	}
+	// The subsequent real poll still promotes normally and learns the client's actual choice.
+	ctx, cancel := context.WithTimeout(WithViewer(t.Context(), "real"), 50*time.Millisecond)
+	defer cancel()
+	_, _, err = m.MediaPlaylist(ctx, "neighbour", PlanBaseline, string(Format4KHDR)+".m3u8", false)
+	if !errors.Is(err, context.DeadlineExceeded) || !m.takesPremium("real") {
+		t.Fatalf("real poll: %v", err)
+	}
+	m.mu.Lock()
+	c := m.channels[packagedKey{channel: "neighbour", format: Format4KHDR}]
+	speculative, held := c.speculative, c.warmHeld
+	m.mu.Unlock()
+	if speculative || held {
+		t.Fatal("real poll did not promote the warm premium")
 	}
 }
 
