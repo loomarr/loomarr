@@ -49,6 +49,8 @@ playback.
   Firefox, within a 100 ms seek bound) or attaches a fresh `MediaSource` to the same element
   (WebKit, ended sources, missed bounds). The held poster covers either path, the outgoing blob URL is
   always revoked, and no init or media fragment is loaded into a detached controller.
+  hls.js's optional interstitial controller is omitted: commercials are already encoded into the
+  channel timeline, and every retired controller must release its video listeners after transfer.
 
 The controller publishes User Timing measures per attempt (OSD paint, manifest, first decoded frame)
 with no Channel ids or titles in the names. The #1512 exit criteria on a 100-Channel catalog: OSD p95
