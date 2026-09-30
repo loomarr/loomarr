@@ -37,7 +37,9 @@ const variantUris = (manifest: string): string[] => {
  *   1. `mode=warm` makes the server start the channel's packager under speculative admission (it
  *      never reclaims another channel's session, 503 when full) and holds the response until the
  *      first segment is listed;
- *   2. the init map and newest fragment are fetched and drained so they are hot server-side.
+ *   2. variant playlists are read with the same speculative hint; only already admitted renditions
+ *      answer, without promoting them or recording a premium choice;
+ *   3. each rendition's init map and newest fragment are fetched and drained so they are hot server-side.
  * A warm is only ever for a neighbour of the channel being watched, and the packager stops after
  * its grace if the viewer never arrives (#1512 G1: no encoder runs while nobody is watching).
  * Every body is drained: an unread response can hold its connection and stall the real tune. The
@@ -54,16 +56,34 @@ const warmSource = async (uri: string, get: WarmGet): Promise<WarmResult> => {
   }
   const manifest = await response.text();
   const base = response.url || manifestUrl;
-  const assets = warmableAssets(manifest);
-  const fetched = await Promise.all(
-    assets.map(async (asset) => {
-      const result = await get(new URL(asset, base).toString(), "asset");
-      await result.arrayBuffer();
-      return result.ok;
-    }),
-  );
-  const warmed = assets.length > 0 && fetched.every(Boolean);
-  const [only, ...others] = variantUris(manifest);
+  const variants = variantUris(manifest);
+  const warmMedia = async (body: string, mediaBase: string): Promise<boolean> => {
+    // A playlist is never a media asset. Malformed/nested masters are a harmless warm miss.
+    if (!body.trimStart().startsWith("#EXTM3U") || variantUris(body).length > 0) return false;
+    const assets = warmableAssets(body);
+    const fetched = await Promise.all(
+      assets.map(async (asset) => {
+        const result = await get(new URL(asset, mediaBase).toString(), "asset");
+        await result.arrayBuffer();
+        return result.ok;
+      }),
+    );
+    return assets.length > 0 && fetched.every(Boolean);
+  };
+  const fetched =
+    variants.length > 0
+      ? await Promise.all(
+          variants.map(async (variant) => {
+            const url = new URL(variant, base);
+            url.searchParams.set("mode", "warm");
+            const media = await get(url.toString(), "playlist");
+            const body = await media.text();
+            return media.ok && warmMedia(body, media.url || url.toString());
+          }),
+        )
+      : [await warmMedia(manifest, base)];
+  const warmed = fetched.every(Boolean);
+  const [only, ...others] = variants;
   return warmed && only !== undefined && others.length === 0
     ? { mediaUri: new URL(only, base).toString(), warmed }
     : { warmed };

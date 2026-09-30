@@ -40,6 +40,12 @@ playback.
   starts the neighbour's premium too, after its baseline. A premium warm evicts nothing, and any
   baseline, even another warm, may reclaim its room (#1037). Every admit, refuse and evict decision is
   logged at INFO as `packager hls: admission`.
+  The warmer follows the master's variant playlists with `mode=warm`, then drains each available
+  rendition's active init and newest media fragment. A warm variant read only retains an already
+  admitted packager; it never starts one, promotes speculative work, learns a premium preference,
+  or records household viewing. Premium reads require the viewer's learned premium preference.
+  A missing rendition or asset is an unsuccessful warm. The real tune reuses the original signed
+  master without `mode`; native clients skip it only when it offered exactly one rendition.
 - **hls.js settings** match the packager: `lowLatencyMode: false`, `liveSyncDuration: 6` (its
   `HOLD-BACK`), `startFragPrefetch: true`. The TV player sets `minBufferForPlayback: 1`.
 - **Web source swaps.** Safari-family WebKit uses native HLS when it exposes it; Chromium and Firefox

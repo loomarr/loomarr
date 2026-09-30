@@ -109,7 +109,7 @@ func (f *fakePlayoutSessions) Tune(ctx context.Context, request playout.TuneRequ
 	return playout.Presentation{Stream: playoutstreamfixture.Channel{Chunks: chunks}, Release: release}, err
 }
 
-func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, _ playout.EncodePlan, rel string) (playout.Asset, bool, error) {
+func (f *fakePlayoutSessions) OpenAsset(_ context.Context, _ string, _ playout.EncodePlan, rel string, speculative bool) (playout.Asset, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.opened = rel

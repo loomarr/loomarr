@@ -81,7 +81,7 @@ const playoutTokenParam = "token"
 // (see scripts/check-retired.sh).
 const playoutPlanParam = "plan"
 
-// playoutModeParam is an unsigned least-privilege modifier on the signed HLS master route. `warm`
+// playoutModeParam is an unsigned least-privilege modifier on signed HLS playlists. `warm`
 // permits a bounded live snapshot but forbids reclaiming another Channel's retained session.
 // `prepared` is retired with prepared media (#1512) and always answers 204 for beta.7 TV and
 // mobile installs, whose player probed it first. It is removed in v0.2.0-beta.10 (#1742).
@@ -92,7 +92,7 @@ const playoutModeParam = "mode"
 // channel packagers and their filesystem layouts.
 type Playout interface {
 	Tune(ctx context.Context, request playout.TuneRequest) (playout.Presentation, error)
-	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string) (playout.Asset, bool, error)
+	OpenAsset(ctx context.Context, channelID string, plan playout.EncodePlan, rel string, speculative bool) (playout.Asset, bool, error)
 	// StopChannel immediately retires every live delivery for one channel. Lifecycle writes use
 	// it after the store commits, so viewers already attached cannot outlive pause/detach/backend
 	// transitions that make the channel ineligible for internal playout.
@@ -582,7 +582,7 @@ func (s *Server) hlsPlaylistHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // hlsAssetQuery carries the channel-scoped signature and rendition selectors onto asset requests,
-// but never the master-only mode hint, so an asset URL is the same whichever mode tuned it.
+// but never the playlist-only mode hint, so an asset URL is the same whichever mode tuned it.
 func hlsAssetQuery(query url.Values) string {
 	asset := make(url.Values, len(query))
 	for key, values := range query {
@@ -687,11 +687,12 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var viewer viewing.Viewer
 	var tagged bool
+	speculative := strings.HasSuffix(rel, ".m3u8") && r.URL.Query().Get(playoutModeParam) == "warm"
 	if strings.HasSuffix(rel, ".m3u8") {
 		viewer, tagged = s.requestViewer(ctx, channelID, r.URL.Query())
 		ctx = withPlayoutViewer(ctx, viewer, tagged)
 	}
-	asset, ok, err := s.playout.OpenAsset(ctx, channelID, clientPlan(r), rel)
+	asset, ok, err := s.playout.OpenAsset(ctx, channelID, clientPlan(r), rel, speculative)
 	if err != nil || !ok {
 		http.NotFound(w, r)
 		return
@@ -706,7 +707,7 @@ func (s *Server) hlsAssetHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// A player re-reads its media playlist every segment while it plays: that poll is the
 		// household-viewing signal (#1662). Segments are not, so one viewing isn't counted per fetch.
-		if tagged && s.viewing != nil {
+		if !speculative && tagged && s.viewing != nil {
 			s.viewing.Observe(viewer, channelID, s.clock())
 		}
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")

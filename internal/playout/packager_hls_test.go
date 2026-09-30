@@ -653,9 +653,12 @@ type fakeVariantOrigin struct {
 	asked []string
 }
 
-func (f *fakeVariantOrigin) MediaPlaylist(_ context.Context, _ string, _ EncodePlan, rel string) ([]byte, bool, error) {
+func (f *fakeVariantOrigin) acquireMediaPlaylist(_ context.Context, _ string, _ EncodePlan, rel string, speculative bool) (hlsPlaylistLease, bool, error) {
 	f.asked = append(f.asked, rel)
-	return []byte("#EXTM3U\n" + rel + "\n"), rel == "1080p-h264-sdr.m3u8", nil
+	return hlsPlaylistLease{
+		await: func(context.Context) error { return nil }, release: func() {},
+		snapshot: func(context.Context) ([]byte, error) { return []byte("#EXTM3U\n" + rel + "\n"), nil },
+	}, rel == "1080p-h264-sdr.m3u8", nil
 }
 
 // The packager's Tune answer is a master playlist (#1512 phase 2b); the player then fetches the
@@ -665,17 +668,17 @@ func TestOriginServesThePackagerVariantPlaylist(t *testing.T) {
 	pk := &fakeVariantOrigin{fakeHLSOrigin: fakeHLSOrigin{assets: map[string]string{}}}
 	o := newOrigin(nil, pk)
 
-	asset, ok, err := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr.m3u8")
+	asset, ok, err := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr.m3u8", false)
 	if err != nil || !ok || !asset.Playlist {
 		t.Fatalf("variant: ok %v playlist %v err %v", ok, asset.Playlist, err)
 	}
 	if b, _ := io.ReadAll(asset.Content); string(b) != "#EXTM3U\n1080p-h264-sdr.m3u8\n" {
 		t.Fatalf("variant body %q", b)
 	}
-	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8"); ok {
+	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); ok {
 		t.Fatal("a variant the packager does not serve resolved")
 	}
-	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr-seg00000001.m4s"); ok {
+	if _, ok, _ := o.OpenAsset(context.Background(), "ch", PlanBaseline, "1080p-h264-sdr-seg00000001.m4s", false); ok {
 		t.Fatal("a segment went to MediaPlaylist, or resolved with no file")
 	}
 	if len(pk.asked) != 2 {
@@ -784,12 +787,12 @@ func TestPackagerHLSPremiumPlaylistStartsThePremiumPackager(t *testing.T) {
 	m.WithBudget(budget)
 	t.Cleanup(m.Stop)
 
-	if _, ok, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-sdr.m3u8"); ok || err != nil {
+	if _, ok, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-sdr.m3u8", false); ok || err != nil {
 		t.Fatalf("4k-hevc-sdr on a 4K HDR channel = %v, %v; want not found", ok, err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
-	if _, _, err := m.MediaPlaylist(ctx, "ch", PlanBaseline, "4k-hevc-hdr.m3u8"); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := m.MediaPlaylist(ctx, "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("premium playlist err = %v, want the wait for its first segment", err)
 	}
 	m.mu.Lock()
@@ -840,7 +843,7 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 			m.WithBudget(budget)
 			t.Cleanup(m.Stop)
 
-			if _, _, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8"); !errors.Is(err, ErrAtCapacity) {
+			if _, _, err := m.MediaPlaylist(t.Context(), "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false); !errors.Is(err, ErrAtCapacity) {
 				t.Fatalf("premium play err = %v, want ErrAtCapacity", err)
 			}
 			time.Sleep(200 * time.Millisecond)
@@ -857,8 +860,8 @@ func TestPackagerHLSDropsPremiumThatDoesNotFit(t *testing.T) {
 func TestPackagerHLSMediaPlaylistServesOnlyTheChannelsFormats(t *testing.T) {
 	m := &PackagerHLS{channels: map[packagedKey]*packagedChannel{}, source: &premiumSource{}}
 	for _, rel := range []string{"4k-hevc-sdr.m3u8", "4k-hevc-hdr.m3u8", "../1080p-h264-sdr.m3u8", "live.m3u8", "1080p-h264-sdr"} {
-		if _, ok, err := m.MediaPlaylist(context.Background(), "ch", PlanBaseline, rel); ok || err != nil {
-			t.Errorf("MediaPlaylist(%q) = %v, %v; want not found, without starting a packager", rel, ok, err)
+		if _, ok, err := m.MediaPlaylist(context.Background(), "ch", PlanBaseline, rel, false); ok || err != nil {
+			t.Errorf("MediaPlaylist(%q, false) = %v, %v; want not found, without starting a packager", rel, ok, err)
 		}
 	}
 	if len(m.channels) != 0 {

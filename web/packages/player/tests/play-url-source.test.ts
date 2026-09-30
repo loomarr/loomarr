@@ -171,6 +171,53 @@ describe("play URL source warm", () => {
       fetch: request as unknown as typeof fetch,
     });
 
+  it.each([false, true])(
+    "follows real variant playlists before certifying a warm (premium=%s)",
+    async (premium) => {
+      const variants = ["1080p-h264-sdr", ...(premium ? ["4k-hevc-hdr"] : [])];
+      const master = [
+        "#EXTM3U",
+        ...variants.flatMap((format) => ["#EXT-X-STREAM-INF:BANDWIDTH=1", `${format}.m3u8?sig=one&viewer=v`]),
+      ].join("\n");
+      const drained: string[] = [];
+      const request = vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith("play-url")) return mint();
+        const parsed = new URL(url);
+        const name = parsed.pathname.split("/").pop() ?? "";
+        if (name === "master.m3u8") return new Response(master);
+        if (name.endsWith(".m3u8")) {
+          expect(parsed.searchParams.get("mode")).toBe("warm");
+          const format = name.replace(".m3u8", "");
+          return new Response(
+            `#EXTM3U\n#EXT-X-MAP:URI="${format}-init.mp4?sig=one"\n#EXTINF:1,\n${format}-seg.m4s?sig=one\n`,
+          );
+        }
+        expect(parsed.searchParams.get("mode")).toBeNull();
+        const response = new Response("bytes");
+        const drain = response.arrayBuffer.bind(response);
+        response.arrayBuffer = async () => {
+          drained.push(name);
+          return drain();
+        };
+        return response;
+      });
+
+      const result = await port(request).warm?.(channel, {}, new AbortController().signal);
+
+      expect(result?.warmed).toBe(true);
+      expect(drained.sort()).toEqual(
+        variants.flatMap((format) => [`${format}-init.mp4`, `${format}-seg.m4s`]).sort(),
+      );
+      expect(result?.mediaUri).toBe(
+        premium
+          ? undefined
+          : "http://living-room:8080/v1/playout/hls/science/1080p-h264-sdr.m3u8?sig=one&viewer=v",
+      );
+      expect(result?.uri).not.toContain("mode=");
+    },
+  );
+
   // Prepared media is retired (#1512 phase 4): the warm is one speculative live start, never a
   // prepared probe first.
   it("warms live under speculative admission and prefetches only the init and newest segment", async () => {
@@ -225,7 +272,11 @@ describe("play URL source warm", () => {
         .fn()
         .mockResolvedValueOnce(mint())
         .mockResolvedValueOnce(new Response(body, { status: 200 }))
-        .mockImplementation(() => Promise.resolve(new Response("bytes", { status: 200 })));
+        .mockImplementation((url: string) =>
+          Promise.resolve(
+            new Response(new URL(url).pathname.endsWith(".m3u8") ? manifest : "bytes", { status: 200 }),
+          ),
+        );
       return port(request).warm?.(channel, {}, new AbortController().signal);
     };
 
@@ -250,6 +301,24 @@ describe("play URL source warm", () => {
     expect(warmed?.warmed).toBe(false);
     expect(warmed?.uri).toContain("sig=one");
   });
+
+  it.each([new Response("busy", { status: 503 }), new Response("not a playlist")])(
+    "does not certify an unavailable or malformed rendition",
+    async (media) => {
+      const request = vi
+        .fn()
+        .mockResolvedValueOnce(mint())
+        .mockResolvedValueOnce(
+          new Response("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n1080p-h264-sdr.m3u8?sig=one\n"),
+        )
+        .mockResolvedValueOnce(media);
+      const result = await port(request).warm?.(channel, {}, new AbortController().signal);
+      expect(result?.warmed).toBe(false);
+      expect(result?.mediaUri).toBeUndefined();
+      expect(request).toHaveBeenCalledTimes(3);
+      expect(media.bodyUsed).toBe(true);
+    },
+  );
 });
 
 describe("play URL source still address", () => {

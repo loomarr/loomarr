@@ -84,7 +84,7 @@ func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 		!strings.Contains(master, "\n1080p-h264-sdr.m3u8\n") {
 		t.Fatalf("master playlist:\n%s", master)
 	}
-	variant, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, "1080p-h264-sdr.m3u8")
+	variant, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, "1080p-h264-sdr.m3u8", false)
 	if err != nil || !ok || !variant.Playlist {
 		t.Fatalf("variant: ok %v playlist %v err %v", ok, variant.Playlist, err)
 	}
@@ -101,7 +101,7 @@ func TestPackagerOriginServesHLSAndTSAcrossItemBoundaries(t *testing.T) {
 		t.Fatalf("variant lists no init and segment:\n%s", body)
 	}
 	for _, u := range uris {
-		a, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, u)
+		a, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, u, false)
 		if err != nil || !ok {
 			t.Fatalf("asset %q named by the variant: ok %v err %v", u, ok, err)
 		}

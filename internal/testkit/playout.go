@@ -25,7 +25,7 @@ func (p *Playout) Tune(context.Context, playout.TuneRequest) (playout.Presentati
 	return p.TuneResult, p.TuneErr
 }
 
-func (*Playout) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
+func (*Playout) OpenAsset(context.Context, string, playout.EncodePlan, string, bool) (playout.Asset, bool, error) {
 	return playout.Asset{}, false, nil
 }
 

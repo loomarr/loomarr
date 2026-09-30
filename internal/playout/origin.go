@@ -266,36 +266,48 @@ func (o *Origin) acquireTune(ctx context.Context, request TuneRequest) (Presenta
 }
 
 // OpenAsset opens a follow-up HLS resource without exposing the live remux layout to callers.
-func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePlan, rel string) (Asset, bool, error) {
+func (o *Origin) OpenAsset(ctx context.Context, channelID string, plan EncodePlan, rel string, speculative bool) (Asset, bool, error) {
+	asset, lease, ok, err := o.acquireAsset(ctx, channelID, plan, rel, speculative)
+	if err != nil || !ok || lease == nil {
+		return asset, ok, err
+	}
+	// Like master readiness, variant readiness must permit lifecycle teardown to cancel the
+	// packager it is waiting for. Only admission and retaining the lease require the lifecycle lock.
+	body, release, err := lease.readManifest(ctx)
+	if err != nil {
+		return Asset{}, false, err
+	}
+	defer release()
+	return Asset{Content: nopSeekCloser{bytes.NewReader(body)}, Modified: time.Now(), Playlist: true}, true, nil
+}
+
+func (o *Origin) acquireAsset(ctx context.Context, channelID string, plan EncodePlan, rel string, speculative bool) (Asset, *hlsPlaylistLease, bool, error) {
 	o.lifecycleMu.RLock()
 	defer o.lifecycleMu.RUnlock()
 	if err := o.checkAdmissionLocked(ctx, channelID); err != nil {
-		return Asset{}, false, err
+		return Asset{}, nil, false, err
 	}
 	if o.hls == nil {
-		return Asset{}, false, nil
+		return Asset{}, nil, false, nil
 	}
 	if mp, ok := o.hls.(mediaPlaylister); ok && strings.HasSuffix(rel, ".m3u8") {
-		body, ok, err := mp.MediaPlaylist(ctx, channelID, plan, rel)
-		if err != nil || !ok {
-			return Asset{}, false, err
-		}
-		return Asset{Content: nopSeekCloser{bytes.NewReader(body)}, Modified: time.Now(), Playlist: true}, true, nil
+		lease, ok, err := mp.acquireMediaPlaylist(ctx, channelID, plan, rel, speculative)
+		return Asset{}, &lease, ok, err
 	}
 	path, ok := o.hls.AssetPath(channelID, plan, rel)
 	if !ok {
-		return Asset{}, false, nil
+		return Asset{}, nil, false, nil
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return Asset{}, false, err
+		return Asset{}, nil, false, err
 	}
 	info, err := f.Stat()
 	if err != nil {
 		_ = f.Close()
-		return Asset{}, false, err
+		return Asset{}, nil, false, err
 	}
-	return Asset{Content: f, Modified: info.ModTime()}, true, nil
+	return Asset{Content: f, Modified: info.ModTime()}, nil, true, nil
 }
 
 // StopChannel retires every live delivery path for one channel. HLS is stopped first so it

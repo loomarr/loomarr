@@ -523,7 +523,7 @@ func TestLivePremium_PackagerServesHDR10(t *testing.T) {
 	seen := map[string]bool{}
 	var media float64
 	for media < 30 {
-		pl, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, "4k-hevc-hdr.m3u8")
+		pl, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, "4k-hevc-hdr.m3u8", false)
 		if err != nil || !ok {
 			t.Fatalf("premium playlist: ok %v err %v", ok, err)
 		}
@@ -543,7 +543,7 @@ func TestLivePremium_PackagerServesHDR10(t *testing.T) {
 				continue
 			}
 			seen[uri] = true
-			a, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, uri)
+			a, ok, err := o.OpenAsset(ctx, "ch", PlanBaseline, uri, false)
 			if err != nil || !ok {
 				t.Fatalf("asset %q: ok %v err %v", uri, ok, err)
 			}

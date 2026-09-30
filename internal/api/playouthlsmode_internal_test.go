@@ -24,6 +24,7 @@ type modeProbePlayout struct {
 	asset        playout.Asset
 	assetOK      bool
 	viewer       string // playout.ViewerFrom the last call's context
+	speculative  bool
 }
 
 func modeHandlerServer(t *testing.T, probe *modeProbePlayout) *Server {
@@ -48,9 +49,28 @@ func (p *modeProbePlayout) Tune(ctx context.Context, request playout.TuneRequest
 	return p.presentation, p.err
 }
 
-func (p *modeProbePlayout) OpenAsset(ctx context.Context, _ string, _ playout.EncodePlan, _ string) (playout.Asset, bool, error) {
+func (p *modeProbePlayout) OpenAsset(ctx context.Context, _ string, _ playout.EncodePlan, _ string, speculative bool) (playout.Asset, bool, error) {
 	p.viewer = playout.ViewerFrom(ctx)
+	p.speculative = speculative
 	return p.asset, p.assetOK, nil
+}
+
+func TestHLSWarmVariantKeepsSpeculativeAdmissionAndAssetURLs(t *testing.T) {
+	probe := &modeProbePlayout{asset: playout.Asset{
+		Content: stringAsset{strings.NewReader("#EXTM3U\n#EXT-X-MAP:URI=\"init.mp4\"\nseg.m4s\n")}, Playlist: true,
+	}, assetOK: true}
+	s := modeHandlerServer(t, probe)
+	req := httptest.NewRequest(http.MethodGet, "/v1/playout/hls/ch-one/1080p-h264-sdr.m3u8?mode=warm&sig=signed&viewer=v", nil)
+	req.SetPathValue("id", "ch-one")
+	req.SetPathValue("asset", "1080p-h264-sdr.m3u8")
+	w := httptest.NewRecorder()
+	s.hlsAssetHandler(w, req)
+	if w.Code != http.StatusOK || !probe.speculative {
+		t.Fatalf("status=%d speculative=%v, want 200 and speculative", w.Code, probe.speculative)
+	}
+	if body := w.Body.String(); strings.Contains(body, "mode=") || !strings.Contains(body, "sig=signed") {
+		t.Fatalf("warm playlist asset URLs = %q", body)
+	}
 }
 
 func (*modeProbePlayout) StopChannel(string) {}

@@ -28,7 +28,7 @@ type seekCloser struct{ *bytes.Reader }
 
 func (seekCloser) Close() error { return nil }
 
-func (pollPlayout) OpenAsset(context.Context, string, playout.EncodePlan, string) (playout.Asset, bool, error) {
+func (pollPlayout) OpenAsset(context.Context, string, playout.EncodePlan, string, bool) (playout.Asset, bool, error) {
 	body := "#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXTINF:2.0,\nseg-1.ts\n"
 	return playout.Asset{Content: seekCloser{bytes.NewReader([]byte(body))}, Modified: time.Unix(1, 0), Playlist: true}, true, nil
 }
@@ -248,6 +248,37 @@ func TestHouseholdViewingIsNamedForAdminsAndCountedForMembers(t *testing.T) {
 	h.clock.advance(31 * time.Second)
 	if got := h.viewing(t, boss); got.Watching != 0 || len(got.Viewers) != 0 {
 		t.Errorf("after the players stop = %s, want nobody", got)
+	}
+}
+
+// Warming never counts as household viewing, even when the neighbour is refreshed repeatedly.
+func TestHouseholdViewingIgnoresRepeatedWarmVariantReads(t *testing.T) {
+	t.Parallel()
+	h := newViewingHarness(t)
+	seedChannel(t, h.Store, "ch-films", "Films", 1, "internal")
+	boss := caller{session: login(t, h.Server, "boss", "pw")}
+	sis := caller{session: login(t, h.Server, "sis", "pw"), ua: firefoxLinux}
+	playlist := h.mediaPlaylistURL(t, sis, "ch-films")
+	u, err := url.Parse(playlist)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("mode", "warm")
+	u.RawQuery = q.Encode()
+	for range 3 {
+		h.poll(t, u.String())
+		h.clock.advance(2 * time.Second)
+	}
+	if got := h.viewing(t, boss); got.Watching != 0 {
+		t.Fatalf("warm reads recorded household viewing: %s", got)
+	}
+	// Actual player polling on the same signed URL still records viewing.
+	h.poll(t, playlist)
+	h.clock.advance(2 * time.Second)
+	h.poll(t, playlist)
+	if got := h.viewing(t, boss); got.Watching != 1 {
+		t.Fatalf("real polls did not record viewing: %s", got)
 	}
 }
 
