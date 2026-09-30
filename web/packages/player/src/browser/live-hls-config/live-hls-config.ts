@@ -12,6 +12,11 @@ const liveHlsConfig = {
   // Baseline HLS is MPEG-TS. Keep its transmux off the UI thread; hls.js shares and reference-
   // counts this worker across the bounded source-scoped controller pair.
   enableWorker: true,
+  // Commercials are already part of the channel timeline. hls.js's optional interstitial
+  // controller retains four video listeners after transferMedia(), even when playback is
+  // disabled. Omit the controller itself so retired channel players can be collected (#1794).
+  interstitialsController: undefined,
+  enableInterstitialPlayback: false,
   // Live channel: keep chasing the live edge, and be patient while it warms up. A cold channel may
   // briefly list no media while its encoder starts, so hls.js must RETRY, not give up.
   liveDurationInfinity: true,
