@@ -352,7 +352,8 @@ func diagnosticNullableInt(value *int) any {
 // outside, which made SQLite scan and sort every diagnostic_events row to return one 256-row
 // page — on the 2.7M-row household table that is seconds per page holding the only connection,
 // repeated for every page, which is why the nightly purge never finished (#1411). Bounded per
-// branch, each side walks its own index (idx_diagnostic_events_time) and stops after `limit`
+// branch, each side walks its time index (events: occurred_at; terminal process runs: ended_at)
+// and stops after `limit`
 // rows; the outer merge sorts at most 2×limit. A zero beforeMS ("everything deletable") is
 // resolved here in Go, not as an `OR ? = 0` in SQL, because that OR defeats the index range.
 func diagnosticRetentionCandidatesQuery(beforeMS int64, limit int) (string, []any) {

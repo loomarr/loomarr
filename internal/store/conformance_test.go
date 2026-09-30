@@ -192,6 +192,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("ObservabilityCounts", func(t *testing.T) { testCounts(t, newStore) })
 		t.Run("ActivityFeed", func(t *testing.T) { testActivityFeed(t, newStore) })
 		t.Run("Diagnostics", func(t *testing.T) { testDiagnostics(t, newStore) })
+		t.Run("DiagnosticRetentionOrder", func(t *testing.T) { testDiagnosticRetentionOrder(t, newStore) })
 		t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
 	})
 

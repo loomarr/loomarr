@@ -120,28 +120,41 @@ func TestRetentionCandidatePageIsIndexDriven(t *testing.T) {
 	st := openRetentionStore(t)
 	seedDiagnosticEvents(t, st, "old", 2_000, time.Now().Add(-72*time.Hour))
 	s := st.(*sqlStore)
-
-	query, args := diagnosticRetentionCandidatesQuery(time.Now().Add(-24*time.Hour).UnixMilli(), 256)
-	rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+s.ph(query), args...)
-	if err != nil {
-		t.Fatalf("explain: %v", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var plan []string
-	for rows.Next() {
-		var id, parent, unused int
-		var detail string
-		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
-			t.Fatal(err)
-		}
-		plan = append(plan, detail)
-	}
-	joined := strings.Join(plan, "\n")
-	if !strings.Contains(joined, "idx_diagnostic_events_time") {
-		t.Fatalf("events branch does not use the time index:\n%s", joined)
-	}
-	if strings.Contains(joined, "SCAN diagnostic_events\n") || strings.HasSuffix(joined, "SCAN diagnostic_events") {
-		t.Fatalf("events branch scans the whole table:\n%s", joined)
+	for _, tc := range []struct {
+		name   string
+		before int64
+	}{
+		{"expiry", time.Now().Add(-24 * time.Hour).UnixMilli()}, {"budget", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			query, args := diagnosticRetentionCandidatesQuery(tc.before, 256)
+			rows, err := s.db.QueryContext(context.Background(), `EXPLAIN QUERY PLAN `+s.ph(query), args...)
+			if err != nil {
+				t.Fatalf("explain: %v", err)
+			}
+			defer func() { _ = rows.Close() }()
+			var plan []string
+			for rows.Next() {
+				var id, parent, unused int
+				var detail string
+				if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+					t.Fatal(err)
+				}
+				plan = append(plan, detail)
+				if strings.HasPrefix(detail, "SCAN diagnostic_") && !strings.Contains(detail, "USING INDEX") && !strings.Contains(detail, "USING COVERING INDEX") {
+					t.Errorf("candidate branch scans its whole table: %s", detail)
+				}
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			joined := strings.Join(plan, "\n")
+			for _, index := range []string{"idx_diagnostic_events_time", "idx_diagnostic_process_runs_retention"} {
+				if !strings.Contains(joined, index) {
+					t.Errorf("candidate branch does not use %s:\n%s", index, joined)
+				}
+			}
+		})
 	}
 }
 
