@@ -101,6 +101,10 @@ tone-mapping, and padding stays on the GPU.
 | VideoToolbox | `scale_vt` and `h264_videotoolbox`, HDR tone-mapped on the CPU | unverified: no Mac has run it |
 | Generic (QSV, Vulkan, AMF, RKMPP, V4L2M2M) | CPU filters and the encoder's own upload | unverified fallback |
 
+VideoToolbox encodes unpaced (`realtime=0`): the packager controls run-ahead and wall-clock
+delivery, so the encoder must not use its camera-capture realtime hint. Hardware encoding remains
+required, with the same bitrate budget and closed GOP on both H.264 and HEVC outputs.
+
 VideoToolbox uses GPU deinterlacing only when the configured ffmpeg binary advertises
 `yadif_videotoolbox`. Otherwise interlaced sources use a declared CPU decode/deinterlace fallback
 before scaling, retaining the hardware encoder. GPU-decoded frames download in their original

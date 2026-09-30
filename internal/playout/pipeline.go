@@ -918,7 +918,9 @@ func videoEncoderArgs(host HostProfile, out OutputProfile) []string {
 			"-crf", q, "-maxrate", maxrate, "-bufsize", maxrate, "-g", g, "-keyint_min", g, "-sc_threshold", "0",
 			"-bf", "0", "-x264-params", "open-gop=0"}
 	case FamilyVideoToolbox:
-		return []string{"-c:v", enc(EncoderVideoToolbox), "-profile:v", profile, "-allow_sw", "0", "-realtime", "1",
+		// The packager paces delivery. The camera-capture realtime hint limits unpaced
+		// throughput on Apple Silicon, reducing the lead available at item boundaries.
+		return []string{"-c:v", enc(EncoderVideoToolbox), "-profile:v", profile, "-allow_sw", "0", "-realtime", "0",
 			"-b:v", target, "-maxrate", maxrate, "-bufsize", maxrate, "-g", g, "-bf", "0"}
 	default:
 		return []string{"-c:v", enc(engineOf(host.Encoder)), "-b:v", target, "-maxrate", maxrate, "-bufsize", maxrate,
