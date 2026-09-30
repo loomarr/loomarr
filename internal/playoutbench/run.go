@@ -234,16 +234,17 @@ func tail(s string) string {
 func (r *run) measureClass(ctx context.Context, c Clip, pipe playout.Pipeline, fps int) {
 	path := c.Path(r.Dir)
 	// Start latency: a fresh process per run, seeking to a different second, until the first second
-	// of media (one segment, frames = fps) has been produced. Time to media, never bytes.
+	// of media (one complete fMP4 segment) is published by the real packager. Process exit
+	// includes surplus encoding and device cleanup, which are not part of this metric.
 	var starts []float64
 	for i := 0; i < r.StartRuns; i++ {
 		seek := time.Duration(i%max(c.Seconds-3, 1)) * time.Second
-		t, err := r.exec(ctx, pipe.ItemArgs(path, seek, fps, fps, 0), nil)
+		elapsed, err := r.startSegment(ctx, path, seek, pipe, fps)
 		if err != nil {
 			r.fail(c, "start run: "+err.Error())
 			return
 		}
-		starts = append(starts, float64(t.wall)/float64(time.Millisecond))
+		starts = append(starts, float64(elapsed)/float64(time.Millisecond))
 	}
 	slices.Sort(starts)
 	r.rep.Set("start_p95_ms/"+c.Class, percentile(starts, 0.95), "ms", Lower)

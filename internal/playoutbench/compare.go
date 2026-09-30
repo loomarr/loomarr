@@ -42,6 +42,9 @@ type Delta struct {
 // when any metric moved beyond tolerance in its worse direction, changed at all if Exact, or vanished
 // without the host declaring it skipped.
 func Compare(base, cur *Report, tol Tolerance) (deltas []Delta, regressed bool, err error) {
+	if base.SchemaVersion != SchemaVersion || cur.SchemaVersion != SchemaVersion {
+		return nil, false, fmt.Errorf("baseline/report schemas %d/%d are not comparable with measurement schema %d", base.SchemaVersion, cur.SchemaVersion, SchemaVersion)
+	}
 	if base.Family != cur.Family {
 		return nil, false, fmt.Errorf("baseline is %q, report is %q: numbers from different hardware families are not comparable", base.Family, cur.Family)
 	}

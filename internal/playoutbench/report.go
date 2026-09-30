@@ -17,7 +17,7 @@ import (
 )
 
 // SchemaVersion changes when a metric's meaning does, which invalidates every committed baseline.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Better says which direction of change is an improvement.
 type Better string

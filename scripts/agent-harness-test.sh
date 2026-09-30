@@ -115,7 +115,12 @@ printf '%s\n' '#!/usr/bin/env sh' 'echo "ffmpeg version fixture"' > "$TMP/doctor
 # shellcheck disable=SC2016 # DOCTOR_DOCKER_READY expands inside the generated fixture.
 printf '%s\n' '#!/usr/bin/env sh' 'case "${1:-}" in --version) echo "Docker version fixture" ;; info) [ "${DOCTOR_DOCKER_READY:-0}" = 1 ] ;; *) exit 0 ;; esac' > "$TMP/doctor-bin/docker"
 chmod +x "$TMP/doctor-bin/"*
-doctor_path="$TMP/doctor-bin:/usr/bin:/bin"
+# Only the doctor's shell utilities may resolve outside its fixture tools. Including /usr/bin
+# would let an installed ffprobe satisfy the missing-tool negative and fail on healthy hosts.
+for utility in sh dirname sed head cut uname git grep awk du wc tr cksum basename; do
+	ln -s "$(command -v "$utility")" "$TMP/doctor-bin/$utility"
+done
+doctor_path="$TMP/doctor-bin"
 if PATH="$doctor_path" DOCTOR_DOCKER_READY=1 LOOMARR_REPO_ROOT="$TMP" "$SCRIPT_DIR/agent.sh" doctor >/dev/null 2>&1; then
 	echo 'agent-harness-test: doctor accepted a missing ffprobe' >&2
 	exit 1

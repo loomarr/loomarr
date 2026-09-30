@@ -21,7 +21,7 @@ job on the host makes the numbers meaningless.
 
 | Metric | How | Threshold (hardware families) |
 | --- | --- | --- |
-| `start_p95_ms/<class>` | **encoder start (warm)**: fresh process per run, seeking to a different second, until the first second of media (one segment) is produced. Time to media, never bytes. Source files are page-cached, so cold network-share reads are excluded; those are host-specific and belong to supervised household runs, not CI. | H.264 1080p ≤ 400 ms, HEVC 1080p ≤ 500 ms, 4K HDR ≤ 1800 ms |
+| `start_p95_ms/<class>` | **encoder start (warm)**: fresh process per run, seeking to a different second, using production `FragmentArgs` and the real packager until a complete one-second fMP4 segment is stamped and written. Encoder surplus and exit cleanup are reaped after taking the clock. Source files are page-cached, so cold network-share reads are excluded; those are host-specific and belong to supervised household runs, not CI. | H.264 1080p ≤ 400 ms, HEVC 1080p ≤ 500 ms, 4K HDR ≤ 1800 ms |
 | `speed_x/<class>` | one whole clip, unpaced | ≥ 15x (1080p), ≥ 2x (4K HDR) |
 | `cores_per_stream/<class>` | child CPU time (rusage) per second of media, so the cores one stream costs at 1x | reported |
 | `concurrency/max_streams` | largest number of simultaneous 1080p H.264 streams that each hold ≥ 1.2x | ≥ 1 (every family) |
@@ -35,6 +35,11 @@ job on the host makes the numbers meaningless.
 Classes are `h264-1080p`, `hevc-1080p` and `hdr-4k`. A source the builder refuses on this host (a
 software host that cannot tone-map 4K HDR in real time) is reported as **refused**, its metrics are
 marked skipped and it is not a failure: the slate covers that slot.
+
+Report schema 2 corrects startup's measurement boundary: schema 1 timed an MPEG-TS encoder's
+process exit, including surplus encoding and device teardown. Those reports remain historical
+evidence and cannot be compared or accepted as schema-2 baselines. Thresholds, quality, seek
+distribution, whole-clip speed and CPU methodology are unchanged; hardware must be remeasured.
 
 **Known failures.** A check that fails until referenced work lands is listed in `expectedFailures`
 (`internal/playoutbench/compare.go`) and reported as *expected fail* with that reference, never skipped.
