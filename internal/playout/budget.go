@@ -104,6 +104,9 @@ type ClassCost struct {
 	Speed float64 `json:"speed"`
 	// CPUCores is the host CPU one stream uses at 1x: process CPU time over media time.
 	CPUCores float64 `json:"cpuCores"`
+	// ConservativeCPU means CPUCores covers multiple item graphs. Live refinement may raise it,
+	// but a run of cheaper items cannot lower admission below the measured envelope.
+	ConservativeCPU bool `json:"conservativeCPU,omitempty"`
 }
 
 // BudgetFacts are the inputs of one admission decision, re-read every time so settings, cgroup
@@ -125,7 +128,8 @@ type BudgetFacts struct {
 	// FirstRung is the best rung a new session may take. A host with no measurement starts at the
 	// bottom rung: an unmeasured box must not be treated as unlimited.
 	FirstRung int
-	// Costs are the probe's measurements. An empty table falls back to MeasuredCapacity.
+	// Costs are the probe's measurements. Nil means the probe has not completed and falls back
+	// to MeasuredCapacity. A non-nil empty table means no class succeeded, so none is admitted.
 	Costs map[CostKey]ClassCost
 	// MeasuredCapacity is the legacy whole-stream budget used before per-class costs exist: each
 	// transcode costs one of it, whatever its class. 0 means unmeasured, which never blocks playout.
@@ -288,7 +292,11 @@ func (l *Lease) ObserveCPU(class StreamClass, cpu, media time.Duration) {
 		// The cell is rung 0's cost: a programme on a cheaper software rung counts at its rung-0 worth.
 		perSecond /= rungCostsOf(class)[l.SoftwareRung()]
 	}
-	observed := min(max(perSecond, base.CPUCores/refineBound), base.CPUCores*refineBound)
+	floor := base.CPUCores / refineBound
+	if base.ConservativeCPU {
+		floor = base.CPUCores
+	}
+	observed := min(max(perSecond, floor), base.CPUCores*refineBound)
 	b.rmu.Lock()
 	if b.refined == nil {
 		b.refined = map[CostKey]refinement{}
@@ -604,7 +612,7 @@ func (b *ResourceBudget) fitsLocked(facts BudgetFacts, d demand, except *Lease) 
 	if facts.SessionLimit > 0 && use.Transcodes+1 > facts.SessionLimit {
 		return false
 	}
-	if len(facts.Costs) == 0 {
+	if facts.Costs == nil {
 		// Legacy whole-stream units: d.gpu is 1/MeasuredCapacity (0 when unmeasured).
 		return use.GPUShare+d.gpu <= 1+capacityEpsilon
 	}
@@ -734,7 +742,7 @@ func (f BudgetFacts) demandAt(class StreamClass, height int, sw SoftwareRung) (d
 	if class == ClassCopy {
 		return demand{}, true
 	}
-	if len(f.Costs) == 0 {
+	if f.Costs == nil {
 		if f.MeasuredCapacity <= 0 {
 			return demand{session: true}, true // unmeasured: never block playout
 		}
@@ -760,7 +768,7 @@ func (f BudgetFacts) demandAt(class StreamClass, height int, sw SoftwareRung) (d
 // keeps full quality, like the output ladder's NoRungDrop.
 func (f BudgetFacts) softwareRungs(class StreamClass, noDrop bool) []SoftwareRung {
 	switch {
-	case f.Hardware || len(f.Costs) == 0 || class == ClassCopy:
+	case f.Hardware || f.Costs == nil || class == ClassCopy:
 		if class == ClassHDR4K {
 			return []SoftwareRung{RungKeyframes}
 		}

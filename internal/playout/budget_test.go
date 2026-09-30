@@ -261,6 +261,28 @@ func TestResourceBudget_LiveCPURefinesTheSyntheticCostWithinBounds(t *testing.T)
 	}
 }
 
+// A class covering several graphs must retain enough CPU for the costliest measured item.
+func TestResourceBudget_ConservativeCPUEnvelopeSurvivesCheaperItems(t *testing.T) {
+	facts := nvencFacts()
+	key := CostKey{Class: ClassSDR, Height: 1080}
+	base := facts.Costs[key]
+	base.ConservativeCPU = true
+	facts.Costs[key] = base
+	b := NewResourceBudget(func() BudgetFacts { return facts })
+	lease := admitN(t, b, ClassSDR, 1)[0]
+	defer lease.Release()
+	for range 50 {
+		lease.ObserveCPU(ClassSDR, time.Second, 60*time.Second)
+	}
+	if got := b.Snapshot().Classes[ClassSDR].CPUCores; got != base.CPUCores {
+		t.Fatalf("cheaper items underpriced the measured CPU envelope: %v < %v", got, base.CPUCores)
+	}
+	lease.ObserveCPU(ClassSDR, 6*time.Second, 60*time.Second)
+	if got := b.Snapshot().Classes[ClassSDR].CPUCores; got <= base.CPUCores {
+		t.Fatalf("conservative envelope prevented upward live correction: %v", got)
+	}
+}
+
 // Background work (the boot capacity probe) yields the moment a live transcode is admitted: its
 // context ends with ErrYielded inside Reserve, so a tune never waits on it. A copy uses no encoder
 // and does not interrupt it; while a transcode runs, new background work starts already yielded.

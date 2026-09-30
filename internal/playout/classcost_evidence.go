@@ -23,8 +23,10 @@ type MeasuredCosts struct {
 }
 
 const (
-	classCostEvidenceName    = ".host-costs-v1.json"
-	classCostEvidenceVersion = 1
+	classCostEvidenceName = ".host-costs-v1.json"
+	// Version 2 measures VideoToolbox's CPU deinterlace fallback as part of every class.
+	// Progressive-only measurements must be replaced before pricing the repaired graph.
+	classCostEvidenceVersion = 2
 )
 
 type classCostEvidence struct {
@@ -37,11 +39,12 @@ type classCostEvidence struct {
 }
 
 type classCostCell struct {
-	Class    StreamClass `json:"class"`
-	Height   int         `json:"height"`
-	Curve    ToneCurve   `json:"curve,omitempty"` // HDR only; absent = Hable
-	Speed    float64     `json:"speed"`
-	CPUCores float64     `json:"cpuCores"`
+	Class           StreamClass `json:"class"`
+	Height          int         `json:"height"`
+	Curve           ToneCurve   `json:"curve,omitempty"` // HDR only; absent = Hable
+	Speed           float64     `json:"speed"`
+	CPUCores        float64     `json:"cpuCores"`
+	ConservativeCPU bool        `json:"conservativeCPU,omitempty"`
 }
 
 // HostFingerprint identifies this FFmpeg build, GPU and default profile, the same key the encoder
@@ -68,7 +71,7 @@ func LoadClassCosts(root, fingerprint string, enc Encoder, now time.Time) (Measu
 	}
 	m := MeasuredCosts{Encoder: e.Encoder, SessionLimit: e.SessionLimit, ObservedAt: e.ObservedAt, Costs: map[CostKey]ClassCost{}}
 	for _, c := range e.Costs {
-		m.Costs[CostKey{Class: c.Class, Height: c.Height, Curve: c.Curve}] = ClassCost{Speed: c.Speed, CPUCores: c.CPUCores}
+		m.Costs[CostKey{Class: c.Class, Height: c.Height, Curve: c.Curve}] = ClassCost{Speed: c.Speed, CPUCores: c.CPUCores, ConservativeCPU: c.ConservativeCPU}
 	}
 	return m, true
 }
@@ -80,7 +83,7 @@ func StoreClassCosts(root, fingerprint string, m MeasuredCosts) error {
 	for _, class := range append(TranscodeClasses, ClassPremium4K) {
 		for k, c := range m.Costs {
 			if k.Class == class {
-				e.Costs = append(e.Costs, classCostCell{Class: k.Class, Height: k.Height, Curve: k.Curve, Speed: c.Speed, CPUCores: c.CPUCores})
+				e.Costs = append(e.Costs, classCostCell{Class: k.Class, Height: k.Height, Curve: k.Curve, Speed: c.Speed, CPUCores: c.CPUCores, ConservativeCPU: c.ConservativeCPU})
 			}
 		}
 	}

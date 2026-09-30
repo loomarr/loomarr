@@ -1,18 +1,38 @@
 package playout
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
 
+func TestClassCosts_ProgressiveOnlyEvidenceIsRemeasured(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now().UTC()
+	evidence := classCostEvidence{
+		Version: 1, Fingerprint: "fp", Encoder: EncoderVideoToolbox, ObservedAt: now,
+		Costs: []classCostCell{{Class: ClassSDR, Height: 1080, Speed: 20, CPUCores: 0.02}},
+	}
+	raw, err := json.Marshal(evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, classCostEvidenceName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := LoadClassCosts(root, "fp", EncoderVideoToolbox, now); ok {
+		t.Fatal("progressive-only costs were reused for the CPU-deinterlace graph")
+	}
+}
+
 func TestClassCosts_RoundTripKeyedToFingerprintAndEncoder(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC)
 	m := MeasuredCosts{Encoder: EncoderNVENC, SessionLimit: 12, ObservedAt: now, Costs: map[CostKey]ClassCost{
 		{Class: ClassSDR, Height: 1080}: {Speed: 19.18, CPUCores: 0.026}, {Class: ClassHDR4K, Height: 720}: {Speed: 11, CPUCores: 0.14},
-		{Class: ClassPremium4K, Height: 2160}: {Speed: 3.1, CPUCores: 0.19}, // admitted only on this cell
+		{Class: ClassPremium4K, Height: 2160}: {Speed: 3.1, CPUCores: 0.19, ConservativeCPU: true}, // admitted only on this cell
 	}}
 	if err := StoreClassCosts(root, "fp", m); err != nil {
 		t.Fatal(err)

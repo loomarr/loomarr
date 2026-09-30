@@ -28,7 +28,7 @@ videotoolbox_vld
 -frames:v
 753
 -vf
-scale_vt=w=3840:h=1600,hwdownload,libplacebo=format=p010le:colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv,format=p010le,pad=3840:2160:-1:-1,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left
+scale_vt=w=3840:h=1600,hwdownload,format=nv12,libplacebo=format=p010le:colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084:range=tv,format=p010le,pad=3840:2160:-1:-1,fps=25,setsar=1,sidedata=mode=delete,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv:chroma_location=left
 -c:v
 hevc_videotoolbox
 -profile:v
