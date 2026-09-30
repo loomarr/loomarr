@@ -26,7 +26,7 @@ high
 -allow_sw
 0
 -realtime
-1
+0
 -b:v
 8000k
 -maxrate
