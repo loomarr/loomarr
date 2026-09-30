@@ -302,7 +302,7 @@ func measurePremium(ctx context.Context, cfg ClassProbeConfig) (ClassCost, bool,
 // default deint=all processes every frame, including this progressive synthetic input. Pricing
 // each class for the costlier graph avoids borrowing GPU-only costs for interlaced items.
 func fallbackProbeClip(cfg ClassProbeConfig, clip probeClip) (probeClip, bool) {
-	if cfg.Encoder != EncoderVideoToolbox || cfg.GPU.VideoToolboxDeinterlace {
+	if engineOf(cfg.Encoder) != EncoderVideoToolbox || cfg.GPU.VideoToolboxDeinterlace {
 		return probeClip{}, false
 	}
 	clip.format.Interlaced = true

@@ -12,6 +12,17 @@ import (
 	"github.com/loomarr/loomarr/internal/testkit/execfixture"
 )
 
+func TestVideoToolboxFallbackProbe_NormalizesEncoderOverride(t *testing.T) {
+	clip, ok := fallbackProbeClip(ClassProbeConfig{Encoder: Encoder("hevc_videotoolbox")}, probeClips[0])
+	if !ok || !clip.source().Interlaced {
+		t.Fatal("HEVC VideoToolbox override omitted the CPU-deinterlace measurement")
+	}
+	pipe, err := Build(HostFor(Encoder("hevc_videotoolbox"), true, GPUFilters{}), clip.source(), testOutput)
+	if err != nil || !strings.HasPrefix(pipe.VideoFilter, "bwdif=mode=send_frame,scale=") {
+		t.Fatalf("override probe does not exercise the live CPU-deinterlace graph: %+v %v", pipe, err)
+	}
+}
+
 func TestProbeClassCosts_VideoToolboxFallbackPricesAdmission(t *testing.T) {
 	bin := execfixture.POSIX(t, "ffmpeg", `
 step=1000000

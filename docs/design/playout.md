@@ -110,7 +110,9 @@ both progressive and CPU-deinterlace graphs at every class/rung (including premi
 higher measured CPU cost and lower measured throughput for that class. Previous progressive-only
 cost tables are invalidated. Live CPU refinement may raise these conservative costs, but may not
 lower them below the measured envelope after a run of cheaper progressive items. These fallbacks
-still require real-host capacity certification.
+still require real-host capacity certification. Before the class probe completes, admission uses
+the conservative unmeasured policy. Once it completes, a missing class is refused even if the
+entire table is empty; failed measurements never restore the older whole-stream allowance.
 
 Rate control is quality-based VBR at quality 22 on every rung. The 1080p budget is an 8 Mbit/s target
 with a 12 Mbit/s cap, and lower rungs scale both by pixel count (720p 3.6/5.3 Mbit/s, 480p 1.6/2.4,

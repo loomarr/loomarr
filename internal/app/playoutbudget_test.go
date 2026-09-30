@@ -2,10 +2,28 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/playout"
 )
+
+func TestPlayoutBudgetFacts_FailedProbeDoesNotRestoreWholeStreamAllowance(t *testing.T) {
+	host := playout.HostCPU{Cores: 4, Source: "cgroup-v2"}
+	for _, table := range []map[playout.CostKey]playout.ClassCost{nil, {}} {
+		costs := &playout.MeasuredCosts{Encoder: playout.EncoderVideoToolbox, Costs: table}
+		facts := playoutBudgetFacts(host, true, 12, costs, nil, playout.TierBalanced, 1000, 1000)
+		budget := playout.NewResourceBudget(func() playout.BudgetFacts { return facts })
+		if _, err := budget.Reserve(playout.AdmitRequest{Class: playout.ClassSDR}); !errors.Is(err, playout.ErrAtCapacity) {
+			t.Fatalf("failed class probe admitted an unpriced stream: %v", err)
+		}
+		lease, err := budget.Reserve(playout.AdmitRequest{Class: playout.ClassCopy})
+		if err != nil {
+			t.Fatalf("failed transcode measurement blocked a copy: %v", err)
+		}
+		lease.Release()
+	}
+}
 
 func TestPlayoutBudgetFacts(t *testing.T) {
 	host := playout.HostCPU{Cores: 4, Source: "cgroup-v2"}

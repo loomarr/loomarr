@@ -472,8 +472,11 @@ func playoutBudgetFacts(
 		Rungs:            rungs,
 		MeasuredCapacity: measured,
 	}
-	if costs != nil && len(costs.Costs) > 0 {
+	if costs != nil {
 		facts.Costs, facts.SessionLimit = costs.Costs, costs.SessionLimit
+		if facts.Costs == nil {
+			facts.Costs = map[playout.CostKey]playout.ClassCost{} // completed probe, no successful class
+		}
 		if ceiling := facts.Ceiling(); ceiling > 0 && effective != nil {
 			facts.OperatorCap = effective(ceiling)
 		}
