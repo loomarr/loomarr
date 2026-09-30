@@ -266,3 +266,17 @@ func TestExpectedFailuresAreRealMetrics(t *testing.T) {
 		}
 	}
 }
+
+func TestCompareRejectsHistoricalStartupMeasurement(t *testing.T) {
+	base := NewReport("nvenc", "base", CorpusName, Host{})
+	cur := NewReport("nvenc", "current", CorpusName, Host{})
+	base.SchemaVersion = 1
+	if _, _, err := Compare(base, cur, DefaultTolerance()); err == nil {
+		t.Fatal("process-exit startup was compared with complete-segment startup")
+	}
+	base.SchemaVersion = SchemaVersion
+	cur.SchemaVersion = 1
+	if _, _, err := Compare(base, cur, DefaultTolerance()); err == nil {
+		t.Fatal("historical current report was accepted")
+	}
+}

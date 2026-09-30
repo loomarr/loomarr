@@ -85,7 +85,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns host-wide resource facts shared by media work: host memory.
 - **`openroutermedia`** · 2 importers
   Owns Loomarr's bounded OpenRouter structured-media transport.
-- **`playout/packager`** · 1 importer
+- **`playout/packager`** · 2 importers
   Channel packager (#1512 phase 2): one long-lived, in-process stitcher per (channel, output format) that turns a sequence of per-item fMP4 encodes into one gapless channel timeline.
 - **`proctree`** · 1 importer
   Supervises one child process and every descendant it starts.
@@ -179,7 +179,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Owns bounded external context lookup for publicly sourced filler.
 - **`mediatools`** · 4 importers · → `bgexec`, `diagnostics`, `playout`
   Ffmpeg / ffprobe / whisper layer (§10, §14.2): the exec calls, the parsers for what those binaries print, and the shapes they return.
-- **`playoutbench`** · → `playout`
+- **`playoutbench`** · → `playout`, `playout/packager`
   Cross-hardware playout bench (#1512 G8): a redistributable corpus run through Loomarr's real playout pipeline builder (playout.Build), one standard report, judged against the beta.8 thresholds and diffed against the last accepted report per hardware family.
 - **`recommend`** · → `llm`
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
