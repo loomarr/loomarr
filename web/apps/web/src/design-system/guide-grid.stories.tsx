@@ -113,7 +113,9 @@ const Controlled = ({ detail = false, source }: { detail?: boolean; source: Guid
       selection={guide.snapshot.selection}
       renderPreview={
         detail
-          ? (selection) => <GuideProgrammeDetail layout={guide.snapshot.layout!} selection={selection} />
+          ? (selection) => (
+              <GuideProgrammeDetail focused={false} layout={guide.snapshot.layout!} selection={selection} />
+            )
           : undefined
       }
     />

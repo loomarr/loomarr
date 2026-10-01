@@ -28,6 +28,7 @@ const airingFacts = (airing: GuideAiringLayout) => {
 // Authoritative programme facts shared by contextual and device-specific detail adapters.
 const GuideProgrammeDetail = ({
   density = "pointer",
+  focused = true,
   layout,
   minHeight = 180,
   renderArtwork,
@@ -59,6 +60,7 @@ const GuideProgrammeDetail = ({
         artwork={artwork}
         channelLogo={channelLogo}
         density={density}
+        focused={focused}
         programme={{
           artworkState: (source.thumbImage || source.thumbUrl) && artwork ? "ready" : "missing",
           badge: airingBadge(source.kind, selectedAiring.isOnNow),

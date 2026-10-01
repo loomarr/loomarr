@@ -650,6 +650,7 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
                 selection={selected}
                 renderPreview={(previewSelection) => (
                   <GuideProgrammeDetail
+                    focused={false}
                     layout={layout}
                     renderArtwork={renderArtwork}
                     selection={previewSelection}
