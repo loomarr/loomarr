@@ -98,7 +98,11 @@ describe("contextual previews", () => {
     act(() => buttons()[0]!.focus());
     tick(250);
     const panel = tooltip() as HTMLElement;
-    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 360, 300));
+    // Give the panel its own measurement; spying on the inherited prototype mock
+    // can otherwise replace the anchor measurement as well in the complete suite.
+    Object.defineProperty(panel, "getBoundingClientRect", {
+      value: () => new DOMRect(0, 0, 360, 300),
+    });
     act(() => window.dispatchEvent(new Event("resize")));
     expect(Number.parseFloat(panel.style.left)).toBe(window.innerWidth - 368);
     expect(Number.parseFloat(panel.style.top)).toBe(350);
