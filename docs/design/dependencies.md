@@ -76,6 +76,7 @@ replace local transcription and vision; those modalities stay operator choices.
 | Legacy usage ledger | `@babel/parser` (root devDependency; TypeScript 7 has no JS parser API) | `web/scripts/check-legacy-usage.mjs` counts the legacy stack per production file against `web/apps/web/legacy-usage.json`; `make fe` fails when a count rises or a new file appears, and `pnpm legacy:update` only shrinks it (#970). Never ships in the product |
 | Lineup reordering | `@dnd-kit` | accessible, keyboard-capable sortable list |
 | Web previews | `react-dom` portal behind the shared design system | keep contextual detail outside scrolling and clipping ancestors; native adapters do not load the web renderer |
+| DOM test environment | jsdom 30.0.1 | exercise preview focus, pointer and viewport lifecycles without a browser; the shared UI package uses the same exact pin |
 | Guide rows | `@tanstack/react-virtual` | windows the guide's rows |
 | Image placeholders | `thumbhash` | decodes the placeholder the server stores, without a canvas |
 | Forms | `@tanstack/react-form` | uses the zod schemas directly |
