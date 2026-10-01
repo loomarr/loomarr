@@ -19,8 +19,14 @@
     "react-native-svg": "15.15.5"
   },
   "peerDependencies": {
+    "react-dom": ">=19 <20",
     "react": ">=19 <20",
     "react-native": ">=0.86 <0.87"
+  },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/qrcode": "1.5.6",

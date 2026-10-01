@@ -7,11 +7,10 @@ import {
   type GuideControllerSnapshot,
   layoutGuide,
 } from "@loomarr/core/guide";
-import { AdaptiveSplit } from "@loomarr/design-system";
 import { GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
-import { expect, waitFor } from "storybook/test";
+import { expect, screen, waitFor } from "storybook/test";
 
 // The shared time grid (#1659, N7), on the web mock's evening: 8–midnight, now at 8:26 PM.
 const day = Date.UTC(2026, 8, 28);
@@ -105,25 +104,19 @@ const Controlled = ({ detail = false, source }: { detail?: boolean; source: Guid
     };
   }, [source]);
   if (!guide?.snapshot.layout) return null;
-  const grid = (
+  return (
     <GuideGrid
       layout={guide.snapshot.layout}
       nowMs={now}
       onMove={guide.controller.move}
       onSelect={guide.controller.select}
       selection={guide.snapshot.selection}
+      renderPreview={
+        detail
+          ? (selection) => <GuideProgrammeDetail layout={guide.snapshot.layout!} selection={selection} />
+          : undefined
+      }
     />
-  );
-  // The web Guide page's shape: the pointer guide's programme card beside the grid.
-  return detail ? (
-    <AdaptiveSplit
-      accessibilityLabel="Programme guide"
-      primary={grid}
-      secondary={<GuideProgrammeDetail layout={guide.snapshot.layout} selection={guide.snapshot.selection} />}
-      secondaryWidth={360}
-    />
-  ) : (
-    grid
   );
 };
 
@@ -176,6 +169,7 @@ const viewportTall: Story["decorators"] = [
 
 const HundredChannels: Story = {
   args: { layout: hundred },
+  render: () => <Controlled detail source={hundredSource} />,
   decorators: viewportTall,
 };
 
@@ -203,7 +197,7 @@ const Keyboard: Story = {
     expect(focusedName()).toMatch(/^A frontier western/);
     expect(canvasElement.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
     // The programme card follows focus: the block's label and the card's title.
-    expect(canvas.getAllByText("A frontier western")).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText("A frontier western")).toHaveLength(2));
   },
   render: () => <Controlled detail source={evening} />,
 };

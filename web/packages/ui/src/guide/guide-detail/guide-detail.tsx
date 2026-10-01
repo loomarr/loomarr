@@ -25,7 +25,7 @@ const airingFacts = (airing: GuideAiringLayout) => {
   ].filter((fact): fact is string => Boolean(fact));
 };
 
-// The selected programme's card: beside the pointer and touch guide, and beside the web grid.
+// Authoritative programme facts shared by contextual and device-specific detail adapters.
 const GuideProgrammeDetail = ({
   density = "pointer",
   layout,
@@ -54,27 +54,39 @@ const GuideProgrammeDetail = ({
   const channelLogo = renderChannelLogo?.(selectedChannel);
   const source = selectedAiring.source;
   return (
-    <ProgrammeCard
-      artwork={artwork}
-      channelLogo={channelLogo}
-      density={density}
-      focused
-      programme={{
-        artworkState: (source.thumbImage || source.thumbUrl) && artwork ? "ready" : "missing",
-        badge: airingBadge(source.kind, selectedAiring.isOnNow),
-        channelLogoState: selectedChannel.source.logo && channelLogo ? "ready" : "missing",
-        channelName: selectedChannel.source.name,
-        channelNumber: String(selectedChannel.source.number),
-        description: source.description,
-        episodeLabel: formatGuideEpisode(source.season, source.episode),
-        facts: airingFacts(selectedAiring),
-        progressPercent:
-          selectedAiring.progressRatio === undefined ? undefined : selectedAiring.progressRatio * 100,
-        seriesTitle: source.series,
-        timeLabel: formatGuideTimeRange(source.startMs, source.stopMs, layout.timezone),
-        title: source.title.trim() || guideAiringLabel(source),
-      }}
-    />
+    <Surface borderWidth={0} backgroundColor="$surfaceRaised" borderRadius="$cardCompact" overflow="hidden">
+      <ProgrammeCard
+        artwork={artwork}
+        channelLogo={channelLogo}
+        density={density}
+        programme={{
+          artworkState: (source.thumbImage || source.thumbUrl) && artwork ? "ready" : "missing",
+          badge: airingBadge(source.kind, selectedAiring.isOnNow),
+          channelLogoState: selectedChannel.source.logo && channelLogo ? "ready" : "missing",
+          channelName: selectedChannel.source.name,
+          channelNumber: String(selectedChannel.source.number),
+          description: source.description,
+          episodeLabel: formatGuideEpisode(source.season, source.episode),
+          facts: airingFacts(selectedAiring),
+          progressPercent:
+            selectedAiring.progressRatio === undefined ? undefined : selectedAiring.progressRatio * 100,
+          seriesTitle: source.series,
+          timeLabel: formatGuideTimeRange(source.startMs, source.stopMs, layout.timezone),
+          title: source.title.trim() || guideAiringLabel(source),
+        }}
+      />
+      {source.kind === "filler" && source.pod?.entries.length ? (
+        <Surface borderWidth={0} gap="$inline" padding="$control" accessibilityLabel="Break clips">
+          {source.pod.entries.map((entry, index) => (
+            // A clip can repeat within a break; its position distinguishes each airing.
+            // biome-ignore lint/suspicious/noArrayIndexKey: position is identity within the pod
+            <Text key={index} textRole="body">
+              {entry.name} · {entry.kind.replaceAll("_", " ")}
+            </Text>
+          ))}
+        </Surface>
+      ) : null}
+    </Surface>
   );
 };
 
