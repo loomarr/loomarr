@@ -10,6 +10,20 @@
 
 WATCH_OS="${WATCH_OS:-$(uname -s)}"
 
+# Resolve Orca's IDE CLI once. On Linux, bare orca can be the GNOME screen reader.
+# ORCA_CLI_COMMAND is an executable path/name, not shell code or an argument list.
+watch_orca_cli() {
+	if [ -n "${ORCA_CLI_COMMAND:-}" ]; then
+		printf '%s\n' "$ORCA_CLI_COMMAND"
+	elif [ -n "${ORCA_DEV_REPO_ROOT:-}" ]; then
+		printf '%s\n' orca-dev
+	elif [ "$WATCH_OS" = Linux ]; then
+		printf '%s\n' orca-ide
+	else
+		printf '%s\n' orca
+	fi
+}
+
 # watch_state_init NAME [persistent]: sets WATCH_STATE to a directory for this watcher's state.
 # Persistent state (PR dedupe) survives restarts; other state starts clean for each run.
 watch_state_init() {

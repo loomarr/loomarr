@@ -9,6 +9,8 @@
 set -u
 
 DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
+# shellcheck source=scripts/dev/watch-lib.sh
+. "$DIR/watch-lib.sh"
 pids=''
 watching='resources'
 
@@ -32,7 +34,7 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
 else
 	echo 'dev-watch: gh is not installed or not signed in; the PR watcher is off'
 fi
-if command -v orca >/dev/null 2>&1; then
+if command -v "$(watch_orca_cli)" >/dev/null 2>&1; then
 	start watch-lanes.sh
 	watching="$watching, lanes"
 fi

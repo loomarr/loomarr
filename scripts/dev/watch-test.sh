@@ -310,6 +310,7 @@ case "$1 $2" in
 esac
 EOF
 chmod +x "$BIN/orca"
+export ORCA_CLI_COMMAND="$BIN/orca"
 export CLAUDE_CONFIG_DIR="$tmp/claude"
 lane_a="$tmp/worktrees/lane-a"
 lane_dir="$CLAUDE_CONFIG_DIR/projects/$(printf '%s' "$lane_a" | sed 's/[^A-Za-z0-9]/-/g')"
@@ -329,17 +330,17 @@ message() {
 }
 lanes_once() { WATCH_STATE_DIR="$tmp/state" "$SCRIPT_DIR/watch-lanes.sh" --once; }
 rm -rf "$tmp/state"
-{ message m1 100000; message m2 40000; } > "$lane_dir/sess1.jsonl"
+{ message m1 50000; message m2 30000; } > "$lane_dir/sess1.jsonl"
 message s1 5000 > "$lane_dir/sess1/subagents/agent-1.jsonl"
 screen t1 '✻ Working… (esc to interrupt)'
 expect_none "$(lanes_once)"
 message m3 10000 >> "$lane_dir/sess1.jsonl"
 out="$(lanes_once)"
-expect "$out" 'lane-a: 155000 output tokens \(warning at 150000\)'
+expect "$out" 'lane-a: 95000 output tokens \(warning at 90000\)'
 case $out in *t3* | *other-repo*) fail "reported a terminal outside this repo: $out" ;; esac
 expect_none "$(lanes_once)"
-message m4 40000 >> "$lane_dir/sess1.jsonl"
-expect "$(lanes_once)" 'lane-a: 195000 output tokens: CUTOFF \(190000\) reached'
+message m4 15000 >> "$lane_dir/sess1.jsonl"
+expect "$(lanes_once)" 'lane-a: 110000 output tokens: CUTOFF \(105000\) reached'
 # An old finished marker in the scrollback while the lane is working again is not idle.
 screen t1 '✻ Baked for 1m 2s  > next task  ✻ Working… (esc to interrupt)'
 expect_none "$(lanes_once)"
@@ -352,13 +353,13 @@ screen t1 'API Error: 529 overloaded'
 expect "$(lanes_once)" 'lane-a: API trouble'
 # A newer session is a new checkpoint: it re-arms the levels and meters only itself.
 sleep 1
-message n1 160000 > "$lane_dir/sess2.jsonl"
-expect "$(lanes_once)" 'lane-a: 160000 output tokens \(warning'
+message n1 95000 > "$lane_dir/sess2.jsonl"
+expect "$(lanes_once)" 'lane-a: 95000 output tokens \(warning'
 # An explicit checkpoint meters every transcript born since, across sessions.
 mkdir -p "$tmp/ckpt"
 echo $(($(date +%s) - 60)) > "$tmp/ckpt/lane-a"
 out="$(WATCH_LANES_CHECKPOINTS="$tmp/ckpt" lanes_once)"
-expect "$out" 'lane-a: 355000 output tokens: LIMIT \(240000\) exceeded'
+expect "$out" 'lane-a: 205000 output tokens: LIMIT \(150000\) exceeded'
 # A session born before the checkpoint but flushed after it (its /exit write) is not counted.
 # Needs a filesystem that records birth times; skipped where stat cannot report one.
 if [ "$(stat -c %W "$lane_dir/sess1.jsonl" 2>/dev/null || echo 0)" != 0 ]; then
@@ -366,10 +367,22 @@ if [ "$(stat -c %W "$lane_dir/sess1.jsonl" 2>/dev/null || echo 0)" != 0 ]; then
 	echo "$later" > "$tmp/ckpt/lane-a"
 	rm "$lane_dir/sess2.jsonl"
 	touch -d "@$((later + 100))" "$lane_dir/sess1.jsonl" "$lane_dir/sess1/subagents/agent-1.jsonl"
-	expect_none "$(WATCH_LANES_CHECKPOINTS="$tmp/ckpt" lanes_once)"
+	expect "$(WATCH_LANES_CHECKPOINTS="$tmp/ckpt" lanes_once)" 'no Claude transcript found; usage UNKNOWN'
 fi
-# No orca: skip cleanly.
-out="$(PATH=/usr/bin:/bin WATCH_STATE_DIR="$tmp/state" "$SCRIPT_DIR/watch-lanes.sh" --once 2>&1)" || fail "watch-lanes failed without orca"
+# Codex sharing this worktree must never be attributed the Claude transcript's usage.
+jq '.result.terminals[0].agentIdentity = "codex"' "$FIX/orca-list" > "$FIX/list-new"
+mv "$FIX/list-new" "$FIX/orca-list"
+screen t1 'working'
+expect "$(lanes_once)" 'codex usage UNKNOWN'
+expect_none "$(lanes_once)"
+# Linux resolves the IDE, never the screen reader. Explicit selection wins on every OS.
+# shellcheck source=scripts/dev/watch-lib.sh
+. "$SCRIPT_DIR/watch-lib.sh"
+[ "$(ORCA_CLI_COMMAND='' ORCA_DEV_REPO_ROOT='' WATCH_OS=Linux watch_orca_cli)" = orca-ide ] || fail 'unsafe Linux Orca selection'
+[ "$(ORCA_CLI_COMMAND=/explicit/orca watch_orca_cli)" = /explicit/orca ] || fail 'ignored explicit Orca selection'
+[ "$(ORCA_CLI_COMMAND='' ORCA_DEV_REPO_ROOT=/dev/orca watch_orca_cli)" = orca-dev ] || fail 'ignored dev Orca selection'
+# No selected CLI: skip cleanly without falling back to another Orca installation.
+out="$(ORCA_CLI_COMMAND="$tmp/missing-orca" PATH=/usr/bin:/bin WATCH_STATE_DIR="$tmp/state" "$SCRIPT_DIR/watch-lanes.sh" --once 2>&1)" || fail "watch-lanes failed without orca"
 expect "$out" 'orca CLI not found; skipping'
 
 # ---------------------------------------------------------------- worktree-procs (real processes)

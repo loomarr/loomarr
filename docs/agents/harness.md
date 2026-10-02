@@ -174,6 +174,48 @@ Orca keeps its settings for each repo outside the repository, so each machine ne
   new worktree branches from whatever the primary checkout has checked out.
 - **Setup command source** *shared-only*, with no local setup or archive script, in Repository
   settings. A local script under *local-only* replaces `orca.yaml` silently.
+- **Setup run policy** *run-by-default* and **agent startup** *wait-for-setup*. Inspect saved
+  settings with `orca repo show --repo <id> --json`; the CLI has no hook-settings setter.
+- **Agent status hooks** enabled for both Codex and Claude: `orca agent hooks status --json`.
+  A launch receipt or visible idle pane alone does not prove worker readiness.
+
+#### Select a model for the task
+
+From the registered worktree after setup, use `scripts/dev/agent-launch.sh codex implementation`
+or `scripts/dev/agent-launch.sh claude implementation`. Add `--dry-run` before the agent name to
+inspect the command without starting a session. The launcher selects only model and effort;
+it preserves the CLI's permission configuration and accepts additional CLI arguments.
+
+| Task | Codex | Claude Code |
+| --- | --- | --- |
+| `evidence`: explicit mechanical checklist | GPT-6 Luna / low | Haiku / effort uncontrolled |
+| `implementation`: ordinary coding and analysis | GPT-5.6 Terra / medium | Sonnet / medium |
+| `complex`: difficult integration or contract reasoning | GPT-6.1 Sol / high | Opus / high |
+| `architecture`: hardest cross-system decisions | GPT-6 Astra / high | Opus / high |
+
+These are starting selections, not capability equivalences. The
+[canonical routing policy](../../AGENTS.md#task-based-model-routing) requires a written reason
+for the higher tiers. Codex IDs must appear in that machine's model catalog. Claude aliases resolve
+through its account/provider configuration; record the resolved model and actual effort, not just
+the alias. Haiku has no equivalent effort control. An unavailable selection is a preflight failure,
+not permission to silently upgrade. Explicit command-line selections override personal defaults.
+See [Codex configuration](https://developers.openai.com/codex/config-basic/) and
+[Claude model configuration](https://code.claude.com/docs/en/model-config).
+
+For supervised Orca workers, use the installed `orchestration` skill and
+`orca orchestration worker-start --model <id> --effort <level>` with the bounded task brief and
+worktree arguments. Omit `--effort` for Haiku. The installed CLI supports these flags on
+`worker-start`, not `worktree create --agent`. The latter uses the user's configured launcher and
+may inherit a costly default. A supervisor must verify the effective model, effort, permissions,
+worker identity and budget before handing over edits, as described in
+[launch verification](../../.agents/workflows/supervise.md#verify-launch-before-handoff).
+
+The launcher and Orca's model flags do **not** create a budget. Supervised checkpoints still use
+100k–200k tokens, default 150k, with at least 15% reserved for the report and additional headroom.
+Use the worker's native goal meter when available. Otherwise follow the supervisor's bounded-meter
+requirements; if worker attribution or enforcement cannot be established, keep the assignment
+read-only. The lane watcher is advisory Claude output telemetry, not full checkpoint accounting
+or a Codex meter. Do not mistake quiet output for a verified budget.
 
 Worktrees land in Orca's workspace directory rather than beside the primary checkout. Isolation keys
 off the worktree path, so the location does not matter, and `make agent-gc` audits Orca worktrees
