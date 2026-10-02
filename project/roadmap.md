@@ -7,9 +7,23 @@ accepted main `b1d8d46c15768c4c9d7175fabaa79563c7dfc577`.
 `PROGRESS.md` owns current phase status; this document owns the release sequence and exit criteria.
 Existing design documents and issue acceptance criteria retain their authority.
 
-## Release baseline and intent
+## Current release scope — 2026-10-02
 
-The latest published server release is
+The maintainer-approved [beta.8 household contract](release/beta8-household-acceptance.md),
+tracked by [#1512](https://github.com/loomarr/loomarr/issues/1512), supersedes the older beta.8
+allocations and universal qualification prerequisites below. Beta.8 is on-demand playout for the
+household Arc deployment with one or two Web/Shield viewers. Safe deployment, artifact integrity
+and the bounded household check block the final tag. Strict cross-hardware performance,
+full-capacity churn and the 24-hour soak remain follow-up qualification with unchanged benchmarks.
+
+The current sequence is beta.8 on-demand playout, beta.9 shared client design, beta.10 client
+devices, and beta.11 general filler certification. Earlier references below assigning general
+filler certification to beta.8 are historical allocations, not additional beta.8 release gates.
+`PROGRESS.md` owns qualification status; this scope decision is not a release or a passing report.
+
+## Historical release baseline and intent
+
+At the 2026-09-20 planning baseline, the latest published server release was
 [v0.2.0-beta.5](https://github.com/loomarr/loomarr/releases/tag/v0.2.0-beta.5), tagged at
 `0019257f42556101fa0a16743e70b6c459725c40` on 2026-09-10. The default desktop Guide repair
 [#1202](https://github.com/loomarr/loomarr/pull/1202) is accepted after that tag. The idle encoder
