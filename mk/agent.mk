@@ -53,6 +53,7 @@ agent-harness-test: agent-assets-verify ## regression-test coordination, worktre
 	@./scripts/codeql-impact-test.sh
 	@./scripts/test-affected-test.sh
 	@./scripts/dev/watch-test.sh
+	@./scripts/dev/agent-launch-test.sh
 	@./scripts/agent-harness-test.sh
 
 agent-assets-verify: ## verify the curated skill catalog and agent adapters agree

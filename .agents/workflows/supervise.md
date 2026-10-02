@@ -10,9 +10,11 @@ or clearly separated implementation seams and return evidence to the supervisor.
 
 **Input:** one goal with acceptance criteria. Optional: named workstreams or a maximum worker count.
 
-Do not use this workflow merely because multiple agents are available. Use it when independent work
-can reduce elapsed time, isolate noisy context, or provide a genuinely fresh review. Keep sequential
-reasoning and edits to the same mutable seam with one agent.
+Apply the [parent/child contract](../../AGENTS.md#parent-and-child-agents): non-trivial work needs
+a useful bounded child assignment. Choose it before broad exploration; delegate independent work
+that reduces elapsed time, isolates noisy context, or supplies a fresh review. Record a concrete
+solo-work exception when delegation would only duplicate work or when the required controls are
+unavailable. Keep sequential reasoning and edits to the same mutable seam with one writer.
 
 ## Establish the owner
 
@@ -22,6 +24,7 @@ One registered task worktree is the delivery owner. From that worktree:
 2. Run `make agent-status`; reconcile active tasks, claims, dependencies, and worktrees.
 3. Confirm that the owner holds every scarce-output claim needed for integration.
 4. State the acceptance evidence and stop points before delegating.
+5. Record the child assignment and its independent seam, or the concrete solo-work exception.
 
 A product's native agent panel shows only its own agent tree. `make agent-status` is the
 cross-harness roster, but it does not expose another session's conversation or reasoning. Report
@@ -50,6 +53,10 @@ Match concurrency to independent seams, not to the number of available sessions.
 a small task, a sequential reasoning chain, or edits to shared mutable state. Use a supervisor and
 bounded workers when investigation, review, or implementation can proceed independently and the
 owner can verify each returned result before integration.
+
+For non-trivial implementation, plan a child review against a fixed final diff before delivery.
+Do not run that review against files the owner is still editing. A child does not start its own
+children unless the brief explicitly authorizes that delegation within its scope and budget.
 
 Treat roles as temporary missions or review lenses, not permanent agent identities. A worker returns
 control when its brief is complete and does not choose its own next task. The supervisor may then

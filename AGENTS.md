@@ -38,6 +38,29 @@ review of later stack members against fixed parent commits. Preserve dependency 
 one writer per overlapping seam, and final integrated-tree evidence. Follow the
 [concurrent backlog procedure](.agents/workflows/supervise.md#review-a-pr-backlog-concurrently).
 
+### Parent and child agents
+
+For non-trivial work, the delivery owner acts as the parent and must delegate at least one useful,
+independent, bounded assignment to a child agent: evidence collection, design exploration,
+disjoint implementation, or fresh-context review. Identify that assignment before broad exploration;
+continue independent parent work while the child runs. Codex and Claude follow the same rule.
+
+Keep a trivial change or an inseparable reasoning/edit chain with one agent when delegation would
+only duplicate context and cost. If no useful independent assignment exists, or child-agent tools,
+readiness, or budget controls are unavailable, state the concrete reason for proceeding solo.
+Do not launch a token-spending placeholder merely to satisfy a count. Non-trivial implementation
+should receive child review of the fixed final diff before delivery; unresolved findings return to
+the owner for repair and a fresh bounded review checkpoint.
+
+Use native parent/child relationships when available; in Orca, follow the installed orchestration
+skill to create a tracked child worker instead of an unrelated terminal session. Each brief carries
+scope, authority, acceptance, model/effort, budget, cutoff, report reserve, and a return boundary.
+Select the child's model for its assignment rather than inheriting an expensive parent by default.
+Children report to the parent and do not delegate further unless their brief explicitly permits it.
+The parent verifies evidence, integrates changes, runs final gates, and owns delivery and cleanup.
+The existing claims, one-writer, readiness, and budget requirements still apply; delegation grants
+no additional authority. See [the supervisor workflow](.agents/workflows/supervise.md).
+
 ### Task-based model routing
 
 Choose the least expensive model clearly capable of meeting the assignment's acceptance criteria.
