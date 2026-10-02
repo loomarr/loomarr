@@ -33,6 +33,9 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
   initiating block after a short hover or keyboard-focus intent delay. The pointer can enter the
   preview; it stays open while the block or preview is hovered or focused, closes on Escape or
   departure, and fits the viewport. Selection alone does not open a preview or imply focus.
+  Programme cells retain their series/title text at narrow widths, clipping each line within the
+  block rather than hiding its identity. Full names remain available through the accessible label
+  and contextual preview; short filler segments keep their separate density treatment.
   Filler previews retain supplied clip names and kinds, without inventing metadata. The compact
   phone Guide and remote TV interaction remain separate adapters.
 - **Requests** (`/requests`) is one surface for everyone (#1405). Its nav count is what waits on the

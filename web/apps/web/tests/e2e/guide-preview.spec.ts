@@ -2,6 +2,98 @@ import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
 import { expect, type Page, test } from "@playwright/test";
 import { installMockBackend } from "./mock-backend";
 
+for (const width of [900, 1348]) {
+  test(`dense Guide retains programme identity and preview artwork at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await installMockBackend(page, { authed: true, role: "admin", guideChannels: 100 });
+    const art = "/fixture-guide-art.svg";
+    await page.route(`**${art}`, (route) =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="purple"/></svg>',
+      }),
+    );
+    await page.route("**/v1/guide?*", async (route) => {
+      const url = new URL(route.request().url());
+      const fromMs = Number(url.searchParams.get("from"));
+      const toMs = Number(url.searchParams.get("to"));
+      const body: GuideOutputBody = {
+        fromMs,
+        toMs,
+        channels: Array.from({ length: 100 }, (_, i) => ({
+          channelId: `ch-${i + 1}`,
+          name: `Guide channel ${i + 1}`,
+          number: i + 1,
+          status: "live",
+          pendingCount: 0,
+          airings: Array.from({ length: 10 }, (_, j) => ({
+            kind: "program",
+            scheduleBlockId: `episode-${i}-${j}`,
+            title: `Episode ${j + 1}`,
+            series: "Invented series",
+            startMs: fromMs + j * 23 * 60_000,
+            stopMs: fromMs + (j + 1) * 23 * 60_000,
+            thumbUrl: j === 0 ? art : undefined,
+            thumbImage:
+              j === 1
+                ? {
+                    animated: false,
+                    dominantHex: "#800080",
+                    hash: "invented-guide-art",
+                    height: 180,
+                    width: 320,
+                    placeholder: "",
+                    role: "thumb",
+                    src: art,
+                    srcSetAvif: "",
+                    srcSetWebp: `${art} 320w`,
+                  }
+                : undefined,
+          })),
+        })),
+      };
+      await route.fulfill({ json: body });
+    });
+    await page.goto("/guide");
+    await page.getByRole("button", { name: "Show 4 hours", exact: true }).click();
+    const episode = (number: number) =>
+      page.getByRole("button", { name: new RegExp(`Invented series.*Episode ${number},`) }).first();
+    const first = episode(1);
+    await expect(first.getByText("Invented series", { exact: true })).toBeVisible();
+    await expect(first.getByText("Episode 1", { exact: true })).toBeVisible();
+    const box = await first.boundingBox();
+    expect(box!.width).toBeGreaterThan(0);
+    if (width === 900) expect(box!.width).toBeLessThan(74);
+    await expect(first.locator("img")).toHaveCount(0);
+    await first.hover();
+    const preview = page.getByRole("tooltip");
+    const expectArtwork = async () => {
+      await expect(preview).toBeVisible();
+      await expect(preview.locator("img")).toHaveCount(1);
+      await expect
+        .poll(() =>
+          preview
+            .locator("img")
+            .evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+        )
+        .toBe(true);
+      expect((await preview.locator("img").boundingBox())!.width).toBeGreaterThan(0);
+    };
+    await expectArtwork();
+    await page.keyboard.press("Escape");
+    await expect(preview).toHaveCount(0);
+    await page.mouse.move(0, 0);
+    await episode(2).focus();
+    await expect(preview).toContainText("Episode 2");
+    await expectArtwork();
+    await episode(3).focus();
+    await expect(preview).toContainText("Episode 3");
+    await expect(preview.locator("img")).toHaveCount(0);
+    await expect(preview).toContainText("No artwork");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
 const installGuide = async (page: Page) => {
   await installMockBackend(page, { authed: true, role: "admin", guideChannels: 100 });
   await page.route("**/v1/guide?*", async (route) => {
