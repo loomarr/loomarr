@@ -3,12 +3,19 @@
 Loomarr's harness is agent-agnostic. Codex, Claude Code, terminal-driven agents, and humans use
 the same Make targets and the same registry under Git's common directory.
 
-## One owner, selective delegation
+## One owner, bounded child agents
 
-One task worktree owns each deliverable from first edit through merge. That owner may delegate
-independent reading, competing designs, or a fresh-context review, but delegated agents return
+One task worktree owns each deliverable from first edit through merge. For non-trivial work, that
+owner must delegate a useful independent assignment under the
+[parent/child contract](../../AGENTS.md#parent-and-child-agents). Use independent reading,
+competing designs, or a fresh-context review; delegated agents return
 findings to the owner by default. They do not open a second implementation branch for the same
 deliverable.
+
+Choose the child assignment before broad exploration and continue independent work while it runs.
+Record a concrete solo-work exception for a trivial or inseparable task, or unavailable child
+tooling/readiness/budget controls. The parent still owns final integration and delivery. Children
+use the cheapest suitable model for their own brief and do not recursively delegate by default.
 
 Use another editing agent only when the work has a real merge seam:
 
