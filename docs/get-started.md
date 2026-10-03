@@ -21,12 +21,12 @@ You also need Docker, on Linux or on Docker Desktop for macOS.
 
 ## 1. Start Loomarr
 
-Download the release you want to run and start it. This example uses `0.2.0-beta.7`; check
+Download the release you want to run and start it. This example uses `0.2.0-beta.8`; check
 [Releases](https://github.com/loomarr/loomarr/releases) for a newer one, and keep the version
 you choose pinned.
 
 ```bash
-VERSION=0.2.0-beta.7
+VERSION=0.2.0-beta.8
 git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr
 cd loomarr
 cp .env.example .env
