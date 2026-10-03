@@ -6,17 +6,22 @@ describe("Caption", () => {
   // text-2xs (11px) is the sanctioned caption step. The 21 hand-rolled copies this replaced
   // had drifted to 10px, 10.5px and 11px because the type scale bottomed out at 12px and each
   // component invented its own smaller value — so the size is the contract, not a detail.
+  // Sourced from @loomarr/design-system's shared tokens (#970 PR B checkpoint 2): font-family
+  // and size are now inline style rather than Tailwind classes, so the contract moves from
+  // class names to the computed style.
   it("renders mono at the caption step", () => {
     render(<Caption>7:30 PM</Caption>);
-    expect(screen.getByText("7:30 PM")).toHaveClass("font-mono", "text-2xs");
+    expect(screen.getByText("7:30 PM")).toHaveStyle({ fontFamily: "var(--font-mono)", fontSize: "11px" });
   });
 
   it("is muted by default and strong on request", () => {
     const { rerender } = render(<Caption>ch 4</Caption>);
-    expect(screen.getByText("ch 4")).toHaveClass("text-static-400");
+    // text-static-400 === semanticColors.content.secondary
+    expect(screen.getByText("ch 4")).toHaveStyle({ color: "#8B93A3" });
 
     rerender(<Caption tone="strong">ch 4</Caption>);
-    expect(screen.getByText("ch 4")).toHaveClass("text-static-100");
+    // text-static-100 === semanticColors.content.primary
+    expect(screen.getByText("ch 4")).toHaveStyle({ color: "#E7EAF0" });
   });
 
   // `shout` is the section-label voice ("POD · 1:10"); plain is metadata sitting quietly
@@ -24,10 +29,13 @@ describe("Caption", () => {
   // time in the app starts announcing itself.
   it("only uppercases when shouting", () => {
     const { rerender } = render(<Caption>psa</Caption>);
-    expect(screen.getByText("psa")).not.toHaveClass("uppercase");
+    expect(screen.getByText("psa")).not.toHaveStyle({ textTransform: "uppercase" });
 
     rerender(<Caption shout>psa</Caption>);
-    expect(screen.getByText("psa")).toHaveClass("uppercase", "tracking-wide");
+    expect(screen.getByText("psa")).toHaveStyle({ textTransform: "uppercase" });
+    // tracking-wide stays a literal class (not inline style): a caller's className must be able
+    // to override it via tailwind-merge (see the override test below).
+    expect(screen.getByText("psa")).toHaveClass("tracking-wide");
   });
 
   // Callers reach for `as` when the caption is a <p> in a stack or a <dt> in a list. Without
