@@ -1,21 +1,22 @@
+import type { ProposalDTO, PullDTO } from "@loomarr/core/requests";
 import {
   requestFailureHint,
   requestFixLabel,
   requestsInTab,
   requestsNeedsYouCount,
 } from "@loomarr/core/requests";
-import { Action, Skeleton, Surface, Tabs, Text } from "@loomarr/design-system";
-import { useState } from "react";
+import { Skeleton, Surface, Tabs, Text } from "@loomarr/design-system";
 import { ScrollView } from "react-native";
 
 import { StatePanel } from "../../state-panel";
-import { ApprovalCard } from "../approval-card";
+import { ApprovalGroup, type ApprovalRow } from "../approval-group";
 import { RequestCard } from "../request-card";
 import type { RequestsListProps } from "./requests-list.type";
 
 // The phone's Requests list, in Web's words and order: Needs you, In progress, Done. Needs you holds
-// an admin's approvals first (they block other people) and everyone's own failures after, each with
-// its reason and one way to fix it. Members never see approvals: deciding is admin-only.
+// an admin's two groups first, Channel requests and Filler downloads (they block other people), and
+// everyone's own failures after, each with its reason and one way to fix it. Members never see the
+// groups: deciding is admin-only.
 const tabEmpty = {
   "in-progress": {
     description: "Requests that are still being generated, approved or downloaded appear here.",
@@ -43,21 +44,41 @@ const Section = ({ children, title }: { children: React.ReactNode; title: string
   </Surface>
 );
 
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+const proposalRow = ({ createdByName, id, note, proposal }: ProposalDTO): ApprovalRow => ({
+  id,
+  meta: [
+    plural(proposal.lineup.length, "title"),
+    proposal.acquisitions.length > 0 ? `${proposal.acquisitions.length} to download` : "all in your library",
+  ].join(" · "),
+  note,
+  requestedBy: createdByName,
+  title: proposal.intent.description,
+});
+
+const pullRow = ({ estimateClips, id, proposedBy, sources, title }: PullDTO): ApprovalRow => ({
+  id,
+  meta: [plural(estimateClips, "clip"), plural(sources.length, "source")].join(" · "),
+  requestedBy: proposedBy,
+  title,
+});
+
 const RequestsList = ({
   onApprove,
-  onApproveSelected,
-  onDeny,
+  onApproveFiller,
   onFix,
   onOpen,
   onOpenChannel,
   onRequestChannel,
+  onReview,
   onRetry,
   nowMs,
   onTabChange,
+  review,
   snapshot,
   tab,
 }: RequestsListProps) => {
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const ask = { label: "Request a channel", onPress: onRequestChannel };
 
   // Three skeleton rows while the first read is in flight, as the approved mock draws it.
@@ -92,7 +113,8 @@ const RequestsList = ({
     );
   const isAdmin = snapshot.role === "admin";
   const approvals = isAdmin ? snapshot.approvals : [];
-  if (snapshot.entries.length === 0 && approvals.length === 0)
+  const pulls = isAdmin ? snapshot.fillerPulls : [];
+  if (snapshot.entries.length === 0 && approvals.length === 0 && pulls.length === 0)
     return (
       <StatePanel
         action={ask}
@@ -106,76 +128,49 @@ const RequestsList = ({
   const inProgress = requestsInTab(snapshot, "in-progress");
   const done = requestsInTab(snapshot, "done");
   const failed = requestsInTab(snapshot, "needs-you");
-  const bulkable = approvals.length > 1;
-  const chosen = approvals.filter((proposal) => selected.has(proposal.id));
-  const busy = snapshot.deciding.length > 0;
-
-  const toggle = (id: string, on: boolean) =>
-    setSelected((previous) => {
-      const next = new Set(previous);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+  const find = <Item extends { id: string }>(items: readonly Item[], id: string) =>
+    items.find((item) => item.id === id);
 
   let content: React.ReactNode;
   if (tab === "needs-you") {
     content =
-      approvals.length === 0 && failed.length === 0 ? (
+      approvals.length === 0 && pulls.length === 0 && failed.length === 0 ? (
         <StatePanel action={ask} density="touch" kind="empty" {...tabEmpty["needs-you"]} />
       ) : (
         <>
           {approvals.length > 0 ? (
-            <Section title="Waiting for your approval">
-              {bulkable ? (
-                <Surface gap="$inline" level="raised" padding="$control">
-                  <Text density="touch" textRole="body" tone="secondary">
-                    {chosen.length > 0 ? `${chosen.length} selected` : "None selected"}
-                  </Text>
-                  <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
-                    <Action
-                      accessibilityRole="button"
-                      density="touch"
-                      onPress={() =>
-                        setSelected(
-                          chosen.length === approvals.length
-                            ? new Set()
-                            : new Set(approvals.map((p) => p.id)),
-                        )
-                      }
-                      style={{ flex: 1 }}
-                      tone="secondary"
-                    >
-                      {chosen.length === approvals.length ? "Clear selection" : "Select all"}
-                    </Action>
-                    <Action
-                      accessibilityRole="button"
-                      density="touch"
-                      disabled={busy || chosen.length === 0}
-                      onPress={() => {
-                        onApproveSelected(chosen.map((proposal) => proposal.id));
-                        setSelected(new Set());
-                      }}
-                      style={{ flex: 1 }}
-                      tone="primary"
-                    >
-                      {chosen.length > 0 ? `Approve ${chosen.length}` : "Approve selected"}
-                    </Action>
-                  </Surface>
-                </Surface>
-              ) : null}
-              {approvals.map((proposal) => (
-                <ApprovalCard
-                  busy={snapshot.deciding.includes(proposal.id)}
-                  key={proposal.id}
-                  onApprove={() => onApprove(proposal)}
-                  onDeny={(reason) => onDeny(proposal, reason)}
-                  onToggleSelected={bulkable ? (on) => toggle(proposal.id, on) : undefined}
-                  proposal={proposal}
-                  selected={selected.has(proposal.id)}
-                />
-              ))}
-            </Section>
+            <ApprovalGroup
+              deciding={snapshot.deciding}
+              onApprove={(id) => {
+                const proposal = find(approvals, id);
+                if (proposal) onApprove(proposal);
+              }}
+              onDeny={(id) => onReview({ group: "requests", id, type: "open-deny" })}
+              onEdit={(id) => onReview({ id, type: "open-edit" })}
+              onToggleSelected={(id, on) => onReview({ group: "requests", id, on, type: "toggle-selected" })}
+              onToggleSelecting={() => onReview({ group: "requests", type: "toggle-selecting" })}
+              rows={approvals.map(proposalRow)}
+              selected={review.selected.requests}
+              selecting={review.selecting.requests}
+              title="Channel requests"
+            />
+          ) : null}
+          {pulls.length > 0 ? (
+            <ApprovalGroup
+              deciding={snapshot.deciding}
+              denyLabel="Dismiss"
+              onApprove={(id) => {
+                const pull = find(pulls, id);
+                if (pull) onApproveFiller(pull);
+              }}
+              onDeny={(id) => onReview({ group: "filler", id, type: "open-deny" })}
+              onToggleSelected={(id, on) => onReview({ group: "filler", id, on, type: "toggle-selected" })}
+              onToggleSelecting={() => onReview({ group: "filler", type: "toggle-selecting" })}
+              rows={pulls.map(pullRow)}
+              selected={review.selected.filler}
+              selecting={review.selecting.filler}
+              title="Filler downloads"
+            />
           ) : null}
           {failed.length > 0 ? (
             <Section title="Couldn't be built">

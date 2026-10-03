@@ -1,5 +1,6 @@
 import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
 import type { ProposalJourneyDTO } from "@loomarr/api/models/proposalJourneyDTO";
+import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { ApiError } from "@loomarr/api/mutator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -26,15 +27,25 @@ const journey = (over: Partial<ProposalJourneyDTO> = {}): ProposalJourneyDTO => 
 const failed = journey({ jobId: "job-failed", milestone: "failed" });
 const generating = journey({ jobId: "job-generating", milestone: "generating" });
 const approval = { id: "approval-1", jobId: "job-x", status: "submitted" } as unknown as ProposalDTO;
+const pull = { id: "pull-1", status: "pending", title: "Static stingers" } as unknown as PullDTO;
 
 const refusal = (type: string, title: string) => new ApiError(422, { title, type });
 
 const port = (over: Partial<RequestsPort> = {}): RequestsPort => ({
   approve: vi.fn(async () => ({ channelId: "channel-1" })),
-  approveMany: vi.fn(async () => ({ approved: 2, failed: 0 })),
+  approveFillerPulls: vi.fn(async (ids: readonly string[]) => ({
+    approved: ids.length,
+    results: ids.map((id) => ({ id, ok: true })),
+  })),
+  approveMany: vi.fn(async (ids: readonly string[]) => ({
+    approved: ids.length,
+    results: ids.map((id) => ({ id, ok: true })),
+  })),
   deny: vi.fn(async () => undefined),
+  dismissFillerPull: vi.fn(async () => undefined),
   hideIdea: vi.fn(async () => undefined),
   loadApprovals: vi.fn(async () => [approval]),
+  loadFillerPulls: vi.fn(async () => [pull]),
   loadIdeas: vi.fn(async () => []),
   loadJourneys: vi.fn(async () => [failed, journey()]),
   loadMe: vi.fn(async () => ({ role: "member" }) as never),
@@ -60,16 +71,19 @@ describe("requests controller", () => {
     expect(requestsInTab(snapshot, "needs-you").map((e) => e.journey.jobId)).toEqual(["job-failed"]);
     expect(requestsInTab(snapshot, "done").map((e) => e.journey.jobId)).toEqual(["job-1"]);
     expect(fake.loadApprovals).not.toHaveBeenCalled();
+    expect(fake.loadFillerPulls).not.toHaveBeenCalled();
+    expect(snapshot.fillerPulls).toEqual([]);
     expect(requestsNeedsYouCount(snapshot)).toBe(1);
   });
 
-  it("gives an admin the pending approvals, counted with failed requests", async () => {
+  it("gives an admin the pending approvals and filler pulls, counted with failed requests", async () => {
     const controller = createRequestsController({
       port: port({ loadMe: vi.fn(async () => ({ role: "admin" }) as never) }),
     });
     await controller.refresh();
     expect(controller.getSnapshot().approvals).toEqual([approval]);
-    expect(requestsNeedsYouCount(controller.getSnapshot())).toBe(2);
+    expect(controller.getSnapshot().fillerPulls).toEqual([pull]);
+    expect(requestsNeedsYouCount(controller.getSnapshot())).toBe(3);
   });
 
   it("reports the server's sentence when the list can't load, and recovers on retry", async () => {
@@ -203,9 +217,19 @@ describe("requests controller", () => {
         channelId: "channel-1",
         kind: "done",
       });
-      expect(fake.approve).toHaveBeenCalledWith("approval-1");
+      expect(fake.approve).toHaveBeenCalledWith("approval-1", undefined);
       expect(fake.loadApprovals).toHaveBeenCalled();
       expect(controller.getSnapshot().deciding).toEqual([]);
+    });
+
+    it("sends an edit on the same approve call, never as a separate save", async () => {
+      const fake = port(admin());
+      const controller = createRequestsController({ port: fake });
+      await controller.approve("approval-1", { drop: ["movie:tmdb:90009001"], note: "Skip the first" });
+      expect(fake.approve).toHaveBeenCalledWith("approval-1", {
+        drop: ["movie:tmdb:90009001"],
+        note: "Skip the first",
+      });
     });
 
     it("denies with a trimmed reason, or none", async () => {
@@ -231,14 +255,64 @@ describe("requests controller", () => {
       });
     });
 
-    it("says how many of a bulk approval went through", async () => {
-      const approveMany = vi.fn(async () => ({ approved: 2, failed: 1 }));
+    const partial = {
+      approved: 2,
+      results: [
+        { id: "a", ok: true },
+        { id: "b", ok: true },
+        { error: "Already decided by another admin", id: "c", ok: false },
+      ],
+    };
+
+    it("returns every id's outcome from a bulk approval, so one refusal is a row, not a notice", async () => {
+      const approveMany = vi.fn(async () => partial);
       const controller = createRequestsController({ port: port({ ...admin(), approveMany }) });
-      const result = await controller.approveMany(["a", "b", "c"]);
-      expect(result).toEqual({
-        kind: "failed",
-        message: "2 approved, 1 couldn't be approved. The rest are still waiting.",
+      await expect(controller.approveMany(["a", "b", "c"])).resolves.toEqual({ kind: "done", ...partial });
+      expect(controller.getSnapshot().notice).toBeUndefined();
+      expect(controller.getSnapshot().deciding).toEqual([]);
+    });
+
+    it("keeps filler pulls in their own group: approving them never touches the proposal endpoint", async () => {
+      const fake = port({ ...admin(), approveFillerPulls: vi.fn(async () => partial) });
+      const controller = createRequestsController({ port: fake });
+      await expect(controller.approveFillerPulls(["a", "b", "c"])).resolves.toEqual({
+        kind: "done",
+        ...partial,
       });
+      expect(fake.approveMany).not.toHaveBeenCalled();
+      expect(fake.loadFillerPulls).toHaveBeenCalled();
+    });
+
+    it("says why when a bulk approval can't run at all", async () => {
+      const approveMany = vi.fn().mockRejectedValue(new ApiError(403, { title: "Admins only" }));
+      const controller = createRequestsController({ port: port({ ...admin(), approveMany }) });
+      await expect(controller.approveMany(["a"])).resolves.toEqual({
+        kind: "failed",
+        message: "Admins only",
+      });
+      expect(controller.getSnapshot().notice).toBe("Admins only");
+    });
+
+    it("approves one filler pull through the bulk method and surfaces a refusal's sentence", async () => {
+      const approveFillerPulls = vi.fn(async () => ({
+        approved: 0,
+        results: [{ error: "Already decided", id: "pull-1", ok: false }],
+      }));
+      const controller = createRequestsController({ port: port({ ...admin(), approveFillerPulls }) });
+      await expect(controller.approveFillerPull("pull-1")).resolves.toEqual({
+        kind: "failed",
+        message: "Already decided",
+      });
+      expect(approveFillerPulls).toHaveBeenCalledWith(["pull-1"]);
+      expect(controller.getSnapshot().notice).toBe("Already decided");
+    });
+
+    it("dismisses a filler pull and re-reads the group", async () => {
+      const fake = port(admin());
+      const controller = createRequestsController({ port: fake });
+      await expect(controller.dismissFillerPull("pull-1")).resolves.toEqual({ kind: "done" });
+      expect(fake.dismissFillerPull).toHaveBeenCalledWith("pull-1");
+      expect(fake.loadFillerPulls).toHaveBeenCalled();
     });
 
     it("marks only the proposals being decided as in flight", async () => {
@@ -297,6 +371,67 @@ describe("requests port", () => {
     ]);
     expect(calls[1]?.[1].body).toBe('{"description":"Cosy baking shows"}');
     expect(calls[3]?.[1].body).toBe('{"reason":"Too broad"}');
+  });
+
+  it("approves filler pulls one at a time and reports a refused pull without stopping the rest", async () => {
+    const request = vi.fn(async (url: RequestInfo | URL) =>
+      String(url).includes("/pull-2/")
+        ? respond({ title: "Already decided by another admin" }, 409)
+        : respond({ id: "ok" }),
+    );
+    const requests = createRequestsPort(request as never);
+    const outcome = await requests.approveFillerPulls(["pull-1", "pull-2", "pull-3"]);
+
+    const calls = request.mock.calls as unknown as [string, RequestInit][];
+    expect(calls.map(([url, init]) => `${init.method} ${url}`)).toEqual([
+      "POST /v1/filler/pulls/pull-1/approve",
+      "POST /v1/filler/pulls/pull-2/approve",
+      "POST /v1/filler/pulls/pull-3/approve",
+    ]);
+    expect(outcome).toEqual({
+      approved: 2,
+      results: [
+        { id: "pull-1", ok: true },
+        { error: "Already decided by another admin", id: "pull-2", ok: false },
+        { id: "pull-3", ok: true },
+      ],
+    });
+  });
+
+  it("reads pending pulls, dismisses one, and carries an approval's edit in its body", async () => {
+    const request = vi.fn(async () => respond({ channelId: "c-1", pulls: [] }));
+    const requests = createRequestsPort(request as never);
+    await requests.loadFillerPulls(new AbortController().signal);
+    await requests.dismissFillerPull("pull-1");
+    await requests.approve("p-1", { drop: ["movie:tmdb:90009001"] });
+
+    const calls = request.mock.calls as unknown as [string, RequestInit][];
+    expect(calls.map(([url, init]) => `${init.method} ${url}`)).toEqual([
+      "GET /v1/filler/pulls?status=pending",
+      "POST /v1/filler/pulls/pull-1/dismiss",
+      "POST /v1/proposals/p-1/approve",
+    ]);
+    expect(calls[2]?.[1].body).toBe('{"drop":["movie:tmdb:90009001"]}');
+  });
+
+  it("maps a bulk approval's results to {id, ok, error}", async () => {
+    const request = vi.fn(async () =>
+      respond({
+        approved: 1,
+        results: [
+          { channelId: "c-1", enqueued: 3, id: "a", ok: true },
+          { error: "Already decided", id: "b", ok: false },
+        ],
+      }),
+    );
+    const outcome = await createRequestsPort(request as never).approveMany(["a", "b"]);
+    expect(outcome).toEqual({
+      approved: 1,
+      results: [
+        { id: "a", ok: true },
+        { error: "Already decided", id: "b", ok: false },
+      ],
+    });
   });
 
   it("throws the server's problem as an ApiError", async () => {

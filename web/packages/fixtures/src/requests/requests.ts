@@ -3,6 +3,7 @@ import type { Proposal } from "@loomarr/api/models/proposal";
 import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { ProposalJourneyDTO } from "@loomarr/api/models/proposalJourneyDTO";
+import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import type { RequestEntry, RequestsSnapshot } from "@loomarr/core/requests";
 import { requestStatus } from "@loomarr/core/requests";
@@ -50,7 +51,13 @@ const journeys = {
     milestone: "generating",
     progress: {
       picks: [
-        { inLibrary: true, key: "movie:tmdb:90009001", mediaType: "movie", name: lighthouse.name, year: 1998 },
+        {
+          inLibrary: true,
+          key: "movie:tmdb:90009001",
+          mediaType: "movie",
+          name: lighthouse.name,
+          year: 1998,
+        },
         { inLibrary: false, key: "movie:tmdb:90009003", mediaType: "movie", name: harbour.name, year: 2011 },
       ],
       stage: "choosing",
@@ -192,6 +199,53 @@ const approvals: ProposalDTO[] = [
     proposal: proposalBody("Mountain documentaries", [harbour], []),
     status: "submitted",
   },
+  {
+    createdByName: "Mary Jackson",
+    id: "approval-mary",
+    jobId: "job-mary",
+    proposal: proposalBody("Overnight jazz and rain sounds", [marmalade, harbour], [lighthouse]),
+    status: "submitted",
+  },
+];
+
+const pull = (
+  id: string,
+  title: string,
+  estimateClips: number,
+  sourceCount: number,
+  reason: string,
+): PullDTO => ({
+  candidateCount: estimateClips,
+  createdAt: "2026-10-02T06:00:00Z",
+  estimateClips,
+  id,
+  intent: { catalogReason: reason, count: estimateClips, version: "1" },
+  plan: [],
+  proposedBy: "Loomarr",
+  reason,
+  rejected: [],
+  sources: Array.from({ length: sourceCount }, (_, index) => ({
+    candidateCount: Math.ceil(estimateClips / sourceCount),
+    detail: "",
+    disposition: "enumerated",
+    provider: "invented-archive",
+    sourceId: `${id}-source-${index + 1}`,
+  })),
+  status: "pending",
+  title,
+});
+
+// Filler downloads Loomarr proposed on its own: an admin approves or dismisses them apart from the
+// channel requests, because approving one starts downloads.
+const fillerPulls: PullDTO[] = [
+  pull("pull-bumpers", "Retro game-show bumpers", 40, 1, "Breaks on the quiz channel repeat too soon."),
+  pull(
+    "pull-stingers",
+    "Static and tuning-card stingers",
+    18,
+    2,
+    "The late-night channel has no short fillers.",
+  ),
 ];
 
 const entry = (source: ProposalJourneyDTO): RequestEntry => ({
@@ -211,6 +265,7 @@ const requestsSnapshot = (over: Partial<RequestsSnapshot> = {}): RequestsSnapsho
     journeys.live,
     journeys.denied,
   ].map(entry),
+  fillerPulls: [],
   ideas,
   ideasStatus: "ready",
   role: "member",
@@ -219,6 +274,6 @@ const requestsSnapshot = (over: Partial<RequestsSnapshot> = {}): RequestsSnapsho
   ...over,
 });
 
-const requestFixtures = { approvals, ideas, journeys, titles };
+const requestFixtures = { approvals, fillerPulls, ideas, journeys, titles };
 
 export { requestFixtures, requestsSnapshot };
