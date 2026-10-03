@@ -8,19 +8,19 @@ an admin API key. TMDB and an LLM are also required to create a channel from a s
 and filler can be added later from Settings.
 
 Choose an exact version from [GitHub Releases](https://github.com/loomarr/loomarr/releases). This
-example uses `0.2.0-beta.7`; keep the version pinned for reproducible installs and rollbacks.
+example uses `0.2.0-beta.8`; keep the version pinned for reproducible installs and rollbacks.
 
 ## Start it
 
 ```bash
-VERSION=0.2.0-beta.7
+VERSION=0.2.0-beta.8
 git clone --branch "v${VERSION}" --depth 1 https://github.com/loomarr/loomarr && cd loomarr
 cp .env.example .env
 # Edit .env: SERVER_PUBLIC_URL must be a URL this host and your media server can reach.
 LOOMARR_VERSION="$VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
 
-This pulls the pinned `ghcr.io/loomarr/loomarr:0.2.0-beta.7` image. Linux hosts use the native
+This pulls the pinned `ghcr.io/loomarr/loomarr:0.2.0-beta.8` image. Linux hosts use the native
 amd64 or arm64 manifest. Docker Desktop does the same on Intel or Apple Silicon Macs.
 
 Profiles combine:
