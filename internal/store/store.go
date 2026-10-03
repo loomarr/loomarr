@@ -330,6 +330,7 @@ type UserStore interface {
 	ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error)
 	DeleteDevicePairing(ctx context.Context, codeHash string) error
 	PurgeExpiredDevicePairings(ctx context.Context, now time.Time) error
+	RevokeDevicePairingsForUser(ctx context.Context, userID string) error
 	CreateDeviceToken(ctx context.Context, t DeviceToken) error
 	GetDeviceToken(ctx context.Context, tokenHash string) (DeviceToken, error)
 	TouchDeviceToken(ctx context.Context, tokenHash string, at time.Time) error

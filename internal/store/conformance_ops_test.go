@@ -447,6 +447,63 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	if devices, _ := s.ListDeviceTokensForUser(ctx, "u2"); len(devices) != 1 {
 		t.Errorf("RevokeDeviceTokensForUser hit another user's devices: u2 has %d, want 1", len(devices))
 	}
+
+	// …and the pairings they approved but no device redeemed yet — and only theirs; a pending
+	// pairing nobody approved is not anyone's to revoke.
+	for _, p := range []DevicePairing{
+		{DeviceCodeHash: "p-u1", UserCode: "AAAA-AAAA"},
+		{DeviceCodeHash: "p-u2", UserCode: "BBBB-BBBB"},
+		{DeviceCodeHash: "p-pending", UserCode: "CCCC-CCCC"},
+	} {
+		p.CreatedAt, p.ExpiresAt = now, now.Add(10*time.Minute)
+		if err := s.CreateDevicePairing(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for code, user := range map[string]string{"AAAA-AAAA": "u1", "BBBB-BBBB": "u2"} {
+		if ok, err := s.ApproveDevicePairing(ctx, code, user, now); err != nil || !ok {
+			t.Fatalf("ApproveDevicePairing(%s, %s) = %v, %v", code, user, ok, err)
+		}
+	}
+	if err := s.RevokeDevicePairingsForUser(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetDevicePairing(ctx, "p-u1", now); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetDevicePairing(revoked) err = %v, want ErrNotFound", err)
+	}
+	for _, code := range []string{"p-u2", "p-pending"} {
+		if _, err := s.GetDevicePairing(ctx, code, now); err != nil {
+			t.Errorf("RevokeDevicePairingsForUser hit %s: %v", code, err)
+		}
+	}
+
+	// A disabled user approves nothing and is issued nothing, so no credential can be minted after
+	// the revocation above (ADR 0043). Unknown users likewise.
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin, Disabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.ApproveDevicePairing(ctx, "CCCC-CCCC", "u1", now); err != nil || ok {
+		t.Errorf("ApproveDevicePairing by a disabled user = %v, %v; want false, nil", ok, err)
+	}
+	if ok, err := s.ApproveDevicePairing(ctx, "CCCC-CCCC", "u-ghost", now); err != nil || ok {
+		t.Errorf("ApproveDevicePairing by an unknown user = %v, %v; want false, nil", ok, err)
+	}
+	for _, user := range []string{"u1", "u-ghost"} {
+		err := s.CreateDeviceToken(ctx, DeviceToken{TokenHash: "d-late-" + user, UserID: user, DeviceName: "TV", CreatedAt: now})
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("CreateDeviceToken for %s err = %v, want ErrNotFound", user, err)
+		}
+	}
+	if devices, err := s.ListDeviceTokensForUser(ctx, "u1"); err != nil || len(devices) != 0 {
+		t.Errorf("disabled u1 was issued %d devices (err %v), want 0", len(devices), err)
+	}
+	// Re-enabled, the same user approves again: the guard is the flag, not a tombstone.
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.ApproveDevicePairing(ctx, "CCCC-CCCC", "u1", now); err != nil || !ok {
+		t.Errorf("ApproveDevicePairing by re-enabled u1 = %v, %v; want true, nil", ok, err)
+	}
 }
 
 // testCounts covers the §17 observability gauges: grouped counts must reflect

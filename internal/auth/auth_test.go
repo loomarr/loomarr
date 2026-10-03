@@ -103,9 +103,62 @@ func TestDisableRevokesSessions(t *testing.T) {
 
 // Every path that disables a user deletes their paired devices too, not just refuses them while
 // disabled: a device acts with its user's role (ADR 0043), so re-enabling the user must not bring
-// back a device that was lost.
+// back a device that was lost. That holds for a pairing still in flight at the disable, too: one
+// approved before it but redeemed after, and one approved after it, inside the pairing TTL.
 func TestEveryDisablePathRevokesPairedDevicesForGood(t *testing.T) {
-	for _, tc := range []struct {
+	type pairing struct {
+		devices    *DeviceManager
+		deviceCode string
+		userCode   string
+		tokens     []string
+	}
+	ctx := context.Background()
+	start := func(t *testing.T, p *pairing) {
+		var err error
+		if p.deviceCode, p.userCode, _, err = p.devices.StartPairing(ctx, "Lounge TV"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// redeem records any token the device obtains; the assertions below prove none of them work.
+	redeem := func(p *pairing) {
+		if token, _, err := p.devices.Redeem(ctx, p.deviceCode); err == nil {
+			p.tokens = append(p.tokens, token)
+		}
+	}
+	approve := func(t *testing.T, p *pairing) {
+		if err := p.devices.Approve(ctx, p.userCode, "u-bob"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	timings := []struct {
+		name           string
+		before, after  func(t *testing.T, p *pairing)
+		afterReEnabled func(p *pairing)
+	}{
+		{"redeemed before disable",
+			func(t *testing.T, p *pairing) {
+				start(t, p)
+				approve(t, p)
+				redeem(p)
+				if len(p.tokens) != 1 {
+					t.Fatal("pairing before the disable did not redeem")
+				}
+			},
+			func(*testing.T, *pairing) {}, func(*pairing) {}},
+		{"approved pairing redeemed after disable",
+			func(t *testing.T, p *pairing) { start(t, p); approve(t, p) },
+			func(_ *testing.T, p *pairing) { redeem(p) },
+			redeem},
+		{"pairing approved after disable",
+			start,
+			func(t *testing.T, p *pairing) {
+				if err := p.devices.Approve(ctx, p.userCode, "u-bob"); err == nil {
+					t.Error("a disabled user approved a pairing")
+				}
+			},
+			redeem},
+	}
+	paths := []struct {
 		name    string
 		disable func(t *testing.T, ms *testkit.MediaServer, svc *LoginService, sync *UserSync)
 	}{
@@ -126,48 +179,44 @@ func TestEveryDisablePathRevokesPairedDevicesForGood(t *testing.T) {
 				t.Fatal(err)
 			}
 		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			st := newStore(t)
-			ctx := context.Background()
-			ms := testkit.NewMediaServer(t)
-			t.Cleanup(ms.Close)
-			ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob"}}
-			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
-			clock := func() time.Time { return now }
-			svc := NewLoginService(lib, st, NewManager(st, time.Hour, clock), nil, clock)
-			devices := NewDeviceManager(st, clock)
-			importOne(t, st, "u-bob", "bob", true)
+	}
+	for _, path := range paths {
+		for _, timing := range timings {
+			t.Run(path.name+"/"+timing.name, func(t *testing.T) {
+				st := newStore(t)
+				ms := testkit.NewMediaServer(t)
+				t.Cleanup(ms.Close)
+				ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob"}}
+				lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+				clock := func() time.Time { return now }
+				svc := NewLoginService(lib, st, NewManager(st, time.Hour, clock), nil, clock)
+				p := &pairing{devices: NewDeviceManager(st, clock)}
+				importOne(t, st, "u-bob", "bob", true)
 
-			deviceCode, userCode, _, err := devices.StartPairing(ctx, "Lounge TV")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := devices.Approve(ctx, userCode, "u-bob"); err != nil {
-				t.Fatal(err)
-			}
-			token, _, err := devices.Redeem(ctx, deviceCode)
-			if err != nil {
-				t.Fatal(err)
-			}
+				timing.before(t, p)
+				path.disable(t, ms, svc, NewUserSync(lib, st, clock))
+				timing.after(t, p)
 
-			tc.disable(t, ms, svc, NewUserSync(lib, st, clock))
+				u, err := st.GetUser(ctx, "u-bob")
+				if err != nil || !u.Disabled {
+					t.Fatalf("u-bob after disable = %+v (%v), want disabled", u, err)
+				}
+				u.Disabled = false
+				if err := st.UpsertUser(ctx, u); err != nil {
+					t.Fatal(err)
+				}
+				timing.afterReEnabled(p)
 
-			u, err := st.GetUser(ctx, "u-bob")
-			if err != nil || !u.Disabled {
-				t.Fatalf("u-bob after disable = %+v (%v), want disabled", u, err)
-			}
-			u.Disabled = false
-			if err := st.UpsertUser(ctx, u); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := devices.ResolveDevice(ctx, token); err == nil {
-				t.Error("a device paired before the disable authenticates again after re-enable")
-			}
-			if list, err := st.ListDeviceTokensForUser(ctx, "u-bob"); err != nil || len(list) != 0 {
-				t.Errorf("u-bob's devices after disable = %d (%v), want 0", len(list), err)
-			}
-		})
+				for _, token := range p.tokens {
+					if _, err := p.devices.ResolveDevice(ctx, token); err == nil {
+						t.Error("a device paired around the disable authenticates after re-enable")
+					}
+				}
+				if list, err := st.ListDeviceTokensForUser(ctx, "u-bob"); err != nil || len(list) != 0 {
+					t.Errorf("u-bob's devices after disable = %d (%v), want 0", len(list), err)
+				}
+			})
+		}
 	}
 }
 
