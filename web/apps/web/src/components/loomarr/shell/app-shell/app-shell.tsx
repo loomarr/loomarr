@@ -11,12 +11,30 @@ import {
   Settings,
   Users,
 } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { usePhoneWidth } from "@/lib/use-phone-width";
 import { BrandLockup } from "../brand-lockup";
-import { PhoneBottomBar } from "../phone-bottom-bar";
 import type { AppShellProps, NavItem } from "./app-shell.type";
+
+// Lazy, not a static import: PhoneBottomBar is @loomarr/design-system's only consumer of
+// TabBar/BottomSheet, which only ever render below `md`. A static import here made AppShell —
+// eager for every route — the thing that kept those components (and the primitives chunk they
+// pull in) live, tripping scripts/check-fe-bundle.mjs's 1 MiB initial-JS budget even on desktop,
+// which never mounts the bar at all. Splitting also needed the package itself marked
+// `"sideEffects": false` (web/packages/design-system/package.json): without it, the bundler kept
+// index.ts's `export { TabBar } from "./src/tab-bar"` alive for every importer of the package root
+// — including main.tsx's eager `LoomarrProvider` — regardless of which specific export a given
+// call site used, so the lazy boundary alone changed nothing until that flag let it tree-shake per
+// binding.
+const PhoneBottomBar = lazy(() =>
+  import("../phone-bottom-bar").then((module) => ({ default: module.PhoneBottomBar })),
+);
+
+// The ios `TabBar`'s own measured height (web always renders that idiom) — holding this row open
+// while the chunk loads keeps the Guide's docked strip (#1795) from jumping up and back down.
+const PHONE_BOTTOM_BAR_HEIGHT = 49;
 
 // AppShell — the broadcast-console frame (frontend-design §3). Nav rail + ⌘K entry
 // + user menu; content renders in `children`. Admin-only sections are gated by
@@ -219,8 +237,18 @@ const AppShell = ({
         {children}
       </main>
       {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
-          `position: fixed`, so it reserves real space rather than floating over content. */}
-      {phoneWidth && <PhoneBottomBar badges={badges} isAdmin={isAdmin} watchChannelId={watchChannelId} />}
+          `position: fixed`, so it reserves real space rather than floating over content. Lazy
+          (above): the Suspense fallback holds that row at the bar's own height so layout doesn't
+          jump once the design-system chunk finishes loading. */}
+      {phoneWidth && (
+        <Suspense
+          fallback={
+            <div data-testid="phone-bottom-bar-placeholder" style={{ height: PHONE_BOTTOM_BAR_HEIGHT }} />
+          }
+        >
+          <PhoneBottomBar badges={badges} isAdmin={isAdmin} watchChannelId={watchChannelId} />
+        </Suspense>
+      )}
     </div>
   );
 };
