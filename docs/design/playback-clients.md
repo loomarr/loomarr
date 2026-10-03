@@ -167,3 +167,36 @@ may still list the device. A 401 clears the credential automatically.
 
 **Acceptance.** An Android UI change needs, in addition to screenshots, a hands-on run of the current
 APK in a windowed, centred API-30 TV emulator with the real remote keys on the touched path.
+
+## iPhone and native Requests (N2)
+
+The paired iPhone is a viewer (Watching, Guide, Surf as on Android TV) with one addition the TV does
+not have: **channel Requests** (maintainer decision N2 of #1659, 2026-10-03). Native has no Home, so
+Requests is where a person asks for a channel and follows it. It is a member-scoped adapter over the
+routes Web already uses; no native-only route exists and no authority is added.
+
+- **Two ways to ask, as Web.** *Channel ideas* are the server's cards (`GET /v1/discovery/ideas`);
+  **Request channel** is `POST /v1/discovery/ideas/{ideaId}/request` and works with AI off. *Describe a
+  channel* is one typed brief (`POST /v1/proposals`) with Web's templates. Both end in the same place:
+  a Proposal Job that waits for an admin unless the requester's `auto_approve` grant applies.
+- **AI off is Web's behaviour, not a native invention.** When the server answers
+  `feature_not_configured` or `grounding_not_configured` the brief is kept and the screen says an
+  administrator has to finish AI or TMDB setup. There is no manual lineup on the phone; ideas stay
+  available. A member is never told to change an admin-only setting.
+- **The list is Web's.** Requests are the caller's own Proposal Jobs (`GET /v1/proposal-jobs?mine=true`),
+  grouped as Web groups them: **Needs you** (requests that couldn't be built; for an admin also the
+  proposals waiting on a decision), **In progress**, **Done**. The status line comes from one pure
+  function over the Journey and its titles' acquisition states, so the badge, the tab and the detail
+  cannot disagree. The server's `actions` and `recoveryAction` decide what may be offered; the client
+  never reconstructs them.
+- **Admin review on an admin-paired phone.** A device acts as the person who paired it. Once the server
+  lets an admin-paired device act as admin (a separate change), the phone offers **Approve**, **Deny**
+  and **Approve selected** exactly as Web's Needs you does, gated on the role in `GET /v1/auth/me`,
+  with Web's consequence copy (approving creates the channel and starts the downloads; denying keeps
+  the reason with the request). Until then `/v1/auth/me` reports `member` and the controls do not
+  appear. Editing a lineup before approval stays on Web.
+- **Touch and orientation.** Portrait only, touch density, every target at least 44 pt. Live updates
+  poll (two seconds while a request is generating); `/v1/events` is only a Web invalidation trigger.
+- **Tab position (open for maintainer review).** The proposal is a fourth tab, **Requests**, after Surf,
+  with Web's count badge (an admin's pending decisions plus anyone's failed requests). The alternative
+  is reaching it from Guide's header, as Web's Guide has a "Request a channel" door.
