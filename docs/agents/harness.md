@@ -250,6 +250,11 @@ or a Codex meter. Do not mistake quiet output for a verified budget.
   process still runs in that worktree (check each process's working directory), fence the old
   dispatch with `worker-abandon`, and re-run `make agent-start` if the worktree left the
   `agent-status` roster.
+- **Close what a worker leaves behind.** `worker-release` settles the dispatch but leaves the
+  worker's tab running at an idle prompt, and a `new-child` or `new-top-level` launch also leaves a
+  setup shell. After accepting a report, read the tab (`orca terminal read`) to confirm it's idle,
+  then `orca terminal close` it and any finished setup shell. Retire the worktree once its PR
+  merges (`make agent-gc`, then `make agent-gc APPLY=1`).
 - **Typing in a worker's tab steers that worker.** A maintainer message meant for the coordinator
   but typed into a worker's tab interrupts the worker. Send it a resume message with
   `orchestration send` and continue.
