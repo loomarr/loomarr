@@ -45,6 +45,25 @@ const (
 	probeNice = 19
 )
 
+// probeDeadlineReason marks a measurement that produced fewer than two samples before probeWindow
+// killed it: the probe's own bookkeeping that a class could not be measured on this host in time,
+// not an encode failure. Expected on a software decode path a CPU-only host is too slow for (#1800);
+// a GPU host clears every class well inside probeWindow. Callers (and tests) grep Failures for it
+// rather than treating any unmeasured class as a bug.
+const probeDeadlineReason = "probe window ended before a measurement"
+
+// deadlineKilled reports whether failures records class as killed by its own probe deadline
+// (probeDeadlineReason) rather than silence or an unrelated ffmpeg error. Used by tests that accept
+// a software host being too slow to clear a class inside probeWindow (#1800).
+func deadlineKilled(failures []string, class StreamClass) bool {
+	for _, f := range failures {
+		if strings.HasPrefix(f, string(class)+" at ") && strings.Contains(f, probeDeadlineReason) {
+			return true
+		}
+	}
+	return false
+}
+
 // Foreground is live playout as the probe's background work sees it (ResourceBudget): a context
 // that ends the moment a live transcode is admitted, and a wait for none to be running.
 type Foreground interface {
@@ -552,6 +571,9 @@ func measureCost(ctx context.Context, cfg ClassProbeConfig, class StreamClass, p
 	}
 	cost, ok := costFromSamples(samples, cmd.ProcessState)
 	if !ok {
+		if windowEnded {
+			return ClassCost{}, fmt.Errorf("%s: no two samples in the %s window on %s", probeDeadlineReason, probeWindow, cfg.Encoder)
+		}
 		msg := firstLine(strings.TrimSpace(stderr.String()))
 		if msg == "" && waitErr != nil {
 			msg = waitErr.Error()
