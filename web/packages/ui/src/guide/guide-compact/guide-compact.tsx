@@ -5,9 +5,9 @@ import {
   type GuideSelection,
   guideAiringLabel,
 } from "@loomarr/core/guide";
-import { Action, Surface, Text } from "@loomarr/design-system";
+import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
-import { type LayoutChangeEvent, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
+import { type LayoutChangeEvent, Pressable, ScrollView, View } from "react-native";
 
 import { guideFilterChannelIds, guideFilterOptions, guideFilterText } from "../guide-filter";
 import type { GuideCompactProps } from "./guide-compact.type";
@@ -99,7 +99,7 @@ const GuideCompact = ({
   // too narrow for its label, and not at all where the now badge sits over it.
   const [timelineWidth, setTimelineWidth] = useState(0);
   // Until the timeline is measured, the window less the page gutters and the number column.
-  const { width: windowWidth } = useWindowDimensions();
+  const windowWidth = useWindowWidth();
   const hitTimelinePx = timelineWidth || Math.max(0, windowWidth - 2 * GUTTER - NUMBER_COLUMN);
   const hourPx = (timelineWidth * hourMs) / span;
   const stride = hourPx <= 0 ? 1 : (LABEL_STRIDES.find((s) => s * hourPx >= LABEL_MIN_PX) ?? 6);
