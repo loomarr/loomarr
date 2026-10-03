@@ -12,6 +12,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // A media-server-only install is the default §9.1 path: Loomarr derives and plays the
@@ -42,7 +43,7 @@ func TestBuild_InternalChannelReconcilesWithoutTunarr(t *testing.T) {
 	t.Cleanup(cancel)
 	st := testkit.MigratedSQLiteStore(t)
 
-	tunarr := testkit.NewTunarr()
+	tunarr := tunarrtest.NewTunarr()
 	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{Programmer: tunarr})
 	if err != nil {
 		t.Fatalf("Build: %v", err)

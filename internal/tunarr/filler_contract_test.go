@@ -1,4 +1,4 @@
-package programmer_test
+package tunarr_test
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // TestEnsureFillerList_ConsumesPinnedEnumerateFixture wires the captured-but-
@@ -40,7 +40,7 @@ func TestEnsureFillerList_ConsumesPinnedEnumerateFixture(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	if err := c.EnsureFillerList(context.Background(), "tunarr-ch-1", nil); err != nil {
 		t.Fatalf("EnsureFillerList over the pinned empty [] capture must be a no-op, got: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestFillerListPrograms_PinnedShapeReadThroughAdapter(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	// Empty desired set + an existing matching list → detach path (DELETE + clear).
 	if err := c.EnsureFillerList(context.Background(), "ch-x", nil); err != nil {
 		t.Fatalf("EnsureFillerList detach over pinned shapes: %v", err)
