@@ -5,6 +5,8 @@ import type { GuideArtworkRenderer, GuideLogoRenderer } from "../guide.type";
 
 interface GuideProgrammeDetailProps {
   density?: Density;
+  /** Selection outline; disable when the initiating block owns focus in a preview. */
+  focused?: boolean;
   layout: GuideLayout;
   /** The empty state's height; three guide rows. */
   minHeight?: number;

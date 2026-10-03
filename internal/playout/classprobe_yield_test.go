@@ -121,6 +121,48 @@ func TestProbeClassCosts_YieldsImmediatelyToALiveTune(t *testing.T) {
 	}
 }
 
+// fakeStalledFFmpeg stands in for an encoder too slow to report even two progress samples before
+// probeWindow kills it: exactly what hevc10_1080p did in software on a CPU-only release runner
+// (#1800). It sleeps past probeWindow, so CommandContext kills it with no output at all.
+func fakeStalledFFmpeg(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "ffmpeg")
+	script := "#!/bin/sh\nexec sleep 30\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// A class a software host is too slow to clear inside the probe's own window must be recorded as
+// unmeasured-with-reason (probeDeadlineReason), not dropped silently or mistaken for a real encode
+// failure (#1800). This reproduces the CI kill deterministically, without needing an actual
+// CPU-starved host: a fake ffmpeg that never reports progress stands in for one too slow to.
+func TestProbeClassCosts_SoftwareDeadlineKillIsUnmeasuredWithReason(t *testing.T) {
+	dir := t.TempDir()
+	clip := probeClips[1] // hevc10_1080p, the class #1800 killed
+	if err := os.WriteFile(filepath.Join(dir, clip.fileName()), []byte("clip"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out := Profile{Width: 1920, Height: 1080, Framerate: 25, VideoBitrate: 3000, AudioBitrate: 128, Encoder: EncoderSoftware}
+	cfg := ClassProbeConfig{
+		FFmpeg: fakeStalledFFmpeg(t, dir), ClipDir: dir, Encoder: EncoderSoftware,
+		Outputs: []Profile{out}, Classes: []StreamClass{clip.class},
+	}
+
+	start := time.Now()
+	res := ProbeClassCosts(t.Context(), cfg)
+	if took := time.Since(start); took > probeWindow+2*time.Second {
+		t.Fatalf("probe ran %v, want it bounded by its own %v window", took, probeWindow)
+	}
+	if _, ok := res.Costs[CostKey{Class: clip.class, Height: out.Height}]; ok {
+		t.Fatalf("a stalled encoder must not leave a measured cost: %+v", res.Costs)
+	}
+	if !deadlineKilled(res.Failures, clip.class) {
+		t.Fatalf("failures = %v, want %s recorded with %q", res.Failures, clip.class, probeDeadlineReason)
+	}
+}
+
 // fakeSessionFFmpeg stands in for an encoder with a hard session cap: each run takes a free slot
 // directory and encodes, or fails like a GeForce past its NVENC limit.
 func fakeSessionFFmpeg(t *testing.T, dir, slots string, capacity int) string {
