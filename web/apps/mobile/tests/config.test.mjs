@@ -42,7 +42,8 @@ test("uses a prototype application identity", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
   assert.match(config.expo.ios.bundleIdentifier, /\.prototype$/);
   assert.match(config.expo.android.package, /\.prototype$/);
-  assert.equal(config.expo.orientation, "default");
+  // Watching puts the controls under a 16:9 picture (Q-N5); landscape waits for #1831.
+  assert.equal(config.expo.orientation, "portrait");
   assert.ok(config.expo.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
 });
 
@@ -84,7 +85,7 @@ test("resolves the TestFlight channel to the permanent iPhone identity", async (
     },
   ]);
   // Everything else is the development config, untouched.
-  assert.equal(config.orientation, "default");
+  assert.equal(config.orientation, "portrait");
   assert.ok(config.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
   assert.match(config.android.package, /\.prototype$/);
 });
