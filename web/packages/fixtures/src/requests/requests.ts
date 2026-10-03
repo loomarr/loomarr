@@ -37,9 +37,11 @@ const journey = (
   ...over,
 });
 
-const lighthouse = item("The Lighthouse Ledger", 9001, { year: 1998 });
-const marmalade = item("Marmalade Street", 9002, { year: 2003 });
-const harbour = item("Harbour Lights", 9003, { year: 2011 });
+// Provider ids sit above 90,000,000, the demo-library range no real TMDB/TVDB id reaches, so a
+// configured TMDB key can never fetch a real poster for an invented title (internal/demolibrary).
+const lighthouse = item("The Lighthouse Ledger", 90009001, { year: 1998 });
+const marmalade = item("Marmalade Street", 90009002, { year: 2003 });
+const harbour = item("Harbour Lights", 90009003, { year: 2011 });
 
 const journeys = {
   generating: journey({
@@ -48,8 +50,8 @@ const journeys = {
     milestone: "generating",
     progress: {
       picks: [
-        { inLibrary: true, key: "movie:tmdb:9001", mediaType: "movie", name: lighthouse.name, year: 1998 },
-        { inLibrary: false, key: "movie:tmdb:9003", mediaType: "movie", name: harbour.name, year: 2011 },
+        { inLibrary: true, key: "movie:tmdb:90009001", mediaType: "movie", name: lighthouse.name, year: 1998 },
+        { inLibrary: false, key: "movie:tmdb:90009003", mediaType: "movie", name: harbour.name, year: 2011 },
       ],
       stage: "choosing",
       startedAt: "2026-10-03T09:00:00Z",
@@ -124,8 +126,8 @@ const journeys = {
 } satisfies Record<string, ProposalJourneyDTO>;
 
 const titles: TitleDTO[] = [
-  { key: "movie:tmdb:9002", mediaType: "movie", state: "downloading", tmdbId: 9002 },
-  { key: "movie:tmdb:9003", mediaType: "movie", state: "wanted", tmdbId: 9003 },
+  { key: "movie:tmdb:90009002", mediaType: "movie", state: "downloading", tmdbId: 90009002 },
+  { key: "movie:tmdb:90009003", mediaType: "movie", state: "wanted", tmdbId: 90009003 },
 ];
 
 const ideas: ChannelIdeaDTO[] = [
@@ -133,7 +135,7 @@ const ideas: ChannelIdeaDTO[] = [
     facet: "genre",
     id: "idea-mystery",
     inLibrary: 14,
-    keys: ["movie:tmdb:9001", "movie:tmdb:9002", "movie:tmdb:9003", "movie:tmdb:9004"],
+    keys: ["movie:tmdb:90009001", "movie:tmdb:90009002", "movie:tmdb:90009003", "movie:tmdb:90009004"],
     movies: 14,
     name: "Fireside Mysteries",
     pitch: "Cosy whodunnits for a slow evening.",
@@ -147,7 +149,7 @@ const ideas: ChannelIdeaDTO[] = [
     facet: "decade",
     id: "idea-nineties",
     inLibrary: 9,
-    keys: ["movie:tmdb:9005", "movie:tmdb:9006"],
+    keys: ["movie:tmdb:90009005", "movie:tmdb:90009006"],
     movies: 11,
     name: "Back to the Nineties",
     pitch: "Rental-shelf favourites, back to back.",
@@ -161,7 +163,7 @@ const ideas: ChannelIdeaDTO[] = [
     facet: "genre",
     id: "idea-sitcom",
     inLibrary: 0,
-    keys: ["tv:tvdb:9007"],
+    keys: ["tv:tvdb:90009007"],
     movies: 0,
     name: "Couch Comedies",
     pitch: "Half-hour sitcoms with laugh tracks.",
