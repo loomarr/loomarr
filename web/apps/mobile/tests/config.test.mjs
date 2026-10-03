@@ -130,6 +130,12 @@ test("opens on the Guide without tuning a channel", async () => {
   assert.match(shell, /useState<ClientDestination>\("guide"\)/);
 });
 
+test("pauses the picture off Watching and forgets the pause before tuning from the Guide", async () => {
+  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
+  assert.match(shell, /useShellPause\(controller, active === "watching"\)/);
+  assert.match(shell, /forgetShellPause\(channelId\);\s*void controller\.tuneChannel\(channelId\)/);
+});
+
 test("pins the native modules the shared player imports to the expo version", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 

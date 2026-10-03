@@ -139,8 +139,9 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             dock={guideDock}
             myChannels={myChannelsSnapshot}
             onTune={(channelId) => {
-              // The tune replaces the stream the shell paused, so resuming it would only blip its audio.
-              forgetShellPause();
+              // Another channel replaces the stream the shell paused, so resuming it would only blip its
+              // audio; the paused channel itself is not re-tuned, so Watching resumes it.
+              forgetShellPause(channelId);
               void controller.tuneChannel(channelId);
               setActive("watching");
             }}

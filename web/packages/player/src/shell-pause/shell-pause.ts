@@ -7,8 +7,12 @@ type ShellPauseController = Pick<PlayerController, "getSnapshot" | "pause" | "pl
 interface ShellPause {
   /** The viewer returned to the picture: resumes only what the shell paused, if it is still paused. */
   enter: () => void;
-  /** The viewer chose something else to watch, so the old pause is no longer the shell's to undo. */
-  forget: () => void;
+  /**
+   * The viewer chose `targetChannelId` to watch: a different channel replaces the stream the shell paused,
+   * so that pause is no longer the shell's to undo; the paused channel itself keeps its resume, because
+   * tuning it again changes nothing and Watching must still bring it back.
+   */
+  forget: (targetChannelId: string) => void;
   /** The picture is off screen: pauses it, remembering the channel if it was running. */
   leave: () => void;
 }
@@ -28,8 +32,8 @@ const createShellPause = (controller: ShellPauseController): ShellPause => {
       const { channel, status } = controller.getSnapshot();
       if (status === "paused" && channel?.id === intent) void controller.play();
     },
-    forget: () => {
-      pausedChannelId = undefined;
+    forget: (targetChannelId) => {
+      if (pausedChannelId !== targetChannelId) pausedChannelId = undefined;
     },
     leave: () => {
       const { channel, status } = controller.getSnapshot();
@@ -40,8 +44,8 @@ const createShellPause = (controller: ShellPauseController): ShellPause => {
   };
 };
 
-/** Pauses the controller while `watching` is false and resumes it on return; `forget` drops the resume. */
-const useShellPause = (controller: ShellPauseController, watching: boolean): (() => void) => {
+/** Pauses the controller while `watching` is false and resumes it on return; `forget` drops the resume unless the viewer picked the paused channel. */
+const useShellPause = (controller: ShellPauseController, watching: boolean): ShellPause["forget"] => {
   const shellPause = useMemo(() => createShellPause(controller), [controller]);
   useEffect(() => {
     if (watching) shellPause.enter();
