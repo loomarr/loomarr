@@ -33,7 +33,7 @@ func TestSeedLibraryChannelsProposalJobsAreListableThroughTheProposalWorkflow(t 
 	}
 
 	picks := []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 101, Name: "Library Pick One", Year: 1991,
+		MediaType: provision.Movie, TMDBID: 90000101, Name: "Library Pick One", Year: 1991,
 		InLibrary: true, LibraryItemID: "lib-item-1",
 	}}
 	raw, err := json.Marshal(picks)
