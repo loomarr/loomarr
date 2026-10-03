@@ -11,6 +11,7 @@ import {
   type PairedClient,
   PairedNativeImage,
   usePairedClient,
+  useShellPause,
 } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
 import {
@@ -24,7 +25,7 @@ import {
 } from "@loomarr/ui";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BackHandler, Platform, ScrollView, View } from "react-native";
 
 const credentialStore = createPairingCredentialStore({
@@ -107,17 +108,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   const { controller, guide, myChannelsSnapshot, snapshot } = client;
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
   // pause when the viewer leaves Watching, and resume what the shell paused when they come back.
-  const pausedByShell = useRef(false);
-  useEffect(() => {
-    if (active !== "watching") {
-      const { status } = controller.getSnapshot();
-      pausedByShell.current = status === "playing" || status === "tuning";
-      controller.pause();
-    } else if (pausedByShell.current) {
-      pausedByShell.current = false;
-      void controller.play();
-    }
-  }, [active, controller]);
+  const forgetShellPause = useShellPause(controller, active === "watching");
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -148,6 +139,8 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             dock={guideDock}
             myChannels={myChannelsSnapshot}
             onTune={(channelId) => {
+              // The tune replaces the stream the shell paused, so resuming it would only blip its audio.
+              forgetShellPause();
               void controller.tuneChannel(channelId);
               setActive("watching");
             }}
