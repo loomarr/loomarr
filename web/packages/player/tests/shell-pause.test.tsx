@@ -64,7 +64,7 @@ const playingOnA = async () => {
 
 /** Renders the hook the way the phone shell does, so a test can move between Guide and Watching. */
 const mountShell = async (initial: PlayerController) => {
-  let forget!: () => void;
+  let forget!: (targetChannelId: string) => void;
   const Probe = ({ controller, watching }: { controller: PlayerController; watching: boolean }) => {
     forget = useShellPause(controller, watching);
     return null;
@@ -76,7 +76,11 @@ const mountShell = async (initial: PlayerController) => {
   const render = (controller: PlayerController, watching: boolean) =>
     act(async () => root.render(createElement(Probe, { controller, watching })));
   await render(initial, true);
-  return { forget: () => forget(), render, unmount: () => act(async () => root.unmount()) };
+  return {
+    forget: (targetChannelId: string) => forget(targetChannelId),
+    render,
+    unmount: () => act(async () => root.unmount()),
+  };
 };
 
 describe("shell pause", () => {
@@ -101,13 +105,45 @@ describe("shell pause", () => {
     await shell.render(controller, false);
 
     // The Guide's onTune: forget the pause, tune, then show Watching.
-    shell.forget();
+    shell.forget("b");
     await act(async () => controller.tuneChannel("b"));
     await shell.render(controller, true);
 
     // The only play is the tune's own, after B's source replaced A's; none resumes A first.
     expect(calls).toEqual(["pause", "replace:b.m3u8", "play"]);
     expect(controller.getSnapshot()).toMatchObject({ channel: { id: "b" } });
+    await shell.unmount();
+  });
+
+  it("forgetting for another channel leaves nothing to resume, even if the snapshot still reads A paused", () => {
+    // A controller whose snapshot has not yet moved to B: only forget stops A from being resumed.
+    const play = vi.fn();
+    let status: "paused" | "playing" = "playing";
+    const shellPause = createShellPause({
+      getSnapshot: () => ({ channel: channels[0], status }) as ReturnType<PlayerController["getSnapshot"]>,
+      pause: () => {
+        status = "paused";
+      },
+      play,
+    });
+    shellPause.leave();
+    shellPause.forget("b");
+    shellPause.enter();
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("resumes the paused channel when the Guide tunes it again", async () => {
+    const { calls, controller, transport } = await playingOnA();
+    const shell = await mountShell(controller);
+    await shell.render(controller, false);
+
+    // Re-tuning A is a no-op for the controller, so Watching's return is the only thing that resumes it.
+    shell.forget("a");
+    await act(async () => controller.tuneChannel("a"));
+    await shell.render(controller, true);
+
+    expect(calls).toEqual(["pause", "play"]);
+    expect(transport.play).toHaveBeenCalledTimes(1);
     await shell.unmount();
   });
 
