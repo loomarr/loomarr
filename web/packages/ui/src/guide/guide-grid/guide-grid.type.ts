@@ -9,6 +9,8 @@ import type { ReactNode } from "react";
 
 interface GuideGridProps {
   layout: GuideLayout;
+  /** Contextual desktop detail; native hosts retain their existing detail adapters. */
+  renderPreview?: (selection: GuideSelection) => ReactNode;
   /** The clock the layout was computed against; draws the now line and its label. */
   nowMs: number;
   /**
@@ -18,8 +20,6 @@ interface GuideGridProps {
   onMove?: (direction: GuideNavigationDirection) => GuideNavigationResult | undefined;
   /** Opens a channel from its row or one of its blocks. */
   onOpenChannel?: (channelId: string) => void;
-  /** The pointer entered a block (its selection) or left one (undefined). */
-  onHover?: (selection: GuideSelection | undefined) => void;
   /** A block took focus, or type-to-jump chose a channel. Wire it to the controller's `select`. */
   onSelect?: (selection: GuideSelection) => void;
   /** The row's ⋯ menu, in the channel column's last slot. Keep it stable (useCallback). */

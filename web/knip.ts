@@ -72,6 +72,8 @@ const config: KnipConfig = {
       // Metro bundles web/native-stories (which import @loomarr/fixtures) into the app when
       // STORYBOOK_ENABLED is set, resolving from the app. expo-updates: knip assumes it unless
       // app.json sets updates.enabled=false; the app ships no OTA updates.
+      // Expo's dynamic config, loaded by the Expo CLI.
+      entry: ["app.config.cjs"],
       ignoreDependencies: ["@loomarr/fixtures", "expo-updates"],
     },
     "apps/tv": {

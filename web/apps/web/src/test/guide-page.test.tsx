@@ -12,7 +12,7 @@ import {
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -300,9 +300,7 @@ describe("Guide", () => {
     );
   });
 
-  // The programme card beside the grid replaced the floating hover card: it shows the block under
-  // the pointer, else the keyboard's block, which starts on what the first channel airs now.
-  it("shows the programme airing now beside the grid, and the hovered one while the pointer is on it", async () => {
+  it("opens contextual details on intent and keeps them through pointer transfer until Escape", async () => {
     const user = userEvent.setup();
     stubGuide();
     const now = Date.now();
@@ -342,21 +340,22 @@ describe("Guide", () => {
     );
     const view = renderAt("/guide");
 
-    // Blocks name themselves by label (jsdom lays out no width for their text), so a title shown
-    // as text is the card's.
-    expect(await view.findByText("On now")).toBeInTheDocument();
-    expect(view.getByText("Space Western")).toBeInTheDocument();
-    expect(view.queryByText("Harbour Mystery")).not.toBeInTheDocument();
-
-    const next = view.getByRole("button", { name: /^Harbour Mystery,/ });
+    const next = await view.findByRole("button", { name: /^Harbour Mystery,/ });
+    expect(within(next).getByText("Harbour Mystery")).toBeInTheDocument();
+    expect(view.queryByRole("tooltip")).not.toBeInTheDocument();
+    vi.spyOn(next, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 200, 150, 44));
     await user.hover(next);
-    expect(await view.findByText("Scheduled")).toBeInTheDocument();
-    expect(view.getByText("Harbour Mystery")).toBeInTheDocument();
-    expect(view.queryByText("Space Western")).not.toBeInTheDocument();
-
-    await user.unhover(next);
-    expect(await view.findByText("On now")).toBeInTheDocument();
-    expect(view.getByText("Space Western")).toBeInTheDocument();
+    expect(view.queryByRole("tooltip")).not.toBeInTheDocument();
+    const preview = await view.findByRole("tooltip");
+    expect(within(preview).getByText("Scheduled")).toBeInTheDocument();
+    expect(within(preview).getByText("Harbour Mystery")).toBeInTheDocument();
+    await user.hover(preview);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(preview).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(view.queryByRole("tooltip")).not.toBeInTheDocument());
+    expect(within(next).getByText("Harbour Mystery")).toBeInTheDocument();
+    expect(view.queryByText("On now")).not.toBeInTheDocument();
   });
 
   // Today's channel row menu fills the grid's ⋯ slot until the maintainer mocks its contents.

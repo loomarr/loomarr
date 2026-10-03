@@ -37,6 +37,15 @@ func TestLive_ClassProbeMeasuresEveryClassAndSelfChecksTonemap(t *testing.T) {
 	for _, class := range TranscodeClasses {
 		c, ok := res.Costs[HDRKey(class, top, ToneCurveHable)]
 		if !ok {
+			// A software host can be too slow to clear a heavy class inside the probe's own
+			// measurement window (#1800: hevc10_1080p killed on a CPU-only release runner). That is
+			// provable without the class actually keeping up: the probe must have recorded why, via
+			// probeDeadlineReason, not swallowed the failure or blamed something else. A GPU host
+			// clears every class well inside the window, so this stays strict there.
+			if IsSoftwareEncoder(enc) && deadlineKilled(res.Failures, class) {
+				t.Logf("%s not measured: its own probe deadline killed it on this software host (acceptable): %v", class, res.Failures)
+				continue
+			}
 			t.Errorf("%s was not measured: %v", class, res.Failures)
 			continue
 		}
