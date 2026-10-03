@@ -35,17 +35,8 @@ jobs:
       LOOMARR_IOS_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/ios-testflight
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      # Fails first, with every missing secret and variable named, then writes the API key to
-      # runner temp. Signing needs the key even when nothing is uploaded.
-      - name: Prepare the App Store Connect credentials
-        env:
-          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
-          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
-          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
-        run: ./web/scripts/build-ios-testflight.sh prepare-credentials
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -54,6 +45,18 @@ jobs:
       - run: make fe-install
       # Metro bundles the generated API client during the Xcode archive.
       - run: make fe-api-codegen
+
+      # Names every missing secret and variable at once, then writes the API key to runner temp.
+      # It runs after dependency installation so no package script runs while the key is on disk.
+      # Signing needs the key even when nothing is uploaded.
+      - name: Prepare the App Store Connect credentials
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
+        run: ./web/scripts/build-ios-testflight.sh prepare-credentials
 
       - name: Archive, export, and verify the IPA
         env:

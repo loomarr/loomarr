@@ -192,8 +192,8 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 						"LOOMARR_IOS_OUTPUT_DIR":   "${{ github.workspace }}/.artifacts/ios-testflight",
 					},
 					steps: map[string]workflowStepAuthority{
-						"make fe-install":     exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-						"make fe-api-codegen": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-api-codegen"}}),
+						"make fe-install":     exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+						"make fe-api-codegen": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-api-codegen"}}),
 					},
 				},
 			},

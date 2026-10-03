@@ -100,6 +100,14 @@ load_evidence() {
     printf 'ios-testflight: evidence names unexpected bundle id %s\n' "$EVIDENCE_BUNDLE_ID" >&2
     exit 1
   fi
+  # Submit only the bytes the build verified, not whatever now has the IPA's name.
+  local expected_sha256 actual_sha256
+  expected_sha256="$(node -p "require(process.argv[1]).ipaSha256" "$evidence")"
+  actual_sha256="$(shasum -a 256 "$IPA" | awk '{ print $1 }')"
+  if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ || "$actual_sha256" != "$expected_sha256" ]]; then
+    printf 'ios-testflight: %s does not match the SHA-256 the build verified\n' "$IPA" >&2
+    exit 1
+  fi
 }
 
 submit() {
@@ -110,7 +118,7 @@ submit() {
     printf 'ios-testflight: ASC_APPLE_APP_ID must be the numeric Apple ID of the app record\n' >&2
     exit 2
   fi
-  require_commands node
+  require_commands node shasum
   load_evidence
   require_commands xcrun
   API_PRIVATE_KEYS_DIR="$(dirname "$LOOMARR_ASC_KEY_PATH")"
@@ -152,7 +160,7 @@ build() {
     printf 'ios-testflight: the iPhone build requires macOS with Xcode\n' >&2
     exit 2
   fi
-  require_commands xcodebuild xcrun plutil lipo codesign unzip pod node pnpm shasum
+  require_commands xcodebuild xcrun plutil lipo codesign unzip pod node pnpm shasum file
 
   # Evidence for triaging ITMS-90111 and for the first dispatch's open questions.
   xcodebuild -version
@@ -304,13 +312,42 @@ verify_ipa() {
     printf 'ios-testflight: IPA has no PrivacyInfo.xcprivacy at the app bundle root\n' >&2
     exit 1
   fi
-  expect "privacy manifest API category" \
-    "$(plutil -extract NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPIType raw -o - "${app}/PrivacyInfo.xcprivacy" 2>/dev/null || true)" \
-    NSPrivacyAccessedAPICategoryUserDefaults
-  # A device binary has arm64 only; any simulator slice or platform makes App Store Connect refuse it.
+  # The app-level manifest makes exactly the declaration app.config.cjs writes, and no tracking claim.
+  node -e '
+    const manifest = JSON.parse(process.argv[1]);
+    const fail = (problem) => {
+      console.error("ios-testflight: IPA privacy manifest " + problem);
+      process.exit(1);
+    };
+    if (manifest.NSPrivacyTracking !== undefined && manifest.NSPrivacyTracking !== false) {
+      fail("declares NSPrivacyTracking");
+    }
+    const types = manifest.NSPrivacyAccessedAPITypes;
+    if (!Array.isArray(types) || types.length !== 1) {
+      fail("has " + (Array.isArray(types) ? types.length : "no") + " accessed-API entries; expected 1");
+    }
+    if (types[0].NSPrivacyAccessedAPIType !== "NSPrivacyAccessedAPICategoryUserDefaults") {
+      fail("declares " + types[0].NSPrivacyAccessedAPIType + "; expected NSPrivacyAccessedAPICategoryUserDefaults");
+    }
+    if (JSON.stringify(types[0].NSPrivacyAccessedAPITypeReasons) !== JSON.stringify(["CA92.1"])) {
+      fail("UserDefaults reasons are not exactly CA92.1");
+    }
+  ' "$(plutil -convert json -o - "${app}/PrivacyInfo.xcprivacy")"
+  # A device binary has arm64 only; any simulator slice or platform makes App Store Connect refuse
+  # it. That holds for every Mach-O in the bundle: the executable, frameworks, dylibs, and plug-ins.
   executable="${app}/$(plist_value CFBundleExecutable)"
   archs="$(xcrun lipo -archs "$executable")"
   expect "executable architectures" "$archs" arm64
+  local binary binary_archs
+  while IFS= read -r -d '' binary; do
+    [[ "$(file -b "$binary")" == Mach-O* ]] || continue
+    binary_archs="$(xcrun lipo -archs "$binary")"
+    expect "${binary#"${app}/"} architectures" "$binary_archs" arm64
+    if [[ "$(xcrun vtool -show-build "$binary" 2>/dev/null || true)" == *SIMULATOR* ]]; then
+      printf 'ios-testflight: IPA %s is built for a simulator platform\n' "${binary#"${app}/"}" >&2
+      exit 1
+    fi
+  done < <(find "$app" -type f -print0)
   codesign --verify --deep --strict "$app"
 
   node -e '

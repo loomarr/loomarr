@@ -64,11 +64,11 @@ const iosReleaseConfig = (config, environment = process.env) => {
         ...config.ios?.privacyManifests,
         NSPrivacyAccessedAPITypes: [
           ...(config.ios?.privacyManifests?.NSPrivacyAccessedAPITypes ?? []),
-          // Audit of the autolinked iOS pods: react-native-tvos, expo-constants and expo-file-system
-          // ship their own manifests, expo-modules-core reads only a file size, and the rest touch
-          // no required-reason API. expo-system-ui persists the root view colour in UserDefaults
-          // and ships no manifest, so the app declares it: CA92.1 = data read and written by the
-          // app itself.
+          // Audit of the autolinked iOS pods: react-native-tvos, expo-constants, expo-file-system
+          // and expo-system-ui ship their own manifests, expo-modules-core reads only a file size,
+          // and the rest touch no required-reason API. expo-system-ui persists the root view colour
+          // in UserDefaults; its manifest declares that, and the app declares it at app level as
+          // well: CA92.1 = data read and written by the app itself.
           {
             NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
             NSPrivacyAccessedAPITypeReasons: ["CA92.1"],

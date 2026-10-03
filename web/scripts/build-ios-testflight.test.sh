@@ -117,9 +117,15 @@ cat > "$temp_dir/out/loomarr-ios-0.2.0-beta.9-42.json" <<'JSON'
 { "bundleIdentifier": "media.loomarr.other", "version": "0.2.0", "buildNumber": "42" }
 JSON
 expect_failure 'evidence for another bundle id' 'unexpected bundle id' "$script" validate
-cat > "$temp_dir/out/loomarr-ios-0.2.0-beta.9-42.json" <<'JSON'
-{ "bundleIdentifier": "media.loomarr.mobile", "version": "0.2.0", "buildNumber": "42" }
-JSON
+write_evidence() {
+  printf '{ "bundleIdentifier": "media.loomarr.mobile", "version": "0.2.0", "buildNumber": "42", "ipaSha256": "%s" }\n' \
+    "$1" > "$temp_dir/out/loomarr-ios-0.2.0-beta.9-42.json"
+}
+write_evidence ''
+expect_failure 'evidence without a hash' 'does not match the SHA-256' "$script" validate
+write_evidence "$(printf 'other ipa bytes' | shasum -a 256 | awk '{ print $1 }')"
+expect_failure 'IPA replaced after the build' 'does not match the SHA-256' "$script" upload
+write_evidence "$(shasum -a 256 "$temp_dir/out/loomarr-ios-0.2.0-beta.9-42.ipa" | awk '{ print $1 }')"
 
 # A fake xcrun records every altool call and prints whatever FAKE_ALTOOL_OUTPUT says.
 cat > "$temp_dir/bin/xcrun" <<'FAKE'

@@ -99,7 +99,10 @@ that cannot be derived from pull requests.
 The **iPhone TestFlight beta** workflow (`.github/workflows/ios-testflight.yml`) builds the
 permanent-identity iPhone app (`media.loomarr.mobile`, [ADR 0042](../design/decisions/0042-iphone-permanent-app-identity.md)),
 verifies the IPA, and optionally uploads it. It is dispatch-only, runs on `main`, and uses the
-`ios-testflight` environment, so a required reviewer approves before any secret is released.
+`ios-testflight` environment, whose deployment branch policy releases the secrets only to `main`.
+The environment has no required reviewer (a maintainer decision): the dry run before each upload is
+the review. `release-verify` pins the trigger, inputs, environment, and every script step's command,
+environment, and condition (`internal/releaseverify/ios_testflight_workflow.go`).
 
 ### One-time Apple setup
 
@@ -116,7 +119,8 @@ verifies the IPA, and optionally uploads it. It is dispatch-only, runs on `main`
 
 ### Repository setup
 
-Create the `ios-testflight` environment, require a reviewer, and limit deployment to `main`. Then set:
+Create the `ios-testflight` environment and limit its deployment branches to `main`; it has no required
+reviewer. Then set:
 
 | Name | Kind | Value |
 | --- | --- | --- |
@@ -126,7 +130,8 @@ Create the `ios-testflight` environment, require a reviewer, and limit deploymen
 | `APPLE_TEAM_ID` | variable | the Team ID |
 | `ASC_APPLE_APP_ID` | variable | the app record's numeric Apple ID |
 
-The first step of the workflow fails with a message naming every missing value.
+The credentials step, which runs after dependency installation and before the archive, fails with a
+message naming every missing value.
 
 ### Dispatch
 
@@ -151,22 +156,26 @@ version, and the build number orders them.
 - the bundle ID is `media.loomarr.mobile`, and `CFBundleShortVersionString` and `CFBundleVersion` match
   the requested version and build number;
 - `ITSAppUsesNonExemptEncryption` is `false` and `NSLocalNetworkUsageDescription` is present;
-- `PrivacyInfo.xcprivacy` is at the app bundle root and declares the `UserDefaults` category;
-- the platform is `iphoneos`, the executable is `arm64` only (no simulator slice), and `codesign` verifies.
+- `PrivacyInfo.xcprivacy` is at the app bundle root, has exactly one accessed-API entry
+  (`UserDefaults` with reason `CA92.1`), and has `NSPrivacyTracking` false or absent;
+- the platform is `iphoneos`, every Mach-O in the app bundle (executable, frameworks, dylibs, and
+  plug-ins) is `arm64` only and not built for a simulator, and `codesign` verifies.
 
 It writes the IPA's SHA-256 and the Xcode version next to the IPA, and the workflow keeps both as an
-artifact for 30 days. `validate` and `upload` then use exactly that IPA.
+artifact for 30 days. `validate` and `upload` re-check the IPA against that SHA-256 and refuse any
+other bytes.
 
 An `ITMS-90111` result means Apple's ingestion rejected the runner's Xcode or macOS as pre-release. The
 script names it and does not retry; wait for the `xcode-27` image to ship a GM Xcode and macOS.
 
 ### Privacy manifest
 
-The app declares only what its own code and unmanifested pods use. The audit of the autolinked iOS
-pods found `UserDefaults` in `expo-system-ui`, which ships no manifest, so the app declares
-`NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1`. `react-native-tvos`, `expo-constants`,
-and `expo-file-system` carry their own manifests, `expo-modules-core` reads only a file size, and the
-other pods use no required-reason API. Repeat the audit when the iOS pod set changes.
+The audit of the autolinked iOS pods found `UserDefaults` in `expo-system-ui`, which persists the root
+view colour there. `expo-system-ui` ships its own `ios/PrivacyInfo.xcprivacy` declaring it, and the app
+declares `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1` at app level as well.
+`react-native-tvos`, `expo-constants`, and `expo-file-system` also carry their own manifests,
+`expo-modules-core` reads only a file size, and the other pods use no required-reason API. Repeat the
+audit when the iOS pod set changes.
 
 ## Image-worker certification
 
