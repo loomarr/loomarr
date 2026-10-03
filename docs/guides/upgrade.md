@@ -60,7 +60,7 @@ not a permanent fallback.
 ## Pull
 
 ```bash
-NEXT_VERSION=0.2.0-beta.7 # replace with the exact release you intend to run
+NEXT_VERSION=0.2.0-beta.8 # replace with the exact release you intend to run
 LOOMARR_VERSION="$NEXT_VERSION" docker compose -f docker/compose.yaml --profile sqlite pull
 LOOMARR_VERSION="$NEXT_VERSION" docker compose -f docker/compose.yaml --profile sqlite up -d
 ```
