@@ -8,7 +8,9 @@ actions use digests or commit SHAs; Renovate proposes the next exact pin. Peer r
 compatibility contracts only. A platform hold (for example Expo's) stays exact and is documented next
 to the dependency. The Expo/Metro graph carries a local source patch on `image-size@1.2.1` (#1162) so
 malformed ICNS/JXL/HEIF boxes fail instead of looping; retire it only when a compatible upstream fix
-passes the same consumer tests.
+passes the same consumer tests. The phone builds `expo-video` from source on iOS because the
+canary's precompiled xcframework links Swift Testing, which kills the app at launch
+(`web/patches/expo-video-58.0.0-canary-20260812-27f94d4.md`).
 
 ## Server (Go 1.27+)
 
