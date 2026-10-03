@@ -3,6 +3,7 @@ package setup_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/library"
@@ -605,5 +606,62 @@ func TestPokeGuideRefresh(t *testing.T) {
 	}
 	if lib.Refreshes != 1 {
 		t.Errorf("guide refresh count = %d, want 1", lib.Refreshes)
+	}
+}
+
+// #1555: WithTunerPublishingDisabled must stop Connect/Prepare/RetireStale/Reconnect from
+// touching the library at all — no AddTuner, no RemoveTuner, no listing mutation, and no error
+// (settings must still save). Checked against testkit.LiveTV.Calls(), the recording fake, rather
+// than any success-shaped double that could mask a missed call site.
+func TestTunerPublishingDisabled_NeitherAddsNorRetires(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	lib.SeedTuner("http://stale.invalid/old.m3u", "loomarr")
+	target := setup.TunarrURLsFrom("http://tunarr:8000")
+	c := setup.NewLiveTVConnectorFixed(lib, target).WithTunerPublishingDisabled(true, nil)
+	ctx := context.Background()
+
+	assertNoMutatingCalls := func(t *testing.T, label string) {
+		t.Helper()
+		for _, call := range lib.Calls() {
+			if strings.HasPrefix(call, "add-") || strings.HasPrefix(call, "remove-") {
+				t.Fatalf("%s: library received mutating call %q (all calls: %v)", label, call, lib.Calls())
+			}
+		}
+	}
+
+	if res, err := c.Connect(ctx); err != nil || res.TunerAdded || res.ListingAdded || res.TunerRemoved != 0 || res.ListingRemoved != 0 {
+		t.Fatalf("Connect() = %+v, %v; want a no-op zero result and no error", res, err)
+	}
+	assertNoMutatingCalls(t, "Connect")
+
+	if res, err := c.Prepare(ctx, target); err != nil || res.TunerAdded || res.ListingAdded {
+		t.Fatalf("Prepare() = %+v, %v; want a no-op zero result and no error", res, err)
+	}
+	if res, err := c.RetireStale(ctx, target); err != nil || res.TunerRemoved != 0 || res.ListingRemoved != 0 {
+		t.Fatalf("RetireStale() = %+v, %v; want a no-op zero result and no error", res, err)
+	}
+	if res, err := c.Reconnect(ctx); err != nil || res.TunerAdded || res.TunerRemoved != 0 {
+		t.Fatalf("Reconnect() = %+v, %v; want a no-op zero result and no error", res, err)
+	}
+	assertNoMutatingCalls(t, "Prepare/RetireStale/Reconnect")
+
+	if !lib.HasTuner("http://stale.invalid/old.m3u") {
+		t.Fatal("the pre-existing stale tuner was retired while publishing was disabled")
+	}
+}
+
+// The switch defaults to false (unset), so an existing fixed-URL connector keeps publishing and
+// retiring exactly as before — production installs that never set the env flag see no change.
+func TestTunerPublishingDisabled_DefaultsToUnchangedBehaviour(t *testing.T) {
+	lib := testkit.NewLiveTV()
+	c := newConnector(lib)
+	ctx := context.Background()
+
+	res, err := c.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.TunerAdded || !res.ListingAdded {
+		t.Fatalf("Connect() = %+v; want the default (unset) switch to add as before", res)
 	}
 }
