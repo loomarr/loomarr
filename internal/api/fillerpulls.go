@@ -138,6 +138,13 @@ func (s *Server) registerFillerPulls(api huma.API) {
 		Description: "Admin only (§10 V35). Records the decision and downloads nothing. The row is kept.",
 		Tags:        []string{"filler"},
 	}, RoleAdmin), s.dismissFillerPull)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "bulk-approve-filler-pulls", Method: http.MethodPost, Path: "/v1/filler/pulls/approve",
+		Summary:     "Approve several pulls (admin)",
+		Description: "Admin only. Approves each id through the SAME single-approve gate — no batch path. Returns a " + "per-id result so one already-decided pull does not hide the rest. Capped at 100 ids per request (Refs #1659).",
+		Tags:        []string{"filler"},
+	}, RoleAdmin), s.bulkApproveFillerPulls)
 }
 
 type pullOutput struct {
