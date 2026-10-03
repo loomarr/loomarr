@@ -189,11 +189,12 @@ routes Web already uses; no native-only route exists and no authority is added.
   cannot disagree. The server's `actions` and `recoveryAction` decide what may be offered; the client
   never reconstructs them.
 - **Admin review on an admin-paired phone.** A device acts as the person who paired it. Once the server
-  lets an admin-paired device act as admin (a separate change), the phone offers **Approve**, **Deny**
-  and **Approve selected** exactly as Web's Needs you does, gated on the role in `GET /v1/auth/me`,
-  with Web's consequence copy (approving creates the channel and starts the downloads; denying keeps
-  the reason with the request). Until then `/v1/auth/me` reports `member` and the controls do not
-  appear. Editing a lineup before approval stays on Web.
+  lets an admin-paired device act as admin (a separate change), the phone offers **Approve**, **Deny**,
+  **Edit** and bulk approve, gated on the role in `GET /v1/auth/me`, with Web's consequence copy
+  (approving creates the channel and starts the downloads; denying keeps the reason with the
+  request). Until then `/v1/auth/me` reports `member` and the controls do not appear. **Edit** is
+  Web's edit-at-the-gate: the admin unticks titles and adds a note, and both ride the one
+  `POST /v1/proposals/{id}/approve` body (`drop`, `note`). Adding a title needs search and stays on Web.
 - **Touch and orientation.** Portrait only, touch density, every target at least 44 pt. Live updates
   poll (two seconds while a request is generating); `/v1/events` is only a Web invalidation trigger.
 - **Tab position (approved mock, #1840).** Requests is a fourth tab between Guide and Surf (Watching ·
@@ -202,5 +203,9 @@ routes Web already uses; no native-only route exists and no authority is added.
   floating action button.
 - **Admin review at phone width (approved mock).** Needs you shows two independently selectable groups,
   **Channel requests** and **Filler downloads**, each with its own Select and bulk approve and no
-  select-all across them, then **Couldn't be built**. Deny and bulk approve use a bottom sheet; a bulk
-  result lists each item's outcome in the `BulkApproveResult` shape.
+  select-all across them, then **Couldn't be built**. Deny, Edit and bulk approve use a bottom sheet; a
+  bulk result lists each item's outcome in the `BulkApproveResult` shape. Channel requests bulk-approve
+  through `POST /v1/proposals/approve`. Filler downloads have no bulk endpoint yet, so the client
+  approves each pull with `POST /v1/filler/pulls/{id}/approve`, one at a time, behind one method that
+  returns the same `{id, ok, error}` results; a bulk endpoint replaces that one method. A filler
+  download is **dismissed**, not denied, and has no note because it has no requester.

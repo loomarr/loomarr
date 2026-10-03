@@ -1,5 +1,5 @@
-export type { ApprovalCardProps } from "./approval-card";
-export { ApprovalCard } from "./approval-card";
+export type { ApprovalGroupProps, ApprovalRow } from "./approval-group";
+export { ApprovalGroup } from "./approval-group";
 export type { RequestCardProps } from "./request-card";
 export { RequestCard } from "./request-card";
 export type { BriefState, RequestChannelProps } from "./request-channel";
@@ -10,3 +10,7 @@ export type { RequestsJourneyProps } from "./requests-journey";
 export { RequestsJourney } from "./requests-journey";
 export type { RequestsListProps } from "./requests-list";
 export { RequestsList } from "./requests-list";
+export type { ReviewState } from "./review";
+export { initialReview, reviewReducer } from "./review";
+export type { ReviewSheetProps } from "./review-sheet";
+export { ReviewSheet } from "./review-sheet";

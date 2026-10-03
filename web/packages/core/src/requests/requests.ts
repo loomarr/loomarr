@@ -5,6 +5,11 @@ import {
   getRequestChannelIdeaUrl,
   getUnhideChannelIdeaUrl,
 } from "@loomarr/api/endpoints/discovery";
+import {
+  getApproveFillerPullUrl,
+  getDismissFillerPullUrl,
+  getListFillerPullsUrl,
+} from "@loomarr/api/endpoints/filler";
 import { getListProposalJobsUrl } from "@loomarr/api/endpoints/proposal-jobs";
 import {
   getApproveProposalUrl,
@@ -18,6 +23,7 @@ import type { ApproveOutputBody } from "@loomarr/api/models/approveOutputBody";
 import type { BulkApproveOutputBody } from "@loomarr/api/models/bulkApproveOutputBody";
 import type { ErrorModel } from "@loomarr/api/models/errorModel";
 import type { ListChannelIdeasOutputBody } from "@loomarr/api/models/listChannelIdeasOutputBody";
+import type { ListFillerPullsOutputBody } from "@loomarr/api/models/listFillerPullsOutputBody";
 import type { ListOutputBody } from "@loomarr/api/models/listOutputBody";
 import type { ListProposalsOutputBody } from "@loomarr/api/models/listProposalsOutputBody";
 import type { MeBody } from "@loomarr/api/models/meBody";
@@ -30,6 +36,9 @@ import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { requestNeedsYou, requestStatus } from "./request-status/request-status";
 import type { RequestTab } from "./request-status/request-status.type";
 import type {
+  ApprovalResult,
+  BulkDecision,
+  BulkOutcome,
   DecisionResult,
   RequestEntry,
   RequestsController,
@@ -42,6 +51,11 @@ import type {
 const GENERATING_POLL_MS = 2_000;
 // GET /v1/titles is a single-state filter, so every acquisition state is fetched and merged.
 const TITLE_STATES = Object.values(TitleDTOState);
+
+const failure = (error: unknown, fallback: string): string => {
+  const { detail, title } = toProblem(error);
+  return title || detail || fallback;
+};
 
 const createRequestsPort = (request: typeof globalThis.fetch): RequestsPort => {
   // A refusal becomes the same typed ApiError the generated client throws, so `toProblem` words it.
@@ -63,18 +77,42 @@ const createRequestsPort = (request: typeof globalThis.fetch): RequestsPort => {
     return parsed as Body;
   };
   return {
-    approve: async (proposalId) => {
-      const { channelId } = await send<ApproveOutputBody>(getApproveProposalUrl(proposalId), "POST", {});
+    approve: async (proposalId, edit) => {
+      // An unedited approval sends `{}`, as Web does: the server reads no drops, adds or note as no edit.
+      const { channelId } = await send<ApproveOutputBody>(
+        getApproveProposalUrl(proposalId),
+        "POST",
+        edit ?? {},
+      );
       return { channelId };
+    },
+    approveFillerPulls: async (pullIds) => {
+      // One at a time: approving is the commit point that starts downloads, so a refusal stops nothing else.
+      const results: ApprovalResult[] = [];
+      for (const id of pullIds) {
+        try {
+          await send(getApproveFillerPullUrl(id), "POST", {});
+          results.push({ id, ok: true });
+        } catch (error) {
+          results.push({ error: failure(error, "Couldn't approve that download."), id, ok: false });
+        }
+      }
+      return { approved: results.filter((result) => result.ok).length, results };
     },
     approveMany: async (proposalIds) => {
       const out = await send<BulkApproveOutputBody>(getBulkApproveProposalsUrl(), "POST", {
         ids: [...proposalIds],
       });
-      return { approved: out.approved, failed: out.results.filter((result) => !result.ok).length };
+      return {
+        approved: out.approved,
+        results: out.results.map(({ error, id, ok }) => ({ ...(error ? { error } : {}), id, ok })),
+      };
     },
     deny: async (proposalId, reason) => {
       await send(getDenyProposalUrl(proposalId), "POST", reason ? { reason } : {});
+    },
+    dismissFillerPull: async (pullId) => {
+      await send(getDismissFillerPullUrl(pullId), "POST");
     },
     hideIdea: async (ideaId) => {
       await send(getHideChannelIdeaUrl(ideaId), "PUT");
@@ -88,6 +126,15 @@ const createRequestsPort = (request: typeof globalThis.fetch): RequestsPort => {
           signal,
         )
       ).proposals ?? [],
+    loadFillerPulls: async (signal) =>
+      (
+        await send<ListFillerPullsOutputBody>(
+          getListFillerPullsUrl({ status: "pending" }),
+          "GET",
+          undefined,
+          signal,
+        )
+      ).pulls ?? [],
     loadIdeas: async (signal) =>
       (await send<ListChannelIdeasOutputBody>(getListChannelIdeasUrl(), "GET", undefined, signal)).ideas ??
       [],
@@ -123,11 +170,6 @@ const createRequestsPort = (request: typeof globalThis.fetch): RequestsPort => {
   };
 };
 
-const failure = (error: unknown, fallback: string): string => {
-  const { detail, title } = toProblem(error);
-  return title || detail || fallback;
-};
-
 const createRequestsController = ({ port }: { port: RequestsPort }): RequestsController => {
   let disposed = false;
   let request: AbortController | undefined;
@@ -137,6 +179,7 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
     approvals: [],
     deciding: [],
     entries: [],
+    fillerPulls: [],
     ideas: [],
     ideasStatus: "loading",
     role: "member",
@@ -162,10 +205,11 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
       // The role decides whether approvals are read at all: a member's page load must not fire a
       // call that can only 403 (Web gates `usePendingApprovals` the same way).
       const me = await port.loadMe(current.signal);
-      const [journeys, titles, approvals] = await Promise.all([
+      const [journeys, titles, approvals, fillerPulls] = await Promise.all([
         port.loadJourneys(current.signal),
         port.loadTitles(current.signal),
         me.role === "admin" ? port.loadApprovals(current.signal) : Promise.resolve([]),
+        me.role === "admin" ? port.loadFillerPulls(current.signal) : Promise.resolve([]),
       ]);
       if (request !== current) return;
       const entries: RequestEntry[] = journeys.map((journey) => ({
@@ -177,6 +221,7 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
         approvals,
         entries,
         errorMessage: undefined,
+        fillerPulls,
         role: me.role,
         status: "ready",
         titles,
@@ -206,48 +251,62 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
     }
   };
 
-  const decide = async (
+  // Runs one decision: marks its ids as in flight, then re-reads, because a failed decision leaves its
+  // item in the list and a done one removes it. A refusal is a sentence in `notice`, never a throw.
+  const settle = async <Result extends { kind: "done" | "failed"; message?: string }>(
     ids: readonly string[],
-    act: () => Promise<DecisionResult>,
+    act: () => Promise<Result>,
+    refused: (message: string) => Result,
     fallback: string,
-  ): Promise<DecisionResult> => {
+  ): Promise<Result> => {
     patch({ deciding: [...snapshot.deciding, ...ids], notice: undefined });
-    let result: DecisionResult;
+    let result: Result;
     try {
       result = await act();
     } catch (error) {
-      result = { kind: "failed", message: failure(error, fallback) };
+      result = refused(failure(error, fallback));
     }
     patch({
       deciding: snapshot.deciding.filter((id) => !ids.includes(id)),
       notice: result.kind === "failed" ? result.message : undefined,
     });
-    // A failed decision leaves its proposal in the list; a done one removes it, so read either way.
     await refresh();
     return result;
   };
+  const decide = (ids: readonly string[], act: () => Promise<DecisionResult>, fallback: string) =>
+    settle(ids, act, (message): DecisionResult => ({ kind: "failed", message }), fallback);
+  // A bulk approve reports every id's outcome, so one refused id is a result row, not a notice.
+  const decideMany = (ids: readonly string[], act: () => Promise<BulkOutcome>, fallback: string) =>
+    settle<BulkDecision>(
+      ids,
+      async () => ({ kind: "done", ...(await act()) }),
+      (message) => ({ kind: "failed", message }),
+      fallback,
+    );
 
   return {
-    approve: (proposalId) =>
+    approve: (proposalId, edit) =>
       decide(
         [proposalId],
-        async () => ({ channelId: (await port.approve(proposalId)).channelId, kind: "done" }),
+        async () => ({ channelId: (await port.approve(proposalId, edit)).channelId, kind: "done" }),
         "Couldn't approve that request.",
       ),
-    approveMany: (proposalIds) =>
+    approveFillerPull: (pullId) =>
       decide(
-        proposalIds,
+        [pullId],
         async () => {
-          const { approved, failed } = await port.approveMany(proposalIds);
-          return failed > 0
-            ? {
-                kind: "failed",
-                message: `${approved} approved, ${failed} couldn't be approved. The rest are still waiting.`,
-              }
+          // The same method as the bulk path, so one pull and many refuse in the same words.
+          const [result] = (await port.approveFillerPulls([pullId])).results;
+          return result?.ok === false
+            ? { kind: "failed", message: result.error ?? "Couldn't approve that download." }
             : { kind: "done" };
         },
-        "Couldn't approve those requests.",
+        "Couldn't approve that download.",
       ),
+    approveFillerPulls: (pullIds) =>
+      decideMany(pullIds, () => port.approveFillerPulls(pullIds), "Couldn't approve those downloads."),
+    approveMany: (proposalIds) =>
+      decideMany(proposalIds, () => port.approveMany(proposalIds), "Couldn't approve those requests."),
     deny: (proposalId, reason) =>
       decide(
         [proposalId],
@@ -256,6 +315,15 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
           return { kind: "done" };
         },
         "Couldn't deny that request.",
+      ),
+    dismissFillerPull: (pullId) =>
+      decide(
+        [pullId],
+        async () => {
+          await port.dismissFillerPull(pullId);
+          return { kind: "done" };
+        },
+        "Couldn't dismiss that download.",
       ),
     dismissNotice: () => patch({ notice: undefined }),
     dispose: () => {
@@ -324,7 +392,7 @@ const createRequestsController = ({ port }: { port: RequestsPort }): RequestsCon
 
 /** The Needs-you count: an admin's pending decisions plus anyone's failed requests (Web's badge). */
 const requestsNeedsYouCount = (snapshot: RequestsSnapshot): number =>
-  (snapshot.role === "admin" ? snapshot.approvals.length : 0) +
+  (snapshot.role === "admin" ? snapshot.approvals.length + snapshot.fillerPulls.length : 0) +
   snapshot.entries.filter(({ journey }) => requestNeedsYou(journey)).length;
 
 /** The entries on one Requests tab. Needs you also carries an admin's approvals, listed separately. */
