@@ -55,6 +55,16 @@ describe("PairedDevices", () => {
     expect(await screen.findByText("No devices yet")).toBeInTheDocument();
   });
 
+  // ADR 0043: a paired device acts with its approver's real role, so an admin's device is an admin.
+  // The copy must not promise a member cap the server no longer applies.
+  it("says the device acts with your access and role", async () => {
+    server.use(getDeviceListMockHandler({ devices: [] }));
+    render(<PairedDevices />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText(/device acts with your access and role/)).toBeInTheDocument();
+    expect(screen.queryByText(/not admin access/)).not.toBeInTheDocument();
+  });
+
   // The approval half: typing the code the TV displays confirms which device was approved, so the
   // operator can tell they approved the right one.
   it("confirms the device name after approving a code", async () => {

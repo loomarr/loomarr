@@ -123,8 +123,9 @@ Pause is shared time-shift, not a private playback stack (decision
 ## Android TV
 
 The paired Android TV client is a watching-first remote surface (decision
-[0023](decisions/0023-android-tv-watching-first.md)). It is a member-scoped adapter over the same
-Channel, Guide, device-profile and signed-HLS contracts as Web; it has no admin session, no
+[0023](decisions/0023-android-tv-watching-first.md)). It is an adapter over the same Channel, Guide,
+device-profile and signed-HLS contracts as Web, acting with the role of the person who paired it
+([0043](decisions/0043-devices-act-with-their-approvers-role.md)); it has no admin screens, no
 media-server token and no second playback API. It installs as a Leanback launcher app and never edits
 the user's home-screen ordering.
 
