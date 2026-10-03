@@ -504,6 +504,27 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	if ok, err := s.ApproveDevicePairing(ctx, "CCCC-CCCC", "u1", now); err != nil || !ok {
 		t.Errorf("ApproveDevicePairing by re-enabled u1 = %v, %v; want true, nil", ok, err)
 	}
+
+	// Sessions follow the same rule: a login that raced a disable must not leave a session behind
+	// that comes back when the user is re-enabled. Disabled and unknown users are issued nothing.
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin, Disabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range []string{"u1", "u-ghost"} {
+		sess := Session{TokenHash: "s-late-" + user, UserID: user, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+		if err := s.CreateSession(ctx, sess); !errors.Is(err, ErrNotFound) {
+			t.Errorf("CreateSession for %s err = %v, want ErrNotFound", user, err)
+		}
+		if _, err := s.GetSession(ctx, sess.TokenHash, now); !errors.Is(err, ErrNotFound) {
+			t.Errorf("a refused session for %s exists: GetSession err = %v", user, err)
+		}
+	}
+	if err := s.UpsertUser(ctx, User{ID: "u1", Name: "Ada", Role: RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateSession(ctx, Session{TokenHash: "s-back", UserID: "u1", CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
+		t.Errorf("CreateSession for re-enabled u1: %v", err)
+	}
 }
 
 // testCounts covers the §17 observability gauges: grouped counts must reflect

@@ -203,7 +203,8 @@ Formerly `design.md` §19.
   allowlist row is rejected even with valid credentials, and no login path creates a row; import is
   admin-only and sync never adds; `member` gets 403 on approve, admin routes and `POST /v1/titles`;
   disabling a user revokes their sessions, paired devices and approved-but-unredeemed pairings, a
-  disabled user can neither approve nor redeem a pairing, and re-enabling them restores none of it;
+  disabled user can neither approve nor redeem a pairing nor be issued a session (a login racing the
+  disable fails like any disabled login), and re-enabling them restores none of it;
   a paired device carries its approver's current role (an admin's device can approve, a member's
   gets 403 on approve, deny, bulk approve, admin routes and promoting itself, a demoted approver's
   device loses admin on its next request, and a disabled approver's or revoked device is rejected); `API_TOKEN` grants break-glass admin; plaintext

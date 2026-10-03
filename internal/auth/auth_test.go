@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -98,6 +99,57 @@ func TestDisableRevokesSessions(t *testing.T) {
 	}
 	if _, err := mgr.Resolve(ctx, token, ""); err == nil {
 		t.Error("session survived Disable (§11 — must be revoked immediately)")
+	}
+}
+
+// disableBeforeCreateSession runs a hook just before a session row is written, which is where an
+// admin disable lands when it falls between login's Disabled check and the INSERT.
+type disableBeforeCreateSession struct {
+	store.Store
+	hook func()
+}
+
+func (s disableBeforeCreateSession) CreateSession(ctx context.Context, sess store.Session) error {
+	s.hook()
+	return s.Store.CreateSession(ctx, sess)
+}
+
+// A disable that lands after login has checked the flag but before the session is written leaves no
+// session behind: otherwise revokeAccess runs first, the INSERT survives it, and the session comes
+// back for its whole TTL when the user is re-enabled.
+func TestLoginRacingADisableIssuesNoSession(t *testing.T) {
+	st := newStore(t)
+	ctx := context.Background()
+	ms := testkit.NewMediaServer(t)
+	t.Cleanup(ms.Close)
+	ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob"}}
+	lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+	clock := func() time.Time { return now }
+	importOne(t, st, "u-bob", "bob", false)
+
+	var svc *LoginService
+	racing := disableBeforeCreateSession{Store: st, hook: func() {
+		if err := svc.Disable(ctx, "u-bob"); err != nil {
+			t.Error(err)
+		}
+	}}
+	mgr := NewManager(racing, time.Hour, clock)
+	svc = NewLoginService(lib, st, mgr, nil, clock)
+
+	if token, _, _, err := svc.Login(ctx, "bob", "pw", "ip|bob"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("Login racing a disable = token %q, err %v; want ErrInvalidCredentials", token, err)
+	}
+
+	u, err := st.GetUser(ctx, "u-bob")
+	if err != nil || !u.Disabled {
+		t.Fatalf("u-bob = %+v (%v), want disabled", u, err)
+	}
+	u.Disabled = false
+	if err := st.UpsertUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := st.ListSessionsForUser(ctx, "u-bob", now); err != nil || len(list) != 0 {
+		t.Errorf("u-bob has %d sessions after re-enable (%v), want 0", len(list), err)
 	}
 }
 
