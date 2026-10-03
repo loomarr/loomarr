@@ -30,6 +30,12 @@ type InferenceCall struct {
 	ChargeStatus      InferenceChargeStatus `json:"chargeStatus"`
 	Attempts          int                   `json:"attempts"`
 	LatencyNanos      int64                 `json:"latencyNanos"`
+	// SelfHosted carries llm.Attribution.SelfHosted — the endpoint's own identity
+	// (Ollama, or an OpenAI-compatible server (*OpenAI).selfHosted() recognizes as
+	// operator-run), not a provider-name string. A missing charge from a self-hosted
+	// endpoint is expected zero spend; from any other provider it is a billing
+	// attribution gap and fails closed (#1852).
+	SelfHosted bool `json:"selfHosted"`
 }
 
 type InferenceTokens struct {
@@ -62,6 +68,7 @@ func scrubAttribution(attribution llm.Attribution) InferenceCall {
 		},
 		ChargeStatus: InferenceChargeMissing,
 		Attempts:     attribution.Attempts, LatencyNanos: int64(attribution.Latency),
+		SelfHosted: attribution.SelfHosted,
 	}
 	if attribution.Charge != nil {
 		call.ChargeStatus = InferenceChargeInvalid

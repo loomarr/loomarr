@@ -117,6 +117,13 @@ type Attribution struct {
 	Latency           time.Duration
 	Attempts          int
 	GenerationID      string
+	// SelfHosted reports whether this call reached an operator-run endpoint (Ollama,
+	// always; or an OpenAI-compatible server identified by (*OpenAI).selfHosted() —
+	// the "custom" provider key, or a private/CGNAT/.local host behind any provider
+	// name) rather than a curated hosted brand. It is the endpoint's identity, never
+	// the model name, and callers (e.g. the eval harness, #1852) use it to decide
+	// whether a missing charge is expected zero spend or a billing attribution gap.
+	SelfHosted bool
 }
 
 // WantsTools reports whether the model requested tool execution this turn.
