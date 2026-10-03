@@ -166,7 +166,7 @@ func buildChannels(
 				if err != nil {
 					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
 				}
-				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok), nil
+				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok, log), nil
 			},
 		}
 		transportFreshness := transportTunerRescanner{
@@ -180,7 +180,7 @@ func buildChannels(
 				if err != nil {
 					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
 				}
-				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok), nil
+				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok, log), nil
 			},
 		}
 		tunerRescanner = transportFreshness
@@ -320,16 +320,21 @@ func buildChannels(
 }
 
 // liveTVURLsFor picks the Live TV URL pair for the backend that will actually stream (§9.1),
-// replacing the deleted setup.LiveTVURLsFor free function. `internal` (the default) ⇒
-// Loomarr's own endpoints; anything else falls back to Tunarr's, read live off the adapter —
-// the pre-§9.1 behaviour and the safer default for an unrecognised value, UNCHANGED here (the
-// fallback-to-internal flip for a corrupted/unrecognised setting is a later PR's call-site
-// consolidation, not this one).
-func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string) setup.LiveTVURLs {
-	if strings.TrimSpace(backend) == "internal" {
-		return setup.InternalPlayoutURLs(publicURL, deviceToken)
+// replacing the deleted setup.LiveTVURLsFor free function. `tunarr` reads the adapter's own
+// URLs; anything else, including an unrecognised value, falls back to the declared default
+// (internal playout, Loomarr's own endpoints) and logs a warning naming the value — the
+// maintainer's call-site consolidation decision (Refs #1564 PR 3): internal is the default
+// backend and Tunarr is now optional, so a stale or corrupted setting must not silently serve
+// a backend the household doesn't run.
+func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string, log *slog.Logger) setup.LiveTVURLs {
+	normalized := schedule.NormalizePlayoutBackend(backend)
+	if normalized == schedule.PlayoutBackendTunarr {
+		return prog.LiveTVURLs()
 	}
-	return prog.LiveTVURLs()
+	if normalized != schedule.PlayoutBackendInternal {
+		log.Warn("unrecognised playout.backend value; Live TV URLs fall back to internal playout", "backend", backend)
+	}
+	return setup.InternalPlayoutURLs(publicURL, deviceToken)
 }
 
 // windowZone resolves the wall clock the rolling-window grid is laid on (#1675): guide.timezone,

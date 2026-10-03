@@ -377,7 +377,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		if err != nil {
 			return setup.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
 		}
-		return liveTVURLsFor(deps.programmer, target, set.str("server.public_url"), tok), nil
+		return liveTVURLsFor(deps.programmer, target, set.str("server.public_url"), tok, log), nil
 	}
 	builtBackendController, err := buildBackendTransition(rootCtx, backendTransitionDependencies{
 		store: st, fleet: channelEngine,
