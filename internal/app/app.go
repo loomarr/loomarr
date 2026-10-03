@@ -29,8 +29,8 @@ type Overrides struct {
 	// Startup is the process-owned report for this application generation. nil creates a minimal
 	// embedded-build report so /readyz still derives from the same state object in tests.
 	Startup    *diagnostics.Startup
-	Programmer tunarr.Programmer // nil ⇒ tunarr.NewDynamic(live Tunarr config)
-	LLM        llm.Provider      // nil ⇒ the Swappable from buildLLM
+	Programmer tunarr.Adapter // nil ⇒ tunarr.NewDynamic(live Tunarr config)
+	LLM        llm.Provider   // nil ⇒ the Swappable from buildLLM
 	// NotificationHTTP redirects provider requests to a hermetic transport in composition tests.
 	// nil uses the bounded production HTTP client owned by notifications.
 	NotificationHTTP notifications.HTTPDoer

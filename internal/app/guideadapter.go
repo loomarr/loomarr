@@ -12,7 +12,7 @@ import (
 // tunarr.GuideEntry → api.ChannelNowNext so the API package needn't import the
 // tunarr client (the house pattern: accept interfaces, adapt at the root).
 type guideAdapter struct {
-	tunarr *tunarr.Tunarr
+	tunarr tunarr.Adapter
 	// window is how far ahead to ask for. It only has to be long enough to contain the
 	// NEXT program — asking for more just makes Tunarr do pointless work.
 	window time.Duration

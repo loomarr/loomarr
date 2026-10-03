@@ -168,8 +168,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Loomarr's own streaming engine (design §9.1): it turns a channel's computed lineup into a continuous MPEG-TS a media server can tune, without Tunarr.
 - **`requester`** · 2 importers · → `httpx`, `metrics`, `provision`
   Requester port (design §2, §6): it asks a downstream service to acquire a title.
-- **`tunarr`** · 3 importers · → `httpx`, `metrics`, `schedule`
-  Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 
 ### Layer 4
 
@@ -185,8 +183,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Defines inert Channel Concepts and the hermetic evaluator used to certify channel-recommendation models.
 - **`store`** · 15 importers · → `clipcatalog`, `contact`, `diagnostics`, `episodeevidence`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `secretprotection`, `taxonomy`
   Loomarr's persistence abstraction (design §5): one Store interface, two first-class backends (SQLite via modernc.org/sqlite, Postgres via pgx's database/sql shim).
-- **`tunarr/tunarrtest`** · → `schedule`, `tunarr`
-  The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
 
 ### Layer 5
 
@@ -217,8 +213,6 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 8
 
-- **`channels`** · 3 importers · → `filler`, `playout`, `provision`, `schedule`, `scheduler`, `store`, `tunarr`
-  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`clipfetch`** · 1 importer · → `bgexec`, `filler`, `storagegovernor`
   Downloads filler clips into the drop-folder (design §10, §16).
 - **`fillerstore`** · 3 importers · → `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillersafety`, `fillerstructure`, `fillerstructurewindow`, `store`
@@ -238,7 +232,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Provisioning backstop (design §4, §7, §18).
 - **`settings`** · 1 importer · → `config`, `library`
   Loomarr's configuration subsystem (config-design.md): one typed registry declares every app-managed setting exactly once, and resolution (env > database > default), the Settings API, the wizard, feature gating, and the generated docs all derive from it.
-- **`setup`** · 1 importer · → `library`
+- **`setup`** · 3 importers · → `library`
   Owns the operator connection flows (§7, §13): the Live TV wiring and setup-status checklist.
 - **`testkit`** · 1 importer · → `filler`, `fillerstore`, `images/rustgen`, `invitation`, `llm`, `notifications`, `playout`, `provision`, `quality`, `reference`, `schedule`, `store`, `testkit/execfixture`, `testkit/postgresimage`
   The shared test doubles and pinned fixtures every test uses (AGENTS.md testing rules: unit tests never touch the network; phases extend the testkit rather than inventing private mocks).
@@ -255,13 +249,19 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
 - **`testkit/catalogfixture`** · → `catalog`, `provision`
   Shared no-network adapters for catalog tests.
+- **`tunarr`** · 3 importers · → `httpx`, `metrics`, `schedule`, `setup`
+  Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
 
 ### Layer 11
 
+- **`channels`** · 3 importers · → `filler`, `playout`, `provision`, `schedule`, `scheduler`, `store`, `tunarr`
+  Channel reconcile engine (design §9/§18): the conductor that turns a store.Channel's approved lineup + live availability into durable desired state for whichever playout backend owns it.
 - **`testkit/moviecollectionsfixture`** · → `moviecollections`
   The shared deterministic source for movie-collection resolver tests.
 - **`tmdb`** · 3 importers · → `catalog`, `httpx`, `metrics`, `moviecollections`, `provision`
   TMDB adapter (design §8 grounding): the TMDB-scope corpus for the catalog and the exists-check for acquisition validation.
+- **`tunarr/tunarrtest`** · → `schedule`, `setup`, `tunarr`
+  The shared Tunarr test double and HTTP fixture server (AGENTS.md testing rules: unit tests never touch the network; extend this package rather than inventing a private mock).
 
 ### Layer 12
 
