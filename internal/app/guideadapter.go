@@ -5,14 +5,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // guideAdapter maps the Tunarr guide reader to api.GuideReader, converting
-// programmer.GuideEntry → api.ChannelNowNext so the API package needn't import the
-// programmer client (the house pattern: accept interfaces, adapt at the root).
+// tunarr.GuideEntry → api.ChannelNowNext so the API package needn't import the
+// tunarr client (the house pattern: accept interfaces, adapt at the root).
 type guideAdapter struct {
-	tunarr *programmer.Tunarr
+	tunarr *tunarr.Tunarr
 	// window is how far ahead to ask for. It only has to be long enough to contain the
 	// NEXT program — asking for more just makes Tunarr do pointless work.
 	window time.Duration
@@ -90,7 +90,7 @@ func (a guideAdapter) Upcoming(ctx context.Context, tunarrID string, now time.Ti
 	return out, nil
 }
 
-func toNowNextEntry(e programmer.GuideEntry) api.NowNextEntry {
+func toNowNextEntry(e tunarr.GuideEntry) api.NowNextEntry {
 	return api.NowNextEntry{
 		Title:   e.Title,
 		StartMs: e.StartMs,

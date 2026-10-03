@@ -21,9 +21,9 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // This file holds the composition root's per-subsystem builders (§14.1).
@@ -48,7 +48,7 @@ import (
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
 func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger,
-	fillerProg *programmer.Tunarr, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
+	fillerProg *tunarr.Tunarr, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := filler.DirSource{
 		Layout: layout,
 		Probe:  filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),

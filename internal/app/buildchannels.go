@@ -19,7 +19,6 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/reconcile"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -28,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 type channelBuild struct {
@@ -144,7 +144,7 @@ func buildChannels(
 	var chanNumbers binder.NumberSource
 	if st != nil {
 		lib := libraryClient
-		prog := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
+		prog := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
@@ -214,7 +214,7 @@ func buildChannels(
 		avail = channels.WithBulkDurations(avail, bulkDurations(lib))
 		// Tests inject an in-process Tunarr double here; production uses the real
 		// URL-built programmer (prog). Either way the engine is a *channels.Engine.
-		pusher := programmer.Programmer(prog)
+		pusher := tunarr.Programmer(prog)
 		if ov.Programmer != nil {
 			pusher = ov.Programmer
 		}
