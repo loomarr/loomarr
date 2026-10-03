@@ -46,21 +46,28 @@ happen without any extra action:
   release image ([`release.yml`](../../.github/workflows/release.yml)) builds from the tagged
   source. Help is current the moment the image is current — there is no separate build step.
 
-What still needs a human: review whether *this* release's user-facing changes are actually
-documented. After generating the preview notes, run the docs gate over the same tag range:
+**The gate runs automatically on the tag.** The [Release notes workflow](../../.github/workflows/release-notes.yml)
+runs `scripts/check-release-docs-gate.sh` right after it renders the notes and before it creates
+the GitHub Release. It fails that workflow — publishing no Release — when the rendered notes
+contain a New Features, Improvements, Bug Fixes, or Security Fixes entry and the tag range
+touched nothing under `docs/`, `docs-site/`, or `README.md`. It reuses the same seven-category
+classification the release notes already show (`internal/releasenotes`) rather than a second
+taxonomy, and it is unconditional like every other step in that workflow: fixing the docs, or
+the PR classification that misled it, is the only way past it. A release that only ships
+Documentation, Dependencies, or Maintenance changes is not held to a docs change it has no
+user-facing reason to need. `release.yml`, the separately hardened image-publication workflow, is
+unchanged — it still owns only build, sign, and promote, with no added step or job.
+
+What still needs a human: catch it *before* tagging, not after a failed Release publication.
+Generate the preview notes and run the same gate locally over the same range:
 
 ```sh
 make release-notes-preview TAG=v0.2.0 PREVIOUS_TAG=v0.1.0-beta.1
 make docs-release-gate TAG=v0.2.0 PREVIOUS_TAG=v0.1.0-beta.1
 ```
 
-`docs-release-gate` fails when the rendered notes contain a New Features, Improvements, Bug
-Fixes, or Security Fixes entry and the tag range touched nothing under `docs/`, `docs-site/`, or
-`README.md`. It reuses the same seven-category classification the release notes already show
-(`internal/releasenotes`) rather than a second taxonomy — see
-[`scripts/check-release-docs-gate.sh`](../../scripts/check-release-docs-gate.sh). A release that
-only ships Documentation, Dependencies, or Maintenance changes is not held to a docs change it
-has no user-facing reason to need.
+See [`scripts/check-release-docs-gate.sh`](../../scripts/check-release-docs-gate.sh) for the gate
+itself, shared by both the local preview and the workflow.
 
 ## What the model can and cannot do
 

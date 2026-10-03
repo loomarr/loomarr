@@ -141,7 +141,7 @@ func workflowActionAuthorityEntries() map[workflowActionKey]string {
 		{workflow: "pages.yml", job: "build", step: 3}:                   `{"uses":"actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d"}`,
 		{workflow: "pages.yml", job: "build", step: 4}:                   `{"uses":"actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9","with":{"path":"docs-site/dist"}}`,
 		{workflow: "pages.yml", job: "deploy", step: 0}:                  `{"id":"deployment","uses":"actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128"}`,
-		{workflow: "release-notes.yml", job: "publish-notes", step: 0}:   `{"name":"Check out the tagged commit","uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
+		{workflow: "release-notes.yml", job: "publish-notes", step: 0}:   `{"name":"Check out the tagged commit","uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1","with":{"fetch-depth":0}}`,
 		{workflow: "release-notes.yml", job: "publish-notes", step: 1}:   `{"name":"Set up Go","uses":"actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e","with":{"go-version-file":"go.mod","cache":false}}`,
 		{workflow: "release.yml", job: "build", step: 0}:                 `{"uses":"actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"}`,
 		{workflow: "release.yml", job: "build", step: 2}:                 `{"uses":"docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e"}`,
