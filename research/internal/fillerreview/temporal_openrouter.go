@@ -191,6 +191,8 @@ func runOpenRouterTemporalInference(ctx context.Context, config OpenRouterTempor
 }
 
 func assessOpenRouterTemporalCase(ctx context.Context, client *http.Client, baseURL, root string, config OpenRouterTemporalConfig, signals fillereval.TemporalCaseSignals, item TemporalReviewCase, checkpoint *temporalOpenRouterCheckpoint, now func() time.Time) (fillereval.TemporalAssessment, error) {
+	caseCtx, cancel := context.WithTimeout(ctx, config.PerCaseTimeout)
+	defer cancel()
 	content, images, err := temporalReviewerContent(root, item)
 	if err != nil {
 		failure := &temporalCallError{code: fillereval.TemporalFailureEvidence, detail: err.Error()}
@@ -198,7 +200,7 @@ func assessOpenRouterTemporalCase(ctx context.Context, client *http.Client, base
 	}
 	calls := make([]fillereval.TemporalInferenceCall, 0, 2)
 	var unit temporalHostedUnitWire
-	call, failure, err := callOpenRouterTemporalClaim(ctx, client, baseURL, config, item, "unit", content, images, &unit, checkpoint, now)
+	call, failure, err := callOpenRouterTemporalClaim(caseCtx, client, baseURL, config, item, "unit", content, images, &unit, checkpoint, now)
 	if err != nil {
 		return fillereval.TemporalAssessment{}, err
 	}
@@ -211,7 +213,7 @@ func assessOpenRouterTemporalCase(ctx context.Context, client *http.Client, base
 	if assessment.Unit.Kind == fillereval.UnitStandalone {
 		var role temporalHostedRoleWire
 		roleContent := content + "\nThe independent unit pass classified this span as standalone. Classify only its semantic role."
-		call, failure, err = callOpenRouterTemporalClaim(ctx, client, baseURL, config, item, "role", roleContent, images, &role, checkpoint, now)
+		call, failure, err = callOpenRouterTemporalClaim(caseCtx, client, baseURL, config, item, "role", roleContent, images, &role, checkpoint, now)
 		if err != nil {
 			return fillereval.TemporalAssessment{}, err
 		}
@@ -243,8 +245,6 @@ func assessOpenRouterTemporalCase(ctx context.Context, client *http.Client, base
 }
 
 func callOpenRouterTemporalClaim(ctx context.Context, client *http.Client, baseURL string, config OpenRouterTemporalConfig, item TemporalReviewCase, axis, content string, images []string, target any, checkpoint *temporalOpenRouterCheckpoint, now func() time.Time) (call fillereval.TemporalInferenceCall, failure *temporalCallError, terminalErr error) {
-	ctx, cancel := context.WithTimeout(ctx, config.PerCaseTimeout)
-	defer cancel()
 	attemptNumber := 1
 	schema, prompt, schemaName := temporalHostedUnitSchema(item), temporalHostedUnitSystemPrompt, "filler_temporal_unit"
 	if axis == "role" {
