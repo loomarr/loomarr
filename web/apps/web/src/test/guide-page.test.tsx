@@ -12,7 +12,7 @@ import {
 import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -341,18 +341,20 @@ describe("Guide", () => {
     const view = renderAt("/guide");
 
     const next = await view.findByRole("button", { name: /^Harbour Mystery,/ });
+    expect(within(next).getByText("Harbour Mystery")).toBeInTheDocument();
     expect(view.queryByRole("tooltip")).not.toBeInTheDocument();
     vi.spyOn(next, "getBoundingClientRect").mockReturnValue(new DOMRect(300, 200, 150, 44));
     await user.hover(next);
     expect(view.queryByRole("tooltip")).not.toBeInTheDocument();
     const preview = await view.findByRole("tooltip");
-    expect(view.getByText("Scheduled")).toBeInTheDocument();
-    expect(view.getByText("Harbour Mystery")).toBeInTheDocument();
+    expect(within(preview).getByText("Scheduled")).toBeInTheDocument();
+    expect(within(preview).getByText("Harbour Mystery")).toBeInTheDocument();
     await user.hover(preview);
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(preview).toBeInTheDocument();
     await user.keyboard("{Escape}");
     await waitFor(() => expect(view.queryByRole("tooltip")).not.toBeInTheDocument());
+    expect(within(next).getByText("Harbour Mystery")).toBeInTheDocument();
     expect(view.queryByText("On now")).not.toBeInTheDocument();
   });
 

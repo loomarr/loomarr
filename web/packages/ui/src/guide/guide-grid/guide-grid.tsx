@@ -55,7 +55,8 @@ const arrowDirection: Record<string, GuideNavigationDirection> = {
 // Keys typed within this gap build one query ("1", "12"); a longer pause starts a new one.
 const TYPEAHEAD_MS = 800;
 
-// Label thresholds from the mock, in pixels of block width.
+// Non-programme label thresholds from the mock, in pixels of block width.
+// Programme identity remains visible in dense timelines; Text clips each line to its block.
 const LABEL_MIN = 74;
 const META_MIN = 132;
 const CLIP_LABEL_MIN = 54;
@@ -216,7 +217,7 @@ const Block = ({
                 );
               })}
             </View>
-          ) : px > LABEL_MIN ? (
+          ) : kind === "program" || px > LABEL_MIN ? (
             // textAlign: a role=button element centres its text on web, and the mock's labels are
             // flush left.
             <>
