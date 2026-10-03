@@ -66,12 +66,21 @@ doesn't repeat old alerts. If the same problem comes back after a new push, it a
 and stacked PRs belong to their owners and are skipped. A PR with auto-merge off is only reported
 after `WATCH_PRS_AUTO_GRACE` seconds (default 1200), because lanes arm auto-merge once CI is green.
 
-The lane watcher finds agent terminals through `orca terminal list` in this repo's secondary
-worktrees. It counts a lane's budget in output tokens across its current Claude session and that
+The lane watcher finds agent terminals through Orca in this repo's secondary
+worktrees. It honors `ORCA_CLI_COMMAND`, uses `orca-dev` in an Orca dev session, and otherwise
+uses `orca-ide` on Linux to avoid invoking the GNOME screen reader. It observes output tokens
+across a worktree's newest Claude session and that
 session's subagents, counting each API message once. It reports at `WATCH_LANE_WARN`,
-`WATCH_LANE_CUTOFF` and `WATCH_LANE_LIMIT` (150k, 190k and 240k by default). If a supervisor's
+`WATCH_LANE_CUTOFF` and `WATCH_LANE_LIMIT` (90k, 105k and 150k by default). If a supervisor's
 checkpoint spans several sessions, write its start time (epoch seconds) to
 `$WATCH_LANES_CHECKPOINTS/<lane>`. The watcher then counts every transcript created since that time.
+
+These are advisory output thresholds, not the full checkpoint meter or an enforced token cap.
+Input tokens and tool results are not counted, and worktree-based discovery cannot distinguish
+multiple Claude sessions sharing a checkout. Codex and other agents, and Claude lanes without a
+transcript, report usage as **UNKNOWN**. For supervised edits, verify an authoritative worker-scoped
+meter and enforcement as required by the [supervisor workflow](../../.agents/workflows/supervise.md#bound-every-checkpoint).
+Silence from this watcher does not establish that a worker is within its checkpoint budget.
 
 ## Retire a worktree cleanly
 
