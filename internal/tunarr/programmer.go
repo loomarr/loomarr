@@ -1,11 +1,11 @@
-// Package programmer is the Programmer boundary (design §6/§9): the port the
+// Package tunarr is the Programmer boundary (design §6/§9): the port the
 // scheduler drives to make a Loomarr channel real, plus its only v1
 // implementation, a thin hand-written Tunarr client (§6: "hand-write a thin
 // client against only the endpoints we use" — not codegen against Tunarr's
 // churny pre-1.0 spec). The interface is abstracted so a future ErsatzTV/dizqueTV
 // target is possible (§9); nothing above this package knows it's talking to
 // Tunarr.
-package programmer
+package tunarr
 
 import (
 	"context"

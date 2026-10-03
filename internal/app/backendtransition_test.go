@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 func TestCurrentBackendTransitionMutatesBeforeResolvingDesired(t *testing.T) {
@@ -162,7 +163,7 @@ func TestBuildInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransi
 	}
 	t.Setenv("PLAYOUT_BACKEND", schedule.PlayoutBackendInternal)
 	t.Setenv("API_TOKEN", "transition-init-test")
-	tunarr := testkit.NewTunarr()
+	tunarr := tunarrtest.NewTunarr()
 	application, err := Build(ctx, st, slog.New(slog.DiscardHandler), Overrides{Programmer: tunarr})
 	if err != nil {
 		t.Fatal(err)

@@ -19,7 +19,6 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/reconcile"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -28,6 +27,7 @@ import (
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 type channelBuild struct {
@@ -144,7 +144,7 @@ func buildChannels(
 	var chanNumbers binder.NumberSource
 	if st != nil {
 		lib := libraryClient
-		prog := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
+		prog := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 		// Every production caller supplies an explicit URL snapshot from the durable checkpoint.
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
@@ -166,9 +166,7 @@ func buildChannels(
 				if err != nil {
 					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for live TV status: %w", err)
 				}
-				return setup.LiveTVURLsFor(
-					backend, set.str("tunarr.url"), set.str("server.public_url"), tok,
-				), nil
+				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok), nil
 			},
 		}
 		transportFreshness := transportTunerRescanner{
@@ -182,21 +180,18 @@ func buildChannels(
 				if err != nil {
 					return setup.LiveTVURLs{}, fmt.Errorf("read playout token for tuner refresh: %w", err)
 				}
-				return setup.LiveTVURLsFor(
-					backend, set.str("tunarr.url"), set.str("server.public_url"), tok,
-				), nil
+				return liveTVURLsFor(prog, backend, set.str("server.public_url"), tok), nil
 			},
 		}
 		tunerRescanner = transportFreshness
 
 		// Wire the media server as Tunarr's media source (§6, POST /v1/setup/tunarr-connect):
 		// uses the concrete Tunarr client's media-source methods (prog), or the injected
-		// double in tests when it implements them. Library flavor/url/token resolved live.
+		// double in tests (tunarr.Adapter satisfies setup.MediaSourceProgrammer structurally,
+		// so no type-assertion is needed). Library flavor/url/token resolved live.
 		var msProg setup.MediaSourceProgrammer = prog
 		if ov.Programmer != nil {
-			if msp, ok := ov.Programmer.(setup.MediaSourceProgrammer); ok {
-				msProg = msp
-			}
+			msProg = ov.Programmer
 		}
 		tunarrConnectSvc = setup.NewMediaSourceConnector(
 			func() setup.MediaSourceLibrary { return libraryClient.Snapshot() }, msProg)
@@ -214,7 +209,7 @@ func buildChannels(
 		avail = channels.WithBulkDurations(avail, bulkDurations(lib))
 		// Tests inject an in-process Tunarr double here; production uses the real
 		// URL-built programmer (prog). Either way the engine is a *channels.Engine.
-		pusher := programmer.Programmer(prog)
+		pusher := tunarr.Programmer(prog)
 		if ov.Programmer != nil {
 			pusher = ov.Programmer
 		}
@@ -281,7 +276,7 @@ func buildChannels(
 			captureResolver: capturePlayoutResolver, library: libraryClient, secrets: secrets,
 			readSecret: readGeneratedSecret, events: eventBus, layout: fillerLayout,
 			channels: channelEngine, liveTVConnector: liveTVConnector, backendView: backendView,
-			resolveDesiredBackend: resolveDesiredBackend, log: log,
+			resolveDesiredBackend: resolveDesiredBackend, log: log, programmer: prog,
 			processDiagnostics: processDiagnostics,
 			storageGovernor:    storageGovernor,
 			metrics:            metricRecorder,
@@ -322,6 +317,19 @@ func buildChannels(
 		setResidentVRAM: setResidentVRAM,
 		channelNumbers:  chanNumbers,
 	}, nil
+}
+
+// liveTVURLsFor picks the Live TV URL pair for the backend that will actually stream (§9.1),
+// replacing the deleted setup.LiveTVURLsFor free function. `internal` (the default) ⇒
+// Loomarr's own endpoints; anything else falls back to Tunarr's, read live off the adapter —
+// the pre-§9.1 behaviour and the safer default for an unrecognised value, UNCHANGED here (the
+// fallback-to-internal flip for a corrupted/unrecognised setting is a later PR's call-site
+// consolidation, not this one).
+func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string) setup.LiveTVURLs {
+	if strings.TrimSpace(backend) == "internal" {
+		return setup.InternalPlayoutURLs(publicURL, deviceToken)
+	}
+	return prog.LiveTVURLs()
 }
 
 // windowZone resolves the wall clock the rolling-window grid is laid on (#1675): guide.timezone,

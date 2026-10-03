@@ -1,13 +1,20 @@
-package testkit
+// Package tunarrtest holds the shared Tunarr test double and HTTP fixture server
+// (AGENTS.md testing rules: unit tests never touch the network; extend this
+// package rather than inventing a private mock). It lives alongside the real
+// internal/tunarr adapter so the double and the production client can't drift
+// independently.
+package tunarrtest
 
 import (
 	"context"
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/setup"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // Tunarr is the shared Programmer test double (AGENTS.md: one mock per service,
@@ -30,7 +37,7 @@ type Tunarr struct {
 	// stays dormant while unconfigured and hot-enables without a network service.
 	FillerSourceEnsures int
 	FillerClipReads     int
-	LocalFillerClips    []programmer.LocalClip
+	LocalFillerClips    []tunarr.LocalClip
 	// Injectable failures (nil = success).
 	SetLineupErr error
 	// SetLineupErrByChannel targets one server-assigned channel id while allowing a
@@ -41,7 +48,7 @@ type Tunarr struct {
 	// competing store write without deadlocking Tunarr introspection. Production
 	// interfaces do not expose these; they are observation points on the one shared
 	// Programmer adapter rather than private per-package doubles.
-	BeforeEnsureChannel func(programmer.ChannelSpec)
+	BeforeEnsureChannel func(tunarr.ChannelSpec)
 	BeforeSetLineup     func(tunarrID string, slots []schedule.Slot)
 	BeforeDeleteChannel func(tunarrID string)
 	// NowMs is the fake's clock for stamping a new channel's loop anchor (epoch ms). 0 ⇒ a
@@ -70,7 +77,7 @@ type msLibrary struct {
 }
 
 type tunarrChan struct {
-	spec      programmer.ChannelSpec
+	spec      tunarr.ChannelSpec
 	lineup    []schedule.Slot
 	set       bool  // whether programming has been set (else GetLineup mimics 400→empty)
 	startTime int64 // the loop anchor (epoch ms), stamped on create, preserved on update
@@ -98,27 +105,27 @@ func (m *Tunarr) nowMs() int64 {
 // private HTTP server for this programmer slice.
 func (m *Tunarr) EnsureLocalFillerSource(
 	_ context.Context, _ string,
-) (programmer.EnsureLocalSourceResult, error) {
+) (tunarr.EnsureLocalSourceResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.FillerSourceEnsures++
 	added := !m.localFillerSource
 	m.localFillerSource = true
-	return programmer.EnsureLocalSourceResult{
+	return tunarr.EnsureLocalSourceResult{
 		SourceID: "local-source", LibraryIDs: []string{"local-library"},
 		SourceAdded: added, Scanned: true,
 	}, nil
 }
 
 // ListLocalFillerClipsAll returns the configured in-memory local clips and records the read.
-func (m *Tunarr) ListLocalFillerClipsAll(context.Context) ([]programmer.LocalClip, error) {
+func (m *Tunarr) ListLocalFillerClipsAll(context.Context) ([]tunarr.LocalClip, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.FillerClipReads++
-	return append([]programmer.LocalClip(nil), m.LocalFillerClips...), nil
+	return append([]tunarr.LocalClip(nil), m.LocalFillerClips...), nil
 }
 
-func (m *Tunarr) EnsureChannel(_ context.Context, spec programmer.ChannelSpec) (string, error) {
+func (m *Tunarr) EnsureChannel(_ context.Context, spec tunarr.ChannelSpec) (string, error) {
 	if m.BeforeEnsureChannel != nil {
 		m.BeforeEnsureChannel(spec)
 	}
@@ -159,12 +166,12 @@ func (m *Tunarr) EnsureChannel(_ context.Context, spec programmer.ChannelSpec) (
 
 // ListChannels reports every channel this Tunarr holds — including ones Loomarr didn't create, so
 // a test can seed a foreign occupant on a number and prove Loomarr moves around it (§9 V54).
-func (m *Tunarr) ListChannels(_ context.Context) ([]programmer.ActualChannel, error) {
+func (m *Tunarr) ListChannels(_ context.Context) ([]tunarr.ActualChannel, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]programmer.ActualChannel, 0, len(m.channels))
+	out := make([]tunarr.ActualChannel, 0, len(m.channels))
 	for id, ch := range m.channels {
-		out = append(out, programmer.ActualChannel{
+		out = append(out, tunarr.ActualChannel{
 			TunarrID: id, Number: ch.spec.Number, Name: ch.spec.Name,
 			Group: ch.spec.Group, Logo: ch.spec.Logo, StartTime: ch.startTime,
 		})
@@ -182,17 +189,17 @@ func (m *Tunarr) SeedForeignChannel(number int, name string) {
 	m.seq++
 	id := fmt.Sprintf("foreign-%d", m.seq)
 	m.channels[id] = &tunarrChan{
-		spec:      programmer.ChannelSpec{TunarrID: id, Number: number, Name: name},
+		spec:      tunarr.ChannelSpec{TunarrID: id, Number: number, Name: name},
 		startTime: m.nowMs(),
 	}
 }
 
-func (m *Tunarr) GetChannel(_ context.Context, tunarrID string) (programmer.ActualChannel, bool, error) {
+func (m *Tunarr) GetChannel(_ context.Context, tunarrID string) (tunarr.ActualChannel, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	ch, ok := m.channels[tunarrID]
 	if !ok {
-		return programmer.ActualChannel{}, false, nil
+		return tunarr.ActualChannel{}, false, nil
 	}
 	pc := 0
 	for _, s := range ch.lineup {
@@ -200,7 +207,7 @@ func (m *Tunarr) GetChannel(_ context.Context, tunarrID string) (programmer.Actu
 			pc++
 		}
 	}
-	return programmer.ActualChannel{
+	return tunarr.ActualChannel{
 		TunarrID:     tunarrID,
 		Number:       ch.spec.Number,
 		Name:         ch.spec.Name,
@@ -307,7 +314,7 @@ func sameIDs(a, b []string) bool {
 	return true
 }
 
-// readback mirrors programmer.slotToItem+itemToSlot: what a real Tunarr would
+// readback mirrors tunarr.slotToItem+itemToSlot: what a real Tunarr would
 // return for a pushed slot. Only a program is content (keeps id); everything else
 // — including filler, which post-§10-redesign lives in a Tunarr filler-list, never
 // inline — is flex (loses id/key). Deliberately lossy: it forces the reconcile diff
@@ -320,4 +327,19 @@ func readback(s schedule.Slot) schedule.Slot {
 	return schedule.Slot{Kind: schedule.SlotFlex, DurationMs: s.DurationMs}
 }
 
-var _ programmer.Programmer = (*Tunarr)(nil)
+// Guide satisfies the Adapter's guide-read surface with an empty schedule. Nothing in the
+// current test suites exercises it through the double: production guide reads always build
+// their own concrete client (buildoperations.go's buildGuide), never ov.Programmer. It exists
+// only so the shared double can be typed tunarr.Adapter for Overrides.Programmer.
+func (m *Tunarr) Guide(context.Context, time.Time, time.Time) (map[string][]tunarr.GuideEntry, error) {
+	return map[string][]tunarr.GuideEntry{}, nil
+}
+
+// LiveTVURLs satisfies the Adapter's Live TV URL surface with the zero value. Like Guide, it is
+// unreached by current tests: the Live TV URL wiring always reads the concrete, non-overridden
+// adapter built alongside this double (see app.liveTVURLsFor), never ov.Programmer.
+func (m *Tunarr) LiveTVURLs() setup.LiveTVURLs {
+	return setup.LiveTVURLs{}
+}
+
+var _ tunarr.Adapter = (*Tunarr)(nil)

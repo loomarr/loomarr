@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // harness drives the REAL composition root (app.Build) end to end, faking
@@ -33,7 +34,7 @@ type harness struct {
 	ms         *testkit.MediaServer
 	seerr      *testkit.Seerr
 	tmdb       *testkit.TMDB
-	tun        *testkit.Tunarr
+	tun        *tunarrtest.Tunarr
 	llm        *testkit.LLM
 	ollama     *testkit.Ollama
 	tunarrStub *httptest.Server // reachability stub for tunarr.url (pushes go to tun)
@@ -93,7 +94,7 @@ func newHarness(t *testing.T, opts ...harnessOpt) *harness {
 	h := &harness{t: t, store: st}
 	h.ms = testkit.NewMediaServer(t)
 	h.tmdb = testkit.NewTMDB(t)
-	h.tun = testkit.NewTunarr()
+	h.tun = tunarrtest.NewTunarr()
 	h.ollama = testkit.NewOllama(t)
 	// A reachable Tunarr: 404 everything (the GetChannel probe treats that as up),
 	// EXCEPT /api/transcode_configs, which the `tunarr` setup check now resolves — a

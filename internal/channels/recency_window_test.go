@@ -13,6 +13,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // Airing history must never re-arrange the window on air (#1674).
@@ -41,7 +42,7 @@ func (a runtimeAvail) ResolveEpisodes(k provision.Key) schedule.EpisodeResolutio
 
 // recencyEngine is an internal-playout engine on a 24 h window with a clock the test moves.
 func recencyEngine(st store.Store, avail schedule.Availability, now *time.Time) *channels.Engine {
-	return channels.New(st, testkit.NewTunarr(), avail, nil, channels.Config{
+	return channels.New(st, tunarrtest.NewTunarr(), avail, nil, channels.Config{
 		ReconcileTTL:  10 * time.Minute,
 		DefaultWindow: 24 * time.Hour,
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) {

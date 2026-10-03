@@ -39,6 +39,7 @@ import (
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/tmdb"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 const adminToken = "admin-integration-token"
@@ -73,7 +74,7 @@ func libDurationResolver(lib *library.Client) channels.DurationResolver {
 type rig struct {
 	srv   *httptest.Server
 	store store.Store
-	tun   *testkit.Tunarr
+	tun   *tunarrtest.Tunarr
 	llm   *testkit.LLM
 	clock func() time.Time
 }
@@ -86,7 +87,7 @@ func newRig(t *testing.T, ms *testkit.MediaServer, llmMock *testkit.LLM) *rig {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	clock := func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }
 
 	// The REAL suggester over the real catalog (real library search against the

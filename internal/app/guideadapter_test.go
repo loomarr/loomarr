@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/api"
-	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // Now/next selection is a containment test, not "take the first entry" — a guide that
 // arrives out of order, or whose first entry has already finished, must still report what
 // is actually airing. Serving a hand-built window here (rather than the pinned capture,
 // which is fixed in wall-clock time) lets the boundaries be exercised precisely; the
-// pinned capture guards the PARSING, in programmer/guide_contract_test.go.
+// pinned capture guards the PARSING, in tunarr/guide_contract_test.go.
 func TestNowNext_PicksAiringAndUpcoming(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
@@ -34,7 +34,7 @@ func TestNowNext_PicksAiringAndUpcoming(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	a := guideAdapter{tunarr: programmer.New(srv.URL, "cfg"), window: 3 * time.Hour}
+	a := guideAdapter{tunarr: tunarr.New(srv.URL, "cfg"), window: 3 * time.Hour}
 	got, err := a.NowNext(context.Background(), now)
 	if err != nil {
 		t.Fatalf("NowNext: %v", err)
@@ -80,7 +80,7 @@ func TestUpcoming_AiringThenNextPrograms_SkipsGapsAndFinished(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	a := guideAdapter{tunarr: programmer.New(srv.URL, "cfg"), window: 3 * time.Hour}
+	a := guideAdapter{tunarr: tunarr.New(srv.URL, "cfg"), window: 3 * time.Hour}
 	got, err := a.Upcoming(context.Background(), "ch-1", now, 6)
 	if err != nil {
 		t.Fatalf("Upcoming: %v", err)
@@ -128,7 +128,7 @@ func TestNowNext_OmitsChannelsWithNothingScheduled(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	a := guideAdapter{tunarr: programmer.New(srv.URL, "cfg"), window: time.Hour}
+	a := guideAdapter{tunarr: tunarr.New(srv.URL, "cfg"), window: time.Hour}
 	got, err := a.NowNext(context.Background(), time.Now())
 	if err != nil {
 		t.Fatalf("NowNext: %v", err)
