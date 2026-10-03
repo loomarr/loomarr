@@ -1,4 +1,4 @@
-package programmer_test
+package tunarr_test
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/programmer"
-	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // fillerMock is a Tunarr double for the §10 filler endpoints: `local` media-source
@@ -191,7 +191,7 @@ func localProgramFixture(id, title string, durationMs int64) map[string]any {
 // and is a no-op create on a second call (enumerate-first idempotency).
 func TestEnsureLocalFillerSource_Idempotent(t *testing.T) {
 	m := newFillerMock("/drop")
-	c := programmer.New(m.server(t).URL, "cfg")
+	c := tunarr.New(m.server(t).URL, "cfg")
 
 	res, err := c.EnsureLocalFillerSource(context.Background(), "/drop")
 	if err != nil {
@@ -226,7 +226,7 @@ func TestEnsureFillerList_EchoesProgramAndAttaches(t *testing.T) {
 		localProgramFixture("clip-a", "Frosted Flakes", 30000),
 		localProgramFixture("clip-b", "TMNT figures", 30000),
 	}
-	c := programmer.New(m.server(t).URL, "cfg")
+	c := tunarr.New(m.server(t).URL, "cfg")
 
 	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}); err != nil {
 		t.Fatal(err)
@@ -264,10 +264,10 @@ func TestEnsureFillerList_EchoesProgramAndAttaches(t *testing.T) {
 }
 
 func TestEnsureFillerList_UsesLiveFillerPolicyPerOperation(t *testing.T) {
-	srv := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{FillerProgramID: "clip"})
+	srv := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{FillerProgramID: "clip"})
 
-	cfg := programmer.Config{BaseURL: srv.URL, FillerWeight: 2, FillerCooldownSeconds: 15}
-	client := programmer.NewDynamic(func() programmer.Config { return cfg })
+	cfg := tunarr.Config{BaseURL: srv.URL, FillerWeight: 2, FillerCooldownSeconds: 15}
+	client := tunarr.NewDynamic(func() tunarr.Config { return cfg })
 	if err := client.EnsureFillerList(context.Background(), "channel", []string{"clip"}); err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestEnsureFillerList_UsesLiveFillerPolicyPerOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := []testkit.TunarrFillerPolicy{
+	want := []tunarrtest.TunarrFillerPolicy{
 		{Weight: 2, CooldownSeconds: 0, RepeatCooldownMs: 15_000},
 		{Weight: 7, CooldownSeconds: 0, RepeatCooldownMs: 90_000},
 	}
@@ -301,7 +301,7 @@ func TestEnsureFillerList_EqualCountDifferentPoolUpdates(t *testing.T) {
 	m.fillerLists = []any{map[string]any{"id": "fl-1", "name": "loomarr:ch-1", "contentCount": 2}}
 	m.attachedProgramIDs = []string{"clip-a", "clip-b"}
 	m.attachedList = "fl-1"
-	c := programmer.New(m.server(t).URL, "cfg")
+	c := tunarr.New(m.server(t).URL, "cfg")
 
 	// New desired pool is also size 2 but a different set → must UPDATE, not no-op.
 	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-c"}); err != nil {
@@ -326,7 +326,7 @@ func TestEnsureFillerList_UnchangedPoolNoWrite(t *testing.T) {
 	m.fillerLists = []any{map[string]any{"id": "fl-1", "name": "loomarr:ch-1", "contentCount": 2}}
 	m.attachedProgramIDs = []string{"clip-a", "clip-b"}
 	m.attachedList = "fl-1"
-	c := programmer.New(m.server(t).URL, "cfg")
+	c := tunarr.New(m.server(t).URL, "cfg")
 
 	if err := c.EnsureFillerList(context.Background(), "ch-1", []string{"clip-a", "clip-b"}); err != nil {
 		t.Fatal(err)
@@ -340,7 +340,7 @@ func TestEnsureFillerList_UnchangedPoolNoWrite(t *testing.T) {
 func TestEnsureFillerList_EmptyNoOp(t *testing.T) {
 	m := newFillerMock("/drop")
 	m.sourceExists = true
-	c := programmer.New(m.server(t).URL, "cfg")
+	c := tunarr.New(m.server(t).URL, "cfg")
 
 	if err := c.EnsureFillerList(context.Background(), "ch-1", nil); err != nil {
 		t.Fatal(err)

@@ -7,8 +7,8 @@ import (
 
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/setup"
-	"github.com/loomarr/loomarr/internal/testkit"
 	"github.com/loomarr/loomarr/internal/testkit/libraryfixture"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 func TestMediaSourceConnect_SnapshotsConnectionAndUsersOnce(t *testing.T) {
@@ -25,7 +25,7 @@ func TestMediaSourceConnect_SnapshotsConnectionAndUsersOnce(t *testing.T) {
 		ListUsersErr: errors.New("rotated server must not supply users to this operation"),
 	}
 	var snapshots int
-	programmer := testkit.NewTunarr()
+	programmer := tunarrtest.NewTunarr()
 	connector := setup.NewMediaSourceConnector(func() setup.MediaSourceLibrary {
 		snapshots++
 		if snapshots == 1 {
