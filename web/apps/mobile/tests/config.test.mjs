@@ -142,3 +142,10 @@ test("opens on the Guide without tuning a channel", async () => {
   assert.match(shell, /usePairedClient\(\{[^}]*initialTune: "none"[^}]*\}\)/);
   assert.match(shell, /useState<ClientDestination>\("guide"\)/);
 });
+
+test("pins the native modules the shared player imports to the expo version", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+
+  assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
+  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
+});
