@@ -223,7 +223,6 @@ func buildHandler(
 		liveConfig:        operations.liveConfig,
 		libraryConfigured: operations.libraryConfigured, jobs: operations.jobs,
 		database: operations.database, residentLLM: operations.residentLLM,
-		healthRefresh: healthRunner,
 	})
 	// SQLite is single-process by contract, so its settings snapshot changes only
 	// through this process's writes and needs no polling reads. Postgres permits
