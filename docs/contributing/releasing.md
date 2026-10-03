@@ -94,6 +94,80 @@ Release body (including its links to the third-party source releases named in
 commit. The tag-specific header remains the place to state limitations
 that cannot be derived from pull requests.
 
+## iPhone TestFlight
+
+The **iPhone TestFlight beta** workflow (`.github/workflows/ios-testflight.yml`) builds the
+permanent-identity iPhone app (`media.loomarr.mobile`, [ADR 0042](../design/decisions/0042-iphone-permanent-app-identity.md)),
+verifies the IPA, and optionally uploads it. It is dispatch-only, runs on `main`, and uses the
+`ios-testflight` environment, so a required reviewer approves before any secret is released.
+
+### One-time Apple setup
+
+1. Enrol in the Apple Developer Program and note the 10-character **Team ID**.
+2. Register the App ID `media.loomarr.mobile`. Automatic signing can register it, but doing it first
+   removes one failure mode.
+3. Create the App Store Connect app record by hand (name, language, bundle ID, SKU). Note its numeric
+   **Apple ID**; App Store Connect cannot create the record from the workflow.
+4. Create a **Team** API key (Users and Access, Integrations; Admin only). An individual key cannot use
+   provisioning endpoints. Download the `.p8` once. Apple's cloud signing then holds the distribution
+   certificate, so the workflow needs no certificate, profile, or keychain. If a role below Admin cannot
+   cloud-sign, use Admin.
+5. Add internal testers in TestFlight.
+
+### Repository setup
+
+Create the `ios-testflight` environment, require a reviewer, and limit deployment to `main`. Then set:
+
+| Name | Kind | Value |
+| --- | --- | --- |
+| `ASC_API_KEY_P8_BASE64` | secret | `base64 -w0 AuthKey_<id>.p8` |
+| `ASC_API_KEY_ID` | secret | the key's 10-character ID |
+| `ASC_API_ISSUER_ID` | secret | the issuer UUID |
+| `APPLE_TEAM_ID` | variable | the Team ID |
+| `ASC_APPLE_APP_ID` | variable | the app record's numeric Apple ID |
+
+The first step of the workflow fails with a message naming every missing value.
+
+### Dispatch
+
+```sh
+gh workflow run ios-testflight.yml --repo loomarr/loomarr --ref main -f version=0.2.0-beta.9
+gh workflow run ios-testflight.yml --repo loomarr/loomarr --ref main -f version=0.2.0-beta.9 -f upload=true
+```
+
+Run the first dispatch with `upload` unset (the default). It signs, exports, verifies, and runs
+`altool --validate-app` without uploading, and it logs `xcodebuild -version` and `sw_vers`. Dispatch
+with `upload=true` only after that run is green. Each upload needs a new run: the build number is
+`github.run_number`, which a re-run keeps, so Apple rejects a second upload of the same run. Keep the
+workflow file name stable, because renaming it can restart `run_number`.
+
+The version is `x.y.z` with an optional suffix. Every prerelease of `0.2.0` shares the `0.2.0` TestFlight
+version, and the build number orders them.
+
+### What verification checks
+
+`web/scripts/build-ios-testflight.sh build` opens the exported IPA and fails unless:
+
+- the bundle ID is `media.loomarr.mobile`, and `CFBundleShortVersionString` and `CFBundleVersion` match
+  the requested version and build number;
+- `ITSAppUsesNonExemptEncryption` is `false` and `NSLocalNetworkUsageDescription` is present;
+- `PrivacyInfo.xcprivacy` is at the app bundle root and declares the `UserDefaults` category;
+- the platform is `iphoneos`, the executable is `arm64` only (no simulator slice), and `codesign` verifies.
+
+It writes the IPA's SHA-256 and the Xcode version next to the IPA, and the workflow keeps both as an
+artifact for 30 days. `validate` and `upload` then use exactly that IPA.
+
+An `ITMS-90111` result means Apple's ingestion rejected the runner's Xcode or macOS as pre-release. The
+script names it and does not retry; wait for the `xcode-27` image to ship a GM Xcode and macOS.
+
+### Privacy manifest
+
+The app declares only what its own code and unmanifested pods use. The audit of the autolinked iOS
+pods found `UserDefaults` in `expo-system-ui`, which ships no manifest, so the app declares
+`NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1`. `react-native-tvos`, `expo-constants`,
+and `expo-file-system` carry their own manifests, `expo-modules-core` reads only a file size, and the
+other pods use no required-reason API. Repeat the audit when the iOS pod set changes.
+
 ## Image-worker certification
 
 Moved verbatim from `design.md` §22 (#1572). The image service's design is in

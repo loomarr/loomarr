@@ -49,6 +49,32 @@ const iosReleaseConfig = (config, environment = process.env) => {
       buildNumber,
       // App Store Connect lets a record add iPad support later but never remove it.
       supportsTablet: false,
+      config: {
+        ...config.ios?.config,
+        // The app uses only HTTPS through the system stack and the Keychain; declaring that here
+        // stops App Store Connect asking the export-compliance question on every upload.
+        usesNonExemptEncryption: false,
+      },
+      infoPlist: {
+        ...config.ios?.infoPlist,
+        // Pairing accepts any http(s) server URL, so a LAN server is a direct local-network connection.
+        NSLocalNetworkUsageDescription: "Loomarr connects to your Loomarr server on your home network.",
+      },
+      privacyManifests: {
+        ...config.ios?.privacyManifests,
+        NSPrivacyAccessedAPITypes: [
+          ...(config.ios?.privacyManifests?.NSPrivacyAccessedAPITypes ?? []),
+          // Audit of the autolinked iOS pods: react-native-tvos, expo-constants and expo-file-system
+          // ship their own manifests, expo-modules-core reads only a file size, and the rest touch
+          // no required-reason API. expo-system-ui persists the root view colour in UserDefaults
+          // and ships no manifest, so the app declares it: CA92.1 = data read and written by the
+          // app itself.
+          {
+            NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
+            NSPrivacyAccessedAPITypeReasons: ["CA92.1"],
+          },
+        ],
+      },
     },
   };
 };
