@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "main": "expo-router/entry",
-  "description": "Prototype Expo touch client; not a shipping application identity before adoption.",
+  "description": "Expo touch client; development builds keep the prototype identity and only the TestFlight release selects media.loomarr.mobile (ADR 0042).",
   "scripts": {
     "start": "expo start",
     "storybook": "EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY=touch STORYBOOK_ENABLED=true expo start",
