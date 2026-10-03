@@ -34,6 +34,34 @@ another destination. Do not commit or paste the key. A tag-specific
 `project/release/<tag>.md` file, when present, is prepended for human-authored framing and known
 limitations.
 
+## Docs pass
+
+The docs ship with every release (#1682, maintainer decision D3; step 5 of #1572). Two things
+happen without any extra action:
+
+- **The docs site** ([Pages workflow](../../.github/workflows/pages.yml)) redeploys on every `v*`
+  tag push, not only on pushes to `main`. It renders `docs/**` in place, so the published site
+  always matches the tagged commit's documentation, even for a release that changed no docs.
+- **The in-app Help set** is `//go:embed`-ded into the server binary (`docs/embed.go`), and the
+  release image ([`release.yml`](../../.github/workflows/release.yml)) builds from the tagged
+  source. Help is current the moment the image is current — there is no separate build step.
+
+What still needs a human: review whether *this* release's user-facing changes are actually
+documented. After generating the preview notes, run the docs gate over the same tag range:
+
+```sh
+make release-notes-preview TAG=v0.2.0 PREVIOUS_TAG=v0.1.0-beta.1
+make docs-release-gate TAG=v0.2.0 PREVIOUS_TAG=v0.1.0-beta.1
+```
+
+`docs-release-gate` fails when the rendered notes contain a New Features, Improvements, Bug
+Fixes, or Security Fixes entry and the tag range touched nothing under `docs/`, `docs-site/`, or
+`README.md`. It reuses the same seven-category classification the release notes already show
+(`internal/releasenotes`) rather than a second taxonomy — see
+[`scripts/check-release-docs-gate.sh`](../../scripts/check-release-docs-gate.sh). A release that
+only ships Documentation, Dependencies, or Maintenance changes is not held to a docs change it
+has no user-facing reason to need.
+
 ## What the model can and cannot do
 
 The helper first asks GitHub to generate the exact merged-PR list, contributor list, and compare link.
@@ -61,10 +89,11 @@ Before requesting remote release certification, test the exact current `main` co
 maintainer's local machine. Record the commit, commands, and results with the release evidence. At
 minimum, run every release-relevant gate this host supports: Go/Rust contracts and tests, Postgres,
 web unit/build, visual/e2e/tuner browser evidence, shared clients, both Expo Android app builds,
-legacy Android TV including its release bundle contract, image-worker certification, and release
-policy verification. Host-incompatible evidence such as iOS/tvOS and native arm64 image builds must
-be named explicitly and remain required in protected CI; a local Linux pass cannot stand in for
-them. Agent sessions still never run the maintainer's live-stack `make smoke*` targets.
+legacy Android TV including its release bundle contract, image-worker certification, release
+policy verification, and the [docs pass](#docs-pass) (`make docs-release-gate`). Host-incompatible
+evidence such as iOS/tvOS and native arm64 image builds must be named explicitly and remain
+required in protected CI; a local Linux pass cannot stand in for them. Agent sessions still never
+run the maintainer's live-stack `make smoke*` targets.
 
 Push the protected version tag only after that local evidence is green, the required commit gates
 are green, and the exact current `main` commit has passed the proportional release-candidate scope:

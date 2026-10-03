@@ -18,6 +18,12 @@ name: Docs site
 on:
   push:
     branches: [main]
+    # Every v* release tag also triggers this workflow (#1682, maintainer decision D3: the
+    # docs site ships with every release). A pushed tag's `before` SHA is the all-zero ref, so
+    # GitHub cannot compute a push diff and ignores `paths` for that push — the tag run always
+    # deploys, even for a release with no docs change, which is what keeps the published site
+    # pinned to the latest release rather than to main's latest documented state.
+    tags: ["v*"]
     paths:
       - "docs/**"
       - "docs-site/**"

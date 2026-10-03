@@ -513,7 +513,7 @@ classify() {
         scripts/check-fe-bundle.mjs) select_gate web; select_gate image ;;
         # Repository contracts, release tooling, and operator helpers the contracts job lints or
         # invokes. Each is named: a new script is not contracts-only until someone says so.
-        scripts/center-android-tv-emulator.js|scripts/check-agent-assets.sh|scripts/check-private-fixtures.sh|scripts/check-release-tag.sh|scripts/check-tags.sh) select_gate contracts ;;
+        scripts/center-android-tv-emulator.js|scripts/check-agent-assets.sh|scripts/check-private-fixtures.sh|scripts/check-release-docs-gate.sh|scripts/check-release-tag.sh|scripts/check-tags.sh) select_gate contracts ;;
         scripts/ci-lane-test.sh|scripts/ci-lane.sh|scripts/codeql-impact-test.sh|scripts/codeql-impact.sh|scripts/deadcode.sh|scripts/generate-release-notes.sh|scripts/go-impact-test.sh|scripts/research-run.sh) select_gate contracts ;;
         scripts/image-parallelism-bench.sh|scripts/latency-sweep.sh|scripts/playout-diag.sh|scripts/run-android-tv-emulator.sh|scripts/test-android-release-emulator-contract-test.sh) select_gate contracts ;;
         scripts/validate-release-source-test.sh|scripts/validate-release-source.sh) select_gate contracts ;;
