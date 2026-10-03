@@ -5,9 +5,9 @@
 #
 # Usage: scripts/dev/watch-lanes.sh [--once]      (exits quietly when the orca CLI is absent)
 #   WATCH_LANES_INTERVAL=20   seconds between polls (short, so a budget overshoot stays small)
-#   WATCH_LANE_WARN=150000    output tokens: warning
-#   WATCH_LANE_CUTOFF=190000  output tokens: the brief's cutoff (interrupt the lane and ask for its report)
-#   WATCH_LANE_LIMIT=240000   output tokens: hard limit
+#   WATCH_LANE_WARN=90000    output tokens: advisory warning
+#   WATCH_LANE_CUTOFF=105000 output tokens: advisory working cutoff
+#   WATCH_LANE_LIMIT=150000  output tokens: advisory limit, never an enforced cap
 #   WATCH_LANES_CHECKPOINTS   directory of "<lane>" files, each holding a checkpoint start epoch; a
 #                             lane with one is metered over every transcript born since then (its
 #                             session plus subagents and restarts). Without one, the lane's newest
@@ -24,27 +24,28 @@ WATCH_SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
 . "$WATCH_SCRIPT_DIR/watch-lib.sh"
 
 interval="${WATCH_LANES_INTERVAL:-20}"
-warn="${WATCH_LANE_WARN:-150000}"
-cutoff="${WATCH_LANE_CUTOFF:-190000}"
-limit="${WATCH_LANE_LIMIT:-240000}"
+warn="${WATCH_LANE_WARN:-90000}"
+cutoff="${WATCH_LANE_CUTOFF:-105000}"
+limit="${WATCH_LANE_LIMIT:-150000}"
+orca_cli="$(watch_orca_cli)"
 claude_projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
 
-# lanes: "handle<TAB>worktree" for each agent terminal in a secondary worktree of this repo.
+# lanes: "handle<TAB>worktree<TAB>agent" for each agent terminal in this repo's secondary trees.
 lanes() {
-	local roots primary handle path root
+	local roots primary handle path root agent
 	roots="$(worktree_roots)"
 	primary="$(git -C "$WATCH_SCRIPT_DIR" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1)"
-	orca terminal list --json 2>/dev/null |
-		jq -r '.result.terminals[]? | select(.agentIdentity != null and .worktreePath != null) | [.handle, .worktreePath] | @tsv' |
-		while IFS="$(printf '\t')" read -r handle path; do
+	"$orca_cli" terminal list --json 2>/dev/null |
+		jq -r '.result.terminals[]? | select(.agentIdentity != null and .worktreePath != null) | [.handle, .worktreePath, .agentIdentity] | @tsv' |
+		while IFS="$(printf '\t')" read -r handle path agent; do
 			if [ -z "$handle" ] || [ "$path" = "$primary" ]; then
 				continue
 			fi
 			while IFS= read -r root; do
 				case $root in
 					'') ;;
-					*'*') case $path in "${root%\*}"*) printf '%s\t%s\n' "$handle" "$path" && break ;; esac ;;
-					*) [ "$path" != "$root" ] && path_under "$path" "$root" && printf '%s\t%s\n' "$handle" "$path" && break ;;
+					*'*') case $path in "${root%\*}"*) printf '%s\t%s\t%s\n' "$handle" "$path" "$agent" && break ;; esac ;;
+					*) [ "$path" != "$root" ] && path_under "$path" "$root" && printf '%s\t%s\t%s\n' "$handle" "$path" "$agent" && break ;;
 				esac
 			done <<EOF
 $roots
@@ -105,6 +106,10 @@ check_budget() { # lane worktree
 	done <<EOF
 $(transcripts "$2" "$1")
 EOF
+	if [ -z "$first" ]; then
+		watch_alert "unmetered.$1" missing "$1: no Claude transcript found; usage UNKNOWN, verify the worker's authoritative meter"
+		return 0
+	fi
 	[ "$total" -ge "$warn" ] && level=1
 	[ "$total" -ge "$cutoff" ] && level=2
 	[ "$total" -ge "$limit" ] && level=3
@@ -119,7 +124,7 @@ EOF
 
 check_terminal() { # lane handle
 	local tail sig
-	tail="$(orca terminal read --terminal "$2" --json 2>/dev/null |
+	tail="$("$orca_cli" terminal read --terminal "$2" --json 2>/dev/null |
 		jq -r '(.result.terminal.tail // []) | if type == "array" then .[-10:] | join(" ") else . end' 2>/dev/null)"
 	[ -n "$tail" ] || return 0
 	sig="$(printf '%s' "$tail" | watch_hash)"
@@ -140,18 +145,22 @@ check_terminal() { # lane handle
 }
 
 poll() {
-	local handle path lane
-	while IFS="$(printf '\t')" read -r handle path; do
+	local handle path lane agent
+	while IFS="$(printf '\t')" read -r handle path agent; do
 		[ -n "$handle" ] || continue
 		lane="$(basename "$path")"
-		check_budget "$lane" "$path"
+		if [ "$agent" = claude ]; then
+			check_budget "$lane" "$path"
+		else
+			watch_alert "unmetered.$handle" "$agent" "$lane: $agent usage UNKNOWN to this watcher; verify the worker's authoritative meter"
+		fi
 		check_terminal "$lane" "$handle"
 	done <<EOF
 $(lanes)
 EOF
 }
 
-command -v orca >/dev/null 2>&1 || {
+command -v "$orca_cli" >/dev/null 2>&1 || {
 	echo 'watch-lanes: orca CLI not found; skipping' >&2
 	exit 0
 }
