@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr native Requests — design review</title>
+<style>
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #E7EAF0; background: #0B0C0E; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a, input { font: inherit; }
+  button, select { min-height: 44px; color: inherit; background: #1B1E24; border: 1px solid #666970; border-radius: 6px; padding: 8px 12px; }
+  a { color: inherit; text-decoration: none; }
+  button, a, select, label { cursor: pointer; }
+  :focus-visible { outline: 2px solid #FFB020; outline-offset: 3px; }
+
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2A2E37; background: #131519; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .review-note { font-size: 13px; color: #8B93A3; margin: 12px 24px; max-width: 900px; }
+  .review-note.open { color: #DC5BAC; }
+
+  #stage { display: flex; flex-wrap: wrap; gap: 32px; justify-content: center; margin: 24px; }
+  .device { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .device-label { font-size: 12px; font-family: 'Geist Mono', ui-monospace, monospace; color: #8B93A3; text-transform: uppercase; letter-spacing: .06em; }
+  .device.hidden { display: none; }
+
+  /* Phone chassis */
+  .phone { width: 390px; height: 844px; border: 10px solid #1B1E24; border-radius: 44px; overflow: hidden; position: relative; background: #0B0C0E; box-shadow: 0 0 0 1px #2A2E37; }
+  .phone.android { width: 412px; height: 892px; border-radius: 28px; }
+  .screen { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Header */
+  .appbar-ios { padding: 54px 16px 12px; }
+  .appbar-ios h1 { font-size: 28px; font-weight: 650; line-height: 34px; margin: 0; }
+  .appbar-ios .row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  .appbar-material { padding: 44px 16px 14px; display: flex; align-items: center; justify-content: space-between; background: #131519; border-bottom: 1px solid #2A2E37; }
+  .appbar-material h1 { font-size: 22px; font-weight: 600; margin: 0; }
+  .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; background: transparent; border: none; border-radius: 999px; color: #E7EAF0; flex-shrink: 0; }
+  .icon-btn:hover { background: #1B1E24; }
+  .fab { position: absolute; right: 16px; bottom: 96px; width: 56px; height: 56px; border-radius: 16px; background: #FFB020; color: #0B0C0E; display: grid; place-items: center; border: none; box-shadow: 0 4px 10px rgba(0,0,0,.4); z-index: 5; }
+
+  /* Segmented / count tabs (phone-density NavTabs — see evidence, no native primitive exists yet) */
+  .tabs { display: flex; gap: 6px; padding: 4px 16px 12px; }
+  .tab { flex: 1; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; background: transparent; border: 1px solid transparent; color: #8B93A3; font-size: 14px; font-weight: 500; }
+  .tab[aria-selected="true"] { background: #1B1E24; color: #E7EAF0; border-color: #2A2E37; }
+  .tab .count { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; padding: 0 5px; border-radius: 999px; background: #2A2E37; color: #8B93A3; }
+  .tab .count.suggest { background: color-mix(in srgb, #D6409F 15%, transparent); color: #DC5BAC; }
+
+  .content { flex: 1; overflow-y: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 20px; -webkit-overflow-scrolling: touch; }
+
+  .group-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0 2px; }
+  .group-head h2 { font-size: 15px; font-weight: 600; margin: 0; color: #8B93A3; text-transform: uppercase; letter-spacing: .04em; }
+  .link-btn { background: none; border: none; color: #FFB020; font-size: 13px; font-weight: 500; min-height: 36px; padding: 4px 6px; }
+
+  .card { background: #131519; border: 1px solid #2A2E37; border-radius: 12px; padding: 12px; display: flex; gap: 10px; align-items: flex-start; }
+  .card.selecting { padding-left: 8px; }
+  .checkbox { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #666970; margin-top: 2px; flex-shrink: 0; display: grid; place-items: center; background: transparent; }
+  .checkbox[aria-checked="true"] { background: #FFB020; border-color: #FFB020; color: #0B0C0E; font-size: 13px; font-weight: 700; }
+  .card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .card-title { font-size: 15px; font-weight: 600; line-height: 20px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-meta { font-size: 12px; color: #8B93A3; line-height: 16px; }
+  .card-meta.mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  .badge { display: inline-flex; align-self: flex-start; align-items: center; padding: 2px 6px; border-radius: 4px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .badge.neutral { background: #1B1E24; color: #8B93A3; }
+  .badge.tune { background: color-mix(in srgb, #4CC9E8 15%, transparent); color: #4CC9E8; }
+  .badge.lock { background: color-mix(in srgb, #3DD68C 15%, transparent); color: #3DD68C; }
+  .badge.caution { background: color-mix(in srgb, #F5D90A 15%, transparent); color: #F5D90A; }
+  .badge.onair { background: color-mix(in srgb, #E5484D 15%, transparent); color: #E85A5F; }
+  .badge.suggest { background: color-mix(in srgb, #D6409F 15%, transparent); color: #DC5BAC; }
+  .card-hint { font-size: 13px; color: #8B93A3; line-height: 18px; }
+  .card-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .btn { min-height: 36px; padding: 6px 12px; border-radius: 7px; font-size: 13px; font-weight: 600; border: 1px solid #666970; background: transparent; color: #E7EAF0; }
+  .btn.primary { background: #FFB020; color: #0B0C0E; border-color: #FFB020; }
+  .btn.outline { background: transparent; }
+
+  .thumbs { display: flex; flex-shrink: 0; }
+  .thumbs .th { width: 36px; height: 54px; border-radius: 5px; background: #1B1E24; border: 1px solid #2A2E37; display: grid; place-items: center; font-size: 9px; color: #5A6170; }
+  .thumbs .th:nth-child(2) { margin-left: -14px; }
+
+  .empty { padding: 40px 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+  .empty h2 { font-size: 19px; margin: 0; }
+  .empty p { color: #8B93A3; font-size: 14px; margin: 0; line-height: 20px; }
+
+  .skeleton-card { height: 72px; border-radius: 12px; background: linear-gradient(90deg,#131519,#1B1E24,#131519); }
+
+  .error-box { display: flex; flex-direction: column; gap: 10px; padding: 24px 0; }
+  .error-box h2 { font-size: 16px; margin: 0; }
+  .error-box p { color: #8B93A3; font-size: 13px; margin: 0; }
+
+  /* Footer nav: TabBar primitive, ios vs material idiom (#1776) */
+  .tabbar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; }
+  .tabbar.ios { background: #0B0C0E; border-top: 1px solid #2A2E37; height: 83px; padding-top: 8px; }
+  .tabbar.material { background: #131519; height: 80px; padding-top: 12px; }
+  .tabbar button { flex: 1; min-height: 49px; background: transparent; border: none; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #8B93A3; }
+  .tabbar .pill { width: 64px; height: 28px; border-radius: 8px; display: grid; place-items: center; }
+  .tabbar.material .pill { height: 32px; border-radius: 999px; }
+  .tabbar button[aria-selected="true"] .pill.material-sel { background: #2A2E37; }
+  .tabbar button[aria-selected="true"] { color: #E7EAF0; }
+  .tabbar .lbl { font-size: 10px; font-weight: 500; }
+  .tabbar.material .lbl { font-size: 12px; }
+  .tabbar .glyph { font-size: 17px; line-height: 1; }
+  .tabbar .req-dot { position: absolute; top: -2px; right: 14px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: #DC5BAC; color: #0B0C0E; font-size: 9px; font-weight: 700; display: grid; place-items: center; font-family: 'Geist Mono', ui-monospace, monospace; }
+
+  /* BottomSheet (#1776): raised surface, 12pt top radius; grabber on iOS, docked strip (no grabber) on Android */
+  .sheet-wrap { position: absolute; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-direction: column; }
+  .sheet { background: #131519; border-top-left-radius: 12px; border-top-right-radius: 12px; padding: 16px 16px 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 -4px 16px rgba(0,0,0,.4); }
+  .sheet.docked { padding-top: 14px; }
+  .grabber { width: 36px; height: 4px; border-radius: 4px; background: #2A2E37; align-self: center; margin-bottom: 4px; }
+  .sheet-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sheet-row p { margin: 0; font-size: 14px; }
+  .sheet-row .meta { color: #8B93A3; font-size: 12px; }
+  .sheet-actions { display: flex; gap: 10px; }
+  .sheet-actions .btn { flex: 1; }
+  .sheet textarea { width: 100%; min-height: 56px; background: #1B1E24; border: 1px solid #2A2E37; border-radius: 8px; color: #E7EAF0; padding: 8px; resize: none; font-size: 13px; }
+  .fail-list { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .fail-list li { font-size: 12px; color: #8B93A3; }
+  .fail-list .ok { color: #3DD68C; }
+  .fail-list .bad { color: #E85A5F; }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #E7EAF0; color: #0B0C0E; padding: 10px 16px; border-radius: 8px; font-size: 13px; max-width: 86vw; text-align: center; z-index: 50; }
+</style>
+
+<div class="review">
+  <strong>Native Requests · design review (#1659, N2)</strong>
+  <label>Role <select id="role"><option value="admin">Admin</option><option value="member">Member</option></select></label>
+  <label><input id="both" type="checkbox" checked> Show both phones</label>
+  <label>Long titles <input id="long" type="checkbox"></label>
+  <label>Requests tab position
+    <select id="navpos">
+      <option value="afterGuide">A — after Guide</option>
+      <option value="afterSurf">B — after Surf (last)</option>
+    </select>
+  </label>
+  <label>Android primary action
+    <select id="androidPrimary">
+      <option value="appbar">App-bar icon</option>
+      <option value="fab">FAB</option>
+    </select>
+  </label>
+</div>
+<p class="review-note">
+  Invented fixtures only; no production data or components. Every link/button below is intercepted —
+  nothing calls a server. Items in pink text below are open questions the inputs did not settle; see
+  <code>project/evidence/native-requests-2026-10-03.md</code>.
+</p>
+<p class="review-note open" id="openq"></p>
+
+<div id="stage"></div>
+<p class="review-note" id="action" role="status" aria-live="polite">Pick a tab, select items, or tap Approve/Deny to try the flows.</p>
+<div id="toastHost"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// ---- Fixtures (all invented) --------------------------------------------------------------
+const LONG_TITLE = "A channel that plays only black-and-white detective films from before 1960, skipping anything with a laugh track";
+
+const baseState = () => ({
+  tab: 'needsYou',
+  selecting: { requests: false, filler: false },
+  selected: { requests: new Set(), filler: new Set() },
+  sheet: null, // {kind:'deny'|'bulk'|'result', ...}
+  removed: new Set(),
+  scenario: 'populated', // populated | empty | loading | error
+  proposals: [
+    { id:'p1', title:'A channel for slow Sunday mornings', by:'Jordan', meta:'14 titles · 3 to download · up to TV-14' },
+    { id:'p2', title:'Overnight jazz and rain sounds', by:'Casey', meta:'6 titles · 1 to download · up to PG-13' },
+    { id:'p3', title:'Saturday morning cartoons, 90s only', by:'you (Admin)', meta:'9 titles · 9 to download · up to TV-Y7' },
+  ],
+  pulls: [
+    { id:'f1', title:'Retro game-show bumpers', by:'Loomarr', meta:'40 clips · 1 source · about 3m total' },
+    { id:'f2', title:'Static and tuning-card stingers', by:'Loomarr', meta:'18 clips · 2 sources · about 1m total' },
+  ],
+  failed: [
+    { id:'j1', title:'A channel of nothing but courtroom dramas', hint:"Couldn't find enough grounded titles for this request.", fix:'Edit reference', mine:false },
+  ],
+  failedMember: [
+    { id:'j2', title:'A channel about small towns in autumn', hint:"This household's acquisition budget is used up this week. Try again after the weekly reset.", fix:'Try again' },
+  ],
+  inProgress: [
+    { title:'Overnight jazz and rain sounds', line:'Getting 3 titles (3 downloading)', tone:'caution', when:'2 days ago', hint:'3 titles are still coming in.' },
+    { title:'A channel for slow Sunday mornings', line:'Waiting for approval', tone:'suggest', when:'5 hours ago', hint:'An admin needs to approve this before it builds.' },
+    { title:'Saturday morning cartoons, 90s only', line:'Generating', tone:'suggest', when:'just now', hint:'Loomarr is grounding this request · picking titles' },
+  ],
+  done: [
+    { title:'A weeknight mix of cozy procedurals', line:'On your channel', tone:'lock', when:'3 weeks ago', hint:'14 titles landed.', openChannel:true },
+    { title:'A channel of only disaster movies', line:'Not approved', tone:'onair', when:'1 week ago', hint:'Over the acquisition cap this week — ask again Monday.' },
+    { title:'A channel of courtroom dramas', line:'Channel removed', tone:'caution', when:'1 month ago', hint:undefined },
+  ],
+});
+
+let state = { ios: baseState(), android: baseState() };
+
+// ---- Helpers --------------------------------------------------------------------------------
+const titleText = (t) => $('long').checked ? LONG_TITLE : t;
+const announce = (msg) => { $('action').textContent = msg; };
+const toast = (msg) => {
+  const host = $('toastHost');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.setAttribute('role','status');
+  el.textContent = msg;
+  host.innerHTML = '';
+  host.appendChild(el);
+  setTimeout(() => { if (host.contains(el)) host.removeChild(el); }, 2600);
+};
+
+const needsYouCount = (s) => s.proposals.filter(p=>!state.removedHas?.(p.id)).length; // placeholder, recomputed below
+
+const countFor = (plat, kind) => {
+  const s = state[plat];
+  if (kind === 'needsYou') {
+    const admin = $('role').value === 'admin';
+    const pending = admin ? s.proposals.filter(p=>!s.removed.has(p.id)).length + s.pulls.filter(p=>!s.removed.has(p.id)).length : 0;
+    const own = admin ? s.failed.filter(f=>!s.removed.has(f.id)).length : s.failedMember.filter(f=>!s.removed.has(f.id)).length;
+    return pending + own;
+  }
+  if (kind === 'inProgress') return s.inProgress.length;
+  if (kind === 'done') return s.done.length;
+  return 0;
+};
+
+// ---- Rendering --------------------------------------------------------------------------------
+const art = (short) => `<span aria-hidden="true">${short}</span>`;
+
+const groupRow = (plat, kind, item, { approveLabel, denyLabel, extra } = {}) => {
+  const s = state[plat];
+  const selecting = s.selecting[kind];
+  const checked = s.selected[kind].has(item.id);
+  const checkbox = selecting
+    ? `<button class="checkbox" aria-checked="${checked}" aria-label="Select ${item.title}" data-act="toggle" data-plat="${plat}" data-kind="${kind}" data-id="${item.id}">${checked?'✓':''}</button>`
+    : '';
+  return `<li class="card ${selecting?'selecting':''}" data-row="${item.id}">
+    ${checkbox}
+    <div class="card-body">
+      <p class="card-title">${titleText(item.title)}</p>
+      <p class="card-meta">${item.meta}</p>
+      <p class="card-meta mono">Requested by ${item.by}</p>
+      ${!selecting ? `<div class="card-actions">
+        <button class="btn outline" data-act="deny" data-plat="${plat}" data-kind="${kind}" data-id="${item.id}">${denyLabel||'Deny'}</button>
+        ${kind==='requests' ? `<button class="btn outline" data-act="edit" data-plat="${plat}" data-id="${item.id}">Edit</button>` : ''}
+        <button class="btn primary" data-act="approve" data-plat="${plat}" data-kind="${kind}" data-id="${item.id}">${approveLabel||'Approve'}</button>
+      </div>` : ''}
+    </div>
+  </li>`;
+};
+
+const failedRow = (plat, item, admin) => `<li class="card" data-row="${item.id}">
+  <div class="card-body">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="badge onair">Couldn't build</span>
+      ${admin && item.mine===false ? '' : ''}
+    </div>
+    <p class="card-title">${titleText(item.title)}</p>
+    <p class="card-hint">${item.hint}</p>
+    <div class="card-actions">
+      <button class="btn outline" data-act="fix" data-plat="${plat}" data-id="${item.id}">${item.fix}</button>
+    </div>
+  </div>
+</li>`;
+
+const statusRow = (plat, item) => `<li class="card">
+  <div class="thumbs" aria-hidden="true"><span class="th">▮</span><span class="th">▮</span></div>
+  <div class="card-body">
+    <span class="badge ${item.tone}">${item.line}</span>
+    <p class="card-title">${titleText(item.title)}</p>
+    ${item.hint ? `<p class="card-hint">${item.hint}</p>` : ''}
+    <p class="card-meta">${item.when}</p>
+    ${item.openChannel ? `<div class="card-actions"><button class="btn outline" data-act="openchannel">Open channel</button></div>` : ''}
+  </div>
+</li>`;
+
+const groupHeader = (plat, kind, label, total) => {
+  const s = state[plat];
+  const selecting = s.selecting[kind];
+  const n = s.selected[kind].size;
+  return `<div class="group-head">
+    <h2>${label}</h2>
+    ${total > 1 ? `<button class="link-btn" data-act="toggleSelect" data-plat="${plat}" data-kind="${kind}">${selecting ? 'Cancel' : 'Select'}</button>` : ''}
+  </div>`;
+};
+
+const emptyBlock = (title, desc) => `<div class="empty"><h2>${title}</h2><p>${desc}</p>
+  <button class="btn primary" data-act="newRequest">Request a channel</button></div>`;
+
+const loadingBlock = () => `<div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+  <div class="skeleton-card" aria-hidden="true"></div>
+  <div class="skeleton-card" aria-hidden="true"></div>
+  <div class="skeleton-card" aria-hidden="true"></div>
+  </div>`;
+
+const errorBlock = () => `<div class="error-box"><h2>Couldn't load your requests.</h2><p>Check your connection and try again.</p>
+  <button class="btn outline" data-act="retry">Try again</button></div>`;
+
+const bodyFor = (plat) => {
+  const s = state[plat];
+  const admin = $('role').value === 'admin';
+
+  if (s.scenario === 'loading') return loadingBlock();
+  if (s.scenario === 'error') return errorBlock();
+
+  if (s.tab === 'needsYou') {
+    const proposals = s.proposals.filter(p => !s.removed.has(p.id));
+    const pulls = s.pulls.filter(p => !s.removed.has(p.id));
+    const failedList = admin ? s.failed.filter(f=>!s.removed.has(f.id)) : s.failedMember.filter(f=>!s.removed.has(f.id));
+    const nothing = (!admin || (proposals.length===0 && pulls.length===0)) && failedList.length===0;
+    if (s.scenario === 'empty' || nothing) {
+      return emptyBlock('Nothing needs you', 'Approvals waiting on you, and requests that couldn’t be built, appear here.');
+    }
+    let out = '';
+    if (admin && proposals.length > 0) {
+      out += groupHeader(plat,'requests','Channel requests',proposals.length);
+      out += `<ul style="display:flex;flex-direction:column;gap:8px;list-style:none;padding:0;margin:0">${proposals.map(p=>groupRow(plat,'requests',p)).join('')}</ul>`;
+    }
+    if (admin && pulls.length > 0) {
+      out += groupHeader(plat,'filler','Filler downloads',pulls.length);
+      out += `<ul style="display:flex;flex-direction:column;gap:8px;list-style:none;padding:0;margin:0">${pulls.map(p=>groupRow(plat,'filler',p,{denyLabel:'Dismiss'})).join('')}</ul>`;
+    }
+    if (failedList.length > 0) {
+      out += `<div class="group-head"><h2>Couldn't be built</h2></div>`;
+      out += `<ul style="display:flex;flex-direction:column;gap:8px;list-style:none;padding:0;margin:0">${failedList.map(f=>failedRow(plat,f,admin)).join('')}</ul>`;
+    }
+    return out;
+  }
+
+  if (s.tab === 'inProgress') {
+    if (s.inProgress.length === 0) return emptyBlock('Nothing in progress', 'Requests that are still being generated, approved or downloaded appear here.');
+    return `<ul style="display:flex;flex-direction:column;gap:8px;list-style:none;padding:0;margin:0">${s.inProgress.map(i=>statusRow(plat,i)).join('')}</ul>`;
+  }
+
+  if (s.done.length === 0) return emptyBlock('Nothing finished yet', 'Requests that are on their channel, or were declined, appear here.');
+  return `<ul style="display:flex;flex-direction:column;gap:8px;list-style:none;padding:0;margin:0">${s.done.map(i=>statusRow(plat,i)).join('')}</ul>`;
+};
+
+const sheetFor = (plat) => {
+  const s = state[plat];
+  if (!s.sheet) return '';
+  const grabber = plat === 'ios' ? '<div class="grabber" aria-hidden="true"></div>' : '';
+  if (s.sheet.kind === 'deny') {
+    return `<div class="sheet-wrap"><div class="sheet ${plat==='android'?'docked':''}" role="dialog" aria-label="Deny request">
+      ${grabber}
+      <p style="font-weight:600">Deny "${titleText(s.sheet.title)}"?</p>
+      <textarea placeholder="Optional note to the requester" aria-label="Optional note"></textarea>
+      <div class="sheet-actions"><button class="btn outline" data-act="cancelSheet" data-plat="${plat}">Cancel</button><button class="btn primary" data-act="confirmDeny" data-plat="${plat}">Deny</button></div>
+    </div></div>`;
+  }
+  if (s.sheet.kind === 'bulk') {
+    const n = s.sheet.n;
+    return `<div class="sheet-wrap"><div class="sheet ${plat==='android'?'docked':''}" role="dialog" aria-label="Bulk approve">
+      ${grabber}
+      <div class="sheet-row"><p>${n} selected in <strong>${s.sheet.kindLabel}</strong></p></div>
+      <p class="sheet-row meta" style="margin:0">Scope: this action approves only this group. Select items in another group separately.</p>
+      <div class="sheet-actions"><button class="btn outline" data-act="cancelSheet" data-plat="${plat}">Cancel</button><button class="btn primary" data-act="confirmBulk" data-plat="${plat}">Approve ${n}</button></div>
+    </div></div>`;
+  }
+  if (s.sheet.kind === 'result') {
+    const { okCount, total, results } = s.sheet;
+    return `<div class="sheet-wrap"><div class="sheet ${plat==='android'?'docked':''}" role="dialog" aria-label="Approval result">
+      ${grabber}
+      <p style="font-weight:600">Approved ${okCount} of ${total}${okCount<total?' · '+(total-okCount)+" couldn't be approved":''}</p>
+      <ul class="fail-list">${results.map(r=>`<li class="${r.ok?'ok':'bad'}">${r.ok?'✓':'✕'} ${titleText(r.title)}${r.error?' — '+r.error:''}</li>`).join('')}</ul>
+      <div class="sheet-actions"><button class="btn primary" data-act="cancelSheet" data-plat="${plat}">Done</button></div>
+    </div></div>`;
+  }
+  return '';
+};
+
+const navDestinations = () => {
+  const pos = $('navpos').value;
+  const base = [
+    { icon:'▶', label:'Watching', v:'watching' },
+    { icon:'▦', label:'Guide', v:'guide' },
+    { icon:'◇', label:'Surf', v:'surf' },
+  ];
+  const req = { icon:'▣', label:'Requests', v:'requests' };
+  if (pos === 'afterGuide') base.splice(2, 0, req); else base.push(req);
+  return base;
+};
+
+const tabbarHtml = (plat, badge) => {
+  const idiom = plat === 'android' ? 'material' : 'ios';
+  const items = navDestinations();
+  return `<div class="tabbar ${idiom}" role="tablist" aria-label="Primary navigation">
+    ${items.map(d => {
+      const sel = d.v === 'requests';
+      return `<button role="tab" aria-selected="${sel}" style="position:relative">
+        ${sel && d.v==='requests' && badge>0 && !sel ? `<span class="req-dot">${badge}</span>`:''}
+        <span class="pill ${idiom==='material'&&sel?'material-sel':''}"><span class="glyph" aria-hidden="true">${d.icon}</span></span>
+        <span class="lbl">${d.label}</span>
+      </button>`;
+    }).join('')}
+  </div>`;
+};
+
+const headerHtml = (plat, needsYou) => {
+  if (plat === 'ios') {
+    return `<div class="appbar-ios"><div class="row"><h1>Requests</h1>
+      <button class="icon-btn" data-act="newRequest" aria-label="Request a channel">+</button>
+    </div></div>`;
+  }
+  const fab = $('androidPrimary').value === 'fab';
+  return `<div class="appbar-material"><h1>Requests</h1>
+    ${!fab ? `<button class="icon-btn" data-act="newRequest" aria-label="Request a channel">+</button>` : ''}
+  </div>${fab ? `<button class="fab" data-act="newRequest" aria-label="Request a channel">+</button>` : ''}`;
+};
+
+const tabsHtml = (plat) => {
+  const s = state[plat];
+  const defs = [
+    ['needsYou','Needs you', countFor(plat,'needsYou')],
+    ['inProgress','In progress', countFor(plat,'inProgress')],
+    ['done','Done', countFor(plat,'done')],
+  ];
+  return `<div class="tabs" role="tablist" aria-label="Requests sections">
+    ${defs.map(([v,label,n]) => `<button class="tab" role="tab" aria-selected="${s.tab===v}" data-act="tab" data-plat="${plat}" data-val="${v}">
+      ${label}${n>0?`<span class="count ${v==='needsYou'&&n>0?'suggest':''}">${n}</span>`:''}
+    </button>`).join('')}
+  </div>`;
+};
+
+const renderPhone = (plat) => {
+  const s = state[plat];
+  const badge = countFor(plat,'needsYou');
+  return `
+    <div class="screen">
+      ${headerHtml(plat)}
+      ${s.scenario!=='loading' && s.scenario!=='error' ? tabsHtml(plat) : ''}
+      <div class="content">${bodyFor(plat)}</div>
+      ${tabbarHtml(plat, badge)}
+      ${sheetFor(plat)}
+    </div>`;
+};
+
+const render = () => {
+  const both = $('both').checked;
+  $('stage').innerHTML = `
+    <div class="device ${!both && false ? 'hidden':''}">
+      <span class="device-label">iPhone</span>
+      <div class="phone ios">${renderPhone('ios')}</div>
+    </div>
+    <div class="device ${!both ? 'hidden':''}">
+      <span class="device-label">Android phone</span>
+      <div class="phone android">${renderPhone('android')}</div>
+    </div>`;
+  $('openq').textContent = 'Open: exact Requests tab-bar position, Android’s primary-action idiom, and the Requests glyph (no icon exists in icons.ts yet) are shown as labelled alternatives via the controls above, not decided here.';
+};
+
+// ---- Interactions --------------------------------------------------------------------------
+document.addEventListener('click', (ev) => {
+  const el = ev.target.closest('button,[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  if (!act) return;
+  const plat = el.dataset.plat;
+  const s = plat ? state[plat] : null;
+
+  if (act === 'tab') { s.tab = el.dataset.val; s.sheet = null; render(); return; }
+  if (act === 'toggleSelect') {
+    const kind = el.dataset.kind;
+    s.selecting[kind] = !s.selecting[kind];
+    s.selected[kind].clear();
+    s.sheet = null;
+    render();
+    return;
+  }
+  if (act === 'toggle') {
+    const { kind, id } = el.dataset;
+    const set = s.selected[kind];
+    set.has(id) ? set.delete(id) : set.add(id);
+    if (set.size > 0) {
+      s.sheet = { kind:'bulk', n: set.size, kindLabel: kind==='requests'?'Channel requests':'Filler downloads', group: kind };
+    } else {
+      s.sheet = null;
+    }
+    render();
+    return;
+  }
+  if (act === 'approve') {
+    const { kind, id } = el.dataset;
+    const list = kind === 'requests' ? s.proposals : s.pulls;
+    const item = list.find(x=>x.id===id);
+    s.removed.add(id);
+    announce(`Prototype action: approve "${item.title}" → creates/updates its channel.`);
+    toast(`Approved "${titleText(item.title)}"`);
+    render();
+    return;
+  }
+  if (act === 'deny') {
+    const { kind, id } = el.dataset;
+    const list = kind === 'requests' ? s.proposals : s.pulls;
+    const item = list.find(x=>x.id===id);
+    s.sheet = { kind:'deny', id, kindKind:kind, title: item.title };
+    render();
+    return;
+  }
+  if (act === 'confirmDeny') {
+    const { id, kindKind } = s.sheet;
+    s.removed.add(id);
+    announce('Prototype action: deny → requester sees "Not approved" with your note.');
+    s.sheet = null;
+    render();
+    return;
+  }
+  if (act === 'cancelSheet') { s.sheet = null; render(); return; }
+  if (act === 'confirmBulk') {
+    const { group, n } = s.sheet;
+    const ids = [...s.selected[group]];
+    const list = group === 'requests' ? s.proposals : s.pulls;
+    // Simulated partial failure: the last selected item fails, same shape as BulkApproveResult.
+    const results = ids.map((id, i) => {
+      const item = list.find(x=>x.id===id);
+      const fail = i === ids.length - 1 && ids.length > 1;
+      if (!fail) s.removed.add(id);
+      return { title: item.title, ok: !fail, error: fail ? 'Already decided by another admin' : undefined };
+    });
+    s.sheet = { kind:'result', okCount: results.filter(r=>r.ok).length, total: results.length, results };
+    s.selecting[group] = false;
+    s.selected[group].clear();
+    render();
+    return;
+  }
+  if (act === 'fix') {
+    const { id } = el.dataset;
+    announce(`Prototype action: ${el.textContent} → reopens the Guide composer for this request.`);
+    return;
+  }
+  if (act === 'edit') {
+    announce('Prototype action: Edit → opens the admin edit surface for this proposal (not modelled here; see web’s ProposalEdit).');
+    return;
+  }
+  if (act === 'newRequest') {
+    announce('Prototype action: Request a channel → opens Guide’s request composer (outside this mock’s scope).');
+    return;
+  }
+  if (act === 'openchannel') {
+    announce('Prototype action: Open channel → navigates to the channel detail screen.');
+    return;
+  }
+  if (act === 'retry') { s.scenario = 'populated'; render(); return; }
+});
+
+for (const id of ['role','both','long','navpos','androidPrimary']) {
+  $(id).addEventListener('change', render);
+}
+
+// Scenario helper buttons injected into the review bar for quick state switching per phone.
+const scenarioBar = document.createElement('div');
+scenarioBar.className = 'review';
+scenarioBar.innerHTML = `
+  <strong>Needs-you scenario</strong>
+  <label>iPhone <select id="scIos"><option value="populated">Populated</option><option value="empty">Empty</option><option value="loading">Loading</option><option value="error">Error</option></select></label>
+  <label>Android <select id="scAndroid"><option value="populated">Populated</option><option value="empty">Empty</option><option value="loading">Loading</option><option value="error">Error</option></select></label>
+`;
+document.querySelector('.review').insertAdjacentElement('afterend', scenarioBar);
+scenarioBar.querySelector('#scIos').addEventListener('change', (e) => { state.ios.scenario = e.target.value; render(); });
+scenarioBar.querySelector('#scAndroid').addEventListener('change', (e) => { state.android.scenario = e.target.value; render(); });
+
+render();
+</script>
+</html>
