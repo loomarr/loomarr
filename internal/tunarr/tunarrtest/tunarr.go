@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
@@ -325,4 +327,19 @@ func readback(s schedule.Slot) schedule.Slot {
 	return schedule.Slot{Kind: schedule.SlotFlex, DurationMs: s.DurationMs}
 }
 
-var _ tunarr.Programmer = (*Tunarr)(nil)
+// Guide satisfies the Adapter's guide-read surface with an empty schedule. Nothing in the
+// current test suites exercises it through the double: production guide reads always build
+// their own concrete client (buildoperations.go's buildGuide), never ov.Programmer. It exists
+// only so the shared double can be typed tunarr.Adapter for Overrides.Programmer.
+func (m *Tunarr) Guide(context.Context, time.Time, time.Time) (map[string][]tunarr.GuideEntry, error) {
+	return map[string][]tunarr.GuideEntry{}, nil
+}
+
+// LiveTVURLs satisfies the Adapter's Live TV URL surface with the zero value. Like Guide, it is
+// unreached by current tests: the Live TV URL wiring always reads the concrete, non-overridden
+// adapter built alongside this double (see app.liveTVURLsFor), never ov.Programmer.
+func (m *Tunarr) LiveTVURLs() setup.LiveTVURLs {
+	return setup.LiveTVURLs{}
+}
+
+var _ tunarr.Adapter = (*Tunarr)(nil)

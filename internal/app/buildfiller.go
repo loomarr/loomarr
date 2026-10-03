@@ -48,7 +48,7 @@ import (
 // install rather than a degraded one: its adapter maps the explicit unconfigured result to an
 // empty optional source, so folder rows still drain and a saved connection enables the next scan.
 func buildSyncer(st fillerstore.Store, set resolved, layout filler.Layout, log *slog.Logger,
-	fillerProg *tunarr.Tunarr, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
+	fillerProg tunarr.Adapter, lib *library.Client, governor *storagegovernor.Governor) *filler.Syncer {
 	src := filler.DirSource{
 		Layout: layout,
 		Probe:  filler.FFprobeNextTo(set.str("playout.ffmpeg_path")),
