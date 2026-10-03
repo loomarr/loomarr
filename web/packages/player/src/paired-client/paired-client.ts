@@ -30,6 +30,7 @@ const usePairedClient = ({
   credential,
   diagnostics,
   guideWindowMinutes,
+  initialTune,
   marks,
   onTune,
   session,
@@ -57,6 +58,7 @@ const usePairedClient = ({
   const controller = useMemo(
     () =>
       createPlayerController({
+        initialTune,
         onPlayerError: reporting?.playback.playerError,
         onTune: (report) => onTuneRef.current?.(report),
         // The signed still needs no auth header, so the platform image cache can hold it for the overlay.
@@ -65,7 +67,7 @@ const usePairedClient = ({
         source: createPlayUrlSourcePort({ baseUrl: credential.serverUrl, fetch: request }),
         transport,
       }),
-    [credential.serverUrl, reporting, request, transport],
+    [credential.serverUrl, initialTune, reporting, request, transport],
   );
   const catalogRefresher = useMemo(
     () => createCatalogRefresher({ controller, list: createChannelCatalogPort(request).list }),
@@ -166,9 +168,13 @@ const usePairedClient = ({
   }, [channelId, guide, reporting]);
   // A tune that settles (its first frame plays) joins the viewer's recents (#1666), once per tune,
   // as the web Watch page records it; a warmed neighbour never plays, so it never counts.
+  // Pausing and resuming settles the same channel again; only a tune to another channel counts.
   const settledChannelId = snapshot.status === "playing" ? channelId : undefined;
+  const recordedChannelId = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (settledChannelId) void myChannels.recordTune(settledChannelId).catch(() => undefined);
+    if (!settledChannelId || settledChannelId === recordedChannelId.current) return;
+    recordedChannelId.current = settledChannelId;
+    void myChannels.recordTune(settledChannelId).catch(() => undefined);
   }, [myChannels, settledChannelId]);
   useEffect(() => {
     const createStream = createNativeEventStreamFactory({

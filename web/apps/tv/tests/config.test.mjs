@@ -307,9 +307,7 @@ test("wires authenticated artwork, channel invalidation, identity, versions, and
   assert.match(pairedClient, /createNativeEventStreamFactory/);
   assert.match(pairedClient, /openEventStream\(/);
   assert.match(pairedClient, /Authorization: `Bearer \$\{credential\.token\}`/);
-  assert.match(pairedClient, /onChannel:/);
-  assert.match(pairedClient, /refresh\(\);/);
-  assert.match(pairedClient, /void guide\.refresh/);
+  assert.match(pairedClient, /onChannel: \(\) => \{\s+refresh\(\);\s+void guide\.refresh\(\);\s+\}/);
   assert.match(appSource, /<PairedNativeImage/);
   assert.match(appSource, /onDisconnect=\{\(\) => session\.disconnect\(\)\}/);
   assert.match(appSource, /onForget=\{\(\) => session\.forgetServer\(\)\}/);
