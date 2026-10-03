@@ -6,6 +6,11 @@ all-hardware G1–G11 release prerequisite and phase checklists for the final be
 The original requirements, failed measurements, benchmark thresholds, and reports remain intact
 as broader qualification work. `PROGRESS.md` owns current status; this document owns acceptance.
 
+> **Outcome (2026-10-03):** the maintainer ended the candidate cycle and released `v0.2.0-beta.8`
+> from rc.8's code without running the bounded household check below. Only the safe-installation
+> and artifact-integrity rows were completed. The other rows were not run and are not claimed;
+> they carry forward with #1037, #1566, #1794 and #1781.
+
 ## Promise and scope
 
 Beta.8 delivers on-demand household playout on the Intel Arc A380 deployment: one or two viewers,
@@ -23,7 +28,7 @@ that experimental paths passed performance certification or disable protections 
 
 | Gate | Acceptance and evidence |
 | --- | --- |
-| Safe installation | Independently reviewed scoped deployment and recovery path; immutable candidate image; full rendered configuration validation; verified pre-start data backup including SQLite/WAL; forward-only schema checks. Retain the candidate and matching backup after a migration-capable startup failure. No automatic image-only rollback. Track media-server [#774](https://github.com/mantonx/fictional-media-server/issues/774) / [#775](https://github.com/mantonx/fictional-media-server/pull/775). |
+| Safe installation | Independently reviewed scoped deployment and recovery path; immutable candidate image; full rendered configuration validation; verified pre-start data backup including SQLite/WAL; forward-only schema checks. Retain the candidate and matching backup after a migration-capable startup failure. No automatic image-only rollback. Tracked in the household deployment repository. |
 | On-demand lifecycle | No ahead-of-time encoding. Capture idle process state, tune activity, and encoder drain after the last viewer and the configured grace period. Zero playout encoders remain after drain, including speculative neighbours. |
 | Household start and control | On each of Web and Shield, record at least 10 cold tunes and 20 adjacent switches, including the first tune and every failure. Retain cold SDR p50 ≤1.0 s / p95 ≤1.5 s, cold 4K HDR p95 ≤2.5 s where used, and held frame/OSD p95 ≤100 ms. Record warm p50/p95 and failures; the 600 ms warm target is follow-up performance work. Every tune must complete without refusal, player error, or manual recovery at the declared one/two-viewer load. |
 | Bounded playback | Observe one continuous hour on Web and one on Shield, with at least 30 minutes overlapping on the same Arc host. Report wall time and viewer-hours separately; this is two viewer-hours, not a 24-hour certification. Exercise at least 10 programme/commercial transitions per client. Require zero stalls, timeline gaps, unexpected decoder reinitializations, player errors, or lost playback across those observed transitions. Keep raw logs and all failures. |
