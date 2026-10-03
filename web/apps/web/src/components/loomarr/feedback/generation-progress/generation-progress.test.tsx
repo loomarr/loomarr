@@ -1,7 +1,7 @@
 import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
+import { progressLine } from "@loomarr/core/requests";
 import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { progressLine } from "@/components/loomarr/feedback/progress-line";
 import { GenerationProgress } from "./generation-progress";
 
 const NOW = new Date("2026-09-25T12:00:12Z");
