@@ -29,6 +29,12 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
 - **Guide** (`/guide`, headed "Channels") is the single channels surface: a cross-channel time grid,
   with channel creation (describe → review → approve) as a header action. The old Channels and Suggest
   routes redirect to it.
+  Desktop browsing uses the full content width. Programme and filler previews open beside the
+  initiating block after a short hover or keyboard-focus intent delay. The pointer can enter the
+  preview; it stays open while the block or preview is hovered or focused, closes on Escape or
+  departure, and fits the viewport. Selection alone does not open a preview or imply focus.
+  Filler previews retain supplied clip names and kinds, without inventing metadata. The compact
+  phone Guide and remote TV interaction remain separate adapters.
 - **Requests** (`/requests`) is one surface for everyone (#1405). Its nav count is what waits on the
   viewer, the same number as its **Needs you** tab.
 - **Home** (admin, `/dashboard`) answers "is everything alright?": four linked stat cards over live

@@ -10,7 +10,6 @@ import {
   layoutGuide,
   moveGuideSelection,
 } from "@loomarr/core/guide";
-import { AdaptiveSplit, adaptiveBreakpoints } from "@loomarr/design-system";
 import { GuideCompact, type GuideFilter, GuideGrid, GuideProgrammeDetail } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -111,12 +110,6 @@ const renderArtwork = (airing: GuideAiringLayout) =>
     <img src={airing.source.thumbUrl} alt="" className="size-full object-contain" />
   ) : undefined;
 
-// AdaptiveSplit measures the window, but this page sits beside the shell's sidebar (md:w-56). The
-// card moves below the grid where the pointer guide's would, measured from the content area, so a
-// 900px window stacks instead of squeezing the grid to a sliver.
-const SHELL_SIDEBAR_PX = 224;
-const SPLIT_BREAKPOINT = adaptiveBreakpoints.pointer + SHELL_SIDEBAR_PX;
-
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
 // The day picker's label: relative for the days people actually mean, absolute beyond that.
@@ -133,10 +126,8 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  // The keyboard's block (the grid's one Tab stop) and the block under the pointer. The
-  // programme card beside the grid shows the hovered one, else the selected one.
+  // Selection owns the grid's roving Tab stop; actual hover/focus owns its preview.
   const [selection, setSelection] = useState<GuideSelection>();
-  const [hovered, setHovered] = useState<GuideSelection>();
   const [dayOffset, setDayOffset] = useState<number>(0);
   // A phone opens on the shortest span: the compact grid (mocks 5d/5f) shows about an hour and a
   // half across, and four hours leave a half-hour programme a few pixels wide.
@@ -623,7 +614,7 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
             />
           </div>
         ) : (
-          // The pointer guide's programme card sits beside the grid, in its AdaptiveSplit.
+          // Desktop browsing uses the full available width with contextual previews.
           <div className="relative flex min-h-0 flex-1">
             {/* The next window is still loading and the grid below is the PREVIOUS one. An
                 overlaid hairline, not a toolbar addition, so the chrome never shifts. */}
@@ -649,30 +640,22 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
                 renderArtwork={renderArtwork}
               />
             ) : layout ? (
-              <AdaptiveSplit
-                breakpoint={SPLIT_BREAKPOINT}
-                flex={1}
-                minHeight={0}
-                primary={
-                  <GuideGrid
-                    layout={layout}
-                    nowMs={nowMs}
-                    onHover={setHovered}
-                    onMove={onMove}
-                    onOpenChannel={onOpenChannel}
-                    onSelect={setSelection}
-                    renderRowMenu={renderRowMenu}
-                    selection={selected}
-                  />
-                }
-                secondary={
+              <GuideGrid
+                layout={layout}
+                nowMs={nowMs}
+                onMove={onMove}
+                onOpenChannel={onOpenChannel}
+                onSelect={setSelection}
+                renderRowMenu={renderRowMenu}
+                selection={selected}
+                renderPreview={(previewSelection) => (
                   <GuideProgrammeDetail
+                    focused={false}
                     layout={layout}
                     renderArtwork={renderArtwork}
-                    selection={hovered ?? selected}
+                    selection={previewSelection}
                   />
-                }
-                secondaryWidth={360}
+                )}
               />
             ) : null}
           </div>

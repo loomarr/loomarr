@@ -47,6 +47,8 @@ export {
   skeletonMotion,
 } from "./src/loading";
 export { useReducedMotionPreference } from "./src/motion/use-reduced-motion";
+export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
+export { PreviewAnchor, PreviewGroup } from "./src/preview";
 export type {
   ArtworkState,
   BadgeTone,

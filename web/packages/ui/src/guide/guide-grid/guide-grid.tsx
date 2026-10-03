@@ -11,7 +11,14 @@ import {
   guideChannelState,
   guideSelectionForChannel,
 } from "@loomarr/core/guide";
-import { brandChroma, Surface, Text, type TextTone } from "@loomarr/design-system";
+import {
+  brandChroma,
+  PreviewAnchor,
+  PreviewGroup,
+  Surface,
+  Text,
+  type TextTone,
+} from "@loomarr/design-system";
 import { memo, type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { type LayoutChangeEvent, Pressable, View } from "react-native";
 
@@ -86,9 +93,9 @@ type BlockProps = {
   focusable: boolean;
   /** The channel is paused: nothing airs, so no block wears the airing amber. */
   offAir?: boolean;
-  onHover?: (selection: GuideSelection | undefined) => void;
   onOpen?: () => void;
   onSelect?: (selection: GuideSelection) => void;
+  preview?: ReactNode;
   px: number;
   selected: boolean;
   timezone?: string;
@@ -99,9 +106,9 @@ const Block = ({
   focusPending,
   focusable,
   offAir = false,
-  onHover,
   onOpen,
   onSelect,
+  preview,
   px,
   selected,
   timezone,
@@ -128,114 +135,114 @@ const Block = ({
   }, [focusPending, selected]);
 
   return (
-    <Pressable
-      accessibilityLabel={`${guideAiringLabel(a)}, ${when}`}
-      accessibilityRole="button"
-      // tabIndex, not focusable: react-native-web ignores focusable on a Pressable.
-      tabIndex={focusable ? 0 : -1}
-      onBlur={() => setFocused(false)}
-      onFocus={() => {
-        setFocused(true);
-        if (!selected) onSelect?.(selectionOf(airing));
-      }}
-      onHoverIn={() => onHover?.(selectionOf(airing))}
-      onHoverOut={() => onHover?.(undefined)}
-      onPress={onOpen}
-      ref={ref}
-      style={{
-        bottom: 6,
-        left: `${airing.startRatio * 100}%`,
-        position: "absolute",
-        top: 6,
-        width: `${airing.widthRatio * 100}%`,
-      }}
-    >
-      <Surface
-        backgroundColor={
-          pod
-            ? "$guideBreakFill"
-            : pending
-              ? "$guidePendingFill"
-              : airingNow
-                ? "$stateAiringSurface"
-                : "$surfaceElevated"
-        }
-        borderColor={
-          focused
-            ? "$actionFocus"
-            : pod || airingNow
-              ? "$borderAiring"
-              : pending
-                ? "$guidePendingBorder"
-                : "$borderDecorative"
-        }
-        borderLeftColor={
-          pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$actionPrimary" : "$guideBlockAccent"
-        }
-        borderLeftWidth={2}
-        borderRadius={4}
-        borderStyle={pending ? "dashed" : "solid"}
-        borderWidth={1}
-        flex={1}
-        gap={1}
-        justifyContent="center"
-        overflow="hidden"
-        paddingHorizontal={pod ? 2 : 8}
-        paddingVertical={pod ? 2 : 4}
+    <PreviewAnchor content={preview}>
+      <Pressable
+        accessibilityLabel={`${guideAiringLabel(a)}, ${when}`}
+        accessibilityRole="button"
+        // tabIndex, not focusable: react-native-web ignores focusable on a Pressable.
+        tabIndex={focusable ? 0 : -1}
+        onBlur={() => setFocused(false)}
+        onFocus={() => {
+          setFocused(true);
+          if (!selected) onSelect?.(selectionOf(airing));
+        }}
+        onPress={onOpen}
+        ref={ref}
+        style={{
+          bottom: 6,
+          left: `${airing.startRatio * 100}%`,
+          position: "absolute",
+          top: 6,
+          width: `${airing.widthRatio * 100}%`,
+        }}
       >
-        {pod ? (
-          <View style={{ flexDirection: "row", gap: 1, height: "100%" }}>
-            {entries.map((entry, i) => {
-              const share = (entry.durationMs || 0) / podTotal;
-              return (
-                <Surface
-                  backgroundColor={clipFill[entry.kind]}
-                  borderRadius={2}
-                  borderWidth={0}
-                  flex={share}
-                  justifyContent="center"
-                  // Position is identity inside a break: one clip may legitimately repeat.
-                  // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
-                  key={i}
-                  minWidth={0}
-                  overflow="hidden"
-                  paddingHorizontal={3}
-                >
-                  {px * share > CLIP_LABEL_MIN ? (
-                    <Text numberOfLines={1} textAlign="left" textRole="guideClip">
-                      {entry.name}
-                    </Text>
-                  ) : null}
-                </Surface>
-              );
-            })}
-          </View>
-        ) : px > LABEL_MIN ? (
-          // textAlign: a role=button element centres its text on web, and the mock's labels are
-          // flush left.
-          <>
-            {hasSeries ? (
-              <Text numberOfLines={1} textAlign="left" textRole="guideLabel" textTransform="uppercase">
-                {a.series}
+        <Surface
+          backgroundColor={
+            pod
+              ? "$guideBreakFill"
+              : pending
+                ? "$guidePendingFill"
+                : airingNow
+                  ? "$stateAiringSurface"
+                  : "$surfaceElevated"
+          }
+          borderColor={
+            focused
+              ? "$actionFocus"
+              : pod || airingNow
+                ? "$borderAiring"
+                : pending
+                  ? "$guidePendingBorder"
+                  : "$borderDecorative"
+          }
+          borderLeftColor={
+            pod ? "$transparent" : pending ? "$stateInfo" : airingNow ? "$actionPrimary" : "$guideBlockAccent"
+          }
+          borderLeftWidth={2}
+          borderRadius={4}
+          borderStyle={pending ? "dashed" : "solid"}
+          borderWidth={1}
+          flex={1}
+          gap={1}
+          justifyContent="center"
+          overflow="hidden"
+          paddingHorizontal={pod ? 2 : 8}
+          paddingVertical={pod ? 2 : 4}
+        >
+          {pod ? (
+            <View style={{ flexDirection: "row", gap: 1, height: "100%" }}>
+              {entries.map((entry, i) => {
+                const share = (entry.durationMs || 0) / podTotal;
+                return (
+                  <Surface
+                    backgroundColor={clipFill[entry.kind]}
+                    borderRadius={2}
+                    borderWidth={0}
+                    flex={share}
+                    justifyContent="center"
+                    // Position is identity inside a break: one clip may legitimately repeat.
+                    // biome-ignore lint/suspicious/noArrayIndexKey: position is identity in a pod
+                    key={i}
+                    minWidth={0}
+                    overflow="hidden"
+                    paddingHorizontal={3}
+                  >
+                    {px * share > CLIP_LABEL_MIN ? (
+                      <Text numberOfLines={1} textAlign="left" textRole="guideClip">
+                        {entry.name}
+                      </Text>
+                    ) : null}
+                  </Surface>
+                );
+              })}
+            </View>
+          ) : px > LABEL_MIN ? (
+            // textAlign: a role=button element centres its text on web, and the mock's labels are
+            // flush left.
+            <>
+              {hasSeries ? (
+                <Text numberOfLines={1} textAlign="left" textRole="guideLabel" textTransform="uppercase">
+                  {a.series}
+                </Text>
+              ) : null}
+              <Text
+                numberOfLines={1}
+                textAlign="left"
+                textRole="cardLabel"
+                tone={pending || kind === "flex" ? "muted" : "primary"}
+              >
+                {hasSeries ? a.title : guideAiringLabel(a)}
               </Text>
-            ) : null}
-            <Text
-              numberOfLines={1}
-              textAlign="left"
-              textRole="cardLabel"
-              tone={pending || kind === "flex" ? "muted" : "primary"}
-            >
-              {hasSeries ? a.title : guideAiringLabel(a)}
-            </Text>
-            {!hasSeries && px >= META_MIN ? (
-              <Text numberOfLines={1} textAlign="left" textRole="guideMeta">
-                {when}
-              </Text>
-            ) : null}
-          </>
-        ) : null}
-      </Surface>
-    </Pressable>
+              {!hasSeries && px >= META_MIN ? (
+                <Text numberOfLines={1} textAlign="left" textRole="guideMeta">
+                  {when}
+                </Text>
+              ) : null}
+            </>
+          ) : null}
+        </Surface>
+      </Pressable>
+    </PreviewAnchor>
   );
 };
 
@@ -260,10 +267,10 @@ const Row = memo(
     channel,
     focusPending,
     nowRatio,
-    onHover,
     onOpenChannel,
     onSelect,
     renderRowMenu,
+    renderPreview,
     tabStop,
     timelineWidth,
     timezone,
@@ -271,10 +278,10 @@ const Row = memo(
     channel: GuideChannelLayout;
     focusPending: RefObject<boolean>;
     nowRatio?: number;
-    onHover?: (selection: GuideSelection | undefined) => void;
     onOpenChannel?: (channelId: string) => void;
     onSelect?: (selection: GuideSelection) => void;
     renderRowMenu?: (channel: GuideChannelLayout["source"]) => ReactNode;
+    renderPreview?: (selection: GuideSelection) => ReactNode;
     /** The block that is the grid's Tab stop, when it is in this row. */
     tabStop?: string;
     timelineWidth: number;
@@ -356,9 +363,9 @@ const Row = memo(
               focusPending={focusPending}
               key={airing.scheduleBlockId}
               offAir={health === "paused"}
-              onHover={onHover}
               onOpen={() => onOpenChannel?.(channel.source.channelId)}
               onSelect={onSelect}
+              preview={renderPreview?.(selectionOf(airing))}
               px={airing.widthRatio * timelineWidth}
               selected={airing.scheduleBlockId === tabStop}
               timezone={timezone}
@@ -374,11 +381,11 @@ const Row = memo(
 const GuideGrid = ({
   layout,
   nowMs,
-  onHover,
   onMove,
   onOpenChannel,
   onSelect,
   renderRowMenu,
+  renderPreview,
   selection,
 }: GuideGridProps) => {
   const [timelineWidth, setTimelineWidth] = useState(0);
@@ -488,28 +495,30 @@ const GuideGrid = ({
   };
 
   return (
-    <GuideRows
-      channels={layout.channels}
-      focusIndex={tabStopRow < 0 ? undefined : tabStopRow}
-      header={ruler}
-      headerHeight={RULER + 1}
-      onKey={onKey}
-      renderRow={(channel) => (
-        <Row
-          channel={channel}
-          focusPending={focusPending}
-          nowRatio={nowRatio}
-          onOpenChannel={onOpenChannel}
-          onHover={onHover}
-          onSelect={onSelect}
-          renderRowMenu={renderRowMenu}
-          tabStop={channel.source.channelId === tabStop?.channelId ? tabStop.scheduleBlockId : undefined}
-          timelineWidth={timelineWidth}
-          timezone={layout.timezone}
-        />
-      )}
-      rowHeight={ROW + 1}
-    />
+    <PreviewGroup resetKey={layout.source}>
+      <GuideRows
+        channels={layout.channels}
+        focusIndex={tabStopRow < 0 ? undefined : tabStopRow}
+        header={ruler}
+        headerHeight={RULER + 1}
+        onKey={onKey}
+        renderRow={(channel) => (
+          <Row
+            channel={channel}
+            focusPending={focusPending}
+            nowRatio={nowRatio}
+            onOpenChannel={onOpenChannel}
+            onSelect={onSelect}
+            renderRowMenu={renderRowMenu}
+            renderPreview={renderPreview}
+            tabStop={channel.source.channelId === tabStop?.channelId ? tabStop.scheduleBlockId : undefined}
+            timelineWidth={timelineWidth}
+            timezone={layout.timezone}
+          />
+        )}
+        rowHeight={ROW + 1}
+      />
+    </PreviewGroup>
   );
 };
 
