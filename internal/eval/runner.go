@@ -903,17 +903,6 @@ func (a *resourceAccumulator) usage() ResourceUsage {
 	return ResourceUsage{Calls: a.calls, Tokens: a.tokens, Spend: a.spend.String()}
 }
 
-// spendExemptProvider reports whether RequestedProvider names an endpoint the
-// operator runs, not a metered hosted brand (#1852). "ollama" is Loomarr's
-// built-in local wire; llm.CustomProviderKey ("custom") is the same self-hosted
-// identity the production client uses for CachesPromptPrefix (internal/llm/openai.go
-// selfHosted()) — a user-supplied OpenAI-compatible base with no vendor invoice.
-// Any other RequestedProvider is a curated hosted brand (openrouter, openai, …)
-// and must report a charge or fail closed below.
-func spendExemptProvider(provider string) bool {
-	return provider == "ollama" || provider == llm.CustomProviderKey
-}
-
 func consumeResourceCalls(limits ResourceBudget, run, suite *resourceAccumulator, calls []InferenceCall) string {
 	if !resourceBudgetEnabled(limits) {
 		return ""
@@ -954,7 +943,11 @@ func consumeResourceCalls(limits ResourceBudget, run, suite *resourceAccumulator
 			}
 			run.spend = run.spend.add(charge)
 			suite.spend = suite.spend.add(charge)
-		} else if spendBudgetEnabled(limits) && !spendExemptProvider(call.RequestedProvider) {
+		} else if spendBudgetEnabled(limits) && !call.SelfHosted {
+			// call.SelfHosted carries the endpoint's own identity (llm.Attribution.SelfHosted,
+			// set from (*OpenAI).selfHosted()/Ollama — #1852 checkpoint 2), not a provider-name
+			// string: a self-hosted/local endpoint under ANY provider name has no vendor invoice
+			// to report, while a curated hosted brand omitting its charge still fails closed.
 			return latchResourceUncertainty(run, suite, "budget_exhausted: provider spend attribution is missing or invalid")
 		}
 	}

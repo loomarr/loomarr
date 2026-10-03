@@ -288,7 +288,7 @@ func observeGeneratorResourceUsage(observation *Observation, call InferenceCall)
 		observation.generatorTokenKnown = true
 	}
 	if call.ChargeStatus != InferenceChargeReported {
-		if spendExemptProvider(call.RequestedProvider) {
+		if call.SelfHosted {
 			observation.generatorSpendKnown = true
 		}
 		return

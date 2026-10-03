@@ -231,7 +231,7 @@ func RunMoodReview(ctx context.Context, provider llm.Provider, packetBlob []byte
 		LatencyMS: max(int64(1), attribution.Latency.Milliseconds()), GenerationID: attribution.GenerationID,
 	}
 	route := attribution.ResolvedProvider
-	if attribution.RequestedProvider == "ollama" {
+	if attribution.SelfHosted {
 		route, inference.CostBasis = "loopback", "local-unmetered"
 	} else {
 		inference.CostBasis = "provider-reported"
