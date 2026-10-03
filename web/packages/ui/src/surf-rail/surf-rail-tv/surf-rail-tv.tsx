@@ -1,5 +1,5 @@
 import { ScrollFrame, Surface, Text } from "@loomarr/design-system";
-import type { ComponentRef } from "react";
+import type { ComponentRef, ReactNode } from "react";
 import { useRef } from "react";
 import { Pressable } from "react-native";
 import { DeviceDisconnectAction } from "../../device-disconnect";
@@ -12,6 +12,7 @@ const TvSurfChannel = ({
   current,
   focusRegistry,
   group,
+  logo,
   onFocus,
   onTune,
   selected,
@@ -20,6 +21,7 @@ const TvSurfChannel = ({
   current: boolean;
   focusRegistry?: FocusTargetRegistry<{ channelId: string; group: SurfGroupKind }>;
   group: SurfGroupKind;
+  logo?: ReactNode;
   onFocus: () => void;
   onTune: () => void;
   selected: boolean;
@@ -33,7 +35,7 @@ const TvSurfChannel = ({
     onPress={onTune}
     ref={(handle) => focusRegistry?.register({ channelId: channel.id, group }, handle)}
   >
-    <SurfChannelCard channel={channel} current={current} selected={selected} />
+    <SurfChannelCard channel={channel} current={current} logo={logo} selected={selected} />
   </Pressable>
 );
 
@@ -46,6 +48,7 @@ const TvSurfRail = ({
   onDisconnect,
   onForget,
   onTune,
+  renderChannelLogo,
   selection,
   serverName,
   serverVersion,
@@ -109,6 +112,7 @@ const TvSurfRail = ({
                       focusRegistry={focusRegistry}
                       group={group.kind}
                       key={`${group.kind}-${channel.id}`}
+                      logo={renderChannelLogo?.(channel)}
                       onFocus={() => onFocusSelection({ channelId: channel.id, group: group.kind })}
                       onTune={() => onTune(channel.id)}
                       selected={selected}

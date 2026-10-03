@@ -54,28 +54,52 @@ const state: TvGuideNavigationState = {
   gridSelection: selection,
 };
 const filters = [{ value: "all" }, { disabled: true, value: "favourites" }, { value: "recent" }] as const;
+const nowMs = 0;
 
 describe("TV Guide navigation", () => {
   it("moves from the first row into filters, skips disabled filters, and returns to the grid", () => {
-    const filtersFocused = moveTvGuideFocus(layout, state, "up", filters).state;
+    const filtersFocused = moveTvGuideFocus(layout, state, "up", filters, nowMs).state;
     expect(filtersFocused.focus).toEqual({ filter: "all", region: "filters" });
 
-    const recentFocused = moveTvGuideFocus(layout, filtersFocused, "right", filters).state;
+    const recentFocused = moveTvGuideFocus(layout, filtersFocused, "right", filters, nowMs).state;
     expect(recentFocused.focus).toEqual({ filter: "recent", region: "filters" });
     expect(activateTvGuideFocus(recentFocused)).toEqual({ filter: "recent", kind: "filter" });
 
-    const gridFocused = moveTvGuideFocus(layout, recentFocused, "down", filters).state;
+    const gridFocused = moveTvGuideFocus(layout, recentFocused, "down", filters, nowMs).state;
     expect(gridFocused.focus).toEqual({ region: "grid", selection });
   });
 
   it("retains the time anchor while moving vertically and exposes tune intent", () => {
-    const moved = moveTvGuideFocus(layout, state, "down", filters).state;
+    const moved = moveTvGuideFocus(layout, state, "down", filters, nowMs).state;
     expect(moved.gridSelection).toEqual({
       anchorMs: 50,
       channelId: "channel-1",
       scheduleBlockId: "block-1",
     });
     expect(activateTvGuideFocus(moved)).toEqual({ kind: "tune", selection: moved.gridSelection });
+  });
+
+  it("pages LEFT off the first cell back in time, but never before now (#1659 decision N4)", () => {
+    const pageable = moveTvGuideFocus(layout, state, "left", filters, nowMs);
+    expect(pageable).toMatchObject({ boundary: "left", pageIntent: "earlier" });
+
+    const atNow = moveTvGuideFocus(layout, state, "left", filters, selection.anchorMs);
+    expect(atNow).toMatchObject({ boundary: "left", pageIntent: undefined });
+  });
+
+  it("pages RIGHT forward only off a programme spanning the whole window (#1659 decision N4)", () => {
+    const spanning = moveTvGuideFocus(layout, state, "right", filters, nowMs);
+    expect(spanning).toMatchObject({ boundary: "right", pageIntent: "later" });
+
+    const partial = {
+      ...layout,
+      channels: [
+        { ...layout.channels[0]!, airings: [{ ...layout.channels[0]!.airings[0]!, widthRatio: 0.4 }] },
+        ...layout.channels.slice(1),
+      ],
+    };
+    const partialResult = moveTvGuideFocus(partial, state, "right", filters, nowMs);
+    expect(partialResult).toMatchObject({ boundary: "right", pageIntent: undefined });
   });
 
   it("restores focus by channel and falls back deterministically after removal", () => {

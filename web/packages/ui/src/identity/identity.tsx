@@ -1,15 +1,11 @@
 import { Badge, Surface, semanticTargets, Text } from "@loomarr/design-system";
 
+import { ChannelIdent } from "../channel-ident";
 import type { ChannelIdentityProps, ProgrammeIdentityProps } from "./identity.type";
 
-const channelInitials = (name: string) =>
-  name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase())
-    .join("");
-
+// Channel identity is the monogram ident everywhere (#1659 decision N8): a channel without a
+// ready logo draws ChannelIdent's tinted monogram, the same tile the guide and surf rail use,
+// rather than a one-off initials box.
 const ChannelIdentity = ({ channel, density = "pointer", logo }: ChannelIdentityProps) => {
   const logoReady = channel.channelLogoState === "ready" && logo;
   const logoSize = semanticTargets[density];
@@ -22,23 +18,25 @@ const ChannelIdentity = ({ channel, density = "pointer", logo }: ChannelIdentity
       gap="$control"
       minWidth={0}
     >
-      <Surface
-        alignItems="center"
-        backgroundColor="$surfaceElevated"
-        borderRadius="$control"
-        height={logoSize}
-        justifyContent="center"
-        overflow="hidden"
-        width={logoSize}
-      >
-        {logoReady ? (
-          logo
-        ) : (
-          <Text density={density} textRole="label" tone="secondary">
-            {channelInitials(channel.channelName)}
-          </Text>
-        )}
-      </Surface>
+      {logoReady ? (
+        <Surface
+          alignItems="center"
+          backgroundColor="$surfaceElevated"
+          borderRadius="$control"
+          height={logoSize}
+          justifyContent="center"
+          overflow="hidden"
+          width={logoSize}
+        >
+          {logo}
+        </Surface>
+      ) : (
+        <ChannelIdent
+          name={channel.channelName}
+          number={Number.parseInt(channel.channelNumber, 10) || 0}
+          size={logoSize}
+        />
+      )}
       <Text density={density} textRole="channelNumber">
         {channel.channelNumber}
       </Text>
