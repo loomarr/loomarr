@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
+import { usePhoneWidth } from "@/lib/use-phone-width";
 import { BrandLockup } from "../brand-lockup";
+import { PhoneBottomBar } from "../phone-bottom-bar";
 import type { AppShellProps, NavItem } from "./app-shell.type";
 
 // AppShell — the broadcast-console frame (frontend-design §3). Nav rail + ⌘K entry
@@ -75,154 +77,152 @@ const AppShell = ({
   badges,
   onOpenCommand,
   onLogout,
-}: AppShellProps) => (
-  // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
-  // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
-  // unbounded height and never becomes a scroll viewport — the page scrolls instead. That is
-  // invisible on short pages and breaks anything that needs a real viewport: the Guide's
-  // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
-  <div className="grid h-screen grid-cols-[auto_1fr] overflow-hidden bg-background text-foreground">
-    {/* WCAG 2.4.1: the rail puts nine-plus stops before any page content, so the first Tab stop
-        jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
-    <a
-      href={`#${MAIN_ID}`}
-      className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-signal focus:px-3 focus:py-2 focus:font-medium focus:text-sm focus:text-static-950"
-    >
-      Skip to content
-    </a>
-    <aside className="flex w-14 flex-col gap-1 border-border border-r bg-card px-1 py-4 md:w-56 md:px-3">
-      <nav aria-label="Primary" className="-mx-1 flex w-14 flex-col gap-1 px-1 md:-mx-3 md:w-56 md:px-3">
-        <div className="mb-4 px-2 text-center md:text-left">
-          <span className="font-semibold md:hidden" aria-hidden>
-            L
-          </span>
-          <div className="hidden md:block">
+  watchChannelId,
+}: AppShellProps) => {
+  // Below `md`, the rail is gone in favour of PhoneBottomBar (#1785, Alt A): a flex column with
+  // the bar as a normal last row, not `position: fixed`, so it reserves real layout space and the
+  // Guide's own docked strip (#1795) naturally ends up above it rather than needing a manual inset.
+  const phoneWidth = usePhoneWidth();
+  return (
+    // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
+    // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
+    // unbounded height and never becomes a scroll viewport — the page scrolls instead. That is
+    // invisible on short pages and breaks anything that needs a real viewport: the Guide's
+    // virtualizer measured an 11,000px "viewport" and dutifully mounted all 200 rows.
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground md:grid md:grid-cols-[auto_1fr]">
+      {/* WCAG 2.4.1: the rail puts nine-plus stops before any page content, so the first Tab stop
+          jumps past it. Absolute, so it never takes a grid cell; visible only while focused. */}
+      <a
+        href={`#${MAIN_ID}`}
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-signal focus:px-3 focus:py-2 focus:font-medium focus:text-sm focus:text-static-950"
+      >
+        Skip to content
+      </a>
+      {/* `hidden md:flex`, not a width that collapses to icons: below `md` the rail is replaced
+          outright by PhoneBottomBar, not shrunk — that collapse is what this PR removes. */}
+      <aside className="hidden flex-col gap-1 border-border border-r bg-card px-3 py-4 md:flex md:w-56">
+        <nav aria-label="Primary" className="flex w-56 flex-col gap-1">
+          <div className="mb-4 px-2">
             <BrandLockup variant="compact" />
           </div>
-        </div>
 
-        <button
-          type="button"
-          onClick={onOpenCommand}
-          aria-label="Open global search"
-          aria-keyshortcuts={commandShortcutAria()}
-          className="mb-2 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-input px-2 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent md:justify-start md:px-3"
-        >
-          <Search className="size-4" aria-hidden />
-          <span className="sr-only md:not-sr-only">Search…</span>
-          <kbd className="ml-auto hidden font-mono text-static-400 text-xs md:inline">
-            {commandShortcutLabel()}
-          </kbd>
-        </button>
-
-        {(isAdmin ? ADMIN_NAV : MEMBER_NAV).map(({ to, label, icon: Icon }) => (
-          // TanStack Link marks the matched route with data-status="active" — style the
-          // active state off that attribute (higher specificity wins over the base), so
-          // AppShell stays a pure-className component (no isActive render-prop).
-          <Link
-            key={to}
-            to={to}
-            className="relative flex cursor-pointer items-center justify-center gap-3 rounded-md px-2 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal md:justify-start md:px-3"
+          <button
+            type="button"
+            onClick={onOpenCommand}
+            aria-label="Open global search"
+            aria-keyshortcuts={commandShortcutAria()}
+            className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-muted-foreground text-sm transition-colors hover:bg-accent"
           >
-            <Icon className="size-4" aria-hidden />
-            <span className="sr-only md:not-sr-only">{label}</span>
-            {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work waiting on
-                the viewer. Absent at zero: a permanent "0" would train the eye to ignore it. On the
-                icon-only rail it collapses to a dot. */}
-            {(badges?.[to] ?? 0) > 0 && (
-              <>
+            <Search className="size-4" aria-hidden />
+            <span>Search…</span>
+            <kbd className="ml-auto font-mono text-static-400 text-xs">{commandShortcutLabel()}</kbd>
+          </button>
+
+          {(isAdmin ? ADMIN_NAV : MEMBER_NAV).map(({ to, label, icon: Icon }) => (
+            // TanStack Link marks the matched route with data-status="active" — style the
+            // active state off that attribute (higher specificity wins over the base), so
+            // AppShell stays a pure-className component (no isActive render-prop).
+            <Link
+              key={to}
+              to={to}
+              className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal"
+            >
+              <Icon className="size-4" aria-hidden />
+              <span>{label}</span>
+              {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work waiting
+                  on the viewer. Absent at zero: a permanent "0" would train the eye to ignore it. */}
+              {(badges?.[to] ?? 0) > 0 && (
                 <span
                   data-testid={`nav-badge-${to}`}
-                  className="ml-auto hidden rounded-full bg-suggest-tint-15 px-[7px] py-px font-mono text-2xs text-suggest-300 md:inline"
+                  className="ml-auto rounded-full bg-suggest-tint-15 px-[7px] py-px font-mono text-2xs text-suggest-300"
                 >
                   {badges?.[to]}
                 </span>
-                <span
-                  aria-hidden
-                  className="absolute top-1.5 right-2 size-2 rounded-full bg-suggest md:hidden"
-                />
-              </>
-            )}
-          </Link>
-        ))}
-      </nav>
+              )}
+            </Link>
+          ))}
+        </nav>
 
-      {serverVersion && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              isAdmin ? (
-                <Link
-                  to="/settings/system/about"
-                  aria-label={`Loomarr ${serverVersion} — About`}
-                  className="mt-auto flex min-w-0 items-center justify-center gap-2 rounded-md px-2 py-1.5 font-mono text-static-400 text-xs transition-colors hover:bg-accent hover:text-foreground md:justify-start md:px-3"
-                />
-              ) : (
-                <span className="mt-auto flex min-w-0 items-center justify-center gap-2 px-2 py-1.5 font-mono text-static-400 text-xs md:justify-start md:px-3" />
-              )
-            }
-          >
-            <BadgeInfo className="size-4 shrink-0" aria-hidden />
-            {isAdmin ? (
-              <span className="hidden truncate md:block">{serverVersion}</span>
-            ) : (
-              <span className="sr-only md:not-sr-only md:truncate">Loomarr {serverVersion}</span>
-            )}
-          </TooltipTrigger>
-          <TooltipContent side="right">Loomarr {serverVersion}</TooltipContent>
-        </Tooltip>
-      )}
-
-      <div
-        className={`${serverVersion ? "mt-1" : "mt-auto"} flex flex-col items-center gap-2 border-border border-t px-1 pt-3 text-sm md:flex-row md:px-2`}
-      >
-        {/* The footer identity is the way into Your account (§11) — where the mock puts
-            it, and where someone looks for "my settings" rather than the app's. Not a
-            NAV item: it isn't a section of the app, it's you. */}
-        <Link
-          to="/account"
-          className="flex min-w-0 items-center gap-2 rounded-md p-1 transition-colors hover:bg-accent md:flex-1"
-          aria-label="Your account"
-        >
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-static-800 font-mono text-xs">
-            {userName.slice(0, 2).toUpperCase()}
-          </div>
-          <span className="sr-only truncate text-muted-foreground md:not-sr-only">{userName}</span>
-        </Link>
-        {onLogout && (
+        {serverVersion && (
           <Tooltip>
             <TooltipTrigger
               render={
-                <button
-                  type="button"
-                  onClick={onLogout}
-                  aria-label="Sign out"
-                  className="shrink-0 cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
-                />
+                isAdmin ? (
+                  <Link
+                    to="/settings/system/about"
+                    aria-label={`Loomarr ${serverVersion} — About`}
+                    className="mt-auto flex min-w-0 items-center gap-2 rounded-md px-3 py-1.5 font-mono text-static-400 text-xs transition-colors hover:bg-accent hover:text-foreground"
+                  />
+                ) : (
+                  <span className="mt-auto flex min-w-0 items-center gap-2 px-3 py-1.5 font-mono text-static-400 text-xs" />
+                )
               }
             >
-              <LogOut className="size-4" aria-hidden />
+              <BadgeInfo className="size-4 shrink-0" aria-hidden />
+              {isAdmin ? (
+                <span className="truncate">{serverVersion}</span>
+              ) : (
+                <span className="truncate">Loomarr {serverVersion}</span>
+              )}
             </TooltipTrigger>
-            <TooltipContent>Sign out</TooltipContent>
+            <TooltipContent side="right">Loomarr {serverVersion}</TooltipContent>
           </Tooltip>
         )}
-      </div>
-    </aside>
 
-    {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
-        the `min-h-0 flex-1` idiom to fill the viewport gets no constraint from here and grows
-        to its content instead — which silently turns any inner `overflow-auto` region into a
-        non-scrolling div. `min-h-0` lets this shrink below its content so the OVERFLOW lands
-        on the region that asked for it. */}
-    {/* `tabIndex={-1}` so the skip link moves focus here, not just the scroll position. */}
-    <main
-      id={MAIN_ID}
-      tabIndex={-1}
-      className="flex min-h-0 min-w-0 flex-col overflow-auto focus:outline-none"
-    >
-      {children}
-    </main>
-  </div>
-);
+        <div
+          className={`${serverVersion ? "mt-1" : "mt-auto"} flex flex-row gap-2 border-border border-t px-2 pt-3 text-sm`}
+        >
+          {/* The footer identity is the way into Your account (§11) — where the mock puts
+              it, and where someone looks for "my settings" rather than the app's. Not a
+              NAV item: it isn't a section of the app, it's you. */}
+          <Link
+            to="/account"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 transition-colors hover:bg-accent"
+            aria-label="Your account"
+          >
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-static-800 font-mono text-xs">
+              {userName.slice(0, 2).toUpperCase()}
+            </div>
+            <span className="truncate text-muted-foreground">{userName}</span>
+          </Link>
+          {onLogout && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    aria-label="Sign out"
+                    className="shrink-0 cursor-pointer rounded-md p-1.5 text-static-400 transition-colors hover:bg-accent hover:text-foreground"
+                  />
+                }
+              >
+                <LogOut className="size-4" aria-hidden />
+              </TooltipTrigger>
+              <TooltipContent>Sign out</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      </aside>
+
+      {/* `flex flex-col`, not a plain block. A block child is not a flex item, so a page using
+          the `min-h-0 flex-1` idiom to fill the viewport gets no constraint from here and grows
+          to its content instead — which silently turns any inner `overflow-auto` region into a
+          non-scrolling div. `min-h-0` lets this shrink below its content so the OVERFLOW lands
+          on the region that asked for it. */}
+      {/* `tabIndex={-1}` so the skip link moves focus here, not just the scroll position. */}
+      <main
+        id={MAIN_ID}
+        tabIndex={-1}
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto focus:outline-none"
+      >
+        {children}
+      </main>
+      {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
+          `position: fixed`, so it reserves real space rather than floating over content. */}
+      {phoneWidth && <PhoneBottomBar badges={badges} isAdmin={isAdmin} watchChannelId={watchChannelId} />}
+    </div>
+  );
+};
 
 export { AppShell };
