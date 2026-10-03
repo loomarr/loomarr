@@ -11,8 +11,13 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/binder"
+	"github.com/loomarr/loomarr/internal/events"
 	"github.com/loomarr/loomarr/internal/library"
+	"github.com/loomarr/loomarr/internal/proposalworkflow"
+	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/testkit"
 )
 
@@ -32,16 +37,22 @@ func newDeviceHarness(t *testing.T, limiter *auth.RateLimiter) *apiHarness {
 		devices := auth.NewDeviceManager(defaults.Store, time.Now)
 		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
 		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
+		// The real approval gate, so a device's role is proven on approve/deny, not only on /me.
+		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
 
 		return api.Router(defaults.Log, api.Options{
-			Store:         defaults.Store,
-			Auth:          api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
-			Log:           defaults.Log,
-			Login:         auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
-			Sessions:      mgr,
-			Devices:       devices,
-			DeviceLimiter: limiter,
-			CookieSecure:  "false",
+			Events:           events.NewBus(),
+			ProposalWorkflow: proposalworkflow.New(defaults.Store, func() string { return "test-proposal-job" }, time.Now),
+			Approver:         suggest.NewApprover(defaults.Store, chBinder, time.Now),
+			Binder:           chBinder,
+			Store:            defaults.Store,
+			Auth:             api.NewSessionAuthorizerCurrent(mgr, devices, func(context.Context) (string, error) { return "break-glass-token", nil }),
+			Log:              defaults.Log,
+			Login:            auth.NewLoginService(lib, defaults.Store, mgr, nil, time.Now),
+			Sessions:         mgr,
+			Devices:          devices,
+			DeviceLimiter:    limiter,
+			CookieSecure:     "false",
 		})
 	})
 }
@@ -122,77 +133,209 @@ func TestDevicePairingEndToEndOverHTTP(t *testing.T) {
 	}
 }
 
-// A paired TV's role is capped at member (maintainer decision on #1659, 2026-09-28): an admin who
-// pairs a TV gets a TV that acts as them for their lists, but not one that can administer the
-// house. The admin's own session reaching the same routes proves the 403s come from the cap, not
-// from a route the harness can't serve.
-func TestAdminPairedDeviceIsCappedAtMember(t *testing.T) {
+// deviceCall sends one request as a session (cookie, with the CSRF header) or a bearer (a paired
+// device) and returns the status and the decoded JSON body, if any.
+func deviceCall(t *testing.T, srv *httptest.Server, method, path string, session *http.Cookie, bearer, body string) (int, map[string]any) {
+	t.Helper()
+	req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if session != nil {
+		req.AddCookie(session)
+		req.Header.Set("X-Loomarr-Csrf", "1")
+	}
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	out := map[string]any{}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out
+}
+
+// wantedTitles counts the acquisitions approvals have enqueued: the §19 evidence that matters for
+// a refused approval is the ABSENCE of a wanted title, not only the status code.
+func wantedTitles(t *testing.T, st store.Store) int {
+	t.Helper()
+	wanted, err := st.ListTitlesByState(context.Background(), provision.Wanted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(wanted)
+}
+
+// A paired device acts with its approver's real role (ADR 0043, reversing the #1659 member cap): an
+// admin's phone or TV can approve a channel request and read admin-only data, /me reports admin, and
+// it still acts as the admin for their own lists (N3).
+func TestAdminPairedDeviceActsAsAdmin(t *testing.T) {
 	t.Parallel()
 	h := newDeviceHarness(t, nil)
 	srv := h.Server
 	seedGridChannel(t, h.Store, "ch-news", 1)
 	seedGridChannel(t, h.Store, "ch-films", 2)
+	seedProposal(t, h.Store, "p1")
 	boss := login(t, srv, "boss", "pw")
-	tv := pairDevice(t, srv, boss)
+	phone := pairDevice(t, srv, boss)
 
-	send := func(method, path string, session *http.Cookie, bearer string) int {
-		t.Helper()
-		req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(`{}`))
-		req.Header.Set("Content-Type", "application/json")
-		if session != nil {
-			req.AddCookie(session)
-			req.Header.Set("X-Loomarr-Csrf", "1")
-		}
-		if bearer != "" {
-			req.Header.Set("Authorization", "Bearer "+bearer)
-		}
-		res, err := srv.Client().Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = res.Body.Close()
-		return res.StatusCode
-	}
-	for _, call := range [][2]string{
-		{http.MethodGet, "/v1/users"},
-		{http.MethodGet, "/v1/settings"},
-		{http.MethodGet, "/v1/users/u-kid/sessions"},
-		{http.MethodPatch, "/v1/users/u-kid"},
-	} {
-		if code := send(call[0], call[1], nil, tv); code != http.StatusForbidden {
-			t.Errorf("admin-paired TV %s %s = %d, want 403", call[0], call[1], code)
+	for _, path := range []string{"/v1/users", "/v1/users/u-kid/sessions"} {
+		if code, body := deviceCall(t, srv, http.MethodGet, path, nil, phone, ""); code != http.StatusOK {
+			t.Errorf("admin-paired device GET %s = %d (%v), want 200", path, code, body)
 		}
 	}
-	if code := send(http.MethodGet, "/v1/users", boss, ""); code != http.StatusOK {
-		t.Fatalf("the admin's own session GET /v1/users = %d, want 200", code)
+	if code, body := deviceCall(t, srv, http.MethodPost, "/v1/proposals/p1/approve", nil, phone, ""); code != http.StatusOK || body["status"] != "approved" {
+		t.Fatalf("admin-paired device approve = %d %v, want 200 approved", code, body)
+	}
+	if n := wantedTitles(t, h.Store); n != 1 {
+		t.Fatalf("wanted titles after the device's approval = %d, want 1", n)
 	}
 
-	// The TV is still the admin as a person: /me names them, with the member role it actually has.
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/auth/me", nil)
-	req.Header.Set("Authorization", "Bearer "+tv)
-	res, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var me map[string]any
-	_ = json.NewDecoder(res.Body).Decode(&me)
-	_ = res.Body.Close()
-	if res.StatusCode != http.StatusOK || me["id"] != "u-boss" || me["role"] != "member" {
-		t.Fatalf("admin-paired TV /v1/auth/me = %d %v, want u-boss as member", res.StatusCode, me)
+	if code, me := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", nil, phone, ""); code != http.StatusOK || me["id"] != "u-boss" || me["role"] != "admin" {
+		t.Fatalf("admin-paired device /v1/auth/me = %d %v, want u-boss as admin", code, me)
 	}
 
-	// N3 holds: what the TV stars and tunes lands in the admin's own lists.
-	if code, got := myChannelsCall(t, srv, http.MethodPut, "/v1/me/favourites/ch-news", nil, tv); code != http.StatusOK ||
+	// N3 holds: what the device stars and tunes lands in the admin's own lists.
+	if code, got := myChannelsCall(t, srv, http.MethodPut, "/v1/me/favourites/ch-news", nil, phone); code != http.StatusOK ||
 		got.String() != "favourites=[ch-news] recent=[]" {
-		t.Fatalf("admin-paired TV stars ch-news = %d %s", code, got)
+		t.Fatalf("admin-paired device stars ch-news = %d %s", code, got)
 	}
-	if code, got := myChannelsCall(t, srv, http.MethodPut, "/v1/me/recent-channels/ch-films", nil, tv); code != http.StatusOK ||
+	if code, got := myChannelsCall(t, srv, http.MethodPut, "/v1/me/recent-channels/ch-films", nil, phone); code != http.StatusOK ||
 		got.String() != "favourites=[ch-news] recent=[ch-films]" {
-		t.Fatalf("admin-paired TV tunes ch-films = %d %s", code, got)
+		t.Fatalf("admin-paired device tunes ch-films = %d %s", code, got)
 	}
 	if code, got := myChannelsCall(t, srv, http.MethodGet, "/v1/me/channels", boss, ""); code != http.StatusOK ||
 		got.String() != "favourites=[ch-news] recent=[ch-films]" {
-		t.Fatalf("the admin's session after the TV's writes = %d %s, want the TV's star and tune", code, got)
+		t.Fatalf("the admin's session after the device's writes = %d %s, want the device's star and tune", code, got)
+	}
+}
+
+// §19 negative: a member-paired device stays a member. The gate (approve, deny, bulk approve) and an
+// admin settings route all refuse it, and nothing is enqueued or decided behind the 403s.
+func TestMemberPairedDeviceIsForbiddenTheGate(t *testing.T) {
+	t.Parallel()
+	h := newDeviceHarness(t, nil)
+	srv := h.Server
+	seedProposal(t, h.Store, "p1")
+	kid := login(t, srv, "kid", "pw")
+	tv := pairDevice(t, srv, kid)
+
+	for _, call := range []struct{ method, path, body string }{
+		{http.MethodPost, "/v1/proposals/p1/approve", ``},
+		{http.MethodPost, "/v1/proposals/p1/deny", `{"reason":"no"}`},
+		{http.MethodPost, "/v1/proposals/approve", `{"ids":["p1"]}`},
+		{http.MethodGet, "/v1/settings", ``},
+		{http.MethodPatch, "/v1/settings", `{}`},
+		{http.MethodGet, "/v1/users", ``},
+	} {
+		if code, _ := deviceCall(t, srv, call.method, call.path, nil, tv, call.body); code != http.StatusForbidden {
+			t.Errorf("member-paired device %s %s = %d, want 403", call.method, call.path, code)
+		}
+	}
+	if n := wantedTitles(t, h.Store); n != 0 {
+		t.Errorf("wanted titles after refused approvals = %d, want 0", n)
+	}
+	if p, err := h.Store.GetProposal(context.Background(), "p1"); err != nil || p.Status != "submitted" {
+		t.Errorf("proposal after refused approve/deny = %+v (%v), want still submitted", p, err)
+	}
+	if code, me := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", nil, tv, ""); code != http.StatusOK || me["id"] != "u-kid" || me["role"] != "member" {
+		t.Fatalf("member-paired device /v1/auth/me = %d %v, want u-kid as member", code, me)
+	}
+}
+
+// The role is the approver's CURRENT role, read on every request: promote them and their device can
+// approve; demote them and the same device is refused on its very next request.
+func TestDeviceRoleFollowsApproversCurrentRole(t *testing.T) {
+	t.Parallel()
+	h := newDeviceHarness(t, nil)
+	srv := h.Server
+	seedProposalWithTMDB(t, h.Store, "p1", 101, "Heat")
+	seedProposalWithTMDB(t, h.Store, "p2", 102, "Ronin")
+	boss := login(t, srv, "boss", "pw")
+	kid := login(t, srv, "kid", "pw")
+	tv := pairDevice(t, srv, kid)
+
+	if code, body := deviceCall(t, srv, http.MethodPatch, "/v1/users/u-kid", boss, "", `{"role":"admin"}`); code != http.StatusOK {
+		t.Fatalf("promote kid = %d (%v)", code, body)
+	}
+	if code, body := deviceCall(t, srv, http.MethodPost, "/v1/proposals/p1/approve", nil, tv, ""); code != http.StatusOK {
+		t.Fatalf("promoted approver's device approve = %d (%v), want 200", code, body)
+	}
+
+	if code, body := deviceCall(t, srv, http.MethodPatch, "/v1/users/u-kid", boss, "", `{"role":"member"}`); code != http.StatusOK {
+		t.Fatalf("demote kid = %d (%v)", code, body)
+	}
+	if code, _ := deviceCall(t, srv, http.MethodPost, "/v1/proposals/p2/approve", nil, tv, ""); code != http.StatusForbidden {
+		t.Fatalf("demoted approver's device approve = %d, want 403", code)
+	}
+	if code, me := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", nil, tv, ""); code != http.StatusOK || me["role"] != "member" {
+		t.Fatalf("demoted approver's device /v1/auth/me = %d %v, want member", code, me)
+	}
+	if n := wantedTitles(t, h.Store); n != 1 {
+		t.Errorf("wanted titles = %d, want 1 (only the approval made while admin)", n)
+	}
+}
+
+// §19 negative: disabling a user kills their devices on the next request, exactly as it kills their
+// sessions, even when the device was an admin's.
+func TestDisabledApproversDeviceIsRejected(t *testing.T) {
+	t.Parallel()
+	h := newDeviceHarness(t, nil)
+	srv := h.Server
+	seedProposal(t, h.Store, "p1")
+	boss := login(t, srv, "boss", "pw")
+	kid := login(t, srv, "kid", "pw")
+	tv := pairDevice(t, srv, kid)
+	if code, body := deviceCall(t, srv, http.MethodPatch, "/v1/users/u-kid", boss, "", `{"role":"admin"}`); code != http.StatusOK {
+		t.Fatalf("promote kid = %d (%v)", code, body)
+	}
+
+	if code, body := deviceCall(t, srv, http.MethodPatch, "/v1/users/u-kid", boss, "", `{"disabled":true}`); code != http.StatusOK {
+		t.Fatalf("disable kid = %d (%v)", code, body)
+	}
+	if code, _ := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", nil, tv, ""); code != http.StatusUnauthorized {
+		t.Errorf("disabled approver's device /v1/auth/me = %d, want 401", code)
+	}
+	if code, _ := deviceCall(t, srv, http.MethodPost, "/v1/proposals/p1/approve", nil, tv, ""); code != http.StatusUnauthorized {
+		t.Errorf("disabled approver's device approve = %d, want 401", code)
+	}
+	if code, _ := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", kid, "", ""); code != http.StatusUnauthorized {
+		t.Errorf("disabled approver's session /v1/auth/me = %d, want 401", code)
+	}
+	if n := wantedTitles(t, h.Store); n != 0 {
+		t.Errorf("wanted titles after a disabled device's approve = %d, want 0", n)
+	}
+}
+
+// §19 negative: an admin revoking their device from the device list (Settings or People) takes its
+// admin away at once; the token authenticates nothing afterwards.
+func TestRevokedAdminDeviceIsRejected(t *testing.T) {
+	t.Parallel()
+	h := newDeviceHarness(t, nil)
+	srv := h.Server
+	seedProposal(t, h.Store, "p1")
+	boss := login(t, srv, "boss", "pw")
+	phone := pairDevice(t, srv, boss)
+
+	code, list := deviceCall(t, srv, http.MethodGet, "/v1/auth/devices", boss, "", "")
+	devices, _ := list["devices"].([]any)
+	if code != http.StatusOK || len(devices) != 1 {
+		t.Fatalf("device list = %d %v, want one device", code, list)
+	}
+	id, _ := devices[0].(map[string]any)["id"].(string)
+	if code, _ := deviceCall(t, srv, http.MethodDelete, "/v1/auth/devices/"+id, boss, "", ""); code != http.StatusNoContent {
+		t.Fatalf("revoke = %d, want 204", code)
+	}
+
+	if code, _ := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", nil, phone, ""); code != http.StatusUnauthorized {
+		t.Errorf("revoked device /v1/auth/me = %d, want 401", code)
+	}
+	if code, _ := deviceCall(t, srv, http.MethodPost, "/v1/proposals/p1/approve", nil, phone, ""); code != http.StatusUnauthorized {
+		t.Errorf("revoked device approve = %d, want 401", code)
+	}
+	if n := wantedTitles(t, h.Store); n != 0 {
+		t.Errorf("wanted titles after a revoked device's approve = %d, want 0", n)
 	}
 }
 
