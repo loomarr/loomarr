@@ -94,6 +94,7 @@ test("declares the shared TV journey and native playback boundaries", async () =
   assert.equal(manifest.dependencies["@loomarr/player"], "workspace:*");
   assert.equal(manifest.dependencies["@loomarr/ui-tv"], "workspace:*");
   assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
+  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
   assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.86.2-0");
   assert.match(manifest.scripts.bundle, /--platform android/);
   assert.match(manifest.scripts.bundle, /--platform ios/);

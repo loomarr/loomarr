@@ -20,9 +20,11 @@
     "hls.js": "1.7.1"
   },
   "devDependencies": {
+    "@types/react-dom": "19.2.5",
     "expo": "58.0.0-canary-20260812-27f94d4",
     "expo-crypto": "58.0.0-canary-20260812-27f94d4",
     "expo-video": "58.0.0-canary-20260812-27f94d4",
+    "jsdom": "30.0.1",
     "react": "19.2.3",
     "react-native": "npm:react-native-tvos@0.86.2-0",
     "typescript": "7.0.2",
