@@ -15,9 +15,9 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // Overrides injects the two in-process boundaries (the Tunarr push target and the
@@ -29,8 +29,8 @@ type Overrides struct {
 	// Startup is the process-owned report for this application generation. nil creates a minimal
 	// embedded-build report so /readyz still derives from the same state object in tests.
 	Startup    *diagnostics.Startup
-	Programmer programmer.Programmer // nil ⇒ programmer.NewDynamic(live Tunarr config)
-	LLM        llm.Provider          // nil ⇒ the Swappable from buildLLM
+	Programmer tunarr.Adapter // nil ⇒ tunarr.NewDynamic(live Tunarr config)
+	LLM        llm.Provider   // nil ⇒ the Swappable from buildLLM
 	// NotificationHTTP redirects provider requests to a hermetic transport in composition tests.
 	// nil uses the bounded production HTTP client owned by notifications.
 	NotificationHTTP notifications.HTTPDoer

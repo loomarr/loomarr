@@ -23,9 +23,9 @@ import (
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 type fillerBuild struct {
@@ -116,7 +116,7 @@ func buildFillerSubsystem(
 	}
 	artifactRecoveryCancel()
 
-	fillerProgrammer := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
+	fillerProgrammer := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)

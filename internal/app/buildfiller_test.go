@@ -18,10 +18,11 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {
-	client := testkit.NewTunarr()
+	client := tunarrtest.NewTunarr()
 	enabled := false
 	adapter := fillerSourceAdapter{
 		prog:       client,

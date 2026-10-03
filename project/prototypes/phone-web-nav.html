@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr web phone nav — design review</title>
+<style>
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #e7eaf0; background: #08090b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a { font: inherit; }
+  button, select { min-height: 44px; color: inherit; background: #1b1e24; border: 1px solid #666970; border-radius: 6px; padding: 8px 12px; }
+  a { color: inherit; text-decoration: none; }
+  button, a, select { cursor: pointer; }
+  :focus-visible { outline: 2px solid #ffb020; outline-offset: 3px; }
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2a2e37; background: #131519; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .review-note { font-size: 13px; color: #8b93a3; margin: 12px 24px; max-width: 780px; }
+  .review-note.question { color: #dc5bac; }
+  .layout { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; justify-content: center; padding: 8px 24px 40px; }
+  #frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  #frame { width: 390px; height: 780px; border: 1px solid #2a2e37; border-radius: 28px; overflow: hidden; background: #0b0c0e; display: flex; flex-direction: column; position: relative; box-shadow: 0 0 0 6px #131519; }
+  #frame.small { width: 320px; height: 690px; }
+  .frame-label { font-size: 12px; color: #8b93a3; font-family: 'Geist Mono', ui-monospace, monospace; }
+  .page-header { flex-shrink: 0; padding: 14px 16px 10px; border-bottom: 1px solid #2a2e37; background: #0b0c0e; }
+  .page-header h1 { font-size: 20px; line-height: 26px; margin: 0; }
+  .page-header p { margin: 4px 0 0; color: #8b93a3; font-size: 12px; }
+  .content { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; position: relative; }
+  h2 { font-size: 15px; line-height: 20px; margin: 0; }
+  h3 { font-size: 14px; line-height: 20px; margin: 0; }
+  p { margin: 0; line-height: 1.5; }
+  .meta { color: #8b93a3; font-size: 12px; }
+  .card, .row { background: #131519; border: 1px solid #2a2e37; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .row-flex { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .skeleton { background: #1b1e24; border-radius: 8px; height: 56px; }
+  .pill-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill { border: 1px solid #2a2e37; border-radius: 999px; padding: 6px 12px; font-size: 12px; color: #8b93a3; min-height: 32px; display: inline-flex; align-items: center; }
+  .pill[aria-pressed="true"] { border-color: #ffb020; color: #ffb020; background: #352916; }
+  .badge-count { background: #3a1b2b; color: #dc5bac; border-radius: 999px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; padding: 1px 6px; }
+  .picture { aspect-ratio: 16/9; width: calc(100% + 32px); margin: -16px -16px 0; background: linear-gradient(135deg,#1b1e24,#334954); display: flex; align-items: center; justify-content: center; color: #8b93a3; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px; position: relative; }
+  .picture .live { position: absolute; top: 10px; left: 10px; background: #e5484d; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .06em; border-radius: 4px; padding: 2px 6px; }
+  .watch-controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .watch-controls button { min-width: 44px; border-radius: 999px; }
+  .guide-grid { display: grid; grid-template-columns: 40px 1fr; gap: 1px; background: #2a2e37; border: 1px solid #2a2e37; border-radius: 8px; overflow: hidden; }
+  .guide-grid > div { background: #131519; padding: 8px; font-size: 11px; display: flex; align-items: center; }
+  .guide-grid .num { font-family: 'Geist Mono', ui-monospace, monospace; color: #ffb020; justify-content: center; }
+  .guide-grid .cell.on { color: #e7eaf0; background: #1b1e24; }
+  .docked-strip { border: 1px solid #2a2e37; border-top: 2px solid #ffb020; border-radius: 8px 8px 0 0; background: #131519; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 -16px -16px; }
+  .docked-strip .button { background: #ffb020; color: #0b0c0e; font-weight: 600; font-size: 13px; border-radius: 6px; padding: 8px 14px; min-height: 36px; display: inline-flex; align-items: center; }
+  footer.bar { flex-shrink: 0; background: #0b0c0e; border-top: 1px solid #2a2e37; display: flex; }
+  footer.bar[data-safe="on"] { padding-bottom: 20px; }
+  footer.bar[data-safe="off"] { padding-bottom: 0; }
+  .tab { flex: 1; min-height: 49px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding-top: 7px; background: transparent; border: none; border-radius: 0; color: #8b93a3; position: relative; }
+  .tab[aria-selected="true"] { color: #ffb020; }
+  .tab .glyph { font-size: 18px; line-height: 1; }
+  .tab .label { font-size: 10px; line-height: 13px; }
+  .tab .dot { position: absolute; top: 4px; right: calc(50% - 16px); width: 7px; height: 7px; border-radius: 999px; background: #d6409f; }
+  .sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; }
+  .sheet { width: 100%; background: #131519; border: 1px solid #2a2e37; border-bottom: none; border-radius: 12px 12px 0 0; padding: 8px 0 8px; max-height: 70%; overflow-y: auto; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px 10px; border-bottom: 1px solid #2a2e37; }
+  .sheet-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 8px 16px; color: #e7eaf0; background: transparent; border: none; border-radius: 0; text-align: left; }
+  .sheet-row:hover, .sheet-row:focus-visible { background: #1b1e24; }
+  .sheet-row .glyph { font-size: 16px; width: 20px; text-align: center; }
+  .close-x { background: transparent; border: none; min-height: 32px; min-width: 32px; padding: 0; color: #8b93a3; }
+  @container (max-width: 0px) {}
+</style>
+
+<div class="review">
+  <strong>Web phone-width bottom bar · design draft (#1659, #1785)</strong>
+  <label>Role <select id="role"><option value="admin">Admin</option><option value="member">Member</option></select></label>
+  <label><input id="has-channel" type="checkbox" checked> A channel exists (Watch shown — X2)</label>
+  <label>Bar composition
+    <select id="alt">
+      <option value="A">Alt A — fixed Home/Watch/Guide/Requests + More</option>
+      <option value="B">Alt B — first 5 destinations + More</option>
+    </select>
+  </label>
+  <label>Frame <select id="size"><option value="390">390 px</option><option value="320">320 px</option></select></label>
+  <label><input id="safe-area" type="checkbox" checked> Simulate home-indicator inset</label>
+</div>
+<p class="review-note">Draft for maintainer review (map row 1, decision X1): a bottom bar for web at phone width, replacing today's 56 px icon rail below <code>md</code> (768 px) until this is approved. Invented fixtures only; no real titles or remote images; nothing here calls a server. Production code is unchanged — this is a proposal.</p>
+<p class="review-note question">Open question, not decided by the map: how many destinations sit in the bar versus behind <strong>More</strong>. Alt A keeps the bar's first four positions stable across every state (recommended: muscle memory never shifts). Alt B always fills five slots, which removes the overflow sheet entirely for a member with no channel yet, but the fifth tab's identity changes with role and with X2's Watch visibility. Toggle "Bar composition" above to compare; the maintainer's mock settles this.</p>
+
+<div class="layout">
+  <div id="frame-wrap">
+    <div id="frame">
+      <header class="page-header" id="page-header"></header>
+      <div class="content" id="content" tabindex="-1"></div>
+      <footer class="bar" id="bar" role="tablist" aria-label="Primary navigation"></footer>
+    </div>
+    <span class="frame-label" id="frame-label"></span>
+  </div>
+</div>
+<p class="review-note" id="action" role="status" aria-live="polite">Select a role, channel state, bar composition or destination to inspect the draft.</p>
+<p class="review-note">Sources: redesign map decisions X1 (bottom bar, draft only), X2 (Watch = last-tuned channel, hidden until one exists), X3 (drop the mini-player), H2 (named viewing stays admin-only — not shown here, Home's own decision) and H6 (no kids role in beta.9, so role is only admin/member). Destinations and their admin/member order come from the "### Shell" nav list. Bar visuals follow <code>@loomarr/design-system</code>'s <code>TabBar</code> (iOS idiom: canvas background, 1 px top hairline, 49 pt row, no selection pill) and its <code>BottomSheet</code> docked-strip variant (no grabber) for More, both built in #1776. The existing phone Watch (#1793) and Guide (#1795) placeholders below show their content still fits above the bar, including Guide's own docked tapped-programme strip.</p>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// Order and labels straight from the redesign map's "### Shell" nav list.
+const ALL_DESTINATIONS = {
+  admin: [
+    { key: 'home', label: 'Home', glyph: '⌂' },
+    { key: 'watch', label: 'Watch', glyph: '▶', requiresChannel: true },
+    { key: 'guide', label: 'Guide', glyph: '▦' },
+    { key: 'requests', label: 'Requests', glyph: '◇', badge: 3 },
+    { key: 'filler', label: 'Filler', glyph: '▧' },
+    { key: 'people', label: 'People', glyph: '♙' },
+    { key: 'settings', label: 'Settings', glyph: '⚙' },
+    { key: 'help', label: 'Help', glyph: '?' },
+  ],
+  member: [
+    { key: 'home', label: 'Home', glyph: '⌂' },
+    { key: 'watch', label: 'Watch', glyph: '▶', requiresChannel: true },
+    { key: 'guide', label: 'Guide', glyph: '▦' },
+    { key: 'requests', label: 'Requests', glyph: '◇', badge: 1 },
+    { key: 'notifications', label: 'Notifications', glyph: '◉' },
+    { key: 'help', label: 'Help', glyph: '?' },
+  ],
+};
+const FIXED_PRIMARY_KEYS = ['home', 'watch', 'guide', 'requests'];
+const DYNAMIC_PRIMARY_COUNT = 5;
+
+let active = 'home';
+let sheetOpen = false;
+let guideTapped = false;
+
+const visibleDestinations = () => {
+  const role = $('role').value;
+  const hasChannel = $('has-channel').checked;
+  return ALL_DESTINATIONS[role].filter((d) => !d.requiresChannel || hasChannel);
+};
+
+const split = (list) => {
+  const alt = $('alt').value;
+  if (alt === 'A') {
+    const primary = list.filter((d) => FIXED_PRIMARY_KEYS.includes(d.key));
+    const overflow = list.filter((d) => !FIXED_PRIMARY_KEYS.includes(d.key));
+    return { primary, overflow };
+  }
+  return { primary: list.slice(0, DYNAMIC_PRIMARY_COUNT), overflow: list.slice(DYNAMIC_PRIMARY_COUNT) };
+};
+
+const destinationByKey = (key) => visibleDestinations().find((d) => d.key === key);
+
+const announce = (text) => { $('action').textContent = text; };
+
+const guideRows = () => {
+  const channels = [
+    { n: '07', name: 'Night Signal', on: true },
+    { n: '12', name: 'Sunday Stories', on: false },
+    { n: '19', name: 'Field Notes', on: false },
+  ];
+  return channels
+    .map((c) => `<div class="num">${c.n}</div><div class="cell${c.on ? ' on' : ''}">${c.name} — ${c.on ? 'The Last Observatory' : 'Not selected'}</div>`)
+    .join('');
+};
+
+const renderContent = (key) => {
+  const header = $('page-header');
+  const content = $('content');
+  const d = destinationByKey(key) ?? { label: key };
+  if (key === 'watch') {
+    header.innerHTML = `<h1>Watch</h1><p>Last-tuned channel (X2). Edge to edge, controls under the picture (#1793).</p>`;
+    content.innerHTML = `
+      <div class="picture"><span class="live">LIVE</span>CH 07 · Night Signal</div>
+      <div class="card">
+        <h3>The Last Observatory</h3>
+        <p class="meta">Evening above the city · 12:04 / 24:00 · 12m left</p>
+        <div class="watch-controls">
+          <button aria-label="Previous channel">⏮</button>
+          <button aria-label="Channel down">▾</button>
+          <button aria-label="Pause">⏸</button>
+          <button aria-label="Channel up">▴</button>
+        </div>
+        <p class="meta">Next: Sunday Stories · The Garden Next Door, 9:00 PM</p>
+      </div>
+      <div class="card">
+        <h3>Your favourites</h3>
+        <p class="meta">07 Night Signal · 19 Field Notes</p>
+      </div>`;
+    return;
+  }
+  if (key === 'guide') {
+    header.innerHTML = `<h1>Guide</h1><p>Compact grid (#1795), All / Favorites / Recent chips.</p>`;
+    content.innerHTML = `
+      <div class="pill-row">
+        <span class="pill" aria-pressed="true">All 3</span>
+        <span class="pill">Favorites 1</span>
+        <span class="pill">Recent 2</span>
+      </div>
+      <div class="guide-grid">${guideRows()}</div>
+      <button type="button" id="guide-tap" style="align-self:flex-start">${guideTapped ? 'Hide tapped programme' : 'Tap a programme (demo)'}</button>
+      ${guideTapped ? `
+      <div class="docked-strip">
+        <div>
+          <h3 style="font-size:13px">The Last Observatory</h3>
+          <p class="meta">Night Signal · Evening above the city</p>
+        </div>
+        <span class="button">Watch</span>
+      </div>` : ''}`;
+    const tapBtn = document.getElementById('guide-tap');
+    if (tapBtn) tapBtn.addEventListener('click', () => { guideTapped = !guideTapped; renderContent('guide'); });
+    return;
+  }
+  if (key === 'requests') {
+    header.innerHTML = `<h1>Requests</h1><p>Grouped approvals (R1), badge = pending count.</p>`;
+    content.innerHTML = `
+      <div class="row row-flex"><div><h3>Filler pull · 4 clips</h3><p class="meta">Needs you</p></div><span class="badge-count">4</span></div>
+      <div class="row row-flex"><div><h3>A channel for rainy afternoons</h3><p class="meta">Awaiting approval</p></div></div>`;
+    return;
+  }
+  if (key === 'home') {
+    header.innerHTML = `<h1>Home</h1><p>Status strip, Watching now, Tonight, New this week.</p>`;
+    content.innerHTML = `
+      <div class="row"><p class="meta">3 channels playing</p></div>
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>`;
+    return;
+  }
+  const genericCopy = {
+    filler: 'Coverage cards, Manage hub.',
+    people: 'Household members, last seen.',
+    settings: 'This server, Playback, Access.',
+    notifications: 'Approvals and filler pulls that touch you.',
+    help: 'Docs search, keyboard shortcuts.',
+  };
+  header.innerHTML = `<h1>${d.label}</h1><p>${genericCopy[key] ?? ''}</p>`;
+  content.innerHTML = `<div class="row"><p class="meta">Placeholder content for ${d.label.toLowerCase()} — unchanged by this draft.</p></div>`;
+};
+
+const renderBar = () => {
+  const list = visibleDestinations();
+  if (!list.some((d) => d.key === active)) active = 'home';
+  const { primary, overflow } = split(list);
+  const bar = $('bar');
+  bar.innerHTML = '';
+  for (const d of primary) {
+    const btn = document.createElement('button');
+    btn.className = 'tab';
+    btn.type = 'button';
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', String(d.key === active));
+    btn.setAttribute('aria-label', d.label);
+    btn.innerHTML = `<span class="glyph" aria-hidden="true">${d.glyph}</span><span class="label">${d.label}</span>${d.badge ? `<span class="dot" aria-hidden="true"></span>` : ''}`;
+    btn.addEventListener('click', () => {
+      sheetOpen = false;
+      active = d.key;
+      renderAll();
+      announce(`Selected ${d.label}.`);
+    });
+    bar.appendChild(btn);
+  }
+  if (overflow.length > 0) {
+    const more = document.createElement('button');
+    more.className = 'tab';
+    more.type = 'button';
+    more.setAttribute('aria-haspopup', 'dialog');
+    more.setAttribute('aria-expanded', String(sheetOpen));
+    more.setAttribute('aria-label', 'More');
+    const overflowHasBadge = overflow.some((d) => d.badge);
+    more.innerHTML = `<span class="glyph" aria-hidden="true">⋯</span><span class="label">More</span>${overflowHasBadge ? `<span class="dot" aria-hidden="true"></span>` : ''}`;
+    more.id = 'more-button';
+    more.addEventListener('click', () => { sheetOpen = !sheetOpen; renderAll(); });
+    bar.appendChild(more);
+  }
+  bar.dataset.safe = $('safe-area').checked ? 'on' : 'off';
+};
+
+const renderSheet = () => {
+  const frame = $('frame');
+  const existing = document.getElementById('sheet-backdrop');
+  if (existing) existing.remove();
+  if (!sheetOpen) return;
+  const { overflow } = split(visibleDestinations());
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sheet-backdrop';
+  backdrop.id = 'sheet-backdrop';
+  backdrop.setAttribute('role', 'presentation');
+  backdrop.innerHTML = `
+    <div class="sheet" role="dialog" aria-label="More destinations">
+      <div class="sheet-head"><strong>More</strong><button type="button" class="close-x" id="sheet-close" aria-label="Close">✕</button></div>
+      ${overflow.map((d) => `<button type="button" class="sheet-row" data-key="${d.key}"><span class="glyph" aria-hidden="true">${d.glyph}</span><span>${d.label}</span>${d.badge ? `<span class="badge-count" style="margin-left:auto">${d.badge}</span>` : ''}</button>`).join('')}
+    </div>`;
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { sheetOpen = false; renderAll(); } });
+  frame.appendChild(backdrop);
+  document.getElementById('sheet-close').addEventListener('click', () => { sheetOpen = false; renderAll(); document.getElementById('more-button')?.focus(); });
+  backdrop.querySelectorAll('.sheet-row').forEach((row) =>
+    row.addEventListener('click', () => {
+      const key = row.dataset.key;
+      active = key;
+      sheetOpen = false;
+      renderAll();
+      announce(`Selected ${destinationByKey(key)?.label ?? key} from More.`);
+      $('more-button')?.focus();
+    }),
+  );
+  document.addEventListener('keydown', escCloseOnce, { once: true });
+};
+
+function escCloseOnce(e) {
+  if (e.key === 'Escape' && sheetOpen) { sheetOpen = false; renderAll(); document.getElementById('more-button')?.focus(); }
+}
+
+const renderFrame = () => {
+  const size = $('size').value;
+  $('frame').classList.toggle('small', size === '320');
+  $('frame-label').textContent = `${size} × ${size === '320' ? 690 : 780} — iPhone-class phone`;
+};
+
+function renderAll() {
+  renderFrame();
+  renderBar();
+  renderContent(active);
+  renderSheet();
+}
+
+for (const id of ['role', 'has-channel', 'alt', 'size', 'safe-area']) {
+  $(id).addEventListener('change', () => {
+    if (id === 'role' || id === 'has-channel') guideTapped = false;
+    renderAll();
+  });
+}
+renderAll();
+</script>
+</html>

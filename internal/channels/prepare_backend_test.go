@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/schedule"
-	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 func TestPrepareInheritedBackendUsesSuppliedTarget(t *testing.T) {
@@ -34,7 +34,7 @@ func TestPrepareInheritedBackendUsesSuppliedTarget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := newStore(t)
-			tun := testkit.NewTunarr()
+			tun := tunarrtest.NewTunarr()
 			e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
 				func() string { return tt.applied })
 			seedChannel(t, st, "inherited", 10, entry("movie:tmdb:1", "Movie"))
@@ -61,7 +61,7 @@ func TestPrepareInheritedBackendUsesSuppliedTarget(t *testing.T) {
 
 func TestPrepareInheritedBackendSkipsPinsAndInactiveChannels(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
 		func() string { return schedule.PlayoutBackendInternal })
 
@@ -120,7 +120,7 @@ func TestPrepareInheritedBackendSkipsPinsAndInactiveChannels(t *testing.T) {
 
 func TestPrepareInheritedBackendHonorsPinAddedAfterFleetSnapshot(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	firstProjectionStarted := make(chan struct{})
 	releaseFirstProjection := make(chan struct{})
 	var once sync.Once
@@ -168,7 +168,7 @@ func TestPrepareInheritedBackendHonorsPinAddedAfterFleetSnapshot(t *testing.T) {
 
 func TestPrepareInheritedBackendContinuesAfterFailureAndRetryIsIdempotent(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	tun.SetLineupErrByChannel = map[string]error{"srv-1": errors.New("scripted lineup failure")}
 	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
 		func() string { return schedule.PlayoutBackendInternal })
@@ -207,7 +207,7 @@ func TestPrepareInheritedBackendContinuesAfterFailureAndRetryIsIdempotent(t *tes
 
 func TestPrepareInheritedBackendSerializesWithOrdinaryReconcile(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	projectionStarted := make(chan struct{})
 	releaseProjection := make(chan struct{})
 	var once sync.Once
@@ -259,7 +259,7 @@ func TestPrepareInheritedBackendSerializesWithOrdinaryReconcile(t *testing.T) {
 
 func TestPrepareInheritedBackendRejectsUnknownTarget(t *testing.T) {
 	st := newStore(t)
-	e := newEngineForBackend(st, testkit.NewTunarr(), mapAvail{}, nil, func() string {
+	e := newEngineForBackend(st, tunarrtest.NewTunarr(), mapAvail{}, nil, func() string {
 		return schedule.PlayoutBackendInternal
 	})
 	if err := e.PrepareInheritedBackend(context.Background(), "external"); err == nil {

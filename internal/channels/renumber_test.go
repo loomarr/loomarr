@@ -5,11 +5,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // ⚠ **Tunarr refuses a duplicate channel number, and it says so as `500` with an EMPTY BODY**
@@ -23,7 +23,7 @@ import (
 // cannot tell its own orphan from a stranger's channel, so it must assume stranger.
 func TestReconcile_MovesAroundANumberTunarrAlreadyUses(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	// A channel Loomarr did NOT create, sitting on number 1 — the state a reset database or an
 	// earlier install leaves behind.
 	tun.SeedForeignChannel(1, "Someone else's channel")
@@ -93,7 +93,7 @@ func TestReconcile_MovesAroundANumberTunarrAlreadyUses(t *testing.T) {
 
 func TestReconcile_AutoRenumberAlsoAvoidsLocalOnlyChannels(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	tun.SeedForeignChannel(1, "Remote occupant")
 	seedChannel(t, st, "local-only", 2)
 	seedChannel(t, st, "target", 1, entry("movie:tmdb:1", "A"))
@@ -116,13 +116,13 @@ func TestReconcile_AutoRenumberAlsoAvoidsLocalOnlyChannels(t *testing.T) {
 
 func TestReconcile_CleansUpWhenLocalNumberIsClaimedAfterRemotePlan(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	tun.SeedForeignChannel(1, "Remote occupant")
 	seedChannel(t, st, "target", 1, entry("movie:tmdb:1", "A"))
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
 
 	var once sync.Once
-	tun.BeforeEnsureChannel = func(spec programmer.ChannelSpec) {
+	tun.BeforeEnsureChannel = func(spec tunarr.ChannelSpec) {
 		if spec.TunarrID == "" && spec.Number == 2 {
 			once.Do(func() { seedChannel(t, st, "late-local", 2) })
 		}
@@ -145,7 +145,7 @@ func TestReconcile_CleansUpWhenLocalNumberIsClaimedAfterRemotePlan(t *testing.T)
 // The ordinary case must not pay for the collision handling: a free number is used as-is.
 func TestReconcile_KeepsItsNumberWhenTunarrHasNothingThere(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	tun.SeedForeignChannel(7, "Unrelated")
 
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)

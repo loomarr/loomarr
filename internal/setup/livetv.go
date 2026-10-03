@@ -61,21 +61,6 @@ func InternalPlayoutURLs(publicURL, deviceToken string) LiveTVURLs {
 	}
 }
 
-// LiveTVURLsFor picks the URLs for the backend that will actually stream (§9.1).
-//
-// `internal` (the default) ⇒ Loomarr's own endpoints; `tunarr` ⇒ Tunarr's. Anything else falls
-// back to Tunarr, which is the pre-§9.1 behaviour and the safer default for an unrecognised
-// value: an install that has not opted into internal playout keeps working exactly as it did.
-func LiveTVURLsFor(backend, tunarrBaseURL, publicURL, deviceToken string) LiveTVURLs {
-	// The literal rather than schedule.PlayoutBackendInternal: `setup` does not otherwise
-	// depend on `schedule`, and importing the scheduler for one enum string would be a worse
-	// trade than this comment. The value is pinned by TestLiveTVURLsFor_* below.
-	if strings.TrimSpace(backend) == "internal" {
-		return InternalPlayoutURLs(publicURL, deviceToken)
-	}
-	return TunarrURLsFrom(tunarrBaseURL)
-}
-
 // LiveTVConnector performs idempotent publication and forced-repair effects against the
 // media-server Live TV capability (§6). Transition-coordinated production calls pass an explicit
 // URL pair; the fixed pair exists for the single-operation compatibility helpers and tests.

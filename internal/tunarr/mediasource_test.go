@@ -1,4 +1,4 @@
-package programmer
+package tunarr
 
 import (
 	"context"

@@ -19,12 +19,12 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/tmdb"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 func buildRestart(overrides Overrides, log *slog.Logger) (api.RestartService, *config.Config) {
@@ -380,7 +380,7 @@ func buildGuide(
 	}
 	return nowNextRouter{
 		tunarr: guideAdapter{
-			tunarr: programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder), window: 2 * time.Hour,
+			tunarr: tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder), window: 2 * time.Hour,
 		},
 		internal: internalGuide, channels: st, appliedBackend: appliedBackend, window: 2 * time.Hour,
 	}
