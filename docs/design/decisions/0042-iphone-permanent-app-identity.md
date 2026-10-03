@@ -18,7 +18,17 @@ configuration (`LOOMARR_IOS_RELEASE_CHANNEL=testflight` with a validated version
 selects the permanent one. The Android touch build keeps its prototype identity until it has its own
 release decision.
 
+The release is iPhone-only: App Store Connect lets an app add iPad support later but never remove
+it. Every prerelease of `x.y.z` (for example `0.2.0-beta.9`) ships in the `x.y.z` TestFlight version,
+because Apple's version string is exactly three integers. The workflow's run number is the build
+number that orders builds within it.
+
 ## Consequences
 
-- A simulator or development build can never be uploaded as, or replace, the TestFlight app.
+- Development and simulator builds carry a different bundle identifier, so they cannot be uploaded
+  to, or installed over, the TestFlight app.
+- Release metadata supplied without the release channel fails the build instead of producing a
+  prototype-identity artifact.
+- Re-running a release workflow run reuses its build number, which App Store Connect rejects once
+  that number has been uploaded; upload again from a new run.
 - Release mechanics for this identity live with the iPhone beta work (#1816).

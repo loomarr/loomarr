@@ -20,7 +20,14 @@ const appleVersionFields = (releaseVersion, rawBuildNumber) => {
 
 const iosReleaseConfig = (config, environment = process.env) => {
   const channel = environment.LOOMARR_IOS_RELEASE_CHANNEL;
-  if (!channel) return config;
+  if (!channel) {
+    // Release metadata without a channel is a mis-wired release step, which would otherwise ship
+    // the prototype identity.
+    if (environment.LOOMARR_IOS_VERSION || environment.LOOMARR_IOS_BUILD_NUMBER) {
+      throw new Error("iPhone release version metadata requires LOOMARR_IOS_RELEASE_CHANNEL");
+    }
+    return config;
+  }
   if (channel !== "testflight") {
     throw new Error("iPhone release channel must be testflight");
   }
@@ -40,6 +47,8 @@ const iosReleaseConfig = (config, environment = process.env) => {
       ...config.ios,
       bundleIdentifier: "media.loomarr.mobile",
       buildNumber,
+      // App Store Connect lets a record add iPad support later but never remove it.
+      supportsTablet: false,
     },
   };
 };

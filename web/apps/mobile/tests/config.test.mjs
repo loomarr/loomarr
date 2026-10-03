@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const { appleVersionFields } = createRequire(import.meta.url)("../app.config.cjs");
 
 const autolinkedNativeModules = async (platform) => {
   const autolinking = fileURLToPath(
@@ -63,14 +65,24 @@ test("resolves the TestFlight channel to the permanent iPhone identity", async (
   assert.equal(config.slug, "loomarr-mobile");
   assert.equal(config.scheme, "loomarr");
   assert.equal(config.ios.bundleIdentifier, "media.loomarr.mobile");
-  // Apple's grammar: CFBundleShortVersionString is exactly three dot-separated integers;
-  // CFBundleVersion is one to three.
-  assert.match(config.version, /^\d+\.\d+\.\d+$/);
   // Every prerelease of 0.2.0 shares the 0.2.0 TestFlight train; the build orders them.
   assert.equal(config.version, "0.2.0");
   assert.equal(config.ios.buildNumber, "7");
-  assert.match(config.ios.buildNumber, /^\d+(\.\d+){0,2}$/);
+  assert.equal(config.ios.supportsTablet, false);
+  // Everything else is the development config, untouched.
+  assert.equal(config.orientation, "default");
+  assert.ok(config.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
   assert.match(config.android.package, /\.prototype$/);
+});
+
+test("maps release versions onto Apple's version grammar", () => {
+  assert.deepEqual(appleVersionFields("v0.2.0", "12"), { version: "0.2.0", buildNumber: "12" });
+  assert.deepEqual(appleVersionFields("1.10.3-rc.2", "300"), { version: "1.10.3", buildNumber: "300" });
+  // CFBundleShortVersionString is exactly three integers; the build is the CI run number, so a
+  // single positive integer without leading zeros.
+  assert.throws(() => appleVersionFields("0.2.0.1", "1"), /must be x\.y\.z/);
+  assert.throws(() => appleVersionFields("0.2.0", "007"), /positive integer/);
+  assert.throws(() => appleVersionFields("0.2.0", "1.2"), /positive integer/);
 });
 
 test("fails closed when a TestFlight build has an invalid channel or version metadata", async () => {
@@ -87,6 +99,10 @@ test("fails closed when a TestFlight build has an invalid channel or version met
     /positive integer/,
   );
   await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_BUILD_NUMBER: "0" })), /positive integer/);
+  await assert.rejects(
+    expoConfig(releaseEnvironment({ LOOMARR_IOS_RELEASE_CHANNEL: "" })),
+    /requires LOOMARR_IOS_RELEASE_CHANNEL/,
+  );
 });
 
 test("keeps unused animation modules out of Android without breaking Apple pods", async () => {
