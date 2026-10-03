@@ -35,6 +35,13 @@ jobs:
           restore-keys: |
             go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-
             go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-
+      # On a cache miss this job's module cache is empty, and `release-verify` runs
+      # TestGoImpactSelector, whose scripts/go-impact.sh shells out to `go list ./...` over the
+      # whole repo — the one call in this job that needs the FULL module graph at once. Download
+      # it here, in its own named step, instead of leaving a cold-cache network fetch buried
+      # inside that one test's subprocess (#1834).
+      - name: Download Go modules
+        run: go mod download
       - name: Static analysis and repository contracts
         run: make fmt shellcheck privacy-verify vet tags-verify vet-tags lint agent-harness-test compose-verify release-verify go-race-verify eval-contract
       - name: The test lanes cover every package
