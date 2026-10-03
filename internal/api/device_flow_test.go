@@ -228,6 +228,7 @@ func TestMemberPairedDeviceIsForbiddenTheGate(t *testing.T) {
 		{http.MethodGet, "/v1/settings", ``},
 		{http.MethodPatch, "/v1/settings", `{}`},
 		{http.MethodGet, "/v1/users", ``},
+		{http.MethodPatch, "/v1/users/u-kid", `{"role":"admin"}`}, // self-promotion
 	} {
 		if code, _ := deviceCall(t, srv, call.method, call.path, nil, tv, call.body); code != http.StatusForbidden {
 			t.Errorf("member-paired device %s %s = %d, want 403", call.method, call.path, code)
@@ -278,37 +279,57 @@ func TestDeviceRoleFollowsApproversCurrentRole(t *testing.T) {
 }
 
 // §19 negative: disabling a user kills their devices on the next request, exactly as it kills their
-// sessions, even when the device was an admin's.
+// sessions, even when the device was an admin's — and for good: re-enabling the user does not bring
+// a lost admin device back.
 func TestDisabledApproversDeviceIsRejected(t *testing.T) {
 	t.Parallel()
 	h := newDeviceHarness(t, nil)
 	srv := h.Server
-	seedProposal(t, h.Store, "p1")
+	seedProposalWithTMDB(t, h.Store, "p1", 101, "Heat")
+	seedProposalWithTMDB(t, h.Store, "p2", 102, "Ronin")
 	boss := login(t, srv, "boss", "pw")
 	kid := login(t, srv, "kid", "pw")
 	tv := pairDevice(t, srv, kid)
 	if code, body := deviceCall(t, srv, http.MethodPatch, "/v1/users/u-kid", boss, "", `{"role":"admin"}`); code != http.StatusOK {
 		t.Fatalf("promote kid = %d (%v)", code, body)
 	}
+	if code, body := deviceCall(t, srv, http.MethodPost, "/v1/proposals/p1/approve", nil, tv, ""); code != http.StatusOK {
+		t.Fatalf("admin approver's device approve before the disable = %d (%v), want 200", code, body)
+	}
 
 	if code, body := deviceCall(t, srv, http.MethodPatch, "/v1/users/u-kid", boss, "", `{"disabled":true}`); code != http.StatusOK {
 		t.Fatalf("disable kid = %d (%v)", code, body)
 	}
-	if code, _ := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", nil, tv, ""); code != http.StatusUnauthorized {
-		t.Errorf("disabled approver's device /v1/auth/me = %d, want 401", code)
+	rejected := func(when string) {
+		t.Helper()
+		if code, _ := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", nil, tv, ""); code != http.StatusUnauthorized {
+			t.Errorf("%s: approver's device /v1/auth/me = %d, want 401", when, code)
+		}
+		if code, _ := deviceCall(t, srv, http.MethodPost, "/v1/proposals/p2/approve", nil, tv, ""); code != http.StatusUnauthorized {
+			t.Errorf("%s: approver's device approve = %d, want 401", when, code)
+		}
+		if code, _ := deviceCall(t, srv, http.MethodGet, "/v1/users", nil, tv, ""); code != http.StatusUnauthorized {
+			t.Errorf("%s: approver's device GET /v1/users = %d, want 401", when, code)
+		}
+		if code, _ := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", kid, "", ""); code != http.StatusUnauthorized {
+			t.Errorf("%s: approver's session /v1/auth/me = %d, want 401", when, code)
+		}
 	}
-	if code, _ := deviceCall(t, srv, http.MethodPost, "/v1/proposals/p1/approve", nil, tv, ""); code != http.StatusUnauthorized {
-		t.Errorf("disabled approver's device approve = %d, want 401", code)
+	rejected("disabled")
+
+	if code, body := deviceCall(t, srv, http.MethodPatch, "/v1/users/u-kid", boss, "", `{"disabled":false}`); code != http.StatusOK {
+		t.Fatalf("re-enable kid = %d (%v)", code, body)
 	}
-	if code, _ := deviceCall(t, srv, http.MethodGet, "/v1/auth/me", kid, "", ""); code != http.StatusUnauthorized {
-		t.Errorf("disabled approver's session /v1/auth/me = %d, want 401", code)
+	rejected("re-enabled")
+	if list, err := h.Store.ListDeviceTokensForUser(context.Background(), "u-kid"); err != nil || len(list) != 0 {
+		t.Errorf("kid's paired devices after disable = %d (%v), want 0", len(list), err)
 	}
-	if n := wantedTitles(t, h.Store); n != 0 {
-		t.Errorf("wanted titles after a disabled device's approve = %d, want 0", n)
+	if n := wantedTitles(t, h.Store); n != 1 {
+		t.Errorf("wanted titles = %d, want 1 (only the approval made before the disable)", n)
 	}
 }
 
-// §19 negative: an admin revoking their device from the device list (Settings or People) takes its
+// §19 negative: an admin revoking their device from their paired-devices list (Settings) takes its
 // admin away at once; the token authenticates nothing afterwards.
 func TestRevokedAdminDeviceIsRejected(t *testing.T) {
 	t.Parallel()

@@ -191,6 +191,14 @@ func (s *sqlStore) DeleteDeviceToken(ctx context.Context, tokenHash, userID stri
 	return n > 0, err
 }
 
+// RevokeDeviceTokensForUser deletes every device a user paired — called when a user is disabled.
+// Disable alone is not enough: a re-enabled user must not get back a lost device that now acts with
+// their role (ADR 0043).
+func (s *sqlStore) RevokeDeviceTokensForUser(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM device_tokens WHERE user_id = ?`), userID)
+	return err
+}
+
 // nullableUser keeps a pending pairing's user_id NULL rather than "", so the foreign key stays
 // satisfiable while nobody has approved it yet.
 func nullableUser(id string) any {

@@ -33,7 +33,24 @@ type LoginStore interface {
 	GetUserByName(ctx context.Context, name string) (store.User, error)
 	ListUsers(ctx context.Context) ([]store.User, error)
 	UpsertUser(ctx context.Context, u store.User) error
+	accessRevoker
+}
+
+// accessRevoker removes every credential a user holds. Each path that disables a user calls
+// revokeAccess, so none can kill sessions but leave paired devices behind.
+type accessRevoker interface {
 	RevokeSessionsForUser(ctx context.Context, userID string) error
+	RevokeDeviceTokensForUser(ctx context.Context, userID string) error
+}
+
+// revokeAccess kills a disabled user's sessions and paired devices for good (§11, ADR 0043).
+// Devices are deleted rather than merely refused while disabled: a paired device acts with its
+// user's role, so re-enabling the user must not bring back a device that was lost.
+func revokeAccess(ctx context.Context, st accessRevoker, userID string) error {
+	if err := st.RevokeDeviceTokensForUser(ctx, userID); err != nil {
+		return err
+	}
+	return st.RevokeSessionsForUser(ctx, userID)
 }
 
 // LoginService ties credential verification, user upsert + bootstrap, and
@@ -189,7 +206,7 @@ func (s *LoginService) authenticate(ctx context.Context, username, password stri
 		if err := s.store.UpsertUser(ctx, existing); err != nil {
 			return store.User{}, err
 		}
-		if err := s.store.RevokeSessionsForUser(ctx, existing.ID); err != nil {
+		if err := revokeAccess(ctx, s.store, existing.ID); err != nil {
 			return store.User{}, err
 		}
 		return store.User{}, ErrInvalidCredentials
@@ -221,7 +238,7 @@ func (s *LoginService) refreshOnLogin(ctx context.Context, u store.User, name st
 	return u, nil
 }
 
-// Disable disables a user and immediately revokes their sessions (§11).
+// Disable disables a user and immediately revokes their sessions and paired devices (§11).
 func (s *LoginService) Disable(ctx context.Context, userID string) error {
 	u, err := s.store.GetUser(ctx, userID)
 	if err != nil {
@@ -232,5 +249,5 @@ func (s *LoginService) Disable(ctx context.Context, userID string) error {
 	if err := s.store.UpsertUser(ctx, u); err != nil {
 		return err
 	}
-	return s.store.RevokeSessionsForUser(ctx, userID)
+	return revokeAccess(ctx, s.store, userID)
 }

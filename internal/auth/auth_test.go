@@ -101,6 +101,76 @@ func TestDisableRevokesSessions(t *testing.T) {
 	}
 }
 
+// Every path that disables a user deletes their paired devices too, not just refuses them while
+// disabled: a device acts with its user's role (ADR 0043), so re-enabling the user must not bring
+// back a device that was lost.
+func TestEveryDisablePathRevokesPairedDevicesForGood(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		disable func(t *testing.T, ms *testkit.MediaServer, svc *LoginService, sync *UserSync)
+	}{
+		{"admin disable", func(t *testing.T, _ *testkit.MediaServer, svc *LoginService, _ *UserSync) {
+			if err := svc.Disable(context.Background(), "u-bob"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"provider-disabled login", func(t *testing.T, ms *testkit.MediaServer, svc *LoginService, _ *UserSync) {
+			ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob", Disabled: true}}
+			if _, _, _, err := svc.Login(context.Background(), "bob", "pw", "ip|bob"); err == nil {
+				t.Fatal("a provider-disabled user logged in")
+			}
+		}},
+		{"user sync", func(t *testing.T, ms *testkit.MediaServer, _ *LoginService, sync *UserSync) {
+			ms.Users = []testkit.MediaServerUser{{ID: "u-bob", Name: "bob", Disabled: true}}
+			if _, err := sync.Sync(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := newStore(t)
+			ctx := context.Background()
+			ms := testkit.NewMediaServer(t)
+			t.Cleanup(ms.Close)
+			ms.Accounts = map[string]testkit.Account{"bob": {Password: "pw", ID: "u-bob"}}
+			lib := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+			clock := func() time.Time { return now }
+			svc := NewLoginService(lib, st, NewManager(st, time.Hour, clock), nil, clock)
+			devices := NewDeviceManager(st, clock)
+			importOne(t, st, "u-bob", "bob", true)
+
+			deviceCode, userCode, _, err := devices.StartPairing(ctx, "Lounge TV")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := devices.Approve(ctx, userCode, "u-bob"); err != nil {
+				t.Fatal(err)
+			}
+			token, _, err := devices.Redeem(ctx, deviceCode)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			tc.disable(t, ms, svc, NewUserSync(lib, st, clock))
+
+			u, err := st.GetUser(ctx, "u-bob")
+			if err != nil || !u.Disabled {
+				t.Fatalf("u-bob after disable = %+v (%v), want disabled", u, err)
+			}
+			u.Disabled = false
+			if err := st.UpsertUser(ctx, u); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := devices.ResolveDevice(ctx, token); err == nil {
+				t.Error("a device paired before the disable authenticates again after re-enable")
+			}
+			if list, err := st.ListDeviceTokensForUser(ctx, "u-bob"); err != nil || len(list) != 0 {
+				t.Errorf("u-bob's devices after disable = %d (%v), want 0", len(list), err)
+			}
+		})
+	}
+}
+
 // §11 rework: an IMPORTED media-server user can log in; an UN-IMPORTED one is
 // rejected even with valid credentials (the allowlist — no lazy self-provision).
 func TestImportedUserLogin_AllowlistEnforced(t *testing.T) {

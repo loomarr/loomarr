@@ -424,6 +424,29 @@ func testSessionLifecycle(t *testing.T, newStore NewStoreFunc) {
 	if got, _ = s.ListSessionsForUser(ctx, "u2", now); len(got) != 1 {
 		t.Errorf("RevokeSessionsForUser hit another user's sessions: u2 has %d, want 1", len(got))
 	}
+
+	// …and their paired devices, for good (ADR 0043) — and only theirs.
+	for _, d := range []DeviceToken{
+		{TokenHash: "d-tv", UserID: "u1", DeviceName: "Lounge TV", CreatedAt: now},
+		{TokenHash: "d-phone", UserID: "u1", DeviceName: "Phone", CreatedAt: now},
+		{TokenHash: "d-other", UserID: "u2", DeviceName: "Kitchen TV", CreatedAt: now},
+	} {
+		if err := s.CreateDeviceToken(ctx, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.RevokeDeviceTokensForUser(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if devices, err := s.ListDeviceTokensForUser(ctx, "u1"); err != nil || len(devices) != 0 {
+		t.Errorf("after RevokeDeviceTokensForUser: u1 has %d devices (err %v), want 0", len(devices), err)
+	}
+	if _, err := s.GetDeviceToken(ctx, "d-tv"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("GetDeviceToken(revoked) err = %v, want ErrNotFound", err)
+	}
+	if devices, _ := s.ListDeviceTokensForUser(ctx, "u2"); len(devices) != 1 {
+		t.Errorf("RevokeDeviceTokensForUser hit another user's devices: u2 has %d, want 1", len(devices))
+	}
 }
 
 // testCounts covers the §17 observability gauges: grouped counts must reflect
