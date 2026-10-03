@@ -1,3 +1,4 @@
+import { guideSelectionForChannel } from "@loomarr/core/guide";
 import { Surface } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -33,6 +34,18 @@ const GuideJourney = ({
   useEffect(() => {
     controller.restrict(compact ? undefined : restrictTo);
   }, [compact, controller, restrictTo]);
+
+  // The phone's grid still holds every channel, so a filter that hides the selected channel leaves
+  // the dock describing a programme that isn't drawn: re-pick the first channel the filter keeps.
+  const layout = snapshot.layout;
+  const selection = snapshot.selection;
+  useEffect(() => {
+    if (!compact || !restrictTo || !layout || !selection || restrictTo.includes(selection.channelId)) return;
+    const kept = layout.channels.find(({ source }) => restrictTo.includes(source.channelId));
+    if (!kept) return;
+    const repick = guideSelectionForChannel(layout, kept.source.channelId, selection.anchorMs);
+    if (repick) controller.select(repick);
+  }, [compact, controller, layout, restrictTo, selection]);
 
   useEffect(() => {
     void controller.refresh(preferredChannelId);

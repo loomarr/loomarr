@@ -7,7 +7,7 @@ import {
 } from "@loomarr/core/guide";
 import { Action, Surface, Text } from "@loomarr/design-system";
 import { useState } from "react";
-import { type LayoutChangeEvent, Pressable, ScrollView, View } from "react-native";
+import { type LayoutChangeEvent, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 
 import { guideFilterChannelIds, guideFilterOptions, guideFilterText } from "../guide-filter";
 import type { GuideCompactProps } from "./guide-compact.type";
@@ -18,9 +18,11 @@ import type { GuideCompactProps } from "./guide-compact.type";
 // foot with Watch (5f's docked strip). Tapping a cell selects it; Watch tunes its channel.
 //
 // A row is the 44 pt target the decision asks for (48 tall, the cell drawn 3 px inside it); a
-// programme shorter than that stays as narrow as its time, and the dock carries its full title.
+// programme shorter than that is drawn as narrow as its time, its tap area widened to 44 pt with a
+// hit slop the dock's full title makes up for.
 
 const GUTTER = 16;
+const MIN_HIT = 44;
 const NUMBER_COLUMN = 40;
 const ROW = 48;
 const RULER = 24;
@@ -35,6 +37,17 @@ const selectionOf = (airing: GuideAiringLayout): GuideSelection => ({
   channelId: airing.channelId,
   scheduleBlockId: airing.scheduleBlockId,
 });
+
+// How far a cell's tap area reaches past its drawn width to make 44 pt. A cell clipped by a window
+// edge grows toward the window, since nothing is past the edge to tap.
+const airingHitSlop = (airing: GuideAiringLayout, timelinePx: number) => {
+  const missing = MIN_HIT - airing.widthRatio * timelinePx;
+  if (missing <= 0) return undefined;
+  const clippedStart = airing.startRatio <= 0;
+  const clippedEnd = airing.startRatio + airing.widthRatio >= 1;
+  if (clippedStart === clippedEnd) return { left: missing / 2, right: missing / 2 };
+  return clippedStart ? { left: 0, right: missing } : { left: missing, right: 0 };
+};
 
 // "Series “Episode”" as the mocks write a programme; a film or a break is its label alone.
 const programmeLine = (airing: GuideAiringLayout) =>
@@ -85,6 +98,9 @@ const GuideCompact = ({
   // Hours are labelled as the mocks write them ("9 PM"), every second or third one when an hour is
   // too narrow for its label, and not at all where the now badge sits over it.
   const [timelineWidth, setTimelineWidth] = useState(0);
+  // Until the timeline is measured, the window less the page gutters and the number column.
+  const { width: windowWidth } = useWindowDimensions();
+  const hitTimelinePx = timelineWidth || Math.max(0, windowWidth - 2 * GUTTER - NUMBER_COLUMN);
   const hourPx = (timelineWidth * hourMs) / span;
   const stride = hourPx <= 0 ? 1 : (LABEL_STRIDES.find((s) => s * hourPx >= LABEL_MIN_PX) ?? 6);
   const labelled = (t: number, index: number) =>
@@ -194,6 +210,7 @@ const GuideCompact = ({
                   {channel.airings.map((airing) => {
                     const selected = rowSelected && airing.scheduleBlockId === selection?.scheduleBlockId;
                     const label = guideAiringLabel(airing.source);
+                    const hitSlop = airingHitSlop(airing, hitTimelinePx);
                     return (
                       <Pressable
                         accessibilityLabel={`${channel.source.number} ${channel.source.name}, ${label}, ${formatGuideTimeRange(
@@ -204,6 +221,7 @@ const GuideCompact = ({
                         accessibilityRole="button"
                         accessibilityState={{ selected }}
                         aria-pressed={selected}
+                        hitSlop={hitSlop}
                         key={airing.scheduleBlockId}
                         onPress={() => {
                           setDismissedBlockId(undefined);
@@ -217,6 +235,9 @@ const GuideCompact = ({
                           position: "absolute",
                           top: 0,
                           width: `${airing.widthRatio * 100}%`,
+                          // Where tap areas overlap the selected cell wins, then a narrow one: a
+                          // wide neighbour keeps the middle of its own cell.
+                          zIndex: selected ? 2 : hitSlop ? 1 : 0,
                         }}
                       >
                         <Surface

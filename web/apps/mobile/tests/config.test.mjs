@@ -136,3 +136,9 @@ test("keeps unused animation modules out of Android without breaking Apple pods"
   assert.equal(appleModules.has("react-native-reanimated"), false);
   assert.equal(appleModules.has("react-native-worklets"), true);
 });
+
+test("opens on the Guide without tuning a channel", async () => {
+  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
+  assert.match(shell, /usePairedClient\(\{[^}]*initialTune: "none"[^}]*\}\)/);
+  assert.match(shell, /useState<ClientDestination>\("guide"\)/);
+});

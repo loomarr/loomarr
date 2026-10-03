@@ -25,9 +25,11 @@ const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
 
 const MobileShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("guide");
+  // The phone opens on its Guide with no picture, so it tunes only when the viewer picks a channel.
   const { controller, guide, myChannelsSnapshot, snapshot } = usePairedClient({
     credential,
     guideWindowMinutes: 120,
+    initialTune: "none",
     session,
   });
   useEffect(() => {

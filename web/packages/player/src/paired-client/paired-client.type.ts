@@ -17,6 +17,11 @@ interface PairedClientOptions {
   diagnostics?: ClientDiagnosticsIdentity;
   /** How much of the schedule the guide loads from now; the phone reads 2 hours, as the web phone does. */
   guideWindowMinutes?: number;
+  /**
+   * Whether the first catalog tunes its first channel. A client that shows no picture until the
+   * viewer asks (the phone, opening on its Guide) passes "none" so no stream starts unwatched.
+   */
+  initialTune?: "first" | "none";
   /** Shield certification marks (#1037): the transport and the tunes write them when enabled. */
   marks?: PlaybackMarks;
   /** Every tune the controller starts; the latest function is always called. */
