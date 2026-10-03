@@ -14,31 +14,51 @@ const badgeTones: Record<RequestStatus["tone"], BadgeTone> = {
 
 const requestBadgeTone = (tone: RequestStatus["tone"]): BadgeTone => badgeTones[tone];
 
-/** "Requested Oct 1": the local calendar day, as the person would say it. */
-const requestedOn = (iso: string): string =>
-  `Requested ${new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+/** "2 days ago", the relative date the approved mock shows; a week or more is the calendar day. */
+const requestedOn = (iso: string, nowMs: number = Date.now()): string => {
+  const at = new Date(iso);
+  const age = nowMs - at.getTime();
+  const ago = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+  if (age < MINUTE) return "Requested just now";
+  if (age < HOUR) return `Requested ${ago(Math.floor(age / MINUTE), "minute")}`;
+  if (age < DAY) return `Requested ${ago(Math.floor(age / HOUR), "hour")}`;
+  if (age < 7 * DAY) return `Requested ${ago(Math.floor(age / DAY), "day")}`;
+  return `Requested ${at.toLocaleDateString("en-US", { day: "numeric", month: "short" })}`;
+};
 
 // One request: what was asked, where it stands, and the one thing to do next. The whole card is the
 // target for opening the request (at least 48 pt tall); its action is a second, separate target.
-const RequestCard = ({ action, entry, hint, onOpen, trailing }: RequestCardProps) => {
+const RequestCard = ({ action, entry, hint, nowMs, onOpen, trailing }: RequestCardProps) => {
   const { journey, status } = entry;
   const detail = hint ?? status.detail;
   const body = (
-    <Surface backgroundColor="$transparent" borderWidth={0} gap="$inline">
-      <Text density="touch" textRole="title">
-        {journey.intent.description}
-      </Text>
-      <Badge density="touch" tone={requestBadgeTone(status.tone)}>
-        {status.line}
-      </Badge>
-      <Text density="touch" textRole="caption" tone="secondary">
-        {requestedOn(journey.createdAt)}
-      </Text>
-      {detail ? (
-        <Text density="touch" textRole="body" tone="secondary">
-          {detail}
+    <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$control">
+      {/* Titles carry no artwork yet: two offset placeholder tiles, as the approved mock draws them. */}
+      <Surface aria-hidden backgroundColor="$transparent" borderWidth={0} width={36}>
+        <Surface backgroundColor="$surfaceElevated" height={40} width={28} />
+        <Surface backgroundColor="$surfaceElevated" height={40} marginLeft={8} marginTop={-24} width={28} />
+      </Surface>
+      <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$inline">
+        <Badge density="touch" tone={requestBadgeTone(status.tone)}>
+          {status.line}
+        </Badge>
+        {/* Two lines, then an ellipsis, so a long brief never pushes the action off the card. */}
+        <Text density="touch" numberOfLines={2} textRole="title">
+          {journey.intent.description}
         </Text>
-      ) : null}
+        {detail ? (
+          <Text density="touch" textRole="body" tone="secondary">
+            {detail}
+          </Text>
+        ) : null}
+        <Text density="touch" textRole="caption" tone="secondary">
+          {requestedOn(journey.createdAt, nowMs)}
+        </Text>
+      </Surface>
     </Surface>
   );
   return (

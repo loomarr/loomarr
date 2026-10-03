@@ -7,6 +7,8 @@ type RequestCardProps = {
   entry: RequestEntry;
   /** Replaces the status detail, for a failure's reason plus its guidance. */
   hint?: string;
+  /** Wall-clock now for the relative date; fixed in stories and tests. */
+  nowMs?: number;
   /** Opens the request. Omitted, the card is read-only. */
   onOpen?: () => void;
   trailing?: ReactNode;

@@ -51,8 +51,8 @@ describe("requests list", () => {
     const markup = list({
       snapshot: requestsSnapshot({ entries: [], errorMessage: "The server didn't answer.", status: "error" }),
     });
-    expect(markup).toContain("Couldn&#x27;t load requests");
-    expect(markup).toContain("The server didn&#x27;t answer. Nothing you asked for was lost.");
+    expect(markup).toContain("Couldn&#x27;t load your requests.");
+    expect(markup).toContain("Check your connection and try again.");
     expect(markup).toContain(">Try again<");
     expect(markup).toContain('role="alert"');
   });
@@ -81,6 +81,10 @@ describe("requests list", () => {
     expect(markup).toContain(">Waiting for approval<");
     expect(markup).toContain("Getting 2 titles (1 downloading, 1 waiting)");
     expect(markup).toContain("Requested ");
+    // The mock's row order: the badge first, then the title.
+    expect(markup.indexOf(">Generating<")).toBeLessThan(
+      markup.indexOf(">Slow-burn space operas with big ships<"),
+    );
     // Every card is a whole-row target at least 48 pt tall.
     expect(markup).toContain("min-height:48px");
   });
@@ -332,8 +336,9 @@ describe("requests journey", () => {
     const markup = render(
       <RequestsJourney controller={controller(requestsSnapshot())} onOpenChannel={noop} />,
     );
-    expect(markup).toContain("Channels you&#x27;ve asked for and where each one stands.");
-    expect(markup).toContain(">Request a channel<");
+    // "Request a channel" is the app bar's icon button on both phones, as the approved mock draws it.
+    expect(markup).toContain('aria-label="Request a channel"');
+    expect(markup).toContain(">+<");
     expect(markup).toContain("In progress (3)");
   });
 

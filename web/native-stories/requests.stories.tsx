@@ -54,8 +54,8 @@ const fakePort = (scenario: Scenario): RequestsPort => {
   };
 };
 
-// The open design question: where Requests sits. The proposal is a fourth tab after Surf with Web's
-// count badge. The alternative (a door in Guide's header) is not drawn until the maintainer chooses.
+// Decided with the approved mock (#1840): option A, Watching · Guide · Requests · Surf, with Web's
+// count badge. The shell is not changed here; see the PR for the exact wiring.
 const navigation = (badge: number) => (
   <TabBar
     accessibilityLabel="Primary navigation"
@@ -63,8 +63,8 @@ const navigation = (badge: number) => (
     items={[
       { icon: "play", label: "Watching", value: "watching" },
       { icon: "guide", label: "Guide", value: "guide" },
-      { icon: "channels", label: "Surf", value: "surf" },
       { badge, icon: "requests", label: "Requests", value: "requests" },
+      { icon: "channels", label: "Surf", value: "surf" },
     ]}
     onSelect={() => undefined}
     selected="requests"

@@ -1,6 +1,8 @@
 import type { ProposalDTO, RequestEntry, RequestsSnapshot, RequestTab } from "@loomarr/core/requests";
 
 type RequestsListProps = {
+  /** Wall-clock now for relative dates; fixed in stories and tests. */
+  nowMs?: number;
   onApprove: (proposal: ProposalDTO) => void;
   onApproveSelected: (proposalIds: readonly string[]) => void;
   onDeny: (proposal: ProposalDTO, reason?: string) => void;
