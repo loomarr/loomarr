@@ -99,6 +99,10 @@ const config: KnipConfig = {
       // React Native CLI autolinking config.
       entry: ["react-native.config.cjs"],
     },
+    "packages/player": {
+      // Same as the design system: no `test` block for knip's Vitest plugin, and the hook tests are .tsx.
+      entry: ["tests/**/*.test.{ts,tsx}"],
+    },
     "packages/ui": {
       entry: ["tests/**/*.test.{ts,tsx}"],
     },
