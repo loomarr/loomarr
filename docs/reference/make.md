@@ -234,7 +234,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make brand-assets` |  | regenerate favicon, launcher, TV, and store artwork from the shared brand contract |
 | `make brand-assets-verify` |  | verify every platform brand derivative matches the shared brand contract |
 | `make fe-codegen` | ✅ | regenerate tokens + orval api client from api/openapi.yaml |
-| `make fe-api-codegen` |  | regenerate only the orval api client from api/openapi.yaml |
+| `make fe-api-codegen` | ✅ | regenerate only the orval api client from api/openapi.yaml |
 | `make fe-lint` |  | Biome lint + format check (web/) |
 | `make knip` |  | unused files, exports and dependencies in web/ (config: web/knip.ts) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
@@ -275,7 +275,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 
 ## What CI runs
 
-`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine`
+`agent-harness-test` · `android-profile` · `arch-docs-verify` · `ci-lint` · `client-android-debug` · `client-apple-simulator` · `clients` · `config-docs-verify` · `dev-docs-verify` · `e2e` · `fe-api-codegen` · `fe-codegen` · `fe-install` · `fe-tokens-verify` · `fe-visual` · `fe` · `fmt` · `go-cache-warm` · `go-shard-verify` · `image-bench` · `image-cert` · `image-parallelism-bench` · `observability-verify` · `openapi-verify` · `playout-bench` · `retired-verify` · `rust-check` · `test-ffmpeg` · `test-pg` · `test` · `tuner-e2e-host` · `tuner-e2e-quarantine` · `tuner-quarantine`
 
 These are the targets a workflow step invokes DIRECTLY. Their prerequisites run too —
 for example, `check-static` expands to formatting, vet, lint, and repository
