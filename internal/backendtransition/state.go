@@ -204,10 +204,8 @@ func (s State) validate() error {
 }
 
 func validateBackend(backend string) error {
-	switch backend {
-	case BackendInternal, BackendTunarr:
-		return nil
-	default:
+	if !schedule.IsValidPlayoutBackend(backend) {
 		return fmt.Errorf("unknown backend %q", backend)
 	}
+	return nil
 }

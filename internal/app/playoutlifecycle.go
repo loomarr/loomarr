@@ -182,11 +182,11 @@ func (l *postgresPlayoutLifecycle) apply(ctx context.Context, event store.Invali
 		// Payload state preserves an off-air transition even if a later resume is already
 		// durable by the time this notification is handled.
 		if !event.Status.Reconcilable() || event.Status == schedule.StatusEmpty ||
-			event.Backend == schedule.PlayoutBackendTunarr {
+			schedule.IsTunarrBackend(event.Backend) {
 			l.origin.StopChannel(event.ChannelID)
 			return nil
 		}
-		if event.Backend == schedule.PlayoutBackendInternal {
+		if schedule.IsInternalBackend(event.Backend) {
 			if scheduleChanged {
 				l.origin.StopChannel(event.ChannelID)
 			}
