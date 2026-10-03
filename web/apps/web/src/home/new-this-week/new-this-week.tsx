@@ -1,6 +1,6 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
-import { ArtworkFrame } from "@loomarr/design-system";
 import { Link } from "@tanstack/react-router";
+import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { SectionHeader } from "@/components/ui/section-header";
 import type { NewThisWeekProps } from "./new-this-week.type";
@@ -32,9 +32,10 @@ const newestChannel = (channels: readonly ChannelDTO[], since: number) =>
     .filter((c) => (c.createdAtMs ?? 0) >= since)
     .sort((a, b) => (b.createdAtMs ?? 0) - (a.createdAtMs ?? 0));
 
-// NewThisWeek — Home's "New this week" (#1659 web mock): the channel that arrived this week, then
+// NewThisWeek — Home's "New this week" (#1822 evidence): the channel that arrived this week, then
 // the newest titles and the channel each landed on (#1663). Titles carry no poster yet, so every
-// poster is the artwork frame's own "No artwork" state until the maintainer's fallback exists.
+// poster is the restrained line motif, with the landing channel's monogram when one is known
+// (#1822 evidence: "a restrained line motif with a channel monogram where available").
 const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisWeekProps) => {
   const fresh = newestChannel(channels, since);
   const lead = fresh[0];
@@ -47,48 +48,51 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
     .join(" · ");
 
   return (
-    <section aria-labelledby="home-new">
+    <section aria-labelledby="home-new" className="flex flex-col gap-3">
       <SectionHeader id="home-new" title="New this week" meta={meta} />
-      <div
-        className={
-          lead
-            ? "grid grid-cols-[minmax(200px,1.4fr)_repeat(5,minmax(0,1fr))] items-start gap-3"
-            : "grid grid-cols-[repeat(5,minmax(0,1fr))] items-start gap-3"
-        }
-      >
-        {lead && (
-          <Link
-            to="/channels/$id/watch"
-            params={{ id: lead.id }}
-            className="flex flex-col justify-between gap-3 self-stretch rounded-md border border-static-700 bg-static-900 p-3.5 text-foreground hover:border-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={56} />
-            <div>
-              <span className="block text-static-400 text-xs">New channel</span>
-              <span className="mt-0.5 block font-semibold text-[15px]">
-                <span className="font-mono text-signal">{lead.number}</span> {lead.name}
-              </span>
-              <span className="mt-0.5 block text-static-400 text-xs">
-                {addedLine(lead, viewerName, timeZone)}
-              </span>
-            </div>
-            <span className="inline-flex h-7 items-center self-start rounded-md border border-static-500 px-2.5 font-medium text-xs">
-              Watch
+      {/* A separate row, never a grid column beside the posters (#1822 evidence geometry table):
+          sharing a track with five poster columns is what left phone poster slivers in the first
+          place. It wraps its own text and action instead. */}
+      {lead && (
+        <Link
+          to="/channels/$id/watch"
+          params={{ id: lead.id }}
+          className="flex flex-wrap items-center gap-3 rounded-md border border-static-700 bg-static-900 p-3.5 text-foreground hover:border-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChannelIdent name={lead.name} number={lead.number} logo={lead.logo} size={44} />
+          <div className="min-w-0 flex-1">
+            <span className="block text-static-400 text-xs">New channel</span>
+            <span className="mt-0.5 block break-words font-semibold text-[15px]">
+              <span className="font-mono text-signal">{lead.number}</span> {lead.name}
             </span>
-          </Link>
-        )}
-        {titles.slice(0, POSTERS).map((t) => (
-          <div key={t.key} className="flex min-w-0 flex-col gap-1.5">
-            <div className="relative aspect-[2/3] w-full overflow-hidden rounded-md border border-static-700 bg-static-800">
-              <ArtworkFrame bottom={0} left={0} position="absolute" right={0} state="missing" top={0} />
-            </div>
-            <span className="truncate font-medium text-[13px]">{t.name ?? t.key}</span>
-            {t.channels?.[0] && (
-              <span className="truncate text-static-400 text-xs">{t.channels[0].name}</span>
-            )}
+            <span className="mt-0.5 block text-static-400 text-xs">
+              {addedLine(lead, viewerName, timeZone)}
+            </span>
           </div>
-        ))}
-      </div>
+          <span className="inline-flex h-7 shrink-0 items-center self-start rounded-md border border-static-500 px-2.5 font-medium text-xs">
+            Watch
+          </span>
+        </Link>
+      )}
+      {titles.length > 0 && (
+        <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {titles.slice(0, POSTERS).map((t) => (
+            <div key={t.key} className="flex min-w-0 flex-col gap-1.5">
+              <div className="aspect-[2/3] w-full overflow-hidden rounded-md border border-static-700">
+                <ArtworkFallback
+                  channel={
+                    t.channels?.[0] ? { name: t.channels[0].name, number: t.channels[0].number } : undefined
+                  }
+                />
+              </div>
+              <span className="break-words font-medium text-[13px]">{t.name ?? t.key}</span>
+              {t.channels?.[0] && (
+                <span className="truncate text-static-400 text-xs">{t.channels[0].name}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 };

@@ -12,7 +12,9 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { ChannelIdeas } from "../channel-ideas";
 import { HomeStrip } from "../home-strip";
 import { NewThisWeek, newSince } from "../new-this-week";
+import { OnNow } from "../on-now";
 import { OnTheWay, YourRequests } from "../on-the-way";
+import { RecentlyTuned } from "../recently-tuned";
 import { Tonight } from "../tonight";
 import { WatchingNow } from "../watching-now";
 
@@ -26,12 +28,17 @@ const useMinuteClock = () => {
   return nowMs;
 };
 
-// HomePage — the landing page for both roles (#1659 web mock, Q-H1): a status strip, then what's
-// on. Only the variant sections differ by role; machine state (encoders, services, activity) lives
-// in Settings → This server (Q-H7), which the admin footer points to.
+// HomePage — the landing page for both roles (#1822 evidence): a neutral inventory line, then
+// what's on, in the approved order (Recently tuned, On now, Watching now, Tonight, New this week,
+// role-specific requests/ideas, the admin footer). Machine state (encoders, services, activity)
+// lives in Settings → This server (Q-H7), which the admin footer points to.
 //
-// Each section renders from its own endpoint and hides when it has nothing, so one slow or
-// failing source never blanks the page. The guide query is the SAME quantised window the Guide
+// Loading, zero-channels and initial-error are whole-page states (the record's state contract):
+// nothing below HomeStrip renders alongside them, so one guide failure never shows a half page of
+// sections quietly querying with no channels to join.
+//
+// Each later section renders from its own endpoint and hides when it has nothing, so one slow or
+// failing source never blanks the rest. The guide query is the SAME quantised window the Guide
 // reads (and `/` prefetches), so arriving here warms the Guide and vice versa.
 const HomePage = () => {
   useDocumentTitle("Home");
@@ -47,7 +54,9 @@ const HomePage = () => {
     [body, channels, nowMs],
   );
   const loading = guide.isLoading;
-  const hasLife = !loading && channels.length > 0;
+  const errored = guide.isError && !loading;
+  const hasLife = !loading && !errored && channels.length > 0;
+  const stripState = loading ? "loading" : errored ? "error" : channels.length === 0 ? "empty" : "ok";
 
   // Players report what they're showing every 30 seconds (#1662), so poll at the same cadence.
   const viewing = dashboardApi.useHouseholdViewing({ query: { enabled: hasLife, refetchInterval: 30_000 } });
@@ -56,21 +65,36 @@ const HomePage = () => {
   const since = newSince(nowMs);
   const arrivals = titlesApi.useListTitles({ since }, { query: { enabled: hasLife } });
   const allChannels = channelsApi.useListChannels({ query: { enabled: hasLife } });
+  // Channels an active own-viewing session already represents, so Recently tuned never duplicates
+  // the choice Watching now already shows (#1822 evidence).
+  const activeChannelIds = useMemo(
+    () => new Set((viewingBody?.viewers ?? []).filter((v) => v.you).map((v) => v.channelId)),
+    [viewingBody],
+  );
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader title="Home" />
       <div className="flex-1 overflow-auto">
         <div className="mx-auto flex max-w-[1120px] flex-col gap-8 p-6">
-          <HomeStrip channels={channels} loading={loading} isAdmin={isAdmin} />
+          <HomeStrip
+            state={stripState}
+            count={channels.length}
+            isAdmin={isAdmin}
+            onRetry={() => void guide.refetch()}
+          />
+          {hasLife && layout && (
+            <RecentlyTuned
+              continueWatching={viewingBody?.continueWatching}
+              layout={layout}
+              nowMs={nowMs}
+              activeChannelIds={activeChannelIds}
+            />
+          )}
+          {hasLife && layout && <OnNow layout={layout} nowMs={nowMs} />}
           {hasLife && layout && viewingBody && (
             <WatchingNow viewing={viewingBody} layout={layout} nowMs={nowMs} />
           )}
-          {/* Ideas need a library, not a channel, so an empty Home offers them too (the mock). */}
-          {!loading && !isAdmin && (
-            <ChannelIdeas empty={guide.isSuccess && channels.length === 0} nowMs={nowMs} />
-          )}
-          {hasLife && !isAdmin && <YourRequests />}
           {hasLife && (
             <Tonight
               highlights={unwrap(highlights.data, (b) => b.highlights) ?? []}
@@ -86,6 +110,9 @@ const HomePage = () => {
               timeZone={body?.timezone}
             />
           )}
+          {/* Ideas need a library, not a channel, so a bare install offers them too (H4). */}
+          {!loading && !errored && !isAdmin && <ChannelIdeas empty={channels.length === 0} nowMs={nowMs} />}
+          {hasLife && !isAdmin && <YourRequests />}
           {hasLife && isAdmin && <OnTheWay />}
           {isAdmin && (
             <p className="m-0 text-static-400 text-xs">
