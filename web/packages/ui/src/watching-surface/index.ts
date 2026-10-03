@@ -1,5 +1,5 @@
-export type { WatchingPanelProps } from "./watching-panel";
-export { WatchingPanel } from "./watching-panel";
+export type { WatchingPanelData, WatchingPanelDataArgs, WatchingPanelProps } from "./watching-panel";
+export { WatchingPanel, watchingPanelFromGuide } from "./watching-panel";
 export { WatchingSurface } from "./watching-surface";
 export type {
   ChannelNumberEntry,
