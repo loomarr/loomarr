@@ -196,6 +196,11 @@ routes Web already uses; no native-only route exists and no authority is added.
   appear. Editing a lineup before approval stays on Web.
 - **Touch and orientation.** Portrait only, touch density, every target at least 44 pt. Live updates
   poll (two seconds while a request is generating); `/v1/events` is only a Web invalidation trigger.
-- **Tab position (open for maintainer review).** The proposal is a fourth tab, **Requests**, after Surf,
-  with Web's count badge (an admin's pending decisions plus anyone's failed requests). The alternative
-  is reaching it from Guide's header, as Web's Guide has a "Request a channel" door.
+- **Tab position (approved mock, #1840).** Requests is a fourth tab between Guide and Surf (Watching ·
+  Guide · Requests · Surf) with Web's count badge: an admin's pending decisions plus anyone's failed
+  requests. "Request a channel" is an icon button in the Requests app bar on both phones; Android has no
+  floating action button.
+- **Admin review at phone width (approved mock).** Needs you shows two independently selectable groups,
+  **Channel requests** and **Filler downloads**, each with its own Select and bulk approve and no
+  select-all across them, then **Couldn't be built**. Deny and bulk approve use a bottom sheet; a bulk
+  result lists each item's outcome in the `BulkApproveResult` shape.

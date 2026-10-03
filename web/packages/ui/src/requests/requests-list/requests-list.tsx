@@ -4,7 +4,7 @@ import {
   requestsInTab,
   requestsNeedsYouCount,
 } from "@loomarr/core/requests";
-import { Action, Surface, Tabs, Text } from "@loomarr/design-system";
+import { Action, Skeleton, Surface, Tabs, Text } from "@loomarr/design-system";
 import { useState } from "react";
 import { ScrollView } from "react-native";
 
@@ -31,6 +31,9 @@ const tabEmpty = {
   },
 } as const;
 
+// The count shows only when there is something to count, as the approved mock's tabs do.
+const counted = (label: string, count: number) => (count > 0 ? `${label} (${count})` : label);
+
 const Section = ({ children, title }: { children: React.ReactNode; title: string }) => (
   <Surface backgroundColor="$transparent" borderWidth={0} gap="$control" role="group">
     <Text density="touch" textRole="headline">
@@ -49,6 +52,7 @@ const RequestsList = ({
   onOpenChannel,
   onRequestChannel,
   onRetry,
+  nowMs,
   onTabChange,
   snapshot,
   tab,
@@ -56,16 +60,34 @@ const RequestsList = ({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const ask = { label: "Request a channel", onPress: onRequestChannel };
 
+  // Three skeleton rows while the first read is in flight, as the approved mock draws it.
   if (snapshot.status === "loading")
-    return <StatePanel density="touch" kind="loading" title="Loading your requests" />;
+    return (
+      <Surface
+        accessibilityLabel="Loading your requests"
+        aria-busy
+        backgroundColor="$transparent"
+        borderWidth={0}
+        gap="$inline"
+        role="status"
+      >
+        {[0, 1, 2].map((row) => (
+          <Surface gap="$inline" key={row} level="raised" padding="$control">
+            <Skeleton shape="line" width="40%" />
+            <Skeleton shape="line" width="85%" />
+            <Skeleton shape="line" width="60%" />
+          </Surface>
+        ))}
+      </Surface>
+    );
   if (snapshot.status === "error")
     return (
       <StatePanel
         action={{ label: "Try again", onPress: onRetry }}
         density="touch"
-        description={`${snapshot.errorMessage ?? "The server didn't answer."} Nothing you asked for was lost.`}
+        description="Check your connection and try again."
         kind="error"
-        title="Couldn't load requests"
+        title="Couldn't load your requests."
       />
     );
   const isAdmin = snapshot.role === "admin";
@@ -163,6 +185,7 @@ const RequestsList = ({
                   <RequestCard
                     action={fix ? { label: fix, onPress: () => onFix(entry) } : undefined}
                     entry={entry}
+                    nowMs={nowMs}
                     hint={requestFailureHint(entry.status.detail, entry.journey.failure?.guidance)}
                     key={entry.journey.jobId}
                     onOpen={() => onOpen(entry.journey.jobId)}
@@ -188,6 +211,7 @@ const RequestsList = ({
               }
               entry={entry}
               key={entry.journey.jobId}
+              nowMs={nowMs}
               onOpen={() => onOpen(entry.journey.jobId)}
             />
           );
@@ -204,9 +228,9 @@ const RequestsList = ({
           label="Requests sections"
           onValueChange={onTabChange}
           options={[
-            { label: `Needs you (${requestsNeedsYouCount(snapshot)})`, value: "needs-you" },
-            { label: `In progress (${inProgress.length})`, value: "in-progress" },
-            { label: `Done (${done.length})`, value: "done" },
+            { label: counted("Needs you", requestsNeedsYouCount(snapshot)), value: "needs-you" },
+            { label: counted("In progress", inProgress.length), value: "in-progress" },
+            { label: counted("Done", done.length), value: "done" },
           ]}
           value={tab}
         />

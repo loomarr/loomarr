@@ -102,21 +102,31 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
   } else {
     body = (
       <ScrollFrame density="touch">
-        <Text density="touch" textRole="display">
-          Requests
-        </Text>
-        <Text density="touch" textRole="body" tone="secondary">
-          Channels you've asked for and where each one stands.
-        </Text>
-        <Action
-          accessibilityRole="button"
-          density="touch"
-          onPress={() => setRoute({ view: "request" })}
-          tone="primary"
+        {/* The approved mock's app bar: the title, and "Request a channel" as an icon button on both
+            phones (Android's primary action is the app-bar icon, not a FAB). */}
+        <Surface
+          alignItems="center"
+          backgroundColor="$transparent"
+          borderWidth={0}
+          flexDirection="row"
+          justifyContent="space-between"
         >
-          Request a channel
-        </Action>
+          <Text accessibilityRole="header" density="touch" textRole="display">
+            Requests
+          </Text>
+          <Action
+            accessibilityLabel="Request a channel"
+            accessibilityRole="button"
+            density="touch"
+            onPress={() => setRoute({ view: "request" })}
+            style={{ minWidth: 48 }}
+            tone="primary"
+          >
+            +
+          </Action>
+        </Surface>
         <RequestsList
+          nowMs={nowMs}
           onApprove={async (proposal) => {
             const result = await controller.approve(proposal.id);
             if (result.kind === "done")
