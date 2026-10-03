@@ -96,7 +96,6 @@ type Server struct {
 	events          EventSource     // /v1/events SSE (Phase 11); nil ⇒ route 501
 	shutdown        <-chan struct{} // generation shutdown closes long-lived streams before HTTP drain
 	filler          FillerService   // /v1/filler* (Phase 12); nil ⇒ sync/tag routes 501
-	fillerScreening FillerScreeningService
 	fillerResearch  FillerResearchService
 	fillerDecisions *fillerdecision.Service // durable V63 admission audit and projections
 	pods            PodPreviewer            // /v1/channels/{id}/pods (§12); nil ⇒ 501
@@ -193,7 +192,6 @@ type Server struct {
 	// /v1/system/version so the UI can show it without an untyped fetch. nil ⇒ ready.
 	ready          ReadyFunc
 	startupReports StartupReportService
-	healthRefresh  HealthRefreshService
 
 	liveConfigInt      func(key string) int
 	liveConfigDuration func(key string) time.Duration
@@ -500,12 +498,6 @@ type TaxonomyChannelImpact struct {
 type FillerRewinder interface {
 	Rewind(ctx context.Context, hash string, from filler.StageID, force bool) error
 	RetryFailure(ctx context.Context, hash string) error
-}
-
-// FillerScreeningService is the browser-safe read boundary for one exact rendered child's five
-// screening axes. Implementations retain raw evidence and private paths behind this interface.
-type FillerScreeningService interface {
-	ReadSegmentScreeningSummary(context.Context, string, string) (filler.SegmentScreeningSummary, error)
 }
 
 // DiscoveredClip is one candidate the operator could add (§10, V33).
@@ -1042,7 +1034,6 @@ type Options struct {
 	Events          EventSource             // /v1/events SSE (Phase 11); nil ⇒ route 501
 	Shutdown        <-chan struct{}         // generation lifetime; closes SSE so http.Server.Shutdown can drain
 	Filler          FillerService           // /v1/filler sync/tag (Phase 12); nil ⇒ those routes 501
-	FillerScreening FillerScreeningService  // exact browser-safe rendered-child screening projection
 	FillerResearch  FillerResearchService   // optional structured-first web-search status and validation
 	FillerDecisions *fillerdecision.Service // /v1/filler/decisions* (§10 V63)
 	Pods            PodPreviewer            // /v1/channels/{id}/pods preview (§12); nil ⇒ 501
@@ -1075,8 +1066,6 @@ type Options struct {
 	ClientDiagnostics ClientDiagnosticService
 	// StartupReports backs the current/recent application-generation report.
 	StartupReports StartupReportService
-	// HealthRefresh invokes the same runner as the named System health task.
-	HealthRefresh HealthRefreshService
 	// Restart backs POST /v1/system/restart (§9.2, V13) — implemented over main's
 	// generation loop. nil ⇒ 501, the honest answer for a handler with no loop behind it.
 	Restart RestartService

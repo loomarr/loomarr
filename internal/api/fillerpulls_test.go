@@ -53,111 +53,28 @@ func seedSource(t *testing.T, st fillerstore.Store, id, uri string, enabled bool
 	}
 }
 
-func TestProposeFillerPull_UsesOnlyGeographicallyEligibleSources(t *testing.T) {
-	srv, st, _ := newFillerServerWithConfig(t, nil, func(key string) string {
-		return map[string]string{"filler.home_country": "US", "filler.home_market": "New York"}[key]
-	})
-	for _, tc := range []struct {
-		id, country, market string
-	}{
-		{"us-wide", "US", ""},
-		{"ny-local", "US", "New York"},
-		{"california", "US", "California"},
-		{"canadian", "CA", ""},
-		{"unknown", "", ""},
-	} {
-		seedSource(t, st, tc.id, "https://archive.org/details/"+tc.id, true)
-		if err := st.SetFillerSourceGeography(t.Context(), tc.id,
-			filler.Geography{Country: tc.country, Market: tc.market}); err != nil {
-			t.Fatal(err)
-		}
+// seedPull persists a pending pull directly, bypassing the removed propose-filler-pull endpoint
+// (#1743): nothing calls it, so these tests seed the queue the way a pre-V66 or operator-composed
+// pull would already be stored, and exercise approve/dismiss — the operations that remain.
+func seedPull(t *testing.T, st fillerstore.Store, id string, plan []filler.PullPlanRow) filler.Pull {
+	t.Helper()
+	p := filler.Pull{ID: id, Status: filler.PullPending, CreatedAt: time.Now().UTC(), Plan: plan}
+	if err := st.UpsertPull(t.Context(), p); err != nil {
+		t.Fatal(err)
 	}
-
-	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", res.StatusCode)
-	}
-	body := decodePull(t, res)
-	got := map[string]bool{}
-	for _, row := range body.Plan {
-		got[row.SourceID] = true
-	}
-	if !got["us-wide"] || !got["ny-local"] || len(got) != 2 {
-		t.Fatalf("planned sources = %v, want only candidates with their own matching geography evidence", got)
-	}
-}
-
-// ⚠ THE safety property. §10's rule is "the machine proposes, a human commits", and this is what
-// makes the first half true: proposing writes a row and downloads NOTHING.
-func TestProposeFillerPull_DownloadsNothing(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
-	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-
-	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", res.StatusCode)
-	}
-	body := decodePull(t, res)
-
-	if body.Status != "pending" {
-		t.Errorf("status = %q, want pending", body.Status)
-	}
-	if len(ff.ingested) != 0 {
-		t.Errorf("proposing downloaded %v — the gate exists so that this cannot happen", ff.ingested)
-	}
-	pulls, err := st.ListPulls(context.Background(), filler.PullPending)
-	if err != nil || len(pulls) != 1 {
-		t.Fatalf("store holds %d pending pulls (%v), want 1", len(pulls), err)
-	}
-}
-
-func TestProposeFillerPull_BindsExactRankedCandidatesAndEvidence(t *testing.T) {
-	srv, st, ff := newFillerServer(t)
-	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	ff.Candidates = []filler.AcquisitionCandidate{
-		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "low"}, URL: "https://archive.org/details/low", Title: "Low copy", Height: 480},
-		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "hd"}, URL: "https://archive.org/details/hd", Title: "HD reel", Height: 1080},
-	}
-
-	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls",
-		`{"reason":"Improve Saturday coverage","intent":{"count":1,"minHeight":720}}`, adminToken)
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", res.StatusCode)
-	}
-	body := decodePull(t, res)
-	if len(body.Plan) != 1 || body.Plan[0].RemoteID != "hd" || body.Plan[0].URL != "https://archive.org/details/hd" {
-		t.Fatalf("selected plan = %+v, want exact HD item", body.Plan)
-	}
-	if len(body.Rejected) != 1 || body.Rejected[0].RemoteID != "low" || body.Rejected[0].Disposition != "quality_below_floor" {
-		t.Fatalf("rejected evidence = %+v", body.Rejected)
-	}
-	if len(ff.ingested) != 0 {
-		t.Fatalf("proposal downloaded %v", ff.ingested)
-	}
-
-	approved := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+body.ID+"/approve", `{}`, adminToken)
-	if approved.StatusCode != http.StatusOK {
-		t.Fatalf("approve status = %d, want 200", approved.StatusCode)
-	}
-	if len(ff.ingested) != 1 || ff.ingested[0] != "https://archive.org/details/hd" {
-		t.Fatalf("approved ingest = %v, want exact candidate URL", ff.ingested)
-	}
+	return p
 }
 
 func TestApproveFillerPull_DropsOneCandidateWithoutDroppingItsSource(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	ff.Candidates = []filler.AcquisitionCandidate{
-		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "one"}, URL: "https://archive.org/details/one"},
-		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "two"}, URL: "https://archive.org/details/two"},
-	}
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{"intent":{"count":2}}`, adminToken))
-	if len(created.Plan) != 2 {
-		t.Fatalf("plan = %+v", created.Plan)
-	}
+	created := seedPull(t, st, "pull-drop-one", []filler.PullPlanRow{
+		{SourceID: "classic", Provider: "archive", RemoteID: "one", URL: "https://archive.org/details/one"},
+		{SourceID: "classic", Provider: "archive", RemoteID: "two", URL: "https://archive.org/details/two"},
+	})
 	drop := created.Plan[0]
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve",
-		`{"dropCandidateIds":["`+drop.CandidateID+`"]}`, adminToken)
+		`{"dropCandidateIds":["`+drop.CandidateID()+`"]}`, adminToken)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", res.StatusCode)
 	}
@@ -166,43 +83,12 @@ func TestApproveFillerPull_DropsOneCandidateWithoutDroppingItsSource(t *testing.
 	}
 }
 
-// The mock writes an empty state for this precondition; it belongs on the server, because a pull
-// composed from a switched-off source is one that can never run, and finding that out AFTER a
-// human approved it is the worst moment.
-func TestProposeFillerPull_RefusedWhenEverySourceIsOff(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
-	seedSource(t, st, "classic", "https://archive.org/details/classic", false)
-
-	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken)
-	if res.StatusCode != http.StatusConflict {
-		t.Errorf("status = %d, want 409", res.StatusCode)
-	}
-	if pulls, _ := st.ListPulls(context.Background(), ""); len(pulls) != 0 {
-		t.Errorf("wrote %d pulls that could never run", len(pulls))
-	}
-}
-
-func TestProposeFillerPull_RejectsUnknownIntentVocabulary(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
-	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-
-	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls",
-		`{"intent":{"roles":["probably_an_ad"]}}`, adminToken)
-	if res.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("status = %d, want 422", res.StatusCode)
-	}
-	if pulls, _ := st.ListPulls(t.Context(), ""); len(pulls) != 0 {
-		t.Fatalf("invalid intent persisted %d pulls", len(pulls))
-	}
-}
-
 // The commit point. Approving is the ONLY path that enqueues, and it enqueues through the
 // existing ingest job rather than a downloader of its own.
 func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-only-download-path", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	if len(ff.ingested) != 0 {
 		t.Fatalf("downloaded before approval: %v", ff.ingested)
 	}
@@ -222,7 +108,7 @@ func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
 	if len(ff.ingested) != 1 || ff.ingested[0] != "https://archive.org/details/classic" {
 		t.Errorf("ingested %v, want the source's uri once", ff.ingested)
 	}
-	if ff.pullID != created.ID || len(ff.pullTargets) != 1 || ff.pullTargets[0].SourceID != "classic" || ff.pullTargets[0].Kind != "archive" || ff.pullTargets[0].RemoteID != "classic" {
+	if ff.pullID != created.ID || len(ff.pullTargets) != 1 || ff.pullTargets[0].SourceID != "classic" || ff.pullTargets[0].Kind != "archive" {
 		t.Errorf("pull attribution = id %q targets %+v, want approved pull and exact source", ff.pullID, ff.pullTargets)
 	}
 }
@@ -232,7 +118,7 @@ func TestApproveFillerPull_IsTheOnlyPathThatDownloads(t *testing.T) {
 func TestApproveFillerPull_CannotBeApprovedTwice(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-cannot-approve-twice", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
 	if res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve", `{}`, adminToken); res.StatusCode != http.StatusOK {
 		t.Fatalf("first approve: %d", res.StatusCode)
@@ -248,16 +134,10 @@ func TestApproveFillerPull_CannotBeApprovedTwice(t *testing.T) {
 func TestApproveFillerPull_RevalidatesCandidateAgainstOtherQueuedWork(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	ff.Candidates = []filler.AcquisitionCandidate{{
-		Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "same"},
-		URL:      "https://archive.org/details/same", Title: "Same reel",
-	}}
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
-	pull, err := st.GetPull(t.Context(), created.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	other := pull
+	created := seedPull(t, st, "pull-revalidate", []filler.PullPlanRow{
+		{SourceID: "classic", Provider: "archive", RemoteID: "same", URL: "https://archive.org/details/same"},
+	})
+	other := created
 	other.ID = "other-pull"
 	other.CreatedAt = other.CreatedAt.Add(time.Second)
 	if err := st.UpsertPull(t.Context(), other); err != nil {
@@ -280,10 +160,10 @@ func TestApproveFillerPull_DroppedRowsAreExcludedButRecorded(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "keep", "https://archive.org/details/keep", true)
 	seedSource(t, st, "drop", "https://archive.org/details/drop", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
-	if len(created.Plan) != 2 {
-		t.Fatalf("plan has %d rows, want 2", len(created.Plan))
-	}
+	created := seedPull(t, st, "pull-dropped-rows", []filler.PullPlanRow{
+		{SourceID: "keep", Name: "Keep"},
+		{SourceID: "drop", Name: "Drop"},
+	})
 
 	body := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve",
 		`{"dropSourceIds":["drop"]}`, adminToken))
@@ -307,7 +187,7 @@ func TestApproveFillerPull_DroppedRowsAreExcludedButRecorded(t *testing.T) {
 func TestApproveFillerPull_RefusesAnEmptyCommit(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-empty-commit", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
 	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve",
 		`{"dropSourceIds":["classic"]}`, adminToken)
@@ -324,7 +204,7 @@ func TestApproveFillerPull_RefusesAnEmptyCommit(t *testing.T) {
 func TestApproveFillerPull_RefusesASourceDisabledSinceProposal(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-source-disabled", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
 	if err := st.SetFillerSourceEnabled(context.Background(), "classic", false); err != nil {
 		t.Fatal(err)
@@ -342,7 +222,7 @@ func TestApproveFillerPull_RefusesASourceDisabledSinceProposal(t *testing.T) {
 func TestApproveFillerPull_RefusesAProviderPausedSinceProposal(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-provider-paused", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
 	if err := st.SetFillerProviderEnabled(t.Context(), "archive", false); err != nil {
 		t.Fatal(err)
@@ -362,7 +242,7 @@ func TestApproveFillerPull_RefusesAProviderPausedSinceProposal(t *testing.T) {
 func TestDismissFillerPull_RecordsAndDownloadsNothing(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-dismiss", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
 	body := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/dismiss", `{}`, adminToken))
 	if body.Status != "dismissed" {
@@ -381,10 +261,9 @@ func TestDismissFillerPull_RecordsAndDownloadsNothing(t *testing.T) {
 func TestFillerPullRoutes_RequireAdmin(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-require-admin", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 
 	for _, tc := range []struct{ method, path string }{
-		{http.MethodPost, "/v1/filler/pulls"},
 		{http.MethodGet, "/v1/filler/pulls"},
 		{http.MethodPost, "/v1/filler/pulls/" + created.ID + "/approve"},
 		{http.MethodPost, "/v1/filler/pulls/" + created.ID + "/dismiss"},
@@ -402,7 +281,7 @@ func TestFillerPullRoutes_RequireAdmin(t *testing.T) {
 func TestApproveFillerPull_ConcurrentDecision(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-concurrent-decision", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	entered, release := make(chan struct{}, 2), make(chan struct{})
 	ff.beforePull = func() { entered <- struct{}{}; <-release }
 	results := make(chan int, 2)
@@ -461,7 +340,7 @@ func TestApproveFillerPull_HistoricalSourcePlan(t *testing.T) {
 func TestApproveFillerPull_ConcurrentDismissalWins(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-concurrent-dismissal", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
 	entered, release := make(chan struct{}), make(chan struct{})
 	releaseApproval := sync.OnceFunc(func() { close(release) })
 	defer releaseApproval()

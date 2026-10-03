@@ -110,6 +110,12 @@ func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t 
 	t.Fatalf("source %q disappeared instead of remaining visible as disabled", src.ID)
 }
 
+type enumeratorFunc func(context.Context, filler.FetchSource, int) ([]filler.DiscoveredRef, int, error)
+
+func (f enumeratorFunc) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
+	return f(ctx, source, limit)
+}
+
 type fetchIngestorFunc func(context.Context, string, string, []string) (string, error)
 
 func (f fetchIngestorFunc) IngestSource(
