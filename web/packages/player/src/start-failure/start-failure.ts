@@ -1,3 +1,15 @@
+/**
+ * The sentence shown when a channel refused to start and no more specific reason is available.
+ *
+ * Web reaches this only when a 5xx problem body can't be parsed (see `parseStartFailureReason`
+ * below). Native (Expo) reaches it for EVERY 5xx start failure, by design (§1455 checkpoint 2):
+ * the server's manifest endpoint IS the tune (internal/api/playout.go: tuneRaw → playout.Tune), so
+ * the native transport cannot safely re-fetch it from JS to read the problem body — that would
+ * start a second tune of a channel that just failed. Showing the server's specific `detail` on
+ * native would need a read-only API surface the client can poll AFTER a failed tune without
+ * triggering another one (e.g. a last-start-failure field scoped to the channel); none exists
+ * today — see #1455 for that follow-up.
+ */
 const GENERIC_START_FAILURE = "Couldn't start this channel. Try again in a moment.";
 
 const decodeResponseBody = (body: unknown): string => {

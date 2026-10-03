@@ -150,10 +150,7 @@ describe("native transport marks", () => {
   it("reduces a native error to a cause token and reports each format change", async () => {
     const { lines, marks } = recorder();
     const native = nativePlayer();
-    // Pre-first-frame errors probe the manifest for a start-failure reason (§1455); a healthy
-    // manifest response means this was an ordinary segment hiccup, so the native message stands.
-    const fetchManifest = vi.fn().mockResolvedValue({ status: 200, text: () => Promise.resolve("") });
-    const transport = createNativePlayerTransport(native.player, undefined, marks, { fetchManifest });
+    const transport = createNativePlayerTransport(native.player, undefined, marks);
 
     await transport.replace(source, { attemptId: 4, signal: new AbortController().signal });
     native.emit("videoTrackChange", {
@@ -168,8 +165,6 @@ describe("native transport marks", () => {
       error: { message: "Response code: 404 https://loomarr.test/signed/seg.m4s?sig=secret" },
       status: "error",
     });
-    await vi.waitFor(() => expect(fetchManifest).toHaveBeenCalled());
-    await vi.waitFor(() => expect(lines).toHaveLength(2));
 
     expect(lines.map((line) => line.replace(/ t=\S+/, ""))).toEqual([
       "LoomarrCert v=1 ev=format att=4 br=4000000 fps=30 h=1080 mime=video/avc w=1920",
