@@ -75,10 +75,16 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
         </Link>
       )}
       {titles.length > 0 && (
-        <div className="grid grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        // Two columns (~145px) down to 390px; one below it (the geometry table: "one below 284px
+        // content width" — the prototype's own breakpoint, 371px, is the viewport equivalent
+        // within the 56px rail + 16px padding).
+        <div className="grid grid-cols-2 items-start gap-3 max-[371px]:grid-cols-1 sm:grid-cols-3 lg:grid-cols-5">
           {titles.slice(0, POSTERS).map((t) => (
             <div key={t.key} className="flex min-w-0 flex-col gap-1.5">
-              <div className="aspect-[2/3] w-full overflow-hidden rounded-md border border-static-700">
+              <div
+                data-home-poster-art=""
+                className="aspect-[2/3] w-full overflow-hidden rounded-md border border-static-700"
+              >
                 <ArtworkFallback
                   channel={
                     t.channels?.[0] ? { name: t.channels[0].name, number: t.channels[0].number } : undefined
