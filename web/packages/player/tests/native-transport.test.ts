@@ -352,6 +352,85 @@ describe("Expo video transport", () => {
   });
 });
 
+describe("native start-failure reason (#1455)", () => {
+  // The manifest request IS a tune on the server (internal/api/playout.go: tuneRaw → playout.Tune),
+  // so this transport must never re-fetch it to learn why a tune failed — that would start a second
+  // tune of a channel that just failed and could strand an encoder session with no viewer. Every
+  // test below asserts no network call was made, proving the start-failure state comes only from the
+  // status code ExoPlayer/AVPlayer already put in their own error message.
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("shows the generic start-failure sentence for a 5xx reported before the first frame", async () => {
+    const { emit, player } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+    const events: PlayerTransportEvent[] = [];
+    transport.subscribe((event) => events.push(event));
+
+    await transport.replace(
+      { uri: "https://loomarr.test/live.m3u8" },
+      { attemptId: 1, signal: new AbortController().signal },
+    );
+    // No firstFrame() call: the player errored before ever presenting a frame for this attempt.
+    emit("statusChange", {
+      error: { message: "Response code: 502 https://loomarr.test/live.m3u8?sig=secret" },
+      status: "error",
+    });
+
+    expect(events).toContainEqual({
+      attemptId: 1,
+      error: "Couldn't start this channel. Try again in a moment.",
+      type: "error",
+    });
+  });
+
+  it("keeps the native message for a pre-first-frame error that isn't a 5xx", async () => {
+    const { emit, player } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+    const events: PlayerTransportEvent[] = [];
+    transport.subscribe((event) => events.push(event));
+
+    await transport.replace(
+      { uri: "https://loomarr.test/live.m3u8" },
+      { attemptId: 1, signal: new AbortController().signal },
+    );
+    emit("statusChange", {
+      error: { message: "Response code: 404 https://loomarr.test/signed/seg.m4s?sig=secret" },
+      status: "error",
+    });
+
+    expect(events).toContainEqual({
+      attemptId: 1,
+      error: "Response code: 404 https://loomarr.test/signed/seg.m4s?sig=secret",
+      type: "error",
+    });
+  });
+
+  it("keeps the native message once an attempt has already shown its first frame, even for a 5xx", async () => {
+    const { emit, player } = nativePlayer();
+    const transport = createNativePlayerTransport(player);
+    const events: PlayerTransportEvent[] = [];
+    transport.subscribe((event) => events.push(event));
+
+    await transport.replace(
+      { uri: "https://loomarr.test/live.m3u8" },
+      { attemptId: 1, signal: new AbortController().signal },
+    );
+    transport.firstFrame();
+    emit("statusChange", { error: { message: "Response code: 502" }, status: "error" });
+
+    expect(events).toContainEqual({ attemptId: 1, error: "Response code: 502", type: "error" });
+  });
+});
+
 describe("paired native image source", () => {
   const credential = { serverUrl: "http://loomarr.test:8080", token: "device-secret" };
 

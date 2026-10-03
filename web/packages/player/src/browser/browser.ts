@@ -2,6 +2,7 @@ import type { ClientObservation as BrowserClientObservation } from "@loomarr/cor
 import type Hls from "hls.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LivePlaybackState } from "../player-controller";
+import { parseStartFailureReason } from "../start-failure";
 import { liveHlsConfig } from "./live-hls-config";
 import { type LiveLevel, selectLiveLevel } from "./live-level";
 
@@ -275,34 +276,15 @@ interface ManifestLoadFailure {
   response?: { code?: number; data?: unknown };
 }
 
-const decodeResponseBody = (body: unknown): string => {
-  if (typeof body === "string") return body;
-  if (body instanceof ArrayBuffer) return new TextDecoder().decode(body);
-  return "";
-};
-
 /**
  * The reason a channel's playlist request was refused, when the server decided it (a 5xx problem
- * response). The server answers a tune that could not start with a problem body whose `detail`
- * says why (program source unreachable, encoder stopped, all tuners busy), after its start
- * deadline. Retrying that request only reproduces the same wait, so the viewer is told instead.
- * A 404 or an empty playlist is the ordinary warm-up race and stays on hls.js's own retry.
+ * response). A 404 or an empty playlist is the ordinary warm-up race and stays on hls.js's own
+ * retry; see `parseStartFailureReason` for how the problem body itself is read.
  */
 const manifestStartFailure = (data: ManifestLoadFailure, manifestLoadError: string): string | undefined => {
   const code = data.response?.code;
-  if (data.details !== manifestLoadError || code === undefined || code < 500) return undefined;
-  try {
-    const problem = JSON.parse(decodeResponseBody(data.response?.data)) as {
-      detail?: unknown;
-      title?: unknown;
-    };
-    for (const text of [problem.detail, problem.title]) {
-      if (typeof text === "string" && text.trim() !== "") return text;
-    }
-  } catch {
-    /* not a problem body — fall through to the generic sentence */
-  }
-  return "Couldn't start this channel. Try again in a moment.";
+  if (data.details !== manifestLoadError || code === undefined) return undefined;
+  return parseStartFailureReason(code, data.response?.data);
 };
 
 const createPlaybackSessionID = () => {

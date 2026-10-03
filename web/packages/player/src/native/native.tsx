@@ -11,6 +11,7 @@ import type {
   PlayerTransportEvent,
 } from "../player-controller";
 import type { PlayerSource } from "../player-source";
+import { GENERIC_START_FAILURE } from "../start-failure";
 
 interface NativePlayerTransport extends PlayerTransport {
   /** Signals the first frame rendered by the native VideoView for the active attempt. */
@@ -50,6 +51,24 @@ const pairedNativeImageSource = (
 };
 
 const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
+
+/** Matches the HTTP status ExoPlayer/AVPlayer embed in their own error prose (e.g. "Response code: 502"). */
+const NATIVE_5XX_STATUS = /\b5\d{2}\b/;
+
+/**
+ * Whether a native player error reported before this attempt's first frame is a server-refused
+ * start, rather than a mid-stream drop.
+ *
+ * The manifest endpoint IS the tune on the server (internal/api/playout.go: tuneRaw → playout.Tune,
+ * near the HLS path), so re-fetching it from JS to read its problem body — as a first draft of this
+ * fix did — starts a second tune of a channel that just failed: the viewer waits out the server's
+ * full startup timeout a second time before the error even appears, and a probe that happens to
+ * land while the server is mid-recovery would leave an encoder session running for no viewer. The
+ * fix stays read-only: it only inspects the status code ExoPlayer/AVPlayer already embedded in the
+ * error they delivered, no network call. The server's specific reason (§1455's problem `detail`)
+ * is not reachable this way — see the start-failure module's module doc for what would be needed.
+ */
+const isNativeStartFailure = (message: string): boolean => NATIVE_5XX_STATUS.test(message);
 
 const createNativePlayerTransport = (
   initialPlayer: VideoPlayer,
@@ -134,10 +153,15 @@ const createNativePlayerTransport = (
     statusSubscription = next.addListener("statusChange", ({ error, status }) => {
       if (activeAttemptId === undefined) return;
       if (status === "error") {
-        const message = error?.message ?? "Native playback failed.";
+        const attemptId = activeAttemptId;
+        const fallbackMessage = error?.message ?? "Native playback failed.";
         endStall("error");
-        marks.error(activeAttemptId, nativeErrorCause(message));
-        emit({ attemptId: activeAttemptId, error: message, type: "error" });
+        const message =
+          framedAttemptId !== attemptId && isNativeStartFailure(fallbackMessage)
+            ? GENERIC_START_FAILURE
+            : fallbackMessage;
+        marks.error(attemptId, nativeErrorCause(fallbackMessage));
+        emit({ attemptId, error: message, type: "error" });
       } else if (status === "loading") {
         if (framedAttemptId === activeAttemptId && stalledSinceMs === undefined && liveMode !== "paused") {
           stalledSinceMs = marks.now();
