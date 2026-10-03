@@ -11,6 +11,7 @@ import type {
   PlayerTransportEvent,
 } from "../player-controller";
 import type { PlayerSource } from "../player-source";
+import { parseStartFailureReason } from "../start-failure";
 
 interface NativePlayerTransport extends PlayerTransport {
   /** Signals the first frame rendered by the native VideoView for the active attempt. */
@@ -51,13 +52,43 @@ const pairedNativeImageSource = (
 
 const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
 
+interface NativeStartFailureOptions {
+  /** Injected for tests; defaults to the platform fetch. */
+  fetchManifest?: typeof fetch;
+}
+
+/**
+ * Expo's native HLS pipeline (ExoPlayer/AVPlayer) fetches the manifest itself, off the JS thread,
+ * so a refused tune only ever reaches `statusChange` as a generic native error message — unlike
+ * the web transport, which sees hls.js's own manifest-load response. Read the same 5xx problem
+ * body web does (§1455) by asking the manifest URL again from JS: cheap, and only attempted for a
+ * failure before this attempt's first frame, i.e. a start failure rather than a mid-stream drop.
+ */
+const resolveNativeStartFailure = async (
+  source: Pick<PlayerSource, "headers" | "mediaUri" | "uri">,
+  fetchManifest: typeof fetch,
+): Promise<string | undefined> => {
+  try {
+    const response = await fetchManifest(source.mediaUri ?? source.uri, {
+      headers: source.headers ? { ...source.headers } : undefined,
+    });
+    if (response.status < 500) return undefined;
+    return parseStartFailureReason(response.status, await response.text());
+  } catch {
+    // No JS-visible response (offline, CORS-less native fetch failure, …): keep the native message.
+    return undefined;
+  }
+};
+
 const createNativePlayerTransport = (
   initialPlayer: VideoPlayer,
   recreatePlayer?: () => VideoPlayer,
   marks: PlaybackMarks = createPlaybackMarks({ enabled: false }),
+  { fetchManifest = globalThis.fetch }: NativeStartFailureOptions = {},
 ): NativePlayerTransport => {
   let disposed = false;
   let activeAttemptId: number | undefined;
+  let activeSource: Pick<PlayerSource, "headers" | "mediaUri" | "uri"> | undefined;
   let player: VideoPlayer | undefined;
   let replacement = Promise.resolve();
   let replacing = 0; // replacements queued or running
@@ -134,10 +165,22 @@ const createNativePlayerTransport = (
     statusSubscription = next.addListener("statusChange", ({ error, status }) => {
       if (activeAttemptId === undefined) return;
       if (status === "error") {
-        const message = error?.message ?? "Native playback failed.";
+        const attemptId = activeAttemptId;
+        const source = activeSource;
+        const fallbackMessage = error?.message ?? "Native playback failed.";
         endStall("error");
-        marks.error(activeAttemptId, nativeErrorCause(message));
-        emit({ attemptId: activeAttemptId, error: message, type: "error" });
+        const reportError = (message: string) => {
+          if (activeAttemptId !== attemptId) return; // a later tune already replaced this one
+          marks.error(attemptId, nativeErrorCause(message));
+          emit({ attemptId, error: message, type: "error" });
+        };
+        if (framedAttemptId !== attemptId && source) {
+          void resolveNativeStartFailure(source, fetchManifest).then((reason) =>
+            reportError(reason ?? fallbackMessage),
+          );
+        } else {
+          reportError(fallbackMessage);
+        }
       } else if (status === "loading") {
         if (framedAttemptId === activeAttemptId && stalledSinceMs === undefined && liveMode !== "paused") {
           stalledSinceMs = marks.now();
@@ -186,6 +229,7 @@ const createNativePlayerTransport = (
     timeSubscription = undefined;
     trackSubscription = undefined;
     activeAttemptId = undefined;
+    activeSource = undefined;
     player = undefined;
     current.release();
     for (const listener of playerListeners) listener();
@@ -264,6 +308,7 @@ const createNativePlayerTransport = (
         if (!current) throw new Error("Native player is unavailable.");
         endStall("retuned");
         activeAttemptId = context.attemptId;
+        activeSource = { headers: source.headers, mediaUri: source.mediaUri, uri: source.uri };
         liveMode = "live";
         noticeRevision = 0;
         serverClockOffsetMs =
@@ -311,8 +356,11 @@ const createNativePlayerTransport = (
   };
 };
 
-const createExpoVideoTransport = (marks?: PlaybackMarks): NativePlayerTransport =>
-  createNativePlayerTransport(createVideoPlayer(null), () => createVideoPlayer(null), marks);
+const createExpoVideoTransport = (
+  marks?: PlaybackMarks,
+  options?: NativeStartFailureOptions,
+): NativePlayerTransport =>
+  createNativePlayerTransport(createVideoPlayer(null), () => createVideoPlayer(null), marks, options);
 
 const NativePlayerView = ({ style, transport }: NativePlayerViewProps) => {
   const player = useSyncExternalStore(transport.subscribePlayer, transport.getPlayer, transport.getPlayer);
@@ -336,7 +384,12 @@ const PairedNativeImage = ({ credential, resizeMode = "cover", style, uri }: Pai
   return source ? <Image resizeMode={resizeMode} source={source} style={style} /> : null;
 };
 
-export type { NativePlayerTransport, NativePlayerViewProps, PairedNativeImageProps };
+export type {
+  NativePlayerTransport,
+  NativePlayerViewProps,
+  NativeStartFailureOptions,
+  PairedNativeImageProps,
+};
 export {
   createExpoVideoTransport,
   createNativePlayerTransport,
