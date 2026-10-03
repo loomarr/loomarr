@@ -69,6 +69,7 @@ describe("ProgrammeCard layouts", () => {
   it("keeps the default layout's identity rows", () => {
     const markup = render(<ProgrammeCard programme={programme} />);
     expect(markup).toContain("LN");
-    expect(markup).not.toContain("linear-gradient");
+    // No artwork scrim here; the hatch behind the monogram (#1659 decision N8) is unrelated.
+    expect(markup).not.toContain("linear-gradient(180deg");
   });
 });

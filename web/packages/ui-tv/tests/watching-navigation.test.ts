@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clampNumberEntryMs,
+  DEFAULT_NUMBER_ENTRY_MS,
   initialTvWatchingRemoteState,
+  MAX_NUMBER_ENTRY_MS,
+  MIN_NUMBER_ENTRY_MS,
   reduceTvWatchingRemote,
   type TvWatchingRemoteState,
   tvNumberEntryPresentation,
@@ -111,5 +115,20 @@ describe("TV Watching remote navigation", () => {
     }).state;
     const seven = reduceTvWatchingRemote(exact, { atMs: 40, digit: "7", key: "digit" }).state;
     expect(tvNumberEntryPresentation(seven, channels)?.channelName).toBe("Science Fiction");
+  });
+
+  it("accepts a longer per-device auto-tune duration (#1659 decision N4, WCAG 2.2.1)", () => {
+    const state = reduceTvWatchingRemote(
+      initialTvWatchingRemoteState,
+      { atMs: 1_000, digit: "4", key: "digit" },
+      5_000,
+    ).state;
+    expect(state).toEqual({ numberEntry: { digits: "4", expiresAtMs: 6_000 } });
+  });
+
+  it("clamps a configured auto-tune duration to the supported range", () => {
+    expect(clampNumberEntryMs(0)).toBe(MIN_NUMBER_ENTRY_MS);
+    expect(clampNumberEntryMs(DEFAULT_NUMBER_ENTRY_MS)).toBe(DEFAULT_NUMBER_ENTRY_MS);
+    expect(clampNumberEntryMs(60_000)).toBe(MAX_NUMBER_ENTRY_MS);
   });
 });
