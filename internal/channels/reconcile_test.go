@@ -13,12 +13,13 @@ import (
 
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/quality"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // --- test harness ---
@@ -57,13 +58,13 @@ func entry(key, title string) schedule.LineupEntry {
 	return schedule.LineupEntry{Key: provision.Key(key), Title: title, DurationMs: 3600000}
 }
 
-func newEngine(st store.Store, tun programmer.Programmer, avail channels.Availability, guide channels.GuidePoker) *channels.Engine {
+func newEngine(st store.Store, tun tunarr.Programmer, avail channels.Availability, guide channels.GuidePoker) *channels.Engine {
 	return channels.New(st, tun, avail, guide, channels.Config{ReconcileTTL: 10 * time.Minute},
 		func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger())
 }
 
 func newEngineForBackend(
-	st store.Store, tun programmer.Programmer, avail channels.Availability, guide channels.GuidePoker,
+	st store.Store, tun tunarr.Programmer, avail channels.Availability, guide channels.GuidePoker,
 	backend func() string,
 ) *channels.Engine {
 	return channels.New(st, tun, avail, guide, channels.Config{
@@ -91,7 +92,7 @@ func (n *recordingChannelNotifier) ChannelChanged(_ string, previousStatus, stat
 // a second reconcile is a no-op (idempotent, minimal-diff).
 func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
 	notifier := &recordingChannelNotifier{}
 	e := newEngine(st, tun, avail, nil).WithNotifier(notifier)
@@ -517,7 +518,7 @@ func TestReconcile_PlayoutBackendPrecedence(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			st := newStore(t)
-			tun := testkit.NewTunarr()
+			tun := tunarrtest.NewTunarr()
 			e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
 				func() string { return tt.global })
 			seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
@@ -544,7 +545,7 @@ func TestReconcile_PlayoutBackendPrecedence(t *testing.T) {
 // remote identity and leave Tunarr untouched. Moving back reuses that identity.
 func TestReconcile_BackendSwitchPreservesTunarrProjection(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	guide := &fakeGuide{}
 	backend := "tunarr"
 	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, guide,
@@ -608,7 +609,7 @@ func TestReconcile_BackendSwitchPreservesTunarrProjection(t *testing.T) {
 
 func TestReconcile_ReadsLiveCooldownSetting(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	now := time.Unix(1_800_000_000, 0).UTC()
 	cooldown := 10 * time.Minute
@@ -642,7 +643,7 @@ func TestReconcile_ReadsLiveCooldownSetting(t *testing.T) {
 // channel at the same number and collided (a 500). Regression guard for §9 atomicity.
 func TestReconcile_ChannelIDCheckpointedBeforeLineupPush(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	tun.SetLineupErr = context.DeadlineExceeded // simulate the big-library resolve timeout
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	e := newEngine(st, tun, avail, nil)
@@ -686,7 +687,7 @@ func TestReconcile_ChannelIDCheckpointedBeforeLineupPush(t *testing.T) {
 
 func TestReconcile_CheckpointPersistsAutoRenumberBeforeLineupFailure(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	tun.SeedForeignChannel(5, "Do not touch")
 	tun.SetLineupErr = context.DeadlineExceeded
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
@@ -725,7 +726,7 @@ func TestReconcile_CheckpointPersistsAutoRenumberBeforeLineupFailure(t *testing.
 // whole plan from the new row, preserving the operator edit and converging Tunarr to it.
 func TestReconcile_ReloadsAfterConcurrentChannelEdit(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
 	seedChannel(t, st, "c-race", 15, entry("movie:tmdb:1", "Old"))
@@ -784,7 +785,7 @@ func TestReconcile_ReloadsAfterConcurrentChannelEdit(t *testing.T) {
 // switches the channel to internal playout: the retry persists local truth and stops projecting.
 func TestReconcile_BackendSwitchDuringRetryDoesNotLeakTunarrEffects(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	guide := &fakeGuide{}
 	avail := mapAvail{
 		"movie:tmdb:1": "lib-1",
@@ -856,7 +857,7 @@ func TestReconcile_BackendSwitchDuringRetryDoesNotLeakTunarrEffects(t *testing.T
 // no orphan shell and no operator edit overwritten by the checkpoint.
 func TestReconcile_CheckpointPreservesAnEditDuringRemoteCreate(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
 	seedChannel(t, st, "c-checkpoint-race", 16, entry("movie:tmdb:1", "Old"))
@@ -864,7 +865,7 @@ func TestReconcile_CheckpointPreservesAnEditDuringRemoteCreate(t *testing.T) {
 	ensureStarted := make(chan struct{})
 	allowEnsure := make(chan struct{})
 	var once sync.Once
-	tun.BeforeEnsureChannel = func(_ programmer.ChannelSpec) {
+	tun.BeforeEnsureChannel = func(_ tunarr.ChannelSpec) {
 		once.Do(func() {
 			close(ensureStarted)
 			<-allowEnsure
@@ -919,7 +920,7 @@ func TestReconcile_RemovesRemoteCreateThatLosesCrossEngineAttachRace(t *testing.
 		}
 		t.Run(name, func(t *testing.T) {
 			st := newStore(t)
-			tun := testkit.NewTunarr()
+			tun := tunarrtest.NewTunarr()
 			avail := mapAvail{"movie:tmdb:1": "lib-1"}
 			firstEngine := newEngine(st, tun, avail, nil)
 			secondEngine := newEngine(st, tun, avail, nil)
@@ -942,7 +943,7 @@ func TestReconcile_RemovesRemoteCreateThatLosesCrossEngineAttachRace(t *testing.
 			firstCreating := make(chan struct{})
 			releaseFirst := make(chan struct{})
 			var once sync.Once
-			tun.BeforeEnsureChannel = func(spec programmer.ChannelSpec) {
+			tun.BeforeEnsureChannel = func(spec tunarr.ChannelSpec) {
 				if spec.TunarrID == "" && spec.Number == 5 {
 					once.Do(func() { close(firstCreating) })
 					<-releaseFirst
@@ -996,7 +997,7 @@ func TestReconcile_RemovesRemoteCreateThatLosesCrossEngineAttachRace(t *testing.
 // row is the durable truth and a later reconcile can recreate its removed Tunarr peer.
 func TestPurge_DoesNotDeleteAConcurrentlyEditedChannel(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
 	seedChannel(t, st, "c-purge-race", 17, entry("movie:tmdb:1", "A"))
 	if err := e.Reconcile(context.Background(), "c-purge-race"); err != nil {
@@ -1061,7 +1062,7 @@ func TestPurge_InternalHistoricalTunarrIDFailsClosedWithoutProgrammer(t *testing
 
 func TestPurge_RescansTunerAfterHardDelete(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	guide := &fakeGuide{}
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, guide)
 	seedChannel(t, st, "purge-rescan", 19, entry("movie:tmdb:1", "A"))
@@ -1094,7 +1095,7 @@ func (f fakeRatings) Rating(_ context.Context, k provision.Key) (string, bool, e
 // persisted, so it happens once.
 func TestReconcile_HealsUnratedEntryFromLibrary(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	// The library rates it TV-Y7 — within the channel's kids ceiling.
 	e := newEngine(st, tun, avail, nil).
@@ -1143,7 +1144,7 @@ func (c *countingBoxSets) BoxSets(_ context.Context, k provision.Key) ([]string,
 // filters on it with no library I/O (programming-design §2.2).
 func TestReconcile_StampsBoxSetMembership(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:1": {"star-trek"}}}
 	e := newEngine(st, tun, avail, nil).WithBoxSets(res)
@@ -1169,7 +1170,7 @@ func TestReconcile_StampsBoxSetMembership(t *testing.T) {
 // calls across two passes rather than by reading the guard.
 func TestReconcile_BoxSetHealIsOneTimeEvenForNonMembers(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	res := &countingBoxSets{sets: map[provision.Key][]string{}} // in no collection at all
 	e := newEngine(st, tun, avail, nil).WithBoxSets(res)
@@ -1195,7 +1196,7 @@ func TestReconcile_BoxSetHealIsOneTimeEvenForNonMembers(t *testing.T) {
 // event places the real program IN PLACE, re-pushing the lineup.
 func TestReconcile_BackfillOnAvailabilityEvent(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"} // #2 not yet available
 	e := newEngine(st, tun, avail, nil)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
@@ -1233,7 +1234,7 @@ func TestReconcile_BackfillOnAvailabilityEvent(t *testing.T) {
 // periodic sweep must still backfill from the store.
 func TestSweep_RecoversFromLostEvent(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	e := newEngine(st, tun, avail, nil)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
@@ -1289,7 +1290,7 @@ func TestSweep_MaterializesInternalChannelWithoutProgrammer(t *testing.T) {
 // sweep flags the channel drifted and demotes the slot.
 func TestSweep_FlagsDriftWhenProgramVanishes(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
@@ -1320,7 +1321,7 @@ func TestSweep_FlagsDriftWhenProgramVanishes(t *testing.T) {
 // no-op reconcile pokes nothing.
 func TestReconcile_RescansTunerOnCreate(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	guide := &fakeGuide{}
 	e := newEngine(st, tun, avail, guide)
@@ -1392,7 +1393,7 @@ func TestReconcileReadsDurableBackendOnceAndFailsClosed(t *testing.T) {
 	}
 	want := errors.New("checkpoint unavailable")
 	reads := 0
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	e := channels.New(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil, channels.Config{
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
 			reads++
@@ -1419,7 +1420,7 @@ func TestReconcileReadsDurableBackendOnceAndFailsClosed(t *testing.T) {
 // A guide-poke failure degrades freshness but never fails the reconcile (§9).
 func TestReconcile_GuidePokeFailureIsNonFatal(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	guide := &fakeGuide{err: errPoke}
 	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, guide)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
@@ -1471,7 +1472,7 @@ func (e errPokeType) Error() string { return string(e) }
 // wild is covered in internal/schedule.
 func TestReconcile_EmptyDeckIsNotLive(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	// Entries exist on the lineup, but NOTHING is available, so no slot survives.
 	e := newEngine(st, tun, mapAvail{}, nil)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))

@@ -10,6 +10,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // hourAvail resolves every key to a one-hour library item.
@@ -45,7 +46,7 @@ func TestReconcile_MidRollSplitsAtMeasuredFadesUnlessSwitchedOff(t *testing.T) {
 			st := newStore(t)
 			var asked int
 			fades := fixedFades{"lib-1": {{AtMs: 15 * 60_000, Confidence: 1}, {AtMs: 30 * 60_000, Confidence: 1}, {AtMs: 44 * 60_000, Confidence: 1}}}
-			e := channels.New(st, testkit.NewTunarr(), hourAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}, nil, channels.Config{
+			e := channels.New(st, tunarrtest.NewTunarr(), hourAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}, nil, channels.Config{
 				ReconcileTTL: 10 * time.Minute, BreaksPerHour: 4,
 				ResolvePlayoutBackendContext: func(context.Context) (string, error) { return tc.backend, nil },
 				NaturalBreaks: func(context.Context) schedule.NaturalBreakSource {

@@ -10,13 +10,14 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // CyclePreview resolves "what airs at `at`" through the SAME pure builder reconcile uses,
 // attributes the active rule, and touches no Tunarr — the §8.1 time-travel preview.
 func TestCyclePreview_PicksRuleAtChosenTimeAndIsReadOnly(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
 
@@ -73,7 +74,7 @@ func TestCyclePreview_PicksRuleAtChosenTimeAndIsReadOnly(t *testing.T) {
 // always knows the moment it's looking at.
 func TestCyclePreview_ZeroAtUsesNow(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	e := newEngine(st, tun, mapAvail{}, nil)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
 
@@ -89,7 +90,7 @@ func TestCyclePreview_ZeroAtUsesNow(t *testing.T) {
 
 func TestCyclePreview_ReadsLiveChannelDefaults(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
 	window := 24 * time.Hour
 	breaks := 0
@@ -141,7 +142,7 @@ func fillerSlotCount(slots []schedule.Slot) int {
 // one proves the real engine carries the report rather than a zero value.
 func TestCyclePreviewDraft_CarriesTheExclusionReport(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
 

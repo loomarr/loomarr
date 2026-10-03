@@ -105,10 +105,10 @@ Subsystem names map many-to-many onto packages, and four packages share two verb
 | Operator connection flows (Live TV wiring, setup checklist) | `internal/setup` | `internal/config`, `internal/app` |
 | Federated search over library, TMDB and clips | `internal/catalog` | — |
 
-`internal/programmer` is the Tunarr port and is unrelated to
+`internal/tunarr` is the Tunarr port and is unrelated to
 [`programming-design.md`](../programming-design.md), which covers `ChannelPolicy` heuristics. The
 "Provisioner" is `provision` + `reconcile` + `requester` + `store`; the "Scheduler" is `schedule` +
-`channels` + `programmer`, and does not include `scheduler`. Every package, its layer and its imports
+`channels` + `tunarr`, and does not include `scheduler`. Every package, its layer and its imports
 are in the generated [package map](package-map.md).
 
 ## Backend structure rules

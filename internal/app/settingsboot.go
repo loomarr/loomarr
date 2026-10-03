@@ -10,11 +10,11 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
 	"github.com/loomarr/loomarr/internal/notifications"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/requester"
 	"github.com/loomarr/loomarr/internal/secretprotection"
 	"github.com/loomarr/loomarr/internal/settings"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // envLookup is the process env accessor the secrets lifecycle uses to honor env-pinned generated
@@ -257,12 +257,12 @@ func (r resolved) seerrRequester(recorder *metrics.Recorder) *requester.Seerr {
 }
 
 // tunarrConfig snapshots every live Tunarr setting together at the start of one
-// programmer operation. This keeps a multi-request push internally coherent while
+// tunarr operation. This keeps a multi-request push internally coherent while
 // preserving hot-apply for the next operation (config-design §3).
-func (r resolved) tunarrConfig() func() programmer.Config {
-	return func() programmer.Config {
+func (r resolved) tunarrConfig() func() tunarr.Config {
+	return func() tunarr.Config {
 		if r.svc == nil {
-			return programmer.Config{}
+			return tunarr.Config{}
 		}
 		values := r.svc.ResolveMany(
 			"tunarr.url",
@@ -278,7 +278,7 @@ func (r resolved) tunarrConfig() func() programmer.Config {
 			value, _ := values[key].Value.(int)
 			return value
 		}
-		return programmer.Config{
+		return tunarr.Config{
 			BaseURL:               stringValue("tunarr.url"),
 			TranscodeConfigID:     stringValue("tunarr.transcode_config_id"),
 			FillerWeight:          intValue("filler.weight"),
