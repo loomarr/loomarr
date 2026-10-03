@@ -17,3 +17,14 @@ channel's first request finds a warm connection to the same server.
 expo-video ships a precompiled Android AAR, which a source patch cannot reach, so the TV app opts
 this package out of prebuilt modules (`expo.autolinking.android.buildFromSource` in
 `web/apps/tv/package.json`). Remove both together when upstream reuses its client.
+
+## iOS: the precompiled xcframework links Swift Testing
+
+Separate from the patch, `web/apps/mobile/package.json` also sets
+`expo.autolinking.ios.buildFromSource` for expo-video. The canary's precompiled
+`ExpoVideo.xcframework` (`prebuilds/output/{debug,release}`) compiles its `CachePolicyTests` Swift
+Testing suite into the framework, so `otool -L` lists `@rpath/Testing.framework/Testing` as a
+required load. No app bundles Testing.framework, so the phone died in dyld at launch. Built from the
+podspec, which excludes `Tests`, ExpoVideo does not link Testing. The xcframework has no tvOS slice,
+so the TV app already builds from source. Drop the iOS opt-out once
+`otool -L` on the shipped xcframework no longer lists Testing.

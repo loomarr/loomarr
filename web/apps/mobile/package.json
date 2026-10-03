@@ -51,6 +51,9 @@
         ]
       },
       "ios": {
+        "buildFromSource": [
+          "expo-video"
+        ],
         "exclude": [
           "react-native-reanimated"
         ]
