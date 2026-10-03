@@ -4,6 +4,7 @@ import { createGuideController, createGuideSourcePort, guideWindow } from "@loom
 import { createMyChannelsController, createMyChannelsPort } from "@loomarr/core/my-channels";
 import { createAuthenticatedFetch } from "@loomarr/core/pairing";
 import { createServerVersionSource } from "@loomarr/core/system-version";
+import { randomUUID } from "expo-crypto";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppState, Image } from "react-native";
 
@@ -16,9 +17,8 @@ import { createChannelCatalogPort, createPlayUrlSourcePort } from "../play-url-s
 import { createPlayerController } from "../player-controller";
 import type { PairedClient, PairedClientOptions } from "./paired-client.type";
 
-// Hermes has no crypto.randomUUID; the id only groups one session's diagnostics, it is not a secret.
-const newPlaybackSessionId = (platform: string) =>
-  `${platform}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+// Hermes has no crypto.randomUUID, so expo-crypto supplies the platform's secure one.
+const newPlaybackSessionId = (platform: string) => `${platform}-${randomUUID()}`;
 
 /**
  * The paired server's runtime for a native client: the player and its catalog, the guide, the
