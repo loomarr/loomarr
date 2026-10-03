@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -149,7 +150,8 @@ func buildChannels(
 		// The connector's fixed fallback is empty so accidentally using a compatibility helper
 		// fails closed instead of publishing a process-local target.
 		liveTVConnector = setup.NewLiveTVConnector(
-			func() library.LiveTV { return libraryClient.Snapshot() }, setup.LiveTVURLs{})
+			func() library.LiveTV { return libraryClient.Snapshot() }, setup.LiveTVURLs{},
+		).WithTunerPublishingDisabled(tunerPublishingDisabled(), log)
 		liveTVSvc = liveTVAdapter{
 			c: liveTVConnector,
 			urls: func(ctx context.Context) (setup.LiveTVURLs, error) {
@@ -330,6 +332,15 @@ func liveTVURLsFor(prog tunarr.Adapter, backend, publicURL, deviceToken string) 
 		return setup.InternalPlayoutURLs(publicURL, deviceToken)
 	}
 	return prog.LiveTVURLs()
+}
+
+// tunerPublishingDisabled reads the env-only dev flag scripts/dev-env.sh exports for an agent
+// lane (#1555, docs/contributing/dev-loop.md): LOOMARR_AGENT_DISABLE_LIVETV_TUNER. It is
+// intentionally NOT a declared setting — library.url/token can point an agent lane at the
+// household media server, and this must stay on regardless of what the Settings UI saves.
+// Unset/empty (production, and the primary worktree) ⇒ false, today's behaviour unchanged.
+func tunerPublishingDisabled() bool {
+	return strings.TrimSpace(os.Getenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER")) != ""
 }
 
 // windowZone resolves the wall clock the rolling-window grid is laid on (#1675): guide.timezone,
