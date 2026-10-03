@@ -184,6 +184,91 @@ func TestBuildInitializesMissingCheckpointFromDesiredWithoutRunningNetworkTransi
 	}
 }
 
+func TestTunerPublishingDisabledReadsAgentEnvFlag(t *testing.T) {
+	t.Setenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER", "")
+	if tunerPublishingDisabled() {
+		t.Fatal("unset env flag must default to false (production behaviour unchanged)")
+	}
+	t.Setenv("LOOMARR_AGENT_DISABLE_LIVETV_TUNER", "1")
+	if !tunerPublishingDisabled() {
+		t.Fatal("set env flag must disable tuner publishing")
+	}
+}
+
+// #1555: an agent dev lane's library.* settings can drift onto the household media server, and
+// completing them must never add or retire its Live TV tuner/listing. Both the settings-save
+// transition (MutateAndApplyCurrent) and the channel-maintenance repair tick (ApplyCurrent) route
+// through the SAME steady-state repair path (Controller.applyLocked -> repairPublished -> the real
+// backendPublisher -> setup.LiveTVConnector), so exercising both against one disabled connector
+// proves every current caller of AddTuner/RemoveTuner/AddListingProvider/RemoveListingProvider.
+func TestLiveTVTunerPublishingDisabledSkipsAddAndRetireOnBothPaths(t *testing.T) {
+	run := func(t *testing.T, disabled bool) *testkit.LiveTV {
+		t.Helper()
+		st := testkit.MigratedSQLiteStore(t)
+		lib := testkit.NewLiveTV()
+		// A stale Loomarr-owned tuner at a DIFFERENT url: if retirement ran, it would be removed.
+		lib.SeedTuner("http://stale-tuner.invalid/old.m3u", "loomarr")
+		urls := setup.LiveTVURLs{M3U: "http://lane.invalid/tuner.m3u", XMLTV: "http://lane.invalid/guide.xml"}
+		connector := setup.NewLiveTVConnectorFixed(lib, urls).
+			WithTunerPublishingDisabled(disabled, slog.New(slog.DiscardHandler))
+		publisher := &backendPublisher{
+			connector: connector,
+			urls:      func(context.Context, string) (setup.LiveTVURLs, error) { return urls, nil },
+		}
+		fleet := testkit.NewBackendTransitionPhaseProbe()
+		controller := backendtransition.NewController(st, fleet, publisher, nil)
+		ctx := context.Background()
+		desired := func(context.Context) (string, error) { return backendtransition.BackendInternal, nil }
+		if err := controller.Initialize(ctx, desired); err != nil {
+			t.Fatal(err)
+		}
+
+		// Path 1: the settings-save transition (internal/api/settings.go mutateLiveTVSettings).
+		refresh := func(context.Context) error { return nil }
+		mutate := func(context.Context) bool { return true }
+		if err := controller.MutateAndApplyCurrent(ctx, refresh, mutate, desired); err != nil {
+			t.Fatalf("settings-save transition: %v", err)
+		}
+
+		// Path 2: the channel-maintenance repair publisher (internal/app/buildchannels.go
+		// channelMaintenanceJob's backendController.ApplyCurrent on every scheduled tick).
+		if err := controller.ApplyCurrent(ctx, desired); err != nil {
+			t.Fatalf("channel-maintenance repair tick: %v", err)
+		}
+		return lib
+	}
+
+	t.Run("disabled: neither AddTuner nor retire runs", func(t *testing.T) {
+		lib := run(t, true)
+		for _, call := range lib.Calls() {
+			if strings.HasPrefix(call, "add-tuner") || strings.HasPrefix(call, "remove-tuner") ||
+				strings.HasPrefix(call, "add-listing") || strings.HasPrefix(call, "remove-listing") {
+				t.Fatalf("tuner publishing disabled, but the library received a mutating call %q: all calls %v", call, lib.Calls())
+			}
+		}
+		if !lib.HasTuner("http://stale-tuner.invalid/old.m3u") {
+			// Not a failure by itself (Calls already caught it), but a clearer signal.
+			t.Fatal("stale tuner was retired while publishing was disabled")
+		}
+	})
+
+	t.Run("unset: production behaviour is unchanged", func(t *testing.T) {
+		lib := run(t, false)
+		var sawAdd, sawRemove bool
+		for _, call := range lib.Calls() {
+			if strings.HasPrefix(call, "add-tuner") {
+				sawAdd = true
+			}
+			if strings.HasPrefix(call, "remove-tuner") {
+				sawRemove = true
+			}
+		}
+		if !sawAdd || !sawRemove {
+			t.Fatalf("expected the default (switch unset) path to add and retire as before: calls %v", lib.Calls())
+		}
+	})
+}
+
 // #1407: a busy media server must be logged ONCE with its cause class, and must not stop the
 // publisher's other phases from running on later ticks.
 func TestBackendPublisherRefreshLogsTransientCauseOnce(t *testing.T) {
