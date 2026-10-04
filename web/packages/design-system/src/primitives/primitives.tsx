@@ -1,6 +1,6 @@
 import { isWeb, styled, Text as TamaguiText, useTheme, View } from "@tamagui/core";
-import type { ComponentProps, ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import type { ComponentProps, ElementType, ReactNode } from "react";
+import { createElement, useEffect, useRef } from "react";
 import { Animated, Easing } from "react-native";
 
 import { useNativeAnimationDriver } from "../motion/animation-driver";
@@ -137,6 +137,15 @@ type TextProps = Omit<
   TamaguiTextProps,
   "color" | "fontFamily" | "fontSize" | "fontWeight" | "letterSpacing" | "lineHeight" | "role"
 > & {
+  /**
+   * Renders as this host element instead of Tamagui's own Text (web only; ignored on native,
+   * where Tamagui's Text is already the host). For a caller that needs `<p>`, `<dt>`, or another
+   * element Tamagui's Text does not expose a tag for (#970 PR B checkpoint 2's Caption).
+   *
+   * Bypasses `halo`: a polymorphic readout has never needed the snow/picture treatment, and the
+   * halo's two-layer markup assumes Tamagui's own Text underneath.
+   */
+  as?: ElementType;
   density?: Density;
   /**
    * A readout over snow or a picture (#1627 B4): the canvas as a two-layer halo, tight under the
@@ -144,11 +153,19 @@ type TextProps = Omit<
    * shadow, so the wide layer is a second, hidden copy of the text behind the first.
    */
   halo?: boolean;
+  /** Uppercase with wide tracking — the section-label voice ("POD · 1:10", a shouted Caption). */
+  shout?: boolean;
   textRole: TextRole;
   tone?: TextTone;
   /** Letter spacing in em, for tracked-out mono readouts ("CH 7" at 0.16, "TUNING IN" at 0.24). Overrides the role's own. */
   tracking?: number;
 };
+
+/** The `$token` string a theme-token colour value resolves to, stripped for direct theme lookup. */
+const themeVal = (theme: ReturnType<typeof useTheme>, token: string) =>
+  (theme as unknown as Record<string, { val: string }>)[token.slice(1)]?.val;
+
+const SHOUT_TRACKING = 0.025;
 
 // "#0B0C0E" + 0.9 → "rgba(11,12,14,0.9)": the halo is the theme's canvas, part-transparent.
 const withAlpha = (hex: string, alpha: number) => {
@@ -206,23 +223,49 @@ const roleTracking = (textRole: TextRole, size: number) =>
           ? size * 0.04
           : 0;
 
-const Text = ({ density = "pointer", halo, textRole, tone, tracking, ...props }: TextProps) => {
+const Text = ({ as, density = "pointer", halo, shout, textRole, tone, tracking, ...props }: TextProps) => {
   const theme = useTheme();
   const value = typography[density][textRole];
+  const colorToken = tone
+    ? textTones[tone]
+    : amberRoles.has(textRole)
+      ? "$actionPrimary"
+      : mutedRoles.has(textRole)
+        ? "$contentSecondary"
+        : "$contentPrimary";
+  const resolvedTracking =
+    tracking === undefined
+      ? shout
+        ? value.size * SHOUT_TRACKING
+        : roleTracking(textRole, value.size)
+      : value.size * tracking;
   const face = {
-    color: tone
-      ? textTones[tone]
-      : amberRoles.has(textRole)
-        ? "$actionPrimary"
-        : mutedRoles.has(textRole)
-          ? "$contentSecondary"
-          : "$contentPrimary",
+    color: colorToken,
     fontFamily: dataRoles.has(textRole) ? "$data" : "$body",
     fontSize: value.size,
     fontWeight: value.weight,
-    letterSpacing: tracking === undefined ? roleTracking(textRole, value.size) : value.size * tracking,
+    letterSpacing: resolvedTracking,
     lineHeight: value.lineHeight,
+    textTransform: shout ? ("uppercase" as const) : undefined,
   } as const;
+
+  if (isWeb && as) {
+    const Tag = as;
+    return createElement(Tag, {
+      ...props,
+      style: {
+        color: themeVal(theme, colorToken),
+        fontFamily: dataRoles.has(textRole) ? typography.family.data.web : typography.family.body.web,
+        fontSize: value.size,
+        fontWeight: value.weight,
+        letterSpacing: resolvedTracking,
+        lineHeight: `${value.lineHeight}px`,
+        textTransform: face.textTransform,
+        ...(props as { style?: object }).style,
+      },
+    });
+  }
+
   if (!halo) return <TamaguiText {...props} {...face} />;
 
   const canvas = theme.surfaceCanvas.val;
