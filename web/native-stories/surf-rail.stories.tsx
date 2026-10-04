@@ -8,8 +8,15 @@ const SurfWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" }) => {
     channelId: "ch-springfield",
     group: "recent",
   });
+  // The TV rail's channel-number wait row (#1659 decision N4); the TV app passes the ui-tv choices.
+  const [autoTuneMs, setAutoTuneMs] = useState(1_200);
   return (
     <SurfRail
+      autoTune={
+        density === "tv"
+          ? { choicesMs: [1_200, 2_000, 3_000, 5_000, 10_000], onChange: setAutoTuneMs, valueMs: autoTuneMs }
+          : undefined
+      }
       clientVersion="0.2.0"
       density={density}
       groups={surfGroups}

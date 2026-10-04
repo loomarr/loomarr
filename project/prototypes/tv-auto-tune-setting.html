@@ -133,9 +133,9 @@
   <button id="replay" type="button">Type “21” again</button>
 </div>
 
-<p class="review-note">Mock for maintainer review before the picker is built (the stored duration is already wired:
-<code>createTvAutoTuneSetting</code> loads it in <code>web/apps/tv/src/app.tsx</code>, but nothing calls
-<code>save</code>). The Surf rail, channel cards, monogram idents, footer, hint chip, the
+<p class="review-note"><strong>Approved by the maintainer on 2026-10-04 and built as mocked</strong>: steps 1.2 / 2 / 3 /
+5 / 10 s, the joined row label, and placement above Disconnect (<code>AutoTuneSettingAction</code> in
+<code>web/packages/ui</code>). The two-ambers question is tracked separately in #1887. The Surf rail, channel cards, monogram idents, footer, hint chip, the
 <code>DeviceDisconnectAction</code> and its <code>ModalOverlay</code> are reproduced from the built source at
 density <code>tv</code>; the only new thing is the <strong>Channel-number wait</strong> row and its choice overlay.
 <strong>Drive it like a remote:</strong> <kbd>▲</kbd><kbd>▼</kbd><kbd>◀</kbd><kbd>▶</kbd> arrow keys move focus,

@@ -62,6 +62,11 @@ describe("TV emulator journey", () => {
       "▶ off a whole-window programme pages forward",
       "◀ inside the paged window does not page",
       "◀ after paging forward pages back to now",
+      "the channel-number wait row",
+      "the 5 s choice",
+      "the row showing the saved 5 s",
+      "the 5 s wait tuning the typed Channel",
+      "the stored 5 s after relaunch",
     ]) {
       assert.match(journey, new RegExp(checkpoint));
     }

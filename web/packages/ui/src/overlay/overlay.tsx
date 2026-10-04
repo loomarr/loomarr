@@ -44,6 +44,7 @@ const OverlayActions = ({
           hasTVPreferredFocus={density === "tv" && action.preferredFocus}
           key={action.label}
           onPress={action.onPress}
+          selected={action.selected}
           tone={action.tone ?? "secondary"}
         >
           {action.label}

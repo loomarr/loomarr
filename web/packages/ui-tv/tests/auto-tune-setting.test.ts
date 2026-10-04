@@ -6,6 +6,7 @@ import {
   initialTvWatchingRemoteState,
   MAX_NUMBER_ENTRY_MS,
   reduceTvWatchingRemote,
+  TV_AUTO_TUNE_CHOICES_MS,
   tvNumberEntryPresentation,
 } from "../index";
 
@@ -61,6 +62,13 @@ describe("TV auto-tune duration setting", () => {
       digits: "21",
       kind: "tune-number",
     });
+  });
+
+  it("offers the approved choices, default first, each one storable as is", async () => {
+    expect(TV_AUTO_TUNE_CHOICES_MS).toEqual([1_200, 2_000, 3_000, 5_000, 10_000]);
+    expect(TV_AUTO_TUNE_CHOICES_MS[0]).toBe(DEFAULT_NUMBER_ENTRY_MS);
+    const setting = createTvAutoTuneSetting(memoryStorage());
+    for (const choice of TV_AUTO_TUNE_CHOICES_MS) expect(await setting.save(choice)).toBe(choice);
   });
 
   it("falls back to the default when the stored value is corrupt", async () => {

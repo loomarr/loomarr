@@ -3,9 +3,10 @@ import type { Density } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
 import type { FocusTargetRegistry } from "../../focus-target";
-import type { SurfChannelData, SurfGroupData, SurfSelection } from "../surf-rail.type";
+import type { SurfChannelData, SurfGroupData, SurfRailProps, SurfSelection } from "../surf-rail.type";
 
 interface SurfJourneyProps {
+  autoTune?: SurfRailProps["autoTune"];
   clientVersion: string;
   controller: GuideController;
   currentChannelId?: string;

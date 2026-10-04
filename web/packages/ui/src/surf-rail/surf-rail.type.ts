@@ -1,6 +1,7 @@
 import type { ArtworkState, Density } from "@loomarr/design-system";
 import type { ReactNode } from "react";
 
+import type { AutoTuneSettingActionProps } from "../auto-tune-setting";
 import type { FocusTargetRegistry } from "../focus-target";
 import type { ChannelIdentityData, ProgrammeIdentityData } from "../identity";
 
@@ -32,6 +33,8 @@ interface SurfSelection {
 }
 
 interface SurfRailProps {
+  /** TV only: the device's channel-number wait, a row above Disconnect (#1659 decision N4). */
+  autoTune?: Omit<AutoTuneSettingActionProps, "density">;
   clientVersion: string;
   currentChannelId?: string;
   density?: Density;

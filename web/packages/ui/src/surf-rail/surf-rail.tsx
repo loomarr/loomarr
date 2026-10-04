@@ -25,6 +25,7 @@ const findSurfChannel = (
     ?.channels.find((channel) => channel.id === selection.channelId);
 
 const SurfRail = ({
+  autoTune,
   clientVersion,
   currentChannelId,
   density = "pointer",
@@ -47,6 +48,7 @@ const SurfRail = ({
   if (density === "tv" && (viewportWidth === undefined || viewportWidth >= 1280)) {
     return (
       <TvSurfRail
+        autoTune={autoTune}
         clientVersion={clientVersion}
         currentChannelId={currentChannelId}
         density={density}
