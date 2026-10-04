@@ -9,7 +9,7 @@ import {
   phoneBarOverflow,
   phoneBarPrimary,
   phoneDestinationMatches,
-} from "./phone-bottom-bar.destinations";
+} from "./destinations";
 import type { PhoneBottomBarProps } from "./phone-bottom-bar.type";
 
 // A value that matches no real destination, so `TabBar`'s `selected` prop can legitimately light
