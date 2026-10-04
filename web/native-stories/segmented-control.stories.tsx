@@ -1,4 +1,4 @@
-import { SegmentedControl, type SegmentOption, Surface } from "@loomarr/design-system";
+import { Screen, SegmentedControl, type SegmentOption } from "@loomarr/design-system";
 import type { Meta, StoryObj } from "@storybook/react-native";
 import { useState } from "react";
 
@@ -19,14 +19,14 @@ const SegmentedWorkshop = ({
 }) => {
   const [value, setValue] = useState(start);
   return (
-    <Surface backgroundColor="$transparent" borderWidth={0} padding="$control">
+    <Screen density="touch">
       <SegmentedControl
         accessibilityLabel="Requests sections"
         onValueChange={setValue}
         options={options}
         value={value}
       />
-    </Surface>
+    </Screen>
   );
 };
 

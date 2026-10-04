@@ -6,7 +6,7 @@ import {
   type RequestsPort,
   requestsNeedsYouCount,
 } from "@loomarr/core";
-import { Screen, ScrollFrame, TabBar } from "@loomarr/design-system";
+import { Screen, ScrollFrame, TabBar, Text } from "@loomarr/design-system";
 import { requestFixtures, requestsSnapshot } from "@loomarr/fixtures";
 import {
   initialReview,
@@ -177,6 +177,10 @@ const ReviewFrame = ({
       gap="$control"
     >
       <ScrollFrame density="touch">
+        {/* The live screen's large title, so the frozen frame reads as the same screen. */}
+        <Text accessibilityRole="header" density="touch" textRole="display">
+          Requests
+        </Text>
         <RequestsList
           nowMs={NOW}
           onApprove={noop}
