@@ -63,9 +63,74 @@ const TabBar = <Value extends string>({
   const insets = useViewportInsets();
   const [focused, setFocused] = useState<Value | null>(null);
   const style = idioms[idiom];
+  // `role="tablist"` requires its direct children to be `role="tab"` — ARIA's
+  // aria-required-children. The "more" disclosure button is a `role="button"`, so it sits
+  // OUTSIDE the tablist as a flex sibling, not as one more item inside it.
+  const tabItems = items.filter((item) => item.kind !== "disclosure");
+  const disclosureItems = items.filter((item) => item.kind === "disclosure");
+  const renderItem = (item: TabBarItem<Value>) => {
+    const disclosure = item.kind === "disclosure";
+    const current = !disclosure && item.value === selected;
+    return (
+      <Pressable
+        accessibilityLabel={item.label}
+        accessibilityRole={disclosure ? "button" : "tab"}
+        accessibilityState={disclosure ? undefined : { selected: current }}
+        aria-expanded={disclosure ? item.ariaExpanded : undefined}
+        aria-haspopup={disclosure ? "dialog" : undefined}
+        aria-selected={disclosure ? undefined : current}
+        key={item.value}
+        onBlur={() => setFocused(null)}
+        onFocus={() => setFocused(item.value)}
+        onPress={() => onSelect(item.value)}
+        style={{ alignItems: "center", flex: 1, gap: 4, minHeight: style.height, paddingTop: style.top }}
+      >
+        {/* The pill is Material's selection mark; on iPhone the same box only draws the focus ring. */}
+        <View
+          alignItems="center"
+          backgroundColor={idiom === "material" && current ? "$borderDecorative" : "$transparent"}
+          borderColor={focused === item.value ? "$actionFocus" : "$transparent"}
+          borderRadius={idiom === "material" ? "$round" : 8}
+          borderWidth={2}
+          height={idiom === "material" ? 32 : 28}
+          justifyContent="center"
+          width={64}
+        >
+          <Icon
+            decorative
+            glyph={icons[item.icon]}
+            size={style.glyph}
+            tone={current ? "content" : "secondary"}
+          />
+          {item.badge ? (
+            <View
+              aria-hidden
+              // `--color-suggest` (@loomarr/tokens): the same magenta the web rail's
+              // numeral badge already uses for "needs you" counts.
+              backgroundColor="#D6409F"
+              borderRadius="$round"
+              height={7}
+              position="absolute"
+              right={-2}
+              top={-2}
+              width={7}
+            />
+          ) : null}
+        </View>
+        <TamaguiText
+          color={current ? "$contentPrimary" : "$contentSecondary"}
+          fontFamily="$body"
+          fontSize={style.label}
+          fontWeight={current ? "600" : "500"}
+          lineHeight={Math.round(style.label * 1.3)}
+        >
+          {item.label}
+        </TamaguiText>
+      </Pressable>
+    );
+  };
   return (
     <View
-      aria-label={accessibilityLabel}
       backgroundColor={style.background}
       borderTopColor="$borderDecorative"
       borderTopWidth={style.hairline}
@@ -73,69 +138,11 @@ const TabBar = <Value extends string>({
       paddingBottom={insets.bottom}
       paddingLeft={insets.left}
       paddingRight={insets.right}
-      role="tablist"
     >
-      {items.map((item) => {
-        const disclosure = item.kind === "disclosure";
-        const current = !disclosure && item.value === selected;
-        return (
-          <Pressable
-            accessibilityLabel={item.label}
-            accessibilityRole={disclosure ? "button" : "tab"}
-            accessibilityState={disclosure ? undefined : { selected: current }}
-            aria-expanded={disclosure ? item.ariaExpanded : undefined}
-            aria-haspopup={disclosure ? "dialog" : undefined}
-            aria-selected={disclosure ? undefined : current}
-            key={item.value}
-            onBlur={() => setFocused(null)}
-            onFocus={() => setFocused(item.value)}
-            onPress={() => onSelect(item.value)}
-            style={{ alignItems: "center", flex: 1, gap: 4, minHeight: style.height, paddingTop: style.top }}
-          >
-            {/* The pill is Material's selection mark; on iPhone the same box only draws the focus ring. */}
-            <View
-              alignItems="center"
-              backgroundColor={idiom === "material" && current ? "$borderDecorative" : "$transparent"}
-              borderColor={focused === item.value ? "$actionFocus" : "$transparent"}
-              borderRadius={idiom === "material" ? "$round" : 8}
-              borderWidth={2}
-              height={idiom === "material" ? 32 : 28}
-              justifyContent="center"
-              width={64}
-            >
-              <Icon
-                decorative
-                glyph={icons[item.icon]}
-                size={style.glyph}
-                tone={current ? "content" : "secondary"}
-              />
-              {item.badge ? (
-                <View
-                  aria-hidden
-                  // `--color-suggest` (@loomarr/tokens): the same magenta the web rail's
-                  // numeral badge already uses for "needs you" counts.
-                  backgroundColor="#D6409F"
-                  borderRadius="$round"
-                  height={7}
-                  position="absolute"
-                  right={-2}
-                  top={-2}
-                  width={7}
-                />
-              ) : null}
-            </View>
-            <TamaguiText
-              color={current ? "$contentPrimary" : "$contentSecondary"}
-              fontFamily="$body"
-              fontSize={style.label}
-              fontWeight={current ? "600" : "500"}
-              lineHeight={Math.round(style.label * 1.3)}
-            >
-              {item.label}
-            </TamaguiText>
-          </Pressable>
-        );
-      })}
+      <View aria-label={accessibilityLabel} flex={tabItems.length} flexDirection="row" role="tablist">
+        {tabItems.map(renderItem)}
+      </View>
+      {disclosureItems.map(renderItem)}
     </View>
   );
 };

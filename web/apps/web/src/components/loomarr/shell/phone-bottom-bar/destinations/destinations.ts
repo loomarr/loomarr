@@ -1,6 +1,6 @@
 import type { IconName } from "@loomarr/design-system";
 import { isWatchRoute } from "@/channels/channel-nav-highlight";
-import type { NavTo } from "../app-shell/app-shell.type";
+import type { NavTo } from "../../app-shell/app-shell.type";
 
 // Alt A (maintainer-approved, #1785/#1659 evidence 2026-10-03): the bar's first positions are
 // ALWAYS Home, Watch, Guide, Requests — never reshuffled by role or channel state, so a returning

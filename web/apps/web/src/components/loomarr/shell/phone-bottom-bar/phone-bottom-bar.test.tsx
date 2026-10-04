@@ -30,7 +30,9 @@ describe("PhoneBottomBar", () => {
       .getAllByRole("tab")
       .map((tab) => tab.getAttribute("aria-label"));
     expect(tabs).toEqual(["Home", "Watch", "Guide", "Requests"]);
-    expect(within(bar).getByRole("button", { name: "More" })).toBeInTheDocument();
+    // More sits OUTSIDE the tablist (aria-required-children forbids a role="button" tab child),
+    // so it's looked up against the whole document rather than `within(bar)`.
+    expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument();
   });
 
   it("drops Watch's slot (not a gap, not greyed) when no channel exists — X2", async () => {
