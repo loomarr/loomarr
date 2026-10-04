@@ -5,6 +5,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/danielgtaylor/huma/v2"
+
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
@@ -41,6 +43,20 @@ func TestSizeConfidenceIsOneNamedSchema(t *testing.T) {
 	for _, field := range []string{"sizeBytes", "sizeConfidence"} {
 		if slices.Contains(item.Required, field) {
 			t.Errorf("ProposalItem.%s is required; an unavailable size must be absent", field)
+		}
+	}
+
+	// ProposalItem is also a request body (an approval edit's additions), so the $ref has to
+	// resolve when Huma validates one, not only when the spec is printed.
+	registry := humaAPI.OpenAPI().Components.Schemas
+	for value, valid := range map[string]bool{"exact": true, "estimated": true, "unknown": false} {
+		var res huma.ValidateResult
+		huma.Validate(registry, item, huma.NewPathBuffer([]byte{}, 0), huma.ModeWriteToServer, map[string]any{
+			"mediaType": "movie", "tmdbId": 603.0, "name": "The Matrix", "inLibrary": true,
+			"sizeBytes": 21914038799.0, "sizeConfidence": value,
+		}, &res)
+		if got := len(res.Errors) == 0; got != valid {
+			t.Errorf("sizeConfidence %q: valid = %v, want %v (errors %v)", value, got, valid, res.Errors)
 		}
 	}
 }
