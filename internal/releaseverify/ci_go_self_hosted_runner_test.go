@@ -23,9 +23,14 @@ func TestGoWorkflowSelfHostedOnlyForMergeQueueAndMainPush(t *testing.T) {
 	}
 	// Belt-and-braces on the pinned string itself: `pull_request` must never appear inside the
 	// expression that selects the self-hosted labels, and `workflow_dispatch` is deliberately not
-	// an enabling event either — only `merge_group` and `push` may route to self-hosted.
+	// an enabling event either — only `merge_group` and a `push` to `main` specifically may route
+	// to self-hosted. `push` alone matches every branch, so the ref guard is load-bearing, not
+	// cosmetic — this assertion fails if a future edit drops it and widens self-hosted to any push.
 	if strings.Contains(goWorkflowSelfHostedRunsOn, "pull_request") {
 		t.Fatal("ci-go.yml self-hosted runs-on expression must never mention pull_request")
+	}
+	if !strings.Contains(goWorkflowSelfHostedRunsOn, "github.event_name == 'push' && github.ref == 'refs/heads/main'") {
+		t.Fatal("ci-go.yml self-hosted runs-on expression must restrict push to refs/heads/main, not every branch")
 	}
 	if !strings.Contains(goWorkflowSelfHostedRunsOn, "|| 'ubuntu-latest'") {
 		t.Fatal("ci-go.yml self-hosted runs-on expression must fail safe to ubuntu-latest for every other event")

@@ -14,13 +14,15 @@ jobs:
   run:
     name: Go — race-policy tests (${{ matrix.lane }})
     # #1570: the merge queue was paying GitHub-hosted runner-slot queueing (up to ~16 min) on top of
-    # test time. `merge_group` and a main push are the household self-hosted runner (loomarr-go,
-    # provisioned by the sibling homelab PR); `pull_request`, including from a fork, ALWAYS stays on
-    # GitHub-hosted — the repository is public, so a self-hosted runner must never execute untrusted
-    # fork code. `workflow_dispatch` also stays GitHub-hosted on purpose: it is not in this allowlist.
-    # The `|| 'ubuntu-latest'` fallback is the fail-safe default for every event this expression does
-    # not name, including a future trigger nobody has updated this comment for yet.
-    runs-on: ${{ (github.event_name == 'merge_group' || github.event_name == 'push') && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}
+    # test time. `merge_group` and a push to `main` specifically (NOT any push — `push` alone matches
+    # every branch) are the household self-hosted runner (loomarr-go, provisioned by the sibling
+    # homelab PR); `pull_request`, including from a fork, ALWAYS stays on GitHub-hosted — the
+    # repository is public, so a self-hosted runner must never execute untrusted fork code.
+    # `workflow_dispatch` also stays GitHub-hosted on purpose: it is not in this allowlist.
+    # The `|| 'ubuntu-latest'` fallback is the fail-safe default for every event (and every non-main
+    # push) this expression does not name, including a future trigger nobody has updated this comment
+    # for yet.
+    runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}
     # The weighted package plan budgets each lane's test step from #1570's ten-minute Go-only queue
     # target (`scripts/go-shard.sh --budgets`). This timeout is the backstop: crossing the
     # operator-facing 15-minute budget fails loud instead of delaying the queue.
