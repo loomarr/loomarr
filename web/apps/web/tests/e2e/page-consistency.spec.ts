@@ -25,15 +25,20 @@ const settingsPages = new Set(
   pages.map((entry) => entry.path).filter((path) => path.startsWith("/settings/")),
 );
 
-// PhoneBottomBar's bar itself only ever holds Home/Watch/Guide/Requests (destinations.ts'
-// PRIMARY_ORDER) — everything else (Filler, People, Settings, Help, Notifications, …) lives
-// behind More, unlit, same as /account's already-established "no tab claims this page" case.
-// Desktop's rail has no such gap: every destination, overflow or not, is a literal rail link.
-const isPhoneBarPrimaryPath = (path: string): boolean =>
-  path === "/dashboard" ||
-  path === "/guide" ||
-  path === "/requests" ||
-  /^\/channels\/[^/]+\/watch$/.test(path);
+// The primary destination each shell route belongs to, by the label both layouts give it. /account
+// belongs to none: it's the rail's footer identity, not a section of primary navigation.
+const primaryDestinations: ReadonlyArray<{ prefix: string; label: string }> = [
+  { prefix: "/dashboard", label: "Home" },
+  { prefix: "/guide", label: "Guide" },
+  { prefix: "/requests", label: "Requests" },
+  { prefix: "/filler", label: "Filler" },
+  { prefix: "/people", label: "People" },
+  { prefix: "/settings", label: "Settings" },
+  { prefix: "/help", label: "Help" },
+];
+
+const primaryDestinationFor = (path: string): string | undefined =>
+  primaryDestinations.find(({ prefix }) => path === prefix || path.startsWith(`${prefix}/`))?.label;
 
 test("pages share one navigation and header geometry at desktop and mobile widths", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
@@ -57,30 +62,33 @@ test("pages share one navigation and header geometry at desktop and mobile width
         ).toBeVisible();
       }
       await expect(header, `${entry.path} should use PageHeader`).toHaveCount(1);
-      // Desktop's rail is `<nav>` + `<Link>`, marking the matched route with
-      // `data-status="active"`. Below `md` the rail is replaced by PhoneBottomBar — `TabBar`'s
-      // `role="tablist"`/`role="tab"` pattern (#1785 Alt A), shared with the native paired-client
-      // apps, so it can't grow web-only anchors. Both sit inside the same `nav[aria-label=Primary]`
-      // landmark; only the "what marks the active destination" locator differs by viewport.
-      const active =
-        viewport.name === "mobile"
-          ? primary.getByRole("tab", { selected: true })
-          : primary.locator('a[data-status="active"]');
-      const expectZeroActive =
-        entry.path === "/account" || (viewport.name === "mobile" && !isPhoneBarPrimaryPath(entry.path));
-      if (expectZeroActive) {
-        await expect(active).toHaveCount(0);
-        // The account identity is a rail footer control, not a section of the product's primary
-        // navigation; it still identifies the current page on desktop's rail. Phone width has no
-        // such footer control, so this only applies there.
-        if (entry.path === "/account" && viewport.name === "desktop") {
-          await expect(page.getByRole("link", { name: "Your account" })).toHaveAttribute(
-            "aria-current",
-            "page",
-          );
-        }
-      } else {
-        await expect(active).toHaveCount(1);
+      // One invariant for every layout: the Primary landmark lights at most one destination, and
+      // it lights the route's own destination exactly when that destination has a slot in it.
+      // Desktop's rail is `<Link>`s marked `data-status="active"`; PhoneBottomBar is `TabBar`'s
+      // `role="tab"` pattern (shared with native, #1785 Alt A) marked `aria-selected`. The rail
+      // has a slot for every destination; the bar only for Home/Watch/Guide/Requests, with the
+      // rest behind a More button that by design is never lit.
+      const items = primary.getByRole("link").or(primary.getByRole("tab"));
+      // PhoneBottomBar is lazy: wait for real items, not the Suspense placeholder's empty row.
+      await expect(items.first(), `${entry.path} primary navigation renders`).toBeVisible();
+      const active = primary.locator('a[data-status="active"], [role="tab"][aria-selected="true"]');
+      const destination = primaryDestinationFor(entry.path);
+      const slots = destination
+        ? primary
+            .getByRole("link", { name: new RegExp(`^${destination}\\b`) })
+            .or(primary.getByRole("tab", { name: new RegExp(`^${destination}\\b`) }))
+        : undefined;
+      const slotCount = slots ? await slots.count() : 0;
+      expect(slotCount, `${entry.path} ${destination} has at most one primary slot`).toBeLessThanOrEqual(1);
+      await expect(active, `${entry.path} lights only its own destination`).toHaveCount(slotCount);
+      if (destination && slotCount === 1) {
+        await expect(active).toHaveAccessibleName(new RegExp(`^${destination}\\b`));
+      }
+      // The account identity is a rail footer control: it identifies the current page wherever
+      // the layout shows it, while no primary destination claims /account.
+      const account = page.getByRole("link", { name: "Your account" });
+      if (entry.path === "/account" && (await account.count()) > 0) {
+        await expect(account).toHaveAttribute("aria-current", "page");
       }
 
       for (const expected of sectionDestinations[entry.path] ?? []) {
