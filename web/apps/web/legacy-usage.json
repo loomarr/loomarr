@@ -254,7 +254,7 @@
       "legacyUi": 7
     },
     "src/components/loomarr/people/invitation-join/invitation-join.tsx": {
-      "tailwindClasses": 76,
+      "tailwindClasses": 75,
       "legacyUi": 4
     },
     "src/components/loomarr/people/invitation-roster/invitation-roster.tsx": {
@@ -366,13 +366,6 @@
     "src/components/loomarr/shell/tv-static/tv-static.tsx": {
       "tailwindClasses": 24
     },
-    "src/components/ui/badge/badge.tsx": {
-      "tailwindClasses": 25,
-      "cva": 1
-    },
-    "src/components/ui/badge/badge.type.ts": {
-      "cva": 1
-    },
     "src/components/ui/button/button.tsx": {
       "tailwindClasses": 55,
       "cva": 1,
@@ -442,7 +435,7 @@
       "tailwindClasses": 21
     },
     "src/components/ui/progress/progress.tsx": {
-      "tailwindClasses": 11
+      "tailwindClasses": 3
     },
     "src/components/ui/section-header/section-header.tsx": {
       "tailwindClasses": 29,
@@ -466,7 +459,7 @@
       "baseUi": 1
     },
     "src/components/ui/status-dot/status-dot.tsx": {
-      "tailwindClasses": 4
+      "tailwindClasses": 2
     },
     "src/components/ui/switch/switch.tsx": {
       "tailwindClasses": 44

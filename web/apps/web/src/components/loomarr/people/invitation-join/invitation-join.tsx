@@ -86,7 +86,7 @@ const InvitationJoin = ({
           </div>
           <Badge
             variant={preview.role === "admin" ? "onair" : "neutral"}
-            className={preview.role === "admin" ? "bg-onair-tint-12" : undefined}
+            tintOpacity={preview.role === "admin" ? 0.12 : undefined}
           >
             {preview.role}
           </Badge>

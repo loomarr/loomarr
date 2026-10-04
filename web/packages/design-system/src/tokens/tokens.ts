@@ -46,6 +46,12 @@ const semanticThemes = {
       focus: "#FFB020",
       disabled: "#5A6170",
     },
+    // A brand accent that is neither a state nor the primary action: the suggest/AI magenta's
+    // own accessible stop, same in both themes (the brand mark's chroma is theme-invariant, same
+    // as `guide.onAir` below).
+    accent: {
+      suggest: "#DC5BAC",
+    },
     artwork: {
       placeholder: "#1B1E24",
       scrim: "rgba(11, 12, 14, 0.66)",
@@ -113,6 +119,9 @@ const semanticThemes = {
       secondary: "#2A2E37",
       focus: "#8A5700",
       disabled: "#8B93A3",
+    },
+    accent: {
+      suggest: "#DC5BAC",
     },
     artwork: {
       placeholder: "#E7EAF0",

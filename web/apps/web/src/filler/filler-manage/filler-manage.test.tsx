@@ -181,7 +181,9 @@ describe("FillerManage", () => {
     render(<FillerManage />, { wrapper });
 
     expect(await screen.findAllByText("Added automatically")).toHaveLength(2);
-    expect(screen.getAllByText("Added automatically")[0]).toHaveClass("text-signal");
+    // Asserted by the rendered colour (Badge's public output), not a Tailwind class: Badge
+    // sources colour from @loomarr/design-system's semanticColors via inline style (#970 PR C).
+    expect(screen.getAllByText("Added automatically")[0]).toHaveStyle({ color: "#FFB020" });
     expect(screen.getAllByText("Skipped automatically")).toHaveLength(2);
     expect(screen.queryByText(/preview/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show issues" })).toHaveAttribute("aria-expanded", "false");

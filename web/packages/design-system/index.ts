@@ -52,8 +52,11 @@ export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
 export { PreviewAnchor, PreviewGroup } from "./src/preview";
 export type {
   ArtworkState,
+  BadgeShape,
   BadgeTone,
+  ProgressTone,
   ScreenProps,
+  StatusTone,
   TextProps,
   TextTone,
 } from "./src/primitives";
@@ -63,6 +66,7 @@ export {
   FocusSurface,
   ProgressTrack,
   Screen,
+  StatusDot,
   Surface,
   Text,
 } from "./src/primitives";
