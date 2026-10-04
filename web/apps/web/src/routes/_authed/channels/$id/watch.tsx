@@ -1,7 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import { unwrap } from "@loomarr/api/unwrap";
-import { formatGuideTime, layoutGuide } from "@loomarr/core/guide";
-import { surfGroupsFromGuide, surfPreviousChannel, watchingScheduleFromGuide } from "@loomarr/ui";
+import { layoutGuide } from "@loomarr/core/guide";
+import { watchingPanelFromGuide } from "@loomarr/ui";
 import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -82,24 +82,14 @@ const WatchScreen = () => {
   const phone = useMemo(() => {
     const body = unwrap(guide.data);
     // Read defensively, as the drawer does: a body without `channels` must not reach the layout.
-    const layout = body?.channels ? layoutGuide(body, nowMs) : undefined;
-    const playable = (body?.channels ?? []).filter((c) => c.status === "live").map((c) => c.channelId);
-    const groups = layout
-      ? surfGroupsFromGuide({
-          layout,
-          nowMs,
-          currentChannelId: tunedChannel.id,
-          favoriteChannelIds: favouriteIds,
-          playableChannelIds: playable,
-          recentChannelIds: recentIds,
-        })
-      : [];
-    return {
-      schedule: watchingScheduleFromGuide(layout, tunedChannel.id, nowMs),
-      favourites: groups.find((g) => g.kind === "favourites")?.channels ?? [],
-      previousId: surfPreviousChannel(tunedChannel.id, recentIds, playable),
-      clockLabel: formatGuideTime(nowMs, layout?.timezone),
-    };
+    return watchingPanelFromGuide({
+      channelId: tunedChannel.id,
+      favouriteIds,
+      layout: body?.channels ? layoutGuide(body, nowMs) : undefined,
+      nowMs,
+      playableChannelIds: (body?.channels ?? []).filter((c) => c.status === "live").map((c) => c.channelId),
+      recentIds,
+    });
   }, [guide.data, nowMs, tunedChannel.id, favouriteIds, recentIds]);
 
   return (
