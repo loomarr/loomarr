@@ -16,6 +16,7 @@ const idea = (over: Partial<ChannelIdeaDTO> & Pick<ChannelIdeaDTO, "id" | "name"
   pitch: "Every comedy title in your library that no channel plays yet, on one channel.",
   reason: { kind: "unaired", count: 14 },
   keys: ["m1", "m2", "m3", "m4"],
+  titles: [],
   movies: 14,
   series: 0,
   inLibrary: 14,
@@ -155,6 +156,24 @@ describe("Channel ideas on a member's Home (#1659)", () => {
       "idea-genre:comedy",
       "idea-genre:drama",
     ]);
+  });
+
+  // "Edit first" and "Describe your own channel" (#1817, #1872) both open the Guide's manual
+  // builder — the shipped grid used to name these as waiting on the mock.
+  it("links Edit first and Describe your own channel into the Guide's manual builder", async () => {
+    stub({ me: MEMBER });
+    onAir();
+    serve(FOUR);
+    renderAt("/dashboard");
+
+    await screen.findByText("Picked from your library");
+    const editFirst = await within(card("Comedy Movies")).findByRole("link", { name: "Edit first" });
+    expect(editFirst).toHaveAttribute("href", "/guide?manual=%221%22&ideaId=genre%3Acomedy");
+
+    expect(screen.getByRole("link", { name: /describe your own channel/i })).toHaveAttribute(
+      "href",
+      "/guide?manual=%221%22",
+    );
   });
 
   it("offers ideas on an empty Home, and says when there are none left", async () => {

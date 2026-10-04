@@ -24,7 +24,7 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
 | Role | Items |
 | --- | --- |
 | admin | Home · Guide · Requests · Filler · People · Settings · Help |
-| member | Guide · Requests · Notifications · Help |
+| member | Home · Guide · Requests · Notifications · Help |
 
 - **Guide** (`/guide`, headed "Channels") is the single channels surface: a cross-channel time grid,
   with channel creation (describe → review → approve) as a header action. The old Channels and Suggest
@@ -40,9 +40,16 @@ arrives to watch and ask for things, and greyed-out entries advertise a product 
   phone Guide and remote TV interaction remain separate adapters.
 - **Requests** (`/requests`) is one surface for everyone (#1405). Its nav count is what waits on the
   viewer, the same number as its **Needs you** tab.
-- **Home** (admin, `/dashboard`) answers "is everything alright?": four linked stat cards over live
-  playout telemetry. Members do not get it yet; its content is machine state until the redesign's
-  Home replaces it (#1659).
+- **Home** (`/dashboard`, both roles) leads with what's on, not machine state (#1659, #1822): a
+  neutral channel-count line, then — only once something exists to show — the caller's recently
+  tuned channel, up to six currently scheduled live channels ("Your channels" and each one's actual
+  lifecycle when none currently has a block), actual Watching now sessions, typed Tonight
+  highlights (premieres and marathons only), New this week, and each role's own requests or
+  channel ideas. A quiet household still gets the count and On now; a bare install gets "Your first
+  channel starts here" and nothing else. Missing or failed artwork keeps its geometry and shows a
+  restrained line motif with the channel's monogram, never a broken-image glyph. Encoder, storage,
+  service health and the restart control live in **Settings → This server** (admin-only), linked
+  from Home's footer, not duplicated on it.
 - **People** is admins managing other accounts; **Account** (`/account`) is any user's own password
   and sessions. **Settings** is a searchable task home, with **Advanced settings** as the raw-key
   escape hatch. **Help** renders the embedded help pages offline.

@@ -123,6 +123,31 @@ func (e *ApprovalEdit) isEmpty() bool {
 	return e == nil || (len(e.DropKeys) == 0 && len(e.Add) == 0)
 }
 
+// ResolveManualLineup re-resolves a hand-picked lineup (the manual/AI-off channel builder,
+// #1817 G2) against current Library presence, splitting it into in-library picks (Lineup) and
+// missing titles (Acquisitions).
+//
+// It runs the SAME check ResolveApprovalEdit already applies to an approver's additions —
+// "client presence fields are not authority" — reused here rather than duplicated, because a
+// manually built proposal reaches this server exactly the way an edited approval's Add does:
+// as a client-supplied []ProposalItem, with an InLibrary flag and a LibraryItemID the caller
+// could type by hand. Without this, a fabricated InLibrary:true would schedule a title the
+// household never actually owns.
+func (a *Approver) ResolveManualLineup(ctx context.Context, items []ProposalItem) (lineup, acquisitions []ProposalItem, err error) {
+	resolved, err := ResolveApprovalEdit(ctx, &ApprovalEdit{Add: items}, a.additions)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, item := range resolved.Add {
+		if item.InLibrary {
+			lineup = append(lineup, item)
+		} else {
+			acquisitions = append(acquisitions, item)
+		}
+	}
+	return lineup, acquisitions, nil
+}
+
 // TitleReader is the read-only title lookup shared by approval quota checks.
 type TitleReader interface {
 	GetTitle(ctx context.Context, key provision.Key) (provision.Record, error)

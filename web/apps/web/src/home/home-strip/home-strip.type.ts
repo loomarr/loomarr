@@ -1,11 +1,12 @@
-import type { GuideChannelTimeline } from "@loomarr/api/models/guideChannelTimeline";
+type HomeStripState = "loading" | "error" | "empty" | "ok";
 
 interface HomeStripProps {
-  // Every channel the guide read: the headline counts the live ones.
-  channels: readonly GuideChannelTimeline[];
-  // The guide has not answered yet ("Checking your channels…").
-  loading: boolean;
+  state: HomeStripState;
+  // Every channel the guide read, for the neutral count.
+  count: number;
   isAdmin: boolean;
+  // "Couldn't load your channels." → Try again (initial error, #1822 evidence).
+  onRetry: () => void;
 }
 
-export type { HomeStripProps };
+export type { HomeStripProps, HomeStripState };

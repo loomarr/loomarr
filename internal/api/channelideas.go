@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -53,6 +54,16 @@ func (s *Server) registerChannelIdeas(api huma.API) {
 		Tags:          []string{"discovery"},
 	}, RoleMember), s.requestChannelIdea)
 	huma.Register(api, withRole(huma.Operation{
+		OperationID: "submit-manual-channel", Method: http.MethodPost, Path: "/v1/discovery/manual-channel",
+		Summary: "Submit a hand-built channel",
+		Description: "Puts a hand-picked lineup through the same gate every other proposal uses (#1817, decision G2): " +
+			"an admin's own channel is created (or, with auto-approve, created immediately); a member's goes to the " +
+			"approval queue. No LLM is involved, so it works with the AI off. Each picked title is re-checked against " +
+			"the library the same way an approver's own additions are — a client can't claim a title is already owned.",
+		DefaultStatus: http.StatusAccepted,
+		Tags:          []string{"discovery"},
+	}, RoleMember), s.submitManualChannel)
+	huma.Register(api, withRole(huma.Operation{
 		OperationID: "hide-channel-idea", Method: http.MethodPut, Path: "/v1/me/hidden-ideas/{ideaId}",
 		Summary:     "Hide a channel idea",
 		Description: "Hides the idea for the caller only. Idempotent. DELETE is the undo.",
@@ -86,10 +97,16 @@ type channelIdeaDTO struct {
 	Value        string               `json:"value" doc:"The genre as the library spells it, the decade's first year ('1990'), or the holiday id"`
 	Reason       channelIdeaReasonDTO `json:"reason"`
 	Keys         []string             `json:"keys" doc:"Title keys, newest first, at most 100. The first four are the posters; artwork comes from /v1/images."`
-	Movies       int                  `json:"movies"`
-	Series       int                  `json:"series"`
-	InLibrary    int                  `json:"inLibrary" doc:"Titles already in the library"`
-	ToDownload   int                  `json:"toDownload" doc:"Titles the idea would have to request. Library-grounded ideas need none."`
+	// Titles is Keys again, but with the name/year/library-presence a picker needs to show
+	// each one individually — the manual/AI-off builder's facet chips (#1817, G2) let a person
+	// add titles from a facet one at a time, which a bare key can't render. Same data
+	// `request-channel-idea` already turns into a Proposal's lineup (ideaLineup below); this
+	// DTO just also exposes it for display before that request happens.
+	Titles     []suggest.ProposalItem `json:"titles" doc:"Keys, with display fields, in the same order"`
+	Movies     int                    `json:"movies"`
+	Series     int                    `json:"series"`
+	InLibrary  int                    `json:"inLibrary" doc:"Titles already in the library"`
+	ToDownload int                    `json:"toDownload" doc:"Titles the idea would have to request. Library-grounded ideas need none."`
 }
 
 type listChannelIdeasOutput struct {
@@ -247,6 +264,59 @@ func (s *Server) requestChannelIdea(ctx context.Context, in *channelIdeaInput) (
 	return nil, errNotFound("Idea not available", "That idea isn't available any more. Refresh Home for today's ideas.")
 }
 
+type submitManualChannelBody struct {
+	Name        string                 `json:"name" maxLength:"200" doc:"The channel's name, as the person typed it or the chosen starter template filled it"`
+	Description string                 `json:"description,omitempty" maxLength:"2000" doc:"A one-line reason, shown on the review card where the LLM's rationale would otherwise go"`
+	Lineup      []suggest.ProposalItem `json:"lineup" doc:"Every title the person picked, from the library or a direct search; re-checked against the library server-side"`
+}
+
+type submitManualChannelInput struct {
+	Body submitManualChannelBody
+}
+
+// submitManualChannel is the manual/AI-off builder's one write (#1817, G2): a hand-picked
+// lineup, re-grounded, through the SAME submit->approve gate as every other proposal. It
+// never creates a channel by itself — SubmitBuilt below records it "submitted" and runs the
+// identical auto-approval consideration idea-requests already use.
+func (s *Server) submitManualChannel(ctx context.Context, in *submitManualChannelInput) (*requestChannelIdeaOutput, error) {
+	userID, err := s.ideasUser(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if s.suggest == nil {
+		return nil, errFeatureNotConfigured("Channel requests unavailable", "The request queue isn't running on this server.")
+	}
+	if s.approver == nil {
+		return nil, errFeatureNotConfigured("Channel requests unavailable", "The approval gate isn't running on this server.")
+	}
+	name := strings.TrimSpace(in.Body.Name)
+	if name == "" {
+		return nil, errBadRequest("Name this channel", "Give the channel a name before continuing.")
+	}
+	if len(in.Body.Lineup) == 0 {
+		return nil, errBadRequest("Choose at least one title", "Pick a title from your library or search before continuing.")
+	}
+	lineup, acquisitions, err := s.approver.ResolveManualLineup(ctx, in.Body.Lineup)
+	if err != nil {
+		return nil, errBadRequest("Couldn't check those titles", err.Error())
+	}
+	total := len(lineup) + len(acquisitions)
+	if total == 0 {
+		return nil, errBadRequest("Choose at least one title", "Pick a title from your library or search before continuing.")
+	}
+	proposal := suggest.Proposal{
+		ChannelName: name, Manual: true, Lineup: lineup, Acquisitions: acquisitions, Rationale: in.Body.Description,
+		Scores: suggest.Scores{AvailabilityRatio: float64(len(lineup)) / float64(total)},
+	}
+	jobID, err := s.suggest.SubmitBuilt(ctx, suggest.Intent{Description: name}, proposal, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := &requestChannelIdeaOutput{}
+	out.Body.JobID = jobID
+	return out, nil
+}
+
 // ideaLineup turns an idea's library titles into proposal items, in the idea's order (newest
 // first). Each carries the id its key names, which is what grounds it for the approval gate.
 func ideaLineup(titles []ideas.Item) []suggest.ProposalItem {
@@ -302,7 +372,7 @@ func channelIdeaToDTO(idea ideas.Idea, holidayLabels map[string]string) channelI
 	name, pitch := ideas.Describe(idea, holidayLabels[idea.Reason.HolidayID])
 	return channelIdeaDTO{
 		ID: idea.ID, Name: name, Pitch: pitch, Facet: string(idea.Facet), Value: idea.Value, Reason: reason, Keys: keys,
-		Movies: idea.Movies, Series: idea.Series, InLibrary: idea.Movies + idea.Series,
+		Titles: ideaLineup(idea.Titles), Movies: idea.Movies, Series: idea.Series, InLibrary: idea.Movies + idea.Series,
 	}
 }
 
