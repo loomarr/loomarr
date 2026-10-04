@@ -16,11 +16,24 @@ interface GuideSearch {
   job?: string;
   // `?new=1` opens the empty describe panel — the Requests page's "Request a channel" door.
   new?: "1";
+  // `?manual=1` opens straight into the manual/AI-off builder (#1817, G2) — Home's Channel
+  // ideas "Describe your own channel", which explicitly skips a retry of AI suggestions.
+  manual?: "1";
+  // `?ideaId=` seeds the manual builder from one idea — Home's "Edit first".
+  ideaId?: string;
 }
 
 const GuideScreen = () => {
-  const { intent, job, new: openNew } = Route.useSearch();
-  return <GuidePage initialIntent={intent} initialJobId={job} openOnArrival={openNew === "1"} />;
+  const { intent, job, new: openNew, manual, ideaId } = Route.useSearch();
+  return (
+    <GuidePage
+      initialIntent={intent}
+      initialJobId={job}
+      openOnArrival={openNew === "1"}
+      openManualOnArrival={manual === "1"}
+      initialIdeaId={ideaId}
+    />
+  );
 };
 
 const Route = createFileRoute("/_authed/guide")({
@@ -29,6 +42,8 @@ const Route = createFileRoute("/_authed/guide")({
     intent: typeof search.intent === "string" ? search.intent : undefined,
     job: typeof search.job === "string" ? search.job : undefined,
     new: search.new === "1" || search.new === 1 ? "1" : undefined,
+    manual: search.manual === "1" || search.manual === 1 ? "1" : undefined,
+    ideaId: typeof search.ideaId === "string" ? search.ideaId : undefined,
   }),
   // Warm the guide before the component mounts, so arriving from the nav paints rows rather
   // than a spinner. With `defaultPreload: "intent"` this runs on HOVER, which buys the whole
