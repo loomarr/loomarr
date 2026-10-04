@@ -24,18 +24,13 @@ const adjacentChannel = (
   return channels[(current + direction + channels.length) % channels.length];
 };
 
-// `viaFallback` tells the caller whether `beforePaint` ran off a real paint (rAF) or off the
-// escape-valve timer below. A caller that turns this into a telemetry measurement (#1492) must not
-// blend the two into one distribution: the timer fires on a fixed 50 ms schedule that measures how
-// late the event loop got to it, not how long painting took, so it is a different population from
-// genuine frame latency even though both currently get called "osd".
-const acrossNextPaint = (beforePaint: (viaFallback: boolean) => void, afterPaint: () => void) => {
+const acrossNextPaint = (beforePaint: () => void, afterPaint: () => void) => {
   let beforeRan = false;
   let afterRan = false;
-  const before = (viaFallback: boolean) => {
+  const before = () => {
     if (beforeRan) return;
     beforeRan = true;
-    beforePaint(viaFallback);
+    beforePaint();
   };
   const after = () => {
     if (afterRan) return;
@@ -49,12 +44,12 @@ const acrossNextPaint = (beforePaint: (viaFallback: boolean) => void, afterPaint
   // opportunity, then guarantee the tune intent advances even when rAF never arrives. Both paths
   // are idempotent because a late frame must not navigate a second time.
   const fallback = setTimeout(() => {
-    before(true);
+    before();
     after();
   }, 50);
   if (typeof requestAnimationFrame !== "function") return;
   requestAnimationFrame(() => {
-    before(false);
+    before();
     requestAnimationFrame(after);
   });
 };
@@ -142,9 +137,9 @@ const useChannelTuner = ({
       setReadyId(undefined);
       setRequest({ channel: target, attempt, phase: "acknowledging" });
       acrossNextPaint(
-        (viaFallback) => {
+        () => {
           if (latestAttemptId.current !== attempt.id) return;
-          markTunePhase(attempt, "osd", { viaFallback });
+          markTunePhase(attempt, "osd");
         },
         () => {
           if (latestAttemptId.current !== attempt.id) return;
@@ -194,9 +189,9 @@ const useChannelTuner = ({
     requestedId.current = current.id;
     setRequest({ channel: current, attempt, phase: "acknowledging" });
     acrossNextPaint(
-      (viaFallback) => {
+      () => {
         if (latestAttemptId.current !== attempt.id) return;
-        markTunePhase(attempt, "osd", { viaFallback });
+        markTunePhase(attempt, "osd");
       },
       () => {
         if (latestAttemptId.current !== attempt.id) return;
