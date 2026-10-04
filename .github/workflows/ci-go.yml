@@ -88,9 +88,12 @@ jobs:
           if ! command -v rustup >/dev/null 2>&1; then
             cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
             if [ ! -x "$cargo_bin/rustup" ]; then
-              curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-                --retry 5 --retry-all-errors https://sh.rustup.rs \
-                | sh -s -- -y --no-modify-path --profile minimal --default-toolchain none
+              # Download to a file, never `curl | sh`: the default `bash -e` step shell has no
+              # pipefail, so a failed download piped into sh would "succeed" with nothing installed.
+              installer="$RUNNER_TEMP/rustup-init.sh"
+              curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location --retry 5 \
+                --output "$installer" https://sh.rustup.rs
+              sh "$installer" -y --no-modify-path --profile minimal --default-toolchain none
             fi
             echo "$cargo_bin" >> "$GITHUB_PATH"
             export PATH="$cargo_bin:$PATH"
