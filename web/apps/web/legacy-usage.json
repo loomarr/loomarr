@@ -778,7 +778,7 @@
       "legacyUi": 6
     },
     "src/settings/pair-device/pair-device.tsx": {
-      "tailwindClasses": 61,
+      "tailwindClasses": 70,
       "legacyUi": 2
     },
     "src/settings/paired-devices/paired-devices.tsx": {
