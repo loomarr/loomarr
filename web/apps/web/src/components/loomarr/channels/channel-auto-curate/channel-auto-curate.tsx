@@ -1,7 +1,7 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { resetField } from "@/lib/policy-overrides";
+import { isThresholdOverridden, resetField, resetThreshold } from "@/lib/policy-overrides";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
@@ -72,16 +72,14 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         />
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Label id="policy-auto-curate-label" htmlFor="policy-auto-curate">
-              {OPT_IN_LABEL}
-            </Label>
+            <Label htmlFor="policy-auto-curate">{OPT_IN_LABEL}</Label>
             <FieldHelp label={OPT_IN_LABEL}>{OPT_IN_HELP}</FieldHelp>
             {/* Reset removes the opt-in and its thresholds, exactly like unticking the box. */}
             <PolicyFieldSource
               className="ml-1"
               overridden={enabled}
               onReset={() => onChange(resetField(policy, "autoCurate"))}
-              labelledBy="policy-auto-curate-label"
+              label={OPT_IN_LABEL}
               overrideLabel="Opted in"
               defaultLabel="Default: off"
               hideResetWhenDefault
@@ -108,17 +106,13 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
         <div className="flex flex-wrap gap-x-6 gap-y-3 pl-7">
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Label
-                id="policy-auto-curate-score-label"
-                htmlFor="policy-auto-curate-score"
-                className="text-muted-foreground text-xs"
-              >
+              <Label htmlFor="policy-auto-curate-score" className="text-muted-foreground text-xs">
                 Quality bar
               </Label>
               <PolicyFieldSource
-                overridden={Boolean(auto?.minScorePct)}
-                onReset={() => onChange({ ...policy, autoCurate: { ...auto, minScorePct: 0 } })}
-                labelledBy="policy-auto-curate-score-label"
+                overridden={isThresholdOverridden(policy, "minScorePct")}
+                onReset={() => onChange(resetThreshold(policy, "minScorePct"))}
+                label="Quality bar"
               />
             </div>
             <Input
@@ -140,17 +134,13 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
           </div>
           <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Label
-                id="policy-auto-curate-cap-label"
-                htmlFor="policy-auto-curate-cap"
-                className="text-muted-foreground text-xs"
-              >
+              <Label htmlFor="policy-auto-curate-cap" className="text-muted-foreground text-xs">
                 Title cap
               </Label>
               <PolicyFieldSource
-                overridden={Boolean(auto?.maxTitles)}
-                onReset={() => onChange({ ...policy, autoCurate: { ...auto, maxTitles: 0 } })}
-                labelledBy="policy-auto-curate-cap-label"
+                overridden={isThresholdOverridden(policy, "maxTitles")}
+                onReset={() => onChange(resetThreshold(policy, "maxTitles"))}
+                label="Title cap"
               />
             </div>
             <Input

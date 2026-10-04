@@ -5,7 +5,7 @@ import type { ProgrammingChangeSideDTO } from "@loomarr/api/models/programmingCh
 import { ProgrammingChangeSideDTOKind } from "@loomarr/api/models/programmingChangeSideDTOKind";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatGuideEpisode, formatGuideTime } from "@loomarr/core/guide";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { PREVIEW_DEBOUNCE_MS } from "@/channels/use-channel-rules-draft";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState } from "../../feedback";
@@ -33,12 +33,15 @@ const sideLabel = (side: ProgrammingChangeSideDTO | undefined): string => {
   return `${side.series}${episode ? ` · ${episode}` : ""} — ${title}`;
 };
 
+// One row: time | before → after | winning rule, as the mock's preview rows. On a phone the
+// three columns would squeeze the titles to a word per line, so the change drops to its own
+// full-width line under the time and rule.
 const ChangeRow = ({ change, timeZone }: { change: ProgrammingChangeDTO; timeZone?: string }) => (
   <li className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 border-border border-b py-1.5 text-sm last:border-b-0">
     <span className="w-28 shrink-0 font-mono text-muted-foreground">
       {formatSlotTime(change.startMs, timeZone)}
     </span>
-    <span className="min-w-0 flex-1">
+    <span className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1">
       <span className="text-muted-foreground line-through">{sideLabel(change.before)}</span>
       <span className="text-muted-foreground" aria-hidden>
         {" → "}
@@ -67,16 +70,23 @@ const ChannelProgrammingChanges = ({
   // The same debounce and serialized key as the cycle preview, so both settle together. `from`
   // is left out so the server resolves "now".
   const draftKey = draftPolicy ? JSON.stringify(draftPolicy) : "";
+  // Which draft the mutation's result belongs to. A mutation keeps its last result until the
+  // next request fires, so without this the previous draft's rows, or its error, would sit under
+  // the new draft for the whole debounce.
+  const [sentKey, setSentKey] = useState("");
   // biome-ignore lint/correctness/useExhaustiveDependencies: draftKey IS the dependency
   useEffect(() => {
     if (!draftKey) return;
     const t = setTimeout(() => {
+      setSentKey(draftKey);
       changes.mutate({ id: channelId, data: { policy: JSON.parse(draftKey) as ChannelPolicy } });
     }, PREVIEW_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [channelId, draftKey]);
 
-  const body = unwrap(changes.data);
+  const current = draftKey !== "" && sentKey === draftKey;
+  const body = current ? unwrap(changes.data) : undefined;
+  const error = current ? changes.error : null;
 
   let content: React.ReactNode;
   if (!draftPolicy) {
@@ -85,15 +95,15 @@ const ChannelProgrammingChanges = ({
         Edit the rules above to see which upcoming slots change.
       </p>
     );
-  } else if (changes.error) {
+  } else if (error) {
     content = (
       <ErrorState
-        error={changes.error}
+        error={error}
         onRetry={() => changes.mutate({ id: channelId, data: { policy: draftPolicy } })}
       />
     );
   } else if (changes.isPending || !body) {
-    // Also covers the debounce window before the first request, which has no data yet.
+    // Also covers the debounce window before this draft's request, which has no result yet.
     content = <p className="text-muted-foreground text-sm">Loading changes…</p>;
   } else if (body.compared === 0) {
     content = (
@@ -113,13 +123,19 @@ const ChannelProgrammingChanges = ({
         {/* Rows are text, so the scroll region itself takes the Tab stop (see the cycle
             preview's slot list for the same treatment). */}
         <ul
-          className="scroll-thin flex max-h-96 flex-col overflow-y-auto"
+          // `relative` contains each row's absolutely positioned sr-only text: without it they
+          // escape this scroll box's clip and stretch the page by the list's full height.
+          className="scroll-thin relative flex max-h-96 flex-col overflow-y-auto"
           // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region IS interactive
           tabIndex={0}
           aria-label="Changed slots"
         >
           {body.changes.map((change) => (
-            <ChangeRow key={change.startMs} change={change} timeZone={timeZone} />
+            <ChangeRow
+              key={`${change.startMs}-${change.before?.key ?? ""}-${change.after?.key ?? ""}`}
+              change={change}
+              timeZone={timeZone}
+            />
           ))}
         </ul>
       </div>

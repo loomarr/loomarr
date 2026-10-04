@@ -135,7 +135,9 @@ const ChannelProgramming = ({
         defaultOpen
       >
         <ChannelLineupEditor channelId={channelId} revision={revision} lineup={lineup} />
-        <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="scope" />
+        {/* Keyed by channel: the dates editor's "separate windows" choice is per channel and
+            must not carry over when the route param changes under a mounted page. */}
+        <ChannelPolicyFields key={channelId} policy={policy} onChange={onPolicyChange} show="scope" />
         {/* `scope.series` narrows the channel to specific shows. It sits under the scope
             fields because it is the same question ("what may play?") at a coarser grain than
             era/ceiling — and beside the lineup editor whose search picker it reuses. */}

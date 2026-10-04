@@ -1,7 +1,15 @@
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import { describe, expect, it } from "vitest";
 import { eraDates } from "@/lib/era-dates";
-import { datesMode, isOverridden, overrideCount, POLICY_FIELDS, resetField } from "./policy-overrides";
+import {
+  datesMode,
+  isOverridden,
+  isThresholdOverridden,
+  overrideCount,
+  POLICY_FIELDS,
+  resetField,
+  resetThreshold,
+} from "./policy-overrides";
 
 // Every field set to a real channel value, so each reset has something to clear.
 const everything: ChannelPolicy = {
@@ -70,6 +78,20 @@ describe("resetField", () => {
 
   it("removes the auto-curate opt-in and its thresholds", () => {
     expect(resetField(everything, "autoCurate")).not.toHaveProperty("autoCurate");
+  });
+});
+
+describe("auto-curate thresholds", () => {
+  it("reads 0 or absent as inheriting the global default", () => {
+    expect(isThresholdOverridden({ autoCurate: {} }, "minScorePct")).toBe(false);
+    expect(isThresholdOverridden({ autoCurate: { maxTitles: 0 } }, "maxTitles")).toBe(false);
+    expect(isThresholdOverridden(everything, "minScorePct")).toBe(true);
+  });
+
+  it("resets one threshold to 0, keeping the opt-in and the other", () => {
+    expect(resetThreshold(everything, "minScorePct").autoCurate).toEqual({ minScorePct: 0, maxTitles: 5 });
+    // Thresholds refine the opt-in, so they never count as fields of their own.
+    expect(overrideCount(resetThreshold(everything, "maxTitles")).overridden).toBe(11);
   });
 });
 

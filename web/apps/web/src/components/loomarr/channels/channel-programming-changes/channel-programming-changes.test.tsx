@@ -1,14 +1,18 @@
 import type { PreviewProgrammingChangesOutputBody } from "@loomarr/api/models/previewProgrammingChangesOutputBody";
 import type { ProgrammingChangeDTO } from "@loomarr/api/models/programmingChangeDTO";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PREVIEW_DEBOUNCE_MS } from "@/channels/use-channel-rules-draft";
 import { ChannelProgrammingChanges } from "./channel-programming-changes";
 
-// The hook is a mutation; tests drive its returned shape, not the wire.
+// Most tests drive the mutation's returned shape, not the wire. The last block swaps the real
+// hook back in to prove the request timing against a stubbed fetch.
 const mockUseChanges = vi.fn();
+const realHook = vi.hoisted(() => ({ use: undefined as undefined | ((...args: unknown[]) => unknown) }));
 vi.mock("@loomarr/api/endpoints/channels", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@loomarr/api/endpoints/channels")>();
+  realHook.use = actual.usePreviewChannelProgrammingChanges as (...args: unknown[]) => unknown;
   return {
     ...actual,
     usePreviewChannelProgrammingChanges: (...args: unknown[]) => mockUseChanges(...args),
@@ -27,6 +31,7 @@ const state = (over: {
   isPending: over.isPending ?? false,
   error: over.error ?? null,
   mutate,
+  reset: vi.fn(),
 });
 
 // Sunday 2026-10-04 18:00 UTC.
@@ -65,6 +70,14 @@ const body = (over: Partial<PreviewProgrammingChangesOutputBody>): PreviewProgra
 });
 
 beforeEach(() => mutate.mockReset());
+
+// A result only counts once its draft's request has been sent, so render past the debounce.
+const settled = (ui: React.ReactElement) => {
+  vi.useFakeTimers();
+  const view = render(ui);
+  act(() => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+  return view;
+};
 afterEach(() => {
   mockUseChanges.mockReset();
   vi.useRealTimers();
@@ -91,31 +104,31 @@ describe("ChannelProgrammingChanges", () => {
 
   it("shows loading while the comparison runs", () => {
     mockUseChanges.mockReturnValue(state({ isPending: true }));
-    render(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
+    settled(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
     expect(screen.getByText("Loading changes…")).toBeInTheDocument();
   });
 
   it("shows an error with a retry that re-posts the draft", () => {
     mockUseChanges.mockReturnValue(state({ error: new Error("boom") }));
-    render(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
+    settled(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
     act(() => screen.getByRole("button", { name: /try again/i }).click());
     expect(mutate).toHaveBeenCalledWith({ id: "ch-1", data: { policy: draft } });
   });
 
   it("tells 'nothing changes' apart from 'nothing scheduled'", () => {
     mockUseChanges.mockReturnValue(state({ data: body({ compared: 30, count: 0 }) }));
-    const { unmount } = render(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
+    const { unmount } = settled(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
     expect(screen.getByText("No upcoming slots change")).toBeInTheDocument();
     unmount();
 
     mockUseChanges.mockReturnValue(state({ data: body({ compared: 0, count: 0 }) }));
-    render(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
+    settled(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
     expect(screen.getByText("Nothing scheduled")).toBeInTheDocument();
   });
 
   it("lists each changed slot with its time, before → after, and the winning rule", () => {
     mockUseChanges.mockReturnValue(state({ data: body({ count: 2, changes: [change(0), change(1)] }) }));
-    render(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} timeZone="UTC" />);
+    settled(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} timeZone="UTC" />);
     const rows = screen.getAllByRole("listitem");
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("Sun 6:00 PM");
@@ -136,7 +149,7 @@ describe("ChannelProgrammingChanges", () => {
       after: { ...change(1).after!, kind: "break", title: undefined, key: undefined },
     };
     mockUseChanges.mockReturnValue(state({ data: body({ count: 2, changes: [episode, toBreak] }) }));
-    render(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} timeZone="UTC" />);
+    settled(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} timeZone="UTC" />);
     const rows = screen.getAllByRole("listitem");
     expect(rows[0]).toHaveTextContent("Nothing airs");
     expect(rows[0]).toHaveTextContent("Signal and Noise · S01E02 — Pilot");
@@ -146,8 +159,65 @@ describe("ChannelProgrammingChanges", () => {
   it("says how many rows were cut when the list is truncated", () => {
     const shown = Array.from({ length: 100 }, (_, i) => change(i));
     mockUseChanges.mockReturnValue(state({ data: body({ count: 150, truncated: true, changes: shown }) }));
-    render(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
+    settled(<ChannelProgrammingChanges channelId="ch-1" draftPolicy={draft} />);
     expect(screen.getByText(/^Showing 100 of 150 changes until/)).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(100);
+  });
+});
+
+// The real mutation against a stubbed fetch: what reaches the wire, and what a new draft shows
+// while its request is still pending.
+describe("ChannelProgrammingChanges request timing", () => {
+  const draftB = { rules: [{ id: "r2", label: "Weekday kids", priority: 20 }] };
+  const respond = (payload: PreviewProgrammingChangesOutputBody) =>
+    Promise.resolve(
+      new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } }),
+    );
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockUseChanges.mockImplementation((...args: unknown[]) => realHook.use?.(...args));
+    fetchSpy = vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => fetchSpy.mockRestore());
+
+  const renderWithClient = (draftPolicy?: typeof draft) => {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const ui = (policy?: typeof draft) => (
+      <QueryClientProvider client={client}>
+        <ChannelProgrammingChanges channelId="ch-1" draftPolicy={policy} timeZone="UTC" />
+      </QueryClientProvider>
+    );
+    const view = render(ui(draftPolicy));
+    return { rerender: (policy?: typeof draft) => view.rerender(ui(policy)) };
+  };
+
+  it("coalesces rapid edits into one request for the last draft", async () => {
+    fetchSpy.mockImplementation(() => respond(body({ count: 0 })));
+    const { rerender } = renderWithClient(draft);
+    act(() => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS / 2));
+    rerender(draftB);
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ policy: draftB });
+  });
+
+  it("hides the previous draft's rows while the next draft's request is pending", async () => {
+    fetchSpy.mockImplementationOnce(() => respond(body({ count: 1, changes: [change(0)] })));
+    const { rerender } = renderWithClient(draft);
+    await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
+    expect(await screen.findByText("Draft 0")).toBeInTheDocument();
+
+    // The next draft never answers: its stale predecessor must not stand in for it.
+    fetchSpy.mockImplementation(() => new Promise<Response>(() => {}));
+    rerender(draftB);
+    expect(screen.queryByText("Draft 0")).not.toBeInTheDocument();
+    expect(screen.getByText("Loading changes…")).toBeInTheDocument();
+
+    // Going clean drops it too, rather than keeping it for the next edit.
+    rerender(undefined);
+    expect(screen.getByText(/edit the rules above/i)).toBeInTheDocument();
   });
 });

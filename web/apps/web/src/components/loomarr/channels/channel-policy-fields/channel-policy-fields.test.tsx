@@ -482,8 +482,9 @@ describe("ChannelPolicyFields defaults and overrides", () => {
     // ceiling, unrated, dates, runtime, ordering, three spacing windows, block cap.
     expect(screen.getAllByText("Default")).toHaveLength(9);
     expect(screen.queryByText("Channel override")).not.toBeInTheDocument();
-    for (const reset of screen.getAllByRole("button", { name: "Reset to default" }))
-      expect(reset).toBeDisabled();
+    const resets = screen.getAllByRole("button", { name: /^Reset to default/ });
+    expect(resets).toHaveLength(9);
+    for (const reset of resets) expect(reset).toBeDisabled();
   });
 
   it("badges an overridden field and resets it to its sentinel", async () => {
@@ -492,20 +493,29 @@ describe("ChannelPolicyFields defaults and overrides", () => {
     // Play order, same movie and same episode are set; same series and the block cap are not.
     expect(screen.getAllByText("Channel override")).toHaveLength(3);
 
-    const reset = screen.getAllByRole("button", { name: "Reset to default" });
-    // The field's label describes its Reset, so each button says which field it clears.
-    expect(reset[0]).toHaveAccessibleDescription("Play order");
-    await userEvent.click(reset[0]!);
+    // Each Reset's accessible name says which field it clears.
+    await userEvent.click(screen.getByRole("button", { name: "Reset to default (Play order)" }));
     expect(onChange).toHaveBeenLastCalledWith({ ...POPULATED, ordering: "" });
   });
 
-  it("re-seeds an uncontrolled box when its field is reset", async () => {
-    render(<PolicyHarness initial={{ separation: { movieNoRepeat: "168h" } }} onChange={vi.fn()} />);
-    expect(screen.getByLabelText("Repeat spacing · same movie")).toHaveValue("168h");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Reset to default", description: "Repeat spacing · same movie" }),
-    );
-    expect(screen.getByLabelText("Repeat spacing · same movie")).toHaveValue("");
+  // Reset remounts each uncontrolled box keyed by its stored value, so none keeps the old text.
+  it.each([
+    [{ separation: { movieNoRepeat: "168h" } }, "Repeat spacing · same movie", "168h", ""],
+    [{ separation: { blockMax: 3 } }, "Max from one series", 3, null],
+    [{ scope: { runtimeMax: 5400 } }, "Longest programme", 90, null],
+  ] as const)("re-seeds the box when %o is reset", async (initial, label, before, after) => {
+    render(<PolicyHarness initial={initial as ChannelPolicy} onChange={vi.fn()} />);
+    expect(screen.getByLabelText(label)).toHaveValue(before);
+    await userEvent.click(screen.getByRole("button", { name: `Reset to default (${label})` }));
+    expect(screen.getByLabelText(label)).toHaveValue(after);
+  });
+
+  it("re-seeds the era years when the dates are reset", async () => {
+    render(<PolicyHarness initial={POPULATED} onChange={vi.fn()} />);
+    expect(screen.getByLabelText("From year")).toHaveValue(1990);
+    await userEvent.click(screen.getByRole("button", { name: "Reset to default (Era)" }));
+    expect(screen.getByLabelText("From year")).toHaveValue(null);
+    expect(screen.getByLabelText("To year")).toHaveValue(null);
   });
 
   it("shows Era for era-shaped dates and the per-axis editor otherwise", () => {
@@ -536,9 +546,7 @@ describe("ChannelPolicyFields defaults and overrides", () => {
         onChange={onChange}
       />,
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Reset to default", description: "Programming dates" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Reset to default (Programming dates)" }));
     expect(onChange).toHaveBeenLastCalledWith({ scope: { runtimeMax: 5400 } });
     expect(screen.getByText("Era")).toBeInTheDocument();
   });

@@ -76,9 +76,7 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
-            <Label id="policy-seasonal-mode-label" htmlFor="policy-seasonal-mode">
-              Seasonal behavior
-            </Label>
+            <Label htmlFor="policy-seasonal-mode">Seasonal behavior</Label>
             <FieldHelp label="Seasonal behavior">
               How this channel reacts to the calendar. Loomarr matches titles to a built-in holiday list; pick
               which holidays below.
@@ -89,7 +87,7 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
           <PolicyFieldSource
             overridden={isOverridden(policy, "seasonalMode")}
             onReset={() => onChange(resetField(policy, "seasonalMode"))}
-            labelledBy="policy-seasonal-mode-label"
+            label="Seasonal behavior"
           />
         </div>
         <Select

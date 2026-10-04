@@ -231,7 +231,7 @@ const PolicyField = ({
           </Label>
           <FieldHelp label={label}>{help}</FieldHelp>
         </div>
-        <PolicyFieldSource overridden={overridden} onReset={onReset} labelledBy={labelId} />
+        <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
       </div>
       {children}
     </div>

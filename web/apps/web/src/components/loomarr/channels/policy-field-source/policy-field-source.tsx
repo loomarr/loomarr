@@ -11,7 +11,7 @@ import type { PolicyFieldSourceProps } from "./policy-field-source.type";
 const PolicyFieldSource = ({
   overridden,
   onReset,
-  labelledBy,
+  label,
   overrideLabel = "Channel override",
   defaultLabel = "Default",
   hideResetWhenDefault,
@@ -20,17 +20,17 @@ const PolicyFieldSource = ({
   <div className={cn("flex flex-wrap items-center gap-2", className)}>
     <Badge variant={overridden ? "signal" : "neutral"}>{overridden ? overrideLabel : defaultLabel}</Badge>
     {overridden || !hideResetWhenDefault ? (
-      // The field's label describes the button, so a screen reader hears which field resets
-      // while the visible text stays the mock's.
       <Button
         type="button"
         variant="link"
         className="h-auto p-0 text-xs underline"
         disabled={!overridden}
-        aria-describedby={labelledBy}
         onClick={onReset}
       >
-        Reset to default
+        {/* A dozen identical "Reset to default" buttons would be indistinguishable in a
+            screen reader's button list or to voice control, so the name carries the field
+            while the visible text stays the mock's (and still starts the name). */}
+        Reset to default <span className="sr-only">({label})</span>
       </Button>
     ) : null}
   </div>

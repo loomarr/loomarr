@@ -107,5 +107,25 @@ const overrideCount = (policy: ChannelPolicy): { overridden: number; total: numb
 const datesMode = (dates: DateScope | undefined): "era" | "axes" =>
   !hasDates(dates) || eraOf(dates) ? "era" : "axes";
 
-export type { PolicyField };
-export { datesMode, isOverridden, overrideCount, POLICY_FIELDS, resetField };
+// The two auto-curate thresholds refine the opt-in rather than standing alone, so they are not
+// in the count. Both are `0 = inherit the global default` (int64, omitempty).
+type AutoCurateThreshold = "minScorePct" | "maxTitles";
+
+const isThresholdOverridden = (policy: ChannelPolicy, threshold: AutoCurateThreshold): boolean =>
+  (policy.autoCurate?.[threshold] ?? 0) > 0;
+
+const resetThreshold = (policy: ChannelPolicy, threshold: AutoCurateThreshold): ChannelPolicy => ({
+  ...policy,
+  autoCurate: { ...policy.autoCurate, [threshold]: 0 },
+});
+
+export type { AutoCurateThreshold, PolicyField };
+export {
+  datesMode,
+  isOverridden,
+  isThresholdOverridden,
+  overrideCount,
+  POLICY_FIELDS,
+  resetField,
+  resetThreshold,
+};

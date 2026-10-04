@@ -203,4 +203,20 @@ describe("ChannelSeasonal", () => {
     render(<ChannelSeasonal policy={{ seasonal: { mode: "off" } }} onChange={vi.fn()} vocabulary={VOCAB} />);
     expect(screen.getByText(/nothing is boosted or benched/i)).toBeInTheDocument();
   });
+
+  // The mode is the defaultable field (#1817 item 4); "auto" is the default spelled out.
+  it("badges the built-in mode Default with Reset disabled", () => {
+    render(<ChannelSeasonal policy={{ seasonal: { mode: "auto" } }} onChange={vi.fn()} vocabulary={VOCAB} />);
+    expect(screen.getByText("Default")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reset to default (Seasonal behavior)" })).toBeDisabled();
+  });
+
+  it("resets an overridden mode to the empty sentinel, keeping the holidays", async () => {
+    const onChange = vi.fn();
+    const policy: ChannelPolicy = { ...POPULATED, seasonal: { mode: "exclusive", holidays: ["christmas"] } };
+    render(<ChannelSeasonal policy={policy} onChange={onChange} vocabulary={VOCAB} />);
+    expect(screen.getByText("Channel override")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Reset to default (Seasonal behavior)" }));
+    expect(onChange).toHaveBeenCalledWith({ ...POPULATED, seasonal: { mode: "", holidays: ["christmas"] } });
+  });
 });

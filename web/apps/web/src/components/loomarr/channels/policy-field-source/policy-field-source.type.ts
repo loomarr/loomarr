@@ -3,8 +3,8 @@ interface PolicyFieldSourceProps {
   overridden: boolean;
   // Writes the field's inherit sentinel.
   onReset: () => void;
-  // The id of the field's visible label, which describes the Reset button.
-  labelledBy?: string;
+  // The field's visible label, which completes the Reset button's accessible name.
+  label: string;
   overrideLabel?: string;
   defaultLabel?: string;
   hideResetWhenDefault?: boolean;
