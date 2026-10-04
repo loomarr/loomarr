@@ -11,11 +11,7 @@ const beginTune = (adjacent: boolean, warmed = false, playURL?: string, stillURL
   return attempt;
 };
 
-const markTunePhase = (
-  attempt: TuneAttempt | undefined,
-  phase: TunePhase,
-  extraDetail?: Record<string, unknown>,
-) => {
+const markTunePhase = (attempt: TuneAttempt | undefined, phase: TunePhase) => {
   if (!attempt || typeof performance?.mark !== "function" || typeof performance?.measure !== "function") {
     return;
   }
@@ -27,7 +23,7 @@ const markTunePhase = (
     performance.measure(name, {
       start,
       end,
-      detail: { attemptId: attempt.id, adjacent: attempt.adjacent, warmed: attempt.warmed, ...extraDetail },
+      detail: { attemptId: attempt.id, adjacent: attempt.adjacent, warmed: attempt.warmed },
     });
   } catch {
     // Older WebKit implements the original three-argument User Timing form but not measure options.
