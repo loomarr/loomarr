@@ -156,8 +156,11 @@ version, and the build number orders them.
 - the bundle ID is `media.loomarr.mobile`, and `CFBundleShortVersionString` and `CFBundleVersion` match
   the requested version and build number;
 - `ITSAppUsesNonExemptEncryption` is `false` and `NSLocalNetworkUsageDescription` is present;
-- `PrivacyInfo.xcprivacy` is at the app bundle root, has exactly one accessed-API entry
-  (`UserDefaults` with reason `CA92.1`), and has `NSPrivacyTracking` false or absent;
+- `PrivacyInfo.xcprivacy` is at the app bundle root, has `NSPrivacyTracking` false or absent and no
+  tracking domains, declares `UserDefaults` with reason `CA92.1`, and every accessed-API entry has a
+  category, at least one reason, and appears once (the entry count is not pinned; see
+  [Privacy manifest](#privacy-manifest)). Every declared category and its reasons are printed in the
+  log and written to the evidence JSON;
 - the platform is `iphoneos`, every Mach-O in the app bundle (executable, frameworks, dylibs, and
   plug-ins) is `arm64` only and not built for a simulator, and `codesign` verifies.
 
@@ -176,6 +179,13 @@ declares `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1` at app 
 `react-native-tvos`, `expo-constants`, and `expo-file-system` also carry their own manifests,
 `expo-modules-core` reads only a file size, and the other pods use no required-reason API. Repeat the
 audit when the iOS pod set changes.
+
+The shipped app manifest has more entries than the one the app declares. React Native's pod install
+(`add_aggregated_privacy_manifest` in `react-native/scripts/cocoapods/privacy_manifest_utils.rb`) merges
+the required-reason APIs of every pod's manifest, plus React Native core's own (`FileTimestamp` with
+`C617.1`, `UserDefaults` with `CA92.1`, `SystemBootTime` with `35F9.1`), into the app's
+`PrivacyInfo.xcprivacy`. The IPA check therefore validates the manifest's shape and the app's own
+declaration, not its entry count.
 
 ## Image-worker certification
 
