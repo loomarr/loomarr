@@ -2,7 +2,7 @@ import { getChannelGuideUrl } from "@loomarr/api/endpoints/channels";
 import type { GuideOutputBody } from "@loomarr/api/models/guideOutputBody";
 
 import { defaultGuideWindow, guideSelectionForChannel, layoutGuide, moveGuideSelection } from "../guide";
-import type { GuideLayout } from "../guide.type";
+import type { GuideLayout, GuideWindow } from "../guide.type";
 import type {
   GuideController,
   GuideControllerOptions,
@@ -49,6 +49,33 @@ const createGuideController = ({
     publish({ layout, selection, status: layout.channels.length ? "ready" : "empty" });
   };
 
+  const loadWindow = async (
+    window: GuideWindow,
+    preferredChannelId: string | undefined,
+    anchorMs: number,
+  ) => {
+    if (disposed) return;
+    request?.abort();
+    const nextRequest = new AbortController();
+    request = nextRequest;
+    publish({ ...snapshot, error: undefined, status: "loading" });
+
+    try {
+      const sourceGuide = await source.load(window, nextRequest.signal);
+      if (disposed || nextRequest.signal.aborted || request !== nextRequest) return;
+
+      full = layoutGuide(sourceGuide, now());
+      settle(narrow(full), preferredChannelId, anchorMs);
+    } catch (error) {
+      if (disposed || nextRequest.signal.aborted || request !== nextRequest) return;
+      publish({
+        ...snapshot,
+        error: error instanceof Error ? error.message : "Couldn't load the Guide.",
+        status: "error",
+      });
+    }
+  };
+
   return {
     dispose: () => {
       if (disposed) return;
@@ -65,32 +92,26 @@ const createGuideController = ({
       if (!result.boundary) publish({ ...snapshot, selection: result.selection });
       return result;
     },
+    page: async (direction) => {
+      if (disposed || !full) return;
+      const span = full.toMs - full.fromMs;
+      const liveFrom = resolveWindow(now()).from;
+      const candidateFrom = direction === "earlier" ? full.fromMs - span : full.fromMs + span;
+      const from = direction === "earlier" ? Math.max(liveFrom, candidateFrom) : candidateFrom;
+      if (from === full.fromMs) return;
+      await loadWindow(
+        { from, to: from + span },
+        snapshot.selection?.channelId,
+        snapshot.selection?.anchorMs ?? now(),
+      );
+    },
     refresh: async (preferredChannelId) => {
-      if (disposed) return;
-      request?.abort();
-      const nextRequest = new AbortController();
-      request = nextRequest;
-      publish({ ...snapshot, error: undefined, status: "loading" });
       const at = now();
-
-      try {
-        const sourceGuide = await source.load(resolveWindow(at), nextRequest.signal);
-        if (disposed || nextRequest.signal.aborted || request !== nextRequest) return;
-
-        full = layoutGuide(sourceGuide, at);
-        settle(
-          narrow(full),
-          preferredChannelId ?? snapshot.selection?.channelId,
-          snapshot.selection?.anchorMs ?? at,
-        );
-      } catch (error) {
-        if (disposed || nextRequest.signal.aborted || request !== nextRequest) return;
-        publish({
-          ...snapshot,
-          error: error instanceof Error ? error.message : "Couldn't load the Guide.",
-          status: "error",
-        });
-      }
+      await loadWindow(
+        resolveWindow(at),
+        preferredChannelId ?? snapshot.selection?.channelId,
+        snapshot.selection?.anchorMs ?? at,
+      );
     },
     restrict: (channelIds) => {
       if (disposed) return;

@@ -1,4 +1,5 @@
 import type { GuideLayout } from "@loomarr/core/guide";
+import { monogramOf } from "@loomarr/core/guide";
 import { LoomarrProvider } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -141,6 +142,15 @@ describe("GuideSurface", () => {
     expect(output).toContain("All · 2");
     expect(output).toContain("2 of 2");
     expect(output).toContain("NO ART");
+  });
+
+  it("draws the channel's monogram ident on the TV row (#1659 decision N8)", () => {
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <GuideSurface density="tv" layout={layout} onSelectionChange={vi.fn()} selection={selection} />
+      </LoomarrProvider>,
+    );
+    expect(output).toContain(`>${monogramOf("Springfield Classics")}<`);
   });
 
   it.each([

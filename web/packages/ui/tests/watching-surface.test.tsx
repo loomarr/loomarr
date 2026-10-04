@@ -41,6 +41,7 @@ const renderSurface = (
     density?: "touch" | "tv";
     loading?: boolean;
     loadError?: string;
+    numberEntry?: Parameters<typeof WatchingSurface>[0]["numberEntry"];
     onChangeServer?: () => void;
     schedule?: Parameters<typeof WatchingSurface>[0]["schedule"];
   } = {},
@@ -53,6 +54,7 @@ const renderSurface = (
         density={options.density ?? "tv"}
         loading={options.loading}
         loadError={options.loadError}
+        numberEntry={options.numberEntry}
         onChannelDown={vi.fn()}
         onChannelUp={vi.fn()}
         onChangeServer={options.onChangeServer}
@@ -269,5 +271,52 @@ describe("WatchingSurface", () => {
     expect(output).toContain("Surf");
     expect(output).toContain("Pause");
     expect(output).toContain("Channel +");
+  });
+
+  it("draws the typed digits and a live auto-tune countdown (#1659 map 5a)", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const container = createTestContainer();
+    const textContent = () => Reflect.get(container, "textContent") as string;
+    const root = createRoot(container);
+    act(() =>
+      root.render(
+        <LoomarrProvider>
+          <WatchingSurface
+            density="tv"
+            numberEntry={{ channelName: "Nature", digits: "21", expiresAtMs: 2_200 }}
+            onChannelDown={vi.fn()}
+            onChannelUp={vi.fn()}
+            onDismissControls={vi.fn()}
+            onGoLive={vi.fn()}
+            onOpenGuide={vi.fn()}
+            onOpenSurf={vi.fn()}
+            onPause={vi.fn()}
+            onPlay={vi.fn()}
+            onPrevious={vi.fn()}
+            onRetry={vi.fn()}
+            onShowControls={vi.fn()}
+            player={<div />}
+            snapshot={playing}
+          />
+        </LoomarrProvider>,
+      ),
+    );
+
+    expect(textContent()).toContain("2 1 _");
+    expect(textContent()).toContain("Nature");
+    expect(textContent()).toContain("auto-tunes in 1.2 s");
+
+    act(() => vi.advanceTimersByTime(700));
+    expect(textContent()).toContain("auto-tunes in 0.5 s");
+
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("omits the countdown readout once digit entry has no expiry", () => {
+    const output = renderSurface(playing, { numberEntry: { digits: "7" } });
+    expect(output).toContain("7 _");
+    expect(output).not.toContain("auto-tunes in");
   });
 });

@@ -23,6 +23,12 @@ interface GuideController {
   dispose: () => void;
   getSnapshot: () => GuideControllerSnapshot;
   move: (direction: GuideNavigationDirection) => GuideNavigationResult | undefined;
+  /**
+   * Pages the served window one window-length earlier or later (#1659 decision N4): a ten-foot
+   * platform's only way to see schedule outside the default window. Paging earlier clamps to the
+   * live window — it never serves a window that starts before now.
+   */
+  page: (direction: "earlier" | "later") => Promise<void>;
   refresh: (preferredChannelId?: string) => Promise<void>;
   /**
    * Show only these channels, in guide order (the Favorites and Recent filters); undefined shows all.

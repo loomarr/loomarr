@@ -4,8 +4,11 @@ import type { ComponentRef } from "react";
 import { forwardRef, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
+import { ChannelIdent } from "../../channel-ident";
 import type { GuideFilterOption, GuideSurfaceProps } from "../guide.type";
 import { guideFilterText } from "../guide-filter";
+
+const identSize = 28;
 
 const tvCanvasWidth = 960;
 const channelRailWidth = 298;
@@ -77,6 +80,7 @@ const TvGuideSurface = ({
   onSelectionChange,
   onTune,
   renderArtwork,
+  renderChannelLogo,
   selection,
 }: GuideSurfaceProps & { filters: readonly GuideFilterOption[] }) => {
   const selectedChannel = layout.channels.find((channel) => channel.source.channelId === selection.channelId);
@@ -197,6 +201,17 @@ const TvGuideSurface = ({
                     paddingRight={8}
                     width={channelRailWidth}
                   >
+                    {renderChannelLogo?.(channel) ? (
+                      <View style={{ height: identSize, overflow: "hidden", width: identSize }}>
+                        {renderChannelLogo(channel)}
+                      </View>
+                    ) : (
+                      <ChannelIdent
+                        name={channel.source.name}
+                        number={channel.source.number}
+                        size={identSize}
+                      />
+                    )}
                     <Text density="tv" textRole="data" tone={selectedRow ? "signal" : "muted"}>
                       {String(channel.source.number).padStart(2, "0")}
                     </Text>
