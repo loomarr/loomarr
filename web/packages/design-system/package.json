@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "description": "Loomarr-owned semantic themes and universal primitives, implemented behind Tamagui Core.",
   "exports": {
     ".": "./index.ts",
