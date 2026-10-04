@@ -6,8 +6,15 @@ import { TVStorybookUI } from "./tv-ui";
 
 const usesTVNavigator = Platform.isTV || process.env.EXPO_PUBLIC_LOOMARR_STORYBOOK_DENSITY === "tv";
 
+// Dev only: open straight onto one story (an id such as `loomarr-components-requests--admin-needs-you`),
+// so a reviewer can screenshot each state without tapping through the sidebar. Production bundles have
+// `__DEV__` false and ignore it; unset, Storybook opens as usual.
+const requestedStory = __DEV__ ? process.env.EXPO_PUBLIC_STORYBOOK_INITIAL_STORY : undefined;
+const initialStory = requestedStory?.includes("--") ? (requestedStory as `${string}--${string}`) : undefined;
+
 const NativeStorybook = view.getStorybookUI({
   CustomUIComponent: usesTVNavigator ? TVStorybookUI : LiteUI,
+  ...(initialStory ? { initialSelection: initialStory } : {}),
   shouldPersistSelection: false,
 });
 
