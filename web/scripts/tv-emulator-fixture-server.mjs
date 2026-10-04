@@ -98,8 +98,8 @@ const guide = (requestedFromMs, requestedToMs) => {
   const halfMs = fromMs + (toMs - fromMs) / 2;
   // A window paged past the break holds two whole programmes, so ◀ from the first can page back.
   const laterAirings = [
-    airing("later-first", "Later, part one", "Treehouse of Horror", fromMs, halfMs),
-    airing("later-second", "Later, part two", "Treehouse of Horror", halfMs, toMs),
+    airing("later-first", "Later, part one", "The Lighthouse Pups", fromMs, halfMs),
+    airing("later-second", "Later, part two", "The Lighthouse Pups", halfMs, toMs),
   ];
   return {
     channels: [
