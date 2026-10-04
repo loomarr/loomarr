@@ -2,18 +2,23 @@ import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
+import { useState } from "react";
+import { defaultGuideWindow } from "@/channels/guide-window";
 import { useChannelRulesDraft } from "@/channels/use-channel-rules-draft";
 import { RefinePanel } from "@/components/loomarr/ai/refine-panel";
 import { ChannelAutoCurate } from "@/components/loomarr/channels/channel-auto-curate";
 import { ChannelCollectionsScope } from "@/components/loomarr/channels/channel-collections-scope";
 import { ChannelCyclePreview } from "@/components/loomarr/channels/channel-cycle-preview";
+import { ChannelDefaultsSummary } from "@/components/loomarr/channels/channel-defaults-summary";
 import { ChannelLineupEditor } from "@/components/loomarr/channels/channel-lineup-editor";
 import { ChannelPolicyFields } from "@/components/loomarr/channels/channel-policy-fields";
+import { ChannelProgrammingChanges } from "@/components/loomarr/channels/channel-programming-changes";
 import { ChannelRulesEditor } from "@/components/loomarr/channels/channel-rules-editor";
 import { ChannelSeasonal } from "@/components/loomarr/channels/channel-seasonal";
 import { ChannelSeriesScope } from "@/components/loomarr/channels/channel-series-scope";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 // ChannelProgramming — the unified "what plays, and when" surface (design.md §12). It folds
 // what used to be three peer tabs (Lineup, Programming rules, Refine with AI) into ONE surface
@@ -98,12 +103,21 @@ const ChannelProgramming = ({
   });
   const vocabulary = unwrap(vocabQuery.data);
 
+  // The household guide timezone, so the change list's times read as the Guide shows them. The
+  // same quantised window the Watch tab, Home and the Guide share, so this is usually cached.
+  const [nowMs] = useState(() => Date.now());
+  const guide = channelsApi.useChannelGuide(defaultGuideWindow(nowMs), { query: { retry: false } });
+  const guideTimeZone = unwrap(guide.data)?.timezone;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="font-semibold text-lg">Programming</h2>
         <p className="text-muted-foreground text-sm">What this channel plays, and when.</p>
       </div>
+
+      {/* Defaults summary (#1877 decision 1): how many fields below override a default. */}
+      <ChannelDefaultsSummary policy={policy} />
 
       {/* Refine with AI — the header affordance, not a peer tab. Describe a change, review the
           diff, apply. It acts on the SAME lineup + policy the blocks below edit by hand. */}
@@ -195,18 +209,36 @@ const ChannelProgramming = ({
         </div>
       </Block>
 
-      {/* One shared preview: time-travel the schedule to see exactly what airs — and which rule
-          wins — at any moment. Verifies the deck, the ordering, AND the rules above. */}
+      {/* One shared preview. The banner says which schedule is on screen; the change list
+          (#1877 decision 3) answers "what will applying change, and when"; the cycle preview
+          time-travels to see exactly what airs, and which rule wins, at any moment. */}
       <CollapsibleSection
         size="compact"
         title="Preview schedule"
         description="Check what airs at a specific time and which rule wins."
       >
-        <ChannelCyclePreview
-          channelId={channelId}
-          lineupKeys={lineupKeys}
-          draftPolicy={rules.isDirty ? rules.draft : undefined}
-        />
+        <div className="flex flex-col gap-4">
+          <p
+            className={cn(
+              "rounded-md px-2.5 py-1.5 text-xs",
+              rules.isDirty ? "bg-signal-tint-15 text-signal" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {rules.isDirty
+              ? "Previewing the unsaved rules draft — Apply above to make this the live schedule."
+              : "Showing the saved, on-air schedule."}
+          </p>
+          <ChannelProgrammingChanges
+            channelId={channelId}
+            draftPolicy={rules.isDirty ? rules.draft : undefined}
+            timeZone={guideTimeZone}
+          />
+          <ChannelCyclePreview
+            channelId={channelId}
+            lineupKeys={lineupKeys}
+            draftPolicy={rules.isDirty ? rules.draft : undefined}
+          />
+        </div>
       </CollapsibleSection>
     </div>
   );

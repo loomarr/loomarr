@@ -85,15 +85,15 @@ describe("ChannelPolicyFields", () => {
       />,
     );
 
-    const from = screen.getAllByLabelText("From year")[1]!;
+    const from = screen.getAllByLabelText("From year")[0]!;
     await userEvent.clear(from);
     await userEvent.type(from, "2005");
     await userEvent.tab();
 
     expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getAllByLabelText("From year")[1]).toHaveValue(2005);
-    expect(screen.getAllByLabelText("To year")[1]).toHaveValue(1999);
+    expect(screen.getAllByLabelText("From year")[0]).toHaveValue(2005);
+    expect(screen.getAllByLabelText("To year")[0]).toHaveValue(1999);
   });
 
   it("commits a recovered date pair without widening the range after an invalid From edit", async () => {
@@ -115,8 +115,8 @@ describe("ChannelPolicyFields", () => {
       />,
     );
 
-    const from = screen.getAllByLabelText("From year")[1]!;
-    const to = screen.getAllByLabelText("To year")[1]!;
+    const from = screen.getAllByLabelText("From year")[0]!;
+    const to = screen.getAllByLabelText("To year")[0]!;
     await userEvent.clear(from);
     await userEvent.type(from, "2005");
     await userEvent.tab();
@@ -139,8 +139,8 @@ describe("ChannelPolicyFields", () => {
         },
       },
     });
-    expect(screen.getAllByLabelText("From year")[1]).toHaveValue(2005);
-    expect(screen.getAllByLabelText("To year")[1]).toHaveValue(2009);
+    expect(screen.getAllByLabelText("From year")[0]).toHaveValue(2005);
+    expect(screen.getAllByLabelText("To year")[0]).toHaveValue(2009);
   });
 
   it("commits a recovered date pair after an invalid To edit", async () => {
@@ -152,8 +152,8 @@ describe("ChannelPolicyFields", () => {
       />,
     );
 
-    const from = screen.getAllByLabelText("From year")[1]!;
-    const to = screen.getAllByLabelText("To year")[1]!;
+    const from = screen.getAllByLabelText("From year")[0]!;
+    const to = screen.getAllByLabelText("To year")[0]!;
     await userEvent.clear(to);
     await userEvent.type(to, "1985");
     await userEvent.tab();
@@ -195,28 +195,21 @@ describe("ChannelPolicyFields", () => {
     expect(onChange).toHaveBeenLastCalledWith({ scope: {} });
   });
 
-  // An era is the same range on every date axis (#1877): editing it replaces the dates with
-  // that era-shaped scope, which the per-axis editor can then refine.
+  // An era is the same range on every date axis (#1877): Era is the dates editor's simple mode,
+  // and the per-axis editor can then refine it.
   it("writes an era as dates on every axis, then lets one axis diverge", async () => {
     const onChange = vi.fn();
-    render(
-      <PolicyHarness
-        initial={{ scope: { dates: { movieRelease: [{ from: 1990, to: 1999 }] } } }}
-        onChange={onChange}
-      />,
-    );
+    render(<PolicyHarness initial={{}} onChange={onChange} />);
 
-    const scalarFrom = screen.getAllByLabelText("From year")[0]!;
-    expect(scalarFrom).toHaveValue(null); // per-axis dates are not an era
-    await userEvent.type(scalarFrom, "1970");
+    await userEvent.type(screen.getByLabelText("From year"), "1970");
     await userEvent.tab();
     expect(onChange).toHaveBeenLastCalledWith({ scope: { dates: eraDates({ from: 1970 }) } });
-    const scalarTo = screen.getAllByLabelText("To year")[0]!;
-    await userEvent.type(scalarTo, "1989");
+    await userEvent.type(screen.getByLabelText("To year"), "1989");
     await userEvent.tab();
     const era = { from: 1970, to: 1989 };
     expect(onChange).toHaveBeenLastCalledWith({ scope: { dates: eraDates(era) } });
 
+    await userEvent.click(screen.getByRole("button", { name: "Use separate date windows" }));
     await userEvent.type(screen.getByLabelText("Movie release new range from"), "2005");
     await userEvent.type(screen.getByLabelText("Movie release new range to"), "2009");
     await userEvent.click(screen.getByRole("button", { name: "Add Movie release range" }));
@@ -240,8 +233,8 @@ describe("ChannelPolicyFields", () => {
     expect(screen.getAllByLabelText("From year")[0]).toHaveValue(1990);
     expect(screen.getAllByLabelText("To year")[0]).toHaveValue(1999);
     // Duration strings tidied for display (the wire form the operator reads/types).
-    expect(screen.getByLabelText("Same movie")).toHaveValue("168h");
-    expect(screen.getByLabelText("Same episode")).toHaveValue("24h");
+    expect(screen.getByLabelText("Repeat spacing · same movie")).toHaveValue("168h");
+    expect(screen.getByLabelText("Repeat spacing · same episode")).toHaveValue("24h");
   });
 
   it("merges an ordering change into a NEW policy, preserving applied and other sections", async () => {
@@ -310,7 +303,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={EMPTY} onChange={onChange} />);
 
-    const movies = screen.getByLabelText("Same movie");
+    const movies = screen.getByLabelText("Repeat spacing · same movie");
     await userEvent.type(movies, "168h");
     expect(onChange).not.toHaveBeenCalled();
     await userEvent.tab();
@@ -322,7 +315,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    const movies = screen.getByLabelText("Same movie");
+    const movies = screen.getByLabelText("Repeat spacing · same movie");
     await userEvent.clear(movies);
     await userEvent.tab();
 
@@ -367,7 +360,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.type(screen.getByLabelText("Same series"), "2h");
+    await userEvent.type(screen.getByLabelText("Repeat spacing · same series"), "2h");
     await userEvent.tab();
 
     expect(onChange).toHaveBeenCalledWith(
@@ -465,9 +458,96 @@ describe("ChannelPolicyFields", () => {
   it("says blank repeat fields use built-in spacing", () => {
     render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} show="ordering" />);
 
-    expect(screen.getByLabelText("Same movie")).toHaveAttribute("placeholder", "Use built-in");
-    expect(screen.getByLabelText("Same episode")).toHaveAttribute("placeholder", "Use built-in");
-    expect(screen.getByLabelText("Same series")).toHaveAttribute("placeholder", "Use built-in");
+    expect(screen.getByLabelText("Repeat spacing · same movie")).toHaveAttribute(
+      "placeholder",
+      "Use built-in",
+    );
+    expect(screen.getByLabelText("Repeat spacing · same episode")).toHaveAttribute(
+      "placeholder",
+      "Use built-in",
+    );
+    expect(screen.getByLabelText("Repeat spacing · same series")).toHaveAttribute(
+      "placeholder",
+      "Use built-in",
+    );
     expect(screen.getByLabelText("Max from one series")).toHaveAttribute("placeholder", "Use built-in");
+  });
+});
+
+// The source badges and Reset (#1817 item 4). Reset writes the same sentinel the summary counts
+// as a default (lib/policy-overrides covers the full table).
+describe("ChannelPolicyFields defaults and overrides", () => {
+  it("badges every field Default on a fresh channel, with Reset disabled", () => {
+    render(<ChannelPolicyFields policy={EMPTY} onChange={vi.fn()} />);
+    // ceiling, unrated, dates, runtime, ordering, three spacing windows, block cap.
+    expect(screen.getAllByText("Default")).toHaveLength(9);
+    expect(screen.queryByText("Channel override")).not.toBeInTheDocument();
+    for (const reset of screen.getAllByRole("button", { name: "Reset to default" }))
+      expect(reset).toBeDisabled();
+  });
+
+  it("badges an overridden field and resets it to its sentinel", async () => {
+    const onChange = vi.fn();
+    render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} show="ordering" />);
+    // Play order, same movie and same episode are set; same series and the block cap are not.
+    expect(screen.getAllByText("Channel override")).toHaveLength(3);
+
+    const reset = screen.getAllByRole("button", { name: "Reset to default" });
+    // The field's label describes its Reset, so each button says which field it clears.
+    expect(reset[0]).toHaveAccessibleDescription("Play order");
+    await userEvent.click(reset[0]!);
+    expect(onChange).toHaveBeenLastCalledWith({ ...POPULATED, ordering: "" });
+  });
+
+  it("re-seeds an uncontrolled box when its field is reset", async () => {
+    render(<PolicyHarness initial={{ separation: { movieNoRepeat: "168h" } }} onChange={vi.fn()} />);
+    expect(screen.getByLabelText("Repeat spacing · same movie")).toHaveValue("168h");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Reset to default", description: "Repeat spacing · same movie" }),
+    );
+    expect(screen.getByLabelText("Repeat spacing · same movie")).toHaveValue("");
+  });
+
+  it("shows Era for era-shaped dates and the per-axis editor otherwise", () => {
+    const { unmount } = render(<ChannelPolicyFields policy={POPULATED} onChange={vi.fn()} show="scope" />);
+    expect(screen.getByText("Era")).toBeInTheDocument();
+    expect(screen.queryByText("Programming dates")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Movie release new range from")).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <ChannelPolicyFields
+        policy={{ scope: { dates: { movieRelease: [{ from: 1985, to: 1995 }] } } }}
+        onChange={vi.fn()}
+        show="scope"
+      />,
+    );
+    expect(screen.getByText("Programming dates")).toBeInTheDocument();
+    expect(screen.queryByText("Era")).not.toBeInTheDocument();
+    // Per-axis dates cannot go back to an era without losing a window.
+    expect(screen.queryByRole("button", { name: "Use a single era" })).not.toBeInTheDocument();
+  });
+
+  it("returns to Era when per-axis dates are reset", async () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyHarness
+        initial={{ scope: { dates: { movieRelease: [{ from: 1985, to: 1995 }] }, runtimeMax: 5400 } }}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Reset to default", description: "Programming dates" }),
+    );
+    expect(onChange).toHaveBeenLastCalledWith({ scope: { runtimeMax: 5400 } });
+    expect(screen.getByText("Era")).toBeInTheDocument();
+  });
+
+  it("goes back to Era from the per-axis editor while that loses nothing", async () => {
+    render(<PolicyHarness initial={POPULATED} onChange={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Use separate date windows" }));
+    expect(screen.getByText("Programming dates")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Use a single era" }));
+    expect(screen.getByLabelText("From year")).toHaveValue(1990);
   });
 });
