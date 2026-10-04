@@ -115,6 +115,29 @@ wait_for_ui() {
   return 1
 }
 
+wait_for_focus() {
+  local description="$1"
+  local expected="$2"
+  for ((attempt = 1; attempt <= 30; attempt += 1)); do
+    dump_ui
+    if grep -o '<node [^>]*>' "${journey_dir}/window.xml" | grep -F 'focused="true"' | grep -Fq "${expected}"; then
+      printf 'tv-emulator-journey: observed %s\n' "${description}"
+      return 0
+    fi
+    sleep 0.5
+  done
+  printf 'TV emulator focus never reached %s (%s)\n' "${description}" "${expected}" >&2
+  grep -o '<node [^>]*>' "${journey_dir}/window.xml" | grep -F 'focused="true"' >&2 || true
+  return 1
+}
+
+# Optional PR evidence: LOOMARR_TV_JOURNEY_CAPTURE_DIR keeps a screenshot of each named checkpoint.
+capture() {
+  [[ -n "${LOOMARR_TV_JOURNEY_CAPTURE_DIR:-}" ]] || return 0
+  mkdir -p "${LOOMARR_TV_JOURNEY_CAPTURE_DIR}"
+  adb -s "${emulator_serial}" exec-out screencap -p >"${LOOMARR_TV_JOURNEY_CAPTURE_DIR}/$1.png"
+}
+
 assert_ui_absent() {
   local description="$1"
   local unexpected="$2"
@@ -179,7 +202,7 @@ sleep 6
 # Back still proves it returns to the mounted Watching composition without inventing activity.
 key KEYCODE_DPAD_CENTER
 wait_for_ui "Guide" "Programme guide"
-wait_for_ui "authoritative Guide programme" "Radioactive Man"
+wait_for_ui "authoritative Guide programme" "The Neutral Zone"
 key KEYCODE_DPAD_DOWN
 key KEYCODE_DPAD_CENTER
 wait_for_state "Guide tune" '.playUrlChannels[-1] == "science-fiction"'
@@ -193,6 +216,43 @@ wait_for_state "return to initial Channel after Guide tune" '.playUrlChannels[-1
 sleep 6
 key KEYCODE_DPAD_CENTER
 wait_for_ui "Guide before Back" "Programme guide"
+
+# Guide D-pad edges (#1659 decision N4): native focus walks the grid and the filters; the app pages
+# the served window only off an edge. Focus opens on Classic Animation's on-now programme.
+wait_for_focus "Guide focus on the current Channel" "Classic Animation, The Simpsons"
+live_guide_from="$(journey_state | jq -r '.guideWindows[-1].fromMs')"
+guide_loads="$(journey_state | jq -r '.guideLoads')"
+key KEYCODE_DPAD_LEFT
+sleep 1
+wait_for_state "◀ at now does not page before now" ".guideLoads == ${guide_loads}"
+capture guide-left-at-now
+key KEYCODE_DPAD_UP
+wait_for_focus "▲ from the top row reaches the filters" "All, 2 channels"
+capture guide-up-to-filters
+key KEYCODE_DPAD_DOWN
+wait_for_focus "▼ from the filters returns to the grid" "Classic Animation"
+key KEYCODE_DPAD_DOWN
+wait_for_focus "whole-window programme" "Science Fiction, Star Trek"
+key KEYCODE_DPAD_RIGHT
+wait_for_state "▶ off a whole-window programme pages forward" ".guideWindows[-1].fromMs > ${live_guide_from}"
+wait_for_ui "the paged Guide window" "Treehouse of Horror"
+wait_for_focus "focus kept on the whole-window Channel" "Science Fiction, Star Trek"
+capture guide-right-paged-forward
+# A press native focus serves is judged from where it started, so ◀ between two programmes in the
+# paged window moves focus without paging; ◀ again, off the first programme, pages back to now.
+key KEYCODE_DPAD_UP
+key KEYCODE_DPAD_RIGHT
+wait_for_focus "the paged window's second programme" "Classic Animation, Treehouse of Horror"
+guide_loads="$(journey_state | jq -r '.guideLoads')"
+key KEYCODE_DPAD_LEFT
+sleep 1
+wait_for_state "◀ inside the paged window does not page" ".guideLoads == ${guide_loads}"
+key KEYCODE_DPAD_LEFT
+wait_for_state "◀ after paging forward pages back to now" ".guideWindows[-1].fromMs == ${live_guide_from}"
+wait_for_focus "the live window's last Classic Animation programme" "Classic Animation, The Simpsons"
+assert_ui_absent "the paged Guide window after paging back" "Treehouse of Horror"
+capture guide-left-back-to-now
+
 key KEYCODE_BACK
 wait_for_ui "Watching after Back" "Open programme guide"
 
@@ -213,6 +273,7 @@ assert_ui_absent "Watching playbar dismissed after Surf tune inactivity" "The Ne
 key KEYCODE_7
 key KEYCODE_7
 printf 'tv-emulator-journey: observed number entry\n'
+capture digit-entry-countdown
 key KEYCODE_DPAD_CENTER
 wait_for_state "number tune" '.playUrlChannels[-1] == "classic-animation"'
 wait_for_ui "Watching after number tune" "Open programme guide"

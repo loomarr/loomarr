@@ -23,8 +23,10 @@ import {
   watchingScheduleFromGuide,
 } from "@loomarr/ui";
 import {
+  createTvAutoTuneSetting,
   createTvGuideFocusRegistry,
   createTvSurfFocusRegistry,
+  DEFAULT_NUMBER_ENTRY_MS,
   initialTvWatchingRemoteState,
   reduceTvWatchingRemote,
   restoreTvSurfSelection,
@@ -32,6 +34,7 @@ import {
   type TvWatchingRemoteIntent,
   type TvWatchingRemoteState,
   tvGuideRowWindow,
+  tvGuideTimeEdge,
   tvNumberEntryPresentation,
   tvWatchingRemoteEventFromNative,
 } from "@loomarr/ui-tv";
@@ -59,6 +62,13 @@ const keyToTuneMaxMs = 1_500;
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
+  getItem: SecureStore.getItemAsync,
+  setItem: SecureStore.setItemAsync,
+});
+
+// The per-device auto-tune duration (#1659 decision N4, WCAG 2.2.1). No picker writes it yet: its
+// placement awaits a mock, so every device reads the 1.2 s default until one does.
+const autoTuneSetting = createTvAutoTuneSetting({
   getItem: SecureStore.getItemAsync,
   setItem: SecureStore.setItemAsync,
 });
@@ -102,6 +112,20 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const remoteStateRef = useRef<TvWatchingRemoteState>(initialTvWatchingRemoteState);
   const [remoteState, setRemoteState] = useState<TvWatchingRemoteState>(initialTvWatchingRemoteState);
+  const autoTuneMs = useRef(DEFAULT_NUMBER_ENTRY_MS);
+  useEffect(() => {
+    let current = true;
+    void autoTuneSetting
+      .load()
+      .then((durationMs) => {
+        if (current) autoTuneMs.current = durationMs;
+      })
+      // An unreadable store keeps the default rather than leaving digit entry without a timer.
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, []);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -137,7 +161,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const dispatchRemoteEvent = useCallback(
     (event: TvWatchingRemoteEvent) => {
       if (certMarks.enabled && event.key !== "timeout") lastKeyAtMs.current = certMarks.now();
-      const result = reduceTvWatchingRemote(remoteStateRef.current, event);
+      const result = reduceTvWatchingRemote(remoteStateRef.current, event, autoTuneMs.current);
       remoteStateRef.current = result.state;
       setRemoteState(result.state);
       if (result.handled) showControlsForActivity();
@@ -222,6 +246,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               density="tv"
               focusRegistry={guideFocusRegistry}
               myChannels={myChannelsSnapshot}
+              onTimeEdge={(side) => void tvGuideTimeEdge(guide, guideFocusRegistry, side, Date.now())}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
                 showControlsForActivity();

@@ -32,6 +32,7 @@ const state = {
   eventConnections: 0,
   eventDisconnects: 0,
   guideLoads: 0,
+  guideWindows: [],
   pairPolls: 0,
   pairStarts: 0,
   playUrlChannels: [],
@@ -74,11 +75,13 @@ const channels = [
   channel("science-fiction", "Science Fiction", 120),
 ];
 
-const guide = () => {
+// The requested window is served as asked, so Guide paging (#1659 decision N4) is observable.
+const guide = (requestedFromMs, requestedToMs) => {
   const now = Date.now();
   state.guideEpochMs ??= now;
-  const fromMs = now - 30 * 60_000;
-  const toMs = now + 210 * 60_000;
+  const fromMs = Number.isFinite(requestedFromMs) ? requestedFromMs : now - 30 * 60_000;
+  const toMs = Number.isFinite(requestedToMs) ? requestedToMs : now + 210 * 60_000;
+  state.guideWindows.push({ fromMs, toMs });
   const airing = (scheduleBlockId, title, series, startMs = fromMs, stopMs = toMs) => ({
     description: `${title} emulator journey fixture`,
     episode: 2,
@@ -92,37 +95,46 @@ const guide = () => {
   });
   const fillerStartMs = state.guideEpochMs + 5 * 60_000;
   const fillerStopMs = state.guideEpochMs + 10 * 60_000;
+  const halfMs = fromMs + (toMs - fromMs) / 2;
+  // A window paged past the break holds two whole programmes, so ◀ from the first can page back.
+  const laterAirings = [
+    airing("later-first", "Later, part one", "Treehouse of Horror", fromMs, halfMs),
+    airing("later-second", "Later, part two", "Treehouse of Horror", halfMs, toMs),
+  ];
   return {
     channels: [
       {
-        airings: [
-          airing("before-break", "Before the break", "The Simpsons", fromMs, fillerStartMs),
-          {
-            kind: "filler",
-            pod: {
-              entries: [
+        airings:
+          fillerStopMs <= fromMs
+            ? laterAirings
+            : [
+                airing("before-break", "Before the break", "The Simpsons", fromMs, fillerStartMs),
                 {
-                  brand: "Acme Household",
-                  durationMs: 5 * 60_000,
-                  era: 1980,
-                  hash: "raw-fixture-hash-must-not-render",
-                  isFallbackCard: false,
-                  kind: "commercial",
-                  name: "Friendly Sponsor Spot",
-                  path: "/raw/fixture/path-must-not-render.mp4",
-                  quality: "1080p",
+                  kind: "filler",
+                  pod: {
+                    entries: [
+                      {
+                        brand: "Acme Household",
+                        durationMs: 5 * 60_000,
+                        era: 1980,
+                        hash: "raw-fixture-hash-must-not-render",
+                        isFallbackCard: false,
+                        kind: "commercial",
+                        name: "Friendly Sponsor Spot",
+                        path: "/raw/fixture/path-must-not-render.mp4",
+                        quality: "1080p",
+                      },
+                    ],
+                    matchLevel: "exact",
+                    totalMs: 5 * 60_000,
+                  },
+                  scheduleBlockId: "commercial-break",
+                  startMs: fillerStartMs,
+                  stopMs: fillerStopMs,
+                  title: "",
                 },
+                airing("after-break", "After the break", "The Simpsons", fillerStopMs, toMs),
               ],
-              matchLevel: "exact",
-              totalMs: 5 * 60_000,
-            },
-            scheduleBlockId: "commercial-break",
-            startMs: fillerStartMs,
-            stopMs: fillerStopMs,
-            title: "",
-          },
-          airing("after-break", "After the break", "The Simpsons", fillerStopMs, toMs),
-        ],
         channelId: "classic-animation",
         name: "Classic Animation",
         number: 77,
@@ -241,7 +253,8 @@ const server = createServer((request, response) => {
   }
   if (request.method === "GET" && pathname === "/v1/guide") {
     state.guideLoads += 1;
-    writeJson(response, 200, guide());
+    const windowParam = (name) => Number.parseInt(url.searchParams.get(name) ?? "", 10);
+    writeJson(response, 200, guide(windowParam("from"), windowParam("to")));
     return;
   }
   const playUrl = pathname.match(/^\/v1\/channels\/([^/]+)\/play-url$/);

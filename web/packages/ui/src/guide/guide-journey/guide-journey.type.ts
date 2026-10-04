@@ -20,6 +20,8 @@ interface GuideJourneyProps {
   focusRegistry?: FocusTargetRegistry<GuideFocusTarget>;
   /** The person's favourite and recent channels (#1666); without them those two filters stay off. */
   myChannels?: MyChannels;
+  /** TV only: see `GuideSurfaceProps.onTimeEdge`. */
+  onTimeEdge?: (side: "left" | "right") => void;
   onTune: (channelId: string) => void;
   preferredChannelId?: string;
   renderArtwork?: GuideArtworkRenderer;

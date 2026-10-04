@@ -57,6 +57,11 @@ describe("TV emulator journey", () => {
       "foreground retune",
       "disconnect confirmation",
       "device revocation",
+      "◀ at now does not page before now",
+      "▲ from the top row reaches the filters",
+      "▶ off a whole-window programme pages forward",
+      "◀ inside the paged window does not page",
+      "◀ after paging forward pages back to now",
     ]) {
       assert.match(journey, new RegExp(checkpoint));
     }
@@ -76,6 +81,50 @@ describe("TV emulator journey", () => {
     assert.match(server, /state\.playUrlChannels\.push\(channelId\)/);
     assert.match(server, /state\.eventDisconnects \+= 1/);
     assert.match(server, /state\.revocations \+= 1/);
+  });
+
+  it("serves the Guide window the app asks for, so paging is observable (#1659 decision N4)", async () => {
+    const reservation = createServer();
+    const mediaDirectory = mkdtempSync(join(tmpdir(), "loomarr-tv-guide-fixture-"));
+    let fixture;
+    try {
+      await listen(reservation, 0, "127.0.0.1");
+      const { port } = reservation.address();
+      await new Promise((resolve) => reservation.close(resolve));
+      fixture = spawn(process.execPath, [serverPath, String(port), mediaDirectory, "127.0.0.1", "disabled"], {
+        stdio: "ignore",
+      });
+      const base = `http://127.0.0.1:${port}`;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        const ready = await fetch(`${base}/__journey`).then(
+          (response) => response.ok,
+          () => false,
+        );
+        if (ready) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const headers = { authorization: "Bearer journey-device-token" };
+      const live = await (await fetch(`${base}/v1/guide`, { headers })).json();
+      const from = live.toMs;
+      const to = from + (live.toMs - live.fromMs);
+      const paged = await (await fetch(`${base}/v1/guide?from=${from}&to=${to}`, { headers })).json();
+
+      assert.deepEqual([paged.fromMs, paged.toMs], [from, to]);
+      const [classic, science] = paged.channels;
+      assert.deepEqual(
+        classic.airings.map(({ scheduleBlockId }) => scheduleBlockId),
+        ["later-first", "later-second"],
+      );
+      assert.deepEqual([science.airings[0].startMs, science.airings[0].stopMs], [from, to]);
+      const state = await (await fetch(`${base}/__journey`)).json();
+      assert.deepEqual(state.guideWindows.at(-1), { fromMs: from, toMs: to });
+    } finally {
+      if (fixture?.exitCode === null) {
+        fixture.kill("SIGTERM");
+        await once(fixture, "exit");
+      }
+      rmSync(mediaDirectory, { force: true, recursive: true });
+    }
   });
 
   it("starts the manual-entry fixture while the production discovery port is occupied", async () => {

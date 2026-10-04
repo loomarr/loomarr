@@ -40,6 +40,7 @@ const GuideSurface = ({
   layout,
   onFilterChange,
   onSelectionChange,
+  onTimeEdge,
   onTune,
   renderArtwork,
   renderChannelLogo,
@@ -60,6 +61,7 @@ const GuideSurface = ({
         layout={layout}
         onFilterChange={onFilterChange}
         onSelectionChange={onSelectionChange}
+        onTimeEdge={onTimeEdge}
         onTune={onTune}
         renderArtwork={renderArtwork}
         renderChannelLogo={renderChannelLogo}

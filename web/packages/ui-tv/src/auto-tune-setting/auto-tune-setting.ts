@@ -9,9 +9,8 @@ const AUTO_TUNE_DURATION_KEY = "loomarr.tv.autoTuneDurationMs";
  * viewers. Storage is injected (the TV app's SecureStore) so this stays testable without a native
  * module.
  *
- * Not yet wired into `apps/tv/src/app.tsx`: the app's remote-event loop needs to load this once
- * at startup and pass the result as `reduceTvWatchingRemote`'s `durationMs`, plus a settings
- * surface to call `save`. Tracked as a follow-up (#1659 PR 15).
+ * `apps/tv/src/app.tsx` loads it once and passes it as `reduceTvWatchingRemote`'s `durationMs`.
+ * Nothing calls `save` yet: the picker's placement awaits a mock (#1659).
  */
 const createTvAutoTuneSetting = (storage: TvAutoTuneDurationStorage): TvAutoTuneSettingStore => ({
   async load() {

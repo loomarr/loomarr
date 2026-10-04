@@ -21,6 +21,7 @@ export {
   moveTvGuideFocus,
   restoreTvGuideFocus,
   tvGuideRowWindow,
+  tvGuideTimeEdge,
 } from "./src/guide-navigation";
 export type {
   TvSurfActivation,
