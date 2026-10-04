@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr Programming defaults &amp; overrides — design review</title>
+<style>
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #e7eaf0; background: #08090b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a, input { font: inherit; }
+  button, select, input { min-height: 40px; color: inherit; background: #1b1e24; border: 1px solid #666970; border-radius: 6px; padding: 7px 10px; }
+  a { color: inherit; text-decoration: none; }
+  button, a, select { cursor: pointer; }
+  :focus-visible { outline: 2px solid #ffb020; outline-offset: 3px; }
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2a2e37; background: #131519; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .review-note { font-size: 13px; color: #8b93a3; margin: 12px 24px; max-width: 920px; }
+  .review-note.question { color: #dc5bac; }
+  #frame { container-type: inline-size; margin: 20px auto; width: 100%; max-width: 1200px; border: 1px solid #2a2e37; }
+  #frame.phone { width: min(390px, 100%); }
+  .shell { display: grid; grid-template-columns: 200px minmax(0,1fr); min-height: 760px; background: #0b0c0e; }
+  nav { padding: 24px 12px; border-right: 1px solid #2a2e37; background: #131519; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 24px; font-size: 13px; letter-spacing: 2px; font-weight: 700; }
+  .mark { width: 20px; height: 6px; background: #ffb020; flex-shrink: 0; border-radius: 2px; }
+  main { min-width: 0; display: flex; flex-direction: column; }
+  p { margin: 0; line-height: 1.5; }
+  .meta { color: #8b93a3; font-size: 13px; }
+  .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+
+  .ch-header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2a2e37; flex-wrap: wrap; }
+  .back { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: #8b93a3; border-radius: 4px; flex-shrink: 0; }
+  .ident { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 13px; font-weight: 600; flex-shrink: 0; background: #27351a1a; }
+  .ch-name { font-size: 18px; font-weight: 600; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 24px 0; border-bottom: 1px solid #2a2e37; }
+  .tab { border-radius: 6px; padding: 6px 10px; font-size: 13px; color: #8b93a3; }
+  .tab[aria-current] { background: rgba(255,176,32,.15); color: #ffb020; font-weight: 500; }
+
+  .content { flex: 1; min-width: 0; padding: 20px 24px 60px; display: flex; flex-direction: column; gap: 16px; max-width: 820px; }
+  .card { background: #131519; border: 1px solid #2a2e37; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  h2.pt { font-size: 16px; margin: 0; }
+  h3.pt { font-size: 14px; margin: 0; }
+  .summary-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .pill { font-size: 11px; font-weight: 600; letter-spacing: .02em; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  .pill.custom { background: rgba(255,176,32,.18); color: #ffb020; }
+  .pill.default { background: #1e2126; color: #8b93a3; border: 1px solid #2a2e37; }
+
+  details.block { background: #0e1013; border: 1px solid #2a2e37; border-radius: 8px; overflow: hidden; }
+  details.block > summary { list-style: none; cursor: pointer; padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+  details.block > summary::-webkit-details-marker { display: none; }
+  details.block > summary .chev { transition: transform .15s; flex-shrink: 0; color: #8b93a3; }
+  details.block[open] > summary .chev { transform: rotate(90deg); }
+  details.block .hint { color: #8b93a3; font-size: 13px; }
+  .block-body { padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 16px; }
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .field-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .field-label { font-size: 13px; }
+  .field-help { color: #8b93a3; font-size: 12px; }
+  .reset-btn { background: none; border: none; min-height: auto; padding: 0; color: #4cc9e8; font-size: 12px; text-decoration: underline; }
+  .reset-btn:disabled { color: #4b4f58; text-decoration: none; cursor: default; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+  @container (max-width: 767px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .lineup-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1c1f25; font-size: 13px; }
+  .lineup-row:last-child { border-bottom: none; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.ready { background: #46d19a; }
+  .status-dot.acquiring { background: #ffb020; }
+  .status-dot.wanted { background: #666970; }
+  .lineup-row .remove { margin-left: auto; background: none; border: none; min-height: auto; padding: 4px; color: #8b93a3; }
+
+  .rule-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #15171c; border: 1px solid #2a2e37; border-radius: 6px; font-size: 13px; }
+  .rule-row .order { color: #4cc9e8; font-weight: 600; width: 1.4em; flex-shrink: 0; }
+  .rule-row .rule-text { flex: 1; min-width: 0; }
+
+  .warn { display: flex; gap: 8px; align-items: flex-start; background: rgba(229,72,77,.12); border: 1px solid rgba(229,72,77,.4); border-radius: 6px; padding: 10px 12px; font-size: 13px; }
+  .warn strong { color: #f28b8e; }
+  .warn-actions { display: flex; gap: 8px; margin-top: 6px; }
+  .warn-actions button { font-size: 12px; padding: 4px 8px; min-height: auto; }
+
+  .apply-bar { display: flex; align-items: center; gap: 10px; border-top: 1px solid #2a2e37; padding-top: 12px; }
+  .apply-bar .spacer { margin-left: auto; font-size: 12px; color: #ffb020; }
+  .preview-banner { font-size: 12px; padding: 6px 10px; border-radius: 6px; }
+  .preview-banner.saved { background: #1e2126; color: #8b93a3; }
+  .preview-banner.draft { background: rgba(255,176,32,.14); color: #ffb020; }
+  .preview-table { display: flex; flex-direction: column; font-size: 13px; }
+  .preview-table .row { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1c1f25; }
+  .preview-table .row.now { color: #ffb020; }
+  .preview-table .time { width: 70px; flex-shrink: 0; color: #8b93a3; }
+  .preview-table .rule-won { color: #8b93a3; font-size: 12px; margin-left: auto; }
+
+  @container (max-width: 767px) {
+    .shell { grid-template-columns: 56px minmax(0,1fr); }
+    nav { padding: 20px 6px; }
+    .brand-name { display: none; }
+    .content { padding: 16px; max-width: none; }
+  }
+</style>
+
+<div class="review">
+  <strong>Programming defaults &amp; overrides · review candidate (#1817 item 4)</strong>
+  <label>Channel state
+    <select id="preset">
+      <option value="fresh">Fresh channel — all default</option>
+      <option value="light">Lightly customized</option>
+      <option value="heavy" selected>Heavily customized + conflict (Q2)</option>
+    </select>
+  </label>
+  <label>Rules editor <select id="rulesdirty">
+    <option value="saved">Saved</option>
+    <option value="dirty" selected>Editing (unsaved)</option>
+  </select></label>
+  <label id="q1-wrap">Defaults summary wording (open, Q1) <select id="q1">
+    <option value="a">Alt A — single count</option>
+    <option value="b">Alt B — split by source</option>
+  </select></label>
+  <button id="size" type="button" aria-pressed="false">390px preview</button>
+</div>
+<p class="review-note">Draft for maintainer review (#1817 item 4). Invented fixtures only; no real titles or remote images; nothing here calls a server. Follows the merged Programming surface (#1739, <code>-channel-programming.tsx</code>) and <code>ChannelPolicy</code>'s sentinel semantics (<code>internal/schedule/policy.go</code>) — field layout, block names and the rules-draft save model are reproduced faithfully, not redesigned, except where this draft adds the source badges, reset affordances, and the conflict warning none of the built code has yet.</p>
+<p class="review-note question" id="q1-note">Open question 1 (not decided by any input): how to phrase the "N settings are custom" summary the mock asked for. Alt A keeps one count across every field, matching the mock's literal wording. Alt B splits it, because most "defaults" here (Era, ceiling, ordering, separation) are Loomarr's hardcoded built-ins — only Schedule horizon and Commercial-break frequency are actually configurable per-household, on <strong>Settings → Channel defaults</strong>, and neither lives on this page. Toggle "Defaults summary wording" to compare.</p>
+<p class="review-note question" id="q2-note">Open question 2 (not decided by any input): <strong>Era</strong> and <strong>Programming dates</strong> are two independent <code>ChannelPolicy</code> fields the engine ANDs together (<code>internal/schedule/lineup.go:739,749</code>) — a title must clear both. The built field editor clears one whenever you edit the other, so this can't happen by hand, but a refine or a direct API write can leave both set, silently narrowing (or emptying) the lineup with no warning today. The "Heavily customized" state reproduces that. Neither input decides whether the fix is a warning banner (shown) or validation that rejects the write outright — compare by resolving the conflict below.</p>
+<div id="frame"></div>
+<p class="review-note" id="action" role="status" aria-live="polite">Select a state above to inspect the draft.</p>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const CHANNEL = { number: 4, name: 'Harborlight', ident: 'HL', hue: '#4cc9e8' };
+
+const LINEUP = [
+  { key: 'tt1', name: 'The Quiet Coast', status: 'ready' },
+  { key: 'tt2', name: 'Signal and Noise', status: 'ready' },
+  { key: 'tt3', name: 'Field Notes', status: 'acquiring' },
+  { key: 'tt4', name: 'Late Harbor', status: 'wanted' },
+];
+
+const STATUS_LABEL = { ready: 'READY', acquiring: 'ACQUIRING', wanted: 'WANTED' };
+
+// Default (Go zero-value) baseline — every key here is what an untouched field resolves to.
+const DEFAULTS = {
+  ceiling: '', unrated: '', order: '', runtimeMax: 0,
+  era: null, dates: null,
+  movieNoRepeat: undefined, episodeNoRepeat: undefined, seriesGap: undefined, blockMax: undefined,
+  seasonalMode: '', autoCurateOn: false, minScorePct: 0, maxTitles: 0,
+};
+
+const PRESETS = {
+  fresh: { ...DEFAULTS },
+  light: {
+    ...DEFAULTS,
+    ceiling: 'TV-14', order: 'shuffle',
+    era: { from: 1990, to: 2015 },
+    seasonalMode: '',
+  },
+  heavy: {
+    ...DEFAULTS,
+    ceiling: 'TV-PG', unrated: 'exclude', order: 'sequential', runtimeMax: 90,
+    era: { from: 1990, to: 1999 }, // CONFLICT: dates is also set below
+    dates: { movieRelease: [{ from: 1985, to: 1995 }] },
+    movieNoRepeat: '168h', seriesGap: '2h', blockMax: 2,
+    seasonalMode: 'exclusive',
+    autoCurateOn: true, minScorePct: 70, maxTitles: 5,
+  },
+};
+
+let state = structuredClone(PRESETS.heavy);
+let rulesDirty = true;
+const RULES_SAVED = [
+  'Saturdays 8 PM–2 AM · marathon Signal and Noise',
+  'Weekday mornings · kids ceiling block',
+];
+const RULES_DRAFT = [...RULES_SAVED, 'Sundays 6 PM–8 PM · marathon The Quiet Coast'];
+
+const isDefault = (key) => {
+  const d = DEFAULTS[key];
+  const v = state[key];
+  if (key === 'era' || key === 'dates') return v === null;
+  return v === d;
+};
+
+// field() — renders one effective-value row: label, value, source badge, Reset. Mirrors the
+// blank/0/undefined sentinel per field, the same mapping channel-policy-fields.tsx uses, so
+// Reset clears to exactly what an untouched field already means, not a literal placeholder.
+function field(label, help, id, display, key, resetFn) {
+  const custom = !isDefault(key);
+  const badge = custom
+    ? '<span class="pill custom">Channel override</span>'
+    : '<span class="pill default">Default</span>';
+  return `<div class="field">
+    <div class="field-label-row">
+      <span class="field-label" id="${id}-label">${label}</span>
+      <div class="field-row">${badge}<button class="reset-btn" ${custom ? '' : 'disabled'} data-reset="${id}">Reset to default</button></div>
+    </div>
+    <div aria-labelledby="${id}-label">${display}</div>
+    <span class="field-help">${help}</span>
+  </div>`;
+}
+
+function resetHandlers() {
+  document.querySelectorAll('[data-reset]').forEach((btn) => {
+    btn.addEventListener('click', () => { RESETTERS[btn.dataset.reset](); render(); });
+  });
+}
+
+const RESETTERS = {
+  ceiling: () => { state.ceiling = DEFAULTS.ceiling; },
+  unrated: () => { state.unrated = DEFAULTS.unrated; },
+  era: () => { state.era = null; },
+  dates: () => { state.dates = null; },
+  runtimeMax: () => { state.runtimeMax = DEFAULTS.runtimeMax; },
+  order: () => { state.order = DEFAULTS.order; },
+  movieNoRepeat: () => { state.movieNoRepeat = undefined; },
+  episodeNoRepeat: () => { state.episodeNoRepeat = undefined; },
+  seriesGap: () => { state.seriesGap = undefined; },
+  blockMax: () => { state.blockMax = undefined; },
+  seasonalMode: () => { state.seasonalMode = DEFAULTS.seasonalMode; },
+  autoCurateOn: () => { state.autoCurateOn = false; state.minScorePct = 0; state.maxTitles = 0; },
+};
+
+function customCount() {
+  return Object.keys(DEFAULTS).filter((k) => {
+    if (k === 'minScorePct' || k === 'maxTitles') return false; // counted via autoCurateOn
+    return !isDefault(k);
+  }).length;
+}
+
+const HOUSEHOLD_CONFIGURABLE = ['sched.window_hours', 'filler.breaks_per_hour'];
+
+function summaryBar() {
+  const n = customCount();
+  const totalish = Object.keys(DEFAULTS).length - 2;
+  const q1 = $('q1').value;
+  const text = q1 === 'a'
+    ? `${n} setting${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} custom · the rest follow Channel defaults`
+    : `${n} of ${totalish} fields are channel overrides. Most defaults here are Loomarr's built-in values, not a household setting — only Schedule horizon and Commercial-break frequency live on Settings → Channel defaults, and neither is on this page.`;
+  return `<div class="card summary-bar">
+    <p>${text}</p>
+    <button type="button" id="refine-btn">Refine with AI</button>
+  </div>`;
+}
+
+function conflictWarning() {
+  if (state.era === null || state.dates === null) return '';
+  return `<div class="warn" role="alert">
+    <span aria-hidden="true">⚠</span>
+    <div>
+      <strong>Era and Programming dates are both set.</strong> A title must satisfy both — Era
+      1990–1999 and a 1985–1995 movie-release window overlap narrowly here, and a non-overlapping
+      pair can leave nothing eligible with no error shown (<code>internal/schedule/lineup.go:739,749</code>
+      ANDs them). The built editor clears one whenever you edit the other by hand; this state can
+      only arise from a refine or a direct API write that set both independently.
+      <div class="warn-actions">
+        <button type="button" data-resolve="era">Keep Era, clear dates</button>
+        <button type="button" data-resolve="dates">Keep dates, clear Era</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function whatPlaysBlock() {
+  const lineupHtml = LINEUP.map((t) => `<div class="lineup-row">
+      <span class="status-dot ${t.status}" aria-hidden="true"></span>
+      <span>${t.name}</span>
+      <span class="meta mono">${STATUS_LABEL[t.status]}</span>
+      <button class="remove" aria-label="Remove ${t.name}">✕</button>
+    </div>`).join('');
+
+  const eraDisplay = state.era
+    ? `<span class="mono">${state.era.from}–${state.era.to}</span>`
+    : `<span class="meta">Any year</span>`;
+  const datesDisplay = state.dates
+    ? `<span class="mono">Movie release ${state.dates.movieRelease[0].from}–${state.dates.movieRelease[0].to}</span>`
+    : `<span class="meta">No date requirement</span>`;
+  const ceilingDisplay = `<span>${state.ceiling || 'No limit'}</span>`;
+  const unratedResolves = ['TV-Y','TV-Y7','TV-G','TV-PG'].includes(state.ceiling) ? 'skipped' : 'allowed';
+  const unratedDisplay = state.unrated
+    ? `<span>${state.unrated === 'exclude' ? 'Skip unrated' : 'Allow unrated'}</span>`
+    : `<span>Automatic: ${unratedResolves}</span>`;
+  const runtimeDisplay = state.runtimeMax ? `<span class="mono">${state.runtimeMax} min</span>` : `<span class="meta">No limit</span>`;
+
+  return `<details class="block" open>
+    <summary><span class="chev" aria-hidden="true">▸</span><div><h3 class="pt">What plays</h3><p class="hint">The titles this channel draws from, and the content it stays within.</p></div></summary>
+    <div class="block-body">
+      <div class="field">
+        <div class="field-label-row"><span class="field-label">Lineup</span><button type="button">+ Add a title</button></div>
+        ${lineupHtml}
+      </div>
+      ${conflictWarning()}
+      <div class="grid2">
+        ${field('Audience ceiling', 'A safety limit, never relaxed by the ladder.', 'f-ceiling', ceilingDisplay, 'ceiling')}
+        ${field('Unrated titles', 'Automatic follows the ceiling: strict for a kids ceiling, permissive otherwise.', 'f-unrated', unratedDisplay, 'unrated')}
+        ${field('Era', 'Restrict content to titles released in this range.', 'f-era', eraDisplay, 'era')}
+        ${field('Programming dates', 'Separate movie-release, series-premiere and episode-airing windows. Replaces Era when set.', 'f-dates', datesDisplay, 'dates')}
+        ${field('Longest programme', 'Skip anything longer than this.', 'f-runtime', runtimeDisplay, 'runtimeMax')}
+      </div>
+      <p class="meta">Scope can also narrow to specific series or a media-server collection — unchanged from the built editor, not redesigned here.</p>
+    </div>
+  </details>`;
+}
+
+const ORDER_LABEL = { '': 'Use channel strategy (Shuffled)', sequential: 'In order', shuffle: 'Shuffled', syndication: 'Syndication' };
+const tidyDur = (v) => v || 'Use built-in';
+
+function howOrderedBlock() {
+  return `<details class="block">
+    <summary><span class="chev" aria-hidden="true">▸</span><div><h3 class="pt">How it's ordered</h3><p class="hint">The order and spacing programs play in.</p></div></summary>
+    <div class="block-body">
+      <div class="grid2">
+        ${field('Play order', "The channel's normal play order. Scheduled rules can temporarily override it.", 'f-order', `<span>${ORDER_LABEL[state.order]}</span>`, 'order')}
+        ${field('Repeat spacing · same movie', 'Minimum time before content repeats.', 'f-mnr', `<span class="mono">${tidyDur(state.movieNoRepeat)}</span>`, 'movieNoRepeat')}
+        ${field('Repeat spacing · same series', 'Minimum gap for another episode of the same series.', 'f-sg', `<span class="mono">${tidyDur(state.seriesGap)}</span>`, 'seriesGap')}
+        ${field('Max from one series', 'How many in a row the same series may hold.', 'f-bm', `<span class="mono">${state.blockMax ?? 'Use built-in'}</span>`, 'blockMax')}
+      </div>
+    </div>
+  </details>`;
+}
+
+function previewRows(usingDraft) {
+  const rows = usingDraft
+    ? [['6:00 PM','Signal and Noise','Sundays 6 PM–8 PM marathon'],['8:00 PM','The Quiet Coast','Sundays 6 PM–8 PM marathon'],['8:30 PM','Field Notes','No rule — base lineup']]
+    : [['6:00 PM','Late Harbor','No rule — base lineup'],['8:00 PM','Signal and Noise','Saturdays 8 PM–2 AM marathon'],['8:30 PM','Signal and Noise','Saturdays 8 PM–2 AM marathon']];
+  return rows.map(([t, title, rule], i) => `<div class="row ${i === 1 ? 'now' : ''}"><span class="time mono">${t}</span><span>${title}</span><span class="rule-won">${rule}</span></div>`).join('');
+}
+
+function whenChangesBlock() {
+  const dirty = rulesDirty;
+  const rules = (dirty ? RULES_DRAFT : RULES_SAVED).map((r, i) => `<div class="rule-row"><span class="order mono">${i + 1}</span><span class="rule-text">${r}</span></div>`).join('');
+  const applyBar = dirty ? `<div class="apply-bar">
+      <button type="button" id="apply-rules">Apply rules</button>
+      <button type="button" id="discard-rules">Discard</button>
+      <span class="spacer">Unsaved changes</span>
+    </div>` : '';
+  const autoHint = state.autoCurateOn
+    ? 'New titles that fit are added on their own, within the limits below.'
+    : 'Off, new titles wait for your approval.';
+  const autoFields = state.autoCurateOn ? `<div class="grid2">
+      ${field('Minimum score', 'A lower bound on fit quality before a title is auto-approved.', 'f-score', `<span class="mono">${state.minScorePct || 'Use global default'}${state.minScorePct ? '%' : ''}</span>`, 'minScorePct')}
+      ${field('Max new titles per run', 'Caps how many titles one re-curation run may add.', 'f-maxt', `<span class="mono">${state.maxTitles || 'Use global default'}</span>`, 'maxTitles')}
+    </div>` : '';
+
+  return `<details class="block">
+    <summary><span class="chev" aria-hidden="true">▸</span><div><h3 class="pt">When it changes</h3><p class="hint">Play different things at different times: weekend marathons, holiday blocks, day-parts.</p></div></summary>
+    <div class="block-body">
+      <div class="field">
+        <div class="field-label-row"><span class="field-label">Rules (priority order)</span><button type="button">Add a rule</button></div>
+        <div style="display:flex;flex-direction:column;gap:6px">${rules}</div>
+        ${applyBar}
+      </div>
+      <div class="field" style="border-top:1px solid #2a2e37;padding-top:12px">
+        ${field('Seasonal behavior', 'How this channel reacts to the calendar.', 'f-season', `<span>${state.seasonalMode === 'exclusive' ? 'Holiday-only channel' : state.seasonalMode === 'off' ? 'Ignore holidays' : 'Use built-in seasonal rotation'}</span>`, 'seasonalMode')}
+      </div>
+      <div class="field" style="border-top:1px solid #2a2e37;padding-top:12px">
+        <div class="field-row"><input type="checkbox" id="autocurate" ${state.autoCurateOn ? 'checked' : ''}><label for="autocurate">Add new titles without asking</label>
+          ${state.autoCurateOn ? '<span class="pill custom">Opted in</span>' : '<span class="pill default">Default: off</span>'}
+          ${state.autoCurateOn ? '<button class="reset-btn" data-reset="autoCurateOn">Reset to default</button>' : ''}
+        </div>
+        <span class="field-help">${autoHint}</span>
+        ${autoFields}
+      </div>
+    </div>
+  </details>`;
+}
+
+function previewBlock() {
+  const dirty = rulesDirty;
+  const banner = dirty
+    ? '<div class="preview-banner draft">Previewing the unsaved rules draft — Apply above to make this the live schedule.</div>'
+    : '<div class="preview-banner saved">Showing the saved, on-air schedule.</div>';
+  return `<details class="block">
+    <summary><span class="chev" aria-hidden="true">▸</span><div><h3 class="pt">Preview schedule</h3><p class="hint">Check what airs at a specific time and which rule wins.</p></div></summary>
+    <div class="block-body">
+      ${banner}
+      <div class="field-row"><label>At <input type="text" value="Sunday 7:00 PM" style="width:160px" readonly></label></div>
+      <div class="preview-table">${previewRows(dirty)}</div>
+    </div>
+  </details>`;
+}
+
+function render() {
+  const phone = $('size').getAttribute('aria-pressed') === 'true';
+  $('q1-note').style.display = $('q1').value === 'a' ? 'none' : '';
+  $('q2-note').style.display = (state.era && state.dates) ? '' : 'none';
+
+  const body = `
+    <div class="ch-header">
+      <span class="back" aria-label="Back to channels">←</span>
+      <div class="ident" style="border:1px solid ${CHANNEL.hue}4d;color:${CHANNEL.hue}">${CHANNEL.ident}</div>
+      <span class="ch-name">${CHANNEL.name}</span>
+      <span class="meta mono" style="margin-left:auto">CH ${String(CHANNEL.number).padStart(2,'0')}</span>
+    </div>
+    <nav class="tabs" aria-label="Channel sections">
+      <span class="tab">Watch</span><span class="tab">Channel info</span><span class="tab" aria-current="page">Programming</span><span class="tab">Filler</span><span class="tab">Danger zone</span>
+    </nav>
+    <div class="content">
+      <div><h2 class="pt">Programming</h2><p class="meta">What this channel plays, and when.</p></div>
+      ${summaryBar()}
+      ${whatPlaysBlock()}
+      ${howOrderedBlock()}
+      ${whenChangesBlock()}
+      ${previewBlock()}
+    </div>`;
+
+  $('frame').innerHTML = `<div class="shell">
+    <nav aria-label="Primary"><div class="brand"><span class="mark"></span><span class="brand-name">LOOMARR</span></div></nav>
+    <main>${body}</main>
+  </div>`;
+
+  resetHandlers();
+  document.querySelectorAll('[data-resolve]').forEach((btn) => btn.addEventListener('click', () => {
+    if (btn.dataset.resolve === 'era') state.dates = null; else state.era = null;
+    render();
+  }));
+  const apply = $('apply-rules'); if (apply) apply.addEventListener('click', () => { rulesDirty = false; $('rulesdirty').value = 'saved'; render(); });
+  const discard = $('discard-rules'); if (discard) discard.addEventListener('click', () => { rulesDirty = false; $('rulesdirty').value = 'saved'; render(); });
+  const auto = $('autocurate'); if (auto) auto.addEventListener('change', (e) => {
+    state.autoCurateOn = e.target.checked;
+    if (!e.target.checked) { state.minScorePct = 0; state.maxTitles = 0; }
+    render();
+  });
+}
+
+$('preset').addEventListener('change', () => { state = structuredClone(PRESETS[$('preset').value]); render(); });
+$('rulesdirty').addEventListener('change', () => { rulesDirty = $('rulesdirty').value === 'dirty'; render(); });
+$('q1').addEventListener('change', render);
+$('size').addEventListener('click', () => {
+  const small = $('frame').classList.toggle('phone');
+  $('size').setAttribute('aria-pressed', String(small));
+  $('size').textContent = small ? 'Desktop preview' : '390px preview';
+  render();
+});
+
+render();
+</script>
+</html>
