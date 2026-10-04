@@ -1,8 +1,10 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { isOverridden, resetField } from "@/lib/policy-overrides";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
+import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelSeasonalProps } from "./channel-seasonal.type";
 
 // ChannelSeasonal — holiday-aware programming (programming-design.md §6, schedule.SeasonalPolicy).
@@ -72,12 +74,21 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       <div className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-1.5">
-          <Label htmlFor="policy-seasonal-mode">Seasonal behavior</Label>
-          <FieldHelp label="Seasonal behavior">
-            How this channel reacts to the calendar. Loomarr matches titles to a built-in holiday list; pick
-            which holidays below.
-          </FieldHelp>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="policy-seasonal-mode">Seasonal behavior</Label>
+            <FieldHelp label="Seasonal behavior">
+              How this channel reacts to the calendar. Loomarr matches titles to a built-in holiday list; pick
+              which holidays below.
+            </FieldHelp>
+          </div>
+          {/* The mode is the defaultable field; the holiday subset and off-season fallback below
+              refine it and keep what they hold. */}
+          <PolicyFieldSource
+            overridden={isOverridden(policy, "seasonalMode")}
+            onReset={() => onChange(resetField(policy, "seasonalMode"))}
+            label="Seasonal behavior"
+          />
         </div>
         <Select
           value={mode}

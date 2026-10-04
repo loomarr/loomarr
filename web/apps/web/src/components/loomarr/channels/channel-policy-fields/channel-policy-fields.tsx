@@ -5,8 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { eraDates, eraOf } from "@/lib/era-dates";
+import {
+  datesMode,
+  isOverridden,
+  type PolicyField as PolicyFieldName,
+  resetField,
+} from "@/lib/policy-overrides";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
+import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
 
 const YEAR_MIN = 1900;
@@ -190,16 +197,46 @@ const DateAxisEditor = ({
   );
 };
 
-// FieldLabel — a form label paired with an (i) help icon (FieldHelp), the row that replaces
-// the old permanent helper `<p>` under every control. Keeps the form compact: the guidance is
-// on hover, not always on screen. `htmlFor` ties the label to its control; the help names the
-// same field for screen readers.
-const FieldLabel = ({ htmlFor, children, help }: { htmlFor?: string; children: string; help: string }) => (
-  <div className="flex items-center gap-1.5">
-    <Label htmlFor={htmlFor}>{children}</Label>
-    <FieldHelp label={children}>{help}</FieldHelp>
-  </div>
-);
+// PolicyField — one defaultable field (#1817 item 4): its label and (i) help on the left, where
+// the value comes from and a Reset on the right, the control below. The (i) icon replaces the
+// old permanent helper `<p>` under every control, so the guidance is on hover, not always on
+// screen. `htmlFor` ties the label to a single control; a field with several inputs leaves it
+// out and labels its group by `labelId` instead.
+const PolicyField = ({
+  id,
+  htmlFor,
+  label,
+  help,
+  overridden,
+  onReset,
+  wide,
+  children,
+}: {
+  id: string;
+  htmlFor?: string;
+  label: string;
+  help: string;
+  overridden: boolean;
+  onReset: () => void;
+  wide?: boolean;
+  children: React.ReactNode;
+}) => {
+  const labelId = `${id}-label`;
+  return (
+    <div className={cn("flex flex-col gap-1.5", wide && "sm:col-span-2")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Label id={labelId} htmlFor={htmlFor}>
+            {label}
+          </Label>
+          <FieldHelp label={label}>{help}</FieldHelp>
+        </div>
+        <PolicyFieldSource overridden={overridden} onReset={onReset} label={label} />
+      </div>
+      {children}
+    </div>
+  );
+};
 
 // ChannelPolicyFields — a ChannelPolicy as plain-language editable chips (programming-design
 // §8). Controlled: the parent holds `policy` and persists whatever this calls `onChange`
@@ -226,6 +263,28 @@ const durationOrUndefined = (v: string): string | undefined => {
   const trimmed = v.trim();
   return trimmed === "" ? undefined : trimmed;
 };
+
+// The three separation windows, each a Go-duration string whose blank means built-in spacing.
+const DURATION_FIELDS = [
+  {
+    field: "movieNoRepeat",
+    id: "policy-movie-norepeat",
+    label: "Repeat spacing · same movie",
+    help: "Minimum time before a movie repeats. Leave blank to use Loomarr's built-in spacing.",
+  },
+  {
+    field: "episodeNoRepeat",
+    id: "policy-episode-norepeat",
+    label: "Repeat spacing · same episode",
+    help: "Minimum time before an episode repeats. Leave blank to use Loomarr's built-in spacing.",
+  },
+  {
+    field: "seriesMinGap",
+    id: "policy-series-gap",
+    label: "Repeat spacing · same series",
+    help: "Minimum gap for another episode of the same series. Leave blank to use Loomarr's built-in spacing.",
+  },
+] as const satisfies readonly { field: PolicyFieldName; id: string; label: string; help: string }[];
 
 const STRATEGY_LABELS: Record<string, string> = {
   sequential: "In order",
@@ -301,26 +360,38 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
   const dates = policy.scope?.dates;
   const era = eraOf(dates);
   const separation = policy.separation;
-  // Split for the Programming surface's blocks (§12): scope = audience ceiling + era ("What
-  // plays"); ordering = ordering + no-repeat ("How it's ordered"). Omitted = show everything.
+  // Split for the Programming surface's blocks (§12): scope = audience ceiling + dates ("What
+  // plays"); ordering = ordering + spacing ("How it's ordered"). Omitted = show everything.
   const showScope = show !== "ordering";
   const showOrdering = show !== "scope";
 
+  // Era is the simple mode of the dates editor (#1877 decision 2): shown whenever the dates are
+  // era-shaped or empty. Anything an era cannot express needs the per-axis editor. The operator
+  // can also open the per-axis editor on purpose; a reset to default returns to Era.
+  const [axesRequested, setAxesRequested] = useState(false);
+  const eraShaped = datesMode(dates) === "era";
+  const showAxes = !eraShaped || axesRequested;
+
+  // Every field reads its source and resets through the same sentinel table the summary counts.
+  const source = (field: PolicyFieldName) => ({
+    overridden: isOverridden(policy, field),
+    onReset: () => onChange(resetField(policy, field)),
+  });
+
   return (
-    // A responsive 2-column field grid (was a 1-wide stack): the two Selects sit side by side,
-    // while Era + No-repeat span the full width because they each hold a nested 2-up input row.
-    // gap-x for columns, gap-y for rows.
+    // A responsive 2-column field grid (was a 1-wide stack): the Selects and single inputs sit
+    // side by side, while the dates editor spans the full width. gap-x for columns, gap-y for rows.
     <div className={cn("grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2", className)}>
       {/* Ordering — empty string means "inherit the channel's Strategy". Radix Select
           forbids an empty-string item value, so "inherit" is the sentinel. */}
       {showOrdering && (
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel
-            htmlFor="policy-ordering"
-            help="The channel's normal play order. Scheduled rules can temporarily override it."
-          >
-            Play order
-          </FieldLabel>
+        <PolicyField
+          id="policy-ordering"
+          htmlFor="policy-ordering"
+          label="Play order"
+          help="The channel's normal play order. Scheduled rules can temporarily override it."
+          {...source("ordering")}
+        >
           <Select
             value={policy.ordering || "inherit"}
             onValueChange={(v) => onChange({ ...policy, ordering: v === "inherit" ? "" : v })}
@@ -336,19 +407,19 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </PolicyField>
       )}
 
       {/* Audience ceiling — a safety limit, never relaxed by the ladder (§8), so the
           help says so explicitly rather than leaving that guarantee implicit. */}
       {showScope && (
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel
-            htmlFor="policy-ceiling"
-            help="Content stays at or below this, a safety limit Loomarr never loosens."
-          >
-            Audience ceiling
-          </FieldLabel>
+        <PolicyField
+          id="policy-ceiling"
+          htmlFor="policy-ceiling"
+          label="Audience ceiling"
+          help="Content stays at or below this, a safety limit Loomarr never loosens."
+          {...source("ceiling")}
+        >
           <Select
             value={policy.audience?.ceiling || "none"}
             onValueChange={(v) =>
@@ -369,7 +440,7 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </PolicyField>
       )}
 
       {/* Unrated titles — the safety PAIR to the ceiling, and orphaned until now: the gate has
@@ -377,13 +448,13 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
           it, so an operator could see "3 skipped: unrated" and had no way to say "allow them".
           Sits beside the ceiling because its default is DERIVED from it. */}
       {showScope && (
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel
-            htmlFor="policy-unrated"
-            help="Titles with no content rating. Automatic follows the ceiling: strict for a kids ceiling, permissive otherwise."
-          >
-            Unrated titles
-          </FieldLabel>
+        <PolicyField
+          id="policy-unrated"
+          htmlFor="policy-unrated"
+          label="Unrated titles"
+          help="Titles with no content rating. Automatic follows the ceiling: strict for a kids ceiling, permissive otherwise."
+          {...source("unrated")}
+        >
           <Select
             value={policy.audience?.unrated || "default"}
             onValueChange={(v) =>
@@ -409,22 +480,30 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
               ))}
             </SelectContent>
           </Select>
-        </div>
+        </PolicyField>
       )}
 
-      {/* Era — two commit-on-blur year inputs. Blank on either side means unbounded, not 0.
-          Spans both columns (it has its own nested 2-up row). */}
-      {showScope && (
-        <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <FieldLabel help="Restrict content to titles released in this range. Leave blank for no restriction.">
-            Era
-          </FieldLabel>
-          <div className="flex items-center gap-3">
+      {/* Dates — ONE stored scope (#1883). Era mode is two commit-on-blur year inputs (blank on
+          either side means unbounded, not 0) written to all three axes; the per-axis editor
+          holds anything an era cannot express. Spans both columns. */}
+      {showScope && !showAxes && (
+        <PolicyField
+          id="policy-dates"
+          label="Era"
+          help="Restrict content to titles released in this range. Leave blank for no restriction."
+          wide
+          {...source("dates")}
+        >
+          {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would duplicate the visible label row */}
+          <div role="group" aria-labelledby="policy-dates-label" className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <Label htmlFor="policy-era-from" className="text-muted-foreground text-xs">
                 From year
               </Label>
               <Input
+                // Uncontrolled, so the stored value is the key: a reset or any outside change
+                // re-seeds the box instead of leaving the old year on screen.
+                key={`from-${era?.from ?? ""}`}
                 id="policy-era-from"
                 type="number"
                 className="w-28"
@@ -447,6 +526,7 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
                 To year
               </Label>
               <Input
+                key={`to-${era?.to ?? ""}`}
                 id="policy-era-to"
                 type="number"
                 className="w-28"
@@ -464,18 +544,32 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
                 }}
               />
             </div>
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0 pb-2.5 text-xs underline"
+              onClick={() => setAxesRequested(true)}
+            >
+              Use separate date windows
+            </Button>
           </div>
-        </div>
+        </PolicyField>
       )}
 
-      {showScope && (
-        <div className="flex flex-col gap-2 sm:col-span-2">
-          <FieldLabel help="Use separate year ranges when the channel needs distinct release, series-premiere, or episode-airing dates. Ranges are inclusive and never fill a gap between them.">
-            Programming dates
-          </FieldLabel>
+      {showScope && showAxes && (
+        <PolicyField
+          id="policy-dates"
+          label="Programming dates"
+          help="Separate movie-release, series-premiere and episode-airing windows. Ranges are inclusive and never fill a gap between them."
+          wide
+          overridden={isOverridden(policy, "dates")}
+          onReset={() => {
+            setAxesRequested(false);
+            onChange(resetField(policy, "dates"));
+          }}
+        >
           <p className="text-muted-foreground text-xs">
-            Adding date ranges replaces the single Era field. Movie release and series premiere filter titles;
-            episode airing filters individual episodes.
+            Movie release and series premiere filter titles; episode airing filters individual episodes.
           </p>
           {(
             [
@@ -495,6 +589,9 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
                   (ranges) => Array.isArray(ranges) && ranges.length > 0,
                 );
                 const { era: _era, dates: _dates, ...scope } = policy.scope ?? {};
+                // Editing an axis keeps this editor open even if the windows happen to line up
+                // again, so the field does not swap under the operator mid-edit.
+                setAxesRequested(true);
                 onChange({
                   ...policy,
                   scope: { ...scope, ...(hasDates ? { dates: nextDates } : {}) },
@@ -502,24 +599,36 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
               }}
             />
           ))}
-        </div>
+          {/* Back to Era only while that loses nothing: the windows are identical or empty. */}
+          {eraShaped && (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto self-start p-0 text-xs underline"
+              onClick={() => setAxesRequested(false)}
+            >
+              Use a single era
+            </Button>
+          )}
+        </PolicyField>
       )}
 
       {/* Longest programme — orphaned until now: the backend has filtered on runtimeMax
           since the scope policy existed, and nothing could set it. Useful for a channel
           that should stay to half-hour episodes and never pull in a three-hour film. */}
       {showScope && (
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel
-            htmlFor="policy-runtime-max"
-            help="Skip anything longer than this. Leave blank for no limit."
-          >
-            Longest programme
-          </FieldLabel>
+        <PolicyField
+          id="policy-runtime-max"
+          htmlFor="policy-runtime-max"
+          label="Longest programme"
+          help="Skip anything longer than this. Leave blank for no limit."
+          {...source("runtimeMax")}
+        >
           {/* MINUTES in the field, SECONDS on the wire (schedule.ScopePolicy.RuntimeMax is
               seconds, 0 = unbounded). Nobody thinks about programme length in seconds, and
               a raw seconds box would invite "90" meaning a minute and a half. */}
           <Input
+            key={policy.scope?.runtimeMax ?? 0}
             id="policy-runtime-max"
             className="w-28"
             type="number"
@@ -536,101 +645,57 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
               onChange({ ...policy, scope: { ...policy.scope, runtimeMax: next } });
             }}
           />
-        </div>
+        </PolicyField>
       )}
 
-      {/* No-repeat windows — commit-on-blur duration strings. Spans both columns (nested
-          2-up row). */}
-      {showOrdering && (
-        <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <FieldLabel help="Minimum time before content repeats. Leave blank to use Loomarr's built-in spacing.">
-            Repeat spacing
-          </FieldLabel>
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="policy-movie-norepeat" className="text-muted-foreground text-xs">
-                Same movie
-              </Label>
-              <Input
-                id="policy-movie-norepeat"
-                className="w-28"
-                defaultValue={tidyDuration(separation?.movieNoRepeat)}
-                placeholder="Use built-in"
-                onBlur={(e) => {
-                  const next = durationOrUndefined(e.target.value);
-                  if (next === tidyDuration(separation?.movieNoRepeat) || next === separation?.movieNoRepeat)
-                    return;
-                  onChange({ ...policy, separation: { ...separation, movieNoRepeat: next } });
-                }}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="policy-episode-norepeat" className="text-muted-foreground text-xs">
-                Same episode
-              </Label>
-              <Input
-                id="policy-episode-norepeat"
-                className="w-28"
-                defaultValue={tidyDuration(separation?.episodeNoRepeat)}
-                placeholder="Use built-in"
-                onBlur={(e) => {
-                  const next = durationOrUndefined(e.target.value);
-                  if (
-                    next === tidyDuration(separation?.episodeNoRepeat) ||
-                    next === separation?.episodeNoRepeat
-                  )
-                    return;
-                  onChange({ ...policy, separation: { ...separation, episodeNoRepeat: next } });
-                }}
-              />
-            </div>
-          </div>
+      {/* Repeat spacing — commit-on-blur duration strings, one field per window so each shows
+          its own source and Reset. Series gap + block cap are the OTHER half of separation
+          (§3). They were orphaned: the relaxation ladder narrates them in Diagnostics ("series
+          gap was 2h") while nothing could set them. */}
+      {showOrdering &&
+        DURATION_FIELDS.map(({ field, id, label, help }) => (
+          <PolicyField key={field} id={id} htmlFor={id} label={label} help={help} {...source(field)}>
+            <Input
+              key={separation?.[field] ?? ""}
+              id={id}
+              className="w-28"
+              defaultValue={tidyDuration(separation?.[field])}
+              placeholder="Use built-in"
+              onBlur={(e) => {
+                const next = durationOrUndefined(e.target.value);
+                if (next === tidyDuration(separation?.[field]) || next === separation?.[field]) return;
+                onChange({ ...policy, separation: { ...separation, [field]: next } });
+              }}
+            />
+          </PolicyField>
+        ))}
 
-          {/* Series gap + block cap — the OTHER half of separation (§3). These were
-              orphaned: the relaxation ladder narrates them in Diagnostics ("series gap
-              was 2h") while nothing could set them, so an operator could read what the
-              scheduler had eased and had no way to choose it in the first place. */}
-          <div className="mt-3 flex flex-wrap gap-3">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="policy-series-gap" className="text-muted-foreground text-xs">
-                Same series
-              </Label>
-              <Input
-                id="policy-series-gap"
-                className="w-28"
-                defaultValue={tidyDuration(separation?.seriesMinGap)}
-                placeholder="Use built-in"
-                onBlur={(e) => {
-                  const next = durationOrUndefined(e.target.value);
-                  if (next === tidyDuration(separation?.seriesMinGap) || next === separation?.seriesMinGap)
-                    return;
-                  onChange({ ...policy, separation: { ...separation, seriesMinGap: next } });
-                }}
-              />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="policy-block-max" className="text-muted-foreground text-xs">
-                Max from one series
-              </Label>
-              <Input
-                id="policy-block-max"
-                className="w-28"
-                type="number"
-                min={0}
-                defaultValue={separation?.blockMax ?? ""}
-                placeholder="Use built-in"
-                onBlur={(e) => {
-                  // Blank clears the authored cap and returns to the built-in limit. `0` is
-                  // also resolved as built-in here, so there is no separate no-limit state.
-                  const raw = e.target.value.trim();
-                  const next = raw === "" ? undefined : Number(raw);
-                  if (next === separation?.blockMax) return;
-                  onChange({ ...policy, separation: { ...separation, blockMax: next } });
-                }}
-              />
-            </div>
-          </div>
-        </div>
+      {showOrdering && (
+        <PolicyField
+          id="policy-block-max"
+          htmlFor="policy-block-max"
+          label="Max from one series"
+          help="How many in a row the same series may hold. Leave blank to use Loomarr's built-in limit."
+          {...source("blockMax")}
+        >
+          <Input
+            key={separation?.blockMax ?? ""}
+            id="policy-block-max"
+            className="w-28"
+            type="number"
+            min={0}
+            defaultValue={separation?.blockMax ?? ""}
+            placeholder="Use built-in"
+            onBlur={(e) => {
+              // Blank clears the authored cap and returns to the built-in limit. `0` is
+              // also resolved as built-in here, so there is no separate no-limit state.
+              const raw = e.target.value.trim();
+              const next = raw === "" ? undefined : Number(raw);
+              if (next === separation?.blockMax) return;
+              onChange({ ...policy, separation: { ...separation, blockMax: next } });
+            }}
+          />
+        </PolicyField>
       )}
     </div>
   );

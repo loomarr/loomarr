@@ -125,6 +125,34 @@ describe("RefineReview", () => {
     expect(screen.getByRole("button", { name: /apply changes/i })).toBeInTheDocument();
   });
 
+  // Per-axis dates are not an era: the row summarises the windows instead of reading "Any".
+  it("summarises per-axis programming dates rather than calling them Any", () => {
+    render(
+      <RefineReview
+        proposed={[heat]}
+        current={[currentHeat]}
+        currentPolicy={{ scope: { dates: eraDates({ from: 1980, to: 1989 }) } }}
+        proposedPolicy={{
+          scope: {
+            dates: {
+              movieRelease: [
+                { from: 1985, to: 1995 },
+                { from: 2001, to: 2003 },
+              ],
+              seriesAiring: [{ from: 1990, to: 1999 }],
+            },
+          },
+        }}
+        onApply={vi.fn()}
+        onDiscard={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Programming dates")).toBeInTheDocument();
+    expect(
+      screen.getByText("Movie release 1985–1995, 2001–2003 · Episode airing 1990–1999"),
+    ).toBeInTheDocument();
+  });
+
   // V19: the model's why-it-fits was already on ProposalItem and already rendered by
   // ProposalReview — the refine diff built its rows from the same items and dropped it
   // one function before render. "Adding: Predator" with no reason is the refine asking
