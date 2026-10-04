@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr pairing &amp; onboarding states — design review</title>
+<style>
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #e7eaf0; background: #08090b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a, input { font: inherit; }
+  button, select { min-height: 44px; color: inherit; background: #1b1e24; border: 1px solid #666970; border-radius: 6px; padding: 8px 12px; }
+  a { color: inherit; text-decoration: none; }
+  button, a, select { cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid #ffb020; outline-offset: 3px; }
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2a2e37; background: #131519; position: sticky; top: 0; z-index: 5; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .review-note { font-size: 13px; color: #8b93a3; margin: 12px 24px; max-width: 900px; line-height: 1.5; }
+  .review-note.question { color: #dc5bac; }
+  .review-note code { font-family: 'Geist Mono', ui-monospace, monospace; background: #1b1e24; padding: 1px 5px; border-radius: 4px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; justify-content: center; padding: 8px 24px 40px; }
+
+  /* ---- device frames ---- */
+  #frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .frame-label { font-size: 12px; color: #8b93a3; font-family: 'Geist Mono', ui-monospace, monospace; }
+  #frame { border: 1px solid #2a2e37; border-radius: 10px; overflow: hidden; background: #0b0c0e; box-shadow: 0 0 0 6px #131519; display: flex; flex-direction: column; }
+  #frame[data-shape="desktop"] { width: 760px; min-height: 520px; }
+  #frame[data-shape="phone"] { width: 390px; min-height: 740px; border-radius: 28px; box-shadow: 0 0 0 6px #131519; }
+  #frame[data-shape="tv"] { width: 760px; height: 428px; border-radius: 6px; background: #000; }
+
+  .screen-pad { padding: 40px; flex: 1; display: flex; align-items: center; justify-content: center; }
+  #frame[data-shape="phone"] .screen-pad { padding: 28px 20px; align-items: flex-start; }
+
+  .card { background: #131519; border: 1px solid #2a2e37; border-radius: 10px; padding: 28px; max-width: 420px; width: 100%; display: flex; flex-direction: column; gap: 14px; }
+  .card.wide { max-width: 560px; }
+  .lockup { font-weight: 700; letter-spacing: .02em; font-size: 15px; color: #8b93a3; }
+  h1.pg { font-size: 24px; margin: 0; line-height: 1.25; }
+  p.body { margin: 0; color: #8b93a3; line-height: 1.55; font-size: 14px; }
+  p.meta { margin: 0; color: #8b93a3; font-size: 12px; }
+  .code-field { height: 64px; width: 100%; text-align: center; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 26px; letter-spacing: .3em; text-transform: uppercase; background: #0b0c0e; border: 1px solid #666970; border-radius: 8px; color: #e7eaf0; }
+  .code-field::placeholder { color: #5a6170; letter-spacing: .3em; }
+  .btn-primary { height: 48px; width: 100%; background: #ffb020; color: #0b0c0e; font-weight: 600; border: none; border-radius: 6px; }
+  .btn-secondary { height: 44px; width: 100%; background: transparent; color: #e7eaf0; border: 1px solid #666970; border-radius: 6px; }
+  .err { color: #e85a5f; font-size: 13px; text-align: center; line-height: 1.5; }
+  .err.warn { color: #f5d90a; }
+  .success-box { border: 1px solid #2a2e37; border-radius: 8px; padding: 16px; text-align: center; background: #19322a; border-color: rgba(61,214,140,.4); }
+  .success-box p.name { font-weight: 600; font-size: 16px; margin: 0; }
+  .success-box p.name.truncate, .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; max-width: 100%; }
+  .perm-note { margin-top: 2px; border-top: 1px solid #2a2e37; padding-top: 14px; color: #8b93a3; font-size: 12px; line-height: 1.6; text-align: center; }
+
+  /* ---- device/TV pairing-shell ---- */
+  .pairing-grid { display: flex; gap: 0; width: 100%; align-items: stretch; }
+  .pairing-grid .half { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; justify-content: center; padding: 16px; }
+  .pairing-grid .sep { width: 1px; background: #2a2e37; }
+  .qr { width: 150px; height: 150px; background: repeating-linear-gradient(45deg,#1b1e24,#1b1e24 6px,#0b0c0e 6px,#0b0c0e 12px); border: 1px solid #2a2e37; border-radius: 6px; }
+  .user-code { font-family: 'Geist Mono', ui-monospace, monospace; letter-spacing: .25em; font-size: 28px; }
+  #frame[data-shape="tv"] .user-code { font-size: 40px; letter-spacing: .3em; color: #ffb020; }
+  #frame[data-shape="tv"] h2.sec { font-size: 15px; letter-spacing: .12em; color: #8b93a3; margin: 0; }
+  .countdown { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px; color: #8b93a3; }
+  .countdown.urgent { color: #e85a5f; font-weight: 600; }
+  .divider { height: 1px; background: #2a2e37; width: 90%; margin: 14px 0; }
+
+  /* ---- wizard ---- */
+  .wiz { display: grid; grid-template-columns: 17rem 1fr; width: 100%; min-height: 540px; }
+  .wiz aside { background: #131519; border-right: 1px solid #2a2e37; padding: 24px 20px; display: flex; flex-direction: column; gap: 18px; }
+  .wiz aside .brand { font-weight: 700; font-size: 14px; }
+  .wiz aside .tag { font-family: 'Geist Mono', ui-monospace, monospace; color: #8b93a3; font-size: 11px; }
+  .steps { display: flex; flex-direction: column; gap: 2px; list-style: none; margin: 0; padding: 0; }
+  .step-row { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 6px; width: 100%; background: transparent; border: none; text-align: left; color: #8b93a3; font-size: 13px; }
+  .step-row[data-current="true"] { background: #1b1e24; color: #e7eaf0; font-weight: 600; }
+  .step-row[data-clickable="true"] { cursor: pointer; }
+  .step-dot { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; border: 1px solid #666970; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; flex-shrink: 0; }
+  .step-dot.done { border-color: #3dd68c; background: rgba(61,214,140,.15); color: #3dd68c; }
+  .step-dot.current { border-color: #ffb020; background: rgba(255,176,32,.15); color: #ffb020; }
+  .step-skipped-tag { margin-left: auto; font-size: 11px; color: #5a6170; }
+  .wiz .content { padding: 28px 32px; display: flex; flex-direction: column; gap: 18px; }
+  .wiz .content h1 { font-size: 20px; margin: 0; }
+  .wiz .content > p.body { max-width: 540px; }
+  .wiz-card { background: #131519; border: 1px solid #2a2e37; border-radius: 8px; padding: 20px; max-width: 540px; display: flex; flex-direction: column; gap: 12px; }
+  .field-label { font-size: 12px; color: #8b93a3; }
+  .field { height: 40px; width: 100%; background: #0b0c0e; border: 1px solid #666970; border-radius: 6px; color: #e7eaf0; padding: 0 10px; }
+  .check-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #2a2e37; font-size: 13px; }
+  .check-row:last-child { border-bottom: none; }
+  .check-dot { width: 9px; height: 9px; border-radius: 999px; flex-shrink: 0; }
+  .check-dot.ok { background: #3dd68c; }
+  .check-dot.bad { background: #e85a5f; }
+  .check-hint { color: #8b93a3; font-size: 12px; }
+  .wiz-nav { display: flex; gap: 8px; max-width: 540px; }
+  .wiz-nav .spacer { margin-left: auto; display: flex; gap: 8px; }
+  .wiz-nav button { padding: 0 20px; width: auto; min-width: 110px; }
+
+  footer.notes { padding: 4px 24px 48px; }
+</style>
+
+<div class="review">
+  <strong>Pairing &amp; onboarding states · design review (#1817, #1659)</strong>
+  <label>Surface
+    <select id="surface">
+      <option value="approve">Approve a device (web)</option>
+      <option value="device">Code on the device (TV / phone)</option>
+      <option value="wizard">Setup wizard</option>
+    </select>
+  </label>
+  <label>State <select id="state"></select></label>
+  <label>Frame <select id="frameSize"></select></label>
+  <label>Approver role
+    <select id="role"><option value="admin">Admin</option><option value="member">Member</option></select>
+  </label>
+  <label><input id="longNames" type="checkbox"> Long device &amp; person names</label>
+</div>
+
+<p class="review-note">Draft for maintainer review ahead of the build PR (map rows 517 "Pair a TV" / 527 "Setup
+wizard", decision <strong>N3</strong>). <code>Approve a device</code> and <code>Code on the device</code> recreate
+the two halves of the existing device-code flow exactly as built (<code>pair-device.tsx</code>,
+<code>pairing-shell.tsx</code>) so every state can be inspected side by side; <code>Setup wizard</code> recreates
+<code>wizard-shell.tsx</code>'s rail/gating rules. No production code, route or API contract changes — this is a
+review aid, built interactively rather than described. All names are invented; nothing here calls a server.</p>
+
+<div class="layout">
+  <div id="frame-wrap">
+    <div id="frame" data-shape="desktop">
+      <div class="screen-pad" id="screen"></div>
+    </div>
+    <span class="frame-label" id="frame-label"></span>
+  </div>
+</div>
+<p class="review-note" id="action" role="status" aria-live="polite">Pick a surface and state to inspect.</p>
+
+<footer class="notes">
+  <p class="review-note">
+    <strong>Sources.</strong> Redesign map rows "## Pair a TV" / "## Setup wizard" and their critique; decision
+    <strong>N3</strong> and <a href="../../docs/design/decisions/0043-devices-act-with-their-approvers-role.md">ADR
+    0043</a> (a device acts as its approver's real role, superseding the earlier member cap, #1772/#1835); the
+    merged Pair copy (#1753, <code>web/apps/web/src/settings/pair-device/pair-device.tsx</code>,
+    <code>web/apps/web/src/routes/pair.tsx</code>); the device/TV side,
+    <code>web/packages/ui/src/pairing-shell/pairing-shell.tsx</code> and its state machine,
+    <code>web/packages/core/src/pairing/pairing.ts</code>; the backend,
+    <code>internal/api/deviceroutes.go</code> (RFC 8628 device-authorization grant); the wizard,
+    <code>web/apps/web/src/routes/wizard.tsx</code>, <code>wizard-shell.tsx</code>, <code>wizard/steps/steps.ts</code>
+    (#1711 step gating). Dark-theme tokens straight from
+    <code>web/packages/design-system/src/tokens/tokens.ts</code> (canvas <code>#0B0C0E</code>, raised
+    <code>#131519</code>, elevated <code>#1B1E24</code>, hairline <code>#2A2E37</code>, signal
+    <code>#FFB020</code>, success <code>#3DD68C</code>, danger <code>#E85A5F</code>, warning <code>#F5D90A</code>).
+  </p>
+  <p class="review-note question">
+    <strong>Open, not decided by the inputs</strong> — shown as labelled alternatives in the matching states
+    rather than picked here: (1) the web approve page's single error branch shows "wrong or expired" copy for
+    every failure (bad code, rate-limited, or a network/server error) — see the <em>Rate limited</em> and
+    <em>Network error</em> states for Alt A (today's one message) vs Alt B (distinguish by cause); (2) whether
+    the TV/phone countdown should turn urgent-red under 60 seconds — see <em>Expiring soon</em> for Alt A (plain,
+    as built) vs Alt B (urgent styling).
+  </p>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+const NAME_SHORT = { user: "Dana", device: "Living Room TV" };
+// 64 chars is deviceStartInput's own maxLength (internal/api/deviceroutes.go); the user name has
+// no server-side cap, so this picks a plausible long real name rather than a stress-test string.
+const NAME_LONG = {
+  user: "Alexandra Okonkwo-Fairweather",
+  device: "Basement Guest Room Projector (HDMI 2, hand-me-down, do not unplug)".slice(0, 64),
+};
+const names = () => ($('longNames').checked ? NAME_LONG : NAME_SHORT);
+
+const roleCopy = {
+  admin: {
+    label: "Admin",
+    consequence:
+      "An admin device can do anything your admin session can — approve requests, change settings, reveal secrets. A shared-room TV paired from an admin account is an admin.",
+  },
+  member: {
+    label: "Member",
+    consequence: "A member device can browse and submit requests, nothing more — exactly like signing in yourself.",
+  },
+};
+
+// ---------------- Surface: Approve a device (web) ----------------
+const APPROVE_STATES = [
+  ["signed-out", "Signed out (permission denied)"],
+  ["entry", "Code entry — empty"],
+  ["typed", "Code entry — typed, not submitted"],
+  ["checking", "Checking… (pending)"],
+  ["wrong-or-expired", "Error — wrong or expired code"],
+  ["rate-limited", "Error — too many attempts (429)"],
+  ["network-error", "Error — couldn't reach the server"],
+  ["success", "Success — device added"],
+];
+
+const approveFrame = (state) => {
+  const n = names();
+  const screen = $('screen');
+  const wrap = (inner, wide) => `<div class="card${wide ? ' wide' : ''}">${inner}</div>`;
+  if (state === "signed-out") {
+    screen.innerHTML = wrap(`
+      <h1 class="pg">Add a device</h1>
+      <p class="body">Sign in first, then we'll bring you straight back here to finish adding your TV.</p>
+      <p class="user-code" style="text-align:center;font-size:20px">BCDF-GHJK</p>
+      <button class="btn-primary" data-act="signin">Sign in</button>
+    `);
+    announce("Signed-out arrival is an EXPECTED state, not an error (pair.tsx's own comment) — the code is carried through ?code= and nothing auto-submits on return.");
+    return;
+  }
+  if (state === "entry" || state === "typed") {
+    const typed = state === "typed";
+    screen.innerHTML = wrap(`
+      <h1 class="pg">Add a device</h1>
+      <p class="body">Your TV or streaming box is showing a short code. Enter it here and it signs in as you.</p>
+      <input class="code-field" placeholder="BCDF-GHJK" value="${typed ? "BCDF-GHJK" : ""}" readonly>
+      <button class="btn-primary" ${typed ? "" : "disabled"} data-act="submit">Add device</button>
+      <p class="perm-note">The device acts with your access and role (${roleCopy[$('role').value].label}). Removing it later signs out only that device.</p>
+    `);
+    announce(typed ? "A code is typed but not yet submitted — nothing is approved until Add device is clicked." : "Empty entry: autoCapitalize=characters / autoComplete=one-time-code on the real input, so a phone keyboard doesn't fight an all-caps code.");
+    return;
+  }
+  if (state === "checking") {
+    screen.innerHTML = wrap(`
+      <h1 class="pg">Add a device</h1>
+      <p class="body">Your TV or streaming box is showing a short code. Enter it here and it signs in as you.</p>
+      <input class="code-field" value="BCDF-GHJK" readonly>
+      <button class="btn-primary" disabled>Checking…</button>
+    `);
+    announce("Pending state while POST /v1/auth/device/approve is in flight.");
+    return;
+  }
+  if (state === "wrong-or-expired") {
+    screen.innerHTML = wrap(`
+      <h1 class="pg">Add a device</h1>
+      <p class="body">Your TV or streaming box is showing a short code. Enter it here and it signs in as you.</p>
+      <input class="code-field" value="WRNG-CODE" readonly>
+      <button class="btn-primary" data-act="submit">Add device</button>
+      <p class="err">That code is wrong or has expired. Codes last ten minutes — check the screen and try again.</p>
+    `);
+    announce("This exact copy covers BOTH a mistyped code and a dead one — the server (deviceroutes.go handleDeviceApprove) returns the identical 404 for each on purpose, so a guesser can't learn which codes are real. Not a gap; a deliberate guess-guard.");
+    return;
+  }
+  if (state === "rate-limited") {
+    screen.innerHTML = wrap(`
+      <h1 class="pg">Add a device</h1>
+      <p class="body">Your TV or streaming box is showing a short code. Enter it here and it signs in as you.</p>
+      <input class="code-field" value="BCDF-GHJK" readonly>
+      <button class="btn-primary" disabled data-act="submit">Add device</button>
+      <div class="divider" style="margin:0"></div>
+      <p class="meta" style="text-align:center">Alt A — today's built behaviour</p>
+      <p class="err">That code is wrong or has expired. Codes last ten minutes — check the screen and try again.</p>
+      <p class="meta" style="text-align:center">Alt B — distinguish the cause (not decided)</p>
+      <p class="err warn">Too many pairing codes tried. Wait a moment and try again.</p>
+    `);
+    announce("The backend already returns a distinct 429 'Too many pairing codes tried' (deviceLimiter, deviceroutes.go) for this case, but pair-device.tsx's single approve.isError branch shows the 404 copy regardless of status — telling someone to recheck a code that was never wrong. Open question, shown as two alternatives; not fixed here.");
+    return;
+  }
+  if (state === "network-error") {
+    screen.innerHTML = wrap(`
+      <h1 class="pg">Add a device</h1>
+      <p class="body">Your TV or streaming box is showing a short code. Enter it here and it signs in as you.</p>
+      <input class="code-field" value="BCDF-GHJK" readonly>
+      <button class="btn-primary" data-act="submit">Add device</button>
+      <div class="divider" style="margin:0"></div>
+      <p class="meta" style="text-align:center">Alt A — today's built behaviour</p>
+      <p class="err">That code is wrong or has expired. Codes last ten minutes — check the screen and try again.</p>
+      <p class="meta" style="text-align:center">Alt B — distinguish the cause (not decided)</p>
+      <p class="err warn">Couldn't reach Loomarr. Check your connection and try again.</p>
+      <button class="btn-secondary" data-act="retry">Try again</button>
+    `);
+    announce("Same gap as Rate limited: a timeout or 5xx from the mutation falls into the same hard-coded 'wrong or expired' text today. Alt B adds a retry affordance a bad-code message shouldn't have (retrying a wrong code just fails again; retrying a dropped request can succeed).");
+    return;
+  }
+  if (state === "success") {
+    screen.innerHTML = wrap(`
+      <h1 class="pg">Add a device</h1>
+      <p class="body">Your TV or streaming box is showing a short code. Enter it here and it signs in as you.</p>
+      <div class="success-box">
+        <p class="name truncate" title="${n.device}">${n.device} is ready</p>
+        <p class="body" style="margin-top:4px">It should start playing in a few seconds. You can remove it any time from Settings &rarr; Access and devices.</p>
+      </div>
+      <p class="perm-note">${roleCopy[$('role').value].consequence}</p>
+    `);
+    announce($('longNames').checked
+      ? "Long-name check: the device name truncates with an ellipsis (title attribute carries the full name), matching the truncate class paired-devices.tsx already uses for its own list."
+      : "Success: approved as " + roleCopy[$('role').value].label + " (ADR 0043 — the device inherits the approver's real role, not a fixed member cap).");
+    return;
+  }
+};
+
+// ---------------- Surface: Code on the device (TV / phone) ----------------
+const DEVICE_STATES = [
+  ["loading", "Loading — connecting"],
+  ["awaiting", "Pending — code shown, fresh"],
+  ["expiring", "Pending — expiring soon"],
+  ["refreshed", "Expired — silently refreshed"],
+  ["revoked", "Permission denied — disconnected"],
+  ["failed", "Network failure — retry"],
+  ["paired", "Success — paired"],
+];
+
+const deviceFrame = (state) => {
+  const screen = $('screen');
+  const tv = $('frameSize').value === 'tv';
+  const secTitle = (t) => tv ? `<h2 class="sec">${t.toUpperCase()}</h2>` : `<h2 style="margin:0;font-size:15px">${t}</h2>`;
+  if (state === "loading") {
+    screen.innerHTML = `<div class="card" style="align-items:center;text-align:center">
+      <div class="lockup">LOOMARR</div>
+      <p class="body">Connecting to Loomarr…</p>
+    </div>`;
+    announce("Initial state while the stored credential (if any) validates.");
+    return;
+  }
+  if (state === "awaiting" || state === "expiring") {
+    const seconds = state === "expiring" ? 47 : 592;
+    const urgent = state === "expiring";
+    const m = Math.floor(seconds / 60), s = String(seconds % 60).padStart(2, "0");
+    screen.innerHTML = `<div class="card wide">
+      <div class="pairing-grid">
+        <div class="half">${secTitle("Scan QR Code")}<div class="qr"></div></div>
+        <div class="sep"></div>
+        <div class="half">${secTitle("Visit Website")}<p class="meta">loomarr.local:8080/pair</p>
+          <p class="meta">PAIRING CODE</p><p class="user-code">BCDF-GHJK</p></div>
+      </div>
+      <div class="divider"></div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        ${urgent
+          ? `<p class="meta" style="text-align:center">Alt A — plain countdown, as built</p><p class="countdown">Expires in ${m}:${s}</p>
+             <p class="meta" style="text-align:center">Alt B — urgent styling under 60s (not decided)</p><p class="countdown urgent">Expires in ${m}:${s}</p>`
+          : `<p class="countdown">Expires in ${m}:${s}</p>`}
+        <button class="btn-secondary" style="width:auto;min-width:160px" data-act="newcode">Get a new code</button>
+      </div>
+    </div>`;
+    announce(urgent
+      ? "The real component (pairing-shell.tsx) renders this countdown in the same plain metadata text all the way to zero — no colour change is wired today. Shown as two labelled alternatives; not decided here."
+      : "Ten-minute window (DEFAULT_PAIRING_TTL_SECONDS), ticking every second while status is awaiting-approval.");
+    return;
+  }
+  if (state === "refreshed") {
+    screen.innerHTML = `<div class="card wide">
+      <div class="pairing-grid">
+        <div class="half">${secTitle("Scan QR Code")}<div class="qr"></div></div>
+        <div class="sep"></div>
+        <div class="half">${secTitle("Visit Website")}<p class="meta">loomarr.local:8080/pair</p>
+          <p class="meta">PAIRING CODE</p><p class="user-code">QKPN-4R7T</p></div>
+      </div>
+      <div class="divider"></div>
+      <p class="countdown">Expires in 9:58</p>
+      <p class="meta" style="text-align:center;margin-top:10px">A moment ago this screen showed code BCDF-GHJK.</p>
+    </div>`;
+    announce("There is no visible 'code expired' error on this side at all: PairingSession.begin() treats a dead code as an ordinary loop continue and silently starts a new one (pairing.ts). The code on screen just changes. Flagging for the build PR: someone who wrote the old code down gets no notice it died — not fixed here, just surfaced.");
+    return;
+  }
+  if (state === "revoked") {
+    screen.innerHTML = `<div class="card" style="align-items:center;text-align:center">
+      <h1 class="pg">This device was disconnected</h1>
+      <p class="body">Its credential is no longer valid. Pair it again to continue.</p>
+      <button class="btn-primary" data-act="pairagain">Pair again</button>
+    </div>`;
+    announce("Permission-denied-equivalent on this side: the owner revoked it from Settings, disabled the user, or a validity check 401'd. The device never gets a reason beyond this (sessionauth.go: it's deliberately not told whether it was the owner, a disable, or something else).");
+    return;
+  }
+  if (state === "failed") {
+    screen.innerHTML = `<div class="card" style="align-items:center;text-align:center">
+      <h1 class="pg">Couldn't connect</h1>
+      <p class="body">Loomarr could not be reached.</p>
+      <button class="btn-primary" data-act="retry">Try again</button>
+      <button class="btn-secondary" data-act="chooseserver">Choose another server</button>
+    </div>`;
+    announce("Network failure + retry, exactly as built (pairing-shell.tsx 'failed' branch). retryable stays true here; message is the transport's own error text.");
+    return;
+  }
+  if (state === "paired") {
+    screen.innerHTML = `<div class="card" style="align-items:center;text-align:center">
+      <h1 class="pg">Paired ✓</h1>
+      <p class="body">Handing off to the client's own signed-in screen.</p>
+    </div>`;
+    announce("PairingShell calls renderPaired(state) once status is 'paired' — each client (TV/phone/web) owns what that screen looks like, so it's a hand-off marker here, not reproduced.");
+    return;
+  }
+};
+
+// ---------------- Surface: Setup wizard ----------------
+const WIZ_STEPS = [
+  { id: "bootstrap", title: "Admin" },
+  { id: "playout", title: "Playout" },
+  { id: "location", title: "Location" },
+  { id: "checklist", title: "Connections" },
+  { id: "library", title: "Library" },
+  { id: "users", title: "Users" },
+  { id: "channel", title: "First channel" },
+];
+const WIZ_STATES = [
+  ["required-unmet", "Required step, unmet — Continue disabled"],
+  ["required-met", "Required step, met — Continue enabled"],
+  ["skippable", "Optional step — Skip for now"],
+  ["skipped", "Optional step — already skipped (rail marker)"],
+  ["check-failing", "Failure/recovery — a connection check is red"],
+  ["long-name", "Long name — operator and import list"],
+];
+
+const wizRail = (statusById, current) => WIZ_STEPS.map((s, i) => {
+  const status = statusById[s.id] ?? "pending";
+  const dot = status === "done" ? "done" : status === "current" ? "current" : "";
+  const inner = status === "done" ? "✓" : i + 1;
+  const clickable = status !== "current" && (status === "done" || status === "skipped");
+  return `<li>
+    <div class="step-row" data-current="${s.id === current}" data-clickable="${clickable}">
+      <span class="step-dot ${dot}">${inner}</span>
+      <span>${s.title}</span>
+      ${status === "skipped" ? `<span class="step-skipped-tag">skipped</span>` : ""}
+    </div>
+  </li>`;
+}).join("");
+
+const wizardFrame = (state) => {
+  const n = names();
+  const screen = $('screen');
+  if (state === "required-unmet" || state === "required-met") {
+    const statusById = { bootstrap: "done", playout: "done", location: "current", checklist: "pending", library: "pending", users: "pending", channel: "pending" };
+    const filled = state === "required-met";
+    screen.innerHTML = `<div class="wiz">
+      <aside><div class="brand">LOOMARR</div><div class="tag">First-run setup · saved as you go</div>
+        <ol class="steps">${wizRail(statusById, "location")}</ol></aside>
+      <div class="content">
+        <h1>Where are your channels watched?</h1>
+        <p class="body">This helps Loomarr find filler for your country and local area.</p>
+        <div class="wiz-card">
+          <div><div class="field-label">Country</div><input class="field" value="${filled ? "United Kingdom" : ""}" placeholder="Choose a country" readonly></div>
+        </div>
+        <div class="wiz-nav"><button class="btn-secondary" style="width:auto" data-act="back">Back</button>
+          <div class="spacer"><button class="btn-primary" style="width:auto" ${filled ? "" : "disabled"} data-act="next">Continue</button></div></div>
+      </div>
+    </div>`;
+    announce(filled
+      ? "Location is REQUIRED, not skippable (wizard/steps/steps.ts: isStepDone('location') needs a non-empty country) — Continue enables once filled, with no Skip button at all."
+      : "Required + unmet: Continue stays disabled (nextDisabled in wizard.tsx) and there is no Skip affordance for this step — the only way forward is to answer it.");
+    return;
+  }
+  if (state === "skippable" || state === "skipped") {
+    const skipped = state === "skipped";
+    const statusById = { bootstrap: "done", playout: "done", location: "done", checklist: "done", library: skipped ? "skipped" : "current", users: skipped ? "pending" : "pending", channel: "pending" };
+    screen.innerHTML = `<div class="wiz">
+      <aside><div class="brand">LOOMARR</div><div class="tag">First-run setup · saved as you go</div>
+        <ol class="steps">${wizRail(statusById, skipped ? "users" : "library")}</ol></aside>
+      <div class="content">
+        <h1>${skipped ? "Import media-server users" : "Give Tunarr your library"}</h1>
+        <p class="body">${skipped ? "Only the accounts you pick can sign in. You can skip this if you're the only one using Loomarr." : "Without this, Tunarr schedules slots that have no programme to play."}</p>
+        <div class="wiz-card"><p class="meta">${skipped ? "No media-server users imported yet." : "No library synced yet."}</p></div>
+        <div class="wiz-nav"><button class="btn-secondary" style="width:auto" data-act="back">Back</button>
+          <div class="spacer"><button class="btn-secondary" style="width:auto" data-act="skip">Skip for now</button>
+          <button class="btn-primary" style="width:auto" disabled data-act="next">Continue</button></div></div>
+      </div>
+    </div>`;
+    announce(skipped
+      ? "Once skipped, the rail marks it 'skipped' in neutral grey, never red (wizard-shell.tsx's own comment: an optional step you passed on is not a failure) — and it becomes clickable again (reachable), unlike an un-reached pending step."
+      : "SKIPPABLE = {library, users} in wizard.tsx — Continue stays disabled until the step's own check passes (never forced green by skip-eligibility), but Skip for now is always available and records the choice as 'skipped', not 'done'.");
+    return;
+  }
+  if (state === "check-failing") {
+    const statusById = { bootstrap: "done", playout: "done", location: "done", checklist: "current", library: "pending", users: "pending", channel: "pending" };
+    screen.innerHTML = `<div class="wiz">
+      <aside><div class="brand">LOOMARR</div><div class="tag">First-run setup · saved as you go</div>
+        <ol class="steps">${wizRail(statusById, "checklist")}</ol></aside>
+      <div class="content">
+        <h1>Connect your services</h1>
+        <p class="body">Loomarr live-tests each dependency. A red check tells you exactly what to fix.</p>
+        <div class="wiz-card">
+          <div class="check-row"><span class="check-dot bad"></span><div><div>Media server</div><div class="check-hint">Couldn't reach http://media.local:8096 — check the address and API key.</div></div></div>
+          <div class="check-row"><span class="check-dot ok"></span><div>TMDB</div></div>
+          <div class="check-row"><span class="check-dot ok"></span><div>AI</div></div>
+        </div>
+        <div class="wiz-nav"><button class="btn-secondary" style="width:auto" data-act="back">Back</button>
+          <div class="spacer"><button class="btn-secondary" style="width:auto" data-act="retest">Retest</button>
+          <button class="btn-primary" style="width:auto" disabled data-act="next">Continue</button></div></div>
+      </div>
+    </div>`;
+    announce("Failure/recovery: media_server is a REQUIRED check (requiredChecks, steps.ts) so Continue cannot enable while it's red, but the hint names the exact fix and a Retest re-runs the live check in place — no dead end, matching the map's 'Keep: the live connection check with a fix hint'.");
+    return;
+  }
+  if (state === "long-name") {
+    const statusById = { bootstrap: "done", playout: "done", location: "done", checklist: "done", library: "done", users: "current", channel: "pending" };
+    screen.innerHTML = `<div class="wiz">
+      <aside><div class="brand">LOOMARR</div><div class="tag">First-run setup · saved as you go</div>
+        <ol class="steps">${wizRail(statusById, "users")}</ol></aside>
+      <div class="content">
+        <h1>Import media-server users</h1>
+        <p class="body">Only the accounts you pick can sign in. You can skip this if you're the only one using Loomarr.</p>
+        <div class="wiz-card">
+          <div class="check-row"><span class="check-dot ok"></span><span class="truncate" title="${n.user}" style="max-width:280px">${n.user}</span></div>
+          <div class="check-row"><span class="check-dot ok"></span><span>Sam</span></div>
+          <p class="meta">2 of 2 selected</p>
+        </div>
+        <p class="meta">Owner on this step's confirmation card: <span class="truncate" title="${n.user}" style="display:inline-block;max-width:220px;vertical-align:bottom">${n.user}</span></p>
+        <div class="wiz-nav"><button class="btn-secondary" style="width:auto" data-act="back">Back</button>
+          <div class="spacer"><button class="btn-primary" style="width:auto" data-act="next">Continue</button></div></div>
+      </div>
+    </div>`;
+    announce($('longNames').checked
+      ? "Long-name check: an imported media-server username this long truncates with an ellipsis rather than wrapping the row or overflowing the rail — no dedicated long-name handling exists in UsersStep today, so this is this draft's own proposed truncation, not yet built."
+      : "Toggle 'Long device & person names' above to stress this row — nothing here calls a server.");
+    return;
+  }
+};
+
+// ---------------- wiring ----------------
+const SURFACES = {
+  approve: { states: APPROVE_STATES, render: approveFrame, sizes: [["desktop", "Desktop"], ["phone", "Phone (390px)"]] },
+  device: { states: DEVICE_STATES, render: deviceFrame, sizes: [["tv", "TV (960×540 density)"], ["phone", "Phone"]] },
+  wizard: { states: WIZ_STATES, render: wizardFrame, sizes: [["desktop", "Desktop"]] },
+};
+
+const announce = (text) => { $('action').textContent = text; };
+
+const populateSelect = (select, pairs) => {
+  select.innerHTML = pairs.map(([v, l]) => `<option value="${v}">${l}</option>`).join("");
+};
+
+const applyFrameShape = () => {
+  const surface = $('surface').value;
+  const size = $('frameSize').value;
+  const frame = $('frame');
+  if (surface === 'device') {
+    frame.dataset.shape = size === 'tv' ? 'tv' : 'phone';
+  } else {
+    frame.dataset.shape = size === 'phone' ? 'phone' : 'desktop';
+  }
+  $('frame-label').textContent =
+    surface === 'device'
+      ? (size === 'tv' ? '960×540 logical canvas — Android TV / Shield density' : '390px — phone density')
+      : (size === 'phone' ? '390px — phone' : '760px — desktop');
+};
+
+const renderAll = () => {
+  const surface = $('surface').value;
+  const def = SURFACES[surface];
+  applyFrameShape();
+  def.render($('state').value);
+};
+
+const onSurfaceChange = () => {
+  const def = SURFACES[$('surface').value];
+  populateSelect($('state'), def.states);
+  populateSelect($('frameSize'), def.sizes);
+  renderAll();
+};
+
+$('surface').addEventListener('change', onSurfaceChange);
+for (const id of ['state', 'frameSize', 'role', 'longNames']) {
+  $(id).addEventListener('change', renderAll);
+}
+$('screen').addEventListener('click', (e) => {
+  const act = e.target?.dataset?.act;
+  if (act) announce(`"${act}" tapped — no network call; this is a static prototype.`);
+});
+
+onSurfaceChange();
+</script>
+</html>

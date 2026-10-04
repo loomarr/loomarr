@@ -5,10 +5,24 @@ import { ClientNavigation, clientDestinationLabel } from "../client-navigation";
 import { DeviceDisconnectAction } from "../device-disconnect";
 import type { ClientShellProps } from "./client-shell.type";
 
-const ClientShell = ({ active, density, onDisconnect, onNavigate, serverName }: ClientShellProps) => {
+const ClientShell = ({
+  active,
+  children,
+  density,
+  onDisconnect,
+  onNavigate,
+  serverName,
+}: ClientShellProps) => {
   const navigation = <ClientNavigation active={active} density={density} onNavigate={onNavigate} />;
   // A phone docks its platform's tab bar under the content; pointer and TV keep the row inline.
   const phone = density === "touch";
+  // A destination with its own screen (the phone's Guide and Watching) sets its own gutters.
+  if (phone && children)
+    return (
+      <Screen density={density} flush footer={navigation}>
+        {children}
+      </Screen>
+    );
   return (
     <Screen density={density} footer={phone ? navigation : undefined} gap="$section">
       <View style={{ alignItems: "center", flexDirection: "row", justifyContent: "space-between" }}>

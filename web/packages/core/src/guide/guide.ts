@@ -75,9 +75,25 @@ const guideTimeFormatter = (timeZone?: string): Intl.DateTimeFormat => {
 
 const formatGuideTime = (at: number, timeZone?: string): string => guideTimeFormatter(timeZone).format(at);
 
+/**
+ * A time range as the mocks write it: AM/PM once at the end when both ends share it
+ * ("8:50–9:39 PM"), on both ends when they differ ("11:30 PM–12:15 AM").
+ */
 const formatGuideTimeRange = (startMs: number, stopMs: number, timeZone?: string): string => {
   const formatter = guideTimeFormatter(timeZone);
-  return `${formatter.format(startMs)}–${formatter.format(stopMs)}`;
+  const start = formatter.formatToParts(startMs);
+  const period = (parts: Intl.DateTimeFormatPart[]) => parts.find((part) => part.type === "dayPeriod")?.value;
+  const stop = formatter.format(stopMs);
+  if (period(start) !== period(formatter.formatToParts(stopMs)))
+    return `${formatter.format(startMs)}–${stop}`;
+  const clock = start
+    .filter(
+      (part) =>
+        part.type === "hour" || part.type === "minute" || (part.type === "literal" && part.value === ":"),
+    )
+    .map((part) => part.value)
+    .join("");
+  return `${clock}–${stop}`;
 };
 
 /** Compact episode identity, including season zero specials and partially known metadata. */
