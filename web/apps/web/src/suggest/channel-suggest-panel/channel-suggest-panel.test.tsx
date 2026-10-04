@@ -3,9 +3,12 @@ import {
   getApproveProposalMockHandler,
   getGetProposalJobMockHandler,
   getGetProposalOutlookMockHandler,
+  getListChannelIdeasMockHandler,
   getMeMockHandler,
   getResolveMovieCollectionsMockHandler,
   getReviseProposalJobMockHandler,
+  getSearchMockHandler,
+  getSubmitManualChannelMockHandler,
   getSubmitProposalMockHandler,
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -52,6 +55,7 @@ const failedRun = (over: Partial<SuggestionRun> = {}): SuggestionRun => ({
   revise: vi.fn(),
   retry: vi.fn(),
   reset: vi.fn(),
+  resume: vi.fn(),
   ...over,
 });
 
@@ -232,6 +236,60 @@ describe("ChannelSuggestPanel", () => {
     );
     expect(screen.getByRole("link", { name: /set up ai/i })).toHaveAttribute("href", "/settings/ai");
     expect(intent).toHaveValue("Saturday morning cartoons");
+  });
+
+  // "Build it manually instead" (#1817, maintainer decision 1 on #1872): always offered
+  // client-side on a failed generation, whatever the reason — the LLM being off (here) and a
+  // mid-flight generation failure (below) both swap this panel for the manual builder in place.
+  it("offers to build manually when the LLM isn't configured, and hands the new job to review", async () => {
+    const user = userEvent.setup();
+    stubSuggest();
+    server.use(
+      http.post("*/v1/proposals", () =>
+        HttpResponse.json(
+          { type: "feature_not_configured", title: "AI isn't set up", detail: "Connect an AI provider." },
+          { status: 409 },
+        ),
+      ),
+      getListChannelIdeasMockHandler({ ideas: [] }),
+      getSubmitManualChannelMockHandler({ jobId: "job-manual-1" }),
+    );
+    renderPanel(() => {});
+
+    await user.type(await screen.findByLabelText("Channel intent"), "Saturday morning cartoons");
+    await user.click(screen.getByRole("button", { name: /suggest a lineup/i }));
+    await user.click(await screen.findByRole("button", { name: "Build it manually instead" }));
+
+    expect(screen.getByRole("heading", { name: "Add a channel" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Channel name"), "My Channel");
+    await user.click(screen.getByRole("button", { name: "Search titles" }));
+    server.use(
+      getSearchMockHandler({
+        candidates: [{ name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true }],
+      }),
+    );
+    await user.type(screen.getByPlaceholderText(/search for a movie or show/i), "heat");
+    await user.click(await screen.findByText("Heat"));
+    await user.click(screen.getByRole("button", { name: "Continue to review" }));
+
+    // The job the manual submit returned is now what the review panel polls (same
+    // useSuggestionRun.resume mechanism a deep-linked ?job= uses), proving the handoff lands on
+    // the existing review surface rather than a second one.
+    await waitFor(() => expect(screen.queryByText(/channel name/i)).not.toBeInTheDocument());
+  });
+
+  it("offers to build manually after a generation failure, alongside the Journey's own actions", async () => {
+    runOverride = failedRun();
+    const user = userEvent.setup();
+    stubSuggest();
+    server.use(getListChannelIdeasMockHandler({ ideas: [] }));
+    renderPanel(() => {});
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Build it manually instead" }));
+
+    expect(screen.getByRole("heading", { name: "Add a channel" })).toBeInTheDocument();
   });
 
   it("keeps configured AI truthful and routes a missing grounding key to TMDB", async () => {

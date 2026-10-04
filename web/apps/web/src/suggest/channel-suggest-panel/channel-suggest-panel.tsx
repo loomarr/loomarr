@@ -1,6 +1,8 @@
+import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { Intent } from "@loomarr/api/models/intent";
 import { toProblem } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -12,6 +14,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { IntentForm } from "../intent-form";
 import { useProposalOutlook } from "../live-proposal-outlook";
+import { ManualChannelBuilder } from "../manual-channel-builder";
 import { suggestionFailureCopy } from "../suggestion-failure-copy";
 import { useElapsed } from "../use-elapsed";
 import { useProposalReviewEdit } from "../use-proposal-review-edit";
@@ -35,6 +38,8 @@ const ChannelSuggestPanel = ({
   onCreated,
   initialIntent,
   initialJobId,
+  initialManual,
+  initialIdeaId,
   onStartFresh,
   onStageChange,
   className,
@@ -42,6 +47,19 @@ const ChannelSuggestPanel = ({
   const { isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
   const [startedFresh, setStartedFresh] = useState(false);
+  // Entered from "Build it manually instead" (#1817, decision G2/G2.1) on a failed or
+  // unconfigured AI run, or straight from the Guide's `?manual=1` handoff — swaps this panel
+  // for the manual builder in place, rather than forking a second origination surface. Leaving
+  // the builder without submitting returns here, to the SAME error state the operator left
+  // (its own run/error is untouched).
+  const [building, setBuilding] = useState(Boolean(initialManual));
+  // "Edit first" (#1817): seeds the builder from one channel idea. Fetched here rather than in
+  // the builder itself, so a plain "Add a channel"/"Build it manually instead" entry (no idea)
+  // never pays for a list it doesn't need.
+  const editIdeas = discoveryApi.useListChannelIdeas({ query: { enabled: initialIdeaId !== undefined } });
+  const editIdea = initialIdeaId
+    ? unwrap(editIdeas.data, (body) => body.ideas)?.find((idea) => idea.id === initialIdeaId)
+    : undefined;
   const run = useSuggestionRun(initialJobId);
   const [edit, setEdit, optionalSuggestions, expansionAdded] = useProposalReviewEdit(run.jobId, run.proposal);
   const elapsed = useElapsed(run.isRunning);
@@ -116,6 +134,22 @@ const ChannelSuggestPanel = ({
   const failureNeedsEdit = run.failure?.recoveryAction !== "retry_later";
   const failureCopy = run.failure ? suggestionFailureCopy(run.failure) : undefined;
 
+  if (building) {
+    return (
+      <section className={cn("flex flex-col gap-4", className)}>
+        <ManualChannelBuilder
+          isAdmin={isAdmin}
+          initialIdea={editIdea}
+          onCancel={() => setBuilding(false)}
+          onSubmitted={(jobId) => {
+            setBuilding(false);
+            run.resume(jobId);
+          }}
+        />
+      </section>
+    );
+  }
+
   return (
     <section className={cn("flex flex-col gap-4", className)}>
       {/* Idle — the describe form (with optional constraints). Suppressed while a run is in
@@ -146,20 +180,30 @@ const ChannelSuggestPanel = ({
                   ? "Connect an AI service and choose a model for channel suggestions. Your draft is saved."
                   : "An administrator needs to finish AI setup before Loomarr can build this channel. Your draft is saved."}
             </p>
-            {isAdmin &&
-              (groundingUnconfigured ? (
-                <Link
-                  to="/settings/connections"
-                  search={{ focus: "tmdb" }}
-                  className={buttonVariants({ variant: "link", size: "sm" })}
-                >
-                  Connect TMDB
-                </Link>
-              ) : (
-                <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
-                  Set up AI
-                </Link>
-              ))}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {isAdmin &&
+                (groundingUnconfigured ? (
+                  <Link
+                    to="/settings/connections"
+                    search={{ focus: "tmdb" }}
+                    className={buttonVariants({ variant: "link", size: "sm" })}
+                  >
+                    Connect TMDB
+                  </Link>
+                ) : (
+                  <Link to="/settings/ai" className={buttonVariants({ variant: "link", size: "sm" })}>
+                    Set up AI
+                  </Link>
+                ))}
+              {/* Always offered client-side on a failed generation (#1817 maintainer decision 1,
+                  tracked on #1872) — no server Journey action gates it; the LLM being off is the
+                  one failure this recovers from, so grounding-only failures don't offer it. */}
+              {aiUnconfigured && (
+                <Button variant="outline" size="sm" onClick={() => setBuilding(true)}>
+                  Build it manually instead
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <ErrorState error={run.error} />
@@ -213,6 +257,11 @@ const ChannelSuggestPanel = ({
                 Check AI settings
               </Link>
             )}
+            {/* Always offered client-side (#1817 maintainer decision 1, #1872): a generation
+                failure, whatever its reason, can always fall back to building by hand. */}
+            <Button variant="suggest" size="sm" onClick={() => setBuilding(true)}>
+              Build it manually instead
+            </Button>
           </div>
         </div>
       )}

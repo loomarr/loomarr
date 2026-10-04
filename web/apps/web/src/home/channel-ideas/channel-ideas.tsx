@@ -6,11 +6,12 @@ import { ChannelIdeaReasonDTOKind } from "@loomarr/api/models/channelIdeaReasonD
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { RefreshCcw, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
@@ -121,6 +122,15 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
             <Button size="sm" disabled={busy} onClick={onRequest}>
               Request channel
             </Button>
+            {/* Opens the manual builder preloaded with this idea's own lineup (#1817) — the
+                shipped idea card named this as waiting on the mock; #1872 is the approved one. */}
+            <Link
+              to="/guide"
+              search={{ manual: "1", ideaId: idea.id }}
+              className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}
+            >
+              Edit first
+            </Link>
             <Button
               size="sm"
               variant="ghost"
@@ -142,7 +152,8 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
 // ChannelIdeas — the member's "Channel ideas" on Home (#1659 web mock, H4): channels their library
 // could make, built without the LLM (#1665, #1720). Three at a time, "Different ideas" pages
 // through the rest, Hide keeps an Undo in the header, and Request puts the idea in the approval
-// queue. "Edit first" and "describe your own" wait on the LLM-off mock, so they aren't here.
+// queue. "Edit first" and "Describe your own channel" (#1817, #1872) both open the Guide's
+// manual builder — the former preloaded with this idea's own lineup, the latter blank.
 const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
   const queryClient = useQueryClient();
   const list = discoveryApi.useListChannelIdeas();
@@ -248,6 +259,14 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
           ))}
         </div>
       )}
+      {/* Describe your own channel (#1817): the same manual builder "Edit first" opens, started
+          blank. The shipped grid above already names this as waiting on the mock; #1872 is the
+          approved one. */}
+      <div className="mt-3 flex items-center justify-center rounded-lg border border-static-700 border-dashed p-3.5">
+        <Link to="/guide" search={{ manual: "1" }} className={cn(buttonVariants({ variant: "ghost" }))}>
+          Don’t see it? Describe your own channel
+        </Link>
+      </div>
     </section>
   );
 };

@@ -10,6 +10,12 @@ type ChannelSuggestPanelProps = {
   // An opaque, server-authorized Journey id from My Requests. Its intent is fetched from the
   // normal private Job endpoint rather than exposed in the URL.
   initialJobId?: string;
+  // Opens straight into the manual/AI-off builder (#1817, G2) on mount, skipping the describe
+  // form even when AI is configured — Home's "Describe your own channel" explicitly chose the
+  // manual path, so this must not second-guess it by trying AI first.
+  initialManual?: boolean;
+  // Seeds the manual builder from one channel idea (Home's "Edit first"). Implies initialManual.
+  initialIdeaId?: string;
   // The Guide owns URL handoff state. A fresh start must clear it as well as this panel's
   // session state, otherwise a reload resumes the Journey the operator discarded.
   onStartFresh?: () => void;
