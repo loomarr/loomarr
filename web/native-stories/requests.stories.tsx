@@ -293,10 +293,12 @@ const AdminBulkFiller: Story = review({
   selecting: { filler: true, requests: false },
   sheet: { group: "filler", kind: "bulk" },
 });
+// Both groups in Select, one tick in each. The docked sheet is for the group ticked last and counts only
+// that group; here it is Channel requests, the checked row in view, so the sheet and the list agree.
 const AdminBothGroupsSelecting: Story = review({
   selected: { filler: ["pull-stingers"], requests: ["approval-grace"] },
   selecting: { filler: true, requests: true },
-  sheet: { group: "filler", kind: "bulk" },
+  sheet: { group: "requests", kind: "bulk" },
 });
 const AdminBulkPartialFailure: Story = review({
   sheet: { group: "requests", kind: "result", rows: rowsOut },

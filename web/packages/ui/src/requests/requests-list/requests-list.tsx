@@ -5,8 +5,7 @@ import {
   requestsInTab,
   requestsNeedsYouCount,
 } from "@loomarr/core/requests";
-import { Skeleton, Surface, Tabs, Text } from "@loomarr/design-system";
-import { ScrollView } from "react-native";
+import { SegmentedControl, Skeleton, Surface, Text } from "@loomarr/design-system";
 
 import { StatePanel } from "../../state-panel";
 import { ApprovalGroup, type ApprovalRow } from "../approval-group";
@@ -33,7 +32,7 @@ const tabEmpty = {
 } as const;
 
 // The count shows only when there is something to count, as the approved mock's tabs do.
-const counted = (label: string, count: number) => (count > 0 ? `${label} (${count})` : label);
+const counted = (count: number) => (count > 0 ? { count } : {});
 
 const Section = ({ children, title }: { children: React.ReactNode; title: string }) => (
   <Surface backgroundColor="$transparent" borderWidth={0} gap="$control" role="group">
@@ -127,6 +126,11 @@ const RequestsList = ({
 
   const inProgress = requestsInTab(snapshot, "in-progress");
   const done = requestsInTab(snapshot, "done");
+  // Needs you is an admin's inbox; a member gets two segments until one of their requests couldn't be
+  // built, and never loses the segment they are standing on.
+  const needsYouCount = requestsNeedsYouCount(snapshot);
+  const showNeedsYou = isAdmin || needsYouCount > 0 || tab === "needs-you";
+  const needsYouSegment = { ...counted(needsYouCount), label: "Needs you", value: "needs-you" } as const;
   const failed = requestsInTab(snapshot, "needs-you");
   const find = <Item extends { id: string }>(items: readonly Item[], id: string) =>
     items.find((item) => item.id === id);
@@ -216,20 +220,17 @@ const RequestsList = ({
 
   return (
     <Surface backgroundColor="$transparent" borderWidth={0} gap="$control">
-      {/* Three counted labels can outgrow a narrow phone; the row scrolls rather than clipping one. */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <Tabs
-          density="touch"
-          label="Requests sections"
-          onValueChange={onTabChange}
-          options={[
-            { label: counted("Needs you", requestsNeedsYouCount(snapshot)), value: "needs-you" },
-            { label: counted("In progress", inProgress.length), value: "in-progress" },
-            { label: counted("Done", done.length), value: "done" },
-          ]}
-          value={tab}
-        />
-      </ScrollView>
+      {/* iPhone's segmented control: full width, so three counted labels never overflow the phone. */}
+      <SegmentedControl
+        accessibilityLabel="Requests sections"
+        onValueChange={onTabChange}
+        options={[
+          ...(showNeedsYou ? [needsYouSegment] : []),
+          { ...counted(inProgress.length), label: "In progress", value: "in-progress" },
+          { ...counted(done.length), label: "Done", value: "done" },
+        ]}
+        value={tab}
+      />
       {content}
     </Surface>
   );

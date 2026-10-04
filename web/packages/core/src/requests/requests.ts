@@ -6,7 +6,7 @@ import {
   getUnhideChannelIdeaUrl,
 } from "@loomarr/api/endpoints/discovery";
 import {
-  getApproveFillerPullUrl,
+  getBulkApproveFillerPullsUrl,
   getDismissFillerPullUrl,
   getListFillerPullsUrl,
 } from "@loomarr/api/endpoints/filler";
@@ -20,6 +20,7 @@ import {
 } from "@loomarr/api/endpoints/proposals";
 import { getListTitlesUrl } from "@loomarr/api/endpoints/titles";
 import type { ApproveOutputBody } from "@loomarr/api/models/approveOutputBody";
+import type { BulkApproveFillerPullOutputBody } from "@loomarr/api/models/bulkApproveFillerPullOutputBody";
 import type { BulkApproveOutputBody } from "@loomarr/api/models/bulkApproveOutputBody";
 import type { ErrorModel } from "@loomarr/api/models/errorModel";
 import type { ListChannelIdeasOutputBody } from "@loomarr/api/models/listChannelIdeasOutputBody";
@@ -36,7 +37,6 @@ import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { requestNeedsYou, requestStatus } from "./request-status/request-status";
 import type { RequestTab } from "./request-status/request-status.type";
 import type {
-  ApprovalResult,
   BulkDecision,
   BulkOutcome,
   DecisionResult,
@@ -56,6 +56,18 @@ const failure = (error: unknown, fallback: string): string => {
   const { detail, title } = toProblem(error);
   return title || detail || fallback;
 };
+
+// Both bulk endpoints answer `{approved, results:[{id, ok, error?}]}`; only the proposals' rows carry more.
+const bulkOutcome = ({
+  approved,
+  results,
+}: {
+  approved: number;
+  results: readonly { error?: string; id: string; ok: boolean }[];
+}): BulkOutcome => ({
+  approved,
+  results: results.map(({ error, id, ok }) => ({ ...(error ? { error } : {}), id, ok })),
+});
 
 const createRequestsPort = (request: typeof globalThis.fetch): RequestsPort => {
   // A refusal becomes the same typed ApiError the generated client throws, so `toProblem` words it.
@@ -86,28 +98,16 @@ const createRequestsPort = (request: typeof globalThis.fetch): RequestsPort => {
       );
       return { channelId };
     },
-    approveFillerPulls: async (pullIds) => {
-      // One at a time: approving is the commit point that starts downloads, so a refusal stops nothing else.
-      const results: ApprovalResult[] = [];
-      for (const id of pullIds) {
-        try {
-          await send(getApproveFillerPullUrl(id), "POST", {});
-          results.push({ id, ok: true });
-        } catch (error) {
-          results.push({ error: failure(error, "Couldn't approve that download."), id, ok: false });
-        }
-      }
-      return { approved: results.filter((result) => result.ok).length, results };
-    },
-    approveMany: async (proposalIds) => {
-      const out = await send<BulkApproveOutputBody>(getBulkApproveProposalsUrl(), "POST", {
-        ids: [...proposalIds],
-      });
-      return {
-        approved: out.approved,
-        results: out.results.map(({ error, id, ok }) => ({ ...(error ? { error } : {}), id, ok })),
-      };
-    },
+    approveFillerPulls: async (pullIds) =>
+      bulkOutcome(
+        await send<BulkApproveFillerPullOutputBody>(getBulkApproveFillerPullsUrl(), "POST", {
+          ids: [...pullIds],
+        }),
+      ),
+    approveMany: async (proposalIds) =>
+      bulkOutcome(
+        await send<BulkApproveOutputBody>(getBulkApproveProposalsUrl(), "POST", { ids: [...proposalIds] }),
+      ),
     deny: async (proposalId, reason) => {
       await send(getDenyProposalUrl(proposalId), "POST", reason ? { reason } : {});
     },

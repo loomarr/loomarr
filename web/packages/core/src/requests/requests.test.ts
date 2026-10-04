@@ -373,21 +373,23 @@ describe("requests port", () => {
     expect(calls[3]?.[1].body).toBe('{"reason":"Too broad"}');
   });
 
-  it("approves filler pulls one at a time and reports a refused pull without stopping the rest", async () => {
-    const request = vi.fn(async (url: RequestInfo | URL) =>
-      String(url).includes("/pull-2/")
-        ? respond({ title: "Already decided by another admin" }, 409)
-        : respond({ id: "ok" }),
+  it("approves filler pulls in one bulk call and reports a refused pull without stopping the rest", async () => {
+    const request = vi.fn(async () =>
+      respond({
+        approved: 2,
+        results: [
+          { id: "pull-1", ok: true },
+          { error: "Already decided by another admin", id: "pull-2", ok: false },
+          { id: "pull-3", ok: true },
+        ],
+      }),
     );
     const requests = createRequestsPort(request as never);
     const outcome = await requests.approveFillerPulls(["pull-1", "pull-2", "pull-3"]);
 
     const calls = request.mock.calls as unknown as [string, RequestInit][];
-    expect(calls.map(([url, init]) => `${init.method} ${url}`)).toEqual([
-      "POST /v1/filler/pulls/pull-1/approve",
-      "POST /v1/filler/pulls/pull-2/approve",
-      "POST /v1/filler/pulls/pull-3/approve",
-    ]);
+    expect(calls.map(([url, init]) => `${init.method} ${url}`)).toEqual(["POST /v1/filler/pulls/approve"]);
+    expect(calls[0]?.[1].body).toBe('{"ids":["pull-1","pull-2","pull-3"]}');
     expect(outcome).toEqual({
       approved: 2,
       results: [

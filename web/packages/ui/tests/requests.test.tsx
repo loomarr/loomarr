@@ -70,14 +70,38 @@ describe("requests list", () => {
     expect(markup).not.toContain('role="tablist"');
   });
 
-  it("shows the three counted tabs with the active one selected", () => {
+  it("shows an iOS segmented control of three counted segments with the active one selected", () => {
     const markup = list({});
     expect(markup).toContain('aria-label="Requests sections"');
     expect(markup.match(/role="tab"/g)).toHaveLength(3);
-    expect(markup).toContain("Needs you (1)");
-    expect(markup).toContain("In progress (3)");
-    expect(markup).toContain("Done (2)");
+    // The count is part of each segment's accessible label, not only its text.
+    expect(markup).toContain('aria-label="Needs you, 1"');
+    expect(markup).toContain('aria-label="In progress, 3"');
+    expect(markup).toContain('aria-label="Done, 2"');
     expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
+    expect(markup).toContain('aria-label="In progress, 3" role="tab" aria-selected="true"');
+    // Every segment is at least 44 pt tall.
+    expect(markup.match(/style="flex:1;min-height:44px"/g)).toHaveLength(3);
+  });
+
+  it("drops a count that is zero from a segment's text and label", () => {
+    const entries = requestsSnapshot().entries.filter((entry) => entry.journey.jobId === journeys.live.jobId);
+    const markup = list({ snapshot: requestsSnapshot({ entries }), tab: "done" });
+    expect(markup).toContain('aria-label="Done, 1"');
+    expect(markup).toContain('aria-label="In progress"');
+  });
+
+  it("gives a member two segments until one of their requests couldn't be built", () => {
+    const entries = requestsSnapshot().entries.filter(
+      (entry) => entry.journey.jobId !== journeys.failed.jobId,
+    );
+    const markup = list({ snapshot: requestsSnapshot({ entries }) });
+    expect(markup.match(/role="tab"/g)).toHaveLength(2);
+    expect(markup).not.toContain("Needs you");
+    // An admin always has the inbox, even when it is empty.
+    expect(
+      list({ snapshot: requestsSnapshot({ entries, role: "admin" }) }).match(/role="tab"/g),
+    ).toHaveLength(3);
   });
 
   it("lists in-progress requests with Web's status lines", () => {
@@ -125,7 +149,7 @@ describe("requests list", () => {
       expect(markup).not.toContain("Channel requests");
       expect(markup).not.toContain("Filler downloads");
       expect(markup).not.toContain(">Approve<");
-      expect(markup).toContain("Needs you (1)");
+      expect(markup).toContain('aria-label="Needs you, 1"');
     });
 
     it("keeps a member out of both groups even when the snapshot carries them", () => {
@@ -139,7 +163,7 @@ describe("requests list", () => {
       const at = (text: string) => markup.indexOf(text);
       expect(at("Channel requests")).toBeLessThan(at("Filler downloads"));
       expect(at("Filler downloads")).toBeLessThan(at("Couldn&#x27;t be built"));
-      expect(markup).toContain("Needs you (6)");
+      expect(markup).toContain('aria-label="Needs you, 6"');
       expect(markup).toContain("Requested by Grace Hopper");
       expect(markup.match(/>Approve</g)).toHaveLength(5);
     });
@@ -280,6 +304,30 @@ describe("review state", () => {
     expect(state.sheet).toEqual({ group: "filler", kind: "bulk" });
   });
 
+  // Both groups can be in Select at once, so one sheet has to keep naming a group that still has ticks.
+  it("hands the sheet to the other group when a group's last tick is cleared", () => {
+    const both = apply(
+      { group: "requests", id: "a", on: true, type: "toggle-selected" },
+      { group: "filler", id: "x", on: true, type: "toggle-selected" },
+    );
+    const state = reviewReducer(both, { group: "filler", id: "x", on: false, type: "toggle-selected" });
+    expect(state.selected).toEqual({ filler: [], requests: ["a"] });
+    expect(state.sheet).toEqual({ group: "requests", kind: "bulk" });
+  });
+
+  it("keeps the other group's sheet when a group's Select is cancelled", () => {
+    const both = apply(
+      { group: "requests", id: "a", on: true, type: "toggle-selected" },
+      { group: "filler", id: "x", on: true, type: "toggle-selected" },
+    );
+    expect(both.sheet).toEqual({ group: "filler", kind: "bulk" });
+    const requestsCancelled = reviewReducer(both, { group: "requests", type: "toggle-selecting" });
+    expect(requestsCancelled.sheet).toEqual({ group: "filler", kind: "bulk" });
+    const fillerCancelled = reviewReducer(both, { group: "filler", type: "toggle-selecting" });
+    expect(fillerCancelled.selected).toEqual({ filler: [], requests: ["a"] });
+    expect(fillerCancelled.sheet).toEqual({ group: "requests", kind: "bulk" });
+  });
+
   it("clears Select and the selection when a group's mode is toggled", () => {
     const state = apply(
       { group: "requests", type: "toggle-selecting" },
@@ -347,6 +395,16 @@ describe("review sheet", () => {
     expect(markup).toContain(">Approve 2<");
     expect(markup).toContain(">Cancel<");
     expect(markup).toContain('aria-label="Bulk approve"');
+  });
+
+  it("names the group the sheet is for and counts only that group's ticks when both have some", () => {
+    const selected = { filler: ["pull-stingers"], requests: ["approval-grace", "approval-mary"] };
+    const filler = sheet({ selected, sheet: { group: "filler", kind: "bulk" } });
+    expect(filler).toContain("1 selected in Filler downloads");
+    expect(filler).toContain(">Approve 1<");
+    const requests = sheet({ selected, sheet: { group: "requests", kind: "bulk" } });
+    expect(requests).toContain("2 selected in Channel requests");
+    expect(requests).toContain(">Approve 2<");
   });
 
   it("counts only the rows still waiting when a ticked row was decided elsewhere", () => {
@@ -596,7 +654,7 @@ describe("requests journey", () => {
     // "Request a channel" is the app bar's icon button on both phones, as the approved mock draws it.
     expect(markup).toContain('aria-label="Request a channel"');
     expect(markup).toContain(">+<");
-    expect(markup).toContain("In progress (3)");
+    expect(markup).toContain('aria-label="In progress, 3"');
   });
 
   it("docks the host's navigation under the screen", () => {
