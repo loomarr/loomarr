@@ -25,6 +25,7 @@ packageExtensionsChecksum: sha256-C84SJBhBYar2O/S8/cVpmVehLVf/GO+c2D5zdMwavxY=
 
 patchedDependencies:
   decode-uri-component@0.5.0: 1ea44b191e1b33fc82a1aa40f04d880e0d49e5f5a90243eefe86c88e9d8c0c99
+  expo-modules-jsi@58.0.0-canary-20260812-27f94d4: dfc0aff13218614a7146a85bac1e7d2b79153df22481fc88cc704086685c4390
   expo-video@58.0.0-canary-20260812-27f94d4: 36f31a53cb35407b9fc1bf9eccd59d06e985a58363349b4f0dc9818b242355e4
   image-size@1.2.1: 74202583b2ac8b82f8c7fc0c2288dd48b35c92480f77a8faf2d0306ac7660b3a
   react-native-tvos@0.86.2-0: afaab095bfa4adc1b01becc48d211daafeb2f07a5d6e07f8db1d0d581951a028
@@ -11272,14 +11273,14 @@ snapshots:
   expo-modules-core@58.0.0-canary-20260812-27f94d4(react-native-tvos@0.86.2-0)(react-native-worklets@0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3))(react@19.2.3):
     dependencies:
       '@expo/expo-modules-macros-plugin': 0.8.0
-      expo-modules-jsi: 58.0.0-canary-20260812-27f94d4(react-native-tvos@0.86.2-0)
+      expo-modules-jsi: 58.0.0-canary-20260812-27f94d4(patch_hash=dfc0aff13218614a7146a85bac1e7d2b79153df22481fc88cc704086685c4390)(react-native-tvos@0.86.2-0)
       invariant: 2.2.4
       react: 19.2.3
       react-native: react-native-tvos@0.86.2-0(patch_hash=afaab095bfa4adc1b01becc48d211daafeb2f07a5d6e07f8db1d0d581951a028)(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react-native-tvos@0.86.2-0)(react@19.2.3)
     optionalDependencies:
       react-native-worklets: 0.10.1(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(react-native-tvos@0.86.2-0)(react@19.2.3)
 
-  expo-modules-jsi@58.0.0-canary-20260812-27f94d4(react-native-tvos@0.86.2-0):
+  expo-modules-jsi@58.0.0-canary-20260812-27f94d4(patch_hash=dfc0aff13218614a7146a85bac1e7d2b79153df22481fc88cc704086685c4390)(react-native-tvos@0.86.2-0):
     dependencies:
       react-native: react-native-tvos@0.86.2-0(patch_hash=afaab095bfa4adc1b01becc48d211daafeb2f07a5d6e07f8db1d0d581951a028)(@babel/core@7.29.7)(@react-native/metro-config@0.86.2(@babel/core@7.29.7))(@types/react@19.2.18)(react-native-tvos@0.86.2-0)(react@19.2.3)
 
