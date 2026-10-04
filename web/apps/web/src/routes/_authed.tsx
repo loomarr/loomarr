@@ -1,12 +1,16 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
+import * as channelsApi from "@loomarr/api/endpoints/channels";
+import * as dashboardApi from "@loomarr/api/endpoints/dashboard";
 import * as systemApi from "@loomarr/api/endpoints/system";
 import { ApiError } from "@loomarr/api/mutator";
+import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { meQueryOptions } from "@/auth/me-query";
 import { needsBootstrap } from "@/auth/setup-state-query";
 import { useAuth } from "@/auth/use-auth";
+import { watchChannelId } from "@/channels/watch-channel-id";
 import { AppShell } from "@/components/loomarr/shell/app-shell";
 import { RestartOverlay } from "@/components/loomarr/shell/restart-overlay";
 import { RestartWatchProvider, useRestartWatchContext } from "@/dashboard/restart-watch-provider";
@@ -43,6 +47,15 @@ const AuthedFrame = () => {
   // The Requests nav badge: what is waiting on this viewer (approvals for an admin, failed
   // requests for anyone) — the same number as the Needs you tab.
   const needsYouCount = useNeedsYouCount();
+  // Watch's target (#1817 item 3, #1659 Shell, decision X2), shared by the desktop rail and
+  // PhoneBottomBar — one fetch, one selector, passed down as a single prop so neither shell
+  // derives its own fallback chain.
+  const channels = channelsApi.useListChannels({ query: { staleTime: 30_000 } });
+  const channelList = unwrap(channels.data)?.channels ?? [];
+  const viewing = dashboardApi.useHouseholdViewing({
+    query: { enabled: channelList.length > 0, staleTime: 30_000 },
+  });
+  const watchId = watchChannelId(channelList, unwrap(viewing.data)?.continueWatching);
   // One shell-lifetime query supplies every authenticated route. About uses the same generated
   // query key, so opening it reads this cached server truth rather than inventing a second source.
   // Failure is deliberately quiet: version visibility must never hold the application shell.
@@ -76,6 +89,7 @@ const AuthedFrame = () => {
         badges={{ "/requests": needsYouCount }}
         onOpenCommand={() => setCommandOpen(true)}
         onLogout={() => logout.mutate()}
+        watchChannelId={watchId}
       >
         <Outlet />
       </AppShell>

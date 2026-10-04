@@ -338,7 +338,7 @@
       "legacyUi": 2
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 199,
+      "tailwindClasses": 155,
       "legacyUi": 1
     },
     "src/components/loomarr/shell/brand-lockup/brand-lockup.tsx": {
