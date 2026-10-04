@@ -9,11 +9,14 @@ import type {
   GuideFocusTarget,
   GuideLogoRenderer,
 } from "../guide.type";
+import type { GuideCompactProps } from "../guide-compact";
 
 interface GuideJourneyProps {
   channelWindow?: (layout: GuideLayout, selection: GuideSelection) => GuideChannelWindow;
   controller: GuideController;
   density?: Density;
+  /** On a phone (touch), how the selected programme docks: GuideCompact's sheet or strip. */
+  dock?: GuideCompactProps["dock"];
   focusRegistry?: FocusTargetRegistry<GuideFocusTarget>;
   /** The person's favourite and recent channels (#1666); without them those two filters stay off. */
   myChannels?: MyChannels;

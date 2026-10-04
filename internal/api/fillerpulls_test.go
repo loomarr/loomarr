@@ -3,6 +3,8 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"testing"
@@ -419,5 +421,173 @@ func TestApproveFillerPull_ConcurrentDismissalWins(t *testing.T) {
 	runs, err := st.ListAcquisitionRuns(t.Context(), 10, time.Now().UTC())
 	if err != nil || len(runs) != 0 {
 		t.Fatalf("dismissed pull has runs: %+v (%v)", runs, err)
+	}
+}
+
+// --- bulk approve (Refs #1659) ---
+
+type bulkApproveFillerPullsBody struct {
+	Approved int `json:"approved"`
+	Results  []struct {
+		ID    string `json:"id"`
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	} `json:"results"`
+}
+
+func decodeBulkApproveFillerPulls(t *testing.T, res *http.Response) bulkApproveFillerPullsBody {
+	t.Helper()
+	var b bulkApproveFillerPullsBody
+	if err := json.NewDecoder(res.Body).Decode(&b); err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestBulkApproveFillerPulls_AllSucceed(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	p1 := seedPull(t, st, "pull-bulk-1", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+	p2 := seedPull(t, st, "pull-bulk-2", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve",
+		`{"ids":["`+p1.ID+`","`+p2.ID+`"]}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		t.Fatalf("status = %d (%s), want 200", res.StatusCode, body)
+	}
+	out := decodeBulkApproveFillerPulls(t, res)
+	if out.Approved != 2 {
+		t.Errorf("approved = %d, want 2 (results: %+v)", out.Approved, out.Results)
+	}
+	for _, r := range out.Results {
+		if !r.OK {
+			t.Errorf("%s did not approve: %q", r.ID, r.Error)
+		}
+	}
+	if len(ff.ingested) != 2 {
+		t.Errorf("ingested %v, want 2 downloads — each id must reuse the single-approve path", ff.ingested)
+	}
+	for _, id := range []string{p1.ID, p2.ID} {
+		p, err := st.GetPull(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.Status != filler.PullApproved {
+			t.Errorf("%s status = %q, want approved", id, p.Status)
+		}
+	}
+}
+
+// One already-decided id must not abort the rest, but the caller still has to learn which ids
+// did not go through — mirrors TestBulkApprove_PartialFailureReportsPerID.
+func TestBulkApproveFillerPulls_PartialFailureReportsPerID(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	p1 := seedPull(t, st, "pull-bulk-partial-1", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+	p2 := seedPull(t, st, "pull-bulk-partial-2", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+	// p1 is already decided before the bulk call.
+	if res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+p1.ID+"/approve", `{}`, adminToken); res.StatusCode != http.StatusOK {
+		t.Fatalf("seed approve: %d", res.StatusCode)
+	}
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve",
+		`{"ids":["`+p1.ID+`","`+p2.ID+`"]}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("bulk with partial failures = %d, want 200 (failures are data, not a request error)", res.StatusCode)
+	}
+	out := decodeBulkApproveFillerPulls(t, res)
+	if out.Approved != 1 {
+		t.Errorf("approved = %d, want 1 (results: %+v)", out.Approved, out.Results)
+	}
+	byID := map[string]bool{}
+	for _, r := range out.Results {
+		byID[r.ID] = r.OK
+		if !r.OK && r.Error == "" {
+			t.Errorf("%s failed with no reason", r.ID)
+		}
+	}
+	if byID[p1.ID] || !byID[p2.ID] {
+		t.Errorf("results = %+v; want %s failed, %s approved", out.Results, p1.ID, p2.ID)
+	}
+	if len(ff.ingested) != 2 {
+		t.Errorf("ingested %v, want 2 (one from the seed approve of %s, one from the bulk approve of %s) — the already-decided pull must not re-download a second time", ff.ingested, p1.ID, p2.ID)
+	}
+}
+
+func TestBulkApproveFillerPulls_UnknownID(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	p1 := seedPull(t, st, "pull-bulk-unknown", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve",
+		`{"ids":["`+p1.ID+`","does-not-exist"]}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	out := decodeBulkApproveFillerPulls(t, res)
+	if out.Approved != 1 {
+		t.Errorf("approved = %d, want 1 (results: %+v)", out.Approved, out.Results)
+	}
+	byID := map[string]bool{}
+	errs := map[string]string{}
+	for _, r := range out.Results {
+		byID[r.ID] = r.OK
+		errs[r.ID] = r.Error
+	}
+	if !byID[p1.ID] {
+		t.Errorf("results = %+v; want %s approved", out.Results, p1.ID)
+	}
+	if byID["does-not-exist"] || errs["does-not-exist"] == "" {
+		t.Errorf("results = %+v; want does-not-exist to fail with a reason", out.Results)
+	}
+}
+
+// §19: the gate is admin-only, and bulk is still the gate. A member must approve NOTHING.
+func TestBulkApproveFillerPulls_MemberIsRejected(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	created := seedPull(t, st, "pull-bulk-member", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+
+	for _, tok := range []string{"", memberToken} {
+		res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve", `{"ids":["`+created.ID+`"]}`, tok)
+		if res.StatusCode != http.StatusUnauthorized && res.StatusCode != http.StatusForbidden {
+			t.Errorf("bulk approve with token %q = %d, want 401/403", tok, res.StatusCode)
+		}
+		_ = res.Body.Close()
+	}
+	if len(ff.ingested) != 0 {
+		t.Errorf("a rejected bulk approve downloaded %v", ff.ingested)
+	}
+}
+
+func TestBulkApproveFillerPulls_EmptyIDsRejected(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve", `{"ids":[]}`, adminToken)
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode < 400 || res.StatusCode >= 500 {
+		t.Errorf("empty ids = %d, want a 4xx client error", res.StatusCode)
+	}
+}
+
+// Consistent with bulk-approve-proposals in spirit (same per-id gate), but capped: a group of
+// filler downloads can exceed the 24-25 used for interactive lookups, so this bounds request
+// size without forcing the client to chunk (Refs #1659).
+func TestBulkApproveFillerPulls_BatchSizeCap(t *testing.T) {
+	srv, _, _ := newFillerServer(t)
+	ids := make([]string, 0, 101)
+	for i := 0; i < 101; i++ {
+		ids = append(ids, fmt.Sprintf("pull-%d", i))
+	}
+	body, err := json.Marshal(struct {
+		IDs []string `json:"ids"`
+	}{IDs: ids})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve", string(body), adminToken)
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode < 400 || res.StatusCode >= 500 {
+		t.Errorf("101 ids = %d, want a 4xx client error — the cap must reject before any approval runs", res.StatusCode)
 	}
 }

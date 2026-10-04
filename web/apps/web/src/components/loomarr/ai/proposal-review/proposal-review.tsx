@@ -368,6 +368,8 @@ const ProposalReview = ({
             <h3 className="font-medium text-foreground">Why these titles</h3>
             {status === "partially-edited" ? (
               <p>You changed the title list. Check any titles you added against your brief.</p>
+            ) : proposal.manual ? (
+              <p>You picked every title in this channel yourself — there's nothing to check.</p>
             ) : proposal.scores?.version !== 1 ? (
               <p>Loomarr couldn't check this saved draft. Review each title before creating the channel.</p>
             ) : (

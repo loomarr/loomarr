@@ -1,7 +1,13 @@
-import type { VariantProps } from "class-variance-authority";
 import type { HTMLAttributes } from "react";
-import type { badgeVariants } from "./badge";
 
-type BadgeProps = HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>;
+type BadgeVariant = "caution" | "lock" | "neutral" | "onair" | "signal" | "suggest" | "tune";
 
-export type { BadgeProps };
+type BadgeProps = HTMLAttributes<HTMLSpanElement> & {
+  variant?: BadgeVariant;
+  // Overrides the accent variants' default 15% composited tint. Callers that render a badge over
+  // a non-standard background (e.g. invitation-join's card-on-card admin badge) can lower this to
+  // keep the AA-safe text stop passing contrast at that specific call site.
+  tintOpacity?: number;
+};
+
+export type { BadgeProps, BadgeVariant };

@@ -8,6 +8,10 @@ import { type Density, semanticSpace, semanticTargets } from "../tokens";
 
 type AdaptiveDirection = "column" | "row";
 
+// The window's width in points. A component outside the design system reads it here, not from
+// react-native, so Storybook's docgen never has to parse the native package's Flow source.
+const useWindowWidth = () => useWindowDimensions().width;
+
 const adaptiveBreakpoints: Record<Density, number> = {
   pointer: 900,
   touch: 720,
@@ -188,4 +192,11 @@ const Disclosure = ({
 };
 
 export type { AdaptiveDirection, AdaptiveSplitProps, DisclosureProps, ScrollFrameProps };
-export { AdaptiveSplit, adaptiveBreakpoints, Disclosure, resolveAdaptiveDirection, ScrollFrame };
+export {
+  AdaptiveSplit,
+  adaptiveBreakpoints,
+  Disclosure,
+  resolveAdaptiveDirection,
+  ScrollFrame,
+  useWindowWidth,
+};

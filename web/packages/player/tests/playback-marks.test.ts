@@ -1,6 +1,7 @@
 import type { VideoPlayer } from "expo-video";
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("expo-crypto", () => ({ randomUUID: vi.fn() }));
 vi.mock("expo-video", () => ({
   createVideoPlayer: vi.fn(),
   VideoView: vi.fn(),
