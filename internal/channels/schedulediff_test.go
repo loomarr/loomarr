@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/channels"
+	"github.com/loomarr/loomarr/internal/playout"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
@@ -233,6 +234,101 @@ func TestScheduleDiff_IsDeterministicAndReadOnly(t *testing.T) {
 	}
 	if tun.Creates != 0 || tun.Pushes != 0 {
 		t.Errorf("the diff touched Tunarr: creates=%d pushes=%d", tun.Creates, tun.Pushes)
+	}
+}
+
+// Inside the carry-over tail — the window has turned but the programme crossing the boundary is
+// still on — the forecast must air what the encoder airs: the ACCEPTED cycle from its anchor
+// (playout.WindowTurn), and the next window only once that programme ends.
+func TestScheduleDiff_ForecastHonoursTheCarryOverTail(t *testing.T) {
+	ctx := context.Background()
+	st := testkit.MigratedSQLiteStore(t)
+	entries := []schedule.LineupEntry{
+		film("movie:tmdb:1", "Alpha", "PG"), film("movie:tmdb:2", "Bravo", "PG"),
+		film("movie:tmdb:3", "Charlie", "PG"), film("movie:tmdb:4", "Delta", "PG"), film("movie:tmdb:5", "Echo", "PG"),
+	}
+	avail := mapAvail{}
+	for _, e := range entries {
+		avail[e.Key] = "lib-" + string(e.Key)
+	}
+	clock := sundayNoon
+	e := channels.New(st, nil, avail, nil, channels.Config{
+		ResolveDefaultWindow:         func() time.Duration { return 24 * time.Hour },
+		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
+	}, func() time.Time { return clock }, testkit.Logger())
+	ch := store.Channel{Lineup: entries}
+	ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "c1", "Movies", 5, schedule.Sequential, schedule.StatusBuilding
+	if _, err := st.SaveChannel(ctx, ch); err != nil {
+		t.Fatal(err)
+	}
+
+	window, zone := e.RollingWindow(ch.Policy, sundayNoon)
+	boundary := schedule.NextWindowStart(sundayNoon, window, zone)
+	clock = boundary.Add(-30 * time.Minute) // go live 30 minutes before the window turns
+	if err := e.Reconcile(ctx, "c1"); err != nil {
+		t.Fatal(err)
+	}
+	accepted := savedChannel(t, st)
+	if !accepted.PlayoutAnchor.Equal(clock) {
+		t.Fatalf("anchor = %s, want the reconcile instant %s", accepted.PlayoutAnchor, clock)
+	}
+
+	from := boundary.Add(20 * time.Minute)
+	clock = from
+	onAir := playout.AiringAt(accepted.Desired, accepted.PlayoutAnchor, from)
+	got, err := e.ForecastSaved(ctx, "c1", from, from.Add(3*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) < 2 {
+		t.Fatalf("forecast = %d blocks, want the tail and what follows", len(got))
+	}
+	if got[0].Title != onAir.Title || !got[0].Start.Equal(accepted.PlayoutAnchor) {
+		t.Errorf("at %s the forecast airs %q from %s; the encoder airs %q from the anchor %s",
+			from.Format(time.Kitchen), got[0].Title, got[0].Start.Format(time.Kitchen), onAir.Title, accepted.PlayoutAnchor.Format(time.Kitchen))
+	}
+	if want := accepted.PlayoutAnchor.Add(time.Hour); !got[1].Start.Equal(want) {
+		t.Errorf("next window starts at %s, want where the crossing programme ends (%s)", got[1].Start.Format(time.Kitchen), want.Format(time.Kitchen))
+	}
+
+	// And an identical draft is still silent from inside the tail.
+	diff, err := e.ScheduleDiffDraft(ctx, "c1", from, 48*time.Hour, slices.Clone(accepted.Lineup), &accepted.Policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diff.Changes) != 0 {
+		t.Errorf("identical draft from inside the carry-over tail reported %d changes", len(diff.Changes))
+	}
+}
+
+// Rules match on the instant's own hour, so the caller's UTC offset must not decide which rule
+// is active: the same instant written with another offset gives the same change list.
+func TestScheduleDiff_CallerOffsetDoesNotMoveRuleHours(t *testing.T) {
+	e, st, _ := diffEngine(t,
+		film("movie:tmdb:1", "Alpha", "PG", "Comedy"), film("movie:tmdb:2", "Bravo", "PG", "Comedy"),
+		film("movie:tmdb:5", "Fright", "PG", "Horror"))
+	draft := savedChannel(t, st).Policy
+	draft.Rules = []schedule.SchedulingRule{{
+		ID: "sun", Priority: 10, When: schedule.WhenPredicate{Days: []time.Weekday{time.Sunday}, HourFrom: 18, HourTo: 20},
+		What: &schedule.ScopePolicy{Genres: schedule.GenreFilter{Include: []string{"Horror"}}},
+	}}
+
+	utc, err := e.ScheduleDiffDraft(context.Background(), "c1", sundayNoon, 24*time.Hour, nil, &draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kolkata := sundayNoon.In(time.FixedZone("IST", 5*3600+1800))
+	ist, err := e.ScheduleDiffDraft(context.Background(), "c1", kolkata, 24*time.Hour, nil, &draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(utc.Changes) == 0 || len(ist.Changes) != len(utc.Changes) {
+		t.Fatalf("changes: UTC %d, +05:30 %d — want the same, non-empty", len(utc.Changes), len(ist.Changes))
+	}
+	for i := range utc.Changes {
+		if !utc.Changes[i].Start.Equal(ist.Changes[i].Start) {
+			t.Errorf("change %d at %s (UTC) vs %s (+05:30)", i, utc.Changes[i].Start, ist.Changes[i].Start)
+		}
 	}
 }
 

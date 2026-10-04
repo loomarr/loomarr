@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"golang.org/x/sync/errgroup"
 )
 
 // "Which upcoming slots does this edit change?" — the Programming tab's change list (#1877).
@@ -99,6 +100,9 @@ func (e *Engine) ScheduleDiffDraft(
 	if from.IsZero() {
 		from = e.now()
 	}
+	// Rules match on the instant's own hour and weekday, and reconcile arranges at e.now() — so
+	// evaluate in the engine clock's location, not whatever offset a caller's RFC3339 carried.
+	from = from.In(e.now().Location())
 	if horizon <= 0 {
 		horizon, _ = e.RollingWindow(saved.Policy, from)
 		if horizon <= 0 {
@@ -107,12 +111,20 @@ func (e *Engine) ScheduleDiffDraft(
 	}
 	to := from.Add(min(horizon, MaxScheduleDiffHorizon))
 
-	before, beforeEnd, err := e.forecast(ctx, saved, from, to)
-	if err != nil {
-		return ScheduleDiff{}, err
-	}
-	after, afterEnd, err := e.forecast(ctx, withDraft(saved, draftLineup, draftPolicy), from, to)
-	if err != nil {
+	// The sides are independent CPU-bound walks over read-only inputs, so they run side by side:
+	// the request costs one forecast of latency, not two.
+	var before, after []ForecastAiring
+	var beforeEnd, afterEnd time.Time
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() (err error) {
+		before, beforeEnd, err = e.forecast(gctx, saved, from, to)
+		return err
+	})
+	g.Go(func() (err error) {
+		after, afterEnd, err = e.forecast(gctx, withDraft(saved, draftLineup, draftPolicy), from, to)
+		return err
+	})
+	if err := g.Wait(); err != nil {
 		return ScheduleDiff{}, err
 	}
 	for _, end := range []time.Time{beforeEnd, afterEnd} {
@@ -150,7 +162,10 @@ func withDraft(ch store.Channel, draftLineup []schedule.LineupEntry, draftPolicy
 // The window turns follow the guide's forecast (playoutResolver.segmentedBroadcasts): with
 // carry-over the next window starts where the programme crossing the boundary ends; without it
 // (Tunarr) the window is cut on the boundary and walked from the fixed anchor. A rule boundary
-// keeps the epoch and cuts, which is what reconcile does when it re-arranges mid-window.
+// keeps the epoch and cuts, which is what reconcile does when it re-arranges mid-window. One
+// deliberate difference: while the accepted window is still on air the guide walks the persisted
+// cycle, but here that window is re-arranged under this side's policy (WindowOpened), because a
+// save re-arranges it too — reading the persisted cycle would hide the draft's effect on it.
 //
 // Each arrangement is PreviewPlannedChannel — the exact computation the single-point preview
 // runs — memoised on what the clock can change about it (ClockSignature + window index), so a
@@ -166,13 +181,25 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 		index  int64
 	}
 	memo := map[memoKey]CycleResult{}
-	arrange := func(at time.Time) (CycleResult, time.Duration, *time.Location, error) {
+	// arrange is the cycle the channel airs from `at`. With carry-over it is arranged for the
+	// window the epoch opened (WindowOpened), exactly as reconcile arranges the accepted window
+	// while its carried-over programme is still on air; without it, for the window `at` is in.
+	arrange := func(at, epoch time.Time) (CycleResult, time.Duration, *time.Location, error) {
 		window, zone := e.RollingWindow(ch.Policy, at)
-		key := memoKey{schedule.ClockSignature(ch.Policy, at), window, schedule.WindowIndex(at, window, zone)}
+		arranged := ch
+		arranged.WindowOpened = time.Time{}
+		if carries && window > 0 {
+			arranged.WindowOpened = schedule.WindowStart(epoch, window, zone)
+		}
+		indexAt := at
+		if !arranged.WindowOpened.IsZero() {
+			indexAt = arranged.WindowOpened
+		}
+		key := memoKey{schedule.ClockSignature(ch.Policy, at), window, schedule.WindowIndex(indexAt, window, zone)}
 		if r, ok := memo[key]; ok {
 			return r, window, zone, nil
 		}
-		r, err := e.PreviewPlannedChannel(ctx, ch, at, e.avail)
+		r, err := e.PreviewPlannedChannel(ctx, arranged, at, e.avail)
 		if err != nil {
 			return CycleResult{}, 0, nil, err
 		}
@@ -180,13 +207,20 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 		return r, window, zone, nil
 	}
 
+	// The first epoch is the one the channel airs from at `from`. With carry-over that is
+	// playout.WindowTurn over the ACCEPTED cycle — the rule reconcile and the encoder apply: the
+	// accepted window stays on air until the programme crossing its boundary ends. A draft does
+	// not change history, so both sides take the same accepted cycle and anchor here.
 	window, zone := e.RollingWindow(ch.Policy, from)
 	epoch := ch.PlayoutAnchor
-	if opened := schedule.WindowStart(from, window, zone); window > 0 && (epoch.IsZero() || (carries && epoch.Before(opened))) {
-		// A carry-over anchor older than the window on air means that window turned without a
-		// reconcile committing it; it airs from its own opening (playout.WindowTurn's catch-up).
-		epoch = opened
-	} else if epoch.IsZero() {
+	switch {
+	case window > 0 && carries && !epoch.IsZero():
+		_, epoch, _ = playout.WindowTurn(ch.Desired, ch.PlayoutAnchor, window, zone, from)
+	case window > 0 && epoch.IsZero():
+		// Never live, so never anchored: forecast from the opening of the window on air, which
+		// is where reconcile's first anchor would land (later than the guide, which shows nothing).
+		epoch = schedule.WindowStart(from, window, zone)
+	case epoch.IsZero():
 		epoch = from
 	}
 
@@ -196,7 +230,7 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 		if n == maxForecastSegments {
 			return out, cursor, nil
 		}
-		r, window, zone, err := arrange(cursor)
+		r, window, zone, err := arrange(cursor, epoch)
 		if err != nil {
 			return nil, time.Time{}, err
 		}
@@ -206,8 +240,14 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 			turn := schedule.NextWindowStart(cursor, window, zone)
 			if carries {
 				turn = playout.CarryOverEnd(r.Slots, epoch, schedule.NextWindowStart(epoch, window, zone))
+				if !turn.After(cursor) {
+					// This arrangement's crossing programme already ended (a rule re-arranged the
+					// window): the window turns here.
+					epoch = cursor
+					continue
+				}
 			}
-			if turn.After(cursor) && turn.Before(end) {
+			if turn.Before(end) {
 				end, turns = turn, true
 			}
 		}
@@ -237,7 +277,9 @@ func (e *Engine) forecast(ctx context.Context, ch store.Channel, from, to time.T
 		if turns && carries {
 			epoch = end
 		}
-		cursor = end
+		// Window turns come back in the window zone; rules read the instant's own hour, so keep
+		// every probe in the one location the forecast started in.
+		cursor = end.In(from.Location())
 	}
 	return out, to, nil
 }
