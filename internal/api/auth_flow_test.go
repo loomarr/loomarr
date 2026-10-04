@@ -169,7 +169,6 @@ func TestMemberForbiddenOnAdminRoutes(t *testing.T) {
 
 	cases := []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/titles", `{"mediaType":"movie","tmdbId":1}`},
-		{http.MethodDelete, "/v1/titles/movie:tmdb:1", ""},
 		{http.MethodGet, "/v1/users", ""},
 		{http.MethodPatch, "/v1/users/u-boss", `{"role":"member"}`},
 		{http.MethodPut, "/v1/users/u-boss/contact-address", `{"email":"boss@example.com"}`},

@@ -64,6 +64,17 @@ classify() {
       ;;
   esac
 
+  # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
+  # whole web/ workspace, and web/knip.ts makes every web/scripts/*.{mjs,cjs} a knip entry. Those
+  # entries are also named by the Apple and Android script rules below, which select native gates
+  # but neither web nor clients, so a change there could alter knip's result unchecked (#1838).
+  # Like the guard above, this adds the gate without claiming the path.
+  case "$path" in
+    web/scripts/*.mjs|web/scripts/*.cjs)
+      select_gate clients
+      ;;
+  esac
+
   # Product Go. Release images compile and embed these source families.
   if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/releaseverify/* ]]; then
     known=true
@@ -206,7 +217,9 @@ classify() {
       select_gate android
       ;;
     web/knip.ts)
-      # knip runs inside `make fe` (the web gate) and nowhere else.
+      # knip runs inside `make fe` (the web gate) and `make clients` (the clients gate), so every
+      # path that selects either one is checked by it. Expo app and native-package diffs select
+      # clients only (#1838): keep knip in `make clients` or they merge unchecked.
       known=true
       select_gate web
       ;;

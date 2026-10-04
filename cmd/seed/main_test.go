@@ -3,10 +3,43 @@ package main
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 )
+
+// #1534: a seeded backend's Proposal Job must be listable through the real
+// workflow — the same path GET /v1/proposal-jobs uses — not just readable as a
+// raw store.Job. Seed used to write store.Job{Kind:"suggest",Status:"done"}
+// without ever creating its versioned proposal_job_attempts row, so the
+// workflow's own invariant check (a done Job must have a succeeded Attempt)
+// rejected it with ErrInvalidState and the endpoint 500'd.
+func TestSeedProposalJobsAreListableThroughTheProposalWorkflow(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, "sqlite://"+t.TempDir()+"/seed.db", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	if err := seedTitlesAndChannel(ctx, st, "admin-test"); err != nil {
+		t.Fatal(err)
+	}
+
+	workflow := proposalworkflow.New(st, func() string { return "unused" }, time.Now)
+	journeys, err := workflow.List(ctx, proposalworkflow.Viewer{UserID: "admin-test", Admin: true}, proposalworkflow.ListOptions{})
+	if err != nil {
+		t.Fatalf("List seeded Proposal Jobs through the workflow: %v", err)
+	}
+	if len(journeys) != 1 {
+		t.Fatalf("Journeys = %d, want 1", len(journeys))
+	}
+	if journeys[0].Milestone != proposalworkflow.MilestoneBuilding {
+		t.Fatalf("Milestone = %q, want %q", journeys[0].Milestone, proposalworkflow.MilestoneBuilding)
+	}
+}
 
 func TestSeedClipsCreatesDistinctTaxonomyReadyCatalog(t *testing.T) {
 	ctx := context.Background()

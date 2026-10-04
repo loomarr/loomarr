@@ -1,4 +1,4 @@
-package programmer_test
+package tunarr_test
 
 import (
 	"context"
@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // newServer spins a mock Tunarr with a per-path handler map and records the last
@@ -38,8 +39,8 @@ func TestEnsureChannel_Create_ReadsServerAssignedID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg-uuid")
-	id, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{
+	c := tunarr.New(srv.URL, "cfg-uuid")
+	id, err := c.EnsureChannel(context.Background(), tunarr.ChannelSpec{
 		Number: 42, Name: "Cartoons", Group: "Kids",
 	})
 	if err != nil {
@@ -109,9 +110,9 @@ func TestEnsureChannel_Create_AutoResolvesTranscodeConfig(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "") // EMPTY config id → resolve
-	for i := 0; i < 2; i++ {         // twice, to prove the resolve is cached
-		if _, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: i + 1, Name: "Ch"}); err != nil {
+	c := tunarr.New(srv.URL, "") // EMPTY config id → resolve
+	for i := 0; i < 2; i++ {     // twice, to prove the resolve is cached
+		if _, err := c.EnsureChannel(context.Background(), tunarr.ChannelSpec{Number: i + 1, Name: "Ch"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -124,18 +125,18 @@ func TestEnsureChannel_Create_AutoResolvesTranscodeConfig(t *testing.T) {
 }
 
 func TestEnsureChannel_LiveURLResolvesTranscodeConfigPerInstance(t *testing.T) {
-	serverA := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{TranscodeConfigID: "cfg-a"})
-	serverB := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{TranscodeConfigID: "cfg-b"})
+	serverA := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{TranscodeConfigID: "cfg-a"})
+	serverB := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{TranscodeConfigID: "cfg-b"})
 
 	baseURL := serverA.URL
-	client := programmer.NewDynamic(func() programmer.Config {
-		return programmer.Config{BaseURL: baseURL}
+	client := tunarr.NewDynamic(func() tunarr.Config {
+		return tunarr.Config{BaseURL: baseURL}
 	})
-	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "A"}); err != nil {
+	if _, err := client.EnsureChannel(context.Background(), tunarr.ChannelSpec{Number: 1, Name: "A"}); err != nil {
 		t.Fatal(err)
 	}
 	baseURL = serverB.URL
-	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 2, Name: "B"}); err != nil {
+	if _, err := client.EnsureChannel(context.Background(), tunarr.ChannelSpec{Number: 2, Name: "B"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := serverA.CreatedTranscodeIDs(); len(got) != 1 || got[0] != "cfg-a" {
@@ -147,15 +148,15 @@ func TestEnsureChannel_LiveURLResolvesTranscodeConfigPerInstance(t *testing.T) {
 }
 
 func TestEnsureChannel_UsesLiveExplicitTranscodeConfig(t *testing.T) {
-	srv := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{})
+	srv := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{})
 
-	cfg := programmer.Config{BaseURL: srv.URL, TranscodeConfigID: "cfg-a"}
-	client := programmer.NewDynamic(func() programmer.Config { return cfg })
-	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "A"}); err != nil {
+	cfg := tunarr.Config{BaseURL: srv.URL, TranscodeConfigID: "cfg-a"}
+	client := tunarr.NewDynamic(func() tunarr.Config { return cfg })
+	if _, err := client.EnsureChannel(context.Background(), tunarr.ChannelSpec{Number: 1, Name: "A"}); err != nil {
 		t.Fatal(err)
 	}
 	cfg.TranscodeConfigID = "cfg-b"
-	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 2, Name: "B"}); err != nil {
+	if _, err := client.EnsureChannel(context.Background(), tunarr.ChannelSpec{Number: 2, Name: "B"}); err != nil {
 		t.Fatal(err)
 	}
 	sent := srv.CreatedTranscodeIDs()
@@ -168,18 +169,18 @@ func TestEnsureChannel_UsesLiveExplicitTranscodeConfig(t *testing.T) {
 }
 
 func TestEnsureChannel_SnapshotsLiveConfigOnceForWholeOperation(t *testing.T) {
-	var current atomic.Pointer[programmer.Config]
-	serverB := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{TranscodeConfigID: "cfg-b"})
-	serverA := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{
+	var current atomic.Pointer[tunarr.Config]
+	serverB := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{TranscodeConfigID: "cfg-b"})
+	serverA := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{
 		TranscodeConfigID: "cfg-a",
 		BeforeTranscodeConfigResponse: func() {
-			current.Store(&programmer.Config{BaseURL: serverB.URL, TranscodeConfigID: "cfg-b"})
+			current.Store(&tunarr.Config{BaseURL: serverB.URL, TranscodeConfigID: "cfg-b"})
 		},
 	})
-	current.Store(&programmer.Config{BaseURL: serverA.URL})
+	current.Store(&tunarr.Config{BaseURL: serverA.URL})
 
-	client := programmer.NewDynamic(func() programmer.Config { return *current.Load() })
-	if _, err := client.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "A"}); err != nil {
+	client := tunarr.NewDynamic(func() tunarr.Config { return *current.Load() })
+	if _, err := client.EnsureChannel(context.Background(), tunarr.ChannelSpec{Number: 1, Name: "A"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := serverB.RequestCount(); got != 0 {
@@ -199,7 +200,7 @@ func TestTranscodeConfigID_ErrorsWhenNoneExist(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "")
+	c := tunarr.New(srv.URL, "")
 	if _, err := c.TranscodeConfigID(context.Background()); err == nil {
 		t.Error("expected an error when the instance reports no transcode configs")
 	}
@@ -216,8 +217,8 @@ func TestEnsureChannel_SurfacesErrorBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg-uuid")
-	_, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "X"})
+	c := tunarr.New(srv.URL, "cfg-uuid")
+	_, err := c.EnsureChannel(context.Background(), tunarr.ChannelSpec{Number: 1, Name: "X"})
 	if err == nil {
 		t.Fatal("expected an error on a 400 create")
 	}
@@ -237,8 +238,8 @@ func TestEnsureChannel_Update_PutsToID(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg")
-	id, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{
+	c := tunarr.New(srv.URL, "cfg")
+	id, err := c.EnsureChannel(context.Background(), tunarr.ChannelSpec{
 		TunarrID: "existing-id", Number: 42, Name: "Renamed",
 	})
 	if err != nil {
@@ -289,8 +290,8 @@ func TestEnsureChannel_StartTimeAnchor(t *testing.T) {
 		defer srv.Close()
 
 		before := time.Now().UnixMilli()
-		c := programmer.New(srv.URL, "cfg")
-		if _, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{Number: 1, Name: "New"}); err != nil {
+		c := tunarr.New(srv.URL, "cfg")
+		if _, err := c.EnsureChannel(context.Background(), tunarr.ChannelSpec{Number: 1, Name: "New"}); err != nil {
 			t.Fatal(err)
 		}
 		st := startTimeOf(got.body, true)
@@ -309,8 +310,8 @@ func TestEnsureChannel_StartTimeAnchor(t *testing.T) {
 		defer srv.Close()
 
 		const existing int64 = 1_700_000_000_000 // the anchor Tunarr already has
-		c := programmer.New(srv.URL, "cfg")
-		if _, err := c.EnsureChannel(context.Background(), programmer.ChannelSpec{
+		c := tunarr.New(srv.URL, "cfg")
+		if _, err := c.EnsureChannel(context.Background(), tunarr.ChannelSpec{
 			TunarrID: "id", Number: 1, Name: "X", StartTime: existing,
 		}); err != nil {
 			t.Fatal(err)
@@ -327,7 +328,7 @@ func TestGetChannel_404IsNotFound(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	_, ok, err := c.GetChannel(context.Background(), "gone")
 	if err != nil {
 		t.Fatalf("404 should not be an error: %v", err)
@@ -344,7 +345,7 @@ func TestGetChannel_ParsesFixture(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	ch, ok, err := c.GetChannel(context.Background(), "2540b613-10b1-4d78-ab35-ee48b313e359")
 	if err != nil || !ok {
 		t.Fatalf("GetChannel = ok=%v err=%v", ok, err)
@@ -426,7 +427,7 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 		"clip-9": "uuid-9",
 	})
 
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	slots := []schedule.Slot{
 		{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000}, // → content uuid-1
 		{Kind: schedule.SlotPending, DurationMs: 0},                               // → flex
@@ -494,11 +495,11 @@ func TestSetLineup_ResolvesContentIdsAndTranslatesSlots(t *testing.T) {
 }
 
 func TestSetLineup_LiveURLUsesProgramIndexFromCurrentInstance(t *testing.T) {
-	serverA := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{ProgramID: "program-a"})
-	serverB := testkit.NewTunarrHTTP(t, testkit.TunarrHTTPConfig{ProgramID: "program-b"})
+	serverA := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{ProgramID: "program-a"})
+	serverB := tunarrtest.NewTunarrHTTP(t, tunarrtest.TunarrHTTPConfig{ProgramID: "program-b"})
 
-	cfg := programmer.Config{BaseURL: serverA.URL}
-	client := programmer.NewDynamic(func() programmer.Config { return cfg })
+	cfg := tunarr.Config{BaseURL: serverA.URL}
+	client := tunarr.NewDynamic(func() tunarr.Config { return cfg })
 	slots := []schedule.Slot{{Kind: schedule.SlotProgram, LibraryItemID: "library-item", DurationMs: 60_000}}
 	if err := client.SetLineup(context.Background(), "ch", slots); err != nil {
 		t.Fatal(err)
@@ -520,7 +521,7 @@ func TestSetLineup_LiveURLUsesProgramIndexFromCurrentInstance(t *testing.T) {
 func TestSetLineup_NoRescanWhenAllResolve(t *testing.T) {
 	var got capture
 	srv := mockTunarrWithIndex(t, &got, map[string]string{"lib-1": "uuid-1"})
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	slots := []schedule.Slot{
 		{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000}, // resolves → content
 		{Kind: schedule.SlotFlex, DurationMs: 60000},                              // flex is intended, not a miss
@@ -561,7 +562,7 @@ func TestSetLineup_SlowProgramsIndexStillResolves(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	slots := []schedule.Slot{{Kind: schedule.SlotProgram, LibraryItemID: "lib-1", DurationMs: 3600000}}
 	if err := c.SetLineup(context.Background(), "ch-id", slots); err != nil {
 		t.Fatalf("a slow /programs pull must still resolve via the bulk client, got %v", err)
@@ -588,7 +589,7 @@ func TestGetLineup_EmptyChannel400IsEmpty(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	slots, err := c.GetLineup(context.Background(), "fresh")
 	if err != nil {
 		t.Fatalf("400-on-empty must be absorbed, got err: %v", err)
@@ -604,7 +605,7 @@ func TestDeleteChannel_404Idempotent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := programmer.New(srv.URL, "cfg")
+	c := tunarr.New(srv.URL, "cfg")
 	if err := c.DeleteChannel(context.Background(), "gone"); err != nil {
 		t.Fatalf("deleting an absent channel must be a no-op, got %v", err)
 	}

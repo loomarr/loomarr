@@ -25,6 +25,10 @@ web-story-only	web/apps/web/src/design/typography/typography.stories.tsx	contrac
 web-runtime-tokens	web/packages/tokens/src/tokens/tokens.ts	web,visual,tuner,image
 mobile-client	web/apps/mobile/app/index.tsx	clients,apple_mobile,expo_android_mobile
 tv-client	web/apps/tv/src/app.tsx	clients,apple_tv,expo_android_tv,android
+knip-expo-mobile-config	web/apps/mobile/app.config.cjs	clients,apple_mobile,expo_android_mobile
+knip-expo-tv-config	web/apps/tv/app.config.cjs	clients,apple_tv,expo_android_tv,android
+knip-apple-script-entry	web/scripts/test-apple-client.test.mjs	contracts,clients,apple_mobile,apple_tv
+knip-android-script-entry	web/scripts/with-memory-safe-android-build.cjs	contracts,clients,expo_android_mobile,expo_android_tv,android
 android-lan-discovery-native	web/packages/lan-discovery-native/index.ts	clients,apple_tv,expo_android_tv,android
 shared-client-ui	web/packages/ui/src/client-platform-proof/client-platform-proof.tsx	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android
 shared-client-ui-tv	web/packages/ui-tv/src/watching-navigation/watching-navigation.ts	clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,android

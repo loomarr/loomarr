@@ -9,10 +9,10 @@ import (
 
 	"github.com/loomarr/loomarr/internal/filler"
 	"github.com/loomarr/loomarr/internal/playout"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // Reconcile materializes one channel's durable desired lineup (§9). For a
@@ -48,7 +48,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 // unfinished work through Reconcile's existing idempotent, minimal-diff path.
 func (e *Engine) PrepareInheritedBackend(ctx context.Context, target string) error {
 	target = schedule.NormalizePlayoutBackend(target)
-	if target != schedule.PlayoutBackendInternal && target != schedule.PlayoutBackendTunarr {
+	if !schedule.IsValidPlayoutBackend(target) {
 		return fmt.Errorf("prepare inherited channels: invalid playout backend %q", target)
 	}
 
@@ -309,7 +309,7 @@ func (e *Engine) reconcileOnce(
 	// historical TunarrID retained from an earlier backend choice. Keeping that id and
 	// remote row intact makes a backend switch reversible; only explicit purge deletes it.
 	if !playsInternally {
-		spec := programmer.ChannelSpec{
+		spec := tunarr.ChannelSpec{
 			TunarrID: ch.TunarrID,
 			Number:   ch.Number,
 			Name:     ch.Name,
@@ -474,7 +474,7 @@ func (e *Engine) Purge(ctx context.Context, channelID string) error {
 		// The row is the only durable record of the remote identity. Deleting it when
 		// no Programmer can remove the projection would manufacture an unmanaged orphan
 		// that no later reconcile can discover or clean up.
-		return fmt.Errorf("delete tunarr channel %s: programmer unavailable", ch.TunarrID)
+		return fmt.Errorf("delete tunarr channel %s: tunarr unavailable", ch.TunarrID)
 	}
 	if ch.TunarrID != "" {
 		if derr := e.prog.DeleteChannel(ctx, ch.TunarrID); derr != nil {
@@ -771,7 +771,7 @@ func PodSeedAt(channelID string, breakStartMs int64) int64 {
 // remote row. The number may differ from the requested one when Tunarr already had a channel
 // there (see below). The caller must persist both id and number in one checkpoint, or Loomarr's
 // row and Tunarr disagree about what number the channel is on.
-func (e *Engine) ensureChannel(ctx context.Context, localChannelID string, spec programmer.ChannelSpec) (string, int, bool, error) {
+func (e *Engine) ensureChannel(ctx context.Context, localChannelID string, spec tunarr.ChannelSpec) (string, int, bool, error) {
 	created := spec.TunarrID == ""
 	if spec.TunarrID != "" {
 		actual, ok, err := e.prog.GetChannel(ctx, spec.TunarrID)
@@ -968,7 +968,7 @@ func pushEqual(want, got schedule.Slot) bool {
 }
 
 // pushShape returns the (tunarr-type, item-id) a slot renders to, matching
-// programmer.slotToItem's logic. Kept here (not exported from programmer) so the
+// tunarr.slotToItem's logic. Kept here (not exported from tunarr) so the
 // diff is expressed in domain terms. Since the §10 redesign moved filler into a
 // Tunarr filler-list, filler slots are ALWAYS flex in the pushed lineup — only a
 // program is content.

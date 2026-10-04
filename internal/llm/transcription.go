@@ -149,6 +149,6 @@ func (o *OpenAI) TranscribeAudio(ctx context.Context, req TranscriptionRequest) 
 	return TranscriptionResult{
 		Segments: segments, Language: strings.TrimSpace(strings.ToLower(out.Language)),
 		Attribution: attributionFromWire(o.provider, model, generationID, out.Model, out.Usage,
-			out.OpenRouterMetadata, []string{"audio", "text"}, time.Since(started)),
+			out.OpenRouterMetadata, []string{"audio", "text"}, time.Since(started), o.selfHosted()),
 	}, nil
 }

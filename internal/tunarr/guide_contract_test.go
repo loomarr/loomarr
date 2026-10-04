@@ -1,4 +1,4 @@
-package programmer_test
+package tunarr_test
 
 import (
 	"context"
@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // Guide parsing runs against the PINNED capture
@@ -32,7 +32,7 @@ func TestGuide_ParsesPinnedCapture(t *testing.T) {
 	defer srv.Close()
 
 	from := time.Date(2026, 7, 19, 0, 0, 0, 0, time.UTC)
-	guide, err := programmer.New(srv.URL, "cfg").Guide(context.Background(), from, from.Add(3*time.Hour))
+	guide, err := tunarr.New(srv.URL, "cfg").Guide(context.Background(), from, from.Add(3*time.Hour))
 	if err != nil {
 		t.Fatalf("Guide over the pinned capture: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestGuide_ParsesPinnedCapture(t *testing.T) {
 	if len(guide) == 0 {
 		t.Fatal("pinned capture should yield at least one channel")
 	}
-	var entries []programmer.GuideEntry
+	var entries []tunarr.GuideEntry
 	for _, e := range guide {
 		entries = e
 		break
@@ -84,7 +84,7 @@ func TestGuide_UngeneratedGuideIsEmptyNotError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	guide, err := programmer.New(srv.URL, "cfg").Guide(context.Background(), time.Now(), time.Now())
+	guide, err := tunarr.New(srv.URL, "cfg").Guide(context.Background(), time.Now(), time.Now())
 	if err != nil {
 		t.Fatalf("an ungenerated guide must not error: %v", err)
 	}

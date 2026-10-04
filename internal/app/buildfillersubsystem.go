@@ -23,9 +23,9 @@ import (
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/metrics"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/scheduler"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 type fillerBuild struct {
@@ -116,7 +116,7 @@ func buildFillerSubsystem(
 	}
 	artifactRecoveryCancel()
 
-	fillerProgrammer := programmer.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
+	fillerProgrammer := tunarr.NewDynamicObserved(set.tunarrConfig(), metricRecorder)
 	wake := &fillerChannelWake{st: st, channels: channelService, log: log}
 	result.taxonomy = taxonomyEditor{store: st, wake: wake}
 	syncer := buildSyncer(st, set, layout, log, fillerProgrammer, libraryClient, storageGovernor)
@@ -127,8 +127,7 @@ func buildFillerSubsystem(
 		syncer: syncer, fetcher: fetcher,
 		bus: eventBus, log: log, newID: newID, timeout: set.dur("ingest.timeout"),
 		start: owner.startInteractiveOperation, operations: st,
-		sources: st, pullPlanning: st, acquisitions: st, readiness: st, now: time.Now,
-		compilations:  compilationGate(set),
+		sources: st, acquisitions: st, readiness: st, now: time.Now,
 		archiveFinder: clipfetch.NewArchiveSourceFinder(),
 		home: func() filler.Geography {
 			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
@@ -278,7 +277,6 @@ func buildFillerSubsystem(
 		// The compilation gate can only hold back a runtime it knows (#1773).
 		archiveRuntimes: func() bool { return !set.boolv("filler.acquisition.compilations") },
 	}
-	adapter.sourceEnum = sourceEnumerator
 	autoFetch := filler.NewFetcher(
 		fetchStoreAdapter{
 			st:         st,

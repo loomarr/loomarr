@@ -638,7 +638,7 @@ EOF
 		make -C "$ROOT" rust-check
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'web=true'; then
-		( cd "$ROOT/web" && pnpm codegen && pnpm lint && pnpm -r --parallel typecheck )
+		( cd "$ROOT/web" && pnpm codegen && pnpm lint && pnpm knip && pnpm -r --parallel typecheck )
 	fi
 	if printf '%s\n' "$scope" | grep -qx 'clients=true'; then
 		make -C "$ROOT" clients

@@ -239,7 +239,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make knip` |  | unused files, exports and dependencies in web/ (config: web/knip.ts) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
 | `make fe` | ✅ | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery |
-| `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `brand-assets-verify` |
+| `make clients` | ✅ | lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold <br>*runs:* `brand-assets-verify` `knip` |
 | `make client-android-debug` | ✅ | memory-bounded arm64 debug build (CLIENT_APP=mobile|tv) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload` |  | build and inspect a signed permanent-identity Shield APK (SHIELD_VERSION=x.y.z) <br>*runs:* `fe-api-codegen` |
 | `make shield-sideload-test` |  | build with an ephemeral key, then clean-install and launch on the TV emulator <br>*runs:* `fe-api-codegen` |

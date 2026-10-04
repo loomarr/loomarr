@@ -86,12 +86,6 @@ type startupReportService struct {
 	items   []diagnostics.StartupReport
 }
 
-type healthRefreshFunc func(context.Context) (diagnostics.HealthReport, error)
-
-func (f healthRefreshFunc) Refresh(ctx context.Context) (diagnostics.HealthReport, error) {
-	return f(ctx)
-}
-
 func (s startupReportService) Current() diagnostics.StartupReport { return s.current }
 func (s startupReportService) Health() diagnostics.HealthReport   { return s.health }
 func (s startupReportService) Recent(context.Context, int) ([]diagnostics.StartupReport, error) {
@@ -214,40 +208,6 @@ func TestCurrentHealthIsAdminOnlyAndBearerQueryable(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("health response = %+v, want %+v", got, want)
-	}
-}
-
-func TestCurrentHealthRefreshIsAdminOnlyAndUsesSharedRunner(t *testing.T) {
-	want := diagnostics.HealthReport{GenerationID: "startup-current", State: diagnostics.HealthHealthy}
-	calls := 0
-	refresh := healthRefreshFunc(func(context.Context) (diagnostics.HealthReport, error) {
-		calls++
-		return want, nil
-	})
-	log := slog.New(slog.DiscardHandler)
-	handler := api.Router(log, api.Options{Auth: testAuthorizer{}, Log: log, HealthRefresh: refresh})
-
-	member := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/health/refresh", nil)
-	member.Header.Set("Authorization", "Bearer "+memberToken)
-	memberResponse := httptest.NewRecorder()
-	handler.ServeHTTP(memberResponse, member)
-	if memberResponse.Code != http.StatusForbidden || calls != 0 {
-		t.Fatalf("member response = %d, calls = %d", memberResponse.Code, calls)
-	}
-
-	admin := httptest.NewRequest(http.MethodPost, "/v1/diagnostics/health/refresh", nil)
-	admin.Header.Set("Authorization", "Bearer "+adminToken)
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, admin)
-	if response.Code != http.StatusOK || calls != 1 {
-		t.Fatalf("admin response = %d, calls = %d: %s", response.Code, calls, response.Body.String())
-	}
-	var got diagnostics.HealthReport
-	if err := json.NewDecoder(response.Body).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("refresh response = %+v, want %+v", got, want)
 	}
 }
 

@@ -187,18 +187,6 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 
 	jobID := newID("job")()
 	intentJSON := `{"description":"90s movie night — mysteries, comedies and a little sci-fi"}`
-	if err := st.CreateJob(ctx, store.Job{
-		ID:         jobID,
-		Kind:       "suggest",
-		Status:     "done",
-		IntentJSON: intentJSON,
-		IntentHash: "seed-90s-movie-night",
-		CreatedBy:  adminID,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}); err != nil {
-		return fmt.Errorf("create job: %w", err)
-	}
 
 	// The channel's grounded policy: a 90s era scope + explicit separation windows the
 	// ~8.5h all-movie cycle can't fully honor, so the relaxation ladder descends a few
@@ -233,7 +221,21 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		return fmt.Errorf("marshal proposal: %w", err)
 	}
 	propID := newID("prop")()
-	if err := st.CreateProposal(ctx, store.Proposal{
+	// CreateSuggestionResult (built for #1720's no-generation proposals) writes the done
+	// Job, its succeeded Attempt 1, and the submitted Proposal in one transaction — the
+	// same shape the real suggester worker leaves behind. A raw CreateJob+CreateProposal
+	// pair left no proposal_job_attempts row, so the workflow's own invariant check
+	// rejected the seeded Job with ErrInvalidState and GET /v1/proposal-jobs 500'd (#1534).
+	if err := st.CreateSuggestionResult(ctx, store.Job{
+		ID:         jobID,
+		Kind:       "suggest",
+		Status:     "done",
+		IntentJSON: intentJSON,
+		IntentHash: "seed-90s-movie-night",
+		CreatedBy:  adminID,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}, store.Proposal{
 		ID:           propID,
 		JobID:        jobID,
 		Status:       "submitted",
@@ -242,7 +244,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}); err != nil {
-		return fmt.Errorf("create proposal: %w", err)
+		return fmt.Errorf("create suggestion result: %w", err)
 	}
 
 	// Re-read the persisted proposal (Approve takes the stored row) and run the gate.

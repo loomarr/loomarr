@@ -26,6 +26,7 @@ import (
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 const playoutGPUIdentityTimeout = 250 * time.Millisecond
@@ -58,10 +59,14 @@ type playoutDeps struct {
 	liveTVConnector       *setup.LiveTVConnector
 	backendView           backendtransition.CheckpointView
 	resolveDesiredBackend func(context.Context) (string, error)
-	log                   *slog.Logger
-	processDiagnostics    *diagnostics.ProcessManager
-	storageGovernor       *storagegovernor.Governor
-	metrics               *metrics.Recorder
+	// programmer is the SAME Tunarr adapter instance buildChannels built (not an override-aware
+	// one: the Live TV URL fallback always reads the live tunarr.url setting, same as before
+	// this seam existed — see liveTVURLsFor).
+	programmer         tunarr.Adapter
+	log                *slog.Logger
+	processDiagnostics *diagnostics.ProcessManager
+	storageGovernor    *storagegovernor.Governor
+	metrics            *metrics.Recorder
 	// capacityProbe starts the boot capacity probe (Overrides.CapacityProbe); startup receives its
 	// tone-map self-check.
 	capacityProbe bool
@@ -372,9 +377,7 @@ func buildPlayout(deps playoutDeps) (playoutBuild, error) {
 		if err != nil {
 			return setup.LiveTVURLs{}, fmt.Errorf("read playout token for backend publication: %w", err)
 		}
-		return setup.LiveTVURLsFor(
-			target, set.str("tunarr.url"), set.str("server.public_url"), tok,
-		), nil
+		return liveTVURLsFor(deps.programmer, target, set.str("server.public_url"), tok, log), nil
 	}
 	builtBackendController, err := buildBackendTransition(rootCtx, backendTransitionDependencies{
 		store: st, fleet: channelEngine,
