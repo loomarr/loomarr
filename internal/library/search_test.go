@@ -52,3 +52,49 @@ func TestSearch_ParsesOfficialRatingAndRuntime(t *testing.T) {
 		t.Errorf("result[1].OfficialRating = %q, want R", got[1].OfficialRating)
 	}
 }
+
+// The approval summary shows an owned title's file size (#1817), read from the search
+// response already in hand. Emby's top-level Size is MediaSources[0].Size (measured live:
+// +134 bytes on a 20-item page, where Fields=MediaSources added ~97 KB of streams).
+// Jellyfin has no Size field, so it asks for MediaSources and the first source answers.
+// A series has no media source of its own: its size is absent, never 0-as-a-fact.
+func TestSearch_ParsesPrimarySourceSize(t *testing.T) {
+	cases := []struct {
+		flavor     Flavor
+		wantField  string
+		movieBytes string
+	}{
+		{Emby, "Size", `"Size":21914038799`},
+		{Jellyfin, "MediaSources", `"MediaSources":[{"Id":"src-1","Size":21914038799},{"Id":"src-2","Size":5}]`},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.flavor), func(t *testing.T) {
+			var gotFields string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotFields = r.URL.Query().Get("Fields")
+				_, _ = w.Write([]byte(`{"Items":[
+					{"Id":"lib-1","Name":"The Zero Theorem","Type":"Movie",` + tc.movieBytes + `,"ProviderIds":{"Tmdb":"157851"}},
+					{"Id":"lib-2","Name":"The Expanse","Type":"Series","Size":null,"ProviderIds":{"Tmdb":"63639"}}
+				]}`))
+			}))
+			defer srv.Close()
+
+			got, err := New(tc.flavor, srv.URL, "tok", "dev-1").Search(context.Background(), "the", 20)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(","+gotFields+",", ","+tc.wantField+",") {
+				t.Errorf("Fields = %q, must request %s", gotFields, tc.wantField)
+			}
+			if len(got) != 2 {
+				t.Fatalf("got %d results, want 2", len(got))
+			}
+			if got[0].SizeBytes != 21914038799 {
+				t.Errorf("movie SizeBytes = %d, want 21914038799", got[0].SizeBytes)
+			}
+			if got[1].SizeBytes != 0 {
+				t.Errorf("series SizeBytes = %d, want 0 (unavailable)", got[1].SizeBytes)
+			}
+		})
+	}
+}

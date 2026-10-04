@@ -6,6 +6,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // durationWire is how a schedule.Duration is described ON THE WIRE (§7.1, §14.1).
@@ -42,9 +43,37 @@ func (durationWire) Schema(huma.Registry) *huma.Schema {
 	}
 }
 
+// sizeConfidenceWire is how a storagegovernor.SizeConfidence is described on the wire (#1817).
+//
+// Huma names only struct schemas; a string enum is inlined into each field that uses it, and
+// orval then generates one enum type per DTO (`ProposalItemSizeConfidence`,
+// `PullPlanRowDTOSizeConfidence`, …). Registering a single component and returning a $ref is
+// what lets every approval surface — requests now, filler pulls next — read one shape.
+type sizeConfidenceWire string
+
+const sizeConfidenceSchema = "SizeConfidence"
+
+func (sizeConfidenceWire) Schema(r huma.Registry) *huma.Schema {
+	if _, ok := r.Map()[sizeConfidenceSchema]; !ok {
+		values := make([]any, 0, len(storagegovernor.SizeConfidences()))
+		for _, confidence := range storagegovernor.SizeConfidences() {
+			values = append(values, string(confidence))
+		}
+		r.Map()[sizeConfidenceSchema] = &huma.Schema{
+			Type: huma.TypeString,
+			Enum: values,
+			Description: "How far a stated byte count can be trusted: `exact` is declared by the media " +
+				"server or provider for the file itself; `estimated` is derived and may differ on disk. " +
+				"An unknown size has no confidence: both size fields are absent, never 0.",
+		}
+	}
+	return &huma.Schema{Ref: "#/components/schemas/" + sizeConfidenceSchema}
+}
+
 // registerWireAliases points the schema generator at this package's wire descriptions for domain
 // types that must not know about HTTP. Call before any route is registered — an alias added after
 // a type has already been generated does not retroactively change the emitted schema.
 func registerWireAliases(reg huma.Registry) {
 	reg.RegisterTypeAlias(reflect.TypeOf(schedule.Duration(0)), reflect.TypeOf(durationWire("")))
+	reg.RegisterTypeAlias(reflect.TypeOf(storagegovernor.SizeConfidence("")), reflect.TypeOf(sizeConfidenceWire("")))
 }

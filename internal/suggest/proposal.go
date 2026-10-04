@@ -17,6 +17,7 @@ import (
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reference"
 	"github.com/loomarr/loomarr/internal/schedule"
+	"github.com/loomarr/loomarr/internal/storagegovernor"
 )
 
 // Intent is a channel request: an NL description plus optional constraints (§8).
@@ -172,6 +173,24 @@ type ProposalItem struct {
 	// entry at create time so enforcement filters without a library hit. Display/
 	// enforcement only — never identity.
 	OfficialRating string `json:"officialRating,omitempty"`
+	// SizeBytes + SizeConfidence state what an owned pick occupies, for the approval
+	// consequence summary (#1817). Read at proposal creation from the library row the
+	// grounding already fetched; never a new lookup. Both are ABSENT when unavailable
+	// (an acquisition, or a series with no source of its own), never 0. Display only.
+	SizeBytes      int64                          `json:"sizeBytes,omitempty" doc:"Owned title's library file size in bytes; absent when unavailable, never 0"`
+	SizeConfidence storagegovernor.SizeConfidence `json:"sizeConfidence,omitempty"`
+}
+
+// WithLibrarySize sets an owned pick's exact library file size, or clears both size fields
+// when the pick is not owned or the library stated no size. It is the one place a
+// ProposalItem's size is decided, so an edit-before-approve addition cannot carry a
+// client-supplied size onto the approval surface.
+func (p ProposalItem) WithLibrarySize(sizeBytes int64) ProposalItem {
+	p.SizeBytes, p.SizeConfidence = 0, ""
+	if p.InLibrary && sizeBytes > 0 {
+		p.SizeBytes, p.SizeConfidence = sizeBytes, storagegovernor.SizeExact
+	}
+	return p
 }
 
 // Key derives the provisioning key (§3), enforcing the grounding guarantee: a
@@ -200,7 +219,7 @@ func fromCandidate(c catalog.Candidate, rationale string, confidence float64) Pr
 		Networks:         append([]string(nil), c.Networks...),
 		Cast:             append([]string(nil), c.Cast...),
 		Creators:         append([]string(nil), c.Creators...),
-	}
+	}.WithLibrarySize(c.SizeBytes)
 }
 
 // Proposal is the suggester's output (§8): a lineup of library items, an

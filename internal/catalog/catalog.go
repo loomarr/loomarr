@@ -94,6 +94,10 @@ type Candidate struct {
 	// (Key()/dedupeKey() must not read it). Populated from the media server; TMDB
 	// search/discover leaves it empty (audience enforcement is library-first).
 	OfficialRating string `json:"officialRating,omitempty"`
+	// SizeBytes is an owned title's primary file size, exact from the media server, so
+	// the approval summary can say what a lineup pick occupies (#1817). Zero is
+	// unavailable (not owned, or a series with no source of its own). Display only.
+	SizeBytes int64 `json:"sizeBytes,omitempty"`
 	// Source records which corpus surfaced this candidate first (for debugging
 	// "why did the model see this"); after dedupe it's the merged view.
 	Source Scope `json:"source"`
@@ -182,6 +186,7 @@ type Presence struct {
 	LibraryItemID  string
 	OfficialRating string
 	Genres         []string
+	SizeBytes      int64 // primary file size; zero is unavailable
 }
 
 // NOTE: there is deliberately no clip corpus here (§7.2, revised). Candidate models a
@@ -569,6 +574,7 @@ func (c *Catalog) backfillPresence(ctx context.Context, cands []Candidate) {
 		}
 		cands[i].InLibrary = true
 		cands[i].LibraryItemID = p.LibraryItemID
+		cands[i].SizeBytes = p.SizeBytes
 		// Carry the enforcement metadata the discovery result lacked. Additive, like
 		// the merge below: a candidate that already has a rating (it won't, from TMDB
 		// discovery) keeps it. Dropping this is the dead-air bug — the whole reason
@@ -677,6 +683,9 @@ func mergeCandidate(dst *Candidate, src Candidate) {
 		if src.LibraryItemID != "" {
 			dst.LibraryItemID = src.LibraryItemID
 		}
+		if src.SizeBytes > 0 {
+			dst.SizeBytes = src.SizeBytes
+		}
 	}
 	if dst.TMDBID == 0 && src.TMDBID != 0 {
 		dst.TMDBID = src.TMDBID
@@ -744,6 +753,7 @@ func fromLibrary(r library.SearchResult) Candidate {
 		Overview:       r.Overview,
 		RuntimeMinutes: r.RuntimeMinutes,
 		OfficialRating: r.OfficialRating,
+		SizeBytes:      r.SizeBytes,
 		Source:         ScopeLibrary,
 	}
 }
