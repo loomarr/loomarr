@@ -29,8 +29,8 @@ const stubSettings = () => {
 };
 
 // useCompleteSetup navigates via the router, so the step needs one mounted.
-const renderStep = () => {
-  const rootRoute = createRootRoute({ component: () => <FirstChannelStep /> });
+const renderStep = (llmReady = true) => {
+  const rootRoute = createRootRoute({ component: () => <FirstChannelStep llmReady={llmReady} /> });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ["/"] }),
@@ -76,5 +76,23 @@ describe("FirstChannelStep", () => {
       expect(patches).toHaveLength(1);
       expect(router.history.location.pathname).toBe("/guide");
     });
+  });
+
+  it("warns that AI isn't connected yet when the llm check is off, but still offers templates", async () => {
+    stubSettings();
+    renderStep(false);
+
+    expect(await screen.findByText(/no ai service is connected yet/i)).toBeInTheDocument();
+    for (const t of CHANNEL_TEMPLATES) {
+      expect(screen.getByText(t.label)).toBeInTheDocument();
+    }
+  });
+
+  it("says nothing about AI when the llm check is on", async () => {
+    stubSettings();
+    renderStep(true);
+
+    await screen.findByText(CHANNEL_TEMPLATES[0]?.label as string);
+    expect(screen.queryByText(/no ai service is connected yet/i)).not.toBeInTheDocument();
   });
 });

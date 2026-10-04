@@ -141,6 +141,69 @@ func (s *Server) approveFillerPull(ctx context.Context, in *approveFillerPullInp
 	return &pullOutput{Body: pullToDTO(p)}, nil
 }
 
+// --- bulk approve ---
+
+type bulkApproveFillerPullInput struct {
+	Body struct {
+		// IDs are approved one at a time, each through the SAME approveFillerPull handler (the
+		// commit point). No batch store write and no second gate — mirrors bulk-approve-proposals.
+		//
+		// maxItems:100 (Refs #1659): the native Requests screen approves a whole group of filler
+		// downloads at once, and groups can exceed the 24-25 used elsewhere in this API for
+		// interactive lookups — each item only queues work through the existing single-approve
+		// path below, so this bounds request size without forcing the client to chunk. Deliberately
+		// NOT applied to bulk-approve-proposals (internal/api/proposals.go): that is an existing,
+		// uncapped contract, and capping it is outside this change.
+		IDs []string `json:"ids" minItems:"1" maxItems:"100" doc:"Pull ids to approve, each through the single approval gate"`
+	}
+}
+
+type bulkApproveFillerPullResult struct {
+	ID    string `json:"id"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty" doc:"Why this one did not approve (already handled, not found, …)"`
+}
+
+type bulkApproveFillerPullOutput struct {
+	Body struct {
+		// PER-ID results rather than a single status: one id that was already decided must not
+		// hide the rest, but the caller still has to learn which ones did not go through.
+		Results  []bulkApproveFillerPullResult `json:"results"`
+		Approved int                           `json:"approved" doc:"How many pulls were approved"`
+	}
+}
+
+// bulkApproveFillerPulls approves several pulls in one request (Refs #1659). ADMIN ONLY, like the
+// single approve it delegates to.
+//
+// ⚠ It calls `s.approveFillerPull` per id — the same handler, not a copy of its body. Everything
+// that makes a single approval correct (the pending-status check, the source/candidate
+// revalidation, the ingest commit, the audit stamps) therefore applies unchanged, and a future
+// change to approval semantics cannot land in one path and miss the other. Approving a pull starts
+// downloads, so there is no second implementation of that here.
+//
+// Sequential, not concurrent, like bulk-approve-proposals: approvals write pulls and start
+// downloads, and household-scale batches are small. Concurrency here would buy milliseconds and
+// risk interleaving writes.
+func (s *Server) bulkApproveFillerPulls(ctx context.Context, in *bulkApproveFillerPullInput) (*bulkApproveFillerPullOutput, error) {
+	out := &bulkApproveFillerPullOutput{}
+	out.Body.Results = make([]bulkApproveFillerPullResult, 0, len(in.Body.IDs))
+	for _, id := range in.Body.IDs {
+		_, err := s.approveFillerPull(ctx, &approveFillerPullInput{ID: id})
+		if err != nil {
+			// A per-id failure is DATA, not a request failure: the ones that worked are already
+			// durable, so 500ing the whole call would hide successful approvals behind an error.
+			out.Body.Results = append(out.Body.Results, bulkApproveFillerPullResult{
+				ID: id, OK: false, Error: humaErrMessage(err),
+			})
+			continue
+		}
+		out.Body.Results = append(out.Body.Results, bulkApproveFillerPullResult{ID: id, OK: true})
+		out.Body.Approved++
+	}
+	return out, nil
+}
+
 type dismissFillerPullInput struct {
 	ID string `path:"id"`
 }
