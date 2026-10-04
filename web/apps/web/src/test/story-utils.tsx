@@ -40,8 +40,11 @@ const NAV_PATHS = [
   "/filler/taxonomy",
   "/people",
   "/settings",
+  "/settings/notifications",
   "/help",
   "/wizard",
+  // Web's phone bottom bar (#1785) navigates here for Watch; `$id` is a literal param segment.
+  "/channels/$id/watch",
 ] as const;
 
 // Mounts `content` inside a minimal in-memory TanStack Router covering the AppShell nav,
