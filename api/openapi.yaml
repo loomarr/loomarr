@@ -7705,6 +7705,12 @@ components:
             format: int64
             type: integer
           type: array
+        sizeBytes:
+          description: Owned title's library file size in bytes; absent when unavailable, never 0
+          format: int64
+          type: integer
+        sizeConfidence:
+          $ref: "#/components/schemas/SizeConfidence"
         source:
           type: string
         tmdbId:
@@ -9514,6 +9520,12 @@ components:
       required:
         - checks
       type: object
+    SizeConfidence:
+      description: "How far a stated byte count can be trusted: `exact` is declared by the media server or provider for the file itself; `estimated` is derived and may differ on disk. An unknown size has no confidence: both size fields are absent, never 0."
+      enum:
+        - exact
+        - estimated
+      type: string
     SourceAutomaticDownloadsDTO:
       additionalProperties: false
       properties:

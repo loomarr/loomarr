@@ -309,6 +309,59 @@ func TestCatalogDiscover_BackfillsInLibrary(t *testing.T) {
 	}
 }
 
+// An owned title's file size rides from the library row onto the candidate and survives
+// the merge with the same title's TMDB row, which has no size (#1817). It is display
+// metadata from the response already in hand: no lookup is added to read it.
+func TestCatalogSearch_CarriesLibrarySizeThroughMerge(t *testing.T) {
+	lib := &catalogfixture.Library{Results: []library.SearchResult{{
+		LibraryItemID: "lib-603", Name: "The Matrix", Year: 1999, MediaType: library.Movie,
+		TMDBID: 603, SizeBytes: 21_914_038_799,
+	}}}
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{{
+		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999,
+		Overview: "a hacker", Source: catalog.ScopeTMDB,
+	}}}
+
+	got, err := catalog.New(lib, corpus).Search(context.Background(), "matrix", catalog.ScopeAll, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d candidates, want the one merged title: %+v", len(got), got)
+	}
+	if got[0].SizeBytes != 21_914_038_799 {
+		t.Errorf("SizeBytes = %d, want the library row's 21914038799", got[0].SizeBytes)
+	}
+}
+
+// A discovered title the library owns gets its size from the same presence hit that
+// confirms ownership.
+func TestCatalogDiscover_BackfillCarriesLibrarySize(t *testing.T) {
+	corpus := &catalogfixture.Corpus{Candidates: []catalog.Candidate{
+		{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Source: catalog.ScopeTMDB},
+		{MediaType: provision.Movie, TMDBID: 604, Name: "The Matrix Reloaded", Source: catalog.ScopeTMDB},
+	}}
+	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
+		603: {LibraryItemID: "lib-603", SizeBytes: 63_546_611_800},
+	}}
+
+	got, err := catalog.New(nil, corpus).WithPresence(presence).Discover(
+		context.Background(), catalog.DiscoveryQuery{MediaType: provision.Movie}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sizes := map[int]int64{}
+	for _, c := range got {
+		sizes[c.TMDBID] = c.SizeBytes
+	}
+	if sizes[603] != 63_546_611_800 {
+		t.Errorf("owned title SizeBytes = %d, want 63546611800", sizes[603])
+	}
+	if sizes[604] != 0 {
+		t.Errorf("un-owned title SizeBytes = %d, want 0 (no library file)", sizes[604])
+	}
+}
+
 // Presence backfill has to happen before the owned/missing blend is truncated.
 // Otherwise a popular themed corpus whose first page is already owned becomes a
 // self-sealing result: the model sees no relevant title it could acquire even when
