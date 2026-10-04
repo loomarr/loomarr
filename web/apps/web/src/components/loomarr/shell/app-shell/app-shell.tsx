@@ -291,15 +291,21 @@ const AppShell = ({
       {/* Below `md`, PhoneBottomBar takes this row (#1785): a normal flex sibling of `main`, not
           `position: fixed`, so it reserves real space rather than floating over content. Lazy
           (above): the Suspense fallback holds that row at the bar's own height so layout doesn't
-          jump once the design-system chunk finishes loading. */}
+          jump once the design-system chunk finishes loading. A `<nav aria-label="Primary">`
+          landmark wraps it — matching the rail's own landmark name — since the rail's `<nav>`
+          is `hidden` below `md`, not removed from PhoneBottomBar's side: without this, phone
+          width has no "Primary" navigation landmark at all. `TabBar`'s own `role="tablist"` stays
+          inside it; a landmark wrapping a widget is an ordinary ARIA pattern. */}
       {phoneWidth && (
-        <Suspense
-          fallback={
-            <div data-testid="phone-bottom-bar-placeholder" style={{ height: PHONE_BOTTOM_BAR_HEIGHT }} />
-          }
-        >
-          <PhoneBottomBar badges={badges} isAdmin={isAdmin} watchChannelId={watchChannelId} />
-        </Suspense>
+        <nav aria-label="Primary">
+          <Suspense
+            fallback={
+              <div data-testid="phone-bottom-bar-placeholder" style={{ height: PHONE_BOTTOM_BAR_HEIGHT }} />
+            }
+          >
+            <PhoneBottomBar badges={badges} isAdmin={isAdmin} watchChannelId={watchChannelId} />
+          </Suspense>
+        </nav>
       )}
     </div>
   );

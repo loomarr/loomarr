@@ -8,9 +8,15 @@ import { shellRoutes as pages } from "./shell-routes";
 // semantic title, page-edge gutter, and mobile overflow behavior stay invariant. Document width
 // alone misses content clipped inside an overflow-hidden box; phone-layout.spec.ts gates that.
 
+// Desktop's rail is a fixed-width vertical column; below `md` it's replaced by PhoneBottomBar,
+// a full-width horizontal bar (#1785 Alt A) — so the geometry invariant each holds is its OWN
+// fixed dimension, width for the rail and height for the bar, not the same one.
 const viewports = [
-  { name: "desktop", width: 1280, height: 800, navWidth: 224 },
-  { name: "mobile", width: 390, height: 844, navWidth: 56 },
+  { name: "desktop", width: 1280, height: 800, navSize: 224, navSizeTolerance: 0 },
+  // 49 (idiom height) + 1 (hairline border), ±5 for sub-pixel line-height rounding: the
+  // SELECTED label renders at font-weight 600 vs 500 for the rest, so a page with a lit tab
+  // (bold) measures a few px taller than one with none lit (every label regular weight).
+  { name: "mobile", width: 390, height: 844, navSize: 52, navSizeTolerance: 5 },
 ] as const;
 
 const sectionDestinations: Record<string, Array<{ navigation: string; current: string }>> = {};
@@ -18,6 +24,16 @@ const sectionDestinations: Record<string, Array<{ navigation: string; current: s
 const settingsPages = new Set(
   pages.map((entry) => entry.path).filter((path) => path.startsWith("/settings/")),
 );
+
+// PhoneBottomBar's bar itself only ever holds Home/Watch/Guide/Requests (destinations.ts'
+// PRIMARY_ORDER) — everything else (Filler, People, Settings, Help, Notifications, …) lives
+// behind More, unlit, same as /account's already-established "no tab claims this page" case.
+// Desktop's rail has no such gap: every destination, overflow or not, is a literal rail link.
+const isPhoneBarPrimaryPath = (path: string): boolean =>
+  path === "/dashboard" ||
+  path === "/guide" ||
+  path === "/requests" ||
+  /^\/channels\/[^/]+\/watch$/.test(path);
 
 test("pages share one navigation and header geometry at desktop and mobile widths", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
@@ -41,17 +57,30 @@ test("pages share one navigation and header geometry at desktop and mobile width
         ).toBeVisible();
       }
       await expect(header, `${entry.path} should use PageHeader`).toHaveCount(1);
-      if (entry.path === "/account") {
-        // The account identity is a rail footer control, not a section of the product's
-        // primary navigation. It still identifies the current page, while none of the
-        // authored primary destinations claims to be active.
-        await expect(primary.locator('a[data-status="active"]')).toHaveCount(0);
-        await expect(page.getByRole("link", { name: "Your account" })).toHaveAttribute(
-          "aria-current",
-          "page",
-        );
+      // Desktop's rail is `<nav>` + `<Link>`, marking the matched route with
+      // `data-status="active"`. Below `md` the rail is replaced by PhoneBottomBar — `TabBar`'s
+      // `role="tablist"`/`role="tab"` pattern (#1785 Alt A), shared with the native paired-client
+      // apps, so it can't grow web-only anchors. Both sit inside the same `nav[aria-label=Primary]`
+      // landmark; only the "what marks the active destination" locator differs by viewport.
+      const active =
+        viewport.name === "mobile"
+          ? primary.getByRole("tab", { selected: true })
+          : primary.locator('a[data-status="active"]');
+      const expectZeroActive =
+        entry.path === "/account" || (viewport.name === "mobile" && !isPhoneBarPrimaryPath(entry.path));
+      if (expectZeroActive) {
+        await expect(active).toHaveCount(0);
+        // The account identity is a rail footer control, not a section of the product's primary
+        // navigation; it still identifies the current page on desktop's rail. Phone width has no
+        // such footer control, so this only applies there.
+        if (entry.path === "/account" && viewport.name === "desktop") {
+          await expect(page.getByRole("link", { name: "Your account" })).toHaveAttribute(
+            "aria-current",
+            "page",
+          );
+        }
       } else {
-        await expect(primary.locator('a[data-status="active"]')).toHaveCount(1);
+        await expect(active).toHaveCount(1);
       }
 
       for (const expected of sectionDestinations[entry.path] ?? []) {
@@ -87,8 +116,13 @@ test("pages share one navigation and header geometry at desktop and mobile width
       expect(headerBox, `${entry.path} header bounds`).not.toBeNull();
       expect(titleBox, `${entry.path} title bounds`).not.toBeNull();
 
-      expect(Math.round(navBox?.width ?? 0), `${entry.path} ${viewport.name} nav width`).toBe(
-        viewport.navWidth,
+      const navDimension = viewport.name === "mobile" ? (navBox?.height ?? 0) : (navBox?.width ?? 0);
+      const navLabel = `${entry.path} ${viewport.name} nav ${viewport.name === "mobile" ? "height" : "width"}`;
+      expect(Math.round(navDimension), navLabel).toBeGreaterThanOrEqual(
+        viewport.navSize - viewport.navSizeTolerance,
+      );
+      expect(Math.round(navDimension), navLabel).toBeLessThanOrEqual(
+        viewport.navSize + viewport.navSizeTolerance,
       );
       expect(Math.round(headerBox?.x ?? 0), `${entry.path} header starts at main edge`).toBe(
         Math.round(mainBox?.x ?? 0),
