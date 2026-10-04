@@ -6,6 +6,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -67,6 +68,13 @@ func InternalPlayoutURLs(publicURL, deviceToken string) LiveTVURLs {
 type LiveTVConnector struct {
 	library      LiveTVSource
 	fallbackURLs LiveTVURLs
+	// tunerPublishDisabled gates every AddTuner/RemoveTuner/AddListingProvider/
+	// RemoveListingProvider path (§1555): an agent dev lane's library settings can drift
+	// onto a shared household media server, and completing them must never add or retire
+	// that server's Live TV registrations. Default false — production installs are
+	// unaffected; see WithTunerPublishingDisabled.
+	tunerPublishDisabled bool
+	log                  *slog.Logger // optional; used only for the disabled-skip log line
 }
 
 // LiveTVSource starts one immutable media-server operation. Production returns
@@ -86,6 +94,16 @@ func NewLiveTVConnectorFixed(lib library.LiveTV, urls LiveTVURLs) *LiveTVConnect
 	return NewLiveTVConnector(func() library.LiveTV { return lib }, urls)
 }
 
+// WithTunerPublishingDisabled gates every tuner/listing publish and retire path on this
+// connector behind a switch, for an agent dev lane whose library settings must never add
+// or retire a Live TV registration on whatever media server they happen to name (#1555).
+// Default is false (today's behaviour, unchanged); log is optional.
+func (c *LiveTVConnector) WithTunerPublishingDisabled(disabled bool, log *slog.Logger) *LiveTVConnector {
+	c.tunerPublishDisabled = disabled
+	c.log = log
+	return c
+}
+
 // Snapshot binds the current media-server connection for a compound workflow whose
 // phases are invoked separately. The returned connector can safely be retained from
 // Prepare through RefreshTarget and RetireStale without re-reading live credentials.
@@ -93,7 +111,10 @@ func (c *LiveTVConnector) Snapshot() *LiveTVConnector {
 	if c == nil {
 		return nil
 	}
-	return NewLiveTVConnectorFixed(c.library(), c.fallbackURLs)
+	snap := NewLiveTVConnectorFixed(c.library(), c.fallbackURLs)
+	snap.tunerPublishDisabled = c.tunerPublishDisabled
+	snap.log = c.log
+	return snap
 }
 
 // ConnectResult reports what the connect did — so the API/UI can distinguish
@@ -123,11 +144,11 @@ func (r ConnectResult) AlreadyWired() bool {
 func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 	lib := c.library()
 	urls := c.fallbackURLs
-	res, err := prepare(ctx, lib, urls)
+	res, err := prepare(ctx, lib, urls, c.tunerPublishDisabled, c.log)
 	if err != nil {
 		return res, err
 	}
-	retired, err := retireStale(ctx, lib, urls)
+	retired, err := retireStale(ctx, lib, urls, c.tunerPublishDisabled, c.log)
 	res.merge(retired)
 	if err != nil {
 		return res, err
@@ -147,11 +168,15 @@ func (c *LiveTVConnector) Connect(ctx context.Context) (ConnectResult, error) {
 // The explicit target makes a multi-step cutover immune to a live setting changing
 // between its durable phases.
 func (c *LiveTVConnector) Prepare(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
-	return prepare(ctx, c.library(), urls)
+	return prepare(ctx, c.library(), urls, c.tunerPublishDisabled, c.log)
 }
 
-func prepare(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) (ConnectResult, error) {
+func prepare(ctx context.Context, lib library.LiveTV, urls LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
 	var res ConnectResult
+	if disabled {
+		logTunerPublishingDisabled(log)
+		return res, nil
+	}
 	if err := validateLiveTVURLs(urls); err != nil {
 		return res, err
 	}
@@ -196,11 +221,15 @@ func prepare(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) (ConnectR
 // working pair before its replacement exists. A hand-added tuner is never returned
 // by the library ownership queries and therefore never touched.
 func (c *LiveTVConnector) RetireStale(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
-	return retireStale(ctx, c.library(), urls)
+	return retireStale(ctx, c.library(), urls, c.tunerPublishDisabled, c.log)
 }
 
-func retireStale(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) (ConnectResult, error) {
+func retireStale(ctx context.Context, lib library.LiveTV, urls LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
 	var res ConnectResult
+	if disabled {
+		logTunerPublishingDisabled(log)
+		return res, nil
+	}
 	if err := validateLiveTVURLs(urls); err != nil {
 		return res, err
 	}
@@ -314,6 +343,15 @@ func withTransientRetry(ctx context.Context, op func() error) error {
 	}
 }
 
+// logTunerPublishingDisabled is the one clear line every gated path logs instead of
+// calling the library's AddTuner/RemoveTuner/AddListingProvider/RemoveListingProvider
+// (#1555). log is optional so a fixed test/compatibility connector need not supply one.
+func logTunerPublishingDisabled(log *slog.Logger) {
+	if log != nil {
+		log.Info("Live TV tuner publishing disabled for this instance")
+	}
+}
+
 func validateLiveTVURLs(urls LiveTVURLs) error {
 	if urls.M3U == "" || urls.XMLTV == "" {
 		// Nothing wireable — internal playout with no server.public_url set. Registering a
@@ -345,11 +383,15 @@ func (c *LiveTVConnector) Reconnect(ctx context.Context) (ConnectResult, error) 
 // explicit form while holding their durable workflow lock, so a live resolver cannot select a
 // stale process-local backend or change targets between removal and re-addition.
 func (c *LiveTVConnector) ReconnectTarget(ctx context.Context, urls LiveTVURLs) (ConnectResult, error) {
-	return reconnectTarget(ctx, c.library(), urls)
+	return reconnectTarget(ctx, c.library(), urls, c.tunerPublishDisabled, c.log)
 }
 
-func reconnectTarget(ctx context.Context, lib library.LiveTV, urls LiveTVURLs) (ConnectResult, error) {
+func reconnectTarget(ctx context.Context, lib library.LiveTV, urls LiveTVURLs, disabled bool, log *slog.Logger) (ConnectResult, error) {
 	var res ConnectResult
+	if disabled {
+		logTunerPublishingDisabled(log)
+		return res, nil
+	}
 	if err := validateLiveTVURLs(urls); err != nil {
 		return res, err
 	}

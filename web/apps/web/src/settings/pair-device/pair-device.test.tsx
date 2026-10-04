@@ -46,6 +46,15 @@ describe("PairDevice", () => {
     expect(approvals).toBe(0);
   });
 
+  // ADR 0043: a paired device acts with its approver's real role, so an admin's device is an admin.
+  it("says the device acts with your access and role", async () => {
+    signedIn();
+    render(<PairDevice initialCode="BCDF-GHJK" />, { wrapper: makeWrapper() });
+
+    expect(await screen.findByText(/The device acts with your access and role\./)).toBeInTheDocument();
+    expect(screen.queryByText(/member access/)).not.toBeInTheDocument();
+  });
+
   it("approves on an explicit click and names the device", async () => {
     signedIn();
     server.use(getDevicePairApproveMockHandler({ deviceName: "Living Room Shield" }));

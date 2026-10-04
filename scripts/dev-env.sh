@@ -97,10 +97,14 @@ GRAFANA_PORT="${GRAFANA_DEV_PORT:-$DEFAULT_GRAFANA}"
 
 if [ "$ROOT" = "$PRIMARY" ]; then
 	DEFAULT_PUBLIC_URL=
+	DEFAULT_DISABLE_LIVETV_TUNER=
 else
 	# Internal playout's parent ffmpeg re-opens Loomarr's playlist through SERVER_PUBLIC_URL.
 	# A copied primary .env therefore must not send a secondary worktree back to :8080.
 	DEFAULT_PUBLIC_URL="http://localhost:$BACKEND_PORT"
+	# An agent lane's library.* settings can drift onto the household media server (#1555);
+	# this must never let completing them publish or retire its real Live TV tuner/guide.
+	DEFAULT_DISABLE_LIVETV_TUNER=1
 fi
 
 for port in "$BACKEND_PORT" "$FRONTEND_PORT" "$STORYBOOK_PORT" "$TUNARR_PORT" "$PROMETHEUS_PORT" "$GRAFANA_PORT"; do
@@ -115,6 +119,7 @@ FILLER_OVERRIDE="${LOOMARR_AGENT_FILLER_DIR:-$DEFAULT_FILLER}"
 IMAGES_OVERRIDE="${LOOMARR_AGENT_IMAGES_DIR:-$DEFAULT_IMAGES}"
 DIAGNOSTICS_OVERRIDE="${LOOMARR_AGENT_DIAGNOSTICS_DIR:-$DEFAULT_DIAGNOSTICS}"
 PUBLIC_URL_OVERRIDE="${LOOMARR_AGENT_PUBLIC_URL:-$DEFAULT_PUBLIC_URL}"
+DISABLE_LIVETV_TUNER_OVERRIDE="${LOOMARR_AGENT_DISABLE_LIVETV_TUNER:-$DEFAULT_DISABLE_LIVETV_TUNER}"
 DEV_LOGIN_OVERRIDE="${LOOMARR_AGENT_DEV_LOGIN:-$DEFAULT_DEV_LOGIN}"
 ENCRYPTION_KEY_FILE_OVERRIDE="${LOOMARR_AGENT_ENCRYPTION_KEY_FILE:-$DEFAULT_ENCRYPTION_KEY_FILE}"
 
@@ -147,12 +152,14 @@ case "${1:-show}" in
 		emit_export LOOMARR_AGENT_IMAGES_DIR "$IMAGES_OVERRIDE"
 		emit_export LOOMARR_AGENT_DIAGNOSTICS_DIR "$DIAGNOSTICS_OVERRIDE"
 		emit_export LOOMARR_AGENT_PUBLIC_URL "$PUBLIC_URL_OVERRIDE"
+		emit_export LOOMARR_AGENT_DISABLE_LIVETV_TUNER "$DISABLE_LIVETV_TUNER_OVERRIDE"
 		emit_export LOOMARR_AGENT_DEV_LOGIN "$DEV_LOGIN_OVERRIDE"
 		emit_export LOOMARR_AGENT_ENCRYPTION_KEY_FILE "$ENCRYPTION_KEY_FILE_OVERRIDE"
 		emit_export FILLER_DROP_DIR "${FILLER_DROP_DIR:-$ROOT/.filler-drop}"
 		;;
 	show)
 		if [ -n "$DEV_LOGIN_OVERRIDE" ]; then dev_login_label=automatic; else dev_login_label='<from .env>'; fi
+		if [ -n "$DISABLE_LIVETV_TUNER_OVERRIDE" ]; then livetv_tuner_label=disabled; else livetv_tuner_label=enabled; fi
 		printf '%-22s %s\n' \
 			'instance' "$INSTANCE" \
 			'worktree' "$ROOT" \
@@ -169,7 +176,8 @@ case "${1:-show}" in
 			'filler override' "${FILLER_OVERRIDE:-<from .env>}" \
 			'images override' "${IMAGES_OVERRIDE:-<from .env>}" \
 			'diagnostics override' "${DIAGNOSTICS_OVERRIDE:-<from .env>}" \
-			'public URL override' "${PUBLIC_URL_OVERRIDE:-<from .env>}"
+			'public URL override' "${PUBLIC_URL_OVERRIDE:-<from .env>}" \
+			'livetv tuner publishing' "$livetv_tuner_label"
 		printf '%-22s %s\n' 'dev login' "$dev_login_label"
 		;;
 	*)

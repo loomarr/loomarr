@@ -640,6 +640,62 @@ components:
         - gpuShare
         - cpuCores
       type: object
+    BulkApproveFillerPullInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/BulkApproveFillerPullInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        ids:
+          description: Pull ids to approve, each through the single approval gate
+          items:
+            type: string
+          maxItems: 100
+          minItems: 1
+          type: array
+      required:
+        - ids
+      type: object
+    BulkApproveFillerPullOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/BulkApproveFillerPullOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        approved:
+          description: How many pulls were approved
+          format: int64
+          type: integer
+        results:
+          items:
+            $ref: "#/components/schemas/BulkApproveFillerPullResult"
+          type: array
+      required:
+        - results
+        - approved
+      type: object
+    BulkApproveFillerPullResult:
+      additionalProperties: false
+      properties:
+        error:
+          description: Why this one did not approve (already handled, not found, …)
+          type: string
+        id:
+          type: string
+        ok:
+          type: boolean
+      required:
+        - id
+        - ok
+      type: object
     BulkApproveInputBody:
       additionalProperties: false
       properties:
@@ -13922,6 +13978,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: List pulls awaiting a decision
+      tags:
+        - filler
+  /v1/filler/pulls/approve:
+    post:
+      description: "Admin only. Approves each id through the SAME single-approve gate — no batch path. Returns a per-id result so one already-decided pull does not hide the rest. Capped at 100 ids per request (Refs #1659)."
+      operationId: bulk-approve-filler-pulls
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkApproveFillerPullInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkApproveFillerPullOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Approve several pulls (admin)
       tags:
         - filler
   /v1/filler/pulls/{id}/approve:
