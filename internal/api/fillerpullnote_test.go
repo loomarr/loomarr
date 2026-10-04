@@ -11,11 +11,9 @@ import (
 func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	ff.Candidates = []filler.AcquisitionCandidate{{
-		Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "reel-1"},
-		URL:      "https://archive.org/details/reel-1", Title: "Classic reel",
-	}}
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
+	created := seedPull(t, st, "pull-note-exact-target", []filler.PullPlanRow{
+		{SourceID: "classic", Provider: "archive", RemoteID: "reel-1", URL: "https://archive.org/details/reel-1"},
+	})
 	approved := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve",
 		`{"note":"reviewed by programming"}`, adminToken))
 
@@ -32,24 +30,16 @@ func TestApproveFillerPull_NoteIsAnAnnotationAndTargetsStayExact(t *testing.T) {
 func TestApproveFillerPull_TargetsCarryTheGapTheirCandidateFills(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
-	ff.Gaps = filler.CoverageGaps{Eras: []filler.EraRange{{From: 1990, To: 1999}}}
-	ff.Candidates = []filler.AcquisitionCandidate{
-		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "in-gap"},
-			URL: "https://archive.org/details/in-gap", ObservedYear: 1994},
-		{Identity: filler.RemoteIdentity{Provider: "archive", SourceID: "classic", RemoteID: "modern"},
-			URL: "https://archive.org/details/modern", ObservedYear: 2015},
-	}
-	created := decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls", `{}`, adminToken))
-	stored, err := st.GetPull(t.Context(), created.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	created := seedPull(t, st, "pull-gap-carried", []filler.PullPlanRow{
+		{SourceID: "classic", Provider: "archive", RemoteID: "in-gap", URL: "https://archive.org/details/in-gap", Gap: "era:1990-1999"},
+		{SourceID: "classic", Provider: "archive", RemoteID: "modern", URL: "https://archive.org/details/modern"},
+	})
 	gaps := map[string]string{}
-	for _, row := range stored.Plan {
+	for _, row := range created.Plan {
 		gaps[row.RemoteID] = row.Gap
 	}
 	if gaps["in-gap"] != "era:1990-1999" || gaps["modern"] != "" {
-		t.Fatalf("pending plan gaps = %v, want only the 1994 item tagged", gaps)
+		t.Fatalf("pending plan gaps = %v, want only the in-gap item tagged", gaps)
 	}
 	decodePull(t, sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+created.ID+"/approve", `{}`, adminToken))
 	approved := map[string]string{}

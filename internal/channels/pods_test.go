@@ -11,6 +11,7 @@ import (
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 // chTunarrID returns the server-assigned Tunarr id a reconcile persisted for a
@@ -83,7 +84,7 @@ func (f *fakePods) BuildFillerList(_ context.Context, channelID string, seed int
 // NOT inline-expanded into content slots.
 func TestReconcile_PodsBuildAndAttachFillerList(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:1": "lib-1"}
 	pods := &fakePods{ids: []string{"clip-a", "clip-b"}}
 	e := newEngine(st, tun, avail, nil).WithPods(pods)
@@ -115,7 +116,7 @@ func TestReconcile_PodsBuildAndAttachFillerList(t *testing.T) {
 
 func TestReconcile_UnclassifiedClipCannotProjectCommercialBreak(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	// Deliberately bypass persistence and its held invariant. Even if a caller supplies this
 	// impossible unheld row, the real pod adapter must not turn it into a scheduled break.
 	pods := filler.NewPodAdapter(fixedClipCatalog{{
@@ -150,7 +151,7 @@ func TestReconcile_UnclassifiedClipCannotProjectCommercialBreak(t *testing.T) {
 
 func TestReconcileFillerChange_TargetsOnlyCompatibleChannels(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	seedChannel(t, st, "fits", 5, entry("movie:tmdb:1", "A"))
 	seedChannel(t, st, "does-not-fit", 6, entry("movie:tmdb:1", "A"))
 	pods := &fakePods{ids: []string{"clip-a"}, fitChannels: map[string]bool{"fits": true}}
@@ -263,7 +264,7 @@ func TestReconcile_InternalBreakEndsWhenItsPodIsExhausted(t *testing.T) {
 // must be internally idempotent or it churns Tunarr every sweep.
 func TestReconcile_FillerListIdempotent(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	pods := &fakePods{ids: []string{"clip-a", "clip-b"}}
 	e := newEngine(st, tun, mapAvail{}, nil).WithPods(pods)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:2", "B"))
@@ -284,7 +285,7 @@ func TestReconcile_FillerListIdempotent(t *testing.T) {
 // falls back to flex / the bumper card, never dead air (§10).
 func TestReconcile_EmptyCatalogNoFillerList(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	pods := &fakePods{} // ids nil → ok=false
 	e := newEngine(st, tun, mapAvail{}, nil).WithPods(pods)
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:2", "B"))
@@ -316,14 +317,14 @@ func TestReconcile_EmptyCatalogNoFillerList(t *testing.T) {
 func TestReconcile_NoBreaksWhenNoFillerPool(t *testing.T) {
 	// Two AVAILABLE programs so interleaveBreaks has a gap to fill (a single program
 	// never gets a trailing break). BreaksPerHour high enough to force a break between them.
-	seed := func() (store.Store, *testkit.Tunarr) {
+	seed := func() (store.Store, *tunarrtest.Tunarr) {
 		st := newStore(t)
-		tun := testkit.NewTunarr()
+		tun := tunarrtest.NewTunarr()
 		seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
 		return st, tun
 	}
 	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
-	breaks := func(st store.Store, tun *testkit.Tunarr, pods *fakePods) *channels.Engine {
+	breaks := func(st store.Store, tun *tunarrtest.Tunarr, pods *fakePods) *channels.Engine {
 		e := channels.New(st, tun, avail, nil,
 			channels.Config{ReconcileTTL: 10 * time.Minute, BreaksPerHour: 30}, // 30/hr → a break between hour-scale gaps
 			func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger())
@@ -378,7 +379,7 @@ func TestReconcile_NoBreaksWhenNoFillerPool(t *testing.T) {
 // filler gap stays an empty filler slot and no filler-list is attached.
 func TestReconcile_NoPodFillerLeavesFlex(t *testing.T) {
 	st := newStore(t)
-	tun := testkit.NewTunarr()
+	tun := tunarrtest.NewTunarr()
 	e := newEngine(st, tun, mapAvail{}, nil) // no .WithPods
 	seedChannel(t, st, "c1", 5, entry("movie:tmdb:2", "B"))
 

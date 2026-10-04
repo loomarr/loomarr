@@ -52,23 +52,25 @@ func seedLibraryChannels(ctx context.Context, st store.Store, picksPath string) 
 			return err
 		}
 		jobID := jobIDs()
-		if err := st.CreateJob(ctx, store.Job{
-			ID: jobID, Kind: "suggest", Status: "done", IntentJSON: string(intentJSON),
-			IntentHash: fmt.Sprintf("seed-library-%d-%s", i, pick.LibraryItemID), CreatedBy: adminID,
-			CreatedAt: now, UpdatedAt: now,
-		}); err != nil {
-			return fmt.Errorf("create job: %w", err)
-		}
 		propJSON, err := json.Marshal(suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{pick}})
 		if err != nil {
 			return err
 		}
 		propID := propIDs()
-		if err := st.CreateProposal(ctx, store.Proposal{
+		// CreateSuggestionResult (built for #1720's no-generation proposals) writes the done
+		// Job, its succeeded Attempt 1, and the submitted Proposal in one transaction — the
+		// same shape the real suggester worker leaves behind. A raw CreateJob+CreateProposal
+		// pair left no proposal_job_attempts row, so the workflow's own invariant check
+		// rejected the seeded Job with ErrInvalidState and GET /v1/proposal-jobs 500'd (#1534).
+		if err := st.CreateSuggestionResult(ctx, store.Job{
+			ID: jobID, Kind: "suggest", Status: "done", IntentJSON: string(intentJSON),
+			IntentHash: fmt.Sprintf("seed-library-%d-%s", i, pick.LibraryItemID), CreatedBy: adminID,
+			CreatedAt: now, UpdatedAt: now,
+		}, store.Proposal{
 			ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
 			ProposalJSON: string(propJSON), CreatedAt: now, UpdatedAt: now,
 		}); err != nil {
-			return fmt.Errorf("create proposal: %w", err)
+			return fmt.Errorf("create suggestion result: %w", err)
 		}
 		stored, err := st.GetProposal(ctx, propID)
 		if err != nil {

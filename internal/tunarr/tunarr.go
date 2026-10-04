@@ -1,4 +1,4 @@
-package programmer
+package tunarr
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/httpx"
 	"github.com/loomarr/loomarr/internal/metrics"
+	"github.com/loomarr/loomarr/internal/setup"
 )
 
 // now is the clock for stamping a new channel's loop anchor (StartTime). A package var so
@@ -309,6 +310,14 @@ func (t *Tunarr) ListChannels(ctx context.Context) ([]ActualChannel, error) {
 		})
 	}
 	return out, nil
+}
+
+// LiveTVURLs returns Tunarr's own Live TV URL pair, derived from the live-configured base
+// URL (§6) — the Adapter method that replaced the deleted setup.LiveTVURLsFor free
+// function's non-internal branch. Reads config() directly (no ctx needed): the derivation
+// is a pure string transform of BaseURL, not a Tunarr request.
+func (t *Tunarr) LiveTVURLs() setup.LiveTVURLs {
+	return setup.TunarrURLsFrom(t.config().BaseURL)
 }
 
 // DeleteChannel implements Programmer; a 404 is treated as already-gone (idempotent).

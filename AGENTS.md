@@ -281,6 +281,13 @@ can look stale by design. A bare `go run ./cmd/loomarr` can orphan a stale child
   scheduled/manual runs, unknown paths, and unusable bases scan all six. Keep GitHub default setup
   disabled because it overrides advanced workflows and restores all-language scans on every change.
 - Frontend work uses the Vite server, not the stale SPA embedded on the backend port.
+- Change source, test, config and doc files through the harness's file-edit tool, one reviewed
+  change at a time. Never write them with `sed -i`, `perl -pi`, `awk`, a `python` script, or a shell
+  heredoc or redirect. That includes conflict resolution and one-line tweaks. A scripted replace
+  fails silently and has mangled Go escapes, merged comments and broken JSX here. An edit tool
+  fails loudly on a bad match. For a repetitive rename, use the edit tool's replace-all or ask
+  first. Exempt: generators and formatters that a Make target owns (`make fe-codegen`, `make
+  openapi`, `biome --write`, `gofmt`), and reading files with any tool.
 
 ## Stop points
 

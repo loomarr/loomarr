@@ -112,6 +112,16 @@ jobs:
           restore-keys: |
             go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-${{ steps.epoch.outputs.week }}-${{ matrix.lane }}-
+      # On a cache miss (new epoch, or go.sum changed) this lane's module cache is empty, so the
+      # FIRST `go list ./...` this lane runs downloads the whole module graph live. Every other
+      # package in the lane only resolves its own direct deps, but internal/releaseverify's
+      # TestGoImpactSelector shells out to scripts/go-impact.sh, which runs `go list ./...` over
+      # every package in the repository — the one place in this lane that needs the FULL graph
+      # in one call. Fetching it here, in its own named step with the whole job's time budget
+      # behind it, turns a cold-cache network hiccup into a clear "Download Go modules" failure
+      # instead of a cryptic exit status buried inside that one test (#1834).
+      - name: Download Go modules
+        run: go mod download
       # Exercise the deployed media toolchain. Distribution FFmpeg versions have different
       # MPEG-TS startup latency; both executables must match the production image's pins.
       # Cache the immutable archive by digest and verify every hit before extraction.

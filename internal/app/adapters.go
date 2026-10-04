@@ -13,7 +13,6 @@ import (
 	"github.com/loomarr/loomarr/internal/channels"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/moviecollections"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/reconcile"
 	"github.com/loomarr/loomarr/internal/schedule"
@@ -21,6 +20,7 @@ import (
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/suggest"
 	"github.com/loomarr/loomarr/internal/tmdb"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // recurateThresholds adapts the live settings resolver to recurate.Thresholds (§8.2). Reads
@@ -338,7 +338,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 // question answered — is this integer free? — and taking a whole Programmer to answer it would
 // couple channel NUMBERING to the Tunarr adapter's entire surface. Wiring is the composition
 // root's job; this is the seam where a `[]ActualChannel` becomes a set of ints.
-type tunarrNumbers struct{ prog programmer.Programmer }
+type tunarrNumbers struct{ prog tunarr.Programmer }
 
 func (a tunarrNumbers) TakenChannelNumbers(ctx context.Context) (map[int]bool, error) {
 	chans, err := a.prog.ListChannels(ctx)
