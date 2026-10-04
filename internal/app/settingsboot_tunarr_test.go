@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/loomarr/loomarr/internal/programmer"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 func TestResolvedTunarrConfigReadsLiveSettingsTogether(t *testing.T) {
@@ -72,7 +72,7 @@ func TestResolvedTunarrConfigReadsLiveSettingsTogether(t *testing.T) {
 		}
 	}()
 
-	var mixed *programmer.Config
+	var mixed *tunarr.Config
 	for range 50_000 {
 		snapshot := config()
 		oldSnapshot := snapshot.BaseURL == "http://old-tunarr:8000" &&

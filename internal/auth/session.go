@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -64,13 +65,17 @@ func newToken() (string, error) {
 }
 
 // Issue creates a session for a user and returns the plaintext cookie token
-// (stored only as its hash). Caller sets the cookie.
+// (stored only as its hash). Caller sets the cookie. A user disabled (or removed) since the caller
+// checked is refused with ErrInvalidCredentials, like every other disabled login.
 func (m *Manager) Issue(ctx context.Context, userID string) (token string, expires time.Time, err error) {
 	token, session, err := m.prepare(userID)
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	err = m.store.CreateSession(ctx, session)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", time.Time{}, ErrInvalidCredentials
+	}
 	if err != nil {
 		return "", time.Time{}, err
 	}

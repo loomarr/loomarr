@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/loomarr/loomarr/internal/filler"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/store"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // GuidePoker nudges the media server after a channel-affecting reconcile so
@@ -97,7 +97,7 @@ type PodFiller interface {
 // allowing different channels to reconcile concurrently.
 type Engine struct {
 	store EngineStore
-	prog  programmer.Programmer
+	prog  tunarr.Programmer
 	avail Availability
 	guide GuidePoker
 	pods  PodFiller // §10 pod assembly; nil = flex-only (Phase-10 default)
@@ -193,7 +193,7 @@ type Config struct {
 
 // New builds an Engine. guide may be nil (no guide poke). now defaults to
 // time.Now.
-func New(st EngineStore, prog programmer.Programmer, avail Availability, guide GuidePoker, cfg Config, now func() time.Time, log *slog.Logger) *Engine {
+func New(st EngineStore, prog tunarr.Programmer, avail Availability, guide GuidePoker, cfg Config, now func() time.Time, log *slog.Logger) *Engine {
 	if cfg.Policy == "" {
 		cfg.Policy = schedule.PodFill
 	}

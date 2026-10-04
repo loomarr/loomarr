@@ -21,12 +21,6 @@ import (
 // source and clicking "Queue download" on one result stays direct (`POST /v1/filler/ingest`),
 // mirroring §7 where an admin may `POST /v1/titles` because the admin *is* the gate.
 
-// FillerPullPlanner is the metadata-only candidate planner. It is intentionally narrower than
-// FillerService: proposal cannot reach ingest, which preserves "the machine proposes" structurally.
-type FillerPullPlanner interface {
-	PlanAcquisition(context.Context, filler.AcquisitionIntent) (filler.AcquisitionPlan, error)
-}
-
 // PullPlanRowDTO is one exact remote item a pull would acquire.
 type PullPlanRowDTO struct {
 	CandidateID  string           `json:"candidateId" doc:"Stable handle used to drop this exact candidate"`
@@ -120,16 +114,6 @@ func pullToDTO(p filler.Pull) PullDTO {
 }
 
 func (s *Server) registerFillerPulls(api huma.API) {
-	huma.Register(api, withRole(huma.Operation{
-		OperationID: "propose-filler-pull", Method: http.MethodPost, Path: "/v1/filler/pulls",
-		Summary: "Propose a pull",
-		Description: "Admin only (§10 V66). Enumerates enabled registered sources without downloading, " +
-			"applies explicit acquisition intent, and persists exact selected item URLs plus rejected explanations. " +
-			"⚠ **Downloads nothing** — the machine proposes and a human commits. Refused with 409 when no " +
-			"source is eligible or no candidate satisfies the constraints.",
-		Tags: []string{"filler"},
-	}, RoleAdmin), s.proposeFillerPull)
-
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-filler-pulls", Method: http.MethodGet, Path: "/v1/filler/pulls",
 		Summary: "List pulls awaiting a decision",

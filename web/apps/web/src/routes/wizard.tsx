@@ -233,7 +233,7 @@ const WizardScreen = () => {
       case "users":
         return <UsersStep />;
       default:
-        return <FirstChannelStep />;
+        return <FirstChannelStep llmReady={checkFor("llm")?.ok ?? false} />;
     }
   };
 

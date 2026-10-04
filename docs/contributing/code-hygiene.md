@@ -7,7 +7,7 @@ Two tools find code nothing uses. One is a gate; the other is a report.
 
 | Tool | Scope | Run it | In CI |
 | --- | --- | --- | --- |
-| knip | `web/`: files, exports and dependencies | `make knip` | Gate: `make fe` fails on any finding |
+| knip | `web/`: files, exports and dependencies | `make knip` | Gate: `make fe` and `make clients` fail on any finding |
 | deadcode | Go: functions no `./cmd` binary reaches | `make deadcode` | Report: `deadcode.yml`, monthly |
 
 ## knip (frontend gate)

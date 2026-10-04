@@ -14,6 +14,14 @@ import (
 	"github.com/loomarr/loomarr/internal/fillereval"
 )
 
+// generousTestCaseTimeout is PerCaseTimeout for tests that are not about the
+// case deadline. A case can make up to two sequential provider calls plus
+// their durable checkpoint fsyncs, so a tight budget here made these tests
+// flake under -race or a loaded runner even though every fake responded
+// immediately (#1715). Tests that exercise deadline expiry set their own
+// tight PerCaseTimeout explicitly.
+const generousTestCaseTimeout = time.Minute
+
 func TestRunOpenRouterTemporalAssessmentReservesAndBindsTwoAxisCalls(t *testing.T) {
 	t.Parallel()
 	const (
@@ -64,7 +72,7 @@ func TestRunOpenRouterTemporalAssessmentReservesAndBindsTwoAxisCalls(t *testing.
 		PackagePath: packagePath, SelectionPath: selectionPath, CheckpointDir: checkpointDir,
 		BaseURL: server.URL + "/api/v1", APIKey: "test-key", Snapshot: openRouterReviewSnapshot(server.URL+"/api/v1", now),
 		Model: model, ModelFamily: "qwen3.8", UpstreamProvider: provider, UpstreamProviderSlug: slug, AssessorID: "hosted-calibrator",
-		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: time.Second,
+		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: generousTestCaseTimeout,
 		MaxRequests: 2, MaxSpendNanoUSD: 4_000_000, MaxChargeNanoUSD: 2_000_000,
 		AllowInsecureTestURL: true, Now: func() time.Time { return now },
 	})
@@ -124,7 +132,7 @@ func TestRunOpenRouterTemporalModelAssessmentUsesCompleteFreshPackage(t *testing
 		PackagePath: packagePath, CheckpointDir: filepath.Join(t.TempDir(), "private"),
 		BaseURL: server.URL, APIKey: "test-key", Snapshot: openRouterReviewSnapshot(server.URL, now),
 		Model: model, ModelFamily: "qwen3.8", UpstreamProvider: provider, UpstreamProviderSlug: slug, AssessorID: "panel-a-model",
-		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: time.Second,
+		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: generousTestCaseTimeout,
 		MaxRequests: 2, MaxSpendNanoUSD: 4_000_000, MaxChargeNanoUSD: 2_000_000,
 		AllowInsecureTestURL: true, Now: func() time.Time { return now },
 	})
@@ -223,7 +231,7 @@ func TestRunOpenRouterTemporalAssessmentTurnsSettledInvalidClaimIntoOperationalF
 		PackagePath: packagePath, SelectionPath: selectionPath, CheckpointDir: filepath.Join(t.TempDir(), "private"),
 		BaseURL: server.URL, APIKey: "test-key", Snapshot: openRouterReviewSnapshot(server.URL, now),
 		Model: "review/vendor-model", ModelFamily: "qwen3.8", UpstreamProvider: "Provider Route", UpstreamProviderSlug: "provider/route", AssessorID: "hosted-calibrator",
-		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: time.Second,
+		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: generousTestCaseTimeout,
 		MaxRequests: 2, MaxSpendNanoUSD: 4_000_000, MaxChargeNanoUSD: 2_000_000, AllowInsecureTestURL: true, Now: func() time.Time { return now },
 	})
 	if err != nil {
@@ -247,7 +255,7 @@ func TestRunOpenRouterTemporalAssessmentClassifiesHTTP502AsRetryableProviderFail
 		PackagePath: packagePath, SelectionPath: selectionPath, CheckpointDir: filepath.Join(t.TempDir(), "private"),
 		BaseURL: server.URL, APIKey: "test-key", Snapshot: openRouterReviewSnapshot(server.URL, now),
 		Model: "review/vendor-model", ModelFamily: "qwen3.8", UpstreamProvider: "Provider Route", UpstreamProviderSlug: "provider/route", AssessorID: "hosted-calibrator",
-		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: time.Second,
+		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: generousTestCaseTimeout,
 		MaxRequests: 1, MaxSpendNanoUSD: 2_000_000, MaxChargeNanoUSD: 2_000_000, AllowInsecureTestURL: true, Now: func() time.Time { return now },
 	})
 	if err != nil {
@@ -278,7 +286,7 @@ func TestRunOpenRouterTemporalAssessmentRecordsPreRequestBudgetExhaustion(t *tes
 		PackagePath: packagePath, SelectionPath: selectionPath, CheckpointDir: filepath.Join(t.TempDir(), "private"),
 		BaseURL: server.URL, APIKey: "test-key", Snapshot: openRouterReviewSnapshot(server.URL, now),
 		Model: "review/vendor-model", ModelFamily: "qwen3.8", UpstreamProvider: "Provider Route", UpstreamProviderSlug: "provider/route", AssessorID: "hosted-calibrator",
-		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: time.Second,
+		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: generousTestCaseTimeout,
 		MaxRequests: 1, MaxSpendNanoUSD: 2_000_000, MaxChargeNanoUSD: 2_000_000, AllowInsecureTestURL: true, Now: func() time.Time { return now },
 	})
 	if err != nil {
@@ -287,6 +295,77 @@ func TestRunOpenRouterTemporalAssessmentRecordsPreRequestBudgetExhaustion(t *tes
 	assessment := result.AssessmentSet.Assessments[0]
 	if calls.Load() != 1 || result.Requests != 1 || assessment.OperationalFailure == nil || assessment.OperationalFailure.Code != fillereval.TemporalFailureContextExhausted || len(assessment.Inference.Calls) != 2 {
 		t.Fatalf("budget exhaustion was not retained without a second provider call: calls=%d result=%+v", calls.Load(), result)
+	}
+}
+
+// TestRunOpenRouterTemporalAssessmentRecordsConservativeAccountingWhenCaseDeadlineExpires
+// pins the intended behaviour behind #1715: PerCaseTimeout is a hard budget
+// for the whole case (both the unit and role axis calls together, per
+// research/cmd/filler-temporal-assess-openrouter's -per-case-timeout flag).
+// When the deadline expires mid-second-call, the second attempt's charge is
+// genuinely unknown to us and must stay reserved (unsettled) rather than
+// being assumed zero — this is conservative accounting, not a bug. The fake
+// blocks the role axis on its own request context so this is deterministic:
+// it ends exactly when the shared case deadline expires, with no sleep-based
+// timing margin to flake under -race or a loaded runner.
+func TestRunOpenRouterTemporalAssessmentRecordsConservativeAccountingWhenCaseDeadlineExpires(t *testing.T) {
+	t.Parallel()
+	const (
+		model        = "review/vendor-model"
+		provider     = "Provider Route"
+		slug         = "provider/route"
+		caseDeadline = 150 * time.Millisecond
+	)
+	packagePath, selectionPath := writeTemporalCalibrationFixture(t)
+	now := time.Unix(35_000, 0).UTC()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request openRouterStructuredRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		if request.ResponseFormat.JSONSchema.Name == "filler_temporal_role" {
+			<-r.Context().Done()
+			return
+		}
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "generation", "model": model,
+			"choices": []any{map[string]any{"message": map[string]any{"content": `{"kind":"standalone","decisiveSignalIds":["frame-01"]}`, "reasoning": ""}}},
+			"usage":   map[string]any{"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.001},
+			"openrouter_metadata": map[string]any{
+				"attempt":   1,
+				"attempts":  []any{map[string]any{"provider": provider, "model": model, "status": 200}},
+				"endpoints": map[string]any{"available": []any{map[string]any{"provider": provider, "model": model, "selected": true}}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	result, err := RunOpenRouterTemporalAssessment(t.Context(), OpenRouterTemporalConfig{
+		PackagePath: packagePath, SelectionPath: selectionPath, CheckpointDir: filepath.Join(t.TempDir(), "private"),
+		BaseURL: server.URL + "/api/v1", APIKey: "test-key", Snapshot: openRouterReviewSnapshot(server.URL+"/api/v1", now),
+		Model: model, ModelFamily: "qwen3.8", UpstreamProvider: provider, UpstreamProviderSlug: slug, AssessorID: "hosted-calibrator",
+		ExpectedPackageCases: 1, ExpectedCalibrationCases: 1, PerCaseTimeout: caseDeadline,
+		MaxRequests: 2, MaxSpendNanoUSD: 4_000_000, MaxChargeNanoUSD: 2_000_000,
+		AllowInsecureTestURL: true, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("second axis call reached the fake despite case deadline expiry: calls=%d", calls.Load())
+	}
+	if result.Requests != 2 || result.ChargedNanoUSD != 1_000_000 || result.ConsumedNanoUSD != 3_000_000 || result.UnknownChargeReservations != 1 {
+		t.Fatalf("case deadline expiry did not record conservative accounting: %+v", result)
+	}
+	assessment := result.AssessmentSet.Assessments[0]
+	if assessment.OperationalFailure == nil || assessment.OperationalFailure.Code != fillereval.TemporalFailureTimeout || !assessment.OperationalFailure.Retryable {
+		t.Fatalf("case deadline expiry was not classified as a retryable timeout: %+v", assessment)
+	}
+	if len(result.Attempts) != 2 || result.Attempts[1].Axis != "role" || result.Attempts[1].State != temporalOpenRouterAttemptUnsettled {
+		t.Fatalf("second axis attempt was not left unsettled pending an unknown charge: %+v", result.Attempts)
 	}
 }
 
