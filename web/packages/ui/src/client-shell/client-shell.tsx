@@ -11,11 +11,20 @@ const ClientShell = ({
   density,
   onDisconnect,
   onNavigate,
+  requestsBadge,
   serverName,
 }: ClientShellProps) => {
-  const navigation = <ClientNavigation active={active} density={density} onNavigate={onNavigate} />;
+  const navigation = (
+    <ClientNavigation
+      active={active}
+      density={density}
+      onNavigate={onNavigate}
+      requestsBadge={requestsBadge}
+    />
+  );
   // A phone docks its platform's tab bar under the content; pointer and TV keep the row inline.
   const phone = density === "touch";
+  if (phone && typeof children === "function") return children(navigation);
   // A destination with its own screen (the phone's Guide and Watching) sets its own gutters.
   if (phone && children)
     return (

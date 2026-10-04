@@ -10,8 +10,13 @@ import type {
 const destinations = [
   { icon: "play", label: "Watching", value: "watching" },
   { icon: "guide", label: "Guide", value: "guide" },
+  { icon: "requests", label: "Requests", value: "requests" },
   { icon: "channels", label: "Surf", value: "surf" },
 ] as const;
+
+/** Requests is a phone destination: the TV and pointer rows keep Watching, Guide and Surf. */
+const destinationsFor = (density: ClientNavigationProps["density"]) =>
+  density === "touch" ? destinations : destinations.filter(({ value }) => value !== "requests");
 
 const clientDestinationLabel = (destination: ClientDestination): string =>
   destinations.find((item) => item.value === destination)?.label ?? destination;
@@ -26,14 +31,21 @@ const resolveClientNavigationVariant = (
 ): ClientNavigationVariant =>
   density !== "touch" ? "actions" : Platform.OS === "android" ? "material" : "tabBar";
 
-const ClientNavigation = ({ active, density = "pointer", onNavigate, variant }: ClientNavigationProps) => {
+const ClientNavigation = ({
+  active,
+  density = "pointer",
+  onNavigate,
+  requestsBadge = 0,
+  variant,
+}: ClientNavigationProps) => {
   const resolved = variant ?? resolveClientNavigationVariant(density);
+  const shown = destinationsFor(density);
   if (resolved !== "actions")
     return (
       <TabBar
         accessibilityLabel="Primary navigation"
         idiom={resolved === "material" ? "material" : "ios"}
-        items={destinations}
+        items={shown.map((item) => (item.value === "requests" ? { ...item, badge: requestsBadge } : item))}
         onSelect={onNavigate}
         selected={active}
       />
@@ -48,7 +60,7 @@ const ClientNavigation = ({ active, density = "pointer", onNavigate, variant }: 
       role="navigation"
       width="100%"
     >
-      {destinations.map((destination) => {
+      {shown.map((destination) => {
         const selected = active === destination.value;
         return (
           <Action

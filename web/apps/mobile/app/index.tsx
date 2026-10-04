@@ -11,6 +11,7 @@ import {
   type PairedClient,
   PairedNativeImage,
   usePairedClient,
+  usePairedRequests,
   useShellPause,
 } from "@loomarr/player/native";
 import type { ClientDestination } from "@loomarr/ui";
@@ -19,6 +20,7 @@ import {
   clientBackDestination,
   GuideJourney,
   PairingShell,
+  RequestsJourney,
   StatePanel,
   WatchingPanel,
   watchingPanelFromGuide,
@@ -106,9 +108,19 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   // The phone opens on its Guide with no picture, so it tunes only when the viewer picks a channel.
   const client = usePairedClient({ credential, guideWindowMinutes: 120, initialTune: "none", session });
   const { controller, guide, myChannelsSnapshot, snapshot } = client;
+  // Requests loads with the app so an admin's tab badge counts before they open it.
+  const requests = usePairedRequests({ credential, session });
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
   // pause when the viewer leaves Watching, and resume what the shell paused when they come back.
   const forgetShellPause = useShellPause(controller, active === "watching");
+  // Watching a channel from outside it (a Guide pick, a finished request's Open channel).
+  const watchChannel = (channelId: string) => {
+    // Another channel replaces the stream the shell paused, so resuming it would only blip its
+    // audio; the paused channel itself is not re-tuned, so Watching resumes it.
+    forgetShellPause(channelId);
+    void controller.tuneChannel(channelId);
+    setActive("watching");
+  };
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -124,9 +136,19 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
       density="touch"
       onDisconnect={() => session.disconnect()}
       onNavigate={setActive}
+      requestsBadge={requests.needsYouCount}
       serverName={credential.serverUrl}
     >
-      {active === "guide" ? (
+      {active === "requests" ? (
+        // The journey docks its review sheet directly above the tab bar, so it draws the footer itself.
+        (navigation) => (
+          <RequestsJourney
+            controller={requests.controller}
+            footer={navigation}
+            onOpenChannel={watchChannel}
+          />
+        )
+      ) : active === "guide" ? (
         <View style={{ flex: 1 }}>
           <View style={{ paddingBottom: 8, paddingHorizontal: 16, paddingTop: 12 }}>
             <Text accessibilityRole="header" density="touch" textRole="title">
@@ -138,13 +160,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
             density="touch"
             dock={guideDock}
             myChannels={myChannelsSnapshot}
-            onTune={(channelId) => {
-              // Another channel replaces the stream the shell paused, so resuming it would only blip its
-              // audio; the paused channel itself is not re-tuned, so Watching resumes it.
-              forgetShellPause(channelId);
-              void controller.tuneChannel(channelId);
-              setActive("watching");
-            }}
+            onTune={watchChannel}
             preferredChannelId={snapshot.channel?.id}
             renderArtwork={(airing) => {
               const uri = airing.source.thumbImage?.src ?? airing.source.thumbUrl;
