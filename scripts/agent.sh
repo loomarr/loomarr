@@ -635,7 +635,7 @@ EOF
 		# that overrides $ROOT (no go.mod there) breaks this filter.
 		packages_file="$(mktemp)"
 		printf '%s\n' "$packages" >"$packages_file"
-		testable_packages="$(cd "$SCRIPT_DIR/.." && go list ./... | grep -Fxf "$packages_file" || true)"
+		testable_packages="$(go list -C "$SCRIPT_DIR/.." ./... | grep -Fxf "$packages_file" || true)"
 		rm -f "$packages_file"
 		traced="$(printf '%s\n' "$testable_packages" | "$SCRIPT_DIR/go-race-policy.sh" --race)"
 		untraced="$(printf '%s\n' "$testable_packages" | "$SCRIPT_DIR/go-race-policy.sh" --no-race)"
