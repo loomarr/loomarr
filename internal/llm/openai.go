@@ -389,7 +389,7 @@ func (o *OpenAI) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 		ToolCalls:    unwrapOpenAIToolCalls(msg.ToolCalls, envelopes),
 		FinishReason: c.FinishReason,
 		Attribution: attributionFromWire(o.provider, o.model, c.ID, c.Model, c.Usage,
-			c.Meta, []string{"text"}, time.Since(started)),
+			c.Meta, []string{"text"}, time.Since(started), o.selfHosted()),
 	}, nil
 }
 
@@ -401,7 +401,7 @@ func (o *OpenAI) addMetadataHeader(req *http.Request) {
 
 func attributionFromWire(requestedProvider, requestedModel, generationID, reportedModel string,
 	usage openAIUsage, metadata openRouterMetadata, modalities []string,
-	latency time.Duration,
+	latency time.Duration, selfHosted bool,
 ) Attribution {
 	resolvedModel := strings.TrimSpace(reportedModel)
 	resolvedProvider := ""
@@ -425,6 +425,7 @@ func attributionFromWire(requestedProvider, requestedModel, generationID, report
 			Video: usage.PromptDetails.VideoTokens + usage.CompletionDetails.VideoTokens,
 		},
 		Latency: latency, Attempts: attempts, GenerationID: generationID,
+		SelfHosted: selfHosted,
 	}
 	if requestedProvider == "openrouter" && usage.Cost.String() != "" {
 		a.Charge = &Money{Amount: usage.Cost.String(), Currency: "USD"}
@@ -537,7 +538,7 @@ func (o *OpenAI) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 		Content:      strings.TrimSpace(c.Message.Content),
 		FinishReason: c.FinishReason,
 		Attribution: attributionFromWire(o.provider, o.model, c.ID, c.Model, c.Usage,
-			c.Meta, []string{"text", "image"}, time.Since(started)),
+			c.Meta, []string{"text", "image"}, time.Since(started), o.selfHosted()),
 	}, nil
 }
 

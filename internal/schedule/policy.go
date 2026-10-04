@@ -146,6 +146,29 @@ func NormalizePlayoutBackend(backend string) string {
 	return strings.TrimSpace(backend)
 }
 
+// IsValidPlayoutBackend reports whether backend (already normalized by the caller) is one
+// of the two declared playout backends. The sole place that knows there are exactly two
+// legal values (Refs #1564 PR 3), so callers validating a backend stop hand-rolling the
+// two-way comparison themselves.
+func IsValidPlayoutBackend(backend string) bool {
+	switch backend {
+	case PlayoutBackendInternal, PlayoutBackendTunarr:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsInternalBackend reports whether backend is exactly the internal playout backend value,
+// unnormalized — callers that already hold a resolved (not necessarily normalized) backend
+// string use this instead of comparing against PlayoutBackendInternal directly (Refs #1564
+// PR 3).
+func IsInternalBackend(backend string) bool { return backend == PlayoutBackendInternal }
+
+// IsTunarrBackend reports whether backend is exactly the Tunarr playout backend value,
+// unnormalized — the Tunarr-side counterpart to IsInternalBackend (Refs #1564 PR 3).
+func IsTunarrBackend(backend string) bool { return backend == PlayoutBackendTunarr }
+
 // HasExplicitPlayoutBackend reports whether policy pins a channel instead of inheriting
 // the fleet default. Empty and nil playout policies both mean inheritance.
 func HasExplicitPlayoutBackend(policy ChannelPolicy) bool {

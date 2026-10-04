@@ -193,6 +193,7 @@ func (o *Ollama) Chat(ctx context.Context, messages []Message, opts ChatOptions)
 			Modalities: []string{"text"},
 			Tokens:     TokenUsage{Prompt: out.PromptEvalCount, Completion: out.EvalCount},
 			Latency:    time.Since(started), Attempts: 1,
+			SelfHosted: true,
 		},
 	}, nil
 }
@@ -265,6 +266,7 @@ func (o *Ollama) AskAboutImages(ctx context.Context, prompt string, jpegs [][]by
 			Modalities: []string{"text", "image"},
 			Tokens:     TokenUsage{Prompt: out.PromptEvalCount, Completion: out.EvalCount},
 			Latency:    time.Since(started), Attempts: 1,
+			SelfHosted: true,
 		},
 	}, nil
 }

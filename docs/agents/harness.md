@@ -224,6 +224,41 @@ requirements; if worker attribution or enforcement cannot be established, keep t
 read-only. The lane watcher is advisory Claude output telemetry, not full checkpoint accounting
 or a Codex meter. Do not mistake quiet output for a verified budget.
 
+#### Supervise Orca workers
+
+- **Nest workers under the coordinator.** Orca's sidebar groups worktrees by lineage, which is
+  separate from orchestration parentage. Start an editing worker with
+  `worker-start --worktree new-child` so its worktree sits under the coordinator's; a
+  `new-top-level` worktree appears as unrelated work. Reviewers and other read-only workers use
+  `--worktree current`. To nest an existing worktree, use
+  `orca worktree set --worktree path:<worker> --parent-worktree path:<coordinator> --issue <n>`,
+  which changes Orca's metadata only.
+- **Keep a waiter armed.** The "You have N orchestration messages" prompt is a best-effort nudge,
+  and it does not survive an Orca or session restart. While any Dispatch is active, keep one
+  background
+  `orca orchestration check --run <run> --wait --types "worker_done,escalation,question"`
+  running, and re-arm it after each wake. Listing the types leaves heartbeats out, so the waiter
+  wakes only for a decision. When it times out, compare `worker-list` with each worker's transcript
+  activity to catch a report that never arrived.
+- **Meter a Claude worker from its own transcript.** Use the worker's session file under
+  `~/.claude/projects/<worktree path with / and . replaced by ->/`. Other sessions share that
+  folder, such as automatic security reviews started by a push, so never sum the folder. One API
+  message is written as several transcript lines that repeat the same `usage`; group by
+  `.message.id` and take the last line's `output_tokens`.
+- **After an Orca restart**, worker liveness reads `unverifiable` and reusing an old terminal fails
+  with `terminal_handle_stale`. Before starting another writer on the same branch, prove no agent
+  process still runs in that worktree (check each process's working directory), fence the old
+  dispatch with `worker-abandon`, and re-run `make agent-start` if the worktree left the
+  `agent-status` roster.
+- **Close what a worker leaves behind.** `worker-release` settles the dispatch but leaves the
+  worker's tab running at an idle prompt, and a `new-child` or `new-top-level` launch also leaves a
+  setup shell. After accepting a report, read the tab (`orca terminal read`) to confirm it's idle,
+  then `orca terminal close` it and any finished setup shell. Retire the worktree once its PR
+  merges (`make agent-gc`, then `make agent-gc APPLY=1`).
+- **Typing in a worker's tab steers that worker.** A maintainer message meant for the coordinator
+  but typed into a worker's tab interrupts the worker. Send it a resume message with
+  `orchestration send` and continue.
+
 Worktrees land in Orca's workspace directory rather than beside the primary checkout. Isolation keys
 off the worktree path, so the location does not matter, and `make agent-gc` audits Orca worktrees
 like any other. Do not add a `.worktreeinclude`: Orca would copy the listed files, including

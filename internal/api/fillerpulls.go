@@ -21,12 +21,6 @@ import (
 // source and clicking "Queue download" on one result stays direct (`POST /v1/filler/ingest`),
 // mirroring §7 where an admin may `POST /v1/titles` because the admin *is* the gate.
 
-// FillerPullPlanner is the metadata-only candidate planner. It is intentionally narrower than
-// FillerService: proposal cannot reach ingest, which preserves "the machine proposes" structurally.
-type FillerPullPlanner interface {
-	PlanAcquisition(context.Context, filler.AcquisitionIntent) (filler.AcquisitionPlan, error)
-}
-
 // PullPlanRowDTO is one exact remote item a pull would acquire.
 type PullPlanRowDTO struct {
 	CandidateID  string           `json:"candidateId" doc:"Stable handle used to drop this exact candidate"`
@@ -121,16 +115,6 @@ func pullToDTO(p filler.Pull) PullDTO {
 
 func (s *Server) registerFillerPulls(api huma.API) {
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "propose-filler-pull", Method: http.MethodPost, Path: "/v1/filler/pulls",
-		Summary: "Propose a pull",
-		Description: "Admin only (§10 V66). Enumerates enabled registered sources without downloading, " +
-			"applies explicit acquisition intent, and persists exact selected item URLs plus rejected explanations. " +
-			"⚠ **Downloads nothing** — the machine proposes and a human commits. Refused with 409 when no " +
-			"source is eligible or no candidate satisfies the constraints.",
-		Tags: []string{"filler"},
-	}, RoleAdmin), s.proposeFillerPull)
-
-	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-filler-pulls", Method: http.MethodGet, Path: "/v1/filler/pulls",
 		Summary: "List pulls awaiting a decision",
 		Description: "Admin only (§10 V35). `status` filters (pending | approved | dismissed); omit it for all. " +
@@ -154,6 +138,13 @@ func (s *Server) registerFillerPulls(api huma.API) {
 		Description: "Admin only (§10 V35). Records the decision and downloads nothing. The row is kept.",
 		Tags:        []string{"filler"},
 	}, RoleAdmin), s.dismissFillerPull)
+
+	huma.Register(api, withRole(huma.Operation{
+		OperationID: "bulk-approve-filler-pulls", Method: http.MethodPost, Path: "/v1/filler/pulls/approve",
+		Summary:     "Approve several pulls (admin)",
+		Description: "Admin only. Approves each id through the SAME single-approve gate — no batch path. Returns a " + "per-id result so one already-decided pull does not hide the rest. Capped at 100 ids per request (Refs #1659).",
+		Tags:        []string{"filler"},
+	}, RoleAdmin), s.bulkApproveFillerPulls)
 }
 
 type pullOutput struct {

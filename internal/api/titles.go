@@ -153,11 +153,6 @@ func (s *Server) registerTitles(api huma.API) {
 		Summary: "List titles, optionally filtered by state", Tags: []string{"titles"},
 	}, RoleMember), s.listTitles)
 
-	huma.Register(api, withRole(huma.Operation{
-		OperationID: "delete-title", Method: http.MethodDelete, Path: "/v1/titles/{key}",
-		Summary: "Give up / cancel a title", Description: "Admin only.", Tags: []string{"titles"},
-		DefaultStatus: http.StatusNoContent,
-	}, RoleAdmin), s.deleteTitle)
 }
 
 // --- handlers ---
@@ -283,26 +278,6 @@ func (s *Server) listTitles(ctx context.Context, in *listInput) (*listOutput, er
 		out.Body.Titles = append(out.Body.Titles, dto)
 	}
 	return out, nil
-}
-
-type deleteOutput struct{}
-
-func (s *Server) deleteTitle(ctx context.Context, in *keyInput) (*deleteOutput, error) {
-	rec, err := s.store.GetTitle(ctx, provision.Key(in.Key))
-	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Title not found", "That title doesn't exist — it may have been removed.")
-	}
-	if err != nil {
-		return nil, err
-	}
-	// Give up: mark unavailable (terminal) rather than hard-delete, preserving
-	// the audit trail (§4). The reconciler's Cancel path handles downstream.
-	rec.State = provision.Unavailable
-	rec.LastError = "cancelled via API"
-	if err := s.store.UpsertTitle(ctx, rec); err != nil {
-		return nil, err
-	}
-	return &deleteOutput{}, nil
 }
 
 // isMutating reports whether a method changes state (needs CSRF, §11).

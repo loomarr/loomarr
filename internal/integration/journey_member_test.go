@@ -48,7 +48,6 @@ func TestJourney_Member(t *testing.T) {
 	// any nil-dep/501 check, so a member is refused regardless of configuration.
 	forbidden := []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/titles", `{"mediaType":"movie","tmdbId":1}`},
-		{http.MethodDelete, "/v1/titles/movie:tmdb:1", ""},
 		{http.MethodGet, "/v1/users", ""},
 		{http.MethodPatch, "/v1/users/" + fixtureMemberID, `{"disabled":true}`},
 		{http.MethodPost, "/v1/users/import", `{"ids":["x"]}`},

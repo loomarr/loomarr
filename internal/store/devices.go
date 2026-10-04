@@ -83,16 +83,19 @@ func (s *sqlStore) scanPairing(row *sql.Row) (DevicePairing, error) {
 	return p, nil
 }
 
-// ApproveDevicePairing records that a user approved a pending pairing.
+// ApproveDevicePairing records that a user approved a pending pairing. A disabled (or unknown) user
+// approves nothing.
 //
 // ⚠ The `approved_at = 0` predicate is the guard that makes approval single-use at the DATABASE, not
 // merely in the handler. Two humans racing on the same code, or one clicking twice, must produce one
-// credential — a check-then-write in Go would let both through.
+// credential — a check-then-write in Go would let both through. The enabled-user predicate is the
+// same kind of guard against a disable racing the approval (see enabledUserSQL).
 func (s *sqlStore) ApproveDevicePairing(ctx context.Context, userCode, userID string, at time.Time) (bool, error) {
 	res, err := s.db.ExecContext(ctx, s.ph(
 		`UPDATE device_pairings SET user_id = ?, approved_at = ?
-		 WHERE user_code = ? AND approved_at = 0 AND expires_at > ?`),
-		userID, epoch(at), userCode, epoch(at))
+		 WHERE user_code = ? AND approved_at = 0 AND expires_at > ?
+		   AND EXISTS (`+s.enabledUserSQL()+`)`),
+		userID, epoch(at), userCode, epoch(at), userID, false)
 	if err != nil {
 		return false, err
 	}
@@ -114,13 +117,49 @@ func (s *sqlStore) PurgeExpiredDevicePairings(ctx context.Context, now time.Time
 	return err
 }
 
+// RevokeDevicePairingsForUser deletes every pairing a user has approved but no device has redeemed
+// yet — called when a user is disabled, alongside RevokeDeviceTokensForUser. Otherwise a pairing
+// approved before the disable could still mint a device token after it.
+func (s *sqlStore) RevokeDevicePairingsForUser(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM device_pairings WHERE user_id = ?`), userID)
+	return err
+}
+
+// enabledUserSQL selects the user row only while it is enabled; it takes the user id, then false.
+// Approving a pairing and minting a device token are both conditional on it, in the same statement.
+//
+// ⚠ Disabling sets users.disabled BEFORE it deletes the user's pairings and tokens, so a write that
+// sees the user enabled must also commit before that delete looks. SQLite has one writer, so that
+// already holds. Postgres runs READ COMMITTED: without FOR SHARE, a write whose snapshot predates the
+// disable could commit after the delete's snapshot and leave a credential behind. FOR SHARE makes it
+// wait on the disabling UPDATE's row lock and re-read the flag.
+func (s *sqlStore) enabledUserSQL() string {
+	q := `SELECT 1 FROM users WHERE id = ? AND disabled = ?`
+	if s.dialect == DialectPostgres {
+		q += ` FOR SHARE`
+	}
+	return q
+}
+
 // --- device tokens ---
 
+// CreateDeviceToken issues a device credential for an enabled user. It returns ErrNotFound when the
+// user is unknown or disabled, the same answer ResolveDevice gives for a disabled user's device.
 func (s *sqlStore) CreateDeviceToken(ctx context.Context, t DeviceToken) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
+	// INSERT … SELECT rather than VALUES so the enabled-user check is part of the insert. The casts
+	// give Postgres the parameter types it cannot infer from a SELECT list.
+	res, err := s.db.ExecContext(ctx, s.ph(
 		`INSERT INTO device_tokens (token_hash, user_id, device_name, created_at, last_seen_at)
-		 VALUES (?, ?, ?, ?, ?)`),
-		t.TokenHash, t.UserID, t.DeviceName, epoch(t.CreatedAt), epoch(t.LastSeenAt))
+		 SELECT CAST(? AS TEXT), CAST(? AS TEXT), CAST(? AS TEXT), CAST(? AS BIGINT), CAST(? AS BIGINT)
+		 WHERE EXISTS (`+s.enabledUserSQL()+`)`),
+		t.TokenHash, t.UserID, t.DeviceName, epoch(t.CreatedAt), epoch(t.LastSeenAt), t.UserID, false)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err == nil && n == 0 {
+		return ErrNotFound
+	}
 	return err
 }
 
@@ -189,6 +228,14 @@ func (s *sqlStore) DeleteDeviceToken(ctx context.Context, tokenHash, userID stri
 	}
 	n, err := res.RowsAffected()
 	return n > 0, err
+}
+
+// RevokeDeviceTokensForUser deletes every device a user paired — called when a user is disabled.
+// Disable alone is not enough: a re-enabled user must not get back a lost device that now acts with
+// their role (ADR 0043).
+func (s *sqlStore) RevokeDeviceTokensForUser(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, s.ph(`DELETE FROM device_tokens WHERE user_id = ?`), userID)
+	return err
 }
 
 // nullableUser keeps a pending pairing's user_id NULL rather than "", so the foreign key stays

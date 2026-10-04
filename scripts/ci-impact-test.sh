@@ -54,6 +54,28 @@ if ! grep -q 'run: make fe-codegen' <<<"$clients_workflow" ||
   exit 1
 fi
 
+# knip spans the whole web/ workspace, so every gate the classifier picks for a web/ path must run
+# it (#1838): `make fe` for web, `make clients` (via its knip prerequisite) for clients, and the
+# local verify web step. Selecting a gate that does not run knip lets an unused file merge green.
+if ! grep -Eq '^clients:.* knip( |$)' "$ROOT/mk/frontend.mk" ||
+  ! grep -q 'pnpm codegen && pnpm knip' "$ROOT/mk/frontend.mk" ||
+  ! grep -q 'pnpm lint && pnpm knip' "$ROOT/mk/frontend.mk" ||
+  ! grep -q 'pnpm lint && pnpm knip' "$ROOT/scripts/agent.sh"; then
+  echo 'ci-impact-test: a gate selected for web/ paths no longer runs knip' >&2
+  exit 1
+fi
+while IFS= read -r web_path; do
+  gates="$(selected_gates "$web_path")"
+  case ",$gates," in
+    *,web,*|*,clients,*) ;;
+    *)
+      printf 'ci-impact-test: %s selects neither web nor clients (%s), so knip never runs\n' "$web_path" "$gates" >&2
+      exit 1
+      ;;
+  esac
+done < <(git -C "$ROOT" ls-files web/apps web/packages web/native-stories web/scripts web/knip.ts \
+  | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json)$|knip\.ts$')
+
 all_gates='contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench'
 # Shared build inputs fail closed too: a script, workflow or Make module that no explicit rule
 # names selects every gate until someone classifies it (#1570). The directory catch-alls used to
