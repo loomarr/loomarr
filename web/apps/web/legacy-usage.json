@@ -652,7 +652,7 @@
       "legacyUi": 4
     },
     "src/home/home-page/home-page.tsx": {
-      "tailwindClasses": 18
+      "tailwindClasses": 19
     },
     "src/home/home-strip/home-strip.tsx": {
       "tailwindClasses": 37,

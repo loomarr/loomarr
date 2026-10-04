@@ -119,7 +119,7 @@ const HomePage = () => {
           {isAdmin && (
             <p className="m-0 text-static-400 text-xs">
               Encoder, storage and service details are in{" "}
-              <Link to="/settings/system" className="text-signal hover:underline">
+              <Link to="/settings/system" className="text-signal underline underline-offset-2">
                 Settings → This server
               </Link>
               .
