@@ -5,7 +5,7 @@ import {
   requestsInTab,
   requestsNeedsYouCount,
 } from "@loomarr/core/requests";
-import { SegmentedControl, Skeleton, Surface, Text } from "@loomarr/design-system";
+import { Action, SegmentedControl, Skeleton, Surface, Text } from "@loomarr/design-system";
 
 import { StatePanel } from "../../state-panel";
 import { ApprovalGroup, type ApprovalRow } from "../approval-group";
@@ -63,7 +63,7 @@ const pullRow = ({ estimateClips, id, proposedBy, sources, title }: PullDTO): Ap
   title,
 });
 
-const RequestsList = ({
+const RequestsBody = ({
   onApprove,
   onApproveFiller,
   onFix,
@@ -235,5 +235,35 @@ const RequestsList = ({
     </Surface>
   );
 };
+
+// The list screen owns its large title and the app bar's "Request a channel" icon button, above the
+// segments in every state (loading, error, empty and ready), so no host or story has to add them. The
+// approved mock puts the primary action in the app bar on both phones (Android has no FAB).
+const RequestsList = (props: RequestsListProps) => (
+  <Surface backgroundColor="$transparent" borderWidth={0} gap="$control">
+    <Surface
+      alignItems="center"
+      backgroundColor="$transparent"
+      borderWidth={0}
+      flexDirection="row"
+      justifyContent="space-between"
+    >
+      <Text accessibilityRole="header" density="touch" textRole="display">
+        Requests
+      </Text>
+      <Action
+        accessibilityLabel="Request a channel"
+        accessibilityRole="button"
+        density="touch"
+        onPress={props.onRequestChannel}
+        style={{ minWidth: 48 }}
+        tone="primary"
+      >
+        +
+      </Action>
+    </Surface>
+    <RequestsBody {...props} />
+  </Surface>
+);
 
 export { RequestsList };

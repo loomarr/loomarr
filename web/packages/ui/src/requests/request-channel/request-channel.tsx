@@ -11,6 +11,7 @@ import { Action, Badge, Field, ScrollFrame, Surface, Text } from "@loomarr/desig
 import { useState } from "react";
 
 import { StatePanel } from "../../state-panel";
+import { RequestsBack } from "../requests-back";
 import type { RequestChannelProps } from "./request-channel.type";
 
 const PAGE = 3;
@@ -131,9 +132,7 @@ const RequestChannel = ({
 
   return (
     <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$control">
-      <Action accessibilityRole="button" density="touch" icon="back" onPress={onBack} tone="secondary">
-        Requests
-      </Action>
+      <RequestsBack onPress={onBack} />
       <ScrollFrame density="touch">
         <Text density="touch" textRole="display">
           Request a channel
@@ -146,7 +145,13 @@ const RequestChannel = ({
           Channel ideas
         </Text>
         {hiddenIdea ? (
-          <Surface alignItems="center" flexDirection="row" gap="$control" justifyContent="space-between">
+          <Surface
+            alignItems="center"
+            flexDirection="row"
+            gap="$control"
+            justifyContent="space-between"
+            padding="$control"
+          >
             <Text density="touch" textRole="caption" tone="secondary">{`Hid ${hiddenIdea.name}`}</Text>
             <Action accessibilityRole="button" density="touch" onPress={onUndoHide} tone="secondary">
               Undo

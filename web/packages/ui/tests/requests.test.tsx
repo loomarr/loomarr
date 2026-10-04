@@ -47,6 +47,28 @@ const list = (over: Partial<RequestsListProps>) =>
   );
 
 describe("requests list", () => {
+  it.each([
+    ["loading", requestsSnapshot({ entries: [], status: "loading" }), "in-progress"],
+    ["error", requestsSnapshot({ entries: [], status: "error" }), "in-progress"],
+    ["empty", requestsSnapshot({ entries: [] }), "in-progress"],
+    ["member", requestsSnapshot(), "in-progress"],
+    ["admin needs you", admin(), "needs-you"],
+    ["admin done", admin(), "done"],
+  ] as const)("owns its large title and the app bar action in the %s state", (_state, snapshot, tab) => {
+    const markup = list({ snapshot, tab });
+    expect(markup).toContain(">Requests<");
+    expect(markup).toContain('aria-label="Request a channel"');
+    // The title is above the segments, not after them.
+    if (markup.includes('aria-label="Requests sections"'))
+      expect(markup.indexOf(">Requests<")).toBeLessThan(markup.indexOf('aria-label="Requests sections"'));
+  });
+
+  it("draws no artwork placeholder on a request card", () => {
+    const markup = list({ snapshot: admin(), tab: "needs-you" });
+    expect(markup).not.toContain("No artwork");
+    expect(markup).not.toContain("width:28px");
+  });
+
   it("says it is loading", () => {
     const markup = list({ snapshot: requestsSnapshot({ entries: [], status: "loading" }) });
     expect(markup).toContain("Loading your requests");
@@ -493,6 +515,14 @@ describe("request detail", () => {
       />,
     );
 
+  it("goes back with an iOS nav-bar control, not a bordered button", () => {
+    const markup = detail("failed");
+    expect(markup).toContain('aria-label="Back to Requests"');
+    expect(markup).toContain('role="button"');
+    expect(markup).toContain("min-height:44px");
+    expect(markup).toContain("min-width:44px");
+  });
+
   it("shows the live stage and pick count while generating", () => {
     const markup = detail("generating");
     expect(markup).toContain("Choosing titles…");
@@ -595,6 +625,10 @@ describe("request a channel", () => {
     const markup = form({ hiddenIdea: ideas[0] });
     expect(markup).toContain("Hid Fireside Mysteries");
     expect(markup).toContain(">Undo<");
+  });
+
+  it("goes back with the nav-bar control", () => {
+    expect(form()).toContain('aria-label="Back to Requests"');
   });
 
   it("keeps the draft and names who can fix AI being off", () => {

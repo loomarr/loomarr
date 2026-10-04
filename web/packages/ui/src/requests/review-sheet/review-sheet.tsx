@@ -15,6 +15,8 @@ const Buttons = ({ children }: { children: React.ReactNode }) => (
   </Surface>
 );
 
+// Every sheet's row reads the same: the secondary action (Cancel, Done) is sized to its label and the
+// primary one takes the rest, so a long label like "Approve with changes" stays on one line at 390 pt.
 const SheetAction = ({
   disabled,
   label,
@@ -31,7 +33,7 @@ const SheetAction = ({
     density="touch"
     disabled={disabled ?? false}
     onPress={onPress}
-    style={{ flex: 1 }}
+    style={tone === "secondary" ? { flexGrow: 0, flexShrink: 0 } : { flex: 1 }}
     tone={tone}
   >
     {label}

@@ -37,11 +37,8 @@ const RequestCard = ({ action, entry, hint, nowMs, onOpen, trailing }: RequestCa
   const detail = hint ?? status.detail;
   const body = (
     <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$control">
-      {/* Titles carry no artwork yet: two offset placeholder tiles, as the approved mock draws them. */}
-      <Surface aria-hidden backgroundColor="$transparent" borderWidth={0} width={36}>
-        <Surface backgroundColor="$surfaceElevated" height={40} width={28} />
-        <Surface backgroundColor="$surfaceElevated" height={40} marginLeft={8} marginTop={-24} width={28} />
-      </Surface>
+      {/* A request has no artwork of its own, and the shared ArtworkFrame's "No artwork" fallback is a
+          card-sized state, so the phone leaves the slot out rather than draw a placeholder. */}
       <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$inline">
         <Badge density="touch" tone={requestBadgeTone(status.tone)}>
           {status.line}

@@ -3,6 +3,7 @@ import { Action, Badge, ScrollFrame, Surface, Text } from "@loomarr/design-syste
 
 import { StatePanel } from "../../state-panel";
 import { requestBadgeTone, requestedOn } from "../request-card";
+import { RequestsBack } from "../requests-back";
 import type { RequestDetailProps } from "./request-detail.type";
 
 const titleState = {
@@ -29,11 +30,7 @@ const Section = ({ children, title }: { children: React.ReactNode; title: string
 // who decided and when, the lineup that was proposed, and the titles still on their way. A title that
 // has landed is part of the channel, so only what is outstanding is listed.
 const RequestDetail = ({ entry, onBack, onFix, onOpenChannel, titles }: RequestDetailProps) => {
-  const back = (
-    <Action accessibilityRole="button" density="touch" icon="back" onPress={onBack} tone="secondary">
-      Requests
-    </Action>
-  );
+  const back = <RequestsBack onPress={onBack} />;
   if (!entry)
     return (
       <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap="$control">
