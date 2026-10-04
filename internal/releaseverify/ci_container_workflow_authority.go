@@ -182,6 +182,22 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 				},
 			},
 		},
+		"ios-testflight.yml": {
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"release": {
+					condition: "github.ref == 'refs/heads/main'",
+					environment: map[string]string{
+						"LOOMARR_IOS_BUILD_NUMBER": "${{ github.run_number }}",
+						"LOOMARR_IOS_OUTPUT_DIR":   "${{ github.workspace }}/.artifacts/ios-testflight",
+					},
+					steps: map[string]workflowStepAuthority{
+						"make fe-install":     exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
+						"make fe-api-codegen": exactWorkflowStep(4, "", workflowStepAuthority{targets: []string{"fe-api-codegen"}}),
+					},
+				},
+			},
+		},
 		"apple-compilation-cache.yml": {
 			environment: standardWorkflowEnvironment(),
 			permissions: map[string]string{"actions": "write", "contents": "read"},

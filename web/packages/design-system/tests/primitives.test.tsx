@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { Badge, LoomarrProvider, ProgressTrack, StatusDot } from "../index";
+import { Badge, LoomarrProvider, ProgressTrack, StatusDot, Text } from "../index";
 
 describe("StatusDot", () => {
   it("carries the tone's colour and an accessible name", () => {
@@ -87,5 +87,30 @@ describe("Badge", () => {
       </LoomarrProvider>,
     );
     expect(markup).toContain(">Signal locked<");
+  });
+});
+
+describe("Text", () => {
+  it("renders a given host element on web and resolves the colour inline", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Text as="p" textRole="caption">
+          hi
+        </Text>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("<p");
+    expect(markup).toContain("color:#E7EAF0");
+  });
+
+  it("shouts: uppercase with wide tracking", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Text as="span" shout textRole="caption">
+          hi
+        </Text>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("text-transform:uppercase");
   });
 });

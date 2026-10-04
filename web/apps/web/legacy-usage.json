@@ -373,10 +373,10 @@
       "baseUi": 1
     },
     "src/components/ui/caption/caption.tsx": {
-      "tailwindClasses": 6
+      "tailwindClasses": 1
     },
     "src/components/ui/card/card.tsx": {
-      "tailwindClasses": 18
+      "tailwindClasses": 17
     },
     "src/components/ui/checkbox/checkbox.tsx": {
       "tailwindClasses": 15
