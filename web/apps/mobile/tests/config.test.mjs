@@ -56,6 +56,10 @@ test("keeps the permanent identity unreachable outside the TestFlight build", as
   assert.equal(config.name, "Loomarr Mobile Prototype");
   assert.match(config.ios.bundleIdentifier, /\.prototype$/);
   assert.match(config.android.package, /\.prototype$/);
+  // The release-only compliance settings never reach development builds.
+  assert.equal(config.ios.config, undefined);
+  assert.equal(config.ios.infoPlist, undefined);
+  assert.equal(config.ios.privacyManifests, undefined);
 });
 
 test("resolves the TestFlight channel to the permanent iPhone identity", async () => {
@@ -69,6 +73,16 @@ test("resolves the TestFlight channel to the permanent iPhone identity", async (
   assert.equal(config.version, "0.2.0");
   assert.equal(config.ios.buildNumber, "7");
   assert.equal(config.ios.supportsTablet, false);
+  // Without these App Store Connect asks the export-compliance question on every upload, the local
+  // network prompt has no explanation, and required-reason API use is undeclared.
+  assert.equal(config.ios.config.usesNonExemptEncryption, false);
+  assert.match(config.ios.infoPlist.NSLocalNetworkUsageDescription, /home network/);
+  assert.deepEqual(config.ios.privacyManifests.NSPrivacyAccessedAPITypes, [
+    {
+      NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
+      NSPrivacyAccessedAPITypeReasons: ["CA92.1"],
+    },
+  ]);
   // Everything else is the development config, untouched.
   assert.equal(config.orientation, "default");
   assert.ok(config.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
@@ -121,4 +135,17 @@ test("keeps unused animation modules out of Android without breaking Apple pods"
   const appleModules = await autolinkedNativeModules("ios");
   assert.equal(appleModules.has("react-native-reanimated"), false);
   assert.equal(appleModules.has("react-native-worklets"), true);
+});
+
+test("opens on the Guide without tuning a channel", async () => {
+  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
+  assert.match(shell, /usePairedClient\(\{[^}]*initialTune: "none"[^}]*\}\)/);
+  assert.match(shell, /useState<ClientDestination>\("guide"\)/);
+});
+
+test("pins the native modules the shared player imports to the expo version", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+
+  assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
+  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
 });

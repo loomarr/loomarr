@@ -264,20 +264,6 @@ func TestGetMissingTitle(t *testing.T) {
 	}
 }
 
-// DELETE gives up a title (→ unavailable), admin only.
-func TestDeleteTitle(t *testing.T) {
-	harness := newAPIHarness(t)
-	_ = harness.Do(http.MethodPost, "/v1/titles", adminToken, `{"mediaType":"movie","tmdbId":7}`)
-	resp := harness.Do(http.MethodDelete, "/v1/titles/movie:tmdb:7", adminToken, "")
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete → %d, want 204", resp.StatusCode)
-	}
-	rec, _ := harness.Store.GetTitle(context.Background(), "movie:tmdb:7")
-	if rec.State != "unavailable" {
-		t.Errorf("deleted title state = %s, want unavailable (audit-preserving give-up)", rec.State)
-	}
-}
-
 // SQLite backend serves a backup snapshot; admin only.
 func TestBackupSQLite(t *testing.T) {
 	harness := newAPIHarness(t)

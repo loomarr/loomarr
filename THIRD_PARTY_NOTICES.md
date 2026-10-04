@@ -217,17 +217,27 @@ document source distribution mechanics for that image using the public source re
   per-package/per-crate texts ride in the release SBOM);
 - ~~inspect and include any required Prometheus `NOTICE` material~~ (done — the upstream NOTICE is
   reproduced above); and
-- verify the final application release notes and image notices point to the public source location
-  above. Source distribution is published, and the image notices name it. The release notes are
-  written per release and checked by hand (`docs/contributing/releasing.md`); the
-  v0.2.0-beta.8 candidates' notes link both source releases.
+- ~~verify the final application release notes and image notices point to the public source location
+  above~~ (closed, #661: source distribution is published, and the image notices name it. The release
+  notes are written per release and checked by hand (`docs/contributing/releasing.md`); the
+  v0.2.0-beta.8 candidates' notes link both source releases, and
+  [the v0.2.0-beta.8 release-evidence record](project/evidence/release-evidence-v0.2.0-beta.8.md)
+  binds that image commit, the release-candidate CI run, and both source releases together).
 
 For beta.5, the maintainer removed the separate qualified legal/NOTICE reviewer sign-off requirement.
 Release engineering owns the evidence above; an external reviewer or legal opinion is not a release
-prerequisite. This policy change does not close missing source or notice evidence.
+prerequisite. This policy change does not close missing source or notice evidence by itself — the
+evidence above closes it.
 
-Until those items close, neither this file nor the BuildKit SBOM should be read as a claim that the
-image is ready for redistribution.
+All items above are closed for the `v0.2.0-beta.8` reference release; see
+[the release-evidence record](project/evidence/release-evidence-v0.2.0-beta.8.md) for the exact
+source/binary identity verification and the dated CI run that exercised `make test-ffmpeg` and the
+notice/SBOM checks on both architectures. This closure is scoped to the pins verified there: a future
+FFmpeg or yt-dlp pin bump must repeat that evidence collection before this file may again describe the
+sourced/verified state as current, and the fail-closed `make test-ffmpeg` plus notice/SBOM checks in
+`internal/releaseverify` keep enforcing shipped-binary identity on every release-candidate run
+regardless of this record. Outside that scope, neither this file nor the BuildKit SBOM should be read
+as a claim of qualified legal clearance.
 
 ## Reference specs (not redistributed as code)
 

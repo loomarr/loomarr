@@ -51,7 +51,20 @@ describe("guide time formatting", () => {
 
     expect(formatGuideTime(at, "America/New_York")).toBe("7:00 PM");
     expect(formatGuideTime(at, "America/Los_Angeles")).toBe("4:00 PM");
-    expect(formatGuideTimeRange(at, at + 30 * 60_000, "America/New_York")).toBe("7:00 PM–7:30 PM");
+    expect(formatGuideTimeRange(at, at + 30 * 60_000, "America/New_York")).toBe("7:00–7:30 PM");
+  });
+
+  it("writes AM/PM once when both ends share it, and on both ends when they differ", () => {
+    const evening = Date.parse("2026-08-24T00:50:00Z"); // 8:50 PM in New York
+    expect(formatGuideTimeRange(evening, evening + 49 * 60_000, "America/New_York")).toBe("8:50–9:39 PM");
+    const lateNight = Date.parse("2026-08-24T03:30:00Z"); // 11:30 PM in New York
+    expect(formatGuideTimeRange(lateNight, lateNight + 45 * 60_000, "America/New_York")).toBe(
+      "11:30 PM–12:15 AM",
+    );
+    const lateMorning = Date.parse("2026-08-24T15:30:00Z"); // 11:30 AM in New York
+    expect(formatGuideTimeRange(lateMorning, lateMorning + 45 * 60_000, "America/New_York")).toBe(
+      "11:30 AM–12:15 PM",
+    );
   });
 
   it("keeps season zero specials and partial episode identity", () => {
