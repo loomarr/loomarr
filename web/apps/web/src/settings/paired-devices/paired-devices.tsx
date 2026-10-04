@@ -72,7 +72,7 @@ const ApproveDevice = () => {
       <h2 className="font-medium text-sm">Add a TV or streaming box</h2>
       <p className="mt-1 text-muted-foreground text-sm leading-relaxed">
         Open Loomarr on the device. It will show a short code — type it here to let it sign in as you. The
-        device gets your access, not admin access, and you can remove it at any time.
+        device acts with your access and role, and you can remove it at any time.
       </p>
       {/* The address to put ON the television. This panel is for an operator already in Settings;
           the device itself cannot direct anyone here, so it names the short route instead. */}

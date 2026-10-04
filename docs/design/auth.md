@@ -125,9 +125,17 @@ rendering, retries, retention, and one adapter per **Delivery means**.
 
 ## Devices
 
-**Paired clients** hold a durable, member-scoped bearer credential from the device-code flow, kept in
-the platform secure store. The device acts as the person who paired it (their favourites, recents
-and audience) but its role is capped at member, even when an admin paired it. **Disconnect this device** calls `DELETE /v1/auth/device` with that
+**Paired clients** hold a durable bearer credential from the device-code flow, kept in the platform
+secure store. The device acts as the person who paired it, with that person's favourites, recents,
+audience and role ([ADR 0043](decisions/0043-devices-act-with-their-approvers-role.md)). An
+admin-paired phone or TV is an admin, and a member-paired device stays a member. The role is read
+from the user's row on every request, so a demotion applies on the device's next request.
+Disabling a user deletes their paired devices along with their sessions, so re-enabling the user
+does not bring a lost device back. It also deletes pairings they approved that no device has redeemed
+yet, and a disabled user can neither approve a pairing nor have one redeemed. A pairing in flight at
+the disable therefore yields no device either. To take admin away from a device in a shared room, use
+**Disconnect this device** on it, revoke it from your paired-devices list in Settings, or disable
+the user; there is no admin view of another user's devices. **Disconnect this device** calls `DELETE /v1/auth/device` with that
 credential and may revoke only that device; a session or `API_TOKEN` cannot substitute. The client
 clears its credential only after the server confirms or a 401 proves it is dead.
 
@@ -194,7 +202,12 @@ Formerly `design.md` §19.
   unavailable, never after a rejection; an un-imported media-server user or an SSO identity with no
   allowlist row is rejected even with valid credentials, and no login path creates a row; import is
   admin-only and sync never adds; `member` gets 403 on approve, admin routes and `POST /v1/titles`;
-  disabling a user revokes their sessions; `API_TOKEN` grants break-glass admin; plaintext
+  disabling a user revokes their sessions, paired devices and approved-but-unredeemed pairings, a
+  disabled user can neither approve nor redeem a pairing nor be issued a session (a login racing the
+  disable fails like any disabled login), and re-enabling them restores none of it;
+  a paired device carries its approver's current role (an admin's device can approve, a member's
+  gets 403 on approve, deny, bulk approve, admin routes and promoting itself, a demoted approver's
+  device loses admin on its next request, and a disabled approver's or revoked device is rejected); `API_TOKEN` grants break-glass admin; plaintext
   passwords and media-server tokens are never persisted.
 - **Invitation and contact store conformance** runs one suite over SQLite and Postgres: normalized
   contact uniqueness, reserved identity collisions, lifecycle transitions, regeneration and

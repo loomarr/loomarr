@@ -168,10 +168,23 @@ func (s *sqlStore) CountAdmins(ctx context.Context) (int, error) {
 
 // --- sessions ---
 
+// CreateSession writes a session for an enabled user. It returns ErrNotFound when the user is unknown
+// or disabled, which login maps to the same refusal as a disabled login. The check is part of the
+// INSERT (see enabledUserSQL), so a disable that lands between login's Disabled check and this write
+// cannot leave a session behind for a later re-enable to revive.
 func (s *sqlStore) CreateSession(ctx context.Context, sess Session) error {
-	_, err := s.db.ExecContext(ctx, s.ph(
-		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`),
-		sess.TokenHash, sess.UserID, epoch(sess.CreatedAt), epoch(sess.ExpiresAt))
+	res, err := s.db.ExecContext(ctx, s.ph(
+		`INSERT INTO sessions (token_hash, user_id, created_at, expires_at)
+		 SELECT CAST(? AS TEXT), CAST(? AS TEXT), CAST(? AS BIGINT), CAST(? AS BIGINT)
+		 WHERE EXISTS (`+s.enabledUserSQL()+`)`),
+		sess.TokenHash, sess.UserID, epoch(sess.CreatedAt), epoch(sess.ExpiresAt), sess.UserID, false)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err == nil && n == 0 {
+		return ErrNotFound
+	}
 	return err
 }
 

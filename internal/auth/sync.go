@@ -15,7 +15,7 @@ type UserLister interface {
 }
 
 // UserSync refreshes ALREADY-IMPORTED media-server users (§11): it updates name +
-// disabled from the source and revokes sessions for any user the server now
+// disabled from the source and revokes sessions and paired devices for any user the server now
 // reports disabled. It NEVER adds users — import (Provisioner.Import) defines the
 // allowlist, sync only reconciles it (§11: "sync refreshes but never adds").
 // Local role/quota/auto_approve are preserved (admin-managed).
@@ -61,9 +61,9 @@ func (s *UserSync) Sync(ctx context.Context) (int, error) {
 		if err := s.store.UpsertUser(ctx, existing); err != nil {
 			return n, err
 		}
-		// Newly disabled server-side → revoke sessions immediately (§11).
+		// Newly disabled server-side → revoke sessions and paired devices immediately (§11).
 		if wasEnabled && ms.Disabled {
-			if err := s.store.RevokeSessionsForUser(ctx, ms.ID); err != nil {
+			if err := revokeAccess(ctx, s.store, ms.ID); err != nil {
 				return n, err
 			}
 		}

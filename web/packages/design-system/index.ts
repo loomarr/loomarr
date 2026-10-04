@@ -38,6 +38,7 @@ export {
   Disclosure,
   resolveAdaptiveDirection,
   ScrollFrame,
+  useWindowWidth,
 } from "./src/layout";
 export type { ActivityIndicatorProps, SignalLoaderProps, SkeletonProps, SkeletonShape } from "./src/loading";
 export {

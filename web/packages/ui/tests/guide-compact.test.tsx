@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { layoutGuide } from "@loomarr/core/guide";
-import { LoomarrProvider } from "@loomarr/design-system";
+import { BottomSheet, LoomarrProvider } from "@loomarr/design-system";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -73,6 +73,22 @@ describe("GuideCompact", () => {
     expect(html).toContain("Selected programme");
     expect(html).toContain("A series 2 “Episode 3”");
     expect(html).toContain('aria-label="Watch 2 Channel 2"');
+  });
+
+  it("docks the iPhone's sheet (5d): the channel, when it starts or ends, and Watch with the number", () => {
+    const upcoming = markup({
+      dock: BottomSheet,
+      selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-2" },
+    });
+    expect(upcoming).toContain("Selected programme");
+    expect(upcoming).toContain(" · Channel 2");
+    expect(upcoming).toContain("9:00–9:30 PM · in 34m");
+    expect(upcoming).toContain("Watch 2 now");
+    const onNow = markup({
+      dock: BottomSheet,
+      selection: { anchorMs: NOW, channelId: "ch-2", scheduleBlockId: "ch-2-0" },
+    });
+    expect(onNow).toContain("8:00–8:30 PM · 4m left");
   });
 
   it("badges now on the ruler", () => {
