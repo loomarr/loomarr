@@ -693,8 +693,8 @@
       "legacyUi": 3
     },
     "src/queue/request-lists/request-lists.tsx": {
-      "tailwindClasses": 21,
-      "legacyUi": 1
+      "tailwindClasses": 34,
+      "legacyUi": 3
     },
     "src/routes/__root.tsx": {
       "legacyUi": 1

@@ -55,16 +55,20 @@ type PullRejectedCandidateDTO struct {
 
 // PullDTO is a proposed acquisition awaiting a human.
 type PullDTO struct {
-	ID         string                             `json:"id"`
-	Title      string                             `json:"title"`
-	Reason     string                             `json:"reason" doc:"The gap this pull closes. Shown above the plan — 'approve this' without a reason is a button, not a decision."`
-	ProposedBy string                             `json:"proposedBy"`
-	Status     string                             `json:"status" enum:"pending,approved,dismissed"`
-	Note       string                             `json:"note,omitempty" doc:"The operator's narrowing instruction, captured at approval"`
-	Plan       []PullPlanRowDTO                   `json:"plan"`
-	Intent     filler.AcquisitionIntent           `json:"intent"`
-	Rejected   []PullRejectedCandidateDTO         `json:"rejected"`
-	Sources    []filler.AcquisitionSourceDecision `json:"sources"`
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	Reason     string `json:"reason" doc:"The gap this pull closes. Shown above the plan — 'approve this' without a reason is a button, not a decision."`
+	ProposedBy string `json:"proposedBy"`
+	// ProposedByName is who ProposedBy resolves to, name-resolved server-side exactly like a
+	// proposal's CreatedByName (§12) — so a filler-pull card never has to show a raw user id.
+	// Empty when the id does not match a known user, e.g. a scheduled job's name.
+	ProposedByName string                             `json:"proposedByName,omitempty" doc:"Display name of who proposed this pull; empty if unknown"`
+	Status         string                             `json:"status" enum:"pending,approved,dismissed"`
+	Note           string                             `json:"note,omitempty" doc:"The operator's narrowing instruction, captured at approval"`
+	Plan           []PullPlanRowDTO                   `json:"plan"`
+	Intent         filler.AcquisitionIntent           `json:"intent"`
+	Rejected       []PullRejectedCandidateDTO         `json:"rejected"`
+	Sources        []filler.AcquisitionSourceDecision `json:"sources"`
 	// EstimateClips totals the rows the operator has NOT dropped.
 	EstimateClips  int    `json:"estimateClips"`
 	CandidateCount int    `json:"candidateCount" doc:"Exact number of remote items still selected; unlike estimateClips this does not predict how many clips segmentation will yield."`
@@ -110,6 +114,13 @@ func pullToDTO(p filler.Pull) PullDTO {
 	if !p.DecidedAt.IsZero() {
 		dto.DecidedAt = p.DecidedAt.UTC().Format(time.RFC3339)
 	}
+	return dto
+}
+
+// applyPull resolves a pull's ProposedBy the same way proposalToDTO's names.apply resolves a
+// proposal's CreatedBy — so the filler-pull card never has to render a raw user id (#1430).
+func (n personNames) applyPull(dto PullDTO) PullDTO {
+	dto.ProposedByName = n.name(dto.ProposedBy)
 	return dto
 }
 
@@ -163,10 +174,14 @@ func (s *Server) listFillerPulls(ctx context.Context, in *listFillerPullsInput) 
 	if err != nil {
 		return nil, huma.Error500InternalServerError("list pulls", err)
 	}
+	names, err := s.personNames(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := &listFillerPullsOutput{}
 	out.Body.Pulls = make([]PullDTO, 0, len(pulls))
 	for _, p := range pulls {
-		out.Body.Pulls = append(out.Body.Pulls, pullToDTO(p))
+		out.Body.Pulls = append(out.Body.Pulls, names.applyPull(pullToDTO(p)))
 	}
 	out.Body.Total = len(out.Body.Pulls)
 	return out, nil

@@ -1,5 +1,6 @@
 import { pluralize } from "@loomarr/core/format";
 import { useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
@@ -19,7 +20,7 @@ import type { PullCardProps } from "./pull-card.type";
 // proposed with and marks the dropped ones, because "we approved this" is only meaningful next
 // to what was proposed. That is a server property; this component's job is not to hide it.
 
-const PullCard = ({ pull, onApprove, onDismiss, deciding, className }: PullCardProps) => {
+const PullCard = ({ pull, onApprove, onDismiss, deciding, error, className }: PullCardProps) => {
   // Which rows the operator has struck out, held locally until they commit. ⚠ Not sent as they
   // click: a pull is decided in one act, and a per-click PATCH would make "half-approved" a
   // state the gate has to reason about.
@@ -48,7 +49,10 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, className }: PullCardP
             <Badge variant="lock">Filler pull</Badge>
             <span className="font-semibold text-sm">{pull.title}</span>
           </div>
-          {pull.proposedBy && <Caption>proposed by {pull.proposedBy}</Caption>}
+          {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
+              requester is — proposedBy itself is a raw user id (or a scheduled job's name) and
+              must never reach the screen. */}
+          {pull.proposedByName && <Caption>proposed by {pull.proposedByName}</Caption>}
         </div>
 
         <div className="flex shrink-0 gap-2">
@@ -66,6 +70,11 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, className }: PullCardP
           </Button>
         </div>
       </div>
+
+      {/* ⚠ On the row, not in a page-level banner (#1430): a decision failure belongs beside the
+          card whose decision failed, not somewhere a reviewer scanning other cards has to go
+          looking for it. */}
+      {error != null && <ErrorState error={error} />}
 
       {/* Why this pull exists. "Approve this" without a reason is a button, not a decision. */}
       {pull.reason && (

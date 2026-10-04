@@ -13,11 +13,13 @@ import (
 )
 
 type pullBody struct {
-	ID            string `json:"id"`
-	Status        string `json:"status"`
-	Note          string `json:"note"`
-	EstimateClips int    `json:"estimateClips"`
-	Plan          []struct {
+	ID             string `json:"id"`
+	Status         string `json:"status"`
+	Note           string `json:"note"`
+	ProposedBy     string `json:"proposedBy"`
+	ProposedByName string `json:"proposedByName"`
+	EstimateClips  int    `json:"estimateClips"`
+	Plan           []struct {
 		CandidateID string `json:"candidateId"`
 		SourceID    string `json:"sourceId"`
 		RemoteID    string `json:"remoteId"`
@@ -334,6 +336,53 @@ func TestApproveFillerPull_HistoricalSourcePlan(t *testing.T) {
 	}
 	if len(ff.ingested) != 1 || ff.ingested[0] != "https://archive.org/details/classic" {
 		t.Fatalf("historical source target = %v", ff.ingested)
+	}
+}
+
+// The DTO carries the proposer's NAME, not just their id (#1430) — the same server-side
+// resolution a proposal's CreatedByName already gets, so a filler-pull card never has to
+// render a raw user id. A proposer id that is not a known user (a scheduled job's name,
+// or a since-removed account) resolves to "" rather than falling back to the id itself.
+func TestListFillerPulls_ResolvesProposedByName(t *testing.T) {
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
+	if err := st.UpsertPull(t.Context(), filler.Pull{
+		ID: "pull-by-kid", Status: filler.PullPending, ProposedBy: "u-kid",
+		CreatedAt: time.Now().UTC(), Plan: []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertPull(t.Context(), filler.Pull{
+		ID: "pull-by-schedule", Status: filler.PullPending, ProposedBy: "scheduled-weekly-top-up",
+		CreatedAt: time.Now().UTC(), Plan: []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	boss := login(t, srv, "boss", "pw")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/filler/pulls", boss, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Pulls []pullBody `json:"pulls"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"pull-by-kid": "kid", "pull-by-schedule": ""}
+	seen := map[string]bool{}
+	for _, p := range body.Pulls {
+		seen[p.ID] = true
+		if got, ok := want[p.ID]; ok && p.ProposedByName != got {
+			t.Errorf("%s proposedByName = %q, want %q", p.ID, p.ProposedByName, got)
+		}
+	}
+	for id := range want {
+		if !seen[id] {
+			t.Errorf("missing pull %q in list", id)
+		}
 	}
 }
 

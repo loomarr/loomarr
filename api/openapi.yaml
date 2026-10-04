@@ -7970,6 +7970,9 @@ components:
           type: array
         proposedBy:
           type: string
+        proposedByName:
+          description: Display name of who proposed this pull; empty if unknown
+          type: string
         reason:
           description: The gap this pull closes. Shown above the plan — 'approve this' without a reason is a button, not a decision.
           type: string

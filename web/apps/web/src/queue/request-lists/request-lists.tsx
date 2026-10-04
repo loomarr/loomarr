@@ -1,9 +1,15 @@
+import * as fillerApi from "@loomarr/api/endpoints/filler";
+import type { PullDTO } from "@loomarr/api/models/pullDTO";
+import { unwrap } from "@loomarr/api/unwrap";
+import { formatRelative } from "@loomarr/core/format";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { RequestCard } from "@/components/loomarr/ai/request-card";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { requestFixLabel } from "@/queue/request-status";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
@@ -53,11 +59,58 @@ const cardFor = (
   </li>
 );
 
+// Decided filler pulls, for the Done tab (#1430): the server KEEPS a pull once an admin approves
+// or dismisses it — exactly so History can answer what was agreed to — but no screen ever asked
+// for anything but the pending ones. There is no pull detail route, so this renders inline rather
+// than through RequestCard's link-to-detail: that card always links to `/requests/$jobId`, and a
+// pull id is not a job id.
+const pullDecisionLine = (status: PullDTO["status"]): { line: string; tone: "lock" | "onair" } =>
+  status === "approved" ? { line: "Downloaded", tone: "lock" } : { line: "Declined", tone: "onair" };
+
+const pullCardFor = (pull: PullDTO) => {
+  const { line, tone } = pullDecisionLine(pull.status);
+  return (
+    <li key={pull.id}>
+      <Card className="flex flex-col gap-1.5 p-4">
+        <p className="font-medium">{pull.title}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={tone}>{line}</Badge>
+          {pull.decidedAt && (
+            <time
+              dateTime={pull.decidedAt}
+              title={new Date(pull.decidedAt).toLocaleString()}
+              className="text-muted-foreground text-xs"
+            >
+              Decided {formatRelative(pull.decidedAt)}
+            </time>
+          )}
+        </div>
+        {pull.note && <p className="text-muted-foreground text-sm">{pull.note}</p>}
+      </Card>
+    </li>
+  );
+};
+
 const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
+  const { isAdmin } = useAuth();
   const { inTab, error, refetch } = useRequests();
   const entries = inTab(tab);
+
+  // Filler pulls are an admin-only list server-side (§10 V35), so a member's Done tab asks for
+  // nothing here — the same `enabled` gate `usePendingApprovals` uses for the same reason.
+  const pullsQuery = fillerApi.useListFillerPulls(
+    {},
+    { query: { enabled: tab === "done" && isAdmin, retry: false } },
+  );
+  const decidedPulls =
+    tab === "done"
+      ? ((unwrap(pullsQuery.data, (b) => b.pulls) ?? []).filter((p) => p.status !== "pending") as PullDTO[])
+      : [];
+
   if (error != null) return <ErrorState error={error} onRetry={refetch} />;
-  if (entries.length === 0) {
+  if (pullsQuery.error != null)
+    return <ErrorState error={pullsQuery.error} onRetry={() => pullsQuery.refetch()} />;
+  if (entries.length === 0 && decidedPulls.length === 0) {
     return tab === "in-progress" ? (
       <TabEmpty
         title="Nothing in progress"
@@ -87,6 +140,7 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
           ),
         }),
       )}
+      {decidedPulls.map(pullCardFor)}
     </ul>
   );
 };
