@@ -428,7 +428,7 @@ func (s *Server) previewDraftChannelPods(ctx context.Context, in *previewDraftPo
 	if s.pods == nil {
 		return nil, errNotImplemented("Filler isn't set up", "Set up commercials and filler before previewing a channel's pods.")
 	}
-	// ⚠ The channel is KEPT, not discarded (V51f): its `scope.era` is what an unset filler era
+	// ⚠ The channel is KEPT, not discarded (V51f): its `scope.dates` are what an unset filler era
 	// inherits, so a draft preview that dropped it previewed a different pool than reconcile built.
 	ch, err := s.store.GetChannel(ctx, in.ID)
 	if errors.Is(err, store.ErrNotFound) {

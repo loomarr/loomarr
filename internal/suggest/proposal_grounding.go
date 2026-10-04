@@ -130,7 +130,6 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	// A validated interpretation, rather than a model supplied era, owns every
 	// new v6 proposal's date scope. This applies to `none` too: raw policy.era
 	// may not smuggle a date constraint around the canonical boundary.
-	prop.Policy.Scope.Era = nil
 	prop.Policy.Scope.Dates = nil
 	if meaning.DateMeaning().Kind == DateMeaningConstraints {
 		prop.Policy.Scope.Dates = dateScope(meaning)
@@ -325,9 +324,15 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	// to admit the channel's own grounded picks (programming-design §4). Acquisitions
 	// count alongside the lineup: one becomes a real airing the moment it lands, so an
 	// era that excluded it would quietly drop the title after the download finished.
+	// The model's era stays the simple input; it is stored as the era-shaped Dates it means.
+	// An insane window (inverted, or years outside 1900–2099) is dropped on its own here:
+	// left in, it would fail Validate and the final net below would discard the WHOLE
+	// policy, audience ceiling included.
 	if raw.Era.From > 0 || raw.Era.To > 0 {
 		era := schedule.Range{From: raw.Era.From, To: raw.Era.To}
-		p.Scope.Era = eraAdmittingPicks(era, lineup, acquisitions)
+		if dates := schedule.EraDates(eraAdmittingPicks(era, lineup, acquisitions)); dates.Validate() == nil {
+			p.Scope.Dates = dates
+		}
 	}
 
 	// Genres: pass through include/exclude names (matched case-insensitively at
@@ -502,7 +507,7 @@ func scopeNarrows(s *schedule.ScopePolicy) bool {
 	if s == nil {
 		return false
 	}
-	return len(s.Series) > 0 || len(s.Collections) > 0 || s.Seasons != nil || s.Era != nil ||
+	return len(s.Series) > 0 || len(s.Collections) > 0 || s.Seasons != nil || s.Dates != nil ||
 		len(s.Genres.Include) > 0 || len(s.Genres.Exclude) > 0 || s.RuntimeMax > 0
 }
 

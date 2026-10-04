@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { eraDates, eraOf } from "@/lib/era-dates";
 import { cn } from "@/lib/utils";
 import { FieldHelp } from "../../feedback";
 import type { ChannelPolicyFieldsProps } from "./channel-policy-fields.type";
@@ -296,8 +297,9 @@ const CEILING_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: ChannelPolicyFieldsProps) => {
-  const era = policy.scope?.era;
+  // The era is read back from era-shaped dates: the backend stores and returns only `dates`.
   const dates = policy.scope?.dates;
+  const era = eraOf(dates);
   const separation = policy.separation;
   // Split for the Programming surface's blocks (§12): scope = audience ceiling + era ("What
   // plays"); ordering = ordering + no-repeat ("How it's ordered"). Omitted = show everything.
@@ -432,9 +434,10 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
                   const next = e.target.value === "" ? undefined : Number(e.target.value);
                   if (next === era?.from) return;
                   const { dates: _dates, ...scope } = policy.scope ?? {};
+                  const nextDates = eraDates({ ...era, from: next });
                   onChange({
                     ...policy,
-                    scope: { ...scope, era: { ...era, from: next } },
+                    scope: { ...scope, ...(nextDates ? { dates: nextDates } : {}) },
                   });
                 }}
               />
@@ -453,9 +456,10 @@ const ChannelPolicyFields = ({ policy, onChange, className, show, strategy }: Ch
                   const next = e.target.value === "" ? undefined : Number(e.target.value);
                   if (next === era?.to) return;
                   const { dates: _dates, ...scope } = policy.scope ?? {};
+                  const nextDates = eraDates({ ...era, to: next });
                   onChange({
                     ...policy,
-                    scope: { ...scope, era: { ...era, to: next } },
+                    scope: { ...scope, ...(nextDates ? { dates: nextDates } : {}) },
                   });
                 }}
               />

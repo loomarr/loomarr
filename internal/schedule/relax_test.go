@@ -80,7 +80,7 @@ func TestRelax_NeverRelaxesScope(t *testing.T) {
 		ratedEntry("movie:tmdb:2", "Out Of Era", "", 1980),
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2"}
-	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}}, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})}, Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(720 * time.Hour)}}}
 	d := schedule.ComputeDesiredAt(policyChannel(), entries, avail, schedule.PodFill, p, time.Time{})
 	if hasKey(programKeys(d), "movie:tmdb:2") {
 		t.Error("scope (era) must NEVER be relaxed to admit an out-of-era title")

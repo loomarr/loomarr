@@ -47,4 +47,5 @@ func (durationWire) Schema(huma.Registry) *huma.Schema {
 // a type has already been generated does not retroactively change the emitted schema.
 func registerWireAliases(reg huma.Registry) {
 	reg.RegisterTypeAlias(reflect.TypeOf(schedule.Duration(0)), reflect.TypeOf(durationWire("")))
+	reg.RegisterTypeAlias(reflect.TypeOf(schedule.ScopePolicy{}), reflect.TypeOf(scopePolicy{})) // scopewire.go
 }

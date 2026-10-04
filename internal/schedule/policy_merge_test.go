@@ -20,9 +20,10 @@ func TestChannelPolicy_LegacyWireRoundTrips(t *testing.T) {
 	if err := json.Unmarshal([]byte(legacyPolicyJSON), &p); err != nil {
 		t.Fatalf("legacy blob must unmarshal into the embedded struct: %v", err)
 	}
-	// Promoted fields must have landed (proof the embeds flatten on read).
-	if p.Scope.Era == nil || p.Scope.Era.From != 1990 {
-		t.Errorf("scope.era did not land: %+v", p.Scope.Era)
+	// Promoted fields must have landed (proof the embeds flatten on read). The legacy era
+	// lands as the era-shaped Dates it always meant.
+	if era, ok := p.Scope.Dates.Era(); !ok || era != (Range{From: 1990, To: 1999}) {
+		t.Errorf("scope.era did not land as dates: %+v", p.Scope.Dates)
 	}
 	if p.Audience.Ceiling != "TV-Y7" {
 		t.Errorf("audience.ceiling did not land: %q", p.Audience.Ceiling)
@@ -48,6 +49,9 @@ func TestChannelPolicy_LegacyWireRoundTrips(t *testing.T) {
 		strings.Contains(string(out), "ProposalPolicy") {
 		t.Fatalf("policy_json must stay flat, got nested owner keys: %s", out)
 	}
+	if strings.Contains(string(out), `"era"`) || !strings.Contains(string(out), `"dates"`) {
+		t.Fatalf("the backend must write dates and never era again, got: %s", out)
+	}
 	// And the flat keys survive.
 	for _, key := range []string{`"scope"`, `"audience"`, `"filler"`, `"window"`, `"autoCurate"`, `"applied"`} {
 		if !strings.Contains(string(out), key) {
@@ -61,19 +65,19 @@ func TestChannelPolicy_LegacyWireRoundTrips(t *testing.T) {
 func TestMergeFromProposal_OperatorSetIsSticky(t *testing.T) {
 	current := ChannelPolicy{
 		ProposalPolicy: ProposalPolicy{
-			Scope:    ScopePolicy{Era: &Range{From: 1990, To: 1999}}, // operator pinned this
-			Ordering: OrderSequential,                                // NOT pinned
+			Scope:    ScopePolicy{Dates: EraDates(Range{From: 1990, To: 1999})}, // operator pinned this
+			Ordering: OrderSequential,                                           // NOT pinned
 		},
 		OperatorSet: []string{pathScope},
 	}
 	incoming := ChannelPolicy{ProposalPolicy: ProposalPolicy{
-		Scope:    ScopePolicy{Era: &Range{From: 2000, To: 2009}}, // a refine tries to change the era
-		Ordering: OrderSyndication,                               // and the ordering
+		Scope:    ScopePolicy{Dates: EraDates(Range{From: 2000, To: 2009})}, // a refine tries to change the era
+		Ordering: OrderSyndication,                                          // and the ordering
 	}}
 
 	got := current.MergeFromProposal(incoming)
-	if got.Scope.Era == nil || got.Scope.Era.From != 1990 {
-		t.Errorf("pinned scope was reverted by a refine: %+v (the exact data-loss bug P3 fixes)", got.Scope.Era)
+	if era, _ := got.Scope.Dates.Era(); era.From != 1990 {
+		t.Errorf("pinned scope was reverted by a refine: %+v (the exact data-loss bug P3 fixes)", got.Scope.Dates)
 	}
 	if got.Ordering != OrderSyndication {
 		t.Errorf("unpinned ordering should refresh from the proposal, got %q", got.Ordering)
@@ -183,7 +187,7 @@ func TestMergeFromOperator_DoesNotPinAFieldItEmptied(t *testing.T) {
 	era := Range{From: 1980, To: 1989}
 	current := ChannelPolicy{
 		ProposalPolicy: ProposalPolicy{
-			Scope:    ScopePolicy{Era: &era},
+			Scope:    ScopePolicy{Dates: EraDates(era)},
 			Ordering: OrderSequential,
 		},
 	}
@@ -208,7 +212,7 @@ func TestMergeFromOperator_DoesNotPinAFieldItEmptied(t *testing.T) {
 func TestMergeFromOperator_EmptyingAFieldUnpinsIt(t *testing.T) {
 	era := Range{From: 1980, To: 1989}
 	current := ChannelPolicy{
-		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &era}},
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: EraDates(era)}},
 		OperatorSet:    []string{pathScope}, // already pinned by an earlier edit
 	}
 	got := current.MergeFromOperator(ChannelPolicy{})
@@ -219,10 +223,10 @@ func TestMergeFromOperator_EmptyingAFieldUnpinsIt(t *testing.T) {
 	// And the unpinned field must actually be refreshable by a proposal.
 	fresh := Range{From: 1975, To: 1995}
 	after := got.MergeFromProposal(ChannelPolicy{
-		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &fresh}},
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: EraDates(fresh)}},
 	})
-	if after.Scope.Era == nil || after.Scope.Era.From != 1975 {
-		t.Errorf("an unpinned scope should refresh from the proposal, got %+v", after.Scope.Era)
+	if era, _ := after.Scope.Dates.Era(); era.From != 1975 {
+		t.Errorf("an unpinned scope should refresh from the proposal, got %+v", after.Scope.Dates)
 	}
 }
 
@@ -232,10 +236,10 @@ func TestMergeFromOperator_EmptyingAFieldUnpinsIt(t *testing.T) {
 func TestMergeFromOperator_NonEmptyEditStillPins(t *testing.T) {
 	era := Range{From: 1980, To: 1989}
 	edited := Range{From: 1990, To: 1999}
-	current := ChannelPolicy{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &era}}}
+	current := ChannelPolicy{ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: EraDates(era)}}}
 
 	got := current.MergeFromOperator(ChannelPolicy{
-		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &edited}},
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: EraDates(edited)}},
 	})
 	if !pathSet(got.OperatorSet)[pathScope] {
 		t.Fatalf("a real scope edit must pin, got %v", got.OperatorSet)
@@ -243,10 +247,10 @@ func TestMergeFromOperator_NonEmptyEditStillPins(t *testing.T) {
 
 	proposed := Range{From: 1960, To: 1970}
 	after := got.MergeFromProposal(ChannelPolicy{
-		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &proposed}},
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: EraDates(proposed)}},
 	})
-	if after.Scope.Era == nil || after.Scope.Era.From != 1990 {
-		t.Errorf("a proposal overwrote a pinned operator edit: %+v", after.Scope.Era)
+	if era, _ := after.Scope.Dates.Era(); era.From != 1990 {
+		t.Errorf("a proposal overwrote a pinned operator edit: %+v", after.Scope.Dates)
 	}
 }
 
@@ -255,13 +259,13 @@ func TestMergeFromOperator_NonEmptyEditStillPins(t *testing.T) {
 func TestMergeFromOperator_NoOpSaveLeavesPinsAlone(t *testing.T) {
 	era := Range{From: 1980, To: 1989}
 	current := ChannelPolicy{
-		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &era}, Ordering: OrderSequential},
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: EraDates(era)}, Ordering: OrderSequential},
 		// audience is pinned but empty — the state an earlier build could produce.
 		OperatorSet: []string{pathScope, pathAudience},
 	}
 	// The FE's read-modify-write of an unchanged policy.
 	same := ChannelPolicy{
-		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Era: &era}, Ordering: OrderSequential},
+		ProposalPolicy: ProposalPolicy{Scope: ScopePolicy{Dates: EraDates(era)}, Ordering: OrderSequential},
 	}
 	got := current.MergeFromOperator(same)
 

@@ -3,6 +3,7 @@ import type { RuleOrdering } from "@loomarr/api/models/ruleOrdering";
 import type { ScopePolicy } from "@loomarr/api/models/scopePolicy";
 import type { WhatVocab } from "@loomarr/api/models/whatVocab";
 import type { WhenVocab } from "@loomarr/api/models/whenVocab";
+import { eraDates, eraOf } from "@/lib/era-dates";
 
 // The rule authoring vocabulary is now SERVED by the backend (GET /v1/programming/vocabulary,
 // §6.6/§8.1) and consumed via a prop — this file no longer hand-mirrors the enumerable
@@ -76,8 +77,10 @@ const lowerWhat = (what: WhatVocab[], token: string): { scope: ScopePolicy | und
     return g ? { scope: { genres: { include: [g] } } } : undefined;
   }
   if (t.startsWith("era:")) {
-    const parsed = parseEraToken(t.slice("era:".length));
-    return parsed ? { scope: { era: parsed } } : undefined;
+    // An era is stored as the same range on every date axis (#1877), so the draft holds the
+    // shape the server returns and the reverse lookup below reads one form.
+    const dates = eraDates(parseEraToken(t.slice("era:".length)));
+    return dates ? { scope: { dates } } : undefined;
   }
   const entry = arr<WhatVocab>(what).find((w) => w.token === (t === "" ? "all" : t));
   if (!entry) return undefined;
@@ -95,11 +98,12 @@ const tokenForWhat = (what: WhatVocab[], scope: ScopePolicy | null | undefined):
     (w) => include.length > 0 && arraysEqual(w.scope?.genres?.include ?? [], include),
   );
   if (match) return match.token;
-  if (include.length === 1 && !scope.genres?.exclude?.length && !scope.era && !scope.seasons) {
+  if (include.length === 1 && !scope.genres?.exclude?.length && !scope.dates && !scope.seasons) {
     return `genre:${include[0]}`;
   }
-  if (scope.era && (scope.era.from || scope.era.to)) {
-    return `era:${scope.era.from ?? ""}-${scope.era.to ?? ""}`;
+  const era = eraOf(scope.dates);
+  if (era && (era.from || era.to)) {
+    return `era:${era.from ?? ""}-${era.to ?? ""}`;
   }
   return "";
 };

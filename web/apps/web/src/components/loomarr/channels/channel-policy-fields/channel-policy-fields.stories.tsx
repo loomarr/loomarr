@@ -2,6 +2,7 @@ import type { ChannelPolicy } from "@loomarr/api";
 import { disjointProgrammingDatesPolicy } from "@loomarr/fixtures";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { TooltipProvider } from "@/components/ui";
+import { eraDates } from "@/lib/era-dates";
 import { widthFrame } from "@/test/story-utils";
 import { ChannelPolicyFields } from "./channel-policy-fields";
 
@@ -30,7 +31,7 @@ const Empty: Story = { args: { policy: {} } };
 const populated: ChannelPolicy = {
   ordering: "shuffle",
   audience: { ceiling: "TV-14" },
-  scope: { era: { from: 1990, to: 1999 } },
+  scope: { dates: eraDates({ from: 1990, to: 1999 }) },
   separation: { movieNoRepeat: "168h", episodeNoRepeat: "24h" },
 };
 

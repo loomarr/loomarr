@@ -177,8 +177,7 @@ func stampEpisodeSelection(items []ProposalItem, intent Intent) bool {
 }
 
 // eraAdmittingPicks widens a model-proposed year window just far enough to include the
-// channel's OWN grounded picks (programming-design §4). It returns the era to persist, never
-// nil for a non-empty input.
+// channel's OWN grounded picks (programming-design §4). It returns the era to persist.
 //
 // Caught live: a "Midnight Sci-Fi Horror" proposal carried era.from 1982 AND Alien (1979)
 // on its approved lineup, so the §4 enforcer filtered out a title the operator had
@@ -192,7 +191,7 @@ func stampEpisodeSelection(items []ProposalItem, intent Intent) bool {
 //
 // The era still constrains everything NOT picked (backfill, re-curation, filler); only the
 // already-approved titles are grandfathered in.
-func eraAdmittingPicks(era schedule.Range, groups ...[]ProposalItem) *schedule.Range {
+func eraAdmittingPicks(era schedule.Range, groups ...[]ProposalItem) schedule.Range {
 	out := era
 	for _, g := range groups {
 		for _, it := range g {
@@ -209,7 +208,7 @@ func eraAdmittingPicks(era schedule.Range, groups ...[]ProposalItem) *schedule.R
 			}
 		}
 	}
-	return &out
+	return out
 }
 
 func stricterCeiling(candidate, maximum schedule.Rating) schedule.Rating {

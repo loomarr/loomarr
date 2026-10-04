@@ -389,7 +389,6 @@ func (r *Runner) Run(ctx context.Context, cases []Case) Scorecard {
 				result.SchemaValid = err == nil || errors.Is(err, suggest.ErrNoGroundedTitles) || (c.ExpectedProposalTerminal != "" && typedDateAbstention(prop, err))
 				result.Ceiling = string(prop.Policy.Audience.Ceiling)
 				result.DateScope = cloneDateScope(prop.Policy.Scope.Dates)
-				result.ScalarEra = cloneRange(prop.Policy.Scope.Era)
 				result.PolicyAccurate = policyAccuracyMatches(c, result, err)
 				result.ProposalQuality = proposalQualityMatches(c, prop, err)
 				result.ThemeFit = prop.Scores.ThemeFit
@@ -577,7 +576,7 @@ func policyAccuracyMatches(c Case, result Result, suggestErr error) bool {
 	if c.ExpectedDateScope == nil {
 		return true
 	}
-	if suggestErr != nil || result.ScalarEra != nil {
+	if suggestErr != nil {
 		return false
 	}
 	if dateScopeEmpty(c.ExpectedDateScope) {
@@ -620,14 +619,6 @@ func cloneDateScope(scope *schedule.DateScope) *schedule.DateScope {
 		SeriesPremiere: slices.Clone(scope.SeriesPremiere),
 		SeriesAiring:   slices.Clone(scope.SeriesAiring),
 	}
-}
-
-func cloneRange(value *schedule.Range) *schedule.Range {
-	if value == nil {
-		return nil
-	}
-	clone := *value
-	return &clone
 }
 
 func assessCertification(results []Result, thresholds CertificationThresholds, measurement ResourceMeasurement) CertificationAssessment {

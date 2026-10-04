@@ -24,7 +24,7 @@ func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
 			Genres: []string{"Action", "Science Fiction"}, OfficialRating: "R",
 		}},
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-			Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1980, To: 1999}},
+			Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1980, To: 1999})},
 			Audience: schedule.AudiencePolicy{
 				Ceiling: schedule.Rating("TV-14"), Unrated: schedule.UnratedExclude,
 			},
@@ -55,7 +55,7 @@ func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
 			return fmt.Errorf("grounded title facts changed: %+v", title)
 		}
 		policy := observed.Policy
-		if policy.Scope.Era == nil || *policy.Scope.Era != (schedule.Range{From: 1980, To: 1999}) ||
+		if era, ok := policy.Scope.Dates.Era(); !ok || era != (schedule.Range{From: 1980, To: 1999}) ||
 			policy.Audience.Ceiling != "TV-14" || policy.Audience.Unrated != schedule.UnratedExclude ||
 			policy.Ordering != schedule.OrderSyndication || policy.Seasonal.Mode != schedule.SeasonalExclusive ||
 			!slices.Equal(policy.Seasonal.Holidays, []string{"halloween"}) {

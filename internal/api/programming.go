@@ -126,6 +126,9 @@ func (s *Server) previewChannelProgramming(ctx context.Context, in *previewProgr
 	// Draft policy: validate it the same way a policy write does (§4 safety). Nil ⇒ saved.
 	draftPolicy := in.Body.Policy
 	if draftPolicy != nil {
+		if err := draftPolicy.DateAliasConflict(); err != nil {
+			return nil, ambiguousDatesError(err)
+		}
 		if err := draftPolicy.Validate(); err != nil {
 			return nil, apiErrWithCause(http.StatusUnprocessableEntity, "Invalid policy",
 				"Some programming policy settings are invalid. Check the audience and filler options, then try again.", err)

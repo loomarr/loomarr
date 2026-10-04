@@ -12,6 +12,16 @@ import (
 // is KEPT (§4/§8). Ceiling tests use it; a no-signal Intent{} would drop the ceiling.
 func kidsIntent() Intent { return Intent{Description: "cartoons for kids"} }
 
+// scopeEra reads the model's era back from the era-shaped dates it is stored as; nil when
+// the grounded scope holds no era.
+func scopeEra(p schedule.ChannelPolicy) *schedule.Range {
+	era, ok := p.Scope.Dates.Era()
+	if !ok {
+		return nil
+	}
+	return &era
+}
+
 // groundPolicy is the extraction grounding gate (programming-design §8): the model
 // proposes rule VALUES; we validate + clamp them. A valid policy survives; a
 // hallucinated ceiling is DROPPED (not passed through to enforcement).
@@ -27,8 +37,8 @@ func TestGroundPolicy_ValidPolicySurvives(t *testing.T) {
 	if p.Audience.Ceiling != "TV-Y7" {
 		t.Errorf("ceiling = %q, want TV-Y7", p.Audience.Ceiling)
 	}
-	if p.Scope.Era == nil || p.Scope.Era.From != 1990 || p.Scope.Era.To != 1999 {
-		t.Errorf("era not extracted: %+v", p.Scope.Era)
+	if scopeEra(p) == nil || scopeEra(p).From != 1990 || scopeEra(p).To != 1999 {
+		t.Errorf("era not extracted: %+v", scopeEra(p))
 	}
 	if p.Ordering != schedule.OrderSyndication {
 		t.Errorf("ordering = %q, want syndication", p.Ordering)
@@ -320,14 +330,14 @@ func TestGroundPolicy_EraWidenedToAdmitPicks(t *testing.T) {
 		{Name: "Alien: Romulus", Year: 2024}, // inside
 	}
 	p := groundPolicy(raw, lineup, nil, Intent{Description: "sci-fi horror"})
-	if p.Scope.Era == nil {
+	if scopeEra(p) == nil {
 		t.Fatal("era should survive, widened")
 	}
-	if p.Scope.Era.From != 1979 {
-		t.Errorf("era.from = %d, want 1979 (widened to admit Alien, a title the operator approved)", p.Scope.Era.From)
+	if scopeEra(p).From != 1979 {
+		t.Errorf("era.from = %d, want 1979 (widened to admit Alien, a title the operator approved)", scopeEra(p).From)
 	}
-	if p.Scope.Era.To != 2026 {
-		t.Errorf("era.to = %d, want 2026 (unchanged — no pick is later)", p.Scope.Era.To)
+	if scopeEra(p).To != 2026 {
+		t.Errorf("era.to = %d, want 2026 (unchanged — no pick is later)", scopeEra(p).To)
 	}
 }
 
@@ -339,8 +349,8 @@ func TestGroundPolicy_EraWidenedForAcquisitionsToo(t *testing.T) {
 	raw.Era.From, raw.Era.To = 2000, 2010
 	acquisitions := []ProposalItem{{Name: "Nosferatu", Year: 2024}}
 	p := groundPolicy(raw, nil, acquisitions, Intent{Description: "horror"})
-	if p.Scope.Era == nil || p.Scope.Era.To != 2024 {
-		t.Errorf("era = %+v, want to=2024 (widened for a pending acquisition)", p.Scope.Era)
+	if scopeEra(p) == nil || scopeEra(p).To != 2024 {
+		t.Errorf("era = %+v, want to=2024 (widened for a pending acquisition)", scopeEra(p))
 	}
 }
 
@@ -351,8 +361,8 @@ func TestGroundPolicy_EraUntouchedWhenItAlreadyAdmitsPicks(t *testing.T) {
 	raw.Era.From, raw.Era.To = 1990, 1999
 	lineup := []ProposalItem{{Name: "The Matrix", Year: 1999}, {Name: "Speed", Year: 1994}}
 	p := groundPolicy(raw, lineup, nil, Intent{Description: "90s action"})
-	if p.Scope.Era == nil || p.Scope.Era.From != 1990 || p.Scope.Era.To != 1999 {
-		t.Errorf("era = %+v, want 1990-1999 unchanged", p.Scope.Era)
+	if scopeEra(p) == nil || scopeEra(p).From != 1990 || scopeEra(p).To != 1999 {
+		t.Errorf("era = %+v, want 1990-1999 unchanged", scopeEra(p))
 	}
 }
 
@@ -364,14 +374,14 @@ func TestGroundPolicy_EraOpenBoundStaysOpen(t *testing.T) {
 	raw.Era.From = 1990 // to is 0 = open-ended
 	lineup := []ProposalItem{{Name: "Old Thing", Year: 1975}, {Name: "New Thing", Year: 2024}}
 	p := groundPolicy(raw, lineup, nil, Intent{Description: "stuff"})
-	if p.Scope.Era == nil {
+	if scopeEra(p) == nil {
 		t.Fatal("era should survive")
 	}
-	if p.Scope.Era.From != 1975 {
-		t.Errorf("era.from = %d, want 1975 (widened for the 1975 pick)", p.Scope.Era.From)
+	if scopeEra(p).From != 1975 {
+		t.Errorf("era.from = %d, want 1975 (widened for the 1975 pick)", scopeEra(p).From)
 	}
-	if p.Scope.Era.To != 0 {
-		t.Errorf("era.to = %d, want 0 (already unbounded — closing it would EXCLUDE content)", p.Scope.Era.To)
+	if scopeEra(p).To != 0 {
+		t.Errorf("era.to = %d, want 0 (already unbounded — closing it would EXCLUDE content)", scopeEra(p).To)
 	}
 }
 
@@ -381,8 +391,8 @@ func TestGroundPolicy_UnknownYearDoesNotWidenEra(t *testing.T) {
 	raw.Era.From, raw.Era.To = 1990, 1999
 	lineup := []ProposalItem{{Name: "Mystery", Year: 0}}
 	p := groundPolicy(raw, lineup, nil, Intent{Description: "x"})
-	if p.Scope.Era == nil || p.Scope.Era.From != 1990 || p.Scope.Era.To != 1999 {
-		t.Errorf("era = %+v, want 1990-1999 unchanged by a yearless pick", p.Scope.Era)
+	if scopeEra(p) == nil || scopeEra(p).From != 1990 || scopeEra(p).To != 1999 {
+		t.Errorf("era = %+v, want 1990-1999 unchanged by a yearless pick", scopeEra(p))
 	}
 }
 

@@ -426,7 +426,7 @@ func TestSuggest_NoneDateMeaningDropsRawPolicyEra(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if proposal.Policy.Scope.Era != nil || proposal.Policy.Scope.Dates != nil {
+	if proposal.Policy.Scope.Dates != nil {
 		t.Fatalf("scope = %#v, want no date scope", proposal.Policy.Scope)
 	}
 }

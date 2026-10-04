@@ -3,6 +3,7 @@ package schedule
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -34,7 +35,7 @@ type ChannelPolicy struct {
 	// Reconcile-owned: rejected on write, force-preserved by MergeFromOperator.
 	Applied []AppliedRelaxation `json:"applied,omitempty"`
 	// OperatorSet lists the proposal-owned field paths the operator has explicitly set
-	// ("scope.era", "audience.ceiling", "ordering", …). MergeFromProposal skips any field
+	// ("scope", "audience", "ordering", …). MergeFromProposal skips any field
 	// named here, so an operator edit is STICKY — a later refine/re-curation cannot silently
 	// revert it (§8.2). Bookkeeping only; rides policy_json, so it needs no migration.
 	OperatorSet []string `json:"operatorSet,omitempty"`
@@ -240,7 +241,7 @@ type AutoCurate struct {
 // Enum values mirror the filler package's wire strings deliberately — the policy model
 // validates its own closed sets and imports nothing (see the other enums here).
 type FillerSelection struct {
-	Era        *Range           `json:"era,omitempty"`        // year window; nil = inherit Scope.Era at derivation.
+	Era        *Range           `json:"era,omitempty"`        // year window; nil = inherit Scope.Dates at derivation.
 	EraWindows []Range          `json:"eraWindows,omitempty"` // explicit union; mutually exclusive with Era
 	Audience   string           `json:"audience,omitempty"`   // "" = any; else kids|family|general|late_night
 	Categories []string         `json:"categories,omitempty"` // empty = any; else a subset of the closed category set
@@ -270,13 +271,26 @@ type FillerGeography struct {
 // unrestricted or late-night filler; only child/family ceilings narrow further.
 func SeedFillerSelection(policy ProposalPolicy) *FillerSelection {
 	seed := &FillerSelection{Audience: fillerAudienceForCeiling(policy.Audience.Ceiling)}
-	if windows := policy.Scope.FillerEraWindows(); len(windows) > 0 {
+	era, windows := policy.Scope.FillerEra()
+	switch {
+	case era != nil:
+		seed.Era = era
+	case boundedRanges(windows):
 		seed.EraWindows = windows
-	} else if policy.Scope.Era != nil {
-		era := *policy.Scope.Era
-		seed.Era = &era
+	default:
+		// A union with an open end is not a valid stored eraWindows value. Leaving the era
+		// unset is not a loss: an unset filler era inherits the scope live (SelectionFrom).
 	}
 	return seed
+}
+
+func boundedRanges(ranges []Range) bool {
+	for _, r := range ranges {
+		if r.From == 0 || r.To == 0 {
+			return false
+		}
+	}
+	return len(ranges) > 0
 }
 
 func fillerAudienceForCeiling(ceiling Rating) string {
@@ -375,14 +389,21 @@ func sameRanges(a, b []Range) bool {
 
 // ScopePolicy is the "what is allowed on this channel" filter (§2). Ids are
 // resolved provisioning keys, never names.
+//
+// Dates is the only date scope. The retired `era` field is still read as an alias on
+// decode (see UnmarshalJSON in datescope.go) and is never written.
 type ScopePolicy struct {
 	Series      []provision.Key `json:"series,omitempty"`      // restrict to these series (resolved ids)
 	Collections []string        `json:"collections,omitempty"` // media-server collections
 	Seasons     *Range          `json:"seasons,omitempty"`     // per-series season window
-	Era         *Range          `json:"era,omitempty"`         // by first-air/release year
 	Dates       *DateScope      `json:"dates,omitempty"`       // separate movie, premiere, and episode-airing windows
 	Genres      GenreFilter     `json:"genres,omitempty"`      // include/exclude by genre name
 	RuntimeMax  int             `json:"runtimeMax,omitempty"`  // seconds; 0 = unbounded ("nothing over an hour")
+
+	// eraAndDates records that the decoded JSON carried both `era` and `dates`. A stored
+	// policy decodes to their intersection; a request with both is ambiguous and the API
+	// rejects it (ChannelPolicy.DateAliasConflict). Decode-only state, never serialised.
+	eraAndDates bool
 }
 
 // DateScope keeps date meanings separate: title metadata supplies movie release and
@@ -406,7 +427,9 @@ func validateDates(field string, d *DateScope) error {
 	}
 	for _, ranges := range [][]Range{d.MovieRelease, d.SeriesPremiere, d.SeriesAiring} {
 		for _, r := range ranges {
-			if !validYearRange(r, true) {
+			// One open end is allowed ("1990 onwards"), as the era shortcut always allowed;
+			// a range open at both ends constrains nothing and is rejected.
+			if r == (Range{}) || !validYearRange(r, false) {
 				return fmt.Errorf("invalid %s range", field)
 			}
 		}
@@ -467,7 +490,8 @@ func (s ScopePolicy) FillerEraWindows() []Range {
 	return NormalizeRanges(windows)
 }
 
-// NormalizeRanges sorts and coalesces overlapping or adjacent closed date windows.
+// NormalizeRanges sorts and coalesces overlapping or adjacent date windows. A 0 bound is
+// open on that end: From 0 sorts first, and a To of 0 absorbs every later window.
 func NormalizeRanges(in []Range) []Range {
 	if len(in) == 0 {
 		return nil
@@ -475,22 +499,30 @@ func NormalizeRanges(in []Range) []Range {
 	out := append([]Range(nil), in...)
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].From == out[j].From {
-			return out[i].To < out[j].To
+			return upperBound(out[i]) < upperBound(out[j])
 		}
 		return out[i].From < out[j].From
 	})
 	n := 0
 	for _, r := range out {
-		if n == 0 || r.From > out[n-1].To+1 {
+		if n == 0 || (out[n-1].To != 0 && r.From > out[n-1].To+1) {
 			out[n] = r
 			n++
 			continue
 		}
-		if r.To > out[n-1].To {
+		if out[n-1].To != 0 && (r.To == 0 || r.To > out[n-1].To) {
 			out[n-1].To = r.To
 		}
 	}
 	return out[:n:n]
+}
+
+// upperBound orders a range's end, with an open end (0) after every year.
+func upperBound(r Range) int {
+	if r.To == 0 {
+		return math.MaxInt
+	}
+	return r.To
 }
 
 // GenreFilter is an include/exclude pair over genre names (§2). Include empty =

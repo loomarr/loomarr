@@ -318,7 +318,7 @@ func TestPlan_UsesTheExactCandidateWithoutWriting(t *testing.T) {
 	body := suggest.Proposal{
 		ChannelName: "The Exact Candidate",
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-			Scope:    schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
+			Scope:    schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})},
 			Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"},
 		}},
 		Lineup: []suggest.ProposalItem{inLib(1, "Exact")},

@@ -1,6 +1,7 @@
 import type { ChannelPolicy, ProposalItem } from "@loomarr/api";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { eraDates } from "@/lib/era-dates";
 import { RefineReview } from "./refine-review";
 import type { CurrentLineupItem } from "./refine-review.type";
 
@@ -110,8 +111,8 @@ describe("RefineReview", () => {
       <RefineReview
         proposed={[heat]}
         current={[currentHeat]}
-        currentPolicy={{ scope: { era: { from: 1980, to: 1989 } } } as ChannelPolicy}
-        proposedPolicy={{ scope: { era: { from: 1990, to: 1999 } } } as ChannelPolicy}
+        currentPolicy={{ scope: { dates: eraDates({ from: 1980, to: 1989 }) } }}
+        proposedPolicy={{ scope: { dates: eraDates({ from: 1990, to: 1999 }) } }}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
@@ -213,8 +214,8 @@ describe("RefineReview", () => {
       <RefineReview
         proposed={[heat]}
         current={[currentHeat]}
-        currentPolicy={{ scope: { era: { from: 1980, to: 1989 } }, operatorSet: ["scope"] } as ChannelPolicy}
-        proposedPolicy={{ scope: { era: { from: 1990, to: 1999 } } } as ChannelPolicy}
+        currentPolicy={{ scope: { dates: eraDates({ from: 1980, to: 1989 }) }, operatorSet: ["scope"] }}
+        proposedPolicy={{ scope: { dates: eraDates({ from: 1990, to: 1999 }) } }}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
