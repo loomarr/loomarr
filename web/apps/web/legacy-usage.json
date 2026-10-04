@@ -74,7 +74,7 @@
       "tailwindClasses": 10
     },
     "src/components/loomarr/channels/channel-auto-curate/channel-auto-curate.tsx": {
-      "tailwindClasses": 31,
+      "tailwindClasses": 42,
       "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-breaks/channel-breaks.tsx": {
@@ -96,6 +96,9 @@
       "tailwindClasses": 68,
       "legacyUi": 1
     },
+    "src/components/loomarr/channels/channel-defaults-summary/channel-defaults-summary.tsx": {
+      "tailwindClasses": 6
+    },
     "src/components/loomarr/channels/channel-icon-field/channel-icon-field.tsx": {
       "tailwindClasses": 130,
       "legacyUi": 4
@@ -108,15 +111,18 @@
       "legacyUi": 4
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
-      "tailwindClasses": 119,
+      "tailwindClasses": 86,
       "legacyUi": 4
+    },
+    "src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
+      "tailwindClasses": 47
     },
     "src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.tsx": {
       "tailwindClasses": 64,
       "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-seasonal/channel-seasonal.tsx": {
-      "tailwindClasses": 35,
+      "tailwindClasses": 40,
       "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
@@ -129,6 +135,10 @@
     },
     "src/components/loomarr/channels/now-next-strip/now-next-strip.tsx": {
       "tailwindClasses": 16
+    },
+    "src/components/loomarr/channels/policy-field-source/policy-field-source.tsx": {
+      "tailwindClasses": 9,
+      "legacyUi": 2
     },
     "src/components/loomarr/channels/on-air-indicator/on-air-indicator.tsx": {
       "tailwindClasses": 24
@@ -705,7 +715,7 @@
       "legacyUi": 2
     },
     "src/routes/_authed/channels/$id/-channel-programming.tsx": {
-      "tailwindClasses": 27,
+      "tailwindClasses": 38,
       "legacyUi": 1
     },
     "src/routes/_authed/channels/$id/info.tsx": {
