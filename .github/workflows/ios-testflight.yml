@@ -1,0 +1,96 @@
+name: iPhone TestFlight beta
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Loomarr release version, e.g. 0.2.0-beta.9
+        required: true
+        type: string
+      upload:
+        description: Upload the verified IPA to TestFlight (otherwise build, verify, and validate only)
+        required: true
+        default: false
+        type: boolean
+
+# The workflow file name is part of the build-number contract: github.run_number counts runs of
+# this workflow, so renaming or recreating it can restart the numbering and collide with uploads.
+concurrency:
+  group: ios-testflight-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Archive, verify, and optionally upload the iPhone beta
+    if: github.ref == 'refs/heads/main'
+    # Same image as ci-apple-mobile.yml; the script fails closed on another Xcode major.
+    runs-on: xcode-27
+    timeout-minutes: 90
+    environment: ios-testflight
+    env:
+      LOOMARR_IOS_BUILD_NUMBER: ${{ github.run_number }}
+      LOOMARR_IOS_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/ios-testflight
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+      - run: corepack enable
+      - run: make fe-install
+      # Metro bundles the generated API client during the Xcode archive.
+      - run: make fe-api-codegen
+
+      # Names every missing secret and variable at once, then writes the API key to runner temp.
+      # It runs after dependency installation so no package script runs while the key is on disk.
+      # Signing needs the key even when nothing is uploaded.
+      - name: Prepare the App Store Connect credentials
+        env:
+          ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
+        run: ./web/scripts/build-ios-testflight.sh prepare-credentials
+
+      - name: Archive, export, and verify the IPA
+        env:
+          LOOMARR_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: ./web/scripts/build-ios-testflight.sh build "$RELEASE_VERSION"
+
+      - name: Retain the verified IPA and evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: loomarr-ios-${{ inputs.version }}-${{ github.run_number }}
+          path: |
+            ${{ env.LOOMARR_IOS_OUTPUT_DIR }}/loomarr-ios-*.ipa
+            ${{ env.LOOMARR_IOS_OUTPUT_DIR }}/loomarr-ios-*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Validate the IPA with App Store Connect
+        env:
+          LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          LOOMARR_ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
+        run: ./web/scripts/build-ios-testflight.sh validate
+
+      - name: Upload to TestFlight
+        if: inputs.upload
+        env:
+          LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          LOOMARR_ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
+        run: ./web/scripts/build-ios-testflight.sh upload
+
+      - name: Remove credential files
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/asc"

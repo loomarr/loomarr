@@ -40,6 +40,7 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 	return map[workflowJobContextKey]workflowJobContextAuthority{
 		{workflow: "android-ccache-promotion.yml", job: "promote"}: {name: "Promote verified Android compiler cache", runsOn: "ubuntu-latest", timeoutMinutes: 15},
 		{workflow: "android-beta.yml", job: "release"}:             {name: "Verify, sign, and optionally publish Android TV beta", runsOn: "ubuntu-latest", environmentName: "android-beta"},
+		{workflow: "ios-testflight.yml", job: "release"}:           {name: "Archive, verify, and optionally upload the iPhone beta", runsOn: "xcode-27", timeoutMinutes: 90, environmentName: "ios-testflight"},
 		{workflow: "apple-compilation-cache.yml", job: "publish"}:  {name: "Publish validated Apple compilation cache", runsOn: "xcode-27", timeoutMinutes: 75},
 		{workflow: "cache-cleanup.yml", job: "cleanup"}:            {name: "Drop the closed PR's caches", runsOn: "ubuntu-latest"},
 		{workflow: "ci-agent.yml", job: "run"}:                     {name: "Agent harness (macOS)", runsOn: "macos-latest"},
