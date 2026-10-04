@@ -312,27 +312,12 @@ verify_ipa() {
     printf 'ios-testflight: IPA has no PrivacyInfo.xcprivacy at the app bundle root\n' >&2
     exit 1
   fi
-  # The app-level manifest makes exactly the declaration app.config.cjs writes, and no tracking claim.
-  node -e '
-    const manifest = JSON.parse(process.argv[1]);
-    const fail = (problem) => {
-      console.error("ios-testflight: IPA privacy manifest " + problem);
-      process.exit(1);
-    };
-    if (manifest.NSPrivacyTracking !== undefined && manifest.NSPrivacyTracking !== false) {
-      fail("declares NSPrivacyTracking");
-    }
-    const types = manifest.NSPrivacyAccessedAPITypes;
-    if (!Array.isArray(types) || types.length !== 1) {
-      fail("has " + (Array.isArray(types) ? types.length : "no") + " accessed-API entries; expected 1");
-    }
-    if (types[0].NSPrivacyAccessedAPIType !== "NSPrivacyAccessedAPICategoryUserDefaults") {
-      fail("declares " + types[0].NSPrivacyAccessedAPIType + "; expected NSPrivacyAccessedAPICategoryUserDefaults");
-    }
-    if (JSON.stringify(types[0].NSPrivacyAccessedAPITypeReasons) !== JSON.stringify(["CA92.1"])) {
-      fail("UserDefaults reasons are not exactly CA92.1");
-    }
-  ' "$(plutil -convert json -o - "${app}/PrivacyInfo.xcprivacy")"
+  # The app-level manifest carries our UserDefaults/CA92.1 declaration plus whatever React Native's
+  # pod aggregation added; the checker enforces no tracking and complete, unique entries.
+  local privacy_categories
+  privacy_categories="$(node "${WEB_ROOT}/scripts/check-ios-privacy-manifest.cjs" \
+    "$(plutil -convert json -o - "${app}/PrivacyInfo.xcprivacy")")"
+  printf 'ios-testflight: IPA privacy manifest accessed-API categories: %s\n' "$privacy_categories"
   # A device binary has arm64 only; any simulator slice or platform makes App Store Connect refuse
   # it. That holds for every Mach-O in the bundle: the executable, frameworks, dylibs, and plug-ins.
   executable="${app}/$(plist_value CFBundleExecutable)"
@@ -352,18 +337,28 @@ verify_ipa() {
 
   node -e '
     const fs = require("node:fs");
-    const [evidence, bundleIdentifier, version, buildNumber, releaseVersion, xcode, sha256, archs] =
+    const [evidence, bundleIdentifier, version, buildNumber, releaseVersion, xcode, sha256, archs, privacy] =
       process.argv.slice(1);
     fs.writeFileSync(
       evidence,
       JSON.stringify(
-        { bundleIdentifier, version, buildNumber, releaseVersion, xcode, ipaSha256: sha256, architectures: archs },
+        {
+          bundleIdentifier,
+          version,
+          buildNumber,
+          releaseVersion,
+          xcode,
+          ipaSha256: sha256,
+          architectures: archs,
+          privacyAccessedAPITypes: JSON.parse(privacy),
+        },
         null,
         2,
       ) + "\n",
     );
   ' "${ipa%.ipa}.json" "$BUNDLE_ID" "$short_version" "$LOOMARR_IOS_BUILD_NUMBER" \
-    "$release_version" "$xcode_version" "$(shasum -a 256 "$ipa" | awk '{ print $1 }')" "$archs"
+    "$release_version" "$xcode_version" "$(shasum -a 256 "$ipa" | awk '{ print $1 }')" "$archs" \
+    "$privacy_categories"
   printf 'ios-testflight: verified %s\n' "$ipa"
 }
 
