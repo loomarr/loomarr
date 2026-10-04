@@ -10,9 +10,10 @@ import (
 
 // The household self-hosted runner (#1570) must never execute a `pull_request` run, including one
 // from a fork — the repository is public. `push` alone matches every branch, not just `main`, so
-// only `merge_group` and a push to `main` specifically may select it; every other event or ref,
-// including `workflow_dispatch` and a push to any other branch, falls back to `ubuntu-latest`.
-const goWorkflowSelfHostedRunsOn = `${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}`
+// only `merge_group`, a write-access `workflow_dispatch`, and a push to `main` specifically may
+// select it; every other event or ref, including a push to any other branch, falls back to
+// `ubuntu-latest`.
+const goWorkflowSelfHostedRunsOn = `${{ (github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && fromJSON('["self-hosted", "linux", "x64", "loomarr-go"]') || 'ubuntu-latest' }}`
 
 type workflowJobContextKey struct {
 	workflow string
