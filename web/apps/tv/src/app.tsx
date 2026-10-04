@@ -113,12 +113,14 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const remoteStateRef = useRef<TvWatchingRemoteState>(initialTvWatchingRemoteState);
   const [remoteState, setRemoteState] = useState<TvWatchingRemoteState>(initialTvWatchingRemoteState);
   const [autoTuneMs, setAutoTuneMs] = useState<number>(DEFAULT_NUMBER_ENTRY_MS);
+  // A choice made before the stored value finishes loading wins over that stale read.
+  const autoTuneChosen = useRef(false);
   useEffect(() => {
     let current = true;
     void autoTuneSetting
       .load()
       .then((durationMs) => {
-        if (current) setAutoTuneMs(durationMs);
+        if (current && !autoTuneChosen.current) setAutoTuneMs(durationMs);
       })
       // An unreadable store keeps the default rather than leaving digit entry without a timer.
       .catch(() => undefined);
@@ -127,6 +129,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     };
   }, []);
   const changeAutoTune = useCallback((durationMs: number) => {
+    autoTuneChosen.current = true;
     setAutoTuneMs(durationMs);
     // The choice applies now; an unwritable store just means the next launch reads the default.
     void autoTuneSetting.save(durationMs).catch(() => undefined);

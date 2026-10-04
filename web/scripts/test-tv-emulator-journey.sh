@@ -323,8 +323,8 @@ capture digit-entry-countdown-5s
 # appears only once the wait ends, well after where the 1.2 s default would have tuned.
 wait_for_ui "the 5 s wait tuning the typed Channel" "SCIENCE FICTION" 20
 waited_ms=$(($(date +%s%3N) - typed_at_ms))
-if ((waited_ms < 4000)); then
-  printf 'TV emulator tuned %s ms after the last digit; the 5 s wait did not hold\n' "${waited_ms}" >&2
+if ((waited_ms < 4500 || waited_ms > 9000)); then
+  printf 'TV emulator tuned %s ms after the last digit, not after a 5 s wait\n' "${waited_ms}" >&2
   exit 1
 fi
 printf 'tv-emulator-journey: observed the tune %s ms after the last digit\n' "${waited_ms}"
