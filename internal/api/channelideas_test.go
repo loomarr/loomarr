@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/api"
 	"github.com/loomarr/loomarr/internal/auth"
+	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/ideas"
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/proposalworkflow"
@@ -49,11 +51,16 @@ type ideasWire struct {
 			HolidayLabel string `json:"holidayLabel"`
 			StartsAtMs   int64  `json:"startsAtMs"`
 		} `json:"reason"`
-		Keys       []string `json:"keys"`
-		Movies     int      `json:"movies"`
-		Series     int      `json:"series"`
-		InLibrary  int      `json:"inLibrary"`
-		ToDownload int      `json:"toDownload"`
+		Keys   []string `json:"keys"`
+		Titles []struct {
+			Name      string `json:"name"`
+			TMDBID    int    `json:"tmdbId"`
+			InLibrary bool   `json:"inLibrary"`
+		} `json:"titles"`
+		Movies     int `json:"movies"`
+		Series     int `json:"series"`
+		InLibrary  int `json:"inLibrary"`
+		ToDownload int `json:"toDownload"`
 	} `json:"ideas"`
 }
 
@@ -180,6 +187,11 @@ func TestChannelIdeasFromLibraryAndCalendar(t *testing.T) {
 		comedy.Movies != 6 || comedy.InLibrary != 6 || comedy.ToDownload != 0 || comedy.Value != "Comedy" {
 		t.Errorf("comedy idea = %+v, want 6 unaired films, all in the library", comedy)
 	}
+	// Titles carries the same keys with display fields (#1817, G2's builder shows each one by
+	// name), every one already owned — real ideas never need a download.
+	if len(comedy.Titles) != 6 || comedy.Titles[0].Name == "" || !comedy.Titles[0].InLibrary {
+		t.Errorf("comedy titles = %+v, want 6 named, in-library entries", comedy.Titles)
+	}
 
 	if code, _ := ideasCall(t, h.Server, http.MethodPut, "/v1/me/hidden-ideas/genre:comedy", kid); code != http.StatusNoContent {
 		t.Fatalf("hide = %d, want 204", code)
@@ -301,6 +313,163 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 	}
 	if code, _ := requestIdea(t, h.Server, "genre:western", kid); code != http.StatusNotFound {
 		t.Fatalf("unknown idea = %d, want 404", code)
+	}
+}
+
+// newManualChannelHarness wires the real suggest service, durable workflow AND a real
+// Approver (with an ordered resolver double for Library presence) — the manual builder's
+// grounding guarantee is the thing under test, so a fake approver would test nothing.
+func newManualChannelHarness(
+	t *testing.T, now time.Time, resolver *testkit.ApprovalAdditionResolver[suggest.ProposalItem],
+) *apiHarness {
+	t.Helper()
+	ms := testkit.NewMediaServer(t)
+	t.Cleanup(ms.Close)
+	ms.Accounts = map[string]testkit.Account{
+		"boss": {Password: "pw", ID: "u-boss", IsAdmin: true},
+		"kid":  {Password: "pw", ID: "u-kid", IsAdmin: false},
+	}
+	return startAPIHarness(t, func(defaults apiHarnessDefaults) http.Handler {
+		mediaServer := library.New(library.Emby, ms.URL, ms.AdminToken, "dev")
+		mgr := auth.NewManager(defaults.Store, time.Hour, time.Now)
+		seedImported(t, defaults.Store, "u-boss", "boss", store.RoleAdmin)
+		seedImported(t, defaults.Store, "u-kid", "kid", store.RoleMember)
+		var next atomic.Int64
+		newID := func() string { return fmt.Sprintf("manual-%d", next.Add(1)) }
+		workflow := proposalworkflow.New(defaults.Store, newID, func() time.Time { return now })
+		service := suggest.NewService(defaults.Store, nil, suggest.Config{}, newID, func() time.Time { return now }, defaults.Log).
+			WithDurableWorkflow(workflow)
+		chBinder := binder.New(defaults.Store, nil, nil, defaults.Log)
+		approver := suggest.NewApprover(defaults.Store, chBinder, func() time.Time { return now }).
+			WithApprovalAdditionResolver(resolver)
+		return api.Router(defaults.Log, api.Options{
+			Suggest:          service,
+			Approver:         approver,
+			Binder:           chBinder,
+			ProposalWorkflow: workflow,
+			Store:            defaults.Store,
+			Auth:             api.NewSessionAuthorizer(mgr, "break-glass-token"),
+			Log:              defaults.Log,
+			Login:            auth.NewLoginService(mediaServer, defaults.Store, mgr, nil, time.Now),
+			Sessions:         mgr,
+			CookieSecure:     "false",
+			IdeaLibrary:      &fakeIdeaLibrary{},
+			Now:              func() time.Time { return now },
+		})
+	})
+}
+
+func submitManualChannel(
+	t *testing.T, srv *httptest.Server, body map[string]any, session *http.Cookie,
+) (int, string, string) {
+	t.Helper()
+	blob, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/discovery/manual-channel", bytes.NewReader(blob))
+	req.Header.Set("Content-Type", "application/json")
+	if session != nil {
+		req.AddCookie(session)
+		req.Header.Set("X-Loomarr-Csrf", "1")
+	}
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	var out struct {
+		JobID string `json:"jobId"`
+		Title string `json:"title"`
+	}
+	_ = json.NewDecoder(res.Body).Decode(&out)
+	return res.StatusCode, out.JobID, out.Title
+}
+
+// A hand-picked lineup (#1817, G2) re-checks every title against the library the same way an
+// approver's edit does: a client claiming a title is already owned does not make it so. One
+// claimed-owned title the resolver actually confirms lands in Lineup; one claimed-owned title
+// the resolver refuses lands in Acquisitions instead — exactly the "client presence fields are
+// not authority" guarantee ResolveApprovalEdit already gives edit.Add.
+func TestSubmitManualChannelGroundsTheLineupBeforeQueueing(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.May, 1, 12, 0, 0, 0, time.UTC)
+	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 1, Name: "Owned Already", LibraryItemID: "lib-1"}, Owned: true},
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 2, Name: "Not Actually Owned"}, Owned: false},
+	}}
+	h := newManualChannelHarness(t, now, resolver)
+	kid := login(t, h.Server, "kid", "pw")
+
+	code, jobID, _ := submitManualChannel(t, h.Server, map[string]any{
+		"name":        "My Hand-Built Channel",
+		"description": "Built by hand, title by title.",
+		"lineup": []map[string]any{
+			// The client CLAIMS both are already owned; only the first really is.
+			{"mediaType": "movie", "tmdbId": 1, "name": "Owned Already", "inLibrary": true, "libraryItemId": "lib-1"},
+			{"mediaType": "movie", "tmdbId": 2, "name": "Not Actually Owned", "inLibrary": true, "libraryItemId": "forged"},
+		},
+	}, kid)
+	if code != http.StatusAccepted || jobID == "" {
+		t.Fatalf("submit = %d %q, want 202 with a job", code, jobID)
+	}
+
+	queue, err := h.Store.ListProposalsByStatus(context.Background(), "submitted")
+	if err != nil || len(queue) != 1 {
+		t.Fatalf("approval queue = %+v, %v", queue, err)
+	}
+	if queue[0].JobID != jobID || queue[0].CreatedBy != "u-kid" {
+		t.Fatalf("queued request = %+v, want the member's own, on job %s", queue[0], jobID)
+	}
+	var payload suggest.Proposal
+	if err := json.Unmarshal([]byte(queue[0].ProposalJSON), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Manual || payload.ChannelName != "My Hand-Built Channel" || payload.Rationale != "Built by hand, title by title." {
+		t.Fatalf("queued proposal = %+v, want a manual proposal carrying the name and description", payload)
+	}
+	if len(payload.Lineup) != 1 || payload.Lineup[0].TMDBID != 1 || !payload.Lineup[0].InLibrary || payload.Lineup[0].LibraryItemID != "lib-1" {
+		t.Fatalf("lineup = %+v, want only the resolver-confirmed owned title", payload.Lineup)
+	}
+	if len(payload.Acquisitions) != 1 || payload.Acquisitions[0].TMDBID != 2 || payload.Acquisitions[0].InLibrary {
+		t.Fatalf("acquisitions = %+v, want the unconfirmed title moved here, not trusted as owned", payload.Acquisitions)
+	}
+}
+
+// Both an admin and a member can reach the manual builder (unlike channel ideas, H4 does not
+// gate this path — "an admin makes channels directly" from the SAME panel, same call).
+func TestSubmitManualChannelIsOpenToAdminAndMember(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	resolver := &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{Results: []testkit.ApprovalAdditionResolution[suggest.ProposalItem]{
+		{Item: suggest.ProposalItem{MediaType: "movie", TMDBID: 9, Name: "A Title", LibraryItemID: "lib-9"}, Owned: true},
+	}}
+	h := newManualChannelHarness(t, now, resolver)
+	boss := login(t, h.Server, "boss", "pw")
+	if code, jobID, _ := submitManualChannel(t, h.Server, map[string]any{
+		"name":   "Admin's Channel",
+		"lineup": []map[string]any{{"mediaType": "movie", "tmdbId": 9, "name": "A Title", "inLibrary": false}},
+	}, boss); code != http.StatusAccepted || jobID == "" {
+		t.Fatalf("admin submit = %d %q, want 202 with a job", code, jobID)
+	}
+}
+
+// An empty name or an empty lineup never reaches the gate — the mock's "Continue to review"
+// is always disabled until at least one title is picked, but the API enforces it too.
+func TestSubmitManualChannelRejectsEmptyInput(t *testing.T) {
+	t.Parallel()
+	h := newManualChannelHarness(t, time.Now(), &testkit.ApprovalAdditionResolver[suggest.ProposalItem]{})
+	kid := login(t, h.Server, "kid", "pw")
+	if code, _, title := submitManualChannel(t, h.Server, map[string]any{
+		"name":   "",
+		"lineup": []map[string]any{{"mediaType": "movie", "tmdbId": 9, "name": "A Title", "inLibrary": false}},
+	}, kid); code != http.StatusBadRequest {
+		t.Fatalf("empty name = %d %q, want 400", code, title)
+	}
+	if code, _, title := submitManualChannel(t, h.Server, map[string]any{
+		"name": "No Titles Yet", "lineup": []map[string]any{},
+	}, kid); code != http.StatusBadRequest {
+		t.Fatalf("empty lineup = %d %q, want 400", code, title)
 	}
 }
 

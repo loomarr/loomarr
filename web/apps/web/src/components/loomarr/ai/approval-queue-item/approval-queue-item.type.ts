@@ -47,6 +47,9 @@ interface ApprovalQueueItemProps {
   // never connected: the display shipped, the capture didn't, so the field was always
   // empty in practice.
   onDeny?: (reason?: string) => void;
+  // A failed approve/deny for THIS row (#1430) — rendered on the card itself rather than in a
+  // banner elsewhere on the queue, so the error sits next to the decision that produced it.
+  error?: unknown;
   className?: string;
 }
 

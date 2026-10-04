@@ -170,4 +170,44 @@ expect_failure 'altool failure' 'altool --upload-package failed' \
   "${fake_env[@]}" FAKE_ALTOOL_STATUS=3 FAKE_ALTOOL_OUTPUT=boom "$script" upload
 [[ "$(wc -l < "$calls")" -eq 1 ]]
 
+# The IPA privacy manifest check accepts React Native's aggregated manifest and nothing weaker.
+privacy_checker="$script_dir/check-ios-privacy-manifest.cjs"
+aggregated='{"NSPrivacyTracking":false,"NSPrivacyAccessedAPITypes":[
+  {"NSPrivacyAccessedAPIType":"NSPrivacyAccessedAPICategoryFileTimestamp","NSPrivacyAccessedAPITypeReasons":["C617.1"]},
+  {"NSPrivacyAccessedAPIType":"NSPrivacyAccessedAPICategoryUserDefaults","NSPrivacyAccessedAPITypeReasons":["CA92.1"]},
+  {"NSPrivacyAccessedAPIType":"NSPrivacyAccessedAPICategorySystemBootTime","NSPrivacyAccessedAPITypeReasons":["35F9.1"]}]}'
+node "$privacy_checker" "$aggregated" >"$temp_dir/stdout"
+[[ "$(node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).length' <"$temp_dir/stdout")" -eq 3 ]]
+grep -Fq 'NSPrivacyAccessedAPICategorySystemBootTime' "$temp_dir/stdout"
+
+expect_privacy_rejection() {
+  local description="$1" needle="$2" manifest="$3"
+  if node "$privacy_checker" "$manifest" >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
+    echo "privacy manifest accepted: $description" >&2
+    exit 1
+  fi
+  grep -Fq -- "$needle" "$temp_dir/stderr" || {
+    echo "privacy manifest $description: expected: $needle" >&2
+    cat "$temp_dir/stderr" >&2
+    exit 1
+  }
+}
+file_timestamp='{"NSPrivacyAccessedAPIType":"NSPrivacyAccessedAPICategoryFileTimestamp","NSPrivacyAccessedAPITypeReasons":["C617.1"]}'
+user_defaults='{"NSPrivacyAccessedAPIType":"NSPrivacyAccessedAPICategoryUserDefaults","NSPrivacyAccessedAPITypeReasons":["CA92.1"]}'
+expect_privacy_rejection 'missing UserDefaults' 'does not declare NSPrivacyAccessedAPICategoryUserDefaults' \
+  "{\"NSPrivacyAccessedAPITypes\":[$file_timestamp]}"
+expect_privacy_rejection 'UserDefaults without CA92.1' 'does not declare NSPrivacyAccessedAPICategoryUserDefaults' \
+  '{"NSPrivacyAccessedAPITypes":[{"NSPrivacyAccessedAPIType":"NSPrivacyAccessedAPICategoryUserDefaults","NSPrivacyAccessedAPITypeReasons":["1C8F.1"]}]}'
+expect_privacy_rejection 'empty reasons' 'has no reasons' \
+  "{\"NSPrivacyAccessedAPITypes\":[$user_defaults,{\"NSPrivacyAccessedAPIType\":\"NSPrivacyAccessedAPICategoryFileTimestamp\",\"NSPrivacyAccessedAPITypeReasons\":[]}]}"
+expect_privacy_rejection 'empty category' 'no NSPrivacyAccessedAPIType' \
+  "{\"NSPrivacyAccessedAPITypes\":[$user_defaults,{\"NSPrivacyAccessedAPIType\":\"\",\"NSPrivacyAccessedAPITypeReasons\":[\"C617.1\"]}]}"
+expect_privacy_rejection 'duplicate category' 'more than once' \
+  "{\"NSPrivacyAccessedAPITypes\":[$user_defaults,$user_defaults]}"
+expect_privacy_rejection 'tracking true' 'declares NSPrivacyTracking' \
+  "{\"NSPrivacyTracking\":true,\"NSPrivacyAccessedAPITypes\":[$user_defaults]}"
+expect_privacy_rejection 'tracking domains' 'declares NSPrivacyTrackingDomains' \
+  "{\"NSPrivacyTrackingDomains\":[\"example.com\"],\"NSPrivacyAccessedAPITypes\":[$user_defaults]}"
+expect_privacy_rejection 'no entries' 'has no accessed-API entries' '{}'
+
 echo 'build-ios-testflight tests passed'

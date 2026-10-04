@@ -3,4 +3,5 @@ export * from "../native-playback-diagnostics";
 export * from "../native-player-lifecycle";
 export * from "../paired-client";
 export * from "../playback-marks";
+export * from "../shell-pause";
 export * from "./native";

@@ -38,11 +38,33 @@ const moveFilterFocus = (
   return { state: { ...state, focus: { filter: next.value, region: "filters" } } };
 };
 
+/**
+ * What a LEFT/RIGHT boundary should ask the platform to do (#1659 decision N4, maintainer
+ * 2026-10-03): LEFT at the first cell pages the window earlier, but never before `nowMs`; RIGHT
+ * off a programme that spans the whole visible window pages forward one page. Any other edge (a
+ * channel with no earlier programme in view, or a trailing partial programme) has nowhere to go.
+ */
+const boundaryPageIntent = (
+  layout: GuideLayout,
+  selection: TvGuideNavigationState["gridSelection"],
+  boundary: GuideNavigationDirection,
+  nowMs: number,
+): "earlier" | "later" | undefined => {
+  if (boundary === "left") return selection.anchorMs > nowMs ? "earlier" : undefined;
+  if (boundary !== "right") return undefined;
+  const channel = layout.channels.find((candidate) => candidate.source.channelId === selection.channelId);
+  const airing = channel?.airings.find(
+    (candidate) => candidate.scheduleBlockId === selection.scheduleBlockId,
+  );
+  return airing && airing.widthRatio >= 0.999 ? "later" : undefined;
+};
+
 const moveTvGuideFocus = (
   layout: GuideLayout,
   state: TvGuideNavigationState,
   direction: GuideNavigationDirection,
   filters: readonly TvGuideFilterOption[],
+  nowMs: number,
 ): TvGuideMoveResult => {
   if (state.focus.region === "filters") return moveFilterFocus(state, direction, filters);
 
@@ -52,7 +74,13 @@ const moveTvGuideFocus = (
     const filter = options.find((option) => option.value === state.activeFilter)?.value ?? options[0]?.value;
     if (filter) return { state: { ...state, focus: { filter, region: "filters" } } };
   }
-  if (movement.boundary) return { boundary: movement.boundary, state };
+  if (movement.boundary) {
+    return {
+      boundary: movement.boundary,
+      pageIntent: boundaryPageIntent(layout, state.gridSelection, movement.boundary, nowMs),
+      state,
+    };
+  }
   return {
     state: {
       ...state,

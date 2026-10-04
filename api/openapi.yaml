@@ -685,6 +685,10 @@ components:
     BulkApproveFillerPullResult:
       additionalProperties: false
       properties:
+        enqueued:
+          description: Remote items this approval queued for download — the approved pull's candidateCount
+          format: int64
+          type: integer
         error:
           description: Why this one did not approve (already handled, not found, …)
           type: string
@@ -1317,6 +1321,11 @@ components:
         series:
           format: int64
           type: integer
+        titles:
+          description: Keys, with display fields, in the same order
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+          type: array
         toDownload:
           description: Titles the idea would have to request. Library-grounded ideas need none.
           format: int64
@@ -1333,6 +1342,7 @@ components:
         - value
         - reason
         - keys
+        - titles
         - movies
         - series
         - inLibrary
@@ -7340,6 +7350,65 @@ components:
       required:
         - expiresAt
       type: object
+    PreviewProgrammingChangesInputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/PreviewProgrammingChangesInputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        lineup:
+          items:
+            $ref: "#/components/schemas/LineupEntryDTO"
+          type: array
+        policy:
+          $ref: "#/components/schemas/ChannelPolicy"
+      type: object
+    PreviewProgrammingChangesOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/PreviewProgrammingChangesOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        changes:
+          description: Changed slots in time order, capped; [] when the draft changes nothing
+          items:
+            $ref: "#/components/schemas/ProgrammingChangeDTO"
+          type: array
+        compared:
+          description: Programmes the SAVED channel airs in the span — tells 'nothing changes' from 'nothing is scheduled'
+          format: int64
+          type: integer
+        count:
+          description: Total changed slots in the span, before the response cap
+          format: int64
+          type: integer
+        fromMs:
+          description: Start of the compared span, epoch ms
+          format: int64
+          type: integer
+        toMs:
+          description: End of the compared span, epoch ms. Never past what both sides were forecast for.
+          format: int64
+          type: integer
+        truncated:
+          description: Whether changes were omitted by the response cap
+          type: boolean
+      required:
+        - fromMs
+        - toMs
+        - compared
+        - count
+        - truncated
+        - changes
+      type: object
     PreviewProgrammingInputBody:
       additionalProperties: false
       properties:
@@ -7526,6 +7595,68 @@ components:
         - discardedLines
         - updatedAt
       type: object
+    ProgrammingChangeDTO:
+      additionalProperties: false
+      properties:
+        after:
+          $ref: "#/components/schemas/ProgrammingChangeSideDTO"
+          description: What the DRAFT would air here; absent when nothing airable would
+        before:
+          $ref: "#/components/schemas/ProgrammingChangeSideDTO"
+          description: What the SAVED channel airs here; absent when nothing airable does
+        endMs:
+          description: Where either side's airing ends, epoch ms
+          format: int64
+          type: integer
+        startMs:
+          description: Where the difference begins, epoch ms
+          format: int64
+          type: integer
+      required:
+        - startMs
+        - endMs
+      type: object
+    ProgrammingChangeSideDTO:
+      additionalProperties: false
+      properties:
+        episode:
+          format: int64
+          type: integer
+        key:
+          description: Provisioning key; empty for a break
+          type: string
+        kind:
+          description: program = a title; break = a commercial gap
+          enum:
+            - program
+            - break
+          type: string
+        rule:
+          $ref: "#/components/schemas/ActiveRuleDTO"
+          description: The curation rule whose arrangement this airing comes from
+        season:
+          format: int64
+          type: integer
+        series:
+          description: The show's name for an episode; absent for a film or break
+          type: string
+        startMs:
+          description: When this airing starts, epoch ms (cut where the arrangement changes)
+          format: int64
+          type: integer
+        stopMs:
+          description: When this airing ends, epoch ms, exclusive
+          format: int64
+          type: integer
+        title:
+          description: Episode or film name; empty for a break
+          type: string
+      required:
+        - kind
+        - startMs
+        - stopMs
+        - rule
+      type: object
     Proposal:
       additionalProperties: false
       properties:
@@ -7548,6 +7679,9 @@ components:
           items:
             $ref: "#/components/schemas/ProposalItem"
           type: array
+        manual:
+          description: Every title was picked by hand with the LLM off; nothing here was generated
+          type: boolean
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
         rationale:
@@ -8025,6 +8159,9 @@ components:
             $ref: "#/components/schemas/PullPlanRowDTO"
           type: array
         proposedBy:
+          type: string
+        proposedByName:
+          description: Display name of who proposed this pull; empty if unknown
           type: string
         reason:
           description: The gap this pull closes. Shown above the plan — 'approve this' without a reason is a button, not a decision.
@@ -9896,6 +10033,33 @@ components:
       required:
         - current
         - items
+      type: object
+    SubmitManualChannelBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SubmitManualChannelBody.json
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          description: A one-line reason, shown on the review card where the LLM's rationale would otherwise go
+          maxLength: 2000
+          type: string
+        lineup:
+          description: Every title the person picked, from the library or a direct search; re-checked against the library server-side
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+          type: array
+        name:
+          description: The channel's name, as the person typed it or the chosen starter template filled it
+          maxLength: 200
+          type: string
+      required:
+        - name
+        - lineup
       type: object
     SubmitOutputBody:
       additionalProperties: false
@@ -11886,6 +12050,55 @@ paths:
       tags:
         - channels
         - filler
+  /v1/channels/{id}/programming/changes:
+    post:
+      description: "Compares the SAVED channel with a DRAFT {lineup?, policy?} (the same body and validation as programming/preview) over the next `horizonHours`, and returns only the slots where they air something different: when, what airs before → after, and which rule wins on each side. Both sides are forecast by the same engine calls from the same instant, so a slot the draft does not touch compares equal. Read-only; nothing is saved and no backend is called."
+      operationId: preview-channel-programming-changes
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - description: "RFC3339 instant the comparison starts at (default: now)."
+          explode: false
+          in: query
+          name: from
+          schema:
+            description: "RFC3339 instant the comparison starts at (default: now)."
+            type: string
+        - description: How far ahead to compare, in hours. 0 = the channel's schedule window (24h when unbounded); at most 168.
+          explode: false
+          in: query
+          name: horizonHours
+          schema:
+            description: How far ahead to compare, in hours. 0 = the channel's schedule window (24h when unbounded); at most 168.
+            format: int64
+            maximum: 168
+            minimum: 0
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewProgrammingChangesInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewProgrammingChangesOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List the upcoming slots an unsaved programming draft changes
+      tags:
+        - channels
   /v1/channels/{id}/programming/preview:
     post:
       description: Previews what a DRAFT {lineup?, policy?} would air — the cycle slots (which rule wins at `at`, the rolling window) AND the assembled break pool — WITHOUT saving or touching Tunarr. Runs the same ComputeDesiredAt + pod assembler as reconcile, so the preview cannot drift from what applying it would ship. Omitted lineup/policy fall back to the saved value. Admin-only (an authoring tool).
@@ -12815,6 +13028,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Request a channel from an idea
+      tags:
+        - discovery
+  /v1/discovery/manual-channel:
+    post:
+      description: "Puts a hand-picked lineup through the same gate every other proposal uses (#1817, decision G2): an admin's own channel is created (or, with auto-approve, created immediately); a member's goes to the approval queue. No LLM is involved, so it works with the AI off. Each picked title is re-checked against the library the same way an approver's own additions are — a client can't claim a title is already owned."
+      operationId: submit-manual-channel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitManualChannelBody"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestChannelIdeaOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Submit a hand-built channel
       tags:
         - discovery
   /v1/docs:

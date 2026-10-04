@@ -77,6 +77,16 @@ help: ## List targets
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
+# No `## ` comment on purpose: introspection plumbing, not a target anyone runs directly, so it
+# stays out of `make help`. A named target with a literal variable reference, NOT a `%` pattern
+# rule with `$($*)` — internal/releaseverify's CI-container Make policy audits every target and
+# variable reference in this file against a closed grammar and rejects both dynamic forms as an
+# unaudited injection surface. Lets scripts (go-impact.sh) read TAGS_CSV straight from this file
+# (`make -s print-tags-csv`) instead of keeping a second, hand-maintained copy of the tag list
+# that could drift from CUSTOM_TAGS/tags-verify.
+.PHONY: print-tags-csv
+print-tags-csv:
+	@echo '$(TAGS_CSV)'
 
 # Ordered ownership modules. cmd/dev-docs follows this list as the public command surface.
 include mk/agent.mk

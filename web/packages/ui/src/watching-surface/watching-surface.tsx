@@ -1,6 +1,6 @@
 import { Action, ActivityIndicator, ProgressTrack, Surface, Text } from "@loomarr/design-system";
 import type { PlayerSnapshot } from "@loomarr/player";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 
 import { ChannelSwitchOverlay } from "../channel-switch-overlay";
@@ -21,7 +21,22 @@ const LoadingChannels = ({ density }: Pick<WatchingSurfaceProps, "density">) => 
   </View>
 );
 
+/** "auto-tunes in 1.2 s" (#1659 map 5a), ticking down to the readout's own expiry. */
+const useAutoTuneCountdownLabel = (expiresAtMs: number | undefined): string | undefined => {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (expiresAtMs === undefined) return undefined;
+    setNowMs(Date.now());
+    const interval = setInterval(() => setNowMs(Date.now()), 100);
+    return () => clearInterval(interval);
+  }, [expiresAtMs]);
+  if (expiresAtMs === undefined) return undefined;
+  const remainingSeconds = Math.max(0, (expiresAtMs - nowMs) / 1000);
+  return `auto-tunes in ${remainingSeconds.toFixed(1)} s`;
+};
+
 const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "density" | "numberEntry">) => {
+  const countdown = useAutoTuneCountdownLabel(numberEntry?.digits ? numberEntry.expiresAtMs : undefined);
   if (!numberEntry?.digits) return null;
   if (density === "tv")
     return (
@@ -45,6 +60,11 @@ const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "densi
             {numberEntry.channelName}
           </Text>
         ) : null}
+        {countdown ? (
+          <Text accessibilityLiveRegion="polite" density="tv" textRole="metadata" tone="muted">
+            {countdown}
+          </Text>
+        ) : null}
       </Surface>
     );
   return (
@@ -55,6 +75,11 @@ const NumberEntry = ({ density, numberEntry }: Pick<WatchingSurfaceProps, "densi
       {numberEntry.channelName ? (
         <Text density={density} numberOfLines={1} textRole="metadata">
           {numberEntry.channelName}
+        </Text>
+      ) : null}
+      {countdown ? (
+        <Text accessibilityLiveRegion="polite" density={density} textRole="metadata" tone="muted">
+          {countdown}
         </Text>
       ) : null}
     </Surface>
@@ -320,12 +345,14 @@ const TvWatchingSurface = ({
                   right={48}
                   top={48}
                 >
-                  <Text density="tv" textRole="data" tone="signal">
-                    {String(snapshot.channel.number).padStart(2, "0")}
-                  </Text>
-                  <Text density="tv" numberOfLines={1} textRole="compact">
-                    {snapshot.channel.name.toUpperCase()}
-                  </Text>
+                  <ChannelIdentity
+                    channel={{
+                      channelLogoState: "missing",
+                      channelName: snapshot.channel.name.toUpperCase(),
+                      channelNumber: String(snapshot.channel.number),
+                    }}
+                    density="tv"
+                  />
                   {snapshot.status === "playing" ? (
                     <Surface
                       backgroundColor="$stateSuccess"

@@ -8,7 +8,14 @@ import type {
 } from "./watching-navigation.type";
 
 const MAX_CHANNEL_DIGITS = 3;
-const NUMBER_ENTRY_MS = 1_200;
+/** Default auto-tune delay. WCAG 2.2.1 (Q-N4): a per-device setting may raise this up to the max. */
+const DEFAULT_NUMBER_ENTRY_MS = 1_200;
+const MIN_NUMBER_ENTRY_MS = 1_200;
+const MAX_NUMBER_ENTRY_MS = 10_000;
+
+/** Clamps a candidate auto-tune duration to the range a device may be configured to use. */
+const clampNumberEntryMs = (durationMs: number): number =>
+  Math.min(MAX_NUMBER_ENTRY_MS, Math.max(MIN_NUMBER_ENTRY_MS, Math.round(durationMs)));
 
 const tvWatchingRemoteEventFromNative = (
   eventType: string,
@@ -51,13 +58,14 @@ const numberEntryIntent = (state: TvWatchingRemoteState, handled: boolean): TvWa
 const reduceTvWatchingRemote = (
   state: TvWatchingRemoteState,
   event: TvWatchingRemoteEvent,
+  durationMs: number = DEFAULT_NUMBER_ENTRY_MS,
 ): TvWatchingRemoteResult => {
   switch (event.key) {
     case "digit": {
       const digits = `${state.numberEntry?.digits ?? ""}${event.digit}`.slice(-MAX_CHANNEL_DIGITS);
       return {
         handled: true,
-        state: { numberEntry: { digits, expiresAtMs: event.atMs + NUMBER_ENTRY_MS } },
+        state: { numberEntry: { digits, expiresAtMs: event.atMs + clampNumberEntryMs(durationMs) } },
       };
     }
     case "timeout":
@@ -99,7 +107,11 @@ const tvNumberEntryPresentation = (
 };
 
 export {
+  clampNumberEntryMs,
+  DEFAULT_NUMBER_ENTRY_MS,
   initialTvWatchingRemoteState,
+  MAX_NUMBER_ENTRY_MS,
+  MIN_NUMBER_ENTRY_MS,
   reduceTvWatchingRemote,
   tvNumberEntryPresentation,
   tvWatchingRemoteEventFromNative,

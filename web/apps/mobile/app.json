@@ -4,7 +4,7 @@
     "slug": "loomarr-mobile-prototype",
     "scheme": "loomarr-prototype",
     "version": "0.0.1",
-    "orientation": "default",
+    "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "ios": {
