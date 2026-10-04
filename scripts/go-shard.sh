@@ -30,7 +30,13 @@
 # fail anything: the dropped tests simply never run and every shard stays green, which is the
 # worst outcome available here — a gate that reports success over code it did not execute. CI
 # runs --verify for exactly that reason.
+#
+# ⚠ inherit_errexit is load-bearing. Every model below runs inside `$(...)`, where bash otherwise
+# drops `set -e`: a transient `go list` failure then yields an EMPTY package list, which models as a
+# load of 0 and exits 0. Self-hosted dispatch run 37210850416 saw exactly that signature
+# (`loads=[363 0]`) and reported it as an imbalance instead of the failing command.
 set -euo pipefail
+shopt -s inherit_errexit
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -116,7 +122,12 @@ certification_lane_paths() {
 }
 
 ordinary_packages() {
-  comm -23 <(packages | sort) <(certification_paths | sort -u)
+  local all certified
+  # Captured first: a failure inside `<(...)` reaches no exit status, so comm would subtract from
+  # an empty list and succeed.
+  all="$(packages | sort)"
+  certified="$(certification_paths | sort -u)"
+  comm -23 <(printf '%s\n' "$all") <(printf '%s\n' "$certified")
 }
 
 # Assign the largest measured package to the currently lightest shard. Ties are deterministic:
@@ -284,9 +295,11 @@ ordinary_worker_load() {
 }
 
 worker_plan() {
-  local total="$1" lane
+  local total="$1" lane load
   for ((lane = 1; lane <= total; lane++)); do
-    printf '%s %s\n' "$lane" "$(ordinary_worker_load "$lane" "$total")"
+    # Assigned, not inlined: a substitution inside printf's arguments loses its exit status.
+    load="$(ordinary_worker_load "$lane" "$total")"
+    printf '%s %s\n' "$lane" "$load"
   done
 }
 
