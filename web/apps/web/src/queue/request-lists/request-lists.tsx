@@ -2,6 +2,7 @@ import * as fillerApi from "@loomarr/api/endpoints/filler";
 import type { PullDTO } from "@loomarr/api/models/pullDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
+import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/auth/use-auth";
 import { RequestCard } from "@/components/loomarr/ai/request-card";
@@ -10,7 +11,6 @@ import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { requestFixLabel } from "@/queue/request-status";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
 
@@ -31,14 +31,6 @@ const TabEmpty = ({ title, description }: { title: string; description: string }
       }}
     />
   );
-};
-
-// The server's message sometimes already ends with its own guidance ("…this channel. Try again
-// later." + "Try again later."), so the guidance is appended only when the message lacks it.
-const failureHint = (message?: string, guidance?: string): string => {
-  const said = message?.trim().toLowerCase() ?? "";
-  const extra = guidance && !said.includes(guidance.trim().toLowerCase()) ? guidance : undefined;
-  return [message, extra].filter(Boolean).join(" ");
 };
 
 const cardFor = (
@@ -182,7 +174,7 @@ const NeedsYouList = () => {
             {failed.map((e) => {
               const fix = requestFixLabel(e.journey);
               return cardFor(e, {
-                hint: failureHint(e.status.detail, e.journey.failure?.guidance),
+                hint: requestFailureHint(e.status.detail, e.journey.failure?.guidance),
                 action: fix && (
                   <Link
                     to="/guide"

@@ -31,7 +31,10 @@ for (const story of ["touch", "material"]) {
     await expect(page.getByRole("tablist", { name: "Primary navigation" })).toBeVisible();
     await expect(guide).toHaveAttribute("aria-selected", "true");
 
+    // Requests sits between Guide and Surf on a phone (#1816), so Surf is the second Tab stop.
     await guide.focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("tab", { name: "Requests" })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(surf).toBeFocused();
     await surf.press("Enter");
