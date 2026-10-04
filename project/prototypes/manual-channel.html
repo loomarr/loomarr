@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr manual channel creation — design review</title>
+<style>
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #E7EAF0; background: #0B0C0E; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a, input, textarea { font: inherit; }
+  button, select { min-height: 36px; color: inherit; background: #1B1E24; border: 1px solid #666970; border-radius: 6px; padding: 6px 10px; }
+  a { color: inherit; text-decoration: none; }
+  button, a, select, label { cursor: pointer; }
+  :focus-visible { outline: 2px solid #FFB020; outline-offset: 3px; }
+
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 24px; border-bottom: 1px solid #2A2E37; background: #131519; position: sticky; top: 0; z-index: 40; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: #8B93A3; }
+  .review-note { font-size: 13px; color: #8B93A3; margin: 12px 24px; max-width: 980px; }
+  .review-note.open { color: #DC5BAC; }
+  .review-note code { font-family: 'Geist Mono', ui-monospace, monospace; background: #1B1E24; padding: 1px 5px; border-radius: 4px; }
+
+  #frame { container-type: inline-size; margin: 0 auto 32px; width: 100%; max-width: 1440px; border: 1px solid #2A2E37; }
+  #frame.phone { width: min(390px, 100%); }
+  .shell { display: grid; grid-template-columns: 224px minmax(0,1fr); min-height: 900px; background: #0B0C0E; }
+  nav { padding: 24px 12px; border-right: 1px solid #2A2E37; background: #131519; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 24px; font-size: 13px; letter-spacing: 2px; font-weight: 700; }
+  .mark { width: 20px; height: 6px; background: #FFB020; flex-shrink: 0; border-radius: 2px; }
+  nav a { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 12px; border-radius: 6px; color: #8B93A3; font-size: 14px; }
+  nav a[aria-current] { color: #FFB020; background: #352916; }
+  nav a:hover { background: #1B1E24; }
+  .nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
+  main { min-width: 0; display: flex; flex-direction: column; }
+  .page-header { padding: 18px 24px; border-bottom: 1px solid #2A2E37; display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .page-header h1 { font-size: 22px; line-height: 30px; margin: 0; }
+  .page-header p { margin: 4px 0 0; color: #8B93A3; font-size: 13.5px; max-width: 54ch; }
+  h2 { font-size: 16px; line-height: 22px; margin: 0; }
+  h3 { font-size: 14.5px; line-height: 20px; margin: 0; }
+  p { margin: 0; line-height: 1.5; }
+  .content { max-width: 920px; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 22px; width: 100%; }
+  .content.wide { max-width: 1120px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 7px 14px; border-radius: 6px; font-size: 13.5px; font-weight: 600; border: 1px solid #666970; background: transparent; color: #E7EAF0; }
+  .btn.suggest { background: #D6409F; border-color: #D6409F; color: #0B0C0E; }
+  .btn.outline { background: transparent; }
+  .btn.ghost { border-color: transparent; background: transparent; color: #8B93A3; }
+  .btn.ghost:hover { color: #E7EAF0; background: #1B1E24; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.sm { min-height: 30px; padding: 4px 10px; font-size: 12.5px; }
+  .btn.full { width: 100%; justify-content: flex-start; }
+
+  .badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .01em; }
+  .badge.neutral { background: #1B1E24; color: #8B93A3; }
+  .badge.tune { background: color-mix(in srgb, #4CC9E8 15%, transparent); color: #4CC9E8; }
+  .badge.lock { background: color-mix(in srgb, #3DD68C 15%, transparent); color: #3DD68C; }
+  .badge.caution { background: color-mix(in srgb, #F5D90A 15%, transparent); color: #F5D90A; }
+  .badge.onair { background: color-mix(in srgb, #E5484D 15%, transparent); color: #E85A5F; }
+  .badge.suggest { background: color-mix(in srgb, #D6409F 15%, transparent); color: #DC5BAC; }
+
+  .card { background: #131519; border: 1px solid #2A2E37; border-radius: 10px; padding: 16px; }
+  .notice { display: flex; flex-direction: column; gap: 8px; border: 1px solid #2A2E37; background: color-mix(in srgb, #1B1E24 70%, transparent); border-radius: 10px; padding: 14px 16px; }
+  .notice.suggest-tint { border-color: color-mix(in srgb, #D6409F 35%, #2A2E37); background: color-mix(in srgb, #D6409F 7%, #131519); }
+  .notice p.title { font-weight: 600; font-size: 14px; margin: 0; }
+  .notice p.body { color: #8B93A3; font-size: 13.5px; margin: 0; }
+
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #5A6170; }
+
+  .template-list { display: flex; flex-direction: column; gap: 8px; }
+  .template-row { display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 8px; border: 1px solid #2A2E37; background: #131519; }
+  .template-row:hover { border-color: #DC5BAC; }
+  .template-row.active { border-color: #DC5BAC; background: color-mix(in srgb, #D6409F 8%, #131519); }
+  .template-row .icon { color: #DC5BAC; margin-top: 2px; flex-shrink: 0; }
+  .template-row .label { font-weight: 600; font-size: 13.5px; }
+  .template-row .desc { color: #8B93A3; font-size: 12.5px; margin-top: 2px; }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .facet-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; border-radius: 8px; border: 1px solid #2A2E37; background: #131519; min-width: 150px; }
+  .facet-chip:hover { border-color: #666970; }
+  .facet-chip.active { border-color: #4CC9E8; background: color-mix(in srgb, #4CC9E8 8%, #131519); }
+  .facet-chip .name { font-size: 13px; font-weight: 600; }
+  .facet-chip .reason { font-size: 11.5px; color: #8B93A3; }
+
+  .lineup-list { display: flex; flex-direction: column; border: 1px solid #2A2E37; border-radius: 10px; overflow: hidden; }
+  .lineup-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #2A2E37; background: #131519; }
+  .lineup-row:last-child { border-bottom: none; }
+  .lineup-row .meta { flex: 1; min-width: 0; }
+  .lineup-row .name { font-size: 13.5px; font-weight: 500; }
+  .lineup-row .sub { font-size: 12px; color: #8B93A3; margin-top: 2px; }
+  .lineup-empty { padding: 22px 14px; text-align: center; color: #8B93A3; font-size: 13px; background: #131519; }
+
+  .search-box { position: relative; }
+  .search-box input { width: 100%; background: #1B1E24; border: 1px solid #2A2E37; border-radius: 8px; padding: 9px 12px; color: inherit; }
+  .search-box input:focus-visible { outline: 2px solid #FFB020; outline-offset: 1px; }
+  .search-results { margin-top: 6px; border: 1px solid #2A2E37; border-radius: 8px; overflow: hidden; }
+  .search-result { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; background: #131519; border-bottom: 1px solid #2A2E37; text-align: left; }
+  .search-result:last-child { border-bottom: none; }
+  .search-result:hover { background: #1B1E24; }
+  .search-result .meta { flex: 1; min-width: 0; font-size: 13px; }
+  .search-result .meta .y { color: #8B93A3; font-size: 12px; margin-left: 6px; }
+
+  .footer-bar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-top: 1px solid #2A2E37; background: color-mix(in srgb, #131519 95%, transparent); backdrop-filter: blur(6px); }
+  .footer-bar .summary { font-size: 13px; }
+
+  .review-card { display: flex; flex-direction: column; gap: 16px; }
+  .review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .quote { border-top: 1px solid #2A2E37; border-bottom: 1px solid #2A2E37; padding: 10px 0; color: #8B93A3; font-size: 13.5px; }
+
+  .idea-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+  .idea-card { display: flex; flex-direction: column; border: 1px solid #2A2E37; border-radius: 10px; background: #131519; overflow: hidden; }
+  .idea-card.requested { border-color: color-mix(in srgb, #D6409F 40%, #2A2E37); }
+  .poster-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; padding: 12px 12px 0; }
+  .poster-slot { aspect-ratio: 2/3; border-radius: 6px; border: 1px solid #2A2E37; background: #1B1E24; }
+  .idea-card .reason { color: #5A6170; font-size: 11.5px; padding: 10px 14px 0; }
+  .idea-card h3 { padding: 2px 14px 0; font-size: 14.5px; }
+  .idea-card .pitch { padding: 4px 14px 0; color: #8B93A3; font-size: 12.5px; }
+  .idea-card .counts { padding: 10px 14px 0; font-size: 12px; color: #8B93A3; }
+  .idea-card .counts .dot { display: inline-block; width: 6px; height: 6px; border-radius: 999px; background: #3DD68C; margin-right: 6px; }
+  .idea-card .counts .dot.progress { background: #4CC9E8; }
+  .idea-card .actions { margin-top: auto; padding: 12px 14px 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .own-row { display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px dashed #2A2E37; border-radius: 10px; }
+
+  .back-link { font-size: 13px; color: #8B93A3; display: inline-flex; align-items: center; gap: 4px; margin-bottom: 2px; }
+  .back-link:hover { color: #E7EAF0; }
+
+  @container (max-width: 1023px) { .idea-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+  @container (max-width: 767px) {
+    .shell { grid-template-columns: 56px minmax(0,1fr); }
+    nav { padding: 20px 6px; }
+    nav a { padding: 8px 13px; }
+    .nav-label, .brand-name { display: none; }
+    .brand { padding: 4px 12px 24px; }
+    .page-header { padding: 14px 16px; }
+    .content { padding: 16px; gap: 18px; }
+    .idea-grid { grid-template-columns: minmax(0,1fr); }
+    .footer-bar { padding: 12px 16px; flex-direction: column; align-items: stretch; }
+    .facet-chip { min-width: calc(50% - 4px); flex: 1 1 calc(50% - 4px); }
+  }
+</style>
+
+<div class="review">
+  <strong>Manual / AI-off channel creation · draft for review (#1817, #1659)</strong>
+  <label>Surface
+    <select id="surface">
+      <option value="guide">Guide — Add/Request a channel</option>
+      <option value="home">Home — Channel ideas (member)</option>
+    </select>
+  </label>
+  <label>Role <select id="role"><option value="admin">Admin</option><option value="member">Member</option></select></label>
+  <label>Stage <select id="stage"></select></label>
+  <button id="size" type="button" aria-pressed="false">390px preview</button>
+</div>
+<p class="review-note">
+  Invented fixtures only — no real titles, no remote images, no production calls; every control here is
+  intercepted. This covers the manual/AI-off path only: approving and creating a channel still goes
+  through the existing Proposal submit → review → approve/deny gate (<code>ProposalReview</code>,
+  <code>useApproveProposal</code>/<code>useDenyProposal</code>) unchanged — nothing here creates a
+  channel without that review. See <code>project/evidence/manual-channel-2026-10-03.md</code> for every
+  choice's source and the open questions.
+</p>
+<p class="review-note open" id="openq"></p>
+<div id="frame"></div>
+<p class="review-note" id="action" role="status" aria-live="polite">Pick a surface, role and stage, or click through the controls below.</p>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// ---------------------------------------------------------------------------------------------
+// Fixtures — all invented. Facet shape follows ChannelIdeaDTO (api/openapi.yaml): facet
+// genre|decade|holiday, a typed reason (kind unaired|holiday, count), keys for titles.
+// Templates copied verbatim from web/packages/core/src/templates/templates.ts (§13, wizard step 7).
+const TEMPLATES = [
+  { id: 'saturday-cartoons', label: '90s Saturday Morning Cartoons', description: 'Saturday-morning cartoons like I watched as a kid — bright, silly, kid-safe' },
+  { id: 'cozy-mystery', label: 'Cozy Mystery Nights', description: 'Gentle small-town mysteries for a rainy evening — nothing gruesome' },
+  { id: 'late-night-scifi', label: 'Late-Night Sci-Fi', description: 'Weird, atmospheric science fiction for after midnight' },
+  { id: 'action-marathon', label: 'Action Movie Marathon', description: 'Back-to-back action movies, high energy, keep it PG-13' },
+];
+
+const LIBRARY = [
+  { key:'m1', name:'The Clockwork Detective', year:1998, type:'Movie', inLibrary:true, genres:['mystery'] },
+  { key:'m2', name:'A Quiet Case in Millbrook', year:2004, type:'Movie', inLibrary:true, genres:['mystery'] },
+  { key:'m3', name:'The Last Teapot', year:1991, type:'Series', inLibrary:true, genres:['mystery','comedy'] },
+  { key:'m4', name:'Harbor Light Mysteries', year:1996, type:'Series', inLibrary:false, genres:['mystery'] },
+  { key:'c1', name:'Autumn Market', year:2003, type:'Movie', inLibrary:true, genres:['comedy'] },
+  { key:'c2', name:'The Understudy', year:1999, type:'Movie', inLibrary:true, genres:['comedy'] },
+  { key:'c3', name:'Nine Lives of Mr. Biscuit', year:1994, type:'Movie', inLibrary:false, genres:['comedy'] },
+  { key:'d1', name:'Signal Lost', year:1990, type:'Movie', inLibrary:true, genres:['decade90'] },
+  { key:'d2', name:'Paper Moons', year:1993, type:'Movie', inLibrary:true, genres:['decade90'] },
+  { key:'h1', name:'The Last Harvest', year:2001, type:'Movie', inLibrary:true, genres:['holiday'] },
+  { key:'h2', name:'Scarecrow Lane', year:1988, type:'Movie', inLibrary:false, genres:['holiday'] },
+  { key:'h3', name:'Harvest Moon Social', year:2010, type:'Series', inLibrary:true, genres:['holiday'] },
+];
+
+const FACETS = [
+  { id:'genre:mystery', kind:'genre', name:'Mystery', reason:'9 mystery titles, none on a channel yet', genreKey:'mystery' },
+  { id:'genre:comedy', kind:'genre', name:'Comedy', reason:'11 comedy titles, none on a channel yet', genreKey:'comedy' },
+  { id:'decade:1990', kind:'decade', name:'1990s', reason:'6 titles from the 1990s, none on a channel yet', genreKey:'decade90' },
+  { id:'holiday:harvest-festival', kind:'holiday', name:'Harvest Festival', reason:'Harvest Festival is five weeks away · 8 titles about it', genreKey:'holiday' },
+];
+
+const IDEAS = [
+  { id:'genre:mystery', facet:'genre', name:'Mystery Movies', reason:'9 mystery movies, none on a channel yet', pitch:'Every mystery title in your library that no channel plays yet, on one channel.', counts:'7 movies and 2 series', avail:'8 in your library, 1 to download', toDownload:1, requested:false, keys:['m1','m2','m3','m4'] },
+  { id:'decade:1990', facet:'decade', name:'1990s Movies', reason:'6 titles from the 1990s, none on a channel yet', pitch:'A channel of everything your library has from the 1990s.', counts:'6 movies', avail:'all in your library', toDownload:0, requested:false, keys:['d1','d2','m1'] },
+  { id:'holiday:harvest-festival', facet:'holiday', name:'Harvest Festival', reason:'Harvest Festival is five weeks away', pitch:'Titles about the Harvest Festival, timed to the season.', counts:'2 movies and 1 series', avail:'2 in your library, 1 to download', toDownload:1, requested:true, keys:['h1','h2','h3'] },
+];
+
+// ---------------------------------------------------------------------------------------------
+const STAGES = {
+  guide: [
+    ['entry', 'Entry — Dead air / header button'],
+    ['builder', 'Builder — templates, library facets, search'],
+    ['review', 'Review — the existing ProposalReview, manually built'],
+    ['done', 'Done — created / sent for approval'],
+    ['failed', 'Recovery — AI generation failed'],
+    ['recovered', 'Recovery — AI is connected again'],
+  ],
+  home: [
+    ['ideas', 'Channel ideas grid (built, #1766) + new rows'],
+    ['editFirst', '"Edit first" — opens the manual builder'],
+    ['review', 'Review — same ProposalReview, from an idea'],
+    ['done', 'Done — sent for approval'],
+  ],
+};
+
+let state = {
+  surface: 'guide',
+  role: 'admin',
+  stage: 'entry',
+  // Builder working state
+  templateId: undefined,
+  facetId: undefined,
+  lineup: [], // array of LIBRARY keys
+  query: '',
+  origin: undefined, // 'template' | 'idea' | undefined — what prefilled the builder
+  // Alternatives shown side by side per the mock-draft rule (derive, don't invent)
+  resumeAlt: 'banner', // 'banner' | 'silent'
+  manualCopyAlt: 'fallback', // 'fallback' | 'proposed'
+};
+
+function announce(msg) { $('action').textContent = msg; }
+
+function populateStageSelect() {
+  const sel = $('stage');
+  sel.innerHTML = STAGES[state.surface].map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
+  if (!STAGES[state.surface].some(([v]) => v === state.stage)) state.stage = STAGES[state.surface][0][0];
+  sel.value = state.stage;
+}
+
+const libraryByKey = (k) => LIBRARY.find((t) => t.key === k);
+const facetTitles = (genreKey) => LIBRARY.filter((t) => t.genres.includes(genreKey));
+
+function lineupRow(key, removable) {
+  const t = libraryByKey(key);
+  if (!t) return '';
+  const badge = t.inLibrary ? '<span class="badge lock">In your library</span>' : '<span class="badge tune">Will be added</span>';
+  return `<div class="lineup-row">
+    <div class="meta"><div class="name">${t.name} <span style="color:#8B93A3;font-weight:400">${t.year}</span></div>
+      <div class="sub">${t.type} ${badge}</div></div>
+    ${removable ? `<button class="btn ghost sm" data-remove="${key}" aria-label="Remove ${t.name}">Remove</button>` : ''}
+  </div>`;
+}
+
+function lineupSummary() {
+  const items = state.lineup.map(libraryByKey).filter(Boolean);
+  const missing = items.filter((t) => !t.inLibrary).length;
+  if (items.length === 0) return 'Choose at least one title';
+  if (missing === 0) return `${items.length} ${items.length===1?'title':'titles'} · all in your library`;
+  return `${items.length} ${items.length===1?'title':'titles'} · Loomarr will add ${missing} missing ${missing===1?'title':'titles'}`;
+}
+
+// ---- Guide: entry -----------------------------------------------------------------------------
+function renderEntry() {
+  const admin = state.role === 'admin';
+  return `
+    <section class="card" style="text-align:center;padding:40px 20px;">
+      <p class="section-label">Dead air</p>
+      <h2 style="margin-top:8px;font-size:19px;">No channels yet</h2>
+      <p style="color:#8B93A3;margin-top:8px;">Describe the channel you want and Loomarr builds the lineup.</p>
+      <div style="margin-top:16px;"><button class="btn suggest" data-goto="builder">${admin?'Add a channel':'Request a channel'}</button></div>
+    </section>
+    <div class="notice">
+      <p class="title">No AI service is connected</p>
+      <p class="body">This household hasn't set up AI, which is the default on a fresh install (decision G2). The
+      header button above and the "Add a channel"/"Request a channel" action everywhere in the Guide open
+      the same panel — on this install it offers starter templates and a manual lineup instead of AI
+      suggestions, with the reason stated up front.</p>
+    </div>
+  `;
+}
+
+// ---- Guide/Home: builder ------------------------------------------------------------------------
+function renderBuilder() {
+  const admin = state.role === 'admin';
+  const fromIdea = state.origin === 'idea';
+  const idea = fromIdea ? IDEAS.find((i) => i.id === state.facetId) : undefined;
+  const title = admin ? 'Add a channel' : 'Request a channel';
+
+  const templateChosen = TEMPLATES.find((t) => t.id === state.templateId);
+
+  const recoveredBanner = state.stage === 'recovered'
+    ? (state.resumeAlt === 'banner'
+        ? `<div class="notice suggest-tint">
+            <p class="title">AI is connected now</p>
+            <p class="body">Your manual lineup (${state.lineup.length} ${state.lineup.length===1?'title':'titles'}) is still
+            here. Keep building it by hand, or let Loomarr suggest titles for this description — your
+            picks stay in the lineup either way.</p>
+            <div style="display:flex;gap:8px;"><button class="btn outline sm" data-ai-try="1">Try AI suggestions</button>
+            <button class="btn ghost sm" data-dismiss-banner="1">Keep building manually</button></div>
+          </div>
+          <p class="review-note" style="margin:0;">Alt A shown (resumeAlt=banner). Alt B — no banner; AI suggestions would
+          simply be appended to this same lineup next time the describe form runs — toggle below.</p>`
+        : `<div class="notice">
+            <p class="title">AI is connected now</p>
+            <p class="body">Nothing changes here — finish this manual lineup the same way. AI suggestions are
+            offered the next time you open Add a channel with a blank form, and anything you've already
+            picked here would carry into a new AI run as a starting lineup rather than being replaced.</p>
+          </div>
+          <p class="review-note" style="margin:0;">Alt B shown (resumeAlt=silent). Alt A — the banner above with
+          "Try AI suggestions" — toggle below.</p>`)
+    : '';
+
+  const altToggle = state.stage === 'recovered'
+    ? `<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:#8B93A3;">
+        <span class="section-label" style="color:#5A6170">Open question — alternative:</span>
+        <button class="btn sm ${state.resumeAlt==='banner'?'outline':'ghost'}" data-alt="resumeAlt:banner">A — resume banner</button>
+        <button class="btn sm ${state.resumeAlt==='silent'?'outline':'ghost'}" data-alt="resumeAlt:silent">B — silent carry-over</button>
+      </div>`
+    : '';
+
+  const reasonLine = !fromIdea
+    ? `<p style="color:#8B93A3;font-size:13.5px;">No AI service is connected yet, so Loomarr can't generate suggestions.
+       Start from a template, build from your library below, or search for titles directly — you'll choose
+       every title before anything is created.</p>`
+    : `<p style="color:#8B93A3;font-size:13.5px;">Starting from the "${idea.name}" idea. Everything below is already
+       library-grounded (#1720) — edit the lineup before requesting.</p>`;
+
+  const templatesSection = !fromIdea ? `
+    <div>
+      <p class="section-label">Starter templates</p>
+      <div class="template-list" style="margin-top:8px;">
+        ${TEMPLATES.map((t) => `
+          <button class="template-row ${state.templateId===t.id?'active':''}" data-template="${t.id}">
+            <span class="icon" aria-hidden="true">✦</span>
+            <span><span class="label">${t.label}</span><span class="desc">${t.description}</span></span>
+          </button>`).join('')}
+      </div>
+      ${templateChosen ? `<p style="margin-top:8px;font-size:12.5px;color:#8B93A3;">Using “${templateChosen.label}” as
+        your channel name and description. Its lineup starts empty — add titles below.
+        <button class="btn ghost sm" data-template-clear="1">Change</button></p>` : ''}
+    </div>` : '';
+
+  const facetsSection = `
+    <div>
+      <p class="section-label">Build from your library</p>
+      <p style="font-size:12.5px;color:#8B93A3;margin-top:4px;">Grounded in your library's genres, decades and the
+      seasonal calendar (#1665/#1720) — no AI involved.</p>
+      <div class="chip-row" style="margin-top:8px;">
+        ${FACETS.map((f) => `<button class="facet-chip ${state.facetId===f.id && !fromIdea ?'active':''}" data-facet="${f.id}">
+          <span class="name">${f.name}</span><span class="reason">${f.reason}</span></button>`).join('')}
+      </div>
+      ${state.facetId && !fromIdea ? renderFacetTitles() : ''}
+    </div>`;
+
+  return `
+    <div class="back-link" role="link" tabindex="0" data-goto="${fromIdea?'ideas':'entry'}">← Back</div>
+    ${!fromIdea ? `<h2>${title}</h2>` : `<h2>Edit before you request</h2>`}
+    ${reasonLine}
+    ${recoveredBanner}
+    ${altToggle}
+    ${templatesSection}
+    ${facetsSection}
+    <div>
+      <p class="section-label">Search your library or request new titles</p>
+      <div class="search-box" style="margin-top:8px;">
+        <input type="text" placeholder="Search for a movie or show…" value="${state.query}" data-search-input="1" />
+      </div>
+      ${state.query.trim().length > 1 ? renderSearchResults() : ''}
+    </div>
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <p class="section-label">Your lineup</p>
+        ${state.lineup.length>0 ? `<button class="btn ghost sm" data-clear-lineup="1">Clear</button>` : ''}
+      </div>
+      <div class="lineup-list" style="margin-top:8px;">
+        ${state.lineup.length === 0
+          ? `<div class="lineup-empty">No titles yet. Pick a facet above or search for one.</div>`
+          : state.lineup.map((k) => lineupRow(k, true)).join('')}
+      </div>
+    </div>
+    <div class="footer-bar" style="margin:0 -24px -24px;">
+      <span class="summary">${lineupSummary()}</span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn ghost" data-goto="${fromIdea?'ideas':'entry'}">Cancel</button>
+        <button class="btn suggest" data-goto="review" ${state.lineup.length===0?'disabled':''}>Continue to review</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderFacetTitles() {
+  const f = FACETS.find((x) => x.id === state.facetId);
+  const titles = facetTitles(f.genreKey).filter((t) => !state.lineup.includes(t.key));
+  if (titles.length === 0) return `<p style="margin-top:8px;font-size:12.5px;color:#8B93A3;">Every title in this facet is already in your lineup.</p>`;
+  return `<ul style="list-style:none;margin:10px 0 0;padding:0;border:1px solid #2A2E37;border-radius:8px;overflow:hidden;">
+    ${titles.map((t) => `<li style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #2A2E37;background:#131519;">
+      <span style="flex:1;font-size:13px;">${t.name} <span style="color:#8B93A3;">${t.year}</span>
+        ${t.inLibrary?'<span class="badge lock" style="margin-left:6px;">In library</span>':'<span class="badge tune" style="margin-left:6px;">To download</span>'}</span>
+      <button class="btn outline sm" data-add="${t.key}">+ Add</button>
+    </li>`).join('')}
+  </ul>`;
+}
+
+function renderSearchResults() {
+  const q = state.query.trim().toLowerCase();
+  const results = LIBRARY.filter((t) => t.name.toLowerCase().includes(q) && !state.lineup.includes(t.key)).slice(0, 6);
+  if (results.length === 0) return `<div class="search-results"><div class="search-result"><span class="meta">No matches in your library or TMDB for “${state.query}”.</span></div></div>`;
+  return `<div class="search-results">
+    ${results.map((t) => `<button class="search-result" data-add="${t.key}">
+      <span class="meta">${t.name}<span class="y">${t.year} · ${t.type}</span></span>
+      ${t.inLibrary?'<span class="badge lock">In library</span>':'<span class="badge tune">To download</span>'}
+    </button>`).join('')}
+  </div>`;
+}
+
+// ---- Review (mirrors the existing ProposalReview component) --------------------------------
+function renderReview() {
+  const admin = state.role === 'admin';
+  const items = state.lineup.map(libraryByKey).filter(Boolean);
+  const missing = items.filter((t) => !t.inLibrary).length;
+  const name = state.templateId ? TEMPLATES.find((t)=>t.id===state.templateId).label
+    : state.origin==='idea' ? IDEAS.find((i)=>i.id===state.facetId).name
+    : 'Your new channel';
+  const brief = state.templateId ? TEMPLATES.find((t)=>t.id===state.templateId).description
+    : state.origin==='idea' ? IDEAS.find((i)=>i.id===state.facetId).pitch
+    : 'Built by hand, title by title.';
+
+  const copyFallback = `<p>Loomarr couldn't check this saved draft. Review each title before creating the channel.</p>`;
+  const copyProposed = `<p>You picked every title in this channel yourself — there's nothing to check.</p>`;
+
+  return `
+    <div class="back-link" role="link" tabindex="0" data-goto="builder">← Back to lineup</div>
+    <div class="review-card">
+      <div class="review-head">
+        <div><h2>${admin?'Review your channel':'Review before you request'}</h2>
+          <p style="margin-top:4px;font-weight:500;">${name}</p></div>
+        <span class="badge suggest">Draft</span>
+      </div>
+      <p class="quote">“${brief}”</p>
+      <p style="font-size:13.5px;">${lineupSummary()}</p>
+      <div class="lineup-list">${items.map((t)=>lineupRow(t.key,false)).join('')}</div>
+      <details style="border-top:1px solid #2A2E37;padding-top:10px;">
+        <summary style="cursor:pointer;color:#8B93A3;font-size:13px;">How these titles were chosen</summary>
+        <div style="margin-top:8px;color:#8B93A3;font-size:13.5px;">
+          ${state.manualCopyAlt === 'fallback' ? copyFallback : copyProposed}
+        </div>
+      </details>
+      <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:#8B93A3;">
+        <span class="section-label" style="color:#5A6170">Open question — copy:</span>
+        <button class="btn sm ${state.manualCopyAlt==='fallback'?'outline':'ghost'}" data-alt="manualCopyAlt:fallback">A — existing fallback copy</button>
+        <button class="btn sm ${state.manualCopyAlt==='proposed'?'outline':'ghost'}" data-alt="manualCopyAlt:proposed">B — manual-specific copy</button>
+      </div>
+      <div class="footer-bar" style="margin:0 -24px -24px;">
+        <span class="summary">${missing>0?`Loomarr will add ${missing} missing ${missing===1?'title':'titles'}.`:'Everything selected is already in your library.'}</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn ghost" data-goto="builder">${admin?'Discard':'Cancel'}</button>
+          <button class="btn suggest" data-goto="done">${admin?'Create channel':'Send for approval'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderDone() {
+  const admin = state.role === 'admin';
+  if (admin) {
+    return `<div class="notice" style="border-color:color-mix(in srgb,#3DD68C 40%,#2A2E37)">
+      <p class="title" style="color:#3DD68C;">Channel created</p>
+      <p class="body">The lineup you built is now on the air. You can keep editing it from the channel's
+      Programming tab at any time — adding or removing titles there doesn't need another approval.</p>
+      <div><a class="btn outline sm" href="#" data-goto="entry">Back to the Guide</a></div>
+    </div>`;
+  }
+  return `<div class="notice suggest-tint">
+    <p class="title">Sent for approval</p>
+    <p class="body">An admin needs to approve this before it builds. You'll see it as "Waiting for an admin"
+    on Home and in Your requests.</p>
+    <div><a class="btn outline sm" href="#" data-goto="entry">Back to the Guide</a></div>
+  </div>`;
+}
+
+// ---- Guide: generation failed (AI configured, a run failed) --------------------------------
+function renderFailed() {
+  return `
+    <div class="notice" style="border-color:color-mix(in srgb,#E5484D 35%,#2A2E37)">
+      <p class="title">Loomarr couldn't find enough grounded titles</p>
+      <p class="body">Your brief is saved. Try a different description, or build the lineup yourself from
+      your library — nothing is lost either way.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button class="btn outline sm">Edit description</button>
+        <button class="btn outline sm">Try again</button>
+        <button class="btn suggest sm" data-goto="builder" data-origin-clear="1">Build it manually instead</button>
+      </div>
+    </div>
+    <p class="review-note" style="margin:0;">
+      "Build it manually instead" is new (not in today's <code>run.actions</code> journey contract) — shown
+      here as always-available on a failure, not gated by a server-provided action, so it needs no backend
+      change. Flagged as an open question: should the server instead decide when to offer it (e.g. never
+      after a transient "retry_later" failure)?
+    </p>
+  `;
+}
+
+// ---- Home: channel ideas (built, #1766) + the two new rows ----------------------------------
+function ideaCard(idea) {
+  return `<article class="idea-card ${idea.requested?'requested':''}">
+    <div class="poster-row" aria-hidden="true">${idea.keys.slice(0,4).map(()=>'<div class="poster-slot"></div>').join('')}</div>
+    <p class="reason">${idea.reason}</p>
+    <h3>${idea.name}</h3>
+    <p class="pitch">${idea.pitch}</p>
+    <p class="counts"><span class="dot ${idea.toDownload>0?'progress':''}"></span>${idea.counts} · ${idea.avail}</p>
+    <div class="actions">
+      ${idea.requested
+        ? `<span class="badge suggest">Waiting for an admin</span>`
+        : `<button class="btn sm">Request channel</button>
+           <button class="btn ghost sm" data-edit-first="${idea.id}">Edit first</button>
+           <button class="btn ghost sm" aria-label="Not for me">✕</button>`}
+    </div>
+  </article>`;
+}
+
+function renderIdeas() {
+  return `
+    <section>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <h2>Channel ideas</h2>
+        <button class="btn ghost sm">↻ Different ideas</button>
+      </div>
+      <div class="idea-grid">${IDEAS.map(ideaCard).join('')}</div>
+      <div class="own-row" style="margin-top:12px;">
+        <button class="btn ghost" data-goto="builder" data-origin-clear="1">Don't see it? Describe your own channel</button>
+      </div>
+    </section>
+    <p class="review-note" style="margin:0;">New vs. today's shipped <code>channel-ideas.tsx</code>: "Edit first"
+    on each card, and the "Describe your own channel" row — both explicitly called out in that component's
+    comment as waiting on this mock. Channel ideas are member-only (H4; the API doc for
+    <code>POST /v1/discovery/ideas/{id}/request</code> says "an admin makes channels directly") — the Role
+    switch above is shown here only to compare copy with the Guide surface, not because an admin sees this
+    section in the real app.</p>
+  `;
+}
+
+function renderEditFirstEntry() {
+  // Selecting "Edit first" pre-loads the builder; jump straight there.
+  state.stage = 'builder';
+  state.origin = 'idea';
+  const idea = IDEAS.find((i) => !i.requested) ?? IDEAS[0];
+  state.facetId = idea.id;
+  state.lineup = [...idea.keys];
+  return renderBuilder();
+}
+
+// ---------------------------------------------------------------------------------------------
+function renderBody() {
+  if (state.surface === 'home') {
+    if (state.stage === 'ideas') return renderIdeas();
+    if (state.stage === 'editFirst') return renderEditFirstEntry();
+    if (state.stage === 'review') return renderReview();
+    if (state.stage === 'done') return renderDone();
+  }
+  if (state.stage === 'entry') return renderEntry();
+  if (state.stage === 'builder' || state.stage === 'recovered') return renderBuilder();
+  if (state.stage === 'review') return renderReview();
+  if (state.stage === 'done') return renderDone();
+  if (state.stage === 'failed') return renderFailed();
+  return '';
+}
+
+function headerFor() {
+  if (state.surface === 'home') return { title: 'Home', sub: '' };
+  const admin = state.role === 'admin';
+  if (state.stage === 'entry') return { title: 'Channels', sub: 'Every channel Loomarr manages, and what\'s on right now.' };
+  if (state.stage === 'review') return { title: admin ? 'Review your channel' : 'Review before you request', sub: '' };
+  if (state.stage === 'done') return { title: admin ? 'Channels' : 'Channels', sub: '' };
+  return { title: admin ? 'Add a channel' : 'Request a channel', sub: 'Describe what you want. You\'ll choose the final titles before anything is created.' };
+}
+
+function render() {
+  const admin = state.role === 'admin';
+  const navItems = state.surface === 'home'
+    ? [['⌂','Home','/dashboard',true],['▦','Guide','/guide'],['◇','Requests','/requests'],...(admin?[['▧','Filler','/filler'],['♙','People','/users'],['⚙','Settings','/settings']]:[]),['?','Help','/help']]
+    : [['⌂','Home','/dashboard'],['▦','Guide','/guide',true],['◇','Requests','/requests'],...(admin?[['▧','Filler','/filler'],['♙','People','/users'],['⚙','Settings','/settings']]:[]),['?','Help','/help']];
+  const head = headerFor();
+  const body = renderBody();
+  $('frame').innerHTML = `<div class="shell">
+    <nav aria-label="Main"><div class="brand"><span class="mark"></span><span class="brand-name">LOOMARR</span></div>
+      ${navItems.map(([icon,label,url,current]) => `<a href="${url}" aria-label="${label}" ${current?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-label">${label}</span></a>`).join('')}
+    </nav>
+    <main>
+      <header class="page-header"><div><h1>${head.title}</h1>${head.sub?`<p>${head.sub}</p>`:''}</div></header>
+      <div class="content">${body}</div>
+    </main>
+  </div>`;
+
+  const openQ = [];
+  if (state.stage === 'recovered') openQ.push('AI-recovery: resume banner vs. silent carry-over — see toggle above.');
+  if (state.stage === 'review') openQ.push('Manual-proposal copy under "How these titles were chosen" — see toggle above.');
+  if (state.stage === 'failed') openQ.push('Should "Build it manually instead" be server-gated (a new Journey action) or always client-offered?');
+  $('openq').textContent = openQ.join(' ');
+}
+
+function wire() {
+  $('surface').addEventListener('change', (e) => { state.surface = e.target.value; state.stage = STAGES[state.surface][0][0]; populateStageSelect(); render(); });
+  $('role').addEventListener('change', (e) => { state.role = e.target.value; render(); });
+  $('stage').addEventListener('change', (e) => { state.stage = e.target.value; render(); });
+  $('size').addEventListener('click', () => {
+    const small = $('frame').classList.toggle('phone');
+    $('size').setAttribute('aria-pressed', String(small));
+    $('size').textContent = small ? 'Desktop preview' : '390px preview';
+  });
+
+  document.addEventListener('input', (e) => {
+    if (e.target.matches('[data-search-input]')) { state.query = e.target.value; render(); $('frame').querySelector('[data-search-input]')?.focus(); }
+  });
+
+  document.addEventListener('click', (e) => {
+    const goto = e.target.closest('[data-goto]');
+    const add = e.target.closest('[data-add]');
+    const remove = e.target.closest('[data-remove]');
+    const template = e.target.closest('[data-template]');
+    const templateClear = e.target.closest('[data-template-clear]');
+    const facet = e.target.closest('[data-facet]');
+    const clearLineup = e.target.closest('[data-clear-lineup]');
+    const alt = e.target.closest('[data-alt]');
+    const editFirst = e.target.closest('[data-edit-first]');
+    const originClear = e.target.closest('[data-origin-clear]');
+
+    if (add) { state.lineup = [...new Set([...state.lineup, add.dataset.add])]; announce(`Added ${libraryByKey(add.dataset.add)?.name}.`); render(); return; }
+    if (remove) { state.lineup = state.lineup.filter((k) => k !== remove.dataset.remove); render(); return; }
+    if (template) { state.templateId = state.templateId === template.dataset.template ? undefined : template.dataset.template; render(); return; }
+    if (templateClear) { state.templateId = undefined; render(); return; }
+    if (facet) { state.facetId = state.facetId === facet.dataset.facet ? undefined : facet.dataset.facet; render(); return; }
+    if (clearLineup) { state.lineup = []; render(); return; }
+    if (editFirst) { state.stage = 'editFirst'; render(); return; }
+    if (alt) { const [k,v] = alt.dataset.alt.split(':'); state[k] = v; render(); return; }
+    if (originClear) { state.origin = undefined; state.facetId = undefined; }
+    if (goto) {
+      e.preventDefault();
+      state.stage = goto.dataset.goto;
+      $('stage').value = STAGES[state.surface].some(([v])=>v===state.stage) ? state.stage : $('stage').value;
+      announce(`Prototype: moved to "${goto.textContent.trim()}".`);
+      render();
+      return;
+    }
+  });
+}
+
+populateStageSelect();
+wire();
+render();
+</script>
+</html>

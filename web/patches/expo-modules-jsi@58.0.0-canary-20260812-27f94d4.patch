@@ -1,0 +1,23 @@
+diff --git a/apple/scripts/build-xcframework.sh b/apple/scripts/build-xcframework.sh
+index 7a51fe142e82e7f963859b7d6d3b2b0939be7dcb..8df641b5ddc17f1a963e6ab87b9074287d15e852 100755
+--- a/apple/scripts/build-xcframework.sh
++++ b/apple/scripts/build-xcframework.sh
+@@ -196,6 +196,10 @@ build_slice() {
+   # SYMROOT/OBJROOT to the paths this script reads from forces products and the
+   # generated module maps back into DERIVED_DATA_PATH. On Xcode versions that
+   # honor -derivedDataPath these point at the same locations, so it's a no-op.
++  #
++  # No -quiet: Xcode 27's quiet mode reports each warning-only SwiftCompile task
++  # as "error: the following command failed with exit code 0", and the parent
++  # build fails this script phase for printing an error it did not exit with.
+   (cd "$PACKAGE_DIR" && env -i PATH="$PATH" HOME="$HOME" PODS_ROOT="$PODS_ROOT" RN_ROOT="$RN_ROOT" \
+     xcodebuild \
+     build \
+@@ -204,7 +208,6 @@ build_slice() {
+     -destination "generic/platform=${destination}" \
+     -derivedDataPath "$DERIVED_DATA_PATH" \
+     -configuration "$CONFIGURATION" \
+-    -quiet \
+     -disableAutomaticPackageResolution \
+     -skipPackagePluginValidation \
+     -skipMacroValidation \

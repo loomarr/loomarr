@@ -5,7 +5,7 @@ import {
   type GuideSelection,
   guideAiringLabel,
 } from "@loomarr/core/guide";
-import { Action, Surface, Text } from "@loomarr/design-system";
+import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
 import { type LayoutChangeEvent, Pressable, ScrollView, View } from "react-native";
 
@@ -18,9 +18,11 @@ import type { GuideCompactProps } from "./guide-compact.type";
 // foot with Watch (5f's docked strip). Tapping a cell selects it; Watch tunes its channel.
 //
 // A row is the 44 pt target the decision asks for (48 tall, the cell drawn 3 px inside it); a
-// programme shorter than that stays as narrow as its time, and the dock carries its full title.
+// programme shorter than that is drawn as narrow as its time, its tap area widened to 44 pt with a
+// hit slop the dock's full title makes up for.
 
 const GUTTER = 16;
+const MIN_HIT = 44;
 const NUMBER_COLUMN = 40;
 const ROW = 48;
 const RULER = 24;
@@ -36,14 +38,40 @@ const selectionOf = (airing: GuideAiringLayout): GuideSelection => ({
   scheduleBlockId: airing.scheduleBlockId,
 });
 
+// How far a cell's tap area reaches past its drawn width to make 44 pt. A cell clipped by a window
+// edge grows toward the window, since nothing is past the edge to tap.
+const airingHitSlop = (airing: GuideAiringLayout, timelinePx: number) => {
+  const missing = MIN_HIT - airing.widthRatio * timelinePx;
+  if (missing <= 0) return undefined;
+  const clippedStart = airing.startRatio <= 0;
+  const clippedEnd = airing.startRatio + airing.widthRatio >= 1;
+  if (clippedStart === clippedEnd) return { left: missing / 2, right: missing / 2 };
+  return clippedStart ? { left: 0, right: missing } : { left: missing, right: 0 };
+};
+
 // "Series “Episode”" as the mocks write a programme; a film or a break is its label alone.
 const programmeLine = (airing: GuideAiringLayout) =>
   airing.source.series && airing.source.title.trim()
     ? `${airing.source.series} “${airing.source.title.trim()}”`
     : guideAiringLabel(airing.source);
 
+// The sheet's time line (5d): "8:50–9:39 PM · in 24m · TV-G". A programme on now counts down as
+// Watching's rows do ("34m left"); one that has ended says nothing more.
+const sheetTimeLine = (airing: GuideAiringLayout, nowMs: number, timezone?: string) => {
+  const { rating, startMs, stopMs } = airing.source;
+  const minutes = (ms: number) => `${Math.max(1, Math.ceil(ms / 60_000))}m`;
+  const when =
+    nowMs < startMs
+      ? `in ${minutes(startMs - nowMs)}`
+      : nowMs < stopMs
+        ? `${minutes(stopMs - nowMs)} left`
+        : undefined;
+  return [formatGuideTimeRange(startMs, stopMs, timezone), when, rating].filter(Boolean).join(" · ");
+};
+
 const GuideCompact = ({
   density = "touch",
+  dock = "strip",
   filter: chosenFilter,
   layout,
   myChannels,
@@ -54,6 +82,8 @@ const GuideCompact = ({
   renderArtwork,
   selection,
 }: GuideCompactProps) => {
+  // The iPhone sheet drags down to close; tapping a programme brings it back.
+  const [dismissedBlockId, setDismissedBlockId] = useState<string>();
   const filters = guideFilterOptions(layout, myChannels);
   // A personal filter that empties (the last favourite unstarred) falls back to All.
   const filter = filters.find((option) => option.value === chosenFilter)?.disabled ? "all" : chosenFilter;
@@ -68,6 +98,9 @@ const GuideCompact = ({
   // Hours are labelled as the mocks write them ("9 PM"), every second or third one when an hour is
   // too narrow for its label, and not at all where the now badge sits over it.
   const [timelineWidth, setTimelineWidth] = useState(0);
+  // Until the timeline is measured, the window less the page gutters and the number column.
+  const windowWidth = useWindowWidth();
+  const hitTimelinePx = timelineWidth || Math.max(0, windowWidth - 2 * GUTTER - NUMBER_COLUMN);
   const hourPx = (timelineWidth * hourMs) / span;
   const stride = hourPx <= 0 ? 1 : (LABEL_STRIDES.find((s) => s * hourPx >= LABEL_MIN_PX) ?? 6);
   const labelled = (t: number, index: number) =>
@@ -79,6 +112,7 @@ const GuideCompact = ({
   const selectedAiring = selectedChannel?.airings.find(
     (a) => a.scheduleBlockId === selection?.scheduleBlockId,
   );
+  const Dock = dock === "strip" ? undefined : dock;
 
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
@@ -176,6 +210,7 @@ const GuideCompact = ({
                   {channel.airings.map((airing) => {
                     const selected = rowSelected && airing.scheduleBlockId === selection?.scheduleBlockId;
                     const label = guideAiringLabel(airing.source);
+                    const hitSlop = airingHitSlop(airing, hitTimelinePx);
                     return (
                       <Pressable
                         accessibilityLabel={`${channel.source.number} ${channel.source.name}, ${label}, ${formatGuideTimeRange(
@@ -186,8 +221,12 @@ const GuideCompact = ({
                         accessibilityRole="button"
                         accessibilityState={{ selected }}
                         aria-pressed={selected}
+                        hitSlop={hitSlop}
                         key={airing.scheduleBlockId}
-                        onPress={() => onSelect(selectionOf(airing))}
+                        onPress={() => {
+                          setDismissedBlockId(undefined);
+                          onSelect(selectionOf(airing));
+                        }}
                         style={{
                           bottom: 0,
                           left: `${airing.startRatio * 100}%`,
@@ -196,6 +235,9 @@ const GuideCompact = ({
                           position: "absolute",
                           top: 0,
                           width: `${airing.widthRatio * 100}%`,
+                          // Where tap areas overlap the selected cell wins, then a narrow one: a
+                          // wide neighbour keeps the middle of its own cell.
+                          zIndex: selected ? 2 : hitSlop ? 1 : 0,
                         }}
                       >
                         <Surface
@@ -250,7 +292,52 @@ const GuideCompact = ({
         </View>
       </ScrollView>
 
-      {selectedChannel && selectedAiring ? (
+      {selectedChannel && selectedAiring && Dock ? (
+        dismissedBlockId === selectedAiring.scheduleBlockId ? null : (
+          <Dock
+            accessibilityLabel="Selected programme"
+            onDismiss={() => setDismissedBlockId(selectedAiring.scheduleBlockId)}
+          >
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              {renderArtwork ? (
+                <Surface
+                  backgroundColor="$surfaceElevated"
+                  borderRadius={6}
+                  borderWidth={0}
+                  height={63}
+                  overflow="hidden"
+                  width={112}
+                >
+                  {renderArtwork(selectedAiring)}
+                </Surface>
+              ) : null}
+              <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+                <Text density={density} numberOfLines={1} textRole="cardMeta">
+                  <Text density={density} textRole="cardTime" tone="primary">
+                    {String(selectedChannel.source.number)}
+                  </Text>
+                  {` · ${selectedChannel.source.name}`}
+                </Text>
+                <Text density={density} numberOfLines={2} textRole="cardTitle">
+                  {programmeLine(selectedAiring)}
+                </Text>
+                {/* Two lines: a range across noon or midnight ("11:30 PM–12:15 AM") would cut off the rating. */}
+                <Text density={density} numberOfLines={2} textRole="guideMeta">
+                  {sheetTimeLine(selectedAiring, nowMs, layout.timezone)}
+                </Text>
+              </View>
+            </View>
+            <Action
+              accessibilityLabel={`Watch ${selectedChannel.source.number} ${selectedChannel.source.name} now`}
+              density={density}
+              onPress={() => onWatch(selectedChannel.source.channelId)}
+              tone="primary"
+            >
+              {`Watch ${selectedChannel.source.number} now`}
+            </Action>
+          </Dock>
+        )
+      ) : selectedChannel && selectedAiring ? (
         <Surface
           alignItems="center"
           backgroundColor="$surfaceRaised"

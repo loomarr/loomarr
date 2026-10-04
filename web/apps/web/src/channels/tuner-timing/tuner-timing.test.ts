@@ -22,4 +22,16 @@ describe("tuner timing", () => {
       expect.objectContaining({ detail: { attemptId: attempt.id, adjacent: true, warmed: false } }),
     );
   });
+
+  it("merges caller-supplied detail into the measure without losing attempt metadata", () => {
+    const attempt = beginTune(true);
+    markTunePhase(attempt, "osd", { viaFallback: true });
+
+    expect(measure).toHaveBeenCalledWith(
+      "loomarr:tune:request-to-osd",
+      expect.objectContaining({
+        detail: { attemptId: attempt.id, adjacent: true, warmed: false, viaFallback: true },
+      }),
+    );
+  });
 });

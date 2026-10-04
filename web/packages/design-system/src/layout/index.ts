@@ -5,4 +5,5 @@ export {
   Disclosure,
   resolveAdaptiveDirection,
   ScrollFrame,
+  useWindowWidth,
 } from "./layout";
