@@ -123,14 +123,12 @@ func (s *Suggester) buildProposal(ctx context.Context, intent Intent, out finalO
 	}
 
 	// Ground the extracted policy (programming-design §8): the model proposed rule
-	// VALUES; we validate + clamp them (off-ladder ceiling dropped, era bounded,
-	// series intersected with grounded ids) before they become a ChannelPolicy. A
+	// VALUES; we validate + clamp them (off-ladder ceiling dropped, series
+	// intersected with grounded ids) before they become a ChannelPolicy. A
 	// bad policy never sinks a good lineup — it degrades to defaults (empty policy).
 	prop.Policy = groundPolicy(out.Policy, prop.Lineup, prop.Acquisitions, intent)
-	// A validated interpretation, rather than a model supplied era, owns every
-	// new v6 proposal's date scope. This applies to `none` too: raw policy.era
-	// may not smuggle a date constraint around the canonical boundary.
-	prop.Policy.Scope.Dates = nil
+	// The validated date meaning is the only source of a proposal's date scope;
+	// the model's policy carries none.
 	if meaning.DateMeaning().Kind == DateMeaningConstraints {
 		prop.Policy.Scope.Dates = dateScope(meaning)
 	}
@@ -284,8 +282,7 @@ func refuseUnairable(a schedule.AudiencePolicy, lineup, acquisitions []ProposalI
 // groundPolicy converts the model's untrusted pickPolicy into a validated
 // schedule.ChannelPolicy (programming-design §1 extract-vs-enforce). Every value is
 // machine-checked: the ceiling must be on the closed rating ladder (else dropped),
-// enums must be known (else dropped), the era is taken as-is (the enforcer clamps),
-// and any series allowlist is intersected with the actually-grounded picks so the
+// enums must be known (else dropped), and any series allowlist is intersected with the actually-grounded picks so the
 // model can't scope to a series that never surfaced. Explicit child-safety intent and a rating
 // cap written by the user contribute deterministic ceilings even when the model omits or
 // hallucinates the policy. A named holiday similarly determines exclusive mode + holiday subset.
@@ -318,21 +315,6 @@ func groundPolicy(raw *pickPolicy, lineup, acquisitions []ProposalItem, intent I
 	}
 	if intentPolicy.excludeUnrated {
 		p.Audience.Unrated = schedule.UnratedExclude
-	}
-
-	// Era: accept a sane year window (the enforcer treats 0 as unbounded), then WIDEN it
-	// to admit the channel's own grounded picks (programming-design §4). Acquisitions
-	// count alongside the lineup: one becomes a real airing the moment it lands, so an
-	// era that excluded it would quietly drop the title after the download finished.
-	// The model's era stays the simple input; it is stored as the era-shaped Dates it means.
-	// An insane window (inverted, or years outside 1900–2099) is dropped on its own here:
-	// left in, it would fail Validate and the final net below would discard the WHOLE
-	// policy, audience ceiling included.
-	if raw.Era.From > 0 || raw.Era.To > 0 {
-		era := schedule.Range{From: raw.Era.From, To: raw.Era.To}
-		if dates := schedule.EraDates(eraAdmittingPicks(era, lineup, acquisitions)); dates.Validate() == nil {
-			p.Scope.Dates = dates
-		}
 	}
 
 	// Genres: pass through include/exclude names (matched case-insensitively at

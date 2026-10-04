@@ -176,41 +176,6 @@ func stampEpisodeSelection(items []ProposalItem, intent Intent) bool {
 	return changed
 }
 
-// eraAdmittingPicks widens a model-proposed year window just far enough to include the
-// channel's OWN grounded picks (programming-design §4). It returns the era to persist.
-//
-// Caught live: a "Midnight Sci-Fi Horror" proposal carried era.from 1982 AND Alien (1979)
-// on its approved lineup, so the §4 enforcer filtered out a title the operator had
-// explicitly approved — six on the lineup, four in the guide, nothing naming the other two.
-// Extraction and enforcement disagreeing about one proposal is a self-contradiction, and it
-// resolves toward the content the operator asked for.
-//
-// Unlike the audience raise this needs NO bound: a year is a curation choice, never a safety
-// property, so there is no era analogue of the kids line to cross. Only picks with a known
-// year (>0) participate — an unknown year can't argue for widening anything.
-//
-// The era still constrains everything NOT picked (backfill, re-curation, filler); only the
-// already-approved titles are grandfathered in.
-func eraAdmittingPicks(era schedule.Range, groups ...[]ProposalItem) schedule.Range {
-	out := era
-	for _, g := range groups {
-		for _, it := range g {
-			if it.Year <= 0 {
-				continue
-			}
-			// A bound of 0 is "unbounded" to the enforcer, so it never needs widening —
-			// stretching it would turn an open end into a closed one and NARROW the era.
-			if out.From > 0 && it.Year < out.From {
-				out.From = it.Year
-			}
-			if out.To > 0 && it.Year > out.To {
-				out.To = it.Year
-			}
-		}
-	}
-	return out
-}
-
 func stricterCeiling(candidate, maximum schedule.Rating) schedule.Rating {
 	if maximum == "" {
 		return candidate
