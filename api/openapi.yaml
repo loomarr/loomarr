@@ -685,6 +685,10 @@ components:
     BulkApproveFillerPullResult:
       additionalProperties: false
       properties:
+        enqueued:
+          description: Remote items this approval queued for download — the approved pull's candidateCount
+          format: int64
+          type: integer
         error:
           description: Why this one did not approve (already handled, not found, …)
           type: string
