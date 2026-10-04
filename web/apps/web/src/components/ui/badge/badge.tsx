@@ -18,28 +18,30 @@ const withAlpha = (hex: string, alpha: number) => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
 };
 
-const BADGE_COLOR: Record<BadgeVariant, { background: string; text: string }> = {
-  neutral: { background: semanticColors.surface.elevated, text: semanticColors.content.secondary },
-  tune: { background: withAlpha(semanticColors.state.info, 0.15), text: semanticColors.state.info },
-  lock: { background: withAlpha(semanticColors.state.success, 0.15), text: semanticColors.state.success },
-  caution: { background: withAlpha(semanticColors.state.warning, 0.15), text: semanticColors.state.warning },
-  onair: { background: withAlpha(semanticColors.guide.onAir, 0.15), text: semanticColors.state.danger },
-  suggest: { background: withAlpha(brandChroma[4], 0.15), text: semanticColors.accent.suggest },
-  signal: { background: withAlpha(semanticColors.action.primary, 0.15), text: semanticColors.action.primary },
+const ACCENT_COLOR: Record<Exclude<BadgeVariant, "neutral">, { tint: string; text: string }> = {
+  tune: { tint: semanticColors.state.info, text: semanticColors.state.info },
+  lock: { tint: semanticColors.state.success, text: semanticColors.state.success },
+  caution: { tint: semanticColors.state.warning, text: semanticColors.state.warning },
+  onair: { tint: semanticColors.guide.onAir, text: semanticColors.state.danger },
+  suggest: { tint: brandChroma[4], text: semanticColors.accent.suggest },
+  signal: { tint: semanticColors.action.primary, text: semanticColors.action.primary },
 };
 
-const Badge = ({ className, variant = "neutral", style, ...props }: BadgeProps) => {
-  const colors = BADGE_COLOR[variant];
+const Badge = ({ className, variant = "neutral", style, tintOpacity = 0.15, ...props }: BadgeProps) => {
+  const background =
+    variant === "neutral"
+      ? semanticColors.surface.elevated
+      : withAlpha(ACCENT_COLOR[variant].tint, tintOpacity);
+  const text = variant === "neutral" ? semanticColors.content.secondary : ACCENT_COLOR[variant].text;
   return (
     <span
       className={className}
       style={{
         alignItems: "center",
-        backgroundColor: colors.background,
+        backgroundColor: background,
         borderRadius: 4,
-        color: colors.text,
+        color: text,
         display: "inline-flex",
-        flexShrink: 0,
         fontFamily: "var(--font-mono)",
         fontSize: 11,
         fontWeight: 500,
