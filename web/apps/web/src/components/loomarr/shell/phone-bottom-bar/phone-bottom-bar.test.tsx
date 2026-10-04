@@ -123,6 +123,24 @@ describe("PhoneBottomBar", () => {
     expect(await screen.findByRole("tab", { name: "Watch" })).toHaveAttribute("aria-selected", "true");
   });
 
+  // Decision X2 (critique row 5): Info/Programming/Filler/Danger highlight Guide, not Watch, so
+  // one channel entity never lights two tabs. Checked across all four sections and both roles —
+  // an admin reaches all four, a member only Info — because the rule has no exception for either.
+  it.each(["info", "programming", "filler", "danger"] as const)(
+    "selects Guide, not Watch, on the channel's %s route (admin)",
+    async (section) => {
+      renderBar({ isAdmin: true, watchChannelId: "ch-7" }, `/channels/$id/${section}`);
+      expect(await screen.findByRole("tab", { name: "Guide" })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("tab", { name: "Watch" })).toHaveAttribute("aria-selected", "false");
+    },
+  );
+
+  it("selects Guide, not Watch, on the channel's info route (member)", async () => {
+    renderBar({ isAdmin: false, watchChannelId: "ch-7" }, "/channels/$id/info");
+    expect(await screen.findByRole("tab", { name: "Guide" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Watch" })).toHaveAttribute("aria-selected", "false");
+  });
+
   it("reaches Home before More in Tab order, matching visual left-to-right order", async () => {
     const user = userEvent.setup();
     renderBar({ isAdmin: true, watchChannelId: "ch-7" });

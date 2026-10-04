@@ -1,4 +1,5 @@
 import type { IconName } from "@loomarr/design-system";
+import { isWatchRoute } from "@/channels/channel-nav-highlight";
 import type { NavTo } from "../app-shell/app-shell.type";
 
 // Alt A (maintainer-approved, #1785/#1659 evidence 2026-10-03): the bar's first positions are
@@ -89,7 +90,7 @@ const phoneBarOverflow = (isAdmin: boolean, badges?: Partial<Record<NavTo, numbe
 /** A `/channels/:id/watch` URL is "on Watch" regardless of which channel; otherwise exact-or-nested. */
 const phoneDestinationMatches = (pathname: string, destination: Pick<PhoneDestination, "to">): boolean =>
   destination.to === "/channels/$id/watch"
-    ? /^\/channels\/[^/]+\/watch$/.test(pathname)
+    ? isWatchRoute(pathname)
     : pathname === destination.to || pathname.startsWith(`${destination.to}/`);
 
 export type { PhoneDestination, PhoneDestinationKey };

@@ -8,6 +8,18 @@ import { AppShell } from "./app-shell";
 const renderShell = (isAdmin: boolean) =>
   render(<RouterHarness content={<AppShell isAdmin={isAdmin}>content</AppShell>} />);
 
+const renderShellAt = (initialPath: string, props: Partial<Parameters<typeof AppShell>[0]> = {}) =>
+  render(
+    <RouterHarness
+      content={
+        <AppShell isAdmin={props.isAdmin ?? true} watchChannelId={props.watchChannelId}>
+          content
+        </AppShell>
+      }
+      initialPath={initialPath}
+    />,
+  );
+
 describe("AppShell", () => {
   it("offers a skip link as the first Tab stop, targeting the main content", async () => {
     renderShell(true);
@@ -178,6 +190,78 @@ describe("AppShell", () => {
       } finally {
         vi.unstubAllGlobals();
       }
+    });
+  });
+
+  // #1817 item 3, decision X2: Watch is the rail's second entry — matching the position the
+  // #1839 phone-bottom-bar draft already modelled for the same decision — in BOTH authored lists,
+  // and absent (not greyed) with no channel. Checked for both roles because the rule has no
+  // exception for either: Watch is a viewer destination first.
+  describe("the Watch rail entry (decision X2)", () => {
+    it("inserts Watch second for an admin once a channel exists", async () => {
+      renderShellAt("/guide", { isAdmin: true, watchChannelId: "ch-7" });
+      const nav = await screen.findByRole("navigation", { name: "Primary" });
+      const labels = within(nav)
+        .getAllByRole("link")
+        .filter((a) => a.getAttribute("aria-label") !== "Your account")
+        .map((a) => a.textContent?.trim());
+      expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Filler", "People", "Settings", "Help"]);
+      expect(screen.getByRole("link", { name: "Watch" })).toHaveAttribute("href", "/channels/ch-7/watch");
+    });
+
+    it("inserts Watch second for a member once a channel exists", async () => {
+      renderShellAt("/guide", { isAdmin: false, watchChannelId: "ch-7" });
+      const nav = await screen.findByRole("navigation", { name: "Primary" });
+      const labels = within(nav)
+        .getAllByRole("link")
+        .filter((a) => a.getAttribute("aria-label") !== "Your account")
+        .map((a) => a.textContent?.trim());
+      expect(labels).toEqual(["Home", "Watch", "Guide", "Requests", "Notifications", "Help"]);
+    });
+
+    it("hides Watch's slot entirely when no channel exists, for either role", async () => {
+      renderShellAt("/guide", { isAdmin: true, watchChannelId: undefined });
+      await screen.findByRole("link", { name: "Guide" });
+      expect(screen.queryByRole("link", { name: "Watch" })).not.toBeInTheDocument();
+
+      renderShellAt("/guide", { isAdmin: false, watchChannelId: undefined });
+      expect(screen.queryAllByRole("link", { name: "Watch" })).toHaveLength(0);
+    });
+  });
+
+  // Decision X2 (critique row 5): one channel entity never lights two rail items. Watch's own
+  // route always highlights Watch; the channel's management tabs (Info/Programming/Filler/
+  // Danger) highlight Guide instead — checked across all four sections and both roles.
+  describe("nav highlight transfer on channel routes (decision X2)", () => {
+    it("highlights Watch on any channel's watch route, not only the rail's own target", async () => {
+      // A different channel ("$id") than the rail's own target ("ch-7") — any channel's Watch
+      // route must light the rail's Watch entry, not just the one it links to.
+      renderShellAt("/channels/$id/watch", { isAdmin: true, watchChannelId: "ch-7" });
+      const watch = await screen.findByRole("link", { name: "Watch" });
+      expect(watch).toHaveClass("bg-signal-tint-15", "text-signal");
+      expect(screen.getByRole("link", { name: "Guide" })).not.toHaveClass("bg-signal-tint-15");
+    });
+
+    it.each(["info", "programming", "filler", "danger"] as const)(
+      "highlights Guide, not Watch, on the channel's %s route (admin)",
+      async (section) => {
+        renderShellAt(`/channels/$id/${section}`, { isAdmin: true, watchChannelId: "ch-7" });
+        const guide = await screen.findByRole("link", { name: "Guide" });
+        expect(guide).toHaveClass("bg-signal-tint-15", "text-signal");
+        expect(screen.getByRole("link", { name: "Watch" })).not.toHaveClass("bg-signal-tint-15");
+      },
+    );
+
+    it("highlights Guide, not Watch, on the channel's info route (member)", async () => {
+      renderShellAt("/channels/$id/info", { isAdmin: false, watchChannelId: "ch-7" });
+      const guide = await screen.findByRole("link", { name: "Guide" });
+      expect(guide).toHaveClass("bg-signal-tint-15", "text-signal");
+      expect(screen.getByRole("link", { name: "Watch" })).not.toHaveClass("bg-signal-tint-15");
+    });
+
+    it("still highlights Guide normally when actually on /guide", async () => {
+      renderShellAt("/guide", { isAdmin: true, watchChannelId: "ch-7" });
+      expect(await screen.findByRole("link", { name: "Guide" })).toHaveAttribute("data-status", "active");
     });
   });
 });

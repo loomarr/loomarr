@@ -3,13 +3,14 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import type { ComponentRef } from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Pressable } from "react-native";
+import { channelNavHighlight } from "@/channels/channel-nav-highlight";
 import {
   type PhoneDestination,
   type PhoneDestinationKey,
   phoneBarOverflow,
   phoneBarPrimary,
   phoneDestinationMatches,
-} from "./phone-bottom-bar.destinations";
+} from "../phone-bottom-bar-destinations";
 import type { PhoneBottomBarProps } from "./phone-bottom-bar.type";
 
 // A value that matches no real destination, so `TabBar`'s `selected` prop can legitimately light
@@ -169,9 +170,15 @@ const PhoneBottomBar = ({ badges, isAdmin, watchChannelId }: PhoneBottomBarProps
 
   const primary = phoneBarPrimary(watchChannelId, badges);
   const overflow = phoneBarOverflow(isAdmin, badges);
-  const active = [...primary, ...overflow].find((destination) =>
-    phoneDestinationMatches(pathname, destination),
-  );
+  // Decision X2 (critique row 5), shared with the desktop rail: a channel's Watch tab highlights
+  // Watch, its management tabs (Info/Programming/Filler/Danger) highlight Guide instead — the URL
+  // stays under `/channels/$id/...` for both, so the plain per-destination path match below can't
+  // tell them apart on its own.
+  const highlight = channelNavHighlight(pathname);
+  const all = [...primary, ...overflow];
+  const active =
+    (highlight && all.find((destination) => destination.key === highlight)) ||
+    all.find((destination) => phoneDestinationMatches(pathname, destination));
   const selected: BarValue = primary.some((destination) => destination.key === active?.key)
     ? (active?.key as PhoneDestinationKey)
     : "none";

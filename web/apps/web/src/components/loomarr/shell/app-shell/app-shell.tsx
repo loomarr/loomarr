@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import {
   BadgeInfo,
   CalendarClock,
@@ -7,16 +7,19 @@ import {
   LayoutGrid,
   ListChecks,
   LogOut,
+  PlayCircle,
   Search,
   Settings,
   Users,
 } from "lucide-react";
 import { lazy, Suspense } from "react";
+import { channelNavHighlight } from "@/channels/channel-nav-highlight";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { commandShortcutAria, commandShortcutLabel } from "@/lib/platform";
 import { usePhoneWidth } from "@/lib/use-phone-width";
+import { cn } from "@/lib/utils";
 import { BrandLockup } from "../brand-lockup";
-import type { AppShellProps, NavItem } from "./app-shell.type";
+import type { AppShellProps, NavItem, WatchNavItem } from "./app-shell.type";
 
 // Lazy, not a static import: PhoneBottomBar is @loomarr/design-system's only consumer of
 // TabBar/BottomSheet, which only ever render below `md`. A static import here made AppShell —
@@ -85,6 +88,23 @@ const MEMBER_NAV: NavItem[] = [
   { to: "/help", label: "Help", icon: ListChecks },
 ];
 
+// Watch's rail position (#1817 item 3, decision X2, matching the #1839 phone-bottom-bar draft):
+// second, right after Home, in BOTH authored lists — inserted here rather than in ADMIN_NAV/
+// MEMBER_NAV themselves because its presence depends on `watchChannelId`, not role.
+const navItemsFor = (isAdmin: boolean, watchChannelId: string | undefined): (NavItem | WatchNavItem)[] => {
+  const base = isAdmin ? ADMIN_NAV : MEMBER_NAV;
+  if (watchChannelId === undefined) return base;
+  const watch: WatchNavItem = {
+    to: "/channels/$id/watch",
+    channelId: watchChannelId,
+    label: "Watch",
+    icon: PlayCircle,
+  };
+  return [base[0], watch, ...base.slice(1)].filter(
+    (item): item is NavItem | WatchNavItem => item !== undefined,
+  );
+};
+
 const MAIN_ID = "main-content";
 
 const AppShell = ({
@@ -101,6 +121,11 @@ const AppShell = ({
   // the bar as a normal last row, not `position: fixed`, so it reserves real layout space and the
   // Guide's own docked strip (#1795) naturally ends up above it rather than needing a manual inset.
   const phoneWidth = usePhoneWidth();
+  // Decision X2 (critique row 5): any channel's Watch tab highlights Watch; any of its management
+  // tabs (Info/Programming/Filler/Danger) highlight Guide instead, so one channel never lights two
+  // rail items. `channelNavHighlight` is the one place that rule lives — shared with PhoneBottomBar.
+  const { pathname } = useLocation();
+  const highlight = channelNavHighlight(pathname);
   return (
     // `h-screen` + `overflow-hidden`, not `min-h-screen`. With only a MINIMUM the shell grows to
     // fit its content, so every `flex-1 min-h-0 overflow-auto` region inside it inherits an
@@ -136,29 +161,56 @@ const AppShell = ({
             <kbd className="ml-auto font-mono text-static-400 text-xs">{commandShortcutLabel()}</kbd>
           </button>
 
-          {(isAdmin ? ADMIN_NAV : MEMBER_NAV).map(({ to, label, icon: Icon }) => (
-            // TanStack Link marks the matched route with data-status="active" — style the
-            // active state off that attribute (higher specificity wins over the base), so
-            // AppShell stays a pure-className component (no isActive render-prop).
-            <Link
-              key={to}
-              to={to}
-              className="flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal"
-            >
-              <Icon className="size-4" aria-hidden />
-              <span>{label}</span>
-              {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work waiting
-                  on the viewer. Absent at zero: a permanent "0" would train the eye to ignore it. */}
-              {(badges?.[to] ?? 0) > 0 && (
-                <span
-                  data-testid={`nav-badge-${to}`}
-                  className="ml-auto rounded-full bg-suggest-tint-15 px-[7px] py-px font-mono text-2xs text-suggest-300"
-                >
-                  {badges?.[to]}
-                </span>
-              )}
-            </Link>
-          ))}
+          {navItemsFor(isAdmin, watchChannelId).map((item) => {
+            const { label, icon: Icon } = item;
+            // Watch and Guide override TanStack's own path-match active state (`data-status`):
+            // Watch's href always points at ONE channel, but any channel's watch route must light
+            // it, and Guide must stay lit while the URL has already moved on to a management tab.
+            // Every other item keeps the plain automatic match.
+            const forcedActive =
+              item.to === "/channels/$id/watch"
+                ? highlight === "watch"
+                : item.to === "/guide"
+                  ? highlight === "guide"
+                  : undefined;
+            const linkClassName = cn(
+              "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm text-static-400 transition-colors hover:bg-accent hover:text-foreground",
+              forcedActive === undefined
+                ? "data-[status=active]:bg-signal-tint-15 data-[status=active]:text-signal"
+                : forcedActive && "bg-signal-tint-15 text-signal",
+            );
+            const content = (
+              <>
+                <Icon className="size-4" aria-hidden />
+                <span>{label}</span>
+                {/* The v2 mock hangs a `suggest` count off the entry whose surface holds work
+                    waiting on the viewer. Absent at zero: a permanent "0" would train the eye to
+                    ignore it. Watch has no badge key (its `to` isn't a stable `NavTo` literal). */}
+                {item.to !== "/channels/$id/watch" && (badges?.[item.to] ?? 0) > 0 && (
+                  <span
+                    data-testid={`nav-badge-${item.to}`}
+                    className="ml-auto rounded-full bg-suggest-tint-15 px-[7px] py-px font-mono text-2xs text-suggest-300"
+                  >
+                    {badges?.[item.to]}
+                  </span>
+                )}
+              </>
+            );
+            return item.to === "/channels/$id/watch" ? (
+              <Link
+                key={`watch-${item.channelId}`}
+                to="/channels/$id/watch"
+                params={{ id: item.channelId }}
+                className={linkClassName}
+              >
+                {content}
+              </Link>
+            ) : (
+              <Link key={item.to} to={item.to} className={linkClassName}>
+                {content}
+              </Link>
+            );
+          })}
         </nav>
 
         {serverVersion && (

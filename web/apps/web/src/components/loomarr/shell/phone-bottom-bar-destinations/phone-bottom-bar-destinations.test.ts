@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { phoneBarOverflow, phoneBarPrimary, phoneDestinationMatches } from "./phone-bottom-bar.destinations";
+import { phoneBarOverflow, phoneBarPrimary, phoneDestinationMatches } from "./phone-bottom-bar-destinations";
 
 describe("phoneBarPrimary", () => {
   it("is Home, Watch, Guide, Requests when a channel exists — identical for admin and member", () => {
