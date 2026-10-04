@@ -2,7 +2,7 @@ export type {
   TvAutoTuneDurationStorage,
   TvAutoTuneSettingStore,
 } from "./src/auto-tune-setting";
-export { createTvAutoTuneSetting } from "./src/auto-tune-setting";
+export { createTvAutoTuneSetting, TV_AUTO_TUNE_CHOICES_MS } from "./src/auto-tune-setting";
 export {
   createTvGuideFocusRegistry,
   createTvSurfFocusRegistry,
@@ -21,6 +21,7 @@ export {
   moveTvGuideFocus,
   restoreTvGuideFocus,
   tvGuideRowWindow,
+  tvGuideTimeEdge,
 } from "./src/guide-navigation";
 export type {
   TvSurfActivation,

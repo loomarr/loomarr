@@ -2,6 +2,7 @@ import { ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import type { ComponentRef, ReactNode } from "react";
 import { useRef } from "react";
 import { Pressable } from "react-native";
+import { AutoTuneSettingAction } from "../../auto-tune-setting";
 import { DeviceDisconnectAction } from "../../device-disconnect";
 import type { FocusTargetRegistry } from "../../focus-target";
 import { SurfChannelCard } from "../surf-channel-card";
@@ -40,6 +41,7 @@ const TvSurfChannel = ({
 );
 
 const TvSurfRail = ({
+  autoTune,
   clientVersion,
   currentChannelId,
   focusRegistry,
@@ -122,6 +124,7 @@ const TvSurfRail = ({
               )}
             </Surface>
           ))}
+          {autoTune ? <AutoTuneSettingAction density="tv" {...autoTune} /> : null}
           {onDisconnect ? (
             <DeviceDisconnectAction
               density="tv"

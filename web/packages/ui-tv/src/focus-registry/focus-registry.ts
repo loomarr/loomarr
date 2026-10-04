@@ -8,8 +8,16 @@ import type {
 class TvFocusRegistry<TTarget> implements FocusTargetRegistry<TTarget> {
   private readonly handles = new Map<string, FocusableTargetHandle>();
   private pendingKey?: string;
+  private focusedTarget?: TTarget;
 
   constructor(private readonly keyFor: (target: TTarget) => string) {}
+
+  /** Where focus last landed (or was sent): the cell a Guide time edge was reached from. */
+  current = (): TTarget | undefined => this.focusedTarget;
+
+  focused = (target: TTarget) => {
+    this.focusedTarget = target;
+  };
 
   register = (target: TTarget, handle: FocusableTargetHandle | null) => {
     const key = this.keyFor(target);
@@ -20,6 +28,7 @@ class TvFocusRegistry<TTarget> implements FocusTargetRegistry<TTarget> {
     this.handles.set(key, handle);
     if (this.pendingKey === key) {
       this.pendingKey = undefined;
+      this.focusedTarget = target;
       handle.focus?.();
     }
   };
@@ -29,6 +38,8 @@ class TvFocusRegistry<TTarget> implements FocusTargetRegistry<TTarget> {
     const handle = this.handles.get(key);
     if (handle) {
       this.pendingKey = undefined;
+      // A requested focus is certain; the native onFocus that confirms it can lag.
+      this.focusedTarget = target;
       handle.focus?.();
       return;
     }

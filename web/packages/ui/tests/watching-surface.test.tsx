@@ -314,6 +314,46 @@ describe("WatchingSurface", () => {
     vi.useRealTimers();
   });
 
+  it("hides the TV identity chip while digits are typed and restores it after tune or cancel", () => {
+    const container = createTestContainer();
+    const textContent = () => Reflect.get(container, "textContent") as string;
+    const root = createRoot(container);
+    const render = (numberEntry?: Parameters<typeof WatchingSurface>[0]["numberEntry"]) =>
+      root.render(
+        <LoomarrProvider>
+          <WatchingSurface
+            density="tv"
+            numberEntry={numberEntry}
+            onChannelDown={vi.fn()}
+            onChannelUp={vi.fn()}
+            onDismissControls={vi.fn()}
+            onGoLive={vi.fn()}
+            onOpenGuide={vi.fn()}
+            onOpenSurf={vi.fn()}
+            onPause={vi.fn()}
+            onPlay={vi.fn()}
+            onPrevious={vi.fn()}
+            onRetry={vi.fn()}
+            onShowControls={vi.fn()}
+            player={<div />}
+            snapshot={playing}
+          />
+        </LoomarrProvider>,
+      );
+
+    act(() => render());
+    expect(textContent()).toContain("SCIENCE FICTION");
+
+    act(() => render({ channelName: "Nature", digits: "21" }));
+    expect(textContent()).toContain("2 1 _");
+    expect(textContent()).not.toContain("SCIENCE FICTION");
+
+    act(() => render());
+    expect(textContent()).not.toContain("2 1 _");
+    expect(textContent()).toContain("SCIENCE FICTION");
+    act(() => root.unmount());
+  });
+
   it("omits the countdown readout once digit entry has no expiry", () => {
     const output = renderSurface(playing, { numberEntry: { digits: "7" } });
     expect(output).toContain("7 _");

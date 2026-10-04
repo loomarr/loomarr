@@ -8,6 +8,7 @@ import type { SurfSelection } from "../surf-rail.type";
 import type { SurfJourneyProps } from "./surf-journey.type";
 
 const SurfJourney = ({
+  autoTune,
   clientVersion,
   controller,
   currentChannelId,
@@ -117,6 +118,7 @@ const SurfJourney = ({
 
   return (
     <SurfRail
+      autoTune={autoTune}
       clientVersion={clientVersion}
       currentChannelId={currentChannelId}
       density={density}

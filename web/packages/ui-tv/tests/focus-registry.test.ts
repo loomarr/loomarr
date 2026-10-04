@@ -21,6 +21,14 @@ describe("TV focus registry", () => {
     expect(focus).toHaveBeenCalledOnce();
   });
 
+  it("remembers the target native focus last landed on", () => {
+    const registry = new TvFocusRegistry<{ id: string }>((target) => target.id);
+    expect(registry.current()).toBeUndefined();
+    registry.focused({ id: "six" });
+    registry.focused({ id: "seven" });
+    expect(registry.current()).toEqual({ id: "seven" });
+  });
+
   it("does not retain an unmounted handle", () => {
     const registry = new TvFocusRegistry<{ id: string }>((target) => target.id);
     const focus = vi.fn();

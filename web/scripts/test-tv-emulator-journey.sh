@@ -115,6 +115,46 @@ wait_for_ui() {
   return 1
 }
 
+wait_for_focus() {
+  local description="$1"
+  local expected="$2"
+  for ((attempt = 1; attempt <= 30; attempt += 1)); do
+    dump_ui
+    if grep -o '<node [^>]*>' "${journey_dir}/window.xml" | grep -F 'focused="true"' | grep -Fq "${expected}"; then
+      printf 'tv-emulator-journey: observed %s\n' "${description}"
+      return 0
+    fi
+    sleep 0.5
+  done
+  printf 'TV emulator focus never reached %s (%s)\n' "${description}" "${expected}" >&2
+  grep -o '<node [^>]*>' "${journey_dir}/window.xml" | grep -F 'focused="true"' >&2 || true
+  return 1
+}
+
+# Press a key until focus reaches a target (the Surf rail's foot sits after every Channel).
+focus_by_pressing() {
+  local keycode="$1"
+  local description="$2"
+  local expected="$3"
+  for ((press = 1; press <= 20; press += 1)); do
+    dump_ui
+    if grep -o '<node [^>]*>' "${journey_dir}/window.xml" | grep -F 'focused="true"' | grep -Fq "${expected}"; then
+      printf 'tv-emulator-journey: observed %s\n' "${description}"
+      return 0
+    fi
+    key "${keycode}"
+  done
+  printf 'TV emulator focus never reached %s (%s)\n' "${description}" "${expected}" >&2
+  return 1
+}
+
+# Optional PR evidence: LOOMARR_TV_JOURNEY_CAPTURE_DIR keeps a screenshot of each named checkpoint.
+capture() {
+  [[ -n "${LOOMARR_TV_JOURNEY_CAPTURE_DIR:-}" ]] || return 0
+  mkdir -p "${LOOMARR_TV_JOURNEY_CAPTURE_DIR}"
+  adb -s "${emulator_serial}" exec-out screencap -p >"${LOOMARR_TV_JOURNEY_CAPTURE_DIR}/$1.png"
+}
+
 assert_ui_absent() {
   local description="$1"
   local unexpected="$2"
@@ -179,7 +219,7 @@ sleep 6
 # Back still proves it returns to the mounted Watching composition without inventing activity.
 key KEYCODE_DPAD_CENTER
 wait_for_ui "Guide" "Programme guide"
-wait_for_ui "authoritative Guide programme" "Radioactive Man"
+wait_for_ui "authoritative Guide programme" "emulator journey fixture"
 key KEYCODE_DPAD_DOWN
 key KEYCODE_DPAD_CENTER
 wait_for_state "Guide tune" '.playUrlChannels[-1] == "science-fiction"'
@@ -193,6 +233,52 @@ wait_for_state "return to initial Channel after Guide tune" '.playUrlChannels[-1
 sleep 6
 key KEYCODE_DPAD_CENTER
 wait_for_ui "Guide before Back" "Programme guide"
+
+# Guide D-pad edges (#1659 decision N4): native focus walks the grid and the filters; the app pages
+# the served window only off an edge. Focus opens on Classic Animation's on-now programme. A cell's
+# label is "<Channel>, <series>, <time>"; the live window's series are left to #1592, so those cells
+# are matched by Channel.
+wait_for_focus "Guide focus on the current Channel" "Classic Animation, "
+live_guide_from="$(journey_state | jq -r '.guideWindows[-1].fromMs')"
+guide_loads="$(journey_state | jq -r '.guideLoads')"
+key KEYCODE_DPAD_LEFT
+sleep 1
+wait_for_state "◀ at now does not page before now" ".guideLoads == ${guide_loads}"
+capture guide-left-at-now
+key KEYCODE_DPAD_UP
+wait_for_focus "▲ from the top row reaches the filters" "All, 2 channels"
+capture guide-up-to-filters
+key KEYCODE_DPAD_DOWN
+wait_for_focus "▼ from the filters returns to the grid" "Classic Animation"
+key KEYCODE_DPAD_DOWN
+wait_for_focus "whole-window programme" "Science Fiction, "
+key KEYCODE_DPAD_RIGHT
+wait_for_state "▶ off a whole-window programme pages forward" ".guideWindows[-1].fromMs > ${live_guide_from}"
+paged_guide_from="$(journey_state | jq -r '.guideWindows[-1].fromMs')"
+wait_for_ui "the paged Guide window" "The Lighthouse Pups"
+wait_for_focus "focus kept on the whole-window Channel" "Science Fiction, "
+capture guide-right-paged-forward
+# A press native focus serves is judged from where it started, so ◀ between two programmes in the
+# paged window moves focus without paging; ◀ again, off the first programme, pages back to now.
+key KEYCODE_DPAD_UP
+key KEYCODE_DPAD_RIGHT
+wait_for_focus "the paged window's second programme" "Classic Animation, The Lighthouse Pups"
+guide_loads="$(journey_state | jq -r '.guideLoads')"
+key KEYCODE_DPAD_LEFT
+sleep 1
+wait_for_state "◀ inside the paged window does not page" ".guideLoads == ${guide_loads}"
+key KEYCODE_DPAD_LEFT
+# The live window starts on the current minute, so it may have moved on since it was first served.
+wait_for_state "◀ after paging forward pages back to now" \
+  ".guideWindows[-1].fromMs >= ${live_guide_from} and .guideWindows[-1].fromMs < ${paged_guide_from}"
+wait_for_focus "the live window's last Classic Animation programme" "Classic Animation, "
+if grep -o '<node [^>]*>' "${journey_dir}/window.xml" | grep -F 'focused="true"' | grep -Fq "Classic Animation, Commercials"; then
+  printf 'TV emulator focus landed on the commercial break, not a programme, after paging back\n' >&2
+  exit 1
+fi
+assert_ui_absent "the paged Guide window after paging back" "The Lighthouse Pups"
+capture guide-left-back-to-now
+
 key KEYCODE_BACK
 wait_for_ui "Watching after Back" "Open programme guide"
 
@@ -213,9 +299,58 @@ assert_ui_absent "Watching playbar dismissed after Surf tune inactivity" "The Ne
 key KEYCODE_7
 key KEYCODE_7
 printf 'tv-emulator-journey: observed number entry\n'
-key KEYCODE_DPAD_CENTER
+if [[ -n "${LOOMARR_TV_JOURNEY_CAPTURE_DIR:-}" ]]; then
+  # The screenshot can outlast the 1.2 s wait, and OK after the tune opens Guide; let it auto-tune.
+  capture digit-entry-countdown
+else
+  key KEYCODE_DPAD_CENTER
+fi
 wait_for_state "number tune" '.playUrlChannels[-1] == "classic-animation"'
 wait_for_ui "Watching after number tune" "Open programme guide"
+
+# The channel-number wait (#1659 decision N4, WCAG 2.2.1): Surf's row above Disconnect opens the
+# choices; 5 s keeps typed digits waiting well past the 1.2 s default, and survives a relaunch.
+sleep 6
+key KEYCODE_DPAD_LEFT
+wait_for_ui "Surf before the channel-number wait" "Channel surfer"
+focus_by_pressing KEYCODE_DPAD_DOWN "the channel-number wait row" "Channel-number wait"
+key KEYCODE_DPAD_CENTER
+wait_for_focus "the choices open on the stored 1.2 s" "1.2"
+key KEYCODE_DPAD_RIGHT
+key KEYCODE_DPAD_RIGHT
+key KEYCODE_DPAD_RIGHT
+wait_for_focus "the 5 s choice" "5"
+capture surf-auto-tune-choices
+key KEYCODE_DPAD_CENTER
+wait_for_ui "the row showing the saved 5 s" "Channel-number wait · 5"
+capture surf-auto-tune-saved
+key KEYCODE_BACK
+wait_for_ui "Watching before typing at 5 s" "Open programme guide"
+sleep 6
+key KEYCODE_1
+key KEYCODE_2
+key KEYCODE_0
+typed_at_ms="$(date +%s%3N)"
+capture digit-entry-countdown-5s
+# uiautomator skips the readout's text, so time the tune instead: the typed Channel's identity
+# appears only once the wait ends, well after where the 1.2 s default would have tuned.
+wait_for_ui "the 5 s wait tuning the typed Channel" "SCIENCE FICTION" 20
+waited_ms=$(($(date +%s%3N) - typed_at_ms))
+if ((waited_ms < 4500 || waited_ms > 9000)); then
+  printf 'TV emulator tuned %s ms after the last digit, not after a 5 s wait\n' "${waited_ms}" >&2
+  exit 1
+fi
+printf 'tv-emulator-journey: observed the tune %s ms after the last digit\n' "${waited_ms}"
+assert_ui_absent "the readout after the 5 s wait" "auto-tunes in"
+adb -s "${emulator_serial}" shell am force-stop "${PACKAGE_ID}"
+adb -s "${emulator_serial}" shell am start -W -n "${PACKAGE_ID}/.MainActivity" >/dev/null
+wait_for_ui "Watching after relaunch" "Open programme guide" 40
+sleep 6
+key KEYCODE_DPAD_LEFT
+wait_for_ui "Surf after relaunch" "Channel surfer"
+wait_for_ui "the stored 5 s after relaunch" "Channel-number wait · 5"
+key KEYCODE_BACK
+wait_for_ui "Watching after the channel-number wait" "Open programme guide"
 
 # Backgrounding closes the event stream; returning refreshes and retunes the current Channel.
 channel_loads_before="$(journey_state | jq -r '.channelLoads')"
