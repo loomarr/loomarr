@@ -10,6 +10,23 @@ const render = (node: React.ReactNode) =>
     </LoomarrProvider>,
   );
 
+// `renderToStaticMarkup` gives us a string, not a DOM — walk its tags to find where the
+// element opened by `openTagIndex` closes, so a test can assert something sits OUTSIDE it.
+const matchingCloseIndex = (markup: string, openTagIndex: number): number => {
+  const tag = /<([a-z][a-z0-9]*)[^>]*>/i.exec(markup.slice(openTagIndex));
+  if (!tag) throw new Error("no tag at openTagIndex");
+  const name = tag[1];
+  const tagPattern = new RegExp(`<(/?)${name}\\b[^>]*?(/?)>`, "gi");
+  tagPattern.lastIndex = openTagIndex + tag[0].length;
+  let depth = 1;
+  for (let match = tagPattern.exec(markup); match; match = tagPattern.exec(markup)) {
+    if (match[2]) continue; // self-closing
+    depth += match[1] ? -1 : 1;
+    if (depth === 0) return match.index;
+  }
+  throw new Error("unbalanced tags");
+};
+
 const items = [
   { icon: "play", label: "Watching", value: "watching" },
   { icon: "guide", label: "Guide", value: "guide" },
@@ -35,6 +52,26 @@ describe("phone chrome", () => {
       expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
       for (const { label } of items) expect(markup).toContain(`>${label}<`);
     }
+  });
+
+  it('keeps a disclosure item OUTSIDE the tablist — aria-required-children forbids a role="button" tablist child', () => {
+    const markup = render(
+      <TabBar
+        accessibilityLabel="Primary navigation"
+        idiom="ios"
+        items={[...items, { icon: "settings", kind: "disclosure", label: "More", value: "more" }]}
+        onSelect={vi.fn()}
+        selected="guide"
+      />,
+    );
+    const tablistOpen = markup.indexOf('role="tablist"');
+    expect(tablistOpen).toBeGreaterThan(-1);
+    const tagStart = markup.lastIndexOf("<", tablistOpen);
+    const tablistClose = matchingCloseIndex(markup, tagStart);
+    const tablistInner = markup.slice(tagStart, tablistClose);
+    expect(tablistInner.match(/role="tab"/g)).toHaveLength(3);
+    expect(tablistInner).not.toContain("aria-haspopup");
+    expect(markup.indexOf('aria-label="More"')).toBeGreaterThan(tablistClose);
   });
 
   it("sizes each bar as measured: iPhone's 10 pt labels, Android's 12, both over the home inset", () => {
