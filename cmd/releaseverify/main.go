@@ -81,11 +81,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "release-verify: Android workflow policy: %v\n", err)
 		os.Exit(1)
 	}
+	if err := releaseverify.VerifyIOSTestFlightWorkflow(filepath.Join(*root, ".github", "workflows", "ios-testflight.yml")); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: iPhone TestFlight workflow policy: %v\n", err)
+		os.Exit(1)
+	}
 	if err := releaseverify.VerifyReleaseNotesWorkflow(filepath.Join(*root, ".github", "workflows", "release-notes.yml")); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: release notes policy: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("release-verify: workflows use immutable actions and keep server, Android, and release-note publication behind audited paths")
+	fmt.Println("release-verify: workflows use immutable actions and keep server, Android, iPhone, and release-note publication behind audited paths")
 	if err := releaseverify.VerifyDockerfileDownloads(filepath.Join(*root, "Dockerfile")); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: Dockerfile download policy: %v\n", err)
 		os.Exit(1)

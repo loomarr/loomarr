@@ -549,7 +549,7 @@ func TestRunnerKeepsGenerationAsFirstFailureWhenUsageIsAlsoUnknown(t *testing.T)
 
 func TestRunnerKeepsLocalOllamaCallsExplicitlyNonBilled(t *testing.T) {
 	response := llm.Response{Attribution: llm.Attribution{
-		RequestedProvider: "ollama", Tokens: llm.TokenUsage{Prompt: 3, Completion: 2},
+		RequestedProvider: "ollama", Tokens: llm.TokenUsage{Prompt: 3, Completion: 2}, SelfHosted: true,
 	}}
 	provider := testkit.NewLLM(response, response)
 	observed := &observedProvider{inner: provider}
@@ -563,6 +563,122 @@ func TestRunnerKeepsLocalOllamaCallsExplicitlyNonBilled(t *testing.T) {
 	}).WithObserver(observed).Run(context.Background(), []Case{{Name: "local_non_billed"}})
 	if !card.Certified || provider.Calls != 2 || card.ResourceUsage.Spend != "0" {
 		t.Fatalf("local non-billed result = calls %d usage %+v result %+v", provider.Calls, card.ResourceUsage, card.Results[0])
+	}
+}
+
+func TestRunnerKeepsSelfHostedCustomCallsExplicitlyNonBilled(t *testing.T) {
+	response := llm.Response{Attribution: llm.Attribution{
+		RequestedProvider: llm.CustomProviderKey, Tokens: llm.TokenUsage{Prompt: 3, Completion: 2}, SelfHosted: true,
+	}}
+	provider := testkit.NewLLM(response, response)
+	observed := &observedProvider{inner: provider}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 2}, RunnerConfig{
+		ResourceBudget: ResourceBudget{
+			MaxCallsPerRun: 2, MaxCallsPerSuite: 2,
+			MaxTokensPerRun: 10, MaxTokensPerSuite: 10,
+			MaxSpendPerRun: "0.01", MaxSpendPerSuite: "0.01",
+		},
+	}).WithObserver(observed).Run(context.Background(), []Case{{Name: "self_hosted_non_billed"}})
+	if !card.Certified || provider.Calls != 2 || card.ResourceUsage.Spend != "0" {
+		t.Fatalf("self-hosted non-billed result = calls %d usage %+v result %+v", provider.Calls, card.ResourceUsage, card.Results[0])
+	}
+}
+
+// The household's actual configuration (#1852 checkpoint 2): LLM_PROVIDER=openai
+// pointed at a private/Tailscale endpoint. attribution.RequestedProvider is
+// "openai", but the endpoint itself is operator-run — SelfHosted (set from
+// (*OpenAI).selfHosted(), internal/llm/openai.go) must be what the ledger keys
+// on, not the "openai" provider string, or every real household call latches
+// budget_exhausted.
+func TestRunnerKeepsSelfHostedOpenAIProviderCallsExplicitlyNonBilled(t *testing.T) {
+	response := llm.Response{Attribution: llm.Attribution{
+		RequestedProvider: "openai", Tokens: llm.TokenUsage{Prompt: 3, Completion: 2}, SelfHosted: true,
+	}}
+	provider := testkit.NewLLM(response, response)
+	observed := &observedProvider{inner: provider}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 2}, RunnerConfig{
+		ResourceBudget: ResourceBudget{
+			MaxCallsPerRun: 2, MaxCallsPerSuite: 2,
+			MaxTokensPerRun: 10, MaxTokensPerSuite: 10,
+			MaxSpendPerRun: "0.01", MaxSpendPerSuite: "0.01",
+		},
+	}).WithObserver(observed).Run(context.Background(), []Case{{Name: "self_hosted_openai_non_billed"}})
+	if !card.Certified || provider.Calls != 2 || card.ResourceUsage.Spend != "0" {
+		t.Fatalf("self-hosted openai non-billed result = calls %d usage %+v result %+v", provider.Calls, card.ResourceUsage, card.Results[0])
+	}
+}
+
+// The same "openai" provider string against the real public API (SelfHosted
+// false, as (*OpenAI).selfHosted() reports for api.openai.com) must still fail
+// closed when it omits a charge — only the endpoint's own identity exempts a
+// call, never the provider name alone.
+func TestRunnerFailsClosedWhenPublicOpenAIProviderChargeMissing(t *testing.T) {
+	response := llm.Response{Attribution: llm.Attribution{
+		RequestedProvider: "openai", Tokens: llm.TokenUsage{Prompt: 3, Completion: 2}, SelfHosted: false,
+	}}
+	provider := testkit.NewLLM(response)
+	observed := &observedProvider{inner: provider}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 1}, RunnerConfig{
+		ResourceBudget: ResourceBudget{
+			MaxCallsPerRun: 1, MaxCallsPerSuite: 1,
+			MaxTokensPerRun: 10, MaxTokensPerSuite: 10,
+			MaxSpendPerRun: "0.01", MaxSpendPerSuite: "0.01",
+		},
+	}).WithObserver(observed).Run(context.Background(), []Case{{Name: "public_openai_missing_charge"}})
+	result := card.Results[0]
+	if card.Certified || result.FailureStage != FailureStageBudgetExhausted {
+		t.Fatalf("public openai missing-charge result = stage %q result %+v", result.FailureStage, result)
+	}
+	joined := strings.Join(result.Failures, " ")
+	if !strings.Contains(joined, "provider spend attribution is missing or invalid") {
+		t.Fatalf("public openai missing-charge failures = %v, want fail-closed spend attribution message", result.Failures)
+	}
+}
+
+func TestRunnerCountsReportedHostedProviderCharge(t *testing.T) {
+	response := llm.Response{Attribution: llm.Attribution{
+		RequestedProvider: "openrouter", Tokens: llm.TokenUsage{Prompt: 3, Completion: 2},
+		Charge: &llm.Money{Amount: "0.004", Currency: "USD"},
+	}}
+	provider := testkit.NewLLM(response)
+	observed := &observedProvider{inner: provider}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 1}, RunnerConfig{
+		ResourceBudget: ResourceBudget{
+			MaxCallsPerRun: 1, MaxCallsPerSuite: 1,
+			MaxTokensPerRun: 10, MaxTokensPerSuite: 10,
+			MaxSpendPerRun: "0.01", MaxSpendPerSuite: "0.01",
+		},
+	}).WithObserver(observed).Run(context.Background(), []Case{{Name: "hosted_reported_charge"}})
+	if !card.Certified || card.ResourceUsage.Spend != "0.004" {
+		t.Fatalf("hosted reported-charge result = usage %+v result %+v", card.ResourceUsage, card.Results[0])
+	}
+}
+
+func TestRunnerFailsClosedWhenHostedProviderChargeMissing(t *testing.T) {
+	response := llm.Response{Attribution: llm.Attribution{
+		RequestedProvider: "openrouter", Tokens: llm.TokenUsage{Prompt: 3, Completion: 2},
+	}}
+	provider := testkit.NewLLM(response)
+	observed := &observedProvider{inner: provider}
+	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}}}
+	card := NewRunner(providerGenerator{provider: observed, proposal: proposal, calls: 1}, RunnerConfig{
+		ResourceBudget: ResourceBudget{
+			MaxCallsPerRun: 1, MaxCallsPerSuite: 1,
+			MaxTokensPerRun: 10, MaxTokensPerSuite: 10,
+			MaxSpendPerRun: "0.01", MaxSpendPerSuite: "0.01",
+		},
+	}).WithObserver(observed).Run(context.Background(), []Case{{Name: "hosted_missing_charge"}})
+	result := card.Results[0]
+	if card.Certified || result.FailureStage != FailureStageBudgetExhausted {
+		t.Fatalf("hosted missing-charge result = stage %q result %+v", result.FailureStage, result)
+	}
+	joined := strings.Join(result.Failures, " ")
+	if !strings.Contains(joined, "provider spend attribution is missing or invalid") {
+		t.Fatalf("hosted missing-charge failures = %v, want fail-closed spend attribution message", result.Failures)
 	}
 }
 

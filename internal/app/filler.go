@@ -21,11 +21,11 @@ import (
 	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/mediatools"
-	"github.com/loomarr/loomarr/internal/programmer"
 	"github.com/loomarr/loomarr/internal/schedule"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/taxonomy"
+	"github.com/loomarr/loomarr/internal/tunarr"
 )
 
 // fillerSourceAdapter bridges the optional Tunarr annotation slice used by
@@ -36,12 +36,12 @@ type fillerSourceAdapter struct {
 	configured func() bool
 }
 
-// tunarrFillerClient is the exact programmer slice needed to annotate Loomarr's local
+// tunarrFillerClient is the exact tunarr slice needed to annotate Loomarr's local
 // filler catalog with optional Tunarr program ids. Keeping the seam narrow lets the adapter's
 // live-enable behavior be tested without starting a network service.
 type tunarrFillerClient interface {
-	EnsureLocalFillerSource(ctx context.Context, dir string) (programmer.EnsureLocalSourceResult, error)
-	ListLocalFillerClipsAll(ctx context.Context) ([]programmer.LocalClip, error)
+	EnsureLocalFillerSource(ctx context.Context, dir string) (tunarr.EnsureLocalSourceResult, error)
+	ListLocalFillerClipsAll(ctx context.Context) ([]tunarr.LocalClip, error)
 }
 
 // available is resolved per call so an internal-only process can gain Tunarr filler
@@ -771,14 +771,7 @@ type fillerServiceAdapter struct {
 	// sources registers what an operator added, so the Sources tab can show where clips
 	// came from. Narrow interface, not the whole store: this adapter has no other reason
 	// to reach persistence.
-	sources fillerSourceRegistry
-	// pullPlanning is the read side of candidate-level pull composition. It is separate from
-	// sources because approval history is evidence for "already queued/declined" selection.
-	pullPlanning fillerPullPlanningStore
-	sourceEnum   filler.SourceEnumerator
-	// compilations holds compilation reels out of planned pulls until automatic splitting is
-	// certified (#1773); the zero gate takes them.
-	compilations  filler.CompilationGate
+	sources       fillerSourceRegistry
 	archiveFinder *clipfetch.ArchiveSourceFinder
 	youtubeFinder *clipfetch.YouTubeSourceFinder
 	home          func() filler.Geography

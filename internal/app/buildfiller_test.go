@@ -18,10 +18,11 @@ import (
 	"github.com/loomarr/loomarr/internal/llm"
 	"github.com/loomarr/loomarr/internal/storagegovernor"
 	"github.com/loomarr/loomarr/internal/testkit"
+	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
 func TestFillerSourceAdapter_HotEnablesTunarrAnnotation(t *testing.T) {
-	client := testkit.NewTunarr()
+	client := tunarrtest.NewTunarr()
 	enabled := false
 	adapter := fillerSourceAdapter{
 		prog:       client,
@@ -107,6 +108,12 @@ func TestFetchStoreAdapter_DisablesRemoteSourcesUntilInstallationHasALocation(t 
 		}
 	}
 	t.Fatalf("source %q disappeared instead of remaining visible as disabled", src.ID)
+}
+
+type enumeratorFunc func(context.Context, filler.FetchSource, int) ([]filler.DiscoveredRef, int, error)
+
+func (f enumeratorFunc) Enumerate(ctx context.Context, source filler.FetchSource, limit int) ([]filler.DiscoveredRef, int, error) {
+	return f(ctx, source, limit)
 }
 
 type fetchIngestorFunc func(context.Context, string, string, []string) (string, error)

@@ -6,7 +6,7 @@
 **Base URL used:** `http://localhost:8000`.
 
 > **Re-verified 2026-07-23 against Tunarr `1.3.9`** (live homelab). The `POST /api/channels`
-> create body Loomarr sends (`internal/programmer/tunarr.go` `channelBody` +
+> create body Loomarr sends (`internal/tunarr/tunarr.go` `channelBody` +
 > `tunarrChannel`) matches 1.3.9's `required` channel set — `disableFillerOverlay`,
 > `duration`, `groupTitle`, `guideMinimumDuration`, `icon`, `id`, `name`, `number`,
 > `offline`, `startTime`, `stealth`, `streamMode`, `transcodeConfigId`, `subtitlesEnabled`
