@@ -234,10 +234,6 @@ func applyRuleScopeWithTrace(entries []LineupEntry, what *ScopePolicy, trace *sc
 				continue
 			}
 		}
-		if e.Year > 0 && !what.Era.Contains(e.Year) {
-			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfRuleScope))
-			continue
-		}
 		if !genreOK(e.Genres, what.Genres) {
 			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfRuleScope))
 			continue

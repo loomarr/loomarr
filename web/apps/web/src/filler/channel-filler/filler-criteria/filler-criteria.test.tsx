@@ -53,7 +53,7 @@ const SCOPE = { from: 1990, to: 1999 };
 // The three states of a filler era (§10 V51f).
 //
 // ⚠ **Two of them used to be the same value, so one was unreachable.** The server applies
-// `policy.scope.era` to an UNSET filler era, live on every derivation — and the UI rendered that
+// the channel's programming era to an UNSET filler era, live on every derivation — and the UI rendered that
 // as two blank inputs, which reads as "any era". So a channel quietly drawing 1990s ads looked
 // like it was drawing from everything, and an operator who wanted the whole catalog had no way to
 // say so: clearing the fields simply re-inherited. Presence is now the opt-in, and these tests

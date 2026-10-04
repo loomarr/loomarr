@@ -14,6 +14,7 @@ import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
 import { setting } from "@/test/fixtures/settings";
 import { server } from "@/test/msw/server";
@@ -151,7 +152,7 @@ const policy = (
   breakDuration?: string,
 ): ChannelPolicy => ({
   ordering: "shuffle",
-  scope: { era: { from: 1990, to: 1999 } },
+  scope: { dates: eraDates({ from: 1990, to: 1999 }) },
   ...(filler ? { filler } : {}),
   ...(breaksPerHour !== undefined ? { breaksPerHour } : {}),
   ...(breakDuration !== undefined ? { breakDuration } : {}),
@@ -292,7 +293,7 @@ describe("ChannelFiller", () => {
     expect(patches[0]).toMatchObject({
       policy: {
         ordering: "shuffle",
-        scope: { era: { from: 1990 } },
+        scope: { dates: { movieRelease: [{ from: 1990 }] } },
         filler: { categories: ["candy"], audience: "kids" },
       },
     });
@@ -347,7 +348,7 @@ describe("ChannelFiller", () => {
       revision: 7,
       policy: {
         ordering: "shuffle",
-        scope: { era: { from: 1990, to: 1999 } },
+        scope: { dates: eraDates({ from: 1990, to: 1999 }) },
         filler: { pinned: ["preferred"], excluded: ["blocked"], audience: "kids", categories: ["candy"] },
       },
     });
@@ -383,7 +384,7 @@ describe("ChannelFiller", () => {
       const payload = patches[0] as { policy: ChannelPolicy };
       expect(payload.policy.filler?.[list] ?? []).toEqual([]);
       expect(payload.policy.filler?.[other]).toEqual(["other-clip"]);
-      expect(payload.policy.scope).toEqual({ era: { from: 1990, to: 1999 } });
+      expect(payload.policy.scope).toEqual({ dates: eraDates({ from: 1990, to: 1999 }) });
       expect(payload.policy.filler?.audience).toBe("kids");
     },
   );

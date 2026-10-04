@@ -37,18 +37,14 @@ func (p pick) key() string {
 
 // pickPolicy is the UNTRUSTED ChannelPolicy the model proposes (programming-design
 // §8: the LLM extracts, deterministic code enforces). Every field is loose/optional;
-// groundPolicy validates + clamps it (off-ladder ceiling dropped, era bounded,
-// series intersected with grounded ids) before it becomes a schedule.ChannelPolicy.
+// groundPolicy validates + clamps it (off-ladder ceiling dropped, series
+// intersected with grounded ids) before it becomes a schedule.ChannelPolicy.
 // The model never places a program — it only proposes rules, each machine-checked.
 type pickPolicy struct {
 	Audience struct {
 		Ceiling string `json:"ceiling"` // e.g. "TV-Y7"; dropped if off the closed ladder
 		Unrated string `json:"unrated"` // "exclude" | "allow"; ignored otherwise
 	} `json:"audience"`
-	Era struct {
-		From int `json:"from"`
-		To   int `json:"to"`
-	} `json:"era"`
 	Genres struct {
 		Include []string `json:"include"`
 		Exclude []string `json:"exclude"`

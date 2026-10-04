@@ -317,7 +317,7 @@ func TestSuggest_RecoversCoherentNetworkRouteFromProviderPopulatedOptionalFields
 	if got := corpus.Discoveries(); len(got) != 1 || got[0].Query.MediaType != provision.Series || got[0].Query.Network != "ABC" || got[0].Query.YearFrom != 1990 || got[0].Query.YearTo != 1999 || got[0].Query.RuntimeMin != 20 || got[0].Query.RuntimeMax != 60 || !slices.Equal(got[0].Query.Genres, []string{"Comedy", "Family"}) {
 		t.Fatalf("network discovery = %#v, want one constrained series discovery", got)
 	}
-	if prop.Policy.Scope.Dates == nil || !equalRanges(prop.Policy.Scope.Dates.SeriesPremiere, []schedule.Range{{From: 1990, To: 1999}}) || prop.Policy.Scope.Era != nil {
+	if prop.Policy.Scope.Dates == nil || !equalRanges(prop.Policy.Scope.Dates.SeriesPremiere, []schedule.Range{{From: 1990, To: 1999}}) {
 		t.Fatalf("scope = %#v, want series premiere 1990..1999 without legacy era", prop.Policy.Scope)
 	}
 }
@@ -2212,7 +2212,7 @@ func TestSuggest_DiscoversByGenre(t *testing.T) {
 	if prop.Trace.WindowsCompleted == 0 || prop.Trace.SourceQueriesDispatched == 0 {
 		t.Fatalf("discovery trace = %+v, want an actual discovery dispatch", prop.Trace)
 	}
-	if prop.Policy.Scope.Dates == nil || !equalRanges(prop.Policy.Scope.Dates.MovieRelease, []schedule.Range{{From: 1990, To: 1999}}) || prop.Policy.Scope.Era != nil {
+	if prop.Policy.Scope.Dates == nil || !equalRanges(prop.Policy.Scope.Dates.MovieRelease, []schedule.Range{{From: 1990, To: 1999}}) {
 		t.Fatalf("scope = %#v, want movie release 1990..1999 without legacy era", prop.Policy.Scope)
 	}
 	all := append(append([]suggest.ProposalItem{}, prop.Lineup...), prop.Acquisitions...)
@@ -2430,7 +2430,7 @@ func TestSuggest_ThemeFitScoresGenres(t *testing.T) {
 	if prop.Trace.WindowsCompleted == 0 || prop.Trace.SourceQueriesDispatched == 0 {
 		t.Fatalf("discovery trace = %+v, want an actual discovery dispatch", prop.Trace)
 	}
-	if prop.Policy.Scope.Dates == nil || !equalRanges(prop.Policy.Scope.Dates.MovieRelease, []schedule.Range{{From: 1990, To: 1999}}) || prop.Policy.Scope.Era != nil {
+	if prop.Policy.Scope.Dates == nil || !equalRanges(prop.Policy.Scope.Dates.MovieRelease, []schedule.Range{{From: 1990, To: 1999}}) {
 		t.Fatalf("scope = %#v, want movie release 1990..1999 without legacy era", prop.Policy.Scope)
 	}
 }

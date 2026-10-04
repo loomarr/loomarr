@@ -90,8 +90,7 @@ type Case struct {
 	ExpectedPolicyCeiling string
 	// ExpectedDateScope is optional quality evidence for the canonical date policy.
 	// nil leaves dates unscored; a non-nil empty scope explicitly expects no date
-	// policy. Non-empty axes must use normalized, disjoint schedule ranges. Date
-	// expectations also require that the legacy scalar Era is absent.
+	// policy. Non-empty axes must use normalized, disjoint schedule ranges.
 	ExpectedDateScope          *schedule.DateScope
 	ExpectedProposalKeys       []provision.Key
 	ExpectedProposalAbstention bool

@@ -410,7 +410,6 @@ type Result struct {
 	Acquisitions               int                 `json:"acquisitions"`
 	Ceiling                    string              `json:"ceiling"` // the extracted policy ceiling
 	DateScope                  *schedule.DateScope `json:"dateScope,omitempty"`
-	ScalarEra                  *schedule.Range     `json:"scalarEra,omitempty"`
 	JudgeScore                 float64             `json:"judgeScore"`
 	RelevanceScore             float64             `json:"relevanceScore"`
 	SerendipityScore           float64             `json:"serendipityScore"`

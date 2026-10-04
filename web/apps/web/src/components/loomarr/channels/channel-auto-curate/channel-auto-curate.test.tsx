@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { eraDates } from "@/lib/era-dates";
 import { ChannelAutoCurate } from "./channel-auto-curate";
 
 // The opt-in's help is a FieldHelp tooltip, which needs a TooltipProvider ancestor.
@@ -15,7 +16,7 @@ const OPT_IN = "Add new titles without asking";
 // a scope so the tests prove unrelated sections are not rebuilt by an auto-curate edit.
 const POPULATED: ChannelPolicy = {
   ordering: "shuffle",
-  scope: { era: { from: 1990, to: 1999 } },
+  scope: { dates: eraDates({ from: 1990, to: 1999 }) },
   applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
 };
 

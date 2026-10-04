@@ -121,8 +121,12 @@ func LowerWhat(token string) (scope *ScopePolicy, kidsCeiling Rating, ok bool) {
 		}
 		return &ScopePolicy{Genres: GenreFilter{Include: []string{g}}}, "", true
 	case strings.HasPrefix(t, "era:"):
+		// An era the date scope cannot store (inverted, outside 1900–2099) is garbage like any
+		// other unparseable token: dropped here rather than failing the whole policy later.
 		if r, ok := parseEraToken(t[len("era:"):]); ok {
-			return &ScopePolicy{Era: r}, "", true
+			if dates := EraDates(*r); dates.Validate() == nil {
+				return &ScopePolicy{Dates: dates}, "", true
+			}
 		}
 		return nil, "", false
 	default:

@@ -8916,6 +8916,9 @@ components:
           $ref: "#/components/schemas/DateScope"
         era:
           $ref: "#/components/schemas/Range"
+          deprecated: true
+          description: "Shortcut for dates: the same year range on movieRelease, seriesPremiere and seriesAiring. Accepted on requests only and stored as dates; never returned. Sending both era and dates is rejected with 422."
+          writeOnly: true
         genres:
           $ref: "#/components/schemas/GenreFilter"
         runtimeMax:

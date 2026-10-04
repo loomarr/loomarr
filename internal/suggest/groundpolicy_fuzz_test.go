@@ -29,28 +29,25 @@ var onLadderCeilings = map[schedule.Rating]bool{
 //   - an off-ladder ceiling never survives (result ceiling is "" or on-ladder);
 //   - unknown ordering / seasonal enums are dropped (result enum is "" or known).
 func FuzzGroundPolicy(f *testing.F) {
-	// Seed corpus: a realistic valid policy, an all-hallucinated one, boundary
-	// years, and the empty case — so the corpus exercises both survive + drop paths
-	// before the fuzzer explores. Field order: ceiling, unrated, from, to, ordering,
+	// Seed corpus: a realistic valid policy, an all-hallucinated one, mixed-case
+	// enums, and the empty case — so the corpus exercises both survive + drop paths
+	// before the fuzzer explores. Field order: ceiling, unrated, ordering,
 	// seasonalMode, genreInc, genreExc, holiday.
-	f.Add("TV-Y7", "exclude", 1990, 1999, "syndication", "auto", "Animation", "Horror", "christmas")
-	f.Add("TV-SUPERSAFE", "maybe", -5, 999999, "sideways", "eventually", "", "", "")
-	f.Add("tv_14", "allow", 0, 0, "shuffle", "off", "Comedy", "", "halloween")
-	f.Add("", "", 0, 0, "", "", "", "", "")
-	f.Add("Rated R", "", 2020, 1980, "sequential", "exclusive", "Sci-Fi", "Romance", "")
-	f.Add("NC-17", "EXCLUDE", 1, 2147483647, "SEQUENTIAL", "AUTO", "Drama", "News", "newyear")
+	f.Add("TV-Y7", "exclude", "syndication", "auto", "Animation", "Horror", "christmas")
+	f.Add("TV-SUPERSAFE", "maybe", "sideways", "eventually", "", "", "")
+	f.Add("tv_14", "allow", "shuffle", "off", "Comedy", "", "halloween")
+	f.Add("", "", "", "", "", "", "")
+	f.Add("Rated R", "", "sequential", "exclusive", "Sci-Fi", "Romance", "")
+	f.Add("NC-17", "EXCLUDE", "SEQUENTIAL", "AUTO", "Drama", "News", "newyear")
 
 	f.Fuzz(func(t *testing.T,
 		ceiling, unrated string,
-		from, to int,
 		ordering, seasonalMode string,
 		genreInc, genreExc, holiday string,
 	) {
 		var raw pickPolicy
 		raw.Audience.Ceiling = ceiling
 		raw.Audience.Unrated = unrated
-		raw.Era.From = from
-		raw.Era.To = to
 		raw.Ordering = ordering
 		raw.Seasonal.Mode = seasonalMode
 		raw.Seasonal.Holidays = []string{holiday}

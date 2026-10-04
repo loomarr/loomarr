@@ -3,6 +3,7 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { Check, Download, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { eraOf } from "@/lib/era-dates";
 import { cn } from "@/lib/utils";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import type { CurrentLineupItem, RefineReviewProps } from "./refine-review.type";
@@ -46,7 +47,7 @@ const policyDeltas = (current?: ChannelPolicy, proposed?: ChannelPolicy): Policy
   const add = (label: string, path: string, from: string, to: string) => {
     if (from !== to) out.push({ label, from, to, pinned: pinned.has(path) });
   };
-  add("Era", "scope", eraLabel(current.scope?.era), eraLabel(proposed.scope?.era));
+  add("Era", "scope", eraLabel(eraOf(current.scope?.dates)), eraLabel(eraOf(proposed.scope?.dates)));
   add(
     "Audience ceiling",
     "audience",

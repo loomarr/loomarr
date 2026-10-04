@@ -159,15 +159,15 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
 - **Matching:** country and local market first, then era to the block, audience to the channel, and
   category variety within a pod.
 - **Per-channel selection (`policy.filler`, `FillerSelection`)** narrows `era`, `audience`,
-  `categories`, `kinds`, `pinned` and `excluded`. `era` has three states: unset inherits
-  `policy.scope.era`, `{0,0}` is explicitly any, and a range matches both bounds. Exclusion wins
+  `categories`, `kinds`, `pinned` and `excluded`. `era` has three states: unset inherits the era
+  `policy.scope.dates` implies, `{0,0}` is explicitly any, and a range matches both bounds. Exclusion wins
   over a pin. Optional `geography` may choose a market but never change the installation country,
   and is applied before pins. On first approval of a generated channel, one pure function seeds the
-  selection from the Proposal (scope era; `TV-Y`/`TV-Y7` → `kids`, `G`…`TV-PG` → `family`, anything
+  selection from the Proposal (the era its scope dates imply; `TV-Y`/`TV-Y7` → `kids`, `G`…`TV-PG` → `family`, anything
   else → `general`); after that the operator owns it and refine or re-curation never overwrite it.
 - **Derived context.** Where the operator left audience or era unset, `schedule.DeriveFiller`
   (applied in `channels.SelectionFrom`) derives them live: audience from the ceiling, else the
-  highest rating in the lineup; era from scope, else the lineup's release-year span.
+  highest rating in the lineup; era from the scope dates, else the lineup's release-year span.
 - **Four separate decisions:** acquisition authorisation, catalog admission (terminal certified
   evidence only), deterministic channel matching, and per-channel pins and exclusions. None
   substitutes for another. A clip's eligibility change wakes only the affected channels, through the

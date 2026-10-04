@@ -2,8 +2,10 @@ package api_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -177,6 +179,37 @@ func TestProgrammingChanges_ValidatesLikeThePreview(t *testing.T) {
 				t.Errorf("programming/preview refuses the same draft with %d, this endpoint with %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// The draft's `era` is programming/preview's alias (#1877): alone it reaches the engine as
+// era-shaped Dates, and with `dates` beside it the draft is ambiguous and refused.
+func TestProgrammingChanges_EraIsTheDatesAlias(t *testing.T) {
+	harness := newChannelsHarness(t)
+	srv, chSvc := harness.Server, harness.Channels
+	mkChannel(t, srv, "c1", "Movies", 5)
+
+	decodeChanges(t, do(t, srv, http.MethodPost, changesPath, adminToken,
+		`{"policy":{"scope":{"era":{"from":1990}},"rules":[{"id":"r","what":{"era":{"from":1980,"to":1989}}}]}}`))
+	if chSvc.draftPolicy == nil {
+		t.Fatal("draft policy not passed through")
+	}
+	if era, ok := chSvc.draftPolicy.Scope.Dates.Era(); !ok || era != (schedule.Range{From: 1990}) {
+		t.Errorf("draft scope dates = %+v, want era-shaped 1990 onwards", chSvc.draftPolicy.Scope.Dates)
+	}
+	if era, ok := chSvc.draftPolicy.Rules[0].What.Dates.Era(); !ok || era != (schedule.Range{From: 1980, To: 1989}) {
+		t.Errorf("draft rule dates = %+v, want era-shaped 1980-1989", chSvc.draftPolicy.Rules[0].What.Dates)
+	}
+
+	for _, policy := range []string{
+		`{"scope":{"era":{"from":1990,"to":1999},"dates":{"movieRelease":[{"from":1990,"to":1999}]}}}`,
+		`{"rules":[{"id":"r","what":{"era":{"from":1990,"to":1999},"dates":{"seriesAiring":[{"from":1990,"to":1999}]}}}]}`,
+	} {
+		resp := do(t, srv, http.MethodPost, changesPath, adminToken, `{"policy":`+policy+`}`)
+		raw, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(raw), "not both") {
+			t.Errorf("%s → %d %s, want 422 naming the ambiguity", policy, resp.StatusCode, raw)
+		}
 	}
 }
 

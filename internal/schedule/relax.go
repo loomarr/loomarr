@@ -93,15 +93,8 @@ func placementInputsChanged(prev, cur ResolvedPolicy) bool {
 	if prev.Ordering != cur.Ordering {
 		return true
 	}
-	// Era is the scope field the ladder widens; compare by value (both may be nil).
-	switch {
-	case prev.Scope.Era == nil && cur.Scope.Era == nil:
-		return false
-	case prev.Scope.Era == nil || cur.Scope.Era == nil:
-		return true
-	default:
-		return *prev.Scope.Era != *cur.Scope.Era
-	}
+	// Dates are the scope field the ladder widens; compare by value (both may be nil).
+	return !datesEqual(prev.Scope.Dates, cur.Scope.Dates)
 }
 
 // separationUnsatisfied reports whether the placed cycle can't honor the policy
@@ -180,14 +173,16 @@ func ladderStep(rp ResolvedPolicy) (ResolvedPolicy, AppliedRelaxation, bool) {
 		rp.Sep.BlockMax = 0 // unbounded
 		return rp, AppliedRelaxation{Kind: "blockMax", From: fmt.Sprintf("%d", from), To: "unbounded"}, true
 	}
-	// Step 3: widen era (only when an era is set). Widening is symmetric ±2y; a
-	// stated decade boundary is respected by not widening past the decade the era
-	// was authored in — v1 keeps this simple and widens once per call.
-	if rp.Scope.Era != nil && (rp.Scope.Era.From > 0 || rp.Scope.Era.To > 0) {
-		from := *rp.Scope.Era
+	// Step 3: widen the era (only when the dates are era-shaped: one range, the same on
+	// every axis — what the era shortcut sets). Dates with distinct windows per axis are
+	// an explicit scope and never widen. Widening is symmetric ±2y; a stated decade
+	// boundary is respected by not widening past the decade the era was authored in —
+	// v1 keeps this simple and widens once per call.
+	if from, ok := rp.Scope.Dates.Era(); ok {
 		widened := widenEra(from)
 		if widened != from {
-			rp.Scope.Era = &widened
+			// A fresh DateScope: rp.Scope.Dates is shared with the channel's stored policy.
+			rp.Scope.Dates = EraDates(widened)
 			return rp, AppliedRelaxation{
 				Kind: "era",
 				From: fmt.Sprintf("%d-%d", from.From, from.To),
