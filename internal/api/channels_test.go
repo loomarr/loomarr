@@ -68,6 +68,11 @@ type fakeChannelSvc struct {
 	// programming/preview draft capture (P6): what the last CyclePreviewDraft received.
 	draftLineup []schedule.LineupEntry
 	draftPolicy *schedule.ChannelPolicy
+
+	// programming/changes (#1877): the diff served, and the span the last call asked for.
+	diff        channels.ScheduleDiff
+	diffFrom    time.Time
+	diffHorizon time.Duration
 }
 
 func (f *fakeChannelSvc) Reconcile(ctx context.Context, id string) error {
@@ -116,6 +121,18 @@ func (f *fakeChannelSvc) CyclePreviewDraft(ctx context.Context, id string, at ti
 		Excluded: f.cycleExcluded,
 		Trace:    f.cycleTrace,
 	}, nil
+}
+
+// ScheduleDiffDraft records the draft and span it was handed and serves f.diff, or f.cycleErr
+// (the same error knob the cycle previews use).
+func (f *fakeChannelSvc) ScheduleDiffDraft(ctx context.Context, id string, from time.Time, horizon time.Duration,
+	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.ScheduleDiff, error) {
+	f.draftLineup, f.draftPolicy = draftLineup, draftPolicy
+	f.diffFrom, f.diffHorizon = from, horizon
+	if f.cycleErr != nil {
+		return channels.ScheduleDiff{}, f.cycleErr
+	}
+	return f.diff, nil
 }
 
 // fakeLiveTVSvc is a stateful Live TV service double.
