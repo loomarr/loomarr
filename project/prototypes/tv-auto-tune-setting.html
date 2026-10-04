@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr TV auto-tune setting — design review</title>
+<style>
+  /* Dark semantic theme, resolved from web/packages/design-system/src/tokens/tokens.ts (semanticThemes.dark). */
+  :root {
+    color-scheme: dark;
+    --surface-canvas: #0B0C0E;
+    --surface-raised: #131519;
+    --surface-elevated: #1B1E24;
+    --surface-overlay: rgba(11, 12, 14, 0.88);
+    --surface-chrome: rgba(11, 12, 14, 0.78);
+    --surface-entry: rgba(11, 12, 14, 0.82);
+    --surface-focus: #282C34;
+    --content-primary: #E7EAF0;
+    --content-muted: #8B93A3;
+    --content-inverse: #0B0C0E;
+    --border-decorative: #2A2E37;
+    --border-control: #666970;
+    --state-success: #3DD68C;
+    --state-danger: #E85A5F;
+    --action-primary: #FFB020;
+    --action-focus: #FFB020;
+    --artwork-scrim: rgba(11, 12, 14, 0.66);
+    /* typography.family (web); local names only, nothing is fetched. */
+    --font-body: 'Geist Variable', Geist, ui-sans-serif, system-ui, sans-serif;
+    --font-data: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
+    font-family: var(--font-body); color: var(--content-primary); background: #08090b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select { font: inherit; min-height: 44px; color: inherit; background: #1b1e24; border: 1px solid #666970; border-radius: 6px; padding: 8px 12px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid #ffb020; outline-offset: 3px; }
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2a2e37; background: #131519; position: sticky; top: 0; z-index: 5; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .review-note { font-size: 13px; color: #8b93a3; margin: 12px 24px; max-width: 900px; line-height: 1.5; }
+  .review-note.question { color: #dc5bac; }
+  .review-note.flag { color: #f5d90a; }
+  .review-note code, kbd { font-family: var(--font-data); background: #1b1e24; padding: 1px 5px; border-radius: 4px; }
+  .review-note ul, .review-note ol { margin: 6px 0 0; padding-left: 20px; }
+  .layout { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 24px 16px; }
+  .frame-label { font-size: 12px; color: #8b93a3; font-family: var(--font-data); }
+  #stage { overflow: hidden; border-radius: 6px; box-shadow: 0 0 0 6px #131519; }
+  footer.notes { padding: 4px 0 48px; }
+
+  /* ---- the 960×540 logical TV canvas ---- */
+  #tv { position: relative; width: 960px; height: 540px; transform-origin: 0 0; overflow: hidden; background: #000; }
+  /* Stand-in for the playing picture: no image is loaded (prototype rule). */
+  .picture { position: absolute; inset: 0; background: radial-gradient(ellipse at 70% 40%, #2a3340 0%, #141820 45%, #07080a 100%); }
+  .picture::after { content: "playing picture (placeholder)"; position: absolute; right: 48px; top: 48px; font: 500 12px/1 var(--font-data); color: rgba(231, 234, 240, .25); }
+
+  /* TvSurfRail chrome panel: absolute, top/left/bottom 0, width 420, padding 48 48 48 / right $control 12 */
+  .rail { position: absolute; top: 0; left: 0; bottom: 0; width: 420px; background: var(--surface-chrome); padding: 48px 12px 48px 48px; display: flex; flex-direction: column; }
+  /* ScrollFrame density tv: flex 1, content gap $section 24 */
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; display: flex; flex-direction: column; gap: 24px; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .group { display: flex; flex-direction: column; gap: 4px; }
+
+  /* Text roles at density "tv" (typography.tv). section tracks 2px; data roles are mono. */
+  .t-section { font: 400 20px/30px var(--font-body); letter-spacing: 2px; color: var(--content-muted); padding: 12px 0 4px; }
+  .t-metadata { font: 500 16px/22px var(--font-data); color: var(--content-muted); }
+  .t-data { font: 400 24px/30px var(--font-data); }
+  .t-compact { font: 400 20px/30px var(--font-body); }
+  .t-caption { font: 400 17px/26px var(--font-body); color: var(--content-muted); }
+  .t-title { font: 650 32px/39px var(--font-body); letter-spacing: -0.25px; color: var(--content-primary); margin: 0; }
+  .t-body { font: 400 22px/31px var(--font-body); color: var(--content-primary); margin: 0; }
+  .t-reading { font: 400 24px/36px var(--font-body); color: var(--content-muted); }
+  .t-channelNumber { font: 650 38px/43px var(--font-data); color: var(--action-primary); }
+  .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+  /* SurfChannelCard */
+  .card { background: var(--surface-canvas); border: 1px solid var(--surface-canvas); border-radius: 12px; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+  .card[data-selected="true"] { background: var(--surface-raised); border: 3px solid var(--action-focus); }
+  .card-row { display: flex; align-items: center; gap: 12px; }
+  .card-row .num { color: var(--content-muted); }
+  .card[data-selected="true"] .num { color: var(--action-primary); }
+  .card-row .name { flex: 1; }
+  .live-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--state-success); flex-shrink: 0; }
+  .card-sub { display: flex; align-items: center; gap: 8px; padding-left: 68px; }
+  .card-sub .caption { flex: 1; }
+  .progress { margin-left: 68px; margin-top: 4px; height: 4px; border-radius: 999px; background: var(--surface-canvas); overflow: hidden; }
+  .progress > span { display: block; height: 100%; border-radius: 999px; background: var(--action-primary); }
+
+  /* ChannelIdent at size 24 (scale 0.8 of BASE_SIZE 30) */
+  .ident { width: 24px; height: 24px; border-radius: 4px; border: 1px solid; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+           background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(255, 255, 255, 0.05) 3px 6px);
+           font: 600 8.8px/11.2px var(--font-data); }
+
+  /* design-system Action, density tv */
+  .action { display: flex; align-items: center; justify-content: center; text-align: center; border-radius: 8px; border: 1px solid var(--border-control); padding: 8px 24px; background: var(--surface-elevated); color: var(--content-primary); font: 400 24px/30px var(--font-body); }
+  .action[data-tone="danger"] { background: var(--state-danger); border-color: var(--state-danger); color: var(--content-inverse); }
+  .action[data-selected="true"] { background: var(--surface-focus); border-color: var(--action-focus); }
+  .action[data-focused="true"] { border-width: 3px; border-color: var(--action-focus); }
+
+  /* Hint chip: Surface $surfaceOverlay, radius 8, padding $control, bottom/right 48; default 1px $borderDecorative border */
+  .hint { position: absolute; right: 48px; bottom: 48px; background: var(--surface-overlay); border: 1px solid var(--border-decorative); border-radius: 8px; padding: 12px; }
+
+  /* ModalOverlay: scrim + centred OverlayPanel (modal, tv: maxWidth 880, padding 32, gap $control, level overlay) */
+  .modal { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .scrim { position: absolute; inset: 0; background: var(--artwork-scrim); }
+  .panel { position: relative; width: 100%; max-width: 880px; padding: 32px; display: flex; flex-direction: column; gap: 12px; background: var(--surface-overlay); border: 1px solid var(--border-decorative); border-radius: 24px; }
+  .panel-actions { display: flex; flex-direction: row; flex-wrap: wrap; align-items: stretch; gap: 12px; }
+
+  /* Watching NumberEntry (density tv): left/top 48, $surfaceEntry, radius 8, padding 12/20, gap 16 */
+  .entry { position: absolute; left: 48px; top: 48px; display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--surface-entry); border: 1px solid var(--border-decorative); border-radius: 8px; }
+</style>
+
+<div class="review">
+  <strong>TV auto-tune setting · design review (#1659 N4, #1817)</strong>
+  <label>State
+    <select id="state">
+      <option value="default">1 · Default value (1.2 s), row unfocused</option>
+      <option value="row">2 · Row focused</option>
+      <option value="nondefault">3 · Non-default value (5 s), row unfocused</option>
+      <option value="overlay">4 · Choice overlay open, focus on a choice</option>
+      <option value="countdown">5 · Watching: digit-entry countdown</option>
+    </select>
+  </label>
+  <label>Stored value
+    <select id="value"></select>
+  </label>
+  <label>Zoom
+    <select id="zoom">
+      <option value="fit">Fit window</option>
+      <option value="1">1× (960×540 logical)</option>
+      <option value="2">2× (1920×1080 physical)</option>
+    </select>
+  </label>
+  <button id="replay" type="button">Type “21” again</button>
+</div>
+
+<p class="review-note">Mock for maintainer review before the picker is built (the stored duration is already wired:
+<code>createTvAutoTuneSetting</code> loads it in <code>web/apps/tv/src/app.tsx</code>, but nothing calls
+<code>save</code>). The Surf rail, channel cards, monogram idents, footer, hint chip, the
+<code>DeviceDisconnectAction</code> and its <code>ModalOverlay</code> are reproduced from the built source at
+density <code>tv</code>; the only new thing is the <strong>Channel-number wait</strong> row and its choice overlay.
+<strong>Drive it like a remote:</strong> <kbd>▲</kbd><kbd>▼</kbd><kbd>◀</kbd><kbd>▶</kbd> arrow keys move focus,
+<kbd>Enter</kbd> = OK, <kbd>Escape</kbd>/<kbd>Backspace</kbd> = BACK, and on Watching <kbd>0</kbd>–<kbd>9</kbd> type a
+channel number. All channels, programmes, versions and the server address are invented; nothing calls a server.</p>
+
+<div class="layout">
+  <div id="stage"><div id="tv" aria-label="TV canvas"></div></div>
+  <span class="frame-label" id="frame-label">960×540 logical canvas — Android TV / Shield density</span>
+</div>
+<p class="review-note" id="explain"></p>
+<p class="review-note" id="status" role="status" aria-live="polite">Press an arrow key to start.</p>
+
+<footer class="notes">
+  <p class="review-note"><strong>Copied pattern: OK opens a choice.</strong> The row is the design-system
+  <code>Action</code> (density tv, tone secondary), the same primitive as “Disconnect device” beside it. OK opens a
+  <code>ModalOverlay</code> exactly as <code>DeviceDisconnectAction</code> does
+  (<code>web/packages/ui/src/device-disconnect/device-disconnect.tsx</code>,
+  <code>web/packages/ui/src/overlay/overlay.tsx</code>): a scrim, the TV panel (max 880, padding 32), a title, a
+  description, then a row of <code>Action</code>s walked by ◀▶ with the preferred-focus one focused first. BACK
+  dismisses it (<code>onRequestClose</code> → <code>onDismiss</code>). Here the actions are the duration choices,
+  the preferred focus is the <em>current</em> value, and the current value is drawn with <code>Action</code>’s
+  existing <code>selected</code> state (<code>$surfaceFocus</code> fill, amber hairline). OK on a choice saves it and
+  closes; focus returns to the row.</p>
+
+  <p class="review-note"><strong>Sources.</strong>
+  <code>web/packages/ui/src/surf-rail/surf-rail-tv/surf-rail-tv.tsx</code> (420 wide, padding 48/48/48 and $control
+  right, group headers <code>LABEL · N</code>, actions at the end of the scroll, “N of M · ▲▼ browse”, “Loomarr TV x ·
+  Server y”, hint chip “OK tune · BACK cancel”);
+  <code>surf-channel-card.tsx</code>; <code>channel-ident.tsx</code> + <code>core/src/guide/channel-ident</code>
+  (monogram, hue by number: tune, suggest, signal, onair, tune); <code>surf-data.ts</code> (group labels
+  “Favourites”, “Recent”, “All channels”; “Nm left”);
+  <code>design-system/src/interaction/interaction.tsx</code> (Action), <code>primitives.tsx</code> (Surface, Text
+  roles/tones, ProgressTrack), <code>layout.tsx</code> (ScrollFrame gap 24 at tv),
+  <code>design-system/src/tokens/tokens.ts</code> (dark theme hex, <code>typography.tv</code>);
+  <code>watching-surface.tsx</code> <code>NumberEntry</code> (“auto-tunes in N.N s”, one decimal, ticking every
+  100 ms); <code>ui-tv/src/watching-navigation</code> (<code>DEFAULT_NUMBER_ENTRY_MS</code> 1 200,
+  <code>clampNumberEntryMs</code> 1 200–10 000); <code>ui-tv/src/auto-tune-setting</code> (per-device key
+  <code>loomarr.tv.autoTuneDurationMs</code>); redesign map, TV section (“Major: the timed auto-tune”: keep 1.2 s
+  default, per-device, OK still tunes at once).</p>
+
+  <p class="review-note flag"><strong>Chosen here, not sourced from code (please check each):</strong></p>
+  <ul class="review-note flag">
+    <li>The row’s copy: one <code>Action</code> label <code>Channel-number wait · 1.2 s</code>. Action takes a single
+      string, so label and value are joined with the “ · ” the rail footer already uses. At 24 px it may wrap in the
+      310 px the rail leaves inside the button; not measured on device.</li>
+    <li>Placement: the row sits directly <em>above</em> “Disconnect device”, so the destructive action stays last.</li>
+    <li>The overlay description copy (“After you type a channel number…”). <code>ModalOverlay</code> needs a title; the
+      description is optional and could be dropped.</li>
+    <li>Choice labels drop a trailing “.0” (“2 s”, not “2.0 s”), while the countdown readout keeps one decimal
+      (“auto-tunes in 2.0 s”) because that is how <code>NumberEntry</code> formats it.</li>
+    <li>OK on a choice saves at once and closes (no separate confirm). BACK leaves the value unchanged.</li>
+    <li>The picture behind the rail is a plain gradient placeholder; the fixtures (channel names, numbers, “18m left”,
+      versions 0.2.0/0.2.1 from the map’s 5c copy, server <code>http://192.0.2.10:8080</code>) are invented.</li>
+    <li>Group header renders “FAVOURITES” (the code’s British label upper-cased), not “FAVORITES” as the map mock
+      reads.</li>
+  </ul>
+
+  <p class="review-note question"><strong>Open questions for the maintainer:</strong></p>
+  <ol class="review-note question">
+    <li><strong>The step list is not decided.</strong> Proposed: 1.2 s (default), 2 s, 3 s, 5 s, 10 s, all inside
+      <code>clampNumberEntryMs</code>’s 1.2–10 s. Five fits one row of the 880 px panel. Keep, add more steps (e.g.
+      1.5 s, 7 s), or fewer?</li>
+    <li><strong>One string or a label/value row?</strong> A row with the label left and the value right would need a
+      new layout (Action centres one string). Is the joined string acceptable?</li>
+    <li><strong>Reach.</strong> The row is at the end of the scroll, after every channel in “All channels”. With 54
+      channels that is ~60 ▼ presses (see state 1/3, where the rail is scrolled to the end). Is the foot of Surf the
+      right home, or should it also be reachable sooner?</li>
+    <li><strong>Two ambers.</strong> Reproduced faithfully: the last-focused channel card keeps its amber “selected”
+      border while focus is on the row or on Disconnect (selection only follows channel focus). That breaks “focus is
+      the only amber”. Existing behaviour, not introduced here; flagging it because this row makes it more visible.</li>
+    <li><strong>Build note.</strong> <code>OverlayAction</code> has no <code>selected</code> field today, so marking the
+      current value needs <code>selected?: boolean</code> passed through to <code>Action</code> in
+      <code>OverlayActions</code>.</li>
+    <li><strong>Canvas.</strong> <code>surf-rail.tsx</code>’s comment says the TV rail assumes a 1280 px canvas;
+      <code>guide-tv.tsx</code> uses 960. This mock draws 960×540 as asked.</li>
+  </ol>
+</footer>
+
+<script>
+(() => {
+  // ---- fixtures (invented) ----
+  const HUE = { tune: '#4CC9E8', suggest: '#D6409F', signal: '#FFB020', onair: '#E5484D' };
+  const HUES = ['tune', 'suggest', 'signal', 'onair', 'tune']; // CHANNEL_IDENT_HUES
+  const monogramOf = (name) => {
+    const words = name.split(/[\s—–-]+/).map((w) => w.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean);
+    const alpha = words.filter((w) => /^\p{L}/u.test(w));
+    const src = alpha.length ? alpha : words;
+    if (!src[0]) return 'CH';
+    if (!src[1]) return src[0].slice(0, 2).toUpperCase();
+    return (src[0][0] + src[1][0]).toUpperCase();
+  };
+  const CH = {
+    3: { name: 'Morning Coffee Comedy', now: 'Pilot · The Front Desk', left: '12m left', pct: 70 },
+    7: { name: 'Saturday Cartoons', now: 'The Lighthouse Pups', left: '18m left', pct: 40 },
+    12: { name: 'Rainy Day Mysteries', now: 'The Case of the Blue Umbrella', left: '41m left', pct: 22 },
+    21: { name: 'Late Night Sci-Fi', now: 'Orbit Station', left: '6m left', pct: 88 },
+    34: { name: 'Nature Hour', now: 'Rivers of the North', left: '27m left', pct: 55 },
+  };
+  const GROUPS = [
+    { kind: 'favourites', label: 'Favourites', channels: [7, 21] },
+    { kind: 'recent', label: 'Recent', channels: [12, 7] },
+    { kind: 'all', label: 'All channels', channels: [3, 7, 12, 21, 34] },
+  ];
+  const CURRENT = 7;
+  const SERVER = 'http://192.0.2.10:8080';
+  const CHOICES = [1200, 2000, 3000, 5000, 10000]; // PROPOSED, not decided
+  const DEFAULT_MS = 1200, MIN_MS = 1200, MAX_MS = 10000;
+  const clamp = (ms) => Math.min(MAX_MS, Math.max(MIN_MS, Math.round(ms)));
+  // A no-break space keeps "1.2 s" whole when the row's label wraps (it does at 24 px in the rail).
+  const fmt = (ms) => `${(ms / 1000).toFixed(1).replace(/\.0$/, '')} s`;
+
+  // Focus stops in rail order: every card, then the new row, then Disconnect.
+  const stops = [];
+  GROUPS.forEach((g) => g.channels.forEach((n) => stops.push({ type: 'card', group: g.kind, n })));
+  stops.push({ type: 'setting' }, { type: 'disconnect' });
+
+  const s = {
+    view: 'surf',          // 'surf' | 'watching'
+    focus: 0,              // index into stops
+    selection: { group: 'favourites', n: 7 },
+    valueMs: DEFAULT_MS,
+    modal: null,           // null | 'setting' | 'disconnect'
+    modalFocus: 0,
+    entry: null,           // { digits, expiresAt }
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const tv = $('tv');
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const say = (t) => { $('status').textContent = t; };
+
+  // ---- rendering ----
+  const ident = (n) => {
+    const hex = HUE[HUES[Math.abs(n) % HUES.length]];
+    const v = parseInt(hex.slice(1), 16);
+    const rgba = (a) => `rgba(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255}, ${a})`;
+    return `<span class="ident" aria-hidden="true" style="background-color:${rgba(0.08)};border-color:${rgba(0.3)};color:${hex}">${monogramOf(CH[n].name)}</span>`;
+  };
+  const card = (group, n) => {
+    const c = CH[n];
+    const selected = s.selection.group === group && s.selection.n === n;
+    return `<div class="card" data-group="${group}" data-n="${n}" data-selected="${selected}" role="button" aria-pressed="${selected}" aria-label="${group}, channel ${n}, ${esc(c.name)}">
+      <div class="card-row">${ident(n)}<span class="t-data num">${String(n).padStart(2, '0')}</span>
+        <span class="t-compact name ellipsis">${esc(c.name)}</span>${n === CURRENT ? '<span class="live-dot"></span>' : ''}</div>
+      ${selected ? `<div class="card-sub"><span class="t-caption caption ellipsis">${esc(c.now)}</span><span class="t-metadata">${c.left}</span></div>
+      <div class="progress"><span style="width:${c.pct}%"></span></div>` : ''}
+    </div>`;
+  };
+  const action = (label, { tone = 'secondary', focused = false, selected = false, id = '' } = {}) =>
+    `<div class="action" ${id ? `id="${id}"` : ''} role="button" data-tone="${tone}" data-focused="${focused}" data-selected="${selected}" aria-pressed="${selected}">${esc(label)}</div>`;
+
+  const selectable = stops.filter((x) => x.type === 'card');
+  const renderSurf = () => {
+    const focusStop = stops[s.focus];
+    const idx = Math.max(0, selectable.findIndex((x) => x.group === s.selection.group && x.n === s.selection.n));
+    const groups = GROUPS.map((g) => `<div class="group"><div class="t-section">${g.label.toUpperCase()} · ${g.channels.length}</div>
+      ${g.channels.map((n) => card(g.kind, n)).join('')}</div>`).join('');
+    const actions = action(`Channel-number wait · ${fmt(s.valueMs)}`, { focused: !s.modal && focusStop.type === 'setting', id: 'setting-row' })
+      + action('Disconnect device', { focused: !s.modal && focusStop.type === 'disconnect', id: 'disconnect-row' });
+    return `<div class="rail" aria-label="Channel surfer">
+        <div class="scroll" id="scroll">${groups}${actions}</div>
+        <div class="t-metadata">${idx + 1} of ${selectable.length} · ▲▼ browse</div>
+        <div class="t-metadata ellipsis">Loomarr TV 0.2.0 · Server 0.2.1</div>
+      </div>
+      <div class="hint"><span class="t-metadata">OK tune · BACK cancel</span></div>`;
+  };
+  const renderModal = () => {
+    if (s.modal === 'setting') {
+      const acts = CHOICES.map((ms, i) => action(fmt(ms), { focused: s.modalFocus === i, selected: ms === s.valueMs })).join('');
+      return `<div class="modal" role="dialog" aria-modal="true" aria-label="Channel-number wait"><div class="scrim"></div>
+        <div class="panel"><h2 class="t-title">Channel-number wait</h2>
+          <p class="t-body">After you type a channel number, Loomarr waits this long before it tunes. OK tunes at once.</p>
+          <div class="panel-actions">${acts}</div></div></div>`;
+    }
+    if (s.modal === 'disconnect') {
+      const acts = action('Keep connected', { focused: s.modalFocus === 0 }) + action('Disconnect', { tone: 'danger', focused: s.modalFocus === 1 });
+      return `<div class="modal" role="dialog" aria-modal="true" aria-label="Disconnect this device?"><div class="scrim"></div>
+        <div class="panel"><h2 class="t-title">Disconnect this device?</h2>
+          <p class="t-body">Loomarr will revoke this device’s credential on ${esc(SERVER)}. You can pair it again later.</p>
+          <div class="panel-actions">${acts}</div></div></div>`;
+    }
+    return '';
+  };
+  const renderWatching = () => {
+    if (!s.entry) return '';
+    const remaining = Math.max(0, (s.entry.expiresAt - Date.now()) / 1000);
+    const name = CH[Number(s.entry.digits)]?.name;
+    return `<div class="entry"><span class="t-channelNumber">${s.entry.digits.split('').join(' ')} _</span>
+      ${name ? `<span class="t-reading ellipsis">${esc(name)}</span>` : ''}
+      <span class="t-metadata" aria-live="polite">auto-tunes in ${remaining.toFixed(1)} s</span></div>`;
+  };
+
+  let prevScroll = 0;
+  const render = () => {
+    const old = $('scroll');
+    if (old) prevScroll = old.scrollTop;
+    tv.innerHTML = `<div class="picture"></div>${s.view === 'surf' ? renderSurf() + renderModal() : renderWatching()}`;
+    const sc = $('scroll');
+    if (!sc) return;
+    sc.scrollTop = prevScroll;
+    const f = stops[s.focus];
+    if (s.selection.group === 'all' && (f.type !== 'card' || f.group === 'all')) {
+      sc.scrollTop = sc.scrollHeight; // ScrollFrame onContentSizeChange: scrollToEnd when selection is in "all"
+    }
+    const el = f.type === 'card'
+      ? sc.querySelector(`.card[data-group="${f.group}"][data-n="${f.n}"]`)
+      : $(f.type === 'setting' ? 'setting-row' : 'disconnect-row');
+    if (el) {
+      const top = el.offsetTop - sc.offsetTop, bottom = top + el.offsetHeight;
+      if (top < sc.scrollTop) sc.scrollTop = top;
+      else if (bottom > sc.scrollTop + sc.clientHeight) sc.scrollTop = bottom - sc.clientHeight;
+    }
+  };
+
+  // ---- remote ----
+  const focusStop = (i) => {
+    s.focus = Math.max(0, Math.min(stops.length - 1, i));
+    const f = stops[s.focus];
+    if (f.type === 'card') s.selection = { group: f.group, n: f.n }; // onFocusSelection fires for channels only
+  };
+  const openSetting = () => {
+    s.modal = 'setting';
+    const i = CHOICES.indexOf(s.valueMs);
+    s.modalFocus = i >= 0 ? i : 0; // preferredFocus = the current value
+  };
+  let timer = null;
+  const startEntry = (digits) => {
+    s.entry = { digits, expiresAt: Date.now() + clamp(s.valueMs) };
+    clearInterval(timer);
+    timer = setInterval(() => {
+      if (!s.entry) return clearInterval(timer);
+      if (Date.now() >= s.entry.expiresAt) {
+        say(`Auto-tuned to CH ${s.entry.digits} after ${fmt(s.valueMs)}.`);
+        s.entry = null; clearInterval(timer);
+      }
+      render();
+    }, 100);
+    render();
+  };
+
+  const onKey = (e) => {
+    if (e.target.closest && e.target.closest('.review')) return;
+    const k = e.key;
+    const back = k === 'Escape' || k === 'Backspace';
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(k) && !back && !/^[0-9]$/.test(k)) return;
+    e.preventDefault();
+
+    if (s.view === 'watching') {
+      if (/^[0-9]$/.test(k)) {
+        const digits = ((s.entry?.digits ?? '') + k).slice(-3);
+        startEntry(digits);
+        say(`Typed ${digits}; waits ${fmt(s.valueMs)} after the last digit.`);
+      } else if (k === 'Enter' && s.entry) {
+        say(`OK: tuned to CH ${s.entry.digits} at once.`); s.entry = null; render();
+      } else if (back && s.entry) {
+        say('BACK: number entry cancelled.'); s.entry = null; render();
+      }
+      return;
+    }
+
+    if (s.modal) {
+      const n = s.modal === 'setting' ? CHOICES.length : 2;
+      if (k === 'ArrowLeft') s.modalFocus = Math.max(0, s.modalFocus - 1);
+      else if (k === 'ArrowRight') s.modalFocus = Math.min(n - 1, s.modalFocus + 1);
+      else if (back) { say(`BACK: ${s.modal === 'setting' ? 'choice' : 'disconnect'} overlay dismissed, nothing changed.`); s.modal = null; }
+      else if (k === 'Enter') {
+        if (s.modal === 'setting') {
+          s.valueMs = CHOICES[s.modalFocus];
+          $('value').value = String(s.valueMs);
+          say(`Saved ${fmt(s.valueMs)} (would call autoTuneSetting.save(${s.valueMs})). Focus returns to the row.`);
+        } else {
+          say(s.modalFocus === 0 ? 'Keep connected.' : 'Disconnect (inert in this prototype).');
+        }
+        s.modal = null;
+      }
+      render();
+      return;
+    }
+
+    const f = stops[s.focus];
+    if (k === 'ArrowUp') focusStop(s.focus - 1);
+    else if (k === 'ArrowDown') focusStop(s.focus + 1);
+    else if (k === 'Enter') {
+      if (f.type === 'card') say(`OK: tune CH ${f.n} (${CH[f.n].name}) and return to Watching.`);
+      else if (f.type === 'setting') { openSetting(); say('OK: choice overlay opened, focus on the current value. ◀▶ walk, OK saves, BACK dismisses.'); }
+      else { s.modal = 'disconnect'; s.modalFocus = 0; say('OK: disconnect overlay opened (the pattern this row copies).'); }
+    } else if (back) say('BACK: would close Surf and return to Watching.');
+    render();
+  };
+  document.addEventListener('keydown', onKey);
+
+  // ---- review controls ----
+  const EXPLAIN = {
+    default: 'State 1. Stored value is the default 1.2 s. Focus is on the last channel card, so the rail is scrolled to its foot and the row reads unfocused, above “Disconnect device”.',
+    row: 'State 2. Focus on the row (3 px amber border, the tv Action focus). OK opens the choice overlay. Note the last channel card keeps its amber “selected” border (open question 4).',
+    nondefault: 'State 3. A device that stored 5 s. The row shows the stored value; nothing else in the rail changes.',
+    overlay: 'State 4. The overlay opened with focus on the current value (preferred focus); here ▶ has moved focus on to the next choice, so the selected value (filled) and the focused choice (3 px border) are both visible. OK saves, BACK dismisses.',
+    countdown: 'State 5. Watching after typing “21”. The NumberEntry readout counts down from the stored value (“auto-tunes in N.N s”). Type digits, OK tunes now, BACK cancels. Change “Stored value” and press “Type 21 again” to compare.',
+  };
+  const lastAll = stops.findIndex((x) => x.type === 'card' && x.group === 'all' && x.n === 34);
+  const applyState = () => {
+    const st = $('state').value;
+    s.modal = null; s.entry = null; clearInterval(timer);
+    s.view = st === 'countdown' ? 'watching' : 'surf';
+    if (st === 'default') { s.valueMs = DEFAULT_MS; focusStop(lastAll); }
+    if (st === 'nondefault') { s.valueMs = 5000; focusStop(lastAll); }
+    if (st === 'row') { focusStop(lastAll); focusStop(stops.findIndex((x) => x.type === 'setting')); }
+    if (st === 'overlay') {
+      focusStop(lastAll); focusStop(stops.findIndex((x) => x.type === 'setting'));
+      openSetting(); s.modalFocus = Math.min(CHOICES.length - 1, s.modalFocus + 1);
+    }
+    $('value').value = String(s.valueMs);
+    $('explain').textContent = EXPLAIN[st];
+    $('replay').disabled = st !== 'countdown';
+    render();
+    if (st === 'countdown') startEntry('21');
+  };
+  $('value').innerHTML = CHOICES.map((ms) => `<option value="${ms}">${fmt(ms)}${ms === DEFAULT_MS ? ' (default)' : ''}</option>`).join('');
+  $('value').addEventListener('change', (e) => { s.valueMs = clamp(Number(e.target.value)); if (s.modal === 'setting') openSetting(); render(); });
+  $('state').addEventListener('change', applyState);
+  $('replay').addEventListener('click', () => { startEntry('21'); say(`Typed 21; waits ${fmt(s.valueMs)}.`); });
+
+  const fit = () => {
+    const z = $('zoom').value;
+    const scale = z === 'fit' ? Math.max(0.3, Math.min(2, (window.innerWidth - 48) / 960)) : Number(z);
+    tv.style.transform = `scale(${scale})`;
+    $('stage').style.width = `${960 * scale}px`;
+    $('stage').style.height = `${540 * scale}px`;
+    $('frame-label').textContent = `960×540 logical canvas — Android TV / Shield density · drawn at ${scale.toFixed(2)}×`;
+  };
+  $('zoom').addEventListener('change', fit);
+  window.addEventListener('resize', fit);
+  fit();
+  // ?state=overlay (any value of the State control) opens that state directly, for review links.
+  const linked = new URLSearchParams(window.location.search).get('state');
+  if (linked && [...$('state').options].some((option) => option.value === linked)) $('state').value = linked;
+  applyState();
+})();
+</script>
+</html>
