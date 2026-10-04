@@ -8,7 +8,22 @@ import { useViewportInsets } from "../viewport";
 
 type TabBarIdiom = "ios" | "material";
 
-type TabBarItem<Value extends string> = { icon: IconName; label: string; value: Value };
+type TabBarItem<Value extends string> = {
+  /** Only read when `kind` is "disclosure": whether the thing it opens is currently open. */
+  ariaExpanded?: boolean;
+  /** A plain dot (no numeral): web's Requests tab (#1785), matching today's icon-rail dot. */
+  badge?: boolean;
+  icon: IconName;
+  /**
+   * "tab" (default): a `role="tab"` destination, lit when `selected` matches it. "disclosure":
+   * web's trailing **More** button (#1785) for destinations that don't fit — it opens a sheet
+   * rather than switching the selected value, so it carries `aria-haspopup`/`aria-expanded`
+   * instead of `role="tab"`/`aria-selected`, and is never lit.
+   */
+  kind?: "disclosure" | "tab";
+  label: string;
+  value: Value;
+};
 
 type TabBarProps<Value extends string> = {
   accessibilityLabel: string;
@@ -61,13 +76,16 @@ const TabBar = <Value extends string>({
       role="tablist"
     >
       {items.map((item) => {
-        const current = item.value === selected;
+        const disclosure = item.kind === "disclosure";
+        const current = !disclosure && item.value === selected;
         return (
           <Pressable
             accessibilityLabel={item.label}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: current }}
-            aria-selected={current}
+            accessibilityRole={disclosure ? "button" : "tab"}
+            accessibilityState={disclosure ? undefined : { selected: current }}
+            aria-expanded={disclosure ? item.ariaExpanded : undefined}
+            aria-haspopup={disclosure ? "dialog" : undefined}
+            aria-selected={disclosure ? undefined : current}
             key={item.value}
             onBlur={() => setFocused(null)}
             onFocus={() => setFocused(item.value)}
@@ -91,6 +109,20 @@ const TabBar = <Value extends string>({
                 size={style.glyph}
                 tone={current ? "content" : "secondary"}
               />
+              {item.badge ? (
+                <View
+                  aria-hidden
+                  // `--color-suggest` (@loomarr/tokens): the same magenta the web rail's
+                  // numeral badge already uses for "needs you" counts.
+                  backgroundColor="#D6409F"
+                  borderRadius="$round"
+                  height={7}
+                  position="absolute"
+                  right={-2}
+                  top={-2}
+                  width={7}
+                />
+              ) : null}
             </View>
             <TamaguiText
               color={current ? "$contentPrimary" : "$contentSecondary"}
