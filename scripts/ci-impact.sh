@@ -64,6 +64,17 @@ classify() {
       ;;
   esac
 
+  # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the
+  # whole web/ workspace, and web/knip.ts makes every web/scripts/*.{mjs,cjs} a knip entry. Those
+  # entries are also named by the Apple and Android script rules below, which select native gates
+  # but neither web nor clients, so a change there could alter knip's result unchecked (#1838).
+  # Like the guard above, this adds the gate without claiming the path.
+  case "$path" in
+    web/scripts/*.mjs|web/scripts/*.cjs)
+      select_gate clients
+      ;;
+  esac
+
   # Product Go. Release images compile and embed these source families.
   if [[ "$path" == cmd/releaseverify/*.go || "$path" == internal/releaseverify/* ]]; then
     known=true
@@ -206,7 +217,9 @@ classify() {
       select_gate android
       ;;
     web/knip.ts)
-      # knip runs inside `make fe` (the web gate) and nowhere else.
+      # knip runs inside `make fe` (the web gate) and `make clients` (the clients gate), so every
+      # path that selects either one is checked by it. Expo app and native-package diffs select
+      # clients only (#1838): keep knip in `make clients` or they merge unchecked.
       known=true
       select_gate web
       ;;
@@ -219,6 +232,12 @@ classify() {
       select_gate contracts
       select_gate apple_mobile
       select_gate apple_tv
+      ;;
+    web/scripts/build-ios-testflight.sh|web/scripts/build-ios-testflight.test.sh)
+      # The release script runs only in the dispatch-only ios-testflight workflow; its test runs in
+      # release-verify, which the contracts gate owns.
+      known=true
+      select_gate contracts
       ;;
     web/scripts/build-android-client.sh|web/scripts/with-memory-safe-android-build.cjs|web/scripts/with-memory-safe-android-build.test.cjs)
       known=true
@@ -729,7 +748,7 @@ classify() {
     # Workflows whose product checks run elsewhere (release, maintenance, reporting, cache
     # housekeeping). There is no .github/workflows/* catch-all: a workflow no rule names is
     # unknown and selects every gate until it is classified (#1570).
-    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/image-benchmark.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml)
+    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml)
       known=true
       select_gate policy
       ;;

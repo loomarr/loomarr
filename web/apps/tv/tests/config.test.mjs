@@ -6,6 +6,11 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+// The paired runtime (catalog, guide, diagnostics, event stream, lifecycle) is shared with the phone, so it
+// lives in the player package's usePairedClient; the TV supplies its identity and tune marks.
+const readPairedClient = () =>
+  readFile(new URL("../../../packages/player/src/paired-client/paired-client.ts", import.meta.url), "utf8");
+
 test("keeps the TV proof isolated from the shipping application", async () => {
   const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
   const tvPlugin = config.expo.plugins.find(
@@ -89,6 +94,7 @@ test("declares the shared TV journey and native playback boundaries", async () =
   assert.equal(manifest.dependencies["@loomarr/player"], "workspace:*");
   assert.equal(manifest.dependencies["@loomarr/ui-tv"], "workspace:*");
   assert.equal(manifest.dependencies["expo-video"], manifest.dependencies.expo);
+  assert.equal(manifest.dependencies["expo-crypto"], manifest.dependencies.expo);
   assert.equal(manifest.dependencies["react-native"], "npm:react-native-tvos@0.86.2-0");
   assert.match(manifest.scripts.bundle, /--platform android/);
   assert.match(manifest.scripts.bundle, /--platform ios/);
@@ -118,8 +124,15 @@ test("composes the production TV root around shared dark pairing and paired API 
   assert.doesNotMatch(appSource, /Set EXPO_PUBLIC_LOOMARR_URL/);
   assert.match(appSource, /createPairingTransport/);
   assert.match(appSource, /validatePairingCredential/);
-  assert.match(appSource, /createAuthenticatedFetch\(credential, onRevoked\)/);
-  assert.match(appSource, /<TvPairedRoot credential=\{credential\} session=\{session\} \/>/);
+  assert.match(appSource, /usePairedClient\(\{/);
+  assert.match(
+    appSource,
+    /<TvShell credential=\{credential\} key=\{credential\.token\} session=\{session\} \/>/,
+  );
+  assert.match(
+    await readPairedClient(),
+    /createAuthenticatedFetch\(credential, \(\) => session\.revoked\(\)\)/,
+  );
 });
 
 test("hands the native splash to the shared Loomarr launch identity", async () => {
@@ -213,16 +226,21 @@ test("keeps the native player and Watching mounted beneath Guide and Surf", asyn
 test("drives every Watching state from the generated catalog and authoritative Guide", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /createChannelCatalogPort\(runtime\.request\)/);
-  assert.match(appSource, /createGuideSourcePort\(runtime\.request\)/);
-  assert.match(appSource, /createCatalogRefresher\(\{ controller, list: catalog\.list \}\)/);
-  assert.match(appSource, /await catalogRefresher\.refresh\(\)/);
+  const pairedClient = await readPairedClient();
+
+  assert.match(pairedClient, /createChannelCatalogPort\(request\)/);
+  assert.match(pairedClient, /createGuideSourcePort\(request\)/);
+  assert.match(
+    pairedClient,
+    /createCatalogRefresher\(\{ controller, list: createChannelCatalogPort\(request\)\.list \}\)/,
+  );
+  assert.match(pairedClient, /await catalogRefresher\.refresh\(\)/);
   assert.match(appSource, /watchingScheduleFromGuide\(/);
   assert.match(appSource, /loading=\{catalogState\.loading\}/);
   assert.match(appSource, /loadError=\{catalogState\.error\}/);
-  assert.match(appSource, /if \(catalogState\.error\) refreshSafely\(\)/);
+  assert.match(appSource, /if \(catalogState\.error\) refresh\(\)/);
   assert.match(appSource, /else void controller\.retry\(\)/);
-  assert.match(appSource, /onChangeServer=\{\(\) => runtime\.session\.chooseServer\(\)\}/);
+  assert.match(appSource, /onChangeServer=\{\(\) => session\.chooseServer\(\)\}/);
 });
 
 test("mounts the bounded authoritative Guide and returns tune intent to Watching", async () => {
@@ -285,15 +303,15 @@ test("restores Guide and Surf focus by identity through the TV registries", asyn
 test("wires authenticated artwork, channel invalidation, identity, versions, and disconnect", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /createNativeEventStreamFactory/);
-  assert.match(appSource, /openEventStream\(/);
-  assert.match(appSource, /Authorization: `Bearer \$\{runtime\.credential\.token\}`/);
-  assert.match(appSource, /onChannel:/);
-  assert.match(appSource, /refreshSafely\(\)/);
-  assert.match(appSource, /void guide\.refresh/);
+  const pairedClient = await readPairedClient();
+
+  assert.match(pairedClient, /createNativeEventStreamFactory/);
+  assert.match(pairedClient, /openEventStream\(/);
+  assert.match(pairedClient, /Authorization: `Bearer \$\{credential\.token\}`/);
+  assert.match(pairedClient, /onChannel: \(\) => \{\s+refresh\(\);\s+void guide\.refresh\(\);\s+\}/);
   assert.match(appSource, /<PairedNativeImage/);
-  assert.match(appSource, /onDisconnect=\{\(\) => runtime\.session\.disconnect\(\)\}/);
-  assert.match(appSource, /onForget=\{\(\) => runtime\.session\.forgetServer\(\)\}/);
+  assert.match(appSource, /onDisconnect=\{\(\) => session\.disconnect\(\)\}/);
+  assert.match(appSource, /onForget=\{\(\) => session\.forgetServer\(\)\}/);
   assert.match(appSource, /appConfig\.expo\.version/);
   assert.match(appSource, /serverVersion=\{serverVersion\}/);
 });
@@ -301,27 +319,33 @@ test("wires authenticated artwork, channel invalidation, identity, versions, and
 test("reports playback diagnostics to the paired server and recovers player errors", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /createAuthenticatedBatchSender\(runtime\.request,/);
+  const pairedClient = await readPairedClient();
+
   assert.match(appSource, /platform: "android_tv", source: "android_tv"/);
-  assert.match(appSource, /onPlayerError: diagnostics\.playback\.playerError/);
-  assert.match(appSource, /transport\.subscribe\(diagnostics\.playback\.transportEvent\)/);
-  assert.match(appSource, /diagnostics\.playback\.channelChanged\(channelId\)/);
-  assert.match(appSource, /diagnostics\.playback\.dispose\(\);\s+diagnostics\.reporter\.dispose\(\)/);
+  assert.match(appSource, /diagnostics: tvDiagnostics/);
+  assert.match(pairedClient, /createAuthenticatedBatchSender\(request,/);
+  assert.match(pairedClient, /onPlayerError: reporting\?\.playback\.playerError/);
+  assert.match(pairedClient, /transport\.subscribe\(reporting\.playback\.transportEvent\)/);
+  assert.match(pairedClient, /reporting\?\.playback\.channelChanged\(channelId\)/);
+  assert.match(pairedClient, /reporting\.playback\.dispose\(\);\s+reporting\.reporter\.dispose\(\)/);
 });
 
 test("releases playback and invalidation resources in the background before authoritative retune", async () => {
   const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /createNativePlayerLifecycle\(\{ controller, refresh, transport \}\)/);
-  assert.match(appSource, /AppState\.addEventListener\("change", \(state\) =>/);
+  assert.match(appSource, /usePairedClient\(\{/);
+  const pairedClient = await readPairedClient();
+
+  assert.match(pairedClient, /createNativePlayerLifecycle\(\{ controller, refresh: reload, transport \}\)/);
+  assert.match(pairedClient, /AppState\.addEventListener\("change", \(state\) =>/);
   assert.match(
-    appSource,
+    pairedClient,
     /catalogRefresher\.abort\(\);\s+versionRequest\.current\?\.abort\(\);\s+lifecycle\.enterBackground\(\)/,
   );
-  assert.match(appSource, /void lifecycle\.enterForeground\(\)\.catch/);
-  assert.match(appSource, /if \(closeStream\) return/);
-  assert.match(appSource, /else closeActiveStream\(\)/);
-  assert.match(appSource, /subscription\.remove\(\);\s+closeActiveStream\(\)/);
+  assert.match(pairedClient, /void lifecycle\.enterForeground\(\)\.catch/);
+  assert.match(pairedClient, /if \(closeStream\) return/);
+  assert.match(pairedClient, /else closeActiveStream\(\)/);
+  assert.match(pairedClient, /subscription\.remove\(\);\s+closeActiveStream\(\)/);
 });
 
 test("bounds LAN discovery to the foreground TV connection screen", async () => {

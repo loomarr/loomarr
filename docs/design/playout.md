@@ -77,9 +77,7 @@ libplacebo conversion draws an SDR or HLG item's box itself at the output size (
 and upscaling after blended the edge row into the bar), and a letterboxed PQ item is padded by
 `pad_opencl` on the surface mapped from VAAPI, or refused on a host without that mapping. A host
 drops a premium format, and says why, when it is software-only, when its encoder has no GPU graph
-(QSV, AMF and other generic families) or, for HDR, when libplacebo is missing. `GET
-/v1/channels/{id}/formats` reports the baseline, what this host airs, what the lineup would warrant and
-any drop reason.
+(QSV, AMF and other generic families) or, for HDR, when libplacebo is missing.
 
 **The premium is served on a client's opt-in.** The master names the premium beside the baseline from
 its output alone: CODECS (the running init's own, or the HEVC Main/Main 10 string predicted before one
@@ -260,11 +258,12 @@ unprepared backend.
 | Break placement | between programs **and mid-roll** (§10) | between programs only |
 | Transcode telemetry | real, per-session (§12) | none — Loomarr can't see inside Tunarr |
 | Extra service to run | no | yes |
-| Right when | you want mid-roll, fewer moving parts, or visibility into playback | your hardware can't transcode, or your install already works |
+| Right when | the default for every install — mid-roll, real telemetry, no extra service | you already run Tunarr and want to keep using it |
 
-**Tunarr is not deprecated.** It remains first-class and supported: the honest answer for hardware
-that can't transcode is "let Tunarr do it", and an install that already works should never be forced
-to migrate.
+**Tunarr is not deprecated, but it is optional.** Internal playout is the default for every install;
+Tunarr remains first-class for a household that already runs it, and that install should never be
+forced to migrate. An unrecognised `playout.backend` value falls back to internal and logs a warning
+rather than silently assuming Tunarr (§15).
 
 ⚠ **Per-channel overrides are not yet a complete mixed-tuner installation.** Reconciliation,
 playback routing, and now/next resolve the backend per channel, but the media-server connector owns
@@ -470,17 +469,21 @@ answer without shelling into the box.
 
 ## Tunarr
 
-On a Tunarr-backed channel the scheduler projects its lineup through the `Programmer` port, a
-hand-written client for only the Tunarr endpoints Loomarr uses. Tunarr has no authentication, so
+On a Tunarr-backed channel the scheduler projects its lineup through `tunarr.Adapter`, the single
+seam for the optional Tunarr backend (Refs #1564); call sites ask the Adapter rather than a concrete
+client. The Adapter composes the `Programmer` port — a hand-written client for only the Tunarr
+endpoints Loomarr uses — with guide reads and media-source wiring. Tunarr has no authentication, so
 Loomarr stores only its URL. Tunarr owns transcoding, streaming and its M3U/XMLTV; Loomarr owns the
 lineup and filler.
 
-- Each Programmer operation reads `tunarr.url`, `tunarr.transcode_config_id` and the filler attach
+- Each Adapter operation reads `tunarr.url`, `tunarr.transcode_config_id` and the filler attach
   policy from one settings snapshot, so one reconcile never straddles two Tunarr instances.
   Endpoint-derived caches are scoped to the normalised Tunarr URL.
 - `POST /v1/setup/tunarr-connect` wires the media server as Tunarr's media source (reusing the admin
   API key), enables the movie and show libraries and scans them. `/v1/setup/status` reports a
-  `tunarr_library` check until that is done.
+  `tunarr_library` check until that is done. The wizard's dedicated "Give Tunarr your library" step
+  (`web-ui.md` §13 step 5) is the only UI that triggers this connect; it exists only on the Tunarr
+  path and is never shown to an internal-playout install.
 - Programming entries need Tunarr's own program id, so the adapter maps media-server item ids through
   Tunarr's persisted `/programs` index (never the ephemeral browse handles). An unindexed item airs
   as flex, and a reconcile with misses triggers one best-effort library scan.

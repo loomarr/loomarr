@@ -23,7 +23,6 @@ import (
 // authenticated user; tag edit, sync, and the AI-tagging job require admin
 // (filler ingestion is an admin concern, §7).
 func (s *Server) registerFiller(api huma.API) {
-	s.registerFillerScreening(api)
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "list-filler", Method: http.MethodGet, Path: "/v1/filler",
 		Summary: "List filler clips",
@@ -95,13 +94,6 @@ func (s *Server) registerFiller(api huma.API) {
 	}, RoleAdmin), s.rewindFillerClip)
 
 	huma.Register(api, withRole(huma.Operation{
-		OperationID: "retry-filler-failures", Method: http.MethodPost, Path: "/v1/filler/retry",
-		Summary:     "Retry eligible ingest failures",
-		Description: "Admin only. Retries one or a bounded set of execution failures at the server-selected failed stage, preserving completed upstream work. Content decisions use restore instead.",
-		Tags:        []string{"filler"},
-	}, RoleAdmin), s.retryFillerFailures)
-
-	huma.Register(api, withRole(huma.Operation{
 		OperationID: "ingest-filler", Method: http.MethodPost, Path: "/v1/filler/ingest",
 		Summary:     "Download clips into the drop-folder (admin; needs the vendored yt-dlp + ffmpeg)",
 		Description: operatorAPI,
@@ -165,13 +157,6 @@ func (s *Server) registerFiller(api huma.API) {
 			"is a property of the source.",
 		Tags: []string{"filler"},
 	}, RoleAdmin), s.splitFiller)
-
-	huma.Register(api, withRole(huma.Operation{
-		OperationID: "get-filler-split-operation", Method: http.MethodGet, Path: "/v1/filler/split-operations/{jobId}",
-		Summary:     "Read split-detection progress and outcome",
-		Description: "Admin only. Authoritative reconnect state for the jobId returned by POST /v1/filler/split. A successful operation carries the proposalId to read from /v1/filler/splits/{proposalId}; SSE is latency-only.",
-		Tags:        []string{"filler"},
-	}, RoleAdmin), s.getFillerSplitOperation)
 
 	huma.Register(api, withRole(huma.Operation{
 		OperationID: "get-filler-split", Method: http.MethodGet, Path: "/v1/filler/splits/{proposalId}",
@@ -252,45 +237,6 @@ func (s *Server) rewindFillerClip(ctx context.Context, in *rewindFillerClipInput
 	default:
 		return &struct{}{}, nil
 	}
-}
-
-type retryFillerFailuresInput struct {
-	Body struct {
-		Hashes []string `json:"hashes" minItems:"1" maxItems:"50" doc:"Eligible clip hashes; duplicate and non-retryable rows are reported without mutation"`
-	}
-}
-
-type retryFillerFailuresOutput struct {
-	Body struct {
-		Retried      int `json:"retried"`
-		NotRetryable int `json:"notRetryable"`
-	}
-}
-
-func (s *Server) retryFillerFailures(ctx context.Context, in *retryFillerFailuresInput) (*retryFillerFailuresOutput, error) {
-	rewinder, ok := s.filler.(FillerRewinder)
-	if !ok {
-		return nil, huma.Error501NotImplemented("the filler pipeline is not configured")
-	}
-	out := &retryFillerFailuresOutput{}
-	seen := make(map[string]struct{}, len(in.Body.Hashes))
-	for _, hash := range in.Body.Hashes {
-		if _, duplicate := seen[hash]; duplicate {
-			out.Body.NotRetryable++
-			continue
-		}
-		seen[hash] = struct{}{}
-		err := rewinder.RetryFailure(ctx, hash)
-		if errors.Is(err, filler.ErrPipelineNotRetryable) {
-			out.Body.NotRetryable++
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		out.Body.Retried++
-	}
-	return out, nil
 }
 
 // ClipDTO is the API view of a filler clip (§10). Identity is the content HASH (V38c/V45a) — the
@@ -1347,46 +1293,6 @@ func (s *Server) splitFiller(ctx context.Context, in *splitFillerInput) (*splitF
 	out := &splitFillerOutput{}
 	out.Body.JobID = jobID
 	return out, nil
-}
-
-type getFillerSplitOperationInput struct {
-	JobID string `path:"jobId"`
-}
-
-type splitOperationDTO struct {
-	JobID       string    `json:"jobId"`
-	ClipHash    string    `json:"clipHash"`
-	Status      string    `json:"status" enum:"queued,running,success,error"`
-	ProposalID  string    `json:"proposalId,omitempty"`
-	Error       string    `json:"error,omitempty"`
-	StartedAt   time.Time `json:"startedAt"`
-	CompletedAt time.Time `json:"completedAt,omitempty"`
-	UpdatedAt   time.Time `json:"updatedAt"`
-}
-
-type getFillerSplitOperationOutput struct {
-	Body splitOperationDTO
-}
-
-func (s *Server) getFillerSplitOperation(
-	ctx context.Context,
-	in *getFillerSplitOperationInput,
-) (*getFillerSplitOperationOutput, error) {
-	operation, err := s.store.GetInteractiveOperation(ctx, in.JobID)
-	if errors.Is(err, store.ErrNotFound) {
-		return nil, errNotFound("Split operation not found", "That split operation doesn't exist.")
-	}
-	if err != nil {
-		return nil, err
-	}
-	if operation.Kind != store.InteractiveOperationFillerSplit {
-		return nil, errNotFound("Split operation not found", "That split operation doesn't exist.")
-	}
-	return &getFillerSplitOperationOutput{Body: splitOperationDTO{
-		JobID: operation.ID, ClipHash: operation.Subject, Status: string(operation.Status),
-		ProposalID: operation.ResultID, Error: operation.Error, StartedAt: operation.StartedAt,
-		CompletedAt: operation.CompletedAt, UpdatedAt: operation.UpdatedAt,
-	}}, nil
 }
 
 type getFillerSplitInput struct {

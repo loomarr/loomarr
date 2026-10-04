@@ -37,15 +37,20 @@ type ScreenProps = Omit<
    * itself, so the content stops above it with no bottom gutter.
    */
   footer?: ReactNode;
+  /**
+   * The content keeps to the platform's safe area but sets its own gutters, so a phone's picture
+   * can run edge to edge (#1659 mock 5e).
+   */
+  flush?: boolean;
 };
 
 /**
  * Edge-to-edge application frame whose content always stays inside platform insets and the
  * distance-appropriate Loomarr gutter. Insets are supplied once by LoomarrProvider.
  */
-const Screen = ({ density = "pointer", footer, ...props }: ScreenProps) => {
+const Screen = ({ density = "pointer", flush = false, footer, ...props }: ScreenProps) => {
   const platformInsets = useViewportInsets();
-  const insets = resolveViewportInsets(density, platformInsets);
+  const insets = flush ? platformInsets : resolveViewportInsets(density, platformInsets);
   if (footer)
     return (
       <ScreenFrame>

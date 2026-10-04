@@ -206,8 +206,9 @@ func (m *DeviceManager) Revoke(ctx context.Context, tokenHash, userID string) (b
 }
 
 // ResolveDevice authenticates a device token and returns its non-secret revocation identity plus
-// its owning user, so a device acts AS the person who approved it. The API caps a device's role at
-// member even when that person is an admin (internal/api/sessionauth.go, #1659).
+// its owning user, so a device acts AS the person who approved it, with their current role (ADR
+// 0043). The user row is read on every call, never cached with the token, so a demotion or disable
+// applies on the device's next request.
 func (m *DeviceManager) ResolveDevice(ctx context.Context, token string) (DevicePrincipal, error) {
 	id := hashToken(token)
 	dt, err := m.store.GetDeviceToken(ctx, id)

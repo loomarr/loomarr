@@ -56,11 +56,6 @@ type StartupReportService interface {
 	Recent(context.Context, int) ([]diagnostics.StartupReport, error)
 }
 
-// HealthRefreshService invokes the same bounded probe runner used by the scheduler.
-type HealthRefreshService interface {
-	Refresh(context.Context) (diagnostics.HealthReport, error)
-}
-
 type currentHealthOutput struct {
 	Body diagnostics.HealthReport
 }
@@ -163,14 +158,6 @@ func (s *Server) registerDiagnostics(api huma.API) {
 			Description: "Returns the live application-generation startup report and recent completed reports retained in Diagnostics. " + operatorAPI,
 			Tags:        []string{"diagnostics"},
 		}, RoleAdmin), s.listStartupReports)
-	}
-	if s.healthRefresh != nil || s.schemaOnly {
-		huma.Register(api, withRole(huma.Operation{
-			OperationID: "refresh-current-health", Method: http.MethodPost, Path: "/v1/diagnostics/health/refresh",
-			Summary:     "Refresh current health",
-			Description: "Runs the same bounded health probes used by Loomarr's named System health task and returns the refreshed source of truth.",
-			Tags:        []string{"diagnostics"},
-		}, RoleAdmin), s.refreshCurrentHealth)
 	}
 	if s.clientDiagnostics != nil || s.schemaOnly {
 		huma.Register(api, withRole(huma.Operation{
@@ -429,18 +416,6 @@ func (s *Server) getCurrentHealth(_ context.Context, _ *struct{}) (*currentHealt
 		return nil, huma.Error501NotImplemented("Current Health isn't available on this Loomarr generation.")
 	}
 	return &currentHealthOutput{Body: s.startupReports.Health()}, nil
-}
-
-func (s *Server) refreshCurrentHealth(ctx context.Context, _ *struct{}) (*currentHealthOutput, error) {
-	if s.healthRefresh == nil {
-		return nil, huma.Error501NotImplemented("Current Health refresh isn't available on this Loomarr generation.")
-	}
-	health, err := s.healthRefresh.Refresh(ctx)
-	if err != nil {
-		s.log.Error("current health refresh failed", "event", "diagnostics.health_refresh_failed", "subsystem", "diagnostics", "err", err)
-		return nil, huma.Error500InternalServerError("Current Health couldn't be refreshed.")
-	}
-	return &currentHealthOutput{Body: health}, nil
 }
 
 func (s *Server) listStartupReports(ctx context.Context, input *startupReportsInput) (*startupReportsOutput, error) {

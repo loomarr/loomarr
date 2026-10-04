@@ -22,14 +22,12 @@ import (
 	"github.com/loomarr/loomarr/internal/fillerstore"
 	"github.com/loomarr/loomarr/internal/images"
 	"github.com/loomarr/loomarr/internal/store"
-	"github.com/loomarr/loomarr/internal/testkit"
 )
 
 // fakeFiller records filler service calls.
 type fakeFiller struct {
-	pullMu     sync.Mutex
-	beforePull func()
-	testkit.FillerAcquisitionPlanner
+	pullMu           sync.Mutex
+	beforePull       func()
 	syncs, fetches   int
 	fetchedSourceIDs []string
 	rewinds          []struct {
@@ -329,8 +327,7 @@ func newFillerServerWithRuntimeConfig(t *testing.T, imageService api.ImageServic
 	st := openTestStore(t, t.TempDir()+"/f.db")
 	t.Cleanup(func() { _ = st.Close() })
 	ff := &fakeFiller{
-		FillerAcquisitionPlanner: testkit.FillerAcquisitionPlanner{Store: st},
-		fetchResult:              filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
+		fetchResult: filler.FetchResult{SourcesPolled: 1, Queued: 2, MaxPerCheck: 7},
 	}
 	h := api.Router(slog.New(slog.DiscardHandler), api.Options{
 		Store: st,
@@ -727,47 +724,6 @@ func TestRewindFillerClip_IsAdminOnlyAndNamesTheStage(t *testing.T) {
 	missing := do(t, srv, http.MethodPost, "/v1/filler/rewind", adminToken, `{"hash":"gone","from":"vision"}`)
 	if missing.StatusCode != http.StatusNotFound {
 		t.Errorf("missing clip rewind → %d, want 404", missing.StatusCode)
-	}
-}
-
-func TestRetryFillerFailures_IsAdminOnlyBoundedAndServerSelected(t *testing.T) {
-	srv, _, ff := newFillerServer(t)
-	member := do(t, srv, http.MethodPost, "/v1/filler/retry", memberToken, `{"hashes":["failed"]}`)
-	if member.StatusCode != http.StatusForbidden {
-		t.Fatalf("member retry → %d, want 403", member.StatusCode)
-	}
-	admin := do(t, srv, http.MethodPost, "/v1/filler/retry", adminToken,
-		`{"hashes":["failed","settled","failed"]}`)
-	if admin.StatusCode != http.StatusOK {
-		t.Fatalf("admin retry → %d, want 200", admin.StatusCode)
-	}
-	var body struct {
-		Retried      int `json:"retried"`
-		NotRetryable int `json:"notRetryable"`
-	}
-	if err := json.NewDecoder(admin.Body).Decode(&body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Retried != 1 || body.NotRetryable != 2 {
-		t.Fatalf("retry result = %+v, want one retried and two unchanged", body)
-	}
-	if !slices.Equal(ff.retries, []string{"failed"}) {
-		t.Fatalf("retry calls = %v, want one server-selected retry", ff.retries)
-	}
-	hashes := make([]string, 51)
-	for i := range hashes {
-		hashes[i] = fmt.Sprintf("failed-%d", i)
-	}
-	payload, err := json.Marshal(map[string]any{"hashes": hashes})
-	if err != nil {
-		t.Fatal(err)
-	}
-	tooMany := do(t, srv, http.MethodPost, "/v1/filler/retry", adminToken, string(payload))
-	if tooMany.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("51 retries → %d, want 422", tooMany.StatusCode)
-	}
-	if len(ff.retries) != 1 {
-		t.Fatalf("oversized retry reached service: %v", ff.retries)
 	}
 }
 
@@ -1425,44 +1381,6 @@ func TestGetFillerSplit_ReadsThePersistedProposal(t *testing.T) {
 	resp = do(t, srv, http.MethodGet, "/v1/filler/splits/sp_1", "", "")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("member read → %d, want 401 (§19)", resp.StatusCode)
-	}
-}
-
-func TestGetFillerSplitOperation_RecoversTerminalResultWithoutEvents(t *testing.T) {
-	srv, st, _ := newFillerServer(t)
-	now := time.Now().UTC()
-	operation := store.InteractiveOperation{
-		ID: "split-job-1", Kind: store.InteractiveOperationFillerSplit, Subject: "clip-hash",
-		Status: store.InteractiveOperationSuccess, ResultID: "sp_1",
-		StartedAt: now.Add(-time.Minute), CompletedAt: now, UpdatedAt: now,
-	}
-	if err := st.UpsertInteractiveOperation(t.Context(), operation); err != nil {
-		t.Fatal(err)
-	}
-
-	resp := do(t, srv, http.MethodGet, "/v1/filler/split-operations/split-job-1", adminToken, "")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("get split operation -> %d", resp.StatusCode)
-	}
-	var got struct {
-		JobID      string `json:"jobId"`
-		Status     string `json:"status"`
-		ProposalID string `json:"proposalId"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
-		t.Fatal(err)
-	}
-	if got.JobID != operation.ID || got.Status != string(operation.Status) || got.ProposalID != operation.ResultID {
-		t.Fatalf("split operation = %+v, want terminal proposal result", got)
-	}
-
-	resp = do(t, srv, http.MethodGet, "/v1/filler/split-operations/missing", adminToken, "")
-	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("missing split operation -> %d, want 404", resp.StatusCode)
-	}
-	resp = do(t, srv, http.MethodGet, "/v1/filler/split-operations/split-job-1", "", "")
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("member split operation -> %d, want 401", resp.StatusCode)
 	}
 }
 

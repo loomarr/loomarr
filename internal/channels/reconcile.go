@@ -48,7 +48,7 @@ func (e *Engine) Reconcile(ctx context.Context, channelID string) (err error) {
 // unfinished work through Reconcile's existing idempotent, minimal-diff path.
 func (e *Engine) PrepareInheritedBackend(ctx context.Context, target string) error {
 	target = schedule.NormalizePlayoutBackend(target)
-	if target != schedule.PlayoutBackendInternal && target != schedule.PlayoutBackendTunarr {
+	if !schedule.IsValidPlayoutBackend(target) {
 		return fmt.Errorf("prepare inherited channels: invalid playout backend %q", target)
 	}
 

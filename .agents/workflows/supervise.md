@@ -208,7 +208,9 @@ attributed reliably; either value makes the checkpoint read-only. Never assign a
 session total to an individual worker.
 
 Use the current harness's delegation facility. When it supports agent trees, spawn workers under the
-supervisor so it can inspect, steer, wait, and collect their results. For an independent external
+supervisor so it can inspect, steer, wait, and collect their results. In Orca, also nest each worker's
+worktree under the supervisor's and keep a background inbox waiter armed
+([Supervise Orca workers](../../docs/agents/harness.md#supervise-orca-workers)). For an independent external
 session, provide the brief through the available channel and treat its registry, branch, worktree,
 commits, and reports as observable evidence rather than assuming live steering.
 
@@ -284,6 +286,8 @@ Keep the main context on decisions and evidence. Do not copy raw exploration log
    restart accepted work.
 6. Escalate a blocked dependency, contract deviation, authorization change, or overlapping claim.
 7. Wait when no supervisor decision is needed; avoid polling agents merely to produce activity.
+   Waiting means a blocking wait on the harness's report channel. Do not end a turn on the
+   assumption that a nudge will arrive: a report that sits unread leaves lanes idle.
 
 Use the verified harness steering/interrupt control. Distinguish queued follow-up from current-turn
 steering, and require acknowledgement before treating a changed brief as active. Do not blindly send

@@ -1,38 +1,59 @@
 package app
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/setup"
 	"github.com/loomarr/loomarr/internal/tunarr/tunarrtest"
 )
 
-// liveTVURLsFor replaced the deleted setup.LiveTVURLsFor free function (Refs #1564 PR 2); these
-// pin the exact byte-for-byte behaviour it inherited: `internal` reads Loomarr's own endpoints,
-// anything else (including an unrecognised value) reads the adapter's own Tunarr URLs. The
-// behaviour-change flip for an unrecognised value is a later PR's call-site consolidation, not
-// this one.
-func TestLiveTVURLsFor_InternalReadsLoomarrsOwnURLs(t *testing.T) {
-	t.Parallel()
-	got := liveTVURLsFor(tunarrtest.NewTunarr(), "internal", "http://loomarr:8080", "tok")
-	want := setup.InternalPlayoutURLs("http://loomarr:8080", "tok")
-	if got != want {
-		t.Errorf("liveTVURLsFor(internal) = %+v, want %+v", got, want)
-	}
-}
-
-func TestLiveTVURLsFor_NonInternalReadsTheAdapter(t *testing.T) {
+// liveTVURLsFor replaced the deleted setup.LiveTVURLsFor free function (Refs #1564 PR 2).
+// PR 3 (Refs #1564) flipped the fallback: `tunarr` reads the adapter's own URLs; everything
+// else, including an unrecognised value, reads Loomarr's own internal URLs and logs a warning —
+// internal is the default backend and Tunarr is now optional, so a stale/corrupted setting must
+// not silently serve a backend the household doesn't run.
+func TestLiveTVURLsFor_TunarrReadsTheAdapter(t *testing.T) {
 	t.Parallel()
 	prog := fakeLiveTVAdapter{
 		Tunarr: tunarrtest.NewTunarr(),
 		urls:   setup.LiveTVURLs{M3U: "http://tunarr/api/channels.m3u", XMLTV: "http://tunarr/api/xmltv.xml"},
 	}
-	// "tunarr" is the declared value; an empty or unrecognised one falls back to it too — the
-	// pre-§9.1 behaviour, unchanged by this PR.
-	for _, backend := range []string{"tunarr", "", "something-else"} {
-		got := liveTVURLsFor(prog, backend, "http://loomarr:8080", "tok")
-		if got != prog.urls {
-			t.Errorf("backend=%q: liveTVURLsFor = %+v, want the adapter's URLs %+v", backend, got, prog.urls)
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+	got := liveTVURLsFor(prog, "tunarr", "http://loomarr:8080", "tok", log)
+	if got != prog.urls {
+		t.Errorf("liveTVURLsFor(tunarr) = %+v, want the adapter's URLs %+v", got, prog.urls)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("liveTVURLsFor(tunarr) logged unexpectedly: %s", buf.String())
+	}
+}
+
+func TestLiveTVURLsFor_UnrecognisedFallsBackToInternalAndWarns(t *testing.T) {
+	t.Parallel()
+	prog := fakeLiveTVAdapter{
+		Tunarr: tunarrtest.NewTunarr(),
+		urls:   setup.LiveTVURLs{M3U: "http://tunarr/api/channels.m3u", XMLTV: "http://tunarr/api/xmltv.xml"},
+	}
+	want := setup.InternalPlayoutURLs("http://loomarr:8080", "tok")
+	for _, backend := range []string{"internal", "", "something-else"} {
+		var buf bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&buf, nil))
+		got := liveTVURLsFor(prog, backend, "http://loomarr:8080", "tok", log)
+		if got != want {
+			t.Errorf("backend=%q: liveTVURLsFor = %+v, want Loomarr's own URLs %+v", backend, got, want)
+		}
+		if backend == "internal" {
+			if buf.Len() != 0 {
+				t.Errorf("backend=%q: liveTVURLsFor logged unexpectedly: %s", backend, buf.String())
+			}
+			continue
+		}
+		if !strings.Contains(buf.String(), "unrecognised") || !strings.Contains(buf.String(), backend) {
+			t.Errorf("backend=%q: liveTVURLsFor did not warn naming the value, got log: %s", backend, buf.String())
 		}
 	}
 }
