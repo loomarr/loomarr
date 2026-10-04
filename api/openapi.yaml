@@ -1317,6 +1317,11 @@ components:
         series:
           format: int64
           type: integer
+        titles:
+          description: Keys, with display fields, in the same order
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+          type: array
         toDownload:
           description: Titles the idea would have to request. Library-grounded ideas need none.
           format: int64
@@ -1333,6 +1338,7 @@ components:
         - value
         - reason
         - keys
+        - titles
         - movies
         - series
         - inLibrary
@@ -7548,6 +7554,9 @@ components:
           items:
             $ref: "#/components/schemas/ProposalItem"
           type: array
+        manual:
+          description: Every title was picked by hand with the LLM off; nothing here was generated
+          type: boolean
         policy:
           $ref: "#/components/schemas/ChannelPolicy"
         rationale:
@@ -9893,6 +9902,33 @@ components:
       required:
         - current
         - items
+      type: object
+    SubmitManualChannelBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/SubmitManualChannelBody.json
+          format: uri
+          readOnly: true
+          type: string
+        description:
+          description: A one-line reason, shown on the review card where the LLM's rationale would otherwise go
+          maxLength: 2000
+          type: string
+        lineup:
+          description: Every title the person picked, from the library or a direct search; re-checked against the library server-side
+          items:
+            $ref: "#/components/schemas/ProposalItem"
+          type: array
+        name:
+          description: The channel's name, as the person typed it or the chosen starter template filled it
+          maxLength: 200
+          type: string
+      required:
+        - name
+        - lineup
       type: object
     SubmitOutputBody:
       additionalProperties: false
@@ -12812,6 +12848,32 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Request a channel from an idea
+      tags:
+        - discovery
+  /v1/discovery/manual-channel:
+    post:
+      description: "Puts a hand-picked lineup through the same gate every other proposal uses (#1817, decision G2): an admin's own channel is created (or, with auto-approve, created immediately); a member's goes to the approval queue. No LLM is involved, so it works with the AI off. Each picked title is re-checked against the library the same way an approver's own additions are — a client can't claim a title is already owned."
+      operationId: submit-manual-channel
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitManualChannelBody"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestChannelIdeaOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Submit a hand-built channel
       tags:
         - discovery
   /v1/docs:

@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { adjacentWarmMarkName } from "../../src/channels/tuner-timing";
-import { channelId, installTunerBackend, tunerManifest } from "./tuner-backend";
+import { channelId, installTunerBackend, LIVE_WINDOW_SEGMENTS, tunerManifest } from "./tuner-backend";
 
 test.setTimeout(120_000);
 
@@ -424,7 +424,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
   expect(tunerManifest("ended", 1)).toContain("#EXT-X-ENDLIST");
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-ENDLIST");
   expect(tunerManifest("live", 4)).not.toContain("#EXT-X-PLAYLIST-TYPE:VOD");
-  expect(tunerManifest("live", 4).match(/segment-\d+\.m4s/g)).toHaveLength(3);
+  expect(tunerManifest("live", 4).match(/segment-\d+\.m4s/g)).toHaveLength(LIVE_WINDOW_SEGMENTS);
   await installFrameClock(page);
   const backend = await installTunerBackend(page);
   const freshMediaSourceBaseline = await measureFreshMediaSourceBaseline(page);
@@ -510,6 +510,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     performance.clearMeasures("loomarr:tune:request-to-first-frame");
   });
   const osd: number[] = [];
+  const osdViaFallback: boolean[] = [];
   const adjacentFrames: number[] = [];
   const adjacentTraces: string[] = [];
   let current = 50;
@@ -544,6 +545,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
       const frame = latest("loomarr:tune:request-to-first-frame");
       return {
         osd: osd?.duration ?? Number.POSITIVE_INFINITY,
+        osdViaFallback: Boolean((osd?.detail as { viaFallback?: boolean } | undefined)?.viaFallback),
         frame: frame?.duration ?? Number.POSITIVE_INFINITY,
         detail: frame?.detail as { adjacent?: boolean; warmed?: boolean } | undefined,
       };
@@ -551,6 +553,7 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     expect(timing.detail).toMatchObject({ adjacent: true, warmed: true });
     await waitForTargetPlaying(page, id, started);
     osd.push(timing.osd);
+    osdViaFallback.push(timing.osdViaFallback);
     adjacentFrames.push(timing.frame);
     adjacentTraces.push(
       await page.evaluate(
@@ -613,7 +616,17 @@ test("100-channel tuner meets surf latency and latest-request-wins gates", async
     current = target;
   }
 
-  expect(p95(osd), `OSD p95: ${p95(osd).toFixed(1)}ms`).toBeLessThan(100);
+  // `viaFallback` distinguishes a real-paint sample from the 50 ms escape-valve timer
+  // (acrossNextPaint, #1492): a timer-driven sample measures event-loop lag, not paint latency, a
+  // different, unbounded-tail population than genuine frame latency. Surface it in evidence rather
+  // than silently dropping it from the gate or failing on it outright: whether it ever fires here
+  // is itself the open question, and the next flake's attachment should answer it instead of
+  // requiring another round of guesswork.
+  const osdEvidence = `OSD p95: ${p95(osd).toFixed(1)}ms; samples: ${osd
+    .map((sample, index) => `${sample.toFixed(1)}${osdViaFallback[index] ? "(fallback)" : ""}`)
+    .join(", ")}`;
+  await test.info().attach("osd-timing", { body: osdEvidence, contentType: "text/plain" });
+  expect(p95(osd), osdEvidence).toBeLessThan(100);
   const adjacentP95 = p95(adjacentFrames);
   const adjacentEvidence = `warmed adjacent first-frame p95: ${adjacentP95.toFixed(
     1,

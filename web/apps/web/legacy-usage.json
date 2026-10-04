@@ -70,6 +70,9 @@
       "tailwindClasses": 34,
       "legacyUi": 2
     },
+    "src/components/loomarr/artwork-fallback/artwork-fallback.tsx": {
+      "tailwindClasses": 10
+    },
     "src/components/loomarr/channels/channel-auto-curate/channel-auto-curate.tsx": {
       "tailwindClasses": 31,
       "legacyUi": 3
@@ -408,7 +411,7 @@
       "tailwindClasses": 6
     },
     "src/components/ui/index.ts": {
-      "legacyUi": 24
+      "legacyUi": 23
     },
     "src/components/ui/input/input.tsx": {
       "tailwindClasses": 20
@@ -455,13 +458,6 @@
     },
     "src/components/ui/status-dot/status-dot.tsx": {
       "tailwindClasses": 2
-    },
-    "src/components/ui/status-strip/status-strip.tsx": {
-      "tailwindClasses": 29,
-      "legacyUi": 2
-    },
-    "src/components/ui/status-strip/status-strip.type.ts": {
-      "legacyUi": 2
     },
     "src/components/ui/switch/switch.tsx": {
       "tailwindClasses": 44
@@ -643,22 +639,30 @@
       "legacyUi": 3
     },
     "src/home/channel-ideas/channel-ideas.tsx": {
-      "tailwindClasses": 83,
+      "tailwindClasses": 92,
       "legacyUi": 4
     },
     "src/home/home-page/home-page.tsx": {
-      "tailwindClasses": 16
+      "tailwindClasses": 19
     },
     "src/home/home-strip/home-strip.tsx": {
-      "tailwindClasses": 16,
-      "legacyUi": 2
+      "tailwindClasses": 37,
+      "legacyUi": 1
     },
     "src/home/new-this-week/new-this-week.tsx": {
-      "tailwindClasses": 64,
+      "tailwindClasses": 67,
       "legacyUi": 1
+    },
+    "src/home/on-now/on-now.tsx": {
+      "tailwindClasses": 60,
+      "legacyUi": 4
     },
     "src/home/on-the-way/on-the-way.tsx": {
       "legacyUi": 4
+    },
+    "src/home/recently-tuned/recently-tuned.tsx": {
+      "tailwindClasses": 28,
+      "legacyUi": 2
     },
     "src/home/tonight/tonight.tsx": {
       "legacyUi": 3
@@ -772,7 +776,7 @@
       "legacyUi": 6
     },
     "src/settings/pair-device/pair-device.tsx": {
-      "tailwindClasses": 61,
+      "tailwindClasses": 70,
       "legacyUi": 2
     },
     "src/settings/paired-devices/paired-devices.tsx": {
@@ -808,12 +812,16 @@
       "legacyUi": 2
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
-      "tailwindClasses": 44,
+      "tailwindClasses": 52,
       "legacyUi": 1
     },
     "src/suggest/intent-form/intent-form.tsx": {
       "tailwindClasses": 35,
       "legacyUi": 2
+    },
+    "src/suggest/manual-channel-builder/manual-channel-builder.tsx": {
+      "tailwindClasses": 139,
+      "legacyUi": 4
     },
     "src/suggest/movie-collection-choices/movie-collection-choices.tsx": {
       "tailwindClasses": 68,

@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr Watch header &amp; management entry — design review</title>
+<style>
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #e7eaf0; background: #08090b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a { font: inherit; }
+  button, select { min-height: 44px; color: inherit; background: #1b1e24; border: 1px solid #666970; border-radius: 6px; padding: 8px 12px; }
+  a { color: inherit; text-decoration: none; }
+  button, a, select { cursor: pointer; }
+  :focus-visible { outline: 2px solid #ffb020; outline-offset: 3px; }
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2a2e37; background: #131519; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .review label[data-disabled="true"] { opacity: .4; }
+  .review-note { font-size: 13px; color: #8b93a3; margin: 12px 24px; max-width: 900px; }
+  .review-note.question { color: #dc5bac; }
+  #frame { container-type: inline-size; margin: 20px auto; width: 100%; max-width: 1440px; border: 1px solid #2a2e37; }
+  #frame.phone { width: min(390px, 100%); }
+  .shell { display: grid; grid-template-columns: 224px minmax(0,1fr); min-height: 760px; background: #0b0c0e; }
+  nav { padding: 24px 12px; border-right: 1px solid #2a2e37; background: #131519; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 24px; font-size: 13px; letter-spacing: 2px; font-weight: 700; }
+  .mark { width: 20px; height: 6px; background: #ffb020; flex-shrink: 0; border-radius: 2px; }
+  nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 10px 12px; border-radius: 6px; color: #8b93a3; font-size: 14px; }
+  nav a[aria-current] { color: #ffb020; background: #352916; }
+  nav a:hover { background: #1b1e24; }
+  nav a.disabled { pointer-events: none; opacity: .35; }
+  .nav-icon { width: 18px; text-align: center; flex-shrink: 0; }
+  main { min-width: 0; display: flex; flex-direction: column; }
+  p { margin: 0; line-height: 1.5; }
+  .meta { color: #8b93a3; font-size: 13px; }
+  .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+
+  /* Channel header, matching routes/_authed/channels/$id/route.tsx */
+  .ch-header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2a2e37; flex-wrap: wrap; }
+  .back { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; color: #8b93a3; border-radius: 4px; flex-shrink: 0; }
+  .back:hover { color: #e7eaf0; }
+  .ident { width: 48px; height: 48px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; font-weight: 600; flex-shrink: 0; background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,.05) 3px 6px); }
+  .ch-id { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+  .ch-name-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex-basis: 100%; }
+  .ch-name { font-size: 22px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+  .air-line { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8b93a3; }
+  .air-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .air-dot.onair { background: #e5484d; }
+  .air-dot.off { background: #666970; }
+  .ch-number { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8b93a3; }
+  .ch-number .n { color: #e7eaf0; padding: 2px 6px; }
+  .ch-name-col[data-full="true"] { flex-basis: 100%; }
+
+  /* Tabs, matching components/ui/nav-tabs */
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 12px 24px 0; border-bottom: 1px solid #2a2e37; }
+  .tab { border-radius: 6px; padding: 7px 12px; font-size: 13px; color: #8b93a3; }
+  .tab:hover { color: #e7eaf0; }
+  .tab[aria-current] { background: rgba(255,176,32,.15); color: #ffb020; font-weight: 500; }
+
+  .content { flex: 1; min-width: 0; padding: 24px; display: flex; flex-direction: column; gap: 16px; max-width: 760px; }
+  .card { background: #131519; border: 1px solid #2a2e37; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .card h2 { font-size: 15px; margin: 0; }
+  .card h3 { font-size: 14px; margin: 0; }
+  .row-sep { border-top: 1px solid #2a2e37; padding-top: 10px; }
+  .pill-note { font-size: 12px; color: #8b93a3; font-style: italic; }
+
+  /* Watch frame (schematic — the real player exists in channel-watch.tsx, not reproduced here) */
+  .frame-box { aspect-ratio: 16/9; width: 100%; border-radius: 8px; overflow: hidden; position: relative; background: linear-gradient(135deg,#1b1e24,#242a33); display: flex; flex-direction: column; justify-content: flex-end; }
+  .frame-box .top { position: absolute; top: 10px; left: 12px; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .live-badge { background: #e5484d; color: #fff; font-size: 10px; font-weight: 700; letter-spacing: .06em; border-radius: 4px; padding: 2px 6px; }
+  .frame-box .bar { background: rgba(10,10,10,.55); display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 12px; color: #c7cbd1; }
+  .frame-box .bar .spacer { margin-left: auto; }
+  .idle-note { color: #8b93a3; font-size: 13px; text-align: center; padding: 40px 16px; }
+
+  /* Phone Watching panel — the approved #1793/#1804 layout, shown unchanged for continuity */
+  .watching-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+  .wp-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .wp-controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .wp-controls button { min-width: 44px; border-radius: 999px; }
+  .wp-fav { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+
+  @container (max-width: 767px) {
+    .shell { grid-template-columns: 56px minmax(0,1fr); }
+    nav { padding: 20px 6px; }
+    nav a { padding: 10px 13px; }
+    .nav-label, .brand-name { display: none; }
+    .brand { padding: 4px 12px 24px; }
+    .ch-header { padding: 14px 16px; }
+    .ch-name-col { flex-basis: 100%; }
+    .ch-number { margin-left: 60px; }
+    .tabs { padding: 10px 16px 0; }
+    .content { padding: 16px; max-width: none; }
+  }
+</style>
+<div class="review">
+  <strong>Watch header &amp; management entry · review candidate (#1817 item 3)</strong>
+  <label>Role <select id="role"><option value="admin">Admin</option><option value="member">Member</option></select></label>
+  <label>Channel state
+    <select id="chstate">
+      <option value="none">No channel exists yet</option>
+      <option value="untuned">A channel exists, never tuned</option>
+      <option value="tuned" selected>Last-tuned channel exists</option>
+    </select>
+  </label>
+  <label data-disabled="true" id="untuned-alt-wrap">Untuned target (open Q2)
+    <select id="untuned-alt" disabled>
+      <option value="first">Alt A — first channel by number</option>
+      <option value="hidden">Alt B — hidden until a tune happens</option>
+    </select>
+  </label>
+  <label id="navlabel-wrap">Watch rail label (open Q1)
+    <select id="navlabel">
+      <option value="static">Alt A — static "Watch"</option>
+      <option value="dynamic">Alt B — dynamic "CH n"</option>
+    </select>
+  </label>
+  <label id="air-wrap">Air state
+    <select id="air">
+      <option value="onair">On air</option>
+      <option value="paused">Paused</option>
+      <option value="reconciling">On air (catching up)</option>
+      <option value="notyet">Not on air yet</option>
+    </select>
+  </label>
+  <label>Section <select id="section"></select></label>
+  <button id="size" type="button" aria-pressed="false">390px preview</button>
+</div>
+<p class="review-note">Draft for maintainer review (#1817 item 3). Invented fixtures only; no real titles or remote images; nothing here calls a server. Mirrors the merged Watch (#1725, #1793, #1804) and channel-detail (#1739) code — the player, drawer and phone <code>WatchingPanel</code> are schematic placeholders here, not reproduced pixel-for-pixel, since those surfaces are already built and approved.</p>
+<p class="review-note question" id="q1-note">Open question 1 (not settled by X2): what the shell's <strong>Watch</strong> rail entry is labelled once a last-tuned channel exists. Alt A keeps a static "Watch" label, as the #1839 phone-bottom-bar draft already modelled it. Alt B shows the live channel ("CH 07"), which gives more information but means the rail's own label changes as the viewer surfs. Toggle "Watch rail label" above to compare.</p>
+<p class="review-note question" id="q2-note">Open question 2 (not settled by X2): what <strong>Watch</strong> points to when a channel exists but nothing has ever been tuned (first run, right after creating a channel). X2's text — "hidden until there's a channel" — reads two ways. Alt A treats "a channel" as "a channel exists" and opens the first one by number (the redesign map's original recommendation). Alt B reads it strictly as "a last-tuned channel exists" and keeps Watch hidden until a tune happens. Neither is built; #1662 (the last-tuned-channel API) is also still open. Select "A channel exists, never tuned" above to compare.</p>
+<div id="frame"></div>
+<p class="review-note" id="action" role="status" aria-live="polite">Select a state above to inspect the draft.</p>
+<script>
+const $ = (id) => document.getElementById(id);
+
+const CHANNEL = { number: 7, name: 'Night Signal', monogram: 'NS', hue: '#4cc9e8' };
+const FIRST_CHANNEL = { number: 3, name: 'Field Notes', monogram: 'FN', hue: '#d6409f' };
+
+const SECTIONS = [
+  { id: 'watch', label: 'Watch', viewer: true },
+  { id: 'info', label: 'Channel info', viewer: true },
+  { id: 'programming', label: 'Programming', viewer: false },
+  { id: 'filler', label: 'Filler', viewer: false },
+  { id: 'danger', label: 'Danger zone', viewer: false },
+];
+
+const AIR = {
+  onair: { dot: 'onair', text: 'On now: The Last Observatory · 12m left' },
+  paused: { dot: 'off', text: 'Paused' },
+  reconciling: { dot: 'off', text: 'On air (catching up)' },
+  notyet: { dot: 'off', text: 'Not on air yet' },
+};
+
+function populateSectionSelect() {
+  const role = $('role').value;
+  const visible = SECTIONS.filter((s) => role === 'admin' || s.viewer);
+  const current = $('section').value || 'watch';
+  $('section').innerHTML = visible.map((s) => `<option value="${s.id}">${s.label}</option>`).join('');
+  $('section').value = visible.some((s) => s.id === current) ? current : 'watch';
+}
+
+function watchReachable() {
+  const state = $('chstate').value;
+  if (state === 'tuned') return true;
+  if (state === 'untuned') return $('untuned-alt').value === 'first';
+  return false;
+}
+
+function activeChannel() {
+  const state = $('chstate').value;
+  if (state === 'tuned') return CHANNEL;
+  if (state === 'untuned' && $('untuned-alt').value === 'first') return FIRST_CHANNEL;
+  return undefined;
+}
+
+function navLabelFor(channel) {
+  if (!channel) return 'Watch';
+  return $('navlabel').value === 'dynamic' ? `CH ${String(channel.number).padStart(2, '0')}` : 'Watch';
+}
+
+function render() {
+  const role = $('role').value;
+  const isAdmin = role === 'admin';
+  const state = $('chstate').value;
+  $('untuned-alt-wrap').dataset.disabled = String(state !== 'untuned');
+  $('untuned-alt').disabled = state !== 'untuned';
+  const reachable = watchReachable();
+  $('navlabel-wrap').dataset.disabled = String(!reachable);
+  $('navlabel').disabled = !reachable;
+  $('air-wrap').dataset.disabled = String(!reachable);
+  $('air').disabled = !reachable;
+  $('q1-note').style.display = reachable ? '' : 'none';
+  $('q2-note').style.display = state === 'untuned' ? '' : 'none';
+  populateSectionSelect();
+  const section = $('section').value;
+  const channel = activeChannel();
+  const airKey = $('air').value;
+  const air = AIR[airKey];
+
+  // --- nav rail (X2: Watch item hidden until there's a channel; channel management highlights
+  // Guide, not Watch, so one channel never lights two nav items) ---
+  const navHighlight = section === 'watch' ? 'watch' : (SECTIONS.some((s) => s.id === section) ? 'guide' : '');
+  const adminNav = [
+    ['⌂', 'Home', 'home'], ...(reachable ? [['▶', navLabelFor(channel), 'watch']] : []),
+    ['▦', 'Guide', 'guide'], ['◇', 'Requests', 'requests'],
+    ['▧', 'Filler', 'filler-nav'], ['♙', 'People', 'people'], ['⚙', 'Settings', 'settings'], ['?', 'Help', 'help'],
+  ];
+  const memberNav = [
+    ['⌂', 'Home', 'home'], ...(reachable ? [['▶', navLabelFor(channel), 'watch']] : []),
+    ['▦', 'Guide', 'guide'], ['◇', 'Requests', 'requests'], ['?', 'Help', 'help'],
+  ];
+  const navHtml = (isAdmin ? adminNav : memberNav).map(([icon, label, key]) => {
+    const current = key === navHighlight;
+    return `<a href="#" ${current ? 'aria-current="page"' : ''} aria-label="${label}"><span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-label">${label}</span></a>`;
+  }).join('');
+
+  // --- channel header + body ---
+  let bodyHtml;
+  if (!channel) {
+    bodyHtml = `<div class="content"><div class="card"><h2>No channel to show</h2><p class="meta">No channel exists yet in this household. Guide offers "${isAdmin ? 'Add a channel' : 'Request a channel'}". There is nothing for Watch to point at, so its rail entry is hidden (X2).</p></div></div>`;
+  } else {
+    const visibleSections = SECTIONS.filter((s) => isAdmin || s.viewer);
+    const tabsHtml = `<nav class="tabs" aria-label="Channel sections">${visibleSections.map((s) => `<span class="tab" ${s.id === section ? 'aria-current="page"' : ''}>${s.label}</span>`).join('')}</nav>`;
+    const headerHtml = `
+      <div class="ch-header">
+        <span class="back" aria-label="Back to channels">←</span>
+        <div class="ident" style="background:${channel.hue}14;border:1px solid ${channel.hue}4d;color:${channel.hue}">${channel.monogram}</div>
+        <div class="ch-id">
+          <div class="ch-name-col">
+            <span class="ch-name">${channel.name}</span>
+            <span class="air-line"><span class="air-dot ${air.dot}" aria-hidden="true"></span>${air.text}</span>
+          </div>
+          <div class="ch-number"><span class="mono">CH</span><span class="n mono">${String(channel.number).padStart(2, '0')}</span></div>
+        </div>
+      </div>`;
+    let panelHtml;
+    if (section === 'watch') {
+      const phone = $('size').getAttribute('aria-pressed') === 'true';
+      if (phone) {
+        panelHtml = `
+          <div class="frame-box" style="aspect-ratio:16/9;border-radius:0">
+            <div class="top"><span class="live-badge">LIVE</span></div>
+            <div class="idle-note" style="padding:0 16px 10px;text-align:left;color:#8b93a3">Picture edge to edge, nothing drawn on it (#1793/#1804 — approved, not redesigned here)</div>
+          </div>
+          <div class="watching-panel">
+            <div class="wp-row"><strong>CH ${String(channel.number).padStart(2,'0')} · ${channel.name}</strong><span class="live-badge">LIVE</span></div>
+            <p class="meta">The Last Observatory · An evening above the city · 12:04 / 24:00 · 12m left</p>
+            <div class="wp-controls">
+              <button aria-label="Previous channel">⏮</button>
+              <button aria-label="Channel down">▾</button>
+              <button aria-label="Pause">⏸</button>
+              <button aria-label="Channel up">▴</button>
+            </div>
+            <p class="meta">Next: Field Notes · Along the Quiet Coast, 9:00 PM</p>
+            <div class="wp-fav"><strong style="font-size:13px">Favourites</strong><span class="meta">03 Field Notes · 07 Night Signal</span></div>
+          </div>`;
+      } else {
+        panelHtml = `
+          <div class="content">
+            <div class="frame-box">
+              <div class="top"><span class="live-badge">LIVE</span><span class="mono">CH ${String(channel.number).padStart(2,'0')}</span><span>${channel.name}</span></div>
+              <div class="bar">
+                <span>⏸</span><span class="mono">12:04 / 24:00</span><span>12m left</span>
+                <span class="spacer"></span>
+                <span>▾ ▴</span><span>☰ Channels</span><span>🔊</span><span>⤢</span>
+              </div>
+            </div>
+            <p class="pill-note">Channels drawer and 0–9 direct tune live inside this frame (#1725). Schematic only — not reproduced pixel-for-pixel.</p>
+            <div class="card" style="flex-direction:row;align-items:center;justify-content:space-between">
+              ${isAdmin ? '<p class="meta">The audio language you pick applies to everyone watching this channel.</p>' : '<span></span>'}
+              <button type="button">Open in Jellyfin</button>
+            </div>
+          </div>`;
+      }
+    } else if (section === 'info') {
+      panelHtml = `<div class="content">
+        <div class="card">
+          <h2>What's on</h2>
+          <p class="meta row-sep">8:00 PM · The Last Observatory — NOW</p>
+          <p class="meta">8:30 PM · Field Notes</p>
+          <p class="meta">9:00 PM · Sunday Stories</p>
+        </div>
+        <div class="card"><h2>Between shows</h2><p class="meta">3–4 minute breaks with locally sourced filler clips.</p></div>
+        ${isAdmin ? '<div class="card"><h2>12 of 15 titles ready</h2><p class="meta">The rest fill in as titles arrive.</p></div>' : ''}
+      </div>`;
+    } else if (section === 'programming') {
+      panelHtml = `<div class="content">
+        <div class="card"><p class="meta">1 setting is custom · the rest follow Channel defaults.</p><button type="button">Refine with AI</button></div>
+        <div class="card"><h3>What plays</h3><p class="meta">The lineup, with READY / ACQUIRING / WANTED.</p></div>
+        <div class="card"><h3>How it's ordered</h3></div>
+        <div class="card"><h3>When it changes</h3></div>
+        <div class="card"><h3>Preview schedule</h3></div>
+      </div>`;
+    } else if (section === 'filler') {
+      panelHtml = `<div class="content">
+        <div class="card"><p class="meta">This channel picks its commercials and clips automatically.</p></div>
+        <div class="card"><h3>What this channel can play</h3><p class="meta">412 clips match · about 26 hours before a repeat.</p></div>
+        <div class="card"><h3>Choose what fits</h3></div>
+        <div class="card"><h3>Preview break</h3></div>
+      </div>`;
+    } else {
+      panelHtml = `<div class="content">
+        <div class="card"><h3>Pause</h3><p class="meta">Off air, kept.</p></div>
+        <div class="card"><h3>Stop updating</h3><p class="meta">Keeps playing, with no new titles or schedule changes.</p></div>
+        <div class="card"><h3>Delete channel</h3><p class="meta">And from Tunarr if it's there.</p></div>
+      </div>`;
+    }
+    bodyHtml = headerHtml + tabsHtml + panelHtml;
+  }
+
+  $('frame').innerHTML = `<div class="shell"><nav aria-label="Primary"><div class="brand"><span class="mark"></span><span class="brand-name">LOOMARR</span></div>${navHtml}</nav><main>${bodyHtml}</main></div>`;
+}
+
+for (const id of ['role', 'chstate', 'untuned-alt', 'navlabel', 'air', 'section']) {
+  $(id).addEventListener('change', () => { if (id === 'role' || id === 'chstate') {} render(); });
+}
+$('size').addEventListener('click', () => {
+  const small = $('frame').classList.toggle('phone');
+  $('size').setAttribute('aria-pressed', String(small));
+  $('size').textContent = small ? 'Desktop preview' : '390px preview';
+  render();
+});
+populateSectionSelect();
+render();
+</script>
+</html>

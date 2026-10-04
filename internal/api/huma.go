@@ -865,6 +865,11 @@ type ProposalOutlook interface {
 // runtime work; a handler cannot reproduce or reorder that choreography.
 type ProposalApprover interface {
 	Approve(ctx context.Context, p store.Proposal, edit *suggest.ApprovalEdit, approvedBy string) (suggest.ApprovalResult, error)
+	// ResolveManualLineup re-grounds a hand-picked lineup against current Library presence
+	// (manual/AI-off channel creation, #1817 G2), splitting it into owned titles and titles to
+	// acquire. It shares the one approval-addition resolver with Approve's edit.Add, so a
+	// manually submitted proposal gets the same "client presence is not authority" guarantee.
+	ResolveManualLineup(ctx context.Context, items []suggest.ProposalItem) (lineup, acquisitions []suggest.ProposalItem, err error)
 }
 
 // ProposalDecisionQuality receives a denial only after its submitted-to-denied
