@@ -250,6 +250,12 @@ type Proposal struct {
 	// "genre:comedy": its lineup came from the library, not the model. Set by the server only;
 	// no request body carries a Proposal, so a client can't claim one.
 	FromIdea string `json:"fromIdea,omitempty" doc:"The library channel idea this request came from, if any"`
+	// Manual is true when a person picked every title by hand with the LLM off (#1817, G2) —
+	// set by the server only, from the manual-channel submit path, never from a client body.
+	// ProposalReview reads it to show the maintainer-approved copy ("You picked every title in
+	// this channel yourself — there's nothing to check.") instead of the stale-draft fallback,
+	// which was written for a proposal the model DID produce but couldn't be rechecked.
+	Manual bool `json:"manual,omitempty" doc:"Every title was picked by hand with the LLM off; nothing here was generated"`
 }
 
 // RefusedPick is one grounded pick the extracted policy will not air, with the exclusion
