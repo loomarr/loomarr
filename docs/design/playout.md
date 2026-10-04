@@ -77,9 +77,7 @@ libplacebo conversion draws an SDR or HLG item's box itself at the output size (
 and upscaling after blended the edge row into the bar), and a letterboxed PQ item is padded by
 `pad_opencl` on the surface mapped from VAAPI, or refused on a host without that mapping. A host
 drops a premium format, and says why, when it is software-only, when its encoder has no GPU graph
-(QSV, AMF and other generic families) or, for HDR, when libplacebo is missing. `GET
-/v1/channels/{id}/formats` reports the baseline, what this host airs, what the lineup would warrant and
-any drop reason.
+(QSV, AMF and other generic families) or, for HDR, when libplacebo is missing.
 
 **The premium is served on a client's opt-in.** The master names the premium beside the baseline from
 its output alone: CODECS (the running init's own, or the HEVC Main/Main 10 string predicted before one

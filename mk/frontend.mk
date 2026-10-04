@@ -71,7 +71,7 @@ fe: ## biome + codegen + knip + typecheck + unit tests + embedded SPA + storyboo
 	@touch internal/web/dist/.gitkeep
 
 .PHONY: clients
-clients: brand-assets-verify ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
+clients: brand-assets-verify knip ## lint, test, typecheck, and bundle the shared browser, mobile, and TV scaffold
 	cd $(WEB) && pnpm exec biome check apps/mobile apps/tv apps/web/client-platform-proof.html \
 	  apps/web/src/client-platform-proof apps/web/tests/client-platform-proof.ssr.test.tsx \
 	  apps/web/vite.client-platform.config.ts \

@@ -216,7 +216,7 @@ func (o *openRouterVideo) AskAboutVideo(ctx context.Context, prompt string, vide
 	return Response{
 		Content: strings.TrimSpace(out.Choices[0].Message.Content),
 		Attribution: attributionFromWire("openrouter", o.model, out.ID, out.Model, out.Usage,
-			out.OpenRouterMetadata, []string{"text", "video", "audio"}, time.Since(started)),
+			out.OpenRouterMetadata, []string{"text", "video", "audio"}, time.Since(started), false),
 	}, nil
 }
 

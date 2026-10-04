@@ -109,6 +109,6 @@ Security issues: [`SECURITY.md`](SECURITY.md).
 ## License
 
 Loomarr source is [MIT](LICENSE). The distributed image also contains GPL and permissively licensed
-components; their terms and the redistribution work still open for beta are listed in
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The image carries both files under
-`/usr/share/doc/loomarr/`.
+components; their terms, the pinned ffmpeg/yt-dlp source locations, and the release-evidence record
+for the shipped binaries are listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The image
+carries both files under `/usr/share/doc/loomarr/`.
