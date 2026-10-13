@@ -16,6 +16,7 @@ const GuideJourney = ({
   dock,
   focusRegistry,
   myChannels,
+  onTimeEdge,
   onTune,
   preferredChannelId,
   renderArtwork,
@@ -116,6 +117,7 @@ const GuideJourney = ({
         layout={snapshot.layout}
         onFilterChange={setFilter}
         onSelectionChange={controller.select}
+        onTimeEdge={onTimeEdge}
         onTune={(selection) => onTune(selection.channelId)}
         renderArtwork={renderArtwork}
         renderChannelLogo={renderChannelLogo}

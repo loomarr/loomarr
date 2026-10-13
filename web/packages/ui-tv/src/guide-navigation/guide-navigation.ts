@@ -1,10 +1,13 @@
 import {
+  type GuideController,
   type GuideLayout,
   type GuideNavigationDirection,
   guideSelectionForChannel,
   moveGuideSelection,
 } from "@loomarr/core/guide";
+import type { GuideFocusTarget } from "@loomarr/ui";
 
+import type { TvFocusRegistry } from "../focus-registry";
 import type {
   TvGuideActivation,
   TvGuideFilterOption,
@@ -38,11 +41,33 @@ const moveFilterFocus = (
   return { state: { ...state, focus: { filter: next.value, region: "filters" } } };
 };
 
+/**
+ * What a LEFT/RIGHT boundary should ask the platform to do (#1659 decision N4, maintainer
+ * 2026-10-03): LEFT at the first cell pages the window earlier, but never before `nowMs`; RIGHT
+ * off a programme that spans the whole visible window pages forward one page. Any other edge (a
+ * channel with no earlier programme in view, or a trailing partial programme) has nowhere to go.
+ */
+const boundaryPageIntent = (
+  layout: GuideLayout,
+  selection: TvGuideNavigationState["gridSelection"],
+  boundary: GuideNavigationDirection,
+  nowMs: number,
+): "earlier" | "later" | undefined => {
+  if (boundary === "left") return selection.anchorMs > nowMs ? "earlier" : undefined;
+  if (boundary !== "right") return undefined;
+  const channel = layout.channels.find((candidate) => candidate.source.channelId === selection.channelId);
+  const airing = channel?.airings.find(
+    (candidate) => candidate.scheduleBlockId === selection.scheduleBlockId,
+  );
+  return airing && airing.widthRatio >= 0.999 ? "later" : undefined;
+};
+
 const moveTvGuideFocus = (
   layout: GuideLayout,
   state: TvGuideNavigationState,
   direction: GuideNavigationDirection,
   filters: readonly TvGuideFilterOption[],
+  nowMs: number,
 ): TvGuideMoveResult => {
   if (state.focus.region === "filters") return moveFilterFocus(state, direction, filters);
 
@@ -52,7 +77,13 @@ const moveTvGuideFocus = (
     const filter = options.find((option) => option.value === state.activeFilter)?.value ?? options[0]?.value;
     if (filter) return { state: { ...state, focus: { filter, region: "filters" } } };
   }
-  if (movement.boundary) return { boundary: movement.boundary, state };
+  if (movement.boundary) {
+    return {
+      boundary: movement.boundary,
+      pageIntent: boundaryPageIntent(layout, state.gridSelection, movement.boundary, nowMs),
+      state,
+    };
+  }
   return {
     state: {
       ...state,
@@ -60,6 +91,62 @@ const moveTvGuideFocus = (
       gridSelection: movement.selection,
     },
   };
+};
+
+/**
+ * The TV app's answer to the Guide's `onTimeEdge` (#1659 decision N4). The running Guide moves
+ * with the native focus engine, which serves every in-grid move and ▲/▼ between the top row and
+ * the filters; it reaches a timeline edge stop only when no programme lies further that way. From
+ * the cell focus left, `moveTvGuideFocus` decides: page the window (the reload re-focuses its
+ * settled selection), or hand focus straight back because the edge has nowhere to go.
+ *
+ * Remote key events can't decide this: react-native-tvos sends JS only the key-up, and measured on
+ * the emulator a cell's onFocus can arrive before or after it, so "did focus move?" is a race.
+ */
+const tvGuideTimeEdge = async (
+  guide: Pick<GuideController, "getSnapshot" | "page">,
+  registry: Pick<TvFocusRegistry<GuideFocusTarget>, "current" | "request">,
+  side: "left" | "right",
+  nowMs: number,
+): Promise<"earlier" | "later" | undefined> => {
+  const { layout, selection } = guide.getSnapshot();
+  const current = registry.current();
+  const from: GuideFocusTarget | undefined =
+    current ?? (selection ? { kind: "airing", selection } : undefined);
+  if (!from) return undefined;
+  const intent =
+    layout && from.kind === "airing"
+      ? moveTvGuideFocus(
+          layout,
+          {
+            activeFilter: "all",
+            focus: { region: "grid", selection: from.selection },
+            gridSelection: from.selection,
+          },
+          side,
+          [],
+          nowMs,
+        ).pageIntent
+      : undefined;
+  if (intent) await guide.page(intent);
+  const paged = guide.getSnapshot().layout;
+  if (!intent || paged === layout) {
+    // Nowhere to go, or a page that served nothing new (clamped at now, or a failed load).
+    registry.request(from);
+    return undefined;
+  }
+  // A whole-window programme still on in the paged window keeps focus. Any other page leaves
+  // focus to the Guide, which focuses its settled selection; asking for `from` here could
+  // overwrite that request with a programme the new window doesn't draw.
+  const stillOn =
+    from.kind === "airing" &&
+    paged?.channels.some(
+      ({ airings, source }) =>
+        source.channelId === from.selection.channelId &&
+        airings.some(({ scheduleBlockId }) => scheduleBlockId === from.selection.scheduleBlockId),
+    );
+  if (stillOn) registry.request(from);
+  return intent;
 };
 
 const activateTvGuideFocus = (state: TvGuideNavigationState): TvGuideActivation =>
@@ -105,4 +192,4 @@ const tvGuideRowWindow = (
   };
 };
 
-export { activateTvGuideFocus, moveTvGuideFocus, restoreTvGuideFocus, tvGuideRowWindow };
+export { activateTvGuideFocus, moveTvGuideFocus, restoreTvGuideFocus, tvGuideRowWindow, tvGuideTimeEdge };

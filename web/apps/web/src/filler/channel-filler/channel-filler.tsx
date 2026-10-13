@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { eraOf } from "@/lib/era-dates";
 import { cn } from "@/lib/utils";
 import { useChannelFillerDraft } from "../use-channel-filler-draft";
 import type { ChannelFillerProps } from "./channel-filler.type";
@@ -336,7 +337,7 @@ const ChannelFiller = ({ channelId, revision, policy, className }: ChannelFiller
           selection={draft}
           onChange={setDraft}
           disabled={isApplying}
-          scopeEra={policy?.scope?.era ?? undefined}
+          scopeEra={eraOf(policy?.scope?.dates)}
           programmingDates={policy?.scope?.dates}
           installationGeography={{ country: homeCountry, market: homeMarket }}
         />

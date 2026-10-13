@@ -463,6 +463,18 @@ describe("ProposalReview", () => {
     expect(screen.queryByText(/Observed/)).not.toBeInTheDocument();
   });
 
+  // The manual/AI-off channel builder (#1817, maintainer decision 3 on #1872) produces a
+  // proposal with no model run behind it, so the usual "couldn't check this saved draft"
+  // fallback (written for a STALE proposal the model DID produce) would misdescribe it.
+  it("shows the manual-proposal copy instead of the stale-draft fallback when every title was hand-picked", async () => {
+    renderReview(<ProposalReview proposal={{ ...proposal, manual: true }} selfService onRevise={vi.fn()} />);
+    await userEvent.click(screen.getByText("How these suggestions were chosen"));
+    expect(
+      screen.getByText("You picked every title in this channel yourself — there's nothing to check."),
+    ).toBeVisible();
+    expect(screen.queryByText(/couldn't check this saved draft/)).not.toBeInTheDocument();
+  });
+
   it("calls out a partial interpretation in plain language", () => {
     renderReview(
       <ProposalReview

@@ -285,12 +285,16 @@ class PairingSession {
     this.emit({ status: "loading" });
     const transport = this.options.createTransport(serverUrl);
     try {
+      // Set only once a poll finds the PREVIOUS code dead, and only for the code that replaces
+      // it — not for this call's first code, which nobody typed down anywhere yet.
+      let refreshedFromExpired = false;
       while (!controller.signal.aborted) {
         const pairing = await transport.start(this.options.deviceName, controller.signal);
         const lifetime = pairingLifetimeSeconds(pairing.body.expiresAt, pairing.serverDate);
         this.emit({
           deviceCode: pairing.body.deviceCode,
           expiresAtMs: (this.options.now ?? Date.now)() + lifetime * 1_000,
+          refreshedFromExpired,
           serverUrl,
           status: "awaiting-approval",
           userCode: pairing.body.userCode,
@@ -303,7 +307,10 @@ class PairingSession {
           pairing.body.interval,
           controller.signal,
         );
-        if (outcome.status === "expired") continue;
+        if (outcome.status === "expired") {
+          refreshedFromExpired = true;
+          continue;
+        }
         const credential: PairingCredential = {
           deviceName: outcome.body.deviceName,
           serverUrl,

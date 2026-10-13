@@ -159,9 +159,12 @@ type bulkApproveFillerPullInput struct {
 }
 
 type bulkApproveFillerPullResult struct {
-	ID    string `json:"id"`
-	OK    bool   `json:"ok"`
-	Error string `json:"error,omitempty" doc:"Why this one did not approve (already handled, not found, …)"`
+	ID string `json:"id"`
+	OK bool   `json:"ok"`
+	// Enqueued mirrors bulkApproveResult.Enqueued: the exact count this approval committed, taken
+	// from the approved pull's own CandidateCount. Absent (not 0) when the approval failed.
+	Enqueued int    `json:"enqueued,omitempty" doc:"Remote items this approval queued for download — the approved pull's candidateCount"`
+	Error    string `json:"error,omitempty" doc:"Why this one did not approve (already handled, not found, …)"`
 }
 
 type bulkApproveFillerPullOutput struct {
@@ -189,7 +192,7 @@ func (s *Server) bulkApproveFillerPulls(ctx context.Context, in *bulkApproveFill
 	out := &bulkApproveFillerPullOutput{}
 	out.Body.Results = make([]bulkApproveFillerPullResult, 0, len(in.Body.IDs))
 	for _, id := range in.Body.IDs {
-		_, err := s.approveFillerPull(ctx, &approveFillerPullInput{ID: id})
+		approved, err := s.approveFillerPull(ctx, &approveFillerPullInput{ID: id})
 		if err != nil {
 			// A per-id failure is DATA, not a request failure: the ones that worked are already
 			// durable, so 500ing the whole call would hide successful approvals behind an error.
@@ -198,7 +201,9 @@ func (s *Server) bulkApproveFillerPulls(ctx context.Context, in *bulkApproveFill
 			})
 			continue
 		}
-		out.Body.Results = append(out.Body.Results, bulkApproveFillerPullResult{ID: id, OK: true})
+		out.Body.Results = append(out.Body.Results, bulkApproveFillerPullResult{
+			ID: id, OK: true, Enqueued: approved.Body.CandidateCount,
+		})
 		out.Body.Approved++
 	}
 	return out, nil

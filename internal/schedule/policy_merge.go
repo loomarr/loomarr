@@ -123,9 +123,13 @@ func (current ChannelPolicy) MergeFromOperator(incoming ChannelPolicy) ChannelPo
 		}
 	}
 
+	// Scopes compare by value only: a saved legacy era+dates scope carries decode-only state
+	// that an unchanged re-save does not, and that must not read as an edit.
+	currentScope, incomingScope := current.Scope, incoming.Scope
+	currentScope.eraAndDates, incomingScope.eraAndDates = false, false
 	pin(pathScope,
-		!reflect.DeepEqual(current.Scope, incoming.Scope),
-		reflect.DeepEqual(incoming.Scope, ScopePolicy{}))
+		!reflect.DeepEqual(currentScope, incomingScope),
+		reflect.DeepEqual(incomingScope, ScopePolicy{}))
 	pin(pathAudience,
 		current.Audience != incoming.Audience,
 		incoming.Audience == AudiencePolicy{})

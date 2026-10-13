@@ -542,9 +542,11 @@ func TestGoShardBalancesMeasuredRaceWork(t *testing.T) {
 	}
 	cmd := exec.Command("bash", filepath.Join("scripts", "go-shard.sh"), "--worker-plan", strconv.Itoa(goRaceShardCount))
 	cmd.Dir = root
+	var workerStderr strings.Builder
+	cmd.Stderr = &workerStderr
 	output, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("model bounded workers: %v", err)
+		t.Fatalf("model bounded workers: %v\n%s", err, workerStderr.String())
 	}
 	workerLoads := make([]int, goRaceShardCount)
 	workerFields := strings.Fields(string(output))

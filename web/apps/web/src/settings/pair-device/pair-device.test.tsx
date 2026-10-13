@@ -76,7 +76,72 @@ describe("PairDevice", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Add device" }));
 
+    // The identical message for a wrong code AND an expired one is the deliberate guess-guard
+    // in handleDeviceApprove (internal/api/deviceroutes.go) — never split, or the message
+    // itself becomes an oracle for grinding codes.
     expect(await screen.findByText(/wrong or has expired/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  });
+
+  // Maintainer decision (#1817, pairing states): the rate limiter gets its own message rather
+  // than the "wrong or expired" copy, which would tell someone to recheck a code that was never
+  // wrong.
+  it("names a rate limit instead of blaming the code", async () => {
+    signedIn();
+    server.use(
+      http.post("*/v1/auth/device/approve", () =>
+        HttpResponse.json({ title: "Too many attempts" }, { status: 429 }),
+      ),
+    );
+    render(<PairDevice initialCode="BCDF-GHJK" />, { wrapper: makeWrapper() });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add device" }));
+
+    expect(
+      await screen.findByText("Too many pairing codes tried. Wait a moment and try again."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/wrong or has expired/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+  });
+
+  // Maintainer decision (#1817, pairing states): a 5xx or a dropped request is worth retrying
+  // with the same code — unlike a bad or expired one, nothing about the code was the problem.
+  it("offers to retry a 5xx with the same code, rather than blaming it", async () => {
+    signedIn();
+    let approvals = 0;
+    server.use(
+      http.post("*/v1/auth/device/approve", () => {
+        approvals += 1;
+        if (approvals === 1) return HttpResponse.json({ title: "Internal error" }, { status: 500 });
+        return HttpResponse.json({ deviceName: "Shield" });
+      }),
+    );
+    render(<PairDevice initialCode="BCDF-GHJK" />, { wrapper: makeWrapper() });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add device" }));
+
+    expect(
+      await screen.findByText("Couldn't reach Loomarr. Check your connection and try again."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/wrong or has expired/)).not.toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByText(/Shield is ready/)).toBeInTheDocument();
+    expect(approvals).toBe(2);
+  });
+
+  it("offers to retry a network failure with the same code", async () => {
+    signedIn();
+    server.use(http.post("*/v1/auth/device/approve", () => HttpResponse.error()));
+    render(<PairDevice initialCode="BCDF-GHJK" />, { wrapper: makeWrapper() });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add device" }));
+
+    expect(
+      await screen.findByText("Couldn't reach Loomarr. Check your connection and try again."),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   // Signed-out is an expected arrival, not an error: the person holding the remote often is not

@@ -271,7 +271,14 @@ test("routes the native remote through TV adapters and preserves platform-home B
   assert.match(appSource, /useTVEventHandler/);
   assert.match(appSource, /tvWatchingRemoteEventFromNative\(eventType, Date\.now\(\), eventKeyAction\)/);
   assert.match(appSource, /event && event\.key !== "select"/);
-  assert.match(appSource, /reduceTvWatchingRemote\(remoteStateRef\.current, event\)/);
+  assert.match(appSource, /reduceTvWatchingRemote\(remoteStateRef\.current, event, autoTuneMs\)/);
+  // The per-device auto-tune duration (#1659 decision N4) is read from the device's secure store.
+  assert.match(appSource, /createTvAutoTuneSetting\(\{\s*getItem: SecureStore\.getItemAsync/);
+  // The Guide's time edges page through the shared reducer (#1659 decision N4).
+  assert.match(
+    appSource,
+    /onTimeEdge=\{\(side\) => void tvGuideTimeEdge\(guide, guideFocusRegistry, side, Date\.now\(\)\)\}/,
+  );
   assert.match(appSource, /onOpenGuide=\{\(\) => dispatchRemoteEvent\(\{ key: "select" \}\)\}/);
   assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
   assert.match(appSource, /numberEntry=\{tvNumberEntryPresentation\(remoteState, snapshot\.catalog\)\}/);

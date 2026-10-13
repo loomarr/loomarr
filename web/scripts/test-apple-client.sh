@@ -284,6 +284,11 @@ run_expo_build() {
   if [[ -e "$result_bundle" ]]; then
     find "$result_bundle" -depth -delete
   fi
+  # `expo run:ios --output` copies into an existing .app, so a rerun would keep a previous build's
+  # frameworks. Start from an empty output so the installed app is only what this build produced.
+  if [[ -e "${BUILD_DIR}/${SCHEME}.app" ]]; then
+    find "${BUILD_DIR}/${SCHEME}.app" -depth -delete
+  fi
   : > "$raw_log"
   if [[ "${APP_NAME}" == "tv" ]]; then
     (

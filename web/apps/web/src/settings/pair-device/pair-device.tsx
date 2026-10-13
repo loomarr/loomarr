@@ -1,4 +1,5 @@
 import * as authApi from "@loomarr/api/endpoints/auth";
+import { ApiError } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -40,6 +41,19 @@ const SignInFirst = ({ code }: { code: string }) => {
   );
 };
 
+// The three distinct causes `approve.isError` can hide behind. A 404 covers both a mistyped code
+// and a dead one *on purpose* — `handleDeviceApprove` (internal/api/deviceroutes.go) returns the
+// identical response for "wrong" and "expired" so the error can't be used to grind codes — so it
+// keeps today's message unchanged. 429 (the per-user+per-IP `deviceLimiter`) and anything else
+// (a dropped request, a 5xx) are real, distinct causes and get their own copy.
+type ApproveFailure = "invalid-code" | "rate-limited" | "unreachable";
+
+const classifyApproveFailure = (error: unknown): ApproveFailure => {
+  if (error instanceof ApiError && error.status === 429) return "rate-limited";
+  if (error instanceof ApiError && error.status === 404) return "invalid-code";
+  return "unreachable";
+};
+
 const PairDevice = ({ initialCode }: PairDeviceProps) => {
   // Prefilled but NEVER auto-submitted. `?code=` is RFC 8628's verification_uri_complete — what a
   // QR encodes — and approving on load would mean any link a person opens could pair a device
@@ -57,11 +71,9 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
     },
   });
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!code.trim()) return;
+  const attempt = (userCode: string) => {
     approve.mutate(
-      { data: { userCode: code } },
+      { data: { userCode } },
       {
         onSuccess: (res) => {
           const body = unwrap(res);
@@ -71,6 +83,16 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
       },
     );
   };
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!code.trim()) return;
+    attempt(code);
+  };
+
+  // A dropped request or a 5xx is worth retrying with the exact same code — unlike a bad or
+  // expired one, nothing about the code itself was the problem.
+  const retry = () => attempt(code);
 
   if (isLoading) return null;
   if (!user) return <SignInFirst code={initialCode ?? ""} />;
@@ -106,11 +128,33 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
         </Button>
       </form>
 
-      {approve.isError ? (
-        <p className="mt-4 text-center text-destructive text-lg">
-          That code is wrong or has expired. Codes last ten minutes — check the screen and try again.
-        </p>
-      ) : null}
+      {approve.isError
+        ? (() => {
+            const failure = classifyApproveFailure(approve.error);
+            if (failure === "invalid-code")
+              return (
+                <p className="mt-4 text-center text-destructive text-lg">
+                  That code is wrong or has expired. Codes last ten minutes — check the screen and try again.
+                </p>
+              );
+            if (failure === "rate-limited")
+              return (
+                <p className="mt-4 text-center text-caution text-lg">
+                  Too many pairing codes tried. Wait a moment and try again.
+                </p>
+              );
+            return (
+              <div className="mt-4 text-center">
+                <p className="text-caution text-lg">
+                  Couldn't reach Loomarr. Check your connection and try again.
+                </p>
+                <Button className="mt-3" onClick={retry} type="button" variant="secondary">
+                  Try again
+                </Button>
+              </div>
+            );
+          })()
+        : null}
 
       {approved ? (
         <div className="mt-8 rounded-lg border border-border p-5 text-center">

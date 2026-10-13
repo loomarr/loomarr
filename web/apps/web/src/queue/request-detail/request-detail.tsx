@@ -2,6 +2,7 @@ import * as proposalJobsApi from "@loomarr/api/endpoints/proposal-jobs";
 import * as titlesApi from "@loomarr/api/endpoints/titles";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
+import { requestAcquisitions, requestFixLabel, requestStatus } from "@loomarr/core/requests";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, RotateCw } from "lucide-react";
@@ -14,7 +15,6 @@ import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { requestAcquisitions, requestFixLabel, requestStatus } from "@/queue/request-status";
 import { useRequests } from "@/queue/use-requests";
 
 // One request, end to end (#1405) — the Proposal Job journey (GET /v1/proposal-jobs/{jobId}):

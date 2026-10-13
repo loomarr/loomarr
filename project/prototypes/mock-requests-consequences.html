@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr Requests — approval consequences — design review</title>
+<style>
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #E7EAF0; background: #08090B; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a, input { font: inherit; }
+  button, select { min-height: 44px; color: inherit; background: #1B1E24; border: 1px solid #666970; border-radius: 6px; padding: 8px 12px; }
+  a { color: inherit; text-decoration: none; }
+  button, a, select, label { cursor: pointer; }
+  :focus-visible { outline: 2px solid #FFB020; outline-offset: 3px; }
+
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid #2A2E37; background: #131519; }
+  .review strong { margin-right: auto; }
+  .review label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .review-note { font-size: 13px; color: #8B93A3; margin: 12px 24px; max-width: 920px; }
+  .review-note.open { color: #DC5BAC; }
+
+  #frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 20px auto 8px; }
+  #frame { width: 100%; max-width: 1040px; border: 1px solid #2A2E37; border-radius: 8px; background: #0B0C0E; overflow: hidden; }
+  #frame.phone { max-width: 390px; border-radius: 28px; box-shadow: 0 0 0 6px #131519; }
+  .frame-label { font-size: 12px; color: #8B93A3; font-family: 'Geist Mono', ui-monospace, monospace; }
+
+  .page-header { padding: 20px 24px 0; }
+  #frame.phone .page-header { padding: 16px 16px 0; }
+  h1 { font-size: 24px; line-height: 32px; margin: 0; }
+  #frame.phone h1 { font-size: 20px; line-height: 26px; }
+  h2 { font-size: 16px; line-height: 22px; margin: 0; font-weight: 600; }
+  h3 { font-size: 14px; line-height: 20px; margin: 0; }
+  p { margin: 0; line-height: 1.5; }
+  .muted { color: #8B93A3; }
+  .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  .pink { color: #DC5BAC; }
+
+  /* tabs — NavTabs underline variant (Requests' own, per redesign map) */
+  .navtabs { display: flex; gap: 4px; border-bottom: 1px solid #2A2E37; padding: 0 24px; margin-top: 14px; }
+  #frame.phone .navtabs { padding: 0 16px; flex-wrap: wrap; }
+  .navtab { display: flex; align-items: center; gap: 6px; padding: 9px 13px; font-size: 13.5px; color: #8B93A3; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; border-radius: 0; min-height: 0; border-left: none; border-right: none; border-top: none; }
+  .navtab[aria-current] { color: #E7EAF0; font-weight: 500; border-bottom-color: #FFB020; }
+  .navtab .count { border-radius: 999px; padding: 1px 7px; font-size: 11px; font-family: 'Geist Mono', ui-monospace, monospace; background: #1B1E24; color: #8B93A3; }
+  .navtab .count.attn { background: rgba(214,64,159,.15); color: #DC5BAC; }
+
+  .content { max-width: 760px; margin: auto; padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 28px; }
+  #frame.phone .content { max-width: none; padding: 16px; gap: 20px; }
+
+  .section { display: flex; flex-direction: column; gap: 10px; }
+  .group { border: 1px solid #2A2E37; border-radius: 8px; background: #131519; overflow: hidden; }
+  .group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #2A2E37; background: #0F1114; }
+  .group-head .kind { font-weight: 600; font-size: 14px; }
+  .group-head .by { font-size: 12px; color: #8B93A3; }
+  .group-head .spacer { flex: 1 1 auto; }
+  .group-head .sel-count { font-size: 12px; color: #8B93A3; }
+  .group-list { display: flex; flex-direction: column; }
+  .row { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-top: 1px solid #2A2E37; }
+  .group-list .row:first-child { border-top: none; }
+  .row input[type="checkbox"], .group-head input[type="checkbox"] { width: 18px; height: 18px; margin-top: 2px; accent-color: #FFB020; flex-shrink: 0; }
+  .row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .title-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .title-line .t { font-weight: 500; font-size: 14px; }
+  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 500; }
+  .badge.tune { background: rgba(76,201,232,.15); color: #4CC9E8; }
+  .badge.lock { background: rgba(61,214,140,.15); color: #3DD68C; }
+  .badge.onair { background: rgba(229,72,77,.15); color: #E85A5F; }
+  .badge.caution { background: rgba(245,217,10,.15); color: #F5D90A; }
+  .badge.suggest { background: rgba(214,64,159,.15); color: #DC5BAC; }
+  .summary { font-size: 13px; color: #8B93A3; }
+  .by-line { font-size: 12px; color: #8B93A3; font-family: 'Geist Mono', ui-monospace, monospace; }
+  .meta-line { font-size: 12px; color: #8B93A3; }
+  .row-actions { display: flex; gap: 8px; flex-shrink: 0; margin-left: auto; }
+  #frame.phone .row { flex-wrap: wrap; }
+  #frame.phone .row-actions { margin-left: 0; width: 100%; }
+  .btn { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; border: 1px solid #666970; background: #1B1E24; }
+  .btn.primary { background: #FFB020; color: #0B0C0E; border-color: #FFB020; font-weight: 600; }
+  .btn.primary:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.outline { background: transparent; }
+  .btn.sm { min-height: 32px; padding: 0 10px; font-size: 12.5px; }
+  .excluded-note { font-size: 11.5px; color: #F5D90A; }
+
+  .empty { border: 1px dashed #2A2E37; border-radius: 8px; padding: 28px; text-align: center; color: #8B93A3; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+
+  /* Dialog (web's base-ui Dialog primitive — confirm + result) */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+  .dialog { width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; background: #131519; border: 1px solid #2A2E37; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .dialog h2 { font-size: 18px; }
+  .dialog .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  .consequence-item { border: 1px solid #2A2E37; border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .consequence-item .t { font-weight: 500; font-size: 13.5px; }
+  .consequence-item .d { font-size: 12.5px; color: #8B93A3; }
+  .consequence-item .channel { font-size: 12.5px; color: #4CC9E8; }
+  .open-flag { font-size: 11.5px; color: #DC5BAC; border-top: 1px dashed rgba(220,91,172,.4); padding-top: 8px; margin-top: 2px; }
+  .result-list { display: flex; flex-direction: column; gap: 6px; }
+  .result-row { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; padding: 8px 10px; border-radius: 6px; border: 1px solid #2A2E37; }
+  .result-row.ok { }
+  .result-row.bad { border-color: rgba(229,72,77,.4); background: rgba(229,72,77,.06); }
+  .result-row .mark { font-weight: 700; flex-shrink: 0; }
+  .result-row.ok .mark { color: #3DD68C; }
+  .result-row.bad .mark { color: #E85A5F; }
+  .result-row .rr-body { min-width: 0; flex: 1; }
+  .result-row .rr-meta { color: #8B93A3; font-size: 12px; }
+  .result-row .retry { margin-left: auto; flex-shrink: 0; }
+  .summary-line { font-size: 13.5px; }
+</style>
+
+<div class="review">
+  <strong>Requests — approval consequence summary &amp; bulk scope · design draft (#1817, Refs #1659)</strong>
+  <label>Role <select id="role"><option value="admin">Admin</option><option value="member">Member</option></select></label>
+  <label>Scenario
+    <select id="scenario">
+      <option value="both">Both groups pending</option>
+      <option value="channels-only">Channel requests only</option>
+      <option value="filler-only">Filler downloads only</option>
+      <option value="empty">Nothing needs you</option>
+    </select>
+  </label>
+  <label>Frame <select id="size"><option value="desktop">Desktop</option><option value="phone">Phone (390px)</option></select></label>
+</div>
+<p class="review-note">Proposal only, for maintainer review before the build PR — no production component, route or API contract changes. All fixtures invented; no real titles, names or hostnames. Nothing here calls a server.</p>
+<p class="review-note">Scope: this draft adds the consequence summary shown <em>before</em> confirming a bulk approval, the per-group bulk scope (R1), the confirm step, and the partial-failure result with per-item retry — on top of the Needs-you tab, which the redesign map already marks "built, no gaps" otherwise. In progress / Done and single-row Deny are unchanged and not redrawn here.</p>
+
+<div id="frame-wrap">
+  <div id="frame">
+    <div class="page-header">
+      <h1>Requests</h1>
+    </div>
+    <nav class="navtabs" id="navtabs" aria-label="Requests"></nav>
+    <div class="content" id="content" tabindex="-1"></div>
+  </div>
+  <span class="frame-label" id="frame-label"></span>
+</div>
+<p class="review-note" id="action" role="status" aria-live="polite">Select items, then tap a group's Approve to see the consequence summary and confirm step.</p>
+<p class="review-note">Sources: <code>project/redesign-map-2026-09.md</code> "## Requests" (mock, critique, data) and Decision <strong>R1</strong> (group filler downloads, bulk approve per group); the merged web screen (<code>request-lists.tsx</code>, <code>request-status.ts</code>, <code>approval-queue.tsx</code>, <code>approval-queue-item.tsx</code>, <code>pull-card.tsx</code>) for copy, tone pairs and the existing "edited rows excluded from bulk" rule; the approved native Requests mock (#1840, <code>native-requests-2026-10-03.md</code>) for the per-group bulk-scope shape and partial-failure pattern, adapted to desktop/phone web width instead of a BottomSheet; <code>model-bulkApproveInputBody/OutputBody/Result.ts</code> and <code>model-bulkApproveFillerPullInputBody/OutputBody/Result.ts</code> (#1863) for the exact fields a consequence summary and a result list may show. Full grounding and open questions in the evidence doc.</p>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+// ---- Fixtures (invented; shapes match the generated DTOs) ----
+
+const channelRequests = [
+  {
+    id: 'cr-1',
+    title: 'Rainy afternoon serials',
+    requestedBy: 'j.alder',
+    summary: 'Cozy mysteries and slow-paced dramas for grey days.',
+    chips: ['The Hollow Signal', 'Market Street', 'Nine Lanterns', '+2 more'],
+    titleCount: 14,
+    toDownload: 3,
+    ceiling: 'TV-14',
+    edited: false,
+  },
+  {
+    id: 'cr-2',
+    title: 'Overnight documentary block',
+    requestedBy: 'm.reyes',
+    summary: 'Long-form nature and science docs for the late slot.',
+    chips: ['Deep Vents', 'The Quiet Orbit', '+1 more'],
+    titleCount: 6,
+    toDownload: 6,
+    ceiling: 'TV-PG',
+    edited: false,
+  },
+  {
+    id: 'cr-3',
+    title: 'Weekend cartoon hour',
+    requestedBy: 'j.alder',
+    summary: 'Saturday-morning style animation, nothing past TV-Y7.',
+    chips: ['Glass Garden', 'Tin Rocket Club', '+4 more'],
+    titleCount: 9,
+    toDownload: 0,
+    ceiling: 'TV-Y7',
+    edited: true, // excluded from bulk — approve individually, keeps the edit
+  },
+];
+
+const fillerPulls = [
+  {
+    id: 'fp-1',
+    title: 'Station-ident bumpers',
+    reason: 'Coverage gap: no short-form bumper clips between 10–20s for the overnight block.',
+    estimateClips: 18,
+    sources: 2,
+  },
+  {
+    id: 'fp-2',
+    title: 'Archival weather segments',
+    reason: 'Rotation is repeating the same 4 segments more than twice a week.',
+    estimateClips: 9,
+    sources: 1,
+  },
+];
+
+const needsFixed = [
+  {
+    id: 'fail-1',
+    title: 'Midnight radio dramas',
+    hint: "Couldn't find enough titles matching this request. Try broadening the era or dropping a keyword.",
+    fix: 'Edit and try again',
+  },
+];
+
+// ---- State ----
+let sel = { channels: new Set(), filler: new Set() };
+let dialog = null; // {kind:'confirm'|'result', group, items, results}
+let decidedEdited = new Set(); // ids approved individually in this session (demo only)
+
+const role = () => $('role').value;
+const scenario = () => $('scenario').value;
+
+const groupsFor = () => {
+  const s = scenario();
+  return {
+    channels: s === 'both' || s === 'channels-only' ? channelRequests : [],
+    filler: s === 'both' || s === 'filler-only' ? fillerPulls : [],
+  };
+};
+
+const announce = (t) => { $('action').textContent = t; };
+
+// ---- Rendering ----
+
+const renderTabs = () => {
+  const { channels, filler } = groupsFor();
+  const needsYouCount = (role() === 'admin' ? channels.length + filler.length : 0) + needsFixed.length;
+  $('navtabs').innerHTML = `
+    <button type="button" class="navtab" aria-current="true"><span>Needs you</span>${needsYouCount > 0 ? `<span class="count attn">${needsYouCount}</span>` : ''}</button>
+    <button type="button" class="navtab"><span>In progress</span><span class="count">2</span></button>
+    <button type="button" class="navtab"><span>Done</span><span class="count">11</span></button>`;
+};
+
+const channelRowHtml = (item) => `
+  <div class="row" data-row="${item.id}">
+    ${item.edited ? '' : `<input type="checkbox" aria-label="Select ${item.title} for bulk approve" data-act="toggle" data-group="channels" data-id="${item.id}" ${sel.channels.has(item.id) ? 'checked' : ''}>`}
+    <div class="row-body">
+      <div class="title-line">
+        <span class="t">${item.title}</span>
+        <span class="badge tune">${item.toDownload} to acquire</span>
+        ${item.edited ? '<span class="badge suggest">Edited</span>' : ''}
+      </div>
+      <p class="summary">${item.summary}</p>
+      <p class="by-line">Requested by ${item.requestedBy}</p>
+      <p class="meta-line">${item.titleCount} titles · ${item.toDownload} to download · up to ${item.ceiling}</p>
+      ${item.edited ? '<p class="excluded-note">Excluded from bulk — approve individually so the edit is kept.</p>' : ''}
+    </div>
+    <div class="row-actions">
+      <button type="button" class="btn sm outline" data-act="deny" data-id="${item.id}">Deny</button>
+      <button type="button" class="btn sm primary" data-act="approve-one" data-group="channels" data-id="${item.id}">Approve</button>
+    </div>
+  </div>`;
+
+const fillerRowHtml = (item) => `
+  <div class="row" data-row="${item.id}">
+    <input type="checkbox" aria-label="Select ${item.title} for bulk approve" data-act="toggle" data-group="filler" data-id="${item.id}" ${sel.filler.has(item.id) ? 'checked' : ''}>
+    <div class="row-body">
+      <div class="title-line">
+        <span class="t">${item.title}</span>
+        <span class="badge lock">~${item.estimateClips} clips</span>
+      </div>
+      <p class="summary">${item.reason}</p>
+      <p class="by-line">Requested by Loomarr</p>
+      <p class="meta-line">${item.sources} source${item.sources === 1 ? '' : 's'} · estimate, not exact</p>
+    </div>
+    <div class="row-actions">
+      <button type="button" class="btn sm outline" data-act="dismiss" data-id="${item.id}">Not now</button>
+      <button type="button" class="btn sm primary" data-act="approve-one" data-group="filler" data-id="${item.id}">Approve</button>
+    </div>
+  </div>`;
+
+const groupHtml = (kind, label, byLabel, items, rowHtml) => {
+  if (items.length === 0) return '';
+  const bulkable = items.filter((i) => !i.edited);
+  const selected = [...sel[kind]].filter((id) => bulkable.some((i) => i.id === id));
+  const allSelected = bulkable.length > 0 && selected.length === bulkable.length;
+  return `
+    <div class="group" data-group="${kind}">
+      <div class="group-head">
+        <label style="display:flex;align-items:center;gap:8px;min-height:0;">
+          ${bulkable.length > 1 ? `<input type="checkbox" data-act="select-all" data-group="${kind}" ${allSelected ? 'checked' : ''} aria-label="Select all ${label}">` : ''}
+          <span class="kind">${label}</span>
+        </label>
+        <span class="by">${byLabel}</span>
+        <span class="spacer"></span>
+        <span class="sel-count">${selected.length > 0 ? `${selected.length} selected` : 'None selected'}</span>
+        <button type="button" class="btn sm primary" data-act="open-confirm" data-group="${kind}" ${selected.length === 0 ? 'disabled' : ''} aria-disabled="${selected.length === 0}">
+          Approve${selected.length ? ' ' + selected.length : ''}
+        </button>
+      </div>
+      <div class="group-list">
+        ${items.map(rowHtml).join('')}
+      </div>
+    </div>`;
+};
+
+const needsFixedHtml = () => `
+  <div class="section">
+    <h2>Couldn't be built</h2>
+    <div class="group">
+      <div class="group-list">
+        ${needsFixed.map((f) => `
+          <div class="row">
+            <div class="row-body">
+              <div class="title-line"><span class="t">${f.title}</span><span class="badge onair">Couldn't build</span></div>
+              <p class="summary">${f.hint}</p>
+            </div>
+            <div class="row-actions"><button type="button" class="btn sm outline" data-act="noop">${f.fix}</button></div>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+
+const renderContent = () => {
+  const { channels, filler } = groupsFor();
+  const isAdmin = role() === 'admin';
+  const content = $('content');
+
+  if (isAdmin && channels.length + filler.length > 0) {
+    content.innerHTML = `
+      <div class="section">
+        <h2>Waiting for your approval</h2>
+        ${groupHtml('channels', 'Channel requests', '', channels, channelRowHtml)}
+        ${groupHtml('filler', 'Filler downloads', 'Requested by Loomarr', filler, fillerRowHtml)}
+      </div>
+      ${needsFixed.length > 0 ? needsFixedHtml() : ''}
+    `;
+  } else if (needsFixed.length > 0) {
+    content.innerHTML = needsFixedHtml();
+  } else {
+    content.innerHTML = `<div class="empty"><p>Nothing needs you</p><p class="muted" style="font-size:13px">Approvals waiting on you, and requests that couldn't be built, appear here.</p></div>`;
+  }
+  renderDialog();
+};
+
+// ---- Dialog content ----
+
+const consequenceItemHtml = (kind, item) => {
+  if (kind === 'channels') {
+    return `
+      <div class="consequence-item">
+        <span class="t">${item.title}</span>
+        <span class="d">${item.titleCount} titles · ${item.toDownload} to download · up to ${item.ceiling}</span>
+        <span class="channel">Becomes a new channel named "${item.title}"</span>
+      </div>`;
+  }
+  return `
+    <div class="consequence-item">
+      <span class="t">${item.title}</span>
+      <span class="d">~${item.estimateClips} clips from ${item.sources} source${item.sources === 1 ? '' : 's'} (estimate — may yield fewer once fetched)</span>
+      <span class="d" style="color:#8B93A3">Channel: not shown — filler pulls don't carry a channel id in the API today (open question)</span>
+    </div>`;
+};
+
+const renderDialog = () => {
+  const existing = document.getElementById('dialog-backdrop');
+  if (existing) existing.remove();
+  if (!dialog) return;
+  const frame = $('frame-wrap');
+  const backdrop = document.createElement('div');
+  backdrop.className = 'backdrop';
+  backdrop.id = 'dialog-backdrop';
+  backdrop.setAttribute('role', 'presentation');
+
+  if (dialog.kind === 'confirm') {
+    const { group, items } = dialog;
+    const label = group === 'channels' ? 'channel request' : 'filler download';
+    const totalDownload = group === 'channels'
+      ? items.reduce((n, i) => n + i.toDownload, 0)
+      : items.reduce((n, i) => n + i.estimateClips, 0);
+    backdrop.innerHTML = `
+      <div class="dialog" role="dialog" aria-label="Confirm bulk approve">
+        <h2>Approve ${items.length} ${label}${items.length === 1 ? '' : 's'}?</h2>
+        <p class="summary-line muted">Scope: this approves only the <strong>${group === 'channels' ? 'Channel requests' : 'Filler downloads'}</strong> group. Items selected in the other group are untouched.</p>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${items.map((i) => consequenceItemHtml(group, i)).join('')}
+        </div>
+        <p class="summary-line">${group === 'channels' ? `${totalDownload} title${totalDownload === 1 ? '' : 's'} will start downloading.` : `~${totalDownload} clips will start downloading, where still available.`}</p>
+        <p class="open-flag">Disk impact is not shown — the proposal and pull APIs return title/clip counts but no byte-size estimate. Two options for the build PR: (a) ship without a size figure, since none exists, or (b) add one to the acquisition/pull DTOs first. Not decided here.</p>
+        <div class="dialog-foot">
+          <button type="button" class="btn outline" data-act="cancel-dialog">Cancel</button>
+          <button type="button" class="btn primary" data-act="confirm-bulk">Approve ${items.length}</button>
+        </div>
+      </div>`;
+  } else if (dialog.kind === 'result') {
+    const { group, results, approved, total } = dialog;
+    backdrop.innerHTML = `
+      <div class="dialog" role="dialog" aria-label="Approval result">
+        <h2>Approved ${approved} of ${total}</h2>
+        <div class="result-list">
+          ${results.map((r) => `
+            <div class="result-row ${r.ok ? 'ok' : 'bad'}">
+              <span class="mark">${r.ok ? '✓' : '✕'}</span>
+              <div class="rr-body">
+                <div>${r.title}</div>
+                ${r.ok
+                  ? `<div class="rr-meta">${group === 'channels' ? `${r.enqueued} title${r.enqueued === 1 ? '' : 's'} enqueued · channel "${r.channelName}" created` : 'Approved — no per-item clip count returned for filler pulls today'}</div>`
+                  : `<div class="rr-meta">${r.error}</div>`}
+              </div>
+              ${!r.ok ? `<button type="button" class="btn sm outline retry" data-act="retry-one" data-group="${group}" data-id="${r.id}">Retry</button>` : ''}
+            </div>`).join('')}
+        </div>
+        ${results.some((r) => !r.ok) ? `<button type="button" class="btn outline" data-act="retry-failed" data-group="${group}">Retry ${results.filter((r) => !r.ok).length} failed</button>` : ''}
+        <div class="dialog-foot">
+          <button type="button" class="btn primary" data-act="close-dialog">Done</button>
+        </div>
+      </div>`;
+  }
+
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { dialog = null; renderDialog(); } });
+  frame.appendChild(backdrop);
+};
+
+// ---- Actions ----
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+
+  if (act === 'toggle') {
+    const kind = el.dataset.group, id = el.dataset.id;
+    if (sel[kind].has(id)) sel[kind].delete(id); else sel[kind].add(id);
+    renderAll();
+    return;
+  }
+  if (act === 'select-all') {
+    const kind = el.dataset.group;
+    const bulkable = (kind === 'channels' ? channelRequests : fillerPulls).filter((i) => !i.edited);
+    if (el.checked) sel[kind] = new Set(bulkable.map((i) => i.id));
+    else sel[kind] = new Set();
+    renderAll();
+    return;
+  }
+  if (act === 'open-confirm') {
+    const kind = el.dataset.group;
+    const source = kind === 'channels' ? channelRequests : fillerPulls;
+    const items = source.filter((i) => sel[kind].has(i.id));
+    dialog = { kind: 'confirm', group: kind, items };
+    renderDialog();
+    announce(`Reviewing ${items.length} ${kind === 'channels' ? 'channel request(s)' : 'filler download(s)'} before approving.`);
+    return;
+  }
+  if (act === 'cancel-dialog') { dialog = null; renderDialog(); announce('Cancelled. Nothing was approved.'); return; }
+  if (act === 'close-dialog') {
+    const kind = dialog?.group;
+    dialog = null;
+    sel[kind] = new Set();
+    renderAll();
+    return;
+  }
+  if (act === 'confirm-bulk') {
+    const { group, items } = dialog;
+    // Simulated partial failure (matches BulkApproveResult / BulkApproveFillerPullResult):
+    // the LAST selected item in the batch always fails, so the state is reachable without hunting for it.
+    const results = items.map((item, idx) => {
+      const failing = idx === items.length - 1 && items.length > 1;
+      if (group === 'channels') {
+        return failing
+          ? { id: item.id, title: item.title, ok: false, error: 'Already decided by another admin' }
+          : { id: item.id, title: item.title, ok: true, enqueued: item.toDownload, channelName: item.title };
+      }
+      return failing
+        ? { id: item.id, title: item.title, ok: false, error: 'Pull was dismissed by another admin' }
+        : { id: item.id, title: item.title, ok: true };
+    });
+    dialog = { kind: 'result', group, results, approved: results.filter((r) => r.ok).length, total: results.length };
+    renderDialog();
+    announce(`Approved ${dialog.approved} of ${dialog.total} ${group === 'channels' ? 'channel requests' : 'filler downloads'}.`);
+    return;
+  }
+  if (act === 'retry-one' || act === 'retry-failed') {
+    const group = el.dataset.group;
+    const failedIds = act === 'retry-one' ? [el.dataset.id] : dialog.results.filter((r) => !r.ok).map((r) => r.id);
+    const source = group === 'channels' ? channelRequests : fillerPulls;
+    const retried = failedIds.map((id) => {
+      const item = source.find((i) => i.id === id);
+      if (group === 'channels') return { id, title: item.title, ok: true, enqueued: item.toDownload, channelName: item.title };
+      return { id, title: item.title, ok: true };
+    });
+    dialog.results = dialog.results.map((r) => retried.find((x) => x.id === r.id) ?? r);
+    dialog.approved = dialog.results.filter((r) => r.ok).length;
+    renderDialog();
+    announce(`Retried ${failedIds.length} item(s) — now approved on retry.`);
+    return;
+  }
+  if (act === 'approve-one') {
+    const kind = el.dataset.group, id = el.dataset.id;
+    sel[kind].delete(id);
+    if (kind === 'channels') decidedEdited.add(id);
+    renderAll();
+    announce(`Approved individually. ${kind === 'channels' ? channelRequests.find((i) => i.id === id)?.title : fillerPulls.find((i) => i.id === id)?.title} is no longer waiting.`);
+    return;
+  }
+  if (act === 'deny' || act === 'dismiss' || act === 'noop') {
+    announce('Single-row deny/dismiss/fix actions are unchanged from the built page — not redrawn in this draft.');
+    return;
+  }
+});
+
+const renderFrame = () => {
+  $('frame').classList.toggle('phone', $('size').value === 'phone');
+  $('frame-label').textContent = $('size').value === 'phone' ? '390 × 844 — iPhone-class phone' : '1040 px — desktop';
+};
+
+function renderAll() {
+  renderFrame();
+  renderTabs();
+  renderContent();
+}
+
+for (const id of ['role', 'scenario', 'size']) {
+  $(id).addEventListener('change', () => { dialog = null; renderAll(); });
+}
+renderAll();
+</script>
+</html>

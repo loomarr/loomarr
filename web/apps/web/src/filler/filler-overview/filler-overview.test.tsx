@@ -131,13 +131,15 @@ describe("FillerOverview", () => {
   });
 
   // The mock painted the worst rung green and the best amber. Green has to mean "good" and red
-  // "nothing to play", so the tone is pinned per rung, with the mock's words.
+  // "nothing to play", so the tone is pinned per rung, with the mock's words. Asserted by the
+  // rendered colour (Badge's public output), not a Tailwind class: Badge sources colour from
+  // @loomarr/design-system's semanticColors via inline style, not a class name (#970 PR C).
   it.each([
-    ["exact", "Good match", "text-lock"],
-    ["widened", "Years loosened", "text-caution"],
-    ["audience", "Audience only", "text-caution"],
-    ["bumper_card", "Bumpers only", "text-onair-300"],
-  ] as const)("badges a %s channel %s in %s", async (level, label, tone) => {
+    ["exact", "Good match", "#3DD68C"],
+    ["widened", "Years loosened", "#F5D90A"],
+    ["audience", "Audience only", "#F5D90A"],
+    ["bumper_card", "Bumpers only", "#E85A5F"],
+  ] as const)("badges a %s channel %s in %s", async (level, label, color) => {
     show(
       readiness({
         pool: {
@@ -160,7 +162,7 @@ describe("FillerOverview", () => {
         },
       }),
     );
-    expect(await screen.findByText(label)).toHaveClass(tone);
+    expect(await screen.findByText(label)).toHaveStyle({ color });
   });
 
   it("says a bumper-only channel has only the card, not zero minutes", async () => {

@@ -732,20 +732,10 @@ func resolveEntryWithTrace(e LineupEntry, avail Availability, policy PendingPoli
 					trace.add(episodeFact(e, ep, StageEpisodeSelection, OutcomeOmitted, ReasonOutOfSeasonRange))
 					continue
 				}
-				// Era is a playable-program constraint, not merely a series-entry check. The
-				// Simpsons began in 1989 but a 1989–1999 Channel must not therefore admit a
-				// 2022 episode. Unknown episode years fail open: scope is taste, not safety,
-				// and older persisted episode caches decode this new field as zero.
-				if ep.Year > 0 && !rp.Scope.Era.Contains(ep.Year) {
-					scopeDropped++
-					trace.add(episodeFact(e, ep, StageHardFilter, OutcomeExcluded, ReasonOutOfScope))
-					if report != nil {
-						report.Items = append(report.Items, ExcludedItem{
-							Key: e.Key, Title: episodeLabel(e, ep), Reason: "out_of_scope",
-						})
-					}
-					continue
-				}
+				// Airing dates are a playable-program constraint, not merely a series-entry
+				// check. The Simpsons began in 1989 but a 1989–1999 Channel (or rule) must not
+				// therefore admit a 2022 episode. Unknown episode years fail open: scope is
+				// taste, not safety, and older persisted episode caches decode the year as zero.
 				if ep.Year > 0 && (!rp.Scope.seriesAiringDateOK(ep.Year) || (ruleScope != nil && !ruleScope.seriesAiringDateOK(ep.Year))) {
 					scopeDropped++
 					trace.add(episodeFact(e, ep, StageHardFilter, OutcomeExcluded, ReasonOutOfScope))

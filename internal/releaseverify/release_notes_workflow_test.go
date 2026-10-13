@@ -32,6 +32,9 @@ func TestVerifyReleaseNotesWorkflow(t *testing.T) {
 		{name: "cannot skip model failure", mutate: replaceOnce("      - name: Generate validated release notes", "      - name: Generate validated release notes\n        continue-on-error: true", t), wantErr: true},
 		{name: "cannot restore unvalidated native notes", mutate: replaceOnce(`--notes-file "$RUNNER_TEMP/release-notes.md"`, "--generate-notes", t), wantErr: true},
 		{name: "cannot add a bypass job", mutate: replaceOnce("jobs:\n", "jobs:\n  bypass:\n    runs-on: ubuntu-latest\n    steps:\n      - run: gh release create unsafe\n", t), wantErr: true},
+		{name: "cannot make the docs gate conditional", mutate: replaceOnce("      - name: Docs-per-release gate\n", "      - name: Docs-per-release gate\n        if: false\n", t), wantErr: true},
+		{name: "cannot skip no-docs-change detection", mutate: replaceOnce("./scripts/check-release-docs-gate.sh", "true #", t), wantErr: true},
+		{name: "cannot shrink the checkout to a shallow clone", mutate: replaceOnce("          fetch-depth: 0 # full history: the docs gate diffs this tag against the previous release tag\n", "", t), wantErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

@@ -16,6 +16,17 @@ describe("Icon", () => {
     expect(markup).not.toMatch(/<(?:circle|line|path)[^>]*aria-label=/);
   });
 
+  it("draws the Requests inbox glyph as a labelled image", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Icon accessibilityLabel="Requests" glyph={icons.requests} />
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain('aria-label="Requests"');
+    expect(markup).toContain("<svg");
+  });
+
   it("keeps decorative glyphs out of the accessibility tree", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

@@ -83,16 +83,7 @@ func (e *Engine) CyclePreviewDraft(
 	// key, new entries as-is (unhealed, like the saved preview) — so the preview matches what
 	// the save→reconcile would actually produce. The drafted policy replaces ch.Policy so the
 	// filler-pool + window helpers read it exactly as they read the saved one.
-	lineup := ch.Lineup
-	if draftLineup != nil {
-		lineup = schedule.ApplyLineup(ch.Lineup, draftLineup, schedule.LineupReplace, schedule.ApplyOpts{PreserveByKey: true})
-	}
-	if draftPolicy != nil {
-		ch.Policy = *draftPolicy
-	}
-
-	ch.Lineup = lineup
-	return e.PreviewPlannedChannel(ctx, ch, at, e.avail)
+	return e.PreviewPlannedChannel(ctx, withDraft(ch, draftLineup, draftPolicy), at, e.avail)
 }
 
 // PreviewPlannedChannel evaluates an unsaved channel using observed availability.

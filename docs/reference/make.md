@@ -44,6 +44,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make compose-verify` |  | verify Traefik, database wiring, and pinned release images |
 | `make release-verify` |  | verify release, CI acquisition, Android, and publication policy |
 | `make release-notes-preview` |  | generate validated release notes (TAG required; optional PREVIOUS_TAG and OUTPUT) |
+| `make docs-release-gate` |  | fail a release whose user-facing changes have no docs change (TAG, PREVIOUS_TAG required; run after release-notes-preview, #1682) |
 | `make backup-restore-verify` |  | isolated SQLite backup, destructive replacement, restore, and state validation |
 | `make backup-restore-drill` |  | SQLite + Docker-backed Postgres backup/restore drills <br>*runs:* `backup-restore-verify` |
 | `make graph` |  | build the local Graphify index in graphify-out/ (never committed; needs graphifyy, see docs/agents/graphify.md) |

@@ -121,7 +121,13 @@ const dayLabel = (offset: number, now: number): string => {
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
-const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProps) => {
+const GuidePage = ({
+  initialIntent,
+  initialJobId,
+  openOnArrival,
+  openManualOnArrival,
+  initialIdeaId,
+}: GuidePageProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
@@ -155,7 +161,12 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
   // current review rather than a bare grid; closing still hides it for the current page lifetime.
   const [adding, setAdding] = useState(() =>
     Boolean(
-      initialIntent || initialJobId || openOnArrival || readActiveSuggestionJob() || readSuggestionDraft(),
+      initialIntent ||
+        initialJobId ||
+        openOnArrival ||
+        openManualOnArrival ||
+        readActiveSuggestionJob() ||
+        readSuggestionDraft(),
     ),
   );
   const [suggestionStage, setSuggestionStage] = useState<ChannelSuggestionStage>("describe");
@@ -167,7 +178,7 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
   const closePanel = () => {
     setAdding(false);
     clearSuggestionDraft();
-    if (initialIntent || initialJobId || openOnArrival)
+    if (initialIntent || initialJobId || openOnArrival || openManualOnArrival || initialIdeaId)
       void navigate({ to: "/guide", search: {}, replace: true });
   };
 
@@ -392,6 +403,8 @@ const GuidePage = ({ initialIntent, initialJobId, openOnArrival }: GuidePageProp
           <ChannelSuggestPanel
             initialIntent={initialIntent}
             initialJobId={initialJobId}
+            initialManual={openManualOnArrival}
+            initialIdeaId={initialIdeaId}
             onCreated={onCreated}
             onStartFresh={startFresh}
             onStageChange={setSuggestionStage}

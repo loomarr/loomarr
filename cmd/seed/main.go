@@ -199,7 +199,7 @@ func seedTitlesAndChannel(ctx context.Context, st store.Store, adminID string) e
 	// and readable rather than the ladder emptying itself against an impossible default.
 	policy := schedule.ChannelPolicy{
 		ProposalPolicy: schedule.ProposalPolicy{
-			Scope:    schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
+			Scope:    schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})},
 			Ordering: schedule.OrderSequential,
 			Separation: schedule.SeparationPolicy{
 				MovieNoRepeat:   schedule.Duration(15 * time.Hour),

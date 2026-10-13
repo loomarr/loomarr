@@ -8,19 +8,10 @@ const ADMIN = { id: "u1", name: "Ada", role: "admin", autoApprove: true, disable
 
 // Moving 160x90 H.264 CMAF keeps decoded frames observable. Channel 1 uses a one-second VOD so
 // initial playback reaches ended and certifies disposal of an ended MediaSource. Replacement
-// Channels use an OPEN live window, matching the channel packager's no-ENDLIST contract and its
-// real multi-segment sliding window (#1443). Two properties of that window are load-bearing, and
-// both regressed independently of each other:
-//  - Width: `liveHlsConfig.liveSyncDuration` (web/packages/player/src/browser/live-hls-config)
-//    targets the live edge minus 6 s. A window narrower than that makes hls.js's sync position
-//    fall before the window's own start on every single load, an underflow this fixture hit at
-//    three segments (3 s) and that a one-segment fixture hit even sooner.
-//  - Motion: a playlist whose MEDIA-SEQUENCE and segment set never change across reloads reads to
-//    hls.js as a stalled live source, not an open one, and trips its playlist-unchanged reload
-//    backoff; CI captures of the stall show exactly that backoff's growing gap between repeated
-//    `master.m3u8` fetches, with no segment request ever made before the test's decode wait times
-//    out. Only WebKit surfaced it visibly, but the fixture defect is browser-independent.
-// Slide the window with wall-clock time so it is always both wide enough and genuinely moving.
+// Channels use a three-segment OPEN live window, matching the channel packager's no-ENDLIST
+// contract and its real multi-segment sliding window. hls.js starts two segments behind the live
+// edge; a one-segment open fixture is below that contract and intermittently leaves WebKit playing
+// without a paintable frame.
 // Keeping bytes inline leaves the origin deterministic while browsers exercise hls.js, MSE, and
 // decoding. The VOD fragment and three live fragments use the shared init above and this source:
 //
@@ -46,44 +37,21 @@ const LIVE_MEDIA_FRAGMENTS = {
     "AAAAGHN0eXBtc2RoAAAAAG1zZGhtc2l4AAAANHNpZHgBAAAAAAAAAQAAMAAAAAAAAACUAAAAAAAAAAAAAAAAAQAAAyYAADAAgAAAAAAAAShtb29mAAAAEG1maGQAAAAAAAAABAAAARB0cmFmAAAAHHRmaGQAAgA4AAAAAQAAAgAAAACgAQEAAAAAABR0ZmR0AQAAAAAAAAAAAJAAAAAA2HRydW4AAAoFAAAAGAAAATACAAAAAAAAoAAABAAAAAAQAAAKAAAAAA0AAAQAAAAADAAAAAAAAAAMAAACAAAAABYAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFgAACgAAAAAPAAAEAAAAAAwAAAAAAAAADAAAAgAAAAAVAAAKAAAAAA8AAAQAAAAADAAAAAAAAAAMAAACAAAAABUAAAoAAAAADwAABAAAAAAMAAAAAAAAAAwAAAIAAAAAFQAACAAAAAAOAAACAAAAAAwAAAIAAAAB/m1kYXQAAACcZYiCAAR//ufj/AptcF9wqGLu1tdyoujXh1cYhTyC6u2OqN+Hdwy1OB4/sq/J+cwBTrn5/wwp/Er/5RuOhPlmXmoYO7U0Z+u9EDjiaRSlmSCbl9imcacku+dxe3EUyxsuNL+9uOjPCjptc9hguh2mMm7iLxERh9zB2GtbIJZwcctcAPImO9rZWGZpHVSzJW5bIJDyFFAc8AACXLNQAAAADEGaJGxDv/6plgDmgAAAAAlBnkJ4hf8A84EAAAAIAZ5hdEK/AVMAAAAIAZ5jakK/AVMAAAASQZpoSahBaJlMCHf//qmWAOaBAAAAC0GehkURLC//APOBAAAACAGepXRCvwFTAAAACAGep2pCvwFTAAAAEkGarEmoQWyZTAh3//6plgDmgAAAAAtBnspFFSwv/wDzgQAAAAgBnul0Qr8BUwAAAAgBnutqQr8BUwAAABFBmvBJqEFsmUwIb//+p4QBxwAAAAtBnw5FFSwv/wDzgAAAAAgBny10Qr8BUwAAAAgBny9qQr8BUwAAABFBmzRJqEFsmUwIZ//+nhAGzAAAAAtBn1JFFSwv/wDzgQAAAAgBn3F0Qr8BUwAAAAgBn3NqQr8BUwAAABFBm3dJqEFsmUwIV//+OEAaMQAAAApBn5VFFSwr/wFTAAAACAGftmpCvwFT",
 } as const;
 
-// 12 one-second segments comfortably clears the player's 6 s liveSyncDuration target with margin
-// to spare while the window keeps sliding underneath it between a browser's manifest reloads.
-const LIVE_WINDOW_SEGMENTS = 12;
-const LIVE_FRAGMENT_NAMES = Object.keys(LIVE_MEDIA_FRAGMENTS) as Array<keyof typeof LIVE_MEDIA_FRAGMENTS>;
-
-const manifest = (sig: string, duration: 1 | 4) => {
-  if (duration === 1) {
-    return `#EXTM3U
+const manifest = (sig: string, duration: 1 | 4) => `#EXTM3U
 #EXT-X-VERSION:7
 #EXT-X-TARGETDURATION:1
-#EXT-X-MEDIA-SEQUENCE:0
-#EXT-X-PLAYLIST-TYPE:VOD
-#EXT-X-INDEPENDENT-SEGMENTS
+#EXT-X-MEDIA-SEQUENCE:${duration === 1 ? 0 : 1}
+${duration === 1 ? "#EXT-X-PLAYLIST-TYPE:VOD\n" : ""}#EXT-X-INDEPENDENT-SEGMENTS
 #EXT-X-MAP:URI="init.mp4?sig=${sig}"
-#EXTINF:1.000000,
-segment.m4s?sig=${sig}
-#EXT-X-ENDLIST
+${
+  duration === 1
+    ? `#EXTINF:1.000000,\nsegment.m4s?sig=${sig}`
+    : Object.keys(LIVE_MEDIA_FRAGMENTS)
+        .map((name) => `#EXTINF:1.000000,\n${name}?sig=${sig}`)
+        .join("\n")
+}
+${duration === 1 ? "#EXT-X-ENDLIST\n" : ""}
 `;
-  }
-  // The edge sequence advances one per wall-clock second, exactly like the real packager's
-  // one-second segments; every reload a browser makes therefore lists a genuinely new trailing
-  // segment instead of repeating the same snapshot (see the comment above `LIVE_MEDIA_FRAGMENTS`).
-  const edgeSequence = Math.floor(Date.now() / 1_000);
-  const firstSequence = edgeSequence - LIVE_WINDOW_SEGMENTS + 1;
-  const segments = Array.from({ length: LIVE_WINDOW_SEGMENTS }, (_, offset) => {
-    const sequence = firstSequence + offset;
-    const name = LIVE_FRAGMENT_NAMES[sequence % LIVE_FRAGMENT_NAMES.length];
-    return `#EXTINF:1.000000,\n${name}?sig=${sig}&seq=${sequence}`;
-  }).join("\n");
-  return `#EXTM3U
-#EXT-X-VERSION:7
-#EXT-X-TARGETDURATION:1
-#EXT-X-MEDIA-SEQUENCE:${firstSequence}
-#EXT-X-INDEPENDENT-SEGMENTS
-#EXT-X-MAP:URI="init.mp4?sig=${sig}"
-${segments}
-`;
-};
 
 const channelId = (number: number) => `ch-${String(number).padStart(3, "0")}`;
 
@@ -326,4 +294,4 @@ const startTunerServer = () => {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) startTunerServer();
 
 export type { TunerBackend };
-export { channelId, installTunerBackend, LIVE_WINDOW_SEGMENTS, manifest as tunerManifest };
+export { channelId, installTunerBackend, manifest as tunerManifest };

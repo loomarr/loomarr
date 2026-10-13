@@ -357,6 +357,46 @@ describe("pairing contract", () => {
       token: "token-2",
     });
   });
+  it("flags only the code that replaced an expired one, clearing on the next explicit pair", async () => {
+    const store = memoryStore();
+    const states: Array<{ refreshedFromExpired: boolean; userCode: string }> = [];
+    let starts = 0;
+    const transport: PairingTransport = {
+      poll: vi.fn(
+        async (): Promise<PairingPoll> =>
+          starts < 3
+            ? { status: "expired" }
+            : { body: { deviceName: "Shield", token: "token" }, status: "paired" },
+      ),
+      start: vi.fn(async () => {
+        starts += 1;
+        return {
+          body: { deviceCode: `secret-${starts}`, expiresAt: "bad", interval: 1, userCode: `CODE-${starts}` },
+          serverDate: undefined,
+        };
+      }),
+    };
+    const session = new PairingSession({
+      createTransport: () => transport,
+      deviceName: "Shield",
+      sleep: async () => {},
+      store,
+    });
+    session.subscribe((state) => {
+      if (state.status === "awaiting-approval")
+        states.push({ refreshedFromExpired: state.refreshedFromExpired, userCode: state.userCode });
+    });
+    await session.pair("https://loomarr.media");
+    expect(states).toEqual([
+      { refreshedFromExpired: false, userCode: "CODE-1" },
+      { refreshedFromExpired: true, userCode: "CODE-2" },
+      { refreshedFromExpired: true, userCode: "CODE-3" },
+    ]);
+
+    states.length = 0;
+    await session.pair("https://loomarr.media");
+    expect(states[0]).toEqual({ refreshedFromExpired: false, userCode: "CODE-4" });
+  });
   it("mints a fresh code after expiry and clears a revoked credential", async () => {
     const store = memoryStore();
     let starts = 0;

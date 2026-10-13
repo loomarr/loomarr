@@ -124,8 +124,9 @@ half-open rune offsets); `axes` are one to three of `movie_release`, `series_pre
   malformed output dispatch nothing.
 - `scope.dates` stores `movieRelease`, `seriesPremiere` and `seriesAiring` ranges: union within a
   list, conjunction across axes. Airing is checked per episode, so an older series can supply
-  in-window episodes. Nothing widens explicit windows. `scope.era` stays for stored and operator
-  policies.
+  in-window episodes. Nothing widens explicit windows. `scope.dates` is the only stored date
+  scope: an `era` is read as an alias for the same range on all three axes and never written
+  (#1877, [programming design](../programming-design.md)).
 - Filler follows through `filler.eraWindows` (at most eight ranges, exclusive with `filler.era`),
   inherited from the airing or release windows when neither is set. Unknown filler years do not
   satisfy a selected era.

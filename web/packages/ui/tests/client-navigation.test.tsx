@@ -29,7 +29,7 @@ describe("shared client navigation", () => {
     for (const markup of [render(), render("material")]) {
       expect(markup).toContain('role="tablist"');
       expect(markup).not.toContain('role="button"');
-      expect(markup.match(/role="tab"/g)).toHaveLength(3);
+      expect(markup.match(/role="tab"/g)).toHaveLength(4);
       expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
     }
     // The web build of a touch surface reads as iPhone's bar; Android's is chosen by platform.
@@ -37,7 +37,44 @@ describe("shared client navigation", () => {
     expect(render("material")).toContain("font-size:12px");
   });
 
+  it("orders a phone's tabs Watching, Guide, Requests, Surf and badges only Requests", () => {
+    const render = (requestsBadge?: number) =>
+      renderToStaticMarkup(
+        <LoomarrProvider>
+          <ClientNavigation
+            active="watching"
+            density="touch"
+            onNavigate={vi.fn()}
+            requestsBadge={requestsBadge}
+          />
+        </LoomarrProvider>,
+      );
+    const labels = [...render(3).matchAll(/aria-label="([^"]+)"/g)].map(([, label]) => label);
+
+    expect(labels.filter((label) => label !== "Primary navigation")).toEqual([
+      "Watching",
+      "Guide",
+      "Requests, 3 need attention",
+      "Surf",
+    ]);
+    expect(render(0)).not.toContain("need attention");
+    expect(render()).not.toContain("need attention");
+  });
+
+  it("keeps Requests off the TV and pointer rows", () => {
+    for (const density of ["tv", "pointer"] as const) {
+      const markup = renderToStaticMarkup(
+        <LoomarrProvider>
+          <ClientNavigation active="watching" density={density} onNavigate={vi.fn()} requestsBadge={5} />
+        </LoomarrProvider>,
+      );
+      expect(markup).not.toContain("Requests");
+      expect(markup.match(/role="button"/g)).toHaveLength(3);
+    }
+  });
+
   it("returns transient browsing to playback before allowing the host to exit", () => {
+    expect(clientBackDestination("requests")).toBe("watching");
     expect(clientBackDestination("guide")).toBe("watching");
     expect(clientBackDestination("surf")).toBe("watching");
     expect(clientBackDestination("watching")).toBeNull();

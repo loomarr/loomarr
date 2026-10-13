@@ -26,8 +26,10 @@ describe("StatusDot", () => {
     const { container: live } = render(<StatusDot tone="live" label="On air" />);
     expect(live.firstChild).toHaveClass("motion-safe:animate-pulse");
 
+    // `error` shares `live`'s onair colour (sourced from @loomarr/design-system's shared
+    // `semanticColors.guide.onAir` token, #970 PR B) but never the pulse.
     const { container: failed } = render(<StatusDot tone="error" label="Failed" />);
-    expect(failed.firstChild).toHaveClass("bg-onair");
+    expect(failed.firstChild).toHaveStyle({ backgroundColor: "#E5484D" });
     expect(failed.firstChild).not.toHaveClass("motion-safe:animate-pulse");
   });
 

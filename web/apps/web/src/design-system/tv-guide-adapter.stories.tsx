@@ -37,7 +37,7 @@ const TvGuideWorkshop = () => {
         }[event.key] as "down" | "left" | "right" | "up" | undefined;
         if (direction) {
           event.preventDefault();
-          const next = moveTvGuideFocus(layout, navigation, direction, filters).state;
+          const next = moveTvGuideFocus(layout, navigation, direction, filters, guideNow).state;
           setNavigation(next);
           setAnnouncement(
             next.focus.region === "filters"

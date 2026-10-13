@@ -3,6 +3,7 @@ import type { ServerDiscoverySnapshot } from "@loomarr/core/server-discovery";
 import {
   Action,
   ActivityIndicator,
+  Badge,
   BrandLockup,
   BrandMark,
   Field,
@@ -120,7 +121,7 @@ const pairingContent = (
           Find your Loomarr server
         </Text>
         <Text density={density} textRole="body">
-          Choose a server on this network. You’ll approve this TV on the next screen.
+          {`Choose a server on this network. You’ll approve this ${density === "tv" ? "TV" : "device"} on the next screen.`}
         </Text>
         {discovery?.servers.map((server, index) => (
           <Action
@@ -181,6 +182,9 @@ const pairingContent = (
     );
   if (state.status === "awaiting-approval") {
     const seconds = Math.max(0, Math.ceil((state.expiresAtMs - Date.now()) / 1_000));
+    // Maintainer decision (#1817, pairing states): urgent under 60s, danger + semibold.
+    const urgent = seconds < 60;
+    const countdownLabel = `Expires in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
     return (
       <>
         <Surface
@@ -253,6 +257,11 @@ const pairingContent = (
               >
                 {state.userCode}
               </Text>
+              {state.refreshedFromExpired ? (
+                <Text accessibilityLiveRegion="polite" density={density} textRole="metadata" tone="muted">
+                  New code — the last one expired.
+                </Text>
+              ) : null}
             </Surface>
           </Surface>
         </Surface>
@@ -269,9 +278,15 @@ const pairingContent = (
           borderWidth={0}
           gap={density === "tv" ? 12 : "$control"}
         >
-          <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
-            Expires in {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
-          </Text>
+          {urgent ? (
+            <Badge accessibilityLiveRegion="polite" density={density} tone="danger">
+              {countdownLabel}
+            </Badge>
+          ) : (
+            <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
+              {countdownLabel}
+            </Text>
+          )}
           <Action
             density={density}
             hasTVPreferredFocus={density === "tv"}

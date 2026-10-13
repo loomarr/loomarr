@@ -1,16 +1,16 @@
 import * as discoveryApi from "@loomarr/api/endpoints/discovery";
 import * as proposalJobsApi from "@loomarr/api/endpoints/proposal-jobs";
 import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
-import { ChannelIdeaDTOFacet } from "@loomarr/api/models/channelIdeaDTOFacet";
-import { ChannelIdeaReasonDTOKind } from "@loomarr/api/models/channelIdeaReasonDTOKind";
 import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
+import { ideaAvailability, ideaCount, ideaReason } from "@loomarr/core/requests";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { RefreshCcw, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
@@ -18,63 +18,6 @@ import type { ChannelIdeasProps, IdeaCardProps } from "./channel-ideas.type";
 
 const PAGE = 3;
 const POSTERS = 4;
-const DAY_MS = 24 * 60 * 60 * 1000;
-// Holidays become ideas at most six weeks out (the API's horizon), so six covers every count.
-const WEEKS = ["", "a week", "two weeks", "three weeks", "four weeks", "five weeks", "six weeks"];
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-// What the idea's titles are, as its name says it: movies, series, or titles for a mix.
-const kind = (idea: ChannelIdeaDTO, n: number) => {
-  if (idea.series === 0) return n === 1 ? "movie" : "movies";
-  if (idea.movies === 0) return "series";
-  return n === 1 ? "title" : "titles";
-};
-
-// "90s" in the last century, "2010s" in this one: the same words the idea's name uses.
-const decadeWords = (value: string) => {
-  const year = Number(value);
-  return year >= 1900 && year < 2000 ? `${String(year % 100).padStart(2, "0")}s` : `${value}s`;
-};
-
-// "Halloween is five weeks away" (the mock).
-const holidayReason = (label: string, startsAtMs: number | undefined, nowMs: number) => {
-  if (startsAtMs === undefined || startsAtMs <= nowMs) return `${label} is on now`;
-  const days = Math.ceil((startsAtMs - nowMs) / DAY_MS);
-  if (days === 1) return `${label} is tomorrow`;
-  if (days < 7) return `${label} is ${days} days away`;
-  return `${label} is ${WEEKS[Math.min(Math.floor(days / 7), WEEKS.length - 1)]} away`;
-};
-
-// The small line above the name, worded here from the server's typed reason (Q-H3). "14 comedy
-// movies, none on a channel yet" (the mock); with nothing on the air every title is unaired, so
-// it counts the library instead: "9 comedy series in your library".
-const ideaReason = (idea: ChannelIdeaDTO, empty: boolean, nowMs: number) => {
-  const { reason } = idea;
-  if (reason.kind === ChannelIdeaReasonDTOKind.holiday) {
-    return holidayReason(reason.holidayLabel ?? idea.name, reason.startsAtMs, nowMs);
-  }
-  const noun = kind(idea, reason.count);
-  const what =
-    idea.facet === ChannelIdeaDTOFacet.genre
-      ? `${reason.count} ${idea.value.toLowerCase()} ${noun}`
-      : idea.facet === ChannelIdeaDTOFacet.decade
-        ? `${reason.count} ${noun} from the ${decadeWords(idea.value)}`
-        : `${reason.count} ${noun}`;
-  return empty ? `${what} in your library` : `${what}, none on a channel yet`;
-};
-
-// "18 movies · 16 in your library, 2 to download" (the mock).
-const ideaCount = (idea: ChannelIdeaDTO) =>
-  [idea.movies > 0 && plural(idea.movies, "movie", "movies"), idea.series > 0 && `${idea.series} series`]
-    .filter(Boolean)
-    .join(" and ");
-
-const ideaAvailability = (idea: ChannelIdeaDTO) =>
-  idea.toDownload === 0
-    ? "all in your library"
-    : `${idea.inLibrary} in your library, ${idea.toDownload} to download`;
-
 // IdeaCard — one channel idea (#1659 web mock): four posters, the reason, name and pitch, what it
 // holds, then Request and Hide. A requested idea keeps its card and says it's waiting for an admin.
 // There's no Undo there yet: withdrawing a member's request has no API.
@@ -121,6 +64,15 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
             <Button size="sm" disabled={busy} onClick={onRequest}>
               Request channel
             </Button>
+            {/* Opens the manual builder preloaded with this idea's own lineup (#1817) — the
+                shipped idea card named this as waiting on the mock; #1872 is the approved one. */}
+            <Link
+              to="/guide"
+              search={{ manual: "1", ideaId: idea.id }}
+              className={cn(buttonVariants({ size: "sm", variant: "ghost" }))}
+            >
+              Edit first
+            </Link>
             <Button
               size="sm"
               variant="ghost"
@@ -142,7 +94,8 @@ const IdeaCard = ({ idea, empty, nowMs, busy, onRequest, onHide }: IdeaCardProps
 // ChannelIdeas — the member's "Channel ideas" on Home (#1659 web mock, H4): channels their library
 // could make, built without the LLM (#1665, #1720). Three at a time, "Different ideas" pages
 // through the rest, Hide keeps an Undo in the header, and Request puts the idea in the approval
-// queue. "Edit first" and "describe your own" wait on the LLM-off mock, so they aren't here.
+// queue. "Edit first" and "Describe your own channel" (#1817, #1872) both open the Guide's
+// manual builder — the former preloaded with this idea's own lineup, the latter blank.
 const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
   const queryClient = useQueryClient();
   const list = discoveryApi.useListChannelIdeas();
@@ -248,8 +201,16 @@ const ChannelIdeas = ({ empty, nowMs }: ChannelIdeasProps) => {
           ))}
         </div>
       )}
+      {/* Describe your own channel (#1817): the same manual builder "Edit first" opens, started
+          blank. The shipped grid above already names this as waiting on the mock; #1872 is the
+          approved one. */}
+      <div className="mt-3 flex items-center justify-center rounded-lg border border-static-700 border-dashed p-3.5">
+        <Link to="/guide" search={{ manual: "1" }} className={cn(buttonVariants({ variant: "ghost" }))}>
+          Don’t see it? Describe your own channel
+        </Link>
+      </div>
     </section>
   );
 };
 
-export { ChannelIdeas, ideaReason };
+export { ChannelIdeas };

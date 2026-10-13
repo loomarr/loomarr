@@ -11,8 +11,12 @@ type TabBarIdiom = "ios" | "material";
 type TabBarItem<Value extends string> = {
   /** Only read when `kind` is "disclosure": whether the thing it opens is currently open. */
   ariaExpanded?: boolean;
-  /** A plain dot (no numeral): web's Requests tab (#1785), matching today's icon-rail dot. */
-  badge?: boolean;
+  /**
+   * A count over the glyph (the phone's Requests: what needs the person), or `true` for a plain
+   * dot with no numeral (web's bar, #1785, matching its icon-rail dot). Omitted, 0 or `false`
+   * draws nothing.
+   */
+  badge?: boolean | number;
   icon: IconName;
   /**
    * "tab" (default): a `role="tab"` destination, lit when `selected` matches it. "disclosure":
@@ -73,7 +77,11 @@ const TabBar = <Value extends string>({
     const current = !disclosure && item.value === selected;
     return (
       <Pressable
-        accessibilityLabel={item.label}
+        accessibilityLabel={
+          typeof item.badge === "number" && item.badge > 0
+            ? `${item.label}, ${item.badge} need attention`
+            : item.label
+        }
         accessibilityRole={disclosure ? "button" : "tab"}
         accessibilityState={disclosure ? undefined : { selected: current }}
         aria-expanded={disclosure ? item.ariaExpanded : undefined}
@@ -102,7 +110,24 @@ const TabBar = <Value extends string>({
             size={style.glyph}
             tone={current ? "content" : "secondary"}
           />
-          {item.badge ? (
+          {typeof item.badge === "number" && item.badge > 0 ? (
+            <View
+              alignItems="center"
+              backgroundColor="$stateLive"
+              borderRadius="$round"
+              height={16}
+              justifyContent="center"
+              left={38}
+              minWidth={16}
+              paddingHorizontal={4}
+              position="absolute"
+              top={-2}
+            >
+              <TamaguiText color="$contentInverse" fontFamily="$body" fontSize={10} fontWeight="700">
+                {item.badge > 99 ? "99+" : item.badge}
+              </TamaguiText>
+            </View>
+          ) : item.badge === true ? (
             <View
               aria-hidden
               // `--color-suggest` (@loomarr/tokens): the same magenta the web rail's
