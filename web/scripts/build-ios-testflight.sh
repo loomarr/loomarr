@@ -201,6 +201,14 @@ build() {
     exit 2
   fi
 
+  # The run number is only a floor: App Store Connect refuses a build number at or below its latest,
+  # which any upload from outside this workflow overtakes (#1900). validate and upload read the
+  # chosen number back from the evidence, so it is fixed here, before the identity is generated.
+  local floor_build="$LOOMARR_IOS_BUILD_NUMBER"
+  LOOMARR_IOS_BUILD_NUMBER="$(node "$WEB_ROOT/scripts/asc-next-build-number.mjs" "$BUNDLE_ID" "$floor_build")"
+  export LOOMARR_IOS_BUILD_NUMBER
+  printf 'ios-testflight: build number %s (floor %s)\n' "$LOOMARR_IOS_BUILD_NUMBER" "$floor_build"
+
   # app.config.cjs validates the version and fixes the identity; read the result back.
   export LOOMARR_IOS_RELEASE_CHANNEL=testflight
   export LOOMARR_IOS_VERSION="$release_version"

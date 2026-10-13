@@ -15,7 +15,7 @@ import {
   usePairedRequests,
   useShellPause,
 } from "@loomarr/player/native";
-import type { ClientDestination } from "@loomarr/ui";
+import type { ApprovalBrowser, ClientDestination } from "@loomarr/ui";
 import {
   ClientShell,
   clientBackDestination,
@@ -28,6 +28,7 @@ import {
 } from "@loomarr/ui";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
+import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo, useState } from "react";
 import { AppState, BackHandler, Platform, ScrollView, View } from "react-native";
 
@@ -36,6 +37,17 @@ const credentialStore = createPairingCredentialStore({
   getItem: SecureStore.getItemAsync,
   setItem: SecureStore.setItemAsync,
 });
+
+// The phone approves itself on the server's `/pair` page, in a browser sheet over the app (an
+// SFSafariViewController, or a Custom Tab on Android); the pairing shell dismisses it once paired.
+const approvalBrowser: ApprovalBrowser = {
+  close: () => void WebBrowser.dismissBrowser().catch(() => undefined),
+  name: Platform.OS === "ios" ? "Safari" : "your browser",
+  open: (url) =>
+    void WebBrowser.openBrowserAsync(url, {
+      presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+    }),
+};
 
 // The selected programme docks as the iPhone's sheet (#1659 mock 5d) or Android's strip (5f).
 const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
@@ -207,6 +219,7 @@ const Index = () => {
     <>
       <PairingShell
         allowServerEntry
+        approvalBrowser={approvalBrowser}
         density="touch"
         discovery={discovery}
         discoveryForeground={appForeground}

@@ -250,9 +250,16 @@ classify() {
       select_gate expo_android_tv
       select_gate android
       ;;
-    web/scripts/build-shield-play.sh|web/scripts/build-shield-play.test.sh|web/scripts/install-android-ccache.sh|web/scripts/install-android-ccache.test.sh|web/scripts/verify-android-ccache-evidence.sh)
+    web/scripts/build-shield-play.sh)
       known=true
       select_gate contracts
+      select_gate android
+      ;;
+    web/scripts/android-ccache-env.sh|web/scripts/build-shield-play.test.sh|web/scripts/install-android-ccache.sh|web/scripts/install-android-ccache.test.sh|web/scripts/verify-android-ccache-evidence.sh)
+      # Shared compiler-cache tooling: the TV producer and the CI mobile build both consume it.
+      known=true
+      select_gate contracts
+      select_gate expo_android_mobile
       select_gate android
       ;;
     web/scripts/check-imports.mjs|web/scripts/check-imports.test.mjs)
@@ -514,7 +521,7 @@ classify() {
       case "$path" in
         scripts/agent*|scripts/changed-paths*|scripts/go-direct-impact*|scripts/test-affected*) select_gate agent; select_gate policy ;;
         scripts/apple-compilation-cache*) select_gate contracts; select_gate apple_mobile; select_gate apple_tv; select_gate policy ;;
-        scripts/ci-ffmpeg.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
+        scripts/ci-ffmpeg.sh|scripts/go-mod-download.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         scripts/go-certification-lanes.tsv|scripts/go-race-policy.sh|scripts/go-race-weights.tsv|scripts/go-shard.sh|scripts/go-test-lane.sh|scripts/go-test-packages.sh) select_gate contracts; select_gate go; select_gate go_full; select_gate policy ;;
         scripts/ensure-container-image.sh) select_gate contracts; select_gate postgres; select_gate visual; select_gate e2e; select_gate tuner; select_gate policy ;;
         scripts/tuner-args*|scripts/flake-quarantine*) select_gate tuner; select_gate policy ;;

@@ -22,7 +22,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 		"ci-apple-mobile.yml":          {jobs: map[string]int{"run": 10}},
 		"ci-apple-tv.yml":              {jobs: map[string]int{"run": 9}},
 
-		"ci-expo-android-mobile.yml": {jobs: map[string]int{"run": 8}},
+		"ci-expo-android-mobile.yml": {jobs: map[string]int{"run": 12}},
 
 		"ci-apple-cache-validation.yml": {jobs: map[string]int{"producer": 7, "consumer": 7}},
 
