@@ -71,6 +71,13 @@ grep -Fq "Apple TV TestFlight is not configured" "$temp_dir/stdout"
 grep -Fq "variable ASC_APPLE_TV_APP_ID" "$temp_dir/stdout"
 env "${prepare_env[@]}" ASC_APPLE_TV_APP_ID= "$script" iphone prepare-credentials >/dev/null 2>&1
 env "${prepare_env[@]}" ASC_APPLE_APP_ID= "$script" apple-tv prepare-credentials >/dev/null 2>&1
+for app in iphone apple-tv; do
+  if env "${prepare_env[@]}" ASC_APPLE_TV_APP_ID=1234567890 "$script" "$app" prepare-credentials >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
+    echo "$app prepare-credentials accepted one Apple ID for both records" >&2
+    exit 1
+  fi
+  grep -Fq 'name the same App Store Connect record' "$temp_dir/stderr"
+done
 : > "$temp_dir/github-env"
 if env "${prepare_env[@]}" ASC_API_KEY_ID=short "$script" iphone prepare-credentials >/dev/null 2>&1; then
   echo 'prepare-credentials accepted a malformed key id' >&2

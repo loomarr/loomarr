@@ -217,7 +217,8 @@ version, and the build number orders them.
 - the bundle ID is the app's, and `CFBundleShortVersionString` and `CFBundleVersion` match the
   requested version and build number;
 - `ITSAppUsesNonExemptEncryption` is `false`, and for the iPhone `NSLocalNetworkUsageDescription` is
-  present (the Apple TV app does not browse the local network: its LAN discovery pod is iPhone-only);
+  present (the Apple TV app does not browse the local network: its LAN discovery pod is iPhone-only),
+  and for the Apple TV the compiled home-screen icon and both Top Shelf images are declared;
 - `PrivacyInfo.xcprivacy` is at the app bundle root, has `NSPrivacyTracking` false or absent and no
   tracking domains, declares `UserDefaults` with reason `CA92.1`, and every accessed-API entry has a
   category, at least one reason, and appears once (the entry count is not pinned; see
