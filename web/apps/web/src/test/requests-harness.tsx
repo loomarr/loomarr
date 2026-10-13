@@ -1,3 +1,4 @@
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
@@ -137,10 +138,13 @@ const renderAt = (path: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [path] }),
   });
+  // LoomarrProvider as main.tsx mounts it: Needs you renders @loomarr/ui components.
   render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </LoomarrProvider>,
   );
   return router;
 };

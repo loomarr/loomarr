@@ -3,6 +3,7 @@ package demolibrary
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -353,10 +354,20 @@ func (s Server) addMedia(item map[string]any, id string, f Format) {
 			"Language": "eng", "IsDefault": true},
 	}
 	item["MediaStreams"] = streams
-	item["MediaSources"] = []map[string]any{{
+	source := map[string]any{
 		"Id": id, "Protocol": "File", "Container": "mp4", "Path": item["Path"],
 		"RunTimeTicks": int64(f.Duration) * ticksPerSecond, "DateLastSaved": dateCreated, "MediaStreams": streams,
-	}}
+	}
+	// Emby states the file's byte count on the source and copies it to the item's top-level Size,
+	// which is what an owned title's approval size reads (#1885). The generated file's real size,
+	// and only once it exists: Emby has no size for a file it has not probed, and neither does this.
+	if path, ok := item["Path"].(string); ok {
+		if info, err := os.Stat(path); err == nil && info.Size() > 0 {
+			source["Size"] = info.Size()
+			item["Size"] = info.Size()
+		}
+	}
+	item["MediaSources"] = []map[string]any{source}
 }
 
 func (s Server) abs(p string) string {

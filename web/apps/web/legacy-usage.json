@@ -818,8 +818,7 @@
       "legacyTokens": 1
     },
     "src/suggest/approval-queue/approval-queue.tsx": {
-      "tailwindClasses": 31,
-      "legacyUi": 2
+      "tailwindClasses": 3
     },
     "src/suggest/channel-suggest-panel/channel-suggest-panel.tsx": {
       "tailwindClasses": 52,

@@ -1,8 +1,22 @@
+import * as channelsApi from "@loomarr/api/endpoints/channels";
 import * as fillerApi from "@loomarr/api/endpoints/filler";
 import * as proposalsApi from "@loomarr/api/endpoints/proposals";
 import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
-import { unwrap } from "@loomarr/api/unwrap";
+import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
+import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
+import type { PullDTO } from "@loomarr/api/models/pullDTO";
+import { toProblem } from "@loomarr/api/mutator";
+import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
+import { approvalChannelEffect } from "@loomarr/core/requests";
+import {
+  ApprovalBulkGroup,
+  ApprovalConsequenceDialog,
+  type BulkApproveConsequences,
+  type BulkApproveOutcome,
+  type ChannelRequestConsequence,
+  type FillerDownloadConsequence,
+} from "@loomarr/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -10,8 +24,6 @@ import { ApprovalQueueItem } from "@/components/loomarr/ai/approval-queue-item";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PullCard } from "@/components/loomarr/filler/pull-card";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DiscoveryFeedbackControls, useDiscoveryFeedback } from "@/discovery-feedback";
 import { LiveProposalOutlook } from "../live-proposal-outlook";
 
@@ -19,7 +31,57 @@ import { LiveProposalOutlook } from "../live-proposal-outlook";
 // It lists everything still `submitted`, which is exactly what the status filter means.
 // Approving is the ONLY path from a proposal to /v1/titles, so this list is the audit
 // surface for "what is about to spend real resources".
-const ApprovalQueue = () => {
+
+// Inside a group the rows are flat, divided by the group's own rules (mock #1876), so the row
+// components drop their card chrome rather than nesting a card in a card.
+const FLAT_ROW = "border-0 bg-transparent p-0";
+
+const requestTitle = (p: ProposalDTO) => p.proposal.intent?.description ?? "Suggested lineup";
+
+// What approving one request will do, from the server's own data (#1817): the counts from the
+// proposal, sizes from its items (#1885), the channel from the job binding approval uses.
+const channelConsequence = (p: ProposalDTO, channels: readonly ChannelDTO[]): ChannelRequestConsequence => {
+  const lineup = p.proposal.lineup ?? [];
+  const acquisitions = p.proposal.acquisitions ?? [];
+  const ceiling = p.proposal.policy?.audience?.ceiling;
+  return {
+    id: p.id,
+    title: requestTitle(p),
+    titleCount: lineup.length + acquisitions.length,
+    toDownload: acquisitions.length,
+    ...(ceiling ? { ceiling } : {}),
+    sizes: [...lineup, ...acquisitions],
+    channel: approvalChannelEffect(p.jobId, p.proposal, channels),
+  };
+};
+
+const fillerConsequence = (pull: PullDTO): FillerDownloadConsequence => ({
+  id: pull.id,
+  title: pull.title,
+  estimateClips: pull.estimateClips,
+  sources: new Set((pull.plan ?? []).filter((row) => !row.dropped).map((row) => row.sourceId)).size,
+});
+
+// A retry answers for only the ids it re-sent; every other row keeps the answer it had.
+const mergeOutcomes = (
+  prev: readonly BulkApproveOutcome[] | undefined,
+  next: readonly BulkApproveOutcome[],
+): BulkApproveOutcome[] => (prev ? prev.map((r) => next.find((n) => n.id === r.id) ?? r) : [...next]);
+
+const without = (set: ReadonlySet<string>, id: string) => {
+  const next = new Set(set);
+  next.delete(id);
+  return next;
+};
+
+interface ApprovalQueueProps {
+  // Whether a bulk review (summary or result) is open. ⚠ Approving the last pending items empties
+  // the queue, and a page that unmounts an empty queue would take the result — failures included
+  // — with it; the page keeps the queue mounted while this is true.
+  onReviewingChange?: (reviewing: boolean) => void;
+}
+
+const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
   const queryClient = useQueryClient();
   const proposals = proposalsApi.useListProposals({ status: "submitted" }, { query: { retry: false } });
   const invalidate = () =>
@@ -45,6 +107,12 @@ const ApprovalQueue = () => {
   const deny = proposalsApi.useDenyProposal({ mutation: { onSuccess: invalidate } });
   const feedback = useDiscoveryFeedback({ scope: "household" });
 
+  // ⚠ Approval binds a channel by JOB: a revised request replaces the channel its job already
+  // has rather than making a second one. The consequence summary reads this list to say which,
+  // so a group's Approve waits for it rather than guessing "new channel" (#1817).
+  const channelsQuery = channelsApi.useListChannels({ query: { staleTime: 30_000, retry: false } });
+  const channels = unwrap(channelsQuery.data, (b) => b.channels) ?? [];
+
   // Filler pulls (V35). ⚠ `status: "pending"` and not a client-side filter: a decided pull is
   // KEPT on the server for the History tab, so asking for everything would put approvals an
   // operator already made back in front of them as if they still needed deciding.
@@ -59,34 +127,90 @@ const ApprovalQueue = () => {
   // Pending edits, keyed by proposal id — several rows can be open at once and each carries its
   // own delta. A row with no entry (or an `undefined` entry) is unmodified.
   const [edits, setEdits] = useState<Record<string, ApprovalEditDTO | undefined>>({});
-  const setEdit = (id: string, edit: ApprovalEditDTO | undefined) =>
+  // Pulls whose card holds a left-out row or a note. The card owns the edit; the queue only
+  // needs to know it exists, to keep that pull out of bulk.
+  const [editedPulls, setEditedPulls] = useState<ReadonlySet<string>>(new Set());
+
+  // Bulk selection (V27), one set per group (R1): the groups never share a bulk action.
+  const [selectedProposals, setSelectedProposals] = useState<ReadonlySet<string>>(new Set());
+  const [selectedPulls, setSelectedPulls] = useState<ReadonlySet<string>>(new Set());
+
+  // An edit takes its row out of bulk, so it leaves the selection too — otherwise undoing the
+  // edit would bring back a selection the operator no longer remembers making.
+  const setEdit = (id: string, edit: ApprovalEditDTO | undefined) => {
     setEdits((prev) => ({ ...prev, [id]: edit }));
+    if (edit) setSelectedProposals((prev) => without(prev, id));
+  };
+  const setPullEdited = (id: string, edited: boolean) => {
+    setEditedPulls((prev) => (edited ? new Set(prev).add(id) : without(prev, id)));
+    if (edited) setSelectedPulls((prev) => without(prev, id));
+  };
 
-  // Bulk selection (V27), by proposal id.
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const toggleSelected = (id: string, on: boolean) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+  // The consequence summary and, once the call answers, its result. The items are captured when
+  // the dialog opens: approved rows leave the list as it refetches, and the result still has to
+  // name them.
+  const [review, setReview] = useState<{
+    consequences: BulkApproveConsequences;
+    results?: BulkApproveOutcome[];
+  } | null>(null);
 
-  // Bulk approve goes to its own endpoint, which loops the SINGLE approve handler server-side —
-  // so the gate stays one implementation. Clearing the selection on success matters: the ids
-  // that went through are no longer `submitted`, and a stale selection would offer to approve
-  // them again.
-  const bulk = proposalsApi.useBulkApproveProposals({
-    mutation: {
-      onSuccess: () => {
-        setSelected(new Set());
-        invalidate();
-      },
-    },
-  });
+  // Bulk approve goes to its own endpoint per group, which loops the SINGLE approve handler
+  // server-side — so the gate stays one implementation. A retry is the same call with only the
+  // failed ids.
+  const bulk = proposalsApi.useBulkApproveProposals({ mutation: { onSuccess: invalidate } });
+  const bulkPulls = fillerApi.useBulkApproveFillerPulls({ mutation: { onSuccess: invalidatePulls } });
+  const recordOutcomes = (outcomes: readonly BulkApproveOutcome[] | null | undefined) =>
+    setReview((prev) => prev && { ...prev, results: mergeOutcomes(prev.results, outcomes ?? []) });
+  const submitBulk = (ids: string[]) => {
+    if (review?.consequences.group === "channels") {
+      bulk.mutate({ data: { ids } }, { onSuccess: (res) => isOk(res) && recordOutcomes(res.data.results) });
+    } else {
+      bulkPulls.mutate(
+        { data: { ids } },
+        { onSuccess: (res) => isOk(res) && recordOutcomes(res.data.results) },
+      );
+    }
+  };
+  // Cancel keeps the selection exactly as it was: nothing was approved.
+  const closeReview = () => {
+    setReview(null);
+    onReviewingChange?.(false);
+    bulk.reset();
+    bulkPulls.reset();
+  };
+  // Done clears that group's selection: the ids that went through are no longer pending, and a
+  // stale selection would offer to approve them again.
+  const finishReview = () => {
+    if (review?.consequences.group === "channels") setSelectedProposals(new Set());
+    else setSelectedPulls(new Set());
+    closeReview();
+  };
+
+  // Rendered on every branch below: the review outlives the rows it is about. Approving the last
+  // pending items empties the queue, and the result still has to be read — failures included.
+  const callError = bulk.error ?? bulkPulls.error;
+  const callProblem = callError ? toProblem(callError) : undefined;
+  const reviewDialog = review && (
+    <ApprovalConsequenceDialog
+      visible
+      consequences={review.consequences}
+      results={review.results}
+      pending={bulk.isPending || bulkPulls.isPending}
+      error={callProblem && (callProblem.detail || callProblem.title)}
+      onCancel={closeReview}
+      onConfirm={() => submitBulk(review.consequences.items.map((i) => i.id))}
+      onRetry={submitBulk}
+      onDone={finishReview}
+    />
+  );
 
   if (proposals.error) {
-    return <ErrorState error={proposals.error} onRetry={() => proposals.refetch()} />;
+    return (
+      <>
+        <ErrorState error={proposals.error} onRetry={() => proposals.refetch()} />
+        {reviewDialog}
+      </>
+    );
   }
 
   const rows = unwrap(proposals.data, (b) => b.proposals) ?? [];
@@ -96,14 +220,18 @@ const ApprovalQueue = () => {
   // must not mean "couldn't look".
   if (rows.length === 0 && pulls.length === 0 && !pullsQuery.error) {
     return (
-      <EmptyState
-        title="Queue's clear"
-        description="Nothing is waiting for approval. Suggested lineups land here before anything is acquired."
-      />
+      <>
+        <EmptyState
+          title="Queue's clear"
+          description="Nothing is waiting for approval. Suggested lineups land here before anything is acquired."
+        />
+        {reviewDialog}
+      </>
     );
   }
 
-  const busy = approve.isPending || deny.isPending || bulk.isPending;
+  const busy =
+    approve.isPending || deny.isPending || bulk.isPending || bulkPulls.isPending || review !== null;
 
   // Which rows a decision is in flight FOR. `busy` disables the shared controls, but only the row
   // actually being decided shows "approving" — flagging every row made a two-row queue read as if
@@ -114,18 +242,23 @@ const ApprovalQueue = () => {
     // Object.values: the generated body type maps `string[]` to an index-signature object.
     ...(bulk.isPending ? Object.values(bulk.variables?.data.ids ?? []) : []),
   ]);
+  const decidingPulls = new Set<string>(
+    bulkPulls.isPending ? Object.values(bulkPulls.variables?.data.ids ?? []) : [],
+  );
 
   // ⚠ A row with a PENDING EDIT is excluded from bulk. The bulk endpoint takes no edit field,
   // deliberately — "drop these two titles" means nothing applied across a batch — so bulk-
   // approving an edited row would silently discard the admin's edit and acquire the titles they
-  // just removed. Those rows keep their own Approve button, which does carry the edit.
-  const edited = new Set(
-    Object.entries(edits)
-      .filter(([, e]) => e !== undefined)
-      .map(([id]) => id),
-  );
-  const bulkable = rows.filter((p) => !edited.has(p.id));
-  const selectedBulkable = bulkable.filter((p) => selected.has(p.id));
+  // just removed. Those rows keep their own Approve button, which does carry the edit. A pull's
+  // left-out rows and note are the same kind of edit, under the same rule.
+  const isEdited = (id: string) => edits[id] !== undefined;
+
+  const openReview = (consequences: BulkApproveConsequences) => {
+    bulk.reset();
+    bulkPulls.reset();
+    setReview({ consequences });
+    onReviewingChange?.(true);
+  };
 
   // A single proposal's approve/deny error (#1430): rendered on THAT row by ApprovalQueueItem,
   // not in a page-level banner here — a reviewer scanning other rows should not have to go
@@ -135,145 +268,151 @@ const ApprovalQueue = () => {
     (deny.isError && deny.variables?.id === id ? deny.error : undefined);
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Bulk and feedback errors are not about one row, so they stay here. */}
-      {(bulk.error ?? feedback.error) != null && (
-        <ErrorState
-          error={bulk.error ?? feedback.error}
-          onRetry={feedback.error ? feedback.retry : undefined}
-        />
+    <div className="flex flex-col gap-2.5">
+      {/* Feedback and lookup errors are not about one row, so they stay here. A bulk call's
+          failure is shown inside its own dialog, which is where the operator is looking. */}
+      {feedback.error != null && <ErrorState error={feedback.error} onRetry={feedback.retry} />}
+      {channelsQuery.error != null && (
+        <ErrorState error={channelsQuery.error} onRetry={() => channelsQuery.refetch()} />
       )}
-
-      {/* Filler pulls (V35), above the title proposals. ⚠ They sit on THIS queue rather than
-          getting a surface of their own because they are the same kind of decision: something
-          is about to spend real resources and a human has to say yes. §10 said "the machine
-          proposes, a human commits" long before there was an object to commit; this is it.
-          Above rather than below because there are usually few of them and they are cheap to
-          decide, so burying them under a long title list would leave them unanswered. */}
       {pullsQuery.error != null && (
         <ErrorState error={pullsQuery.error} onRetry={() => pullsQuery.refetch()} />
       )}
-      {pulls.map((pull) => (
-        <PullCard
-          key={pull.id}
-          pull={pull}
-          deciding={
-            (approvePull.isPending && approvePull.variables?.id === pull.id) ||
-            (dismissPull.isPending && dismissPull.variables?.id === pull.id)
-          }
-          error={
-            (approvePull.isError && approvePull.variables?.id === pull.id ? approvePull.error : undefined) ??
-            (dismissPull.isError && dismissPull.variables?.id === pull.id ? dismissPull.error : undefined)
-          }
-          onApprove={(edits) => approvePull.mutate({ id: pull.id, data: edits })}
-          onDismiss={() => dismissPull.mutate({ id: pull.id })}
-        />
-      ))}
 
-      {/* Bulk approve (V27). Shown only when there is more than one approvable row — a "select
-          all" above a single item is noise. */}
-      {bulkable.length > 1 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
-          <label htmlFor="approval-select-all" className="flex cursor-pointer items-center gap-2 text-sm">
-            <Checkbox
-              id="approval-select-all"
-              checked={selectedBulkable.length === bulkable.length && bulkable.length > 0}
-              disabled={busy}
-              aria-label="Select all for bulk approve"
-              onChange={(e) => setSelected(e.target.checked ? new Set(bulkable.map((p) => p.id)) : new Set())}
-            />
-            Select all
-          </label>
-          <span className="text-muted-foreground text-sm">
-            {selectedBulkable.length > 0 ? `${selectedBulkable.length} selected` : "None selected"}
-          </span>
-          {edited.size > 0 && (
-            <span className="text-caution text-xs">
-              {`${edited.size} edited ${edited.size === 1 ? "request is" : "requests are"} excluded. Approve those individually so the edit is kept.`}
-            </span>
-          )}
-          <Button
-            size="sm"
-            className="ml-auto"
-            disabled={busy || selectedBulkable.length === 0}
-            onClick={() => bulk.mutate({ data: { ids: selectedBulkable.map((p) => p.id) } })}
-          >
-            {`Approve ${selectedBulkable.length || ""}`.trim()}
-          </Button>
-        </div>
+      {/* Two groups, each with its own bulk scope (R1, mock #1876): channel requests and filler
+          downloads are different decisions about different resources, and one Approve over both
+          could not say what it was about to do. */}
+      {rows.length > 0 && (
+        <ApprovalBulkGroup
+          title="Channel requests"
+          selected={selectedProposals}
+          onSelectedChange={setSelectedProposals}
+          // Waits for the channel list: without it the summary cannot tell "new channel" from
+          // "updates the channel this request already has".
+          disabled={busy || !channelsQuery.isSuccess}
+          onApprove={() =>
+            openReview({
+              group: "channels",
+              items: rows
+                .filter((p) => selectedProposals.has(p.id) && !isEdited(p.id))
+                .map((p) => channelConsequence(p, channels)),
+            })
+          }
+          rows={rows.map((p) => ({
+            id: p.id,
+            label: requestTitle(p),
+            excluded: isEdited(p.id),
+            content: (
+              <ApprovalQueueItem
+                className={FLAT_ROW}
+                title={requestTitle(p)}
+                requestedBy={p.createdByName}
+                summary={p.proposal.rationale}
+                outlook={() => <LiveProposalOutlook id={p.id} proposal={p.proposal} edit={edits[p.id]} />}
+                acquisitions={p.proposal.acquisitions?.length ?? 0}
+                lineup={p.proposal.lineup ?? []}
+                acquisitionItems={p.proposal.acquisitions ?? []}
+                alternates={p.proposal.alternates ?? []}
+                episodeSelectionPreview={p.episodeSelectionPreview}
+                // What the proposal's own audience ceiling refused (§4, #259) — shown on the card
+                // itself, because it changes what approving this row gets you.
+                refused={p.proposal.refused ?? []}
+                status={deciding.has(p.id) ? "approving" : "pending"}
+                error={rowError(p.id)}
+                edit={edits[p.id]}
+                onEdit={(edit) => setEdit(p.id, edit)}
+                renderFeedback={(item) => {
+                  const targetKey = provisionKey(item);
+                  if (!targetKey) return null;
+                  return (
+                    <DiscoveryFeedbackControls
+                      compact
+                      name={item.name}
+                      scope={{ scope: "household" }}
+                      effective={feedback.feedbackFor(targetKey)}
+                      disabled={feedback.isPending}
+                      onSet={(action) => feedback.setFeedback(targetKey, action)}
+                      onClear={() => feedback.clearFeedback(targetKey)}
+                    />
+                  );
+                }}
+                // The edit rides the SAME approve call — there is no separate "save edit" step,
+                // because the edit is a parameter to the one approval gate, not a mutation of the
+                // proposal (§7 / D-K). An unmodified row sends `{}`, exactly as it always has:
+                // the handler maps a body with no drops, adds or note to a nil edit, so approving
+                // untouched carries no human modification; the server may still canonicalise a
+                // missing/crafted series selector from the proposal's original Intent.
+                onApprove={() => {
+                  const pending = edits[p.id];
+                  const note = pending?.note?.trim();
+                  const data = pending
+                    ? {
+                        ...(pending.drop?.length ? { drop: pending.drop } : {}),
+                        ...(pending.add?.length ? { add: pending.add } : {}),
+                        ...(note ? { note } : {}),
+                      }
+                    : {};
+                  approve.mutate({ id: p.id, data });
+                }}
+                onDeny={(reason) => deny.mutate({ id: p.id, data: { reason } })}
+              />
+            ),
+          }))}
+        />
       )}
 
-      <ul className="flex flex-col gap-2">
-        {rows.map((p) => (
-          <li key={p.id} className="flex items-start gap-2">
-            {/* Only offered on rows bulk can actually take. An edited row has no checkbox at
-                all rather than a disabled one: the row's own Approve button is the correct
-                action for it, and a greyed box invites a click that would do the wrong thing. */}
-            {bulkable.length > 1 && !edited.has(p.id) && (
-              <Checkbox
-                className="mt-4"
-                checked={selected.has(p.id)}
-                disabled={busy}
-                aria-label={`Select ${p.proposal.intent?.description ?? "request"} for bulk approve`}
-                onChange={(e) => toggleSelected(p.id, e.target.checked)}
+      {/* Filler pulls (V35). ⚠ They sit on THIS queue rather than getting a surface of their own
+          because they are the same kind of decision: something is about to spend real resources
+          and a human has to say yes. §10 said "the machine proposes, a human commits" long before
+          there was an object to commit; this is it. */}
+      {pulls.length > 0 && (
+        <ApprovalBulkGroup
+          title="Filler downloads"
+          // Only when it is true of every pull: a legacy pull a person proposed names them on its
+          // own card, and the group must not contradict it.
+          {...(pulls.every((pull) => !pull.proposedByName) ? { requestedBy: "Requested by Loomarr" } : {})}
+          selected={selectedPulls}
+          onSelectedChange={setSelectedPulls}
+          disabled={busy}
+          onApprove={() =>
+            openReview({
+              group: "filler",
+              items: pulls
+                .filter((pull) => selectedPulls.has(pull.id) && !editedPulls.has(pull.id))
+                .map(fillerConsequence),
+            })
+          }
+          rows={pulls.map((pull) => ({
+            id: pull.id,
+            label: pull.title,
+            excluded: editedPulls.has(pull.id),
+            content: (
+              <PullCard
+                className={FLAT_ROW}
+                pull={pull}
+                deciding={
+                  decidingPulls.has(pull.id) ||
+                  (approvePull.isPending && approvePull.variables?.id === pull.id) ||
+                  (dismissPull.isPending && dismissPull.variables?.id === pull.id)
+                }
+                error={
+                  (approvePull.isError && approvePull.variables?.id === pull.id
+                    ? approvePull.error
+                    : undefined) ??
+                  (dismissPull.isError && dismissPull.variables?.id === pull.id
+                    ? dismissPull.error
+                    : undefined)
+                }
+                onEditedChange={(edited) => setPullEdited(pull.id, edited)}
+                onApprove={(pullEdits) => approvePull.mutate({ id: pull.id, data: pullEdits })}
+                onDismiss={() => dismissPull.mutate({ id: pull.id })}
               />
-            )}
-            <ApprovalQueueItem
-              className="flex-1"
-              title={p.proposal.intent?.description ?? "Suggested lineup"}
-              requestedBy={p.createdByName}
-              summary={p.proposal.rationale}
-              outlook={() => <LiveProposalOutlook id={p.id} proposal={p.proposal} edit={edits[p.id]} />}
-              acquisitions={p.proposal.acquisitions?.length ?? 0}
-              lineup={p.proposal.lineup ?? []}
-              acquisitionItems={p.proposal.acquisitions ?? []}
-              alternates={p.proposal.alternates ?? []}
-              episodeSelectionPreview={p.episodeSelectionPreview}
-              // What the proposal's own audience ceiling refused (§4, #259) — shown on the card
-              // itself, because it changes what approving this row gets you.
-              refused={p.proposal.refused ?? []}
-              status={deciding.has(p.id) ? "approving" : "pending"}
-              error={rowError(p.id)}
-              edit={edits[p.id]}
-              onEdit={(edit) => setEdit(p.id, edit)}
-              renderFeedback={(item) => {
-                const targetKey = provisionKey(item);
-                if (!targetKey) return null;
-                return (
-                  <DiscoveryFeedbackControls
-                    compact
-                    name={item.name}
-                    scope={{ scope: "household" }}
-                    effective={feedback.feedbackFor(targetKey)}
-                    disabled={feedback.isPending}
-                    onSet={(action) => feedback.setFeedback(targetKey, action)}
-                    onClear={() => feedback.clearFeedback(targetKey)}
-                  />
-                );
-              }}
-              // The edit rides the SAME approve call — there is no separate "save edit" step,
-              // because the edit is a parameter to the one approval gate, not a mutation of the
-              // proposal (§7 / D-K). An unmodified row sends `{}`, exactly as it always has:
-              // the handler maps a body with no drops, adds or note to a nil edit, so approving
-              // untouched carries no human modification; the server may still canonicalise a
-              // missing/crafted series selector from the proposal's original Intent.
-              onApprove={() => {
-                const pending = edits[p.id];
-                const note = pending?.note?.trim();
-                const data = pending
-                  ? {
-                      ...(pending.drop?.length ? { drop: pending.drop } : {}),
-                      ...(pending.add?.length ? { add: pending.add } : {}),
-                      ...(note ? { note } : {}),
-                    }
-                  : {};
-                approve.mutate({ id: p.id, data });
-              }}
-              onDeny={(reason) => deny.mutate({ id: p.id, data: { reason } })}
-            />
-          </li>
-        ))}
-      </ul>
+            ),
+          }))}
+        />
+      )}
+
+      {reviewDialog}
     </div>
   );
 };

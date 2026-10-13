@@ -3,6 +3,7 @@ package api_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -429,10 +430,12 @@ func TestApproveFillerPull_ConcurrentDismissalWins(t *testing.T) {
 type bulkApproveFillerPullsBody struct {
 	Approved int `json:"approved"`
 	Results  []struct {
-		ID       string `json:"id"`
-		OK       bool   `json:"ok"`
-		Enqueued *int   `json:"enqueued"`
-		Error    string `json:"error"`
+		ID        string `json:"id"`
+		OK        bool   `json:"ok"`
+		Enqueued  *int   `json:"enqueued"`
+		Error     string `json:"error"`
+		Status    int    `json:"status"`
+		Retryable bool   `json:"retryable"`
 	} `json:"results"`
 }
 
@@ -513,6 +516,44 @@ func TestBulkApproveFillerPulls_PartialFailureReportsPerID(t *testing.T) {
 	}
 	if len(ff.ingested) != 2 {
 		t.Errorf("ingested %v, want 2 (one from the seed approve of %s, one from the bulk approve of %s) — the already-decided pull must not re-download a second time", ff.ingested, p1.ID, p2.ID)
+	}
+}
+
+// The server, not the client, says which failures a retry can clear (Refs #1876): an
+// already-decided pull is a 409 that retrying repeats forever, while a download that couldn't
+// start is a 502 upstream fault worth sending again.
+func TestBulkApproveFillerPulls_ClassifiesEachFailureForRetry(t *testing.T) {
+	srv, st, ff := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	decided := seedPull(t, st, "pull-bulk-decided", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+	stalled := seedPull(t, st, "pull-bulk-stalled", []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}})
+	if res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/"+decided.ID+"/approve", `{}`, adminToken); res.StatusCode != http.StatusOK {
+		t.Fatalf("seed approve: %d", res.StatusCode)
+	}
+	ff.ingestPullErr = errors.New("downloader exited 1")
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve",
+		`{"ids":["`+decided.ID+`","`+stalled.ID+`"]}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", res.StatusCode)
+	}
+	out := decodeBulkApproveFillerPulls(t, res)
+	want := map[string]struct {
+		status    int
+		retryable bool
+	}{
+		decided.ID: {http.StatusConflict, false},
+		stalled.ID: {http.StatusBadGateway, true},
+	}
+	if len(out.Results) != len(want) {
+		t.Fatalf("got %d results, want one per requested id: %+v", len(out.Results), out.Results)
+	}
+	for _, r := range out.Results {
+		w := want[r.ID]
+		if r.OK || r.Status != w.status || r.Retryable != w.retryable {
+			t.Errorf("%s = {ok:%v status:%d retryable:%v}, want {ok:false status:%d retryable:%v}",
+				r.ID, r.OK, r.Status, r.Retryable, w.status, w.retryable)
+		}
 	}
 }
 

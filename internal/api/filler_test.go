@@ -46,6 +46,9 @@ type fakeFiller struct {
 	asked []string
 	// unavailable simulates loomarr:latest — the image with no ingest tooling.
 	unavailable bool
+	// ingestPullErr forces IngestPull's upstream-failure path (the handler's 502) before anything
+	// commits.
+	ingestPullErr error
 	// discovered records the queries Discover was asked for; discoverErr forces the
 	// upstream-failure path.
 	discovered    []string
@@ -247,6 +250,9 @@ func (f *fakeFiller) IngestPull(ctx context.Context, pullID string, targets []fi
 	defer f.pullMu.Unlock()
 	if f.unavailable {
 		return "", api.ErrIngestUnavailable
+	}
+	if f.ingestPullErr != nil {
+		return "", f.ingestPullErr
 	}
 	if err := commit(ctx, filler.AcquisitionRun{ID: fmt.Sprintf("job-%d", len(f.ingested)+1), PullID: pullID, Trigger: filler.AcquisitionPull, Status: filler.AcquisitionQueued, Requested: len(targets), StartedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		return "", err

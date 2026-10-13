@@ -8,6 +8,9 @@ interface PullCardProps {
   // This is the commit point: it is the only path on which a pull downloads anything.
   onApprove: (edits: { dropCandidateIds: string[]; note: string }) => void;
   onDismiss: () => void;
+  // Whether the operator has left a row out or written a note. Bulk approve carries neither, so
+  // the queue keeps an edited pull out of bulk rather than silently discarding the edit.
+  onEditedChange?: (edited: boolean) => void;
   // A decision is in flight, so both buttons say so rather than looking inert.
   deciding?: boolean;
   // A failed approve/dismiss for THIS pull — rendered on the card itself (#1430), not in a

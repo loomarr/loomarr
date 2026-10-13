@@ -1,4 +1,5 @@
 import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -14,10 +15,14 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
 
 const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // LoomarrProvider: the bulk groups and consequence dialog are @loomarr/ui components, which read
+  // the design-system theme the app root provides.
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>
-      <TooltipProvider>{children}</TooltipProvider>
-    </QueryClientProvider>
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={client}>
+        <TooltipProvider>{children}</TooltipProvider>
+      </QueryClientProvider>
+    </LoomarrProvider>
   );
 };
 
@@ -138,6 +143,14 @@ const stubEpisodePreviewApi = (preview: EpisodeSelection) => {
 
 afterEach(() => vi.unstubAllGlobals());
 
+// A row's own Approve, which carries that row's edit. The group head's bulk Approve never answers
+// to the bare name — it says it approves the selection (#1904) — so the name alone finds the row's.
+const rowApprove = async () => {
+  const [button] = await screen.findAllByRole("button", { name: /^Approve$/ });
+  if (!button?.closest('[role="listitem"]')) throw new Error("no row Approve rendered");
+  return button;
+};
+
 describe("ApprovalQueue — edit before approve (V25b)", () => {
   // The reachability assertion the phase gate asks for: the edit panel must actually MOUNT from
   // the queue. `ProposalReview.onEditItem` shipped with no production caller and the button
@@ -171,7 +184,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     const approvals = stubApi();
     render(<ApprovalQueue />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /Approve/ }));
+    await userEvent.click(await rowApprove());
 
     await waitFor(() => expect(approvals).toHaveLength(1));
     expect(approvals[0]).toEqual({});
@@ -187,7 +200,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Review & edit picks/ }));
     await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
     await userEvent.type(screen.getByLabelText("Note to the requester"), "too violent");
-    await userEvent.click(screen.getByRole("button", { name: /Approve/ }));
+    await userEvent.click(await rowApprove());
 
     await waitFor(() => expect(approvals).toHaveLength(1));
     expect(approvals[0]).toEqual({ drop: ["movie:tmdb:949"], note: "too violent" });
@@ -200,7 +213,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Review & edit picks/ }));
     await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
     await userEvent.click(screen.getByRole("checkbox", { name: "Include Heat" }));
-    await userEvent.click(screen.getByRole("button", { name: /Approve/ }));
+    await userEvent.click(await rowApprove());
 
     await waitFor(() => expect(approvals).toHaveLength(1));
     expect(approvals[0]).toEqual({});
@@ -220,7 +233,7 @@ describe("ApprovalQueue — edit before approve (V25b)", () => {
     await userEvent.click(await screen.findByText("Added Series"));
 
     expect(screen.getByText(label)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /^Approve$/ }));
+    await userEvent.click(await rowApprove());
     await waitFor(() => expect(approvals).toHaveLength(1));
     expect(approvals[0]).toEqual({
       add: [{ name: "Added Series", mediaType: "series", inLibrary: false, year: 1989, tmdbId: 456 }],
@@ -314,7 +327,7 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
     stub({ proposals: [proposal, second], holdApprove: true });
     render(<ApprovalQueue />);
 
-    // Scoped to the rows: with two approvable rows the bulk bar adds its own "Approve" button.
+    // Scoped to the rows: the group head carries its own bulk "Approve" button.
     const [list] = await screen.findAllByRole("list");
     if (!list) throw new Error("no proposal list rendered");
     const approveButtons = await within(list).findAllByRole("button", { name: /^Approve$/ });
@@ -332,7 +345,7 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
     stub({ proposals: [proposal, second] });
     render(<ApprovalQueue />);
 
-    const selectAll = await screen.findByRole("checkbox", { name: "Select all for bulk approve" });
+    const selectAll = await screen.findByRole("checkbox", { name: "Select all Channel requests" });
     const [list] = screen.getAllByRole("list");
     const bulkApprove = screen
       .getAllByRole("button", { name: /^Approve/ })
@@ -342,7 +355,7 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
 
     await userEvent.click(selectAll);
     expect(bulkApprove).toBeEnabled();
-    expect(bulkApprove).toHaveAccessibleName("Approve 2");
+    expect(bulkApprove).toHaveAccessibleName("Approve 2 selected in channel requests");
   });
 
   // #1430: a failed decision used to surface in one banner above the whole queue, away from the
@@ -375,8 +388,8 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
     const approveButtons = await within(list).findAllByRole("button", { name: /^Approve$/ });
     await userEvent.click(approveButtons[0] as HTMLElement);
 
-    const failedRow = (await screen.findByText("90s action night")).closest("li");
-    const otherRow = screen.getByText("Noir").closest("li");
+    const failedRow = (await screen.findByText("90s action night")).closest<HTMLElement>('[role="listitem"]');
+    const otherRow = screen.getByText("Noir").closest<HTMLElement>('[role="listitem"]');
     if (!failedRow || !otherRow) throw new Error("rows not found");
 
     expect(await within(failedRow).findByRole("alert")).toHaveTextContent("Couldn't approve");
@@ -413,5 +426,238 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
 
     expect(await within(failedCard).findByRole("alert")).toHaveTextContent("Couldn't dismiss");
     expect(within(otherCard).queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+// #1817 / mock #1876 — each group's bulk approve shows what it will do, confirms, then shows what
+// it did, with a retry per failure. Every figure in the summary comes from the server.
+describe("ApprovalQueue — bulk approve per group with a consequence summary", () => {
+  const GiB = 1024 ** 3;
+  const sized = {
+    ...proposal,
+    id: "p1",
+    jobId: "job_1",
+    proposal: {
+      ...proposal.proposal,
+      channelName: "Action Night",
+      policy: { audience: { ceiling: "PG-13" } },
+      lineup: [
+        { name: "Heat", mediaType: "movie", inLibrary: true, sizeBytes: 2 * GiB, sizeConfidence: "exact" },
+      ],
+    },
+  };
+  const unsized = {
+    ...proposal,
+    id: "p2",
+    jobId: "job_2",
+    proposal: { ...proposal.proposal, intent: { description: "Noir" } },
+  };
+  const pull = {
+    id: "pull_1",
+    title: "Top up the 1990s",
+    reason: "Saturday Mornings falls back to bumpers.",
+    proposedBy: "filler-sweep",
+    status: "pending",
+    estimateClips: 52,
+    candidateCount: 12,
+    rejected: [],
+    sources: [],
+    createdAt: "2026-08-01T12:00:00Z",
+    plan: [
+      {
+        sourceId: "classic",
+        candidateId: "c1",
+        tag: "archive",
+        name: "Classic ads",
+        why: "",
+        estimateClips: 40,
+        dropped: false,
+      },
+      {
+        sourceId: "psa",
+        candidateId: "c2",
+        tag: "archive",
+        name: "PSAs",
+        why: "",
+        estimateClips: 12,
+        dropped: false,
+      },
+    ],
+  };
+  const otherPull = { ...pull, id: "pull_2", title: "Retro ads" };
+
+  // Records every bulk body; `answer` decides each bulk call's per-item results.
+  const stub = (opts: {
+    channels?: unknown[];
+    answer?: (ids: string[]) => { id: string; ok: boolean; error?: string; enqueued?: number }[];
+  }) => {
+    const bulkCalls: { url: string; ids: string[] }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/proposals/approve") || url.endsWith("/v1/filler/pulls/approve")) {
+          const { ids } = JSON.parse(init?.body as string) as { ids: string[] };
+          bulkCalls.push({ url, ids });
+          const results = (opts.answer ?? ((xs) => xs.map((id) => ({ id, ok: true, enqueued: 1 }))))(ids);
+          return Promise.resolve(jsonResponse({ approved: results.filter((r) => r.ok).length, results }));
+        }
+        if (url.includes("/v1/channels"))
+          return Promise.resolve(jsonResponse({ channels: opts.channels ?? [] }));
+        if (url.includes("/v1/filler/pulls"))
+          return Promise.resolve(jsonResponse({ pulls: [pull, otherPull] }));
+        if (url.includes("/v1/discovery/feedback")) return Promise.resolve(jsonResponse([]));
+        if (url.endsWith("/outlook")) return Promise.resolve(jsonResponse(outlook({ state: "uncertain" })));
+        if (url.includes("/v1/proposals"))
+          return Promise.resolve(jsonResponse({ proposals: [sized, unsized] }));
+        return Promise.resolve(jsonResponse({}));
+      }),
+    );
+    return bulkCalls;
+  };
+
+  const group = (name: string) => screen.findByRole("group", { name });
+  const groupApprove = (g: HTMLElement) =>
+    within(g)
+      .getAllByRole("button", { name: /^Approve/ })
+      .find((b) => !b.closest('[role="listitem"]')) as HTMLElement;
+
+  it("keeps the two groups' selections and approvals apart", async () => {
+    stub({});
+    render(<ApprovalQueue />);
+
+    const channels = await group("Channel requests");
+    const filler = await group("Filler downloads");
+    await userEvent.click(
+      within(channels).getByRole("checkbox", { name: "Select 90s action night for bulk approve" }),
+    );
+
+    expect(within(channels).getByText("1 selected")).toBeInTheDocument();
+    expect(within(filler).getByText("None selected")).toBeInTheDocument();
+    expect(groupApprove(filler)).toBeDisabled();
+  });
+
+  it("summarises before approving and sends nothing until confirmed", async () => {
+    const bulkCalls = stub({});
+    render(<ApprovalQueue />);
+
+    const channels = await group("Channel requests");
+    await userEvent.click(within(channels).getByRole("checkbox", { name: "Select all Channel requests" }));
+    await waitFor(() => expect(groupApprove(channels)).toBeEnabled());
+    await userEvent.click(groupApprove(channels));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Approve 2 channel requests?")).toBeInTheDocument();
+    expect(within(dialog).getByText("2 titles · 1 to download · up to PG-13")).toBeInTheDocument();
+    // An owned movie has its exact size; the series still to acquire has none, and says so.
+    expect(within(dialog).getByText("Size: 2.0 GB for 1 of 2 titles · 1 unknown")).toBeInTheDocument();
+    expect(within(dialog).getByText("Size: estimate unavailable")).toBeInTheDocument();
+    expect(within(dialog).getByText('Becomes a new channel named "Action Night"')).toBeInTheDocument();
+    expect(within(dialog).getByText("2 titles will start downloading.")).toBeInTheDocument();
+    expect(within(dialog).getByText("Size: 2.0 GB for 1 of 4 titles · 3 unknown")).toBeInTheDocument();
+    expect(bulkCalls).toHaveLength(0);
+
+    // Cancel approves nothing and keeps the selection.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(bulkCalls).toHaveLength(0);
+    expect(within(channels).getByText("2 selected")).toBeInTheDocument();
+  });
+
+  it("says it updates the channel a revised request already has", async () => {
+    stub({ channels: [{ id: "ch_1", name: "Friday Fights", intentRef: "job_1" }] });
+    render(<ApprovalQueue />);
+
+    const channels = await group("Channel requests");
+    await userEvent.click(
+      within(channels).getByRole("checkbox", { name: "Select 90s action night for bulk approve" }),
+    );
+    await waitFor(() => expect(groupApprove(channels)).toBeEnabled());
+    await userEvent.click(groupApprove(channels));
+
+    expect(await screen.findByText('Updates the channel "Friday Fights"')).toBeInTheDocument();
+    expect(screen.queryByText(/Becomes a new channel/)).not.toBeInTheDocument();
+  });
+
+  it("shows a partial failure per item and retries only the failed ids", async () => {
+    let calls = 0;
+    const bulkCalls = stub({
+      answer: (ids) =>
+        ids.map((id) =>
+          calls++ === 1 && id === "p2"
+            ? { id, ok: false, error: "Couldn't save the approval.", status: 500, retryable: true }
+            : { id, ok: true, enqueued: 1 },
+        ),
+    });
+    render(<ApprovalQueue />);
+
+    const channels = await group("Channel requests");
+    await userEvent.click(within(channels).getByRole("checkbox", { name: "Select all Channel requests" }));
+    await waitFor(() => expect(groupApprove(channels)).toBeEnabled());
+    await userEvent.click(groupApprove(channels));
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Approve 2" }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("Approved 1 of 2")).toBeInTheDocument();
+    expect(within(dialog).getByText('1 title enqueued · channel "Action Night" created')).toBeInTheDocument();
+    expect(within(dialog).getByText("Couldn't save the approval.")).toBeInTheDocument();
+    expect(bulkCalls[0]).toEqual({ url: "/v1/proposals/approve", ids: ["p1", "p2"] });
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Retry Noir" }));
+    expect(await within(dialog).findByText("Approved 2 of 2")).toBeInTheDocument();
+    expect(bulkCalls[1]).toEqual({ url: "/v1/proposals/approve", ids: ["p2"] });
+
+    // Done closes and clears that group's selection.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(within(channels).getByText("None selected")).toBeInTheDocument();
+  });
+
+  it("states a filler download's missing size and channel as unavailable, and its exact clip count after", async () => {
+    const bulkCalls = stub({ answer: (ids) => ids.map((id) => ({ id, ok: true, enqueued: 12 })) });
+    render(<ApprovalQueue />);
+
+    const filler = await group("Filler downloads");
+    expect(within(filler).getByText("Requested by Loomarr")).toBeInTheDocument();
+    await userEvent.click(
+      within(filler).getByRole("checkbox", { name: "Select Top up the 1990s for bulk approve" }),
+    );
+    await userEvent.click(groupApprove(filler));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Approve 1 filler download?")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("~52 clips from 2 sources (estimate — may yield fewer once fetched)"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Channel: unavailable")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Size: estimate unavailable")).toHaveLength(2);
+    expect(within(dialog).queryByText(/0 B|General catalog variety/)).not.toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Approve 1" }));
+    expect(await within(dialog).findByText("12 clips queued")).toBeInTheDocument();
+    expect(bulkCalls[0]).toEqual({ url: "/v1/filler/pulls/approve", ids: ["pull_1"] });
+  });
+
+  // Bulk carries ids only, so it would silently drop a left-out row or a note.
+  it("keeps an edited pull out of bulk and says why", async () => {
+    stub({});
+    render(<ApprovalQueue />);
+
+    const filler = await group("Filler downloads");
+    await userEvent.click(
+      within(filler).getByRole("checkbox", { name: "Select Top up the 1990s for bulk approve" }),
+    );
+    await userEvent.click(
+      within(filler).getAllByRole("button", { name: "Leave Classic ads out" })[0] as HTMLElement,
+    );
+
+    expect(
+      within(filler).queryByRole("checkbox", { name: "Select Top up the 1990s for bulk approve" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(filler).getByText("Excluded from bulk — approve individually so the edit is kept."),
+    ).toBeInTheDocument();
+    expect(within(filler).getByText("None selected")).toBeInTheDocument();
   });
 });

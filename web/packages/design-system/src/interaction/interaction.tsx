@@ -387,6 +387,11 @@ type ToggleProps = {
   disabled?: boolean;
   kind?: "checkbox" | "switch";
   label: string;
+  /**
+   * Announce the label without printing it, for a control beside content that already shows the
+   * same words (a row's select box next to the row's own title). The accessible name stays `label`.
+   */
+  labelHidden?: boolean;
   onCheckedChange: (checked: boolean) => void;
 };
 
@@ -397,6 +402,7 @@ const Toggle = ({
   disabled = false,
   kind = "checkbox",
   label,
+  labelHidden = false,
   onCheckedChange,
 }: ToggleProps) => {
   const switchWidth = density === "tv" ? 72 : density === "touch" ? 56 : 48;
@@ -444,16 +450,18 @@ const Toggle = ({
           />
         ) : null}
       </Surface>
-      <View flex={1} gap={2}>
-        <Text density={density} textRole="label">
-          {label}
-        </Text>
-        {description ? (
-          <Text density={density} textRole="metadata">
-            {description}
+      {labelHidden ? null : (
+        <View flex={1} gap={2}>
+          <Text density={density} textRole="label">
+            {label}
           </Text>
-        ) : null}
-      </View>
+          {description ? (
+            <Text density={density} textRole="metadata">
+              {description}
+            </Text>
+          ) : null}
+        </View>
+      )}
     </Pressable>
   );
 };

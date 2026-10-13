@@ -8,6 +8,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1503,6 +1505,64 @@ func TestBulkApprove_PartialFailureReportsPerID(t *testing.T) {
 	}
 	if byID["p1"] || byID["missing"] || !byID["p2"] {
 		t.Errorf("results = %+v; want p1 and missing failed, p2 approved", out.Results)
+	}
+}
+
+type bulkApproveFailure struct {
+	ID        string `json:"id"`
+	OK        bool   `json:"ok"`
+	Status    int    `json:"status"`
+	Retryable bool   `json:"retryable"`
+}
+
+func bulkApproveFailures(t *testing.T, srv *httptest.Server, ids string) []bulkApproveFailure {
+	t.Helper()
+	resp := do(t, srv, http.MethodPost, "/v1/proposals/approve", adminToken, `{"ids":`+ids+`}`)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("bulk approve → %d, want 200", resp.StatusCode)
+	}
+	var out struct {
+		Results []bulkApproveFailure `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return out.Results
+}
+
+// The server, not the client, says which failures a retry can clear (Refs #1876). Already
+// handled (409) and not found (404) are the proposal's own state, so a retry repeats them;
+// success carries neither field.
+func TestBulkApprove_PermanentFailuresAreNotRetryable(t *testing.T) {
+	harness := newProposalHarness(t)
+	srv, st := harness.Server, harness.Store
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	seedProposalAt(t, st, "p1", base)
+	seedProposalAt(t, st, "p2", base.Add(time.Hour))
+	_ = do(t, srv, http.MethodPost, "/v1/proposals/p1/approve", adminToken, "").Body.Close()
+
+	got := bulkApproveFailures(t, srv, `["p1","missing","p2"]`)
+	want := []bulkApproveFailure{
+		{ID: "p1", Status: http.StatusConflict},
+		{ID: "missing", Status: http.StatusNotFound},
+		{ID: "p2", OK: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("results = %+v, want %+v", got, want)
+	}
+}
+
+// An unclassified server fault is offered a retry. Here no approval coordinator is wired, so
+// approving fails with a plain error, which is a 500, the same as any unexpected store fault.
+func TestBulkApprove_ServerFaultIsRetryable(t *testing.T) {
+	harness := newAPIHarness(t)
+	seedProposal(t, harness.Store, "p1")
+
+	got := bulkApproveFailures(t, harness.Server, `["p1"]`)
+	want := []bulkApproveFailure{{ID: "p1", Status: http.StatusInternalServerError, Retryable: true}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("results = %+v, want %+v", got, want)
 	}
 }
 

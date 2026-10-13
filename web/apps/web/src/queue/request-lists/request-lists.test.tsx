@@ -1,5 +1,8 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { server } from "@/test/msw/server";
 import {
   ADMIN,
   approved,
@@ -150,6 +153,45 @@ describe("Admins on Requests", () => {
     const tab = screen.getByRole("link", { name: /Needs you/ });
     await waitFor(() => expect(tab).toHaveTextContent(/Needs you\s*2\b/));
   });
+
+  // Found live (#1876): bulk-approving the LAST pending request dropped the count to zero, the
+  // page unmounted the queue, and the result dialog — failures and all — vanished unread.
+  it("keep the bulk result on screen after approving the last pending request", async () => {
+    // Every real request has a job, so the page has a journey for it before and after approval.
+    stub({ me: ADMIN, proposals: [proposal], journeys: [journey("j1", { milestone: "awaiting_approval" })] });
+    let pending = [proposal];
+    server.use(
+      http.get("*/v1/proposals", ({ request }) =>
+        HttpResponse.json({
+          proposals: new URL(request.url).searchParams.get("status") === "submitted" ? pending : [],
+        } as never),
+      ),
+      http.post("*/v1/proposals/approve", () => {
+        pending = [];
+        return HttpResponse.json({ approved: 1, results: [{ id: "p1", ok: true, enqueued: 0 }] } as never);
+      }),
+    );
+    renderAt("/requests/needs-you");
+
+    const group = await screen.findByRole("group", { name: "Channel requests" });
+    await userEvent.click(
+      within(group).getByRole("checkbox", { name: "Select Saturday cartoons for bulk approve" }),
+    );
+    const bulkApprove = { name: "Approve 1 selected in channel requests" };
+    await waitFor(() => expect(within(group).getByRole("button", bulkApprove)).toBeEnabled());
+    await userEvent.click(within(group).getByRole("button", bulkApprove));
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Approve 1" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Approved 1 of 1" });
+    // The queue has emptied underneath it; the result must still be there to read.
+    expect(await screen.findByText("Queue's clear")).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    expect(await screen.findByText("Nothing needs you")).toBeInTheDocument();
+  }, 20_000);
 });
 
 // #1430: the server KEEPS a decided pull (approved or dismissed) — exactly so History can answer
