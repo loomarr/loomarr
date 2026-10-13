@@ -88,6 +88,28 @@ const Populated: Story = {
   },
 };
 
+// The phone column (#1896): at a 390px viewport the Programming tab gives the editor about 250px,
+// which is narrower than the gallery's mobile frame, so this story pins that width itself. Each
+// row stacks: title (and the series' season window) first, then the feedback controls. The row
+// layout keys off the list's own width (a container query), so both gallery projects show the
+// stacked rows here. Invented demo-catalogue titles; the series show the season inputs.
+const NarrowColumn: Story = {
+  decorators: [widthFrame(250)],
+  args: {
+    lineup: [
+      { key: "series:tvdb:90000020", name: "The Wendelmeyer Family Hour", year: 1966, state: "available" },
+      {
+        key: "series:tvdb:90000021",
+        name: "Bowling Alley Blues",
+        year: 1974,
+        state: "pending",
+        seasonMax: 3,
+      },
+      { key: "movie:tmdb:90000017", name: "Glacier Cathedral", year: 2021, state: "available" },
+    ],
+  },
+};
+
 // An empty lineup — the dashed empty state, not an error.
 const Empty: Story = { args: { lineup: [] } };
 
@@ -106,4 +128,4 @@ const AddingATitle: Story = {
 };
 
 export default meta;
-export { AddingATitle, Empty, Populated };
+export { AddingATitle, Empty, NarrowColumn, Populated };

@@ -65,6 +65,35 @@ describe("ChannelLineupEditor", () => {
     expect(screen.getByRole("button", { name: "Remove Heat" })).toBeInTheDocument();
   });
 
+  it("keeps a series row's Tab order: grip, seasons, feedback, then remove (#1896)", async () => {
+    // A narrow column stacks the row and places remove beside the title, but only visually:
+    // keyboard order still follows the reading order of one row.
+    stubEditor();
+    const series: LineupEntryDTO = { key: "series:tvdb:90000021", name: "Bowling Alley Blues", year: 1974 };
+    const user = userEvent.setup();
+    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[series]} />, {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Keep — / })).toBeEnabled());
+
+    screen.getByRole("button", { name: "Reorder Bowling Alley Blues" }).focus();
+    const order: (string | null)[] = [];
+    for (let i = 0; i < 8; i++) {
+      order.push(document.activeElement?.getAttribute("aria-label") ?? null);
+      await user.tab();
+    }
+    expect(order).toEqual([
+      "Reorder Bowling Alley Blues",
+      "Bowling Alley Blues first season",
+      "Bowling Alley Blues last season",
+      "Keep — Bowling Alley Blues",
+      "Less like this — Bowling Alley Blues",
+      "Never — Bowling Alley Blues",
+      "Surprise me — Bowling Alley Blues",
+      "Remove Bowling Alley Blues",
+    ]);
+  });
+
   it("shows inherited feedback, records a Channel override, and Undo reveals the fallback", async () => {
     stubEditor();
     const writes: unknown[] = [];

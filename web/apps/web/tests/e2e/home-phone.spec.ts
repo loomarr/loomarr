@@ -19,20 +19,20 @@ import { installMockBackend } from "./mock-backend";
 // explicitly marks it "for eventual implementation" — it names the future behaviour but the
 // approved build does not implement it, so there is nothing running to assert against.
 //
-// The rail is a fixed 56 px below `md` (page-consistency.spec.ts pins this for every shell
-// route), and Home's own content area takes 16 px of padding at this width (the geometry
-// table's "16px padding; about 302px available at 390px") — so content width is
-// `viewport - 56 - 32`. New this week's posters are two columns down to the 371px viewport the
-// proposal's own prototype breaks at, one below it.
-const RAIL_PX = 56;
+// Below `md` nothing sits beside Home's content: the phone bottom bar (#1785 Alt A) replaced the
+// 56px rail the geometry table was drawn within (page-consistency.spec.ts pins the bar for every
+// shell route). Home's own content area takes 16 px of padding at this width (the geometry
+// table's "16px padding"), so content width is `viewport - 32`. New this week's posters are two
+// columns, and one below 284px of content width — the table's own rule.
 const CONTENT_PADDING_PX = 32; // 16px each side
+const ONE_COLUMN_BELOW_PX = 284;
 const GRID_GAP_PX = 12;
 const WIDTH_TOLERANCE_PX = 4;
 
-const contentWidth = (viewportWidth: number) => viewportWidth - RAIL_PX - CONTENT_PADDING_PX;
+const contentWidth = (viewportWidth: number) => viewportWidth - CONTENT_PADDING_PX;
 const expectedPosterWidth = (viewportWidth: number) => {
   const available = contentWidth(viewportWidth);
-  return viewportWidth <= 371 ? available : (available - GRID_GAP_PX) / 2;
+  return available < ONE_COLUMN_BELOW_PX ? available : (available - GRID_GAP_PX) / 2;
 };
 const closeTo = (actual: number, expected: number, label: string) =>
   expect(Math.abs(actual - expected), `${label}: ${actual} vs expected ${expected}`).toBeLessThanOrEqual(

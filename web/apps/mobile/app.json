@@ -10,7 +10,11 @@
     "ios": {
       "bundleIdentifier": "media.loomarr.mobile.prototype",
       "supportsTablet": true,
-      "icon": "./assets/icon.png"
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "NSBonjourServices": ["_loomarr._tcp"],
+        "NSLocalNetworkUsageDescription": "Loomarr looks for your Loomarr server on your home network and connects to it."
+      }
     },
     "android": {
       "package": "media.loomarr.mobile.prototype",

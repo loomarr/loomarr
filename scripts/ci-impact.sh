@@ -158,9 +158,12 @@ classify() {
       select_gate android
       ;;
     web/packages/lan-discovery-native/*)
+      # Linked by the TV (Android) and both phone apps; the Apple TV build excludes its pod.
       known=true
       select_gate clients
+      select_gate apple_mobile
       select_gate apple_tv
+      select_gate expo_android_mobile
       select_gate expo_android_tv
       select_gate android
       ;;

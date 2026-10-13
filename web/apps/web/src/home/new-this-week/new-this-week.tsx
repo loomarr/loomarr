@@ -48,7 +48,10 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
     .join(" · ");
 
   return (
-    <section aria-labelledby="home-new" className="flex flex-col gap-3">
+    // `@container`: the poster grid's one-column step is measured against this section's own
+    // width, not the viewport — what sits beside Home's content (the md+ rail, nothing above the
+    // phone's bottom bar) is the shell's business, not this grid's.
+    <section aria-labelledby="home-new" className="@container flex flex-col gap-3">
       <SectionHeader id="home-new" title="New this week" meta={meta} />
       {/* A separate row, never a grid column beside the posters (#1822 evidence geometry table):
           sharing a track with five poster columns is what left phone poster slivers in the first
@@ -75,10 +78,9 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
         </Link>
       )}
       {titles.length > 0 && (
-        // Two columns (~145px) down to 390px; one below it (the geometry table: "one below 284px
-        // content width" — the prototype's own breakpoint, 371px, is the viewport equivalent
-        // within the 56px rail + 16px padding).
-        <div className="grid grid-cols-2 items-start gap-3 max-[371px]:grid-cols-1 sm:grid-cols-3 lg:grid-cols-5">
+        // Two columns at phone width; one below 284px of content width — the geometry table's rule,
+        // as a container query so it holds whatever chrome shares the viewport.
+        <div className="grid @max-[284px]:grid-cols-1 grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {titles.slice(0, POSTERS).map((t) => (
             <div key={t.key} className="flex min-w-0 flex-col gap-1.5">
               <div

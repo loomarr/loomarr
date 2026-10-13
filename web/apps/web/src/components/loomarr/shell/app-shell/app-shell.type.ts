@@ -33,6 +33,12 @@ interface AppShellProps {
   badges?: Partial<Record<NavTo, number>>;
   onOpenCommand?: () => void;
   onLogout?: () => void;
+  /**
+   * The phone-width bottom bar's Watch target (#1785, decision X2): undefined hides Watch's slot
+   * entirely. Unused above `md`, where the desktop nav has no Watch entry either (no mini-player,
+   * decision X3; see the redesign map's Shell section).
+   */
+  watchChannelId?: string;
 }
 
-export type { AppShellProps, NavItem };
+export type { AppShellProps, NavItem, NavTo };

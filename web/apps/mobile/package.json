@@ -15,6 +15,7 @@
   "dependencies": {
     "@loomarr/core": "workspace:*",
     "@loomarr/design-system": "workspace:*",
+    "@loomarr/lan-discovery-native": "workspace:*",
     "@loomarr/player": "workspace:*",
     "@loomarr/ui": "workspace:*",
     "expo": "58.0.0-canary-20260812-27f94d4",
@@ -46,6 +47,7 @@
           "expo-video"
         ],
         "exclude": [
+          "@loomarr/lan-discovery-native",
           "react-native-reanimated",
           "react-native-worklets"
         ]
