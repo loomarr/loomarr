@@ -6,6 +6,7 @@ import {
   validatePairingCredential,
 } from "@loomarr/core/pairing";
 import { BottomSheet, Text } from "@loomarr/design-system";
+import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
   NativePlayerView,
   type PairedClient,
@@ -28,7 +29,7 @@ import {
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
-import { BackHandler, Platform, ScrollView, View } from "react-native";
+import { AppState, BackHandler, Platform, ScrollView, View } from "react-native";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
@@ -182,6 +183,15 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
 };
 
 const Index = () => {
+  // Discovery browses only while the connect screen is in the foreground (design "Finding a server").
+  const [appForeground, setAppForeground] = useState(AppState.currentState === "active");
+  const discovery = useMemo(createNativeServerDiscovery, []);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      setAppForeground(state === "active");
+    });
+    return () => subscription.remove();
+  }, []);
   const session = useMemo(
     () =>
       new PairingSession({
@@ -197,6 +207,8 @@ const Index = () => {
       <PairingShell
         allowServerEntry
         density="touch"
+        discovery={discovery}
+        discoveryForeground={appForeground}
         initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
         renderPaired={(credential) => (
           <MobileShell credential={credential} key={credential.token} session={session} />

@@ -4,6 +4,7 @@ import type {
   ServerDiscoverySnapshot,
 } from "@loomarr/core/server-discovery";
 import { NativeEventEmitter, NativeModules, Platform } from "react-native";
+import { isReachableServerUrl } from "./reachable-server-url";
 
 type NativeDiscoveryModule = {
   addListener(event: string): void;
@@ -15,11 +16,13 @@ type NativeDiscoveryModule = {
 type NativeServer = DiscoveredServer & { protocol: string };
 const nativeModule = NativeModules.LoomarrLanDiscovery as NativeDiscoveryModule | undefined;
 const discoveryTimeoutMs = 30_000;
+// The Apple TV app does not link the iOS module, so tvOS still reports discovery as unavailable.
+const supportedPlatform = Platform.OS === "android" || Platform.OS === "ios";
 
 const createNativeServerDiscovery = (): ServerDiscovery => {
   let snapshot: ServerDiscoverySnapshot = {
     servers: [],
-    status: Platform.OS === "android" && nativeModule ? "idle" : "unavailable",
+    status: supportedPlatform && nativeModule ? "idle" : "unavailable",
   };
   const listeners = new Set<() => void>();
   let subscriptions: Array<{ remove(): void }> = [];
@@ -52,7 +55,7 @@ const createNativeServerDiscovery = (): ServerDiscovery => {
   return {
     snapshot: () => snapshot,
     start() {
-      if (!nativeModule || Platform.OS !== "android") {
+      if (!nativeModule || !supportedPlatform) {
         publish({
           error: "Automatic discovery is unavailable on this platform.",
           servers: [],
@@ -69,6 +72,7 @@ const createNativeServerDiscovery = (): ServerDiscovery => {
         events.addListener("loomarrDiscoveryFound", (server: NativeServer) => {
           if (activeGeneration !== generation) return;
           if (server.protocol !== "1" || !server.id || !server.name || !server.url) return;
+          if (!isReachableServerUrl(server.url)) return;
           const next = { id: server.id, name: server.name, url: server.url.replace(/\/+$/, "") };
           const previous = serversById.get(server.id);
           if (previous?.name === next.name && previous.url === next.url) return;

@@ -26,6 +26,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - run: corepack enable
       - run: make fe-install
+      # Swift compiles only here; Linux runs of this suite skip the native iOS planner.
+      - name: Test the iOS LAN discovery planner
+        working-directory: web/packages/lan-discovery-native
+        run: pnpm exec vitest run tests/ios-unicast-target-planner.test.mjs
       - name: Fingerprint the Apple toolchain
         id: apple-toolchain
         run: echo "fingerprint=$(./scripts/apple-compilation-cache.sh fingerprint)" >> "$GITHUB_OUTPUT"

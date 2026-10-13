@@ -179,6 +179,8 @@ test("ships DNS-SD plus bounded broadcast and unicast LAN discovery without rest
   );
 
   assert.equal(manifest.dependencies["@loomarr/lan-discovery-native"], "workspace:*");
+  // The module's iOS pod is iPhone-only; tvOS keeps reporting discovery unavailable.
+  assert.deepEqual(manifest.expo.autolinking.ios.exclude, ["@loomarr/lan-discovery-native"]);
   assert.match(adapter, /NativeModules\.LoomarrLanDiscovery/);
   assert.match(nativeModule, /NsdManager/);
   assert.match(nativeModule, /_loomarr\._tcp\./);
