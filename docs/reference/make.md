@@ -237,7 +237,7 @@ from the same impact policy as CI. Use `make verify SCOPE=all` only for a compre
 | `make brand-assets-verify` |  | verify every platform brand derivative matches the shared brand contract |
 | `make fe-codegen` | ✅ | regenerate tokens + orval api client from api/openapi.yaml |
 | `make fe-api-codegen` | ✅ | regenerate only the orval api client from api/openapi.yaml |
-| `make fe-lint` |  | Biome lint + format check (web/) |
+| `make fe-lint` |  | Biome lint + format check, import and boundary gates (web/; needs codegen first) |
 | `make knip` |  | unused files, exports and dependencies in web/ (config: web/knip.ts) |
 | `make fe-lint-fix` |  | Biome autofix — format + safe lint fixes (web/) |
 | `make fe` | ✅ | biome + codegen + knip + typecheck + unit tests + embedded SPA + storybook gallery |
