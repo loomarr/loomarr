@@ -23,15 +23,19 @@ import {
   watchingScheduleFromGuide,
 } from "@loomarr/ui";
 import {
+  createTvAutoTuneSetting,
   createTvGuideFocusRegistry,
   createTvSurfFocusRegistry,
+  DEFAULT_NUMBER_ENTRY_MS,
   initialTvWatchingRemoteState,
   reduceTvWatchingRemote,
   restoreTvSurfSelection,
+  TV_AUTO_TUNE_CHOICES_MS,
   type TvWatchingRemoteEvent,
   type TvWatchingRemoteIntent,
   type TvWatchingRemoteState,
   tvGuideRowWindow,
+  tvGuideTimeEdge,
   tvNumberEntryPresentation,
   tvWatchingRemoteEventFromNative,
 } from "@loomarr/ui-tv";
@@ -59,6 +63,12 @@ const keyToTuneMaxMs = 1_500;
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
+  getItem: SecureStore.getItemAsync,
+  setItem: SecureStore.setItemAsync,
+});
+
+// The per-device auto-tune duration (#1659 decision N4, WCAG 2.2.1), chosen in the Surf rail.
+const autoTuneSetting = createTvAutoTuneSetting({
   getItem: SecureStore.getItemAsync,
   setItem: SecureStore.setItemAsync,
 });
@@ -102,6 +112,28 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const surfFocusRegistry = useMemo(createTvSurfFocusRegistry, []);
   const remoteStateRef = useRef<TvWatchingRemoteState>(initialTvWatchingRemoteState);
   const [remoteState, setRemoteState] = useState<TvWatchingRemoteState>(initialTvWatchingRemoteState);
+  const [autoTuneMs, setAutoTuneMs] = useState<number>(DEFAULT_NUMBER_ENTRY_MS);
+  // A choice made before the stored value finishes loading wins over that stale read.
+  const autoTuneChosen = useRef(false);
+  useEffect(() => {
+    let current = true;
+    void autoTuneSetting
+      .load()
+      .then((durationMs) => {
+        if (current && !autoTuneChosen.current) setAutoTuneMs(durationMs);
+      })
+      // An unreadable store keeps the default rather than leaving digit entry without a timer.
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, []);
+  const changeAutoTune = useCallback((durationMs: number) => {
+    autoTuneChosen.current = true;
+    setAutoTuneMs(durationMs);
+    // The choice applies now; an unwritable store just means the next launch reads the default.
+    void autoTuneSetting.save(durationMs).catch(() => undefined);
+  }, []);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       const destination = clientBackDestination(active);
@@ -137,13 +169,13 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   const dispatchRemoteEvent = useCallback(
     (event: TvWatchingRemoteEvent) => {
       if (certMarks.enabled && event.key !== "timeout") lastKeyAtMs.current = certMarks.now();
-      const result = reduceTvWatchingRemote(remoteStateRef.current, event);
+      const result = reduceTvWatchingRemote(remoteStateRef.current, event, autoTuneMs);
       remoteStateRef.current = result.state;
       setRemoteState(result.state);
       if (result.handled) showControlsForActivity();
       runRemoteIntent(result.intent);
     },
-    [runRemoteIntent, showControlsForActivity],
+    [autoTuneMs, runRemoteIntent, showControlsForActivity],
   );
   useTVEventHandler(({ eventKeyAction, eventType }) => {
     if (active !== "watching") return;
@@ -222,6 +254,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               density="tv"
               focusRegistry={guideFocusRegistry}
               myChannels={myChannelsSnapshot}
+              onTimeEdge={(side) => void tvGuideTimeEdge(guide, guideFocusRegistry, side, Date.now())}
               onTune={(channelId) => {
                 void controller.tuneChannel(channelId);
                 showControlsForActivity();
@@ -251,6 +284,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
             />
           ) : (
             <SurfJourney
+              autoTune={{ choicesMs: TV_AUTO_TUNE_CHOICES_MS, onChange: changeAutoTune, valueMs: autoTuneMs }}
               clientVersion={clientVersion}
               controller={guide}
               currentChannelId={snapshot.channel?.id}

@@ -49,6 +49,29 @@ export type {
   ProgrammeCardViewer,
 } from "./src/programme-card";
 export { ProgrammeCard } from "./src/programme-card";
+export type {
+  ApprovalGroupProps,
+  ApprovalRow,
+  BriefState,
+  RequestCardProps,
+  RequestChannelProps,
+  RequestDetailProps,
+  RequestsJourneyProps,
+  RequestsListProps,
+  ReviewSheetProps,
+  ReviewState,
+} from "./src/requests";
+export {
+  ApprovalGroup,
+  initialReview,
+  RequestCard,
+  RequestChannel,
+  RequestDetail,
+  RequestsJourney,
+  RequestsList,
+  ReviewSheet,
+  reviewReducer,
+} from "./src/requests";
 export type { StatePanelAction, StatePanelKind, StatePanelProps } from "./src/state-panel";
 export { StatePanel } from "./src/state-panel";
 export type {

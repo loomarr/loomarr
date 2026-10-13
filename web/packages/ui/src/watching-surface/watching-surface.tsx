@@ -331,7 +331,9 @@ const TvWatchingSurface = ({
           <NumberEntry density="tv" numberEntry={numberEntry} />
           {overlayVisible ? (
             <>
-              {snapshot.channel ? (
+              {/* NumberEntry owns the top-left while digits are typed; the chip returns on tune or cancel
+                  (tv-auto-tune-setting.html state 5, map 5a). */}
+              {snapshot.channel && !numberEntry?.digits ? (
                 <Surface
                   alignItems="center"
                   backgroundColor="$surfaceIdentity"

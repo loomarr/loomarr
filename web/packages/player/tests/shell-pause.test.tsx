@@ -99,6 +99,21 @@ describe("shell pause", () => {
     await shell.unmount();
   });
 
+  it("pauses for the Requests tab like any other destination, and resumes when Watching returns", async () => {
+    const { controller, transport } = await playingOnA();
+    const shell = await mountShell(controller);
+    // MobileShell passes `active === "watching"`.
+    const watching = (active: "guide" | "requests" | "watching") => active === "watching";
+
+    await shell.render(controller, watching("requests"));
+    expect(transport.pause).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot()).toMatchObject({ channel: { id: "a" }, status: "paused" });
+
+    await shell.render(controller, watching("watching"));
+    expect(transport.play).toHaveBeenCalledTimes(1);
+    await shell.unmount();
+  });
+
   it("never resumes the paused channel when the viewer tunes another from the Guide", async () => {
     const { calls, controller } = await playingOnA();
     const shell = await mountShell(controller);

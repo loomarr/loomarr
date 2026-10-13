@@ -11,6 +11,7 @@ export * from "./guide";
 export * from "./my-channels";
 export * from "./pairing";
 export * from "./provision";
+export * from "./requests";
 export * from "./schemas";
 export * from "./server-discovery";
 export * from "./system-version";

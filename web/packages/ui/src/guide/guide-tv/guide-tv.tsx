@@ -16,6 +16,7 @@ const positionRailWidth = 12;
 const rulerHeight = 36;
 const rowHeight = 48;
 const detailHeight = 124;
+const edgeWidth = 2;
 const channelRailPercent = (channelRailWidth / tvCanvasWidth) * 100;
 const timelinePercent = ((tvCanvasWidth - channelRailWidth - positionRailWidth) / tvCanvasWidth) * 100;
 const hourMs = 60 * 60_000;
@@ -30,12 +31,13 @@ type FilterButtonProps = {
   accessibilityLabel: string;
   children: string;
   disabled?: boolean;
+  onFocus: () => void;
   onPress: () => void;
   selected: boolean;
 };
 
 const FilterButton = forwardRef<ComponentRef<typeof Pressable>, FilterButtonProps>(
-  ({ accessibilityLabel, children, disabled = false, onPress, selected }, ref) => {
+  ({ accessibilityLabel, children, disabled = false, onFocus, onPress, selected }, ref) => {
     const [focused, setFocused] = useState(false);
     return (
       <Pressable
@@ -46,7 +48,10 @@ const FilterButton = forwardRef<ComponentRef<typeof Pressable>, FilterButtonProp
         aria-pressed={selected || undefined}
         disabled={disabled}
         onBlur={() => setFocused(false)}
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          setFocused(true);
+          onFocus();
+        }}
         onPress={onPress}
         ref={ref}
       >
@@ -70,6 +75,29 @@ const FilterButton = forwardRef<ComponentRef<typeof Pressable>, FilterButtonProp
 
 FilterButton.displayName = "FilterButton";
 
+/**
+ * An invisible focus stop at the far left or right of the grid. The native focus engine reaches it
+ * only when no programme lies further that way (◀ off a row's first programme, ▶ off its last),
+ * so landing on it *is* the edge press: `onTimeEdge` then pages the window or hands focus back. It
+ * sits at the screen's outer edge, not against the timeline, so ▼ from the filters always finds a
+ * programme nearer than the stop (measured on the emulator).
+ */
+const TimeEdge = ({ onFocus, side }: { onFocus: () => void; side: "left" | "right" }) => (
+  <Pressable
+    accessibilityElementsHidden
+    focusable
+    importantForAccessibility="no-hide-descendants"
+    onFocus={onFocus}
+    style={{
+      bottom: 0,
+      position: "absolute",
+      top: rulerHeight,
+      width: edgeWidth,
+      ...(side === "left" ? { left: 0 } : { right: 0 }),
+    }}
+  />
+);
+
 const TvGuideSurface = ({
   channelWindow,
   filter = "all",
@@ -78,6 +106,7 @@ const TvGuideSurface = ({
   layout,
   onFilterChange,
   onSelectionChange,
+  onTimeEdge,
   onTune,
   renderArtwork,
   renderChannelLogo,
@@ -131,13 +160,15 @@ const TvGuideSurface = ({
             ...option,
             count: option.count ?? (option.value === "all" ? layout.channels.length : 0),
           });
+          const target = { filter: option.value, kind: "filter" as const };
           return (
             <FilterButton
               accessibilityLabel={accessibilityLabel}
               disabled={option.disabled}
               key={option.value}
+              onFocus={() => focusRegistry?.focused?.(target)}
               onPress={() => onFilterChange?.(option.value)}
-              ref={(handle) => focusRegistry?.register({ filter: option.value, kind: "filter" }, handle)}
+              ref={(handle) => focusRegistry?.register(target, handle)}
               selected={filter === option.value}
             >
               {label}
@@ -246,7 +277,10 @@ const TvGuideSurface = ({
                           accessibilityRole="button"
                           hasTVPreferredFocus={selected}
                           key={airing.scheduleBlockId}
-                          onFocus={() => onSelectionChange(next)}
+                          onFocus={() => {
+                            focusRegistry?.focused?.(target);
+                            onSelectionChange(next);
+                          }}
                           onPress={() => {
                             onSelectionChange(next);
                             onTune?.(next);
@@ -293,6 +327,12 @@ const TvGuideSurface = ({
             })}
           </Surface>
         </ScrollView>
+        {onTimeEdge ? (
+          <>
+            <TimeEdge onFocus={() => onTimeEdge("left")} side="left" />
+            <TimeEdge onFocus={() => onTimeEdge("right")} side="right" />
+          </>
+        ) : null}
 
         {nowPercent === undefined ? null : (
           <Surface

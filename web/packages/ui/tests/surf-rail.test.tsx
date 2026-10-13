@@ -62,6 +62,27 @@ describe("SurfRail", () => {
     expect(output).toContain("Disconnect device");
   });
 
+  it("puts the channel-number wait row above Disconnect on the TV rail (#1659 decision N4)", () => {
+    const output = renderToStaticMarkup(
+      <LoomarrProvider>
+        <SurfRail
+          autoTune={{ choicesMs: [1_200, 5_000], onChange: vi.fn(), valueMs: 5_000 }}
+          clientVersion="prototype"
+          density="tv"
+          groups={surfGroups}
+          onDisconnect={vi.fn()}
+          onFocusSelection={vi.fn()}
+          onTune={vi.fn()}
+          selection={{ channelId: "ch-springfield", group: "recent" }}
+        />
+      </LoomarrProvider>,
+    );
+
+    const row = output.indexOf("Channel-number wait · 5 s");
+    expect(row).toBeGreaterThan(-1);
+    expect(row).toBeLessThan(output.indexOf("Disconnect device"));
+  });
+
   it("draws each channel's monogram ident on the TV row (#1659 decision N8)", () => {
     const output = renderToStaticMarkup(
       <LoomarrProvider>

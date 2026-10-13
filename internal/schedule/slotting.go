@@ -62,15 +62,16 @@ func (r *ExclusionReport) merge(o ExclusionReport) {
 }
 
 // filterEntries applies the hard filters to the approved entries and returns the
-// eligible set plus the exclusion report. Order: scope (era/genre/runtime) then
+// eligible set plus the exclusion report. Order: scope (dates/genre/runtime) then
 // audience (§4 fail-closed). Audience and explicit scope are the NEVER-relaxed
 // filters (§7) — they run here, before the relaxation ladder ever sees the pool.
 //
 // It does NOT enforce the per-series Seasons window at the entry level for a series
 // entry — that applies at episode expansion (resolveEntry already honors
-// SeasonMin/Max). A Series allowlist, Era, Genre, and RuntimeMax filter apply here;
-// resolveEntry re-applies Era to each episode's own production year because a
-// long-running series' first-air year cannot represent its whole run.
+// SeasonMin/Max). A Series allowlist, the movie-release / series-premiere dates, Genre,
+// and RuntimeMax filter apply here; resolveEntry applies the series-airing dates to
+// each episode's own year because a long-running series' premiere year cannot
+// represent its whole run. An entry with no year (0) is never excluded on dates.
 func filterEntriesWithTrace(entries []LineupEntry, rp ResolvedPolicy, trace *scheduleTraceBuilder) ([]LineupEntry, ExclusionReport) {
 	var report ExclusionReport
 	eligible := make([]LineupEntry, 0, len(entries))
@@ -91,14 +92,6 @@ func filterEntriesWithTrace(entries []LineupEntry, rp ResolvedPolicy, trace *sch
 				trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfScope))
 				continue
 			}
-		}
-		// Era: filter by the entry's year when the entry has one. An entry with no
-		// year (year 0) is NOT excluded on era — we don't guess (a series often lacks
-		// a single production year); its episodes still carry the intent.
-		if e.Year > 0 && !rp.Scope.Era.Contains(e.Year) {
-			report.add(e, "out_of_scope")
-			trace.add(hardFilterFact(e, OutcomeExcluded, ReasonOutOfScope))
-			continue
 		}
 		// Genre include/exclude (§2). Exclude always wins; Include (when non-empty)
 		// requires at least one match. An entry with no genres passes Include only if

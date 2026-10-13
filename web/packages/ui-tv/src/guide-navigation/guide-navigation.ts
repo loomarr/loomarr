@@ -1,10 +1,13 @@
 import {
+  type GuideController,
   type GuideLayout,
   type GuideNavigationDirection,
   guideSelectionForChannel,
   moveGuideSelection,
 } from "@loomarr/core/guide";
+import type { GuideFocusTarget } from "@loomarr/ui";
 
+import type { TvFocusRegistry } from "../focus-registry";
 import type {
   TvGuideActivation,
   TvGuideFilterOption,
@@ -90,6 +93,62 @@ const moveTvGuideFocus = (
   };
 };
 
+/**
+ * The TV app's answer to the Guide's `onTimeEdge` (#1659 decision N4). The running Guide moves
+ * with the native focus engine, which serves every in-grid move and ▲/▼ between the top row and
+ * the filters; it reaches a timeline edge stop only when no programme lies further that way. From
+ * the cell focus left, `moveTvGuideFocus` decides: page the window (the reload re-focuses its
+ * settled selection), or hand focus straight back because the edge has nowhere to go.
+ *
+ * Remote key events can't decide this: react-native-tvos sends JS only the key-up, and measured on
+ * the emulator a cell's onFocus can arrive before or after it, so "did focus move?" is a race.
+ */
+const tvGuideTimeEdge = async (
+  guide: Pick<GuideController, "getSnapshot" | "page">,
+  registry: Pick<TvFocusRegistry<GuideFocusTarget>, "current" | "request">,
+  side: "left" | "right",
+  nowMs: number,
+): Promise<"earlier" | "later" | undefined> => {
+  const { layout, selection } = guide.getSnapshot();
+  const current = registry.current();
+  const from: GuideFocusTarget | undefined =
+    current ?? (selection ? { kind: "airing", selection } : undefined);
+  if (!from) return undefined;
+  const intent =
+    layout && from.kind === "airing"
+      ? moveTvGuideFocus(
+          layout,
+          {
+            activeFilter: "all",
+            focus: { region: "grid", selection: from.selection },
+            gridSelection: from.selection,
+          },
+          side,
+          [],
+          nowMs,
+        ).pageIntent
+      : undefined;
+  if (intent) await guide.page(intent);
+  const paged = guide.getSnapshot().layout;
+  if (!intent || paged === layout) {
+    // Nowhere to go, or a page that served nothing new (clamped at now, or a failed load).
+    registry.request(from);
+    return undefined;
+  }
+  // A whole-window programme still on in the paged window keeps focus. Any other page leaves
+  // focus to the Guide, which focuses its settled selection; asking for `from` here could
+  // overwrite that request with a programme the new window doesn't draw.
+  const stillOn =
+    from.kind === "airing" &&
+    paged?.channels.some(
+      ({ airings, source }) =>
+        source.channelId === from.selection.channelId &&
+        airings.some(({ scheduleBlockId }) => scheduleBlockId === from.selection.scheduleBlockId),
+    );
+  if (stillOn) registry.request(from);
+  return intent;
+};
+
 const activateTvGuideFocus = (state: TvGuideNavigationState): TvGuideActivation =>
   state.focus.region === "filters"
     ? { filter: state.focus.filter, kind: "filter" }
@@ -133,4 +192,4 @@ const tvGuideRowWindow = (
   };
 };
 
-export { activateTvGuideFocus, moveTvGuideFocus, restoreTvGuideFocus, tvGuideRowWindow };
+export { activateTvGuideFocus, moveTvGuideFocus, restoreTvGuideFocus, tvGuideRowWindow, tvGuideTimeEdge };

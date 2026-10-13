@@ -28,4 +28,26 @@ describe("shared overlay composition", () => {
     expect(markup).toContain("padding-right:30px");
     expect(markup).toContain("padding-bottom:44px");
   });
+
+  it("marks the current choice among an overlay's actions as selected", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <TransientOverlay
+          actions={[
+            { label: "1.2 s", onPress: vi.fn() },
+            { label: "5 s", onPress: vi.fn(), selected: true },
+          ]}
+          density="tv"
+          onDismiss={vi.fn()}
+          reducedMotion
+          title="Channel-number wait"
+          visible
+        />
+      </LoomarrProvider>,
+    );
+
+    // Action draws a selected button as pressed.
+    expect(markup.match(/aria-pressed="true"/g)).toHaveLength(1);
+    expect(markup.indexOf('aria-pressed="true"')).toBeGreaterThan(markup.indexOf("1.2 s"));
+  });
 });

@@ -76,4 +76,5 @@ func (sizeConfidenceWire) Schema(r huma.Registry) *huma.Schema {
 func registerWireAliases(reg huma.Registry) {
 	reg.RegisterTypeAlias(reflect.TypeOf(schedule.Duration(0)), reflect.TypeOf(durationWire("")))
 	reg.RegisterTypeAlias(reflect.TypeOf(storagegovernor.SizeConfidence("")), reflect.TypeOf(sizeConfidenceWire("")))
+	reg.RegisterTypeAlias(reflect.TypeOf(schedule.ScopePolicy{}), reflect.TypeOf(scopePolicy{})) // scopewire.go
 }

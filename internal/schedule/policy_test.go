@@ -273,20 +273,20 @@ func TestSeedFillerSelectionDerivesOnlyGroundedChannelFacts(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			era := &Range{From: 1990, To: 1999}
+			era := Range{From: 1990, To: 1999}
 			policy := ProposalPolicy{
-				Scope:    ScopePolicy{Era: era, Genres: GenreFilter{Include: []string{"Animation"}}},
+				Scope:    ScopePolicy{Dates: EraDates(era), Genres: GenreFilter{Include: []string{"Animation"}}},
 				Audience: AudiencePolicy{Ceiling: tc.ceiling},
 			}
 			got := SeedFillerSelection(policy)
-			if got == nil || got.Audience != tc.audience || got.Era == nil || *got.Era != *era {
-				t.Fatalf("seed = %+v, want era %+v and audience %q", got, *era, tc.audience)
+			if got == nil || got.Audience != tc.audience || got.Era == nil || *got.Era != era {
+				t.Fatalf("seed = %+v, want era %+v and audience %q", got, era, tc.audience)
 			}
 			if len(got.Categories) != 0 || len(got.Kinds) != 0 {
 				t.Fatalf("program genres or missing intent invented filler taxonomy: %+v", got)
 			}
 			got.Era.From = 1980
-			if policy.Scope.Era.From != 1990 {
+			if scoped, _ := policy.Scope.Dates.Era(); scoped.From != 1990 {
 				t.Fatal("seed aliases proposal-owned era instead of handing off an independent value")
 			}
 		})

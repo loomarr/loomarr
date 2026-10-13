@@ -26,6 +26,9 @@ RETIRED=(
   # organization. Old GitHub links can be reclaimed and old GHCR coordinates name the wrong
   # publisher, so source, release metadata, and operator instructions must use one identity.
   'mantonx/loomarr|repository identity moved to the loomarr organization; use loomarr/loomarr'
+  # #1877 — a channel has one stored date scope. `era` survives only as a decode/request alias
+  # for era-shaped dates (schedule.EraDates); a Go field would be one the scheduler never reads.
+  'Scope.Era|retired (#1877): ScopePolicy has no Era field; write schedule.EraDates(r) into Scope.Dates'
   # §10 V51b — four per-capability sweeps became one ingest pipeline. Their schedule keys are the
   # dangerous half: `docs/help/` ships inside the binary and is read as INSTRUCTIONS, so a page
   # telling an operator to tune `JOB_FILLER_VISION_SCHEDULE` sends them to set an env var nothing

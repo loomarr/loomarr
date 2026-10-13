@@ -44,8 +44,7 @@ func ladderProgress(rp ResolvedPolicy) int64 {
 	p += int64(rp.Sep.SeriesMinGap) / int64(time.Millisecond)
 	p += int64(rp.Sep.BlockMax)
 	// Era widens toward its decade edges; remaining widenable years shrink each step.
-	if rp.Scope.Era != nil {
-		e := *rp.Scope.Era
+	if e, ok := rp.Scope.Dates.Era(); ok {
 		if e.From > 0 {
 			p += int64(e.From - (e.From/10)*10) // years above decade start
 		}
@@ -87,40 +86,51 @@ func randResolvedPolicy(g *rand.Rand) ResolvedPolicy {
 	}
 	// Era: sometimes nil, sometimes a random window (possibly mid-decade so widening
 	// has room, possibly already at the edges).
-	switch g.Intn(3) {
+	switch g.Intn(4) {
 	case 0:
 		// nil era
 	case 1:
 		from := 1950 + g.Intn(70)
-		rp.Scope.Era = &Range{From: from, To: from + g.Intn(20)}
+		rp.Scope.Dates = EraDates(Range{From: from, To: from + g.Intn(20)})
 	case 2:
 		// era with a zero bound on one side (unbounded end)
 		if g.Intn(2) == 0 {
-			rp.Scope.Era = &Range{From: 1960 + g.Intn(50), To: 0}
+			rp.Scope.Dates = EraDates(Range{From: 1960 + g.Intn(50), To: 0})
 		} else {
-			rp.Scope.Era = &Range{From: 0, To: 1960 + g.Intn(50)}
+			rp.Scope.Dates = EraDates(Range{From: 0, To: 1960 + g.Intn(50)})
+		}
+	case 3:
+		// distinct per-axis dates: an explicit scope the ladder must never widen
+		from := 1950 + g.Intn(60)
+		rp.Scope.Dates = &DateScope{
+			MovieRelease: []Range{{From: from + 1, To: from + 5}},
+			SeriesAiring: []Range{{From: from + 2, To: from + 8}},
 		}
 	}
 	return rp
 }
 
 // snapshotScope deep-copies the never-relaxed fields so later comparison isn't
-// fooled by aliasing (Era/Seasons are pointers; Series is a slice).
-func snapshotScope(rp ResolvedPolicy) (Rating, []provision.Key, *Range, *Range) {
+// fooled by aliasing (Dates/Seasons are pointers; Series is a slice).
+func snapshotScope(rp ResolvedPolicy) (Rating, []provision.Key, *Range, *DateScope) {
 	var series []provision.Key
 	if rp.Scope.Series != nil {
 		series = append([]provision.Key(nil), rp.Scope.Series...)
 	}
-	var seasons, era *Range
+	var seasons *Range
 	if rp.Scope.Seasons != nil {
 		s := *rp.Scope.Seasons
 		seasons = &s
 	}
-	if rp.Scope.Era != nil {
-		e := *rp.Scope.Era
-		era = &e
+	var dates *DateScope
+	if rp.Scope.Dates != nil {
+		dates = &DateScope{
+			MovieRelease:   append([]Range(nil), rp.Scope.Dates.MovieRelease...),
+			SeriesPremiere: append([]Range(nil), rp.Scope.Dates.SeriesPremiere...),
+			SeriesAiring:   append([]Range(nil), rp.Scope.Dates.SeriesAiring...),
+		}
 	}
-	return rp.Ceiling, series, seasons, era
+	return rp.Ceiling, series, seasons, dates
 }
 
 // TestLadderStep_TerminatesAndProgresses drives ladderStep to exhaustion on random
@@ -185,7 +195,8 @@ func TestLadderStep_NeverRelaxesAudienceOrScope(t *testing.T) {
 	g := rand.New(rand.NewSource(0xCAFE))
 	for trial := 0; trial < 2000; trial++ {
 		rp := randResolvedPolicy(g)
-		wantCeil, wantSeries, wantSeasons, _ := snapshotScope(rp)
+		wantCeil, wantSeries, wantSeasons, wantDates := snapshotScope(rp)
+		_, eraShaped := rp.Scope.Dates.Era()
 
 		cur := rp
 		for i := 0; i < maxLadderSteps+2; i++ {
@@ -193,7 +204,11 @@ func TestLadderStep_NeverRelaxesAudienceOrScope(t *testing.T) {
 			if !ok {
 				break
 			}
-			gotCeil, gotSeries, gotSeasons, _ := snapshotScope(relaxed)
+			gotCeil, gotSeries, gotSeasons, gotDates := snapshotScope(relaxed)
+			// Only an era-shaped scope (the era shortcut) widens; per-axis dates are explicit.
+			if !eraShaped && !reflect.DeepEqual(gotDates, wantDates) {
+				t.Fatalf("trial %d step %d: explicit per-axis dates widened %+v -> %+v", trial, i, wantDates, gotDates)
+			}
 			if gotCeil != wantCeil {
 				t.Fatalf("trial %d step %d: audience ceiling mutated %q -> %q", trial, i, wantCeil, gotCeil)
 			}
@@ -226,7 +241,7 @@ func TestRelaxAndSlot_NeverRelaxesAudienceOrScope(t *testing.T) {
 
 		// relaxAndSlot takes rp by value, so the caller's struct is untouched. Assert
 		// the never-relaxed fields on the original are still exactly as snapshotted —
-		// this proves nothing aliased through the pointers (Era/Seasons/Series) was
+		// this proves nothing aliased through the pointers (Dates/Seasons/Series) was
 		// mutated in place.
 		gotCeil, gotSeries, gotSeasons, gotEra := snapshotScope(rp)
 		if gotCeil != wantCeil {
