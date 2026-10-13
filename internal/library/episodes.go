@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/episodeevidence"
 )
@@ -31,6 +32,10 @@ type Episode struct {
 	// re-applied to expanded episodes, because a show that began in 1989 can still
 	// contain episodes from 2026. Zero means the library did not supply a year.
 	ProductionYear int
+	// AirDate is this episode's original air date (the media server's PremiereDate, as a UTC
+	// calendar day). Zero means the library did not supply a parseable one. Holiday judgment
+	// reads it: broadcast holiday episodes premiere near the holiday (§6).
+	AirDate time.Time
 	// OfficialRating is THIS EPISODE's content rating, which is not always the show's
 	// (§4 audience ceiling). "" when the media server has none for the episode.
 	//
@@ -61,6 +66,7 @@ type episodeItem struct {
 	// meaning "the server has none", not "unrated content".
 	OfficialRating  string   `json:"OfficialRating"`
 	ProductionYear  int      `json:"ProductionYear"`
+	PremiereDate    string   `json:"PremiereDate"`
 	CommunityRating float64  `json:"CommunityRating"`
 	Overview        string   `json:"Overview"`
 	Tags            []string `json:"Tags"`
@@ -90,7 +96,7 @@ type episodesResponse struct {
 // ListEpisodes enumerates a series' episodes (§9):
 //
 //	GET /Items?ParentId=<showItemID>&Recursive=true&IncludeItemTypes=Episode
-//	           &Fields=RunTimeTicks,IndexNumberEnd,OfficialRating,ProductionYear
+//	           &Fields=RunTimeTicks,IndexNumberEnd,OfficialRating,ProductionYear,PremiereDate,…
 //	           &SortBy=ParentIndexNumber,IndexNumber
 //
 // Returned in season/episode order. Duration comes from RunTimeTicks (the core
@@ -106,7 +112,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 	q.Set("ParentId", showItemID)
 	q.Set("Recursive", "true")
 	q.Set("IncludeItemTypes", "Episode")
-	q.Set("Fields", "RunTimeTicks,IndexNumberEnd,OfficialRating,ProductionYear,CommunityRating,Overview,Tags")
+	q.Set("Fields", "RunTimeTicks,IndexNumberEnd,OfficialRating,ProductionYear,PremiereDate,CommunityRating,Overview,Tags")
 	q.Set("SortBy", "ParentIndexNumber,IndexNumber")
 	q.Set("SortOrder", "Ascending")
 
@@ -139,6 +145,7 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 			Name:            it.Name,
 			DurationMs:      dur,
 			ProductionYear:  it.ProductionYear,
+			AirDate:         airDate(it.PremiereDate),
 			OfficialRating:  it.OfficialRating,
 			CommunityRating: evidence.CommunityRating,
 			Overview:        evidence.Overview,
@@ -150,4 +157,17 @@ func (c *Client) ListEpisodes(ctx context.Context, showItemID string) ([]Episode
 		eps = append(eps, e)
 	}
 	return eps, nil
+}
+
+// airDate reads the calendar day off a PremiereDate ("1990-10-25T00:00:00.0000000Z"); anything
+// unparseable is unknown rather than an error, since the date is only editorial evidence.
+func airDate(premiere string) time.Time {
+	if len(premiere) < len(time.DateOnly) {
+		return time.Time{}
+	}
+	day, err := time.Parse(time.DateOnly, premiere[:len(time.DateOnly)])
+	if err != nil {
+		return time.Time{}
+	}
+	return day
 }

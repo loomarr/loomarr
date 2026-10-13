@@ -492,7 +492,7 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 	fetched := time.Now().Truncate(time.Second)
 	eps := []schedule.ResolvedProgram{
 		{LibraryItemID: "ep-1", Title: "Pilot", DurationMs: 1_320_000, Season: 1, Episode: 1, Year: 1993,
-			CommunityRating: 9.1, Overview: "A Christmas homecoming", Tags: []string{"holiday", "family"}},
+			AirDate: time.Date(1993, time.December, 16, 0, 0, 0, 0, time.UTC), CommunityRating: 9.1, Overview: "A Christmas homecoming", Tags: []string{"holiday", "family"}},
 		{LibraryItemID: "ep-2", Title: "Second", DurationMs: 1_320_000, Season: 1, Episode: 2, EpisodeEnd: 3},
 		{LibraryItemID: "ep-3", Title: "Third", DurationMs: 1_320_000, Season: 1, Episode: 4,
 			CommunityRating: 11, Overview: strings.Repeat("x", 2050), Tags: append([]string{"holiday"}, make([]string, 20)...)},
@@ -510,6 +510,9 @@ func testSeriesEpisodes(t *testing.T, newStore NewStoreFunc) {
 	}
 	if got.Episodes[0].Year != 1993 {
 		t.Fatalf("Year = %d, want 1993 (episode era must survive the cache blob)", got.Episodes[0].Year)
+	}
+	if !got.Episodes[0].AirDate.Equal(eps[0].AirDate) || !got.Episodes[1].AirDate.IsZero() {
+		t.Fatalf("AirDate = %v / %v, want the holiday evidence date and zero for unknown", got.Episodes[0].AirDate, got.Episodes[1].AirDate)
 	}
 	if got.Episodes[0].CommunityRating != 9.1 || got.Episodes[0].Overview != "A Christmas homecoming" ||
 		len(got.Episodes[0].Tags) != 2 || got.Episodes[0].Tags[0] != "holiday" || got.Episodes[0].Tags[1] != "family" {

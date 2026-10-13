@@ -170,7 +170,8 @@ func episodeResolver(lib *library.Client) channels.EpisodeResolver {
 				DurationMs:    e.DurationMs,
 				Season:        e.Season,
 				Year:          e.ProductionYear,
-				Episode:       e.Episode,
+				AirDate:       e.AirDate,
+				Episode:      e.Episode,
 				EpisodeEnd:    e.EpisodeEnd, // §5 multi-part: single-file span end
 				// Normalized HERE, at the edge, exactly as the binder does for a lineup entry —
 				// so the schedule domain only ever compares ladder values (§4).

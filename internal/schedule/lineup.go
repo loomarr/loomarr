@@ -145,6 +145,10 @@ type ResolvedProgram struct {
 	CommunityRating float64
 	Overview        string
 	Tags            []string
+	// AirDate is the episode's original air date (zero = unknown), holiday evidence only (§6).
+	// Persisted like OfficialRating: cached rows written before it existed decode as zero —
+	// "no date", which judges exactly as before — until the refresh sweep repopulates them.
+	AirDate time.Time `json:",omitzero"`
 }
 
 // PendingPolicy is what to place where a lineup entry's title is not yet

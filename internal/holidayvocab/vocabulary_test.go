@@ -3,6 +3,7 @@ package holidayvocab_test
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/holidayvocab"
 )
@@ -72,6 +73,76 @@ func TestJudgeHalloweenFloor(t *testing.T) {
 	}
 	if got := holidayvocab.Judge("arbor-day", holidayvocab.Evidence{Title: "Arbor Day"}); got.Verdict != holidayvocab.VerdictNot {
 		t.Errorf("unknown holiday judged %+v, want not", got)
+	}
+}
+
+// Invented episodes mirroring a long-running animated sitcom's annual Halloween anthology: the
+// overviews never say "Halloween" and there are no tags or episode genres. The original air date
+// is what proves them (§6); without it the episode title still fits the mood; a date alone or a
+// mood word in an ordinary overview proves nothing.
+func TestJudgeHalloweenEpisodes(t *testing.T) {
+	day := func(year int, month time.Month, d int) time.Time { return time.Date(year, month, d, 0, 0, 0, 0, time.UTC) }
+	episode := func(title, overview string, aired time.Time) holidayvocab.Evidence {
+		return holidayvocab.Evidence{Title: title, Text: []string{overview}, Episode: true, AirDate: aired}
+	}
+	for _, tt := range []struct {
+		name   string
+		ev     holidayvocab.Evidence
+		want   holidayvocab.Verdict
+		reason holidayvocab.Reason
+	}{
+		{"anthology premiered late October",
+			episode("Treetop of Terror", "Three tales: a cursed doll, a talking cat and a flying saucer.", day(1990, time.October, 25)),
+			holidayvocab.VerdictAbout, holidayvocab.ReasonMoodAiredNear},
+		{"anthology premiered early November",
+			episode("Treetop of Terror XII", "A leprechaun, a smart house and a wizard school.", day(2001, time.November, 2)),
+			holidayvocab.VerdictAbout, holidayvocab.ReasonMoodAiredNear},
+		{"mood word in the overview of an episode aired in the window",
+			episode("Grandpa's Attic", "Lisa is sure a ghost lives upstairs.", day(1993, time.October, 30)),
+			holidayvocab.VerdictAbout, holidayvocab.ReasonMoodAiredNear},
+		{"anthology with no air date",
+			episode("Treetop of Terror III", "Three more tales.", time.Time{}),
+			holidayvocab.VerdictAdjacent, holidayvocab.ReasonMoodInEpisode},
+		{"ordinary episode aired October 28",
+			episode("The New Neighbor", "Dad buys a boat.", day(1994, time.October, 28)),
+			holidayvocab.VerdictNot, ""},
+		{"ghost in an ordinary overview, no date",
+			episode("Grandpa's Attic", "Lisa is sure a ghost lives upstairs.", time.Time{}),
+			holidayvocab.VerdictNot, ""},
+		{"ghost in an ordinary overview, aired in spring",
+			episode("Grandpa's Attic", "Lisa is sure a ghost lives upstairs.", day(1993, time.April, 8)),
+			holidayvocab.VerdictNot, ""},
+		{"mood word just outside the window",
+			episode("Grandpa's Attic", "Lisa is sure a ghost lives upstairs.", day(1993, time.November, 8)),
+			holidayvocab.VerdictNot, ""},
+	} {
+		got := holidayvocab.Judge("halloween", tt.ev)
+		if got.Verdict != tt.want || got.Reason != tt.reason {
+			t.Errorf("%s: Judge(%+v) = %+v, want %s (%q)", tt.name, tt.ev, got, tt.want, tt.reason)
+		}
+	}
+	// A film title is not an episode title: the same words with no genre stay out.
+	if got := holidayvocab.Judge("halloween", holidayvocab.Evidence{Title: "Treetop of Terror"}); got.Verdict != holidayvocab.VerdictNot {
+		t.Errorf("film titled with a mood word and no genre judged %+v, want not", got)
+	}
+}
+
+// Each holiday's broadcast window, including the ones that wrap into January.
+func TestJudgeEpisodeAirWindows(t *testing.T) {
+	day := func(year int, month time.Month, d int) time.Time { return time.Date(year, month, d, 0, 0, 0, 0, time.UTC) }
+	for _, tt := range []struct {
+		id, text string
+		aired    time.Time
+		want     holidayvocab.Verdict
+	}{
+		{"halloween", "a spooky night", day(2010, time.October, 15), holidayvocab.VerdictAbout},
+		{"halloween", "a spooky night", day(2010, time.October, 14), holidayvocab.VerdictNot},
+		{"halloween", "a spooky night", day(2010, time.November, 7), holidayvocab.VerdictAbout},
+	} {
+		got := holidayvocab.Judge(tt.id, holidayvocab.Evidence{Title: "Episode", Text: []string{tt.text}, Episode: true, AirDate: tt.aired})
+		if got.Verdict != tt.want {
+			t.Errorf("Judge(%s, %q aired %s) = %+v, want %s", tt.id, tt.text, tt.aired.Format(time.DateOnly), got, tt.want)
+		}
 	}
 }
 
