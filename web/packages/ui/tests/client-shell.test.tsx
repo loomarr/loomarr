@@ -42,7 +42,7 @@ const mount = async (initial: ClientShellProps["active"] = "requests") => {
       root.render(
         <LoomarrProvider>
           <ClientShell active={active} density="touch" onDisconnect={vi.fn()} onNavigate={vi.fn()}>
-            {active === "requests" ? () => <Requests /> : <>{`Tonight's ${active}`}</>}
+            {active === "requests" ? () => <Requests /> : `Tonight's ${active}`}
           </ClientShell>
         </LoomarrProvider>,
       );
