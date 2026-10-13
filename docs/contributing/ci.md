@@ -435,6 +435,18 @@ Apple mobile, Apple TV, and Expo Android mobile are active. The mobile Android j
 seven days. Expo Android TV remains a classifier decision until its independently required job and
 current-main evidence exist.
 
+`make client-android-debug` keeps workstation-safe defaults: one Gradle worker, one native job, one
+Metro worker, a 1280 MB Gradle heap, and a 4 GB memory scope. The CI mobile job raises them through
+the environment, the same way the TV producer does: two Gradle workers (the wrapper's ceiling), four
+native jobs for the single-ABI app CMake build, four Metro workers, a 3 GB heap, and a 12 GB scope on
+the 16 GB runner. It reuses the TV producer's pinned ccache, the same wrapper validation
+(`web/scripts/android-ccache-env.sh`), and the same generated-Ninja launcher proof. Its own
+`android-mobile-ccache-v1-` entry is saved from pull requests only. Mobile builds a debug variant, so
+TV's release objects never hit for it. For Gradle it reads the newest Android TV generation its ref
+can see and never saves one: the two apps share the pinned React Native TV, Gradle distribution,
+dependencies, and included plugin builds, and a second ~1.3 GB entry per revision would evict the
+warm Go caches.
+
 The permanent-identity Android TV producer keeps its exact-SHA Gradle cache and also restores a
 separate 2 GiB ccache directory across source identities. The workflow installs the exact §14 pin,
 while the build wrapper rejects a relative/wrong-version launcher, a foreign base directory, or any

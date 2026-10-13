@@ -14,7 +14,9 @@ import {
 } from "@loomarr/design-system";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import type { PairingShellProps } from "./pairing-shell.type";
+import type { ApprovalBrowser, PairingShellProps } from "./pairing-shell.type";
+import { PhoneApproval } from "./phone-approval";
+import { ServerRow } from "./server-row";
 
 const emptyDiscovery: ServerDiscoverySnapshot = { servers: [], status: "unavailable" };
 const subscribeToNothing = () => () => undefined;
@@ -22,6 +24,7 @@ const readEmptyDiscovery = () => emptyDiscovery;
 
 const PairingShell = ({
   allowServerEntry = false,
+  approvalBrowser,
   density,
   discovery,
   discoveryForeground = false,
@@ -48,6 +51,12 @@ const PairingShell = ({
     const timer = setInterval(() => setTick((value) => value + 1), 1_000);
     return () => clearInterval(timer);
   }, [state.status]);
+  // Leaving approval (paired, failed, or another server) closes the browser sheet, so approving on
+  // `/pair` lands the viewer straight in the app. A silent code refresh stays in approval and keeps it.
+  useEffect(() => {
+    if (state.status !== "awaiting-approval" || !approvalBrowser) return undefined;
+    return () => approvalBrowser.close();
+  }, [approvalBrowser, state.status]);
   useEffect(() => {
     if (state.status !== "needs-server" || !discovery || !discoveryForeground) {
       discovery?.stop();
@@ -68,6 +77,7 @@ const PairingShell = ({
     discovery ? discoveryState : undefined,
     manualEntry,
     setManualEntry,
+    approvalBrowser,
   );
   const awaitingApproval = state.status === "awaiting-approval";
   return (
@@ -104,6 +114,7 @@ const pairingContent = (
   discovery: ServerDiscoverySnapshot | undefined,
   manualEntry: boolean,
   setManualEntry: (value: boolean) => void,
+  approvalBrowser: ApprovalBrowser | undefined,
 ) => {
   if (state.status === "loading")
     return (
@@ -123,16 +134,20 @@ const pairingContent = (
         <Text density={density} textRole="body">
           {`Choose a server on this network. You’ll approve this ${density === "tv" ? "TV" : "device"} on the next screen.`}
         </Text>
-        {discovery?.servers.map((server, index) => (
-          <Action
-            density={density}
-            hasTVPreferredFocus={density === "tv" && index === 0}
-            key={server.id}
-            onPress={() => void session.pair(server.url)}
-          >
-            {`${discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}\n${server.url}`}
-          </Action>
-        ))}
+        {discovery?.servers.map((server, index) =>
+          density === "touch" ? (
+            <ServerRow key={server.id} onPress={() => void session.pair(server.url)} server={server} />
+          ) : (
+            <Action
+              density={density}
+              hasTVPreferredFocus={density === "tv" && index === 0}
+              key={server.id}
+              onPress={() => void session.pair(server.url)}
+            >
+              {`${discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}\n${server.url}`}
+            </Action>
+          ),
+        )}
         {discovery?.servers.length === 0 && discovery.status === "searching" ? (
           <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
             Searching this network…
@@ -185,6 +200,20 @@ const pairingContent = (
     // Maintainer decision (#1817, pairing states): urgent under 60s, danger + semibold.
     const urgent = seconds < 60;
     const countdownLabel = `Expires in ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    if (density === "touch" && approvalBrowser)
+      return (
+        <PhoneApproval
+          browserName={approvalBrowser.name}
+          countdownLabel={countdownLabel}
+          onApprove={() => approvalBrowser.open(state.verificationUriComplete)}
+          onChooseServer={() => {
+            setManualEntry(false);
+            session.chooseServer();
+          }}
+          state={state}
+          urgent={urgent}
+        />
+      );
     return (
       <>
         <Surface

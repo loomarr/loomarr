@@ -119,7 +119,8 @@ ci-tuner-workflow	.github/workflows/ci-tuner.yml	tuner,policy
 ci-image-workflow	.github/workflows/ci-image.yml	image,policy
 ci-docs-workflow	.github/workflows/ci-docs.yml	docs,policy
 ci-android-workflow	.github/workflows/ci-android.yml	android,policy
-android-tv-compiler-cache	web/scripts/build-shield-play.sh;web/scripts/build-shield-play.test.sh;web/scripts/install-android-ccache.sh;web/scripts/install-android-ccache.test.sh;web/scripts/verify-android-ccache-evidence.sh	contracts,android
+android-tv-compiler-cache	web/scripts/build-shield-play.sh	contracts,android
+android-shared-compiler-cache	web/scripts/android-ccache-env.sh;web/scripts/build-shield-play.test.sh;web/scripts/install-android-ccache.sh;web/scripts/install-android-ccache.test.sh;web/scripts/verify-android-ccache-evidence.sh	contracts,expo_android_mobile,android
 ios-testflight-script	web/scripts/build-ios-testflight.sh;web/scripts/build-ios-testflight.test.sh	contracts
 ios-testflight-workflow	.github/workflows/ios-testflight.yml	policy
 make-root	Makefile	contracts,go,go_full,rust,postgres,web,clients,apple_mobile,apple_tv,expo_android_mobile,expo_android_tv,visual,e2e,tuner,image,docs,agent,android,policy,playout_bench
@@ -151,6 +152,7 @@ openrouter-catalog-leaf	internal/openroutercatalog/openrouter_route.go	contracts
 research-archive	research/cmd/filler-corpus-pilot-rights-review/main.go;research/internal/fillerreview/temporal_reviewer_template.go;research/go.mod	docs
 filler-eval-doc	research/docs/filler-certification.md	docs
 ci-ffmpeg-toolchain	scripts/ci-ffmpeg.sh	contracts,go,go_full,policy
+go-module-download	scripts/go-mod-download.sh	contracts,go,go_full,policy
 go-race-sharding	scripts/go-certification-lanes.tsv;scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-test-lane.sh;scripts/go-test-packages.sh	contracts,go,go_full,policy
 spike-throwaway	spike/4k-tonemap/README.md;spike/4k-tonemap/image/Dockerfile	docs
 playout-bench-command	cmd/playout-bench/main.go	contracts,go,postgres,image,playout_bench

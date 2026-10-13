@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Archive, export, verify, validate, and upload the permanent-identity Expo iPhone app (ADR 0042).
 #
+#   build-ios-testflight.sh plan <event> <payload>   decide release, upload, and version for a run
 #   build-ios-testflight.sh prepare-credentials      fail on missing secrets, write the API key
 #   build-ios-testflight.sh build <x.y.z[-beta.N]>   archive + export + verify the IPA
 #   build-ios-testflight.sh validate                 altool --validate-app on the verified IPA
@@ -12,6 +13,8 @@ set -euo pipefail
 readonly MODE="${1:-}"
 WEB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly WEB_ROOT
+REPO_ROOT="$(cd "${WEB_ROOT}/.." && pwd)"
+readonly REPO_ROOT
 readonly APP_DIR="${WEB_ROOT}/apps/mobile"
 readonly OUTPUT_DIR="${LOOMARR_IOS_OUTPUT_DIR:-${WEB_ROOT}/../.artifacts/ios-testflight}"
 readonly BUNDLE_ID="media.loomarr.mobile"
@@ -19,8 +22,15 @@ readonly BUNDLE_ID="media.loomarr.mobile"
 readonly SCHEME="Loomarr"
 
 usage() {
-  printf 'usage: %s prepare-credentials | build <x.y.z[-beta.N]> | validate | upload\n' "$0" >&2
+  printf 'usage: %s plan <event> <payload> | prepare-credentials | build <x.y.z[-beta.N]> | validate | upload\n' "$0" >&2
   exit 2
+}
+
+require_release_version() {
+  if [[ ! "$1" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    printf 'ios-testflight: version must be x.y.z with an optional suffix; got "%s"\n' "$1" >&2
+    exit 2
+  fi
 }
 
 require_env() {
@@ -142,10 +152,7 @@ build() {
   if [[ -z "$release_version" ]]; then
     usage
   fi
-  if [[ ! "$release_version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-    printf 'ios-testflight: version must be x.y.z with an optional suffix; got "%s"\n' "$release_version" >&2
-    exit 2
-  fi
+  require_release_version "$release_version"
   require_env LOOMARR_IOS_BUILD_NUMBER LOOMARR_APPLE_TEAM_ID
   if [[ ! "$LOOMARR_IOS_BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]]; then
     printf 'ios-testflight: build number must be a positive integer; got "%s"\n' "$LOOMARR_IOS_BUILD_NUMBER" >&2
@@ -193,6 +200,14 @@ build() {
     printf 'ios-testflight: the pinned Expo package has no native template: %s\n' "$expo_template" >&2
     exit 2
   fi
+
+  # The run number is only a floor: App Store Connect refuses a build number at or below its latest,
+  # which any upload from outside this workflow overtakes (#1900). validate and upload read the
+  # chosen number back from the evidence, so it is fixed here, before the identity is generated.
+  local floor_build="$LOOMARR_IOS_BUILD_NUMBER"
+  LOOMARR_IOS_BUILD_NUMBER="$(node "$WEB_ROOT/scripts/asc-next-build-number.mjs" "$BUNDLE_ID" "$floor_build")"
+  export LOOMARR_IOS_BUILD_NUMBER
+  printf 'ios-testflight: build number %s (floor %s)\n' "$LOOMARR_IOS_BUILD_NUMBER" "$floor_build"
 
   # app.config.cjs validates the version and fixes the identity; read the result back.
   export LOOMARR_IOS_RELEASE_CHANNEL=testflight
@@ -362,6 +377,68 @@ verify_ipa() {
   printf 'ios-testflight: verified %s\n' "$ipa"
 }
 
+# Prints what one workflow run releases as GitHub output records: release=, upload=, version=.
+# A dispatch is an explicit request that carries its own version and upload choice. A push to main
+# releases and uploads only when its diff selects the Apple mobile CI gate (scripts/ci-impact.sh is
+# the one definition of the iPhone app's inputs), and its version is the newest release tag reachable
+# from the pushed commit. As in CI, a push whose diff cannot be classified treats every path as
+# changed. Run it from the checkout being released, with full history and tags.
+plan() {
+  local event="${1:-}" payload="${2:-}"
+  if [[ -z "$event" || -z "$payload" ]]; then
+    usage
+  fi
+  if [[ ! -f "$payload" ]]; then
+    printf 'ios-testflight: the event payload does not exist: %s\n' "$payload" >&2
+    exit 2
+  fi
+  require_commands git jq
+  local release upload version='' base impact
+  case "$event" in
+    workflow_dispatch)
+      version="$(jq -r '.inputs.version // ""' "$payload")"
+      require_release_version "$version"
+      upload="$(jq -r '.inputs.upload // "" | tostring' "$payload")"
+      if [[ "$upload" != true && "$upload" != false ]]; then
+        printf 'ios-testflight: the upload input must be true or false; got "%s"\n' "$upload" >&2
+        exit 2
+      fi
+      release=true
+      ;;
+    push)
+      base="$("${REPO_ROOT}/scripts/ci-diff-base.sh" push "$payload")"
+      if [[ -z "$base" ]] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+        printf 'ios-testflight: no usable diff base; treating every path as changed\n' >&2
+        impact="$("${REPO_ROOT}/scripts/ci-impact.sh" --all)"
+      elif ! impact="$(git diff --name-only "$base" HEAD | "${REPO_ROOT}/scripts/ci-impact.sh")"; then
+        printf 'ios-testflight: the CI impact classifier failed; treating every path as changed\n' >&2
+        impact="$("${REPO_ROOT}/scripts/ci-impact.sh" --all)"
+      fi
+      release="$(sed -n 's/^apple_mobile=//p' <<<"$impact")"
+      if [[ "$release" != true && "$release" != false ]]; then
+        printf 'ios-testflight: the CI impact classifier did not decide the apple_mobile gate\n' >&2
+        exit 1
+      fi
+      upload="$release"
+      if [[ "$release" == true ]]; then
+        if ! version="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD 2>/dev/null)"; then
+          printf 'ios-testflight: no v* release tag is reachable from HEAD\n' >&2
+          exit 1
+        fi
+        require_release_version "$version"
+        printf 'ios-testflight: the push changes the iPhone app; releasing %s\n' "${version#v}" >&2
+      else
+        printf 'ios-testflight: the push changes no iPhone app input; nothing to release\n' >&2
+      fi
+      ;;
+    *)
+      printf 'ios-testflight: plan supports push and workflow_dispatch, not "%s"\n' "$event" >&2
+      exit 2
+      ;;
+  esac
+  printf 'release=%s\nupload=%s\nversion=%s\n' "$release" "$upload" "${version#v}"
+}
+
 # Fails with one readable list of everything the release environment lacks, then writes the API
 # key where altool and xcodebuild expect it. The key is decoded straight to disk and never printed.
 prepare_credentials() {
@@ -398,6 +475,7 @@ prepare_credentials() {
 }
 
 case "$MODE" in
+  plan) plan "${2:-}" "${3:-}" ;;
   prepare-credentials) prepare_credentials ;;
   build) build "${2:-}" ;;
   validate) submit --validate-app ;;
