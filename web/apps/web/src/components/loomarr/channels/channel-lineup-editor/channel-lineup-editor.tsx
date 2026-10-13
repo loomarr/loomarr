@@ -168,7 +168,7 @@ const SortableLineupRow = ({
             <Button
               variant="ghost"
               size="icon"
-              className="col-[2/-1] size-11 shrink-0 justify-self-end @md:size-7"
+              className="col-[2/-1] @md:size-7 size-11 shrink-0 justify-self-end"
               disabled={disabled}
               aria-label={`Remove ${entry.name}`}
               onClick={onRemove}
