@@ -1,5 +1,6 @@
+import { getReportClientCrashUrl } from "@loomarr/api/endpoints/diagnostics";
+import type { ClientCrashReportInput } from "@loomarr/api/models/clientCrashReportInput";
 import { BreadcrumbTrail } from "./breadcrumbs";
-import { type ClientCrashReportInput, getReportClientCrashUrl } from "./contract";
 import { type NativeCrashEnvelope, nativeCrashReports } from "./native";
 import { type CrashReportDevice, jsCrashReport } from "./report";
 

@@ -111,6 +111,15 @@ message and a stack, so it is a separate table and contract, not a client-diagno
 - **Retention** is fixed product policy, applied by the daily housekeeping pass: 30 days or the
   newest 1000 reports, whichever is fewer. The diagnostics byte budget does not count these rows;
   the row cap bounds them instead.
+- **Capture on the phone.** React Native's global error handler writes each JS error to an on-disk
+  queue synchronously, before a fatal one ends the app, then hands it on. iOS native crashes come
+  from Apple's MetricKit on the next launch, one report per crash, carrying the crashed build's
+  identity. The queue keeps the newest 20 (`@loomarr/core/crash-reports`). Once paired, the app
+  sends pending reports at launch, on returning to the foreground, after a non-fatal error and when
+  MetricKit delivers. A report is deleted only after a `2xx`, or after a `400`/`413`/`422` that would
+  never succeed; `401`, `429`, `5xx` or no network keeps it for the next attempt. Breadcrumbs are the
+  last 50 navigation, request (method, path, status) and lifecycle events. Android captures JS errors
+  only; its native analogue, `ApplicationExitInfo`, is not built.
 
 ## Current Health
 

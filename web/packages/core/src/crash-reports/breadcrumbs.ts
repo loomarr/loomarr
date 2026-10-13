@@ -1,4 +1,5 @@
-import { type ClientCrashBreadcrumb, ClientCrashBreadcrumbCategory } from "./contract";
+import type { ClientCrashBreadcrumb } from "@loomarr/api/models/clientCrashBreadcrumb";
+import { ClientCrashBreadcrumbCategory } from "@loomarr/api/models/clientCrashBreadcrumbCategory";
 import { scrubText, scrubUrl, truncateUtf8 } from "./scrub";
 
 const BREADCRUMB_LIMIT = 50;
