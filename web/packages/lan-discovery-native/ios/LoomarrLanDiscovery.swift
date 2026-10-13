@@ -26,8 +26,7 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
   private var pendingHosts: [UInt32] = []
   private var bonjourHosts = Set<UInt32>()
 
-  // An optional RCTBridgeModule requirement RCTEventEmitter does not implement, so not an override.
-  @objc static func requiresMainQueueSetup() -> Bool { false }
+  override static func requiresMainQueueSetup() -> Bool { false }
 
   override func supportedEvents() -> [String]! {
     ["loomarrDiscoveryFound", "loomarrDiscoveryLost", "loomarrDiscoveryError"]
