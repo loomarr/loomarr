@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -221,7 +222,7 @@ func (s *sqlStore) RetryClipPipeline(ctx context.Context, failed, p filler.ClipP
 // GetClipPipeline reads one row. Absence is not an error — an un-enrolled clip is ordinary.
 func (s *sqlStore) GetClipPipeline(ctx context.Context, hash string) (filler.ClipPipeline, bool, error) {
 	p, err := scanClipPipeline(s.db.QueryRowContext(ctx, s.ph(clipPipelineSelect+` WHERE clip_hash = ?`), hash))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return filler.ClipPipeline{}, false, nil
 	}
 	if err != nil {

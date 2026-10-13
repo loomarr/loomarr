@@ -105,10 +105,11 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 			name: "Build image (${{ matrix.platform }})", runsOn: "${{ matrix.runner }}",
 			strategy: &workflowStrategyAuthority{include: []workflowMatrixEntryAuthority{{platform: "linux/amd64", runner: "ubuntu-24.04", arch: "amd64"}, {platform: "linux/arm64", runner: "ubuntu-24.04-arm", arch: "arm64"}}},
 		},
-		{workflow: "release.yml", job: "publish"}:               {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
-		{workflow: "deadcode.yml", job: "report"}:               {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
-		{workflow: "rust-maintenance.yml", job: "supply-chain"}: {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
-		{workflow: "rust-maintenance.yml", job: "fuzz"}:         {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "release.yml", job: "publish"}:                {name: "Sign and publish image", runsOn: "ubuntu-latest", needs: "build"},
+		{workflow: "deadcode.yml", job: "report"}:                {name: "Unreachable functions against the baseline", runsOn: "ubuntu-24.04", timeoutMinutes: 30},
+		{workflow: "go-maintenance.yml", job: "vulnerabilities"}: {name: "Reachable known vulnerabilities", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "rust-maintenance.yml", job: "supply-chain"}:  {name: "Advisories, licences, and sources", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
+		{workflow: "rust-maintenance.yml", job: "fuzz"}:          {name: "Bounded protocol and decoder fuzz", runsOn: "ubuntu-24.04", timeoutMinutes: 20},
 	}
 }
 

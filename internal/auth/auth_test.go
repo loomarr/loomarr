@@ -32,7 +32,7 @@ func TestTokenHashedAtRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The stored session must be keyed by the hash, not the token.
-	if _, err := st.GetSession(ctx, token, now); err != store.ErrNotFound {
+	if _, err := st.GetSession(ctx, token, now); !errors.Is(err, store.ErrNotFound) {
 		t.Error("session is retrievable by the RAW token — token not hashed at rest (§11)")
 	}
 	if _, err := st.GetSession(ctx, hashToken(token), now); err != nil {
@@ -294,11 +294,11 @@ func TestImportedUserLogin_AllowlistEnforced(t *testing.T) {
 		t.Errorf("imported admin → %v (%v), want admin login", u.Role, err)
 	}
 	// kid has VALID media-server creds but is not on the allowlist → denied.
-	if _, _, _, err := svc.Login(ctx, "kid", "pw", "ip|kid"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(ctx, "kid", "pw", "ip|kid"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Errorf("un-imported user login → %v, want ErrInvalidCredentials", err)
 	}
 	// And no row was created for kid (no lazy self-provision).
-	if _, err := st.GetUser(ctx, "u-kid"); err != store.ErrNotFound {
+	if _, err := st.GetUser(ctx, "u-kid"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("un-imported login must not create a row: %v", err)
 	}
 }
@@ -351,11 +351,11 @@ func TestBootstrap_OnceOnly(t *testing.T) {
 		t.Errorf("local admin login → %v (%v), want success", lu.ID, lerr)
 	}
 	// A wrong password is rejected.
-	if _, _, _, lerr := svc.Login(ctx, "owner", "wrong", "ip|owner2"); lerr != ErrInvalidCredentials {
+	if _, _, _, lerr := svc.Login(ctx, "owner", "wrong", "ip|owner2"); !errors.Is(lerr, ErrInvalidCredentials) {
 		t.Errorf("wrong local password → %v, want ErrInvalidCredentials", lerr)
 	}
 	// A second bootstrap is closed.
-	if _, err := prov.Bootstrap(ctx, "other", "pw2"); err != ErrBootstrapClosed {
+	if _, err := prov.Bootstrap(ctx, "other", "pw2"); !errors.Is(err, ErrBootstrapClosed) {
 		t.Errorf("second bootstrap → %v, want ErrBootstrapClosed", err)
 	}
 }
@@ -399,7 +399,7 @@ func TestImportedLogin_OnlineCaptureRefreshAndOfflineFallback(t *testing.T) {
 	// The provider is reachable and authoritative: its rejection must not use the
 	// stale matching verifier after the password changes there.
 	ms.Accounts["bob"] = testkit.Account{Password: "second-password", ID: "u-bob"}
-	if _, _, _, err := svc.Login(ctx, "bob", "first-password", "online-stale"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(ctx, "bob", "first-password", "online-stale"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("reachable provider rejection = %v, want ErrInvalidCredentials", err)
 	}
 	if _, _, _, err := svc.Login(ctx, "bob", "second-password", "online-2"); err != nil {
@@ -419,7 +419,7 @@ func TestImportedLogin_OnlineCaptureRefreshAndOfflineFallback(t *testing.T) {
 	if _, _, _, err := svc.Login(ctx, "bob", "second-password", "offline-good"); err != nil {
 		t.Fatalf("offline matching verifier: %v", err)
 	}
-	if _, _, _, err := svc.Login(ctx, "bob", "wrong-password", "offline-bad"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(ctx, "bob", "wrong-password", "offline-bad"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("offline wrong verifier = %v, want ErrInvalidCredentials", err)
 	}
 	disabled, _ := st.GetUser(ctx, "u-bob")
@@ -427,7 +427,7 @@ func TestImportedLogin_OnlineCaptureRefreshAndOfflineFallback(t *testing.T) {
 	if err := st.UpsertUser(ctx, disabled); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := svc.Login(ctx, "bob", "second-password", "offline-disabled"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(ctx, "bob", "second-password", "offline-disabled"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("offline disabled user = %v, want ErrInvalidCredentials", err)
 	}
 }
@@ -442,13 +442,13 @@ func TestImportedLogin_OfflineMissingVerifierAndUnimportedFail(t *testing.T) {
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 	importOne(t, st, "u-bob", "bob", false)
 
-	if _, _, _, err := svc.Login(ctx, "bob", "anything", "offline-missing"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(ctx, "bob", "anything", "offline-missing"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("offline missing verifier = %v, want ErrInvalidCredentials", err)
 	}
-	if _, _, _, err := svc.Login(ctx, "unknown", "anything", "offline-unknown"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(ctx, "unknown", "anything", "offline-unknown"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("offline unimported = %v, want ErrInvalidCredentials", err)
 	}
-	if _, err := st.GetUserByName(ctx, "unknown"); err != store.ErrNotFound {
+	if _, err := st.GetUserByName(ctx, "unknown"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("offline unimported login created a row: %v", err)
 	}
 }
@@ -469,7 +469,7 @@ func TestImportedLogin_ProviderDisablePersistsAndRevokes(t *testing.T) {
 		t.Fatal(err)
 	}
 	ms.Accounts["bob"] = testkit.Account{Password: "password", ID: "u-bob", Disabled: true}
-	if _, _, _, err := svc.Login(ctx, "bob", "password", "disabled"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(ctx, "bob", "password", "disabled"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("provider-disabled login = %v, want ErrInvalidCredentials", err)
 	}
 	u, _ := st.GetUser(ctx, "u-bob")
@@ -497,7 +497,7 @@ func TestLoginBadPassword(t *testing.T) {
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, nil, func() time.Time { return now })
 
-	if _, _, _, err := svc.Login(context.Background(), "bob", "wrong", "ip|bob"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(context.Background(), "bob", "wrong", "ip|bob"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Errorf("bad password → %v, want ErrInvalidCredentials", err)
 	}
 }
@@ -518,7 +518,7 @@ func TestLocalLogin_UpgradesLegacyBcryptAfterSuccessfulVerification(t *testing.T
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(nil, st, mgr, nil, func() time.Time { return now })
 
-	if _, _, _, err := svc.Login(ctx, "legacy", "wrong-password", "wrong"); err != ErrInvalidCredentials {
+	if _, _, _, err := svc.Login(ctx, "legacy", "wrong-password", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("wrong legacy password = %v, want ErrInvalidCredentials", err)
 	}
 	unchanged, err := st.GetUser(ctx, "local-legacy")
@@ -575,7 +575,7 @@ func TestLoginRateLimited(t *testing.T) {
 	mgr := NewManager(st, time.Hour, func() time.Time { return now })
 	svc := NewLoginService(lib, st, mgr, NewRateLimiter(0, 0), func() time.Time { return now }) // 0 burst
 
-	if _, _, _, err := svc.Login(context.Background(), "bob", "pw", "ip|bob"); err != ErrRateLimited {
+	if _, _, _, err := svc.Login(context.Background(), "bob", "pw", "ip|bob"); !errors.Is(err, ErrRateLimited) {
 		t.Errorf("login with exhausted limiter → %v, want ErrRateLimited", err)
 	}
 }

@@ -50,6 +50,7 @@ exact React Native the app installs.
 | Image rendering | required Rust `loomarr-image` worker over a versioned manifest protocol | contains decoder crashes and memory outside the Go process without cgo ([images](images.md)) |
 | Rust image crates | `serde`, `sha2`, `base64`, `thumbhash`, `image`, `fast_image_resize`, `webp`, `webp-animation`, `ravif` (via `image`) | bounded protocol, content identity, placeholders, static and animated decode/encode; locked by `Cargo.lock`, fuzz graph separate |
 | Backend tests | stdlib `testing`, `testcontainers-go` | Postgres conformance |
+| Vulnerability scan | `govulncheck` (`go run` at a pinned version, never a `go.mod` dependency) | `make vuln`, weekly in `go-maintenance.yml`, fails on a known vulnerability a Loomarr call path reaches, standard library included; unreached advisories don't fail. Never ships in the product |
 
 ## Bundled executables
 

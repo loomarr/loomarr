@@ -52,6 +52,7 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "playout-bench": 0, "ci-ok": 3,
 		}},
 		"deadcode.yml":         {jobs: map[string]int{"report": 3}},
+		"go-maintenance.yml":   {jobs: map[string]int{"vulnerabilities": 3}},
 		"image-benchmark.yml":  {jobs: map[string]int{"benchmark": 6}},
 		"pages.yml":            {jobs: map[string]int{"build": 5, "deploy": 1}},
 		"release-notes.yml":    {jobs: map[string]int{"publish-notes": 5}},
