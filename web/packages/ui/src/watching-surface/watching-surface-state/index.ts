@@ -1,1 +1,1 @@
-export { behindLabel, playbackMessage } from "./watching-surface-state";
+export { behindLabel, playbackMessage, watchingScheduleTimeMs } from "./watching-surface-state";

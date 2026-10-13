@@ -1,4 +1,5 @@
 import { layoutGuide } from "@loomarr/core/guide";
+import type { PlayerSnapshot } from "@loomarr/player";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +7,7 @@ import {
   surfGroupsFromGuide,
   surfPreviousChannel,
   watchingScheduleFromGuide,
+  watchingScheduleTimeMs,
 } from "../index";
 
 const layout = layoutGuide(
@@ -93,6 +95,28 @@ describe("Surf data", () => {
       now: { episodeLabel: "S07E02", progressPercent: 50, title: "Now" },
     });
     expect(watchingScheduleFromGuide(layout, "missing", 2_000)).toBeUndefined();
+  });
+
+  it("moves Up next on with the clock while a failed tune shows no frame", () => {
+    const channel = { id: "seven", inAppPlayable: true, name: "Science Fiction", number: 7 };
+    const tunedAt = { lagSeconds: 0, mode: "live" as const, noticeRevision: 0, viewerTimeMs: 2_000 };
+    const failed: PlayerSnapshot = {
+      catalog: [channel],
+      channel,
+      error: "Loomarr couldn't start this channel's in-app stream.",
+      livePlayback: tunedAt,
+      recentChannelIds: [],
+      status: "failed",
+    };
+
+    // "Next" began at 3 000; long after, a failed tune must not still announce it as up next.
+    expect(watchingScheduleFromGuide(layout, "seven", watchingScheduleTimeMs(failed, 4_000))).toMatchObject({
+      now: { title: "Next" },
+    });
+    expect(watchingScheduleTimeMs({ ...failed, status: "tuning" }, 4_000)).toBe(4_000);
+    // A frame on screen keeps describing itself, even a paused one far behind the clock.
+    expect(watchingScheduleTimeMs({ ...failed, status: "paused" }, 4_000)).toBe(2_000);
+    expect(watchingScheduleTimeMs({ ...failed, status: "playing" }, 4_000)).toBe(2_000);
   });
 
   it("moves Watching through programme, named filler clips, and the returning programme", () => {

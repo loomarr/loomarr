@@ -1,5 +1,6 @@
 import { createNeighbourWarmer } from "../neighbour-warmer";
 import type { PlayerChannel } from "../player-source";
+import { StartFailure } from "../start-failure";
 import type {
   PlayerController,
   PlayerControllerOptions,
@@ -62,15 +63,17 @@ const createPlayerController = ({
 
   /**
    * Counts one player error, reports it, and either schedules a silent re-tune of the same Channel
-   * (fresh mint + replace) or, once the budget is spent, publishes the manual-Retry failure.
+   * (fresh mint + replace) or, once the budget is spent, publishes the manual-Retry failure. A
+   * start the server refused (`StartFailure`) is final at once: retrying it waits out the server's
+   * start deadline again for the same answer.
    */
-  const recordFailure = (message: string) => {
+  const recordFailure = (message: string, startFailure?: StartFailure) => {
     const channel = snapshot.channel;
     if (!channel) return;
     clearTimeout(stableTimer);
     stableTimer = undefined;
     consecutiveFailures += 1;
-    const retryable = consecutiveFailures <= backoffMs.length;
+    const retryable = !startFailure && consecutiveFailures <= backoffMs.length;
     try {
       onPlayerError?.({
         attempt: consecutiveFailures,
@@ -78,6 +81,7 @@ const createPlayerController = ({
         elapsedMs: Date.now() - tuneStartedAt,
         error: message,
         fatal: !retryable,
+        ...(startFailure ? { status: startFailure.status } : {}),
       });
     } catch {
       // Diagnostics must never affect playback.
@@ -172,7 +176,9 @@ const createPlayerController = ({
         if (!recovering && !snapshot.stillUri && nextSource.stillUri && snapshot.status === "tuning") {
           publish({ ...snapshot, stillUri: nextSource.stillUri });
         }
-        await transport.replace(nextSource, { attemptId, signal: request.signal });
+        const started = source.start ? await source.start(nextSource, request.signal) : nextSource;
+        if (!isCurrentAttempt(attemptId, request.signal)) return;
+        await transport.replace(started, { attemptId, signal: request.signal });
       }
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       // The viewer's own stream is on its way; only now may neighbours start their sessions.
@@ -182,6 +188,10 @@ const createPlayerController = ({
     } catch (error) {
       if (!isCurrentAttempt(attemptId, request.signal)) return;
       const message = error instanceof Error ? error.message : "Couldn't tune that channel.";
+      if (error instanceof StartFailure) {
+        recordFailure(message, error);
+        return;
+      }
       if (recovering) {
         recordFailure(message);
         return;

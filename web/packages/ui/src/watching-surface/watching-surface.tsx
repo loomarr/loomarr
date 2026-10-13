@@ -492,7 +492,9 @@ const TvWatchingSurface = ({
                       </Action>
                     ) : null}
                     {recoverableFailure ? (
-                      <Action density="tv" onPress={onRetry} tone="primary">
+                      // The guide surface above stops being focusable on a failure, and tvOS leaves
+                      // focus where it was unless something claims it: Retry does, so OK retries.
+                      <Action density="tv" hasTVPreferredFocus onPress={onRetry} tone="primary">
                         Retry
                       </Action>
                     ) : null}

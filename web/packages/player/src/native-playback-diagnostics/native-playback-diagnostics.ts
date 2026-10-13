@@ -83,11 +83,13 @@ const createNativePlaybackDiagnostics = (
         });
       }
     },
-    playerError: ({ attempt, channelId: erroredChannelId, elapsedMs, error, fatal }) => {
+    playerError: ({ attempt, channelId: erroredChannelId, elapsedMs, error, fatal, status }) => {
       if (disposed) return;
+      // A refused start carries its status; its message is the server's own sentence, not native prose.
+      const cause = status === undefined ? causeOf(error) : `http_${status}`;
       reporter.record({
         channelId: erroredChannelId,
-        errorCode: `${causeOf(error)}.a${attempt}.t${Math.round(elapsedMs / 1_000)}s`,
+        errorCode: `${cause}.a${attempt}.t${Math.round(elapsedMs / 1_000)}s`,
         event: "player.media_error",
         fatal,
         playbackSessionId,

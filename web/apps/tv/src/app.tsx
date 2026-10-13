@@ -21,6 +21,7 @@ import {
   SurfJourney,
   WatchingSurface,
   watchingScheduleFromGuide,
+  watchingScheduleTimeMs,
 } from "@loomarr/ui";
 import {
   createTvAutoTuneSetting,
@@ -196,10 +197,15 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     remoteStateRef.current = initialTvWatchingRemoteState;
     setRemoteState(initialTvWatchingRemoteState);
   }, [active]);
+  const [clockMs, setClockMs] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setClockMs(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
   const schedule = watchingScheduleFromGuide(
     guideSnapshot.layout,
     snapshot.channel?.id,
-    snapshot.livePlayback?.viewerTimeMs ?? Date.now(),
+    watchingScheduleTimeMs(snapshot, clockMs),
   );
   const dismissControls = useCallback(() => setControlsVisible(false), []);
   const markSwitchShown = useCallback(
