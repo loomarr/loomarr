@@ -35,6 +35,9 @@ type workflowStrategyAuthority struct {
 	shards  []int
 	lanes   []string
 	include []workflowMatrixEntryAuthority
+	// appsFrom is the exact expression a matrix computed by an earlier job reads its `app`
+	// values from.
+	appsFrom string
 }
 
 type workflowMatrixEntryAuthority struct {
@@ -47,14 +50,17 @@ func workflowJobContextAuthorityEntries() map[workflowJobContextKey]workflowJobC
 	return map[workflowJobContextKey]workflowJobContextAuthority{
 		{workflow: "android-ccache-promotion.yml", job: "promote"}: {name: "Promote verified Android compiler cache", runsOn: "ubuntu-latest", timeoutMinutes: 15},
 		{workflow: "android-beta.yml", job: "release"}:             {name: "Verify, sign, and optionally publish Android TV beta", runsOn: "ubuntu-latest", environmentName: "android-beta"},
-		{workflow: "ios-testflight.yml", job: "plan"}:              {name: "Decide whether this run releases the iPhone app", runsOn: "ubuntu-latest"},
-		{workflow: "ios-testflight.yml", job: "release"}:           {name: "Archive, verify, and optionally upload the iPhone beta", runsOn: "xcode-27", needs: "plan", timeoutMinutes: 90, environmentName: "ios-testflight"},
-		{workflow: "apple-compilation-cache.yml", job: "publish"}:  {name: "Publish validated Apple compilation cache", runsOn: "xcode-27", timeoutMinutes: 75},
-		{workflow: "cache-cleanup.yml", job: "cleanup"}:            {name: "Drop the closed PR's caches", runsOn: "ubuntu-latest"},
-		{workflow: "ci-agent.yml", job: "run"}:                     {name: "Agent harness (macOS)", runsOn: "macos-latest"},
-		{workflow: "ci-android.yml", job: "run"}:                   {name: "Android TV — React Native Play bundle", runsOn: "ubuntu-latest"},
-		{workflow: "ci-apple-mobile.yml", job: "run"}:              {name: "Apple mobile — native build + launch", runsOn: "xcode-27", timeoutMinutes: 75},
-		{workflow: "ci-apple-tv.yml", job: "run"}:                  {name: "Apple TV — native build + launch", runsOn: "xcode-27", timeoutMinutes: 60},
+		{workflow: "apple-testflight.yml", job: "plan"}:            {name: "Decide which Apple apps this run releases", runsOn: "ubuntu-latest"},
+		{workflow: "apple-testflight.yml", job: "release"}: {
+			name: "Archive, verify, and optionally upload the ${{ matrix.app }} beta", runsOn: "xcode-27", needs: "plan", timeoutMinutes: 90, environmentName: "ios-testflight",
+			strategy: &workflowStrategyAuthority{appsFrom: appleTestFlightAppsMatrix},
+		},
+		{workflow: "apple-compilation-cache.yml", job: "publish"}: {name: "Publish validated Apple compilation cache", runsOn: "xcode-27", timeoutMinutes: 75},
+		{workflow: "cache-cleanup.yml", job: "cleanup"}:           {name: "Drop the closed PR's caches", runsOn: "ubuntu-latest"},
+		{workflow: "ci-agent.yml", job: "run"}:                    {name: "Agent harness (macOS)", runsOn: "macos-latest"},
+		{workflow: "ci-android.yml", job: "run"}:                  {name: "Android TV — React Native Play bundle", runsOn: "ubuntu-latest"},
+		{workflow: "ci-apple-mobile.yml", job: "run"}:             {name: "Apple mobile — native build + launch", runsOn: "xcode-27", timeoutMinutes: 75},
+		{workflow: "ci-apple-tv.yml", job: "run"}:                 {name: "Apple TV — native build + launch", runsOn: "xcode-27", timeoutMinutes: 60},
 
 		{workflow: "ci-expo-android-mobile.yml", job: "run"}: {name: "Expo Android mobile — native build", runsOn: "ubuntu-latest"},
 
@@ -244,6 +250,13 @@ func verifyWorkflowStrategy(job *yaml.Node, want *workflowStrategyAuthority, lab
 	matrix, ok := mappingValue(strategy, "matrix")
 	if !ok || matrix.Kind != yaml.MappingNode {
 		return fmt.Errorf("%s matrix differs from its source-bound authority", label)
+	}
+	if want.appsFrom != "" {
+		apps, ok := mappingValue(matrix, "app")
+		if !mappingHasOnlyKeys(matrix, "app") || !ok || apps.Kind != yaml.ScalarNode || apps.Tag != "!!str" || apps.Value != want.appsFrom {
+			return fmt.Errorf("%s matrix apps differ from their source-bound authority", label)
+		}
+		return nil
 	}
 	if len(want.shards) > 0 {
 		if !mappingHasOnlyKeys(matrix, "shard") {
