@@ -12,7 +12,7 @@ import { ChannelLineupEditor } from "./channel-lineup-editor";
 const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
-// ChannelLineupEditor owns live generated-API hooks (useChannelLineup → useUpdateChannel,
+// ChannelLineupEditor owns live generated-API hooks (useChannelLineup → the channel writer,
 // plus searchApi.useSearch for the add palette and effective feedback) rather than taking injectable state —
 // same shape as RefinePanel elsewhere in this package, which stubs `fetch`
 // deterministically (no backend, no new dependency) for the same reason. Dispatches by
@@ -58,7 +58,7 @@ const withStubbedLineup = (): Decorator => (Story) => {
 const meta = {
   title: "Channels/ChannelLineupEditor",
   component: ChannelLineupEditor,
-  args: { channelId: "ch-1", revision: 1 },
+  args: { channelId: "ch-1" },
   decorators: [withStubbedLineup(), widthFrame(560)],
 } satisfies Meta<typeof ChannelLineupEditor>;
 

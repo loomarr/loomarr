@@ -1,91 +1,27 @@
 import { arrayMove } from "@dnd-kit/sortable";
-import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
-import { toProblem } from "@loomarr/api/mutator";
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { toast } from "sonner";
+import { ignoreFailure, useChannelSave } from "@/channels/use-channel-save";
 import type { ChannelLineup } from "./use-channel-lineup.type";
 
-// A cheap identity fingerprint — just the keys, in order — for telling an actual server
-// update to `current` apart from a fresh array reference thrown off by an unrelated
-// parent re-render (the page passes `ch.lineup ?? []`, a new `[]` literal on every
-// render whenever the field is nullish, and `ch` itself is a new object on any query
-// snapshot). Comparing THIS, not the array reference, is what lets local state resync
-// to a genuine change without also resyncing — and clobbering an optimistic add/
-// remove/reorder mid-flight — on every incidental re-render.
+// useChannelLineup — the manual lineup editor's operations (§7 PATCH, phase 3 of editable
+// channels). Add/remove/reorder are three different mutations of the SAME idea: the backend
+// takes a whole-list replace (`PATCH /v1/channels/{id}`, body `{ lineup: LineupEntryDTO[] }`)
+// and reconciles server-side, so every op here just computes the next full ordered list and
+// saves it — never a per-item endpoint.
 //
-// It deliberately ignores metadata-only changes (a title rename/year edit that leaves the
-// key SET and ORDER unchanged): the editor renders only name/year, which are cosmetic here
-// and re-read by-key server-side on the next PATCH regardless, so at worst a display label
-// is briefly stale until the next real edit — local and server truth never diverge in a
-// way that reaches Tunarr (the backend owns what plays).
-const fingerprint = (entries: LineupEntryDTO[]): string => entries.map((e) => e.key).join(" ");
-
-// useChannelLineup — the manual lineup editor's one write path (§7 PATCH, phase 3 of
-// editable channels). Add/remove/reorder are three different mutations of the SAME
-// idea: the backend takes a whole-list replace (`PATCH /v1/channels/{id}`, body
-// `{ lineup: LineupEntryDTO[] }`) and reconciles server-side, so every op here just
-// computes the next full ordered list and commits it — never a per-item endpoint.
-//
-// SEAMLESS, same as the rest of this feature: no save/rebuild step. Each call applies
-// OPTIMISTICALLY to local state, then commits via useUpdateChannel — an add, remove, or
-// drag reads back immediately rather than waiting on the round trip. A `channel` SSE
-// frame elsewhere on the page, or this mutation's own onSuccess invalidate, is what
-// eventually lands a genuinely updated `current` prop; the render-time check below (the
-// React-documented "adjust state during rendering" pattern — no effect, so no one-frame
-// flash back to stale state) is what adopts it exactly then, and only then. A failed
-// commit ROLLS BACK to the pre-optimistic snapshot rather than leaving the UI showing
-// something the server refused (e.g. a 422 on a duplicate key that slipped past the
-// client-side check) — the toast explains why, the list explains what's actually true.
-const useChannelLineup = (channelId: string, current: LineupEntryDTO[], revision: number): ChannelLineup => {
-  const queryClient = useQueryClient();
-  const [entries, setEntries] = useState(current);
-  // The fingerprint `entries` was last synced FROM — i.e. of the `current` this hook
-  // has already adopted (via the initial useState above, or a prior render's adoption
-  // below). Re-deriving it from `entries` itself (rather than tracking `current`
-  // separately) means an optimistic entries change is never mistaken for "current
-  // changed": it only ever moves when a real adopt happens.
-  const [adoptedFingerprint, setAdoptedFingerprint] = useState(() => fingerprint(current));
-
-  if (fingerprint(current) !== adoptedFingerprint) {
-    setEntries(current);
-    setAdoptedFingerprint(fingerprint(current));
-  }
-
-  const update = channelsApi.useUpdateChannel({
-    mutation: {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(channelId) });
-        toast.success("Saved");
-      },
-      onError: (e) => {
-        // A stale revision means the optimistic list was based on an older definition. Refresh
-        // immediately as well as rolling back so the operator sees what won the race before
-        // deciding whether to repeat the whole-list replacement.
-        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(channelId) });
-        toast.error(toProblem(e).title ?? "Couldn't save that change");
-      },
-    },
-  });
-
-  // Applies `next` optimistically, then fires the PATCH. `rollback` is the snapshot
-  // from just before THIS call (a per-call closure — not `current`, which the render-
-  // time adopt above already keeps current anyway) — a per-mutate `onError` override
-  // restores exactly that on rejection, running alongside (not instead of) the hook-
-  // level onError above that toasts.
-  const commit = (next: LineupEntryDTO[]) => {
-    const rollback = entries;
-    setEntries(next);
-    update.mutate(
-      { id: channelId, data: { revision, lineup: next } },
-      { onError: () => setEntries(rollback) },
-    );
-  };
+// SEAMLESS, same as the rest of this feature: no save/rebuild step. Each op saves through the
+// channel's one writer (useChannelSave), whose pending lineup this renders at once, so an add,
+// remove or drag reads back immediately and the next op builds on it rather than on the stale
+// read. Two quick removes, or a remove right after a policy edit, go out one PATCH at a time at
+// the right revision (#1899), so the rows stay editable while a save is in flight. A failed save drops the pending lineup, so the list falls back to
+// what the server actually has; the writer's toast says why.
+const useChannelLineup = (channelId: string, current: LineupEntryDTO[]): ChannelLineup => {
+  const { pending, save } = useChannelSave(channelId);
+  const entries = pending?.lineup ?? current;
+  const commit = (next: LineupEntryDTO[]) => void save({ lineup: next }).catch(ignoreFailure);
 
   return {
     entries,
-    isPending: update.isPending,
     add: (entry) => {
       if (entries.some((e) => e.key === entry.key)) return false;
       commit([...entries, entry]);

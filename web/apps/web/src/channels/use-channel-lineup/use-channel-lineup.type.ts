@@ -1,11 +1,9 @@
 import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 
 interface ChannelLineup {
-  // The live lineup as the hook believes it to be — `current` until a commit lands,
-  // then whatever the last mutation sent (optimistic; the channel query refetch is
-  // what brings it back in line with the server, same as the rest of the page).
+  // The lineup as the operator last asked for it — the channel writer's pending lineup while a
+  // save is unconfirmed, `current` otherwise.
   entries: LineupEntryDTO[];
-  isPending: boolean;
   // Appends `entry` and commits the whole list. No-ops (returns false) if `entry.key`
   // is already present — the backend 422s on a duplicate key, so this is prevented
   // before the request goes out, not just reported after.

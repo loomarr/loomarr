@@ -1,11 +1,9 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { FillerSelection } from "@loomarr/api/models/fillerSelection";
-import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { ignoreFailure, useChannelSave } from "@/channels/use-channel-save";
 import type { ChannelFillerDraft, FillerDraft } from "./use-channel-filler-draft.type";
 
 // How long we let the criteria settle before re-assembling. The controls are commit-on-
@@ -77,8 +75,8 @@ const canonicalize = (s: FillerDraft): string => {
 // DRAFT filler selection, break frequency and break length in local state (seeded from the saved policy)
 // and, on every settled change, re-assembles the actual break through POST …/pods/preview
 // — the SAME assembler + seed reconcile uses — so what you see is exactly what will air.
-// Nothing is saved until `apply`, which PATCHes both choices onto the policy; the
-// existing onSuccess → invalidate → SSE loop reconciles from there (seamless for the
+// Nothing is saved until `apply`, which saves both choices onto the policy through the
+// channel's one writer; its refresh → SSE loop reconciles from there (seamless for the
 // effect, draft/apply for the authoring — the one deliberate exception, §10).
 //
 // This is a MUTATION rendered like a query: a draft has no URL identity to cache on (it
@@ -88,12 +86,7 @@ const canonicalize = (s: FillerDraft): string => {
 // It takes the WHOLE `policy`, not just `policy.filler`: PATCH /channels replaces the
 // policy object whole (only reconcile-owned `applied` is preserved server-side), so apply
 // must merge onto the policy or it would wipe scope/audience/separation/ordering.
-const useChannelFillerDraft = (
-  channelId: string,
-  policy: ChannelPolicy | undefined,
-  revision: number,
-): ChannelFillerDraft => {
-  const queryClient = useQueryClient();
+const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelFillerDraft => {
   const saved: FillerSelection | undefined = policy?.filler;
   const savedBreaksPerHour = policy?.breaksPerHour;
   const savedBreakDuration = policy?.breakDuration;
@@ -136,24 +129,10 @@ const useChannelFillerDraft = (
     return () => clearTimeout(t);
   }, [channelId, draftKey, breakDuration]);
 
-  const update = channelsApi.useUpdateChannel({
-    mutation: {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(channelId) });
-        // The SAVED preview (GET …/pods, read elsewhere) is NOT under the channel key, so
-        // invalidate it explicitly — otherwise the saved break shown after apply would lag
-        // the change we just made.
-        void queryClient.invalidateQueries({
-          queryKey: channelsApi.getPreviewChannelPodsQueryKey(channelId),
-        });
-        toast.success("Filler updated");
-      },
-      onError: (e) => {
-        void queryClient.invalidateQueries({ queryKey: channelsApi.getGetChannelQueryKey(channelId) });
-        toast.error(toProblem(e).title ?? "Couldn't update filler");
-      },
-    },
-  });
+  // Apply saves through the channel's one writer, which also refreshes the SAVED break preview
+  // (GET …/pods, its own query key) once the save lands.
+  const { save } = useChannelSave(channelId);
+  const [isApplying, setApplying] = useState(false);
 
   const body = unwrap(preview.data);
 
@@ -177,12 +156,16 @@ const useChannelFillerDraft = (
       breakDuration !== savedBreakDuration,
     // Merge onto the saved policy — PATCH replaces `policy` whole, so we must carry the
     // rest of it (scope/audience/separation/ordering) alongside the new filler.
-    apply: () =>
-      update.mutate({
-        id: channelId,
-        data: { revision, policy: { ...policy, filler: selection, breaksPerHour, breakDuration } },
-      }),
-    isApplying: update.isPending,
+    apply: () => {
+      setApplying(true);
+      void save(
+        { policy: { ...policy, filler: selection, breaksPerHour, breakDuration } },
+        { success: "Filler updated" },
+      )
+        .catch(ignoreFailure)
+        .finally(() => setApplying(false));
+    },
+    isApplying,
     discard: () => {
       setDraft(saved ?? {});
       setBreaksPerHour(savedBreaksPerHour);

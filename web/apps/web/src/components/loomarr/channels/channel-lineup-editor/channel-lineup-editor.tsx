@@ -193,18 +193,14 @@ const SortableLineupRow = ({
 // reported as "why do I still see the same old movies".
 type LineupSort = "order" | "newest" | "year";
 
-const ChannelLineupEditor = ({ channelId, revision, lineup, className }: ChannelLineupEditorProps) => {
+const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEditorProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LineupSort>("order");
   const feedbackScope = { scope: "channel" as const, scopeId: channelId };
   const feedback = useDiscoveryFeedback(feedbackScope);
 
-  const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(
-    channelId,
-    lineup,
-    revision,
-  );
+  const { entries, add, remove, reorder, updateEntry } = useChannelLineup(channelId, lineup);
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },
@@ -318,7 +314,7 @@ const ChannelLineupEditor = ({ channelId, revision, lineup, className }: Channel
                 <SortableLineupRow
                   key={entry.key}
                   entry={entry}
-                  disabled={isPending || !dragEnabled}
+                  disabled={!dragEnabled}
                   onRemove={() => remove(entry.key)}
                   onSeasonChange={(patch) => updateEntry(entry.key, patch)}
                   feedback={

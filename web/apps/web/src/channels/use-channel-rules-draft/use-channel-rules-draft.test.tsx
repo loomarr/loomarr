@@ -1,5 +1,9 @@
 import type { ChannelPolicy, PreviewProgrammingOutputBody } from "@loomarr/api";
-import { getPreviewChannelProgrammingMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
+import {
+  getGetChannelMockHandler,
+  getPreviewChannelProgrammingMockHandler,
+  getUpdateChannelMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -56,6 +60,8 @@ const stubDraft = () => {
       previews.push({ url: request.url, body: await request.json() });
       return previewBody;
     }),
+    // The channel writer reads the revision to save at.
+    getGetChannelMockHandler(channel()),
     getUpdateChannelMockHandler(async ({ request }) => {
       saves.push({ body: await request.json() });
       return channel();
@@ -103,7 +109,7 @@ describe("canonicalize", () => {
 describe("useChannelRulesDraft", () => {
   it("previews the DRAFT through POST …/programming/preview, not the saved policy", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 
@@ -128,7 +134,7 @@ describe("useChannelRulesDraft", () => {
   // must not reach Tunarr. Nothing may PATCH until apply is called.
   it("does NOT save while editing — only apply writes", async () => {
     const { previews, saves } = stubDraft();
-    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 
@@ -151,7 +157,7 @@ describe("useChannelRulesDraft", () => {
   it("is dirty only once the draft differs, and discard returns to saved", () => {
     stubDraft();
     const saved = policy();
-    const { result } = renderHook(() => useChannelRulesDraft("ch-1", saved, 1), {
+    const { result } = renderHook(() => useChannelRulesDraft("ch-1", saved), {
       wrapper: makeWrapper(),
     });
 
@@ -169,7 +175,7 @@ describe("useChannelRulesDraft", () => {
   // edit would show an Apply bar nobody asked for, on a page nobody touched.
   it("a re-render with an equal-but-new policy object is not dirty", () => {
     stubDraft();
-    const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p, 1), {
+    const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p), {
       wrapper: makeWrapper(),
       initialProps: { p: policy() },
     });
@@ -182,7 +188,7 @@ describe("useChannelRulesDraft", () => {
   // the draft would silently shadow what the server now holds.
   it("adopts a genuinely changed saved policy", () => {
     stubDraft();
-    const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p, 1), {
+    const { result, rerender } = renderHook(({ p }) => useChannelRulesDraft("ch-1", p), {
       wrapper: makeWrapper(),
       initialProps: { p: policy() },
     });
@@ -196,7 +202,7 @@ describe("useChannelRulesDraft", () => {
   // keep showing the previous moment.
   it("re-previews when the evaluation time changes", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelRulesDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 

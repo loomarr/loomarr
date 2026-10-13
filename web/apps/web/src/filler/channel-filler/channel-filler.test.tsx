@@ -1,6 +1,7 @@
 import type { ChannelPolicy, ClipDTO, CoverageDTO, PreviewDraftPodsOutputBody } from "@loomarr/api";
 import {
   getChannelFillerCoverageMockHandler,
+  getGetChannelMockHandler,
   getListFillerMockHandler,
   getListTaxonomyMockHandler,
   getPreviewDraftChannelPodsMockHandler,
@@ -87,7 +88,7 @@ const previewBody: PreviewDraftPodsOutputBody = {
 // `u.includes("/v1/filler?")` — which is a substring of `/v1/filler/pool`, `/v1/filler/watch`,
 // `/v1/filler/incoming` and every other filler read. The assertion it powers ("every resolve must
 // name the hashes it wants") is precisely the kind that a too-broad filter turns into a coin flip.
-const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
+const stubChannelFiller = (opts: { clips?: ClipDTO[]; revision?: number } = {}) => {
   const patches: unknown[] = [];
   const previews: unknown[] = [];
   const catalogQueries: string[] = [];
@@ -97,6 +98,8 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[] } = {}) => {
       previews.push(await request.json());
       return previewBody;
     }),
+    // The channel writer reads the revision to save at.
+    getGetChannelMockHandler(channel({ revision: opts.revision ?? 1 })),
     getUpdateChannelMockHandler(async ({ request }) => {
       patches.push(await request.json());
       return channel();
@@ -162,7 +165,7 @@ describe("ChannelFiller", () => {
   it("does not turn an empty automatic break into a tagging chore", async () => {
     stubChannelFiller();
     server.use(getPreviewDraftChannelPodsMockHandler({ ...previewBody, entries: [], totalMs: 0 }));
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
     const library = await screen.findByRole("link", { name: "browse your filler library" });
     expect(library).toHaveAttribute("href", "/filler/library");
     expect(screen.getByText(/Breaks use the bumper card for now/)).toBeInTheDocument();
@@ -171,7 +174,7 @@ describe("ChannelFiller", () => {
 
   it("renders the criteria controls and the live break once a preview lands", async () => {
     stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     // findBy* awaits the router harness mounting its route (RouterProvider mounts via a
     // transition, so the content isn't in the DOM on the first synchronous pass).
@@ -192,7 +195,7 @@ describe("ChannelFiller", () => {
 
   it("plays an exact clip from the assembled break in the shared preview sheet", async () => {
     stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Preview Toy Ad" }));
     expect(await screen.findByRole("dialog", { name: "Toy Ad" })).toBeInTheDocument();
@@ -203,11 +206,7 @@ describe("ChannelFiller", () => {
     const user = userEvent.setup();
     stubChannelFiller();
     renderSection(
-      <ChannelFiller
-        channelId="ch-1"
-        revision={1}
-        policy={policy({ pinned: ["preferred"], excluded: ["blocked"] })}
-      />,
+      <ChannelFiller channelId="ch-1" policy={policy({ pinned: ["preferred"], excluded: ["blocked"] })} />,
     );
 
     const coverage = await screen.findByRole("heading", { name: "What this channel can play" });
@@ -224,7 +223,7 @@ describe("ChannelFiller", () => {
   it("previews and applies a custom break length", async () => {
     const user = userEvent.setup();
     const { patches, previews } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     await waitFor(() => expect(previews).toHaveLength(1));
     await user.click(screen.getByRole("combobox", { name: "Break length" }));
@@ -242,7 +241,7 @@ describe("ChannelFiller", () => {
   it("offers inherited, disabled, and custom break frequency without re-previewing the clip mix", async () => {
     const user = userEvent.setup();
     const { patches, previews } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     await waitFor(() => expect(previews).toHaveLength(1));
     await user.click(screen.getByRole("combobox", { name: "Break frequency" }));
@@ -258,7 +257,7 @@ describe("ChannelFiller", () => {
   it("editing a criterion re-previews and reveals Apply", async () => {
     const user = userEvent.setup();
     const { previews } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
 
     await user.click(await screen.findByRole("button", { name: /choose products & topics/i }));
     // Toggle a category chip — the draft changes, so a preview fires and Apply appears.
@@ -280,7 +279,7 @@ describe("ChannelFiller", () => {
   it("Apply PATCHes the draft merged onto the saved policy; Discard clears the dirty state", async () => {
     const user = userEvent.setup();
     const { patches } = stubChannelFiller();
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy({ audience: "kids" })} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ audience: "kids" })} />);
 
     await user.click(await screen.findByRole("button", { name: /choose products & topics/i }));
     await user.click(await screen.findByRole("button", { name: "Candy" }));
@@ -319,7 +318,7 @@ describe("ChannelFiller", () => {
         },
       ],
     });
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy({ pinned: ["p9-hash"] })} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy({ pinned: ["p9-hash"] })} />);
     // The pinned override shows the resolved clip name, not the bare id.
     expect(await screen.findByText("Frosted Flakes")).toBeInTheDocument();
 
@@ -332,11 +331,10 @@ describe("ChannelFiller", () => {
 
   it("preserves saved clip exceptions when applying ordinary criteria changes", async () => {
     const user = userEvent.setup();
-    const { patches } = stubChannelFiller();
+    const { patches } = stubChannelFiller({ revision: 7 });
     renderSection(
       <ChannelFiller
         channelId="ch-1"
-        revision={7}
         policy={policy({ audience: "kids", pinned: ["preferred"], excluded: ["blocked"] })}
       />,
     );
@@ -373,7 +371,6 @@ describe("ChannelFiller", () => {
       renderSection(
         <ChannelFiller
           channelId="ch-1"
-          revision={3}
           policy={policy({ [list]: ["saved-clip"], [other]: ["other-clip"], audience: "kids" })}
         />,
       );
@@ -410,7 +407,7 @@ describe("ChannelFiller", () => {
       // the inherited-default settings read too.
       getSettingsListMockHandler({ features: {}, settings: [] }),
     );
-    renderSection(<ChannelFiller channelId="ch-1" revision={1} policy={policy()} />);
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
     expect(await screen.findByText(/couldn't assemble a preview/i)).toBeInTheDocument();
   });
 });

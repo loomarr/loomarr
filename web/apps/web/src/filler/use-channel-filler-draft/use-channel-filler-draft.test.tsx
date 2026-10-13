@@ -1,5 +1,9 @@
 import type { ChannelPolicy, PreviewDraftPodsOutputBody } from "@loomarr/api";
-import { getPreviewDraftChannelPodsMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
+import {
+  getGetChannelMockHandler,
+  getPreviewDraftChannelPodsMockHandler,
+  getUpdateChannelMockHandler,
+} from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
@@ -67,6 +71,8 @@ const stubDraft = (opts: { previewStatus?: number } = {}) => {
           previews.push(await request.json());
           return previewBody;
         }),
+    // The channel writer reads the revision to save at.
+    getGetChannelMockHandler(channel()),
     getUpdateChannelMockHandler(async ({ request }) => {
       saves.push(await request.json());
       return channel();
@@ -111,7 +117,7 @@ describe("canonicalize", () => {
 describe("useChannelFillerDraft", () => {
   it("seeds the draft from policy.filler", () => {
     stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" }), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
       wrapper: makeWrapper(),
     });
     expect(result.current.draft.audience).toBe("kids");
@@ -120,7 +126,7 @@ describe("useChannelFillerDraft", () => {
 
   it("seeds the three-state break frequency and includes it in dirty/discard", () => {
     stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 3), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 3)), {
       wrapper: makeWrapper(),
     });
     expect(result.current.breaksPerHour).toBe(3);
@@ -135,7 +141,7 @@ describe("useChannelFillerDraft", () => {
 
   it("does not reassemble the clip preview when only break frequency changes", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
     await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
@@ -148,7 +154,7 @@ describe("useChannelFillerDraft", () => {
 
   it("reassembles when break length changes and includes it in apply/discard", async () => {
     const { previews, saves } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 4, "5m"), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 4, "5m")), {
       wrapper: makeWrapper(),
     });
     await act(async () => vi.advanceTimersByTime(PREVIEW_DEBOUNCE_MS));
@@ -171,7 +177,7 @@ describe("useChannelFillerDraft", () => {
 
   it("fires a debounced preview POST with the canonical draft, and renders its result", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 
@@ -189,7 +195,7 @@ describe("useChannelFillerDraft", () => {
 
   it("preserves explicit-any in preview and apply", async () => {
     const { previews, saves } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 
@@ -218,7 +224,7 @@ describe("useChannelFillerDraft", () => {
       ],
       geography: { country: "US", market: "New York" },
     };
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 
@@ -233,7 +239,7 @@ describe("useChannelFillerDraft", () => {
 
   it("coalesces a burst of edits into a single preview POST", async () => {
     const { previews } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
 
@@ -252,7 +258,7 @@ describe("useChannelFillerDraft", () => {
 
   it("flips isDirty when the draft diverges and back when it matches saved", () => {
     stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" }), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
       wrapper: makeWrapper(),
     });
     expect(result.current.isDirty).toBe(false);
@@ -264,7 +270,7 @@ describe("useChannelFillerDraft", () => {
 
   it("apply PATCHes the draft MERGED onto the rest of the saved policy", async () => {
     const { saves } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" }), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
       wrapper: makeWrapper(),
     });
     act(() => result.current.setDraft({ audience: "family", pinned: ["p9"] }));
@@ -282,7 +288,7 @@ describe("useChannelFillerDraft", () => {
 
   it("apply can disable breaks or clear an override back to inherited", async () => {
     const { saves } = stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 4), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(undefined, 4)), {
       wrapper: makeWrapper(),
     });
 
@@ -299,7 +305,7 @@ describe("useChannelFillerDraft", () => {
 
   it("discard resets the draft to saved", () => {
     stubDraft();
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" }), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy({ audience: "kids" })), {
       wrapper: makeWrapper(),
     });
     act(() => result.current.setDraft({ audience: "late_night" }));
@@ -311,7 +317,7 @@ describe("useChannelFillerDraft", () => {
 
   it("surfaces a preview failure instead of an empty timeline", async () => {
     stubDraft({ previewStatus: 422 });
-    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy(), 1), {
+    const { result } = renderHook(() => useChannelFillerDraft("ch-1", policy()), {
       wrapper: makeWrapper(),
     });
     act(() => result.current.setDraft({ audience: "kids" }));
