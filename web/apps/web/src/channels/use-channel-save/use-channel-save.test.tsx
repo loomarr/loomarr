@@ -19,7 +19,7 @@ type Patch = Omit<UpdateChannelInputBody, "$schema">;
 // A channel endpoint with the backend's revision contract: a stale revision is a 409 "Channel
 // changed" that changes nothing; an accepted PATCH sets the fields it carries (policy and lineup
 // wholesale) and bumps the revision.
-const stubChannel = (stored: Stored, failWith?: number) => {
+const stubChannel = (stored: Stored, failWith?: number | ((body: Patch) => Response | undefined)) => {
   const patches: Patch[] = [];
   const current = () => channel({ id: "ch-1", ...stored, lineup: stored.lineup ?? [] });
   server.use(
@@ -28,7 +28,12 @@ const stubChannel = (stored: Stored, failWith?: number) => {
       const body = (await request.json()) as Patch;
       patches.push(body);
       await delay(30);
-      if (failWith) return HttpResponse.json({ title: "Couldn't save the channel" }, { status: failWith });
+      if (typeof failWith === "function") {
+        const failure = failWith(body);
+        if (failure) return failure;
+      } else if (failWith) {
+        return HttpResponse.json({ title: "Couldn't save the channel" }, { status: failWith });
+      }
       if (body.revision !== stored.revision)
         return HttpResponse.json({ title: "Channel changed" }, { status: 409 });
       if (body.policy) stored.policy = body.policy;
@@ -230,5 +235,82 @@ describe("useChannelSave", () => {
     // The page refetches, so it shows what was actually saved.
     expect(invalidate).toHaveBeenCalledWith({ queryKey: channelsApi.getGetChannelQueryKey("ch-1") });
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("fails only the edit the server refused, and still saves the edits coalesced with it", async () => {
+    const stored: Stored = { revision: 1, policy: {} };
+    const taken = () => HttpResponse.json({ title: "Channel already exists" }, { status: 409 });
+    const { patches } = stubChannel(stored, (body) => (body.number === 2 ? taken() : undefined));
+    const { result } = renderSave(stored);
+
+    // A policy save goes out; a lineup edit and a renumber onto a taken number queue behind it.
+    let lineup: Promise<void> | undefined;
+    let number: Promise<void> | undefined;
+    act(() => void result.current.save({ policy: { ordering: "sequential" } }));
+    act(() => {
+      lineup = result.current.save({ lineup: [heat] });
+      number = result.current.save({ number: 2 });
+    });
+
+    await expect(number).rejects.toMatchObject({ status: 409 });
+    await expect(lineup).resolves.toBeUndefined();
+    expect(stored).toMatchObject({ policy: { ordering: "sequential" }, lineup: [heat] });
+    // The coalesced PATCH was refused, so each field went out alone to find the one at fault.
+    expect(patches).toEqual([
+      { revision: 1, policy: { ordering: "sequential" } },
+      { revision: 2, lineup: [heat], number: 2 },
+      { revision: 2, lineup: [heat] },
+      { revision: 3, number: 2 },
+    ]);
+    expect(toast.error).toHaveBeenCalledWith("Channel already exists");
+    await waitFor(() => expect(result.current.pending).toBeUndefined());
+  });
+
+  it("keeps an earlier round saved when a later round fails", async () => {
+    const stored: Stored = { revision: 1, policy: {} };
+    const refused = () => HttpResponse.json({ title: "Invalid channel" }, { status: 422 });
+    stubChannel(stored, (body) => (body.name === "" ? refused() : undefined));
+    const { result } = renderSave(stored);
+
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    act(() => {
+      first = result.current.save({ policy: { ordering: "sequential" } });
+    });
+    act(() => {
+      second = result.current.save({ name: "" });
+    });
+
+    await expect(first).resolves.toBeUndefined();
+    await expect(second).rejects.toMatchObject({ status: 422 });
+    expect(stored.policy).toEqual({ ordering: "sequential" });
+    expect(toast.error).toHaveBeenCalledWith("Invalid channel");
+  });
+
+  it("on a 409 rebases a lineup edit onto the other writer's lineup", async () => {
+    const pointBreak: LineupEntryDTO = { key: "movie:tmdb:9426", name: "Point Break", year: 1991 };
+    const predator: LineupEntryDTO = { key: "movie:tmdb:106", name: "Predator", year: 1987 };
+    // The page read [Heat, Point Break]; another writer has since added Predator.
+    const stored: Stored = { revision: 2, policy: {}, lineup: [heat, pointBreak, predator] };
+    stubChannel(stored);
+    const { result } = renderSave({ revision: 1, policy: {}, lineup: [heat, pointBreak] });
+
+    // The operator removes Point Break.
+    await act(() => result.current.save({ lineup: [heat] }));
+
+    expect(stored.lineup).toEqual([heat, predator]);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps a named success message when a plain edit coalesces after it", async () => {
+    const stored: Stored = { revision: 1, policy: {} };
+    stubChannel(stored);
+    const { result } = renderSave(stored);
+
+    act(() => void result.current.save({ policy: { ordering: "sequential" } }, { success: "Rules updated" }));
+    await act(() => result.current.save({ name: "Midnight Noir" }));
+
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith("Rules updated");
   });
 });

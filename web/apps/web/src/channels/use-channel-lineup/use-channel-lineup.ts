@@ -13,8 +13,9 @@ import type { ChannelLineup } from "./use-channel-lineup.type";
 // channel's one writer (useChannelSave), whose pending lineup this renders at once, so an add,
 // remove or drag reads back immediately and the next op builds on it rather than on the stale
 // read. Two quick removes, or a remove right after a policy edit, go out one PATCH at a time at
-// the right revision (#1899), so the rows stay editable while a save is in flight. A failed save drops the pending lineup, so the list falls back to
-// what the server actually has; the writer's toast says why.
+// the right revision (#1899), so the rows stay editable while a save is in flight. A failed
+// save drops the pending lineup, so the list falls back to what the server actually has; the
+// writer's toast says why.
 const useChannelLineup = (channelId: string, current: LineupEntryDTO[]): ChannelLineup => {
   const { pending, save } = useChannelSave(channelId);
   const entries = pending?.lineup ?? current;

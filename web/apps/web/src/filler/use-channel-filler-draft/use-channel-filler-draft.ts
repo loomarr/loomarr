@@ -94,14 +94,18 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
   // not its reference (the page hands a fresh `ch.policy.filler` object every render). We
   // resync the draft to `saved` only when THIS changes: a genuine server update (an apply
   // landing, a re-approval reseeding the era) adopts, an incidental re-render does not —
-  // the same render-time "adjust state" pattern useChannelLineup uses, no effect/flash.
+  // the render-time "adjust state" pattern, no effect/flash.
+  //
+  // ⚠ Not while an apply is in flight, for the reason useChannelRulesDraft gives: the page
+  // renders the writer's pending policy, so a failed apply would otherwise reset the draft.
   const savedSelectionKey = canonicalize(saved ?? {});
   const savedKey = `${savedSelectionKey}|breaks:${savedBreaksPerHour === undefined ? "default" : savedBreaksPerHour}|duration:${savedBreakDuration ?? "default"}`;
   const [draft, setDraft] = useState<FillerDraft>(saved ?? {});
   const [breaksPerHour, setBreaksPerHour] = useState<number | undefined>(savedBreaksPerHour);
   const [breakDuration, setBreakDuration] = useState<string | undefined>(savedBreakDuration);
   const [adoptedKey, setAdoptedKey] = useState(savedKey);
-  if (savedKey !== adoptedKey) {
+  const [isApplying, setApplying] = useState(false);
+  if (savedKey !== adoptedKey && !isApplying) {
     setDraft(saved ?? {});
     setBreaksPerHour(savedBreaksPerHour);
     setBreakDuration(savedBreakDuration);
@@ -132,7 +136,6 @@ const useChannelFillerDraft = (channelId: string, policy: ChannelPolicy | undefi
   // Apply saves through the channel's one writer, which also refreshes the SAVED break preview
   // (GET …/pods, its own query key) once the save lands.
   const { save } = useChannelSave(channelId);
-  const [isApplying, setApplying] = useState(false);
 
   const body = unwrap(preview.data);
 

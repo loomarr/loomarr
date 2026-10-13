@@ -6,8 +6,10 @@ import {
 } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useChannelSave } from "@/channels/use-channel-save";
 import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
@@ -218,5 +220,30 @@ describe("useChannelRulesDraft", () => {
       // what the hook actually sent rather than on a string the stub echoed back.
       expect(previews[1]?.url).toContain("at=");
     });
+  });
+
+  // The page renders the channel writer's PENDING policy, so the applied draft reads as saved at
+  // once. A failed apply must not then reset the draft to the old policy.
+  it("keeps the draft when an apply fails under the page's pending policy", async () => {
+    stubDraft();
+    server.use(
+      http.patch("*/v1/channels/:id", () => HttpResponse.json({ title: "Invalid channel" }, { status: 422 })),
+    );
+    const saved = policy();
+    const { result } = renderHook(
+      () => {
+        const { pending } = useChannelSave("ch-1");
+        return useChannelRulesDraft("ch-1", pending?.policy ?? saved);
+      },
+      { wrapper: makeWrapper() },
+    );
+
+    act(() => result.current.setDraft(policy({ ordering: "sequential" })));
+    act(() => result.current.apply());
+    expect(result.current.isApplying).toBe(true);
+
+    await waitFor(() => expect(result.current.isApplying).toBe(false));
+    expect(result.current.draft.ordering).toBe("sequential");
+    expect(result.current.isDirty).toBe(true);
   });
 });

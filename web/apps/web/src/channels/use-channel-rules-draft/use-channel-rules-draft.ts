@@ -47,10 +47,16 @@ const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefin
   // The saved policy this draft was seeded from, as a canonical string — its identity, not its
   // reference (the page hands a fresh `ch.policy` object every render). Resync only when THIS
   // changes: a genuine server update adopts, an incidental re-render does not.
+  //
+  // ⚠ Not while an apply is in flight. The page renders the channel writer's PENDING policy, so
+  // the applied draft reads as saved at once; if the save then fails, the pending policy drops
+  // and an adopt would replace the draft with the old policy, losing the operator's rules. Held
+  // until the apply settles, a success adopts what was saved and a failure keeps the draft.
   const savedKey = canonicalize(policy);
   const [draft, setDraft] = useState<ChannelPolicy>(policy ?? {});
   const [adoptedKey, setAdoptedKey] = useState(savedKey);
-  if (savedKey !== adoptedKey) {
+  const [isApplying, setApplying] = useState(false);
+  if (savedKey !== adoptedKey && !isApplying) {
     setDraft(policy ?? {});
     setAdoptedKey(savedKey);
   }
@@ -77,7 +83,6 @@ const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefin
   // (its own query key, not under the channel) once the save lands, so the verification pane
   // never keeps showing the pre-apply schedule.
   const { save } = useChannelSave(channelId);
-  const [isApplying, setApplying] = useState(false);
 
   return {
     draft,

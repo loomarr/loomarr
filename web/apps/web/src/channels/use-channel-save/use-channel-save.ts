@@ -1,6 +1,7 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { LineupEntryDTO } from "@loomarr/api/models/lineupEntryDTO";
 import { ApiError, toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +26,11 @@ const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.str
 // For callers that fire and forget: the writer has already shown the failure as a toast.
 const ignoreFailure = () => undefined;
 
+type Field = keyof ChannelEdit;
+const fieldsOf = (edit: ChannelEdit): Field[] => Object.keys(edit) as Field[];
+const pick = (edit: ChannelEdit, fields: Field[]): ChannelEdit =>
+  Object.fromEntries(fields.map((field) => [field, edit[field]])) as ChannelEdit;
+
 // rebasePolicy re-applies the operator's policy edits onto a policy another writer changed. An
 // edit is a top-level policy field whose value differs from the saved policy the edits were made
 // against (`base`); only those fields take the operator's value, and every other field keeps the
@@ -42,23 +48,48 @@ const rebasePolicy = (fresh: ChannelPolicy, base: ChannelPolicy, desired: Channe
   return next as ChannelPolicy;
 };
 
+// rebaseLineup does the same for the lineup, a wholesale list keyed by title. The operator's list
+// and order stand, less any title the other writer removed since `base`, and the titles the other
+// writer added go on the end. A title the operator removed stays removed.
+const rebaseLineup = (
+  fresh: LineupEntryDTO[],
+  base: LineupEntryDTO[],
+  desired: LineupEntryDTO[],
+): LineupEntryDTO[] => {
+  const keys = (lineup: LineupEntryDTO[]) => new Set(lineup.map((entry) => entry.key));
+  const was = keys(base);
+  const now = keys(fresh);
+  const want = keys(desired);
+  return [
+    ...desired.filter((entry) => now.has(entry.key) || !was.has(entry.key)),
+    ...fresh.filter((entry) => !was.has(entry.key) && !want.has(entry.key)),
+  ];
+};
+
 // The fields of `desired` that the PATCH which just landed did not already carry.
 const unsent = (desired: ChannelEdit, sent: ChannelEdit): ChannelEdit =>
   Object.fromEntries(
-    Object.entries(desired).filter(([key, value]) => !same(value, sent[key as keyof ChannelEdit])),
+    Object.entries(desired).filter(([key, value]) => !(key in sent) || !same(value, sent[key as Field])),
   ) as ChannelEdit;
 
-type Waiter = { resolve: () => void; reject: (err: unknown) => void };
+// One per `save` call: it settles once none of its fields is pending any more.
+type Waiter = { fields: Field[]; resolve: () => void; reject: (err: unknown) => void };
+
+// The saved values the operator's whole-value edits were built on: the diff between these and
+// `desired` is the operator's edit, which is what a rebase re-applies.
+type Base = { policy: ChannelPolicy; lineup: LineupEntryDTO[] };
+const baseOf = (ch: ChannelDTO): Base => ({ policy: ch.policy, lineup: ch.lineup });
 
 type Job = {
-  // The saved policy `desired.policy` was built on: the diff between the two is the operator's
-  // policy edit. Every other field in `desired` is a whole value the operator set.
-  basePolicy: ChannelPolicy;
+  base: Base;
   // Every edit queued since the last save landed, merged; a later edit to a field replaces it.
   desired: ChannelEdit;
-  // One per `save` call this job answers.
   waiters: Waiter[];
   success: string;
+  // Set once a PATCH carrying several fields failed for a reason other than a stale revision:
+  // from then on each field goes out alone, so the edit that is refused does not take the others
+  // down with it.
+  isolate: boolean;
 };
 
 type Writer = {
@@ -76,8 +107,9 @@ type Writer = {
 // flight at a time. Edits made meanwhile merge into the pending job (the editors render it, so
 // each edit stacks on the last) and go out together as the next PATCH, at the revision the
 // previous response returned. A 409 "Channel changed" from some other writer refetches the
-// channel and rebases the edits onto it. Any other failure is an error toast and the pending
-// edits drop, so the editors fall back to what is saved and nothing is lost silently.
+// channel and rebases the edits onto it. Any other failure is an error toast and rejects the
+// edit that caused it; that edit's pending value drops, so its editor falls back to what is
+// saved, and the edits coalesced with it are sent again on their own. Nothing is lost silently.
 const createWriter = (queryClient: QueryClient): Writer => {
   const jobs = new Map<string, Job>();
   const draining = new Set<string>();
@@ -124,9 +156,26 @@ const createWriter = (queryClient: QueryClient): Writer => {
     const fresh = await read(id);
     const job = jobs.get(id);
     if (!fresh || !job) return false;
-    const policy = job.desired.policy && rebasePolicy(fresh.policy, job.basePolicy, job.desired.policy);
-    set(id, { ...job, basePolicy: fresh.policy, desired: policy ? { ...job.desired, policy } : job.desired });
+    const { policy, lineup } = job.desired;
+    set(id, {
+      ...job,
+      base: baseOf(fresh),
+      desired: {
+        ...job.desired,
+        ...(policy && { policy: rebasePolicy(fresh.policy, job.base.policy, policy) }),
+        ...(lineup && { lineup: rebaseLineup(fresh.lineup, job.base.lineup, lineup) }),
+      },
+    });
     return true;
+  };
+
+  // After a round trip that carried `sent`: what is still pending, and the waiters that are done.
+  const settle = (id: string, job: Job, sent: ChannelEdit) => {
+    const now = jobs.get(id) ?? job;
+    const desired = unsent(now.desired, sent);
+    const done = now.waiters.filter((waiter) => waiter.fields.every((field) => !(field in desired)));
+    const waiters = now.waiters.filter((waiter) => !done.includes(waiter));
+    return { now, desired, done, waiters };
   };
 
   const drain = async (id: string) => {
@@ -136,27 +185,25 @@ const createWriter = (queryClient: QueryClient): Writer => {
     let conflicts = 0;
     try {
       for (let job = jobs.get(id); job; job = jobs.get(id)) {
-        const sent = job;
+        const fields = job.isolate ? fieldsOf(job.desired).slice(0, 1) : fieldsOf(job.desired);
+        const sent = pick(job.desired, fields);
         try {
           // A page that never read this channel (the guide's row menu) reads it now.
           const base = cached(id) ?? (await read(id));
           if (!base) throw new Error("Couldn't read the latest channel");
-          const res = await channelsApi.updateChannel(id, { ...sent.desired, revision: base.revision });
+          const res = await channelsApi.updateChannel(id, { ...sent, revision: base.revision });
           // An older read still in flight must not land over the saved channel and its revision.
           await queryClient.cancelQueries({ queryKey });
           queryClient.setQueryData(queryKey, res);
           conflicts = 0;
-          for (const waiter of sent.waiters) waiter.resolve();
           // Edits made during this round trip stay pending, now stacked on what was saved.
-          const now = jobs.get(id) ?? sent;
-          const desired = unsent(now.desired, sent.desired);
-          const waiters = now.waiters.filter((waiter) => !sent.waiters.includes(waiter));
-          if (Object.keys(desired).length > 0) {
-            set(id, { ...now, basePolicy: unwrap(res)?.policy ?? base.policy, desired, waiters });
+          const { now, desired, done, waiters } = settle(id, job, sent);
+          for (const waiter of done) waiter.resolve();
+          if (fieldsOf(desired).length > 0) {
+            const saved = unwrap(res);
+            set(id, { ...now, base: saved ? baseOf(saved) : now.base, desired, waiters });
             continue;
           }
-          // Whatever arrived meanwhile repeated what was just saved.
-          for (const waiter of waiters) waiter.resolve();
           set(id, undefined);
           refresh(id);
           toast.success(now.success);
@@ -165,12 +212,21 @@ const createWriter = (queryClient: QueryClient): Writer => {
             conflicts += 1;
             if (await rebaseOntoServer(id).catch(() => false)) continue;
           }
-          const failed = jobs.get(id) ?? sent;
+          conflicts = 0;
+          // Several fields refused together: send them one at a time to find the one at fault.
+          if (!isStale(err) && fields.length > 1) {
+            set(id, { ...(jobs.get(id) ?? job), isolate: true });
+            continue;
+          }
+          toast.error(toProblem(err).title ?? "Couldn't save that change");
+          const { now, desired, done, waiters } = settle(id, job, sent);
+          for (const waiter of done) waiter.reject(err);
+          if (fieldsOf(desired).length > 0) {
+            set(id, { ...now, desired, waiters });
+            continue;
+          }
           set(id, undefined);
           refresh(id);
-          toast.error(toProblem(err).title ?? "Couldn't save that change");
-          for (const waiter of failed.waiters) waiter.reject(err);
-          return;
         }
       }
     } finally {
@@ -187,11 +243,14 @@ const createWriter = (queryClient: QueryClient): Writer => {
     save: (id, edit, options) =>
       new Promise<void>((resolve, reject) => {
         const job = jobs.get(id);
+        const saved = cached(id);
         set(id, {
-          basePolicy: job?.basePolicy ?? cached(id)?.policy ?? {},
+          base: job?.base ?? (saved ? baseOf(saved) : { policy: {}, lineup: [] }),
           desired: { ...job?.desired, ...edit },
-          waiters: [...(job?.waiters ?? []), { resolve, reject }],
-          success: options?.success ?? "Saved",
+          waiters: [...(job?.waiters ?? []), { fields: fieldsOf(edit), resolve, reject }],
+          // A plain edit coalesced after a named one keeps the name.
+          success: options?.success ?? job?.success ?? "Saved",
+          isolate: job?.isolate ?? false,
         });
         void drain(id);
       }),
