@@ -14,7 +14,7 @@ const Artwork = () => (
     width="100%"
   >
     <Text textRole="label" tone="primary">
-      SPRINGFIELD
+      KETTLE KIDS
     </Text>
   </Surface>
 );
@@ -27,10 +27,10 @@ const SurfWorkshop = ({
   serverVersion?: string;
 }) => {
   const [selection, setSelection] = useState<SurfSelection>({
-    channelId: "ch-springfield",
+    channelId: "ch-cartoons",
     group: "recent",
   });
-  const [tuned, setTuned] = useState("ch-springfield");
+  const [tuned, setTuned] = useState("ch-cartoons");
   return (
     <Screen density={density} position="relative">
       <Surface alignItems="center" flex={1} justifyContent="center">
@@ -54,7 +54,7 @@ const SurfWorkshop = ({
           groups={surfGroups}
           onFocusSelection={setSelection}
           onTune={setTuned}
-          renderArtwork={(channel) => (channel.id === "ch-springfield" ? <Artwork /> : undefined)}
+          renderArtwork={(channel) => (channel.id === "ch-cartoons" ? <Artwork /> : undefined)}
           selection={selection}
           serverVersion={serverVersion || undefined}
         />
@@ -78,7 +78,7 @@ const Light: Story = { globals: { theme: "light" } };
 const ServerUnavailable: Story = { args: { serverVersion: "" } };
 const FocusedAllChannel: Story = {
   play: async ({ canvas }) => {
-    canvas.getByRole("button", { name: "All channels, channel 2, Star Trek Classics" }).focus();
+    canvas.getByRole("button", { name: "All channels, channel 2, Sci-Fi Classics" }).focus();
   },
 };
 

@@ -45,7 +45,7 @@ const SurfJourneyWorkshop = ({
     <SurfJourney
       clientVersion="0.2.0"
       controller={controller}
-      currentChannelId={tv ? "nature" : "ch-springfield"}
+      currentChannelId={tv ? "nature" : "ch-cartoons"}
       density={density}
       favoriteChannelIds={favorites ? ["ch-scifi"] : undefined}
       now={() => nowMs}
