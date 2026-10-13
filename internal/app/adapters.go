@@ -310,6 +310,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	item.InLibrary = false
 	item.LibraryItemID = ""
 	item.OfficialRating = ""
+	item = item.WithLibrarySize(0)
 	if a.presence == nil {
 		return item, false, nil
 	}
@@ -328,7 +329,7 @@ func (a approvalAdditionAdapter) ResolveApprovalAddition(
 	item.LibraryItemID = owned.LibraryItemID
 	item.OfficialRating = owned.OfficialRating
 	item.Genres = append([]string(nil), owned.Genres...)
-	return item, true, nil
+	return item.WithLibrarySize(owned.SizeBytes), true, nil
 }
 
 // tunarrNumbers adapts a Programmer to binder.NumberSource: it answers "which channel numbers
@@ -526,6 +527,7 @@ func (a libraryPresence) Present(ctx context.Context, mt provision.MediaType, tm
 		LibraryItemID:  d.ID,
 		OfficialRating: d.OfficialRating,
 		Genres:         d.Genres,
+		SizeBytes:      d.SizeBytes,
 	}, true, nil
 }
 

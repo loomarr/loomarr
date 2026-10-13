@@ -3,6 +3,8 @@ set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 build="$script_dir/build-shield-play.sh"
+client_build="$script_dir/build-android-client.sh"
+ccache_env="$script_dir/android-ccache-env.sh"
 verifier="$script_dir/verify-android-ccache-evidence.sh"
 tv_package="$script_dir/../apps/tv/package.json"
 
@@ -56,12 +58,31 @@ for needle in \
   'ccache-ninja-launchers.txt' \
   'verify-android-ccache-evidence.sh' \
   'LOOMARR_ANDROID_CCACHE_LAUNCHER'; do
-  grep -Fq -- "$needle" "$build"
+  cat "$build" "$ccache_env" | grep -Fq -- "$needle"
 done
-
-# The build source must retain this literal optional-environment guard.
+# Both wrappers must source the one shared ccache contract literally.
 # shellcheck disable=SC2016
-grep -Fq 'if [[ -n "${LOOMARR_ANDROID_CCACHE_LAUNCHER:-}" ]]' "$build"
+for build_script in "$build" "$client_build"; do
+  grep -Fq 'source "${WEB_ROOT}/scripts/android-ccache-env.sh"' "$build_script"
+  grep -Fq 'configure_android_ccache "${REPO_ROOT}"' "$build_script"
+done
+grep -Fq 'verify-android-ccache-evidence.sh' "$client_build"
+
+# The shared ccache source must retain this literal optional-environment guard.
+# shellcheck disable=SC2016
+grep -Fq 'if [[ -n "${LOOMARR_ANDROID_CCACHE_LAUNCHER:-}" ]]' "$ccache_env"
+for workers in 0 3; do
+  if LOOMARR_ANDROID_GRADLE_WORKERS=$workers "$client_build" mobile >/dev/null 2>"$temp_dir/client-workers.err"; then
+    printf 'client build wrapper accepted %s Gradle workers\n' "$workers" >&2
+    exit 1
+  fi
+  grep -Fq 'LOOMARR_ANDROID_GRADLE_WORKERS must be 1 or 2' "$temp_dir/client-workers.err"
+done
+if LOOMARR_ANDROID_METRO_WORKERS=0 "$client_build" mobile >/dev/null 2>"$temp_dir/client-metro.err"; then
+  echo 'client build wrapper accepted zero Metro workers' >&2
+  exit 1
+fi
+grep -Fq 'LOOMARR_ANDROID_METRO_WORKERS must be a positive integer' "$temp_dir/client-metro.err"
 if ANDROID_HOME=/private/tmp LOOMARR_ANDROID_GRADLE_WORKERS=0 "$build" 1.0.0 >/dev/null 2>"$temp_dir/gradle-workers-zero.err"; then
   echo 'build wrapper accepted zero Gradle workers' >&2
   exit 1

@@ -107,7 +107,7 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
-      "tailwindClasses": 115,
+      "tailwindClasses": 132,
       "legacyUi": 4
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
@@ -378,18 +378,16 @@
     },
     "src/components/ui/button/button.tsx": {
       "tailwindClasses": 55,
-      "cva": 1,
       "baseUi": 2
     },
     "src/components/ui/button/button.type.ts": {
-      "cva": 1,
       "baseUi": 1
     },
     "src/components/ui/caption/caption.tsx": {
-      "tailwindClasses": 6
+      "tailwindClasses": 1
     },
     "src/components/ui/card/card.tsx": {
-      "tailwindClasses": 18
+      "tailwindClasses": 17
     },
     "src/components/ui/checkbox/checkbox.tsx": {
       "tailwindClasses": 15

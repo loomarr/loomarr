@@ -1,4 +1,4 @@
-import type { DiscoveryFeedbackDTO, SearchOutputBody } from "@loomarr/api";
+import type { ChannelDTO, DiscoveryFeedbackDTO, SearchOutputBody } from "@loomarr/api";
 import type { Decorator, Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { widthFrame } from "@/test/story-utils";
@@ -12,14 +12,14 @@ import { ChannelLineupEditor } from "./channel-lineup-editor";
 const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
-// ChannelLineupEditor owns live generated-API hooks (useChannelLineup → useUpdateChannel,
+// ChannelLineupEditor owns live generated-API hooks (useChannelLineup → the channel writer,
 // plus searchApi.useSearch for the add palette and effective feedback) rather than taking injectable state —
 // same shape as RefinePanel elsewhere in this package, which stubs `fetch`
 // deterministically (no backend, no new dependency) for the same reason. Dispatches by
 // method/path: GET /v1/search answers the add-a-title palette with a couple of
-// candidates (one in-library, one not, to exercise the Pending path); PATCH
-// /v1/channels/{id} is the commit, answered with a flat 200 since the gallery only
-// snapshots the initial render (no play()) and never observes the result of a click.
+// candidates (one in-library, one not, to exercise the Pending path); GET
+// /v1/channels/{id} gives the channel writer its revision, and PATCH /v1/channels/{id}, the
+// commit, is held open (see below).
 const withStubbedLineup = (): Decorator => (Story) => {
   window.fetch = ((url: string, init?: RequestInit) => {
     if (typeof url === "string" && url.includes("/v1/discovery/feedback")) {
@@ -36,11 +36,29 @@ const withStubbedLineup = (): Decorator => (Story) => {
       );
     }
     if (init?.method === "PATCH") {
-      // ⚠ Deliberately NOT typed as the channel DTO. The gallery snapshots the initial render
-      // only (no `play()`), so nothing ever reads this body — demanding a complete ChannelDTO
-      // literal here would add a screenful of fields to satisfy a response no assertion touches.
-      // #281 is about bodies the component READS; this is not one.
-      return Promise.resolve(jsonResponse({ id: "ch-1" }));
+      // Held open: the story has no channel page above it to re-read the saved lineup, so the
+      // add is snapshotted as the channel writer's pending lineup, which is what it documents.
+      return new Promise<Response>(() => {});
+    }
+    if (typeof url === "string" && url.includes("/v1/channels/ch-1")) {
+      // The channel writer reads the channel's revision before it saves (#1899).
+      return Promise.resolve(
+        jsonResponse<ChannelDTO>({
+          id: "ch-1",
+          revision: 1,
+          name: "Late Night Noir",
+          number: 1,
+          inAppPlayable: true,
+          status: "live",
+          strategy: "shuffle",
+          lineup: [],
+          policy: {},
+          breakCount: 0,
+          pendingCount: 0,
+          programCount: 0,
+          slotCount: 0,
+        }),
+      );
     }
     return Promise.resolve(jsonResponse({}));
   }) as typeof fetch;
@@ -58,7 +76,7 @@ const withStubbedLineup = (): Decorator => (Story) => {
 const meta = {
   title: "Channels/ChannelLineupEditor",
   component: ChannelLineupEditor,
-  args: { channelId: "ch-1", revision: 1 },
+  args: { channelId: "ch-1" },
   decorators: [withStubbedLineup(), widthFrame(560)],
 } satisfies Meta<typeof ChannelLineupEditor>;
 
@@ -88,6 +106,29 @@ const Populated: Story = {
   },
 };
 
+// The phone column (#1896): at a 390px viewport the Programming tab gives the editor about 250px,
+// which is narrower than the gallery's mobile frame, so this story pins that width itself. Each
+// row stacks: title (and the series' season window) first, then the feedback controls, then
+// remove, in the same order as Tab (tests/visual/lineup-layout.spec.ts). The row
+// layout keys off the list's own width (a container query), so both gallery projects show the
+// stacked rows here. Invented demo-catalogue titles; the series show the season inputs.
+const NarrowColumn: Story = {
+  decorators: [widthFrame(250)],
+  args: {
+    lineup: [
+      { key: "series:tvdb:90000020", name: "The Wendelmeyer Family Hour", year: 1966, state: "available" },
+      {
+        key: "series:tvdb:90000021",
+        name: "Bowling Alley Blues",
+        year: 1974,
+        state: "pending",
+        seasonMax: 3,
+      },
+      { key: "movie:tmdb:90000017", name: "Glacier Cathedral", year: 2021, state: "available" },
+    ],
+  },
+};
+
 // An empty lineup — the dashed empty state, not an error.
 const Empty: Story = { args: { lineup: [] } };
 
@@ -106,4 +147,4 @@ const AddingATitle: Story = {
 };
 
 export default meta;
-export { AddingATitle, Empty, Populated };
+export { AddingATitle, Empty, NarrowColumn, Populated };

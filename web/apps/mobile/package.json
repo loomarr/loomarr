@@ -15,6 +15,7 @@
   "dependencies": {
     "@loomarr/core": "workspace:*",
     "@loomarr/design-system": "workspace:*",
+    "@loomarr/lan-discovery-native": "workspace:*",
     "@loomarr/player": "workspace:*",
     "@loomarr/ui": "workspace:*",
     "expo": "58.0.0-canary-20260812-27f94d4",
@@ -27,6 +28,7 @@
     "expo-status-bar": "58.0.0-canary-20260812-27f94d4",
     "expo-system-ui": "58.0.0-canary-20260812-27f94d4",
     "expo-video": "58.0.0-canary-20260812-27f94d4",
+    "expo-web-browser": "58.0.0-canary-20260812-27f94d4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "npm:react-native-tvos@0.86.2-0",
@@ -46,6 +48,7 @@
           "expo-video"
         ],
         "exclude": [
+          "@loomarr/lan-discovery-native",
           "react-native-reanimated",
           "react-native-worklets"
         ]

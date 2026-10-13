@@ -104,6 +104,8 @@ func ResolveApprovalEdit(
 		}
 		seen[key] = true
 		canonical.InLibrary = owned
+		// An unowned addition has no library file, so no size survives from the client.
+		canonical = canonical.WithLibrarySize(canonical.SizeBytes)
 		if owned {
 			if strings.TrimSpace(canonical.LibraryItemID) == "" {
 				return nil, fmt.Errorf("approve: owned added title %q has no library item id", canonical.Name)

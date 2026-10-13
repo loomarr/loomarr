@@ -1,5 +1,5 @@
 import { pluralize } from "@loomarr/core/format";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, error, className }: Pu
   // state the gate has to reason about.
   const [dropped, setDropped] = useState<ReadonlySet<string>>(new Set());
   const [note, setNote] = useState("");
+  const titleId = useId();
 
   // ⚠ `?? []` because huma types every Go slice as nullable, so the generated DTO says
   // `PullPlanRowDTO[] | null` even though the handler always sends `[]`.
@@ -42,12 +43,16 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, error, className }: Pu
     });
 
   return (
-    <Card className={cn("flex flex-col gap-3 p-4", className)}>
+    // A named group so a screen reader announces which pull it has entered — several cards share
+    // identical "Not now" / "Approve pull" buttons, and the title is the only thing telling them apart.
+    <Card role="group" aria-labelledby={titleId} className={cn("flex flex-col gap-3 p-4", className)}>
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="lock">Filler pull</Badge>
-            <span className="font-semibold text-sm">{pull.title}</span>
+            <span id={titleId} className="font-semibold text-sm">
+              {pull.title}
+            </span>
           </div>
           {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
               requester is — proposedBy itself is a raw user id (or a scheduled job's name) and

@@ -94,7 +94,16 @@ func main() {
 		fmt.Fprintf(os.Stderr, "release-verify: Dockerfile download policy: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println("release-verify: pinned asset downloads use bounded retries")
+	if err := releaseverify.VerifyGoModuleDownloads(*root); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: Go module download policy: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("release-verify: pinned asset and Go module downloads use bounded retries")
+	if err := releaseverify.VerifyWorkflowPnpmPackageManager(*root); err != nil {
+		fmt.Fprintf(os.Stderr, "release-verify: workflow pnpm policy: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("release-verify: every workflow pnpm call resolves the workspace's pinned packageManager")
 	if err := releaseverify.VerifyNotices(*root); err != nil {
 		fmt.Fprintf(os.Stderr, "release-verify: notice policy: %v\n", err)
 		os.Exit(1)

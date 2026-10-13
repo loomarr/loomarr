@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ignoreFailure, useChannelSave } from "../use-channel-save";
 import { useDeleteConfirm } from "../use-delete-confirm";
 import type { ChannelRowMenu as ChannelRowMenuProps } from "./channel-row-menu.type";
 
@@ -67,19 +68,9 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
     void queryClient.invalidateQueries({ queryKey: channelsApi.getChannelGuideQueryKey() });
   };
 
-  const update = channelsApi.useUpdateChannel({
-    mutation: {
-      onSuccess: () => {
-        invalidate();
-        toast.success(paused ? "Channel resumed" : "Channel paused");
-        resetConfirm();
-      },
-      onError: (e) => {
-        invalidate();
-        toast.error(toProblem(e).title ?? "Couldn't update the channel");
-      },
-    },
-  });
+  // Pause/resume is a channel edit like any other, so it saves through the channel's one writer,
+  // which refreshes the list and every guide window once it lands.
+  const channelSave = useChannelSave(channel.id);
 
   const del = channelsApi.useDeleteChannel({
     mutation: {
@@ -92,22 +83,18 @@ const ChannelRowMenu = ({ channel }: ChannelRowMenuProps) => {
     },
   });
 
-  const busy = update.isPending || del.isPending;
+  const busy = channelSave.isSaving || del.isPending;
 
-  // Guide rows intentionally carry only timeline data, not the editable channel resource.
-  // Read the resource at click time so the PATCH is based on the revision the operator is
-  // actually changing, rather than inventing a revision or trusting an old guide snapshot.
-  const togglePaused = async () => {
-    const current = await channelsApi.getChannel(channel.id);
-    if (current.status !== 200) {
-      toast.error("Couldn't read the latest channel");
-      return;
-    }
-    update.mutate({
-      id: channel.id,
-      data: { revision: current.data.revision, status: paused ? "building" : "paused" },
-    });
-  };
+  // Guide rows intentionally carry only timeline data, not the editable channel resource. The
+  // writer reads the resource when it has none cached, and a stale cached one is a 409 it
+  // refetches and retries, so the PATCH is always based on the channel's current revision.
+  const togglePaused = () =>
+    channelSave
+      .save(
+        { status: paused ? "building" : "paused" },
+        { success: paused ? "Channel resumed" : "Channel paused" },
+      )
+      .then(resetConfirm, ignoreFailure);
 
   return (
     <div className="relative shrink-0">

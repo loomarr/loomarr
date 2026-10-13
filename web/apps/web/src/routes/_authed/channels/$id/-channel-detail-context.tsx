@@ -1,8 +1,8 @@
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
-import type { UpdateChannelInputBody } from "@loomarr/api/models/updateChannelInputBody";
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
+import type { ChannelEdit } from "@/channels/use-channel-save";
 import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 
 // The channel-detail layout's shared state (V-nav-paths), read by each section route
@@ -27,8 +27,8 @@ type ChannelDetailValue = {
   invalidate: () => void;
   saving: boolean;
   deleting: boolean;
-  update: (data: Omit<UpdateChannelInputBody, "revision">) => void;
-  updateAsync: (data: Omit<UpdateChannelInputBody, "revision">) => Promise<unknown>;
+  /** The channel's one write path (`useChannelSave`); the failure is already a toast. */
+  save: (edit: ChannelEdit) => void;
   savePolicy: (policy: ChannelPolicy) => void;
   /** `""` clears it — the icon is just another field on the same PATCH (§7). */
   saveLogo: (logo: string) => Promise<void>;

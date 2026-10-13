@@ -110,12 +110,21 @@ const SortableLineupRow = ({
     />
   );
 
+  // ⚠ NARROW COLUMNS STACK (#1896). One line of grip · title · Keep/Less/Never/Surprise · remove
+  // needs ~28rem; on a phone the Programming column is ~14rem, and the controls crushed the title
+  // to nothing and ran over the season inputs. Below `@md` of the list (a container query, because
+  // what decides it is the column the editor sits in, not the viewport) the row becomes a grid:
+  // grip and title on top, the seasons under the title, the feedback controls, then remove on its
+  // own line at the right with a 44 px target. Every piece auto-places in DOM order, so what you
+  // see is the Tab order at every width: grip → seasons → feedback → remove (#1899; remove used to
+  // sit top right, beside the title, while still being last in Tab order). From `@md` up the
+  // wrappers below dissolve (`contents`) or turn back into the one flex line this row always was.
   return (
     <li
       ref={setNodeRef}
       style={style}
       className={cn(
-        "flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2.5",
+        "@md:flex grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border border-border bg-card px-3 py-2.5",
         isDragging && "z-10 opacity-70 shadow-md",
       )}
     >
@@ -130,25 +139,28 @@ const SortableLineupRow = ({
         <GripVertical className="size-4" aria-hidden />
       </button>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="@md:block contents @md:min-w-0 @md:flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="truncate font-medium text-sm">{entry.name}</span>
           {entry.year ? <span className="font-mono text-static-400 text-xs">{entry.year}</span> : null}
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
         </div>
         {isSeries && onSeasonChange && (
-          <div className="mt-1.5 flex items-center gap-1.5">
+          <div className="col-[2/-1] @md:mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className="text-muted-foreground text-xs">Seasons</span>
-            {seasonInput("seasonMin", entry.seasonMin, "1")}
-            <span className="text-muted-foreground text-xs" aria-hidden>
-              –
+            {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
+            <span className="flex items-center gap-1.5">
+              {seasonInput("seasonMin", entry.seasonMin, "1")}
+              <span className="text-muted-foreground text-xs" aria-hidden>
+                –
+              </span>
+              {seasonInput("seasonMax", entry.seasonMax, "latest")}
             </span>
-            {seasonInput("seasonMax", entry.seasonMax, "latest")}
           </div>
         )}
       </div>
 
-      {feedback}
+      {feedback && <div className="col-[2/-1] @md:contents">{feedback}</div>}
 
       <Tooltip>
         <TooltipTrigger
@@ -156,7 +168,7 @@ const SortableLineupRow = ({
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 shrink-0"
+              className="col-[2/-1] @md:size-7 size-11 shrink-0 justify-self-end"
               disabled={disabled}
               aria-label={`Remove ${entry.name}`}
               onClick={onRemove}
@@ -193,18 +205,14 @@ const SortableLineupRow = ({
 // reported as "why do I still see the same old movies".
 type LineupSort = "order" | "newest" | "year";
 
-const ChannelLineupEditor = ({ channelId, revision, lineup, className }: ChannelLineupEditorProps) => {
+const ChannelLineupEditor = ({ channelId, lineup, className }: ChannelLineupEditorProps) => {
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LineupSort>("order");
   const feedbackScope = { scope: "channel" as const, scopeId: channelId };
   const feedback = useDiscoveryFeedback(feedbackScope);
 
-  const { entries, isPending, add, remove, reorder, updateEntry } = useChannelLineup(
-    channelId,
-    lineup,
-    revision,
-  );
+  const { entries, add, remove, reorder, updateEntry } = useChannelLineup(channelId, lineup);
 
   const search = searchApi.useSearch(
     { q: query, scope: "all", limit: 8 },
@@ -313,12 +321,12 @@ const ChannelLineupEditor = ({ channelId, revision, lineup, className }: Channel
                 lineup isn't boxed (the scroll only appears when it overflows). scroll-thin
                 (styles.css) is the same token-keyed slim scrollbar the cycle preview uses.
                 dnd-kit auto-scrolls this container during a drag toward its edges. */}
-            <ul className="scroll-thin flex max-h-128 flex-col gap-2 overflow-y-auto">
+            <ul className="@container scroll-thin flex max-h-128 flex-col gap-2 overflow-y-auto">
               {shown.map((entry) => (
                 <SortableLineupRow
                   key={entry.key}
                   entry={entry}
-                  disabled={isPending || !dragEnabled}
+                  disabled={!dragEnabled}
                   onRemove={() => remove(entry.key)}
                   onSeasonChange={(patch) => updateEntry(entry.key, patch)}
                   feedback={

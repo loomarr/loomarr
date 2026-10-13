@@ -1,11 +1,13 @@
-import type { LineupEntryDTO, SearchCandidate } from "@loomarr/api";
+import { channelsApi, type LineupEntryDTO, type SearchCandidate } from "@loomarr/api";
 import {
   getClearDiscoveryFeedbackMockHandler,
+  getGetChannelMockHandler,
   getListDiscoveryFeedbackMockHandler,
   getRecordDiscoveryFeedbackMockHandler,
   getSearchMockHandler,
   getUpdateChannelMockHandler,
 } from "@loomarr/api/msw";
+import { unwrap } from "@loomarr/api/unwrap";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -44,6 +46,8 @@ const stubEditor = (opts: { candidates?: SearchCandidate[] } = {}) => {
   server.use(
     getListDiscoveryFeedbackMockHandler([]),
     getSearchMockHandler(() => ({ candidates: opts.candidates ?? [] })),
+    // The channel writer reads the revision to save at.
+    getGetChannelMockHandler(channel()),
     getUpdateChannelMockHandler(async ({ request }) => {
       patches.push(await request.json());
       return channel();
@@ -55,7 +59,7 @@ const stubEditor = (opts: { candidates?: SearchCandidate[] } = {}) => {
 describe("ChannelLineupEditor", () => {
   it("renders the current lineup with drag handles and remove buttons", () => {
     stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
       wrapper: makeWrapper(),
     });
 
@@ -63,6 +67,35 @@ describe("ChannelLineupEditor", () => {
     expect(screen.getByText("Point Break")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reorder Heat" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove Heat" })).toBeInTheDocument();
+  });
+
+  it("keeps a series row's Tab order: grip, seasons, feedback, then remove (#1896)", async () => {
+    // A narrow column stacks the row, and remove comes last there too (#1899), so keyboard order
+    // is the reading order at every width. tests/visual/lineup-layout.spec.ts checks the layout.
+    stubEditor();
+    const series: LineupEntryDTO = { key: "series:tvdb:90000021", name: "Bowling Alley Blues", year: 1974 };
+    const user = userEvent.setup();
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[series]} />, {
+      wrapper: makeWrapper(),
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Keep — / })).toBeEnabled());
+
+    screen.getByRole("button", { name: "Reorder Bowling Alley Blues" }).focus();
+    const order: (string | null)[] = [];
+    for (let i = 0; i < 8; i++) {
+      order.push(document.activeElement?.getAttribute("aria-label") ?? null);
+      await user.tab();
+    }
+    expect(order).toEqual([
+      "Reorder Bowling Alley Blues",
+      "Bowling Alley Blues first season",
+      "Bowling Alley Blues last season",
+      "Keep — Bowling Alley Blues",
+      "Less like this — Bowling Alley Blues",
+      "Never — Bowling Alley Blues",
+      "Surprise me — Bowling Alley Blues",
+      "Remove Bowling Alley Blues",
+    ]);
   });
 
   it("shows inherited feedback, records a Channel override, and Undo reveals the fallback", async () => {
@@ -103,7 +136,7 @@ describe("ChannelLineupEditor", () => {
       }),
     );
 
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, {
       wrapper: makeWrapper(),
     });
 
@@ -126,7 +159,7 @@ describe("ChannelLineupEditor", () => {
 
   it("shows an empty state when the lineup is empty", () => {
     stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[]} />, { wrapper: makeWrapper() });
     expect(screen.getByText(/nothing in the lineup yet/i)).toBeInTheDocument();
   });
 
@@ -138,7 +171,6 @@ describe("ChannelLineupEditor", () => {
     render(
       <ChannelLineupEditor
         channelId="ch-1"
-        revision={1}
         lineup={[
           { key: "movie:tmdb:949", name: "Heat", year: 1995, state: "available" },
           { key: "movie:tmdb:106", name: "Predator", year: 1987, state: "pending" },
@@ -161,7 +193,7 @@ describe("ChannelLineupEditor", () => {
     const { patches } = stubEditor({
       candidates: [{ mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true }],
     });
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
       wrapper: makeWrapper(),
     });
 
@@ -186,9 +218,24 @@ describe("ChannelLineupEditor", () => {
         { mediaType: "series", tvdbId: 81189, name: "Breaking Bad", year: 2008, inLibrary: false },
       ],
     });
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat]} />, { wrapper: makeWrapper() });
+    // Like the channel page: the editor's lineup is the channel query's, which the save updates.
+    let saved = channel({ lineup: [heat] });
+    server.use(
+      getGetChannelMockHandler(() => saved),
+      getUpdateChannelMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { lineup: LineupEntryDTO[] };
+        patches.push(body);
+        saved = { ...saved, revision: saved.revision + 1, lineup: body.lineup };
+        return saved;
+      }),
+    );
+    const Page = () => {
+      const ch = unwrap(channelsApi.useGetChannel("ch-1").data);
+      return ch ? <ChannelLineupEditor channelId="ch-1" lineup={ch.lineup} /> : null;
+    };
+    render(<Page />, { wrapper: makeWrapper() });
 
-    await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /add a title/i }));
     await userEvent.type(screen.getByLabelText("Search"), "breaking");
     await userEvent.click(await screen.findByText("Breaking Bad"));
 
@@ -200,13 +247,13 @@ describe("ChannelLineupEditor", () => {
     });
     // The add closed the palette and returned to the populated list, where the new
     // pick reads Pending (from its state, which now rides on the entry — durable, not
-    // client-only memory).
-    expect(screen.getByText("Pending")).toBeInTheDocument();
+    // client-only memory), saved as well as shown.
+    expect(await screen.findByText("Pending")).toBeInTheDocument();
   });
 
   it("remove drops the key and commits the remaining entries, in order", async () => {
     const { patches } = stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat, pointBreak]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat, pointBreak]} />, {
       wrapper: makeWrapper(),
     });
 
@@ -223,7 +270,7 @@ describe("ChannelLineupEditor", () => {
         { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
       ],
     });
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     await userEvent.type(screen.getByLabelText("Search"), "he");
@@ -247,7 +294,7 @@ describe("ChannelLineupEditor", () => {
         { mediaType: "movie", tmdbId: 106, name: "Predator", year: 1987, inLibrary: true },
       ],
     });
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     await userEvent.type(screen.getByLabelText("Search"), "film");
@@ -261,7 +308,7 @@ describe("ChannelLineupEditor", () => {
 
   it("cancelling the add palette closes it without committing", async () => {
     const { patches } = stubEditor();
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[heat]} />, { wrapper: makeWrapper() });
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[heat]} />, { wrapper: makeWrapper() });
 
     await userEvent.click(screen.getByRole("button", { name: /add a title/i }));
     expect(screen.getByLabelText("Search")).toBeInTheDocument();

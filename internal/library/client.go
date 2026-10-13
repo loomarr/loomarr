@@ -191,6 +191,7 @@ func (c *Client) flavor() Flavor  { return c.fixed.Flavor }
 // enforcement metadata (OfficialRating/Genres) is populated only when the request
 // asks for it via Fields — LookupDetail does, Lookup's other callers don't need it.
 type item struct {
+	primarySize
 	ID             string   `json:"Id"`
 	Name           string   `json:"Name"`
 	OfficialRating string   `json:"OfficialRating"`
@@ -211,12 +212,14 @@ type LibraryItem struct {
 	ID             string
 	OfficialRating string
 	Genres         []string
+	// SizeBytes is the primary media source's exact file size; zero is unavailable.
+	SizeBytes int64
 }
 
 // LookupDetail is the §6 presence check that also returns the enforcement metadata:
 //
 //	GET /Items?Recursive=true&IncludeItemTypes=<type>&Limit=1
-//	    &Fields=Genres,OfficialRating&AnyProviderIdEquals=<kind>.<id>
+//	    &Fields=Genres,OfficialRating,<Size|MediaSources>&AnyProviderIdEquals=<kind>.<id>
 //
 // Present iff Items is non-empty. Provider name is lowercase (tmdb./tvdb.) per §6.
 func (c *Client) LookupDetail(ctx context.Context, kind ProviderKind, providerID string, mt MediaType) (LibraryItem, bool, error) {
@@ -228,7 +231,7 @@ func (c *Client) LookupDetail(ctx context.Context, kind ProviderKind, providerID
 	q.Set("Recursive", "true")
 	q.Set("IncludeItemTypes", string(mt))
 	q.Set("Limit", "1")
-	q.Set("Fields", "Genres,OfficialRating")
+	q.Set("Fields", "Genres,OfficialRating,"+c.flavor().sizeField())
 	q.Set("AnyProviderIdEquals", fmt.Sprintf("%s.%s", kind, providerID))
 
 	req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
@@ -245,7 +248,7 @@ func (c *Client) LookupDetail(ctx context.Context, kind ProviderKind, providerID
 		return LibraryItem{}, false, nil
 	}
 	it := out.Items[0]
-	return LibraryItem{ID: it.ID, OfficialRating: it.OfficialRating, Genres: it.Genres}, true, nil
+	return LibraryItem{ID: it.ID, OfficialRating: it.OfficialRating, Genres: it.Genres, SizeBytes: it.bytes()}, true, nil
 }
 
 // Lookup is the id-only presence check (reconcile, ingest, eval): whether the title

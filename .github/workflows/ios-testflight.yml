@@ -1,6 +1,11 @@
 name: iPhone TestFlight beta
 
+# A push to main that changes the iPhone app uploads it; the plan job decides with the same
+# classifier CI uses for the Apple mobile gate, so a push that changes no iPhone input uploads
+# nothing. A dispatch rebuilds main on demand: a dry run (upload unset) or a re-upload.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
@@ -13,19 +18,43 @@ on:
         default: false
         type: boolean
 
-# The workflow file name is part of the build-number contract: github.run_number counts runs of
-# this workflow, so renaming or recreating it can restart the numbering and collide with uploads.
-concurrency:
-  group: ios-testflight-release
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
+# The workflow file name is part of the build-number contract: github.run_number counts runs of
+# this workflow, so renaming or recreating it can restart the numbering and collide with uploads.
 jobs:
+  plan:
+    name: Decide whether this run releases the iPhone app
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.plan.outputs.release }}
+      upload: ${{ steps.plan.outputs.upload }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # the push's diff base and the newest release tag
+          persist-credentials: false
+
+      # Reads the event payload itself, so no input reaches a shell through an expression.
+      - name: Classify the change and pick the version
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: ./web/scripts/build-ios-testflight.sh plan "$EVENT_NAME" "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"
+
   release:
     name: Archive, verify, and optionally upload the iPhone beta
-    if: github.ref == 'refs/heads/main'
+    needs: plan
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.release == 'true'
+    # Serialized so two runs never pick the same build number. Only releasing runs queue here, so a
+    # push that changes no iPhone input cannot replace a pending release; a newer pending release
+    # does replace an older one, and it builds a later main that contains the older change.
+    concurrency:
+      group: ios-testflight-release
+      cancel-in-progress: false
     # Same image as ci-apple-mobile.yml; the script fails closed on another Xcode major.
     runs-on: xcode-27
     timeout-minutes: 90
@@ -63,13 +92,13 @@ jobs:
           LOOMARR_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
         run: ./web/scripts/build-ios-testflight.sh build "$RELEASE_VERSION"
 
       - name: Retain the verified IPA and evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: loomarr-ios-${{ inputs.version }}-${{ github.run_number }}
+          name: loomarr-ios-${{ needs.plan.outputs.version }}-${{ github.run_number }}
           path: |
             ${{ env.LOOMARR_IOS_OUTPUT_DIR }}/loomarr-ios-*.ipa
             ${{ env.LOOMARR_IOS_OUTPUT_DIR }}/loomarr-ios-*.json
@@ -84,7 +113,7 @@ jobs:
         run: ./web/scripts/build-ios-testflight.sh validate
 
       - name: Upload to TestFlight
-        if: inputs.upload
+        if: needs.plan.outputs.upload == 'true'
         env:
           LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}

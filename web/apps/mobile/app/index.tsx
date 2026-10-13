@@ -6,6 +6,7 @@ import {
   validatePairingCredential,
 } from "@loomarr/core/pairing";
 import { BottomSheet, Text } from "@loomarr/design-system";
+import { createNativeServerDiscovery } from "@loomarr/lan-discovery-native";
 import {
   NativePlayerView,
   type PairedClient,
@@ -14,7 +15,7 @@ import {
   usePairedRequests,
   useShellPause,
 } from "@loomarr/player/native";
-import type { ClientDestination } from "@loomarr/ui";
+import type { ApprovalBrowser, ClientDestination } from "@loomarr/ui";
 import {
   ClientShell,
   clientBackDestination,
@@ -27,14 +28,26 @@ import {
 } from "@loomarr/ui";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
+import * as WebBrowser from "expo-web-browser";
 import { useEffect, useMemo, useState } from "react";
-import { BackHandler, Platform, ScrollView, View } from "react-native";
+import { AppState, BackHandler, Platform, ScrollView, View } from "react-native";
 
 const credentialStore = createPairingCredentialStore({
   deleteItem: SecureStore.deleteItemAsync,
   getItem: SecureStore.getItemAsync,
   setItem: SecureStore.setItemAsync,
 });
+
+// The phone approves itself on the server's `/pair` page, in a browser sheet over the app (an
+// SFSafariViewController, or a Custom Tab on Android); the pairing shell dismisses it once paired.
+const approvalBrowser: ApprovalBrowser = {
+  close: () => void WebBrowser.dismissBrowser().catch(() => undefined),
+  name: Platform.OS === "ios" ? "Safari" : "your browser",
+  open: (url) =>
+    void WebBrowser.openBrowserAsync(url, {
+      presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+    }),
+};
 
 // The selected programme docks as the iPhone's sheet (#1659 mock 5d) or Android's strip (5f).
 const guideDock = Platform.OS === "ios" ? BottomSheet : "strip";
@@ -182,6 +195,16 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
 };
 
 const Index = () => {
+  // Discovery browses only while the connect screen is in the foreground (design "Finding a server").
+  // Android phones keep manual entry until their Bonjour path pairs to the public URL as well.
+  const [appForeground, setAppForeground] = useState(AppState.currentState === "active");
+  const discovery = useMemo(() => (Platform.OS === "ios" ? createNativeServerDiscovery() : undefined), []);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      setAppForeground(state === "active");
+    });
+    return () => subscription.remove();
+  }, []);
   const session = useMemo(
     () =>
       new PairingSession({
@@ -196,7 +219,10 @@ const Index = () => {
     <>
       <PairingShell
         allowServerEntry
+        approvalBrowser={approvalBrowser}
         density="touch"
+        discovery={discovery}
+        discoveryForeground={appForeground}
         initialServerUrl={process.env.EXPO_PUBLIC_LOOMARR_URL}
         renderPaired={(credential) => (
           <MobileShell credential={credential} key={credential.token} session={session} />

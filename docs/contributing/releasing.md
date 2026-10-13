@@ -134,11 +134,22 @@ that cannot be derived from pull requests.
 
 The **iPhone TestFlight beta** workflow (`.github/workflows/ios-testflight.yml`) builds the
 permanent-identity iPhone app (`media.loomarr.mobile`, [ADR 0042](../design/decisions/0042-iphone-permanent-app-identity.md)),
-verifies the IPA, and optionally uploads it. It is dispatch-only, runs on `main`, and uses the
-`ios-testflight` environment, whose deployment branch policy releases the secrets only to `main`.
-The environment has no required reviewer (a maintainer decision): the dry run before each upload is
-the review. `release-verify` pins the trigger, inputs, environment, and every script step's command,
-environment, and condition (`internal/releaseverify/ios_testflight_workflow.go`).
+verifies the IPA, and uploads it. It runs only on `main` and uses the `ios-testflight` environment,
+whose deployment branch policy releases the secrets only to `main`. It never runs for a pull request
+or a merge group.
+
+Every push to `main` that changes the iPhone app uploads a build with no manual step. A secretless
+`plan` job decides, using the classifier CI uses for the Apple mobile gate
+(`scripts/ci-impact.sh`, `apple_mobile`), so a push that changes no iPhone input uploads nothing.
+As in CI, a push whose diff cannot be established counts as a change. The pushed build's version
+is the newest `v*` tag reachable from the commit (`0.2.0-beta.8` until `v0.2.0-beta.9` is tagged);
+TestFlight shows only its `x.y.z`. Release runs queue one at a time. A newer pending one replaces an
+older one, and it builds a later `main` that already contains the older change.
+
+The environment has no required reviewer (a maintainer decision): the reviewed, merge-queue-tested
+merge is the review. `release-verify` pins the triggers, inputs, both jobs, the environment, and
+every script step's command, environment, and condition
+(`internal/releaseverify/ios_testflight_workflow.go`).
 
 ### One-time Apple setup
 
@@ -176,9 +187,9 @@ gh workflow run ios-testflight.yml --repo loomarr/loomarr --ref main -f version=
 gh workflow run ios-testflight.yml --repo loomarr/loomarr --ref main -f version=0.2.0-beta.9 -f upload=true
 ```
 
-Run the first dispatch with `upload` unset (the default). It signs, exports, verifies, and runs
-`altool --validate-app` without uploading, and it logs `xcodebuild -version` and `sw_vers`. Dispatch
-with `upload=true` only after that run is green. Each upload needs a new run: the build number is
+Dispatch for a dry run or a re-upload; it rebuilds the current `main` with the version you name. With
+`upload` unset (the default) it signs, exports, verifies, and runs `altool --validate-app` without
+uploading, and it logs `xcodebuild -version` and `sw_vers`. Each upload needs a new run: the build number is
 `github.run_number`, which a re-run keeps, so Apple rejects a second upload of the same run. Keep the
 workflow file name stable, because renaming it can restart `run_number`.
 

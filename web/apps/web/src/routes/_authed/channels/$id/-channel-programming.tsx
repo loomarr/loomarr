@@ -44,7 +44,6 @@ import { cn } from "@/lib/utils";
 
 interface ChannelProgrammingProps {
   channelId: string;
-  revision: number;
   channelName: string;
   lineup: LineupEntryDTO[];
   policy: ChannelPolicy;
@@ -80,7 +79,6 @@ const Block = ({
 
 const ChannelProgramming = ({
   channelId,
-  revision,
   channelName,
   lineup,
   policy,
@@ -93,7 +91,7 @@ const ChannelProgramming = ({
 
   // The scheduling-rules draft (§12). Only the rules block reads it; everything else on this
   // surface keeps saving inline through `onPolicyChange`.
-  const rules = useChannelRulesDraft(channelId, policy, revision);
+  const rules = useChannelRulesDraft(channelId, policy);
 
   // The rule authoring vocabulary (§6.6) is served by the BE so the rules editor no longer
   // hand-mirrors the lowering table. Static per build → cache forever; the editor renders once
@@ -134,7 +132,7 @@ const ChannelProgramming = ({
         hint="The titles this channel draws from, and the content it stays within."
         defaultOpen
       >
-        <ChannelLineupEditor channelId={channelId} revision={revision} lineup={lineup} />
+        <ChannelLineupEditor channelId={channelId} lineup={lineup} />
         {/* Keyed by channel: the dates editor's "separate windows" choice is per channel and
             must not carry over when the route param changes under a mounted page. */}
         <ChannelPolicyFields key={channelId} policy={policy} onChange={onPolicyChange} show="scope" />

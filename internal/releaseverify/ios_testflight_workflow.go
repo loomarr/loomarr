@@ -9,7 +9,21 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const iosTestFlightScript = "./web/scripts/build-ios-testflight.sh"
+const (
+	iosTestFlightScript = "./web/scripts/build-ios-testflight.sh"
+	iosTestFlightMain   = "github.ref == 'refs/heads/main'"
+	// The plan job reads the event payload itself, so no input reaches its shell.
+	iosTestFlightPlanCommand = iosTestFlightScript + ` plan "$EVENT_NAME" "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"`
+	// A run releases only when the plan says so: a dispatch, or a push whose diff selects the
+	// Apple mobile CI gate.
+	iosTestFlightReleaseCondition = iosTestFlightMain + " && needs.plan.outputs.release == 'true'"
+)
+
+var iosTestFlightPlanOutputs = map[string]string{
+	"release": "${{ steps.plan.outputs.release }}",
+	"upload":  "${{ steps.plan.outputs.upload }}",
+	"version": "${{ steps.plan.outputs.version }}",
+}
 
 // iosTestFlightRunStep is the audited shape of one script step: its exact command, its exact
 // environment (nil when it has none), and its exact condition ("" when it is unconditional).
@@ -47,7 +61,7 @@ var iosTestFlightRunSteps = map[int]iosTestFlightRunStep{
 			"LOOMARR_APPLE_TEAM_ID": "${{ vars.APPLE_TEAM_ID }}",
 			"LOOMARR_ASC_KEY_ID":    "${{ secrets.ASC_API_KEY_ID }}",
 			"LOOMARR_ASC_ISSUER_ID": "${{ secrets.ASC_API_ISSUER_ID }}",
-			"RELEASE_VERSION":       "${{ inputs.version }}",
+			"RELEASE_VERSION":       "${{ needs.plan.outputs.version }}",
 		},
 	},
 	8: {
@@ -57,7 +71,7 @@ var iosTestFlightRunSteps = map[int]iosTestFlightRunStep{
 	9: {
 		run:       iosTestFlightScript + " upload",
 		env:       iosTestFlightSubmitEnvironment(),
-		condition: "inputs.upload",
+		condition: "needs.plan.outputs.upload == 'true'",
 	},
 	10: {run: `rm -rf -- "$RUNNER_TEMP/asc"`, condition: "always()"},
 }
@@ -71,8 +85,10 @@ func iosTestFlightSubmitEnvironment() map[string]string {
 }
 
 // VerifyIOSTestFlightWorkflow keeps the App Store Connect key and the TestFlight upload behind one
-// manual, serialized, main-only environment. Every script step is pinned to its exact command and
-// environment, so no expression reaches a shell and no step can read the key or skip its cleanup.
+// serialized, main-only environment. A secretless plan job decides each run: a dispatch carries its
+// own version and upload choice, and a push to main releases only an iPhone change. Every script
+// step is pinned to its exact command and environment, so no expression reaches a shell and no
+// step can read the key or skip its cleanup.
 func VerifyIOSTestFlightWorkflow(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -85,7 +101,8 @@ func VerifyIOSTestFlightWorkflow(path string) error {
 	if err := verifyUses(root); err != nil {
 		return err
 	}
-	if err := verifyOnlyKeys(root, "iPhone TestFlight workflow", "name", "on", "concurrency", "permissions", "jobs"); err != nil {
+	// No workflow-level concurrency: a plan-only run would replace a pending release.
+	if err := verifyOnlyKeys(root, "iPhone TestFlight workflow", "name", "on", "permissions", "jobs"); err != nil {
 		return err
 	}
 	if scalarValue(root, "name") != "iPhone TestFlight beta" {
@@ -101,7 +118,27 @@ func VerifyIOSTestFlightWorkflow(path string) error {
 	if err := verifyExactScalarMap(permissions, "iPhone TestFlight permissions", map[string]string{"contents": "read"}); err != nil {
 		return err
 	}
-	concurrency, err := requiredMap(root, "concurrency")
+	jobs, err := requiredMap(root, "jobs")
+	if err != nil {
+		return err
+	}
+	if len(jobs.Content) != 4 || jobs.Content[0].Value != "plan" || jobs.Content[2].Value != "release" {
+		return errors.New("iPhone TestFlight workflow must contain only the audited plan and release jobs")
+	}
+	if err := verifyIOSTestFlightPlanJob(jobs); err != nil {
+		return err
+	}
+	job, err := requiredMap(jobs, "release")
+	if err != nil {
+		return err
+	}
+	if err := verifyOnlyKeys(job, "iPhone TestFlight release job", "name", "needs", "if", "concurrency", "runs-on", "timeout-minutes", "environment", "env", "steps"); err != nil {
+		return err
+	}
+	if scalarValue(job, "needs") != "plan" || scalarValue(job, "if") != iosTestFlightReleaseCondition {
+		return fmt.Errorf("iPhone TestFlight release job must need plan and run only if %s", iosTestFlightReleaseCondition)
+	}
+	concurrency, err := requiredMap(job, "concurrency")
 	if err != nil {
 		return err
 	}
@@ -110,24 +147,6 @@ func VerifyIOSTestFlightWorkflow(path string) error {
 		"cancel-in-progress": "false",
 	}); err != nil {
 		return err
-	}
-
-	jobs, err := requiredMap(root, "jobs")
-	if err != nil {
-		return err
-	}
-	if len(jobs.Content) != 2 || jobs.Content[0].Value != "release" {
-		return errors.New("iPhone TestFlight workflow must contain only the audited release job")
-	}
-	job, err := requiredMap(jobs, "release")
-	if err != nil {
-		return err
-	}
-	if err := verifyOnlyKeys(job, "iPhone TestFlight release job", "name", "if", "runs-on", "timeout-minutes", "environment", "env", "steps"); err != nil {
-		return err
-	}
-	if scalarValue(job, "if") != "github.ref == 'refs/heads/main'" {
-		return errors.New("iPhone TestFlight job must run only from refs/heads/main")
 	}
 	if scalarValue(job, "runs-on") != "xcode-27" || scalarValue(job, "environment") != "ios-testflight" {
 		return errors.New("iPhone TestFlight job must run on xcode-27 in the ios-testflight environment")
@@ -153,8 +172,23 @@ func verifyIOSTestFlightTrigger(root *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-	if err := verifyOnlyKeys(on, "iPhone TestFlight trigger", "workflow_dispatch"); err != nil {
+	// Never pull_request or merge_group: those run code that has not reached main.
+	if err := verifyOnlyKeys(on, "iPhone TestFlight trigger", "push", "workflow_dispatch"); err != nil {
 		return err
+	}
+	push, err := requiredMap(on, "push")
+	if err != nil {
+		return err
+	}
+	if err := verifyOnlyKeys(push, "iPhone TestFlight push trigger", "branches"); err != nil {
+		return err
+	}
+	branches, err := requiredSequence(push, "branches")
+	if err != nil {
+		return err
+	}
+	if len(branches.Content) != 1 || branches.Content[0].Kind != yaml.ScalarNode || branches.Content[0].Value != "main" {
+		return errors.New("the iPhone TestFlight push trigger must name only the main branch")
 	}
 	dispatch, err := requiredMap(on, "workflow_dispatch")
 	if err != nil {
@@ -191,6 +225,55 @@ func verifyIOSTestFlightTrigger(root *yaml.Node) error {
 		return errors.New("the TestFlight upload must be an explicit, default-false boolean input")
 	}
 	return nil
+}
+
+// verifyIOSTestFlightPlanJob pins the job that decides each run. It has no environment, so no
+// secret reaches it, and its only command is the script's plan mode.
+func verifyIOSTestFlightPlanJob(jobs *yaml.Node) error {
+	job, err := requiredMap(jobs, "plan")
+	if err != nil {
+		return err
+	}
+	if err := verifyOnlyKeys(job, "iPhone TestFlight plan job", "name", "if", "runs-on", "outputs", "steps"); err != nil {
+		return err
+	}
+	if scalarValue(job, "if") != iosTestFlightMain || scalarValue(job, "runs-on") != "ubuntu-latest" {
+		return errors.New("iPhone TestFlight plan job must run on ubuntu-latest only from refs/heads/main")
+	}
+	outputs, err := requiredMap(job, "outputs")
+	if err != nil {
+		return err
+	}
+	if err := verifyExactScalarMap(outputs, "iPhone TestFlight plan outputs", iosTestFlightPlanOutputs); err != nil {
+		return err
+	}
+	steps, err := requiredSequence(job, "steps")
+	if err != nil {
+		return err
+	}
+	if len(steps.Content) != 2 || steps.Content[0].Kind != yaml.MappingNode || steps.Content[1].Kind != yaml.MappingNode {
+		return errors.New("iPhone TestFlight plan job must contain exactly the checkout and plan steps")
+	}
+	checkout, plan := steps.Content[0], steps.Content[1]
+	if err := verifyOnlyKeys(checkout, "iPhone TestFlight plan checkout", "uses", "with"); err != nil {
+		return err
+	}
+	if strings.SplitN(scalarValue(checkout, "uses"), "@", 2)[0] != "actions/checkout" {
+		return errors.New("iPhone TestFlight plan job must start with actions/checkout")
+	}
+	if err := verifyOnlyKeys(plan, "iPhone TestFlight plan step", "name", "id", "env", "run"); err != nil {
+		return err
+	}
+	if scalarValue(plan, "id") != "plan" || strings.TrimSpace(scalarValue(plan, "run")) != iosTestFlightPlanCommand {
+		return fmt.Errorf("iPhone TestFlight plan step must be id plan running %q", iosTestFlightPlanCommand)
+	}
+	env, err := requiredMap(plan, "env")
+	if err != nil {
+		return err
+	}
+	return verifyExactScalarMap(env, "iPhone TestFlight plan step environment", map[string]string{
+		"EVENT_NAME": "${{ github.event_name }}",
+	})
 }
 
 func verifyIOSTestFlightSteps(job *yaml.Node) error {

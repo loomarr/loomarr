@@ -128,6 +128,82 @@ describe("TV pairing offer", () => {
     expect(markup).not.toContain("EXPO_PUBLIC_LOOMARR_URL");
   });
 
+  // Maintainer requirement (2026-10-13, #1816): a phone paired on the home network keeps working off
+  // Wi-Fi, so the credential holds the URL the server advertised, never an address discovery saw.
+  it("pairs a discovered server and stores exactly its advertised public URL", async () => {
+    const advertisedUrl = "https://loomarr.example.test";
+    const createTransport = vi.fn(() => ({
+      poll: vi.fn(async () => ({
+        body: { deviceName: "iPhone Loomarr", token: "device-token" },
+        status: "paired" as const,
+      })),
+      start: vi.fn(async () => ({
+        body: {
+          deviceCode: "device-code",
+          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+          interval: 1,
+          userCode: "WMQJ-QVFJ",
+        },
+        serverDate: new Date().toUTCString(),
+      })),
+    }));
+    const write = vi.fn(async () => undefined);
+    const session = new PairingSession({
+      createTransport,
+      deviceName: "iPhone Loomarr",
+      sleep: async () => undefined,
+      store: { clear: vi.fn(async () => undefined), read: vi.fn(async () => undefined), write },
+    });
+    await session.initialize(undefined);
+    const discoverySnapshot = {
+      servers: [{ id: "udp:media-box", name: "Loomarr", url: advertisedUrl }],
+      status: "searching" as const,
+    };
+    const discovery: ServerDiscovery = {
+      snapshot: () => discoverySnapshot,
+      start: vi.fn(),
+      stop: vi.fn(),
+      subscribe: () => () => undefined,
+    };
+    const container = createTestContainer();
+    const root = createRoot(container);
+    act(() =>
+      root.render(
+        <LoomarrProvider theme="dark">
+          <PairingShell
+            allowServerEntry
+            density="touch"
+            discovery={discovery}
+            discoveryForeground
+            renderPaired={() => null}
+            session={session}
+          />
+        </LoomarrProvider>,
+      ),
+    );
+    const choice = Array.from(
+      (
+        container as unknown as {
+          querySelectorAll(selector: string): ArrayLike<{ click(): void; textContent: string | null }>;
+        }
+      ).querySelectorAll('[role="button"], button'),
+    ).find((candidate) => candidate.textContent?.includes("loomarr.example.test"));
+    if (!choice) throw new Error("missing discovered server choice");
+    // A phone lists the server as a row: its name over the bare host, not the full URL.
+    expect(choice.textContent).toBe("Loomarrloomarr.example.test");
+
+    await act(async () => choice.click());
+    await vi.waitFor(() => expect(session.snapshot().status).toBe("paired"));
+
+    expect(createTransport).toHaveBeenCalledWith(advertisedUrl);
+    expect(write).toHaveBeenCalledWith({
+      deviceName: "iPhone Loomarr",
+      serverUrl: advertisedUrl,
+      token: "device-token",
+    });
+    act(() => root.unmount());
+  });
+
   it("names the device by its density on the server-choice screen", async () => {
     const session = new PairingSession({
       createTransport: vi.fn(),
@@ -352,5 +428,78 @@ describe("TV pairing offer", () => {
     // it — nothing here awaits it.
     session.stop();
     void pairing;
+  });
+
+  // Maintainer decision (2026-10-13): a phone approves itself in a browser sheet over the app, with no
+  // QR code for a second device, and the sheet closes the moment the session pairs.
+  it("approves a phone in its browser sheet and closes the sheet once paired", async () => {
+    let approved = false;
+    const session = new PairingSession({
+      createTransport: () => ({
+        poll: vi.fn(async () =>
+          approved
+            ? { body: { deviceName: "iPhone Loomarr", token: "device-token" }, status: "paired" as const }
+            : { status: "pending" as const },
+        ),
+        start: vi.fn(async () => ({
+          body: {
+            deviceCode: "device-code",
+            expiresAt: new Date(Date.now() + 600_000).toISOString(),
+            interval: 1,
+            userCode: "WMQJ-QVFJ",
+          },
+          serverDate: new Date().toUTCString(),
+        })),
+      }),
+      deviceName: "iPhone Loomarr",
+      sleep: () => new Promise((resolve) => setTimeout(resolve, 5)),
+      store: {
+        clear: vi.fn(async () => undefined),
+        read: vi.fn(async () => undefined),
+        write: vi.fn(async () => undefined),
+      },
+    });
+    const approvalBrowser = { close: vi.fn(), name: "Safari", open: vi.fn() };
+    const container = createTestContainer();
+    const root = createRoot(container);
+    // Mounting initializes the session, so pairing starts after the shell is on screen, as in the app.
+    act(() =>
+      root.render(
+        <LoomarrProvider theme="dark">
+          <PairingShell
+            approvalBrowser={approvalBrowser}
+            density="touch"
+            renderPaired={() => null}
+            session={session}
+          />
+        </LoomarrProvider>,
+      ),
+    );
+    await vi.waitFor(() => expect(session.snapshot().status).toBe("needs-server"));
+    await act(async () => {
+      void session.pair("https://loomarr.example.test");
+      await vi.waitFor(() => expect(session.snapshot().status).toBe("awaiting-approval"));
+    });
+    const page = container as unknown as {
+      querySelectorAll(selector: string): ArrayLike<{ click(): void; textContent: string | null }>;
+      textContent: string | null;
+    };
+    expect(page.textContent).toContain("Approve this phone");
+    expect(page.textContent).toContain("WMQJ-QVFJ");
+    expect(page.textContent).not.toContain("Scan QR Code");
+    const approve = Array.from(page.querySelectorAll('[role="button"], button')).find(
+      (candidate) => candidate.textContent === "Approve in Safari",
+    );
+    if (!approve) throw new Error("missing Approve in Safari");
+
+    act(() => approve.click());
+    expect(approvalBrowser.open).toHaveBeenCalledWith("https://loomarr.example.test/pair?code=WMQJ-QVFJ");
+    expect(approvalBrowser.close).not.toHaveBeenCalled();
+
+    approved = true;
+    await vi.waitFor(() => expect(session.snapshot().status).toBe("paired"));
+    await vi.waitFor(() => expect(approvalBrowser.close).toHaveBeenCalledTimes(1));
+    act(() => root.unmount());
+    session.stop();
   });
 });

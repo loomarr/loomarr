@@ -185,8 +185,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ios-testflight.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{
+				"plan": {condition: iosTestFlightMain},
 				"release": {
-					condition: "github.ref == 'refs/heads/main'",
+					condition: iosTestFlightReleaseCondition,
 					environment: map[string]string{
 						"LOOMARR_IOS_BUILD_NUMBER": "${{ github.run_number }}",
 						"LOOMARR_IOS_OUTPUT_DIR":   "${{ github.workspace }}/.artifacts/ios-testflight",
@@ -269,10 +270,11 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			}),
 		}),
 		"ci-apple-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
-			"make fe-install":                exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
-			appleCacheFingerprintCommand:     exactWorkflowStep(4, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
-			appleCacheConsumerPrepareCommand: exactWorkflowStep(6, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
-			"make client-apple-simulator CLIENT_APP=mobile": exactWorkflowStep(7, "Generate, build, install, and launch", workflowStepAuthority{
+			"make fe-install": exactWorkflowStep(3, "", workflowStepAuthority{targets: []string{"fe-install"}}),
+			"cd web && pnpm -C packages/lan-discovery-native exec vitest run tests/ios-unicast-target-planner.test.mjs": exactWorkflowStep(4, "Test the iOS LAN discovery planner", workflowStepAuthority{}),
+			appleCacheFingerprintCommand:     exactWorkflowStep(5, "Fingerprint the Apple toolchain", workflowStepAuthority{}),
+			appleCacheConsumerPrepareCommand: exactWorkflowStep(7, "Validate the restored Apple compilation cache", workflowStepAuthority{}),
+			"make client-apple-simulator CLIENT_APP=mobile": exactWorkflowStep(8, "Generate, build, install, and launch", workflowStepAuthority{
 				targets: []string{"client-apple-simulator"},
 				environment: map[string]string{
 					"LOOMARR_APPLE_ARTIFACTS_DIR": "${{ runner.temp }}/apple-client-mobile",
@@ -298,7 +300,23 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		}),
 		"ci-expo-android-mobile.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make fe-install": exactWorkflowStep(5, "", workflowStepAuthority{targets: []string{"fe-install"}, allowsAcquisition: true}),
-			"make client-android-debug CLIENT_APP=mobile": exactWorkflowStep(6, "Generate and build the standalone mobile APK", workflowStepAuthority{targets: []string{"client-android-debug"}}),
+			"web/scripts/install-android-ccache.sh \"${RUNNER_TEMP}/loomarr-android-ccache-tool\"": exactWorkflowStep(6, "Install pinned ccache", workflowStepAuthority{allowsAcquisition: true}),
+			"make client-android-debug CLIENT_APP=mobile": exactWorkflowStep(9, "Generate and build the standalone mobile APK", workflowStepAuthority{
+				targets: []string{"client-android-debug"},
+				environment: map[string]string{
+					"CCACHE_DIR":                      "${{ runner.temp }}/loomarr-android-ccache",
+					"CCACHE_BASEDIR":                  "${{ github.workspace }}",
+					"CCACHE_MAXSIZE":                  "2G",
+					"CCACHE_SLOPPINESS":               "",
+					"LOOMARR_ANDROID_CCACHE_LAUNCHER": "${{ steps.ccache.outputs.launcher }}",
+					"LOOMARR_ANDROID_GRADLE_WORKERS":  "2",
+					"LOOMARR_ANDROID_NATIVE_JOBS":     "4",
+					"LOOMARR_ANDROID_METRO_WORKERS":   "4",
+					"LOOMARR_ANDROID_GRADLE_HEAP":     "3g",
+					"LOOMARR_ANDROID_MEMORY_HIGH":     "11G",
+					"LOOMARR_ANDROID_MEMORY_MAX":      "12G",
+				},
+			}),
 		}),
 		"ci-apple-cache-validation.yml": {
 			environment: standardWorkflowEnvironment(),

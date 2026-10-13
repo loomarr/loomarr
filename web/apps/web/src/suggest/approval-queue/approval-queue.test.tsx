@@ -408,11 +408,10 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
     const notNowButtons = await screen.findAllByRole("button", { name: "Not now" });
     await userEvent.click(notNowButtons[0] as HTMLElement);
 
-    const failedCard = (await screen.findByText("Top up the 1990s")).closest('div[class*="rounded-lg"]');
-    const otherCard = screen.getByText("Retro ads").closest('div[class*="rounded-lg"]');
-    if (!failedCard || !otherCard) throw new Error("pull cards not found");
+    const failedCard = await screen.findByRole("group", { name: "Top up the 1990s" });
+    const otherCard = screen.getByRole("group", { name: "Retro ads" });
 
-    expect(await within(failedCard as HTMLElement).findByRole("alert")).toHaveTextContent("Couldn't dismiss");
-    expect(within(otherCard as HTMLElement).queryByRole("alert")).not.toBeInTheDocument();
+    expect(await within(failedCard).findByRole("alert")).toHaveTextContent("Couldn't dismiss");
+    expect(within(otherCard).queryByRole("alert")).not.toBeInTheDocument();
   });
 });
