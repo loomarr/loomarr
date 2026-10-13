@@ -249,9 +249,16 @@ classify() {
       select_gate expo_android_tv
       select_gate android
       ;;
-    web/scripts/build-shield-play.sh|web/scripts/build-shield-play.test.sh|web/scripts/install-android-ccache.sh|web/scripts/install-android-ccache.test.sh|web/scripts/verify-android-ccache-evidence.sh)
+    web/scripts/build-shield-play.sh)
       known=true
       select_gate contracts
+      select_gate android
+      ;;
+    web/scripts/android-ccache-env.sh|web/scripts/build-shield-play.test.sh|web/scripts/install-android-ccache.sh|web/scripts/install-android-ccache.test.sh|web/scripts/verify-android-ccache-evidence.sh)
+      # Shared compiler-cache tooling: the TV producer and the CI mobile build both consume it.
+      known=true
+      select_gate contracts
+      select_gate expo_android_mobile
       select_gate android
       ;;
     web/scripts/check-imports.mjs|web/scripts/check-imports.test.mjs)

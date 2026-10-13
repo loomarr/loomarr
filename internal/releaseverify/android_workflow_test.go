@@ -116,6 +116,46 @@ func TestCIAndroidGradleCachePolicy(t *testing.T) {
 	}
 }
 
+func TestCIExpoAndroidMobileCachePolicy(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test source")
+	}
+	workflowPath := filepath.Join(filepath.Dir(source), "..", "..", ".github", "workflows", "ci-expo-android-mobile.yml")
+	data, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow := string(data)
+
+	for _, want := range []string{
+		"web/scripts/install-android-ccache.sh",
+		"key: android-mobile-ccache-v1-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/mobile/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}",
+		"CCACHE_DIR: ${{ runner.temp }}/loomarr-android-ccache",
+		"CCACHE_BASEDIR: ${{ github.workspace }}",
+		"CCACHE_SLOPPINESS: \"\"",
+		"LOOMARR_ANDROID_CCACHE_LAUNCHER: ${{ steps.ccache.outputs.launcher }}",
+		"LOOMARR_ANDROID_GRADLE_WORKERS: \"2\"",
+		"LOOMARR_ANDROID_MEMORY_MAX: 12G",
+		"key: android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-\n",
+		"if: github.event_name == 'pull_request'\n        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n        with:\n          path: ${{ runner.temp }}/loomarr-android-ccache\n",
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Errorf("ci-expo-android-mobile cache policy missing %q", want)
+		}
+	}
+	// The TV Gradle generation is borrowed read-only; mobile owns no Gradle entry and saves only its
+	// small compiler cache, from pull requests.
+	if got := strings.Count(workflow, "actions/cache/save@"); got != 1 {
+		t.Errorf("ci-expo-android-mobile saves %d caches, want only its ccache", got)
+	}
+	for _, forbidden := range []string{"actions/cache@", "android-mobile-react-native", ".cxx", "android/app/build\n"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("ci-expo-android-mobile cache policy contains forbidden %q", forbidden)
+		}
+	}
+}
+
 func TestAndroidSetupRequestsOnlySupportedPackages(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	if !ok {

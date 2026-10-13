@@ -13,7 +13,6 @@ readonly GRADLE_HEAP="${LOOMARR_ANDROID_GRADLE_HEAP:-1280m}"
 readonly ARCHITECTURES="armeabi-v7a,arm64-v8a,x86,x86_64"
 readonly GRADLE_WORKERS="${LOOMARR_ANDROID_GRADLE_WORKERS:-1}"
 readonly NATIVE_JOBS="${LOOMARR_ANDROID_NATIVE_JOBS:-1}"
-readonly CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-2G}"
 
 if [[ -z "${VERSION_NAME}" ]]; then
   printf 'usage: %s <major.minor.patch[-beta.N|-rc.N]>\n' "$0" >&2
@@ -28,36 +27,9 @@ if [[ "${GRADLE_WORKERS}" != "1" && "${GRADLE_WORKERS}" != "2" ]]; then
   exit 2
 fi
 
-CCACHE_LAUNCHER=""
-if [[ -n "${LOOMARR_ANDROID_CCACHE_LAUNCHER:-}" ]]; then
-  [[ "${LOOMARR_ANDROID_CCACHE_LAUNCHER}" == /* ]] || {
-    printf 'LOOMARR_ANDROID_CCACHE_LAUNCHER must be an absolute path\n' >&2
-    exit 2
-  }
-  CCACHE_LAUNCHER=$(realpath "${LOOMARR_ANDROID_CCACHE_LAUNCHER}")
-  [[ -x "${CCACHE_LAUNCHER}" ]] || {
-    printf 'LOOMARR_ANDROID_CCACHE_LAUNCHER must be an executable absolute path\n' >&2
-    exit 2
-  }
-  "${CCACHE_LAUNCHER}" --version | grep -Fxq 'ccache version 4.14' || {
-    printf 'LOOMARR_ANDROID_CCACHE_LAUNCHER must be ccache version 4.14\n' >&2
-    exit 2
-  }
-  [[ -n "${CCACHE_DIR:-}" ]] || { printf 'CCACHE_DIR is required when ccache is enabled\n' >&2; exit 2; }
-  mkdir -p "${CCACHE_DIR}"
-  CCACHE_DIR=$(realpath "${CCACHE_DIR}")
-  CCACHE_BASEDIR=$(realpath "${CCACHE_BASEDIR:-${REPO_ROOT}}")
-  [[ "${CCACHE_BASEDIR}" == "${REPO_ROOT}" ]] || {
-    printf 'CCACHE_BASEDIR must be this worktree root for worktree-independent keys\n' >&2
-    exit 2
-  }
-  [[ -z "${CCACHE_SLOPPINESS:-}" ]] || { printf 'CCACHE_SLOPPINESS is forbidden\n' >&2; exit 2; }
-  export CCACHE_DIR CCACHE_BASEDIR CCACHE_COMPILERCHECK=content CCACHE_MAXSIZE
-  "${CCACHE_LAUNCHER}" --set-config=compiler_check=content
-  "${CCACHE_LAUNCHER}" --set-config=max_size="${CCACHE_MAXSIZE}"
-  "${CCACHE_LAUNCHER}" --zero-stats
-fi
-readonly CCACHE_LAUNCHER
+# shellcheck source=web/scripts/android-ccache-env.sh
+source "${WEB_ROOT}/scripts/android-ccache-env.sh"
+configure_android_ccache "${REPO_ROOT}"
 
 record_ccache_evidence() {
   local phase=$1

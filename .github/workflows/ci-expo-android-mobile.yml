@@ -28,8 +28,47 @@ jobs:
           node-version: "22"
       - run: corepack enable
       - run: make fe-install
+      - name: Install pinned ccache
+        id: ccache
+        run: web/scripts/install-android-ccache.sh "${RUNNER_TEMP}/loomarr-android-ccache-tool"
+      - name: Restore ccache compiler results
+        id: ccache-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/loomarr-android-ccache
+          key: android-mobile-ccache-v1-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/mobile/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-${{ github.run_id }}
+          restore-keys: |
+            android-mobile-ccache-v1-${{ runner.os }}-ccache-4.14-${{ hashFiles('web/apps/mobile/**', 'web/packages/**', 'web/pnpm-lock.yaml', 'web/scripts/**') }}-
+            android-mobile-ccache-v1-${{ runner.os }}-ccache-4.14-
+      # Read-only: reuse the newest Android TV Gradle generation this ref can see (the same pinned
+      # React Native TV, Gradle, and plugin builds) instead of spending another ~1.3 GB cache entry.
+      - name: Restore the Android TV Gradle cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: android-tv-react-native-v1-${{ runner.os }}-temurin-21-node-${{ env.NODE_VERSION }}-
       - name: Generate and build the standalone mobile APK
         run: make client-android-debug CLIENT_APP=mobile
+        env:
+          CCACHE_DIR: ${{ runner.temp }}/loomarr-android-ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_MAXSIZE: 2G
+          CCACHE_SLOPPINESS: ""
+          LOOMARR_ANDROID_CCACHE_LAUNCHER: ${{ steps.ccache.outputs.launcher }}
+          LOOMARR_ANDROID_GRADLE_WORKERS: "2"
+          LOOMARR_ANDROID_NATIVE_JOBS: "4"
+          LOOMARR_ANDROID_METRO_WORKERS: "4"
+          LOOMARR_ANDROID_GRADLE_HEAP: 3g
+          LOOMARR_ANDROID_MEMORY_HIGH: 11G
+          LOOMARR_ANDROID_MEMORY_MAX: 12G
+      - name: Save ccache for later pull-request revisions
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/loomarr-android-ccache
+          key: ${{ steps.ccache-cache.outputs.cache-primary-key }}
       - name: Keep the standalone mobile APK
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
