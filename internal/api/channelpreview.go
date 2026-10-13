@@ -143,6 +143,14 @@ type CoverageDTO struct {
 	Criteria []CoverageCriterionDTO `json:"criteria" doc:"Per-setting counts, each measured independently, so a zero identifies the setting to change."`
 	Level    string                 `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card."`
 	Total    int                    `json:"total" doc:"Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times."`
+	// Geography is the location boundary those clips were limited to, so the page can name it.
+	Geography CoverageGeographyDTO `json:"geography" doc:"The location every counted clip must be from: the channel's own, else the installation's. An empty country means no location limit."`
+}
+
+// CoverageGeographyDTO is the resolved hard location boundary a coverage answer applied.
+type CoverageGeographyDTO struct {
+	Country string `json:"country" doc:"ISO 3166-1 alpha-2 country code, or empty for no location limit"`
+	Market  string `json:"market" doc:"Local market inside that country, or empty for the whole country"`
 }
 
 type channelCoverageOutput struct {
@@ -198,6 +206,9 @@ func coverageDTO(report filler.CoverageReport) CoverageDTO {
 		Criteria: criteria,
 		Level:    string(report.Level),
 		Total:    report.Total,
+		Geography: CoverageGeographyDTO{
+			Country: report.Geography.Country, Market: report.Geography.Market,
+		},
 	}
 }
 

@@ -1425,6 +1425,12 @@ components:
         breaksPerHour:
           format: int64
           type: integer
+        commercialSpacing:
+          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          examples:
+            - 168h
+            - 24h
+          type: string
         filler:
           $ref: "#/components/schemas/FillerSelection"
         midRoll:
@@ -2420,6 +2426,9 @@ components:
           items:
             $ref: "#/components/schemas/CoverageCriterionDTO"
           type: array
+        geography:
+          $ref: "#/components/schemas/CoverageGeographyDTO"
+          description: "The location every counted clip must be from: the channel's own, else the installation's. An empty country means no location limit."
         level:
           description: The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card.
           enum:
@@ -2442,6 +2451,20 @@ components:
         - criteria
         - level
         - total
+        - geography
+      type: object
+    CoverageGeographyDTO:
+      additionalProperties: false
+      properties:
+        country:
+          description: ISO 3166-1 alpha-2 country code, or empty for no location limit
+          type: string
+        market:
+          description: Local market inside that country, or empty for the whole country
+          type: string
+      required:
+        - country
+        - market
       type: object
     CoverageRungDTO:
       additionalProperties: false

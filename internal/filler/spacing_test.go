@@ -75,6 +75,23 @@ func TestPodAdapter_ChannelSpacingNeverEmptiesABreak(t *testing.T) {
 	}
 }
 
+// The channel page names the pool's location limit from coverage, never from its own copy.
+func TestCoverage_ReportsTheLocationBoundaryItCounted(t *testing.T) {
+	clips := []filler.Clip{
+		{Hash: "us", Path: "us.mp4", Kind: filler.Commercial, GeographicScope: filler.GeographicNational, Country: "US", DurationMs: 30_000},
+		{Hash: "gb", Path: "gb.mp4", Kind: filler.Commercial, GeographicScope: filler.GeographicNational, Country: "GB", DurationMs: 30_000},
+		{Hash: "unknown", Path: "unknown.mp4", Kind: filler.Commercial, DurationMs: 30_000},
+	}
+	w := filler.Window{ChannelID: "ch-1", GapMs: 600_000, PodMax: 4}
+	report := filler.Coverage(clips, w, filler.Policy{Geography: filler.Geography{Country: "us"}})
+	if report.Geography.Country != "US" || report.Total != 1 {
+		t.Fatalf("coverage geography %+v total %d, want US with the one US clip", report.Geography, report.Total)
+	}
+	if open := filler.Coverage(clips, w, filler.Policy{}); open.Geography.Country != "" || open.Total != 3 {
+		t.Fatalf("no installation country: geography %+v total %d, want no limit and all clips", open.Geography, open.Total)
+	}
+}
+
 // The household default is now 2 minutes. With 30 second clips that is four clips, so the default
 // pod_max of 4 does not cap the break.
 func TestPodAdapter_TwoMinuteDefaultBreakFillsWithThirtySecondClips(t *testing.T) {
