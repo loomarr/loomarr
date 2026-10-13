@@ -60,5 +60,26 @@ const HolidayChannel: Story = {
   args: { policy: { seasonal: { mode: "exclusive", holidays: ["christmas"], offSeason: "dark" } } },
 };
 
+// Built-in rotation in October with the backend's count for the open holiday: the consequence
+// line under Holiday strength (§6 "Holiday episodes").
+const HalloweenOn: Story = {
+  args: {
+    policy: {},
+    holidayEpisodes: [
+      { holiday: "halloween", episodes: 9, perDay: 3, everyDays: 3, active: true },
+      { holiday: "thanksgiving", episodes: 0, perDay: 0, everyDays: 0, active: false },
+    ],
+  },
+};
+
+// Heavy, spread across the day: the evenings opt-out reads back unchecked with its own hint, and
+// a small pool caps Heavy (nine episodes give four a day).
+const HeavyAnytime: Story = {
+  args: {
+    policy: { seasonal: { strength: "heavy", placement: "anytime" } },
+    holidayEpisodes: [{ holiday: "halloween", episodes: 9, perDay: 4, everyDays: 2, active: true }],
+  },
+};
+
 export default meta;
-export { Default, HolidayChannel, Off, Picked };
+export { Default, HalloweenOn, HeavyAnytime, HolidayChannel, Off, Picked };

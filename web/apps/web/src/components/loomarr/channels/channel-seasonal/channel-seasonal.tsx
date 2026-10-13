@@ -1,3 +1,4 @@
+import type { HolidayEpisodesDTO } from "@loomarr/api/models/holidayEpisodesDTO";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,7 +44,41 @@ const MODE_HINT: Record<string, string> = {
 // `when` list. Stripping the prefix yields the id `policy.seasonal.holidays` stores.
 const HOLIDAY_PREFIX = "holiday:";
 
-const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSeasonalProps) => {
+// Holiday strength (§6 "Holiday episodes"): how many holiday episodes of an ordinary series the
+// built-in rotation features per day. `""` resolves to featured, collapsed like the mode above.
+const STRENGTH_OPTIONS: { value: string; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "default", label: "Featured" },
+  { value: "heavy", label: "Heavy" },
+];
+
+const STRENGTH_HINT: Record<string, string> = {
+  light: "About one holiday episode a day while a holiday is on.",
+  default: "A few holiday episodes a day while a holiday is on, and up to five on the day itself.",
+  heavy:
+    "As many holiday episodes a day as the channel has without repeating one two days running, and all of them on the day itself.",
+};
+
+// The backend's count for the holiday that is on now, or the next one (it sends them soonest
+// first). Plain words: what the chosen strength will actually do with this lineup.
+const consequence = (h: HolidayEpisodesDTO, label: string): string => {
+  const when = h.active ? `${label} is on now` : `Next up: ${label}`;
+  if (h.episodes === 0) return `${when}. No ${label} episodes found in this lineup.`;
+  const found = `${h.episodes} ${label} ${h.episodes === 1 ? "episode" : "episodes"} found`;
+  const rate =
+    h.perDay === 1 && h.everyDays > 1 && h.episodes === 1
+      ? `it airs every ${h.everyDays} days`
+      : `${h.perDay} a day, each back about every ${h.everyDays} days`;
+  return `${when}. ${found}: ${rate}.`;
+};
+
+const ChannelSeasonal = ({
+  policy,
+  onChange,
+  vocabulary,
+  holidayEpisodes,
+  className,
+}: ChannelSeasonalProps) => {
   const seasonal = policy.seasonal;
   const mode = !seasonal?.mode || seasonal.mode === "auto" ? "default" : seasonal.mode;
   const selected = seasonal?.holidays ?? [];
@@ -56,6 +91,13 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
   // the serialization sentinel: an unchecked list that actually means “all” reverses the normal
   // checkbox contract. Once one is unchecked, materialize the remaining subset.
   const effectiveSelected = selected.length === 0 ? holidays.map((h) => h.id) : selected;
+
+  const strength = !seasonal?.strength || seasonal.strength === "featured" ? "default" : seasonal.strength;
+  // Placement is `"" = evenings`; the checkbox writes the explicit opt-out, never a false-y
+  // value that would read back as the default.
+  const favourEvenings = seasonal?.placement !== "anytime";
+  const upcoming = holidayEpisodes?.[0];
+  const upcomingLabel = upcoming && holidays.find((h) => h.id === upcoming.holiday)?.label;
 
   const toggleHoliday = (id: string, on: boolean) => {
     // Keep the stored order stable (vocabulary order), so a save does not reshuffle the list
@@ -132,6 +174,66 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
             <p className="text-muted-foreground text-xs">All built-in holidays are included.</p>
           )}
         </fieldset>
+      )}
+
+      {/* Strength and evenings shape only the built-in rotation (schedule/seasonal_boost.go runs in
+          auto mode), so they appear only there: Holiday-only and Ignore keep their meaning. */}
+      {mode === "default" && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="policy-seasonal-strength">Holiday strength</Label>
+            <FieldHelp label="Holiday strength">
+              How many holiday episodes of your regular shows to play while a holiday is on, like the
+              Halloween episodes of a sitcom in October. One episode never comes back two days running.
+            </FieldHelp>
+          </div>
+          <Select
+            value={strength}
+            onValueChange={(v) =>
+              onChange({ ...policy, seasonal: { ...seasonal, strength: v === "default" ? "" : v } })
+            }
+          >
+            <SelectTrigger id="policy-seasonal-strength" className="w-full max-w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STRENGTH_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-muted-foreground text-sm">{STRENGTH_HINT[strength]}</p>
+          {upcoming && upcomingLabel && (
+            <p className="text-muted-foreground text-xs">{consequence(upcoming, upcomingLabel)}</p>
+          )}
+        </div>
+      )}
+
+      {mode === "default" && (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="policy-seasonal-evenings"
+              checked={favourEvenings}
+              onChange={(e) =>
+                onChange({
+                  ...policy,
+                  seasonal: { ...seasonal, placement: e.target.checked ? "" : "anytime" },
+                })
+              }
+            />
+            <Label htmlFor="policy-seasonal-evenings" className="font-normal">
+              Favour evenings
+            </Label>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            {favourEvenings
+              ? "Holiday episodes play between 5 and 11 pm. Out of season they stay out of the evening."
+              : "Holiday episodes are spread across the whole day."}
+          </p>
+        </div>
       )}
 
       {/* Off-season fallback is read ONLY in exclusive mode (schedule/seasonal.go:154, inside

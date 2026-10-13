@@ -101,6 +101,12 @@ const ChannelProgramming = ({
   });
   const vocabulary = unwrap(vocabQuery.data);
 
+  // The seasonal block's consequence line ("9 Halloween episodes found…") is counted by the
+  // scheduler, in the SAVED cycle preview. Same query key as the preview pane's "now" view, so it
+  // is one request, and a policy save already invalidates it (use-channel-save).
+  const savedCycle = channelsApi.usePreviewChannelCycle(channelId);
+  const holidayEpisodes = unwrap(savedCycle.data)?.holidayEpisodes;
+
   // The household guide timezone, so the change list's times read as the Guide shows them. The
   // same quantised window the Watch tab, Home and the Guide share, so this is usually cached.
   const [nowMs] = useState(() => Date.now());
@@ -192,7 +198,12 @@ const ChannelProgramming = ({
                 same BE-authored list, so the picker cannot offer a holiday the engine does
                 not know. */}
             <div className="border-border/60 border-t pt-4">
-              <ChannelSeasonal policy={policy} onChange={onPolicyChange} vocabulary={vocabulary} />
+              <ChannelSeasonal
+                policy={policy}
+                onChange={onPolicyChange}
+                vocabulary={vocabulary}
+                holidayEpisodes={holidayEpisodes}
+              />
             </div>
           </>
         ) : (
