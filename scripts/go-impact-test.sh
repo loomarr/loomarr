@@ -44,6 +44,23 @@ grep -qx "$module/internal/eval" <<<"$tag_only_selection" || {
   exit 1
 }
 
+# Cargo's target/ must stay outside every `./...` walk. internal/testkit runs `cargo build`
+# inside `go test`, and rustc's short-lived `target/debug/deps/rmeta*` temp dirs made a parallel
+# `go list ./...` fail with "open ...: no such file or directory" (#1868's self-hosted lanes).
+# Replay the repository go.mod in a scratch module: a package planted under target/ must not be
+# matched, which holds only while go.mod's `ignore ./target` directive does.
+ignore_fixture="$(mktemp -d)"
+trap 'rm -rf "$ignore_fixture"' EXIT
+cp "$ROOT/go.mod" "$ignore_fixture/go.mod"
+printf 'package root\n' >"$ignore_fixture/root.go"
+mkdir -p "$ignore_fixture/target/debug/build/planted"
+printf 'package planted\n' >"$ignore_fixture/target/debug/build/planted/planted.go"
+ignore_selection="$(cd "$ignore_fixture" && go list ./...)"
+[[ "$ignore_selection" == "$module" ]] || {
+  printf 'go-impact-test: go list ./... walked Cargo target/ (go.mod needs "ignore ./target"):\n%s\n' "$ignore_selection" >&2
+  exit 1
+}
+
 [[ -z "$($SELECTOR docs/contributing/testing.md)" ]] || {
   echo 'go-impact-test: docs-only change selected Go packages' >&2
   exit 1
