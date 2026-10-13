@@ -49,7 +49,10 @@ const renderSave = (stored: Stored) => {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  const hook = renderHook(() => useChannelPolicySave("ch-1", onSaved), { wrapper });
+  const hook = renderHook(({ id }) => useChannelPolicySave(id, onSaved), {
+    wrapper,
+    initialProps: { id: "ch-1" },
+  });
   return { ...hook, onSaved };
 };
 
@@ -124,6 +127,21 @@ describe("useChannelPolicySave", () => {
     expect(patches).toHaveLength(4);
     expect(result.current.pending).toBeUndefined();
     expect(onSaved).toHaveBeenCalled();
+  });
+
+  it("keeps one channel's unsaved policy off another channel the layout surfs to", async () => {
+    const stored: Stored = { revision: 1, policy: {} };
+    const { patches } = stubChannel(stored);
+    const { result, rerender } = renderSave(stored);
+
+    act(() => result.current.save({ ordering: "sequential" }));
+    rerender({ id: "ch-2" });
+    expect(result.current.pending).toBeUndefined();
+    expect(result.current.isSaving).toBe(false);
+
+    rerender({ id: "ch-1" });
+    await waitFor(() => expect(stored.policy).toEqual({ ordering: "sequential" }));
+    expect(patches).toHaveLength(1);
   });
 
   it("shows the error and drops back to the saved policy when a save genuinely fails", async () => {

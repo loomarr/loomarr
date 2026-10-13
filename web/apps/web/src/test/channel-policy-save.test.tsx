@@ -32,10 +32,16 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // Each accepted PATCH takes a moment, so a second blur lands while the first is still in flight.
 type Stored = { revision: number; policy: ChannelPolicy };
 
-const renderProgramming = (opts: { failWith?: number; onRead?: (stored: Stored) => void } = {}) => {
+const renderProgramming = (
+  opts: { failWith?: number; holdFirst?: boolean; onRead?: (stored: Stored) => void } = {},
+) => {
   const stored: Stored = { revision: 1, policy: {} };
   const patches: { revision: number; policy?: ChannelPolicy }[] = [];
   const conflicts: number[] = [];
+  // `holdFirst` keeps the first PATCH open until the test releases it, so the second edit is
+  // certain to land inside its round trip however fast or slow the typing runs.
+  let release = () => {};
+  const firstHeld = opts.holdFirst ? new Promise<void>((resolve) => (release = resolve)) : Promise.resolve();
   const current = () => channel({ id: "ch-1", revision: stored.revision, policy: stored.policy });
   server.use(
     getMeMockHandler(me()),
@@ -56,6 +62,7 @@ const renderProgramming = (opts: { failWith?: number; onRead?: (stored: Stored) 
     http.patch("*/v1/channels/:id", async ({ request }) => {
       const body = (await request.json()) as { revision: number; policy?: ChannelPolicy };
       patches.push(body);
+      if (patches.length === 1) await firstHeld;
       await delay(80);
       if (opts.failWith) {
         return HttpResponse.json({ title: "Couldn't save the channel" }, { status: opts.failWith });
@@ -89,7 +96,7 @@ const renderProgramming = (opts: { failWith?: number; onRead?: (stored: Stored) 
       </QueryClientProvider>
     </LoomarrProvider>,
   );
-  return { stored, patches, conflicts };
+  return { stored, patches, conflicts, release };
 };
 
 // Types From, moves to To (the blur saves From), types To and leaves it (the blur saves To),
@@ -106,11 +113,15 @@ describe("channel policy saves (#1895)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("keeps both of two rapid Era edits", async () => {
-    const { stored, conflicts } = renderProgramming();
+    const { stored, patches, conflicts, release } = renderProgramming({ holdFirst: true });
 
     await typeEraQuickly("1990", "1999");
+    // Both blurs happened while the first save was still open.
+    release();
 
     await waitFor(() => expect(stored.policy.scope?.dates).toEqual(eraDates({ from: 1990, to: 1999 })));
+    // The second PATCH waited for the first and carried the revision it returned.
+    expect(patches.map((p) => p.revision)).toEqual([1, 2]);
     expect(conflicts).toEqual([]);
     expect(toast.error).not.toHaveBeenCalled();
   });

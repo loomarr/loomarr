@@ -50,58 +50,67 @@ type Pending = {
 // together as the next PATCH, at the revision the previous response returned. A 409 from some
 // other writer refetches the channel and rebases the edits onto it. Any other failure is an
 // error toast, and the editors fall back to the saved policy, so nothing is dropped silently.
+//
+// The queue is per channel id. Surfing to another channel reuses the layout (and this hook), and
+// an edit there must neither show nor ride on the previous channel's unsaved policy.
 const useChannelPolicySave = (channelId: string, onSaved: () => void): ChannelPolicySave => {
   const queryClient = useQueryClient();
-  const queryKey = channelsApi.getGetChannelQueryKey(channelId);
-  const [pending, setPendingState] = useState<Pending>();
-  // The drain loop runs across awaits, so it reads the queue from a ref, not a render's state.
-  const pendingRef = useRef<Pending | undefined>(undefined);
-  const draining = useRef(false);
+  // The drain loop runs across awaits, so it reads the queue from a ref; the state copy only
+  // re-renders the editors.
+  const queues = useRef(new Map<string, Pending>());
+  const draining = useRef(new Set<string>());
+  const [, setVersion] = useState(0);
 
-  const setPending = (next: Pending | undefined) => {
-    pendingRef.current = next;
-    setPendingState(next);
+  const setPending = (id: string, next: Pending | undefined) => {
+    if (next) queues.current.set(id, next);
+    else queues.current.delete(id);
+    setVersion((v) => v + 1);
   };
-  const saved = (): ChannelDTO | undefined =>
-    unwrap(queryClient.getQueryData<channelsApi.getChannelResponse>(queryKey));
+  const saved = (id: string): ChannelDTO | undefined =>
+    unwrap(queryClient.getQueryData<channelsApi.getChannelResponse>(channelsApi.getGetChannelQueryKey(id)));
 
   // Refetches the channel and rebases the pending edits onto it. False when it can't.
-  const rebaseOntoServer = async (): Promise<boolean> => {
+  const rebaseOntoServer = async (id: string): Promise<boolean> => {
+    const queryKey = channelsApi.getGetChannelQueryKey(id);
+    // A read already in flight may predate the write that caused the 409: start a fresh one.
+    await queryClient.cancelQueries({ queryKey });
     const res: channelsApi.getChannelResponse = await queryClient.fetchQuery({
       queryKey,
-      queryFn: () => channelsApi.getChannel(channelId),
+      queryFn: () => channelsApi.getChannel(id),
       staleTime: 0,
     });
     const fresh = unwrap(res);
-    const job = pendingRef.current;
+    const job = queues.current.get(id);
     if (!fresh || !job) return false;
-    setPending({ base: fresh.policy, desired: rebase(fresh.policy, job.base, job.desired) });
+    setPending(id, { base: fresh.policy, desired: rebase(fresh.policy, job.base, job.desired) });
     return true;
   };
 
-  const drain = async () => {
-    if (draining.current) return;
-    draining.current = true;
+  const drain = async (id: string) => {
+    if (draining.current.has(id)) return;
+    draining.current.add(id);
+    const queryKey = channelsApi.getGetChannelQueryKey(id);
     let conflicts = 0;
     try {
-      for (let job = pendingRef.current; job; job = pendingRef.current) {
+      for (let job = queues.current.get(id); job; job = queues.current.get(id)) {
         const sending = job.desired;
-        const revision = saved()?.revision;
+        const revision = saved(id)?.revision;
         try {
           if (revision === undefined) throw new Error("The channel hasn't loaded yet.");
-          const res = await channelsApi.updateChannel(channelId, { revision, policy: sending });
+          const res = await channelsApi.updateChannel(id, { revision, policy: sending });
           // An older read still in flight must not land over the saved channel and its revision.
           await queryClient.cancelQueries({ queryKey });
           queryClient.setQueryData(queryKey, res);
           conflicts = 0;
-          const next = pendingRef.current;
+          const next = queues.current.get(id);
           // Edits made during this round trip stay pending, now stacked on what was saved.
           setPending(
+            id,
             next && next.desired !== sending
               ? { base: unwrap(res)?.policy ?? sending, desired: next.desired }
               : undefined,
           );
-          if (!pendingRef.current) {
+          if (!queues.current.has(id)) {
             onSaved();
             toast.success("Saved");
           }
@@ -109,25 +118,26 @@ const useChannelPolicySave = (channelId: string, onSaved: () => void): ChannelPo
           const conflict = err instanceof ApiError && err.status === 409 && conflicts < MAX_CONFLICT_RETRIES;
           if (conflict) {
             conflicts += 1;
-            if (await rebaseOntoServer().catch(() => false)) continue;
+            if (await rebaseOntoServer(id).catch(() => false)) continue;
           }
-          setPending(undefined);
+          setPending(id, undefined);
           onSaved();
           toast.error(toProblem(err).title ?? "Couldn't save that change");
           return;
         }
       }
     } finally {
-      draining.current = false;
+      draining.current.delete(id);
     }
   };
 
+  const pending = queues.current.get(channelId);
   return {
     pending: pending?.desired,
     save: (next) => {
-      const base = pendingRef.current?.base ?? saved()?.policy ?? next;
-      setPending({ base, desired: next });
-      void drain();
+      const base = queues.current.get(channelId)?.base ?? saved(channelId)?.policy ?? next;
+      setPending(channelId, { base, desired: next });
+      void drain(channelId);
     },
     isSaving: pending !== undefined,
   };
