@@ -91,6 +91,32 @@ func TestWireJSONShapes(t *testing.T) {
 	}
 }
 
+// omitempty keeps its meaning: a nil or empty slice or map is omitted rather than filled, but
+// the elements of a non-empty one are still walked.
+func TestWireJSONOmitEmpty(t *testing.T) {
+	t.Parallel()
+	body := struct {
+		None  []wireRow          `json:"none,omitempty"`
+		Empty map[string]wireRow `json:"empty,omitempty"`
+		Rows  []wireRow          `json:"rows,omitempty"`
+	}{Empty: map[string]wireRow{}, Rows: []wireRow{{Name: "a"}}}
+	want := `{"rows":[{"name":"a","tags":[],"attrs":{},"at":"0001-01-01T00:00:00Z","any":null}]}` + "\n"
+	if got := wireEncode(t, body); got != want {
+		t.Fatalf("encoded\n%s\nwant\n%s", got, want)
+	}
+}
+
+// The Guide body has nothing to change — its only nil slices are omitempty genres — so the walk
+// must not allocate: a plan that copies or re-derives per value is what made the encoder 5× the
+// cost of the encode itself (BenchmarkWireJSON_Guide holds the timing).
+func TestWireJSONUnchangedBodyDoesNotAllocate(t *testing.T) {
+	body := guideBenchBody()
+	emptyNotNull(body) // build the plans
+	if allocs := testing.AllocsPerRun(5, func() { emptyNotNull(body) }); allocs != 0 {
+		t.Fatalf("walking an unchanged Guide body allocated %v times, want 0", allocs)
+	}
+}
+
 // A self-referential type terminates (its back-pointer is json:"-", but the walk still sees it).
 func TestWireJSONRecursiveType(t *testing.T) {
 	t.Parallel()
