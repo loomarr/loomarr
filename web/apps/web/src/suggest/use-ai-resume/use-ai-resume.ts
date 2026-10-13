@@ -27,7 +27,13 @@ const useAiResume = (
   const proposal = run.proposal?.proposal;
 
   useEffect(() => {
-    if (!pending || run.jobId !== pending.jobId || !proposal || run.isRunning) return;
+    if (!pending) return;
+    // The resumed Job failed, or something else took the run over: there is no review to expand.
+    if (run.failed || run.jobId !== pending.jobId) {
+      setPending(undefined);
+      return;
+    }
+    if (!proposal || run.isRunning) return;
     setPending(undefined);
     run.revise(
       suggestionExpansionIntent(

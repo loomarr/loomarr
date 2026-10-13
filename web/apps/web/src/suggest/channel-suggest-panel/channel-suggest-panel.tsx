@@ -126,6 +126,8 @@ const ChannelSuggestPanel = ({
   };
   const start = (intent: Intent) => {
     setEdit(undefined);
+    // The seed has done its job once the form submits; a later fresh form must not resurrect it.
+    setDescribeSeed(undefined);
     run.start(intent);
   };
   const editFailedDescription = () => {
@@ -158,7 +160,7 @@ const ChannelSuggestPanel = ({
             setBuilding(false);
             // The failed or unconfigured request that led here is history now: AI is back.
             run.reset();
-            setDescribeSeed(description);
+            setDescribeSeed(description || undefined);
           }}
         />
       </section>
