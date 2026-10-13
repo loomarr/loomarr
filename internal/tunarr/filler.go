@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // This file is the Tunarr side of the §10 filler redesign: filler is a pure
@@ -286,7 +287,7 @@ func fillerListName(tunarrID string) string { return "loomarr:" + tunarrID }
 // cached local-source index (Tunarr rejects a minimal {id,duration}); an uuid
 // absent from the index (not yet scanned) is skipped rather than failing the whole
 // list.
-func (t *Tunarr) EnsureFillerList(ctx context.Context, tunarrID string, programIDs []string) error {
+func (t *Tunarr) EnsureFillerList(ctx context.Context, tunarrID string, programIDs []string, policy FillerListPolicy) error {
 	ctx, _ = t.operation(ctx)
 	name := fillerListName(tunarrID)
 
@@ -325,8 +326,10 @@ func (t *Tunarr) EnsureFillerList(ctx context.Context, tunarrID string, programI
 		}
 	}
 	desiredIDs := make([]string, len(resolved))
+	var listRuntimeMs int64
 	for i, p := range resolved {
 		desiredIDs[i] = p.ID
+		listRuntimeMs += p.Duration
 	}
 
 	// Empty desired set → ensure no list is attached (detach path): if one exists,
@@ -340,7 +343,7 @@ func (t *Tunarr) EnsureFillerList(ctx context.Context, tunarrID string, programI
 		if err := t.doJSON(ctx, http.MethodDelete, "/api/filler-lists/"+found.ID, nil, nil); err != nil {
 			return fmt.Errorf("clear filler list %s: %w", found.ID, err)
 		}
-		return t.attachFillerList(ctx, tunarrID, "")
+		return t.attachFillerList(ctx, tunarrID, "", policy, 0)
 	}
 
 	// Idempotency: compare the desired program set against the list's ACTUAL
@@ -352,7 +355,7 @@ func (t *Tunarr) EnsureFillerList(ctx context.Context, tunarrID string, programI
 			// The list contents are already correct, but its channel-side weight and
 			// cooldown are independent live settings. Reconcile that attachment so a
 			// policy save applies on this operation without rewriting the list itself.
-			return t.attachFillerList(ctx, tunarrID, found.ID)
+			return t.attachFillerList(ctx, tunarrID, found.ID, policy, listRuntimeMs)
 		}
 	}
 
@@ -377,7 +380,7 @@ func (t *Tunarr) EnsureFillerList(ctx context.Context, tunarrID string, programI
 		}
 		listID = created.ID
 	}
-	return t.attachFillerList(ctx, tunarrID, listID)
+	return t.attachFillerList(ctx, tunarrID, listID, policy, listRuntimeMs)
 }
 
 // fillerProgram is the resolved program object + duration for a filler-list entry.
@@ -421,10 +424,49 @@ func (t *Tunarr) fillerProgramIndex(ctx context.Context) (map[string]fillerProgr
 	return index, nil
 }
 
+// FillerListPolicy is what one channel adds to the install-wide filler settings when its list is
+// attached. The zero value is the install default with no clamp.
+type FillerListPolicy struct {
+	// RepeatCooldown is the channel's own commercial spacing. Nil inherits the install's
+	// filler.cooldown_seconds; a pointer to zero is "no spacing", a real choice.
+	RepeatCooldown *time.Duration
+	// AdRuntimePerHour is how much commercial runtime the channel airs in an hour: breaks per
+	// hour × break length. Zero means unknown, which skips the clamp.
+	AdRuntimePerHour time.Duration
+}
+
+// repeatCooldownFor resolves the cooldown Tunarr applies per clip: the channel's spacing over the
+// install default, then clamped to what this list can honour.
+//
+// ⚠ Tunarr's fillerRepeatCooldown makes a clip unavailable for that long after it plays, and a
+// Loomarr list is small — a pod's worth, a few clips. A 4 hour spacing over four 30 second clips
+// leaves every clip cooling after the first break, and Tunarr then falls back to flex. So the
+// spacing is capped at the time the channel takes to air HALF the list: by then at least half of
+// it has rested, and a break always has something to draw. A bigger list earns a longer spacing.
+// Loomarr's own playout has no such cap — it ranks by recency and relaxes the spacing instead of
+// leaving a break empty — so the full spacing applies there; this clamp is Tunarr-only.
+func (t *Tunarr) repeatCooldownFor(cfg Config, policy FillerListPolicy, listRuntimeMs int64) time.Duration {
+	cooldown := 4 * time.Hour // mirrors filler.cooldown_seconds
+	if cfg.FillerCooldownSeconds >= 0 {
+		cooldown = time.Duration(cfg.FillerCooldownSeconds) * time.Second
+	}
+	if policy.RepeatCooldown != nil && *policy.RepeatCooldown >= 0 {
+		cooldown = *policy.RepeatCooldown
+	}
+	if policy.AdRuntimePerHour > 0 && listRuntimeMs > 0 {
+		halfList := float64(listRuntimeMs) / 2 * float64(time.Millisecond)
+		limit := time.Duration(halfList * float64(time.Hour) / float64(policy.AdRuntimePerHour))
+		if cooldown > limit {
+			cooldown = limit
+		}
+	}
+	return cooldown
+}
+
 // attachFillerList sets the channel's fillerCollections to reference listID (or
 // clears it when listID is ""). It reads the current channel first so the PUT
 // doesn't clobber other fields (§10 risk note).
-func (t *Tunarr) attachFillerList(ctx context.Context, tunarrID, listID string) error {
+func (t *Tunarr) attachFillerList(ctx context.Context, tunarrID, listID string, policy FillerListPolicy, listRuntimeMs int64) error {
 	var ch tunarrChannel
 	if err := t.doJSON(ctx, http.MethodGet, "/api/channels/"+tunarrID, nil, &ch); err != nil {
 		return fmt.Errorf("read channel %s for filler attach: %w", tunarrID, err)
@@ -443,14 +485,10 @@ func (t *Tunarr) attachFillerList(ctx context.Context, tunarrID, listID string) 
 		if weight <= 0 {
 			weight = 1
 		}
-		cooldownSeconds := cfg.FillerCooldownSeconds
-		if cooldownSeconds < 0 {
-			cooldownSeconds = 14400 // mirrors filler.cooldown_seconds
-		}
 		desired = append(desired, fillerCollection{
 			ID: listID, Weight: weight, CooldownSeconds: 0,
 		})
-		desiredRepeatCooldown = int64(cooldownSeconds) * 1000
+		desiredRepeatCooldown = t.repeatCooldownFor(cfg, policy, listRuntimeMs).Milliseconds()
 	}
 	// Preserve the established detach write after deleting a list: Tunarr may
 	// still hold the deleted reference even when its GET response omits it. For a

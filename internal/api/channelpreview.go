@@ -426,7 +426,7 @@ type previewDraftPodsInput struct {
 		Filler schedule.FillerSelection `json:"filler"`
 		// BreakDuration is the unsaved per-channel override. Nil inherits the live global
 		// setting; zero is invalid because breaks_per_hour owns the off switch.
-		BreakDuration *schedule.Duration `json:"breakDuration,omitempty"`
+		BreakDuration *schedule.Duration `json:"breakDuration,omitempty" doc:"Unsaved break length as a Go-duration string, e.g. \"2m\"; at least 30s. Omitted means the install setting filler.break_duration (default 2m)"`
 	}
 }
 

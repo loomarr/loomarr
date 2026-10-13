@@ -85,7 +85,11 @@ type Programmer interface {
 	// diff, so this method must avoid a redundant write itself (§9 "second
 	// reconcile makes no writes"). An empty slice detaches the list (the channel
 	// falls back to flex / the embedded bumper card — never dead air, §10).
-	EnsureFillerList(ctx context.Context, tunarrID string, programIDs []string) error
+	//
+	// The policy carries the channel's own commercial spacing, which becomes Tunarr's
+	// per-clip fillerRepeatCooldown, clamped so the list can never be wholly cooling
+	// (see FillerListPolicy). The zero policy is the install-wide default.
+	EnsureFillerList(ctx context.Context, tunarrID string, programIDs []string, policy FillerListPolicy) error
 }
 
 // ActualChannel is the subset of Tunarr's channel we compare against desired

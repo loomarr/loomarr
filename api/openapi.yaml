@@ -1417,7 +1417,7 @@ components:
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
         breakDuration:
-          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          description: "Length of each commercial break as a Go-duration string, e.g. \"2m\" or \"5m\"; at least 30s. Omitted means the install setting filler.break_duration (default 2m). There is no off value: breaksPerHour 0 turns breaks off"
           examples:
             - 168h
             - 24h
@@ -1426,7 +1426,7 @@ components:
           format: int64
           type: integer
         commercialSpacing:
-          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          description: "How long the same commercial rests before this channel airs it again, as a Go-duration string, e.g. \"4h\". Omitted means the install setting filler.cooldown_seconds (default 4h). \"0s\" means no spacing: a commercial may repeat in any later break. Spacing never empties a break"
           examples:
             - 168h
             - 24h
@@ -7578,7 +7578,7 @@ components:
           readOnly: true
           type: string
         breakDuration:
-          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          description: Unsaved break length as a Go-duration string, e.g. "2m"; at least 30s. Omitted means the install setting filler.break_duration (default 2m)
           examples:
             - 168h
             - 24h

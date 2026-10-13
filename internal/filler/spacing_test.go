@@ -92,16 +92,15 @@ func TestCoverage_ReportsTheLocationBoundaryItCounted(t *testing.T) {
 	}
 }
 
-// The household default is now 2 minutes. With 30 second clips that is four clips, so the default
-// pod_max of 4 does not cap the break.
-func TestPodAdapter_TwoMinuteDefaultBreakFillsWithThirtySecondClips(t *testing.T) {
+// Without bumpers nothing is reserved: the 2 minute default is still four whole 30 second ads.
+func TestPodAdapter_DefaultBreakWithoutBumpersIsFourThirtySecondAds(t *testing.T) {
 	clips := make([]filler.Clip, 0, 8)
 	for i := 0; i < 8; i++ {
 		clips = append(clips, filler.Clip{Hash: string(rune('a' + i)), Path: string(rune('a'+i)) + ".mp4",
 			Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000})
 	}
 	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
-		return filler.Policy{PodMax: 4, BreakDurationMs: 2 * 60_000}
+		return filler.Policy{PodMax: 4}
 	}, discardLogger())
 	pod, err := adapter.Preview(context.Background(), "ch-1", 7, filler.Selection{Audience: filler.General})
 	if err != nil {
@@ -109,5 +108,47 @@ func TestPodAdapter_TwoMinuteDefaultBreakFillsWithThirtySecondClips(t *testing.T
 	}
 	if len(pod.Entries) != 4 || pod.TotalMs != 120_000 {
 		t.Fatalf("2m default = %d entries / %dms, want 4 / 120000", len(pod.Entries), pod.TotalMs)
+	}
+}
+
+// The household default break is 2 minutes, and the slot the scheduler cuts is exactly that long: a
+// pod longer than the slot loses its tail, which is the return bumper plus part of the last ad.
+// So the intro bumper, the ads and the return bumper must all fit inside the break — the bumpers
+// come out of the 2 minutes, they are not added on top of four 30 second ads.
+func TestPodAdapter_DefaultBreakFitsBumpersAndWholeAdsInTheSlot(t *testing.T) {
+	const slotMs = 2 * 60_000
+	clips := make([]filler.Clip, 0, 12)
+	for i := 0; i < 8; i++ {
+		clips = append(clips, filler.Clip{Hash: string(rune('a' + i)), Path: string(rune('a'+i)) + ".mp4",
+			Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 30_000})
+	}
+	// Short whole clips to finish the remainder the 30 second ads leave, so no ad is ever cut.
+	for i := 0; i < 2; i++ {
+		clips = append(clips, filler.Clip{Hash: string(rune('s' + i)), Path: string(rune('s'+i)) + ".mp4",
+			Kind: filler.Commercial, Era: 1994, Audience: filler.General, DurationMs: 15_000})
+	}
+	for i := 0; i < 2; i++ {
+		clips = append(clips, filler.Clip{Hash: "bumper-" + string(rune('a'+i)), Path: "bumper-" + string(rune('a'+i)) + ".mp4",
+			Kind: filler.Bumper, Era: 1994, Audience: filler.General, DurationMs: 6_000})
+	}
+	// The DEFAULT setting: no per-channel or install break duration, so the 2 minute default applies.
+	adapter := filler.NewPodAdapter(stubCatalog{clips: clips}, nil, func() filler.Policy {
+		return filler.Policy{PodMax: 4}
+	}, discardLogger())
+	for seed := int64(1); seed <= 20; seed++ {
+		pod, err := adapter.Preview(context.Background(), "ch-1", seed, filler.Selection{Audience: filler.General})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pod.TotalMs > slotMs {
+			t.Fatalf("seed %d: pod is %dms, longer than the %dms slot — the tail would be cut", seed, pod.TotalMs, slotMs)
+		}
+		n := len(pod.Entries)
+		if n < 3 || pod.Entries[0].Kind != filler.Bumper || pod.Entries[n-1].Kind != filler.Bumper {
+			t.Fatalf("seed %d: pod %v must open and close with a bumper", seed, pod.Entries)
+		}
+		if len(commercialIDs(pod)) == 0 {
+			t.Fatalf("seed %d: pod has no commercials", seed)
+		}
 	}
 }

@@ -276,7 +276,7 @@ func (m *Tunarr) DeleteChannel(_ context.Context, tunarrID string) error {
 // compares the desired set against the list's ACTUAL contents (not just count), so
 // a re-tagged equal-sized pool still triggers a write. A "second reconcile makes no
 // writes" assertion (§9) holds for an unchanged pool. An empty pool detaches.
-func (m *Tunarr) EnsureFillerList(_ context.Context, tunarrID string, programIDs []string) error {
+func (m *Tunarr) EnsureFillerList(_ context.Context, tunarrID string, programIDs []string, _ tunarr.FillerListPolicy) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	ids := append([]string(nil), programIDs...)

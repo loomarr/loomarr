@@ -369,7 +369,8 @@ func (e *Engine) reconcileOnce(
 		// channel plays back-to-back with no empty flex. Best-effort: a filler failure never
 		// fails the reconcile (§9 resilience); the next sweep retries.
 		if e.pods != nil {
-			e.attachFillerList(ctx, ch, fillerIDs)
+			e.attachFillerList(ctx, ch, fillerIDs, chDomain.BreaksPerHour,
+				time.Duration(chDomain.BreakDurationMs)*time.Millisecond)
 		}
 
 		// 5: diff desired lineup vs actual; push only on a difference.
@@ -499,8 +500,15 @@ func (e *Engine) Purge(ctx context.Context, channelID string) error {
 // than leaving empty flex. Best-effort: a filler error is logged, never returned — the
 // channel still plays (§9 resilience), and EnsureFillerList is internally idempotent so a
 // stable pool makes no Tunarr write.
-func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel, ids []string) {
-	if err := e.prog.EnsureFillerList(ctx, ch.TunarrID, ids); err != nil && e.log != nil {
+func (e *Engine) attachFillerList(ctx context.Context, ch store.Channel, ids []string, breaksPerHour int, breakDuration time.Duration) {
+	// The channel's own commercial spacing, not just the install-wide one, is what Tunarr should
+	// hold its clips back for — and the adapter needs the airing rate to know how much of it the
+	// list can honour.
+	policy := tunarr.FillerListPolicy{
+		RepeatCooldown:   SelectionForChannel(ch).Spacing,
+		AdRuntimePerHour: time.Duration(breaksPerHour) * breakDuration,
+	}
+	if err := e.prog.EnsureFillerList(ctx, ch.TunarrID, ids, policy); err != nil && e.log != nil {
 		e.log.Warn("attach filler list (channel plays without commercials this pass)",
 			"channel", ch.ID, "err", err)
 	}
