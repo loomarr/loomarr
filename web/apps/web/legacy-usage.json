@@ -295,7 +295,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/settings/database-migration/database-migration.tsx": {
-      "tailwindClasses": 153,
+      "tailwindClasses": 149,
       "legacyUi": 4
     },
     "src/components/loomarr/settings/installation-location/installation-location.tsx": {
@@ -314,7 +314,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/settings/setting-field/setting-field.tsx": {
-      "tailwindClasses": 140,
+      "tailwindClasses": 134,
       "legacyUi": 6
     },
     "src/components/loomarr/settings/settings-fields/settings-fields.tsx": {
@@ -390,7 +390,7 @@
       "tailwindClasses": 17
     },
     "src/components/ui/checkbox/checkbox.tsx": {
-      "tailwindClasses": 15
+      "tailwindClasses": 11
     },
     "src/components/ui/dialog/dialog.tsx": {
       "tailwindClasses": 43,
@@ -424,10 +424,10 @@
       "legacyUi": 23
     },
     "src/components/ui/input/input.tsx": {
-      "tailwindClasses": 20
+      "tailwindClasses": 12
     },
     "src/components/ui/label/label.tsx": {
-      "tailwindClasses": 4
+      "tailwindClasses": 3
     },
     "src/components/ui/list-row/list-row.tsx": {
       "tailwindClasses": 35,
@@ -470,7 +470,7 @@
       "tailwindClasses": 2
     },
     "src/components/ui/switch/switch.tsx": {
-      "tailwindClasses": 44
+      "tailwindClasses": 23
     },
     "src/components/ui/tooltip/tooltip.tsx": {
       "tailwindClasses": 12,

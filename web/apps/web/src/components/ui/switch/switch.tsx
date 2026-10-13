@@ -20,11 +20,19 @@ import { cn } from "@/lib/utils";
 // mock has a pill, in brand amber where the mock uses `lock` green. Green is right here and the
 // distinction is not decorative: amber is Loomarr's "this is the thing you are looking at" colour,
 // while a source being ON is a *healthy* state, which is what `lock` means everywhere else.
+//
+// Not the design-system's universal `Toggle kind="switch"` (#970 step 45), for the same reason as
+// the Checkbox: Toggle is a pressable with no form participation. The geometry no state changes is
+// inline style; every colour stays a `peer-*` class, because it follows the input's live checked,
+// hover, focus and disabled state, which an inline style cannot see.
 const Switch = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, checked, ...props }, ref) => (
+  ({ className, checked, style, ...props }, ref) => (
     // The label wraps both so a click anywhere on the pill toggles it, and so the input can stay
     // visually hidden while remaining the real focus target.
-    <span className={cn("group relative inline-flex shrink-0 items-center", className)}>
+    <span
+      className={className}
+      style={{ position: "relative", display: "inline-flex", flexShrink: 0, alignItems: "center" }}
+    >
       <input
         type="checkbox"
         role="switch"
@@ -42,15 +50,33 @@ const Switch = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
         // ⚠ It also carries the CURSOR and covers the whole pill, so the hit target is the track
         // rather than a 1px-tall invisible input. Without `inset-0` the operator can see a switch
         // and click straight through it.
-        className="peer absolute inset-0 z-10 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+        // `peer` is the marker the track and knob read state from; the cursor flips on `disabled:`.
+        className="peer cursor-pointer disabled:cursor-not-allowed"
         {...props}
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 10,
+          width: "100%",
+          height: "100%",
+          opacity: 0,
+          ...style,
+        }}
       />
       {/* The track. `peer-focus-visible` puts the focus ring here because the input itself is
           visually hidden — without it, tabbing to this control shows nothing at all. */}
       <span
         aria-hidden
+        style={{
+          pointerEvents: "none",
+          width: 34,
+          height: 19,
+          borderRadius: 9999,
+          borderWidth: 1,
+          borderStyle: "solid",
+        }}
         className={cn(
-          "pointer-events-none h-[19px] w-[34px] rounded-full border transition-colors",
+          "transition-colors",
           "border-static-700 bg-background",
           "peer-checked:border-lock/50 peer-checked:bg-lock/20",
           // ⚠ Hover brightens the BORDER to `static-400`. That is the mock's own dominant hover
@@ -71,8 +97,19 @@ const Switch = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
           user gets the same two positions without the slide. */}
       <span
         aria-hidden
+        // The vertical centring stays a translate class: the checked travel is a translate class
+        // too, and both write the one CSS `translate` property through Tailwind's shared variables.
+        style={{
+          pointerEvents: "none",
+          position: "absolute",
+          top: "50%",
+          left: 2,
+          width: 13,
+          height: 13,
+          borderRadius: 9999,
+        }}
         className={cn(
-          "pointer-events-none absolute top-1/2 left-0.5 size-[13px] -translate-y-1/2 rounded-full",
+          "-translate-y-1/2",
           "bg-static-500 transition-transform motion-reduce:transition-none",
           "peer-checked:translate-x-3.5 peer-checked:bg-lock",
         )}

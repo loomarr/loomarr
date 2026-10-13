@@ -6,6 +6,7 @@ import {
   getSetupStatusMockHandler,
   getSetupTestMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { render, screen, within } from "@testing-library/react";
@@ -225,10 +226,13 @@ const renderAt = (initialPath: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   });
+  // LoomarrProvider as main.tsx mounts it: a setting's validation line is a design-system FieldHint.
   render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </LoomarrProvider>,
   );
 };
 
