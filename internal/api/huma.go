@@ -1180,10 +1180,12 @@ func humaConfig() huma.Config {
 	// handle two representations of "nothing", forever.
 	//
 	// ⚠ This flag alone would make the document LIE, and Huma says so in its own doc comment:
-	// "any `nil` slice will still encode as `null` in JSON". It is only honest because
-	// `TestResponses_ContainNoJSONNull` drives every parameterless GET against an EMPTY store
-	// — the state that actually produces nil slices — and fails on any null in the body. Setting
-	// this without that guard would swap a truthful awkward spec for a tidy false one.
+	// "any `nil` slice will still encode as `null` in JSON". It is honest because the API's
+	// encoder (wireJSONFormat, set below) sends every nil slice as `[]`, and two guards hold it
+	// there: `TestResponseSchemas_RequiredArraysNeverNull` encodes every response type's zero
+	// value, and `TestResponses_ContainNoJSONNull` drives every parameterless GET against an
+	// EMPTY store. Setting this without them would swap a truthful awkward spec for a tidy
+	// false one.
 	//
 	// ⚠ Set HERE deliberately: `humaConfig` is the single constructor behind both the served API
 	// (api.go) and the spec export (export.go), so the runtime and the document cannot disagree
@@ -1198,6 +1200,8 @@ func humaConfig() huma.Config {
 	// behavior. Kept inside humaConfig so the "single constructor owns it" invariant above holds.
 	arrayNullableOnce.Do(func() { huma.DefaultArrayNullable = false })
 	cfg := huma.DefaultConfig("Loomarr API", "0.1.0")
+	// A fresh map: DefaultConfig hands out Huma's package-level DefaultFormats.
+	cfg.Formats = map[string]huma.Format{"application/json": wireJSONFormat, "json": wireJSONFormat}
 	cfg.Info.Description = "Turn a sentence into a self-maintaining virtual TV channel. " +
 		"Every /v1 route requires a session cookie or Authorization: Bearer API_TOKEN (§7)."
 	// Serve our own docs assets offline; Huma's default loads Stoplight from a

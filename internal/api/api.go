@@ -6,7 +6,6 @@
 package api
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -204,7 +203,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
+	_ = wireJSONFormat.Marshal(w, v)
 }
 
 func logRequests(log *slog.Logger, next http.Handler) http.Handler {

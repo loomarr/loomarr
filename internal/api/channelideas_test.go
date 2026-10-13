@@ -229,6 +229,32 @@ func requestIdea(t *testing.T, srv *httptest.Server, ideaID string, session *htt
 	return res.StatusCode, out.JobID
 }
 
+// queuedProposalArrays reads the one submitted proposal from the admin's approval queue and
+// returns its acquisitions and alternates exactly as the wire carried them.
+func queuedProposalArrays(t *testing.T, srv *httptest.Server, session *http.Cookie) string {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/proposals?status=submitted", nil)
+	req.AddCookie(session)
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	var out struct {
+		Proposals []struct {
+			Proposal struct {
+				Acquisitions json.RawMessage `json:"acquisitions"`
+				Alternates   json.RawMessage `json:"alternates"`
+			} `json:"proposal"`
+		} `json:"proposals"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil || res.StatusCode != http.StatusOK || len(out.Proposals) != 1 {
+		t.Fatalf("approval queue = %d %+v, %v", res.StatusCode, out, err)
+	}
+	p := out.Proposals[0].Proposal
+	return fmt.Sprintf(`{"acquisitions":%s,"alternates":%s}`, p.Acquisitions, p.Alternates)
+}
+
 // A member turns an idea into a channel request (#1720) with the LLM nowhere in the harness: the
 // idea's name, pitch and library titles become a submitted proposal in the real approval queue,
 // admins hear about it, and the idea then reads as requested. Asking again returns the same
@@ -299,6 +325,13 @@ func TestChannelIdeaRequestQueuesAMemberRequestWithoutTheLLM(t *testing.T) {
 	}
 	if notify.count() != 1 {
 		t.Fatalf("admins were told about %d requests, want 1", notify.count())
+	}
+	// ⚠ On the WIRE, not the stored Go value: len() of a nil slice is 0, so the check above passed
+	// while the admin queue sent `"acquisitions": null` and the phone's Needs-you tab crashed
+	// calling .length on it. An idea request has nothing to acquire and no alternates; both must
+	// still arrive as the arrays the spec promises.
+	if got := queuedProposalArrays(t, h.Server, boss); got != `{"acquisitions":[],"alternates":[]}` {
+		t.Fatalf("admin queue sent the idea request's arrays as %s, want empty arrays", got)
 	}
 
 	if _, got := ideasCall(t, h.Server, http.MethodGet, "/v1/discovery/ideas", kid); len(got.Ideas) != 1 ||

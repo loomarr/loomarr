@@ -259,7 +259,10 @@ func (s *Server) streamEvents(ctx context.Context, _ *struct{}, send sse.Sender)
 			// Best-effort by design (§8). A write error means the client is gone; a payload
 			// huma cannot encode is a bug in the publisher, and dropping the frame is
 			// strictly better than tearing down every other subscriber's stream.
-			_ = send(sse.Message{Data: ev.Payload})
+			//
+			// sse encodes frames itself, outside the API's JSON format, so the frame gets the same
+			// nil-to-empty pass here (wirejson.go). It keeps the payload's type: that names the event.
+			_ = send(sse.Message{Data: emptyNotNull(ev.Payload)})
 		}
 	}
 }

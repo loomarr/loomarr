@@ -199,7 +199,9 @@ func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing
 	}
 	for _, projected := range []any{current["trace"], history["trace"]} {
 		trace, ok := projected.(map[string]any)
-		if !ok || trace["terminal"] != suggest.TerminalProviderFailure || trace["truncated"] != true || trace["surfacedTotal"] != float64(65) || trace["recordedTotal"] != float64(65) || trace["candidates"] != nil || len(trace) != 6 {
+		// No candidate leaves the server; `candidates` is a required array, so it arrives empty.
+		candidates, isList := trace["candidates"].([]any)
+		if !ok || trace["terminal"] != suggest.TerminalProviderFailure || trace["truncated"] != true || trace["surfacedTotal"] != float64(65) || trace["recordedTotal"] != float64(65) || !isList || len(candidates) != 0 || len(trace) != 6 {
 			t.Fatalf("public trace = %#v", projected)
 		}
 	}

@@ -24,7 +24,10 @@ type RequestChannelProps = {
   onUndoHide: () => void;
   /** The idea whose request is in flight. */
   requestingIdeaId?: string;
-  /** The role from `/v1/auth/me`; it only changes whose job a setup refusal is. */
+  /**
+   * The role from `/v1/auth/me`. An admin gets no channel ideas (the server refuses an admin's idea
+   * request; Web hides them too) and is told a setup refusal is theirs to fix.
+   */
   viewer: RequestsRole;
 };
 

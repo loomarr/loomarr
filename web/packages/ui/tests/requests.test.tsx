@@ -201,6 +201,30 @@ describe("requests list", () => {
       expect(markup.match(/>Dismiss</g)).toHaveLength(2);
     });
 
+    // An idea request (#1720) has every title in the library: nothing to acquire, no alternates.
+    // The server once sent those as `null`, and this list crashed the phone's Needs you on `.length`.
+    it("lists a channel request with nothing to download", () => {
+      const [base] = approvals;
+      const [title] = base?.proposal.lineup ?? [];
+      if (!base || !title) throw new Error("the approvals fixture has no request with a title");
+      const fromIdea = {
+        ...base,
+        id: "approval-idea",
+        proposal: {
+          ...base.proposal,
+          acquisitions: [],
+          alternates: [],
+          fromIdea: "genre:comedy",
+          intent: { ...base.proposal.intent, description: "Comedy Movies" },
+          lineup: [title, title],
+        },
+      };
+      const markup = list({ snapshot: admin({ approvals: [fromIdea] }), tab: "needs-you" });
+      expect(markup).toContain("Comedy Movies");
+      expect(markup).toContain("2 titles · all in your library");
+      expect(markup).toContain(">Approve<");
+    });
+
     it("offers Edit on channel requests only", () => {
       expect(list({ snapshot: admin(), tab: "needs-you" }).match(/>Edit</g)).toHaveLength(3);
       expect(list({ snapshot: admin({ approvals: [] }), tab: "needs-you" })).not.toContain(">Edit<");
@@ -595,6 +619,17 @@ describe("request a channel", () => {
     expect(markup).toContain("Describe the channel");
     expect(markup).toContain(">Suggest titles<");
     expect(markup).toContain("90s Saturday Morning Cartoons");
+  });
+
+  // The server refuses an admin's idea request ("Channel ideas are for members"), and Web's Home leaves
+  // the ideas out for an admin; the phone offers an admin the brief only.
+  it("gives an admin the brief without channel ideas", () => {
+    const markup = form({ viewer: "admin" });
+    expect(markup).not.toContain("Channel ideas");
+    expect(markup).not.toContain("Fireside Mysteries");
+    expect(markup).not.toContain("Request channel");
+    expect(markup).toContain("Describe the channel");
+    expect(markup).toContain(">Suggest titles<");
   });
 
   it("marks an idea that is already requested instead of offering it again", () => {
