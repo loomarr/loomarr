@@ -61,7 +61,7 @@ const AiReconnectBanner = ({
         </Action>
       </Surface>
       {tryAiBlockedReason ? (
-        <Text textRole="metadata" tone="secondary">
+        <Text textRole="caption" tone="secondary">
           {tryAiBlockedReason}
         </Text>
       ) : null}

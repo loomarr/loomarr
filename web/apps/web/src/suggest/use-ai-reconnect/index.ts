@@ -1,1 +1,1 @@
-export { MAX_BACKOFF_MS, POLL_MS, pollDelay, useAiReconnect } from "./use-ai-reconnect";
+export { POLL_MS, useAiReconnect } from "./use-ai-reconnect";
