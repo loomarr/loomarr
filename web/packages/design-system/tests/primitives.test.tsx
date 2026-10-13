@@ -111,6 +111,19 @@ describe("Text", () => {
         </Text>
       </LoomarrProvider>,
     );
-    expect(markup).toContain("text-transform:uppercase");
+    expect(markup.slice(markup.lastIndexOf("<span"))).toContain("text-transform:uppercase");
+  });
+
+  it("keeps a caller's own textTransform when not shouting", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Text textRole="guideLabel" textTransform="uppercase">
+          hi
+        </Text>
+      </LoomarrProvider>,
+    );
+    // The element's own atomic class, not the provider's injected stylesheet — that sheet
+    // carries `text-transform:uppercase` for other components whether or not this Text has it.
+    expect(markup.slice(markup.lastIndexOf("<span"))).toMatch(/class="[^"]*\b_tt-uppercase\b/);
   });
 });
