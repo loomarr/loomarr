@@ -41,9 +41,6 @@ var guarded = []string{"cmd/seed", "cmd/demo-library", "internal/demolibrary"}
 // then this list may only SHRINK: a new file with a real title fails, and so does a listed file
 // that is already clean (delete its line).
 var legacyFixtures = []string{
-	"web/apps/web/src/components/loomarr/ai/proposal-edit/proposal-edit.stories.tsx",
-	"web/apps/web/src/components/loomarr/ai/refine-panel/refine-panel.stories.tsx",
-	"web/apps/web/src/components/loomarr/ai/refine-review/refine-review.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-card/channel-card.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.stories.tsx",
@@ -53,7 +50,6 @@ var legacyFixtures = []string{
 	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/now-next-strip/now-next-strip.stories.tsx",
-	"web/apps/web/src/components/loomarr/feedback/generation-progress/generation-progress.stories.tsx",
 	"web/apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.stories.tsx",
 	"web/apps/web/src/components/ui/caption/caption.stories.tsx",
 	"web/apps/web/src/components/ui/video-player/timeline-scrubber/timeline-scrubber.stories.tsx",
