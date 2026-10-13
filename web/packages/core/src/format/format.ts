@@ -85,18 +85,26 @@ const formatPercentPoints = (points: number): string => `${Math.round(points)}%`
 // because it renders in the picker's summary AND per-row, and will render in the Expo app.
 const formatGiB = (n: number): string => `${Math.round(n * 10) / 10} GiB`;
 
-// "412 B" · "8.4 KB" · "4.2 MB" · "1.3 GB" — a byte count from the API.
+// "412 B" · "8.4 KB" · "4.2 MB" · "1.3 GB" · "2.1 TB" — a byte count from the API.
 //
 // Distinct from formatGiB, which takes a number already IN GiB (a VRAM probe). This takes
 // raw bytes, which is what every API field carrying a file size uses. Lives here because
-// the migration stepper and the Backup page both render one, and a second local copy is
-// how four core formatters ended up with a live grammar bug nobody noticed.
+// the migration stepper, the Backup page and the approval consequence summary all render one,
+// and a second local copy is how four core formatters ended up with a live grammar bug nobody
+// noticed. A whole channel's library reaches terabytes, so the scale stops at TB, not GB.
+//
+// ⚠ The unit is chosen AFTER rounding: 1 MiB minus one byte is "1.0 MB", never "1024.0 KB".
+const BYTE_UNITS = ["KB", "MB", "GB", "TB"] as const;
 const formatBytes = (n: number): string => {
   if (!Number.isFinite(n) || n < 0) return "0 B";
-  if (n < 1024) return `${Math.round(n)} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (Math.round(n) < 1024) return `${Math.round(n)} B`;
+  let value = n / 1024;
+  let unit = 0;
+  while (unit < BYTE_UNITS.length - 1 && Number(value.toFixed(1)) >= 1024) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(1)} ${BYTE_UNITS[unit]}`;
 };
 
 // A large count compacted: 2854700 → "2.9M", 1200 → "1.2K", 640 → "640". Used for the

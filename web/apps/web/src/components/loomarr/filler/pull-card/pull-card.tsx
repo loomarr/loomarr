@@ -20,13 +20,22 @@ import type { PullCardProps } from "./pull-card.type";
 // proposed with and marks the dropped ones, because "we approved this" is only meaningful next
 // to what was proposed. That is a server property; this component's job is not to hide it.
 
-const PullCard = ({ pull, onApprove, onDismiss, deciding, error, className }: PullCardProps) => {
+const PullCard = ({
+  pull,
+  onApprove,
+  onDismiss,
+  onEditedChange,
+  deciding,
+  error,
+  className,
+}: PullCardProps) => {
   // Which rows the operator has struck out, held locally until they commit. ⚠ Not sent as they
   // click: a pull is decided in one act, and a per-click PATCH would make "half-approved" a
   // state the gate has to reason about.
   const [dropped, setDropped] = useState<ReadonlySet<string>>(new Set());
   const [note, setNote] = useState("");
   const titleId = useId();
+  const edited = dropped.size > 0 || note.trim() !== "";
 
   // ⚠ `?? []` because huma types every Go slice as nullable, so the generated DTO says
   // `PullPlanRowDTO[] | null` even though the handler always sends `[]`.
@@ -35,12 +44,18 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, error, className }: Pu
   const candidateID = (row: (typeof plan)[number]) => row.candidateId || row.sourceId;
   const kept = plan.filter((row) => !dropped.has(candidateID(row)));
 
-  const toggleDropped = (id: string) =>
-    setDropped((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
+  // Reported from the handlers, not an effect, so the queue hears about an edit in the same
+  // event that made it.
+  const toggleDropped = (id: string) => {
+    const next = new Set(dropped);
+    if (!next.delete(id)) next.add(id);
+    setDropped(next);
+    onEditedChange?.(next.size > 0 || note.trim() !== "");
+  };
+  const changeNote = (value: string) => {
+    setNote(value);
+    onEditedChange?.(dropped.size > 0 || value.trim() !== "");
+  };
 
   return (
     // A named group so a screen reader announces which pull it has entered — several cards share
@@ -53,6 +68,7 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, error, className }: Pu
             <span id={titleId} className="font-semibold text-sm">
               {pull.title}
             </span>
+            {edited && <Badge variant="suggest">Edited</Badge>}
           </div>
           {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
               requester is — proposedBy itself is a raw user id (or a scheduled job's name) and
@@ -155,7 +171,7 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, error, className }: Pu
 
       <Input
         value={note}
-        onChange={(e) => setNote(e.target.value)}
+        onChange={(e) => changeNote(e.target.value)}
         placeholder="Optional annotation for your records"
         aria-label="Notes for this pull"
         disabled={deciding}

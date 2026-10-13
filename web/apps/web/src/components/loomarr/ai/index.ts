@@ -1,5 +1,7 @@
+export * from "./approval-group";
 export * from "./approval-history-row";
 export * from "./approval-queue-item";
+export * from "./bulk-approve-dialog";
 export * from "./hosted-model-picker";
 export * from "./intent-input";
 export * from "./model-discover";

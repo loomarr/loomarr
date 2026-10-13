@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -101,6 +102,50 @@ func TestStandInAnswersSearchPresenceEpisodesAndPaths(t *testing.T) {
 	}
 	if len(clips) != len(demolibrary.Fillers) {
 		t.Fatalf("filler clips = %d, want %d", len(clips), len(demolibrary.Fillers))
+	}
+}
+
+// An owned film's approval size is read from the media server's Size on the search it already
+// makes (#1885). The stand-in states the generated file's real byte count, and no size at all
+// before the file exists — never 0, which the contract reserves for "unknown" by omission.
+func TestStandInStatesAFilmsFileSizeOnlyOnceTheFileExists(t *testing.T) {
+	ctx := context.Background()
+	c, l := demoClient(t)
+	var film demolibrary.Title
+	for _, title := range demolibrary.Catalogue {
+		if title.Kind == demolibrary.Movie {
+			film = title
+			break
+		}
+	}
+
+	sizeOf := func() int64 {
+		t.Helper()
+		got, err := c.Search(ctx, film.Name, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range got {
+			if r.LibraryItemID == film.ID() {
+				return r.SizeBytes
+			}
+		}
+		t.Fatalf("search for %q did not return the film", film.Name)
+		return 0
+	}
+
+	if got := sizeOf(); got != 0 {
+		t.Fatalf("size before the file exists = %d, want none", got)
+	}
+	path := l.Item(film.ID())
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, make([]byte, 4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := sizeOf(); got != 4096 {
+		t.Fatalf("size = %d, want the file's 4096 bytes", got)
 	}
 }
 

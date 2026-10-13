@@ -91,6 +91,8 @@ const ApprovalQueueItem = ({
             {typeof acquisitions === "number" && acquisitions > 0 && (
               <Badge variant="tune">{`${acquisitions} to acquire`}</Badge>
             )}
+            {/* A pending edit changes what this row's Approve does, and keeps it out of bulk. */}
+            {edit && <Badge variant="suggest">Edited</Badge>}
             {denied && <Badge variant="onair">Denied</Badge>}
           </div>
           {summary && <p className="mt-1 text-muted-foreground text-sm">{summary}</p>}
