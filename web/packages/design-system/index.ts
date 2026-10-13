@@ -22,10 +22,11 @@ export type {
   ActionVariant,
   ChoiceGroupProps,
   ChoiceOption,
+  FieldHintProps,
   FieldProps,
   ToggleProps,
 } from "./src/interaction";
-export { Action, ChoiceGroup, Field, Toggle } from "./src/interaction";
+export { Action, ChoiceGroup, Field, FieldHint, Toggle } from "./src/interaction";
 export type {
   AdaptiveDirection,
   AdaptiveSplitProps,

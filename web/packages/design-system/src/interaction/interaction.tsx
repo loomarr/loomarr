@@ -380,6 +380,46 @@ const Field = ({
   );
 };
 
+type FieldHintProps = {
+  children: ReactNode;
+  /** Web layout hooks only (a grid span, a gap beside an icon). Never colour or type: those are the hint's own. */
+  className?: string;
+  density?: Density;
+  /** The id a control's `aria-describedby` points at, so the hint is read with the field. */
+  id?: string;
+  /**
+   * `alert` announces a validation message the moment it appears. Leave it unset for standing help,
+   * which a screen reader reaches through the control's `aria-describedby` instead.
+   */
+  role?: "alert" | "status";
+  tone?: "error" | "help";
+};
+
+/**
+ * A form field's help or validation line (#970 step 45). On the Web it is a real `<p>`, so a native
+ * `<input>`'s `aria-describedby` resolves to it and its text joins the control's accessible
+ * description; the control itself stays a browser element, keeping form submission and the
+ * browser's own validation. Help reads in the secondary content colour, an error in the danger
+ * colour: the two Web conventions it replaces (`text-muted-foreground` / `text-onair-300`).
+ *
+ * Field's own description and error lines keep their `metadata` measure: the native field has
+ * its own approved look, and folding it onto this one would change it.
+ */
+const FieldHint = ({ children, className, density = "pointer", id, role, tone = "help" }: FieldHintProps) => (
+  <Text
+    // `role` is outside TextProps on purpose (a readout is not a landmark); a hint is the exception.
+    {...({ role } as object)}
+    as={isWeb ? "p" : undefined}
+    className={className}
+    density={density}
+    id={id}
+    textRole="hint"
+    tone={tone === "error" ? "danger" : "secondary"}
+  >
+    {children}
+  </Text>
+);
+
 type ToggleProps = {
   checked: boolean;
   density?: Density;
@@ -541,5 +581,13 @@ const ChoiceGroup = <Value extends string>({
   </View>
 );
 
-export type { ActionProps, ActionVariant, ChoiceGroupProps, ChoiceOption, FieldProps, ToggleProps };
-export { Action, ChoiceGroup, Field, Toggle };
+export type {
+  ActionProps,
+  ActionVariant,
+  ChoiceGroupProps,
+  ChoiceOption,
+  FieldHintProps,
+  FieldProps,
+  ToggleProps,
+};
+export { Action, ChoiceGroup, Field, FieldHint, Toggle };
