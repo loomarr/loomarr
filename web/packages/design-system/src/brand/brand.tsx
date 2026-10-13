@@ -1,7 +1,7 @@
 import { Text as TamaguiText, useTheme, View } from "@tamagui/core";
 import Svg, { ClipPath, Defs, G, Rect } from "react-native-svg";
 
-import { brandChroma, brandContract, semanticColors, typography } from "../tokens";
+import { brandChroma, brandContract, semanticColors } from "../tokens";
 
 type BrandTone = "fullColor" | "monochrome" | "inverse";
 type BrandSize = "small" | "medium" | "large";
@@ -102,7 +102,7 @@ const BrandWordmark = ({ size = "medium", tone = "monochrome" }: BrandWordmarkPr
   return (
     <TamaguiText
       color={tone === "inverse" ? semanticColors.brand.ground : "$contentPrimary"}
-      fontFamily={typography.family.body.web}
+      fontFamily="$body"
       fontSize={scale.fontSize}
       fontWeight={brandContract.wordmark.weight as 700}
       letterSpacing={scale.fontSize * brandContract.wordmark.trackingEm}
@@ -150,7 +150,7 @@ const BrandLockup = ({
         {showTagline ? (
           <TamaguiText
             color={inverse ? semanticColors.brand.ground : "$contentSecondary"}
-            fontFamily={typography.family.data.web}
+            fontFamily="$data"
             fontSize={size === "large" ? 14 : size === "medium" ? 13 : 11}
           >
             always something on

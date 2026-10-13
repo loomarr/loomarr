@@ -186,14 +186,17 @@ over plain HTTP is only as private as the network; HTTPS stays the recommended s
 **Changing servers.** A catalog failure offers **Retry** and **Change server**; the saved credential
 stays until a new pairing atomically replaces it. **Disconnect device** revokes remotely first; if
 the server is unreachable, **Forget locally** is a separate, explicit action that says the old server
-may still list the device. A 401 clears the credential automatically.
+may still list the device. A confirmed disconnect returns the client to choosing a server; only a 401,
+which clears the credential automatically, shows "This device was disconnected". The iPhone has no
+Disconnect until its Surf destination is designed: revoke it from the web's paired devices.
 
 **Acceptance.** An Android UI change needs, in addition to screenshots, a hands-on run of the current
 APK in a windowed, centred API-30 TV emulator with the real remote keys on the touched path.
 
 ## iPhone and native Requests (N2)
 
-The paired iPhone is a viewer (Watching, Guide, Surf as on Android TV) with one addition the TV does
+The paired iPhone is a viewer (Watching and Guide as on Android TV; its Surf tab stays hidden until an
+iPhone Surf mock is approved) with one addition the TV does
 not have: **channel Requests** (maintainer decision N2 of #1659, 2026-10-03). Native has no Home, so
 Requests is where a person asks for a channel and follows it. It is a member-scoped adapter over the
 routes Web already uses; no native-only route exists and no authority is added.

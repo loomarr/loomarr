@@ -57,14 +57,15 @@ const PhoneApproval = ({
           {countdownLabel}
         </Text>
       )}
-      {/* A tint-coloured text link, iOS's secondary action: a bordered button competed with Approve. */}
+      {/* A plain text link, the secondary action: a bordered button competed with Approve, and amber
+          is for focus and the one primary action. */}
       <Pressable
         accessibilityRole="button"
         hitSlop={8}
         onPress={onChooseServer}
         style={({ pressed }) => ({ justifyContent: "center", minHeight: 44, opacity: pressed ? 0.6 : 1 })}
       >
-        <Text density="touch" textRole="metadata" tone="signal">
+        <Text density="touch" textRole="caption" tone="primary">
           Use a different server
         </Text>
       </Pressable>

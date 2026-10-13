@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { LoomarrProvider, resolveViewportInsets, Screen, TV_OVERSCAN_INSET } from "../index";
+import { LoomarrProvider, PHONE_GUTTER, resolveViewportInsets, Screen, TV_OVERSCAN_INSET } from "../index";
 
 describe("viewport-safe layout", () => {
   it("keeps TV content inside the established overscan margin", () => {
@@ -13,13 +13,15 @@ describe("viewport-safe layout", () => {
     });
   });
 
-  it("adds touch gutters inside real device safe-area insets", () => {
+  it("adds the phone gutter inside real device safe-area insets", () => {
     expect(resolveViewportInsets("touch", { bottom: 34, left: 0, right: 0, top: 47 })).toEqual({
-      bottom: 58,
-      left: 24,
-      right: 24,
-      top: 71,
+      bottom: 34 + PHONE_GUTTER,
+      left: PHONE_GUTTER,
+      right: PHONE_GUTTER,
+      top: 47 + PHONE_GUTTER,
     });
+    // Every phone frame of the native mock (5d–5g) sets its content 16 pt from the edge.
+    expect(PHONE_GUTTER).toBe(16);
   });
 
   it("applies provider insets through the Screen root interface", () => {
@@ -31,7 +33,7 @@ describe("viewport-safe layout", () => {
 
     expect(markup).toContain("Safe content");
     expect(markup).toContain("min-height:100vh");
-    expect(markup).toContain("padding-top:71px");
-    expect(markup).toContain("padding-bottom:58px");
+    expect(markup).toContain("padding-top:63px");
+    expect(markup).toContain("padding-bottom:50px");
   });
 });

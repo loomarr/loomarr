@@ -41,6 +41,7 @@
         }
       ],
       "../../scripts/with-memory-safe-android-build.cjs",
+      "../../scripts/with-loomarr-fonts.cjs",
       "expo-secure-store"
     ],
     "experiments": {

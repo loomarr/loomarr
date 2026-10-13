@@ -14,9 +14,12 @@ const destinations = [
   { icon: "channels", label: "Surf", value: "surf" },
 ] as const;
 
-/** Requests is a phone destination: the TV and pointer rows keep Watching, Guide and Surf. */
+/**
+ * Requests is a phone destination: the TV and pointer rows keep Watching, Guide and Surf. The phone's
+ * Surf stays hidden until an iPhone Surf mock is approved, so its bar is Watching, Guide, Requests.
+ */
 const destinationsFor = (density: ClientNavigationProps["density"]) =>
-  density === "touch" ? destinations : destinations.filter(({ value }) => value !== "requests");
+  destinations.filter(({ value }) => value !== (density === "touch" ? "surf" : "requests"));
 
 const clientDestinationLabel = (destination: ClientDestination): string =>
   destinations.find((item) => item.value === destination)?.label ?? destination;

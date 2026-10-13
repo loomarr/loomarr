@@ -221,11 +221,13 @@ const roleTracking = (textRole: TextRole, size: number) =>
     ? -0.8
     : textRole === "title"
       ? -0.25
-      : textRole === "section"
-        ? 2
-        : textRole === "guideLabel"
-          ? size * 0.04
-          : 0;
+      : textRole === "screenTitle"
+        ? size * -0.02
+        : textRole === "section"
+          ? 2
+          : textRole === "guideLabel"
+            ? size * 0.04
+            : 0;
 
 const Text = ({
   as,

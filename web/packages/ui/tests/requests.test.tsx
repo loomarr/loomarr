@@ -632,6 +632,13 @@ describe("request a channel", () => {
     expect(markup).toContain(">Suggest titles<");
   });
 
+  it("keeps amber for its one primary action: Suggest titles, not every idea card or the back link", () => {
+    const markup = form();
+    // action.primary #FFB020: the Pressable's fill flattens to rgba, a Tamagui text keeps its hex.
+    expect(markup.match(/background-color:rgba\(255,176,32,1\.00\)/g)).toHaveLength(1);
+    expect(markup).not.toContain("color:#FFB020");
+  });
+
   it("marks an idea that is already requested instead of offering it again", () => {
     const markup = form();
     expect(markup).toContain(">Waiting for an admin<");
@@ -720,9 +727,11 @@ describe("requests journey", () => {
     const markup = render(
       <RequestsJourney controller={controller(requestsSnapshot())} onOpenChannel={noop} />,
     );
-    // "Request a channel" is the app bar's icon button on both phones, as the approved mock draws it.
+    // "Request a channel" is the app bar's plain icon button on both phones, as the approved mock
+    // draws it: no amber fill, which is for focus and the screen's one primary action.
     expect(markup).toContain('aria-label="Request a channel"');
-    expect(markup).toContain(">+<");
+    expect(markup).not.toContain(">+<");
+    expect(markup).not.toContain("background-color:rgba(255,176,32");
     expect(markup).toContain('aria-label="In progress, 3"');
   });
 

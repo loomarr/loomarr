@@ -34,8 +34,10 @@ const OverlayActions = ({
       alignItems="stretch"
       backgroundColor="$transparent"
       borderWidth={0}
+      // A phone stacks full-width buttons, as an iOS alert does. Wrapping the column would size every
+      // button to the widest label instead.
       flexDirection={density === "touch" ? "column" : "row"}
-      flexWrap="wrap"
+      flexWrap={density === "touch" ? "nowrap" : "wrap"}
       gap="$control"
     >
       {actions.map((action) => (

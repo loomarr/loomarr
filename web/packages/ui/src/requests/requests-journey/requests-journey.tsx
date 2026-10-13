@@ -6,7 +6,7 @@ import {
   type RequestTab,
   requestsInTab,
 } from "@loomarr/core/requests";
-import { Action, Screen, ScrollFrame, Surface, Text } from "@loomarr/design-system";
+import { Action, PHONE_GUTTER, Screen, ScrollFrame, Surface, Text } from "@loomarr/design-system";
 import { useEffect, useReducer, useState, useSyncExternalStore } from "react";
 import type { BriefState } from "../request-channel";
 import { RequestChannel } from "../request-channel";
@@ -207,9 +207,12 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
       />
     ) : null;
 
+  // Flush, with the phone gutter on the sides only, so the large title sits where the Guide's does:
+  // 6 pt under the status bar, not under a top gutter as well.
   return (
     <Screen
       density="touch"
+      flush
       footer={
         sheet ? (
           <>
@@ -220,43 +223,51 @@ const RequestsJourney = ({ controller, footer, nowMs, onOpenChannel }: RequestsJ
           footer
         )
       }
-      gap="$control"
     >
-      {banner ? (
-        <Surface
-          gap="$inline"
-          level="raised"
-          padding="$control"
-          role={banner.tone === "danger" ? "alert" : "status"}
-        >
-          <Text density="touch" textRole="body" tone={banner.tone}>
-            {banner.message}
-          </Text>
-          <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
-            {banner.action ? (
+      <Surface
+        backgroundColor="$transparent"
+        borderWidth={0}
+        flex={1}
+        gap="$control"
+        paddingHorizontal={PHONE_GUTTER}
+      >
+        {banner ? (
+          <Surface
+            gap="$inline"
+            level="raised"
+            marginTop="$inline"
+            padding="$control"
+            role={banner.tone === "danger" ? "alert" : "status"}
+          >
+            <Text density="touch" textRole="body" tone={banner.tone}>
+              {banner.message}
+            </Text>
+            <Surface backgroundColor="$transparent" borderWidth={0} flexDirection="row" gap="$inline">
+              {banner.action ? (
+                <Action
+                  accessibilityRole="button"
+                  density="touch"
+                  onPress={banner.action.onPress}
+                  style={{ flex: 1 }}
+                  tone="secondary"
+                >
+                  {banner.action.label}
+                </Action>
+              ) : null}
               <Action
                 accessibilityRole="button"
                 density="touch"
-                onPress={banner.action.onPress}
+                onPress={dismissBanner}
                 style={{ flex: 1 }}
                 tone="secondary"
               >
-                {banner.action.label}
+                Dismiss
               </Action>
-            ) : null}
-            <Action
-              accessibilityRole="button"
-              density="touch"
-              onPress={dismissBanner}
-              style={{ flex: 1 }}
-              tone="secondary"
-            >
-              Dismiss
-            </Action>
+            </Surface>
           </Surface>
-        </Surface>
-      ) : null}
-      {body}
+        ) : null}
+        {body}
+      </Surface>
     </Screen>
   );
 };

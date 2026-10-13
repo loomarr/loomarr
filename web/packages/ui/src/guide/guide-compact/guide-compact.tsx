@@ -7,7 +7,7 @@ import {
 } from "@loomarr/core/guide";
 import { Action, Surface, Text, useWindowWidth } from "@loomarr/design-system";
 import { useState } from "react";
-import { type LayoutChangeEvent, Pressable, ScrollView, View } from "react-native";
+import { type LayoutChangeEvent, Platform, Pressable, ScrollView, View } from "react-native";
 
 import { guideFilterChannelIds, guideFilterOptions, guideFilterText } from "../guide-filter";
 import type { GuideCompactProps } from "./guide-compact.type";
@@ -279,11 +279,13 @@ const GuideCompact = ({
                             justifyContent="center"
                             paddingHorizontal={6}
                           >
+                            {/* 5d sets a native cell's title in Geist 13/500. The web phone keeps the
+                                web grid's mono label until it is checked against the web mock. */}
                             <Text
                               density={density}
                               numberOfLines={1}
                               textAlign="left"
-                              textRole="guideLabel"
+                              textRole={Platform.OS === "web" ? "guideLabel" : "guideCell"}
                               tone={selected || airing.isOnNow ? "primary" : "secondary"}
                             >
                               {label}

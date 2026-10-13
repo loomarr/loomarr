@@ -29,7 +29,7 @@ describe("shared client navigation", () => {
     for (const markup of [render(), render("material")]) {
       expect(markup).toContain('role="tablist"');
       expect(markup).not.toContain('role="button"');
-      expect(markup.match(/role="tab"/g)).toHaveLength(4);
+      expect(markup.match(/role="tab"/g)).toHaveLength(3);
       expect(markup.match(/aria-selected="true"/g)).toHaveLength(1);
     }
     // The web build of a touch surface reads as iPhone's bar; Android's is chosen by platform.
@@ -37,7 +37,7 @@ describe("shared client navigation", () => {
     expect(render("material")).toContain("font-size:12px");
   });
 
-  it("orders a phone's tabs Watching, Guide, Requests, Surf and badges only Requests", () => {
+  it("orders a phone's tabs Watching, Guide, Requests, with no Surf yet, and badges only Requests", () => {
     const render = (requestsBadge?: number) =>
       renderToStaticMarkup(
         <LoomarrProvider>
@@ -55,7 +55,6 @@ describe("shared client navigation", () => {
       "Watching",
       "Guide",
       "Requests, 3 need attention",
-      "Surf",
     ]);
     expect(render(0)).not.toContain("need attention");
     expect(render()).not.toContain("need attention");

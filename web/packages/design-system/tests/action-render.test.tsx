@@ -30,6 +30,18 @@ describe("Action variants", () => {
     expect(markup).toContain("color:#0B0C0E");
   });
 
+  it("renders the danger tone as a neutral tile with danger text, never the on-air red fill", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Action tone="danger">Disconnect</Action>
+      </LoomarrProvider>,
+    );
+    // surface.elevated #1B1E24 under state.danger #E85A5F text, as an iOS destructive alert button.
+    expect(markup).toContain("background-color:rgba(27,30,36,1.00)");
+    expect(markup).not.toContain("background-color:rgba(232,90,95,1.00)");
+    expect(markup).toContain("color:#E85A5F");
+  });
+
   it("renders outline with a border and no fill", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

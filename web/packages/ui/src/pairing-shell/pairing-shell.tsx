@@ -9,11 +9,13 @@ import {
   Field,
   QrCode,
   Screen,
+  ScrollFrame,
   Surface,
+  semanticSpace,
   Text,
 } from "@loomarr/design-system";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { BackHandler } from "react-native";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, type ScrollView } from "react-native";
 
 import type { ApprovalBrowser, PairingShellProps } from "./pairing-shell.type";
 import { PhoneApproval } from "./phone-approval";
@@ -50,6 +52,16 @@ const PairingShell = ({
   const [serverUrl, setServerUrl] = useState(initialServerUrl ?? "");
   const [manualEntry, setManualEntry] = useState(!discovery);
   const [, setTick] = useState(0);
+  // A phone's keyboard covers the bottom of the page, where Continue is: when it opens, the page
+  // (already lifted above it) scrolls to its end so the field and Continue both show.
+  const page = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (density !== "touch") return undefined;
+    const subscription = Keyboard.addListener("keyboardDidShow", () =>
+      page.current?.scrollToEnd({ animated: true }),
+    );
+    return () => subscription.remove();
+  }, [density]);
 
   useEffect(() => {
     void session.initialize(initialServerUrl);
@@ -103,8 +115,8 @@ const PairingShell = ({
     approvalBrowser,
   );
   const awaitingApproval = state.status === "awaiting-approval";
-  return (
-    <Screen alignItems="center" density={density} gap="$section" justifyContent="center">
+  const body = (
+    <>
       {awaitingApproval ? (
         density === "tv" ? (
           <BrandMark contained={false} decorative size={24} width={320} />
@@ -123,6 +135,30 @@ const PairingShell = ({
         {awaitingApproval ? null : <BrandLockup size={density === "tv" ? "large" : "medium"} />}
         {content}
       </Surface>
+    </>
+  );
+  // A phone's keyboard would cover the server field's Continue: the page lifts above it and scrolls.
+  if (density === "touch")
+    return (
+      <Screen density={density}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+          <ScrollFrame
+            contentContainerStyle={{
+              alignItems: "center",
+              gap: semanticSpace.section,
+              justifyContent: "center",
+            }}
+            density={density}
+            ref={page}
+          >
+            {body}
+          </ScrollFrame>
+        </KeyboardAvoidingView>
+      </Screen>
+    );
+  return (
+    <Screen alignItems="center" density={density} gap="$section" justifyContent="center">
+      {body}
     </Screen>
   );
 };

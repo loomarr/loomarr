@@ -1,11 +1,11 @@
 import { isWeb, useTheme, View } from "@tamagui/core";
 import { useEffect, useRef } from "react";
-import { Animated, Easing } from "react-native";
+import { Animated, Easing, Platform } from "react-native";
 import { BrandWordmark } from "../brand/brand";
 import { useNativeAnimationDriver } from "../motion/animation-driver";
 import { useReducedMotionPreference } from "../motion/use-reduced-motion";
 import type { Density } from "../tokens";
-import { brandChroma } from "../tokens";
+import { brandChroma, nativeFontFace, typography } from "../tokens";
 
 const brandLaunchMotion = {
   segmentDuration: 340,
@@ -164,7 +164,10 @@ const BrandLaunch = ({
           <Animated.Text
             style={{
               color: theme.contentSecondary.val,
-              fontFamily: "monospace",
+              // An Animated.Text, outside Tamagui's font resolution, so it names the face itself.
+              fontFamily: isWeb
+                ? typography.family.data.web
+                : nativeFontFace("data", Platform.OS === "android" ? "android" : "ios"),
               fontSize: density === "tv" ? 18 : 12,
               opacity: taglineProgress,
               transform: [

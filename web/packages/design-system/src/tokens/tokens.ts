@@ -1,3 +1,4 @@
+import nativeFonts from "../../native-fonts.json";
 import brandContract from "./brand-contract.json";
 
 const brandChroma = brandContract.chroma as [string, string, string, string, string, string, string];
@@ -206,13 +207,16 @@ const iconography = {
 
 const typography = {
   family: {
+    // Native has no variable font: each app embeds one static file per weight the native mock sets
+    // (Geist 400–700, Geist Mono 400–600), listed once in native-fonts.json for the apps' font plugin
+    // (web/scripts/with-loomarr-fonts.cjs), and `nativeFontFace` names them.
     body: {
       web: "'Geist Variable', Geist, ui-sans-serif, system-ui, sans-serif",
-      native: "System",
+      native: nativeFonts.body,
     },
     data: {
       web: "'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace",
-      native: "monospace",
+      native: nativeFonts.data,
     },
   },
   // Pointer is the web's density, so its body is the web scale's body (`--text-base` 14 at
@@ -255,6 +259,10 @@ const typography = {
     guideIdent: { size: 11, lineHeight: 14, weight: "600" },
     // The now-line's time pill sets its text solid (line-height 1), as the mock does.
     guideNow: { size: 11, lineHeight: 11, weight: "400" },
+    // A phone tab's large title and a phone Guide cell's title (#1659 native mock 5d). Neither has a
+    // pointer mock, so pointer takes the nearest existing role (title, guideLabel).
+    screenTitle: { size: 24, lineHeight: 30, weight: "650" },
+    guideCell: { size: 11, lineHeight: 14, weight: "400" },
   },
   touch: {
     display: { size: 38, lineHeight: 42, weight: "700" },
@@ -284,6 +292,9 @@ const typography = {
     guideClip: { size: 13, lineHeight: 18, weight: "400" },
     guideIdent: { size: 13, lineHeight: 18, weight: "600" },
     guideNow: { size: 13, lineHeight: 13, weight: "400" },
+    // 5d: the "Guide" title at 30/700 (-0.02em), and the grid's programme titles in Geist 13/500.
+    screenTitle: { size: 30, lineHeight: 36, weight: "700" },
+    guideCell: { size: 13, lineHeight: 18, weight: "500" },
   },
   tv: {
     display: { size: 54, lineHeight: 60, weight: "700" },
@@ -313,17 +324,58 @@ const typography = {
     guideClip: { size: 16, lineHeight: 22, weight: "400" },
     guideIdent: { size: 16, lineHeight: 22, weight: "600" },
     guideNow: { size: 16, lineHeight: 16, weight: "400" },
+    // 5b's TV Guide title is 30/600; the TV grid has no cell-title role of its own, so guideLabel's.
+    screenTitle: { size: 30, lineHeight: 36, weight: "600" },
+    guideCell: { size: 16, lineHeight: 22, weight: "400" },
   },
 } as const;
 
 type Density = keyof typeof semanticTargets;
 type TextRole = keyof (typeof typography)["pointer"];
+type FontFamilyRole = keyof (typeof typography)["family"];
 
-export type { Density, TextRole };
+/**
+ * The embedded weight a requested weight draws with, by CSS font matching: a weight from 400 to 500
+ * tries itself up to 500, then lighter, then heavier; a lighter one tries lighter first, a heavier one
+ * heavier first. So the type scale's 550 draws SemiBold and 650 draws Bold, as a browser would draw
+ * them from these static files.
+ */
+const nearestEmbeddedWeight = (embedded: readonly number[], requested: number): number => {
+  const sorted = [...embedded].sort((a, b) => a - b);
+  if (sorted.includes(requested)) return requested;
+  const lighter = sorted.filter((weight) => weight < requested).reverse();
+  const heavier = sorted.filter((weight) => weight > requested);
+  const order =
+    requested < 400
+      ? [...lighter, ...heavier]
+      : requested <= 500
+        ? [
+            ...heavier.filter((weight) => weight <= 500),
+            ...lighter,
+            ...heavier.filter((weight) => weight > 500),
+          ]
+        : [...heavier, ...lighter];
+  return order[0] ?? sorted[0] ?? requested;
+};
+
+/**
+ * The native font name for a family role at a weight: iOS registers each file by its PostScript name
+ * (`Geist-SemiBold`), Android by its file name (`Geist_600SemiBold`). Omitted, the weight is 400.
+ */
+const nativeFontFace = (role: FontFamilyRole, os: "android" | "ios", weight: number | string = 400) => {
+  const { file, weights } = typography.family[role].native;
+  const requested = weight === "bold" ? 700 : weight === "normal" ? 400 : Number(weight) || 400;
+  const embedded = nearestEmbeddedWeight(Object.keys(weights).map(Number), requested);
+  const style = (weights as Record<string, string>)[String(embedded)];
+  return os === "android" ? `${file}_${embedded}${style}` : `${file}-${style}`;
+};
+
+export type { Density, FontFamilyRole, TextRole };
 export {
   brandChroma,
   brandContract,
   iconography,
+  nativeFontFace,
   semanticColors,
   semanticMotion,
   semanticRadius,

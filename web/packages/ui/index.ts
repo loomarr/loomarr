@@ -100,6 +100,8 @@ export {
   ReviewSheet,
   reviewReducer,
 } from "./src/requests";
+export type { ScreenHeaderAction, ScreenHeaderProps } from "./src/screen-header";
+export { ScreenHeader } from "./src/screen-header";
 export type { StatePanelAction, StatePanelKind, StatePanelProps } from "./src/state-panel";
 export { StatePanel } from "./src/state-panel";
 export type {

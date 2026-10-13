@@ -38,6 +38,42 @@ describe("pairing contract", () => {
 
     expect(session.snapshot()).toEqual({ status: "needs-server" });
   });
+  it.each([
+    [
+      "the network fails with platform text",
+      new TypeError("fetch failed: UnexpectedException (ExpoModulesCore/Promise.swift:56)"),
+      "Loomarr couldn’t reach loomarr.local:8080. Check the address, and that the server is running and reachable from this device.",
+    ],
+    [
+      "the address serves a page that isn't Loomarr's JSON",
+      new SyntaxError("JSON Parse error: Unexpected character: <"),
+      "loomarr.local:8080 isn’t answering as a Loomarr server. Check the address.",
+    ],
+    [
+      "the server refuses to start pairing",
+      new PairingHttpError(500, "Pairing request failed (500)"),
+      "loomarr.local:8080 answered, but couldn’t start pairing (error 500). Check that it’s your Loomarr server, then try again.",
+    ],
+  ])("says in plain words when %s", async (_case, error, message) => {
+    const session = new PairingSession({
+      createTransport: () => ({
+        poll: vi.fn(),
+        start: vi.fn(async () => {
+          throw error;
+        }),
+      }),
+      deviceName: "Living room",
+      store: memoryStore(),
+    });
+    await session.pair("http://loomarr.local:8080");
+
+    expect(session.snapshot()).toEqual({
+      message,
+      retryable: true,
+      serverUrl: "http://loomarr.local:8080",
+      status: "failed",
+    });
+  });
   it("keeps the saved credential until replacement pairing succeeds", async () => {
     const previous = { deviceName: "Shield", serverUrl: "https://old.example", token: "old-token" };
     const store = memoryStore(previous);
@@ -272,7 +308,8 @@ describe("pairing contract", () => {
 
     expect(revokeCredential).toHaveBeenCalledWith(credential, expect.any(AbortSignal));
     expect(store.clear).toHaveBeenCalledOnce();
-    expect(session.snapshot()).toEqual({ serverUrl: credential.serverUrl, status: "revoked" });
+    // A chosen disconnect is not the 401 "credential no longer valid" state: it returns to server choice.
+    expect(session.snapshot()).toEqual({ status: "needs-server" });
   });
   it("retains the credential when deliberate server revocation fails", async () => {
     const credential = { deviceName: "Shield", serverUrl: "https://loomarr.media", token: "secret" };
@@ -312,7 +349,7 @@ describe("pairing contract", () => {
     await session.disconnect();
 
     expect(store.clear).toHaveBeenCalledOnce();
-    expect(session.snapshot()).toEqual({ serverUrl: credential.serverUrl, status: "revoked" });
+    expect(session.snapshot()).toEqual({ status: "needs-server" });
   });
   it("persists the credential before publishing paired", async () => {
     const events: string[] = [];

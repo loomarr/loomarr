@@ -1,6 +1,9 @@
-import { createFont, createTamagui, createTokens, isWeb } from "@tamagui/core";
+import { createFont, createTamagui, createTokens, type GenericFont, isWeb } from "@tamagui/core";
+import { Platform } from "react-native";
 
 import {
+  type FontFamilyRole,
+  nativeFontFace,
   semanticColors,
   semanticRadius,
   semanticSpace,
@@ -147,8 +150,21 @@ const tokens = createTokens({
   },
 });
 
+const nativeOs = Platform.OS === "android" ? "android" : "ios";
+
+// On native, Tamagui swaps a text's family for the face its weight names, so each weight draws its
+// own embedded file. The type scale's 550 and 650 are not Tamagui `FontWeightValues`, so the record
+// is widened; Tamagui keeps the extra keys.
+const nativeFaces = (role: FontFamilyRole) =>
+  Object.fromEntries(
+    ["100", "200", "300", "400", "500", "550", "600", "650", "700", "800", "900", "normal", "bold"].map(
+      (weight) => [weight, { normal: nativeFontFace(role, nativeOs, weight) }],
+    ),
+  ) as GenericFont["face"];
+
 const bodyFont = createFont({
-  family: isWeb ? typography.family.body.web : typography.family.body.native,
+  family: isWeb ? typography.family.body.web : nativeFontFace("body", nativeOs),
+  ...(isWeb ? {} : { face: nativeFaces("body") }),
   size: Object.fromEntries(
     Object.entries(typography.pointer).map(([role, value]) => [role, value.size]),
   ) as Record<keyof (typeof typography)["pointer"], number>,
@@ -181,7 +197,8 @@ const bodyFont = createFont({
 
 const dataFont = createFont({
   ...bodyFont,
-  family: isWeb ? typography.family.data.web : typography.family.data.native,
+  family: isWeb ? typography.family.data.web : nativeFontFace("data", nativeOs),
+  ...(isWeb ? {} : { face: nativeFaces("data") }),
 });
 
 const loomarrConfig = createTamagui({

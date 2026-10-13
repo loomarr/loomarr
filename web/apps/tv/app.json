@@ -37,6 +37,7 @@
       "../../scripts/with-workspace-bundle-inputs.cjs",
       "../../scripts/with-shield-release-signing.cjs",
       "../../scripts/with-loomarr-android-network.cjs",
+      "../../scripts/with-loomarr-fonts.cjs",
       [
         "@react-native-tvos/config-tv",
         {

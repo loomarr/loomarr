@@ -54,6 +54,15 @@ copyleft (no GPL/LGPL/AGPL/MPL/EPL/CDDL) reaches the bundle. Notable direct runt
 (ISC), `hls.js` and `class-variance-authority` (Apache-2.0). The authoritative, versioned list is
 [`web/pnpm-lock.yaml`](web/pnpm-lock.yaml); the full per-package inventory rides in the release SBOM.
 
+## Native client fonts (embedded in the iPhone and TV apps)
+
+The iPhone, Apple TV and Android TV apps embed seven static Geist and Geist Mono files (Geist 400–700,
+Geist Mono 400–600) from `@expo-google-fonts/geist` and `@expo-google-fonts/geist-mono`. The fonts are
+© 2024 The Geist Project Authors under the **SIL Open Font License 1.1** (the packages' own code is
+MIT). OFL §2 lets the copyright notice and licence travel in the font's machine-readable metadata, and
+each file carries both in its name table (IDs 0, 13 and 14). The web UI's `@fontsource-variable`
+Geist files are the same fonts under the same licence.
+
 ## Rust dependencies (compiled into the image worker)
 
 The image-processing worker (`internal/images/rustgen` → the `loomarr-image` crate) is compiled

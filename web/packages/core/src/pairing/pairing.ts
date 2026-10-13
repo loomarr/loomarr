@@ -64,6 +64,17 @@ class PairingHttpError extends Error {
   }
 }
 
+// What the viewer reads when pairing can't start. A platform's own error text ("fetch failed:
+// UnexpectedException … Promise.swift:56", a JSON parse error from a non-Loomarr page) names nothing
+// the viewer can act on, so only the kind of failure and the server's address reach the screen.
+const pairingFailureMessage = (error: unknown, serverUrl: string): string => {
+  const host = new URL(serverUrl).host;
+  if (error instanceof PairingHttpError)
+    return `${host} answered, but couldn’t start pairing (error ${error.status}). Check that it’s your Loomarr server, then try again.`;
+  if (error instanceof SyntaxError) return `${host} isn’t answering as a Loomarr server. Check the address.`;
+  return `Loomarr couldn’t reach ${host}. Check the address, and that the server is running and reachable from this device.`;
+};
+
 type PairingFetch = typeof globalThis.fetch;
 type PairingKeyValueStorage = {
   deleteItem(key: string): Promise<void>;
@@ -279,7 +290,9 @@ class PairingSession {
       if (this.abortController === controller) this.abortController = undefined;
     }
     await this.options.store.clear();
-    this.emit({ serverUrl: current.serverUrl, status: "revoked" });
+    // The viewer chose this, so it isn't the "credential no longer valid" state a 401 lands on:
+    // the device goes back to choosing a server, as a fresh install would.
+    this.emit({ status: "needs-server" });
   }
   stop() {
     this.abortController?.abort();
@@ -330,7 +343,7 @@ class PairingSession {
     } catch (error) {
       if (controller.signal.aborted) return;
       this.emit({
-        message: error instanceof Error ? error.message : "Loomarr could not be reached.",
+        message: pairingFailureMessage(error, serverUrl),
         retryable: true,
         serverUrl,
         status: "failed",
