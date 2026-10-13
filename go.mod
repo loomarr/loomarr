@@ -2,6 +2,11 @@ module github.com/loomarr/loomarr
 
 go 1.27
 
+// Cargo's build directory is never Go source. internal/testkit runs `cargo build` from inside
+// `go test`, and rustc creates and deletes temp dirs under target/ meanwhile, so a parallel
+// `go list ./...` that walked it failed on a vanished path. Guarded by scripts/go-impact-test.sh.
+ignore ./target
+
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/adhocore/gronx v1.20.3
