@@ -11,7 +11,6 @@ import Ellipsis from "lucide-react-native/icons/ellipsis";
 import House from "lucide-react-native/icons/house";
 import Inbox from "lucide-react-native/icons/inbox";
 import Info from "lucide-react-native/icons/info";
-import LayoutGrid from "lucide-react-native/icons/layout-grid";
 import ListChecks from "lucide-react-native/icons/list-checks";
 import LoaderCircle from "lucide-react-native/icons/loader-circle";
 import Menu from "lucide-react-native/icons/menu";
@@ -48,10 +47,8 @@ const icons = {
   people: Users,
   play: Play,
   previous: SkipBack,
-  // The phone's Requests tab (#1816's approved native mock).
+  // Requests on every client (#1816's native mock; the web rail and bar draw the same Inbox).
   requests: Inbox,
-  // Web's bottom-bar Requests (#1785): the same LayoutGrid its md+ rail draws for Requests.
-  requestsRail: LayoutGrid,
   search: Search,
   settings: Settings,
   skipForward: SkipForward,
