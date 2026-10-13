@@ -176,6 +176,15 @@ test("pauses the picture off Watching and forgets the pause before tuning from t
   assert.match(shell, /forgetShellPause\(channelId\);\s*void controller\.tuneChannel\(channelId\)/);
 });
 
+test("builds the Expo modules core from source on iOS, against react-native-tvos", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+
+  // The canary's precompiled ExpoModulesCore sizes React's ShadowNodeFamily 64 bytes smaller
+  // than react-native-tvos 0.86.2-0 does, so every Expo view overflowed the heap (#1816).
+  // Building it from source also builds every Expo pod that depends on it from source.
+  assert.ok(manifest.expo.autolinking.ios.buildFromSource.includes("expo-modules-core"));
+});
+
 test("pins the native modules the shared player imports to the expo version", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 
