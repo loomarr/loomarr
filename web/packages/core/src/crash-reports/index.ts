@@ -1,6 +1,4 @@
 export { BreadcrumbTrail, createBreadcrumbFetch } from "./breadcrumbs";
-export type { ClientCrashReportInput } from "./contract";
-export { ClientCrashBreadcrumbCategory, ClientCrashReportInputPlatform } from "./contract";
 export type {
   CrashReportFlush,
   CrashReportSend,

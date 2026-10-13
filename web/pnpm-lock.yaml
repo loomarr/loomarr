@@ -97,6 +97,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@loomarr/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@loomarr/core':
         specifier: workspace:*
         version: link:../../packages/core

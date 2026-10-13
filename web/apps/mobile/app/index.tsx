@@ -1,4 +1,4 @@
-import { ClientCrashBreadcrumbCategory } from "@loomarr/core/crash-reports";
+import { ClientCrashBreadcrumbCategory } from "@loomarr/api/models/clientCrashBreadcrumbCategory";
 import type { PairingCredential } from "@loomarr/core/pairing";
 import {
   createPairingCredentialStore,

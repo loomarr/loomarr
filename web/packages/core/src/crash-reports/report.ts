@@ -1,8 +1,6 @@
-import {
-  type ClientCrashBreadcrumb,
-  type ClientCrashReportInput,
-  ClientCrashReportInputKind,
-} from "./contract";
+import type { ClientCrashBreadcrumb } from "@loomarr/api/models/clientCrashBreadcrumb";
+import type { ClientCrashReportInput } from "@loomarr/api/models/clientCrashReportInput";
+import { ClientCrashReportInputKind } from "@loomarr/api/models/clientCrashReportInputKind";
 import { scrubText, truncateUtf8 } from "./scrub";
 
 const MESSAGE_BYTES = 2 << 10;

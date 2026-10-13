@@ -1,7 +1,7 @@
+import type { ClientCrashReportInput } from "@loomarr/api/models/clientCrashReportInput";
 import { describe, expect, it, vi } from "vitest";
 import {
   BreadcrumbTrail,
-  type ClientCrashReportInput,
   type CrashReportDevice,
   CrashReporter,
   type CrashReportSend,
@@ -394,7 +394,8 @@ describe("MetricKit forwarding", () => {
     const [first, second] = reporter.pending();
     type Diagnostic = { callStackTree?: { callStacks: unknown[] } };
     const stacks = (report: ClientCrashReportInput | undefined) =>
-      (report?.nativePayload?.crashDiagnostics as Diagnostic[] | undefined)?.[0]?.callStackTree?.callStacks;
+      (report?.nativePayload as { crashDiagnostics?: Diagnostic[] } | undefined)?.crashDiagnostics?.[0]
+        ?.callStackTree?.callStacks;
     expect(stacks(first)).toEqual([deep.callStackTree.callStacks[0]]);
     expect(stacks(second)).toBeUndefined();
     for (const report of [first, second]) {

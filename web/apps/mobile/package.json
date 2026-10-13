@@ -13,6 +13,7 @@
     "bundle": "expo export --platform android --output-dir dist/android && expo export --platform ios --output-dir dist/ios"
   },
   "dependencies": {
+    "@loomarr/api": "workspace:*",
     "@loomarr/core": "workspace:*",
     "@loomarr/crash-reports-native": "workspace:*",
     "@loomarr/design-system": "workspace:*",

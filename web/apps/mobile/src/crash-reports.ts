@@ -1,6 +1,6 @@
+import { ClientCrashBreadcrumbCategory } from "@loomarr/api/models/clientCrashBreadcrumbCategory";
+import { ClientCrashReportInputPlatform } from "@loomarr/api/models/clientCrashReportInputPlatform";
 import {
-  ClientCrashBreadcrumbCategory,
-  ClientCrashReportInputPlatform,
   CrashReporter,
   type CrashReportStorage,
   createBreadcrumbFetch,

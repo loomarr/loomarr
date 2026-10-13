@@ -1,4 +1,5 @@
-import { type ClientCrashReportInput, ClientCrashReportInputKind } from "./contract";
+import type { ClientCrashReportInput } from "@loomarr/api/models/clientCrashReportInput";
+import { ClientCrashReportInputKind } from "@loomarr/api/models/clientCrashReportInputKind";
 import type { CrashReportDevice } from "./report";
 import { crashLabel, crashMessage } from "./report";
 import { scrubText, utf8ByteLength } from "./scrub";
