@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { SnowTile } from "./snow-tile.type";
 
 // The analog snow, rasterised ONCE per page into small repeating bitmaps.
 //
@@ -66,11 +67,6 @@ const rasterise = async (svg: string, width: number, height: number): Promise<st
   const png = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve));
   return png ? URL.createObjectURL(png) : source;
 };
-
-interface SnowTile {
-  backgroundImage: string;
-  backgroundSize: string;
-}
 
 const renderTile = async (): Promise<SnowTile> => {
   const ratio = Math.min(Math.max(Math.round(window.devicePixelRatio || 1), 1), 3);
@@ -141,5 +137,4 @@ const useSnowTile = (wanted: boolean, afterPaint: boolean): SnowTile | undefined
   return snow;
 };
 
-export type { SnowTile };
 export { useSnowTile };

@@ -8,7 +8,7 @@ import type { TvStaticProps } from "./tv-static.type";
 // keyframe (`animate-tv-snow`, defined in the token theme), so the grain shifts a few times a
 // second instead of sitting dead — a still render just reads as flat texture.
 //
-// The noise itself is one pre-rendered tile, repeated (see snow-tile.ts for the snow and why).
+// The noise itself is one pre-rendered tile, repeated (see snow-tile/ for the snow and why).
 // Behind idle surfaces it arrives AFTER the first frame and fades in, so the content it sits behind
 // paints first; the wash asks for it at once.
 //
