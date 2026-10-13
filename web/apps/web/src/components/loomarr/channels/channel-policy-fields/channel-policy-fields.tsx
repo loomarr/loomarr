@@ -63,40 +63,48 @@ const DateAxisRow = ({
     setDraft({ from: String(range.from), to: String(range.to) });
   }, [range.from, range.to]);
 
+  // Three axes of rows would otherwise give a screen reader or voice control a list of identical
+  // "From year" boxes and "Remove" buttons, so each name carries its axis and range while the
+  // visible text stays short (and still starts the name), as PolicyFieldSource does for Reset.
+  const where = <span className="sr-only">{`(${label}, range ${index + 1})`}</span>;
+  // The From/To pair never wraps apart: on a phone only Remove drops to the next line, so a
+  // range still reads as one row.
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`policy-dates-${label}-${index}-from`} className="text-muted-foreground text-xs">
-          From year
-        </Label>
-        <Input
-          id={`policy-dates-${label}-${index}-from`}
-          type="number"
-          min={YEAR_MIN}
-          max={YEAR_MAX}
-          className="w-28"
-          value={draft.from}
-          onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-          onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
-        />
-      </div>
-      <div className="flex flex-col gap-1">
-        <Label htmlFor={`policy-dates-${label}-${index}-to`} className="text-muted-foreground text-xs">
-          To year
-        </Label>
-        <Input
-          id={`policy-dates-${label}-${index}-to`}
-          type="number"
-          min={YEAR_MIN}
-          max={YEAR_MAX}
-          className="w-28"
-          value={draft.to}
-          onChange={(event) => setDraft({ ...draft, to: event.target.value })}
-          onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
-        />
+      <div className="flex gap-2">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor={`policy-dates-${label}-${index}-from`} className="text-muted-foreground text-xs">
+            From year {where}
+          </Label>
+          <Input
+            id={`policy-dates-${label}-${index}-from`}
+            type="number"
+            min={YEAR_MIN}
+            max={YEAR_MAX}
+            className="w-28"
+            value={draft.from}
+            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+            onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor={`policy-dates-${label}-${index}-to`} className="text-muted-foreground text-xs">
+            To year {where}
+          </Label>
+          <Input
+            id={`policy-dates-${label}-${index}-to`}
+            type="number"
+            min={YEAR_MIN}
+            max={YEAR_MAX}
+            className="w-28"
+            value={draft.to}
+            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+            onBlur={() => onCommit(index, { from: Number(draft.from), to: Number(draft.to) })}
+          />
+        </div>
       </div>
       <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(index)}>
-        Remove
+        Remove {where}
       </Button>
     </div>
   );
@@ -164,26 +172,28 @@ const DateAxisEditor = ({
         ))
       )}
       <div className="flex flex-wrap items-end gap-2">
-        <Input
-          aria-label={`${label} new range from`}
-          type="number"
-          min={YEAR_MIN}
-          max={YEAR_MAX}
-          className="w-28"
-          value={draft.from}
-          onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-          placeholder="From"
-        />
-        <Input
-          aria-label={`${label} new range to`}
-          type="number"
-          min={YEAR_MIN}
-          max={YEAR_MAX}
-          className="w-28"
-          value={draft.to}
-          onChange={(event) => setDraft({ ...draft, to: event.target.value })}
-          placeholder="To"
-        />
+        <div className="flex gap-2">
+          <Input
+            aria-label={`${label} new range from`}
+            type="number"
+            min={YEAR_MIN}
+            max={YEAR_MAX}
+            className="w-28"
+            value={draft.from}
+            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+            placeholder="From"
+          />
+          <Input
+            aria-label={`${label} new range to`}
+            type="number"
+            min={YEAR_MIN}
+            max={YEAR_MAX}
+            className="w-28"
+            value={draft.to}
+            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+            placeholder="To"
+          />
+        </div>
         <Button type="button" variant="outline" size="sm" onClick={add} aria-label={`Add ${label} range`}>
           Add range
         </Button>

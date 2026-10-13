@@ -103,9 +103,12 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
           otherwise not running, and showing disabled boxes for a feature that is off reads as
           broken rather than inapplicable. Blank = inherit the fleet-wide default. */}
       {enabled && (
-        <div className="flex flex-wrap gap-x-6 gap-y-3 pl-7">
+        // Each threshold gets the same label row as every other Programming field: label left,
+        // source badge and Reset right, in the mock's two-column grid at full width (#1877 mock).
+        // Unindented, so the badge row fits beside or under the label on a phone.
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label htmlFor="policy-auto-curate-score" className="text-muted-foreground text-xs">
                 Quality bar
               </Label>
@@ -133,7 +136,7 @@ const ChannelAutoCurate = ({ policy, onChange, intentBacked = true, className }:
             />
           </div>
           <div className="flex flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label htmlFor="policy-auto-curate-cap" className="text-muted-foreground text-xs">
                 Title cap
               </Label>

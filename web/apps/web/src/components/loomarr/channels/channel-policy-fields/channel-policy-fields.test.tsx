@@ -85,15 +85,15 @@ describe("ChannelPolicyFields", () => {
       />,
     );
 
-    const from = screen.getAllByLabelText("From year")[0]!;
+    const from = screen.getByLabelText("From year (Movie release, range 1)");
     await userEvent.clear(from);
     await userEvent.type(from, "2005");
     await userEvent.tab();
 
     expect(screen.getByRole("alert")).toHaveTextContent("From no later than To");
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getAllByLabelText("From year")[0]).toHaveValue(2005);
-    expect(screen.getAllByLabelText("To year")[0]).toHaveValue(1999);
+    expect(screen.getByLabelText("From year (Movie release, range 1)")).toHaveValue(2005);
+    expect(screen.getByLabelText("To year (Movie release, range 1)")).toHaveValue(1999);
   });
 
   it("commits a recovered date pair without widening the range after an invalid From edit", async () => {
@@ -115,8 +115,8 @@ describe("ChannelPolicyFields", () => {
       />,
     );
 
-    const from = screen.getAllByLabelText("From year")[0]!;
-    const to = screen.getAllByLabelText("To year")[0]!;
+    const from = screen.getByLabelText("From year (Movie release, range 1)");
+    const to = screen.getByLabelText("To year (Movie release, range 1)");
     await userEvent.clear(from);
     await userEvent.type(from, "2005");
     await userEvent.tab();
@@ -139,8 +139,8 @@ describe("ChannelPolicyFields", () => {
         },
       },
     });
-    expect(screen.getAllByLabelText("From year")[0]).toHaveValue(2005);
-    expect(screen.getAllByLabelText("To year")[0]).toHaveValue(2009);
+    expect(screen.getByLabelText("From year (Movie release, range 1)")).toHaveValue(2005);
+    expect(screen.getByLabelText("To year (Movie release, range 1)")).toHaveValue(2009);
   });
 
   it("commits a recovered date pair after an invalid To edit", async () => {
@@ -152,8 +152,8 @@ describe("ChannelPolicyFields", () => {
       />,
     );
 
-    const from = screen.getAllByLabelText("From year")[0]!;
-    const to = screen.getAllByLabelText("To year")[0]!;
+    const from = screen.getByLabelText("From year (Movie release, range 1)");
+    const to = screen.getByLabelText("To year (Movie release, range 1)");
     await userEvent.clear(to);
     await userEvent.type(to, "1985");
     await userEvent.tab();
@@ -186,12 +186,12 @@ describe("ChannelPolicyFields", () => {
       />,
     );
 
-    await userEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    await userEvent.click(screen.getByRole("button", { name: "Remove (Movie release, range 1)" }));
     expect(onChange).toHaveBeenLastCalledWith({
       scope: { dates: { movieRelease: undefined, seriesAiring: [{ from: 2010, to: 2014 }] } },
     });
 
-    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove (Episode airing, range 1)" }));
     expect(onChange).toHaveBeenLastCalledWith({ scope: {} });
   });
 

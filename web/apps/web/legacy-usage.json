@@ -74,7 +74,7 @@
       "tailwindClasses": 10
     },
     "src/components/loomarr/channels/channel-auto-curate/channel-auto-curate.tsx": {
-      "tailwindClasses": 42,
+      "tailwindClasses": 43,
       "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-breaks/channel-breaks.tsx": {
@@ -111,7 +111,7 @@
       "legacyUi": 4
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
-      "tailwindClasses": 86,
+      "tailwindClasses": 91,
       "legacyUi": 4
     },
     "src/components/loomarr/channels/channel-programming-changes/channel-programming-changes.tsx": {
@@ -122,7 +122,7 @@
       "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-seasonal/channel-seasonal.tsx": {
-      "tailwindClasses": 40,
+      "tailwindClasses": 42,
       "legacyUi": 3
     },
     "src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {

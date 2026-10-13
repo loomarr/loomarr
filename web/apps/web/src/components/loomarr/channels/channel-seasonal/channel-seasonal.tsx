@@ -96,7 +96,7 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
             onChange({ ...policy, seasonal: { ...seasonal, mode: v === "default" ? "" : v } })
           }
         >
-          <SelectTrigger id="policy-seasonal-mode" className="w-64">
+          <SelectTrigger id="policy-seasonal-mode" className="w-full max-w-64">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -152,7 +152,7 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
               })
             }
           >
-            <SelectTrigger id="policy-seasonal-offseason" className="w-64">
+            <SelectTrigger id="policy-seasonal-offseason" className="w-full max-w-64">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
