@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr on-screen logo — design review</title>
+<style>
+  /* Tokens: web/packages/tokens/generated/theme.css (static-*, signal, lock, caution, onair-300, tune, suggest). */
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #E7EAF0; background: #08090B;
+    --s950:#0B0C0E; --s900:#131519; --s800:#1B1E24; --s700:#2A2E37; --s500:#5A6170; --s400:#8B93A3; --s100:#E7EAF0;
+    --signal:#FFB020; --lock:#3DD68C; --caution:#F5D90A; --onair:#E5484D; --onair300:#E85A5F; --tune:#4CC9E8; --suggest:#DC5BAC; --control:#666970; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a, input { font: inherit; color: inherit; }
+  a { text-decoration: none; }
+  button, a, select, label { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  code { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; }
+
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 24px; border-bottom: 1px solid var(--s700); background: var(--s900); position: sticky; top: 0; z-index: 60; }
+  .review strong { flex-basis: 100%; }
+  .review label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+  .review select { min-height: 36px; background: var(--s800); border: 1px solid var(--control); border-radius: 6px; padding: 4px 8px; }
+  .review-note { font-size: 13px; color: var(--s400); margin: 12px auto; max-width: 1040px; padding: 0 16px; line-height: 1.5; }
+
+  #frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 16px auto 8px; padding: 0 16px; }
+  #frame { width: 100%; max-width: 1040px; border: 1px solid var(--s700); border-radius: 8px; background: var(--s950); overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  #frame.phone { max-width: 390px; height: 844px; border-radius: 28px; box-shadow: 0 0 0 6px var(--s900); }
+  #scroll { flex: 1; min-height: 0; overflow: auto; }
+  .frame-label { font-size: 12px; color: var(--s400); font-family: 'Geist Mono', ui-monospace, monospace; }
+
+  .ph { padding: 16px 24px; border-bottom: 1px solid var(--s700); }
+  .ph h1 { font-size: 20px; line-height: 28px; margin: 0; font-weight: 600; }
+  .ph .desc { margin: 4px 0 0; font-size: 14px; color: var(--s400); max-width: 768px; line-height: 1.45; }
+  .body { padding: 24px; display: flex; flex-direction: column; gap: 24px; }
+  #frame.phone .ph { padding: 14px 16px; }
+  #frame.phone .body { padding: 16px; gap: 20px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--s700); overflow-x: auto; }
+  .tab { padding: 9px 12px; font-size: 14px; color: var(--s400); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .tab[aria-current] { color: var(--s100); font-weight: 500; border-bottom-color: var(--signal); }
+
+  h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; }
+  h2.xl { font-size: 20px; }
+  h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  p { margin: 0; line-height: 1.5; }
+  .muted { color: var(--s400); } .sm { font-size: 14px; } .xs { font-size: 12px; } .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  .card { background: var(--s900); border: 1px solid var(--s700); border-radius: 8px; }
+  .p4 { padding: 16px; }
+  .row { display: flex; align-items: center; gap: 12px; } .wrap { flex-wrap: wrap; } .grow { flex: 1; min-width: 0; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+
+  .badge { display: inline-flex; align-items: center; border-radius: 4px; padding: 2px 6px; font: 500 11px/1.4 'Geist Mono', ui-monospace, monospace; letter-spacing: .025em; text-transform: uppercase; white-space: nowrap; background: var(--s800); color: var(--s400); }
+  .badge.signal { background: rgba(255,176,32,.15); color: var(--signal); }
+  .badge.lock { background: rgba(61,214,140,.15); color: var(--lock); }
+  .badge.caution { background: rgba(245,217,10,.15); color: var(--caution); }
+  .badge.tune { background: rgba(76,201,232,.15); color: var(--tune); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 6px; font-size: 14px; font-weight: 500; border: 1px solid var(--signal); background: var(--signal); color: var(--s950); white-space: nowrap; }
+  .btn.sm { min-height: 32px; padding: 0 10px; font-size: 13px; }
+  .btn.outline { background: transparent; border-color: var(--control); color: var(--s100); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .link { background: none; border: 0; padding: 0; font-size: 12px; text-decoration: underline; color: var(--s100); }
+  .link[disabled] { opacity: .5; cursor: not-allowed; }
+  .backlink { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--s400); }
+
+  /* Draft marker, as in the other review sheets. */
+  .delta { border: 1px dashed rgba(220,91,172,.55); border-radius: 8px; position: relative; padding: 20px; }
+  #frame.phone .delta { padding: 14px; }
+  .delta-tag { position: absolute; top: -9px; right: 10px; background: var(--s950); color: var(--suggest); font: 500 10.5px/1.4 'Geist Mono', ui-monospace, monospace; padding: 0 6px; text-transform: uppercase; letter-spacing: .03em; }
+  .flagline { font-size: 12px; color: var(--suggest); border-top: 1px dashed rgba(220,91,172,.4); padding-top: 8px; margin-top: 10px; }
+  .future { color: var(--caution); }
+
+  /* PolicyField: label + FieldHelp left, source badge + Reset right (channel-policy-fields.tsx:215). */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 28px; align-items: start; }
+  .zoom { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--s400); margin-left: auto; }
+  .zoom input { accent-color: var(--signal); width: 16px; height: 16px; }
+  #frame.phone .layout { grid-template-columns: 1fr; gap: 20px; }
+  .fields { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field[data-off="true"] { opacity: .45; pointer-events: none; }
+  .fhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  .flabel { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; }
+  .help { width: 18px; height: 18px; border-radius: 999px; border: 1px solid var(--control); color: var(--s400); font-size: 11px; display: inline-grid; place-items: center; background: none; padding: 0; }
+  .fsrc { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .hint { font-size: 12px; color: var(--s400); }
+  .input, .selectbox { min-height: 36px; border: 1px solid var(--control); border-radius: 6px; background: var(--s950); padding: 6px 10px; font-size: 14px; color: var(--s100); }
+  .selectbox { min-width: 200px; max-width: 100%; }
+  #frame.phone .selectbox { width: 100%; }
+  .switch { width: 40px; height: 22px; border-radius: 999px; background: var(--s700); position: relative; flex-shrink: 0; border: 0; padding: 0; }
+  .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 999px; background: var(--s100); transition: left .12s; }
+  .switch[aria-checked="true"] { background: var(--signal); } .switch[aria-checked="true"]::after { left: 21px; background: var(--s950); }
+
+  /* Radio-style buttons: the .views radiogroup of the approved Filler Library (aria-checked). */
+  .opts { display: grid; gap: 8px; }
+  .opt { border: 1px solid var(--control); border-radius: 8px; background: transparent; padding: 8px; text-align: left; display: flex; flex-direction: column; gap: 6px; min-height: 44px; }
+  .opt[aria-checked="true"] { border-color: var(--signal); background: rgba(255,176,32,.08); }
+  .opt .t { font-size: 13px; font-weight: 500; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .opt .d { font-size: 12px; color: var(--s400); line-height: 1.35; }
+  .thumb { height: 44px; border-radius: 4px; position: relative; overflow: hidden; background: linear-gradient(135deg, #2a3140, #14171d); display: grid; place-items: center; }
+  .thumb svg { height: 26px; width: auto; }
+  .looks { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+  .opt .t { justify-content: space-between; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 56px); gap: 6px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, 56px); gap: 6px; }
+  .cell { width: 56px; height: 40px; border: 1px solid var(--control); border-radius: 6px; background: transparent; padding: 0; position: relative; }
+  .cell[aria-checked="true"] { border-color: var(--signal); background: rgba(255,176,32,.12); }
+  .cell[aria-checked="true"]::after { content: ''; position: absolute; inset: 12px 20px; border-radius: 3px; background: var(--signal); }
+  .cell[disabled] { border-style: dashed; opacity: .35; cursor: not-allowed; }
+  .posrow { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .sw { width: 28px; height: 28px; border-radius: 999px; border: 2px solid transparent; padding: 0; }
+  .sw[aria-checked="true"] { border-color: var(--s100); box-shadow: 0 0 0 2px var(--s950) inset; }
+  .sw.era { background: conic-gradient(var(--onair), var(--signal), var(--lock), var(--tune), var(--suggest), var(--onair)); }
+  .swrow { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Preview frames: art is geometry in token colours, no imagery. */
+  .pv { display: grid; gap: 10px; position: sticky; top: 76px; }
+  #frame.phone .pv { position: static; order: -1; }
+  #frame.phone.tall { height: auto; }
+  .scene { position: relative; aspect-ratio: 16/9; container-type: size; overflow: hidden; border-radius: 6px; background: #000; border: 1px solid var(--s700); }
+  .scene .pic { position: absolute; top: 0; bottom: 0; overflow: hidden; }
+  .scene.bright .pic { background: linear-gradient(#f4ecd2 0%, #ffe9a8 55%, #f7c97b 55%, #d9a45a 100%); }
+  .scene.bright .pic::before { content: ''; position: absolute; left: 14%; top: 14%; width: 16%; aspect-ratio: 1; border-radius: 50%; background: #fff7d6; box-shadow: 0 0 0 4cqh #ffefb8; }
+  .scene.bright .pic::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 45%; background: linear-gradient(100deg, #b98a46 0 30%, #d6a85d 30% 62%, #c4944e 62%); clip-path: polygon(0 40%, 25% 10%, 50% 45%, 75% 5%, 100% 35%, 100% 100%, 0 100%); }
+  .scene.dark .pic { background: radial-gradient(ellipse at 70% 60%, #1c2a3a 0%, #0c1118 60%, #06080b 100%); }
+  .scene.dark .pic::before { content: ''; position: absolute; right: 18%; bottom: 14%; width: 22%; height: 34%; border-radius: 4px; background: #0e1722; box-shadow: inset 0 0 0 1px #1f3144, 0 0 30px rgba(76,201,232,.12); }
+  .scene.dark .pic::after { content: ''; position: absolute; right: 22%; bottom: 22%; width: 6%; height: 12%; background: #ffd27a; opacity: .55; }
+  .scene.box .pic { left: 12.5%; right: 12.5%; background: linear-gradient(#7aa5b8, #cfc7a0 62%, #8f7a52 62%); }
+  .scene.box .pic::before { content: ''; position: absolute; left: 20%; top: 20%; width: 24%; height: 38%; background: #d94f4f; border-radius: 6px; box-shadow: 60cqw 8cqh 0 -2cqh #284f7a; }
+  .scene:not(.box) .pic { left: 0; right: 0; }
+  .anchor { position: absolute; inset: 0; }
+  .bug { position: absolute; display: block; }
+  .bug svg { display: block; height: 100%; width: auto; overflow: visible; }
+  .pvbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .pvbar .opt { flex-direction: row; padding: 6px 10px; min-height: 36px; align-items: center; }
+  .minis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .consq { display: grid; gap: 4px; }
+  .consq p { font-size: 13px; color: var(--s400); }
+  .consq p b { color: var(--s100); font-weight: 500; }
+  .warn { border: 1px solid rgba(245,217,10,.45); background: rgba(245,217,10,.07); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--s700); vertical-align: top; }
+  th { color: var(--s400); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--s700); border-radius: 8px; }
+  .lgrid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  .lframes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  #frame.phone .lframes { grid-template-columns: 1fr; }
+  .bar { display: none; }
+  #frame.phone .bar { display: flex; border-top: 1px solid var(--s700); background: var(--s900); padding: 6px 0 20px; }
+  .bt { flex: 1; background: none; border: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--s400); font-size: 11px; padding: 4px; }
+  .bt .g { font-size: 16px; }
+</style>
+
+<div class="review" role="region" aria-label="Review controls">
+  <strong>On-screen logo (watermark) — per-channel customisation · design draft (Refs #1659)</strong>
+  <label>Variant <select id="variant"><option value="built">Built today (main @ d81538b40)</option><option value="draft" selected>Draft</option></select></label>
+  <label>Screen <select id="screen">
+    <option value="channel">Channel page → Channel info</option>
+    <option value="looks">All looks on 3 frames + feasibility</option>
+  </select></label>
+  <label>Channel <select id="channel"></select></label>
+  <label>State <select id="state">
+    <option value="normal">Normal</option>
+    <option value="custom">Own image uploaded</option>
+    <option value="cantdraw">Server can't draw it (no GPU overlay)</option>
+  </select></label>
+  <label>Position control <select id="grid"><option value="corners">4 corners (today)</option><option value="grid">3 × 3 grid</option></select></label>
+  <label>Frame <select id="frame-size"><option value="desktop">Desktop</option><option value="phone">390 px phone</option></select></label>
+</div>
+<p class="review-note">Proposal for maintainer review. No production component, token, route or API contract changes. Every fixture is invented; the pictures are shapes in token colours (no imagery); nothing calls a server. <strong>Built today</strong> reproduces main (sources in <code>project/evidence/watermark-2026-10-13.md</code>); <strong>Draft</strong> outlines what is new in a pink dashed box. Every look drawn here is one still PNG with alpha, the only thing the GPU overlay can blend, so none of them animates.</p>
+
+<div id="frame-wrap">
+  <div id="frame">
+    <div id="scroll"><div id="page"></div></div>
+    <footer class="bar" aria-label="Phone navigation">
+      <button class="bt" type="button"><span class="g" aria-hidden="true">⌂</span>Home</button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">▶</span>Watch</button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">▦</span>Guide</button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">✉</span>Requests</button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">⋯</span>More</button>
+    </footer>
+  </div>
+  <span class="frame-label" id="frame-label"></span>
+</div>
+<p class="review-note" id="status" role="status" aria-live="polite"></p>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const say = (t) => { $('status').textContent = t; };
+
+// Invented channels. `era` is the channel's own date window (policy.scope.era); `pal` is the era's suggested colours (tokens only).
+const TOKEN = { signal: '#FFB020', tune: '#4CC9E8', lock: '#3DD68C', onair: '#E85A5F', suggest: '#DC5BAC', caution: '#F5D90A' };
+const CHANNELS = {
+  sc: { name: 'Saturday Cartoons', num: 7, auto: 'SC', era: '1980s', pal: [TOKEN.onair, TOKEN.signal, TOKEN.tune] },
+  mm: { name: 'Midnight Movies', num: 13, auto: 'MM', era: '1990s', pal: [TOKEN.tune, TOKEN.suggest, TOKEN.lock] },
+  cm: { name: 'Cozy Mysteries', num: 22, auto: 'CM', era: '1970s', pal: [TOKEN.caution, TOKEN.signal, TOKEN.onair] },
+};
+const DEFAULT = { on: true, pos: 'top-right', size: 0.06, margin: 0.05, opacity: 40, look: 'text', color: 'era', callsign: '' };
+const SIZES = [[0.045, 'Small'], [0.06, 'Standard'], [0.08, 'Large'], [0.10, 'Extra large']];
+const MARGINS = [[0.03, 'Tight'], [0.05, 'Standard'], [0.08, 'Roomy']];
+const OPACITIES = [[25, 'Faint'], [40, 'Subtle'], [70, 'Clear'], [100, 'Solid']];
+const POS = [['top-left', 'Top left'], ['top-center', 'Top centre'], ['top-right', 'Top right'], ['mid-left', 'Middle left'], ['mid-center', 'Centre'], ['mid-right', 'Middle right'], ['bottom-left', 'Bottom left'], ['bottom-center', 'Bottom centre'], ['bottom-right', 'Bottom right']];
+
+// name, built?, needs number?, uses colour?, one-line help, PNG feasibility, renderer cost, pipeline impact
+const LOOKS = [
+  ['plate', 'Plate', 1, 0, 0, 'The name cut out of a white rounded badge.', 'Built', '—', 'None'],
+  ['text', 'Text', 1, 0, 0, 'The name alone, with a soft shadow. The default.', 'Built', '—', 'None'],
+  ['outline', 'Outline', 1, 0, 0, 'The name as hollow letters.', 'Built', '—', 'None'],
+  ['small-plate', 'Small plate', 1, 0, 0, 'A smaller badge with no shadow.', 'Built', '—', 'None'],
+  ['tint', 'Colour plate', 0, 0, 1, 'The name cut out of a coloured badge.', 'One PNG', 'Small: a fill colour instead of white', 'Colour needs an explicit BT.709 step on the NVIDIA path and a coloured self-check (see Pipeline notes)'],
+  ['twotone', 'Number + name', 0, 1, 1, 'Channel number in a coloured tab beside a white name plate.', 'One PNG', 'Small–medium: two shapes, one mask', 'As Colour plate'],
+  ['badge', 'Number badge', 0, 1, 1, 'A rounded square with just the channel number. A name would be about 4 px tall at 1080p, so it is left out.', 'One PNG', 'Small: one shape, one number', 'As Colour plate'],
+  ['lockup', 'Number | name', 0, 1, 0, 'Number, thin divider, name. White text only, like a network ID.', 'One PNG', 'Small: text only, no colour', 'None (white, same as today)'],
+  ['glass', 'Glass', 0, 0, 0, 'A frosted, see-through plate with a bright edge. Fakes glass with a gradient; the picture behind is not blurred.', 'One PNG', 'Medium: gradient alpha and an edge pass', 'None, but alpha is mid-range so the self-check needs a gradient target'],
+  ['stripe', 'Era stripe', 0, 0, 1, 'The name with a three-colour stripe in the channel’s era palette.', 'One PNG', 'Small: three rectangles', 'As Colour plate'],
+];
+const L = Object.fromEntries(LOOKS.map((l) => [l[0], { id: l[0], name: l[1], built: !!l[2], num: !!l[3], col: !!l[4], help: l[5], png: l[6], cost: l[7], pipe: l[8] }]));
+const COLOR_NAMES = { era: 'Match the era', signal: 'Amber', tune: 'Cyan', lock: 'Green', onair: 'Red', suggest: 'Pink', caution: 'Yellow' };
+
+const S = { variant: 'draft', screen: 'channel', ch: 'sc', state: 'normal', grid: 'corners', frame: 'desktop', scene: 'bright', pol: { ...DEFAULT }, image: false, zoom: true };
+const isPhone = () => S.frame === 'phone';
+const isDraft = () => S.variant === 'draft';
+let uid = 0;
+
+// ---- Bug drawing: one SVG per look, 100 units tall, mirrors what the PNG would hold. ----
+function bugSVG(look, o) {
+  const n = ++uid, call = (o.call || '').toUpperCase(), num = String(o.num);
+  const T = (s, fs) => s.length * fs * 0.64;
+  const sh = `<filter id="s${n}" x="-25%" y="-35%" width="150%" height="180%"><feDropShadow dx="0" dy="2.5" stdDeviation="3.3" flood-color="#000" flood-opacity=".35"/></filter>`;
+  const txt = (s, x, y, fs, extra) => `<text x="${x}" y="${y}" font-family="Geist, system-ui, sans-serif" font-weight="700" font-size="${fs}" text-anchor="middle" dominant-baseline="central" textLength="${T(s, fs)}" lengthAdjust="spacingAndGlyphs" ${extra || ''}>${esc(s)}</text>`;
+  const wrap = (W, body, shadow, scale) => ({ w: W, svg: `<svg viewBox="0 0 ${W} 100" height="100%" style="opacity:${o.op / 100}" aria-hidden="true"><defs>${sh}</defs><g ${shadow ? `filter="url(#s${n})"` : ''}>${body}</g></svg>`, scale: scale || 1 });
+  const col = o.col, pal = o.pal;
+  let W, body;
+  switch (look) {
+    case 'plate': case 'small-plate': case 'tint': {
+      const tw = T(call, 52); W = tw + 60;
+      body = `<mask id="m${n}"><rect width="${W}" height="100" fill="#fff"/>${txt(call, W / 2, 52, 52, 'fill="#000"')}</mask><rect width="${W}" height="100" rx="22" fill="${look === 'tint' ? col : '#fff'}" mask="url(#m${n})"/>`;
+      return wrap(W, body, look !== 'small-plate', look === 'small-plate' ? 0.75 : 1);
+    }
+    case 'text': W = T(call, 52) + 24; return wrap(W, txt(call, W / 2, 52, 52, 'fill="#fff"'), true);
+    case 'outline': W = T(call, 52) + 24; return wrap(W, txt(call, W / 2, 52, 52, 'fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"'), true);
+    case 'twotone': {
+      const cw = T(num, 60) + 44, pw = T(call, 44) + 50; W = cw + 4 + pw;
+      body = `<mask id="m${n}"><rect width="${W}" height="100" fill="#fff"/>${txt(num, cw / 2, 52, 60, 'fill="#000"')}${txt(call, cw + 4 + pw / 2, 52, 44, 'fill="#000"')}</mask><g mask="url(#m${n})"><rect width="${cw}" height="100" rx="22" fill="${col}"/><rect x="${cw + 4}" width="${pw}" height="100" rx="22" fill="#fff"/></g>`;
+      return wrap(W, body, true);
+    }
+    case 'badge': {
+      W = Math.max(100, T(num, 62) + 40);
+      body = `<mask id="m${n}"><rect width="${W}" height="100" fill="#fff"/>${txt(num, W / 2, 52, 62, 'fill="#000"')}</mask><rect width="${W}" height="100" rx="28" fill="${col}" mask="url(#m${n})"/>`;
+      return wrap(W, body, true);
+    }
+    case 'lockup': {
+      const a = T(num, 62), b = T(call, 44); W = a + b + 52;
+      body = txt(num, 12 + a / 2, 52, 62, 'fill="#fff"') + `<rect x="${a + 24}" y="22" width="3" height="56" rx="1.5" fill="#fff"/>` + txt(call, a + 40 + b / 2, 54, 44, 'fill="#fff"');
+      return wrap(W, body, true);
+    }
+    case 'glass': {
+      W = T(call, 50) + 60;
+      body = `<linearGradient id="g${n}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".6"/><stop offset="1" stop-color="#fff" stop-opacity=".16"/></linearGradient><filter id="t${n}" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="1.6" stdDeviation="1" flood-color="#000" flood-opacity=".45"/></filter><rect x="1" y="1" width="${W - 2}" height="98" rx="22" fill="url(#g${n})" stroke="#fff" stroke-opacity=".75" stroke-width="2"/><rect x="5" y="5" width="${W - 10}" height="38" rx="18" fill="#fff" fill-opacity=".18"/><g filter="url(#t${n})">${txt(call, W / 2, 54, 50, 'fill="#fff"')}</g>`;
+      return wrap(W, body, true);
+    }
+    case 'stripe': {
+      W = T(call, 48) + 24;
+      const st = pal.map((c, i) => `<rect x="12" y="${74 + i * 8}" width="${W - 24}" height="5" rx="2" fill="${c}"/>`).join('');
+      return wrap(W, txt(call, W / 2, 40, 48, 'fill="#fff"') + st, true);
+    }
+  }
+}
+
+function bugOpts(p, ch, overrides) {
+  const c = CHANNELS[ch];
+  const color = p.color === 'era' ? c.pal[0] : TOKEN[p.color];
+  return { call: (p.callsign || c.auto), num: c.num, op: p.opacity, col: color, pal: c.pal, ...overrides };
+}
+
+// ---- Scene: a frame with the active picture, the bug anchored inside it (decision 0036). ----
+function scene(kind, p, ch, opts) {
+  opts = opts || {};
+  const look = S.image ? 'image' : p.look;
+  let inner = '';
+  if (p.on) {
+    let b;
+    if (look === 'image') b = { w: 100, scale: 1, svg: `<svg viewBox="0 0 100 100" height="100%" style="opacity:${p.opacity / 100}" aria-hidden="true"><path d="M50 4l13 28 31 4-23 21 6 31-27-16-27 16 6-31L6 36l31-4z" fill="${TOKEN.signal}" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg>` };
+    else b = bugSVG(look, bugOpts(p, ch));
+    const [v, h] = p.pos.split('-');
+    const hpx = p.size * 100 * (S.zoom ? 2 : 1); // bug height in cqh; the review zoom doubles it
+    const mx = p.margin * 100, my = p.margin * 100;
+    // Equal-area rule (render.go sizeFor): H = frame height x size, wide marks get shorter, never taller.
+    const hh = Math.min(hpx, hpx * Math.sqrt(2 / (b.w / 100)));
+    let css = `height:${hh * b.scale}cqh;`;
+    css += h === 'left' ? `left:${mx}cqh;` : h === 'right' ? `right:${mx}cqh;` : `left:50%;transform:translateX(-50%);`;
+    css += v === 'top' ? `top:${my}cqh;` : v === 'bottom' ? `bottom:${my}cqh;` : `top:50%;${h === 'center' ? 'transform:translate(-50%,-50%);' : 'transform:translateY(-50%);'}`;
+    inner = `<div class="anchor"><span class="bug" style="${css}">${b.svg}</span></div>`;
+  }
+  return `<div class="scene ${kind}${opts.cls ? ' ' + opts.cls : ''}" role="img" aria-label="${kind === 'box' ? 'Letterboxed 4:3 picture' : kind === 'dark' ? 'Dark frame' : 'Bright frame'} with the logo ${p.on ? 'at ' + esc(p.pos) : 'off'}"><div class="pic">${inner}</div></div>`;
+}
+const SCENES = [['bright', 'Bright'], ['dark', 'Dark'], ['box', 'Old 4:3 film']];
+
+// ---- Field rows (PolicyField shape) ----
+function overridden(k) { return JSON.stringify(S.pol[k]) !== JSON.stringify(DEFAULT[k]); }
+function src(k, label) {
+  const o = overridden(k);
+  return `<div class="fsrc"><span class="badge ${o ? 'signal' : ''}">${o ? 'Channel override' : 'Default'}</span><button class="link" type="button" ${o ? '' : 'disabled'} data-reset="${k}">Reset to default<span style="position:absolute;width:1px;height:1px;overflow:hidden">(${esc(label)})</span></button></div>`;
+}
+function field(k, label, help, body, opts) {
+  opts = opts || {};
+  return `<div class="field" data-off="${!!opts.off}"><div class="fhead"><div class="flabel" id="l-${k}">${label}<button class="help" type="button" aria-label="About ${esc(label)}" data-help="${esc(help)}">?</button></div>${opts.nosrc ? '' : src(k, label)}</div>${body}${opts.hint ? `<p class="hint">${opts.hint}</p>` : ''}</div>`;
+}
+const selectOf = (k, id, list, fmt) => `<select class="selectbox" id="${id}" aria-labelledby="l-${k}" data-set="${k}">${list.map(([v, l]) => `<option value="${v}" ${String(S.pol[k]) === String(v) ? 'selected' : ''}>${fmt ? fmt(v, l) : l}</option>`).join('')}</select>`;
+const near = (list, v) => list.reduce((a, b) => Math.abs(b[0] - v) < Math.abs(a[0] - v) ? b : a)[0];
+
+function posControl() {
+  const g = S.grid === 'grid', cells = g ? POS : POS.filter(([id]) => id.split('-')[0] !== 'mid' && id.split('-')[1] !== 'center');
+  const items = cells.map(([id, l]) => `<button class="cell" type="button" role="radio" aria-checked="${S.pol.pos === id}" aria-label="${l}" data-pos="${id}"></button>`).join('');
+  return `<div class="posrow"><div class="${g ? 'grid3' : 'grid2'}" role="radiogroup" aria-labelledby="l-pos">${items}</div><p class="hint" style="max-width:240px">${g ? 'Centre positions cover the picture. Most channel logos sit in a corner.' : 'The logo sits inside the picture, so a letterboxed film keeps it off the black bars.'}</p></div>`;
+}
+
+function lookPicker(c) {
+  const p = S.pol, opt = (l) => {
+    const sel = p.look === l.id && !S.image;
+    const bug = bugSVG(l.id, { call: p.callsign || c.auto, num: c.num, op: 100, col: p.color === 'era' ? c.pal[0] : TOKEN[p.color], pal: c.pal });
+    return `<button class="opt" type="button" role="radio" aria-checked="${sel}" data-look="${l.id}"><span class="thumb"><span style="height:26px;display:block">${bug.svg.replace('height="100%"', 'height="' + 26 * bug.scale + '"')}</span></span><span class="t">${l.name}</span>${l.built ? '' : '<span class="badge tune" style="align-self:flex-start">New</span>'}</button>`;
+  };
+  const built = LOOKS.filter((x) => x[2]).map((x) => L[x[0]]), fresh = LOOKS.filter((x) => !x[2]).map((x) => L[x[0]]);
+  return `<div class="stack"><div class="opts looks" role="radiogroup" aria-labelledby="l-look">${built.map(opt).join('')}</div><div><p class="hint" style="margin-bottom:8px">New in this draft</p><div class="opts looks" role="radiogroup" aria-label="New logo styles">${fresh.map(opt).join('')}</div></div></div>`;
+}
+
+function colorPicker() {
+  const items = Object.entries(COLOR_NAMES).map(([id, n]) => `<button class="sw ${id === 'era' ? 'era' : ''}" type="button" role="radio" aria-checked="${S.pol.color === id}" aria-label="${n}" title="${n}" style="${id === 'era' ? '' : 'background:' + TOKEN[id]}" data-color="${id}"></button>`).join('');
+  return `<div class="swrow" role="radiogroup" aria-labelledby="l-color">${items}</div>`;
+}
+
+function section() {
+  const c = CHANNELS[S.ch], p = S.pol, look = L[p.look], img = S.image;
+  const lookOff = !p.on || img, colorOn = !!look.col && !img && p.on;
+  const cant = S.state === 'cantdraw';
+  const fields = [
+    `<div class="field"><div class="fhead"><div class="flabel" id="l-on">Show the channel logo<button class="help" type="button" aria-label="About Show the channel logo" data-help="A small logo in the corner of movies and episodes. It never appears on commercials, bumpers or station IDs.">?</button></div>${src('on', 'Show the channel logo')}</div><div class="row"><button class="switch" type="button" role="switch" aria-checked="${p.on}" aria-labelledby="l-on" data-toggle="on"></button><span class="sm muted">${p.on ? 'On' : 'Off'}</span></div></div>`,
+    field('look', 'Style', 'How the logo Loomarr draws from this channel looks. Pick one and watch the preview. A logo you upload keeps its own shape.', lookPicker(c), { off: lookOff, hint: img ? 'Your own image is in use, so styles are paused.' : `${look.name}: ${look.help}` }),
+    field('color', 'Colour', 'Used by the coloured styles. “Match the era” picks colours from the channel’s decade.', colorPicker(), { off: !colorOn, hint: !colorOn && !img && p.on ? 'This style is white, so colour does not apply.' : colorOn && p.color === 'era' ? `${c.era} palette for this channel.` : '' }),
+    field('callsign', 'Name on the logo', 'Up to 12 characters. Leave blank and Loomarr makes one from the channel name.', `<input class="input" style="width:176px" id="callsign" maxlength="12" placeholder="Auto: ${c.auto}" value="${esc(p.callsign)}" aria-labelledby="l-callsign" data-callsign>`, { off: lookOff, hint: look.num && !img ? `Styles with a number use the channel number, ${c.num}.` : '' }),
+    field('pos', 'Position', 'Where the logo sits on the picture.', posControl()),
+    field('size', 'Size', 'How big the logo is. Wide names are made shorter so every logo covers about the same area.', selectOf('size', 'size', SIZES, (v, l) => `${l}${v === 0.06 ? ' (default)' : ''}`)),
+    field('margin', 'Distance from the edge', 'Keeps the logo off the very edge, where some TVs crop. Standard is the broadcast safe area.', selectOf('margin', 'margin', MARGINS, (v, l) => `${l}${v === 0.05 ? ' (default)' : ''}`)),
+    field('opacity', 'How see-through', 'Faint blends in; Solid is easiest to read. Settings → Playback holds the default for every channel.', selectOf('opacity', 'opacity', OPACITIES, (v, l) => `${l} — ${v}%${v === 40 ? ' (default)' : ''}`)),
+    `<div class="field"><div class="fhead"><div class="flabel" id="l-image">Your own logo<button class="help" type="button" aria-label="About Your own logo" data-help="Upload a PNG or WebP. It keeps its own colours and shape, and replaces the styles above.">?</button></div></div><div class="row wrap">${img ? `<span class="thumb" style="width:96px;display:inline-grid"><svg viewBox="0 0 100 100" style="height:30px" aria-hidden="true"><path d="M50 4l13 28 31 4-23 21 6 31-27-16-27 16 6-31L6 36l31-4z" fill="${TOKEN.signal}" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg></span><span class="sm grow">sample-logo.png</span><button class="btn sm outline" type="button" data-image="off">Remove</button>` : `<button class="btn sm outline" type="button" data-image="on">Upload an image</button><span class="hint">PNG or WebP. Transparent background works best.</span>`}</div></div>`,
+  ];
+  const preview = `<div class="pv"><div role="radiogroup" aria-label="Preview picture" class="pvbar">${SCENES.map(([id, n]) => `<button class="opt" type="button" role="radio" aria-checked="${S.scene === id}" data-scene="${id}"><span class="t">${n}</span></button>`).join('')}<label class="zoom"><input type="checkbox" ${S.zoom ? 'checked' : ''} data-zoom> Zoom the logo ×2 to inspect it (real size is the Size setting)</label></div>${scene(S.scene, p, S.ch)}<div class="minis">${SCENES.filter(([id]) => id !== S.scene).map(([id]) => `<div>${scene(id, p, S.ch, { mini: true })}</div>`).join('')}</div>
+    <div class="consq"><p><b>What you will see.</b> ${p.on ? `${esc(img ? 'Your image' : look.name)}, ${esc(POS.find((x) => x[0] === p.pos)[1].toLowerCase())}, ${OPACITIES.find((x) => x[0] === p.opacity)[1].toLowerCase()} (${p.opacity}%).` : 'No logo on this channel.'}</p><p><b>Where it shows.</b> Over movies and episodes. Hidden during commercials, bumpers and station IDs.</p><p><b>When.</b> From the next programme on this channel. What is airing now does not change.</p></div>
+    ${cant ? `<div class="warn"><b>This server can't draw the logo right now.</b> It is encoding without a graphics card overlay, so programmes air without a logo. Your choices are saved and will show once it can. <span class="muted">(Reported today as a “watermark.disabled” Diagnostics event.)</span></div>` : ''}</div>`;
+  return `<div class="layout"><div class="fields">${fields.join('')}</div>${preview}</div>`;
+}
+
+function pageHeader() {
+  const c = CHANNELS[S.ch];
+  return `<div class="ph"><a class="backlink" href="#" data-noop><span aria-hidden="true">←</span> Channels</a><h1 style="margin-top:8px">${c.name} <span class="mono muted" style="font-size:13px">CH ${String(c.num).padStart(2, '0')}</span></h1><p class="desc"><span class="badge lock">On air</span></p></div>`;
+}
+const tabs = () => `<nav class="tabs" aria-label="Channel sections">${['Watch', 'Channel info', 'Programming', 'Filler', 'Danger zone'].map((t) => `<a class="tab" href="#" data-noop ${t === 'Channel info' ? 'aria-current="page"' : ''}>${t}</a>`).join('')}</nav>`;
+
+function channelScreen() {
+  if (!isDraft()) {
+    const rows = [['Channel logo style', 'Text — the name alone, with a soft shadow', 'How the channel logo Loomarr draws from a channel’s name looks. A channel with its own style keeps it, and an uploaded logo keeps its own shape. A change shows from each channel’s next programme.'], ['Channel logo opacity', '40', 'How solid the channel logo in the corner of every programme looks, from 10 (faint) to 100 (fully opaque). A channel with its own watermark opacity keeps it. A change shows from each channel’s next programme.']];
+    return pageHeader() + `<div class="body">${tabs()}<section class="stack"><div><h2>Channel info</h2><p class="sm muted">Built today: this tab has air state, details and Diagnostics only. There is no logo section; the channel can only inherit the two install-wide settings below. The API already accepts corner, size, margin, opacity, look, image and callsign per channel (<code>policy.watermark</code>), and no screen sets them.</p></div></section>
+      <section class="stack"><div><h2>Settings → Playback → Picture and sound <span class="badge">Admin · whole install</span></h2></div><div class="card p4 stack">${rows.map((r) => `<div class="field"><div class="fhead"><div class="flabel">${r[0]}</div></div><div class="selectbox" style="max-width:420px">${r[1]}</div><p class="hint">${r[2]}</p></div>`).join('')}</div></section></div>`;
+  }
+  return pageHeader() + `<div class="body">${tabs()}
+    <section class="delta" aria-labelledby="logo-h"><span class="delta-tag">draft · new section</span>
+      <div style="margin-bottom:20px"><h2 class="xl" id="logo-h">On-screen logo</h2><p class="sm muted" style="margin-top:4px;max-width:576px">The small logo in the corner while a movie or episode plays. Pick how it looks and where it sits. Every choice is for this channel only.</p></div>
+      ${section()}
+      <p class="flagline">Admin-only, like Programming and Filler: members never see this section. Autosaves like the Programming fields (one PATCH of <code>policy.watermark</code>, #1895). The section sits on Channel info rather than a new tab; open question 6.</p>
+    </section></div>`;
+}
+
+// ---- Looks sheet ----
+function looksScreen() {
+  const c = CHANNELS[S.ch], p = { ...S.pol, on: true, look: 'text' };
+  const card = (l) => {
+    const q = { ...p, look: l.id };
+    const frames = SCENES.map(([k]) => scene(k, q, S.ch, { mini: true })).join('');
+    return `<article class="card p4 stack"><div class="row wrap"><h3 class="grow">${l.name}</h3><span class="badge ${l.built ? '' : 'tune'}">${l.built ? 'Built' : 'New'}</span></div><div class="lframes">${frames}</div><p class="sm muted">${l.help}</p>${l.built ? '' : `<p class="xs"><b>PNG:</b> ${l.png}. <b>Renderer cost:</b> ${l.cost}.</p>`}</article>`;
+  };
+  const rows = LOOKS.map((x) => L[x[0]]).filter((l) => !l.built).map((l) => `<tr><td><b>${l.name}</b></td><td>${l.png}</td><td>${l.cost}</td><td>${l.pipe}</td></tr>`).join('');
+  return `<div class="ph"><h1>Candidate looks on three frames</h1><p class="desc">Channel: ${c.name} (CH ${c.num}, ${c.era}). Position, size, margin and opacity come from the channel page's settings. Switch the channel above to see the era palette change.</p></div><div class="body">
+    <div class="lgrid">${LOOKS.map((x) => card(L[x[0]])).join('')}</div>
+    <section class="stack"><h2>Feasibility of the new looks</h2><div class="tablewrap"><table><thead><tr><th>Look</th><th>Stored as</th><th>Renderer cost</th><th>Pipeline impact</th></tr></thead><tbody>${rows}</tbody></table></div></section>
+    <section class="stack"><h2>Not drawn, because the pipeline cannot do it</h2>
+      <div class="card p4 stack">
+        <p class="sm"><b class="future">Future, needs pipeline work:</b> a logo that alternates (channel number for 20 seconds, then name). The bug is one still frame uploaded once; both overlay paths take a single image for the whole programme item. Two images need either a timed <code>enable</code> on <code>overlay_cuda</code> and the OpenCL kernel (neither verified here) or cutting the item into pieces.</p>
+        <p class="sm"><b class="future">Future:</b> any motion (a shimmer, a fade-in at the start). Each frame would need its own blend input.</p>
+        <p class="sm"><b class="future">Future:</b> live text (the time, the next programme). The bug is rendered before the encode starts.</p>
+        <p class="sm"><b class="future">Not a bug look:</b> a blurred backdrop behind the glass plate. The blend is a plain alpha mix; it never reads the picture behind it beyond that.</p>
+      </div></section></div>`;
+}
+
+function render() {
+  const f = $('frame');
+  f.className = isPhone() ? 'phone' + (S.tall ? ' tall' : '') : '';
+  $('frame-label').textContent = `${isPhone() ? '390 × 844 · bottom bar' : 'desktop · content area beside the 224px rail (rail not drawn)'} · ${S.variant} · ${CHANNELS[S.ch].name}`;
+  $('page').innerHTML = S.screen === 'looks' ? looksScreen() : channelScreen();
+  ['variant', 'screen', 'channel', 'state', 'grid'].forEach((k) => { const e = $(k); e.value = k === 'channel' ? S.ch : S[k === 'channel' ? 'ch' : k]; });
+  $('frame-size').value = S.frame;
+}
+
+function snap() {
+  const p = S.pol;
+  p.size = near(SIZES, p.size); p.margin = near(MARGINS, p.margin); p.opacity = near(OPACITIES, p.opacity);
+  if (S.grid === 'corners' && (p.pos.startsWith('mid') || p.pos.endsWith('center'))) p.pos = 'top-right';
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button,a'); if (!t) return;
+  if (t.hasAttribute('data-noop')) { e.preventDefault(); say('Not wired in the prototype.'); return; }
+  const d = t.dataset;
+  if (d.help) { say(d.help); return; }
+  if (d.toggle) { S.pol.on = !S.pol.on; say(S.pol.on ? 'Logo on. This is the default.' : 'Logo off for this channel. Settings → Playback no longer applies to it.'); }
+  else if (d.pos) { S.pol.pos = d.pos; say(`Position: ${d.pos}. Placement anchors to the picture's measured area, so the 4:3 film keeps it inside the picture.`); }
+  else if (d.look) { S.pol.look = d.look; S.image = false; say(`${L[d.look].name}: ${L[d.look].help}`); }
+  else if (d.color) { S.pol.color = d.color; say(`Colour: ${COLOR_NAMES[d.color]}.`); }
+  else if (d.scene) { S.scene = d.scene; }
+  else if (d.reset) { S.pol[d.reset] = DEFAULT[d.reset]; if (d.reset === 'look') S.image = false; say('Back to the default. Settings → Playback now decides again.'); }
+  else if (d.image) { S.image = d.image === 'on'; say(S.image ? 'Own image in use: styles, colour and name are paused.' : 'Own image removed.'); }
+  else return;
+  render();
+});
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.matches('[data-zoom]')) { S.zoom = t.checked; render(); return; }
+  if (t.dataset.set) { S.pol[t.dataset.set] = Number(t.value); render(); }
+});
+document.addEventListener('input', (e) => {
+  if (e.target.matches('[data-callsign]')) { S.pol.callsign = e.target.value; const pos = e.target.selectionStart; render(); const i = $('callsign'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } }
+});
+$('channel').innerHTML = Object.entries(CHANNELS).map(([k, c]) => `<option value="${k}">${c.name} · CH ${c.num} · ${c.era}</option>`).join('');
+$('variant').addEventListener('change', (e) => { S.variant = e.target.value; render(); });
+$('screen').addEventListener('change', (e) => { S.screen = e.target.value; render(); });
+$('channel').addEventListener('change', (e) => { S.ch = e.target.value; S.pol.callsign = ''; render(); });
+$('state').addEventListener('change', (e) => { S.state = e.target.value; S.image = e.target.value === 'custom'; render(); });
+$('grid').addEventListener('change', (e) => { S.grid = e.target.value; snap(); render(); });
+$('frame-size').addEventListener('change', (e) => { S.frame = e.target.value; render(); });
+// A link can open a state directly: #screen=looks&frame=phone&state=custom&grid=grid&look=glass&scene=box&ch=mm&pos=mid-left&variant=built
+new URLSearchParams(location.hash.slice(1)).forEach((v, k) => {
+  if (k === 'screen' || k === 'frame' || k === 'state' || k === 'grid' || k === 'variant' || k === 'scene') S[k] = v;
+  if (k === 'ch' && CHANNELS[v]) S.ch = v;
+  if (k === 'look' && L[v]) S.pol.look = v;
+  if (k === 'pos' && POS.some((x) => x[0] === v)) S.pol.pos = v;
+  if (k === 'color') S.pol.color = v;
+  if (k === 'zoom') S.zoom = v === '1';
+  if (k === 'tall') S.tall = v === '1'; // phone frame grows to show the whole page (for screenshots)
+});
+S.image = S.state === 'custom';
+render();
+say('Try the look picker, the position grid and the Old 4:3 film frame; then State = Own image uploaded.');
+</script>
+</html>
