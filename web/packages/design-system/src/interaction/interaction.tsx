@@ -1,12 +1,28 @@
-import { Text as TamaguiText, useTheme, View } from "@tamagui/core";
-import type { ComponentProps, ComponentRef, ReactNode } from "react";
-import { forwardRef, useState } from "react";
+import { isWeb, Text as TamaguiText, useTheme, View } from "@tamagui/core";
+import type { ComponentProps, ComponentRef, ReactElement, ReactNode } from "react";
+import { cloneElement, forwardRef, isValidElement, useState } from "react";
 import { Pressable, TextInput } from "react-native";
 
-import { Icon } from "../icon";
+import { Icon, type IconTone } from "../icon";
 import { type IconName, icons } from "../icons";
 import { Surface, Text } from "../primitives";
-import { type Density, semanticRadius, semanticSpace, semanticTargets, typography } from "../tokens";
+import {
+  brandChroma,
+  type Density,
+  semanticRadius,
+  semanticSpace,
+  semanticTargets,
+  typography,
+} from "../tokens";
+
+/**
+ * The legacy Web Button's six flat variants (#970 PR B checkpoint 3), alongside `tone`'s existing
+ * filled/bordered tile look. Deliberately a separate prop rather than new `tone` values: `tone`
+ * always draws a border and a focus ring sized for remote/touch targets (TV and phone callers
+ * depend on that), while these are flat, underline-on-hover-link-included, and match the legacy
+ * Button's own flatter aesthetic. Supplying both prefers `variant`.
+ */
+type ActionVariant = "destructive" | "ghost" | "link" | "outline" | "secondary" | "suggest";
 
 type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> & {
   children: ReactNode;
@@ -17,9 +33,70 @@ type ActionProps = Omit<ComponentProps<typeof Pressable>, "children" | "style"> 
    * player controls under a phone's picture (#1659 native mock 5e). Give it an icon.
    */
   layout?: "inline" | "stacked";
+  /**
+   * Web-only composition escape hatch (Base UI's `render` prop equivalent, #970 PR B checkpoint 3):
+   * renders Action's resolved style and content onto this element instead of a `Pressable`, so a
+   * button-like control can compose onto a router `Link`. The element's own children are replaced
+   * by Action's `children`; its own event handlers, `style` and `className` are preserved and
+   * merged with Action's. Ignored on native, where there is no comparable host-element swap.
+   *
+   * Composing this way loses the `Pressable` press-scale micro-interaction (there is no gesture
+   * responder to drive it), and `layout="stacked"`/`selected` are not meaningful on a transparent,
+   * un-boxed renderer — this is for a plain `variant` button standing in for a link, not a tile.
+   */
+  render?: ReactElement<Record<string, unknown>>;
   selected?: boolean;
   style?: ComponentProps<typeof Pressable>["style"];
   tone?: "danger" | "primary" | "secondary";
+  variant?: ActionVariant;
+};
+
+const variantLook = (theme: ReturnType<typeof useTheme>) =>
+  ({
+    // Dark text on a solid accent: suggest/destructive both fail AA with light text (§2.1,
+    // carried over from the legacy cva calibration), so `inverse` (dark) is deliberate, not a
+    // mistake inherited from `tone`'s own inverse-on-filled convention.
+    suggest: { background: brandChroma[4], border: "transparent", iconTone: "inverse" as IconTone },
+    destructive: { background: theme.guideOnAir.val, border: "transparent", iconTone: "inverse" as IconTone },
+    outline: { background: "transparent", border: theme.borderControl.val, iconTone: "content" as IconTone },
+    secondary: {
+      background: theme.surfaceElevated.val,
+      border: "transparent",
+      iconTone: "content" as IconTone,
+    },
+    ghost: { background: "transparent", border: "transparent", iconTone: "content" as IconTone },
+    link: { background: "transparent", border: "transparent", iconTone: "info" as IconTone },
+  }) as const;
+
+const variantTextColor = (theme: ReturnType<typeof useTheme>, variant: ActionVariant) =>
+  variant === "suggest" || variant === "destructive"
+    ? theme.contentInverse.val
+    : variant === "link"
+      ? theme.stateInfo.val
+      : theme.contentPrimary.val;
+
+// Chains both sides' event handlers and concatenates (never tailwind-merges — this mirrors Base
+// UI's own `mergeProps`, which is Tailwind-unaware) `style`/`className` rather than letting
+// either side clobber the other, the same composition contract the legacy Button's `render` keeps.
+const mergeRenderProps = (
+  computed: Record<string, unknown>,
+  own: Record<string, unknown> | undefined,
+): Record<string, unknown> => {
+  const merged: Record<string, unknown> = { ...computed, ...own };
+  for (const key of ["onBlur", "onFocus", "onClick"]) {
+    const a = computed[key] as ((...args: unknown[]) => void) | undefined;
+    const b = own?.[key] as ((...args: unknown[]) => void) | undefined;
+    if (a && b)
+      merged[key] = (...args: unknown[]) => {
+        a(...args);
+        b(...args);
+      };
+  }
+  if (computed.style || own?.style)
+    merged.style = { ...(computed.style as object | undefined), ...(own?.style as object | undefined) };
+  if (computed.className || own?.className)
+    merged.className = [computed.className, own?.className].filter(Boolean).join(" ");
+  return merged;
 };
 
 const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
@@ -33,10 +110,12 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
       layout = "inline",
       onBlur,
       onFocus,
+      render,
       selected = false,
       style,
       tabIndex,
       tone = "primary",
+      variant,
       ...props
     },
     ref,
@@ -47,16 +126,21 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     const role = props.accessibilityRole ?? "button";
     const tv = density === "tv";
     const stacked = layout === "stacked" && icon !== undefined;
-    const backgroundColor =
-      tone === "danger"
+    const look = variant ? variantLook(theme)[variant] : undefined;
+    const backgroundColor = look
+      ? look.background
+      : tone === "danger"
         ? theme.stateDanger.val
         : tone === "primary"
           ? theme.actionPrimary.val
           : selected
             ? theme.surfaceFocus.val
             : theme.surfaceElevated.val;
-    const borderColor =
-      focused || selected
+    const borderColor = look
+      ? focused
+        ? theme.actionFocus.val
+        : look.border
+      : focused || selected
         ? theme.actionFocus.val
         : tone === "danger"
           ? theme.stateDanger.val
@@ -65,6 +149,116 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             : stacked
               ? backgroundColor
               : theme.borderControl.val;
+    const textColor = variant ? variantTextColor(theme, variant) : undefined;
+    const iconTone: IconTone = look
+      ? look.iconTone
+      : tone === "secondary" && !selected
+        ? "secondary"
+        : "inverse";
+
+    const content =
+      stacked && icon ? (
+        <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
+          <Icon
+            decorative
+            glyph={icons[icon]}
+            size="default"
+            tone={look ? look.iconTone : tone === "secondary" && !selected ? "content" : "inverse"}
+          />
+          <TamaguiText
+            color={textColor ?? (tone === "secondary" ? "$contentSecondary" : "$contentInverse")}
+            fontFamily="$body"
+            fontSize={typography[density].cardMeta.size}
+            lineHeight={typography[density].cardMeta.lineHeight}
+            numberOfLines={1}
+          >
+            {children}
+          </TamaguiText>
+        </View>
+      ) : icon ? (
+        <View alignItems="center" flexDirection="row" gap="$inline">
+          <Icon
+            decorative
+            glyph={icons[icon]}
+            size={density === "tv" ? "touch" : "default"}
+            tone={iconTone}
+          />
+          <TamaguiText
+            color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
+            fontFamily="$body"
+            fontSize={tv ? typography.tv.data.size : typography[density].label.size}
+            fontWeight={tv ? "400" : "700"}
+            textDecorationLine={variant === "link" ? "underline" : undefined}
+          >
+            {children}
+          </TamaguiText>
+        </View>
+      ) : (
+        <TamaguiText
+          color={textColor ?? (tone === "secondary" ? "$contentPrimary" : "$contentInverse")}
+          fontFamily="$body"
+          fontSize={tv ? typography.tv.data.size : typography[density].label.size}
+          fontWeight={tv ? "400" : "700"}
+          textDecorationLine={variant === "link" ? "underline" : undefined}
+        >
+          {children}
+        </TamaguiText>
+      );
+
+    const boxStyle = {
+      alignItems: "center" as const,
+      backgroundColor,
+      borderColor,
+      borderRadius: tv ? 8 : semanticRadius.control,
+      borderStyle: "solid" as const,
+      borderWidth: look
+        ? borderColor === "transparent"
+          ? 0
+          : focused
+            ? 2
+            : 1
+        : focused
+          ? tv
+            ? 3
+            : 4
+          : tv
+            ? 1
+            : 2,
+      justifyContent: "center" as const,
+      minHeight: tv ? 0 : semanticTargets[density],
+      opacity: isDisabled ? 0.55 : 1,
+      // A stacked tile shares its row with three others on a phone, so its label gets the width.
+      paddingHorizontal: tv ? 24 : stacked ? 4 : semanticSpace.control,
+      paddingVertical: tv ? 8 : 0,
+    };
+
+    if (isWeb && render && isValidElement(render)) {
+      // `onPress` is Action's own (Pressable/RN) handler name; a cloned host element only
+      // understands `onClick`, so it is bridged here rather than spread through `...props`
+      // unchanged, which would silently never fire.
+      const { onPress, ...restProps } = props as typeof props & {
+        onPress?: (event: unknown) => void;
+      };
+      return cloneElement(
+        render,
+        mergeRenderProps(
+          {
+            ...restProps,
+            "aria-disabled": isDisabled || undefined,
+            onBlur: () => setFocused(false),
+            onClick: onPress,
+            onFocus: () => setFocused(true),
+            ref,
+            role,
+            style: { display: "inline-flex", ...boxStyle },
+            tabIndex: isDisabled ? -1 : tabIndex,
+          },
+          render.props,
+        ),
+        content,
+      ) as ReactElement;
+    }
+
     return (
       <Pressable
         {...props}
@@ -86,18 +280,8 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
         tabIndex={isDisabled ? -1 : tabIndex}
         style={(state) => [
           {
-            alignItems: "center",
-            backgroundColor,
-            borderColor,
-            borderRadius: tv ? 8 : semanticRadius.control,
-            borderStyle: "solid",
-            borderWidth: focused ? (tv ? 3 : 4) : tv ? 1 : 2,
-            justifyContent: "center",
-            minHeight: tv ? 0 : semanticTargets[density],
+            ...boxStyle,
             opacity: isDisabled ? 0.55 : state.pressed ? 0.82 : 1,
-            // A stacked tile shares its row with three others on a phone, so its label gets the width.
-            paddingHorizontal: tv ? 24 : stacked ? 4 : semanticSpace.control,
-            paddingVertical: tv ? 8 : 0,
             transform: [
               { scale: tv ? (state.pressed ? 0.98 : 1) : focused ? 1.025 : state.pressed ? 0.98 : 1 },
             ],
@@ -105,51 +289,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           typeof style === "function" ? style(state) : style,
         ]}
       >
-        {stacked && icon ? (
-          <View alignItems="center" gap={3} paddingVertical={semanticSpace.inline}>
-            <Icon
-              decorative
-              glyph={icons[icon]}
-              size="default"
-              tone={tone === "secondary" && !selected ? "content" : "inverse"}
-            />
-            <TamaguiText
-              color={tone === "secondary" ? "$contentSecondary" : "$contentInverse"}
-              fontFamily="$body"
-              fontSize={typography[density].cardMeta.size}
-              lineHeight={typography[density].cardMeta.lineHeight}
-              numberOfLines={1}
-            >
-              {children}
-            </TamaguiText>
-          </View>
-        ) : icon ? (
-          <View alignItems="center" flexDirection="row" gap="$inline">
-            <Icon
-              decorative
-              glyph={icons[icon]}
-              size={density === "tv" ? "touch" : "default"}
-              tone={tone === "secondary" && !selected ? "secondary" : "inverse"}
-            />
-            <TamaguiText
-              color={tone === "secondary" ? "$contentPrimary" : "$contentInverse"}
-              fontFamily="$body"
-              fontSize={tv ? typography.tv.data.size : typography[density].label.size}
-              fontWeight={tv ? "400" : "700"}
-            >
-              {children}
-            </TamaguiText>
-          </View>
-        ) : (
-          <TamaguiText
-            color={tone === "secondary" ? "$contentPrimary" : "$contentInverse"}
-            fontFamily="$body"
-            fontSize={tv ? typography.tv.data.size : typography[density].label.size}
-            fontWeight={tv ? "400" : "700"}
-          >
-            {children}
-          </TamaguiText>
-        )}
+        {content}
       </Pressable>
     );
   },
@@ -393,5 +533,5 @@ const ChoiceGroup = <Value extends string>({
   </View>
 );
 
-export type { ActionProps, ChoiceGroupProps, ChoiceOption, FieldProps, ToggleProps };
+export type { ActionProps, ActionVariant, ChoiceGroupProps, ChoiceOption, FieldProps, ToggleProps };
 export { Action, ChoiceGroup, Field, Toggle };
