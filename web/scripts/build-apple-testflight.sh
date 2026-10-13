@@ -340,6 +340,15 @@ verify_ipa() {
   if [[ "$APP" == iphone && -z "$(plist_value NSLocalNetworkUsageDescription)" ]]; then
     fail 'IPA has no NSLocalNetworkUsageDescription'
   fi
+  # tvOS shows the layered home-screen icon and the Top Shelf image from the compiled brand assets
+  # (config-tv's appleTVImages); App Store Connect refuses an Apple TV app without them.
+  if [[ "$APP" == apple-tv ]]; then
+    if [[ -z "$(plist_value CFBundleIcons.CFBundlePrimaryIcon)" ]]; then
+      fail 'IPA has no tvOS app icon (CFBundleIcons.CFBundlePrimaryIcon)'
+    fi
+    expect TVTopShelfImage "$(plist_value TVTopShelfImage.TVTopShelfPrimaryImage)" "Top Shelf Image"
+    expect "wide TVTopShelfImage" "$(plist_value TVTopShelfImage.TVTopShelfPrimaryImageWide)" "Top Shelf Image Wide"
+  fi
   if [[ ! -f "${app}/PrivacyInfo.xcprivacy" ]]; then
     fail 'IPA has no PrivacyInfo.xcprivacy at the app bundle root'
   fi
@@ -467,7 +476,7 @@ plan() {
       ;;
   esac
   printf 'apps=%s\nupload=%s\nversion=%s\n' \
-    "$(jq -cn '$ARGS.positional' --args -- "${apps[@]}")" "$upload" "${version#v}"
+    "$(jq -cn '$ARGS.positional' --args -- ${apps[@]+"${apps[@]}"})" "$upload" "${version#v}"
 }
 
 # Fails with one readable list of everything the release environment lacks for this app, then writes
@@ -485,6 +494,11 @@ prepare_credentials() {
   if ((${#missing[@]} > 0)); then
     printf '::error title=%s TestFlight is not configured::Set in the ios-testflight environment: %s. See docs/contributing/releasing.md#apple-testflight.\n' "$APP_LABEL" "${missing[*]}"
     fail "missing ${missing[*]}"
+  fi
+  # Each app is its own record: one Apple ID in both variables would validate one app's IPA
+  # against the other's record.
+  if [[ -n "${ASC_APPLE_APP_ID:-}" && "${ASC_APPLE_APP_ID:-}" == "${ASC_APPLE_TV_APP_ID:-}" ]]; then
+    fail 'ASC_APPLE_APP_ID and ASC_APPLE_TV_APP_ID name the same App Store Connect record'
   fi
   require_env RUNNER_TEMP GITHUB_ENV
   if [[ ! "$ASC_API_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
