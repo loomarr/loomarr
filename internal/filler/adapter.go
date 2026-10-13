@@ -84,6 +84,9 @@ type Selection struct {
 	Geography  Geography  // zero country inherits Installation geography from Policy
 	// BreakDurationMs is a per-channel override. Zero inherits Policy.BreakDurationMs.
 	BreakDurationMs int64
+	// Spacing is the per-channel repeat spacing for one commercial. Nil inherits Policy.Cooldown;
+	// a present zero is real ("may repeat in any later break"), hence the pointer.
+	Spacing *time.Duration
 }
 
 // NewPodAdapter builds the scheduler-facing pod assembler.
@@ -105,7 +108,7 @@ func (a *PodAdapter) WithMetrics(observer PodMetrics) *PodAdapter {
 // so we assemble a generous pool (~one long break's worth); Tunarr picks per gap.
 const poolGapMs int64 = 600_000 // 10 min of clips
 
-const defaultBreakDurationMs int64 = 30_000 // 30s; mirrors filler.break_duration
+const defaultBreakDurationMs int64 = 120_000 // 2m; mirrors filler.break_duration
 
 // BuildFillerList implements channels.PodFiller: assemble a matched clip pool for a
 // channel and return the clips' Tunarr program uuids for its filler-list. ok=false
@@ -257,6 +260,9 @@ func (a *PodAdapter) previewAt(ctx context.Context, channelID string, seed int64
 // assemble is the one per-break assembly every preview path runs, over inputs already loaded.
 func (a *PodAdapter) assemble(clips []Clip, records map[string]ExposureRecord, channelID string, seed int64, sel Selection, breakStart time.Time, pol Policy) Pod {
 	breakDurationMs := effectiveBreakDurationMs(sel, pol)
+	if sel.Spacing != nil && *sel.Spacing >= 0 {
+		pol.Cooldown = *sel.Spacing
+	}
 	podMax := pol.PodMax
 	if podMax <= 0 {
 		podMax = 4 // matches fillCommercials' own fallback (the setting default is 4)

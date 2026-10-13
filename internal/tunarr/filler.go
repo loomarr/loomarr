@@ -445,7 +445,7 @@ func (t *Tunarr) attachFillerList(ctx context.Context, tunarrID, listID string) 
 		}
 		cooldownSeconds := cfg.FillerCooldownSeconds
 		if cooldownSeconds < 0 {
-			cooldownSeconds = 1800
+			cooldownSeconds = 14400 // mirrors filler.cooldown_seconds
 		}
 		desired = append(desired, fillerCollection{
 			ID: listID, Weight: weight, CooldownSeconds: 0,

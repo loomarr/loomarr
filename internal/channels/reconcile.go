@@ -578,6 +578,10 @@ func SelectionForChannel(ch store.Channel) filler.Selection {
 	if ch.Policy.BreakDuration != nil {
 		sel.BreakDurationMs = ch.Policy.BreakDuration.Std().Milliseconds()
 	}
+	if ch.Policy.CommercialSpacing != nil {
+		spacing := ch.Policy.CommercialSpacing.Std()
+		sel.Spacing = &spacing
+	}
 	return sel
 }
 

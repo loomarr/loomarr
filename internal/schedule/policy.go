@@ -83,6 +83,11 @@ type OperatorPolicy struct {
 	// `filler.break_duration`; a present value must be at least 30s. There is no zero/off state —
 	// BreaksPerHour already owns that decision, and two switches would be ambiguous.
 	BreakDuration *Duration `json:"breakDuration,omitempty"`
+	// CommercialSpacing is how long the same commercial should rest before this channel airs it
+	// again (§10 rotation). Nil inherits `filler.cooldown_seconds`; 0 lets a clip repeat in any
+	// later break. A clip inside its spacing is used only after every rung of the ladder, widened
+	// era included, has run out of rested clips; spacing never empties a break.
+	CommercialSpacing *Duration `json:"commercialSpacing,omitempty"`
 	// MidRoll is the per-channel switch for commercial breaks INSIDE long programmes, placed only
 	// at measured scene fades (§10 mid-roll). Nil inherits the default, which is ON (maintainer
 	// decision, #1512); false turns mid-roll off for this channel and keeps its between-programme
@@ -932,6 +937,9 @@ func (p ChannelPolicy) Validate() error {
 	}
 	if p.BreakDuration != nil && p.BreakDuration.Std() < 30*time.Second {
 		return fmt.Errorf("channel policy: breakDuration %s must be at least 30s", p.BreakDuration.Std())
+	}
+	if p.CommercialSpacing != nil && p.CommercialSpacing.Std() < 0 {
+		return fmt.Errorf("channel policy: commercialSpacing %s must not be negative", p.CommercialSpacing.Std())
 	}
 	if p.AutoCurate != nil {
 		if p.AutoCurate.MinScorePct < 0 || p.AutoCurate.MinScorePct > 100 {

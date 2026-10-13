@@ -576,8 +576,8 @@ func TestComputeDesired_InsertsBreaksByRuntime(t *testing.T) {
 	// adjacent to another break.
 	for i, s := range got.Slots {
 		if s.Kind == schedule.SlotFiller {
-			if s.DurationMs != 30*1000 {
-				t.Errorf("break duration = %dms, want default 30s", s.DurationMs)
+			if s.DurationMs != 2*60*1000 {
+				t.Errorf("break duration = %dms, want default 2m", s.DurationMs)
 			}
 			if i == len(got.Slots)-1 {
 				t.Errorf("break is the last slot (trailing break): %+v", got.Slots)
