@@ -53,15 +53,19 @@ type CycleSummary struct {
 
 func summarizeCycle(deck []Slot) CycleSummary {
 	var c CycleSummary
-	shows := map[string]bool{}
+	// Shows are told apart by the series identity key, not the title: two shows can share a name
+	// (a remake) and are still two shows on the channel.
+	shows := map[provision.Key]bool{}
+	// The deck is pre-split: Segment is only stamped later, by interleaveBreaks, so every program
+	// here is a whole airing. A multi-part story is one slot per part, each counted as an episode.
 	for _, s := range deck {
-		if !s.IsProgram() || s.Segment > 1 {
+		if !s.IsProgram() {
 			continue
 		}
 		c.RuntimeMs += s.DurationMs
 		if s.SeriesTitle != "" || s.Season > 0 || s.Episode > 0 {
 			c.Episodes++
-			shows[s.SeriesTitle] = true
+			shows[s.Key] = true
 		} else {
 			c.Movies++
 		}
