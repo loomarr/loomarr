@@ -145,6 +145,16 @@ The TV call sites were collected by a child agent (read-only, Sonnet) and spot-c
    `ListGroup`. A panel holds a form or a group of rows, and is never a link. The same entity takes
    the same shape at the same density.
 
+## Decisions
+
+On 2026-10-13 the maintainer accepted every recommendation below (recorded on #1909).
+- **Accent:** amber is for focus, the primary action, and brand moments only. This covers Q0 (it fixes #1887), Q2, Q4 and Q5.
+- **Q1:** the desktop rail and tabs mark the current page in neutral, matching the phone. This overturns the amber pill picked on 2026-08-02.
+- **Q3:** now-airing is shown as a neutral tone step, with progress fills in foreground (elapsed) or tune (downloads).
+- **Q6 to Q12:** one size per role, the six width tiers, and the card-vs-row criterion, all as proposed.
+
+The build is split into three PRs: design-system and TV; web accent; web type, widths and shapes.
+
 ## Open questions (each changes an approved screen; none is decided here)
 
 0. **TV selection vs focus (#1887 and its siblings).** Should a selected item that does not have
