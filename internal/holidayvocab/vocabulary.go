@@ -48,7 +48,8 @@ var builtins = [...]definition{
 		intentAliases: []string{"christmas", "xmas", "santa", "noel", "yuletide"},
 		nameAliases:   []string{"christmas", "xmas", "santa", "noel", "yuletide"},
 		// A character's pet name and a city are not Christmas proof.
-		lookAlikes: []string{"santa's little helper", "santa clarita", "santa monica", "santa barbara", "santa fe", "santa cruz"},
+		lookAlikes: []string{"santa's little helper", "santa clarita", "santa monica", "santa barbara", "santa fe", "santa cruz",
+			"santa ana", "santa rosa", "santa maria", "santa catalina"},
 	},
 	{
 		id: "newyear", label: "New Year",

@@ -135,7 +135,8 @@ func holidayActive(h holiday, now time.Time) bool {
 // "ghost" never benches (an action film named "Ghost …" airs all year), even with
 // genres that make it `adjacent`.
 //
-// ⚠ GENRES ARE DELIBERATELY NOT MATCHED, and this is a correction. Haying over
+// ⚠ A GENRE IS NEVER EVIDENCE ON ITS OWN, and this is a correction: genres only
+// corroborate a mood word into `adjacent`, which bench and boost ignore. Haying over
 // title + genres conflated "this title is ABOUT a holiday" with "this title is in a
 // genre that correlates with one" — different claims, and only the first is something
 // a holiday window should act on.

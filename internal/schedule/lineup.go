@@ -181,7 +181,7 @@ type LineupEntry struct {
 	// entry-set filter with no per-reconcile library I/O. For a series these are the
 	// SERIES' values (v1 series-level ceiling; episodes carry no per-episode rating).
 	OfficialRating Rating   // media-server content rating, normalized at enforcement
-	Genres         []string // for genre scope + seasonal keyword matching
+	Genres         []string // for genre scope + corroborating a seasonal mood word (§6)
 	Year           int      // for era scope + seasonal windowing
 	RuntimeSec     int      // for the runtimeMax cap; 0 = unknown (not filtered on runtime)
 	// CollectionID is the TMDB collection (franchise) a MOVIE belongs to (§5 franchise
