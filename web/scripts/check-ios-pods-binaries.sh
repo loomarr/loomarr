@@ -21,8 +21,13 @@ readonly ALLOWED=(
   hermes-engine/destroot/Library/Frameworks/universal/hermesvm.xcframework
 )
 
+# Assigned on its own line so a failing find stops the script instead of passing an empty list.
+frameworks="$(find "$PODS_DIR" -name '*.xcframework' -prune -print)"
 unexpected=()
-while IFS= read -r -d '' framework; do
+while IFS= read -r framework; do
+  if [[ -z "$framework" ]]; then
+    continue
+  fi
   relative="${framework#"$PODS_DIR"/}"
   allowed=false
   for entry in "${ALLOWED[@]}"; do
@@ -33,12 +38,13 @@ while IFS= read -r -d '' framework; do
   if [[ "$allowed" == false ]]; then
     unexpected+=("$relative")
   fi
-done < <(find "$PODS_DIR" -name '*.xcframework' -prune -print0)
+done <<< "$frameworks"
 
 if (( ${#unexpected[@]} > 0 )); then
   printf 'ios-pods: precompiled frameworks not built from this React Native:\n' >&2
   printf '  %s\n' "${unexpected[@]}" >&2
-  printf 'ios-pods: build the owning package from source (expo.autolinking.ios.buildFromSource)\n' >&2
+  printf 'ios-pods: build the owning package from source (expo.autolinking.ios.buildFromSource),\n' >&2
+  printf 'ios-pods: or, if React Native moved one of its own release archives, update ALLOWED\n' >&2
   exit 1
 fi
 printf 'ios-pods: only React Native release frameworks are precompiled\n'

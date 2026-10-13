@@ -16,8 +16,9 @@ against an older React Native whose `ShadowNodeFamily` lacks the 64-byte `native
 react-native-tvos 0.86.2-0 has. Every mounted Expo view (the Watching picture) overflowed the heap,
 and the phone crashed later in unrelated text layout or mounting (#1816).
 `web/scripts/check-ios-pods-binaries.sh` fails a Simulator or TestFlight build whose Pods contain
-any precompiled framework other than React Native's own release archives. Drop the opt-out only
-when Expo publishes prebuilds compiled against the exact React Native the app installs.
+any precompiled framework other than React Native's own release archives. Remove
+`expo-modules-core` from `buildFromSource` only when Expo publishes prebuilds compiled against the
+exact React Native the app installs.
 
 ## Server (Go 1.27+)
 

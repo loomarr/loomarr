@@ -18,38 +18,37 @@ react_native_pods() {
     "$pods/RNScreens/ios"
 }
 
+# Runs the check and requires the exact exit status and, when given, an exact stderr line, so a
+# crash or a usage error cannot pass for a rejection.
+expect_status() {
+  local description="$1" expected="$2" line="$3" pods="$4" status=0
+  "$check" "$pods" >"$temp_dir/stdout" 2>"$temp_dir/stderr" || status=$?
+  if [[ "$status" != "$expected" ]]; then
+    echo "$description: exit status $status, expected $expected" >&2
+    cat "$temp_dir/stderr" >&2
+    exit 1
+  fi
+  if [[ -n "$line" ]] && ! grep -Fxq -- "$line" "$temp_dir/stderr"; then
+    echo "$description: expected stderr line: $line" >&2
+    cat "$temp_dir/stderr" >&2
+    exit 1
+  fi
+}
+
 pods="$temp_dir/source-built/Pods"
 react_native_pods "$pods"
-if ! "$check" "$pods/" >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
-  echo "React Native release frameworks alone: the check failed" >&2
-  cat "$temp_dir/stderr" >&2
-  exit 1
-fi
+expect_status "React Native release frameworks alone" 0 "" "$pods/"
 
 pods="$temp_dir/precompiled-expo/Pods"
 react_native_pods "$pods"
 mkdir -p "$pods/ExpoModulesCore/ExpoModulesCore.xcframework/ios-arm64/ExpoModulesCore.framework"
-if "$check" "$pods" >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
-  echo "precompiled ExpoModulesCore: the check passed" >&2
-  exit 1
-fi
-if ! grep -Fxq '  ExpoModulesCore/ExpoModulesCore.xcframework' "$temp_dir/stderr"; then
-  echo "precompiled ExpoModulesCore: expected its path in the failure" >&2
-  cat "$temp_dir/stderr" >&2
-  exit 1
-fi
+expect_status "precompiled ExpoModulesCore" 1 "  ExpoModulesCore/ExpoModulesCore.xcframework" "$pods"
 
 # A React framework at an unexpected path is someone else's build, not the verified archive.
 pods="$temp_dir/moved-react/Pods"
 mkdir -p "$pods/SomePod/React.xcframework"
-if "$check" "$pods" >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
-  echo "React.xcframework outside React-Core-prebuilt: the check passed" >&2
-  exit 1
-fi
+expect_status "React.xcframework outside React-Core-prebuilt" 1 "  SomePod/React.xcframework" "$pods"
 
-if "$check" "$temp_dir/missing" >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
-  echo "missing Pods directory: the check passed" >&2
-  exit 1
-fi
+expect_status "missing Pods directory" 2 "" "$temp_dir/missing"
 
 echo "check-ios-pods-binaries: ok"
