@@ -16,6 +16,7 @@
       }
     },
     "plugins": [
+      "../../scripts/with-loomarr-ios-network.cjs",
       [
         "expo-splash-screen",
         {

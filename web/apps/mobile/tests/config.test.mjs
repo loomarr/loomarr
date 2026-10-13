@@ -72,6 +72,9 @@ test("lets every build browse the local network for a server", async () => {
     // Without NSBonjourServices iOS refuses the browse; without the description, the prompt.
     assert.deepEqual(config.ios.infoPlist.NSBonjourServices, ["_loomarr._tcp"]);
     assert.match(config.ios.infoPlist.NSLocalNetworkUsageDescription, /home network/);
+    // A server under a local DNS name may be plain HTTP, on both platforms.
+    assert.ok(config.plugins.includes("../../scripts/with-loomarr-ios-network.cjs"));
+    assert.ok(config.plugins.includes("../../scripts/with-loomarr-android-network.cjs"));
   }
 });
 
