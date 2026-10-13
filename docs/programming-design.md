@@ -46,7 +46,7 @@ Stored per channel (JSON on the channel row), produced by the suggester, edited 
 }
 ```
 
-`scope.era` applies at the playable programme boundary. A movie is judged by its release year;
+An era applies at the playable programme boundary. A movie is judged by its release year;
 a series entry is judged once by its own first-air year and every expanded episode is judged again
 by that episode's production year. This is what makes `1989–1999 Simpsons` mean episodes from that
 period instead of every episode of a series that happened to begin in 1989. An episode whose year
@@ -61,15 +61,29 @@ A compound therefore matches its parts in both directions, for include and exclu
 parts never match each other. Exact-name matching excluded every series on a household channel
 scoped `Sci-Fi & Fantasy` / `Action & Adventure` and left it `empty` (#1630).
 
-For newly interpreted date constraints, `scope.dates` preserves separate movie-release,
+`scope.dates` is the only stored date scope (#1877). It keeps separate movie-release,
 series-premiere, and series-airing range lists under the [date contract](design.md). Each list is a
 union; applicable lists compose by intersection. Title axes are checked before series expansion,
-and the airing axis checks the concrete episode year. Explicit date windows are not widened to
-admit out-of-window model picks or by automatic era relaxation. `scope.era` continues to govern
-existing Era-only policies and operator selections. The whole nonempty scope remains operator
-pinnable. Filler derives its own viewing-era union through the shared selection resolver and
-persists a generated seed in `filler.eraWindows`; explicit scalar-era and range-list overrides are
-mutually exclusive. Programme-year and filler-year unknowns retain their distinct existing rules.
+and the airing axis checks the concrete episode year. A range may leave one end open ("1990
+onwards"); set bounds are 1900–2099.
+
+An **era** is a shortcut for dates, not a second scope: era R is `scope.dates` with
+`movieRelease = seriesPremiere = seriesAiring = [R]` ("era-shaped"), which filters exactly as the
+retired `scope.era` field did, on a channel scope and on a rule's scope alike. The backend resolves
+the alias on decode, so a policy saved with `era` keeps its lineup without a migration, and it
+never writes `era`. Requests (channel PATCH, programming preview, AI refine input) still accept
+`era`; a request carrying both `era` and `dates` is rejected with 422 as ambiguous. A stored
+legacy scope carrying both decodes to their per-axis intersection, which is what the scheduler
+aired; where an axis's windows miss the era entirely the era wins, since an empty list means
+"unconstrained" and cannot express "nothing". A rule's era now also filters each episode's airing
+year, as the channel's always did.
+
+Explicit per-axis date windows are not widened to admit out-of-window model picks or by
+automatic relaxation; only an era-shaped scope widens on the §7 ladder. The whole nonempty scope
+remains operator pinnable. Filler derives its own viewing-era union from the dates through the
+shared selection resolver: a single window seeds `filler.era` (which may be open-ended), a disjoint
+bounded union seeds `filler.eraWindows`; explicit scalar-era and range-list overrides are mutually
+exclusive. Programme-year and filler-year unknowns retain their distinct existing rules.
 
 **Single-series channels** (a Simpsons channel) auto-relax `seriesMinGap`/`blockMax` — separation there means *episode* spacing, not series spacing. The relaxation is rule-based, not LLM judgment.
 
@@ -214,11 +228,7 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
   A negated exclusion or an unrelated rating/title mention does not create that constraint.
 - The LLM may *infer* the ceiling from intent, but it does not own the safety boundary. Explicit child-safety language (`kid-safe`, `for kids`, `safe for children`, preschool/toddler, or Saturday-morning kids programming) deterministically imposes a maximum of `TV-Y7`, even when the model omits a ceiling or proposes a looser one. A model may propose a stricter ceiling; it may never relax this bound. The final value is shown as an editable chip in review, and enforcement is the ladder comparison.
 - **The ceiling is a kids/teen guardrail, not a general default — omit it unless the intent asks for one.** The audience ceiling exists for one purpose: so a channel a user asked to be *for kids or teens* can never show adult content. An unqualified channel is an **adult-default** channel — "1980s Action Heroes" obviously includes its R-rated films (Die Hard, Predator, The Terminator). So **a proposed ceiling is kept only when the intent carries a kids/teen signal** (words like "kids", "family", "cartoons", "all ages", a named kids property like "Bluey", an explicit low rating like "TV-Y", or a kids daypart). With **no such signal, any model-proposed ceiling is dropped** (→ no ceiling, everything admitted) — a small model's reflexive "action might be violent, better cap it at TV-14" must not silently strip the R-rated content the channel is *about*. This is enforced deterministically in `groundPolicy` (the prompt says "adult/no mention → omit," but the model isn't trusted to obey it). **The safety asymmetry is absolute:** dropping an *unjustified* ceiling only ever *loosens* (a content choice, reversible by the operator); when a kids/teen signal *is* present the ceiling stays and is **enforced fail-closed**. Grounded picks never raise a ceiling: a known harder title is refused, and an explicit child-safety request also refuses unrated titles. Loosen freely on adult channels; never loosen a kids channel.
-- **Nor does an era (auto-widen-to-admit).** The same rule, for the same reason, on `scope.era`: a model-proposed year range is **widened just far enough to include the channel's own grounded picks**. The failure was live — a "Midnight Sci-Fi Horror" channel came back with `era.from: 1982` *and* **Alien (1979)** on its approved lineup, so the enforcer filtered out a title the operator had explicitly approved. The lineup said six, the guide aired four, and nothing named the missing two.
-
-  Extraction and enforcement disagreeing about the same proposal is a **self-contradiction, not a preference** — exactly what the ceiling rule already resolves toward the content. A widen is also strictly safer than the audience version it mirrors: there is no era analogue of the kids line, because a year is a curation choice and never a safety property, so no bound is needed.
-
-  The era still **constrains everything the model did not pick** — backfill, re-curation, and filler continue to respect it. Only the already-approved picks are grandfathered in, which is the narrowest fix that keeps the era meaningful. Dropping the era wholesale would have been simpler and worse: it would discard a scope the model may have inferred correctly ("modern sci-fi horror") and let a 1950s B-movie land later on a channel framed as modern.
+- **The model proposes no date scope.** Its policy carries no `era`. A proposal's `scope.dates` comes only from the validated date meaning, and those explicit windows are not widened to admit picks (§2).
 
 ## 5. Ordering modes ("feels like TV")
 
@@ -491,7 +501,7 @@ When the eligible pool can't satisfy the policy (small library ∩ tight scope �
 
 1. Shorten `episodeNoRepeat`/`movieNoRepeat` (halve, floor 24h).
 2. Relax `seriesMinGap`/`blockMax`.
-3. Widen `era` by ±2 years per step (never past the intent's decade boundary if one was stated).
+3. Widen an era-shaped `scope.dates` by ±2 years per step (never past the intent's decade boundary if one was stated). Per-axis dates never widen.
 4. Pad with filler pods (§10 main doc — never dead air).
 
 **Never relaxed, ever:** `audience` and explicit scope filters (series/seasons). A too-small kids' pool becomes a filler-heavy kids' channel — it does not become a less-kids channel. Mirrors the pod fallback ladder's philosophy: degrade quality, never safety or identity.
@@ -504,7 +514,7 @@ When the eligible pool can't satisfy the policy (small library ∩ tight scope �
   episodes, curated highlights, or the explicit holiday scope. The review explains the selector;
   it does not let the client choose episode identities or bypass the deterministic binder.
   - ⚠ **The exclusion report reaches the CHANNEL EDITOR only; proposal review still does not show it.** Both preview endpoints (`GET …/cycle` and `POST …/programming/preview`) carry `excluded` — counts plus a per-item reason — and the cycle-preview panel renders it under the schedule. This half of the sentence was aspirational for as long as the type existed: `ComputeDesiredAt` filled the report on **every reconcile** and every caller discarded it, so a title the ceiling refused was invisible product-wide, and diagnosing one meant querying the media server by hand. **Reconcile still discards its copy** — it has no column and no event to put one in, and the preview recomputes the identical report from the same pure builder. Both remaining gaps are real and named rather than implied. The same chip surface is the **per-channel rules editor** (§8.1) on the channel page (§7 `PATCH .../{id}` writes `policy_json`); omitted chips inherit the built-in default (§9), and `audience` + explicit `scope` are shown as never-relaxed safety fields.
-- **Filler is part of the channel editor too (§10):** `policy.filler` (the `FillerSelection`) is edited on the channel page alongside the rules chips — theme criteria (era/audience/category/kinds) + pinned/excluded clips — with a live pod sandbox (`POST …/pods/preview`) that re-assembles the actual break against the unsaved draft before Apply. It also rides `policy_json`. The first approval of a generated Channel seeds its era from grounded `scope.era` and derives a conservative audience from the approved rating ceiling (`TV-Y`/`TV-Y7` → kids, `G`/`TV-G`/`PG`/`TV-PG` → family, otherwise general). Program genres never become filler product categories, and missing intent never invents late-night eligibility. This is a one-time ownership handoff: a present operator selection, including an explicitly empty one, is sticky across refine, re-curation, and reconcile.
+- **Filler is part of the channel editor too (§10):** `policy.filler` (the `FillerSelection`) is edited on the channel page alongside the rules chips — theme criteria (era/audience/category/kinds) + pinned/excluded clips — with a live pod sandbox (`POST …/pods/preview`) that re-assembles the actual break against the unsaved draft before Apply. It also rides `policy_json`. The first approval of a generated Channel seeds its era from the grounded `scope.dates` and derives a conservative audience from the approved rating ceiling (`TV-Y`/`TV-Y7` → kids, `G`/`TV-G`/`PG`/`TV-PG` → family, otherwise general). Program genres never become filler product categories, and missing intent never invents late-night eligibility. This is a one-time ownership handoff: a present operator selection, including an explicitly empty one, is sticky across refine, re-curation, and reconcile.
 - **Lineup builder (§9):** hard filters → eligible pool → seeded constraint-aware slotting (greedy with backtracking is sufficient at envelope scale) → relaxation ladder on failure → pods → push. The periodic sweep re-evaluates policy (seasonal windows roll, library grows, relaxations un-relax when the pool recovers).
 
 ## 8.1. The cycle-preview endpoint & the rules editor (making the engine legible + editable)
@@ -524,6 +534,8 @@ The preview is **read-only and never touches Tunarr or the store** — it is `Co
 **The "Programming rules" editor (`PATCH /v1/channels/{id}` → `policy_json`, admin) — authoring.** The channel page's Programming surface (design.md §12) renders `policy.rules` as an ordered list of **rule chips**, each showing its WHEN/WHAT/HOW tokens and priority. Authoring is **token-based, never raw predicates** — the same closed vocabulary the LLM uses (§6.6). **The vocabulary + lowering table is BE-authoritative, served by `GET /v1/programming/vocabulary`** (the WHEN/WHAT/HOW presets and how each lowers to `SchedulingRule` fields). The editor renders from it and the suggester's `groundRules` lowers with it — **one source, so hand-authored and LLM-authored rules are byte-identical by construction** (this closes the drift hazard of the FE re-implementing the §6.6 table). The BE re-validates on write (unknown tokens dropped, window clamped, audience stricter-only — enforced on *every* write path, not just the LLM's). Each rule carries a **`source` (`llm` or `operator`)** stamped at authoring time — the provenance a refresh proposal merges on (§8.2): a refine replaces the `llm` rules and preserves the `operator` ones. **Priority is drag-to-reorder** (list order *is* priority; higher = higher). `audience` and explicit `scope` remain never-relaxed safety fields, shown but not loosenable by a rule (§4, §7). Every save auto-reconciles (no rebuild).
 
 **`POST /v1/channels/{id}/programming/preview` — the whole-definition draft preview (admin authoring).** The cycle preview above (`GET …/cycle`) and the pod preview (`GET …/pods`, §10) each preview *saved* state; this generalizes both to an **unsaved draft** — body `{lineup?, policy?}`, returns the shared shape `{at, activeRule, window, slots, trace, pods}` without persisting. It runs the **same** `ComputeDesiredAt` + pod assembler as reconcile (so a drafted lineup + rules + filler edit preview exactly what will air once applied), and is the call the Programming surface's **scheduling-rules draft** uses while editing (design.md §12 — the third review-before-apply surface, and the only block of that page that drafts; scope/ordering/auto-curate stay seamless because their edits are self-contained). ⚠ This sentence previously read "the one call the Programming surface uses while editing", which asserted a whole-page draft §12 did not sanction and the implementation never built — a companion doc contradicting the design doc, which AGENTS.md resolves in the design doc's favour. It **does not replace** the read paths: `GET …/cycle` stays the any-authenticated verification pane and `GET …/pods` the saved-pool read — the change is one shared response schema, not deleting the GETs. The preview shows play *order*, not wall-clock. Overview airtimes come from the backend actually streaming the channel: Tunarr's guide for Tunarr-backed channels and Loomarr's internal timeline for internal channels.
+
+**`POST /v1/channels/{id}/programming/changes` — the upcoming slots a draft changes (#1877).** The single-point preview answers "what airs at T"; this answers "where does this edit change the schedule". Same body, validation and authorization as `programming/preview`; query `from` (default now) and `horizonHours` (default the channel's rolling window, 24h when unbounded, at most 168). It **forecasts both sides with one walk**: the saved channel and the draft, from the same instant, the same playout anchor and the same engine (`Engine.ScheduleDiffDraft`). The walk re-arranges where the channel would — at each rolling-window turn (carry-over for internal playout, a cut on the boundary for Tunarr, as the guide forecasts them) **and at each instant the active rule or holiday set changes**, because `ComputeDesiredAt` arranges a cycle for the rule active at its instant; without the rule boundaries a Sunday-evening rule would never appear in a forecast whose windows open at midnight. Each arrangement is `PreviewPlannedChannel`, memoised on `ClockSignature` + window index. Because an untouched slot is produced by identical calls on both sides it compares equal, so the response lists only the changes — `{fromMs, toMs, compared, count, truncated, changes[{startMs, endMs, before?, after?}]}`, each side `{kind, title, series?, key, season?, episode?, startMs, stopMs, rule}`, capped at 100 rows with `count` the true total. The two sides are compared at every programme start on either side; content identity is kind + key + title + season/episode, so a programme cut at a rule boundary on one side is unchanged while both sides air it. It deliberately compares two forecasts rather than the draft against the accepted (persisted) cycle: a stale accepted cycle would otherwise surface as changes the edit did not make. With carry-over the first epoch is `playout.WindowTurn` over the accepted cycle, so a diff opened while the previous window's crossing programme is still on air starts from what the encoder airs; instants are evaluated in the engine clock's location, as reconcile evaluates rule hours. The two sides run concurrently; a 7-day diff of a 200-title shuffled channel with a nightly rule measures ~120–145 ms (`BenchmarkScheduleDiff_SevenDays`), so it stays in the request path.
 
 ## 8.2. Self-updating channels (scheduled re-curation)
 

@@ -246,7 +246,9 @@ const Text = ({ as, density = "pointer", halo, shout, textRole, tone, tracking, 
     fontWeight: value.weight,
     letterSpacing: resolvedTracking,
     lineHeight: value.lineHeight,
-    textTransform: shout ? ("uppercase" as const) : undefined,
+    // Only when shouting: `face` spreads after the caller's props, so an always-present key
+    // would erase a caller's own `textTransform="uppercase"` (the Guide grid's labels).
+    ...(shout && { textTransform: "uppercase" as const }),
   } as const;
 
   if (isWeb && as) {

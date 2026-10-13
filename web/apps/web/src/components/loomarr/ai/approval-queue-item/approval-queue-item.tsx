@@ -1,6 +1,7 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import { Check, ChevronDown, Loader2, ShieldAlert, X } from "lucide-react";
 import { useId, useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -69,6 +70,7 @@ const ApprovalQueueItem = ({
   renderFeedback,
   onApprove,
   onDeny,
+  error,
   className,
 }: ApprovalQueueItemProps) => {
   const busy = status === "approving";
@@ -111,6 +113,10 @@ const ApprovalQueueItem = ({
           </div>
         )}
       </div>
+
+      {/* ⚠ On the row, not in a page-level banner (#1430): a failed approve/deny belongs beside
+          the card it failed for, not somewhere a reviewer scanning other rows has to go find. */}
+      {error != null && <ErrorState error={error} />}
 
       {/* Deny arms this row rather than firing straight away. The reason is optional —
           requiring one would turn every decline into a chore — but offering it is what

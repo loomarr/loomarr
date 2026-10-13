@@ -1,12 +1,12 @@
 import type { ChannelIdeaDTO } from "@loomarr/api/models/channelIdeaDTO";
 import { getChannelGuideMockHandler } from "@loomarr/api/msw";
+import { ideaReason } from "@loomarr/core/requests";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { MEMBER, renderAt, stub } from "@/test/requests-harness";
-import { ideaReason } from "./channel-ideas";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

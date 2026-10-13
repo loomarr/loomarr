@@ -8,7 +8,13 @@ import { useViewportInsets } from "../viewport";
 
 type TabBarIdiom = "ios" | "material";
 
-type TabBarItem<Value extends string> = { icon: IconName; label: string; value: Value };
+type TabBarItem<Value extends string> = {
+  /** A count over the glyph (Requests: what needs the person); omitted or 0 draws nothing. */
+  badge?: number;
+  icon: IconName;
+  label: string;
+  value: Value;
+};
 
 type TabBarProps<Value extends string> = {
   accessibilityLabel: string;
@@ -64,7 +70,7 @@ const TabBar = <Value extends string>({
         const current = item.value === selected;
         return (
           <Pressable
-            accessibilityLabel={item.label}
+            accessibilityLabel={item.badge ? `${item.label}, ${item.badge} need attention` : item.label}
             accessibilityRole="tab"
             accessibilityState={{ selected: current }}
             aria-selected={current}
@@ -91,6 +97,24 @@ const TabBar = <Value extends string>({
                 size={style.glyph}
                 tone={current ? "content" : "secondary"}
               />
+              {item.badge ? (
+                <View
+                  alignItems="center"
+                  backgroundColor="$stateLive"
+                  borderRadius="$round"
+                  height={16}
+                  justifyContent="center"
+                  left={38}
+                  minWidth={16}
+                  paddingHorizontal={4}
+                  position="absolute"
+                  top={-2}
+                >
+                  <TamaguiText color="$contentInverse" fontFamily="$body" fontSize={10} fontWeight="700">
+                    {item.badge > 99 ? "99+" : item.badge}
+                  </TamaguiText>
+                </View>
+              ) : null}
             </View>
             <TamaguiText
               color={current ? "$contentPrimary" : "$contentSecondary"}

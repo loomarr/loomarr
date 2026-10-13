@@ -1,5 +1,6 @@
 import { pluralize } from "@loomarr/core/format";
-import { useState } from "react";
+import { useId, useState } from "react";
+import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
@@ -19,12 +20,13 @@ import type { PullCardProps } from "./pull-card.type";
 // proposed with and marks the dropped ones, because "we approved this" is only meaningful next
 // to what was proposed. That is a server property; this component's job is not to hide it.
 
-const PullCard = ({ pull, onApprove, onDismiss, deciding, className }: PullCardProps) => {
+const PullCard = ({ pull, onApprove, onDismiss, deciding, error, className }: PullCardProps) => {
   // Which rows the operator has struck out, held locally until they commit. ⚠ Not sent as they
   // click: a pull is decided in one act, and a per-click PATCH would make "half-approved" a
   // state the gate has to reason about.
   const [dropped, setDropped] = useState<ReadonlySet<string>>(new Set());
   const [note, setNote] = useState("");
+  const titleId = useId();
 
   // ⚠ `?? []` because huma types every Go slice as nullable, so the generated DTO says
   // `PullPlanRowDTO[] | null` even though the handler always sends `[]`.
@@ -41,14 +43,21 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, className }: PullCardP
     });
 
   return (
-    <Card className={cn("flex flex-col gap-3 p-4", className)}>
+    // A named group so a screen reader announces which pull it has entered — several cards share
+    // identical "Not now" / "Approve pull" buttons, and the title is the only thing telling them apart.
+    <Card role="group" aria-labelledby={titleId} className={cn("flex flex-col gap-3 p-4", className)}>
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="lock">Filler pull</Badge>
-            <span className="font-semibold text-sm">{pull.title}</span>
+            <span id={titleId} className="font-semibold text-sm">
+              {pull.title}
+            </span>
           </div>
-          {pull.proposedBy && <Caption>proposed by {pull.proposedBy}</Caption>}
+          {/* ⚠ proposedByName is resolved server-side (#1430), the same way a proposal's
+              requester is — proposedBy itself is a raw user id (or a scheduled job's name) and
+              must never reach the screen. */}
+          {pull.proposedByName && <Caption>proposed by {pull.proposedByName}</Caption>}
         </div>
 
         <div className="flex shrink-0 gap-2">
@@ -66,6 +75,11 @@ const PullCard = ({ pull, onApprove, onDismiss, deciding, className }: PullCardP
           </Button>
         </div>
       </div>
+
+      {/* ⚠ On the row, not in a page-level banner (#1430): a decision failure belongs beside the
+          card whose decision failed, not somewhere a reviewer scanning other cards has to go
+          looking for it. */}
+      {error != null && <ErrorState error={error} />}
 
       {/* Why this pull exists. "Approve this" without a reason is a button, not a decision. */}
       {pull.reason && (

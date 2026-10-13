@@ -12,6 +12,12 @@
 # invented, or malformed classifications and renders GitHub's real titles/authors/links. A curated
 # `project/release/<tag>.md` header still supplies framing a machine cannot infer. A tag with a `-`
 # (e.g. `v0.1.0-beta.1`) is marked a prerelease.
+#
+# After the notes render, and before the Release is created, a docs-per-release gate (#1682)
+# fails this job — publishing no Release — when the notes contain a user-facing change (New
+# Features/Improvements/Bug Fixes/Security Fixes) and the tag range touched nothing under
+# docs/, docs-site/, or README.md. It is unconditional like every other step here: there is no
+# bypass short of fixing the docs or the PR classification.
 name: Release notes
 
 on:
@@ -32,6 +38,8 @@ jobs:
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # full history: the docs gate diffs this tag against the previous release tag
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -47,6 +55,20 @@ jobs:
           TAG: ${{ github.ref_name }}
         shell: bash
         run: ./scripts/generate-release-notes.sh "$TAG" "$RUNNER_TEMP/release-notes.md"
+
+      - name: Docs-per-release gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""')
+          if [ -z "$previous" ]; then
+            echo "release-notes: no previous release tag — skipping the docs-per-release gate for this first release"
+            exit 0
+          fi
+          git diff --name-only "${previous}..${GITHUB_SHA}" >"$RUNNER_TEMP/release-docs-gate-paths.txt"
+          ./scripts/check-release-docs-gate.sh "$RUNNER_TEMP/release-notes.md" "$RUNNER_TEMP/release-docs-gate-paths.txt"
 
       - name: Create the GitHub Release
         env:

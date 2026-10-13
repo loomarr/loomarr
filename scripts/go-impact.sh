@@ -19,8 +19,19 @@ fi
 scope="$("$ROOT/scripts/ci-impact.sh" "${paths[@]}")"
 [[ "$(sed -n 's/^go=//p' <<<"$scope")" == true ]] || exit 0
 
+# Read from the Makefile (`make -s print-tags-csv`) rather than keeping a second,
+# hand-maintained copy of CUSTOM_TAGS — see mk/check.mk's `lint` target and `tags-verify`'s
+# both-directions guard against exactly this kind of drift.
+TAGS_CSV="$(cd "$ROOT" && make -s print-tags-csv)"
+
+# `go list ./...` without `-tags` is blind to packages whose files are ALL guarded by a
+# `//go:build` constraint (e.g. internal/eval, entirely `eval`-tagged): the build system
+# reports no Go files there at all, so such a package is silently absent from this fallback's
+# selection even though `make lint` below is given `--build-tags` and would gladly check it.
+# `-tags` must match what `make lint` compiles under, or this "select everything" fallback
+# would itself have a blind spot narrower than "everything" (GH #1279).
 all_packages() {
-  (cd "$ROOT" && go list ./...)
+  (cd "$ROOT" && go list -tags "$TAGS_CSV" ./...)
 }
 
 if [[ "$(sed -n 's/^go_full=//p' <<<"$scope")" == true ]]; then

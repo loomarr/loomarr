@@ -6,10 +6,10 @@ import type { ProposalJourneyDTO } from "@loomarr/api/models/proposalJourneyDTO"
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
+import { type RequestStatus, requestNeedsYou, requestStatus } from "@loomarr/core/requests";
 import { type QueryClient, useQueries } from "@tanstack/react-query";
 import { useAuth } from "@/auth/use-auth";
 import { usePendingApprovals } from "@/queue/pending-approvals";
-import { type RequestStatus, requestNeedsYou, requestStatus } from "@/queue/request-status";
 
 // GET /v1/titles is a single-state FILTER (it 400s without `state`, §7), so the acquisition
 // states a request's status line needs are fetched one query per state and merged — the same

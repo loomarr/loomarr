@@ -63,7 +63,7 @@ agent-assets-verify: ## verify the curated skill catalog and agent adapters agre
 compose-verify: ## verify Traefik, database wiring, and pinned release images
 	@./scripts/check-compose.sh
 
-.PHONY: release-verify release-notes-preview
+.PHONY: release-verify release-notes-preview docs-release-gate
 release-verify: ## verify release, CI acquisition, Android, and publication policy
 	@./scripts/check-release-tag.sh --self-test
 	@./scripts/check-release-image-absence.sh --self-test
@@ -74,6 +74,7 @@ release-verify: ## verify release, CI acquisition, Android, and publication poli
 	@./scripts/shield-cert/test.sh
 	@./web/scripts/test-apple-client-cache-test.sh
 	@./web/scripts/validate-apple-compilation-cache-test.sh
+	@./scripts/check-release-docs-gate.sh --self-test
 	@./web/scripts/build-ios-testflight.test.sh
 	@$(GO) test ./internal/releaseverify
 	@$(GO) run ./cmd/releaseverify -root .
@@ -82,6 +83,16 @@ release-notes-preview: ## generate validated release notes (TAG required; option
 	@test -n "$(TAG)" || { echo "TAG is required (for example TAG=v0.2.0)" >&2; exit 2; }
 	@mkdir -p .artifacts
 	@PREVIOUS_TAG="$(PREVIOUS_TAG)" ./scripts/generate-release-notes.sh "$(TAG)" "$(or $(OUTPUT),.artifacts/release-notes-$(TAG).md)"
+
+docs-release-gate: ## fail a release whose user-facing changes have no docs change (TAG, PREVIOUS_TAG required; run after release-notes-preview, #1682)
+	@test -n "$(TAG)" || { echo "TAG is required (for example TAG=v0.2.0)" >&2; exit 2; }
+	@test -n "$(PREVIOUS_TAG)" || { echo "PREVIOUS_TAG is required (for example PREVIOUS_TAG=v0.1.0-beta.1)" >&2; exit 2; }
+	@set -e; \
+	notes="$(or $(NOTES),.artifacts/release-notes-$(TAG).md)"; \
+	test -f "$$notes" || { echo "no rendered release notes at $$notes — run 'make release-notes-preview TAG=$(TAG) PREVIOUS_TAG=$(PREVIOUS_TAG)' first" >&2; exit 2; }; \
+	mkdir -p .artifacts; \
+	git diff --name-only "$(PREVIOUS_TAG)..$(TAG)" >.artifacts/release-docs-gate-paths.txt; \
+	./scripts/check-release-docs-gate.sh "$$notes" .artifacts/release-docs-gate-paths.txt
 
 .PHONY: backup-restore-verify backup-restore-drill
 backup-restore-verify: ## isolated SQLite backup, destructive replacement, restore, and state validation

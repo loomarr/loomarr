@@ -23,15 +23,13 @@ func TestDateScopePolicyAccuracy(t *testing.T) {
 		err      error
 		accurate bool
 	}{
-		{name: "exact disjoint windows", expected: disjoint, proposal: dateScopeProposal(disjoint, nil), accurate: true},
-		{name: "convex hull widening", expected: disjoint, proposal: dateScopeProposal(&schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 2002}}}, nil)},
-		{name: "missing dates", expected: disjoint, proposal: dateScopeProposal(nil, nil)},
-		{name: "series premiere is not series airing", expected: seriesAiring, proposal: dateScopeProposal(&schedule.DateScope{SeriesPremiere: []schedule.Range{{From: 1990, To: 1992}}}, nil)},
-		{name: "hidden scalar era", expected: disjoint, proposal: dateScopeProposal(disjoint, &schedule.Range{From: 1990, To: 2002})},
-		{name: "explicit none accepts absence", expected: none, proposal: dateScopeProposal(nil, nil), accurate: true},
-		{name: "explicit none rejects empty date scope", expected: none, proposal: dateScopeProposal(&schedule.DateScope{}, nil)},
-		{name: "explicit none rejects dates", expected: none, proposal: dateScopeProposal(&schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1992}}}, nil)},
-		{name: "explicit none rejects scalar era", expected: none, proposal: dateScopeProposal(nil, &schedule.Range{From: 1990, To: 1992})},
+		{name: "exact disjoint windows", expected: disjoint, proposal: dateScopeProposal(disjoint), accurate: true},
+		{name: "convex hull widening", expected: disjoint, proposal: dateScopeProposal(&schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 2002}}})},
+		{name: "missing dates", expected: disjoint, proposal: dateScopeProposal(nil)},
+		{name: "series premiere is not series airing", expected: seriesAiring, proposal: dateScopeProposal(&schedule.DateScope{SeriesPremiere: []schedule.Range{{From: 1990, To: 1992}}})},
+		{name: "explicit none accepts absence", expected: none, proposal: dateScopeProposal(nil), accurate: true},
+		{name: "explicit none rejects empty date scope", expected: none, proposal: dateScopeProposal(&schedule.DateScope{})},
+		{name: "explicit none rejects dates", expected: none, proposal: dateScopeProposal(&schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1992}}})},
 		{name: "failed proposal cannot satisfy none", expected: none, err: suggest.ErrNoGroundedTitles},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -53,7 +51,7 @@ func TestDateScopePolicyAccuracy(t *testing.T) {
 }
 
 func TestDateScopeCeilingOnlyPolicyAccuracyRemainsUnchanged(t *testing.T) {
-	proposal := dateScopeProposal(nil, nil)
+	proposal := dateScopeProposal(nil)
 	proposal.Policy.Audience.Ceiling = "TV-Y7"
 	result := dateScopeRunner(proposal, nil).Run(context.Background(), []Case{{
 		Name: "historical ceiling", NoFabrication: true, ExpectedPolicyCeiling: "TV-Y7",
@@ -65,17 +63,14 @@ func TestDateScopeCeilingOnlyPolicyAccuracyRemainsUnchanged(t *testing.T) {
 
 func TestDateScopeResultOwnsCapturedPolicy(t *testing.T) {
 	dates := &schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1992}}}
-	era := &schedule.Range{From: 1990, To: 1992}
-	proposal := dateScopeProposal(dates, era)
+	proposal := dateScopeProposal(dates)
 	result := dateScopeRunner(proposal, nil).Run(context.Background(), []Case{{
 		Name: "captured policy", NoFabrication: true, ExpectedDateScope: dates,
 	}}).Results[0]
 	dates.MovieRelease[0].From = 1900
-	era.To = 1900
 	wantDates := &schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1992}}}
-	wantEra := &schedule.Range{From: 1990, To: 1992}
-	if !reflect.DeepEqual(result.DateScope, wantDates) || !reflect.DeepEqual(result.ScalarEra, wantEra) {
-		t.Fatalf("result policy changed after caller mutation: dates=%+v era=%+v", result.DateScope, result.ScalarEra)
+	if !reflect.DeepEqual(result.DateScope, wantDates) {
+		t.Fatalf("result policy changed after caller mutation: dates=%+v", result.DateScope)
 	}
 }
 
@@ -85,11 +80,11 @@ func dateScopeRunner(proposal suggest.Proposal, err error) *Runner {
 	}})
 }
 
-func dateScopeProposal(dates *schedule.DateScope, era *schedule.Range) suggest.Proposal {
+func dateScopeProposal(dates *schedule.DateScope) suggest.Proposal {
 	return suggest.Proposal{
 		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
-			Dates: dates, Era: era,
+			Dates: dates,
 		}}},
 	}
 }

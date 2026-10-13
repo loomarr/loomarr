@@ -833,6 +833,12 @@ type ChannelService interface {
 	// §4 filters refused, not just the mid-edit one.
 	CyclePreviewDraft(ctx context.Context, channelID string, at time.Time,
 		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.CycleResult, error)
+	// ScheduleDiffDraft forecasts [from, from+horizon) for the saved channel and for the same
+	// draft CyclePreviewDraft takes, and returns the slots where they differ (#1877). Both sides
+	// share one instant, anchor and engine, so an untouched slot compares equal. A zero `from` is
+	// "now"; horizon ≤ 0 is the channel's schedule window. Read-only.
+	ScheduleDiffDraft(ctx context.Context, channelID string, from time.Time, horizon time.Duration,
+		draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.ScheduleDiff, error)
 }
 
 // LiveTVService backs the Live TV setup status check (§6/§7). Mutating repair belongs to

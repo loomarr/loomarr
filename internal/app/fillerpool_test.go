@@ -39,7 +39,7 @@ func liveChannel(id, name string, number, era int) store.Channel {
 	return store.Channel{
 		Channel: schedule.Channel{ID: id, Name: name, Number: number, Status: schedule.StatusLive},
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-			Scope: schedule.ScopePolicy{Era: &schedule.Range{From: era, To: era + 9}},
+			Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: era, To: era + 9})},
 		}},
 	}
 }

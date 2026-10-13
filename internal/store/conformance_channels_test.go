@@ -42,7 +42,7 @@ func sampleChannel(id string, number int, deadline time.Time) Channel {
 		ProposalPolicy: schedule.ProposalPolicy{
 			Audience:   schedule.AudiencePolicy{Ceiling: "TV-Y7"},
 			Separation: schedule.SeparationPolicy{EpisodeNoRepeat: schedule.Duration(168 * time.Hour)},
-			Scope:      schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}},
+			Scope:      schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})},
 			Ordering:   schedule.OrderSyndication,
 		},
 		Applied: []schedule.AppliedRelaxation{{Kind: "episodeNoRepeat", From: "168h", To: "84h"}},
@@ -90,8 +90,8 @@ func testChannelRoundTrip(t *testing.T, newStore NewStoreFunc) {
 	if got.Policy.Separation.EpisodeNoRepeat.Std() != 168*time.Hour {
 		t.Errorf("policy duration round-trip: got %v", got.Policy.Separation.EpisodeNoRepeat.Std())
 	}
-	if got.Policy.Scope.Era == nil || got.Policy.Scope.Era.From != 1990 || got.Policy.Scope.Era.To != 1999 {
-		t.Errorf("policy era round-trip: got %+v", got.Policy.Scope.Era)
+	if era, ok := got.Policy.Scope.Dates.Era(); !ok || era != (schedule.Range{From: 1990, To: 1999}) {
+		t.Errorf("policy dates round-trip: got %+v", got.Policy.Scope.Dates)
 	}
 	if len(got.Policy.Applied) != 1 || got.Policy.Applied[0].Kind != "episodeNoRepeat" {
 		t.Errorf("policy applied-relaxation round-trip: got %+v", got.Policy.Applied)

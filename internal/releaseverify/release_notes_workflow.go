@@ -15,6 +15,20 @@ args=(release create "$TAG" --title "$TAG" --notes-file "$RUNNER_TEMP/release-no
 case "$TAG" in *-*) args+=(--prerelease) ;; esac
 gh "${args[@]}"`
 
+// docsGateRun fails the job — publishing no Release — when the rendered notes contain a
+// user-facing change and this tag range touched no docs (#1682). It is unconditional like
+// every other step here: the only way past it is fixing the docs or the PR classification, not
+// a workflow-level `if`. A first release with no previous tag has nothing to diff against, so
+// the script itself (not the workflow) decides to skip rather than fail.
+const docsGateRun = `set -euo pipefail
+previous=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""')
+if [ -z "$previous" ]; then
+  echo "release-notes: no previous release tag — skipping the docs-per-release gate for this first release"
+  exit 0
+fi
+git diff --name-only "${previous}..${GITHUB_SHA}" >"$RUNNER_TEMP/release-docs-gate-paths.txt"
+./scripts/check-release-docs-gate.sh "$RUNNER_TEMP/release-notes.md" "$RUNNER_TEMP/release-docs-gate-paths.txt"`
+
 // VerifyReleaseNotesWorkflow keeps prose generation outside the signing workflow and constrains
 // the model to the audited local categorizer before GitHub Release publication.
 func VerifyReleaseNotesWorkflow(path string) error {
@@ -94,8 +108,8 @@ func verifyReleaseNotesSteps(job *yaml.Node) error {
 	if err != nil {
 		return err
 	}
-	if len(steps.Content) != 4 {
-		return fmt.Errorf("release notes job must contain exactly 4 audited steps, found %d", len(steps.Content))
+	if len(steps.Content) != 5 {
+		return fmt.Errorf("release notes job must contain exactly 5 audited steps, found %d", len(steps.Content))
 	}
 	for index, step := range steps.Content {
 		if _, exists := mappingValue(step, "if"); exists {
@@ -105,11 +119,15 @@ func verifyReleaseNotesSteps(job *yaml.Node) error {
 			return fmt.Errorf("release notes step %d must fail closed", index+1)
 		}
 	}
-	if err := verifyOnlyKeys(steps.Content[0], "release notes checkout step", "name", "uses"); err != nil {
+	if err := verifyOnlyKeys(steps.Content[0], "release notes checkout step", "name", "uses", "with"); err != nil {
 		return err
 	}
 	if actionName(steps.Content[0]) != "actions/checkout" || strings.TrimSpace(scalarValue(steps.Content[0], "run")) != "" {
 		return errors.New("release notes step 1 must check out the tagged commit")
+	}
+	checkoutWith, err := requiredMap(steps.Content[0], "with")
+	if err != nil || len(checkoutWith.Content) != 2 || scalarValue(checkoutWith, "fetch-depth") != "0" {
+		return errors.New("release notes checkout must fetch full history so the docs gate can diff the previous release tag")
 	}
 	if err := verifyOnlyKeys(steps.Content[1], "release notes Go setup step", "name", "uses", "with"); err != nil {
 		return err
@@ -149,7 +167,18 @@ func verifyReleaseNotesSteps(job *yaml.Node) error {
 			return fmt.Errorf("release notes generator %s = %q, want %q", name, got, want)
 		}
 	}
-	publish := steps.Content[3]
+	gate := steps.Content[3]
+	if err := verifyOnlyKeys(gate, "release notes docs gate step", "name", "env", "shell", "run"); err != nil {
+		return err
+	}
+	if scalarValue(gate, "shell") != "bash" || strings.TrimSpace(scalarValue(gate, "run")) != docsGateRun {
+		return errors.New("release notes must run the audited docs-per-release gate before publication")
+	}
+	gateEnv, err := requiredMap(gate, "env")
+	if err != nil || len(gateEnv.Content) != 2 || scalarValue(gateEnv, "GH_TOKEN") != "${{ github.token }}" {
+		return errors.New("release notes docs gate must receive only the workflow token")
+	}
+	publish := steps.Content[4]
 	if err := verifyOnlyKeys(publish, "release notes publication step", "name", "env", "shell", "run"); err != nil {
 		return err
 	}

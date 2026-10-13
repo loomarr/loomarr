@@ -59,7 +59,7 @@ func TestEnforce_EraBinds(t *testing.T) {
 		ratedEntry("movie:tmdb:3", "Too New", "", 2005),
 	}
 	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3"}
-	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1990, To: 1999}}}}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})}}}
 
 	keys := programKeys(computeWithPolicy(entries, avail, p))
 	if !hasKey(keys, "movie:tmdb:1") {
@@ -79,7 +79,7 @@ func TestEnforce_EraBindsEveryExpandedEpisode(t *testing.T) {
 		},
 	})
 	policy := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{
-		Scope: schedule.ScopePolicy{Era: &schedule.Range{From: 1989, To: 1999}},
+		Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1989, To: 1999})},
 	}}
 
 	desired := computeWithPolicy([]schedule.LineupEntry{series}, avail, policy)

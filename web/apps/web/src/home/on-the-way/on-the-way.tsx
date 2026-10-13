@@ -2,13 +2,13 @@ import * as titlesApi from "@loomarr/api/endpoints/titles";
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
+import type { RequestStatus } from "@loomarr/core/requests";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { ListGroup, ListRow, type ListRowProps } from "@/components/ui/list-row";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import type { StatusTone } from "@/components/ui/status-dot";
-import type { RequestStatus } from "@/queue/request-status";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 
 const IN_FLIGHT = [TitleDTOState.downloading, TitleDTOState.requested, TitleDTOState.wanted] as const;

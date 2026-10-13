@@ -6,6 +6,8 @@ type OverlayAction = {
   label: string;
   onPress: () => void;
   preferredFocus?: boolean;
+  /** The current choice among several (a setting's stored value), drawn with Action's selected state. */
+  selected?: boolean;
   tone?: "danger" | "primary" | "secondary";
 };
 
