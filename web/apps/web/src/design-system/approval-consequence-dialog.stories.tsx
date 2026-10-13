@@ -121,7 +121,8 @@ const Approving: Story = { args: { pending: true } };
 // The whole call failed, so there are no per-item results to show yet.
 const CallFailed: Story = { args: { error: "Couldn't reach Loomarr. Check the connection and try again." } };
 
-// One item failed: its own Retry, plus "Retry 1 failed". The rest keep their exact counts.
+// One item failed for good (already decided, a 409): it states why and offers no Retry, and with
+// nothing retryable there is no "Retry N failed" either. The rest keep their exact counts.
 const PartialFailure: Story = {
   args: {
     results: [
@@ -131,13 +132,46 @@ const PartialFailure: Story = {
   },
 };
 
+// Only a failure the server marks retryable (a 5xx) gets its own Retry, and the footer counts only
+// those: "Retry 1 failed" here, though two failed.
+const RetryableFailure: Story = {
+  args: {
+    consequences: {
+      group: "channels",
+      items: [
+        ...allKnown,
+        {
+          id: "cr-3",
+          title: "Saturday cartoons",
+          titleCount: 2,
+          toDownload: 0,
+          ceiling: "TV-Y7",
+          sizes: [owned(0.6), owned(0.9)],
+          channel: create("Saturday cartoons"),
+        },
+      ],
+    },
+    results: [
+      { id: "cr-1", ok: true, enqueued: 3 },
+      { id: "cr-2", ok: false, error: "This suggestion has already been approved or dismissed." },
+      { id: "cr-3", ok: false, error: "Couldn't save the approval. Try again.", retryable: true },
+    ],
+  },
+};
+
 // A filler result states the approved pull's exact clip count (#1884), with no estimate language.
+// The failed pull couldn't start downloading (a 502), which a retry can clear.
 const FillerPartialFailure: Story = {
   args: {
     consequences: { group: "filler", items: pulls },
     results: [
       { id: "fp-1", ok: true, enqueued: 12 },
-      { id: "fp-2", ok: false, error: "This pull has already been approved or dismissed." },
+      {
+        id: "fp-2",
+        ok: false,
+        error: "Loomarr couldn't start downloading. Check the Filler sources and try again.",
+        retryable: true,
+      },
     ],
   },
 };
@@ -152,5 +186,6 @@ export {
   FillerPartialFailure,
   MixedKnownUnavailable,
   PartialFailure,
+  RetryableFailure,
   UpdatesExistingChannel,
 };

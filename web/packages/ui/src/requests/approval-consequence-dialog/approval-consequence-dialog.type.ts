@@ -36,13 +36,16 @@ type BulkApproveConsequences =
 
 /**
  * One row of either bulk endpoint's result, which share this shape. `enqueued` is the exact count
- * the approval committed (titles, or the pull's clips); absent on a failure.
+ * the approval committed (titles, or the pull's clips); absent on a failure. `retryable` is the
+ * server's verdict on a failure: true only for a server or upstream fault that sending the id
+ * again can clear. Absent means permanent (already decided, not found…).
  */
 interface BulkApproveOutcome {
   id: string;
   ok: boolean;
   error?: string | undefined;
   enqueued?: number | undefined;
+  retryable?: boolean | undefined;
 }
 
 interface ApprovalConsequenceDialogProps {
@@ -56,7 +59,7 @@ interface ApprovalConsequenceDialogProps {
   error?: string | undefined;
   onCancel: () => void;
   onConfirm: () => void;
-  /** Re-submit only these ids through the same bulk endpoint. */
+  /** Re-submit only these ids through the same bulk endpoint. Only retryable failures are offered. */
   onRetry: (ids: string[]) => void;
   onDone: () => void;
 }

@@ -586,7 +586,7 @@ describe("ApprovalQueue — bulk approve per group with a consequence summary", 
       answer: (ids) =>
         ids.map((id) =>
           calls++ === 1 && id === "p2"
-            ? { id, ok: false, error: "This suggestion has already been approved or dismissed." }
+            ? { id, ok: false, error: "Couldn't save the approval.", status: 500, retryable: true }
             : { id, ok: true, enqueued: 1 },
         ),
     });
@@ -603,9 +603,7 @@ describe("ApprovalQueue — bulk approve per group with a consequence summary", 
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText("Approved 1 of 2")).toBeInTheDocument();
     expect(within(dialog).getByText('1 title enqueued · channel "Action Night" created')).toBeInTheDocument();
-    expect(
-      within(dialog).getByText("This suggestion has already been approved or dismissed."),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Couldn't save the approval.")).toBeInTheDocument();
     expect(bulkCalls[0]).toEqual({ url: "/v1/proposals/approve", ids: ["p1", "p2"] });
 
     await userEvent.click(within(dialog).getByRole("button", { name: "Retry Noir" }));

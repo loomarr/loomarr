@@ -201,7 +201,43 @@ describe("ApprovalConsequenceDialog — the summary", () => {
 });
 
 describe("ApprovalConsequenceDialog — the result", () => {
-  it("lists each outcome with its exact count, and retries one or every failure", async () => {
+  it("lists each outcome, and retries only the failures the server marked retryable", async () => {
+    const view = await dialog({
+      consequences: {
+        group: "channels",
+        items: [
+          request(),
+          request({ id: "cr-2", title: "Overnight documentary block" }),
+          request({ id: "cr-3", title: "Saturday cartoons" }),
+          request({ id: "cr-4", title: "Late-night jazz" }),
+        ],
+      },
+      results: [
+        { id: "cr-1", ok: true, enqueued: 3 },
+        { id: "cr-2", ok: false, error: "This suggestion has already been approved or dismissed." },
+        { id: "cr-3", ok: false, error: "Couldn't save the approval.", retryable: true },
+        { id: "cr-4", ok: false, error: "Couldn't save the approval.", retryable: true },
+      ],
+    });
+    const text = view.text();
+    expect(text).toContain("Approved 1 of 4");
+    expect(text).toContain('3 titles enqueued · channel "Rainy afternoon serials" created');
+    expect(text).toContain("This suggestion has already been approved or dismissed.");
+    expect(named("img", "Approved")).toBeTruthy();
+    expect(byRole("img").filter((n) => n.getAttribute("aria-label") === "Not approved")).toHaveLength(3);
+
+    // A permanent failure states its reason with nothing to press: a retry could only repeat it.
+    expect(() => named("button", "Retry Overnight documentary block")).toThrow();
+    await click(named("button", "Retry Saturday cartoons"));
+    expect(view.onRetry).toHaveBeenLastCalledWith(["cr-3"]);
+    await click(named("button", "Retry 2 failed"));
+    expect(view.onRetry).toHaveBeenLastCalledWith(["cr-3", "cr-4"]);
+    await click(named("button", "Done"));
+    expect(view.onDone).toHaveBeenCalledOnce();
+    await view.unmount();
+  });
+
+  it("offers no retry at all when every failure is permanent", async () => {
     const view = await dialog({
       consequences: {
         group: "channels",
@@ -212,19 +248,9 @@ describe("ApprovalConsequenceDialog — the result", () => {
         { id: "cr-2", ok: false, error: "This suggestion has already been approved or dismissed." },
       ],
     });
-    const text = view.text();
-    expect(text).toContain("Approved 1 of 2");
-    expect(text).toContain('3 titles enqueued · channel "Rainy afternoon serials" created');
-    expect(text).toContain("This suggestion has already been approved or dismissed.");
-    expect(named("img", "Approved")).toBeTruthy();
-    expect(named("img", "Not approved")).toBeTruthy();
-
-    await click(named("button", "Retry Overnight documentary block"));
-    expect(view.onRetry).toHaveBeenLastCalledWith(["cr-2"]);
-    await click(named("button", "Retry 1 failed"));
-    expect(view.onRetry).toHaveBeenLastCalledWith(["cr-2"]);
-    await click(named("button", "Done"));
-    expect(view.onDone).toHaveBeenCalledOnce();
+    expect(view.text()).toContain("This suggestion has already been approved or dismissed.");
+    expect(byRole("button").filter((n) => n.textContent?.startsWith("Retry"))).toHaveLength(0);
+    expect(view.text()).not.toMatch(/Retry \d+ failed/);
     await view.unmount();
   });
 

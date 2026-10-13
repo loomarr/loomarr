@@ -473,6 +473,21 @@ type bulkApproveResult struct {
 	Enqueued  int    `json:"enqueued,omitempty" doc:"Acquisitions enqueued as wanted titles"`
 	ChannelID string `json:"channelId,omitempty"`
 	Error     string `json:"error,omitempty" doc:"Why this one did not approve (already handled, not found, …)"`
+	Status    int    `json:"status,omitempty" doc:"The HTTP status approving this id alone would have answered; absent on success"`
+	Retryable bool   `json:"retryable,omitempty" doc:"True when the failure was a server or upstream fault, so retrying this id can succeed. Absent for a permanent refusal (not found, already handled, invalid, not set up)"`
+}
+
+// bulkFailure classifies one id's approval error for either bulk approve endpoint (Refs
+// #1876). The SERVER decides retryability from the status the single-approve handler raised,
+// so no client keeps its own status rule or guesses from the message text.
+//
+// A 5xx is a server or upstream fault that a retry can clear (a store read, a download that
+// couldn't start), except 501: this install can't do it at all. Every 4xx is the item's own
+// state, which a retry repeats. An error carrying no status is an unexpected fault, so it is a
+// 500, as huma would answer it.
+func bulkFailure(err error) (status int, retryable bool) {
+	status = statusFromError(err, http.StatusInternalServerError)
+	return status, status >= http.StatusInternalServerError && status != http.StatusNotImplemented
 }
 
 type bulkApproveOutput struct {
@@ -503,8 +518,9 @@ func (s *Server) bulkApproveProposals(ctx context.Context, in *bulkApproveInput)
 		if err != nil {
 			// A per-id failure is DATA, not a request failure: the ones that worked are already
 			// durable, so 500ing the whole call would hide successful approvals behind an error.
+			status, retryable := bulkFailure(err)
 			out.Body.Results = append(out.Body.Results, bulkApproveResult{
-				ID: id, OK: false, Error: humaErrMessage(err),
+				ID: id, OK: false, Error: humaErrMessage(err), Status: status, Retryable: retryable,
 			})
 			continue
 		}

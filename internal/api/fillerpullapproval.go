@@ -165,6 +165,9 @@ type bulkApproveFillerPullResult struct {
 	// from the approved pull's own CandidateCount. Absent (not 0) when the approval failed.
 	Enqueued int    `json:"enqueued,omitempty" doc:"Remote items this approval queued for download — the approved pull's candidateCount"`
 	Error    string `json:"error,omitempty" doc:"Why this one did not approve (already handled, not found, …)"`
+	// Status and Retryable come from bulkFailure, the classification bulk-approve-proposals uses.
+	Status    int  `json:"status,omitempty" doc:"The HTTP status approving this id alone would have answered; absent on success"`
+	Retryable bool `json:"retryable,omitempty" doc:"True when the failure was a server or upstream fault, so retrying this id can succeed. Absent for a permanent refusal (not found, already decided, not set up)"`
 }
 
 type bulkApproveFillerPullOutput struct {
@@ -196,8 +199,9 @@ func (s *Server) bulkApproveFillerPulls(ctx context.Context, in *bulkApproveFill
 		if err != nil {
 			// A per-id failure is DATA, not a request failure: the ones that worked are already
 			// durable, so 500ing the whole call would hide successful approvals behind an error.
+			status, retryable := bulkFailure(err)
 			out.Body.Results = append(out.Body.Results, bulkApproveFillerPullResult{
-				ID: id, OK: false, Error: humaErrMessage(err),
+				ID: id, OK: false, Error: humaErrMessage(err), Status: status, Retryable: retryable,
 			})
 			continue
 		}

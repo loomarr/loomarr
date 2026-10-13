@@ -13,7 +13,8 @@ import type {
 
 // What a group's bulk approve will DO, shown before it happens, then what it did (#1817, mock
 // #1876). Two steps in one modal: the consequence summary with Cancel / Approve N, and the per-item
-// result with a Retry on each failure.
+// result with a Retry on each failure the server marked retryable. A permanent failure (already
+// decided, not found) shows its reason and nothing to press: a retry could only repeat it.
 //
 // ⚠ Every figure here is one the server stated; where it stated nothing the dialog says
 // "unavailable" rather than inventing a number. A size line that is missing, or "0 B", reads as
@@ -139,7 +140,7 @@ const ApprovalConsequenceDialog = ({
   const copy = GROUP_COPY[consequences.group];
   const count = consequences.items.length;
   const titleOf = (id: string) => consequences.items.find((i) => i.id === id)?.title ?? id;
-  const failed = (results ?? []).filter((r) => !r.ok);
+  const retryable = (results ?? []).filter((r) => !r.ok && r.retryable);
   // Roles sit on Surface: the design-system Text does not carry one to the web.
   const errorLine = error ? (
     <Surface backgroundColor="$transparent" borderWidth={0} role="alert">
@@ -192,7 +193,7 @@ const ApprovalConsequenceDialog = ({
                   {outcomeLine(consequences, r)}
                 </Text>
               </Surface>
-              {r.ok ? null : (
+              {r.ok || !r.retryable ? null : (
                 <Action
                   accessibilityLabel={`Retry ${titleOf(r.id)}`}
                   accessibilityRole="button"
@@ -207,14 +208,14 @@ const ApprovalConsequenceDialog = ({
           ))}
         </Surface>
         {errorLine}
-        {failed.length > 0 ? (
+        {retryable.length > 0 ? (
           <Action
             accessibilityRole="button"
             disabled={pending}
-            onPress={() => onRetry(failed.map((r) => r.id))}
+            onPress={() => onRetry(retryable.map((r) => r.id))}
             tone="secondary"
           >
-            {`Retry ${failed.length} failed`}
+            {`Retry ${retryable.length} failed`}
           </Action>
         ) : null}
       </ModalOverlay>
