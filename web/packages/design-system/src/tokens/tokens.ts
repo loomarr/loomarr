@@ -226,6 +226,10 @@ const typography = {
     label: { size: 14, lineHeight: 20, weight: "600" },
     section: { size: 14, lineHeight: 20, weight: "400" },
     metadata: { size: 12, lineHeight: 18, weight: "500" },
+    // A form field's help or validation line (FieldHint, #970 step 45): the Web forms' existing
+    // 12px/16px regular measure. Touch and TV take cardMeta's size at each density, the nearest
+    // existing role, so no size is invented for a density nobody has mocked.
+    hint: { size: 12, lineHeight: 16, weight: "400" },
     time: { size: 13, lineHeight: 18, weight: "550" },
     data: { size: 14, lineHeight: 21, weight: "400" },
     reading: { size: 16, lineHeight: 24, weight: "400" },
@@ -260,6 +264,7 @@ const typography = {
     label: { size: 15, lineHeight: 21, weight: "600" },
     section: { size: 15, lineHeight: 22, weight: "400" },
     metadata: { size: 13, lineHeight: 18, weight: "500" },
+    hint: { size: 13, lineHeight: 18, weight: "400" },
     time: { size: 14, lineHeight: 20, weight: "550" },
     data: { size: 17, lineHeight: 25, weight: "400" },
     reading: { size: 17, lineHeight: 25, weight: "400" },
@@ -288,6 +293,7 @@ const typography = {
     label: { size: 18, lineHeight: 25, weight: "600" },
     section: { size: 20, lineHeight: 30, weight: "400" },
     metadata: { size: 16, lineHeight: 22, weight: "500" },
+    hint: { size: 16, lineHeight: 22, weight: "400" },
     time: { size: 18, lineHeight: 24, weight: "550" },
     data: { size: 24, lineHeight: 30, weight: "400" },
     reading: { size: 24, lineHeight: 36, weight: "400" },

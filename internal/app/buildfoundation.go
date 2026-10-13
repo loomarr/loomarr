@@ -43,6 +43,7 @@ type foundationBuild struct {
 	diagnosticProcesses    *diagnostics.ProcessLog
 	diagnosticBundles      *diagnostics.BundleService
 	clientDiagnostics      *diagnostics.ClientIngestor
+	clientCrashes          *diagnostics.ClientCrashes
 	processDiagnostics     *diagnostics.ProcessManager
 	startup                *diagnostics.Startup
 	startupReports         *diagnostics.StartupReports
@@ -108,6 +109,7 @@ func buildFoundation(
 		owner.addStop(result.diagnostics.Close)
 		result.diagnosticEvents = diagnostics.NewEventLog(st, time.Now).WithDropped(result.diagnostics.Dropped)
 		result.clientDiagnostics = diagnostics.NewClientIngestor(result.diagnostics, time.Now)
+		result.clientCrashes = diagnostics.NewClientCrashes(st, time.Now)
 		result.startup.AttachPersistence(result.diagnostics, instanceID)
 		result.startupReports = diagnostics.NewStartupReports(result.startup, st, time.Now)
 	}

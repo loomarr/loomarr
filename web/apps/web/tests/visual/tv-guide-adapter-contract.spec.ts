@@ -7,7 +7,7 @@ test("TV Guide D-pad crosses grid and enabled filters without stranding focus", 
   await expect(controller).toBeFocused();
 
   await page.keyboard.press("ArrowDown");
-  await expect(page.getByText("ch-springfield focused")).toBeVisible();
+  await expect(page.getByText("ch-cartoons focused")).toBeVisible();
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("ArrowUp");
   await expect(page.getByText("all filter focused")).toBeVisible();

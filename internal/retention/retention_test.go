@@ -26,6 +26,8 @@ type retentionStore struct {
 	qualityAt          time.Time
 	qualityErr         error
 	sessionsCalled     bool
+	crashBefore        time.Time
+	crashKeep          int
 }
 
 type retentionDiagnostics struct {
@@ -57,6 +59,10 @@ func (s *retentionStore) PurgeDiagnostics(_ context.Context, before time.Time, m
 	s.diagnosticBefore = before
 	s.diagnosticMax = maxBytes
 	return diagnostics.PurgeResult{Events: 2, ProcessRuns: 1, RetainedBytes: 99}, s.diagnosticErr
+}
+func (s *retentionStore) PurgeClientCrashReports(_ context.Context, before time.Time, keep int) (int, error) {
+	s.crashBefore, s.crashKeep = before, keep
+	return 0, nil
 }
 func (s *retentionStore) PurgeExpiredSessions(context.Context, time.Time) (int, error) {
 	s.sessionsCalled = true
@@ -100,6 +106,10 @@ func TestHousekeepingAppliesDiagnosticAgeAndStoragePolicy(t *testing.T) {
 	}
 	if !store.qualityAt.Equal(now) {
 		t.Fatalf("quality ledger maintenance time = %v, want %v", store.qualityAt, now)
+	}
+	// Crash reports (#1816) keep their own fixed policy, not the 7-day diagnostics window.
+	if want := now.Add(-30 * 24 * time.Hour); !store.crashBefore.Equal(want) || store.crashKeep != 1000 {
+		t.Fatalf("crash report horizon = %v keep %d, want %v keep 1000", store.crashBefore, store.crashKeep, want)
 	}
 }
 

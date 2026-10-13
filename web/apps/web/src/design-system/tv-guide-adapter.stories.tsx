@@ -14,7 +14,7 @@ const filters = [{ value: "all" }, { disabled: true, value: "favourites" }, { va
 const initialSelection: GuideSelection = {
   anchorMs: guideFrom + 17 * 60_000,
   channelId: "ch-action",
-  scheduleBlockId: "block_action_heat",
+  scheduleBlockId: "block_action_marigold",
 };
 
 const TvGuideWorkshop = () => {

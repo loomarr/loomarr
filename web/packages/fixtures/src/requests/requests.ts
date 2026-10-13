@@ -84,7 +84,7 @@ const journeys = {
     milestone: "building",
     proposal: {
       approvedAt: "2026-10-01T08:00:00Z",
-      approvedByName: "Ada Lovelace",
+      approvedByName: "Adela Hale",
       id: "proposal-downloading",
       proposal: proposalBody("Harbour-town dramas", [lighthouse], [marmalade, harbour]),
       status: "approved",
@@ -98,7 +98,7 @@ const journeys = {
     milestone: "live",
     proposal: {
       approvedAt: "2026-09-26T09:00:00Z",
-      approvedByName: "Ada Lovelace",
+      approvedByName: "Adela Hale",
       id: "proposal-live",
       proposal: proposalBody("Gentle detective stories", [lighthouse, marmalade], []),
       status: "approved",
@@ -196,24 +196,24 @@ const ideas: ChannelIdeaDTO[] = [
 
 const approvals: ProposalDTO[] = [
   {
-    createdByName: "Grace Hopper",
-    id: "approval-grace",
-    jobId: "job-grace",
+    createdByName: "Greta Finch",
+    id: "approval-greta",
+    jobId: "job-greta",
     note: "For the weekend film club.",
     proposal: proposalBody("Black-and-white thrillers", [lighthouse], [marmalade, harbour]),
     status: "submitted",
   },
   {
-    createdByName: "Katherine Johnson",
-    id: "approval-katherine",
-    jobId: "job-katherine",
+    createdByName: "Kira Brandt",
+    id: "approval-kira",
+    jobId: "job-kira",
     proposal: proposalBody("Mountain documentaries", [harbour], []),
     status: "submitted",
   },
   {
-    createdByName: "Mary Jackson",
-    id: "approval-mary",
-    jobId: "job-mary",
+    createdByName: "Maren Okafor",
+    id: "approval-maren",
+    jobId: "job-maren",
     proposal: proposalBody("Overnight jazz and rain sounds", [marmalade, harbour], [lighthouse]),
     status: "submitted",
   },

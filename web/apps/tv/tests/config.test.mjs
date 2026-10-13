@@ -18,6 +18,8 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   );
   assert.equal(tvPlugin?.[1].androidTVRequired, true);
   assert.ok(config.expo.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
+  // A server under a local DNS name may be plain HTTP on Apple TV too, as it already is on Android TV.
+  assert.ok(config.expo.plugins.includes("../../scripts/with-loomarr-ios-network.cjs"));
   assert.equal(config.expo.name, "Loomarr TV Prototype");
   assert.equal(config.expo.slug, "loomarr-tv-prototype");
   assert.match(config.expo.ios.bundleIdentifier, /\.prototype$/);

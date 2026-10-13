@@ -194,6 +194,8 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 		t.Run("Diagnostics", func(t *testing.T) { testDiagnostics(t, newStore) })
 		t.Run("DiagnosticRetentionOrder", func(t *testing.T) { testDiagnosticRetentionOrder(t, newStore) })
 		t.Run("RetentionPurge", func(t *testing.T) { testRetentionPurge(t, newStore) })
+		t.Run("ClientCrashReports", func(t *testing.T) { testClientCrashReports(t, newStore) })
+		t.Run("ClientCrashRetention", func(t *testing.T) { testClientCrashRetention(t, newStore) })
 	})
 
 	t.Run("Images", func(t *testing.T) {

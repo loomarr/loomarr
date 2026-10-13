@@ -230,7 +230,7 @@ classify() {
       known=true
       select_gate clients
       ;;
-    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/test-apple-client-cache-test.sh|web/scripts/apple-simulator.xcconfig|web/scripts/apple-compilation-cache.xcconfig|web/scripts/validate-apple-compilation-cache.sh|web/scripts/validate-apple-compilation-cache-test.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
+    web/scripts/test-apple-client.sh|web/scripts/test-apple-client.test.mjs|web/scripts/check-ios-pods-binaries.sh|web/scripts/check-ios-pods-binaries.test.sh|web/scripts/test-apple-client-cache-test.sh|web/scripts/apple-simulator.xcconfig|web/scripts/apple-compilation-cache.xcconfig|web/scripts/validate-apple-compilation-cache.sh|web/scripts/validate-apple-compilation-cache-test.sh|web/scripts/filter-react-native-pods-notice.awk|web/scripts/filter-react-native-pods-notice.test.mjs)
       known=true
       select_gate contracts
       select_gate apple_mobile
