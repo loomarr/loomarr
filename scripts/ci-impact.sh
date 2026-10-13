@@ -759,7 +759,7 @@ classify() {
     # Workflows whose product checks run elsewhere (release, maintenance, reporting, cache
     # housekeeping). There is no .github/workflows/* catch-all: a workflow no rule names is
     # unknown and selects every gate until it is classified (#1570).
-    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml)
+    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/go-maintenance.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml)
       known=true
       select_gate policy
       ;;

@@ -358,9 +358,7 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			"make dev-docs-verify":          exactWorkflowStep(10, "Command reference is committed and current", workflowStepAuthority{targets: []string{"dev-docs-verify"}}),
 			"make retired-verify":           exactWorkflowStep(11, "Retired identifiers are gone from prose", workflowStepAuthority{targets: []string{"retired-verify"}}),
 			"make ci-lint":                  exactWorkflowStep(12, "Workflows are valid", workflowStepAuthority{targets: []string{"ci-lint"}}),
-			"make observability-verify":     exactWorkflowStep(13, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true}),
-			"make vuln":                     exactWorkflowStep(14, "No reachable known vulnerabilities", workflowStepAuthority{targets: []string{"vuln"}}),
-		}),
+			"make observability-verify":     exactWorkflowStep(13, "Observability artifacts are provisionable", workflowStepAuthority{targets: []string{"observability-verify"}, allowsAcquisition: true}),		}),
 		"ci-go-cache-warm.yml": standardRunWorkflow(map[string]workflowStepAuthority{
 			"make go-cache-warm GO_CACHE_WARM=${{ matrix.lane }}": exactWorkflowStep(4, "Compile the gate's test binaries without running them", workflowStepAuthority{targets: []string{"go-cache-warm"}, condition: "steps.warm.outputs.cache-hit != 'true'"}),
 		}),
@@ -558,6 +556,15 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 			jobs: map[string]workflowJobAuthority{
 				"build":   {steps: map[string]workflowStepAuthority{}},
 				"publish": {steps: map[string]workflowStepAuthority{}},
+			},
+		},
+		"go-maintenance.yml": {
+			environment: map[string]string{"GO_VERSION": "1.27"},
+			permissions: map[string]string{"contents": "read"},
+			jobs: map[string]workflowJobAuthority{
+				"vulnerabilities": {steps: map[string]workflowStepAuthority{
+					"make vuln": exactWorkflowStep(2, "Scan the code that ships", workflowStepAuthority{targets: []string{"vuln"}}),
+				}},
 			},
 		},
 		"rust-maintenance.yml": {

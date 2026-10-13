@@ -61,8 +61,6 @@ jobs:
         run: make ci-lint
       - name: Observability artifacts are provisionable
         run: make observability-verify
-      - name: No reachable known vulnerabilities
-        run: make vuln
       - name: Save contract caches (main only)
         if: always() && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
