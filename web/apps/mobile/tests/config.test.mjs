@@ -167,7 +167,7 @@ test("captures crashes for the paired server, with MetricKit linked into the iPh
   assert.match(shell, /useCrashReportUpload\(credential, session\)/);
   // The test trigger is gated on a bundle-time variable, never on a runtime value.
   const capture = await readFile(new URL("../src/crash-reports.ts", import.meta.url), "utf8");
-  assert.match(capture, /if \(process\.env\.EXPO_PUBLIC_LOOMARR_CRASH_TEST === "1"\) \{/);
+  assert.match(capture, /if \(process\.env\.EXPO_PUBLIC_LOOMARR_CRASH_TEST === "1" && /);
 });
 
 test("keeps unused animation modules out of Android without breaking Apple pods", async () => {

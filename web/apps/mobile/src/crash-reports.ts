@@ -12,7 +12,7 @@ import { createNativeCrashSource, forwardNativeCrashes } from "@loomarr/crash-re
 import Constants from "expo-constants";
 import { Directory, File, Paths } from "expo-file-system";
 import { useEffect } from "react";
-import { AppState, Linking, Platform } from "react-native";
+import { AppState, Platform, Settings } from "react-native";
 
 // Crash reports go to the paired Loomarr server and nowhere else (Refs #1816). The queue logic lives
 // in @loomarr/core; this module adapts it to the phone: files, React Native's global error handler,
@@ -77,17 +77,13 @@ const startCrashReporting = () => {
   );
 
   // Simulator proof only: a build bundled with EXPO_PUBLIC_LOOMARR_CRASH_TEST=1 throws a fatal JS
-  // error when opened with `?loomarrCrashTest=js-fatal`. A release bundle inlines the unset variable
-  // as undefined, so the minifier removes this block, and the TestFlight config refuses the variable.
-  if (process.env.EXPO_PUBLIC_LOOMARR_CRASH_TEST === "1") {
-    const crashOnTestLink = (url: string | null) => {
-      if (!url?.includes("loomarrCrashTest=js-fatal")) return;
-      setTimeout(() => {
-        throw new Error("Loomarr crash report test: a fatal JS error");
-      }, 0);
-    };
-    void Linking.getInitialURL().then(crashOnTestLink);
-    Linking.addEventListener("url", ({ url }) => crashOnTestLink(url));
+  // error five seconds after `xcrun simctl launch <device> <app> -loomarrCrashTest js-fatal` (iOS
+  // puts launch arguments in NSUserDefaults, which Settings reads). A release bundle inlines the unset
+  // variable as undefined, so the minifier removes this block, and the TestFlight config refuses it.
+  if (process.env.EXPO_PUBLIC_LOOMARR_CRASH_TEST === "1" && Settings.get("loomarrCrashTest") === "js-fatal") {
+    setTimeout(() => {
+      throw new Error("Loomarr crash report test: a fatal JS error");
+    }, 5_000);
   }
 };
 
