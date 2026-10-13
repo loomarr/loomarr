@@ -71,6 +71,7 @@ const Matched: Story = {
       windowMs: 0,
       excluded: nothingExcluded,
       trace: emptyTrace,
+      holidayEpisodes: [],
       slots: [
         { kind: "program", title: "Die Hard", key: "movie:tmdb:562", part: 0 },
         { kind: "break" },
@@ -102,6 +103,7 @@ const SeriesEpisodes: Story = {
       windowMs: 24 * 60 * 60 * 1000,
       excluded: nothingExcluded,
       trace: emptyTrace,
+      holidayEpisodes: [],
       slots: [
         { kind: "program", title: "Grandad", key: "series:tmdb:82728", season: 1, episode: 5 },
         { kind: "program", title: "The Sleepover", key: "series:tmdb:82728", season: 2, episode: 12 },
@@ -122,6 +124,7 @@ const BasePolicy: Story = {
       windowMs: 24 * 60 * 60 * 1000,
       excluded: nothingExcluded,
       trace: emptyTrace,
+      holidayEpisodes: [],
       slots: [
         { kind: "program", title: "Predator", key: "movie:tmdb:106" },
         { kind: "break" },
@@ -144,6 +147,7 @@ const LongList: Story = {
       windowMs: 0,
       excluded: nothingExcluded,
       trace: emptyTrace,
+      holidayEpisodes: [],
       slots: [
         ...Array.from({ length: 12 }, (_, i) => ({
           kind: "program" as const,
@@ -174,6 +178,7 @@ const Empty: Story = {
       windowMs: 0,
       excluded: nothingExcluded,
       trace: emptyTrace,
+      holidayEpisodes: [],
       slots: [],
     }),
   ],
@@ -208,6 +213,7 @@ const ExcludedBySafety: Story = {
         ],
       },
       trace: emptyTrace,
+      holidayEpisodes: [],
       slots: [
         { kind: "program", title: "Chuckie's a Lefty", key: "series:tmdb:3022", season: 2, episode: 3 },
         { kind: "break" },
@@ -234,6 +240,7 @@ const ExcludedByRules: Story = {
         ],
       },
       trace: emptyTrace,
+      holidayEpisodes: [],
       slots: [
         { kind: "program", title: "Predator", key: "movie:tmdb:106" },
         { kind: "break" },

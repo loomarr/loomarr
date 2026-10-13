@@ -258,6 +258,7 @@ const stubReachable = () => {
       at: "2026-07-25T20:00:00Z",
       windowMs: 3_600_000,
       slots: [],
+      holidayEpisodes: [],
       activeRule: { id: "r-1", label: "Default", matched: true, priority: 0 },
       excluded: { overCeiling: 0, unrated: 0, items: [] },
       trace: {
