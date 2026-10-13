@@ -1,4 +1,5 @@
 import { Action, Badge, Surface, Text } from "@loomarr/design-system";
+import { Pressable } from "react-native";
 
 import type { PhoneApprovalProps } from "./phone-approval.type";
 
@@ -56,9 +57,17 @@ const PhoneApproval = ({
           {countdownLabel}
         </Text>
       )}
-      <Action density="touch" onPress={onChooseServer} tone="secondary">
-        Use a different server
-      </Action>
+      {/* A tint-coloured text link, iOS's secondary action: a bordered button competed with Approve. */}
+      <Pressable
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={onChooseServer}
+        style={({ pressed }) => ({ justifyContent: "center", minHeight: 44, opacity: pressed ? 0.6 : 1 })}
+      >
+        <Text density="touch" textRole="metadata" tone="signal">
+          Use a different server
+        </Text>
+      </Pressable>
     </Surface>
   </>
 );
