@@ -5,6 +5,11 @@ Build of the approved mock [#1876](../prototypes/mock-requests-consequences.html
 [`requests-consequences-2026-10-13/`](requests-consequences-2026-10-13/). All data is the demo
 library's invented catalogue. There are no real titles, people or hosts.
 
+The screenshots show the final build. The bulk groups and consequence dialog are
+`@loomarr/ui` components (`ApprovalBulkGroup`, `ApprovalConsequenceDialog`) built from
+design-system primitives and the shared `ModalOverlay`. The first legacy-stack build was
+re-shot after this rebuild (maintainer decision A, #970).
+
 ## Setup
 
 - An isolated lane backend (`make dev-be`) and Vite (`make dev-fe`) from this worktree, plus the
@@ -33,7 +38,13 @@ library's invented catalogue. There are no real titles, people or hosts.
 | Partial failure | `Approved 1 of 2`. The second request was approved through the API between opening the summary and confirming (a real concurrent-admin race). The failed row shows the server's "This suggestion has already been approved or dismissed." with its own Retry. | `result-partial-failure-*` |
 | Retry | Retry re-sends only the failed id. It fails again, honestly, because that request really is decided. | `result-after-retry-*` |
 
-There were no console errors and no horizontal overflow at either width. Escape cancelled each
+The re-shoot used fresh requests: "Junction Westerns" and "Tuesday Matinee" (desktop race),
+"Brass and Bells" and "Paper and Ink" (390 race). There were no console errors and no horizontal
+overflow at either width.
+
+A Tamagui prop-order slip, `borderWidth={0}` after the one side that should keep its rule,
+dropped the group's row dividers. The live overview showed it, and it was fixed before the final
+shots and baselines. Escape cancelled each
 summary and kept the selection.
 
 ## Found and fixed during this check

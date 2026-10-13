@@ -34,9 +34,10 @@ const ApprovalBulkGroup = ({
     <Surface aria-label={title} level="raised" overflow="hidden" role="group">
       <Surface
         alignItems="center"
-        borderBottomWidth={1}
         borderRadius={0}
+        // ⚠ Tamagui applies props in order: borderWidth must come before the one side it keeps.
         borderWidth={0}
+        borderBottomWidth={1}
         flexDirection="row"
         flexWrap="wrap"
         gap={10}
@@ -87,8 +88,8 @@ const ApprovalBulkGroup = ({
             alignItems="flex-start"
             backgroundColor="$transparent"
             borderRadius={0}
-            borderTopWidth={index === 0 ? 0 : 1}
             borderWidth={0}
+            borderTopWidth={index === 0 ? 0 : 1}
             flexDirection="row"
             gap={10}
             key={row.id}
