@@ -14,7 +14,7 @@ const renderRail = (serverVersion?: string) =>
         groups={surfGroups}
         onFocusSelection={vi.fn()}
         onTune={vi.fn()}
-        selection={{ channelId: "ch-springfield", group: "recent" }}
+        selection={{ channelId: "ch-cartoons", group: "recent" }}
         serverVersion={serverVersion}
       />
     </LoomarrProvider>,
@@ -25,10 +25,10 @@ describe("SurfRail", () => {
     const output = renderRail("0.2.1");
     expect(output).toContain("FAVOURITES");
     expect(output).toContain("No favourites yet");
-    expect(output).toContain("Springfield Classics");
-    expect(output).toContain("Radioactive Man");
+    expect(output).toContain("Cartoon Classics");
+    expect(output).toContain("The Seventh Postcard");
     expect(output).toContain("S07E02");
-    expect(output).toContain("Next 7:30 PM · Home Sweet Homediddly-Dum-Doodily");
+    expect(output).toContain("Next 7:30 PM · A Very Loud Doorbell at the Lighthouse");
     expect(output).toContain("Loomarr TV 0.2.0 · Server 0.2.1");
   });
 
@@ -41,13 +41,13 @@ describe("SurfRail", () => {
       <LoomarrProvider>
         <SurfRail
           clientVersion="prototype"
-          currentChannelId="ch-springfield"
+          currentChannelId="ch-cartoons"
           density="tv"
           groups={surfGroups}
           onFocusSelection={vi.fn()}
           onDisconnect={vi.fn()}
           onTune={vi.fn()}
-          selection={{ channelId: "ch-springfield", group: "recent" }}
+          selection={{ channelId: "ch-cartoons", group: "recent" }}
           serverName="http://loomarr.test:8080"
         />
       </LoomarrProvider>,
@@ -56,7 +56,7 @@ describe("SurfRail", () => {
     expect(output).toContain("FAVOURITES · 0");
     expect(output).toContain("RECENT · 1");
     expect(output).toContain("ALL CHANNELS · 3");
-    expect(output).toContain("Radioactive Man");
+    expect(output).toContain("The Seventh Postcard");
     expect(output).toContain("1 of 4 · ▲▼ browse");
     expect(output).toContain("OK tune · BACK cancel");
     expect(output).toContain("Disconnect device");
@@ -73,7 +73,7 @@ describe("SurfRail", () => {
           onDisconnect={vi.fn()}
           onFocusSelection={vi.fn()}
           onTune={vi.fn()}
-          selection={{ channelId: "ch-springfield", group: "recent" }}
+          selection={{ channelId: "ch-cartoons", group: "recent" }}
         />
       </LoomarrProvider>,
     );
@@ -88,15 +88,15 @@ describe("SurfRail", () => {
       <LoomarrProvider>
         <SurfRail
           clientVersion="prototype"
-          currentChannelId="ch-springfield"
+          currentChannelId="ch-cartoons"
           density="tv"
           groups={surfGroups}
           onFocusSelection={vi.fn()}
           onTune={vi.fn()}
-          selection={{ channelId: "ch-springfield", group: "recent" }}
+          selection={{ channelId: "ch-cartoons", group: "recent" }}
         />
       </LoomarrProvider>,
     );
-    expect(output).toContain(`>${monogramOf("Springfield Classics")}<`);
+    expect(output).toContain(`>${monogramOf("Cartoon Classics")}<`);
   });
 });

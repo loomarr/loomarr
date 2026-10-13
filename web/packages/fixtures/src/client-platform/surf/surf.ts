@@ -1,54 +1,56 @@
 import { classicEpisode } from "../programmes";
 
-const springfieldChannel = {
+// Channels and titles from the invented demo catalogue (internal/demolibrary), matching the guide
+// test card (testcard.ts) channel for channel (#1592).
+const cartoonChannel = {
   channelLogoState: "missing",
-  channelName: "Springfield Classics",
+  channelName: "Cartoon Classics",
   channelNumber: "1",
-  id: "ch-springfield",
-  next: { timeLabel: "7:30 PM", title: "Home Sweet Homediddly-Dum-Doodily" },
-  now: { ...classicEpisode, channelName: "Springfield Classics", channelNumber: "1" },
+  id: "ch-cartoons",
+  next: { timeLabel: "7:30 PM", title: "A Very Loud Doorbell at the Lighthouse" },
+  now: { ...classicEpisode, channelName: "Cartoon Classics", channelNumber: "1" },
 } as const;
 
 const actionChannel = {
   channelLogoState: "missing",
-  channelName: "1980s Action Heroes",
+  channelName: "1980s Thrillers",
   channelNumber: "3",
   id: "ch-action",
-  next: { timeLabel: "9:05 PM", title: "Point Break" },
+  next: { timeLabel: "9:05 PM", title: "Midnight at the Mapleton" },
   now: {
     artworkState: "missing",
     badge: { label: "On now", tone: "live" },
     progressPercent: 68,
     timeLabel: "7:35–9:05 PM",
-    title: "Heat",
+    title: "Marigold Protocol",
   },
 } as const;
 
-const trekChannel = {
+const scifiChannel = {
   channelLogoState: "missing",
-  channelName: "Star Trek Classics",
+  channelName: "Sci-Fi Classics",
   channelNumber: "2",
   id: "ch-scifi",
-  next: { timeLabel: "8:45 PM", title: "Family" },
+  next: { timeLabel: "8:45 PM", title: "The Borrowed Antenna" },
   now: {
     artworkState: "missing",
     badge: { label: "On now", tone: "live" },
     episodeLabel: "S03E26",
     progressPercent: 31,
-    seriesTitle: "Star Trek: TNG",
+    seriesTitle: "Cold Relay",
     timeLabel: "7:15–8:45 PM",
-    title: "The Best of Both Worlds",
+    title: "Voices on a Dead Channel",
   },
 } as const;
 
 const surfGroups = [
   { channels: [], kind: "favourites", label: "Favourites" },
-  { channels: [springfieldChannel], kind: "recent", label: "Recent" },
+  { channels: [cartoonChannel], kind: "recent", label: "Recent" },
   {
-    channels: [springfieldChannel, trekChannel, actionChannel],
+    channels: [cartoonChannel, scifiChannel, actionChannel],
     kind: "all",
     label: "All channels",
   },
 ] as const;
 
-export { actionChannel, springfieldChannel, surfGroups, trekChannel };
+export { actionChannel, cartoonChannel, scifiChannel, surfGroups };

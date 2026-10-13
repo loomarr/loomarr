@@ -46,7 +46,7 @@ const GuideJourneyWorkshop = ({
       controller={controller}
       density={density}
       onTune={() => undefined}
-      preferredChannelId={tv ? "noir" : "ch-springfield"}
+      preferredChannelId={tv ? "noir" : "ch-cartoons"}
     />
   );
 };
