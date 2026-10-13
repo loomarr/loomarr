@@ -177,8 +177,9 @@ describe("Admins on Requests", () => {
     await userEvent.click(
       within(group).getByRole("checkbox", { name: "Select Saturday cartoons for bulk approve" }),
     );
-    await waitFor(() => expect(within(group).getByRole("button", { name: "Approve 1" })).toBeEnabled());
-    await userEvent.click(within(group).getByRole("button", { name: "Approve 1" }));
+    const bulkApprove = { name: "Approve 1 selected in channel requests" };
+    await waitFor(() => expect(within(group).getByRole("button", bulkApprove)).toBeEnabled());
+    await userEvent.click(within(group).getByRole("button", bulkApprove));
     await userEvent.click(
       within(await screen.findByRole("dialog")).getByRole("button", { name: "Approve 1" }),
     );

@@ -305,12 +305,12 @@ describe("ApprovalBulkGroup", () => {
     const view = await mount(<Group onApprove={onApprove} rows={[row("a", "Noir"), row("b", "Westerns")]} />);
     expect(named("group", "Channel requests")).toBeTruthy();
     expect(view.text()).toContain("None selected");
-    await click(named("button", "Approve"));
+    await click(named("button", "Approve selected channel requests"));
     expect(onApprove).not.toHaveBeenCalled();
 
     await click(named("checkbox", "Select Noir for bulk approve"));
     expect(view.text()).toContain("1 selected");
-    await click(named("button", "Approve 1"));
+    await click(named("button", "Approve 1 selected in channel requests"));
     expect(onApprove).toHaveBeenCalledOnce();
     await view.unmount();
   });
@@ -331,7 +331,31 @@ describe("ApprovalBulkGroup", () => {
     expect(() => named("checkbox", "Select Edited one for bulk approve")).toThrow();
     expect(view.text()).toContain("Excluded from bulk — approve individually so the edit is kept.");
     await click(named("checkbox", "Select all Channel requests"));
-    expect(named("button", "Approve 2")).toBeTruthy();
+    expect(named("button", "Approve 2 selected in channel requests")).toBeTruthy();
+    await view.unmount();
+  });
+
+  // A row's own Approve and the group's bulk Approve do different things, so they must never share
+  // an accessible name — at zero the bulk button's visible text is the same bare "Approve" (#1904).
+  it("never gives the bulk Approve the same accessible name as a row's Approve", async () => {
+    const accessibleName = (n: Node) => (n.getAttribute("aria-label") ?? n.textContent ?? "").trim();
+    const withRowApprove = (id: string, label: string): ApprovalBulkRow => ({
+      ...row(id, label),
+      content: <button type="button">Approve</button>,
+    });
+    const view = await mount(<Group rows={[withRowApprove("a", "Noir"), withRowApprove("b", "Westerns")]} />);
+    const assertDistinct = (bulk: string) => {
+      const names = Array.from(doc.body.querySelectorAll('button, [role="button"]')).map(accessibleName);
+      expect(names).toContain(bulk);
+      // Exactly the two rows answer to "Approve"; the bulk button is not a third.
+      expect(names.filter((n) => n === "Approve")).toHaveLength(2);
+    };
+
+    assertDistinct("Approve selected channel requests");
+    await click(named("checkbox", "Select Noir for bulk approve"));
+    assertDistinct("Approve 1 selected in channel requests");
+    await click(named("checkbox", "Select all Channel requests"));
+    assertDistinct("Approve 2 selected in channel requests");
     await view.unmount();
   });
 

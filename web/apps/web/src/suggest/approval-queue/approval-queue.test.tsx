@@ -143,13 +143,11 @@ const stubEpisodePreviewApi = (preview: EpisodeSelection) => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-// A row's own Approve, which carries that row's edit — not the group head's bulk Approve, which
-// shares the name while nothing is selected.
+// A row's own Approve, which carries that row's edit. The group head's bulk Approve never answers
+// to the bare name — it says it approves the selection (#1904) — so the name alone finds the row's.
 const rowApprove = async () => {
-  const button = (await screen.findAllByRole("button", { name: /^Approve$/ })).find((b) =>
-    b.closest('[role="listitem"]'),
-  );
-  if (!button) throw new Error("no row Approve rendered");
+  const [button] = await screen.findAllByRole("button", { name: /^Approve$/ });
+  if (!button?.closest('[role="listitem"]')) throw new Error("no row Approve rendered");
   return button;
 };
 
@@ -357,7 +355,7 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
 
     await userEvent.click(selectAll);
     expect(bulkApprove).toBeEnabled();
-    expect(bulkApprove).toHaveAccessibleName("Approve 2");
+    expect(bulkApprove).toHaveAccessibleName("Approve 2 selected in channel requests");
   });
 
   // #1430: a failed decision used to surface in one banner above the whole queue, away from the

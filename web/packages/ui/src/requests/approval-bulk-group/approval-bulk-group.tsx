@@ -73,7 +73,15 @@ const ApprovalBulkGroup = ({
         <Text textRole="metadata" tone="secondary">
           {selectedCount > 0 ? `${selectedCount} selected` : "None selected"}
         </Text>
+        {/* The visible text is the mock's terse "Approve" / "Approve N", but each row also has an
+          "Approve": the name must say this one acts on the group's selection. It starts with the
+          visible text so a speech user can still say what they see. */}
         <Action
+          accessibilityLabel={
+            selectedCount > 0
+              ? `Approve ${selectedCount} selected in ${title.toLowerCase()}`
+              : `Approve selected ${title.toLowerCase()}`
+          }
           accessibilityRole="button"
           disabled={disabled || selectedCount === 0}
           onPress={onApprove}
