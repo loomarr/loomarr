@@ -50,9 +50,16 @@ export type {
 } from "./src/programme-card";
 export { ProgrammeCard } from "./src/programme-card";
 export type {
+  ApprovalBulkGroupProps,
+  ApprovalBulkRow,
+  ApprovalConsequenceDialogProps,
   ApprovalGroupProps,
   ApprovalRow,
   BriefState,
+  BulkApproveConsequences,
+  BulkApproveOutcome,
+  ChannelRequestConsequence,
+  FillerDownloadConsequence,
   RequestCardProps,
   RequestChannelProps,
   RequestDetailProps,
@@ -62,6 +69,8 @@ export type {
   ReviewState,
 } from "./src/requests";
 export {
+  ApprovalBulkGroup,
+  ApprovalConsequenceDialog,
   ApprovalGroup,
   initialReview,
   RequestCard,

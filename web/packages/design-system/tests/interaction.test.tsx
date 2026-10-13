@@ -57,4 +57,16 @@ describe("shared interaction controls", () => {
     expect(markup).toContain('aria-checked="true"');
     expect(markup).toContain('aria-disabled="true"');
   });
+
+  it("can announce a checkbox's label without printing it beside content that already shows it", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Toggle checked={false} label="Select Noir for bulk approve" labelHidden onCheckedChange={vi.fn()} />
+      </LoomarrProvider>,
+    );
+
+    expect(markup).toContain('role="checkbox"');
+    expect(markup).toContain('aria-label="Select Noir for bulk approve"');
+    expect(markup).not.toContain(">Select Noir for bulk approve<");
+  });
 });

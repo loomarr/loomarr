@@ -5,21 +5,22 @@ import type { ApprovalEditDTO } from "@loomarr/api/models/approvalEditDTO";
 import type { ChannelDTO } from "@loomarr/api/models/channelDTO";
 import type { ProposalDTO } from "@loomarr/api/models/proposalDTO";
 import type { PullDTO } from "@loomarr/api/models/pullDTO";
+import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { provisionKey } from "@loomarr/core/provision";
 import { approvalChannelEffect } from "@loomarr/core/requests";
-import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { ApprovalGroup } from "@/components/loomarr/ai/approval-group";
-import { ApprovalQueueItem } from "@/components/loomarr/ai/approval-queue-item";
 import {
+  ApprovalBulkGroup,
+  ApprovalConsequenceDialog,
   type BulkApproveConsequences,
-  BulkApproveDialog,
   type BulkApproveOutcome,
   type ChannelRequestConsequence,
   type FillerDownloadConsequence,
-} from "@/components/loomarr/ai/bulk-approve-dialog";
+} from "@loomarr/ui";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { ApprovalQueueItem } from "@/components/loomarr/ai/approval-queue-item";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PullCard } from "@/components/loomarr/filler/pull-card";
@@ -187,13 +188,15 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
 
   // Rendered on every branch below: the review outlives the rows it is about. Approving the last
   // pending items empties the queue, and the result still has to be read — failures included.
+  const callError = bulk.error ?? bulkPulls.error;
+  const callProblem = callError ? toProblem(callError) : undefined;
   const reviewDialog = review && (
-    <BulkApproveDialog
-      open
+    <ApprovalConsequenceDialog
+      visible
       consequences={review.consequences}
-      {...(review.results ? { results: review.results } : {})}
+      results={review.results}
       pending={bulk.isPending || bulkPulls.isPending}
-      error={bulk.error ?? bulkPulls.error}
+      error={callProblem && (callProblem.detail || callProblem.title)}
       onCancel={closeReview}
       onConfirm={() => submitBulk(review.consequences.items.map((i) => i.id))}
       onRetry={submitBulk}
@@ -280,7 +283,7 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
           downloads are different decisions about different resources, and one Approve over both
           could not say what it was about to do. */}
       {rows.length > 0 && (
-        <ApprovalGroup
+        <ApprovalBulkGroup
           title="Channel requests"
           selected={selectedProposals}
           onSelectedChange={setSelectedProposals}
@@ -363,7 +366,7 @@ const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
           and a human has to say yes. §10 said "the machine proposes, a human commits" long before
           there was an object to commit; this is it. */}
       {pulls.length > 0 && (
-        <ApprovalGroup
+        <ApprovalBulkGroup
           title="Filler downloads"
           // Only when it is true of every pull: a legacy pull a person proposed names them on its
           // own card, and the group must not contradict it.

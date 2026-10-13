@@ -1,23 +1,23 @@
+import { Screen, Text } from "@loomarr/design-system";
+import { ApprovalBulkGroup, type ApprovalBulkGroupProps, type ApprovalBulkRow } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { Caption } from "@/components/ui/caption";
-import { widthFrame } from "@/test/story-utils";
-import { ApprovalGroup } from "./approval-group";
-import type { ApprovalGroupProps } from "./approval-group.type";
 
-// One kind of pending decision with its own bulk scope (Decision R1, mock #1876). The real queue
-// fills each row with an ApprovalQueueItem or PullCard; these rows stand in for them.
+// One kind of pending decision with its own bulk scope (Decision R1, mock #1876). The web queue
+// fills each row with its rich request or pull card; these rows stand in for them.
 // Invented fixtures only.
 
-const row = (id: string, title: string, detail: string, excluded = false) => ({
+const row = (id: string, title: string, detail: string, excluded = false): ApprovalBulkRow => ({
   id,
   label: title,
   excluded,
   content: (
-    <div className="flex flex-col gap-1">
-      <p className="font-medium text-sm">{title}</p>
-      <Caption>{detail}</Caption>
-    </div>
+    <>
+      <Text textRole="label">{title}</Text>
+      <Text textRole="metadata" tone="secondary">
+        {detail}
+      </Text>
+    </>
   ),
 });
 
@@ -28,14 +28,18 @@ const channelRows = [
 ];
 
 // Selection is the group's whole job, so the story owns it the way the queue does.
-const Stateful = (args: ApprovalGroupProps) => {
+const GroupStage = (args: ApprovalBulkGroupProps) => {
   const [selected, setSelected] = useState<Set<string>>(new Set(args.selected));
-  return <ApprovalGroup {...args} selected={selected} onSelectedChange={setSelected} />;
+  return (
+    <Screen>
+      <ApprovalBulkGroup {...args} onSelectedChange={setSelected} selected={selected} />
+    </Screen>
+  );
 };
 
 const meta = {
-  title: "AI/ApprovalGroup",
-  component: ApprovalGroup,
+  title: "Loomarr Components/Approval Bulk Group",
+  component: GroupStage,
   args: {
     title: "Channel requests",
     rows: channelRows,
@@ -43,9 +47,8 @@ const meta = {
     onSelectedChange: () => {},
     onApprove: () => {},
   },
-  decorators: [widthFrame(760)],
-  render: (args) => <Stateful {...args} />,
-} satisfies Meta<typeof ApprovalGroup>;
+  parameters: { layout: "fullscreen" },
+} satisfies Meta<typeof GroupStage>;
 
 type Story = StoryObj<typeof meta>;
 
@@ -54,7 +57,6 @@ const NoneSelected: Story = {};
 
 // Two of the bulkable rows selected; the edited row has no checkbox and says why.
 const SomeSelected: Story = { args: { selected: new Set(["cr-1", "cr-2"]) } };
-const SomeSelectedMobile: Story = { ...SomeSelected, decorators: [widthFrame(390)] };
 
 const FillerDownloads: Story = {
   args: {
@@ -69,4 +71,4 @@ const FillerDownloads: Story = {
 };
 
 export default meta;
-export { FillerDownloads, NoneSelected, SomeSelected, SomeSelectedMobile };
+export { FillerDownloads, NoneSelected, SomeSelected };

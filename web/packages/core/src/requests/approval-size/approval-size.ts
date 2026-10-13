@@ -76,4 +76,13 @@ const approvalSizeLine = (items: readonly SizedItem[], plural: string): string =
   `Size: ${aggregateSizeLabel(aggregateSize(items), plural)}`;
 
 export type { ApprovalSize, SizedItem };
-export { aggregateSize, aggregateSizeLabel, approvalSizeLine, itemSizeLabel, SIZE_UNAVAILABLE };
+// Re-exported so packages that read sizes through core (@loomarr/ui) name the orval enum, not
+// literals.
+export {
+  aggregateSize,
+  aggregateSizeLabel,
+  approvalSizeLine,
+  itemSizeLabel,
+  SIZE_UNAVAILABLE,
+  SizeConfidence,
+};

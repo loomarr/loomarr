@@ -1,4 +1,5 @@
 import type { EpisodeSelection } from "@loomarr/api/models/episodeSelection";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -14,10 +15,14 @@ vi.mock("@tanstack/react-router", () => ({ useNavigate: () => vi.fn() }));
 
 const makeWrapper = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // LoomarrProvider: the bulk groups and consequence dialog are @loomarr/ui components, which read
+  // the design-system theme the app root provides.
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>
-      <TooltipProvider>{children}</TooltipProvider>
-    </QueryClientProvider>
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={client}>
+        <TooltipProvider>{children}</TooltipProvider>
+      </QueryClientProvider>
+    </LoomarrProvider>
   );
 };
 
@@ -141,7 +146,9 @@ afterEach(() => vi.unstubAllGlobals());
 // A row's own Approve, which carries that row's edit — not the group head's bulk Approve, which
 // shares the name while nothing is selected.
 const rowApprove = async () => {
-  const button = (await screen.findAllByRole("button", { name: /^Approve$/ })).find((b) => b.closest("li"));
+  const button = (await screen.findAllByRole("button", { name: /^Approve$/ })).find((b) =>
+    b.closest('[role="listitem"]'),
+  );
   if (!button) throw new Error("no row Approve rendered");
   return button;
 };
@@ -383,8 +390,8 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
     const approveButtons = await within(list).findAllByRole("button", { name: /^Approve$/ });
     await userEvent.click(approveButtons[0] as HTMLElement);
 
-    const failedRow = (await screen.findByText("90s action night")).closest("li");
-    const otherRow = screen.getByText("Noir").closest("li");
+    const failedRow = (await screen.findByText("90s action night")).closest<HTMLElement>('[role="listitem"]');
+    const otherRow = screen.getByText("Noir").closest<HTMLElement>('[role="listitem"]');
     if (!failedRow || !otherRow) throw new Error("rows not found");
 
     expect(await within(failedRow).findByRole("alert")).toHaveTextContent("Couldn't approve");
@@ -514,7 +521,7 @@ describe("ApprovalQueue — bulk approve per group with a consequence summary", 
   const groupApprove = (g: HTMLElement) =>
     within(g)
       .getAllByRole("button", { name: /^Approve/ })
-      .find((b) => !b.closest("li")) as HTMLElement;
+      .find((b) => !b.closest('[role="listitem"]')) as HTMLElement;
 
   it("keeps the two groups' selections and approvals apart", async () => {
     stub({});

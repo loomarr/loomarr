@@ -1,8 +1,12 @@
-import { SizeConfidence } from "@loomarr/api/models/sizeConfidence";
+import { SizeConfidence } from "@loomarr/core/requests";
+import { Screen } from "@loomarr/design-system";
+import {
+  ApprovalConsequenceDialog,
+  type ApprovalConsequenceDialogProps,
+  type ChannelRequestConsequence,
+  type FillerDownloadConsequence,
+} from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { widthFrame } from "@/test/story-utils";
-import { BulkApproveDialog } from "./bulk-approve-dialog";
-import type { ChannelRequestConsequence, FillerDownloadConsequence } from "./bulk-approve-dialog.type";
 
 // What a group's bulk approve will do, before and after (#1817, mock #1876). Every figure is the
 // server's; where it has none the dialog says "unavailable" — never "0 B", never a guess.
@@ -63,44 +67,43 @@ const allUnavailable: ChannelRequestConsequence[] = mixed.map((item) => ({
 }));
 
 // A revision of a request that already has a channel replaces that channel's lineup.
-const updatesExisting: ChannelRequestConsequence[] = [
-  { ...allKnown[0]!, channel: { kind: "update", name: "Grey Day Mysteries" } },
-  allKnown[1]!,
-];
+const updatesExisting: ChannelRequestConsequence[] = allKnown.map((item, i) =>
+  i === 0 ? { ...item, channel: { kind: "update", name: "Grey Day Mysteries" } } : item,
+);
 
 const pulls: FillerDownloadConsequence[] = [
   { id: "fp-1", title: "Station-ident bumpers", estimateClips: 18, sources: 2 },
   { id: "fp-2", title: "Archival weather segments", estimateClips: 9, sources: 1 },
 ];
 
+const DialogStage = (props: ApprovalConsequenceDialogProps) => (
+  <Screen>
+    <ApprovalConsequenceDialog {...props} />
+  </Screen>
+);
+
 const meta = {
-  title: "AI/BulkApproveDialog",
-  component: BulkApproveDialog,
+  title: "Loomarr Components/Approval Consequence Dialog",
+  component: DialogStage,
   args: {
-    open: true,
+    visible: true,
     consequences: { group: "channels", items: mixed },
     onCancel: () => {},
     onConfirm: () => {},
     onRetry: () => {},
     onDone: () => {},
   },
-  decorators: [widthFrame(760)],
   parameters: { layout: "fullscreen" },
-  render: (args) => (
-    <div className="h-screen w-screen p-6">
-      <BulkApproveDialog {...args} portalContainer={document.getElementById("storybook-root")} />
-    </div>
-  ),
-} satisfies Meta<typeof BulkApproveDialog>;
+  tags: ["portal"],
+} satisfies Meta<typeof DialogStage>;
 
 type Story = StoryObj<typeof meta>;
 
 // Every size known: "Size: 12.4 GB" is a real total.
 const AllKnown: Story = { args: { consequences: { group: "channels", items: allKnown } } };
 
-// Some known: the sum names what it covers — "8.4 GB for 4 of 14 titles · 10 unknown".
+// Some known: the sum names what it covers — "8.4 GB for 4 of 20 titles · 16 unknown".
 const MixedKnownUnavailable: Story = {};
-const MixedKnownUnavailableMobile: Story = { decorators: [widthFrame(390)] };
 
 // Nothing known: "Size: estimate unavailable" on every line, never "0 B" and never omitted.
 const AllUnavailable: Story = { args: { consequences: { group: "channels", items: allUnavailable } } };
@@ -115,6 +118,9 @@ const FillerDownloads: Story = { args: { consequences: { group: "filler", items:
 
 const Approving: Story = { args: { pending: true } };
 
+// The whole call failed, so there are no per-item results to show yet.
+const CallFailed: Story = { args: { error: "Couldn't reach Loomarr. Check the connection and try again." } };
+
 // One item failed: its own Retry, plus "Retry 1 failed". The rest keep their exact counts.
 const PartialFailure: Story = {
   args: {
@@ -124,7 +130,6 @@ const PartialFailure: Story = {
     ],
   },
 };
-const PartialFailureMobile: Story = { ...PartialFailure, decorators: [widthFrame(390)] };
 
 // A filler result states the approved pull's exact clip count (#1884), with no estimate language.
 const FillerPartialFailure: Story = {
@@ -142,11 +147,10 @@ export {
   AllKnown,
   AllUnavailable,
   Approving,
+  CallFailed,
   FillerDownloads,
   FillerPartialFailure,
   MixedKnownUnavailable,
-  MixedKnownUnavailableMobile,
   PartialFailure,
-  PartialFailureMobile,
   UpdatesExistingChannel,
 };

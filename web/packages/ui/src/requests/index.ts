@@ -1,3 +1,13 @@
+export type { ApprovalBulkGroupProps, ApprovalBulkRow } from "./approval-bulk-group";
+export { ApprovalBulkGroup } from "./approval-bulk-group";
+export type {
+  ApprovalConsequenceDialogProps,
+  BulkApproveConsequences,
+  BulkApproveOutcome,
+  ChannelRequestConsequence,
+  FillerDownloadConsequence,
+} from "./approval-consequence-dialog";
+export { ApprovalConsequenceDialog } from "./approval-consequence-dialog";
 export type { ApprovalGroupProps, ApprovalRow } from "./approval-group";
 export { ApprovalGroup } from "./approval-group";
 export type { RequestCardProps } from "./request-card";
