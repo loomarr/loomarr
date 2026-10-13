@@ -297,8 +297,8 @@ func Coverage(catalog []Clip, w Window, policy Policy) CoverageReport {
 	report := CoverageReport{
 		Geography: geography.Normalize(),
 		Criteria:  criteria,
-		Rungs:    make([]RungCoverage, 0, len(pools)),
-		Level:    MatchBumperCard,
+		Rungs:     make([]RungCoverage, 0, len(pools)),
+		Level:     MatchBumperCard,
 	}
 	if windows := w.eraWindows(); len(windows) > 0 && !windows[0].Any() {
 		report.EraWindows = NormalizeEraWindows(windows)
