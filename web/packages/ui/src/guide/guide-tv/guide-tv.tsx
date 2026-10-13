@@ -57,7 +57,8 @@ const FilterButton = forwardRef<ComponentRef<typeof Pressable>, FilterButtonProp
       >
         <Surface
           backgroundColor={selected ? "$stateWarningSurface" : "$surfaceCanvas"}
-          borderColor={focused || selected ? "$actionFocus" : "$borderDecorative"}
+          // The fill marks the selected filter; amber is focus alone (#1887).
+          borderColor={focused ? "$actionFocus" : "$borderDecorative"}
           borderRadius={12}
           borderWidth={focused ? 2 : 1}
           opacity={disabled ? 0.4 : 1}
@@ -297,8 +298,14 @@ const TvGuideSurface = ({
                           }}
                         >
                           <Surface
+                            // Now-airing is a neutral tone step (TV 5b); the focused block takes the
+                            // focus surface and the one amber border.
                             backgroundColor={
-                              selected || airing.isOnNow ? "$stateAiringSurface" : "$surfaceElevated"
+                              selected
+                                ? "$surfaceFocus"
+                                : airing.isOnNow
+                                  ? "$stateAiringSurface"
+                                  : "$surfaceElevated"
                             }
                             borderColor={
                               selected

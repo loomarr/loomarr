@@ -198,7 +198,9 @@ const mutedRoles = new Set<TextRole>([
   "guideMeta",
   "guideLabel",
 ]);
-const amberRoles = new Set<TextRole>(["channelNumber", "code", "cardChannelNumber", "guideNumber"]);
+// No role defaults to amber: amber means focus or the primary action (#1909), so a number is
+// foreground at rest, and a display numeral (direct-tune digits, a pairing code) opts in with
+// `tone="signal"`.
 const textTones = {
   danger: "$stateDanger",
   info: "$stateInfo",
@@ -228,11 +230,9 @@ const Text = ({ as, density = "pointer", halo, shout, textRole, tone, tracking, 
   const value = typography[density][textRole];
   const colorToken = tone
     ? textTones[tone]
-    : amberRoles.has(textRole)
-      ? "$actionPrimary"
-      : mutedRoles.has(textRole)
-        ? "$contentSecondary"
-        : "$contentPrimary";
+    : mutedRoles.has(textRole)
+      ? "$contentSecondary"
+      : "$contentPrimary";
   const resolvedTracking =
     tracking === undefined
       ? shout
@@ -455,7 +455,11 @@ const ArtworkFrame = ({ children, density = "pointer", state, ...props }: Artwor
   </Surface>
 );
 
-type ProgressTone = "artwork" | "live" | "lock" | "onair" | "primary" | "tune";
+/**
+ * `elapsed`, the default, is time gone in an airing: foreground, because amber is focus and the
+ * primary action only (#1909 Q3). A download or preparation passes `tune`.
+ */
+type ProgressTone = "artwork" | "elapsed" | "live" | "lock" | "onair" | "tune";
 type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
   /**
    * How far along, 0-100. Omit it for an INDETERMINATE bar: when `label` is set, this is the ARIA
@@ -477,10 +481,10 @@ type ProgressTrackProps = Omit<ComponentProps<typeof View>, "children"> & {
 const progressFillVal = (theme: ReturnType<typeof useTheme>) =>
   ({
     artwork: theme.contentPrimary.val,
+    elapsed: theme.contentPrimary.val,
     live: theme.stateLive.val,
     lock: theme.stateSuccess.val,
     onair: theme.guideOnAir.val,
-    primary: theme.actionPrimary.val,
     tune: theme.stateInfo.val,
   }) as const;
 
@@ -490,7 +494,7 @@ const ProgressTrack = ({
   label,
   percent,
   reducedMotion,
-  tone = "primary",
+  tone = "elapsed",
   ...props
 }: ProgressTrackProps) => {
   const theme = useTheme();

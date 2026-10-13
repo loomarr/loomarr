@@ -136,11 +136,13 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
           : selected
             ? theme.surfaceFocus.val
             : theme.surfaceElevated.val;
+    // Amber is focus, never selection (#1887): a selected action that does not have focus keeps
+    // only its `surfaceFocus` fill, so one amber border marks where the remote is.
     const borderColor = look
       ? focused
         ? theme.actionFocus.val
         : look.border
-      : focused || selected
+      : focused
         ? theme.actionFocus.val
         : tone === "danger"
           ? theme.stateDanger.val
@@ -152,8 +154,10 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
     const textColor = variant ? variantTextColor(theme, variant) : undefined;
     const iconTone: IconTone = look
       ? look.iconTone
-      : tone === "secondary" && !selected
-        ? "secondary"
+      : tone === "secondary"
+        ? selected
+          ? "content"
+          : "secondary"
         : "inverse";
 
     const content =
@@ -163,7 +167,7 @@ const Action = forwardRef<ComponentRef<typeof Pressable>, ActionProps>(
             decorative
             glyph={icons[icon]}
             size="default"
-            tone={look ? look.iconTone : tone === "secondary" && !selected ? "content" : "inverse"}
+            tone={look ? look.iconTone : tone === "secondary" ? "content" : "inverse"}
           />
           <TamaguiText
             color={textColor ?? (tone === "secondary" ? "$contentSecondary" : "$contentInverse")}
