@@ -219,4 +219,100 @@ describe("ChannelSeasonal", () => {
     await userEvent.click(screen.getByRole("button", { name: "Reset to default (Seasonal behavior)" }));
     expect(onChange).toHaveBeenCalledWith({ ...POPULATED, seasonal: { mode: "", holidays: ["christmas"] } });
   });
+
+  // Holiday strength + Favour evenings shape only the built-in rotation (§6 "Holiday episodes").
+  describe("holiday episodes", () => {
+    it("offers strength and evenings only with the built-in rotation", () => {
+      const { unmount } = render(<ChannelSeasonal policy={{}} onChange={vi.fn()} vocabulary={VOCAB} />);
+      expect(screen.getByRole("combobox", { name: "Holiday strength" })).toHaveTextContent("Featured");
+      expect(screen.getByLabelText("Favour evenings")).toBeChecked();
+      unmount();
+
+      for (const mode of ["exclusive", "off"]) {
+        const view = render(
+          <ChannelSeasonal policy={{ seasonal: { mode } }} onChange={vi.fn()} vocabulary={VOCAB} />,
+        );
+        expect(screen.queryByRole("combobox", { name: "Holiday strength" })).not.toBeInTheDocument();
+        expect(screen.queryByLabelText("Favour evenings")).not.toBeInTheDocument();
+        view.unmount();
+      }
+    });
+
+    it("writes the chosen strength, and Featured as the default sentinel", async () => {
+      const onChange = vi.fn();
+      const { rerender } = render(
+        <ChannelSeasonal policy={POPULATED} onChange={onChange} vocabulary={VOCAB} />,
+      );
+      await userEvent.click(screen.getByRole("combobox", { name: "Holiday strength" }));
+      await userEvent.click(await screen.findByRole("option", { name: "Heavy" }));
+      expect(onChange).toHaveBeenLastCalledWith({ ...POPULATED, seasonal: { strength: "heavy" } });
+
+      rerender(
+        <ChannelSeasonal
+          policy={{ ...POPULATED, seasonal: { strength: "heavy" } }}
+          onChange={onChange}
+          vocabulary={VOCAB}
+        />,
+      );
+      expect(screen.getByText(/all of them on the day itself/i)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("combobox", { name: "Holiday strength" }));
+      await userEvent.click(await screen.findByRole("option", { name: "Featured" }));
+      expect(onChange).toHaveBeenLastCalledWith({ ...POPULATED, seasonal: { strength: "" } });
+    });
+
+    // Placement is `"" = evenings`: switching evenings off must write the explicit opt-out, and
+    // switching it back on must write the sentinel, never a value that reads back differently.
+    it("writes the evenings opt-out explicitly and reads it back", async () => {
+      const onChange = vi.fn();
+      const { rerender } = render(<ChannelSeasonal policy={{}} onChange={onChange} vocabulary={VOCAB} />);
+      expect(screen.getByText(/between 5 and 11 pm/i)).toBeInTheDocument();
+      await userEvent.click(screen.getByLabelText("Favour evenings"));
+      expect(onChange).toHaveBeenLastCalledWith({ seasonal: { placement: "anytime" } });
+
+      rerender(
+        <ChannelSeasonal
+          policy={{ seasonal: { placement: "anytime" } }}
+          onChange={onChange}
+          vocabulary={VOCAB}
+        />,
+      );
+      expect(screen.getByLabelText("Favour evenings")).not.toBeChecked();
+      expect(screen.getByText(/spread across the whole day/i)).toBeInTheDocument();
+      await userEvent.click(screen.getByLabelText("Favour evenings"));
+      expect(onChange).toHaveBeenLastCalledWith({ seasonal: { placement: "" } });
+    });
+
+    it("states the backend's count for the holiday that is on", () => {
+      render(
+        <ChannelSeasonal
+          policy={{}}
+          onChange={vi.fn()}
+          vocabulary={VOCAB}
+          holidayEpisodes={[
+            { holiday: "halloween", episodes: 9, perDay: 3, everyDays: 3, active: true },
+            { holiday: "christmas", episodes: 0, perDay: 0, everyDays: 0, active: false },
+          ]}
+        />,
+      );
+      expect(
+        screen.getByText(
+          "Halloween is on now. 9 Halloween episodes found: 3 a day, each back about every 3 days.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("says so when the next holiday has no episodes in the lineup", () => {
+      render(
+        <ChannelSeasonal
+          policy={{}}
+          onChange={vi.fn()}
+          vocabulary={VOCAB}
+          holidayEpisodes={[{ holiday: "christmas", episodes: 0, perDay: 0, everyDays: 0, active: false }]}
+        />,
+      );
+      expect(
+        screen.getByText("Next up: Christmas. No Christmas episodes found in this lineup."),
+      ).toBeInTheDocument();
+    });
+  });
 });
