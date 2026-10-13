@@ -140,7 +140,7 @@ const SortableLineupRow = ({
       </button>
 
       <div className="@md:block contents @md:min-w-0 @md:flex-1">
-        <div className="col-[2/-1] flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="truncate font-medium text-sm">{entry.name}</span>
           {entry.year ? <span className="font-mono text-static-400 text-xs">{entry.year}</span> : null}
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />

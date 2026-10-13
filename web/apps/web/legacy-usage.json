@@ -107,7 +107,7 @@
       "tailwindClasses": 16
     },
     "src/components/loomarr/channels/channel-lineup-editor/channel-lineup-editor.tsx": {
-      "tailwindClasses": 131,
+      "tailwindClasses": 132,
       "legacyUi": 4
     },
     "src/components/loomarr/channels/channel-policy-fields/channel-policy-fields.tsx": {
