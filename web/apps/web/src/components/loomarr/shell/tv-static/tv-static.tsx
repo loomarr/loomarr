@@ -9,7 +9,8 @@ import type { TvStaticProps } from "./tv-static.type";
 // second instead of sitting dead — a still render just reads as flat texture.
 //
 // The noise itself is one pre-rendered tile, repeated (see snow-tile.ts for the snow and why).
-// It arrives AFTER the first frame and fades in, so the content it sits behind paints first.
+// Behind idle surfaces it arrives AFTER the first frame and fades in, so the content it sits behind
+// paints first; the wash asks for it at once.
 //
 // Two strengths of the one snow:
 // - `idle` (default): a faint veil (~11%) with a whisper of scanlines. Gated behind
@@ -37,9 +38,10 @@ const AnalogSnow = ({ tile, className }: { tile: SnowTile | undefined; className
 const reducedMotion = () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 const TvStatic = ({ variant = "idle", className }: TvStaticProps) => {
-  const tile = useSnowTile(variant === "wash" || !reducedMotion());
+  const wash = variant === "wash";
+  const tile = useSnowTile(wash || !reducedMotion(), !wash);
   const pending = tile ? undefined : "";
-  return variant === "wash" ? (
+  return wash ? (
     <div
       data-snow="wash"
       data-snow-pending={pending}

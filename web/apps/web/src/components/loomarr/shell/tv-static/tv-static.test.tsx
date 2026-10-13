@@ -89,6 +89,19 @@ describe("TvStatic", () => {
     expect(decode.mock.calls.length).toBe(calls);
   });
 
+  it("tries again on the next surface when a tile fails to render", async () => {
+    const TvStatic = await freshTvStatic();
+    decode.mockImplementationOnce(() => Promise.reject(new Error("decode failed")));
+    const first = render(<TvStatic variant="wash" />);
+    await waitFor(() => expect(decode).toHaveBeenCalled());
+    // Decoration fails quietly: no snow, the dark veil still covers the frame.
+    expect(snowLayer(first.container)).toBeNull();
+    first.unmount();
+
+    const { container } = render(<TvStatic variant="wash" />);
+    await waitFor(() => expect(snowLayer(container)).not.toBeNull());
+  });
+
   it("keeps the switch wash as still snow under reduced motion; only its flicker is gated", async () => {
     reducedMotion(true);
     const TvStatic = await freshTvStatic();

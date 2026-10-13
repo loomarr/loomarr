@@ -31,7 +31,8 @@ import { useEffect, useState } from "react";
 // approved, rather than a far finer one.
 const GRAIN_SCALE = 2.75;
 
-// CSS pixels. Whole numbers, so the grain bitmap maps 1:1 onto device pixels at every ratio.
+// CSS pixels. Whole numbers, so the grain bitmap maps 1:1 onto device pixels at an integer ratio
+// (a fractional one rounds to the nearest and is resampled; at the snow's strength it reads the same).
 const TILE_W = 688;
 const TILE_H = 344;
 const STREAK_W = TILE_W * 2;
@@ -91,34 +92,52 @@ let tile: Promise<SnowTile> | undefined;
 let ready: SnowTile | undefined;
 
 const loadSnowTile = (): Promise<SnowTile> => {
-  tile ??= renderTile().then((done) => {
-    ready = done;
-    return done;
-  });
+  tile ??= renderTile().then(
+    (done) => {
+      ready = done;
+      return done;
+    },
+    (error: unknown) => {
+      // Not cached: a failed decode leaves this mount without snow, and the next one tries again.
+      tile = undefined;
+      throw error;
+    },
+  );
   return tile;
 };
 
 // The snow's background once it exists. `wanted: false` never starts the work (the idle snow under
-// reduced motion, which is not shown). The first request waits until the page has painted a
-// frame, so the content it sits behind — the sign-in form — is never held up by the snow.
-const useSnowTile = (wanted: boolean): SnowTile | undefined => {
+// reduced motion, which is not shown).
+// - `afterPaint` (the idle snow): the request waits until the page has painted a frame, so the
+//   content it sits behind — the sign-in form — is never held up by the snow.
+// - otherwise (the tuner's wash): requested at once. The wash IS the content while a channel tunes,
+//   so the first switch on a page should not wait a frame for its snow.
+const useSnowTile = (wanted: boolean, afterPaint: boolean): SnowTile | undefined => {
   const [snow, setSnow] = useState(ready);
   useEffect(() => {
     if (!wanted || snow) return;
     let live = true;
+    const load = () =>
+      loadSnowTile().then(
+        (done) => live && setSnow(done),
+        () => undefined, // No snow is the failure mode: it is decoration behind the content.
+      );
+    if (!afterPaint) {
+      void load();
+      return () => {
+        live = false;
+      };
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const frame = requestAnimationFrame(() => {
-      setTimeout(() => {
-        loadSnowTile().then(
-          (done) => live && setSnow(done),
-          () => undefined, // No snow is the failure mode: it is decoration behind the content.
-        );
-      });
+      timer = setTimeout(load);
     });
     return () => {
       live = false;
       cancelAnimationFrame(frame);
+      clearTimeout(timer);
     };
-  }, [wanted, snow]);
+  }, [wanted, afterPaint, snow]);
   return snow;
 };
 
