@@ -30,12 +30,20 @@ func TestCapThreadsRespectsAnExplicitChoice(t *testing.T) {
 }
 
 // fakeTool writes its own nice value and argv to files, then exits with the given code.
+//
+// proctree applies background priority with setpriority(PRIO_PGRP) right after Start, because Go
+// cannot set a child's niceness before exec. A shell that samples its niceness in its very first
+// instruction can therefore observe 0 on a busy host (reproduced: 30 failures in 400 runs under
+// load, and once on the self-hosted CI runner). The contract is that the tree runs at background
+// priority, so the tool waits up to 2s for the renice to land before reporting what it observes.
 func fakeTool(t *testing.T, exit int) (tool, report string) {
 	t.Helper()
 	dir := t.TempDir()
 	report = filepath.Join(dir, "report")
 	tool = filepath.Join(dir, "tool")
-	script := "#!/bin/sh\nps -o ni= -p $$ > " + report + "\necho \"$@\" >> " + report + "\nexit " + strconv.Itoa(exit) + "\n"
+	script := "#!/bin/sh\n" +
+		"i=0; while [ \"$(ps -o ni= -p $$ | tr -d ' ')\" != 10 ] && [ $i -lt 200 ]; do i=$((i+1)); sleep 0.01; done\n" +
+		"ps -o ni= -p $$ > " + report + "\necho \"$@\" >> " + report + "\nexit " + strconv.Itoa(exit) + "\n"
 	if err := os.WriteFile(tool, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
