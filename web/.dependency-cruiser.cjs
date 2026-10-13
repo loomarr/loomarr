@@ -60,15 +60,27 @@ module.exports = {
       from: {},
       to: { circular: true },
     },
+    {
+      name: "not-to-unresolvable",
+      comment:
+        "Every import resolves. The rules above only see edges the resolver follows, so an unresolved import is an unchecked one. Generated files (route tree, API client) must exist: run `pnpm codegen` first, as every gate does.",
+      severity: "error",
+      from: {},
+      to: { couldNotResolve: true },
+    },
 
     // Layering controls WHICH packages may depend on which; interface hiding
     // above controls HOW callers reach them. Add Loomarr-specific layers here.
   ],
   options: {
     doNotFollow: { path: "node_modules|^packages/[^/]+/generated/" },
-    tsConfig: { fileName: "tsconfig.base.json" },
+    tsConfig: { fileName: "tsconfig.depcruise.json" },
     enhancedResolveOptions: {
       extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
+      // Workspace packages publish subpaths (`@loomarr/api/endpoints/*`) through package.json
+      // `exports`; without this the resolver gives up on them.
+      exportsFields: ["exports"],
+      conditionNames: ["import", "require", "types", "default"],
     },
   },
 };
