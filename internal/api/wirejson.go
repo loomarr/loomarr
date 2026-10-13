@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -19,7 +21,8 @@ import (
 // types, any of which a forgotten branch could put on the wire as `null`. One did: requesting a
 // channel from an idea built a proposal with no acquisitions, the queue sent
 // `"acquisitions": null`, and the phone's Requests tab crashed on `.length`. Normalising here
-// makes the spec true by construction instead of by per-handler discipline.
+// makes the spec true by construction instead of by per-handler discipline (one shape is out of
+// reach; see onWire).
 // TestResponseSchemas_RequiredArraysNeverNull holds the encoder to it for every response type.
 //
 // (encoding/json/v2 encodes nil as empty by default, but is still behind GOEXPERIMENT=jsonv2.)
@@ -138,10 +141,17 @@ func emptiedElems(src, dst reflect.Value, depth int) (reflect.Value, bool) {
 	return dst, true
 }
 
-// onWire reports whether encoding/json writes the field. Skipping `json:"-"` matters beyond
-// cost: it is where a back-pointer lives, and following one would walk a cycle.
+// onWire reports whether the walk should visit the field. Skipping `json:"-"` matters beyond
+// cost: it is where a back-pointer lives, and following one would walk a cycle. An `omitzero`
+// field is left alone because emptying it would change it from omitted to present.
+//
+// ⚠ An embedded UNEXPORTED struct is skipped although encoding/json promotes its exported
+// fields: reflection cannot set through it. Its nil slices still go out as null, and
+// TestResponseSchemas_RequiredArraysNeverNull fails on any response type that embeds one that
+// way. Embed an exported type instead.
 func onWire(f reflect.StructField) bool {
-	return f.IsExported() && f.Tag.Get("json") != "-"
+	tag := f.Tag.Get("json")
+	return f.IsExported() && tag != "-" && !slices.Contains(strings.Split(tag, ",")[1:], "omitzero")
 }
 
 var (

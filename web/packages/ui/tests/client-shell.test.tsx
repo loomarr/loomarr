@@ -33,7 +33,7 @@ const Requests = () => {
   return <>Channel requests</>;
 };
 
-const mount = async () => {
+const mount = async (initial: ClientShellProps["active"] = "requests") => {
   const container = testDocument.createElement("div");
   testDocument.body.append(container);
   const root = createRoot(container);
@@ -42,12 +42,12 @@ const mount = async () => {
       root.render(
         <LoomarrProvider>
           <ClientShell active={active} density="touch" onDisconnect={vi.fn()} onNavigate={vi.fn()}>
-            {active === "requests" ? () => <Requests /> : <>Tonight&apos;s guide</>}
+            {active === "requests" ? () => <Requests /> : <>{`Tonight's ${active}`}</>}
           </ClientShell>
         </LoomarrProvider>,
       );
     });
-  await render("requests");
+  await render(initial);
   return { container, render, unmount: () => act(async () => root.unmount()) };
 };
 
@@ -81,6 +81,21 @@ describe("client shell", () => {
     await render("guide");
     expect(container.textContent).toContain("Tonight's guide");
     expect(container.textContent).not.toContain("Something went wrong");
+    await unmount();
+  });
+
+  // The boundary resets on a prop, not a key: a key would remount the screen and its tab bar on
+  // every tab change, dropping focus from the tab just pressed.
+  it("keeps the tab bar mounted between healthy destinations", async () => {
+    const { container, render, unmount } = await mount("guide");
+    const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
+
+    await render("watching");
+    expect(container.textContent).toContain("Tonight's watching");
+    const after = Array.from(container.querySelectorAll('[role="tab"]'));
+    expect(tabs.length).toBeGreaterThan(0);
+    // The same nodes, not equal-looking new ones.
+    expect(after.length === tabs.length && after.every((tab, index) => tab === tabs[index])).toBe(true);
     await unmount();
   });
 });

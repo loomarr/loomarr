@@ -39,7 +39,7 @@ const ClientShell = ({
             />
           </Screen>
         )}
-        key={active}
+        resetKey={active}
       >
         {typeof children === "function" ? (
           children(navigation)

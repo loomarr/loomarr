@@ -39,12 +39,19 @@ func TestResponseSchemas_RequiredArraysNeverNull(t *testing.T) {
 	if len(refs) == 0 {
 		t.Fatal("derived zero response schemas from the spec — the derivation broke, not the API")
 	}
+	checked := 0
 	for _, ref := range refs {
 		typ := registry.TypeFromRef(ref)
-		if typ == nil {
-			continue // a wire alias with no Go struct behind it (durationwire.go)
-		}
 		schema := registry.SchemaFromRef(ref)
+		if typ == nil {
+			// A wire alias (durationwire.go) is a scalar with no Go struct behind it. An object
+			// schema with no type would be a hole in this guard, not an exemption.
+			if len(schema.Properties) > 0 {
+				t.Errorf("%s has properties but no Go type to encode — the guard cannot check it", ref)
+			}
+			continue
+		}
+		checked++
 		name := strings.TrimPrefix(ref, "#/components/schemas/")
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
@@ -66,6 +73,9 @@ func TestResponseSchemas_RequiredArraysNeverNull(t *testing.T) {
 				}
 			}
 		})
+	}
+	if checked == 0 {
+		t.Fatal("resolved no response schema to a Go type — the guard checked nothing")
 	}
 }
 

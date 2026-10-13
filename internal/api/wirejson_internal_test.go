@@ -66,6 +66,31 @@ func TestWireJSONTopLevelNilSlice(t *testing.T) {
 	}
 }
 
+type WireBase struct {
+	Shared []string `json:"shared"`
+}
+
+// An exported embed's promoted fields are emptied; `omitzero` keeps meaning omitted; arrays and
+// pointer chains are walked; a nil []byte is the empty base64 string its schema describes.
+func TestWireJSONShapes(t *testing.T) {
+	t.Parallel()
+	body := struct {
+		WireBase
+		Gone  []int            `json:"gone,omitzero"`
+		Pair  [2][]int         `json:"pair"`
+		Deep  **[]string       `json:"deep"`
+		Bytes []byte           `json:"bytes"`
+		Grid  [][]int          `json:"grid"`
+		Named map[string][]int `json:"named"`
+	}{Grid: [][]int{nil}, Named: map[string][]int{"a": nil}}
+	inner := (*[]string)(nil)
+	body.Deep = &inner
+	want := `{"shared":[],"pair":[[],[]],"deep":null,"bytes":"","grid":[[]],"named":{"a":[]}}` + "\n"
+	if got := wireEncode(t, body); got != want {
+		t.Fatalf("encoded\n%s\nwant\n%s", got, want)
+	}
+}
+
 // A self-referential type terminates (its back-pointer is json:"-", but the walk still sees it).
 func TestWireJSONRecursiveType(t *testing.T) {
 	t.Parallel()
