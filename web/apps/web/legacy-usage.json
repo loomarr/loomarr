@@ -427,7 +427,7 @@
       "tailwindClasses": 12
     },
     "src/components/ui/label/label.tsx": {
-      "tailwindClasses": 3
+      "tailwindClasses": 4
     },
     "src/components/ui/list-row/list-row.tsx": {
       "tailwindClasses": 35,
