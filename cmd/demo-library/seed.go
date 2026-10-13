@@ -216,12 +216,17 @@ func createProposal(ctx context.Context, st store.Store, adminID, jobID, propID 
 		return err
 	}
 	now := time.Now()
-	if err := st.CreateJob(ctx, store.Job{ID: jobID, Kind: "suggest", Status: "done", IntentJSON: string(intentJSON),
-		IntentHash: "demo-" + jobID, CreatedBy: adminID, CreatedAt: now, UpdatedAt: now}); err != nil {
-		return fmt.Errorf("create job: %w", err)
+	// CreateSuggestionResult writes the done Job, its succeeded Attempt 1 and the submitted
+	// Proposal in one transaction, the shape the real suggester worker leaves behind. A raw
+	// CreateJob+CreateProposal pair leaves no attempt, so the workflow rejects the job as
+	// inconsistent and GET /v1/proposal-jobs 500s on every demo-seeded backend (#1534, #1827).
+	if err := st.CreateSuggestionResult(ctx, store.Job{ID: jobID, Kind: "suggest", Status: "done",
+		IntentJSON: string(intentJSON), IntentHash: "demo-" + jobID, CreatedBy: adminID, CreatedAt: now, UpdatedAt: now,
+	}, store.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
+		ProposalJSON: string(propJSON), CreatedAt: now, UpdatedAt: now}); err != nil {
+		return fmt.Errorf("create suggestion result: %w", err)
 	}
-	return st.CreateProposal(ctx, store.Proposal{ID: propID, JobID: jobID, Status: "submitted", CreatedBy: adminID,
-		ProposalJSON: string(propJSON), CreatedAt: now, UpdatedAt: now})
+	return nil
 }
 
 // fillerSourceID is how the backend names a media-server library filler source.

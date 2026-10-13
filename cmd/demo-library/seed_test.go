@@ -8,6 +8,7 @@ import (
 
 	"github.com/loomarr/loomarr/internal/binder"
 	"github.com/loomarr/loomarr/internal/demolibrary"
+	"github.com/loomarr/loomarr/internal/proposalworkflow"
 	"github.com/loomarr/loomarr/internal/provision"
 	"github.com/loomarr/loomarr/internal/store"
 	"github.com/loomarr/loomarr/internal/suggest"
@@ -60,6 +61,16 @@ func TestDemoSeedChannelsAreIdempotent(t *testing.T) {
 	}
 	if len(users) != 1 {
 		t.Errorf("users after two runs = %d, want the one demo admin", len(users))
+	}
+	// #1534: GET /v1/proposal-jobs lists through the proposal workflow, which rejects a done job
+	// with no succeeded attempt. A raw seeded job made every demo-seeded Requests page error.
+	workflow := proposalworkflow.New(st, func() string { return "unused" }, time.Now)
+	journeys, err := workflow.List(ctx, proposalworkflow.Viewer{UserID: "demo-admin", Admin: true}, proposalworkflow.ListOptions{})
+	if err != nil {
+		t.Fatalf("list demo-seeded proposal jobs through the workflow: %v", err)
+	}
+	if len(journeys) != len(demolibrary.Channels) {
+		t.Errorf("journeys = %d, want one per demo channel (%d)", len(journeys), len(demolibrary.Channels))
 	}
 	for _, c := range demolibrary.Channels {
 		for _, id := range c.Titles {
