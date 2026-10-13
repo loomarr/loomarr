@@ -237,8 +237,9 @@ classify() {
       select_gate apple_tv
       ;;
     web/scripts/build-ios-testflight.sh|web/scripts/build-ios-testflight.test.sh)
-      # The release script runs only in the dispatch-only ios-testflight workflow; its test runs in
-      # release-verify, which the contracts gate owns.
+      # The release script runs only in the main-only ios-testflight workflow, which also reads this
+      # classifier's apple_mobile decision; its test runs in release-verify, which the contracts
+      # gate owns.
       known=true
       select_gate contracts
       ;;

@@ -185,8 +185,9 @@ func workflowRunAuthorityEntries() map[string]workflowAuthority {
 		"ios-testflight.yml": {
 			permissions: map[string]string{"contents": "read"},
 			jobs: map[string]workflowJobAuthority{
+				"plan": {condition: iosTestFlightMain},
 				"release": {
-					condition: "github.ref == 'refs/heads/main'",
+					condition: iosTestFlightReleaseCondition,
 					environment: map[string]string{
 						"LOOMARR_IOS_BUILD_NUMBER": "${{ github.run_number }}",
 						"LOOMARR_IOS_OUTPUT_DIR":   "${{ github.workspace }}/.artifacts/ios-testflight",
