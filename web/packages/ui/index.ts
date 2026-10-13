@@ -1,3 +1,5 @@
+export type { AiReconnectBannerProps } from "./src/ai-reconnect-banner";
+export { AiReconnectBanner } from "./src/ai-reconnect-banner";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";

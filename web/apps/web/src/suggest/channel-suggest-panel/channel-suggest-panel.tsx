@@ -16,6 +16,7 @@ import { IntentForm } from "../intent-form";
 import { useProposalOutlook } from "../live-proposal-outlook";
 import { ManualChannelBuilder } from "../manual-channel-builder";
 import { suggestionFailureCopy } from "../suggestion-failure-copy";
+import { useAiResume } from "../use-ai-resume";
 import { useElapsed } from "../use-elapsed";
 import { useProposalReviewEdit } from "../use-proposal-review-edit";
 import { useSuggestionRun } from "../use-suggestion-run";
@@ -62,6 +63,10 @@ const ChannelSuggestPanel = ({
     : undefined;
   const run = useSuggestionRun(initialJobId);
   const [edit, setEdit, optionalSuggestions, expansionAdded] = useProposalReviewEdit(run.jobId, run.proposal);
+  const { resumeWithAi } = useAiResume(run, edit, optionalSuggestions);
+  // The resume banner's "Try AI suggestions" with nothing picked yet: the builder's description
+  // seeds the describe form instead.
+  const [describeSeed, setDescribeSeed] = useState<string>();
   const elapsed = useElapsed(run.isRunning);
   const runProblem = run.error == null ? undefined : toProblem(run.error);
   const aiUnconfigured = runProblem?.type === "feature_not_configured";
@@ -145,6 +150,16 @@ const ChannelSuggestPanel = ({
             setBuilding(false);
             run.resume(jobId);
           }}
+          onAiSubmitted={(jobId, description) => {
+            setBuilding(false);
+            resumeWithAi(jobId, description);
+          }}
+          onDescribeWithAi={(description) => {
+            setBuilding(false);
+            // The failed or unconfigured request that led here is history now: AI is back.
+            run.reset();
+            setDescribeSeed(description);
+          }}
         />
       </section>
     );
@@ -157,7 +172,7 @@ const ChannelSuggestPanel = ({
           so falling through to a blank form here would swallow the error the user needs. */}
       {!run.isRunning && !run.failed && !proposal && (
         <IntentForm
-          initialDescription={startedFresh ? undefined : initialIntent}
+          initialDescription={describeSeed ?? (startedFresh ? undefined : initialIntent)}
           initialIntent={run.intent}
           onSubmit={start}
           submitting={run.isRunning}
