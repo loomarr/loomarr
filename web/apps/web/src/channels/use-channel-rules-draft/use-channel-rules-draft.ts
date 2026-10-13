@@ -1,10 +1,8 @@
 import * as channelsApi from "@loomarr/api/endpoints/channels";
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
-import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { ignoreFailure, useChannelSave } from "@/channels/use-channel-save";
 import type { ChannelRulesDraft } from "./use-channel-rules-draft.type";
 
 // Matches the filler sandbox's debounce deliberately. Both drafts live on the channel page,
@@ -45,20 +43,20 @@ const canonicalize = (p: ChannelPolicy | undefined): string =>
 // Shaped after useChannelFillerDraft on purpose — same interface, same debounce, same
 // render-time resync — so the page's two drafts behave identically rather than each having
 // its own personality.
-const useChannelRulesDraft = (
-  channelId: string,
-  policy: ChannelPolicy | undefined,
-  revision: number,
-): ChannelRulesDraft => {
-  const queryClient = useQueryClient();
-
+const useChannelRulesDraft = (channelId: string, policy: ChannelPolicy | undefined): ChannelRulesDraft => {
   // The saved policy this draft was seeded from, as a canonical string — its identity, not its
   // reference (the page hands a fresh `ch.policy` object every render). Resync only when THIS
   // changes: a genuine server update adopts, an incidental re-render does not.
+  //
+  // ⚠ Not while an apply is in flight. The page renders the channel writer's PENDING policy, so
+  // the applied draft reads as saved at once; if the save then fails, the pending policy drops
+  // and an adopt would replace the draft with the old policy, losing the operator's rules. Held
+  // until the apply settles, a success adopts what was saved and a failure keeps the draft.
   const savedKey = canonicalize(policy);
   const [draft, setDraft] = useState<ChannelPolicy>(policy ?? {});
   const [adoptedKey, setAdoptedKey] = useState(savedKey);
-  if (savedKey !== adoptedKey) {
+  const [isApplying, setApplying] = useState(false);
+  if (savedKey !== adoptedKey && !isApplying) {
     setDraft(policy ?? {});
     setAdoptedKey(savedKey);
   }
@@ -81,27 +79,10 @@ const useChannelRulesDraft = (
     return () => clearTimeout(t);
   }, [channelId, draftKey, at]);
 
-  const update = channelsApi.useUpdateChannel({
-    mutation: {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({
-          queryKey: channelsApi.getGetChannelQueryKey(channelId),
-        });
-        // ⚠ The SAVED cycle preview is its own query key, not under the channel — invalidate it
-        // explicitly or the verification pane would keep showing the pre-apply schedule.
-        void queryClient.invalidateQueries({
-          queryKey: channelsApi.getPreviewChannelCycleQueryKey(channelId),
-        });
-        toast.success("Programming rules updated");
-      },
-      onError: (e) => {
-        void queryClient.invalidateQueries({
-          queryKey: channelsApi.getGetChannelQueryKey(channelId),
-        });
-        toast.error(toProblem(e).title ?? "Couldn't update programming rules");
-      },
-    },
-  });
+  // Apply saves through the channel's one writer, which also refreshes the SAVED cycle preview
+  // (its own query key, not under the channel) once the save lands, so the verification pane
+  // never keeps showing the pre-apply schedule.
+  const { save } = useChannelSave(channelId);
 
   return {
     draft,
@@ -125,8 +106,13 @@ const useChannelRulesDraft = (
     // back (nothing re-proposes an operator's filler selection the way a refine re-suggests a
     // scope). The server now treats an absent `filler` as "unchanged", so the loss is unreachable
     // from here regardless of what this hook sends or when.
-    apply: () => update.mutate({ id: channelId, data: { revision, policy: draft } }),
-    isApplying: update.isPending,
+    apply: () => {
+      setApplying(true);
+      void save({ policy: draft }, { success: "Programming rules updated" })
+        .catch(ignoreFailure)
+        .finally(() => setApplying(false));
+    },
+    isApplying,
     discard: () => setDraft(policy ?? {}),
   };
 };
