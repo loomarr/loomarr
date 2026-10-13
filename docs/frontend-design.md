@@ -417,7 +417,8 @@ These suites join **phase 13's gate** in the main doc's build plan.
 - **One page-edge contract.** Every top-level route begins with `PageHeader`; nested route navigation may precede it, but may not restyle it. The header owns the 24px horizontal gutter, 16px vertical gutter, bottom rule, one `<h1>`, bounded explanatory copy, and page-level actions/status. At mobile widths those actions stack below the copy so the title never collapses into a narrow text column. Entity-detail and focused workflow headers may add domain identity, but keep the same gutter and title scale.
 - **Content width is picked by task, from six named tiers** (#1817, decided 2026-10-13). A route
   names its tier (`max-w-reading`, defined in `apps/web/src/styles.css`) and never types a pixel
-  width. Every tier is centred, inside a 24px gutter (16px below `sm`).
+  width. Every capped tier is centred with `mx-auto`. The gutter is 24px, and 16px below `sm`
+  where a surface has adopted it (the Guide's create panel); other routes keep their `p-6`.
 
   | Tier | Width | For | Routes |
   | --- | --- | --- | --- |
