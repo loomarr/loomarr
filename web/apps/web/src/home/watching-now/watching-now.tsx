@@ -1,7 +1,7 @@
 import { ProgrammeCard, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
 import { SectionHeader } from "@/components/ui/section-header";
-import { AiringArtwork } from "../airing-artwork";
+import { AiringArtwork } from "../on-now";
 import type { WatchingCard, WatchingNowProps } from "./watching-now.type";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;

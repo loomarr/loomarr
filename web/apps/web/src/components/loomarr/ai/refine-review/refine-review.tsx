@@ -4,7 +4,6 @@ import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { Range } from "@loomarr/api/models/range";
 import { Check, Download, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Caption } from "@/components/ui/caption";
 import { Card } from "@/components/ui/card";
 import { eraOf } from "@/lib/era-dates";
 import { datesMode } from "@/lib/policy-overrides";
@@ -105,7 +104,7 @@ const PolicyDeltaGroup = ({ deltas }: { deltas: PolicyDelta[] }) => {
   if (deltas.length === 0) return null;
   return (
     <section className="flex flex-col gap-1.5">
-      <Caption as="h3" shout>{`Programming · ${deltas.length}`}</Caption>
+      <h3 className="font-mono text-2xs text-static-400 uppercase tracking-wide">{`Programming · ${deltas.length}`}</h3>
       <ul className="flex flex-col gap-1.5">
         {deltas.map((d) => (
           <li key={d.label} className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -233,7 +232,7 @@ const Group = ({
   if (rows.length === 0) return null;
   return (
     <section className="flex flex-col gap-1.5">
-      <Caption as="h3" shout>{`${title} · ${rows.length}`}</Caption>
+      <h3 className="font-mono text-2xs text-static-400 uppercase tracking-wide">{`${title} · ${rows.length}`}</h3>
       <ul className="flex flex-col gap-1">
         {rows.map((row) => (
           <Row key={row.key} row={row} tone={tone} note={rowNote} />

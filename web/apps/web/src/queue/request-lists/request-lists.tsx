@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { buttonVariants } from "@/components/ui/button";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
-import { REQUEST_ROW_TONE } from "@/queue/request-row-tone";
+import type { StatusTone } from "@/components/ui/status-dot";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
 
@@ -53,6 +53,15 @@ const cardFor = (
     />
   </li>
 );
+
+// A request's badge tone, as a row's status dot. Home's Your requests uses the same map, so the
+// same status draws the same dot wherever a request is a row (#1817 Q11).
+const REQUEST_ROW_TONE: Record<RequestEntry["status"]["tone"], StatusTone> = {
+  suggest: "attention",
+  lock: "ok",
+  onair: "error",
+  caution: "progress",
+};
 
 // The row's trailing link, quiet like Home's "View channel →".
 const ROW_LINK =
@@ -258,4 +267,4 @@ const NeedsYouList = () => {
   );
 };
 
-export { NeedsYouList, RequestList };
+export { NeedsYouList, REQUEST_ROW_TONE, RequestList };

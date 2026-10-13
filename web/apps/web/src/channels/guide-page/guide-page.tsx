@@ -403,7 +403,7 @@ const GuidePage = ({
       {adding && (
         <div className="border-border border-b bg-card px-4 py-4.5 sm:px-6">
           <ChannelSuggestPanel
-            className="mx-auto w-full max-w-form"
+            className="mx-auto max-w-form"
             initialIntent={initialIntent}
             initialJobId={initialJobId}
             initialManual={openManualOnArrival}

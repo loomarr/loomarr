@@ -7,7 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { ListGroup, ListRow, type ListRowProps } from "@/components/ui/list-row";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
-import { REQUEST_ROW_TONE } from "@/queue/request-row-tone";
+import { REQUEST_ROW_TONE } from "@/queue/request-lists";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 
 const IN_FLIGHT = [TitleDTOState.downloading, TitleDTOState.requested, TitleDTOState.wanted] as const;

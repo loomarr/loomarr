@@ -2,14 +2,35 @@ import type { GuideChannelState } from "@loomarr/core/guide";
 import { guideChannelState } from "@loomarr/core/guide";
 import { surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
+import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
+import { Image } from "@/components/ui/image";
 import { ListGroup, ListRow } from "@/components/ui/list-row";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
 import type { StatusTone } from "@/components/ui/status-dot";
-import { AiringArtwork } from "../airing-artwork";
-import type { OnNowProps } from "./on-now.type";
+import type { AiringArtworkProps, OnNowProps } from "./on-now.type";
 
 const MAX_CHANNELS = 6;
+
+// AiringArtwork — the picture in a Home card's picture slot (On now, Watching now, Recently
+// tuned): the airing's image-service artwork, else its legacy thumbnail URL, else the code-drawn
+// fallback. A card always has a picture, so a title with no artwork still fills the slot
+// (#1817 Q12). The fallback also covers an image-service URL that fails to load.
+const AiringArtwork = ({ airing, channel, sizes }: AiringArtworkProps) => {
+  if (airing.thumbImage) {
+    return (
+      <Image
+        image={airing.thumbImage}
+        alt=""
+        sizes={sizes}
+        fallback={<ArtworkFallback channel={channel} />}
+        className="size-full object-cover"
+      />
+    );
+  }
+  if (airing.thumbUrl) return <img src={airing.thumbUrl} alt="" className="size-full object-cover" />;
+  return <ArtworkFallback channel={channel} />;
+};
 
 // The actual, truthful lifecycle sentence for a channel with no current block — never a
 // first-channel prompt, since the channel already exists (#1822 evidence).
@@ -130,4 +151,4 @@ const OnNow = ({ layout, nowMs }: OnNowProps) => {
   );
 };
 
-export { OnNow };
+export { AiringArtwork, OnNow };

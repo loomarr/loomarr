@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChannelIdent } from "@/components/loomarr/channels/channel-ident";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
-import { AiringArtwork } from "../airing-artwork";
+import { AiringArtwork } from "../on-now";
 import type { RecentlyTunedProps } from "./recently-tuned.type";
 
 // RecentlyTuned — Home's "Recently tuned" return card (#1822 evidence, X2): the caller's
@@ -27,7 +27,7 @@ const RecentlyTuned = ({ continueWatching, layout, nowMs, activeChannelIds }: Re
     <section aria-labelledby="home-recently-tuned">
       <SectionHeader id="home-recently-tuned" title="Recently tuned" />
       <div className="flex flex-col items-start gap-4 rounded-lg border border-static-700 bg-static-900 p-4 sm:flex-row sm:items-center">
-        <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-md bg-static-800 sm:w-48">
+        <div className="aspect-video w-full shrink-0 overflow-hidden rounded-md sm:w-48">
           <AiringArtwork
             airing={airing}
             channel={{ name: data.channelName, number: channel.source.number }}
