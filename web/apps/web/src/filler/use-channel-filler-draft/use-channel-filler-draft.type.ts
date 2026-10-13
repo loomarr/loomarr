@@ -21,6 +21,10 @@ type ChannelFillerDraft = {
   // this channel's override. Turning breaks off remains the frequency control's job.
   breakDuration: string | undefined;
   setBreakDuration: (next: string | undefined) => void;
+  // Two-state commercial repeat spacing: undefined follows the install default; a duration
+  // string is this channel's own spacing, where "0h" lets a commercial repeat in any break.
+  commercialSpacing: string | undefined;
+  setCommercialSpacing: (next: string | undefined) => void;
   // The assembled break for the CURRENT draft — the same PodPoolDTO shape the
   // saved GET returns, so it drops straight into PodTimeline. Undefined until the first
   // preview lands.

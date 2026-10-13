@@ -44,6 +44,8 @@ const renderSection = (ui: ReactNode) => {
 
 // ⚠ Every coverage payload carries the per-setting breakdown since V51f. Nothing at zero, so the
 // diagnosis panel stays hidden and these tests keep asserting what they were written to assert.
+const NO_LIMIT: CoverageDTO["geography"] = { country: "", market: "" };
+
 const HEALTHY: CoverageDTO["criteria"] = [
   { criterion: "era", clips: 4 },
   { criterion: "audience", clips: 4 },
@@ -56,7 +58,13 @@ const HEALTHY: CoverageDTO["criteria"] = [
 // ⚠ The DRAFT preview returns the pod AND the coverage for the same selection (§10 V51f), so the
 // meter and the timeline below it can no longer describe two different things.
 const previewBody: PreviewDraftPodsOutputBody = {
-  coverage: { level: "exact", total: 4, rungs: [{ level: "exact", clips: 4 }], criteria: HEALTHY },
+  coverage: {
+    level: "exact",
+    total: 4,
+    rungs: [{ level: "exact", clips: 4 }],
+    criteria: HEALTHY,
+    geography: NO_LIMIT,
+  },
   entries: [
     {
       hash: "b1-hash",
@@ -132,6 +140,7 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[]; revision?: number } = {}) 
         setting({ key: "filler.pod_max", value: "4", kind: "int", group: "filler" }),
         setting({ key: "filler.breaks_per_hour", value: "4", kind: "int", group: "filler" }),
         setting({ key: "filler.break_duration", value: "5m", kind: "duration", group: "filler" }),
+        setting({ key: "filler.cooldown_seconds", value: "14400", kind: "int", group: "filler" }),
       ],
     }),
     // ⚠ FOUND BY THE GUARD. The coverage meter reads this on mount and the old catch-all served
@@ -143,6 +152,7 @@ const stubChannelFiller = (opts: { clips?: ClipDTO[]; revision?: number } = {}) 
       total: 4,
       rungs: [{ level: "exact", clips: 4 }],
       criteria: HEALTHY,
+      geography: { country: "US", market: "" },
     }),
   );
 
@@ -236,6 +246,37 @@ describe("ChannelFiller", () => {
     await user.click(screen.getByRole("button", { name: /apply filler/i }));
     await waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0]).toMatchObject({ policy: { breakDuration: "1.5m" } });
+  });
+
+  it("follows the install's commercial spacing until the channel sets its own", async () => {
+    const user = userEvent.setup();
+    const { patches } = stubChannelFiller();
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+
+    const spacing = await screen.findByRole("combobox", { name: "Repeat spacing · same commercial" });
+    await waitFor(() => expect(spacing).toHaveTextContent("Follow default (4 hours)"));
+    await user.click(spacing);
+    await user.click(await screen.findByRole("option", { name: "Custom spacing" }));
+    const input = await screen.findByLabelText("Custom commercial repeat spacing in hours");
+    expect(input).toHaveValue(4);
+    await user.clear(input);
+    await user.type(input, "6");
+
+    await user.click(screen.getByRole("button", { name: /apply filler/i }));
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toMatchObject({ policy: { commercialSpacing: "6h" } });
+  });
+
+  it("reads back a saved spacing in the server's duration format", async () => {
+    stubChannelFiller();
+    renderSection(<ChannelFiller channelId="ch-1" policy={{ ...policy(), commercialSpacing: "1h30m0s" }} />);
+    expect(await screen.findByLabelText("Custom commercial repeat spacing in hours")).toHaveValue(1.5);
+  });
+
+  it("names what the saved pool is limited to from the server's coverage", async () => {
+    stubChannelFiller();
+    renderSection(<ChannelFiller channelId="ch-1" policy={policy()} />);
+    expect(await screen.findByText("US commercials only · 4 fit this channel")).toBeInTheDocument();
   });
 
   it("offers inherited, disabled, and custom break frequency without re-previewing the clip mix", async () => {
@@ -402,7 +443,13 @@ describe("ChannelFiller", () => {
         unclassifiedClips: 0,
         axisCoverage: [],
       }),
-      getChannelFillerCoverageMockHandler({ level: "exact", total: 0, rungs: [], criteria: HEALTHY }),
+      getChannelFillerCoverageMockHandler({
+        level: "exact",
+        total: 0,
+        rungs: [],
+        criteria: HEALTHY,
+        geography: NO_LIMIT,
+      }),
       // This test builds its own handler set rather than using `stubChannelFiller`, so it needs
       // the inherited-default settings read too.
       getSettingsListMockHandler({ features: {}, settings: [] }),

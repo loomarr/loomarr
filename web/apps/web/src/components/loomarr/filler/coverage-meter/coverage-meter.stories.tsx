@@ -26,6 +26,8 @@ const HEALTHY = [
   { criterion: "quality" as const, clips: 9 },
 ];
 
+const NO_LIMIT = { country: "", market: "" };
+
 // The healthy case: era- and audience-matched commercials are available.
 const Exact: Story = {
   args: {
@@ -33,6 +35,7 @@ const Exact: Story = {
       level: "exact",
       total: 9,
       criteria: HEALTHY,
+      geography: NO_LIMIT,
       rungs: [
         { level: "exact", clips: 4 },
         { level: "widened", clips: 5 },
@@ -51,6 +54,7 @@ const Widened: Story = {
       level: "widened",
       total: 6,
       criteria: HEALTHY,
+      geography: NO_LIMIT,
       rungs: [
         { level: "exact", clips: 0 },
         { level: "widened", clips: 2 },
@@ -75,6 +79,7 @@ const OneSettingIsEmpty: Story = {
       level: "bumper_card",
       total: 0,
       rungs: [],
+      geography: NO_LIMIT,
       criteria: [
         { criterion: "era", clips: 214 },
         { criterion: "audience", clips: 0 },
@@ -89,7 +94,7 @@ const OneSettingIsEmpty: Story = {
 
 // The state an operator most needs named: breaks are running on the built-in card.
 const NothingFits: Story = {
-  args: { coverage: { level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY } },
+  args: { coverage: { level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY, geography: NO_LIMIT } },
 };
 
 export default meta;
