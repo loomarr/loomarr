@@ -75,7 +75,7 @@ describe("ChannelLineupEditor", () => {
     stubEditor();
     const series: LineupEntryDTO = { key: "series:tvdb:90000021", name: "Bowling Alley Blues", year: 1974 };
     const user = userEvent.setup();
-    render(<ChannelLineupEditor channelId="ch-1" revision={1} lineup={[series]} />, {
+    render(<ChannelLineupEditor channelId="ch-1" lineup={[series]} />, {
       wrapper: makeWrapper(),
     });
     await waitFor(() => expect(screen.getByRole("button", { name: /^Keep — / })).toBeEnabled());
