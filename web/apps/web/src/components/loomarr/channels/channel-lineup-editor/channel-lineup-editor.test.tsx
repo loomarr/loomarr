@@ -70,8 +70,8 @@ describe("ChannelLineupEditor", () => {
   });
 
   it("keeps a series row's Tab order: grip, seasons, feedback, then remove (#1896)", async () => {
-    // A narrow column stacks the row and places remove beside the title, but only visually:
-    // keyboard order still follows the reading order of one row.
+    // A narrow column stacks the row, and remove comes last there too (#1899), so keyboard order
+    // is the reading order at every width. tests/visual/lineup-layout.spec.ts checks the layout.
     stubEditor();
     const series: LineupEntryDTO = { key: "series:tvdb:90000021", name: "Bowling Alley Blues", year: 1974 };
     const user = userEvent.setup();

@@ -114,17 +114,17 @@ const SortableLineupRow = ({
   // needs ~28rem; on a phone the Programming column is ~14rem, and the controls crushed the title
   // to nothing and ran over the season inputs. Below `@md` of the list (a container query, because
   // what decides it is the column the editor sits in, not the viewport) the row becomes a grid:
-  // grip, title and remove on top, the seasons under the title, then the feedback controls. The
-  // DOM order is untouched, so Tab still runs grip → seasons → feedback → remove; only the remove
-  // button is placed explicitly (top right, beside the title), and everything else auto-places
-  // around it, row by row. From `@md` up the wrappers below dissolve
-  // (`contents`) or turn back into the one flex line this row always was.
+  // grip and title on top, the seasons under the title, the feedback controls, then remove on its
+  // own line at the right with a 44 px target. Every piece auto-places in DOM order, so what you
+  // see is the Tab order at every width: grip → seasons → feedback → remove (#1899; remove used to
+  // sit top right, beside the title, while still being last in Tab order). From `@md` up the
+  // wrappers below dissolve (`contents`) or turn back into the one flex line this row always was.
   return (
     <li
       ref={setNodeRef}
       style={style}
       className={cn(
-        "@md:flex grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-md border border-border bg-card px-3 py-2.5",
+        "@md:flex grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 rounded-md border border-border bg-card px-3 py-2.5",
         isDragging && "z-10 opacity-70 shadow-md",
       )}
     >
@@ -140,7 +140,7 @@ const SortableLineupRow = ({
       </button>
 
       <div className="@md:block contents @md:min-w-0 @md:flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="col-[2/-1] flex min-w-0 flex-wrap items-center gap-2">
           <span className="truncate font-medium text-sm">{entry.name}</span>
           {entry.year ? <span className="font-mono text-static-400 text-xs">{entry.year}</span> : null}
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
@@ -168,7 +168,7 @@ const SortableLineupRow = ({
             <Button
               variant="ghost"
               size="icon"
-              className="col-start-3 row-start-1 size-7 shrink-0"
+              className="col-[2/-1] size-11 shrink-0 justify-self-end @md:size-7"
               disabled={disabled}
               aria-label={`Remove ${entry.name}`}
               onClick={onRemove}
