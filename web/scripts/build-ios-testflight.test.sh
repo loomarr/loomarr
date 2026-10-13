@@ -170,6 +170,66 @@ expect_failure 'altool failure' 'altool --upload-package failed' \
   "${fake_env[@]}" FAKE_ALTOOL_STATUS=3 FAKE_ALTOOL_OUTPUT=boom "$script" upload
 [[ "$(wc -l < "$calls")" -eq 1 ]]
 
+# plan: a dispatch carries its own choices; a push releases only an iPhone change, at the newest
+# release tag. The classifier is the real scripts/ci-impact.sh; the history is a scratch repository.
+repo="$temp_dir/repo"
+in_repo() {
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid \
+    -c commit.gpgsign=false -c tag.gpgsign=false "$@"
+}
+mkdir -p "$repo/docs" "$repo/web/apps/mobile/app"
+in_repo init -q
+printf 'one\n' > "$repo/docs/notes.md"
+in_repo add -A
+in_repo commit -q -m docs
+first=$(in_repo rev-parse HEAD)
+printf 'export {};\n' > "$repo/web/apps/mobile/app/index.tsx"
+in_repo add -A
+in_repo commit -q -m iphone
+iphone=$(in_repo rev-parse HEAD)
+
+plan_in_repo() {
+  local event="$1" payload="$2"
+  shift 2
+  printf '%s\n' "$payload" > "$temp_dir/event.json"
+  (cd "$repo" && "$@" "$script" plan "$event" "$temp_dir/event.json")
+}
+expect_plan() {
+  local description="$1" want="$2" event="$3" payload="$4"
+  if ! plan_in_repo "$event" "$payload" run; then
+    echo "plan $description: failed" >&2
+    cat "$temp_dir/stderr" >&2
+    exit 1
+  fi
+  if [[ "$(cat "$temp_dir/stdout")" != "$want" ]]; then
+    printf 'plan %s: got\n%s\nwant\n%s\n' "$description" "$(cat "$temp_dir/stdout")" "$want" >&2
+    exit 1
+  fi
+}
+
+expect_failure 'plan without an event' 'usage:' "$script" plan
+expect_failure 'plan without a payload file' 'payload does not exist' "$script" plan push "$temp_dir/missing.json"
+plan_in_repo push "{\"before\":\"$first\"}" expect_failure 'iPhone push without a release tag' 'no v* release tag'
+in_repo tag v0.2.0-beta.8
+expect_plan 'iPhone push' $'release=true\nupload=true\nversion=0.2.0-beta.8' push "{\"before\":\"$first\"}"
+printf 'two\n' > "$repo/docs/notes.md"
+in_repo commit -q -am docs
+expect_plan 'docs-only push' $'release=false\nupload=false\nversion=' push "{\"before\":\"$iphone\"}"
+expect_plan 'push without a base' $'release=true\nupload=true\nversion=0.2.0-beta.8' push \
+  '{"before":"0000000000000000000000000000000000000000"}'
+expect_plan 'push from an unknown base' $'release=true\nupload=true\nversion=0.2.0-beta.8' push \
+  '{"before":"1111111111111111111111111111111111111111"}'
+expect_plan 'dispatch' $'release=true\nupload=true\nversion=0.2.0-beta.9' workflow_dispatch \
+  '{"inputs":{"version":"0.2.0-beta.9","upload":true}}'
+expect_plan 'dry-run dispatch' $'release=true\nupload=false\nversion=0.2.0' workflow_dispatch \
+  '{"inputs":{"version":"v0.2.0","upload":"false"}}'
+plan_in_repo workflow_dispatch '{"inputs":{"version":"beta","upload":"false"}}' \
+  expect_failure 'dispatch with a malformed version' 'version must be x.y.z'
+plan_in_repo workflow_dispatch '{"inputs":{"version":"0.2.0"}}' \
+  expect_failure 'dispatch without an upload choice' 'upload input must be true or false'
+plan_in_repo pull_request "{\"pull_request\":{\"base\":{\"sha\":\"$first\"}}}" \
+  expect_failure 'pull request' 'plan supports push and workflow_dispatch'
+
 # The IPA privacy manifest check accepts React Native's aggregated manifest and nothing weaker.
 privacy_checker="$script_dir/check-ios-privacy-manifest.cjs"
 aggregated='{"NSPrivacyTracking":false,"NSPrivacyAccessedAPITypes":[
