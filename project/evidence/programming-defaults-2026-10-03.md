@@ -112,6 +112,24 @@ collapses to the existing 56px icon floor (X1 is still undecided, out of scope h
 [phone-web-nav.html](../prototypes/phone-web-nav.html)); the content column drops its max-width
 and the two-column field grid collapses to one column via the existing container query.
 
+## Decisions
+
+Decided by the maintainer on 2026-10-04 (recorded on #1877) and confirmed on 2026-10-13 (recorded on #1889).
+They resolve the open questions below:
+
+1. **Summary wording.** Alt B, split and plain about Loomarr's built-in defaults.
+2. **Era and Programming dates.** These are now one stored date scope (#1883). Era is a shortcut stored as
+   Dates, with all three windows set to the same range, and `era` is still accepted as an input alias. A
+   request that sends both gets a 422. In the editor, Era is the simple mode, with "Use separate date
+   windows" / "Use a single era" links between the two modes. The conflict banner is gone, because the
+   conflicting state can no longer be stored.
+3. **Preview.** Built as a change list (#1882's `programming/changes` endpoint, #1889's UI) beside the
+   single-point preview.
+4. **Field layout** (#1889). Each field gets its own label row with a source badge and Reset. Repeat spacing
+   is split into separate fields, and help stays in (i) tooltips.
+
+Built in #1882, #1883 and #1889.
+
 ## Open questions (not decided by any input)
 
 1. **The defaults-summary wording.** The mock's own text ("1 setting is custom · the rest follow
