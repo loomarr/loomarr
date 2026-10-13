@@ -5054,6 +5054,34 @@ components:
         - state
         - checks
       type: object
+    HolidayEpisodesDTO:
+      additionalProperties: false
+      properties:
+        active:
+          description: The holiday's window is open at the previewed instant
+          type: boolean
+        episodes:
+          description: Holiday episodes found in this channel's series; a multi-part story counts once
+          format: int64
+          type: integer
+        everyDays:
+          description: The soonest any one of them airs again, in days
+          format: int64
+          type: integer
+        holiday:
+          description: Built-in holiday id (the rule vocabulary's holiday:<id> token, without the prefix)
+          type: string
+        perDay:
+          description: How many air on an ordinary day of the holiday window at the channel's strength
+          format: int64
+          type: integer
+      required:
+        - holiday
+        - episodes
+        - perDay
+        - everyDays
+        - active
+      type: object
     HostedModelView:
       additionalProperties: false
       properties:
@@ -7524,6 +7552,11 @@ components:
         excluded:
           $ref: "#/components/schemas/ExcludedDTO"
           description: What the hard filters REFUSED and why — the answer to "why isn't X on my channel" (§4)
+        holidayEpisodes:
+          description: "Per selected holiday, open or soonest first: the lineup's holiday episodes and how the channel's holiday strength rotates them. Empty unless the channel uses the built-in seasonal rotation."
+          items:
+            $ref: "#/components/schemas/HolidayEpisodesDTO"
+          type: array
         slots:
           description: The leading slots of the resolved cycle, in play order (capped)
           items:
@@ -7543,6 +7576,7 @@ components:
         - slots
         - excluded
         - trace
+        - holidayEpisodes
       type: object
     PreviewDraftPodsInputBody:
       additionalProperties: false
@@ -9329,6 +9363,10 @@ components:
         mode:
           type: string
         offSeason:
+          type: string
+        placement:
+          type: string
+        strength:
           type: string
       type: object
     SecretRegenerateOutputBody:
