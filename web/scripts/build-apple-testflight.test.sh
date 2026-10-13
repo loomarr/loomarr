@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Fail-closed contract of the iPhone TestFlight script. macOS-only steps are not run here; the
-# argument, credential, and altool paths are, with a fake xcrun.
+# Fail-closed contract of the Apple TestFlight script. macOS-only steps are not run here; the
+# argument, credential, and altool paths are, with a fake xcrun, for both the iPhone and Apple TV.
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-script="$script_dir/build-ios-testflight.sh"
+script="$script_dir/build-apple-testflight.sh"
 
 temp_dir=$(mktemp -d)
 trap 'rm -rf -- "$temp_dir"' EXIT
@@ -13,13 +13,14 @@ mkdir -p "$key_dir" "$temp_dir/bin" "$temp_dir/out"
 printf 'not a real key' > "$key_dir/AuthKey_ABCDE12345.p8"
 
 valid_env=(
-  LOOMARR_IOS_BUILD_NUMBER=42
+  LOOMARR_APPLE_BUILD_NUMBER=42
   LOOMARR_APPLE_TEAM_ID=TEAM123456
   LOOMARR_ASC_KEY_PATH="$key_dir/AuthKey_ABCDE12345.p8"
   LOOMARR_ASC_KEY_ID=ABCDE12345
   LOOMARR_ASC_ISSUER_ID=69a6de70-0000-0000-0000-000000000000
   LOOMARR_ASC_APPLE_APP_ID=1234567890
-  LOOMARR_IOS_OUTPUT_DIR="$temp_dir/out"
+  LOOMARR_ASC_APPLE_TV_APP_ID=2345678901
+  LOOMARR_APPLE_OUTPUT_DIR="$temp_dir/out"
 )
 
 # Runs the script with the valid environment, plus overrides, and captures stderr and stdout.
@@ -46,24 +47,36 @@ prepare_env=(
   ASC_API_ISSUER_ID=69a6de70-0000-0000-0000-000000000000
   APPLE_TEAM_ID=TEAM123456
   ASC_APPLE_APP_ID=1234567890
+  ASC_APPLE_TV_APP_ID=2345678901
   RUNNER_TEMP="$temp_dir/runner"
   GITHUB_ENV="$temp_dir/github-env"
 )
 mkdir -p "$temp_dir/runner"
 : > "$temp_dir/github-env"
 for variable in ASC_API_KEY_P8_BASE64 ASC_API_KEY_ID ASC_API_ISSUER_ID APPLE_TEAM_ID ASC_APPLE_APP_ID; do
-  if env "${prepare_env[@]}" "$variable=" "$script" prepare-credentials >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
+  if env "${prepare_env[@]}" "$variable=" "$script" iphone prepare-credentials >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
     echo "prepare-credentials accepted an empty $variable" >&2
     exit 1
   fi
   grep -Fq "iPhone TestFlight is not configured" "$temp_dir/stdout"
   grep -Fq "$variable" "$temp_dir/stdout"
 done
-if env "${prepare_env[@]}" ASC_API_KEY_ID=short "$script" prepare-credentials >/dev/null 2>&1; then
+# Each app needs only its own App Store Connect record: the Apple TV can be configured after the
+# iPhone, and neither borrows the other's Apple ID.
+if env "${prepare_env[@]}" ASC_APPLE_TV_APP_ID= "$script" apple-tv prepare-credentials >"$temp_dir/stdout" 2>"$temp_dir/stderr"; then
+  echo 'apple-tv prepare-credentials accepted an empty ASC_APPLE_TV_APP_ID' >&2
+  exit 1
+fi
+grep -Fq "Apple TV TestFlight is not configured" "$temp_dir/stdout"
+grep -Fq "variable ASC_APPLE_TV_APP_ID" "$temp_dir/stdout"
+env "${prepare_env[@]}" ASC_APPLE_TV_APP_ID= "$script" iphone prepare-credentials >/dev/null 2>&1
+env "${prepare_env[@]}" ASC_APPLE_APP_ID= "$script" apple-tv prepare-credentials >/dev/null 2>&1
+: > "$temp_dir/github-env"
+if env "${prepare_env[@]}" ASC_API_KEY_ID=short "$script" iphone prepare-credentials >/dev/null 2>&1; then
   echo 'prepare-credentials accepted a malformed key id' >&2
   exit 1
 fi
-env "${prepare_env[@]}" "$script" prepare-credentials >"$temp_dir/stdout" 2>"$temp_dir/stderr"
+env "${prepare_env[@]}" "$script" iphone prepare-credentials >"$temp_dir/stdout" 2>"$temp_dir/stderr"
 [[ "$(cat "$temp_dir/runner/asc/AuthKey_ABCDE12345.p8")" == 'private key bytes' ]]
 grep -Fxq "LOOMARR_ASC_KEY_PATH=$temp_dir/runner/asc/AuthKey_ABCDE12345.p8" "$temp_dir/github-env"
 if [[ "$(stat -c '%a' "$temp_dir/runner/asc/AuthKey_ABCDE12345.p8" 2>/dev/null || stat -f '%Lp' "$temp_dir/runner/asc/AuthKey_ABCDE12345.p8")" != 600 ]]; then
@@ -76,56 +89,74 @@ if grep -Fq "${prepare_env[0]#*=}" "$temp_dir/stdout" "$temp_dir/stderr"; then
 fi
 
 expect_failure 'no mode' 'usage:' "$script"
-expect_failure 'unknown mode' 'usage:' "$script" publish
-expect_failure 'build without a version' 'usage:' "$script" build
-expect_failure 'build with a malformed version' 'version must be x.y.z' "$script" build beta
-expect_failure 'build with a four-part version' 'version must be x.y.z' "$script" build 0.2.0.1
+expect_failure 'unknown app' 'usage:' "$script" ipad build 0.2.0
+expect_failure 'mode without an app' 'usage:' "$script" build 0.2.0
+expect_failure 'unknown mode' 'usage:' "$script" iphone publish
+expect_failure 'build without a version' 'usage:' "$script" iphone build
+expect_failure 'build with a malformed version' 'version must be x.y.z' "$script" iphone build beta
+expect_failure 'build with a four-part version' 'version must be x.y.z' "$script" apple-tv build 0.2.0.1
 
-for variable in LOOMARR_IOS_BUILD_NUMBER LOOMARR_APPLE_TEAM_ID LOOMARR_ASC_KEY_PATH \
-  LOOMARR_ASC_KEY_ID LOOMARR_ASC_ISSUER_ID; do
-  expect_failure "build without $variable" "$variable is required" "$variable=" "$script" build 0.2.0-beta.9
+for app in iphone apple-tv; do
+  for variable in LOOMARR_APPLE_BUILD_NUMBER LOOMARR_APPLE_TEAM_ID LOOMARR_ASC_KEY_PATH \
+    LOOMARR_ASC_KEY_ID LOOMARR_ASC_ISSUER_ID; do
+    expect_failure "$app build without $variable" "$variable is required" "$variable=" "$script" "$app" build 0.2.0-beta.9
+  done
 done
 for variable in LOOMARR_ASC_KEY_PATH LOOMARR_ASC_KEY_ID LOOMARR_ASC_ISSUER_ID LOOMARR_ASC_APPLE_APP_ID; do
-  expect_failure "validate without $variable" "$variable is required" "$variable=" "$script" validate
-  expect_failure "upload without $variable" "$variable is required" "$variable=" "$script" upload
+  expect_failure "validate without $variable" "$variable is required" "$variable=" "$script" iphone validate
+  expect_failure "upload without $variable" "$variable is required" "$variable=" "$script" iphone upload
 done
+expect_failure 'Apple TV validate without its app id' 'LOOMARR_ASC_APPLE_TV_APP_ID is required' \
+  LOOMARR_ASC_APPLE_TV_APP_ID= "$script" apple-tv validate
+expect_failure 'Apple TV upload without its app id' 'LOOMARR_ASC_APPLE_TV_APP_ID is required' \
+  LOOMARR_ASC_APPLE_TV_APP_ID= "$script" apple-tv upload
 
 expect_failure 'zero build number' 'build number must be a positive integer' \
-  LOOMARR_IOS_BUILD_NUMBER=0 "$script" build 0.2.0
+  LOOMARR_APPLE_BUILD_NUMBER=0 "$script" iphone build 0.2.0
 expect_failure 'padded build number' 'build number must be a positive integer' \
-  LOOMARR_IOS_BUILD_NUMBER=007 "$script" build 0.2.0
+  LOOMARR_APPLE_BUILD_NUMBER=007 "$script" apple-tv build 0.2.0
 expect_failure 'malformed team id' 'APPLE_TEAM_ID must be 10' \
-  LOOMARR_APPLE_TEAM_ID=team "$script" build 0.2.0
+  LOOMARR_APPLE_TEAM_ID=team "$script" iphone build 0.2.0
 expect_failure 'malformed key id' 'ASC_API_KEY_ID must be 10' \
-  LOOMARR_ASC_KEY_ID=short "$script" validate
+  LOOMARR_ASC_KEY_ID=short "$script" iphone validate
 expect_failure 'missing key file' 'API key file does not exist' \
-  LOOMARR_ASC_KEY_PATH="$key_dir/missing.p8" "$script" validate
+  LOOMARR_ASC_KEY_PATH="$key_dir/missing.p8" "$script" iphone validate
 printf 'x' > "$key_dir/wrongname.p8"
 expect_failure 'key file not named for its id' 'must be named AuthKey_' \
-  LOOMARR_ASC_KEY_PATH="$key_dir/wrongname.p8" "$script" validate
-expect_failure 'non-numeric apple id' 'numeric Apple ID' \
-  LOOMARR_ASC_APPLE_APP_ID=abc "$script" validate
+  LOOMARR_ASC_KEY_PATH="$key_dir/wrongname.p8" "$script" iphone validate
+expect_failure 'non-numeric apple id' 'ASC_APPLE_APP_ID must be the numeric Apple ID of the iPhone app record' \
+  LOOMARR_ASC_APPLE_APP_ID=abc "$script" iphone validate
+expect_failure 'non-numeric Apple TV id' 'ASC_APPLE_TV_APP_ID must be the numeric Apple ID of the Apple TV app record' \
+  LOOMARR_ASC_APPLE_TV_APP_ID=abc "$script" apple-tv validate
 
 if [[ "$(uname -s)" != Darwin ]]; then
-  expect_failure 'build off macOS' 'requires macOS with Xcode' "$script" build 0.2.0-beta.9
+  expect_failure 'iPhone build off macOS' 'the iPhone build requires macOS with Xcode' "$script" iphone build 0.2.0-beta.9
+  expect_failure 'Apple TV build off macOS' 'the Apple TV build requires macOS with Xcode' "$script" apple-tv build 0.2.0-beta.9
 fi
 
 # Submission modes need the verified IPA and its evidence from the build.
-expect_failure 'validate before a build' 'run build first' "$script" validate
-printf 'ipa bytes' > "$temp_dir/out/loomarr-ios-0.2.0-beta.9-42.ipa"
-cat > "$temp_dir/out/loomarr-ios-0.2.0-beta.9-42.json" <<'JSON'
+expect_failure 'validate before a build' 'run build first' "$script" iphone validate
+printf 'ipa bytes' > "$temp_dir/out/loomarr-iphone-0.2.0-beta.9-42.ipa"
+cat > "$temp_dir/out/loomarr-iphone-0.2.0-beta.9-42.json" <<'JSON'
 { "bundleIdentifier": "media.loomarr.other", "version": "0.2.0", "buildNumber": "42" }
 JSON
-expect_failure 'evidence for another bundle id' 'unexpected bundle id' "$script" validate
+expect_failure 'evidence for another bundle id' 'unexpected bundle id' "$script" iphone validate
+# Each app reads only its own evidence, never the other app's IPA in a shared directory.
+expect_failure 'Apple TV validate with only iPhone evidence' 'run build first' "$script" apple-tv validate
 write_evidence() {
-  printf '{ "bundleIdentifier": "media.loomarr.mobile", "version": "0.2.0", "buildNumber": "42", "ipaSha256": "%s" }\n' \
-    "$1" > "$temp_dir/out/loomarr-ios-0.2.0-beta.9-42.json"
+  printf '{ "bundleIdentifier": "%s", "version": "0.2.0", "buildNumber": "42", "ipaSha256": "%s" }\n' \
+    "$1" "$2" > "$temp_dir/out/loomarr-$3-0.2.0-beta.9-42.json"
 }
-write_evidence ''
-expect_failure 'evidence without a hash' 'does not match the SHA-256' "$script" validate
-write_evidence "$(printf 'other ipa bytes' | shasum -a 256 | awk '{ print $1 }')"
-expect_failure 'IPA replaced after the build' 'does not match the SHA-256' "$script" upload
-write_evidence "$(shasum -a 256 "$temp_dir/out/loomarr-ios-0.2.0-beta.9-42.ipa" | awk '{ print $1 }')"
+write_evidence media.loomarr.mobile '' iphone
+expect_failure 'evidence without a hash' 'does not match the SHA-256' "$script" iphone validate
+write_evidence media.loomarr.mobile "$(printf 'other ipa bytes' | shasum -a 256 | awk '{ print $1 }')" iphone
+expect_failure 'IPA replaced after the build' 'does not match the SHA-256' "$script" iphone upload
+ipa_sha256="$(shasum -a 256 "$temp_dir/out/loomarr-iphone-0.2.0-beta.9-42.ipa" | awk '{ print $1 }')"
+write_evidence media.loomarr.mobile "$ipa_sha256" iphone
+cp -- "$temp_dir/out/loomarr-iphone-0.2.0-beta.9-42.ipa" "$temp_dir/out/loomarr-apple-tv-0.2.0-beta.9-42.ipa"
+write_evidence media.loomarr.mobile "$ipa_sha256" apple-tv
+expect_failure 'Apple TV evidence naming the iPhone bundle' 'unexpected bundle id media.loomarr.mobile' "$script" apple-tv validate
+write_evidence media.loomarr.tv "$ipa_sha256" apple-tv
 
 # A fake xcrun records every altool call and prints whatever FAKE_ALTOOL_OUTPUT says.
 cat > "$temp_dir/bin/xcrun" <<'FAKE'
@@ -139,9 +170,10 @@ calls="$temp_dir/calls"
 : > "$calls"
 fake_env=(PATH="$temp_dir/bin:$PATH" FAKE_XCRUN_CALLS="$calls")
 
-run "${fake_env[@]}" "$script" validate
+run "${fake_env[@]}" "$script" iphone validate
 grep -Fq -- '--validate-app -f' "$calls"
-grep -Fq -- "--apple-id 1234567890" "$calls"
+grep -Fq -- '--platform ios --apple-id 1234567890' "$calls"
+grep -Fq -- '--bundle-id media.loomarr.mobile' "$calls"
 grep -Fq -- '--bundle-short-version-string 0.2.0' "$calls"
 grep -Fq -- '--bundle-version 42' "$calls"
 if grep -Fq 'ABCDE12345.p8' "$calls" "$temp_dir/stdout"; then
@@ -150,34 +182,42 @@ if grep -Fq 'ABCDE12345.p8' "$calls" "$temp_dir/stdout"; then
 fi
 
 : > "$calls"
-run "${fake_env[@]}" "$script" upload
+run "${fake_env[@]}" "$script" iphone upload
 grep -Fq -- '--upload-package' "$calls"
 if grep -Fq -- '--validate-app' "$calls"; then
   echo 'upload ran a validation as well' >&2
   exit 1
 fi
 
+# The Apple TV submits its own IPA to its own record, as a tvOS package.
+: > "$calls"
+run "${fake_env[@]}" "$script" apple-tv upload
+grep -Fq -- "--upload-package $temp_dir/out/loomarr-apple-tv-0.2.0-beta.9-42.ipa" "$calls"
+grep -Fq -- '--platform appletvos --apple-id 2345678901' "$calls"
+grep -Fq -- '--bundle-id media.loomarr.tv' "$calls"
+
 # ITMS-90111 is named and never retried, even when altool also exits non-zero.
 : > "$calls"
 expect_failure 'ITMS-90111' 'ITMS-90111, Apple rejected the build toolchain' \
   "${fake_env[@]}" FAKE_ALTOOL_STATUS=1 \
-  'FAKE_ALTOOL_OUTPUT=ERROR: ITMS-90111: Unsupported SDK or Xcode version' "$script" upload
+  'FAKE_ALTOOL_OUTPUT=ERROR: ITMS-90111: Unsupported SDK or Xcode version' "$script" iphone upload
 [[ "$(wc -l < "$calls")" -eq 1 ]]
 
 # A plain altool failure also fails the step, and ITMS-90111 detection ignores a clean run.
 : > "$calls"
 expect_failure 'altool failure' 'altool --upload-package failed' \
-  "${fake_env[@]}" FAKE_ALTOOL_STATUS=3 FAKE_ALTOOL_OUTPUT=boom "$script" upload
+  "${fake_env[@]}" FAKE_ALTOOL_STATUS=3 FAKE_ALTOOL_OUTPUT=boom "$script" apple-tv upload
 [[ "$(wc -l < "$calls")" -eq 1 ]]
 
-# plan: a dispatch carries its own choices; a push releases only an iPhone change, at the newest
-# release tag. The classifier is the real scripts/ci-impact.sh; the history is a scratch repository.
+# plan: a dispatch carries its own app and choices; a push releases each app whose inputs it
+# changes, at the newest release tag. The classifier is the real scripts/ci-impact.sh; the history
+# is a scratch repository.
 repo="$temp_dir/repo"
 in_repo() {
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid \
     -c commit.gpgsign=false -c tag.gpgsign=false "$@"
 }
-mkdir -p "$repo/docs" "$repo/web/apps/mobile/app"
+mkdir -p "$repo/docs" "$repo/web/apps/mobile/app" "$repo/web/apps/tv/src"
 in_repo init -q
 printf 'one\n' > "$repo/docs/notes.md"
 in_repo add -A
@@ -211,21 +251,32 @@ expect_failure 'plan without an event' 'usage:' "$script" plan
 expect_failure 'plan without a payload file' 'payload does not exist' "$script" plan push "$temp_dir/missing.json"
 plan_in_repo push "{\"before\":\"$first\"}" expect_failure 'iPhone push without a release tag' 'no v* release tag'
 in_repo tag v0.2.0-beta.8
-expect_plan 'iPhone push' $'release=true\nupload=true\nversion=0.2.0-beta.8' push "{\"before\":\"$first\"}"
+expect_plan 'iPhone push' $'apps=["iphone"]\nupload=true\nversion=0.2.0-beta.8' push "{\"before\":\"$first\"}"
+printf 'export {};\n' > "$repo/web/apps/tv/src/app.tsx"
+in_repo add -A
+in_repo commit -q -m tv
+tv=$(in_repo rev-parse HEAD)
+expect_plan 'Apple TV push' $'apps=["apple-tv"]\nupload=true\nversion=0.2.0-beta.8' push "{\"before\":\"$iphone\"}"
+expect_plan 'push changing both apps' $'apps=["iphone","apple-tv"]\nupload=true\nversion=0.2.0-beta.8' push \
+  "{\"before\":\"$first\"}"
 printf 'two\n' > "$repo/docs/notes.md"
 in_repo commit -q -am docs
-expect_plan 'docs-only push' $'release=false\nupload=false\nversion=' push "{\"before\":\"$iphone\"}"
-expect_plan 'push without a base' $'release=true\nupload=true\nversion=0.2.0-beta.8' push \
+expect_plan 'docs-only push' $'apps=[]\nupload=false\nversion=' push "{\"before\":\"$tv\"}"
+expect_plan 'push without a base' $'apps=["iphone","apple-tv"]\nupload=true\nversion=0.2.0-beta.8' push \
   '{"before":"0000000000000000000000000000000000000000"}'
-expect_plan 'push from an unknown base' $'release=true\nupload=true\nversion=0.2.0-beta.8' push \
+expect_plan 'push from an unknown base' $'apps=["iphone","apple-tv"]\nupload=true\nversion=0.2.0-beta.8' push \
   '{"before":"1111111111111111111111111111111111111111"}'
-expect_plan 'dispatch' $'release=true\nupload=true\nversion=0.2.0-beta.9' workflow_dispatch \
-  '{"inputs":{"version":"0.2.0-beta.9","upload":true}}'
-expect_plan 'dry-run dispatch' $'release=true\nupload=false\nversion=0.2.0' workflow_dispatch \
-  '{"inputs":{"version":"v0.2.0","upload":"false"}}'
-plan_in_repo workflow_dispatch '{"inputs":{"version":"beta","upload":"false"}}' \
+expect_plan 'iPhone dispatch' $'apps=["iphone"]\nupload=true\nversion=0.2.0-beta.9' workflow_dispatch \
+  '{"inputs":{"app":"iphone","version":"0.2.0-beta.9","upload":true}}'
+expect_plan 'Apple TV dry-run dispatch' $'apps=["apple-tv"]\nupload=false\nversion=0.2.0' workflow_dispatch \
+  '{"inputs":{"app":"apple-tv","version":"v0.2.0","upload":"false"}}'
+plan_in_repo workflow_dispatch '{"inputs":{"version":"0.2.0","upload":"false"}}' \
+  expect_failure 'dispatch without an app' 'app input must be iphone or apple-tv'
+plan_in_repo workflow_dispatch '{"inputs":{"app":"ipad","version":"0.2.0","upload":"false"}}' \
+  expect_failure 'dispatch for an unknown app' 'app input must be iphone or apple-tv'
+plan_in_repo workflow_dispatch '{"inputs":{"app":"iphone","version":"beta","upload":"false"}}' \
   expect_failure 'dispatch with a malformed version' 'version must be x.y.z'
-plan_in_repo workflow_dispatch '{"inputs":{"version":"0.2.0"}}' \
+plan_in_repo workflow_dispatch '{"inputs":{"app":"apple-tv","version":"0.2.0"}}' \
   expect_failure 'dispatch without an upload choice' 'upload input must be true or false'
 plan_in_repo pull_request "{\"pull_request\":{\"base\":{\"sha\":\"$first\"}}}" \
   expect_failure 'pull request' 'plan supports push and workflow_dispatch'
@@ -270,4 +321,4 @@ expect_privacy_rejection 'tracking domains' 'declares NSPrivacyTrackingDomains' 
   "{\"NSPrivacyTrackingDomains\":[\"example.com\"],\"NSPrivacyAccessedAPITypes\":[$user_defaults]}"
 expect_privacy_rejection 'no entries' 'has no accessed-API entries' '{}'
 
-echo 'build-ios-testflight tests passed'
+echo 'build-apple-testflight tests passed'

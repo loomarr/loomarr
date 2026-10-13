@@ -44,6 +44,116 @@ test("resolves each explicit Shield release channel to the permanent Android ide
     assert.equal(config.version, "0.1.2-beta.3");
     assert.equal(config.android.package, "loomarr.media");
     assert.equal(config.android.versionCode, 1020003);
+    // A Shield release never claims the Apple TV identity.
+    assert.match(config.ios.bundleIdentifier, /\.prototype$/);
+  }
+});
+
+const expoConfig = async (environment) => {
+  const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
+    cwd: new URL("..", import.meta.url),
+    env: environment,
+  });
+  return JSON.parse(stdout);
+};
+
+const appleTvReleaseEnvironment = (overrides) => ({
+  ...process.env,
+  LOOMARR_APPLE_RELEASE_CHANNEL: "testflight",
+  LOOMARR_APPLE_VERSION: "0.2.0-beta.9",
+  LOOMARR_APPLE_BUILD_NUMBER: "7",
+  ...overrides,
+});
+
+test("resolves the TestFlight channel to the permanent Apple TV identity", async () => {
+  const config = await expoConfig(appleTvReleaseEnvironment());
+
+  // Its own App Store Connect record, apart from the iPhone's media.loomarr.mobile.
+  assert.equal(config.name, "Loomarr TV");
+  assert.equal(config.slug, "loomarr-tv");
+  assert.equal(config.ios.bundleIdentifier, "media.loomarr.tv");
+  // Every prerelease of 0.2.0 shares the 0.2.0 TestFlight train; the build orders them.
+  assert.equal(config.version, "0.2.0");
+  assert.equal(config.ios.buildNumber, "7");
+  // Without these App Store Connect asks the export-compliance question on every upload, and
+  // required-reason API use is undeclared.
+  assert.equal(config.ios.config.usesNonExemptEncryption, false);
+  assert.deepEqual(config.ios.privacyManifests.NSPrivacyAccessedAPITypes, [
+    {
+      NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
+      NSPrivacyAccessedAPITypeReasons: ["CA92.1"],
+    },
+  ]);
+  // The Shield identity and the TV build plugins are the development config, untouched.
+  assert.match(config.android.package, /\.prototype$/);
+  assert.equal(config.android.versionCode, undefined);
+  assert.ok(config.plugins.includes("../../scripts/with-loomarr-ios-network.cjs"));
+  assert.ok(
+    config.plugins.some((plugin) => Array.isArray(plugin) && plugin[0] === "@react-native-tvos/config-tv"),
+  );
+});
+
+test("fails closed when an Apple TV TestFlight build has an invalid channel or version metadata", async () => {
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_RELEASE_CHANNEL: "appstore" })),
+    /Apple TV release channel must be testflight/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_VERSION: "" })),
+    /must be x\.y\.z/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_VERSION: "0.2" })),
+    /must be x\.y\.z/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "0" })),
+    /positive integer/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "seven" })),
+    /positive integer/,
+  );
+  await assert.rejects(
+    expoConfig(appleTvReleaseEnvironment({ LOOMARR_APPLE_RELEASE_CHANNEL: "" })),
+    /requires LOOMARR_APPLE_RELEASE_CHANNEL/,
+  );
+  await assert.rejects(
+    expoConfig(
+      appleTvReleaseEnvironment({
+        LOOMARR_SHIELD_RELEASE_CHANNEL: "sideload",
+        LOOMARR_ANDROID_VERSION_CODE: "1020003",
+        LOOMARR_ANDROID_VERSION_NAME: "0.1.2-beta.3",
+      }),
+    ),
+    /either the Shield or the Apple TV app/,
+  );
+});
+
+// A PNG's IHDR chunk holds its width and height as big-endian integers at bytes 16 and 20.
+const pngSize = async (path) => {
+  const bytes = await readFile(new URL(path, new URL("../", import.meta.url)));
+  return `${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`;
+};
+
+test("gives tvOS every home-screen icon and Top Shelf image at the size App Store Connect accepts", async () => {
+  const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
+  const tvPlugin = config.expo.plugins.find(
+    (plugin) => Array.isArray(plugin) && plugin[0] === "@react-native-tvos/config-tv",
+  );
+  const sizes = {
+    icon: "1280x768",
+    iconSmall: "400x240",
+    iconSmall2x: "800x480",
+    topShelf: "1920x720",
+    topShelf2x: "3840x1440",
+    topShelfWide: "2320x720",
+    topShelfWide2x: "4640x1440",
+  };
+
+  assert.deepEqual(Object.keys(tvPlugin[1].appleTVImages).sort(), Object.keys(sizes).sort());
+  for (const [image, size] of Object.entries(sizes)) {
+    assert.equal(await pngSize(tvPlugin[1].appleTVImages[image]), size, image);
   }
 });
 
@@ -61,6 +171,9 @@ test("keeps the permanent identity unreachable outside the sideload build", asyn
   delete environment.LOOMARR_SHIELD_RELEASE_CHANNEL;
   delete environment.LOOMARR_ANDROID_VERSION_CODE;
   delete environment.LOOMARR_ANDROID_VERSION_NAME;
+  delete environment.LOOMARR_APPLE_RELEASE_CHANNEL;
+  delete environment.LOOMARR_APPLE_VERSION;
+  delete environment.LOOMARR_APPLE_BUILD_NUMBER;
   const { stdout } = await execFileAsync("pnpm", ["exec", "expo", "config", "--json"], {
     cwd: new URL("..", import.meta.url),
     env: environment,
@@ -70,6 +183,10 @@ test("keeps the permanent identity unreachable outside the sideload build", asyn
   assert.equal(config.name, "Loomarr TV Prototype");
   assert.equal(config.slug, "loomarr-tv-prototype");
   assert.match(config.android.package, /\.prototype$/);
+  assert.match(config.ios.bundleIdentifier, /\.prototype$/);
+  // The release-only compliance settings never reach development builds.
+  assert.equal(config.ios.config, undefined);
+  assert.equal(config.ios.privacyManifests, undefined);
 });
 
 test("fails closed when a Shield release has an invalid channel or version metadata", async () => {

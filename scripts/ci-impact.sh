@@ -236,12 +236,20 @@ classify() {
       select_gate apple_mobile
       select_gate apple_tv
       ;;
-    web/scripts/build-ios-testflight.sh|web/scripts/build-ios-testflight.test.sh)
-      # The release script runs only in the main-only ios-testflight workflow, which also reads this
-      # classifier's apple_mobile decision; its test runs in release-verify, which the contracts
-      # gate owns.
+    web/scripts/build-apple-testflight.sh|web/scripts/build-apple-testflight.test.sh)
+      # The release script runs only in the main-only apple-testflight workflow, which also reads
+      # this classifier's apple_mobile and apple_tv decisions; its test runs in release-verify,
+      # which the contracts gate owns.
       known=true
       select_gate contracts
+      ;;
+    web/scripts/apple-testflight-config.cjs|web/scripts/apple-testflight-config.test.cjs)
+      # Both Apple app configs read the release identity from here, so a change uploads both apps.
+      # Its test runs in `imports:check`, which the clients gate owns.
+      known=true
+      select_gate clients
+      select_gate apple_mobile
+      select_gate apple_tv
       ;;
     web/scripts/build-android-client.sh|web/scripts/with-memory-safe-android-build.cjs|web/scripts/with-memory-safe-android-build.test.cjs)
       known=true
@@ -759,7 +767,7 @@ classify() {
     # Workflows whose product checks run elsewhere (release, maintenance, reporting, cache
     # housekeeping). There is no .github/workflows/* catch-all: a workflow no rule names is
     # unknown and selects every gate until it is classified (#1570).
-    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/image-benchmark.yml|.github/workflows/ios-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml)
+    .github/workflows/android-beta.yml|.github/workflows/android-ccache-promotion.yml|.github/workflows/cache-cleanup.yml|.github/workflows/ci-go-cache-warm.yml|.github/workflows/codeql.yml|.github/workflows/deadcode.yml|.github/workflows/image-benchmark.yml|.github/workflows/apple-testflight.yml|.github/workflows/pages.yml|.github/workflows/release-notes.yml|.github/workflows/release.yml|.github/workflows/rust-maintenance.yml)
       known=true
       select_gate policy
       ;;
