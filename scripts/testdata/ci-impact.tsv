@@ -151,6 +151,7 @@ openrouter-catalog-leaf	internal/openroutercatalog/openrouter_route.go	contracts
 research-archive	research/cmd/filler-corpus-pilot-rights-review/main.go;research/internal/fillerreview/temporal_reviewer_template.go;research/go.mod	docs
 filler-eval-doc	research/docs/filler-certification.md	docs
 ci-ffmpeg-toolchain	scripts/ci-ffmpeg.sh	contracts,go,go_full,policy
+go-module-download	scripts/go-mod-download.sh	contracts,go,go_full,policy
 go-race-sharding	scripts/go-certification-lanes.tsv;scripts/go-race-policy.sh;scripts/go-race-weights.tsv;scripts/go-shard.sh;scripts/go-test-lane.sh;scripts/go-test-packages.sh	contracts,go,go_full,policy
 spike-throwaway	spike/4k-tonemap/README.md;spike/4k-tonemap/image/Dockerfile	docs
 playout-bench-command	cmd/playout-bench/main.go	contracts,go,postgres,image,playout_bench

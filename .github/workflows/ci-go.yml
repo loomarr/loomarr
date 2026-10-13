@@ -152,9 +152,10 @@ jobs:
       # every package in the repository — the one place in this lane that needs the FULL graph
       # in one call. Fetching it here, in its own named step with the whole job's time budget
       # behind it, turns a cold-cache network hiccup into a clear "Download Go modules" failure
-      # instead of a cryptic exit status buried inside that one test (#1834).
+      # instead of a cryptic exit status buried inside that one test (#1834). The helper retries a
+      # proxy stream reset with the same bounded policy as container pulls (#1900).
       - name: Download Go modules
-        run: go mod download
+        run: ./scripts/go-mod-download.sh
       # Exercise the deployed media toolchain. Distribution FFmpeg versions have different
       # MPEG-TS startup latency; both executables must match the production image's pins.
       # Cache the immutable archive by digest and verify every hit before extraction.
