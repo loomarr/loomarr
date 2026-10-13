@@ -328,52 +328,162 @@ func TestFillerPipelineDriverRecordsPassForExistingClipUnderProductionShape(t *t
 	}
 }
 
-func TestFillerEnrichmentResolvesEmptySourceGeographyToHomeCountry(t *testing.T) {
-	st := testkit.MigratedSQLiteStore(t)
-	at := time.Unix(1_700_000_500, 0).UTC()
-	home := func() filler.Geography { return filler.Geography{Country: "US"} }
-	source := fillerstore.NewFillerSource("archive:inherit-home", "archive", "archive.org/details/commercials",
-		"Archive source", at)
+// geographyFixture registers one archive source and one break-body clip fetched from it.
+func geographyFixture(t *testing.T, st fillerstore.Store, at time.Time, country, title string) (store.Clip, fstest.MapFS) {
+	t.Helper()
+	source := fillerstore.NewFillerSource("archive:geo", "archive", "archive.org/details/commercials", "Archive source", at)
+	source.Geography = filler.Geography{Country: country}
 	if err := st.UpsertFillerSource(t.Context(), source); err != nil {
 		t.Fatal(err)
 	}
 	clip := store.Clip{Clip: filler.Clip{
-		Hash: "inherit-home-geography", Path: "inherit-home.mp4", Name: "Inherited geography advert",
+		Hash: "geo-clip", Path: "geo-clip.mp4", Name: title,
 		Kind: filler.Commercial, Placement: filler.PlacementBreakBody,
 	}, UpdatedAt: at, CreatedAt: at}
 	if err := st.UpsertClip(t.Context(), clip); err != nil {
 		t.Fatal(err)
 	}
 	files := fstest.MapFS{
-		"inherit-home.info.json": {Data: []byte(`{"title":"Inherited geography advert","loomarr":{"sourceId":"archive:inherit-home"}}`)},
+		"geo-clip.info.json": {Data: []byte(`{"title":"` + title + `","loomarr":{"sourceId":"archive:geo"}}`)},
 	}
-	runner := fillerenrichment.NewRunner(
-		fillerEnrichmentRepository{st: st},
-		fillerEnrichmentSignals{store: st, files: files, home: home}.Load,
-		func() int { return 1 }, func() time.Time { return at.Add(time.Minute) },
-	)
-	result, err := runner.Run(t.Context())
-	if err != nil || result.Considered != 1 {
+	return clip, files
+}
+
+func runDeterministic(t *testing.T, st fillerstore.Store, files fstest.MapFS, at time.Time) {
+	t.Helper()
+	runner := fillerenrichment.NewRunner(fillerEnrichmentRepository{st: st},
+		fillerEnrichmentSignals{store: st, files: files}.Load,
+		func() int { return 5 }, func() time.Time { return at })
+	if result, err := runner.Run(t.Context()); err != nil || result.Considered != 1 {
 		t.Fatalf("Run() = %+v, err %v", result, err)
-	}
-	got, err := st.GetClip(t.Context(), clip.Hash)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The break-body assembler must now be able to use the clip for a US channel.
-	if !filler.GeographicallyEligible(got.Clip, filler.Geography{Country: "US"}) {
-		t.Fatalf("clip %+v is not eligible for a US installation", got.Clip)
 	}
 	if again, err := runner.Run(t.Context()); err != nil || again.Considered != 0 {
 		t.Fatalf("second Run() = %+v, err %v; the pass must be recorded so the clip is not re-selected", again, err)
 	}
-	got.Placement = filler.PlacementBreakBody
-	pod := filler.Assemble([]filler.Clip{got.Clip}, filler.Window{ChannelID: "ch1", Seed: 1,
-		GapMs: 60000, PodMax: 2}, filler.Policy{Geography: filler.Geography{Country: "US"}}, nil)
-	if pod.MatchLevel == filler.MatchBumperCard {
-		t.Fatalf("US pod over enriched clip fell back to the bumper card: %+v", pod)
+}
+
+func usPod(c filler.Clip) filler.Pod {
+	c.Placement = filler.PlacementBreakBody
+	return filler.Assemble([]filler.Clip{c}, filler.Window{ChannelID: "ch1", Seed: 1, GapMs: 60000, PodMax: 2},
+		filler.Policy{Geography: filler.Geography{Country: "US"}}, nil)
+}
+
+// #1670: British archive ads aired on a US-only household labelled country=US, because a source
+// that declares no country stamped the HOUSEHOLD's home country onto every clip it fetched.
+func TestFillerEnrichmentUndeclaredSourceLeavesClipGeographyUnknown(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_500, 0).UTC()
+	clip, files := geographyFixture(t, st, at, "", "NatWest bank commercial")
+	runDeterministic(t, st, files, at.Add(time.Minute))
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got.GeographicScope != filler.GeographicNational || got.Country != "US" || got.Market != "" {
-		t.Fatalf("inherited source geography = %+v, want national US", got.Clip)
+	if got.Country != "" || got.GeographicScope == filler.GeographicNational {
+		t.Fatalf("undeclared source labelled the clip %+v; want unknown geography", got.Clip)
+	}
+	if filler.GeographicallyEligible(got.Clip, filler.Geography{Country: "US"}) {
+		t.Fatalf("clip from an undeclared source passed the US-only filter: %+v", got.Clip)
+	}
+	if pod := usPod(got.Clip); pod.MatchLevel != filler.MatchBumperCard {
+		t.Fatalf("US pod aired an unknown-geography clip: %+v", pod)
+	}
+}
+
+func TestFillerEnrichmentDeclaredSourceStillLabelsClips(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_500, 0).UTC()
+	clip, files := geographyFixture(t, st, at, "US", "Tootsie Pop commercial")
+	runDeterministic(t, st, files, at.Add(time.Minute))
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GeographicScope != filler.GeographicNational || got.Country != "US" ||
+		got.GeoEvidence != "registered_source:archive:geo" {
+		t.Fatalf("declared US source geography = %+v, want national US from the source", got.Clip)
+	}
+	if pod := usPod(got.Clip); pod.MatchLevel == filler.MatchBumperCard {
+		t.Fatalf("US pod over a declared-US clip fell back to the bumper card: %+v", pod)
+	}
+}
+
+func TestFillerEnrichmentBritishAdvertWordingIsNotUSEvidence(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_500, 0).UTC()
+	clip, files := geographyFixture(t, st, at, "US", "Puma Advert 1994")
+	runDeterministic(t, st, files, at.Add(time.Minute))
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Country != "" {
+		t.Fatalf("\"Advert\" title kept the US source default: %+v", got.Clip)
+	}
+}
+
+// The prod clips were stamped by producer version 3. The version bump must re-run them and retract
+// the stamp; leaving it would keep every British ad that already aired eligible forever.
+func TestFillerEnrichmentRetractsEarlierHomeCountryStamp(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_500, 0).UTC()
+	clip, files := geographyFixture(t, st, at, "", "Greene King IPA commercial")
+	stampedAt := at.Add(time.Minute)
+	if _, err := st.ApplyFillerEnrichmentPass(t.Context(), fillerenrichment.Pass{
+		ClipHash: clip.Hash, Producer: fillerenrichment.DeterministicProducer, ProducerVersion: "3",
+		TaxonomyVersion: fillerenrichment.ControlledTaxonomyVersion, CompletedAt: stampedAt,
+		States: []fillerenrichment.State{{ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography,
+			Status: fillerenrichment.StatusComplete,
+			Value:  fillerenrichment.Value{Geography: fillerenrichment.Geography{Scope: "national", Country: "US"}},
+			Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceSourceDefault,
+				Reference: "registered_source:archive:geo", Confidence: 100,
+				Producer: fillerenrichment.DeterministicProducer, ProducerVersion: "3", ObservedAt: stampedAt}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stamped, err := st.GetClip(t.Context(), clip.Hash); err != nil || stamped.Country != "US" {
+		t.Fatalf("fixture did not reproduce the v3 stamp: %+v, err %v", stamped.Clip, err)
+	}
+	runDeterministic(t, st, files, at.Add(time.Hour))
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Country != "" || got.GeoEvidence != "" || filler.GeographicallyEligible(got.Clip, filler.Geography{Country: "US"}) {
+		t.Fatalf("re-enrichment kept the inherited US stamp: %+v", got.Clip)
+	}
+	states, err := st.ListFillerEnrichment(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range states {
+		if state.Axis == fillerenrichment.AxisGeography && state.Status != fillerenrichment.StatusUnsupported {
+			t.Fatalf("geography state after retraction = %+v, want unsupported", state)
+		}
+	}
+}
+
+// A withdrawal retracts only its own producer's answer: a cited or operator location stays.
+func TestFillerEnrichmentWithdrawalKeepsOtherEvidence(t *testing.T) {
+	st := testkit.MigratedSQLiteStore(t)
+	at := time.Unix(1_700_000_500, 0).UTC()
+	clip, files := geographyFixture(t, st, at, "", "Rumbelows commercial")
+	if _, err := st.ApplyFillerEnrichmentPass(t.Context(), fillerenrichment.Pass{
+		ClipHash: clip.Hash, Producer: "vision", ProducerVersion: "1", CompletedAt: at,
+		States: []fillerenrichment.State{{ClipHash: clip.Hash, Axis: fillerenrichment.AxisGeography,
+			Status: fillerenrichment.StatusComplete,
+			Value:  fillerenrichment.Value{Geography: fillerenrichment.Geography{Scope: "national", Country: "GB"}},
+			Evidence: fillerenrichment.Evidence{Kind: fillerenrichment.EvidenceContent, Reference: "frame.visible_text",
+				Confidence: 100, Producer: "vision", ProducerVersion: "1", ObservedAt: at}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runDeterministic(t, st, files, at.Add(time.Hour))
+	got, err := st.GetClip(t.Context(), clip.Hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Country != "GB" {
+		t.Fatalf("withdrawal cleared a content-observed location: %+v", got.Clip)
 	}
 }

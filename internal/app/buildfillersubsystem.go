@@ -157,12 +157,7 @@ func buildFillerSubsystem(
 		"every", set.dur("filler.sync_every"))
 	pipeline, transcribeStage, visionStage := buildPipeline(st, set, layout, log, emitter, splitter, wake,
 		processDiagnostics, storageGovernor, metricRecorder, playbackHeadroom)
-	enrichmentSignals := fillerEnrichmentSignals{
-		store: st, files: layout.FS(),
-		home: func() filler.Geography {
-			return filler.Geography{Country: set.str("filler.home_country"), Market: set.str("filler.home_market")}
-		},
-	}
+	enrichmentSignals := fillerEnrichmentSignals{store: st, files: layout.FS()}
 	enrichment := fillerenrichment.NewRunner(
 		fillerEnrichmentRepository{st: st},
 		enrichmentSignals.Load,

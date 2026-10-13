@@ -309,6 +309,19 @@ func Apply(current, candidate State) (State, bool, error) {
 	if reflect.DeepEqual(current, candidate) {
 		return current, false, nil
 	}
+	// An `unsupported` candidate is a withdrawal: "this producer no longer has an answer". It may
+	// retract the same producer's own earlier answer after its rules changed (a new version), so a
+	// corrected rule actually un-labels clips it labelled before. It never displaces a known value
+	// from any other producer or an operator, whatever its rank.
+	if candidate.Status == StatusUnsupported && !current.Value.empty() {
+		withdraws := current.Evidence.Kind != EvidenceOperator &&
+			current.Evidence.Producer == candidate.Evidence.Producer &&
+			current.Evidence.ProducerVersion != candidate.Evidence.ProducerVersion
+		if withdraws {
+			return candidate, true, nil
+		}
+		return current, false, nil
+	}
 	currentRank, _ := current.Evidence.Kind.Rank()
 	candidateRank, _ := candidate.Evidence.Kind.Rank()
 	refresh := candidateRank == currentRank && current.Evidence.Kind != EvidenceOperator &&
