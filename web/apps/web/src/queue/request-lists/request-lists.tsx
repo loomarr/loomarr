@@ -4,6 +4,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative } from "@loomarr/core/format";
 import { requestFailureHint, requestFixLabel } from "@loomarr/core/requests";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { RequestCard } from "@/components/loomarr/ai/request-card";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -144,9 +145,12 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
 const NeedsYouList = () => {
   const { isAdmin } = useAuth();
   const { inTab, pendingApprovals, error, refetch } = useRequests();
+  // ⚠ Kept true while a bulk review is open: approving the last pending items drops the count to
+  // zero, and unmounting the queue then would discard the result the operator is about to read.
+  const [reviewing, setReviewing] = useState(false);
   const failed = inTab("needs-you");
   if (error != null) return <ErrorState error={error} onRetry={refetch} />;
-  const showApprovals = isAdmin && pendingApprovals > 0;
+  const showApprovals = isAdmin && (pendingApprovals > 0 || reviewing);
   if (!showApprovals && failed.length === 0) {
     return (
       <TabEmpty
@@ -162,7 +166,7 @@ const NeedsYouList = () => {
           <h2 id="needs-approvals" className="font-semibold text-lg">
             Waiting for your approval
           </h2>
-          <ApprovalQueue />
+          <ApprovalQueue onReviewingChange={setReviewing} />
         </section>
       )}
       {failed.length > 0 && (

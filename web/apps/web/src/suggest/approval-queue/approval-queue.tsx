@@ -73,7 +73,14 @@ const without = (set: ReadonlySet<string>, id: string) => {
   return next;
 };
 
-const ApprovalQueue = () => {
+interface ApprovalQueueProps {
+  // Whether a bulk review (summary or result) is open. ⚠ Approving the last pending items empties
+  // the queue, and a page that unmounts an empty queue would take the result — failures included
+  // — with it; the page keeps the queue mounted while this is true.
+  onReviewingChange?: (reviewing: boolean) => void;
+}
+
+const ApprovalQueue = ({ onReviewingChange }: ApprovalQueueProps = {}) => {
   const queryClient = useQueryClient();
   const proposals = proposalsApi.useListProposals({ status: "submitted" }, { query: { retry: false } });
   const invalidate = () =>
@@ -166,6 +173,7 @@ const ApprovalQueue = () => {
   // Cancel keeps the selection exactly as it was: nothing was approved.
   const closeReview = () => {
     setReview(null);
+    onReviewingChange?.(false);
     bulk.reset();
     bulkPulls.reset();
   };
@@ -177,8 +185,29 @@ const ApprovalQueue = () => {
     closeReview();
   };
 
+  // Rendered on every branch below: the review outlives the rows it is about. Approving the last
+  // pending items empties the queue, and the result still has to be read — failures included.
+  const reviewDialog = review && (
+    <BulkApproveDialog
+      open
+      consequences={review.consequences}
+      {...(review.results ? { results: review.results } : {})}
+      pending={bulk.isPending || bulkPulls.isPending}
+      error={bulk.error ?? bulkPulls.error}
+      onCancel={closeReview}
+      onConfirm={() => submitBulk(review.consequences.items.map((i) => i.id))}
+      onRetry={submitBulk}
+      onDone={finishReview}
+    />
+  );
+
   if (proposals.error) {
-    return <ErrorState error={proposals.error} onRetry={() => proposals.refetch()} />;
+    return (
+      <>
+        <ErrorState error={proposals.error} onRetry={() => proposals.refetch()} />
+        {reviewDialog}
+      </>
+    );
   }
 
   const rows = unwrap(proposals.data, (b) => b.proposals) ?? [];
@@ -188,10 +217,13 @@ const ApprovalQueue = () => {
   // must not mean "couldn't look".
   if (rows.length === 0 && pulls.length === 0 && !pullsQuery.error) {
     return (
-      <EmptyState
-        title="Queue's clear"
-        description="Nothing is waiting for approval. Suggested lineups land here before anything is acquired."
-      />
+      <>
+        <EmptyState
+          title="Queue's clear"
+          description="Nothing is waiting for approval. Suggested lineups land here before anything is acquired."
+        />
+        {reviewDialog}
+      </>
     );
   }
 
@@ -222,6 +254,7 @@ const ApprovalQueue = () => {
     bulk.reset();
     bulkPulls.reset();
     setReview({ consequences });
+    onReviewingChange?.(true);
   };
 
   // A single proposal's approve/deny error (#1430): rendered on THAT row by ApprovalQueueItem,
@@ -376,19 +409,7 @@ const ApprovalQueue = () => {
         />
       )}
 
-      {review && (
-        <BulkApproveDialog
-          open
-          consequences={review.consequences}
-          {...(review.results ? { results: review.results } : {})}
-          pending={bulk.isPending || bulkPulls.isPending}
-          error={bulk.error ?? bulkPulls.error}
-          onCancel={closeReview}
-          onConfirm={() => submitBulk(review.consequences.items.map((i) => i.id))}
-          onRetry={submitBulk}
-          onDone={finishReview}
-        />
-      )}
+      {reviewDialog}
     </div>
   );
 };
