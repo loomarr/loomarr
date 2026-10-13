@@ -4,5 +4,6 @@
 export * from "./channel-policy";
 export * from "./client-platform";
 export * from "./people";
+export * from "./requests";
 export * from "./rule-vocabulary";
 export * from "./testcard";

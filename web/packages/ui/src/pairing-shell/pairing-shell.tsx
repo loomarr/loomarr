@@ -121,7 +121,7 @@ const pairingContent = (
           Find your Loomarr server
         </Text>
         <Text density={density} textRole="body">
-          Choose a server on this network. You’ll approve this TV on the next screen.
+          {`Choose a server on this network. You’ll approve this ${density === "tv" ? "TV" : "device"} on the next screen.`}
         </Text>
         {discovery?.servers.map((server, index) => (
           <Action

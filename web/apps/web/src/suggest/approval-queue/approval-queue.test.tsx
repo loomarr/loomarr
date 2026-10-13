@@ -344,4 +344,75 @@ describe("ApprovalQueue — pulls, names, per-row pending", () => {
     expect(bulkApprove).toBeEnabled();
     expect(bulkApprove).toHaveAccessibleName("Approve 2");
   });
+
+  // #1430: a failed decision used to surface in one banner above the whole queue, away from the
+  // row it happened to. It must render on the row whose approve/dismiss actually failed, and must
+  // not appear on an unrelated row rendered at the same time.
+  it("renders an approve failure on its own row, not a page-level banner", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes(`/v1/proposals/${proposal.id}/approve`)) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ title: "Couldn't approve", detail: "Try again" }), {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        if (url.includes("/v1/filler/pulls")) return Promise.resolve(jsonResponse({ pulls: [] }));
+        if (url.includes("/v1/discovery/feedback")) return Promise.resolve(jsonResponse([]));
+        if (url.endsWith("/outlook")) return Promise.resolve(jsonResponse(outlook({ state: "uncertain" })));
+        if (url.includes("/v1/proposals"))
+          return Promise.resolve(jsonResponse({ proposals: [proposal, second] }));
+        return Promise.resolve(jsonResponse({}));
+      }),
+    );
+    render(<ApprovalQueue />);
+
+    const [list] = await screen.findAllByRole("list");
+    if (!list) throw new Error("no proposal list rendered");
+    const approveButtons = await within(list).findAllByRole("button", { name: /^Approve$/ });
+    await userEvent.click(approveButtons[0] as HTMLElement);
+
+    const failedRow = (await screen.findByText("90s action night")).closest("li");
+    const otherRow = screen.getByText("Noir").closest("li");
+    if (!failedRow || !otherRow) throw new Error("rows not found");
+
+    expect(await within(failedRow).findByRole("alert")).toHaveTextContent("Couldn't approve");
+    expect(within(otherRow).queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("renders a filler-pull decision failure on its own card, not on another pull's", async () => {
+    const otherPull = { ...pull, id: "pull_2", title: "Retro ads" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes(`/v1/filler/pulls/${pull.id}/dismiss`)) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ title: "Couldn't dismiss", detail: "Try again" }), {
+              status: 500,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        if (url.includes("/v1/filler/pulls"))
+          return Promise.resolve(jsonResponse({ pulls: [pull, otherPull] }));
+        if (url.includes("/v1/discovery/feedback")) return Promise.resolve(jsonResponse([]));
+        if (url.includes("/v1/proposals")) return Promise.resolve(jsonResponse({ proposals: [] }));
+        return Promise.resolve(jsonResponse({}));
+      }),
+    );
+    render(<ApprovalQueue />);
+
+    const notNowButtons = await screen.findAllByRole("button", { name: "Not now" });
+    await userEvent.click(notNowButtons[0] as HTMLElement);
+
+    const failedCard = (await screen.findByText("Top up the 1990s")).closest('div[class*="rounded-lg"]');
+    const otherCard = screen.getByText("Retro ads").closest('div[class*="rounded-lg"]');
+    if (!failedCard || !otherCard) throw new Error("pull cards not found");
+
+    expect(await within(failedCard as HTMLElement).findByRole("alert")).toHaveTextContent("Couldn't dismiss");
+    expect(within(otherCard as HTMLElement).queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

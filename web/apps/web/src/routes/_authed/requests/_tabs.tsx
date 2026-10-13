@@ -1,10 +1,10 @@
+import type { RequestTab } from "@loomarr/core/requests";
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { PageHeader } from "@/components/loomarr/shell/page-header";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import type { RequestTab } from "@/queue/request-status";
 import { useRequests } from "@/queue/use-requests";
 
 // Requests — what you've asked for, and anything that needs you (#1405; this was "Queue"). Three

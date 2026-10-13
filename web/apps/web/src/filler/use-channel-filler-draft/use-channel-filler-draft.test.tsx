@@ -5,6 +5,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
 import { canonicalize, PREVIEW_DEBOUNCE_MS, useChannelFillerDraft } from "./use-channel-filler-draft";
@@ -81,7 +82,7 @@ const policy = (
   breakDuration?: string,
 ): ChannelPolicy => ({
   ordering: "shuffle",
-  scope: { era: { from: 1990, to: 1999 } },
+  scope: { dates: eraDates({ from: 1990, to: 1999 }) },
   ...(filler ? { filler } : {}),
   ...(breaksPerHour !== undefined ? { breaksPerHour } : {}),
   ...(breakDuration !== undefined ? { breakDuration } : {}),
@@ -274,7 +275,9 @@ describe("useChannelFillerDraft", () => {
     // The filler is the new draft…
     expect(saves[0]).toMatchObject({ policy: { filler: { audience: "family", pinned: ["p9"] } } });
     // …and the rest of the policy is carried, not wiped (PATCH replaces policy whole).
-    expect(saves[0]).toMatchObject({ policy: { ordering: "shuffle", scope: { era: { from: 1990 } } } });
+    expect(saves[0]).toMatchObject({
+      policy: { ordering: "shuffle", scope: { dates: { seriesAiring: [{ from: 1990 }] } } },
+    });
   });
 
   it("apply can disable breaks or clear an override back to inherited", async () => {

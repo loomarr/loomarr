@@ -36,6 +36,11 @@ interface GuideSurfaceProps {
   layout: GuideLayout;
   onFilterChange?: (filter: GuideFilter) => void;
   onSelectionChange: (selection: GuideSelection) => void;
+  /**
+   * TV only: the D-pad pressed past the timeline's left or right edge, from the last focused
+   * cell. The handler decides whether that pages the window (#1659 decision N4) and where focus goes.
+   */
+  onTimeEdge?: (side: "left" | "right") => void;
   onTune?: (selection: GuideSelection) => void;
   renderArtwork?: GuideArtworkRenderer;
   renderChannelLogo?: GuideLogoRenderer;

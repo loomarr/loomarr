@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { eraDates } from "@/lib/era-dates";
 import { ChannelSeriesScope } from "./channel-series-scope";
 
 const makeWrapper = () => {
@@ -37,7 +38,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const POPULATED: ChannelPolicy = {
   ordering: "shuffle",
-  scope: { era: { from: 1990, to: 1999 } },
+  scope: { dates: eraDates({ from: 1990, to: 1999 }) },
   applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
 };
 
@@ -74,7 +75,7 @@ describe("ChannelSeriesScope", () => {
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        scope: expect.objectContaining({ series: ["series:tvdb:71663"], era: POPULATED.scope?.era }),
+        scope: expect.objectContaining({ series: ["series:tvdb:71663"], dates: POPULATED.scope?.dates }),
       }),
     );
     // Reconcile-owned `applied` rides through untouched.

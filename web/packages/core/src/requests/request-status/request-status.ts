@@ -1,8 +1,8 @@
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
 import type { ProposalJourneyDTO } from "@loomarr/api/models/proposalJourneyDTO";
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
-import { pluralize } from "@loomarr/core/format";
-import { pickCount, progressLine } from "@/components/loomarr/feedback/progress-line";
+import { pluralize } from "../../format";
+import { pickCount, progressLine } from "../progress-line/progress-line";
 import type { RequestAcquisition, RequestStatus } from "./request-status.type";
 
 // One request, read the way its requester asks about it: does it need me, is it still moving,
@@ -100,4 +100,12 @@ const requestFixLabel = (journey: ProposalJourneyDTO): string | undefined => {
   return undefined;
 };
 
-export { requestAcquisitions, requestFixLabel, requestNeedsYou, requestStatus };
+// The server's message sometimes already ends with its own guidance ("…this channel. Try again
+// later." + "Try again later."), so the guidance is appended only when the message lacks it.
+const requestFailureHint = (message?: string, guidance?: string): string => {
+  const said = message?.trim().toLowerCase() ?? "";
+  const extra = guidance && !said.includes(guidance.trim().toLowerCase()) ? guidance : undefined;
+  return [message, extra].filter(Boolean).join(" ");
+};
+
+export { requestAcquisitions, requestFailureHint, requestFixLabel, requestNeedsYou, requestStatus };

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -68,6 +69,11 @@ type fakeChannelSvc struct {
 	// programming/preview draft capture (P6): what the last CyclePreviewDraft received.
 	draftLineup []schedule.LineupEntry
 	draftPolicy *schedule.ChannelPolicy
+
+	// programming/changes (#1877): the diff served, and the span the last call asked for.
+	diff        channels.ScheduleDiff
+	diffFrom    time.Time
+	diffHorizon time.Duration
 }
 
 func (f *fakeChannelSvc) Reconcile(ctx context.Context, id string) error {
@@ -116,6 +122,18 @@ func (f *fakeChannelSvc) CyclePreviewDraft(ctx context.Context, id string, at ti
 		Excluded: f.cycleExcluded,
 		Trace:    f.cycleTrace,
 	}, nil
+}
+
+// ScheduleDiffDraft records the draft and span it was handed and serves f.diff, or f.cycleErr
+// (the same error knob the cycle previews use).
+func (f *fakeChannelSvc) ScheduleDiffDraft(ctx context.Context, id string, from time.Time, horizon time.Duration,
+	draftLineup []schedule.LineupEntry, draftPolicy *schedule.ChannelPolicy) (channels.ScheduleDiff, error) {
+	f.draftLineup, f.draftPolicy = draftLineup, draftPolicy
+	f.diffFrom, f.diffHorizon = from, horizon
+	if f.cycleErr != nil {
+		return channels.ScheduleDiff{}, f.cycleErr
+	}
+	return f.diff, nil
 }
 
 // fakeLiveTVSvc is a stateful Live TV service double.
@@ -1246,6 +1264,61 @@ func TestUpdateChannel_RejectsMalformedDateScopes(t *testing.T) {
 		resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1", body))
 		if resp.StatusCode != http.StatusUnprocessableEntity {
 			t.Errorf("invalid policy %s → %d, want 422", body, resp.StatusCode)
+		}
+	}
+}
+
+// `era` is still accepted as a request alias for era-shaped dates (#1877), but it is
+// stored and returned only as `dates`.
+func TestUpdateChannel_EraAliasIsStoredAndReturnedAsDates(t *testing.T) {
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
+	mkChannel(t, srv, "c1", "A", 5)
+
+	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
+		channelPatchBody(t, st, "c1", `{"policy":{"scope":{"era":{"from":1990}},"rules":[{"id":"r","what":{"era":{"from":1980,"to":1989}}}]}}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("era patch → %d, want 200", resp.StatusCode)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"era":{`) {
+		t.Errorf("response carried a scope era: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"seriesAiring":[{"from":1990}]`) {
+		t.Errorf("response did not carry the era as dates: %s", raw)
+	}
+	ch, err := st.GetChannel(context.Background(), "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if era, ok := ch.Policy.Scope.Dates.Era(); !ok || era != (schedule.Range{From: 1990}) {
+		t.Errorf("stored scope dates = %+v, want era-shaped 1990 onwards", ch.Policy.Scope.Dates)
+	}
+	if era, ok := ch.Policy.Rules[0].What.Dates.Era(); !ok || era != (schedule.Range{From: 1980, To: 1989}) {
+		t.Errorf("stored rule dates = %+v, want era-shaped 1980-1989", ch.Policy.Rules[0].What.Dates)
+	}
+}
+
+func TestPolicyRequestsWithEraAndDatesAreAmbiguous(t *testing.T) {
+	harness := newChannelsHarness(t)
+	srv, st := harness.Server, harness.Store
+	mkChannel(t, srv, "c1", "A", 5)
+
+	for _, policy := range []string{
+		`{"scope":{"era":{"from":1990,"to":1999},"dates":{"movieRelease":[{"from":1990,"to":1999}]}}}`,
+		`{"rules":[{"id":"r","what":{"era":{"from":1990,"to":1999},"dates":{"seriesAiring":[{"from":1990,"to":1999}]}}}]}`,
+	} {
+		for name, resp := range map[string]*http.Response{
+			"patch":   do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken, channelPatchBody(t, st, "c1", `{"policy":`+policy+`}`)),
+			"preview": do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, `{"policy":`+policy+`}`),
+		} {
+			raw, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(raw), "not both") {
+				t.Errorf("%s %s → %d %s, want 422 naming the ambiguity", name, policy, resp.StatusCode, raw)
+			}
 		}
 	}
 }

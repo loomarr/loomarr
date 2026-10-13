@@ -52,6 +52,32 @@ describe("phone chrome", () => {
     expect(material).toContain("min-height:80px");
   });
 
+  it("counts what needs the person over a tab's glyph, and says so to a screen reader", () => {
+    const withBadge = [
+      ...items,
+      { badge: 3, icon: "requests", label: "Requests", value: "requests" },
+    ] as const;
+    const markup = render(
+      <TabBar accessibilityLabel="Tabs" idiom="ios" items={withBadge} onSelect={vi.fn()} selected="guide" />,
+    );
+    expect(markup.match(/role="tab"/g)).toHaveLength(4);
+    expect(markup).toContain(">3<");
+    expect(markup).toContain('aria-label="Requests, 3 need attention"');
+    // Zero draws nothing, and a long count is capped.
+    const none = [{ badge: 0, icon: "requests", label: "Requests", value: "requests" }] as const;
+    expect(
+      render(
+        <TabBar accessibilityLabel="Tabs" idiom="ios" items={none} onSelect={vi.fn()} selected="requests" />,
+      ),
+    ).not.toContain("need attention");
+    const many = [{ badge: 120, icon: "requests", label: "Requests", value: "requests" }] as const;
+    expect(
+      render(
+        <TabBar accessibilityLabel="Tabs" idiom="ios" items={many} onSelect={vi.fn()} selected="requests" />,
+      ),
+    ).toContain(">99+<");
+  });
+
   it("docks a footer under the content: no bottom gutter above it, the bar carries the inset", () => {
     const markup = render(
       <Screen density="touch" footer={<Text textRole="metadata">bar</Text>}>

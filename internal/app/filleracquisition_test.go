@@ -83,6 +83,13 @@ func TestSync_SubstitutedPublishedWatchArtifactRemainsHeld(t *testing.T) {
 }
 
 func TestSync_FailedClaimedMoveCannotLaunderReplacementAsOperatorDrop(t *testing.T) {
+	// The failed move is injected with a read-only destination directory. Root ignores directory
+	// permissions, so the move succeeds and the premise never happens (self-hosted runner jobs run as
+	// root). Nothing else fails the rename without tripping the earlier MkdirAll or duplicate
+	// checks, so the hosted non-root runs carry this assertion.
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses the read-only directory that injects the failed move")
+	}
 	dir := t.TempDir()
 	layout, err := filler.NewLayout(dir, "")
 	if err != nil {

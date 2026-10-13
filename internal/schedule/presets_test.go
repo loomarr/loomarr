@@ -82,9 +82,15 @@ func TestLowerWhat(t *testing.T) {
 			t.Errorf("genre include wrong: %+v", s)
 		}
 	})
-	t.Run("era:1990-1999 → range", func(t *testing.T) {
+	t.Run("era:1990-1999 → era-shaped dates", func(t *testing.T) {
 		s, _, ok := LowerWhat("era:1990-1999")
-		if !ok || s.Era == nil || s.Era.From != 1990 || s.Era.To != 1999 {
+		if era, isEra := s.Dates.Era(); !ok || !isEra || era != (Range{From: 1990, To: 1999}) {
+			t.Errorf("era wrong: %+v", s)
+		}
+	})
+	t.Run("era:1990- → open-ended dates", func(t *testing.T) {
+		s, _, ok := LowerWhat("era:1990-")
+		if era, isEra := s.Dates.Era(); !ok || !isEra || era != (Range{From: 1990}) {
 			t.Errorf("era wrong: %+v", s)
 		}
 	})
@@ -96,6 +102,13 @@ func TestLowerWhat(t *testing.T) {
 	t.Run("empty series key → dropped", func(t *testing.T) {
 		if _, _, ok := LowerWhat("series:"); ok {
 			t.Error("empty series key should be dropped")
+		}
+	})
+	t.Run("era a date scope cannot store → dropped", func(t *testing.T) {
+		for _, token := range []string{"era:1999-1990", "era:1850-1899", "era:1990-2150"} {
+			if _, _, ok := LowerWhat(token); ok {
+				t.Errorf("%s should be dropped, not lowered to an invalid date scope", token)
+			}
 		}
 	})
 }

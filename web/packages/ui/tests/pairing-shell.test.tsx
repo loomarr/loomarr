@@ -128,6 +128,30 @@ describe("TV pairing offer", () => {
     expect(markup).not.toContain("EXPO_PUBLIC_LOOMARR_URL");
   });
 
+  it("names the device by its density on the server-choice screen", async () => {
+    const session = new PairingSession({
+      createTransport: vi.fn(),
+      deviceName: "iPhone",
+      store: {
+        clear: vi.fn(async () => undefined),
+        read: vi.fn(async () => undefined),
+        write: vi.fn(async () => undefined),
+      },
+    });
+    await session.initialize(undefined);
+    const render = (density: "tv" | "touch") =>
+      renderToStaticMarkup(
+        <LoomarrProvider theme="dark">
+          <PairingShell allowServerEntry density={density} renderPaired={() => null} session={session} />
+        </LoomarrProvider>,
+      );
+
+    expect(render("tv")).toContain("You’ll approve this TV on the next screen.");
+    const touch = render("touch");
+    expect(touch).toContain("You’ll approve this device on the next screen.");
+    expect(touch).not.toContain("TV");
+  });
+
   it("browses only while the unpaired connection screen is foregrounded", async () => {
     const session = new PairingSession({
       createTransport: vi.fn(),

@@ -68,7 +68,8 @@ const iosReleaseConfig = (config, environment = process.env) => {
           // and expo-system-ui ship their own manifests, expo-modules-core reads only a file size,
           // and the rest touch no required-reason API. expo-system-ui persists the root view colour
           // in UserDefaults; its manifest declares that, and the app declares it at app level as
-          // well: CA92.1 = data read and written by the app itself.
+          // well: CA92.1 = data read and written by the app itself. React Native's pod install
+          // merges this with every pod's declarations, so the shipped manifest has more entries.
           {
             NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
             NSPrivacyAccessedAPITypeReasons: ["CA92.1"],

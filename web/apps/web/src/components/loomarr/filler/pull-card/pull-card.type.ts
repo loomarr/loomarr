@@ -10,6 +10,9 @@ interface PullCardProps {
   onDismiss: () => void;
   // A decision is in flight, so both buttons say so rather than looking inert.
   deciding?: boolean;
+  // A failed approve/dismiss for THIS pull — rendered on the card itself (#1430), not in a
+  // banner elsewhere on the page, so the error sits next to the decision that produced it.
+  error?: unknown;
   className?: string;
 }
 

@@ -14,7 +14,8 @@ if grep -qx "$module/internal/store" <<<"$leaf"; then
   exit 1
 fi
 
-all_count="$(cd "$ROOT" && go list ./... | wc -l)"
+tags_csv="$(cd "$ROOT" && make -s print-tags-csv)"
+all_count="$(cd "$ROOT" && go list -tags "$tags_csv" ./... | wc -l)"
 app_count="$($SELECTOR internal/app/build.go | wc -l)"
 [[ "$app_count" -eq "$all_count" ]] || {
   printf 'go-impact-test: cross-cutting app change selected %d/%d packages\n' "$app_count" "$all_count" >&2
@@ -24,6 +25,22 @@ app_count="$($SELECTOR internal/app/build.go | wc -l)"
 unknown_count="$($SELECTOR unexpected/new-runtime/file.xyz 2>/dev/null | wc -l)"
 [[ "$unknown_count" -eq "$all_count" ]] || {
   printf 'go-impact-test: unknown path selected %d/%d packages\n' "$unknown_count" "$all_count" >&2
+  exit 1
+}
+
+# GH #1279: a package compiled ONLY under a custom build tag (every file carries a
+# `//go:build` line, e.g. internal/eval under `eval`) is invisible to plain `go list ./...`.
+# `make lint` is given `--build-tags` and would gladly check it, so the "select everything"
+# fallback this change triggers must select it too — a narrower-than-everything fallback is
+# exactly the blind spot that let a tag-only lint failure pass locally and fail in CI.
+tag_only_selection="$($SELECTOR internal/eval/attribution.go)"
+tag_only_count="$(wc -l <<<"$tag_only_selection")"
+[[ "$tag_only_count" -eq "$all_count" ]] || {
+  printf 'go-impact-test: tag-only package change selected %d/%d packages (internal/eval must be in the fallback)\n' "$tag_only_count" "$all_count" >&2
+  exit 1
+}
+grep -qx "$module/internal/eval" <<<"$tag_only_selection" || {
+  echo 'go-impact-test: fallback selection omitted the tag-only internal/eval package' >&2
   exit 1
 }
 

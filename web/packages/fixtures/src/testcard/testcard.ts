@@ -111,7 +111,9 @@ const pendingPull: PullDTO = {
   id: "pull_1",
   title: "Top up the 1990s",
   reason: "Saturday Mornings falls back to bumpers, because nothing in the catalog matches its era.",
-  proposedBy: "ada",
+  // proposedBy is the raw user id; the card renders only the server-resolved name (#1430).
+  proposedBy: "usr_ada",
+  proposedByName: "ada",
   status: "pending",
   estimateClips: 52,
   candidateCount: 2,

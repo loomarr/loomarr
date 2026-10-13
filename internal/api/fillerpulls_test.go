@@ -15,11 +15,13 @@ import (
 )
 
 type pullBody struct {
-	ID            string `json:"id"`
-	Status        string `json:"status"`
-	Note          string `json:"note"`
-	EstimateClips int    `json:"estimateClips"`
-	Plan          []struct {
+	ID             string `json:"id"`
+	Status         string `json:"status"`
+	Note           string `json:"note"`
+	ProposedBy     string `json:"proposedBy"`
+	ProposedByName string `json:"proposedByName"`
+	EstimateClips  int    `json:"estimateClips"`
+	Plan           []struct {
 		CandidateID string `json:"candidateId"`
 		SourceID    string `json:"sourceId"`
 		RemoteID    string `json:"remoteId"`
@@ -339,6 +341,53 @@ func TestApproveFillerPull_HistoricalSourcePlan(t *testing.T) {
 	}
 }
 
+// The DTO carries the proposer's NAME, not just their id (#1430) — the same server-side
+// resolution a proposal's CreatedByName already gets, so a filler-pull card never has to
+// render a raw user id. A proposer id that is not a known user (a scheduled job's name,
+// or a since-removed account) resolves to "" rather than falling back to the id itself.
+func TestListFillerPulls_ResolvesProposedByName(t *testing.T) {
+	harness := newAuthFlowHarness(t)
+	srv, st := harness.Server, harness.Store
+	if err := st.UpsertPull(t.Context(), filler.Pull{
+		ID: "pull-by-kid", Status: filler.PullPending, ProposedBy: "u-kid",
+		CreatedAt: time.Now().UTC(), Plan: []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpsertPull(t.Context(), filler.Pull{
+		ID: "pull-by-schedule", Status: filler.PullPending, ProposedBy: "scheduled-weekly-top-up",
+		CreatedAt: time.Now().UTC(), Plan: []filler.PullPlanRow{{SourceID: "classic", Name: "Classic collection"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	boss := login(t, srv, "boss", "pw")
+	resp := authed(t, http.MethodGet, srv.URL+"/v1/filler/pulls", boss, "")
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Pulls []pullBody `json:"pulls"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"pull-by-kid": "kid", "pull-by-schedule": ""}
+	seen := map[string]bool{}
+	for _, p := range body.Pulls {
+		seen[p.ID] = true
+		if got, ok := want[p.ID]; ok && p.ProposedByName != got {
+			t.Errorf("%s proposedByName = %q, want %q", p.ID, p.ProposedByName, got)
+		}
+	}
+	for id := range want {
+		if !seen[id] {
+			t.Errorf("missing pull %q in list", id)
+		}
+	}
+}
+
 func TestApproveFillerPull_ConcurrentDismissalWins(t *testing.T) {
 	srv, st, ff := newFillerServer(t)
 	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
@@ -380,9 +429,10 @@ func TestApproveFillerPull_ConcurrentDismissalWins(t *testing.T) {
 type bulkApproveFillerPullsBody struct {
 	Approved int `json:"approved"`
 	Results  []struct {
-		ID    string `json:"id"`
-		OK    bool   `json:"ok"`
-		Error string `json:"error"`
+		ID       string `json:"id"`
+		OK       bool   `json:"ok"`
+		Enqueued *int   `json:"enqueued"`
+		Error    string `json:"error"`
 	} `json:"results"`
 }
 
@@ -463,6 +513,40 @@ func TestBulkApproveFillerPulls_PartialFailureReportsPerID(t *testing.T) {
 	}
 	if len(ff.ingested) != 2 {
 		t.Errorf("ingested %v, want 2 (one from the seed approve of %s, one from the bulk approve of %s) — the already-decided pull must not re-download a second time", ff.ingested, p1.ID, p2.ID)
+	}
+}
+
+// enqueued is the exact committed-row count each approval queued (Refs #1817, #1876) — the same
+// fact bulk-approve-proposals reports — and is absent, never 0, on a result that didn't approve.
+func TestBulkApproveFillerPulls_ReportsEnqueuedPerApprovedPull(t *testing.T) {
+	srv, st, _ := newFillerServer(t)
+	seedSource(t, st, "classic", "https://archive.org/details/classic", true)
+	two := seedPull(t, st, "pull-bulk-two", []filler.PullPlanRow{
+		{SourceID: "classic", Provider: "archive", RemoteID: "one", URL: "https://archive.org/details/one"},
+		{SourceID: "classic", Provider: "archive", RemoteID: "two", URL: "https://archive.org/details/two"},
+	})
+	one := seedPull(t, st, "pull-bulk-one", []filler.PullPlanRow{
+		{SourceID: "classic", Provider: "archive", RemoteID: "three", URL: "https://archive.org/details/three"},
+	})
+
+	res := sourceReq(t, http.MethodPost, srv.URL+"/v1/filler/pulls/approve",
+		`{"ids":["`+two.ID+`","`+one.ID+`","does-not-exist"]}`, adminToken)
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		t.Fatalf("status = %d (%s), want 200", res.StatusCode, body)
+	}
+	out := decodeBulkApproveFillerPulls(t, res)
+	want := map[string]int{two.ID: 2, one.ID: 1}
+	for _, r := range out.Results {
+		n, ok := want[r.ID]
+		switch {
+		case !ok && r.Enqueued != nil:
+			t.Errorf("%s failed but reports enqueued = %d; want it absent", r.ID, *r.Enqueued)
+		case ok && r.Enqueued == nil:
+			t.Errorf("%s approved with no enqueued count", r.ID)
+		case ok && *r.Enqueued != n:
+			t.Errorf("%s enqueued = %d, want %d", r.ID, *r.Enqueued, n)
+		}
 	}
 }
 

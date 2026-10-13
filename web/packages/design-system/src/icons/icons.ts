@@ -6,6 +6,7 @@ import ChevronUp from "lucide-react-native/icons/chevron-up";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import Clock3 from "lucide-react-native/icons/clock-3";
 import House from "lucide-react-native/icons/house";
+import Inbox from "lucide-react-native/icons/inbox";
 import Info from "lucide-react-native/icons/info";
 import LoaderCircle from "lucide-react-native/icons/loader-circle";
 import Menu from "lucide-react-native/icons/menu";
@@ -34,6 +35,7 @@ const icons = {
   pause: Pause,
   play: Play,
   previous: SkipBack,
+  requests: Inbox,
   search: Search,
   settings: Settings,
   skipForward: SkipForward,
