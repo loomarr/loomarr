@@ -4,7 +4,7 @@ import {
   CalendarClock,
   Clapperboard,
   House,
-  LayoutGrid,
+  Inbox,
   ListChecks,
   LogOut,
   PlayCircle,
@@ -61,7 +61,7 @@ const ADMIN_NAV: NavItem[] = [
   // exact describe→approve path is inline on this page; the MEMBER nav keeps it, since members
   // have no Guide-header affordance. Seven entries, matching the v2 mock's `navDefs`.
   { to: "/guide", label: "Guide", icon: CalendarClock },
-  { to: "/requests", label: "Requests", icon: LayoutGrid },
+  { to: "/requests", label: "Requests", icon: Inbox },
   { to: "/filler", label: "Filler", icon: Clapperboard },
   { to: "/people", label: "People", icon: Users },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -83,7 +83,7 @@ const ADMIN_NAV: NavItem[] = [
 const MEMBER_NAV: NavItem[] = [
   { to: "/dashboard", label: "Home", icon: House },
   { to: "/guide", label: "Guide", icon: CalendarClock },
-  { to: "/requests", label: "Requests", icon: LayoutGrid },
+  { to: "/requests", label: "Requests", icon: Inbox },
   { to: "/settings/notifications", label: "Notifications", icon: Settings },
   { to: "/help", label: "Help", icon: ListChecks },
 ];

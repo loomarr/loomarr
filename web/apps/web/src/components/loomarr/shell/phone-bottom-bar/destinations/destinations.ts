@@ -48,7 +48,7 @@ const describe = (
     case "guide":
       return { icon: "guide", key, label: "Guide", to: "/guide" };
     case "requests":
-      return { icon: "requestsRail", key, label: "Requests", to: "/requests" };
+      return { icon: "requests", key, label: "Requests", to: "/requests" };
     case "filler":
       return { icon: "filler", key, label: "Filler", to: "/filler" };
     case "people":
