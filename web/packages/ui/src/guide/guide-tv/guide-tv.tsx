@@ -113,6 +113,9 @@ const TvGuideSurface = ({
   renderChannelLogo,
   selection,
 }: GuideSurfaceProps & { filters: readonly GuideFilterOption[] }) => {
+  // The selection outlives focus: ▲ to the filters keeps the programme the grid returns to. Only
+  // the grid's own focus lights it, so a focused filter is the one amber (#1887).
+  const [gridFocused, setGridFocused] = useState(true);
   const selectedChannel = layout.channels.find((channel) => channel.source.channelId === selection.channelId);
   const selectedAiring = selectedChannel?.airings.find(
     (airing) => airing.scheduleBlockId === selection.scheduleBlockId,
@@ -167,7 +170,10 @@ const TvGuideSurface = ({
               accessibilityLabel={accessibilityLabel}
               disabled={option.disabled}
               key={option.value}
-              onFocus={() => focusRegistry?.focused?.(target)}
+              onFocus={() => {
+                setGridFocused(false);
+                focusRegistry?.focused?.(target);
+              }}
               onPress={() => onFilterChange?.(option.value)}
               ref={(handle) => focusRegistry?.register(target, handle)}
               selected={filter === option.value}
@@ -244,7 +250,7 @@ const TvGuideSurface = ({
                         size={identSize}
                       />
                     )}
-                    <Text density="tv" textRole="data" tone={selectedRow ? "signal" : "muted"}>
+                    <Text density="tv" textRole="data" tone={selectedRow && gridFocused ? "signal" : "muted"}>
                       {String(channel.source.number).padStart(2, "0")}
                     </Text>
                     <Text density="tv" flex={1} numberOfLines={1} textRole="caption">
@@ -261,6 +267,7 @@ const TvGuideSurface = ({
                       const selected =
                         channel.source.channelId === selection.channelId &&
                         airing.scheduleBlockId === selection.scheduleBlockId;
+                      const focused = selected && gridFocused;
                       const label = airing.source.series?.trim() || guideAiringLabel(airing.source);
                       const next = {
                         anchorMs: airing.source.startMs + (airing.source.stopMs - airing.source.startMs) / 2,
@@ -279,6 +286,7 @@ const TvGuideSurface = ({
                           hasTVPreferredFocus={selected}
                           key={airing.scheduleBlockId}
                           onFocus={() => {
+                            setGridFocused(true);
                             focusRegistry?.focused?.(target);
                             onSelectionChange(next);
                           }}
@@ -299,23 +307,24 @@ const TvGuideSurface = ({
                         >
                           <Surface
                             // Now-airing is a neutral tone step (TV 5b); the focused block takes the
-                            // focus surface and the one amber border.
+                            // focus surface and the one amber border, and a selected block the grid
+                            // no longer focuses is drawn at rest.
                             backgroundColor={
-                              selected
+                              focused
                                 ? "$surfaceFocus"
                                 : airing.isOnNow
                                   ? "$stateAiringSurface"
                                   : "$surfaceElevated"
                             }
                             borderColor={
-                              selected
+                              focused
                                 ? "$actionFocus"
                                 : airing.isOnNow
                                   ? "$borderAiring"
                                   : "$borderDecorative"
                             }
                             borderRadius={4}
-                            borderWidth={selected ? 3 : 1}
+                            borderWidth={focused ? 3 : 1}
                             height="100%"
                             justifyContent="center"
                             overflow="hidden"
