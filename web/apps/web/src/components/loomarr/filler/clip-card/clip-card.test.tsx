@@ -45,14 +45,13 @@ describe("ClipCard", () => {
     expect(screen.getByText("30s")).toBeInTheDocument();
   });
 
-  it("keeps missing optional details quiet for a Ready clip", () => {
+  it("keeps missing optional details quiet for a ready clip", () => {
     render(
       <ClipCard
         clip={{ ...base, kind: "unclassified", tagged: false, era: undefined, audience: undefined }}
         onOpen={() => {}}
       />,
     );
-    expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.queryByText(/Untagged|Geography unknown|Unclassified/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /tag clip|use in a channel/i })).not.toBeInTheDocument();
   });
@@ -60,8 +59,44 @@ describe("ClipCard", () => {
   // confirm-tags affordance for an AI-suggested clip remains — that IS the useful action.
   it("does not turn automatic metadata into a confirmation chore", () => {
     render(<ClipCard clip={{ ...base, tagged: false, aiTagged: true }} onOpen={() => {}} />);
-    expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /confirm tags/i })).not.toBeInTheDocument();
+  });
+
+  // Ready is the default and wears no chip (#1908); only a clip that is not ready names its state.
+  it("puts no Ready chip on a ready clip", () => {
+    render(<ClipCard clip={base} onOpen={() => {}} />);
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["Preparing", { held: true }],
+    ["Recording", { isComposite: true }],
+  ] as const)("names a clip that is not ready: %s", (label, over) => {
+    render(<ClipCard clip={{ ...base, ...over }} onOpen={() => {}} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  // The phone library's 2-up card: frame, duration, name, and an exception chip only.
+  it("keeps the compact card to its name, duration and exception chip", () => {
+    render(<ClipCard clip={{ ...base, held: true, brand: "Fizzwell" }} onOpen={() => {}} compact />);
+    expect(screen.getByRole("button", { name: `View details for ${base.name}` })).toBeInTheDocument();
+    expect(screen.getByText("30s")).toBeInTheDocument();
+    expect(screen.getByText("Preparing")).toBeInTheDocument();
+    expect(screen.queryByText("Commercial")).not.toBeInTheDocument();
+    expect(screen.queryByText("1990s")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fizzwell")).not.toBeInTheDocument();
+    expect(screen.queryByText(/aired|Airings/)).not.toBeInTheDocument();
+  });
+
+  // WCAG 2.2, 2.5.8: the 16px checkbox sits in a 24px label that takes the tap.
+  it("gives the select checkbox a 24px target that toggles it", () => {
+    const onToggleSelect = vi.fn();
+    render(<ClipCard clip={base} onToggleSelect={onToggleSelect} />);
+    const checkbox = screen.getByRole("checkbox", { name: `Select ${base.name}` });
+    const target = checkbox.closest("label");
+    expect(target).toHaveClass("size-6");
+    fireEvent.click(target as HTMLElement);
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
   });
   // A tagged clip must still be editable. §10's likely tagging error is a trailer scanned
   // as a commercial — it arrives with era/audience/category filled in, so it counts as

@@ -197,7 +197,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "tailwindClasses": 115,
+      "tailwindClasses": 124,
       "legacyUi": 5
     },
     "src/components/loomarr/filler/clip-player/clip-player.tsx": {
@@ -209,8 +209,8 @@
       "legacyUi": 1
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
-      "tailwindClasses": 66,
-      "legacyUi": 2
+      "tailwindClasses": 64,
+      "legacyUi": 1
     },
     "src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
       "tailwindClasses": 71,
@@ -225,8 +225,8 @@
       "legacyUi": 2
     },
     "src/components/loomarr/filler/pool-health/pool-health.tsx": {
-      "tailwindClasses": 21,
-      "legacyUi": 1
+      "tailwindClasses": 33,
+      "legacyUi": 2
     },
     "src/components/loomarr/filler/pull-card/pull-card.tsx": {
       "tailwindClasses": 71,
@@ -558,7 +558,7 @@
       "legacyUi": 1
     },
     "src/filler/channel-filler/channel-filler.tsx": {
-      "tailwindClasses": 110,
+      "tailwindClasses": 118,
       "legacyUi": 5
     },
     "src/filler/channel-filler/filler-clip-list/filler-clip-list.tsx": {
@@ -586,7 +586,7 @@
       "legacyUi": 2
     },
     "src/filler/filler-catalog/filler-catalog.tsx": {
-      "tailwindClasses": 150,
+      "tailwindClasses": 159,
       "legacyUi": 7
     },
     "src/filler/filler-manage/filler-manage.tsx": {
@@ -594,11 +594,11 @@
       "legacyUi": 5
     },
     "src/filler/filler-overview/filler-overview.tsx": {
-      "tailwindClasses": 58,
+      "tailwindClasses": 72,
       "legacyUi": 3
     },
     "src/filler/filler-page/filler-page.tsx": {
-      "tailwindClasses": 42,
+      "tailwindClasses": 56,
       "legacyUi": 3
     },
     "src/filler/filler-settings/filler-settings.tsx": {
@@ -634,7 +634,7 @@
       "legacyUi": 6
     },
     "src/filler/split-review-page/split-review-page.tsx": {
-      "tailwindClasses": 52,
+      "tailwindClasses": 60,
       "legacyUi": 1
     },
     "src/filler/taxonomy-tab/taxonomy-tab.tsx": {

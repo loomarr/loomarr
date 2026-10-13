@@ -4,6 +4,7 @@ import type { PodEntryDTO } from "@loomarr/api/models/podEntryDTO";
 import { unwrap } from "@loomarr/api/unwrap";
 import { pluralize } from "@loomarr/core/format";
 import { Link } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { CollapsibleSection } from "@/components/loomarr/feedback/collapsible-section";
 import { ClipPreview } from "@/components/loomarr/filler/clip-preview";
@@ -221,7 +222,7 @@ const BreakFrequencyField = ({ value, defaultValue, disabled, onChange }: BreakF
 // break in front of you through the SAME assembler reconcile uses — nothing saved until
 // Apply, which commits the draft to policy.filler and lets reconcile take over (seamless
 // for the effect; draft/apply for the authoring, the one deliberate §10 exception).
-const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => {
+const ChannelFiller = ({ channelId, policy, from, className }: ChannelFillerProps) => {
   const [previewingClip, setPreviewingClip] = useState<PodEntryDTO>();
   const {
     draft,
@@ -274,6 +275,18 @@ const ChannelFiller = ({ channelId, policy, className }: ChannelFillerProps) => 
   return (
     <div className={cn("flex flex-col gap-6", className)}>
       <div>
+        {/* Reached from a Filler Overview coverage card, this page is a detour out of the Filler
+            area; the header's back arrow goes to the channel list, so the detour gets its own way
+            home (#1817, decided on #1908). The Settings index's "← Manage" link is the pattern. */}
+        {from === "filler" ? (
+          <Link
+            to="/filler"
+            className="mb-3 inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
+            Filler overview
+          </Link>
+        ) : null}
         <h2 className="font-semibold text-lg">Filler</h2>
         <p className="text-muted-foreground text-sm">
           This channel picks its commercials and clips automatically. Only change these settings if it needs

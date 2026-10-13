@@ -17,6 +17,9 @@ interface ClipCardProps {
   onToggleSelect?: () => void;
   // Read-only inspection from title or thumbnail; callers own the shared panel.
   onOpen?: () => void;
+  // The phone library's 2-up card (#1817, decided on #1908): the frame, duration, name and any
+  // exception chip. Kind, era, audience, brand and the aired line live in the details sheet.
+  compact?: boolean;
   className?: string;
 }
 

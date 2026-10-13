@@ -1,8 +1,7 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
-import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
+import { AUDIENCE_LABEL, KIND_LABEL, playsLine, SelectCheckbox } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";
 
 // ClipRow — the catalog's dense LIST view (V35b, the mock's `catListView`). The mock's column
@@ -28,12 +27,7 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
     )}
   >
     {onToggleSelect ? (
-      <Checkbox
-        checked={Boolean(selected)}
-        onChange={onToggleSelect}
-        className="size-4 accent-signal"
-        aria-label={`Select ${clip.name}`}
-      />
+      <SelectCheckbox clipName={clip.name} selected={selected} onToggle={onToggleSelect} />
     ) : (
       // Holds the column so rows stay aligned for a member, who gets no checkbox.
       <span aria-hidden />

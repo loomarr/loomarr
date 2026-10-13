@@ -1,5 +1,7 @@
 import type { PoolChannelDTO } from "@loomarr/api/models/poolChannelDTO";
 import { pluralize } from "@loomarr/core/format";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Caption } from "@/components/ui/caption";
 import { cn } from "@/lib/utils";
 import type { PoolHealthProps } from "./pool-health.type";
@@ -44,7 +46,8 @@ const Stat = ({
   </div>
 );
 
-const PoolHealth = ({ pool, className }: PoolHealthProps) => {
+const PoolHealth = ({ pool, folded, className }: PoolHealthProps) => {
+  const [expanded, setExpanded] = useState(false);
   // ⚠ `?? []` because huma types every Go slice as nullable, so the generated DTO says
   // `PoolChannelDTO[] | null` even though the handler always sends `[]`. Same unwrap the
   // coverage meter and channel-filler use.
@@ -59,6 +62,23 @@ const PoolHealth = ({ pool, className }: PoolHealthProps) => {
   // (accurately: it is a looser match) instead of silently vanishing from the note.
   const looseMatch = channels.length - covered - onCardOnly;
 
+  if (folded && !expanded) {
+    return (
+      <section
+        aria-label="Catalog health"
+        className={cn("flex items-center gap-2 rounded-lg border border-border px-3 py-2.5", className)}
+      >
+        <p className="min-w-0 flex-1 text-sm">
+          {`${pool.clips.toLocaleString()} ${pool.clips === 1 ? "clip" : "clips"}`}
+          {channels.length > 0 ? ` · ${covered}/${channels.length} channels covered` : ""}
+        </p>
+        <Button variant="outline" size="sm" aria-expanded={false} onClick={() => setExpanded(true)}>
+          Details
+        </Button>
+      </section>
+    );
+  }
+
   return (
     <section
       aria-label="Catalog health"
@@ -67,6 +87,17 @@ const PoolHealth = ({ pool, className }: PoolHealthProps) => {
         className,
       )}
     >
+      {folded ? (
+        <Button
+          variant="outline"
+          size="sm"
+          aria-expanded
+          className="order-last"
+          onClick={() => setExpanded(false)}
+        >
+          Hide details
+        </Button>
+      ) : null}
       <Stat
         label="Clips"
         value={String(pool.clips)}

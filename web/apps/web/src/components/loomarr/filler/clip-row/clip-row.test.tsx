@@ -35,6 +35,16 @@ describe("ClipRow", () => {
     expect(screen.getAllByText("—")).toHaveLength(2);
   });
 
+  // WCAG 2.2, 2.5.8: the 16px checkbox sits in a 24px label that takes the tap.
+  it("gives the select checkbox a 24px target that toggles it", () => {
+    const onToggleSelect = vi.fn();
+    render(<ClipRow clip={base} onToggleSelect={onToggleSelect} />);
+    const target = screen.getByRole("checkbox", { name: `Select ${base.name}` }).closest("label");
+    expect(target).toHaveClass("size-6");
+    fireEvent.click(target as HTMLElement);
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
+  });
+
   it("selects only when a handler is passed, so a member gets no dead control", () => {
     const { rerender } = render(<ClipRow clip={base} />);
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();

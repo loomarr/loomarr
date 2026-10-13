@@ -6,7 +6,7 @@ import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, formatUntil, pluralize } from "@loomarr/core/format";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -29,15 +29,18 @@ const ACTIVITY_LABELS: Record<FillerDecisionActivityWireDTOKind, string> = {
 
 type ActivityPresentation = { label: string; variant: BadgeProps["variant"] };
 
+// Routine outcomes are neutral: amber is the brand's action colour, and a clip Loomarr added is
+// the normal case, not something to look at (#1817, decided on #1908).
 const activityPresentation = (kind: FillerDecisionActivityWireDTOKind): ActivityPresentation => {
   return {
     label: ACTIVITY_LABELS[kind],
     variant:
-      kind === "automatic_admit" || kind === "review_admit"
-        ? "signal"
-        : kind === "automatic_reject" || kind === "review_reject"
-          ? "neutral"
-          : "caution",
+      kind === "automatic_admit" ||
+      kind === "review_admit" ||
+      kind === "automatic_reject" ||
+      kind === "review_reject"
+        ? "neutral"
+        : "caution",
   };
 };
 
@@ -243,7 +246,8 @@ const ManageHub = ({
                 : problems > 0
                   ? `${pluralize(problems, "item")} can be tried again`
                   : "Nothing to try again",
-            tone: (problems ? "notice" : "ok") as StatusTone,
+            // Caution, like the Overview's card for the same retryable work, not amber `notice`.
+            tone: (problems ? "warn" : "ok") as StatusTone,
             open: onOpenProblems,
           },
         ]
@@ -288,9 +292,16 @@ const ManageHub = ({
 const FillerManage = () => {
   const { isAdmin } = useAuth();
   const { hash } = useLocation();
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(
-    () => hash === "diagnostics" || hash === "#diagnostics",
-  );
+  const diagnosticsLinked = hash === "diagnostics" || hash === "#diagnostics";
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(diagnosticsLinked);
+  // The Overview's "Open diagnostics" links here with #diagnostics: arrive with the panel open
+  // and in view, not on a closed panel the operator must find below the hub and activity.
+  // The panel is admin-only and mounts once the session resolves, so the scroll waits for it.
+  useEffect(() => {
+    if (!diagnosticsLinked || !isAdmin) return;
+    setDiagnosticsOpen(true);
+    document.getElementById("diagnostics")?.scrollIntoView?.({ block: "start" });
+  }, [diagnosticsLinked, isAdmin]);
   const activityQuery = fillerApi.useFillerDecisionActivity({ limit: 100 });
   // Fetched up front for admins now, not on opening the panel: the hub's Problems row shows
   // the count.

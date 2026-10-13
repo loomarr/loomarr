@@ -3,6 +3,8 @@ import * as settingsApi from "@loomarr/api/endpoints/settings";
 import { unwrap } from "@loomarr/api/unwrap";
 import { formatRelative, pluralize } from "@loomarr/core/format";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
+import type { ReactNode } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { PoolHealth } from "@/components/loomarr/filler/pool-health";
@@ -12,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { usePhoneWidth } from "@/lib/use-phone-width";
 import { FillerCatalog } from "../filler-catalog";
 import { FillerManage } from "../filler-manage";
 import { FillerOverview } from "../filler-overview";
@@ -28,6 +31,7 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   useDocumentTitle("Filler");
   const navigate = useNavigate();
   const { isAdmin, isLoading: authLoading } = useAuth();
+  const phone = usePhoneWidth();
 
   // Preserve Library's deep-linkable state when an operator leaves and returns. The shell only
   // carries the opaque route state; FillerCatalog owns its interpretation and mutations.
@@ -61,8 +65,8 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   if (configurationPending && tab !== "settings") {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <PageHeader title="Filler" description={<FillerDescription />} />
-        <div className="min-h-0 flex-1 p-6" role="status">
+        <FillerHeader />
+        <div className="min-h-0 flex-1 p-4 md:p-6" role="status">
           <p className="text-muted-foreground text-sm">Loading filler…</p>
         </div>
       </div>
@@ -72,8 +76,8 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
   if (!fillerConfigured && tab !== "settings") {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <PageHeader title="Filler" description={<FillerDescription />} />
-        <div className="min-h-0 flex-1 overflow-auto p-6">
+        <FillerHeader />
+        <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
           <EmptyState
             title="No filler folder configured"
             description="Choose a folder for commercials, bumpers, and station IDs. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips."
@@ -105,12 +109,8 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PageHeader
-        title="Filler"
-        description={<FillerDescription />}
-        status={watch && <WatchLine status={statusLine} health={watch.health} />}
-      />
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-6">
+      <FillerHeader status={watch && <WatchLine status={statusLine} health={watch.health} />} />
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-4 md:gap-6 md:p-6">
         {/* The web mock's three sections. Sources and Incoming open from the Manage hub, so their
             pages light Manage, as Settings and Tags already did. */}
         <NavTabs
@@ -134,7 +134,19 @@ const FillerPage = ({ tab, settingsSection, sourceID }: FillerPageProps) => {
           }
         />
 
-        {pool && tab === "library" ? <PoolHealth pool={pool} /> : null}
+        {/* Manage's children say where they return to, as the Settings index already did: the lit
+            Manage tab scrolls away with the page on a phone (#1817, decided on #1908). */}
+        {tab === "incoming" || tab === "sources" || tab === "taxonomy" ? (
+          <Link
+            to="/filler/manage"
+            className="inline-flex items-center gap-1.5 self-start text-muted-foreground text-sm hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
+            Manage
+          </Link>
+        ) : null}
+
+        {pool && tab === "library" ? <PoolHealth pool={pool} folded={phone} /> : null}
 
         {watch?.autoFetch?.stoppedBy === "catalog" && tab === "library" ? (
           <Card className="flex flex-wrap items-center gap-3 border-caution/40 bg-caution/5 p-4">
@@ -197,6 +209,13 @@ const FillerDescription = () => (
     Loomarr finds and prepares commercials, bumpers, and station IDs. Each channel picks what fits from the
     shared library.
   </>
+);
+
+// On a phone, Filler takes the approved phone-web-nav page gutter (16px) rather than the desktop
+// 24px (#1817, decided on #1908). The header and the body share it, so the title lines up with
+// the tabs below it.
+const FillerHeader = ({ status }: { status?: ReactNode }) => (
+  <PageHeader title="Filler" description={<FillerDescription />} status={status} className="px-4 md:px-6" />
 );
 
 export { FillerPage };

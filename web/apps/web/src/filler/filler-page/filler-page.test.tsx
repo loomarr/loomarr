@@ -19,6 +19,7 @@ import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerPage } from "./filler-page";
+import type { FillerPageProps } from "./filler-page.type";
 
 // The SHELL's own contract, as distinct from the tabs it hosts.
 //
@@ -137,7 +138,7 @@ const makeWrapper = () => {
   );
 };
 
-const renderPage = (tab: "library" | "incoming" | "sources", initialPath = "/filler/library") =>
+const renderPage = (tab: FillerPageProps["tab"], initialPath = "/filler/library") =>
   render(<RouterHarness content={<FillerPage tab={tab} />} initialPath={initialPath} />, {
     wrapper: makeWrapper(),
   });
@@ -226,7 +227,35 @@ describe("FillerPage shell", () => {
     stubFillerPage();
     renderPage(tab);
 
-    expect(await screen.findByRole("link", { name: /^manage$/i })).toHaveAttribute("aria-current", "page");
+    const sections = await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(await within(sections).findByRole("link", { name: /^manage$/i })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  // Manage's children name their way back, as the Settings index does (#1908): on a phone the lit
+  // tab scrolls away with the page.
+  it.each(["sources", "incoming"] as const)("returns from %s to Manage", async (tab) => {
+    stubFillerPage();
+    renderPage(tab);
+
+    const sections = await screen.findByRole("navigation", { name: "Filler sections" });
+    const back = screen
+      .getAllByRole("link", { name: /^manage$/i })
+      .filter((link) => !sections.contains(link));
+    expect(back).toHaveLength(1);
+    expect(back[0]).toHaveAttribute("href", "/filler/manage");
+  });
+
+  it("adds no return link on a top-level section", async () => {
+    stubFillerPage();
+    renderPage("library");
+
+    const sections = await screen.findByRole("navigation", { name: "Filler sections" });
+    expect(
+      screen.getAllByRole("link", { name: /^manage$/i }).filter((link) => !sections.contains(link)),
+    ).toHaveLength(0);
   });
 
   it("treats section links as navigation without an orphan tabpanel role", async () => {

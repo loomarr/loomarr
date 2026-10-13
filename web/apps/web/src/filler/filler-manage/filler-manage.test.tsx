@@ -183,7 +183,11 @@ describe("FillerManage", () => {
     expect(await screen.findAllByText("Added automatically")).toHaveLength(2);
     // Asserted by the rendered colour (Badge's public output), not a Tailwind class: Badge
     // sources colour from @loomarr/design-system's semanticColors via inline style (#970 PR C).
-    expect(screen.getAllByText("Added automatically")[0]).toHaveStyle({ color: "#FFB020" });
+    // A routine admit is neutral like a routine skip, never brand amber (#1908).
+    const added = screen.getAllByText("Added automatically")[0] as HTMLElement;
+    const skipped = screen.getAllByText("Skipped automatically")[0] as HTMLElement;
+    expect(added).not.toHaveStyle({ color: "#FFB020" });
+    expect(added.style.color).toBe(skipped.style.color);
     expect(screen.getAllByText("Skipped automatically")).toHaveLength(2);
     expect(screen.queryByText(/preview/i)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show issues" })).toHaveAttribute("aria-expanded", "false");

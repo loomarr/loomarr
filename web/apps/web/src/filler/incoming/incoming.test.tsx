@@ -106,7 +106,7 @@ describe("Incoming", () => {
                 name: "Saturday morning commercial reel",
                 question: "Where should this compilation be split?",
                 actionLabel: "Review clips",
-                actionHref: "/filler/splits/split-1",
+                actionHref: "/filler/splits/split-1?from=incoming",
                 createdAt: "2026-09-14T19:00:00Z",
               },
               {
@@ -116,7 +116,7 @@ describe("Incoming", () => {
                 name: "Holiday commercial reel",
                 question: "Where should this compilation be split?",
                 actionLabel: "Review clips",
-                actionHref: "/filler/splits/split-2",
+                actionHref: "/filler/splits/split-2?from=incoming",
                 createdAt: "2026-09-14T18:00:00Z",
               },
             ],
@@ -137,7 +137,7 @@ describe("Incoming", () => {
     expect(screen.getByRole("heading", { name: "Needs your help" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Review clips" })).toHaveAttribute(
       "href",
-      "/filler/splits/split-1",
+      "/filler/splits/split-1?from=incoming",
     );
     expect(screen.queryByText("Holiday commercial reel")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Next" }));

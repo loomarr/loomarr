@@ -37,6 +37,20 @@ const SuggestedEraAdmin: Story = { args: { clip: suggestedEraClip, onOpen: noop 
 const SplitAction: Story = { args: { clip: taggedClip, onOpen: noop, onSplit: noop } };
 const SplitPending: Story = { args: { clip: taggedClip, onSplit: noop, splitPending: true } };
 
+// Ready is the default and wears no chip (#1908); a clip that isn't ready names its state.
+const Preparing: Story = { args: { clip: { ...thumbnailedClip, held: true }, onOpen: noop } };
+
+// The phone library's 2-up card, at its 172px column: frame, duration, name and the exception
+// chip only. The select target is the 24px label around the checkbox.
+const Compact: Story = {
+  args: { clip: thumbnailedClip, onOpen: noop, onToggleSelect: noop, compact: true },
+  decorators: [widthFrame(172)],
+};
+const CompactPreparing: Story = {
+  args: { clip: { ...thumbnailedClip, held: true }, onOpen: noop, compact: true },
+  decorators: [widthFrame(172)],
+};
+
 // ⚠ **`ServiceHostedArtwork` was folded into the shared fixture in V52 phase 8.** It existed to
 // prove the card PREFERRED `thumbImage` when a clip carried both it and a legacy `thumbnail`.
 // There is no longer a both-present state to prefer between — the legacy field and its route are
@@ -48,6 +62,9 @@ export default meta;
 export {
   AdminActions,
   AiSuggestedTags,
+  Compact,
+  CompactPreparing,
+  Preparing,
   SplitAction,
   SplitPending,
   SuggestedEra,

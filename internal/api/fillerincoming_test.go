@@ -315,7 +315,7 @@ func TestFillerIncoming_ProjectsAndPagesOnlyReadySplitsAsDurableHelp(t *testing.
 	}
 	got := first.NeedsHelp.Rows[0]
 	if got.ID != "split-21" || got.Kind != "split_boundary" || got.Question != "Where should this compilation be split?" ||
-		got.ActionLabel != "Review clips" || got.ActionHref != "/filler/splits/split-21" {
+		got.ActionLabel != "Review clips" || got.ActionHref != "/filler/splits/split-21?from=incoming" {
 		t.Fatalf("task = %+v, want the newest server-authored split destination", got)
 	}
 	_, second := readIncoming(t, srv.URL, "/v1/filler/incoming?needsHelpCursor="+url.QueryEscape(first.NeedsHelp.NextCursor), adminToken)

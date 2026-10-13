@@ -5,7 +5,8 @@ import { toProblem } from "@loomarr/api/mutator";
 import { isOk, unwrap } from "@loomarr/api/unwrap";
 import { formatMmSs, pluralize } from "@loomarr/core/format";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
@@ -14,7 +15,7 @@ import { SplitReviewEditor } from "@/components/loomarr/filler/split-review-edit
 import { Button } from "@/components/ui/button";
 import { languageName } from "@/lib/languages";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import type { SplitReviewPageProps } from "./split-review-page.type";
+import type { SplitReviewOrigin, SplitReviewPageProps } from "./split-review-page.type";
 
 const durationSettingMs = (value: string | undefined): number | undefined => {
   if (!value) return undefined;
@@ -57,12 +58,19 @@ const LanguageReceipt = ({
   );
 };
 
+// The route's `from=` search param names where review was opened, so Back can return there. Only
+// the two known origins are kept; anything else (a deep link, a hand-edited URL) is dropped and
+// Back falls back to Library, where it always went before. Optional, so a link may omit it.
+const validateSplitReviewSearch = (search: Record<string, unknown>): { from?: SplitReviewOrigin } =>
+  search.from === "incoming" || search.from === "library" ? { from: search.from } : {};
+
 // SplitReviewPage — the /filler/splits/$proposalId screen (§10 V34). Detection persisted
 // a proposal; this page reads it back (the GET is the truth — the SSE frame was only the
 // doorbell) and hands it to the editor. Confirm commits the operator's edited cut list;
 // Back leaves the proposal persisted for later — there is deliberately no reject endpoint.
-const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
+const SplitReviewPage = ({ proposalId, from }: SplitReviewPageProps) => {
   useDocumentTitle("Review clips");
+  const backTo = from === "incoming" ? "/filler/incoming" : "/filler/library";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isAdmin, isLoading: authLoading } = useAuth();
@@ -149,6 +157,16 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
     // without one renders flush against the sidebar.
     <div className="flex flex-col gap-4 p-6">
       <div>
+        {/* This route sits outside the Filler header and tabs, so it names its way back: to
+            wherever review was opened (#1817, decided on #1908). The Settings index's "← Manage"
+            link is the pattern. */}
+        <Link
+          to={backTo}
+          className="mb-3 inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-foreground"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden />
+          {from === "incoming" ? "Incoming" : "Library"}
+        </Link>
         <h1 className="font-semibold text-xl">Review clips</h1>
         <p className="mt-1 max-w-2xl text-muted-foreground text-sm">
           Loomarr found these clips in <span className="font-medium text-static-200">{parentName}</span>.
@@ -180,10 +198,10 @@ const SplitReviewPage = ({ proposalId }: SplitReviewPageProps) => {
         {...(minClipDurationMs !== undefined ? { minClipDurationMs } : {})}
         confirming={confirm.isPending}
         onConfirm={(segments) => confirm.mutate({ proposalId, data: { segments } })}
-        onBack={() => void navigate({ to: "/filler/library" })}
+        onBack={() => void navigate({ to: backTo })}
       />
     </div>
   );
 };
 
-export { SplitReviewPage };
+export { SplitReviewPage, validateSplitReviewSearch };
