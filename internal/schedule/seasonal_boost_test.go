@@ -31,9 +31,11 @@ func simpsonsLike(holiday int) libraryfixture.Availability {
 			Season: i/20 + 1, Episode: i%20 + 1, DurationMs: episodeMs,
 		})
 		if h < holiday && i%(200/max(holiday, 1)) == 3 {
+			// The overview names the holiday itself, the evidence any matcher must accept.
 			eps = append(eps, schedule.ResolvedProgram{
 				LibraryItemID: fmt.Sprintf("thoh-%02d", h), Title: fmt.Sprintf("Treehouse of Horror %d", h+1),
-				Season: i/20 + 1, Episode: 30 + h, DurationMs: episodeMs,
+				Overview: "The family's annual Halloween special.",
+				Season:   i/20 + 1, Episode: 30 + h, DurationMs: episodeMs,
 			})
 			h++
 		}

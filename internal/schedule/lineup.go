@@ -417,10 +417,10 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	tracePlacement(trace, orderedAll, ordered, finalSlots, rp.Ordering)
 
 	return DesiredLineup{
-		ChannelID:    ch.ID,
-		Slots:        finalSlots,
-		Trace:        trace.finish(applied),
-		Excluded:     report,
+		ChannelID:       ch.ID,
+		Slots:           finalSlots,
+		Trace:           trace.finish(applied),
+		Excluded:        report,
 		Applied:         applied,
 		EligibleKeys:    eligibleKeys,
 		HolidayEpisodes: holidayEpisodes,
