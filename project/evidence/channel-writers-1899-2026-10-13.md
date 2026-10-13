@@ -34,3 +34,11 @@ saved.
 | --- | --- | --- |
 | Before | [before-typed.png](channel-writers-1899-2026-10-13/before-typed.png) | [before-reloaded.png](channel-writers-1899-2026-10-13/before-reloaded.png) |
 | After | [after-latency-typed.png](channel-writers-1899-2026-10-13/after-latency-typed.png) | [after-latency-reloaded.png](channel-writers-1899-2026-10-13/after-latency-reloaded.png) |
+
+## Remove, below @md
+
+The same lane at a 390×844 viewport, on Saturday Morning Cartoons' Programming tab:
+[after-390.png](channel-writers-1899-2026-10-13/after-390.png). Remove now sits last in each row, on
+its own line at the right, with a 44 px target. Tab from a row's grip visits the grip, the first
+season, the last season, Keep, Less like this, Never, Surprise me, and then Remove. That is the
+order they appear on screen. The next Tab goes to the following row's grip.
