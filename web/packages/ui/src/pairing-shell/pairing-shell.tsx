@@ -15,6 +15,7 @@ import {
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import type { PairingShellProps } from "./pairing-shell.type";
+import { ServerRow } from "./server-row";
 
 const emptyDiscovery: ServerDiscoverySnapshot = { servers: [], status: "unavailable" };
 const subscribeToNothing = () => () => undefined;
@@ -123,16 +124,20 @@ const pairingContent = (
         <Text density={density} textRole="body">
           {`Choose a server on this network. You’ll approve this ${density === "tv" ? "TV" : "device"} on the next screen.`}
         </Text>
-        {discovery?.servers.map((server, index) => (
-          <Action
-            density={density}
-            hasTVPreferredFocus={density === "tv" && index === 0}
-            key={server.id}
-            onPress={() => void session.pair(server.url)}
-          >
-            {`${discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}\n${server.url}`}
-          </Action>
-        ))}
+        {discovery?.servers.map((server, index) =>
+          density === "touch" ? (
+            <ServerRow key={server.id} onPress={() => void session.pair(server.url)} server={server} />
+          ) : (
+            <Action
+              density={density}
+              hasTVPreferredFocus={density === "tv" && index === 0}
+              key={server.id}
+              onPress={() => void session.pair(server.url)}
+            >
+              {`${discovery.servers.length === 1 ? `Connect to ${server.name}` : server.name}\n${server.url}`}
+            </Action>
+          ),
+        )}
         {discovery?.servers.length === 0 && discovery.status === "searching" ? (
           <Text accessibilityLiveRegion="polite" density={density} textRole="metadata">
             Searching this network…

@@ -187,8 +187,10 @@ describe("TV pairing offer", () => {
           querySelectorAll(selector: string): ArrayLike<{ click(): void; textContent: string | null }>;
         }
       ).querySelectorAll('[role="button"], button'),
-    ).find((candidate) => candidate.textContent?.includes("Connect to Loomarr"));
+    ).find((candidate) => candidate.textContent?.includes("loomarr.example.test"));
     if (!choice) throw new Error("missing discovered server choice");
+    // A phone lists the server as a row: its name over the bare host, not the full URL.
+    expect(choice.textContent).toBe("Loomarrloomarr.example.test");
 
     await act(async () => choice.click());
     await vi.waitFor(() => expect(session.snapshot().status).toBe("paired"));
