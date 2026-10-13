@@ -1,12 +1,13 @@
 import type { ChannelPolicy, Vocabulary } from "@loomarr/api";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { TooltipProvider } from "@/components/ui";
 import { ChannelSeasonal } from "./channel-seasonal";
 
-const render = (ui: ReactElement) => rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+// LoomarrProvider as main.tsx mounts it: the seasonal fields are design-system views.
+const render = (ui: ReactElement) => rtlRender(<LoomarrProvider theme="dark">{ui}</LoomarrProvider>);
 
 // A vocabulary shaped like the BE's: holiday tokens live in `when` as `holiday:<id>`, mixed in
 // with the non-holiday WHEN tokens the picker must ignore.
@@ -26,19 +27,18 @@ const POPULATED: ChannelPolicy = {
   applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
 };
 
+const radio = (name: string) => screen.getByRole("radio", { name });
+const holiday = (name: string) => screen.getByRole("checkbox", { name });
+
 describe("ChannelSeasonal", () => {
   it("names the built-in source for an unset seasonal policy", () => {
     render(<ChannelSeasonal policy={POPULATED} onChange={vi.fn()} vocabulary={VOCAB} />);
-    expect(screen.getByRole("combobox", { name: "Seasonal behavior" })).toHaveTextContent(
-      "Use built-in seasonal rotation",
-    );
+    expect(radio("Use built-in seasonal rotation")).toBeChecked();
   });
 
   it("collapses the explicit auto wire value into the same built-in choice", () => {
     render(<ChannelSeasonal policy={{ seasonal: { mode: "auto" } }} onChange={vi.fn()} vocabulary={VOCAB} />);
-    expect(screen.getByRole("combobox", { name: "Seasonal behavior" })).toHaveTextContent(
-      "Use built-in seasonal rotation",
-    );
+    expect(radio("Use built-in seasonal rotation")).toBeChecked();
   });
 
   // The holiday list comes from the BE vocabulary, never a hand-mirrored copy: BuildVocabulary
@@ -47,17 +47,16 @@ describe("ChannelSeasonal", () => {
   it("lists holidays from the vocabulary, ignoring non-holiday WHEN tokens", () => {
     render(<ChannelSeasonal policy={POPULATED} onChange={vi.fn()} vocabulary={VOCAB} />);
 
-    expect(screen.getByLabelText("Christmas")).toBeInTheDocument();
-    expect(screen.getByLabelText("Halloween")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Primetime (20–23)")).not.toBeInTheDocument();
+    expect(holiday("Christmas")).toBeInTheDocument();
+    expect(holiday("Halloween")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Primetime (20–23)" })).not.toBeInTheDocument();
   });
 
   it("commits a mode change, preserving the rest of the policy", async () => {
     const onChange = vi.fn();
     render(<ChannelSeasonal policy={POPULATED} onChange={onChange} vocabulary={VOCAB} />);
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Seasonal behavior" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Holiday-only channel" }));
+    await userEvent.click(radio("Holiday-only channel"));
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { mode: "exclusive" } }));
     expect(onChange.mock.lastCall?.[0].applied).toBe(POPULATED.applied);
@@ -69,8 +68,7 @@ describe("ChannelSeasonal", () => {
       <ChannelSeasonal policy={{ seasonal: { mode: "exclusive" } }} onChange={onChange} vocabulary={VOCAB} />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Seasonal behavior" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Use built-in seasonal rotation" }));
+    await userEvent.click(radio("Use built-in seasonal rotation"));
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { mode: "" } }));
   });
@@ -85,21 +83,21 @@ describe("ChannelSeasonal", () => {
       />,
     );
 
-    await userEvent.click(screen.getByLabelText("Halloween"));
+    await userEvent.click(holiday("Halloween"));
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ seasonal: { holidays: ["christmas", "halloween"] } }),
     );
 
     rerender(
-      <TooltipProvider>
+      <LoomarrProvider theme="dark">
         <ChannelSeasonal
           policy={{ ...POPULATED, seasonal: { holidays: ["christmas", "halloween"] } }}
           onChange={onChange}
           vocabulary={VOCAB}
         />
-      </TooltipProvider>,
+      </LoomarrProvider>,
     );
-    await userEvent.click(screen.getByLabelText("Halloween"));
+    await userEvent.click(holiday("Halloween"));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ seasonal: { holidays: ["christmas"] } }));
   });
 
@@ -115,7 +113,7 @@ describe("ChannelSeasonal", () => {
       />,
     );
 
-    await userEvent.click(screen.getByLabelText("Christmas"));
+    await userEvent.click(holiday("Christmas"));
 
     // christmas precedes newyear in the vocabulary, so it leads even though it was ticked second.
     expect(onChange).toHaveBeenCalledWith(
@@ -128,16 +126,16 @@ describe("ChannelSeasonal", () => {
   it("shows every holiday checked when the empty wire subset means all", () => {
     render(<ChannelSeasonal policy={POPULATED} onChange={vi.fn()} vocabulary={VOCAB} />);
     expect(screen.getByText("All built-in holidays are included.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Christmas")).toBeChecked();
-    expect(screen.getByLabelText("Halloween")).toBeChecked();
-    expect(screen.getByLabelText("New Year")).toBeChecked();
+    expect(holiday("Christmas")).toBeChecked();
+    expect(holiday("Halloween")).toBeChecked();
+    expect(holiday("New Year")).toBeChecked();
   });
 
   it("materializes the remaining subset when one built-in holiday is unchecked", async () => {
     const onChange = vi.fn();
     render(<ChannelSeasonal policy={POPULATED} onChange={onChange} vocabulary={VOCAB} />);
 
-    await userEvent.click(screen.getByLabelText("Halloween"));
+    await userEvent.click(holiday("Halloween"));
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ seasonal: { holidays: ["christmas", "newyear"] } }),
@@ -146,7 +144,7 @@ describe("ChannelSeasonal", () => {
 
   it("hides the holiday list when holidays are ignored", () => {
     render(<ChannelSeasonal policy={{ seasonal: { mode: "off" } }} onChange={vi.fn()} vocabulary={VOCAB} />);
-    expect(screen.queryByLabelText("Christmas")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Christmas" })).not.toBeInTheDocument();
   });
 
   // offSeason is read ONLY inside `case SeasonalExclusive` (schedule/seasonal.go:154), so
@@ -155,13 +153,13 @@ describe("ChannelSeasonal", () => {
     const { unmount } = render(
       <ChannelSeasonal policy={{ seasonal: { mode: "auto" } }} onChange={vi.fn()} vocabulary={VOCAB} />,
     );
-    expect(screen.queryByRole("combobox", { name: "Out of season" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Out of season" })).not.toBeInTheDocument();
     unmount();
 
     render(
       <ChannelSeasonal policy={{ seasonal: { mode: "exclusive" } }} onChange={vi.fn()} vocabulary={VOCAB} />,
     );
-    expect(screen.getByRole("combobox", { name: "Out of season" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Out of season" })).toBeInTheDocument();
   });
 
   it("commits an off-season choice in exclusive mode", async () => {
@@ -170,8 +168,7 @@ describe("ChannelSeasonal", () => {
       <ChannelSeasonal policy={{ seasonal: { mode: "exclusive" } }} onChange={onChange} vocabulary={VOCAB} />,
     );
 
-    await userEvent.click(screen.getByRole("combobox", { name: "Out of season" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Go dark" }));
+    await userEvent.click(radio("Go dark"));
 
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ seasonal: { mode: "exclusive", offSeason: "dark" } }),
@@ -186,21 +183,16 @@ describe("ChannelSeasonal", () => {
         vocabulary={VOCAB}
       />,
     );
-    expect(screen.getByRole("combobox", { name: "Out of season" })).toHaveTextContent(
-      "Keep regular programming",
-    );
+    expect(radio("Keep regular programming")).toBeChecked();
   });
 
   // The mode names are not self-explanatory ("auto" vs "exclusive" decides what airs in
   // December), so each carries a sentence. Pinned so the copy cannot drift from the mode.
-  it("explains what the selected mode does", () => {
-    const { unmount } = render(
+  it("explains what each mode does", () => {
+    render(
       <ChannelSeasonal policy={{ seasonal: { mode: "exclusive" } }} onChange={vi.fn()} vocabulary={VOCAB} />,
     );
     expect(screen.getByText(/the channel IS the holiday/i)).toBeInTheDocument();
-    unmount();
-
-    render(<ChannelSeasonal policy={{ seasonal: { mode: "off" } }} onChange={vi.fn()} vocabulary={VOCAB} />);
     expect(screen.getByText(/nothing is boosted or benched/i)).toBeInTheDocument();
   });
 
@@ -224,16 +216,16 @@ describe("ChannelSeasonal", () => {
   describe("holiday episodes", () => {
     it("offers strength and evenings only with the built-in rotation", () => {
       const { unmount } = render(<ChannelSeasonal policy={{}} onChange={vi.fn()} vocabulary={VOCAB} />);
-      expect(screen.getByRole("combobox", { name: "Holiday strength" })).toHaveTextContent("Featured");
-      expect(screen.getByLabelText("Favour evenings")).toBeChecked();
+      expect(radio("Featured")).toBeChecked();
+      expect(screen.getByRole("checkbox", { name: "Favour evenings" })).toBeChecked();
       unmount();
 
       for (const mode of ["exclusive", "off"]) {
         const view = render(
           <ChannelSeasonal policy={{ seasonal: { mode } }} onChange={vi.fn()} vocabulary={VOCAB} />,
         );
-        expect(screen.queryByRole("combobox", { name: "Holiday strength" })).not.toBeInTheDocument();
-        expect(screen.queryByLabelText("Favour evenings")).not.toBeInTheDocument();
+        expect(screen.queryByRole("radiogroup", { name: "Holiday strength" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("checkbox", { name: "Favour evenings" })).not.toBeInTheDocument();
         view.unmount();
       }
     });
@@ -243,20 +235,20 @@ describe("ChannelSeasonal", () => {
       const { rerender } = render(
         <ChannelSeasonal policy={POPULATED} onChange={onChange} vocabulary={VOCAB} />,
       );
-      await userEvent.click(screen.getByRole("combobox", { name: "Holiday strength" }));
-      await userEvent.click(await screen.findByRole("option", { name: "Heavy" }));
+      await userEvent.click(radio("Heavy"));
       expect(onChange).toHaveBeenLastCalledWith({ ...POPULATED, seasonal: { strength: "heavy" } });
 
       rerender(
-        <ChannelSeasonal
-          policy={{ ...POPULATED, seasonal: { strength: "heavy" } }}
-          onChange={onChange}
-          vocabulary={VOCAB}
-        />,
+        <LoomarrProvider theme="dark">
+          <ChannelSeasonal
+            policy={{ ...POPULATED, seasonal: { strength: "heavy" } }}
+            onChange={onChange}
+            vocabulary={VOCAB}
+          />
+        </LoomarrProvider>,
       );
-      expect(screen.getByText(/all of them on the day itself/i)).toBeInTheDocument();
-      await userEvent.click(screen.getByRole("combobox", { name: "Holiday strength" }));
-      await userEvent.click(await screen.findByRole("option", { name: "Featured" }));
+      expect(radio("Heavy")).toBeChecked();
+      await userEvent.click(radio("Featured"));
       expect(onChange).toHaveBeenLastCalledWith({ ...POPULATED, seasonal: { strength: "" } });
     });
 
@@ -266,19 +258,21 @@ describe("ChannelSeasonal", () => {
       const onChange = vi.fn();
       const { rerender } = render(<ChannelSeasonal policy={{}} onChange={onChange} vocabulary={VOCAB} />);
       expect(screen.getByText(/between 5 and 11 pm/i)).toBeInTheDocument();
-      await userEvent.click(screen.getByLabelText("Favour evenings"));
+      await userEvent.click(screen.getByRole("checkbox", { name: "Favour evenings" }));
       expect(onChange).toHaveBeenLastCalledWith({ seasonal: { placement: "anytime" } });
 
       rerender(
-        <ChannelSeasonal
-          policy={{ seasonal: { placement: "anytime" } }}
-          onChange={onChange}
-          vocabulary={VOCAB}
-        />,
+        <LoomarrProvider theme="dark">
+          <ChannelSeasonal
+            policy={{ seasonal: { placement: "anytime" } }}
+            onChange={onChange}
+            vocabulary={VOCAB}
+          />
+        </LoomarrProvider>,
       );
-      expect(screen.getByLabelText("Favour evenings")).not.toBeChecked();
+      expect(screen.getByRole("checkbox", { name: "Favour evenings" })).not.toBeChecked();
       expect(screen.getByText(/spread across the whole day/i)).toBeInTheDocument();
-      await userEvent.click(screen.getByLabelText("Favour evenings"));
+      await userEvent.click(screen.getByRole("checkbox", { name: "Favour evenings" }));
       expect(onChange).toHaveBeenLastCalledWith({ seasonal: { placement: "" } });
     });
 

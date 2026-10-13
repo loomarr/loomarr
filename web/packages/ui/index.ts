@@ -2,6 +2,14 @@ export type { AiReconnectBannerProps } from "./src/ai-reconnect-banner";
 export { AiReconnectBanner } from "./src/ai-reconnect-banner";
 export type { ChannelIdentProps } from "./src/channel-ident";
 export { ChannelIdent } from "./src/channel-ident";
+export type {
+  ChannelSeasonalFieldsProps,
+  SeasonalHoliday,
+  SeasonalMode,
+  SeasonalOffSeason,
+  SeasonalStrength,
+} from "./src/channels";
+export { ChannelSeasonalFields } from "./src/channels";
 export type { ClientDestination, ClientNavigationProps } from "./src/client-navigation";
 export { ClientNavigation, clientBackDestination, clientDestinationLabel } from "./src/client-navigation";
 export { ClientPlatformProof } from "./src/client-platform-proof";

@@ -14,7 +14,6 @@ interface ChannelSeasonalProps {
   // The saved cycle preview's holiday-episode summary (§6 "Holiday episodes"), soonest holiday
   // first. The consequence line under Holiday strength reads the first; absent while it loads.
   holidayEpisodes?: HolidayEpisodesDTO[];
-  className?: string;
 }
 
 export type { ChannelSeasonalProps };
