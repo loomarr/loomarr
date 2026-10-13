@@ -76,7 +76,7 @@ describe("Home — a member's view (#1659)", () => {
     stubAs(MEMBER);
     renderAt("/dashboard");
 
-    expect(await screen.findByText("Nothing on air yet")).toBeInTheDocument();
+    expect(await screen.findByText("Your first channel starts here")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Request a channel" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Add your first channel" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Settings → This server/)).not.toBeInTheDocument();
@@ -87,7 +87,7 @@ describe("Home — a member's view (#1659)", () => {
     const seen = stubAs(MEMBER);
     renderAt("/dashboard");
 
-    await screen.findByText("Nothing on air yet");
+    await screen.findByText("Your first channel starts here");
     await waitFor(() => {
       expect(seen.some((u) => u.includes("/v1/system/services") || u.includes("/v1/system/restart"))).toBe(
         false,

@@ -697,13 +697,13 @@ func SelectionFrom(f *schedule.FillerSelection, scope schedule.ScopePolicy, deri
 			sel.EraWindows = rangesToFiller(f.EraWindows)
 		}
 	}
-	// The "seed filler era from scope.era" default, applied live rather than only stamped at
+	// The "seed filler era from scope dates" default, applied live rather than only stamped at
 	// create — so an existing channel benefits, and a channel whose scope later changes follows.
 	if inheritEra {
-		if windows := scope.FillerEraWindows(); len(windows) > 0 {
+		if era, windows := scope.FillerEra(); era != nil {
+			sel.Era = filler.EraRange{From: era.From, To: era.To}
+		} else if len(windows) > 0 {
 			sel.EraWindows = rangesToFiller(windows)
-		} else if scope.Era != nil {
-			sel.Era = filler.EraRange{From: scope.Era.From, To: scope.Era.To}
 		} else if derived.Era != nil {
 			sel.Era = filler.EraRange{From: derived.Era.From, To: derived.Era.To}
 		}

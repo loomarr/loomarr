@@ -3,6 +3,7 @@ export {
   moveTvGuideFocus,
   restoreTvGuideFocus,
   tvGuideRowWindow,
+  tvGuideTimeEdge,
 } from "./guide-navigation";
 export type {
   TvGuideActivation,

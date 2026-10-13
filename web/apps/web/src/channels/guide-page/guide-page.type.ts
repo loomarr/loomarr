@@ -8,6 +8,12 @@ type GuidePageProps = {
   // Opens the (empty) describe panel on arrival — the "Request a channel" door the Requests page's
   // empty state links to (`?new=1`).
   openOnArrival?: boolean;
+  // Opens straight into the manual/AI-off builder (#1817, G2), skipping the AI describe form
+  // even when AI is configured — Home's Channel ideas "Describe your own channel" (`?manual=1`)
+  // explicitly chose this path, so retrying AI first would second-guess that choice.
+  openManualOnArrival?: boolean;
+  // Seeds the manual builder from one channel idea — Home's "Edit first" (`?manual=1&ideaId=`).
+  initialIdeaId?: string;
 };
 
 export type { GuidePageProps };

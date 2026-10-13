@@ -131,6 +131,12 @@ const useSuggestionRun = (initialJobId?: string): SuggestionRun => {
       if (journey.proposal) revise(journey.intent);
       else start(journey.intent);
     },
+    resume: (nextJobId: string) => {
+      setIntent(undefined);
+      setPhase(undefined);
+      setRound(undefined);
+      setJobId(nextJobId);
+    },
     reset: (preserveIntent = false) => {
       if (preserveIntent && journey?.intent) setIntent(journey.intent);
       submit.reset();

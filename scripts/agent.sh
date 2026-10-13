@@ -623,8 +623,22 @@ EOF
 		')"
 		lint_package_args="$(printf '%s\n' "$lint_packages" | paste -sd ' ' -)"
 		make -C "$ROOT" lint PKG="$lint_package_args"
-		traced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --race)"
-		untraced="$(printf '%s\n' "$packages" | "$SCRIPT_DIR/go-race-policy.sh" --no-race)"
+		# `$packages` is tag-aware (GH #1279) so `make lint` above can see packages that compile
+		# only under a custom build tag (e.g. internal/eval). The plain `go test` calls below are
+		# not: the Makefile's TAGS comment is explicit that custom-tagged sources are compile-
+		# checked by `vet-tags`/`lint`, never executed as tests by this gate, so a tag-only
+		# package must be filtered back out here or `go test` fails with "build constraints
+		# exclude all Go files" on a package it was never meant to run.
+		# go-impact.sh resolves packages against its own real repository location
+		# ("$SCRIPT_DIR/..", the same as here), independent of $ROOT/$LOOMARR_REPO_ROOT — see its
+		# header comment. The untagged list below must match that location too, or a test fixture
+		# that overrides $ROOT (no go.mod there) breaks this filter.
+		packages_file="$(mktemp)"
+		printf '%s\n' "$packages" >"$packages_file"
+		testable_packages="$(go list -C "$SCRIPT_DIR/.." ./... | grep -Fxf "$packages_file" || true)"
+		rm -f "$packages_file"
+		traced="$(printf '%s\n' "$testable_packages" | "$SCRIPT_DIR/go-race-policy.sh" --race)"
+		untraced="$(printf '%s\n' "$testable_packages" | "$SCRIPT_DIR/go-race-policy.sh" --no-race)"
 		if [ -n "$traced" ]; then
 			# shellcheck disable=SC2086 # newline-delimited package list intentionally becomes argv.
 			( cd "$ROOT" && go test -race -timeout 25m $traced )

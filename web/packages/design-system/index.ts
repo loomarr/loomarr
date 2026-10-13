@@ -52,8 +52,11 @@ export type { PreviewAnchorProps, PreviewGroupProps } from "./src/preview";
 export { PreviewAnchor, PreviewGroup } from "./src/preview";
 export type {
   ArtworkState,
+  BadgeShape,
   BadgeTone,
+  ProgressTone,
   ScreenProps,
+  StatusTone,
   TextProps,
   TextTone,
 } from "./src/primitives";
@@ -63,6 +66,7 @@ export {
   FocusSurface,
   ProgressTrack,
   Screen,
+  StatusDot,
   Surface,
   Text,
 } from "./src/primitives";
@@ -70,6 +74,8 @@ export type { LoomarrProviderProps, LoomarrTheme } from "./src/provider";
 export { LoomarrProvider, resolveLoomarrTheme } from "./src/provider";
 export type { QrCodeProps } from "./src/qr-code";
 export { QrCode } from "./src/qr-code";
+export type { SegmentedControlProps, SegmentOption } from "./src/segmented-control";
+export { SegmentedControl } from "./src/segmented-control";
 export type {
   HintProps,
   MenuItem,

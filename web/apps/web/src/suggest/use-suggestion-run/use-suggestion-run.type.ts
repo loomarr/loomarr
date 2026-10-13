@@ -42,6 +42,10 @@ interface SuggestionRun {
   retry: () => void;
   // Authorized recovery retains the server-owned intent; a fresh start discards it.
   reset: (preserveIntent?: boolean) => void;
+  // Jump straight to polling an already-recorded Job (manual/AI-off builder, #1817): the
+  // builder's own submit already created the Proposal server-side, so this is NOT another
+  // submit — it is the same deep-link resumption `initialJobId` gives a reloaded tab.
+  resume: (jobId: string) => void;
 }
 
 export type { SuggestionRun };

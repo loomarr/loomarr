@@ -11,7 +11,7 @@ describe("HomePage (#1659)", () => {
   it("on an empty install, says nothing is on and offers the first channel", async () => {
     stub({ me: ADMIN });
     const router = renderAt("/dashboard");
-    expect(await screen.findByText("Nothing on air yet")).toBeInTheDocument();
+    expect(await screen.findByText("Your first channel starts here")).toBeInTheDocument();
     // The sections that need something on the air stay away.
     expect(screen.queryByRole("heading", { name: "Tonight" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Settings → This server" })).toBeInTheDocument();

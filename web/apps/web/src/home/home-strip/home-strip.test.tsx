@@ -1,73 +1,81 @@
-import {
-  getChannelGuideMockHandler,
-  getSystemRestartCostMockHandler,
-  getSystemServicesMockHandler,
-} from "@loomarr/api/msw";
+import { getChannelGuideMockHandler } from "@loomarr/api/msw";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
-import { ADMIN, renderAt, stub } from "@/test/requests-harness";
+import { ADMIN, MEMBER, renderAt, stub } from "@/test/requests-harness";
 
-// The admin strip through the real route (#1659 web mock). Requests and the member strip are
-// covered in test/requests-page and test/home-member.
+// The top of Home through the real route (#1822 evidence: "Neutral channel inventory count").
+// Services, requests needing a decision and restart-pending now live elsewhere (the Requests nav
+// badge, Settings → This server's Diagnostics), so this strip only ever says one of: loading, a
+// failure to retry, the first-channel invitation, or a plain count.
 
 afterEach(() => vi.restoreAllMocks());
 
-const timeline = (status: "live" | "paused", id: string) => ({
+const timeline = (id: string) => ({
   airings: [],
   channelId: id,
   name: `Channel ${id}`,
   number: 1,
   pendingCount: 0,
-  status,
+  status: "live" as const,
 });
 
-const strip = (over: { paused?: boolean; failing?: boolean; pendingKeys?: string[] }) => {
-  stub({ me: ADMIN });
-  server.use(
-    getChannelGuideMockHandler({
-      channels: [timeline("live", "c1"), timeline(over.paused ? "paused" : "live", "c2")],
-      fromMs: 0,
-      toMs: 0,
-    }),
-    getSystemServicesMockHandler({
-      loomarr: { name: "loomarr", ok: true },
-      rows: over.failing ? [{ name: "tunarr", ok: false, settingsGroup: "tunarr" }] : [],
-    }),
-    getSystemRestartCostMockHandler({
-      available: true,
-      pendingKeys: over.pendingKeys ?? [],
-      restartRequired: (over.pendingKeys ?? []).length > 0,
-      streamingChannels: 0,
-    }),
-  );
-  renderAt("/dashboard");
-};
-
-describe("HomeStrip — the admin's headline", () => {
-  it("says all channels are playing only when every one is live", async () => {
-    strip({});
-    expect(await screen.findByText("All 2 channels are playing")).toBeInTheDocument();
+describe("HomeStrip — a neutral inventory line (#1822)", () => {
+  it("says how many channels there are", async () => {
+    stub({ me: ADMIN });
+    server.use(
+      getChannelGuideMockHandler({ channels: [timeline("c1"), timeline("c2")], fromMs: 0, toMs: 0 }),
+    );
+    renderAt("/dashboard");
+    expect(await screen.findByText("2 channels")).toBeInTheDocument();
   });
 
-  it("counts the live ones when a channel is paused", async () => {
-    strip({ paused: true });
-    expect(await screen.findByText("1 of 2 channels are playing")).toBeInTheDocument();
+  it("uses the singular for one channel", async () => {
+    stub({ me: MEMBER });
+    server.use(getChannelGuideMockHandler({ channels: [timeline("c1")], fromMs: 0, toMs: 0 }));
+    renderAt("/dashboard");
+    expect(await screen.findByText("1 channel")).toBeInTheDocument();
   });
 
-  it("leads with a service that isn't answering, and offers Fix", async () => {
-    strip({ failing: true });
-    expect(await screen.findByText("Something needs fixing")).toBeInTheDocument();
-    expect(screen.getByText("1 connected service isn’t answering")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Fix" })).toBeInTheDocument();
+  it("shows a stable loading line while the guide hasn't answered", async () => {
+    stub({ me: ADMIN });
+    server.use(getChannelGuideMockHandler(() => new Promise(() => {})));
+    renderAt("/dashboard");
+    expect(await screen.findByText("Loading your channels…")).toBeInTheDocument();
   });
 
-  it("asks before restarting for a setting that waits on one", async () => {
-    strip({ pendingKeys: ["filler.dir"] });
-    await userEvent.click(await screen.findByRole("button", { name: "Restart…" }));
-    expect(screen.getByText(/Restart now\? Channels pause for a few seconds/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByText(/Restart now\?/)).not.toBeInTheDocument();
+  it("offers Try again on an initial error, and retries the guide", async () => {
+    stub({ me: ADMIN });
+    let calls = 0;
+    server.use(
+      http.get("*/v1/guide", () => {
+        calls += 1;
+        return HttpResponse.json({ title: "Guide unavailable" }, { status: 500 });
+      }),
+    );
+    renderAt("/dashboard");
+    expect(await screen.findByText("Couldn’t load your channels.")).toBeInTheDocument();
+    const before = calls;
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(calls).toBeGreaterThan(before);
+  });
+
+  it("offers the admin a creation action on zero channels", async () => {
+    stub({ me: ADMIN });
+    server.use(getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }));
+    renderAt("/dashboard");
+    expect(await screen.findByText("Your first channel starts here")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Add your first channel" })).toBeInTheDocument();
+  });
+
+  it("offers the member a request action on zero channels", async () => {
+    stub({ me: MEMBER });
+    server.use(getChannelGuideMockHandler({ channels: [], fromMs: 0, toMs: 0 }));
+    renderAt("/dashboard");
+    expect(await screen.findByText("Your first channel starts here")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Request a channel" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add your first channel" })).not.toBeInTheDocument();
   });
 });

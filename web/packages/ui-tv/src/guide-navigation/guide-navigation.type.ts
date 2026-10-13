@@ -15,6 +15,12 @@ type TvGuideNavigationState = {
 
 type TvGuideMoveResult = {
   boundary?: GuideNavigationDirection;
+  /**
+   * Set only on a left/right boundary (#1659 decision N4): "earlier"/"later" asks the platform to
+   * page the served time window; absent means the edge truly has nowhere to go (LEFT already at
+   * now, or RIGHT off a programme that doesn't span the whole window).
+   */
+  pageIntent?: "earlier" | "later";
   state: TvGuideNavigationState;
 };
 

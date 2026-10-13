@@ -151,3 +151,50 @@ describe("Admins on Requests", () => {
     await waitFor(() => expect(tab).toHaveTextContent(/Needs you\s*2\b/));
   });
 });
+
+// #1430: the server KEEPS a decided pull (approved or dismissed) — exactly so History can answer
+// what was agreed to — but no screen asked for anything but the pending ones. Done must show them.
+describe("Decided filler pulls in Done (#1430)", () => {
+  const decidedPull = (id: string, title: string, status: "approved" | "dismissed") => ({
+    id,
+    title,
+    status,
+    decidedAt: "2026-09-20T10:00:00Z",
+    reason: "",
+    proposedBy: "",
+    estimateClips: 10,
+    candidateCount: 1,
+    createdAt: "2026-09-01T00:00:00Z",
+    rejected: [],
+    sources: [],
+    plan: [],
+  });
+
+  it("shows a decided pull in Done with its decision, and leaves a pending one out", async () => {
+    stub({
+      me: ADMIN,
+      pulls: [
+        decidedPull("pull-approved", "Top up the 1990s", "approved"),
+        decidedPull("pull-dismissed", "Retro ads", "dismissed"),
+        { ...decidedPull("pull-pending", "Still waiting", "approved"), status: "pending" },
+      ],
+    });
+    renderAt("/requests/done");
+
+    expect(await screen.findByText("Top up the 1990s")).toBeInTheDocument();
+    expect(screen.getByText("Downloaded")).toBeInTheDocument();
+    expect(screen.getByText("Retro ads")).toBeInTheDocument();
+    expect(screen.getByText("Declined")).toBeInTheDocument();
+    expect(screen.queryByText("Still waiting")).not.toBeInTheDocument();
+  });
+
+  // Filler pulls are an admin-only list server-side (§10 V35); a member's Done tab must not
+  // show one even if it is decided.
+  it("never shows a decided pull on a member's Done tab", async () => {
+    stub({ me: MEMBER, pulls: [decidedPull("pull-approved", "Top up the 1990s", "approved")] });
+    renderAt("/requests/done");
+
+    expect(await screen.findByText("Nothing finished yet")).toBeInTheDocument();
+    expect(screen.queryByText("Top up the 1990s")).not.toBeInTheDocument();
+  });
+});

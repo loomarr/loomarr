@@ -17,7 +17,7 @@ import (
 // next derivation, and a channel with a scope era had no way to say "any". Presence is now the
 // opt-in: an absent range inherits, a PRESENT one is the operator's answer even when it is empty.
 func TestSelectionFrom_EraHasThreeStates(t *testing.T) {
-	scope := &schedule.Range{From: 1990, To: 1999}
+	scope := schedule.Range{From: 1990, To: 1999}
 
 	for _, tc := range []struct {
 		name string
@@ -54,7 +54,7 @@ func TestSelectionFrom_EraHasThreeStates(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := channels.SelectionFrom(tc.sel, schedule.ScopePolicy{Era: scope}, schedule.DerivedFiller{}).Era
+			got := channels.SelectionFrom(tc.sel, schedule.ScopePolicy{Dates: schedule.EraDates(scope)}, schedule.DerivedFiller{}).Era
 			if got != tc.want {
 				t.Errorf("era = %+v, want %+v", got, tc.want)
 			}
@@ -106,7 +106,7 @@ func TestSelectionForChannel_DerivesAudienceAndEraFromLineup(t *testing.T) {
 
 func TestSelectionForChannel_ScopeEraBeatsLineupYears(t *testing.T) {
 	ch := store.Channel{Lineup: []schedule.LineupEntry{{Year: 2010}}}
-	ch.Policy.Scope.Era = &schedule.Range{From: 1989, To: 1999}
+	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1989, To: 1999})
 	if got := channels.SelectionForChannel(ch).Era; got != (filler.EraRange{From: 1989, To: 1999}) {
 		t.Errorf("era = %+v, want the scope era", got)
 	}

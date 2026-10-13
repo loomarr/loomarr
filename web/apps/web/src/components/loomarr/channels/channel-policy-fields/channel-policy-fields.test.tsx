@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
+import { eraDates } from "@/lib/era-dates";
 import { ChannelPolicyFields } from "./channel-policy-fields";
 
 // Each field's help is a FieldHelp tooltip now, which needs a TooltipProvider ancestor (the
@@ -36,7 +37,7 @@ const EMPTY: ChannelPolicy = {};
 const POPULATED: ChannelPolicy = {
   ordering: "shuffle",
   audience: { ceiling: "TV-14" },
-  scope: { era: { from: 1990, to: 1999 } },
+  scope: { dates: eraDates({ from: 1990, to: 1999 }) },
   separation: { movieNoRepeat: "168h", episodeNoRepeat: "24h" },
   applied: [{ kind: "blockMax", from: "8", to: "unbounded" }],
 };
@@ -194,31 +195,35 @@ describe("ChannelPolicyFields", () => {
     expect(onChange).toHaveBeenLastCalledWith({ scope: {} });
   });
 
-  it("clears the alternative date representation when switching between era and dates", async () => {
+  // An era is the same range on every date axis (#1877): editing it replaces the dates with
+  // that era-shaped scope, which the per-axis editor can then refine.
+  it("writes an era as dates on every axis, then lets one axis diverge", async () => {
     const onChange = vi.fn();
     render(
       <PolicyHarness
-        initial={{
-          scope: {
-            era: { from: 1980, to: 1989 },
-            dates: { movieRelease: [{ from: 1990, to: 1999 }] },
-          },
-        }}
+        initial={{ scope: { dates: { movieRelease: [{ from: 1990, to: 1999 }] } } }}
         onChange={onChange}
       />,
     );
 
     const scalarFrom = screen.getAllByLabelText("From year")[0]!;
-    await userEvent.clear(scalarFrom);
+    expect(scalarFrom).toHaveValue(null); // per-axis dates are not an era
     await userEvent.type(scalarFrom, "1970");
     await userEvent.tab();
-    expect(onChange).toHaveBeenLastCalledWith({ scope: { era: { from: 1970, to: 1989 } } });
+    expect(onChange).toHaveBeenLastCalledWith({ scope: { dates: eraDates({ from: 1970 }) } });
+    const scalarTo = screen.getAllByLabelText("To year")[0]!;
+    await userEvent.type(scalarTo, "1989");
+    await userEvent.tab();
+    const era = { from: 1970, to: 1989 };
+    expect(onChange).toHaveBeenLastCalledWith({ scope: { dates: eraDates(era) } });
 
     await userEvent.type(screen.getByLabelText("Movie release new range from"), "2005");
     await userEvent.type(screen.getByLabelText("Movie release new range to"), "2009");
     await userEvent.click(screen.getByRole("button", { name: "Add Movie release range" }));
     expect(onChange).toHaveBeenLastCalledWith({
-      scope: { dates: { movieRelease: [{ from: 2005, to: 2009 }] } },
+      scope: {
+        dates: { movieRelease: [era, { from: 2005, to: 2009 }], seriesPremiere: [era], seriesAiring: [era] },
+      },
     });
   });
 
@@ -232,8 +237,8 @@ describe("ChannelPolicyFields", () => {
     render(<ChannelPolicyFields policy={POPULATED} onChange={vi.fn()} />);
     expect(screen.getByRole("combobox", { name: "Play order" })).toHaveTextContent("Shuffled");
     expect(screen.getByRole("combobox", { name: "Audience ceiling" })).toHaveTextContent("TV-14");
-    expect(screen.getByLabelText("From year")).toHaveValue(1990);
-    expect(screen.getByLabelText("To year")).toHaveValue(1999);
+    expect(screen.getAllByLabelText("From year")[0]).toHaveValue(1990);
+    expect(screen.getAllByLabelText("To year")[0]).toHaveValue(1999);
     // Duration strings tidied for display (the wire form the operator reads/types).
     expect(screen.getByLabelText("Same movie")).toHaveValue("168h");
     expect(screen.getByLabelText("Same episode")).toHaveValue("24h");
@@ -287,7 +292,7 @@ describe("ChannelPolicyFields", () => {
     await userEvent.tab();
 
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: { era: { from: 1985, to: undefined } } }),
+      expect.objectContaining({ scope: { dates: eraDates({ from: 1985 }) } }),
     );
   });
 
@@ -295,7 +300,7 @@ describe("ChannelPolicyFields", () => {
     const onChange = vi.fn();
     render(<ChannelPolicyFields policy={POPULATED} onChange={onChange} />);
 
-    await userEvent.click(screen.getByLabelText("From year"));
+    await userEvent.click(screen.getAllByLabelText("From year")[0]!);
     await userEvent.tab();
 
     expect(onChange).not.toHaveBeenCalled();

@@ -9,6 +9,12 @@ type PairingState =
   | {
       deviceCode: string;
       expiresAtMs: number;
+      // True only for the code that immediately replaced one `begin()`'s poll loop found dead
+      // (`poll()` returning `status: "expired"`), so the shell can say a new code just appeared
+      // without the UI guessing it from the countdown. Cleared the moment the session emits any
+      // other state — the next awaiting-approval included, if it was requested explicitly
+      // (`session.pair()`/"Get a new code") rather than a silent expiry.
+      refreshedFromExpired: boolean;
       serverUrl: string;
       status: "awaiting-approval";
       userCode: string;

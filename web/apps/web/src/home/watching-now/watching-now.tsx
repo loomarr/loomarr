@@ -1,5 +1,6 @@
 import { ProgrammeCard, surfChannelData } from "@loomarr/ui";
 import { Link } from "@tanstack/react-router";
+import { ArtworkFallback } from "@/components/loomarr/artwork-fallback";
 import { Image } from "@/components/ui/image";
 import { SectionHeader } from "@/components/ui/section-header";
 import type { WatchingCard, WatchingNowProps } from "./watching-now.type";
@@ -9,14 +10,14 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 // The same two letters the account avatar draws.
 const initialsOf = (name: string) => name.slice(0, 2).toUpperCase();
 
-const YOU = "You — continue watching";
+const YOU = "You";
 
-// One card per viewing, the caller's own first (the mock outlines it in amber and leads with it).
-// A member's `viewers` holds only their own devices (#1662, Q-H2), so everyone else is a count in
-// the header, never a card. When the caller is not watching right now, their last-tuned channel
-// stands in as the continue-watching card.
-const watchingCards = ({ viewing, layout }: Pick<WatchingNowProps, "viewing" | "layout">): WatchingCard[] => {
-  const cards: WatchingCard[] = [...(viewing.viewers ?? [])]
+// One card per ACTUAL viewing, the caller's own first (the mock outlines it in amber and leads
+// with it). A member's `viewers` holds only their own devices (#1662, Q-H2), so everyone else is
+// a count in the header, never a card. A caller who is not watching right now gets no card here —
+// their last-tuned channel is Home's separate "Recently tuned" return card, not a stand-in session.
+const watchingCards = ({ viewing }: Pick<WatchingNowProps, "viewing">): WatchingCard[] =>
+  [...(viewing.viewers ?? [])]
     .sort((a, b) => Number(b.you) - Number(a.you))
     .map((v) => ({
       key: `${v.userId}:${v.device}:${v.channelId}`,
@@ -24,18 +25,6 @@ const watchingCards = ({ viewing, layout }: Pick<WatchingNowProps, "viewing" | "
       you: v.you,
       viewer: { name: v.you ? YOU : v.name, initials: initialsOf(v.name), device: v.device },
     }));
-  const cw = viewing.continueWatching;
-  if (cw && !cards.some((c) => c.you)) {
-    if (layout.channels.some((c) => c.source.channelId === cw.channelId))
-      cards.unshift({
-        key: `you:${cw.channelId}`,
-        channelId: cw.channelId,
-        you: true,
-        viewer: { name: YOU, initials: "YO" },
-      });
-  }
-  return cards;
-};
 
 const watchingMeta = ({ viewing }: Pick<WatchingNowProps, "viewing">): string | undefined => {
   if (viewing.scope === "household") {
@@ -51,7 +40,7 @@ const watchingMeta = ({ viewing }: Pick<WatchingNowProps, "viewing">): string | 
 // the overlay ProgrammeCard over the airing's still. Admins see named viewing across the
 // household; members see their own and a count (Q-H2, enforced server-side by #1662).
 const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
-  const cards = watchingCards({ viewing, layout }).flatMap((card) => {
+  const cards = watchingCards({ viewing }).flatMap((card) => {
     const channel = layout.channels.find((c) => c.source.channelId === card.channelId);
     if (!channel) return [];
     const { now, ...identity } = surfChannelData(channel, nowMs, layout.timezone);
@@ -80,10 +69,22 @@ const WatchingNow = ({ viewing, layout, nowMs }: WatchingNowProps) => {
               programme={programme}
               artwork={
                 airing.thumbImage ? (
-                  <Image image={airing.thumbImage} alt="" sizes="22rem" className="size-full object-cover" />
+                  <Image
+                    image={airing.thumbImage}
+                    alt=""
+                    sizes="22rem"
+                    fallback={
+                      <ArtworkFallback
+                        channel={{ name: channel.source.name, number: channel.source.number }}
+                      />
+                    }
+                    className="size-full object-cover"
+                  />
                 ) : airing.thumbUrl ? (
                   <img src={airing.thumbUrl} alt="" className="size-full object-cover" />
-                ) : undefined
+                ) : (
+                  <ArtworkFallback channel={{ name: channel.source.name, number: channel.source.number }} />
+                )
               }
             />
           </Link>

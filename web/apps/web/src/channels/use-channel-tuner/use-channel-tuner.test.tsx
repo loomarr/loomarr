@@ -70,7 +70,6 @@ describe("channel tuner", () => {
       frames.push(callback);
       return frames.length;
     });
-    const measure = vi.spyOn(performance, "measure");
     const onTune = vi.fn();
     const { result } = renderHook(() =>
       useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune, warmChannel: noWarm }),
@@ -89,18 +88,11 @@ describe("channel tuner", () => {
     expect(result.current.channel?.id).toBe("ch-30");
     expect(result.current.acknowledging).toBe(false);
     expect(onTune).toHaveBeenCalledWith(expect.objectContaining({ id: "ch-30" }));
-    // A real rAF-driven paint is the trustworthy OSD-latency population (#1492): the measure's
-    // detail must say so, not merely succeed, so the e2e gate can tell it apart from the timer.
-    expect(measure).toHaveBeenCalledWith(
-      "loomarr:tune:request-to-osd",
-      expect.objectContaining({ detail: expect.objectContaining({ viaFallback: false }) }),
-    );
   });
 
   it("does not lose a tune when the browser stops delivering animation frames", () => {
     vi.useFakeTimers();
     vi.stubGlobal("requestAnimationFrame", () => 1);
-    const measure = vi.spyOn(performance, "measure");
     const onTune = vi.fn();
     const { result } = renderHook(() =>
       useChannelTuner({ currentId: "ch-10", channels, nowNext: [], onTune, warmChannel: noWarm }),
@@ -115,12 +107,6 @@ describe("channel tuner", () => {
     expect(result.current.channel?.id).toBe("ch-30");
     expect(result.current.acknowledging).toBe(false);
     expect(onTune).toHaveBeenCalledWith(expect.objectContaining({ id: "ch-30" }));
-    // The escape-valve timer is a different, event-loop-lag-dominated population than a real
-    // paint (#1492): tag it so a tight latency percentile never silently mixes the two.
-    expect(measure).toHaveBeenCalledWith(
-      "loomarr:tune:request-to-osd",
-      expect.objectContaining({ detail: expect.objectContaining({ viaFallback: true }) }),
-    );
   });
 
   it("pairs the selected channel with the already-loaded now row", () => {

@@ -453,7 +453,7 @@ func declared() []Setting {
 				opt("tunarr", "Tunarr"),
 			},
 			Default: "internal",
-			Doc:     "Who streams a channel. Internal playout is required for mid-roll breaks (§10) and reports real transcode telemetry. Tunarr remains fully supported — the right answer for hardware that cannot transcode, or an install that already works. Overridable per channel.",
+			Doc:     "Who streams a channel. Internal playout is the default: it supports mid-roll breaks (§10), reports real transcode telemetry, and needs no extra service. Tunarr is an optional backend for an install that already runs Tunarr — not a requirement. An unrecognised value falls back to internal. Overridable per channel.",
 		},
 		{
 			Key: "playout.encoder", Label: "Encoder override", EnvVar: "PLAYOUT_ENCODER", Group: GroupPlayout,

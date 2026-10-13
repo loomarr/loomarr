@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { eraDates } from "@/lib/era-dates";
 import { channel } from "@/test/fixtures/channels";
 import { server } from "@/test/msw/server";
 import { canonicalize, PREVIEW_DEBOUNCE_MS, useChannelRulesDraft } from "./use-channel-rules-draft";
@@ -65,7 +66,7 @@ const stubDraft = () => {
 
 const policy = (over: Partial<ChannelPolicy> = {}): ChannelPolicy => ({
   ordering: "shuffle",
-  scope: { era: { from: 1990, to: 1999 } },
+  scope: { dates: eraDates({ from: 1990, to: 1999 }) },
   ...over,
 });
 

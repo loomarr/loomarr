@@ -1,7 +1,7 @@
 import type { ProposalJourneyProgressDTO } from "@loomarr/api/models/proposalJourneyProgressDTO";
+import { pickCount, progressLine } from "@loomarr/core/requests";
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { pickCount, progressLine } from "@/components/loomarr/feedback/progress-line";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { GenerationProgressProps } from "./generation-progress.type";

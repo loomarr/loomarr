@@ -127,11 +127,19 @@ const ApprovalQueue = () => {
   const bulkable = rows.filter((p) => !edited.has(p.id));
   const selectedBulkable = bulkable.filter((p) => selected.has(p.id));
 
+  // A single proposal's approve/deny error (#1430): rendered on THAT row by ApprovalQueueItem,
+  // not in a page-level banner here — a reviewer scanning other rows should not have to go
+  // looking for why one of them didn't go through.
+  const rowError = (id: string): unknown =>
+    (approve.isError && approve.variables?.id === id ? approve.error : undefined) ??
+    (deny.isError && deny.variables?.id === id ? deny.error : undefined);
+
   return (
     <div className="flex flex-col gap-3">
-      {(approve.error ?? deny.error ?? bulk.error ?? feedback.error) != null && (
+      {/* Bulk and feedback errors are not about one row, so they stay here. */}
+      {(bulk.error ?? feedback.error) != null && (
         <ErrorState
-          error={approve.error ?? deny.error ?? bulk.error ?? feedback.error}
+          error={bulk.error ?? feedback.error}
           onRetry={feedback.error ? feedback.retry : undefined}
         />
       )}
@@ -152,6 +160,10 @@ const ApprovalQueue = () => {
           deciding={
             (approvePull.isPending && approvePull.variables?.id === pull.id) ||
             (dismissPull.isPending && dismissPull.variables?.id === pull.id)
+          }
+          error={
+            (approvePull.isError && approvePull.variables?.id === pull.id ? approvePull.error : undefined) ??
+            (dismissPull.isError && dismissPull.variables?.id === pull.id ? dismissPull.error : undefined)
           }
           onApprove={(edits) => approvePull.mutate({ id: pull.id, data: edits })}
           onDismiss={() => dismissPull.mutate({ id: pull.id })}
@@ -221,6 +233,7 @@ const ApprovalQueue = () => {
               // itself, because it changes what approving this row gets you.
               refused={p.proposal.refused ?? []}
               status={deciding.has(p.id) ? "approving" : "pending"}
+              error={rowError(p.id)}
               edit={edits[p.id]}
               onEdit={(edit) => setEdit(p.id, edit)}
               renderFeedback={(item) => {

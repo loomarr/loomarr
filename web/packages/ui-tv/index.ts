@@ -1,3 +1,8 @@
+export type {
+  TvAutoTuneDurationStorage,
+  TvAutoTuneSettingStore,
+} from "./src/auto-tune-setting";
+export { createTvAutoTuneSetting, TV_AUTO_TUNE_CHOICES_MS } from "./src/auto-tune-setting";
 export {
   createTvGuideFocusRegistry,
   createTvSurfFocusRegistry,
@@ -16,6 +21,7 @@ export {
   moveTvGuideFocus,
   restoreTvGuideFocus,
   tvGuideRowWindow,
+  tvGuideTimeEdge,
 } from "./src/guide-navigation";
 export type {
   TvSurfActivation,
@@ -37,7 +43,11 @@ export type {
   TvWatchingRemoteState,
 } from "./src/watching-navigation";
 export {
+  clampNumberEntryMs,
+  DEFAULT_NUMBER_ENTRY_MS,
   initialTvWatchingRemoteState,
+  MAX_NUMBER_ENTRY_MS,
+  MIN_NUMBER_ENTRY_MS,
   reduceTvWatchingRemote,
   tvNumberEntryPresentation,
   tvWatchingRemoteEventFromNative,

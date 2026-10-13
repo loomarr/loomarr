@@ -19,7 +19,6 @@ export * from "./section-header";
 export * from "./select";
 export * from "./sheet";
 export * from "./status-dot";
-export * from "./status-strip";
 export * from "./switch";
 export * from "./tooltip";
 export * from "./video-player";

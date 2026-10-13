@@ -7,6 +7,11 @@ import type { ProgrammeIdentityData } from "../identity";
 interface ChannelNumberEntry {
   channelName?: string;
   digits: string;
+  /**
+   * When present, draws a live countdown to the auto-tune ("auto-tunes in 1.2 s", #1659 map 5a).
+   * Absent (e.g. a platform with no digit entry) draws just the typed digits.
+   */
+  expiresAtMs?: number;
 }
 
 interface WatchingProgrammeData extends ProgrammeIdentityData {

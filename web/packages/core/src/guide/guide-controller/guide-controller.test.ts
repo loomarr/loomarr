@@ -138,6 +138,31 @@ describe("Guide controller", () => {
     expect(controller.move("right")?.boundary).toBe("right");
   });
 
+  it("pages the window earlier and later without crossing the live window (#1659 decision N4)", async () => {
+    const resolveWindow = vi.fn().mockReturnValue({ from: 1_000, to: 5_000 });
+    const source = {
+      load: vi.fn((window: { from: number; to: number }) =>
+        Promise.resolve({ ...guide(`w${window.from}`), fromMs: window.from, toMs: window.to }),
+      ),
+    };
+    const controller = createGuideController({ now: () => 2_000, resolveWindow, source });
+    await controller.refresh();
+    expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 1_000, toMs: 5_000 });
+
+    // Already at the live window: LEFT has nowhere earlier to go.
+    await controller.page("earlier");
+    expect(source.load).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 1_000, toMs: 5_000 });
+
+    await controller.page("later");
+    expect(source.load).toHaveBeenLastCalledWith({ from: 5_000, to: 9_000 }, expect.any(AbortSignal));
+    expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 5_000, toMs: 9_000 });
+
+    await controller.page("earlier");
+    expect(source.load).toHaveBeenLastCalledWith({ from: 1_000, to: 5_000 }, expect.any(AbortSignal));
+    expect(controller.getSnapshot().layout).toMatchObject({ fromMs: 1_000, toMs: 5_000 });
+  });
+
   it("falls back deterministically and reports an empty authoritative Guide", async () => {
     const source = { load: vi.fn().mockResolvedValue(guide("available")) };
     const controller = createGuideController({ now: () => 2_000, source });

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { SurfChannelData } from "../surf-rail.type";
 
 /** What the card reads of a channel. A `SurfChannelData` satisfies it; so does the tuning channel. */
@@ -12,6 +14,8 @@ interface SurfChannelCardProps {
   channel: SurfChannelCardData;
   /** Draws the live dot: this is the channel on air for the viewer. */
   current: boolean;
+  /** A ready logo image; absent draws the channel's monogram ident (#1659 decision N8). */
+  logo?: ReactNode;
   /** The focused/expanded form: programme, time left and progress. */
   selected: boolean;
 }
