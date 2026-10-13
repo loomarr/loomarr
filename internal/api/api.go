@@ -62,6 +62,7 @@ func Router(log *slog.Logger, opts Options) http.Handler {
 		diagnosticEvents: opts.DiagnosticEvents, diagnosticProcesses: opts.DiagnosticProcesses, diagnosticBundles: opts.DiagnosticBundles,
 		diagnosticCapture: opts.DiagnosticCapture,
 		clientDiagnostics: opts.ClientDiagnostics,
+		clientCrashes:     opts.ClientCrashes,
 		startupReports:    opts.StartupReports,
 		now:               opts.Now,
 		ideaLibrary:       opts.IdeaLibrary,
