@@ -28,7 +28,7 @@ const ServerRow = ({ onPress, server }: ServerRowProps) => {
         <StatusDot label="Found on this network" tone="ok" />
         <Surface backgroundColor="$transparent" borderWidth={0} flex={1} gap={2}>
           {/* `label` is muted by default; the name is the row's title. Two lines, so a long name
-              ("Loomarr on fictional-media-server") isn't cut off. */}
+              ("Loomarr on <a long hostname>") isn't cut off. */}
           <Text density="touch" numberOfLines={2} textRole="label" tone="primary">
             {server.name}
           </Text>
