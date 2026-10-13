@@ -165,6 +165,27 @@ clip-details and source sheets, the composite "Back to top-level catalog" bar, t
 section switcher, the split cut editor, the taxonomy editor, and per-channel filler
 (`/channels/$id/filler`, its own #1817 row).
 
+## Decisions
+
+Decided by the maintainer on 2026-10-13 (recorded on #1908). They resolve the open questions below
+and approve the Draft, with these specifics:
+
+1. **Exception set.** Clips held in Incoming plus the Problems / diagnostics panel. There is no
+   separate "quarantine" concept.
+2. **Normal states go quiet.** No amber on the "working on its own" card, and no READY chip on
+   clips (ready is the default). Amber is reserved for things that need the user.
+3. **Phone library.** Alternative A, the 2-up compact grid, with stats and filters folded into one
+   line.
+4. **Split review Back** returns to its origin via a `from=` search param.
+5. **Explicit "← Manage" links** on Incoming, Sources and Tags, reusing the Settings pattern.
+6. **Coverage card → channel filler page** gets a return path.
+7. **Select checkbox target.** Fix the 16px target in the build (WCAG 2.2, 2.5.8).
+8. **Members** see the status text plus "An admin can sort this out from Filler › Manage", with no
+   admin-only buttons.
+
+The Overview's "Open diagnostics" deep-links to `/filler/manage#diagnostics`, so the panel opens on
+arrival.
+
 ## Open questions for the maintainer
 
 1. **"Quarantined clips"** doesn't exist as a user-visible state (see Scope). Is held-in-Incoming
