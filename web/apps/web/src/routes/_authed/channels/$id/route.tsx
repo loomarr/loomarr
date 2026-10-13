@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelIdentityField } from "@/channels/channel-identity-field";
-import { useChannelPolicySave } from "@/channels/use-channel-policy-save";
+import { ignoreFailure, useChannelSave, withPending } from "@/channels/use-channel-save";
 import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { NavTabs } from "@/components/ui/nav-tabs";
@@ -147,24 +147,11 @@ const ChannelDetailLayout = () => {
   // `channel` frame — refresh so the page reflects it with no manual action.
   useLoomarrEventListener({ onChannel: () => invalidate() });
 
-  // Policy edits save through their own serial queue (#1895): two quick edits used to race on
-  // the channel revision and the second was lost. The sections render its pending policy.
-  const policySave = useChannelPolicySave(id, invalidate);
-
-  // Edits save seamlessly, then auto-reconcile server-side. A light toast confirms; the
-  // edit is the trigger, never a separate "apply"/"rebuild" step.
-  const update = channelsApi.useUpdateChannel({
-    mutation: {
-      onSuccess: () => {
-        invalidate();
-        toast.success("Saved");
-      },
-      onError: (e) => {
-        invalidate();
-        toast.error(toProblem(e).title ?? "Couldn't save that change");
-      },
-    },
-  });
+  // Every edit on this page, from every section, saves through the channel's one serial queue
+  // (#1895, #1899): editors that each sent their own PATCH raced on the channel revision and lost
+  // whichever landed second. Edits save seamlessly, then auto-reconcile server-side; a light toast
+  // confirms, and the edit is the trigger, never a separate "apply"/"rebuild" step.
+  const channelSave = useChannelSave(id);
   const del = channelsApi.useDeleteChannel({
     mutation: {
       onSuccess: (_response, variables) => {
@@ -200,17 +187,14 @@ const ChannelDetailLayout = () => {
   const ready = ch.programCount;
   const total = ch.programCount + ch.pendingCount;
 
-  // The identity fields commit through mutateAsync so they can distinguish success (adopt +
-  // close) from failure (a 409 renumber surfaces inline on the field, editor stays open). The
-  // hook-level onError toast still fires; the field also gets the rejection to show in place.
-  const saveName = (name: string | number) =>
-    update.mutateAsync({ id, data: { revision: ch.revision, name: String(name) } }).then(() => undefined);
-  const saveNumber = (number: string | number) =>
-    update.mutateAsync({ id, data: { revision: ch.revision, number: Number(number) } }).then(() => undefined);
+  // The identity fields await the save so they can distinguish success (adopt + close) from
+  // failure (a 409 renumber surfaces inline on the field, editor stays open). The writer's error
+  // toast still fires; the field also gets the rejection to show in place.
+  const saveName = (name: string | number) => channelSave.save({ name: String(name) });
+  const saveNumber = (number: string | number) => channelSave.save({ number: Number(number) });
   // The icon is just another field on the same PATCH (§7) — not a bespoke endpoint — so it
   // commits exactly like the identity fields above. `""` clears it.
-  const saveLogo = (logo: string) =>
-    update.mutateAsync({ id, data: { revision: ch.revision, logo } }).then(() => undefined);
+  const saveLogo = (logo: string) => channelSave.save({ logo });
 
   return (
     <div className="flex h-full flex-col">
@@ -306,17 +290,16 @@ const ChannelDetailLayout = () => {
           <ChannelDetailProvider
             value={{
               id,
-              channel: policySave.pending ? { ...ch, policy: policySave.pending } : ch,
+              channel: withPending(ch, channelSave.pending),
               isAdmin,
               air,
               ready,
               total,
               invalidate,
-              saving: update.isPending || policySave.isSaving,
+              saving: channelSave.isSaving,
               deleting: del.isPending,
-              update: (data) => update.mutate({ id, data: { ...data, revision: ch.revision } }),
-              updateAsync: (data) => update.mutateAsync({ id, data: { ...data, revision: ch.revision } }),
-              savePolicy: policySave.save,
+              save: (edit) => void channelSave.save(edit).catch(ignoreFailure),
+              savePolicy: (policy) => void channelSave.save({ policy }).catch(ignoreFailure),
               saveLogo,
               onDelete: ({ purge }) => del.mutate({ id, params: { purge } }),
             }}

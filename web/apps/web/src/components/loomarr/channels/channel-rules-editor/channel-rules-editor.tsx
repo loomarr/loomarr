@@ -262,8 +262,8 @@ const ChannelRulesEditor = ({
   );
 
   // Keep local drafts in sync when the server hands back a genuinely different rule set
-  // (another session edited it, or the LLM proposed a starter set) — same fingerprint-
-  // adoption pattern as useChannelLineup: compare the identity SET+ORDER (rule ids), not
+  // (another session edited it, or the LLM proposed a starter set) — a fingerprint-
+  // adoption pattern: compare the identity SET+ORDER (rule ids), not
   // the array reference (a new `[]`/object literal on every incidental parent re-render),
   // so an in-flight local edit isn't mistaken for a remote change and clobbered by it. Our
   // own commits round-trip the SAME draft ids (ruleFromDraft carries `draft.id` straight

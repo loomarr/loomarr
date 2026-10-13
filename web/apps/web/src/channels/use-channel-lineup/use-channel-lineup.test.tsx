@@ -1,8 +1,8 @@
-import { channelsApi, type LineupEntryDTO } from "@loomarr/api";
-import { getUpdateChannelMockHandler } from "@loomarr/api/msw";
+import type { LineupEntryDTO } from "@loomarr/api";
+import { getGetChannelMockHandler, getUpdateChannelMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { HttpResponse, http } from "msw";
+import { delay, HttpResponse, http } from "msw";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { describe, expect, it, vi } from "vitest";
@@ -20,7 +20,8 @@ const makeWrapper = () => {
 };
 
 // Captures every PATCH body sent to /v1/channels/{id} so a test can assert exactly what
-// the whole-list replace contained, in order — the contract this hook exists to uphold.
+// the whole-list replace contained, in order — the contract this hook exists to uphold. The
+// channel writer reads the channel's revision first, so the by-id read answers too.
 //
 // ⚠ The stub this replaces dispatched on `init?.method === "PATCH"` ALONE, with no URL check at
 // all — so it would have recorded a PATCH to any endpoint in the app as a lineup commit. It also
@@ -28,9 +29,10 @@ const makeWrapper = () => {
 const stubLineup = () => {
   const patches: unknown[] = [];
   server.use(
+    getGetChannelMockHandler(channel({ revision: 1 })),
     getUpdateChannelMockHandler(async ({ request }) => {
       patches.push(await request.json());
-      return channel();
+      return channel({ revision: 2 });
     }),
   );
   return { patches };
@@ -43,16 +45,15 @@ const predator: LineupEntryDTO = { key: "movie:tmdb:106", name: "Predator", year
 describe("useChannelLineup", () => {
   it("exposes the current lineup unchanged before any commit", () => {
     stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak], 1), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak]), {
       wrapper: makeWrapper(),
     });
     expect(result.current.entries).toEqual([heat, pointBreak]);
-    expect(result.current.isPending).toBe(false);
   });
 
   it("add appends the new entry and commits the full list, in order", async () => {
     const { patches } = stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak], 1), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak]), {
       wrapper: makeWrapper(),
     });
 
@@ -70,7 +71,7 @@ describe("useChannelLineup", () => {
     // to know or gate on. Any well-formed entry commits the same way.
     const { patches } = stubLineup();
     const pending: LineupEntryDTO = { key: "series:tvdb:81189", name: "Breaking Bad", year: 2008 };
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat], 1), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useChannelLineup("ch-1", [heat]), { wrapper: makeWrapper() });
 
     act(() => {
       expect(result.current.add(pending)).toBe(true);
@@ -82,7 +83,7 @@ describe("useChannelLineup", () => {
 
   it("adding a duplicate key is prevented — no request is sent", () => {
     const { patches } = stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak], 1), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak]), {
       wrapper: makeWrapper(),
     });
 
@@ -95,7 +96,7 @@ describe("useChannelLineup", () => {
 
   it("remove drops the key and commits the remaining entries, in order", async () => {
     const { patches } = stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak, predator], 1), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak, predator]), {
       wrapper: makeWrapper(),
     });
 
@@ -107,7 +108,7 @@ describe("useChannelLineup", () => {
 
   it("reorder commits arrayMove's result — the exact shape an onDragEnd hands it", async () => {
     const { patches } = stubLineup();
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak, predator], 1), {
+    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak, predator]), {
       wrapper: makeWrapper(),
     });
 
@@ -118,54 +119,53 @@ describe("useChannelLineup", () => {
     expect(patches[0]).toEqual({ revision: 1, lineup: [predator, heat, pointBreak] });
   });
 
-  it("a stale 409 rolls back, refreshes the channel, and tells the operator", async () => {
+  it("a second op inside the round trip builds on the first and waits its turn (#1899)", async () => {
+    const patches: { revision: number; lineup: LineupEntryDTO[] }[] = [];
+    let revision = 1;
     server.use(
+      getGetChannelMockHandler(channel({ revision: 1 })),
+      http.patch("*/v1/channels/:id", async ({ request }) => {
+        const body = (await request.json()) as { revision: number; lineup: LineupEntryDTO[] };
+        patches.push(body);
+        await delay(30);
+        if (body.revision !== revision)
+          return HttpResponse.json({ title: "Channel changed" }, { status: 409 });
+        revision += 1;
+        return HttpResponse.json(channel({ revision, lineup: body.lineup }));
+      }),
+    );
+    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak, predator]), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => result.current.remove(pointBreak.key));
+    // Shown at once, so the next remove starts from it rather than the stale read.
+    expect(result.current.entries).toEqual([heat, predator]);
+    act(() => result.current.remove(predator.key));
+
+    await waitFor(() => expect(patches).toHaveLength(2));
+    expect(patches).toEqual([
+      { revision: 1, lineup: [heat, predator] },
+      { revision: 2, lineup: [heat] },
+    ]);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("a failed save falls back to the saved lineup and tells the operator", async () => {
+    server.use(
+      getGetChannelMockHandler(channel({ revision: 1 })),
       http.patch("*/v1/channels/:id", () =>
-        HttpResponse.json(
-          { title: "Channel changed", detail: "Refresh it, review the latest version, and try again." },
-          { status: 409 },
-        ),
+        HttpResponse.json({ title: "Invalid lineup", detail: "That title can't be added." }, { status: 422 }),
       ),
     );
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const invalidate = vi.spyOn(client, "invalidateQueries");
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    );
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak], 9), { wrapper });
+    const { result } = renderHook(() => useChannelLineup("ch-1", [heat, pointBreak]), {
+      wrapper: makeWrapper(),
+    });
 
     act(() => result.current.remove(pointBreak.key));
     expect(result.current.entries).toEqual([heat]);
 
     await waitFor(() => expect(result.current.entries).toEqual([heat, pointBreak]));
-    expect(invalidate).toHaveBeenCalledWith({
-      queryKey: channelsApi.getGetChannelQueryKey("ch-1"),
-    });
-    expect(toast.error).toHaveBeenCalledWith("Channel changed");
-  });
-
-  it("surfaces isPending while a commit is in flight", async () => {
-    // ⚠ The deferred promise is the point: `isPending` is only observable WHILE the request is
-    // unresolved, so the resolver has to block. An MSW resolver may be async, so the await IS the
-    // hold — no separate `.then()` on a stubbed fetch, and the route stays bound while it waits.
-    let release: (() => void) | undefined;
-    const inFlight = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    server.use(
-      getUpdateChannelMockHandler(async () => {
-        await inFlight;
-        return channel();
-      }),
-    );
-    const { result } = renderHook(() => useChannelLineup("ch-1", [heat], 1), { wrapper: makeWrapper() });
-
-    act(() => {
-      result.current.remove(heat.key);
-    });
-
-    await waitFor(() => expect(result.current.isPending).toBe(true));
-    release?.();
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(toast.error).toHaveBeenCalledWith("Invalid lineup");
   });
 });
