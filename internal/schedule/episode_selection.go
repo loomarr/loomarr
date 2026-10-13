@@ -218,12 +218,12 @@ func matchingHolidayEpisodes(episodes []ResolvedProgram, selectedHolidays map[st
 }
 
 func episodeMatchesHoliday(episode ResolvedProgram, selected map[string]bool) bool {
-	haystack := strings.Join(append([]string{episode.Title, episode.Overview}, episode.Tags...), " ")
+	evidence := holidayvocab.Evidence{Title: episode.Title, Text: []string{episode.Overview}, Keywords: episode.Tags}
 	for _, holiday := range builtinCalendar {
 		if len(selected) > 0 && !selected[holiday.id] {
 			continue
 		}
-		if holidayvocab.MatchesEvidence(holiday.id, haystack) {
+		if holidayvocab.Judge(holiday.id, evidence).Fits() {
 			return true
 		}
 	}
