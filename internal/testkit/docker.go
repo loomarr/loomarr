@@ -99,44 +99,23 @@ exit 97
 		return FakeDockerResult{}, err
 	}
 	sleep := filepath.Join(tmp, "sleep")
-	if err := writeProbeExecutable(sleep, `#!/usr/bin/env bash
-set -u
-printf '%s\n' "$1" >>"$FAKE_SLEEP_LOG"
-if [[ -z "$FAKE_SLEEP_STATUSES" ]]; then
-  exit 0
-fi
-count=$(wc -l <"$FAKE_SLEEP_LOG")
-IFS=',' read -r -a statuses <<<"$FAKE_SLEEP_STATUSES"
-index=$((count - 1))
-if [[ $index -ge ${#statuses[@]} ]]; then
-  exit 95
-fi
-exit "${statuses[$index]}"
-`); err != nil {
+	if err := writeProbeExecutable(sleep, fakeSleepScript); err != nil {
 		return FakeDockerResult{}, err
 	}
 
-	statuses := make([]string, len(config.PullStatuses))
-	for i, status := range config.PullStatuses {
-		statuses[i] = strconv.Itoa(status)
-	}
-	sleepStatuses := make([]string, len(config.SleepStatuses))
-	for i, status := range config.SleepStatuses {
-		sleepStatuses[i] = strconv.Itoa(status)
-	}
 	command := exec.CommandContext(ctx, executable, args...) //nolint:gosec // caller-controlled repository helper behind a fake PATH
 	command.Dir = config.Dir
 	command.Env = append(os.Environ(),
 		"PATH="+filepath.Dir(docker)+string(os.PathListSeparator)+filepath.Dir(sleep)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"FAKE_DOCKER_INSPECT_STATUS="+strconv.Itoa(config.InspectStatus),
-		"FAKE_DOCKER_PULL_STATUSES="+strings.Join(statuses, ","),
+		"FAKE_DOCKER_PULL_STATUSES="+joinStatuses(config.PullStatuses),
 		"FAKE_DOCKER_PULL_COUNT="+pullCount,
 		"FAKE_DOCKER_INSPECT_LOG="+inspectLog,
 		"FAKE_DOCKER_PULL_LOG="+pullLog,
 		"FAKE_DOCKER_COMMAND_LOG="+commandLog,
 		"FAKE_DOCKER_RUN_STATUS="+strconv.Itoa(config.RunStatus),
 		"FAKE_SLEEP_LOG="+sleepLog,
-		"FAKE_SLEEP_STATUSES="+strings.Join(sleepStatuses, ","),
+		"FAKE_SLEEP_STATUSES="+joinStatuses(config.SleepStatuses),
 	)
 	command.Env = append(command.Env, config.Environment...)
 	runErr := command.Run()
@@ -193,6 +172,31 @@ func readFakeDockerCommands(path string) ([][]string, error) {
 		current = append(current, field)
 	}
 	return commands, nil
+}
+
+// fakeSleepScript records every wait and consumes FAKE_SLEEP_STATUSES once per call; an extra
+// call fails distinctly so a retry bound cannot pass silently.
+const fakeSleepScript = `#!/usr/bin/env bash
+set -u
+printf '%s\n' "$1" >>"$FAKE_SLEEP_LOG"
+if [[ -z "$FAKE_SLEEP_STATUSES" ]]; then
+  exit 0
+fi
+count=$(wc -l <"$FAKE_SLEEP_LOG")
+IFS=',' read -r -a statuses <<<"$FAKE_SLEEP_STATUSES"
+index=$((count - 1))
+if [[ $index -ge ${#statuses[@]} ]]; then
+  exit 95
+fi
+exit "${statuses[$index]}"
+`
+
+func joinStatuses(statuses []int) string {
+	out := make([]string, len(statuses))
+	for i, status := range statuses {
+		out[i] = strconv.Itoa(status)
+	}
+	return strings.Join(out, ",")
 }
 
 func writeProbeExecutable(path, script string) error {
