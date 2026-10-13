@@ -1583,6 +1583,258 @@ components:
         - platform
         - events
       type: object
+    ClientCrashBreadcrumb:
+      additionalProperties: false
+      properties:
+        at:
+          description: RFC 3339
+          format: date-time
+          type: string
+        category:
+          enum:
+            - navigation
+            - http
+            - lifecycle
+            - log
+          type: string
+        message:
+          description: At most 256 bytes of UTF-8; URLs keep their path only
+          maxLength: 256
+          type: string
+      required:
+        - at
+        - category
+        - message
+      type: object
+    ClientCrashPage:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientCrashPage.json
+          format: uri
+          readOnly: true
+          type: string
+        items:
+          items:
+            $ref: "#/components/schemas/ClientCrashSummary"
+          type: array
+        nextCursor:
+          description: Pass as cursor for the next older page; absent on the last page
+          type: string
+      required:
+        - items
+      type: object
+    ClientCrashReport:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientCrashReport.json
+          format: uri
+          readOnly: true
+          type: string
+        appBuild:
+          type: string
+        appVersion:
+          type: string
+        breadcrumbs:
+          items:
+            $ref: "#/components/schemas/ClientCrashBreadcrumb"
+          type: array
+        deviceId:
+          description: The paired device's id from the device list; absent for a browser session
+          type: string
+        deviceModel:
+          type: string
+        deviceName:
+          type: string
+        id:
+          type: string
+        kind:
+          enum:
+            - js-fatal
+            - js-error
+            - native
+          type: string
+        message:
+          type: string
+        nativePayload: {}
+        occurredAt:
+          description: RFC 3339, the device's clock
+          format: date-time
+          type: string
+        osVersion:
+          type: string
+        platform:
+          enum:
+            - ios
+            - android
+            - tvos
+            - android-tv
+          type: string
+        receivedAt:
+          description: RFC 3339, the server's clock
+          format: date-time
+          type: string
+        stack:
+          type: string
+        userId:
+          description: The signed-in person whose app sent it; absent for an API-token caller
+          type: string
+      required:
+        - breadcrumbs
+        - id
+        - receivedAt
+        - occurredAt
+        - kind
+        - platform
+        - appVersion
+        - appBuild
+        - osVersion
+        - deviceModel
+        - message
+      type: object
+    ClientCrashReportInput:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientCrashReportInput.json
+          format: uri
+          readOnly: true
+          type: string
+        appBuild:
+          maxLength: 128
+          type: string
+        appVersion:
+          maxLength: 128
+          type: string
+        breadcrumbs:
+          items:
+            $ref: "#/components/schemas/ClientCrashBreadcrumb"
+          maxItems: 50
+          type: array
+        deviceModel:
+          maxLength: 128
+          type: string
+        kind:
+          enum:
+            - js-fatal
+            - js-error
+            - native
+          type: string
+        message:
+          description: At most 2 KiB of UTF-8
+          maxLength: 2048
+          minLength: 1
+          type: string
+        nativePayload:
+          description: "kind=native only: the MetricKit MXDiagnosticPayload JSON object, at most 64 KiB"
+        occurredAt:
+          description: RFC 3339, the device's clock
+          format: date-time
+          type: string
+        osVersion:
+          maxLength: 128
+          type: string
+        platform:
+          enum:
+            - ios
+            - android
+            - tvos
+            - android-tv
+          type: string
+        stack:
+          description: At most 32 KiB of UTF-8
+          maxLength: 32768
+          type: string
+      required:
+        - kind
+        - platform
+        - appVersion
+        - appBuild
+        - osVersion
+        - deviceModel
+        - occurredAt
+        - message
+        - breadcrumbs
+      type: object
+    ClientCrashReportOutputBody:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/ClientCrashReportOutputBody.json
+          format: uri
+          readOnly: true
+          type: string
+        id:
+          description: The stored report's id
+          type: string
+      required:
+        - id
+      type: object
+    ClientCrashSummary:
+      additionalProperties: false
+      properties:
+        appBuild:
+          type: string
+        appVersion:
+          type: string
+        deviceId:
+          description: The paired device's id from the device list; absent for a browser session
+          type: string
+        deviceModel:
+          type: string
+        deviceName:
+          type: string
+        id:
+          type: string
+        kind:
+          enum:
+            - js-fatal
+            - js-error
+            - native
+          type: string
+        message:
+          type: string
+        occurredAt:
+          description: RFC 3339, the device's clock
+          format: date-time
+          type: string
+        osVersion:
+          type: string
+        platform:
+          enum:
+            - ios
+            - android
+            - tvos
+            - android-tv
+          type: string
+        receivedAt:
+          description: RFC 3339, the server's clock
+          format: date-time
+          type: string
+        userId:
+          description: The signed-in person whose app sent it; absent for an API-token caller
+          type: string
+      required:
+        - id
+        - receivedAt
+        - occurredAt
+        - kind
+        - platform
+        - appVersion
+        - appBuild
+        - osVersion
+        - deviceModel
+        - message
+      type: object
     ClientDiagnosticsOutputBody:
       additionalProperties: false
       properties:
@@ -12368,6 +12620,100 @@ paths:
       summary: Upload a custom channel watermark
       tags:
         - channels
+  /v1/diagnostics/client-crashes:
+    get:
+      description: "Admin only. Newest first, without stacks, breadcrumbs or native payloads. Operator and automation API: no Loomarr client calls it."
+      operationId: list-client-crashes
+      parameters:
+        - description: Page size
+          explode: false
+          in: query
+          name: limit
+          schema:
+            default: 50
+            description: Page size
+            format: int64
+            maximum: 100
+            minimum: 1
+            type: integer
+        - description: Opaque cursor returned by the previous page
+          explode: false
+          in: query
+          name: cursor
+          schema:
+            description: Opaque cursor returned by the previous page
+            maxLength: 512
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientCrashPage"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: List app crash reports
+      tags:
+        - diagnostics
+    post:
+      description: Stores one crash report from a signed-in app. The server records the user and paired device from the request's credential; the body never names them. Tokens, cookies, credential headers and URL queries are scrubbed before storage. At most 128 KiB (413 above); rate limited per device (429).
+      operationId: report-client-crash
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientCrashReportInput"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientCrashReportOutputBody"
+          description: Accepted
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Report an app crash
+      tags:
+        - diagnostics
+  /v1/diagnostics/client-crashes/{id}:
+    get:
+      description: Admin only. The full report, including stack, breadcrumbs and native payload.
+      operationId: get-client-crash
+      parameters:
+        - description: Crash report id
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Crash report id
+            maxLength: 128
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientCrashReport"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Get one app crash report
+      tags:
+        - diagnostics
   /v1/diagnostics/client-events:
     post:
       description: Accepts a bounded closed event batch from the signed-in web or Android TV client. Actor, receipt time, severity, subsystem, and retained attributes are server-owned.

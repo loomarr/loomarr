@@ -45,6 +45,7 @@ type Store interface {
 	PurgeTerminalNotifications(ctx context.Context, before time.Time) (int, error)
 	PurgeTerminalPasswordRecoveries(ctx context.Context, before time.Time) (int, error)
 	PurgeDiagnostics(ctx context.Context, before time.Time, maxBytes int64) (diagnostics.PurgeResult, error)
+	PurgeClientCrashReports(ctx context.Context, before time.Time, keep int) (int, error)
 	MaintainQualityLedger(ctx context.Context, now time.Time) error
 	PurgeExpiredSessions(ctx context.Context, now time.Time) (int, error)
 }
@@ -177,6 +178,18 @@ func (s *Service) PurgeDiagnostics(ctx context.Context) (diagnostics.PurgeResult
 	return result, err
 }
 
+// PurgeClientCrashReports applies the fixed crash-report policy (#1816): 30 days or the newest
+// 1000, whichever is fewer. Like notifications it is deliberately not a setting; the byte budget
+// above does not cover these rows, the row cap bounds them instead.
+func (s *Service) PurgeClientCrashReports(ctx context.Context) (int, error) {
+	n, err := s.store.PurgeClientCrashReports(ctx, s.now().Add(-diagnostics.ClientCrashRetention),
+		diagnostics.ClientCrashRetainedMax)
+	if n > 0 && s.log != nil {
+		s.log.Info("client crash reports purged", "reports", n)
+	}
+	return n, err
+}
+
 // Housekeeping bounds every append-only operational table in one pass. The individual
 // purges remain methods because they are independently testable policies, but separate
 // schedules offered no useful operator decision and made routine cleanup look like three
@@ -201,6 +214,7 @@ func (s *Service) Housekeeping(ctx context.Context) error {
 	count(s.PurgeNotifications(ctx))
 	diag, err := s.PurgeDiagnostics(ctx)
 	count(diag.Events+diag.ProcessRuns, err)
+	count(s.PurgeClientCrashReports(ctx))
 	if err := s.store.MaintainQualityLedger(ctx, s.now()); err != nil {
 		errs = append(errs, err)
 	}

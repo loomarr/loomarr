@@ -79,6 +79,39 @@ return `202` after enqueue. The limit is 120 observations a minute per actor wit
 Clients keep a 100-observation memory queue, send at most 20 every two seconds, drop routine events
 before errors, and never block playback or keep a second log.
 
+## Client crash reports
+
+Paired apps report their own crashes to their own server (#1816). Reports stay inside Loomarr: no
+third-party crash service or SDK receives them. This is the one client surface that accepts a
+message and a stack, so it is a separate table and contract, not a client-diagnostics event.
+
+- **Write.** `POST /v1/diagnostics/client-crashes` accepts any signed-in caller; a paired device's
+  token is a session. The server records the user, the paired device's id (its token hash) and its
+  name from the credential; the body cannot name them, and unknown fields are refused. The body is a
+  `kind` (`js-fatal`, `js-error`, `native`), a `platform` (`ios`, `android`, `tvos`, `android-tv`),
+  app version and build, OS version, device model, `occurredAt`, a `message` (≤2 KiB), an optional
+  `stack` (≤32 KiB), up to 50 `breadcrumbs` (`navigation`, `http`, `lifecycle`, `log`; ≤256 bytes
+  each), and for `native` only the MetricKit `MXDiagnosticPayload` JSON object (≤64 KiB). It returns
+  `202 {id}`. A body over 128 KiB is `413`; a contract violation, bad enums included, is `400`;
+  malformed JSON, a wrong JSON type or an unknown field is the framework's `422`. Each device may
+  send a burst of 10, then 2 a minute, and one person's devices together a burst of 30, then 30 an
+  hour, so no one person can fill the retained cap (`429`). A browser session is charged as its
+  person and an API token as one caller.
+- **Scrubbed on the server too.** Clients never send a token, cookie or `Authorization` header, and
+  URLs keep their path only. The server enforces the same independently on every text field,
+  labels included: credential header lines, authorization values with their scheme, quoted or bare
+  `token`/`session`/`cookie`/`sig`/key/password values, URL user-info, and the query and fragment of
+  any URL, path or bare relative URI (`seg00012.ts?sig=…`, percent-encoded or not) are removed before storage, as are NUL
+  bytes. Signed HLS play URLs and their segments carry the token in the query. The native payload is
+  scrubbed value by value and key by key, so it stays valid JSON.
+- **Read.** `GET /v1/diagnostics/client-crashes` (newest first, `limit` ≤100 with an opaque
+  `cursor`, without stacks, breadcrumbs or native payloads) and `GET
+  /v1/diagnostics/client-crashes/{id}` (the whole report) are admin only. Each accepted report also
+  writes one `client.crash_reported` warning to the Diagnostics timeline, carrying its id.
+- **Retention** is fixed product policy, applied by the daily housekeeping pass: 30 days or the
+  newest 1000 reports, whichever is fewer. The diagnostics byte budget does not count these rows;
+  the row cap bounds them instead.
+
 ## Current Health
 
 Each generation owns one **Current Health** value. Checks have a key, label, required flag and
