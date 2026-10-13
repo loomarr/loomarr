@@ -34,6 +34,40 @@ type DesiredLineup struct {
 	// HolidayEpisodes summarises the auto-mode holiday-episode feature per selected holiday,
 	// open or soonest first (§6 "Holiday episodes"). Nil outside auto mode.
 	HolidayEpisodes []HolidayEpisodes
+	// Cycle sizes the whole ordered deck — before the rolling-window slice — so the UI can say
+	// what one pass through this channel means ("226 episodes, about 3½ days") from the same
+	// computation that ships the guide.
+	Cycle CycleSummary
+}
+
+// CycleSummary is the size of one full pass through a channel's playable deck: every program
+// the active rule and seasonal bench leave in, counted once however the rolling window slices it.
+// Pending (not yet available) titles are not counted — they cannot air.
+type CycleSummary struct {
+	Episodes int
+	Movies   int
+	Series   int // distinct shows the episodes belong to
+	// RuntimeMs is the programme runtime of the deck, without commercial breaks.
+	RuntimeMs int64
+}
+
+func summarizeCycle(deck []Slot) CycleSummary {
+	var c CycleSummary
+	shows := map[string]bool{}
+	for _, s := range deck {
+		if !s.IsProgram() || s.Segment > 1 {
+			continue
+		}
+		c.RuntimeMs += s.DurationMs
+		if s.SeriesTitle != "" || s.Season > 0 || s.Episode > 0 {
+			c.Episodes++
+			shows[s.SeriesTitle] = true
+		} else {
+			c.Movies++
+		}
+	}
+	c.Series = len(shows)
+	return c
 }
 
 // ProgramCount returns how many slots are real playable programs (§9: a channel
@@ -431,6 +465,9 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 		Applied:         applied,
 		EligibleKeys:    eligibleKeys,
 		HolidayEpisodes: holidayEpisodes,
+		// orderedAll was copied before the holiday planner arranged the tile, so a holiday
+		// feature (an extra airing of a unit already in the deck) is never counted twice.
+		Cycle: summarizeCycle(orderedAll),
 	}
 }
 

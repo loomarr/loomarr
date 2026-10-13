@@ -70,5 +70,49 @@ const SeparateWindows: Story = {
   },
 };
 
+// Play order says what its choice means for this channel, from the backend's cycle summary.
+const HOUR_MS = 3_600_000;
+const oneShow = { episodes: 226, movies: 0, series: 1, runtimeMs: 83 * HOUR_MS };
+
+const PlayOrderInOrder: Story = {
+  args: { policy: { ordering: "sequential" }, show: "ordering", cycle: oneShow },
+};
+
+const PlayOrderShuffled: Story = {
+  args: { policy: { ordering: "shuffle" }, show: "ordering", cycle: oneShow },
+};
+
+const PlayOrderSyndication: Story = {
+  args: { policy: { ordering: "syndication" }, show: "ordering", cycle: oneShow },
+};
+
+const PlayOrderMovies: Story = {
+  args: {
+    policy: { ordering: "sequential" },
+    show: "ordering",
+    cycle: { episodes: 0, movies: 40, series: 0, runtimeMs: 72 * HOUR_MS },
+  },
+};
+
+const PlayOrderSeveralShows: Story = {
+  args: {
+    policy: { ordering: "shuffle" },
+    show: "ordering",
+    cycle: { episodes: 120, movies: 0, series: 3, runtimeMs: 60 * HOUR_MS },
+  },
+};
+
 export default meta;
-export { AllOverridden, DisjointProgrammingDates, Empty, Populated, SeparateWindows, StrictCeiling };
+export {
+  AllOverridden,
+  DisjointProgrammingDates,
+  Empty,
+  PlayOrderInOrder,
+  PlayOrderMovies,
+  PlayOrderSeveralShows,
+  PlayOrderShuffled,
+  PlayOrderSyndication,
+  Populated,
+  SeparateWindows,
+  StrictCeiling,
+};
