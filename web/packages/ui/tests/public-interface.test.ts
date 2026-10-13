@@ -14,6 +14,7 @@ import {
   PairingShell,
   ProgrammeCard,
   ProgrammeIdentity,
+  pairingBackAvailable,
   StatePanel,
   SurfJourney,
   SurfRail,
@@ -27,6 +28,7 @@ describe("ui public interface", () => {
     expect(ClientShell).toBeTypeOf("function");
     expect(DeviceDisconnectAction).toBeTypeOf("function");
     expect(PairingShell).toBeTypeOf("function");
+    expect(pairingBackAvailable).toBeTypeOf("function");
     expect(ProgrammeCard).toBeTypeOf("function");
     expect(ChannelIdentity).toBeTypeOf("function");
     expect(ClientNavigation).toBeTypeOf("function");

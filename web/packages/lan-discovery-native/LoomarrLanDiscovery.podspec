@@ -2,8 +2,8 @@ require "json"
 
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 
-# Autolinked into the iPhone app as a React Native community module (the podspec in the package root
-# is what autolinking looks for). The Apple TV app excludes it; tvOS has no discovery yet.
+# Autolinked into the iPhone and Apple TV apps as a React Native community module (the podspec in the
+# package root is what autolinking looks for). NWBrowser and getifaddrs are on tvOS too.
 Pod::Spec.new do |s|
   s.name         = "LoomarrLanDiscovery"
   s.version      = package["version"]
@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
   s.homepage     = "https://github.com/loomarr/loomarr"
   s.license      = "MIT"
   s.authors      = "The Loomarr Authors"
-  s.platforms    = { :ios => min_ios_version_supported }
+  s.platforms    = min_supported_versions
   s.source       = { :git => "https://github.com/loomarr/loomarr.git" }
   s.source_files = "ios/**/*.{m,swift}"
   s.frameworks   = "Network"

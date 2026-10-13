@@ -18,6 +18,7 @@ import {
   clientBackDestination,
   GuideJourney,
   PairingShell,
+  pairingBackAvailable,
   SurfJourney,
   WatchingSurface,
   watchingScheduleFromGuide,
@@ -43,8 +44,8 @@ import { useKeepAwake } from "expo-keep-awake";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, BackHandler, useTVEventHandler, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AppState, BackHandler, Platform, TVEventControl, useTVEventHandler, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import appConfig from "../app.json";
 
@@ -74,6 +75,24 @@ const autoTuneSetting = createTvAutoTuneSetting({
 });
 
 const tvDiagnostics = { clientVersion, platform: "android_tv", source: "android_tv" } as const;
+
+// The Siri Remote has no number keys, so Apple TV has no digit entry: no "0–9 jump" hint and no
+// channel-number wait to tune (#1500 audit #3; maintainer, 2026-10-13: "It doesn't need tuning").
+const remoteHasDigits = !Platform.isTVOS;
+
+/**
+ * tvOS gives the Menu key to the app only while it is enabled, and then nothing else acts on it, so
+ * enable it only while a screen has somewhere to go back to. Everywhere else Menu goes to the Home
+ * screen, as Apple's HIG expects at an app's root. A modal dialog takes Menu itself. Android TV's
+ * Back always reaches BackHandler.
+ */
+const useTvMenuKey = (enabled: boolean) => {
+  useEffect(() => {
+    if (!enabled || !Platform.isTVOS) return undefined;
+    TVEventControl.enableTVMenuKey();
+    return () => TVEventControl.disableTVMenuKey();
+  }, [enabled]);
+};
 
 const TvShell = ({ credential, session }: { credential: PairingCredential; session: PairingSession }) => {
   const [active, setActive] = useState<ClientDestination>("watching");
@@ -143,6 +162,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     });
     return () => subscription.remove();
   }, [active]);
+  useTvMenuKey(clientBackDestination(active) !== null);
   const runRemoteIntent = useCallback(
     (intent: TvWatchingRemoteIntent | undefined) => {
       switch (intent?.kind) {
@@ -209,6 +229,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
   return (
     <View style={{ flex: 1 }}>
       <WatchingSurface
+        channelDigits={remoteHasDigits}
         chromeVisible={active === "watching"}
         controlsActivityKey={controlsActivityKey}
         controlsVisible={controlsVisible}
@@ -284,7 +305,11 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
             />
           ) : (
             <SurfJourney
-              autoTune={{ choicesMs: TV_AUTO_TUNE_CHOICES_MS, onChange: changeAutoTune, valueMs: autoTuneMs }}
+              autoTune={
+                remoteHasDigits
+                  ? { choicesMs: TV_AUTO_TUNE_CHOICES_MS, onChange: changeAutoTune, valueMs: autoTuneMs }
+                  : undefined
+              }
               clientVersion={clientVersion}
               controller={guide}
               currentChannelId={snapshot.channel?.id}
@@ -348,6 +373,9 @@ const TvClient = () => {
       }),
     [],
   );
+  // PairingShell answers Back on its screens; tvOS sends Menu there only while the key is enabled.
+  const pairingState = useSyncExternalStore(session.subscribe, session.snapshot, session.snapshot);
+  useTvMenuKey(pairingBackAvailable(pairingState));
   const hideNativeSplash = useCallback(() => {
     if (nativeSplashHidden.current) return;
     nativeSplashHidden.current = true;

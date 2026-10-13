@@ -26,6 +26,11 @@ interface WatchingScheduleData {
 }
 
 interface WatchingSurfaceProps {
+  /**
+   * TV: the remote has number keys, so the hint offers "0–9 jump". Defaults to true. An Apple TV's
+   * Siri Remote has none, so tvOS passes false (#1500 audit #3).
+   */
+  channelDigits?: boolean;
   /** False while another transient journey is drawn over the still-mounted player. */
   chromeVisible?: boolean;
   /** Presentation-owned visibility; playback state deliberately does not own UI chrome. */
