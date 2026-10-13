@@ -23,7 +23,7 @@
   .review-note { font-size: 13px; color: var(--s400); margin: 12px auto; max-width: 1040px; padding: 0 16px; line-height: 1.5; }
 
   #frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 16px auto 8px; padding: 0 16px; }
-  #frame { width: 100%; max-width: 1040px; border: 1px solid var(--s700); border-radius: 8px; background: var(--s950); overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  #frame { width: 100%; max-width: 1040px; border: 1px solid var(--s700); border-radius: 8px; background: var(--s950); overflow: hidden; display: flex; flex-direction: column; position: relative; container: frame / inline-size; }
   #frame.phone { max-width: 390px; height: 844px; border-radius: 28px; box-shadow: 0 0 0 6px var(--s900); }
   #scroll { flex: 1; min-height: 0; overflow: auto; }
   .frame-label { font-size: 12px; color: var(--s400); font-family: 'Geist Mono', ui-monospace, monospace; }
@@ -32,8 +32,6 @@
   .ph h1 { font-size: 20px; line-height: 28px; margin: 0; font-weight: 600; }
   .ph .desc { margin: 4px 0 0; font-size: 14px; color: var(--s400); max-width: 768px; line-height: 1.45; }
   .body { padding: 24px; display: flex; flex-direction: column; gap: 24px; }
-  #frame.phone .ph { padding: 14px 16px; }
-  #frame.phone .body { padding: 16px; gap: 20px; }
 
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--s700); overflow-x: auto; }
   .tab { padding: 9px 12px; font-size: 14px; color: var(--s400); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
@@ -64,7 +62,6 @@
 
   /* Draft marker, as in the other review sheets. */
   .delta { border: 1px dashed rgba(220,91,172,.55); border-radius: 8px; position: relative; padding: 20px; }
-  #frame.phone .delta { padding: 14px; }
   .delta-tag { position: absolute; top: -9px; right: 10px; background: var(--s950); color: var(--suggest); font: 500 10.5px/1.4 'Geist Mono', ui-monospace, monospace; padding: 0 6px; text-transform: uppercase; letter-spacing: .03em; }
   .flagline { font-size: 12px; color: var(--suggest); border-top: 1px dashed rgba(220,91,172,.4); padding-top: 8px; margin-top: 10px; }
   .future { color: var(--caution); }
@@ -73,7 +70,6 @@
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 28px; align-items: start; }
   .zoom { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--s400); margin-left: auto; }
   .zoom input { accent-color: var(--signal); width: 16px; height: 16px; }
-  #frame.phone .layout { grid-template-columns: 1fr; gap: 20px; }
   .fields { display: grid; grid-template-columns: 1fr; gap: 20px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field[data-off="true"] { opacity: .45; pointer-events: none; }
@@ -84,7 +80,6 @@
   .hint { font-size: 12px; color: var(--s400); }
   .input, .selectbox { min-height: 36px; border: 1px solid var(--control); border-radius: 6px; background: var(--s950); padding: 6px 10px; font-size: 14px; color: var(--s100); }
   .selectbox { min-width: 200px; max-width: 100%; }
-  #frame.phone .selectbox { width: 100%; }
   .switch { width: 40px; height: 22px; border-radius: 999px; background: var(--s700); position: relative; flex-shrink: 0; border: 0; padding: 0; }
   .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 999px; background: var(--s100); transition: left .12s; }
   .switch[aria-checked="true"] { background: var(--signal); } .switch[aria-checked="true"]::after { left: 21px; background: var(--s950); }
@@ -113,7 +108,6 @@
 
   /* Preview frames: art is geometry in token colours, no imagery. */
   .pv { display: grid; gap: 10px; position: sticky; top: 76px; }
-  #frame.phone .pv { position: static; order: -1; }
   #frame.phone.tall { height: auto; }
   .scene { position: relative; aspect-ratio: 16/9; container-type: size; overflow: hidden; border-radius: 6px; background: #000; border: 1px solid var(--s700); }
   .scene .pic { position: absolute; top: 0; bottom: 0; overflow: hidden; }
@@ -143,11 +137,28 @@
   .tablewrap { overflow-x: auto; border: 1px solid var(--s700); border-radius: 8px; }
   .lgrid { display: grid; grid-template-columns: 1fr; gap: 12px; }
   .lframes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  #frame.phone .lframes { grid-template-columns: 1fr; }
   .bar { display: none; }
   #frame.phone .bar { display: flex; border-top: 1px solid var(--s700); background: var(--s900); padding: 6px 0 20px; }
   .bt { flex: 1; background: none; border: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--s400); font-size: 11px; padding: 4px; }
   .bt .g { font-size: 16px; }
+
+  /* Narrow: one column, preview first, 16px gutter. Keyed to the frame's own width, so a real phone
+     viewport and the "390 px phone" frame toggle get the same layout. */
+  @container frame (max-width: 720px) {
+    .ph { padding: 14px 16px; }
+    .body { padding: 16px; gap: 20px; }
+    .delta { padding: 14px; }
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+    .pv { position: static; order: -1; }
+    .selectbox { width: 100%; }
+    .lframes { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .review { position: static; padding: 12px 16px; }
+    .review select { max-width: 100%; }
+    .review-note { margin: 12px 0; }
+    #frame-wrap { padding: 0 16px; }
+  }
 </style>
 
 <div class="review" role="region" aria-label="Review controls">
