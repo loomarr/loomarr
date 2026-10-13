@@ -394,4 +394,48 @@ describe("FillerManage", () => {
     expect(actionIDs[1]).toBe(actionIDs[0]);
     expect(screen.getByText("This clip couldn’t be processed")).toBeInTheDocument();
   });
+
+  // A disabled button loses focus in a real browser, so a keyboard user's place would fall to
+  // <body> mid-retry. The pending button stays focusable and swallows the repeat instead.
+  it("keeps focus on a pending retry and ignores a second press", async () => {
+    let calls = 0;
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      getMeMockHandler(me({ name: "Admin" })),
+      getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
+      getFillerDecisionDiagnosticsMockHandler({
+        rows: [
+          {
+            id: "manual",
+            clipHash: "a".repeat(64),
+            code: "extraction_failed",
+            recovery: { action: "retry_extraction", mode: "manual_retry" },
+            retryable: true,
+            createdAt: "2026-08-25T12:00:00Z",
+          },
+        ],
+        total: 1,
+      }),
+      http.post("*/v1/filler/decisions/diagnostics/manual/actions", async () => {
+        calls++;
+        await held;
+        return HttpResponse.json({ title: "Retry unavailable" }, { status: 409 });
+      }),
+    );
+    render(<FillerManage />, { wrapper });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Show issues" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    const pending = await screen.findByRole("button", { name: "Starting retry…" });
+    expect(pending).toHaveAttribute("aria-disabled", "true");
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveFocus();
+    await userEvent.click(pending);
+    release();
+    await screen.findByRole("alert");
+    expect(calls).toBe(1);
+  });
 });

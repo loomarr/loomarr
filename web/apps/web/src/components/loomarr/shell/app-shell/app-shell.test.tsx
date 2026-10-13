@@ -1,6 +1,7 @@
+import { LoomarrProvider } from "@loomarr/design-system";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RouterHarness } from "@/test/story-utils";
 import { AppShell } from "./app-shell";
 
@@ -149,5 +150,34 @@ describe("AppShell", () => {
     expect(await screen.findByRole("link", { name: "Guide" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /request a channel/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^suggest$/i })).not.toBeInTheDocument();
+  });
+
+  // PhoneBottomBar is `React.lazy` (it pulls in @loomarr/design-system's TabBar/BottomSheet,
+  // which scripts/check-fe-bundle.mjs's initial-JS budget can't absorb as a static import — see
+  // the component for why). The placeholder holds the bar's own 49px row open so the Guide's
+  // docked strip above it doesn't jump once the chunk resolves and the real bar mounts.
+  describe("below the tablet breakpoint", () => {
+    it("holds the bar's row at a placeholder, then renders the bar itself", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        addEventListener: vi.fn(),
+        matches: false,
+        media: query,
+        removeEventListener: vi.fn(),
+      }));
+      try {
+        render(
+          <LoomarrProvider theme="dark">
+            <RouterHarness content={<AppShell isAdmin={false}>content</AppShell>} />
+          </LoomarrProvider>,
+        );
+
+        expect(await screen.findByTestId("phone-bottom-bar-placeholder")).toHaveStyle({ height: "49px" });
+
+        expect(await screen.findByRole("tablist", { name: "Primary navigation" })).toBeInTheDocument();
+        expect(screen.queryByTestId("phone-bottom-bar-placeholder")).not.toBeInTheDocument();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 });

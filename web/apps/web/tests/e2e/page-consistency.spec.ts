@@ -8,9 +8,15 @@ import { shellRoutes as pages } from "./shell-routes";
 // semantic title, page-edge gutter, and mobile overflow behavior stay invariant. Document width
 // alone misses content clipped inside an overflow-hidden box; phone-layout.spec.ts gates that.
 
+// Desktop's rail is a fixed-width vertical column; below `md` it's replaced by PhoneBottomBar,
+// a full-width horizontal bar (#1785 Alt A) — so the geometry invariant each holds is its OWN
+// fixed dimension, width for the rail and height for the bar, not the same one.
 const viewports = [
-  { name: "desktop", width: 1280, height: 800, navWidth: 224 },
-  { name: "mobile", width: 390, height: 844, navWidth: 56 },
+  { name: "desktop", width: 1280, height: 800, navSize: 224, navSizeTolerance: 0 },
+  // 49 (idiom height) + 1 (hairline border), ±5 for sub-pixel line-height rounding: the
+  // SELECTED label renders at font-weight 600 vs 500 for the rest, so a page with a lit tab
+  // (bold) measures a few px taller than one with none lit (every label regular weight).
+  { name: "mobile", width: 390, height: 844, navSize: 52, navSizeTolerance: 5 },
 ] as const;
 
 const sectionDestinations: Record<string, Array<{ navigation: string; current: string }>> = {};
@@ -18,6 +24,21 @@ const sectionDestinations: Record<string, Array<{ navigation: string; current: s
 const settingsPages = new Set(
   pages.map((entry) => entry.path).filter((path) => path.startsWith("/settings/")),
 );
+
+// The primary destination each shell route belongs to, by the label both layouts give it. /account
+// belongs to none: it's the rail's footer identity, not a section of primary navigation.
+const primaryDestinations: ReadonlyArray<{ prefix: string; label: string }> = [
+  { prefix: "/dashboard", label: "Home" },
+  { prefix: "/guide", label: "Guide" },
+  { prefix: "/requests", label: "Requests" },
+  { prefix: "/filler", label: "Filler" },
+  { prefix: "/people", label: "People" },
+  { prefix: "/settings", label: "Settings" },
+  { prefix: "/help", label: "Help" },
+];
+
+const primaryDestinationFor = (path: string): string | undefined =>
+  primaryDestinations.find(({ prefix }) => path === prefix || path.startsWith(`${prefix}/`))?.label;
 
 test("pages share one navigation and header geometry at desktop and mobile widths", async ({ page }) => {
   await installMockBackend(page, { authed: true, role: "admin" });
@@ -41,17 +62,33 @@ test("pages share one navigation and header geometry at desktop and mobile width
         ).toBeVisible();
       }
       await expect(header, `${entry.path} should use PageHeader`).toHaveCount(1);
-      if (entry.path === "/account") {
-        // The account identity is a rail footer control, not a section of the product's
-        // primary navigation. It still identifies the current page, while none of the
-        // authored primary destinations claims to be active.
-        await expect(primary.locator('a[data-status="active"]')).toHaveCount(0);
-        await expect(page.getByRole("link", { name: "Your account" })).toHaveAttribute(
-          "aria-current",
-          "page",
-        );
-      } else {
-        await expect(primary.locator('a[data-status="active"]')).toHaveCount(1);
+      // One invariant for every layout: the Primary landmark lights at most one destination, and
+      // it lights the route's own destination exactly when that destination has a slot in it.
+      // Desktop's rail is `<Link>`s marked `data-status="active"`; PhoneBottomBar is `TabBar`'s
+      // `role="tab"` pattern (shared with native, #1785 Alt A) marked `aria-selected`. The rail
+      // has a slot for every destination; the bar only for Home/Watch/Guide/Requests, with the
+      // rest behind a More button that by design is never lit.
+      const items = primary.getByRole("link").or(primary.getByRole("tab"));
+      // PhoneBottomBar is lazy: wait for real items, not the Suspense placeholder's empty row.
+      await expect(items.first(), `${entry.path} primary navigation renders`).toBeVisible();
+      const active = primary.locator('a[data-status="active"], [role="tab"][aria-selected="true"]');
+      const destination = primaryDestinationFor(entry.path);
+      const slots = destination
+        ? primary
+            .getByRole("link", { name: new RegExp(`^${destination}\\b`) })
+            .or(primary.getByRole("tab", { name: new RegExp(`^${destination}\\b`) }))
+        : undefined;
+      const slotCount = slots ? await slots.count() : 0;
+      expect(slotCount, `${entry.path} ${destination} has at most one primary slot`).toBeLessThanOrEqual(1);
+      await expect(active, `${entry.path} lights only its own destination`).toHaveCount(slotCount);
+      if (destination && slotCount === 1) {
+        await expect(active).toHaveAccessibleName(new RegExp(`^${destination}\\b`));
+      }
+      // The account identity is a rail footer control: it identifies the current page wherever
+      // the layout shows it, while no primary destination claims /account.
+      const account = page.getByRole("link", { name: "Your account" });
+      if (entry.path === "/account" && (await account.count()) > 0) {
+        await expect(account).toHaveAttribute("aria-current", "page");
       }
 
       for (const expected of sectionDestinations[entry.path] ?? []) {
@@ -87,8 +124,13 @@ test("pages share one navigation and header geometry at desktop and mobile width
       expect(headerBox, `${entry.path} header bounds`).not.toBeNull();
       expect(titleBox, `${entry.path} title bounds`).not.toBeNull();
 
-      expect(Math.round(navBox?.width ?? 0), `${entry.path} ${viewport.name} nav width`).toBe(
-        viewport.navWidth,
+      const navDimension = viewport.name === "mobile" ? (navBox?.height ?? 0) : (navBox?.width ?? 0);
+      const navLabel = `${entry.path} ${viewport.name} nav ${viewport.name === "mobile" ? "height" : "width"}`;
+      expect(Math.round(navDimension), navLabel).toBeGreaterThanOrEqual(
+        viewport.navSize - viewport.navSizeTolerance,
+      );
+      expect(Math.round(navDimension), navLabel).toBeLessThanOrEqual(
+        viewport.navSize + viewport.navSizeTolerance,
       );
       expect(Math.round(headerBox?.x ?? 0), `${entry.path} header starts at main edge`).toBe(
         Math.round(mainBox?.x ?? 0),

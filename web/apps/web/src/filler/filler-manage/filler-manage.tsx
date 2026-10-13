@@ -128,11 +128,15 @@ const DiagnosticRecovery = ({ row }: { row: FillerDecisionDiagnosticDTO }) => {
         <p className="mt-3 text-signal text-sm">{automaticRetryText} Nothing you need to do.</p>
       ) : null}
       {row.recovery.mode === "manual_retry" ? (
+        // aria-disabled, not disabled: disabling the focused button makes the browser drop focus
+        // to <body> mid-retry, stranding a keyboard user. The click guard blocks the repeat.
         <Button
-          className="mt-3"
+          className="mt-3 aria-disabled:opacity-50"
           size="sm"
-          disabled={retry.isPending}
-          onClick={() => retry.mutate({ id: row.id, data: { actionId: retryID, action: "retry" } })}
+          aria-disabled={retry.isPending}
+          onClick={() => {
+            if (!retry.isPending) retry.mutate({ id: row.id, data: { actionId: retryID, action: "retry" } });
+          }}
         >
           {retry.isPending ? "Starting retry…" : copy.action}
         </Button>

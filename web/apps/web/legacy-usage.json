@@ -351,7 +351,7 @@
       "legacyUi": 2
     },
     "src/components/loomarr/shell/app-shell/app-shell.tsx": {
-      "tailwindClasses": 199,
+      "tailwindClasses": 153,
       "legacyUi": 1
     },
     "src/components/loomarr/shell/brand-lockup/brand-lockup.tsx": {
@@ -592,7 +592,7 @@
       "legacyUi": 7
     },
     "src/filler/filler-manage/filler-manage.tsx": {
-      "tailwindClasses": 113,
+      "tailwindClasses": 114,
       "legacyUi": 5
     },
     "src/filler/filler-overview/filler-overview.tsx": {
@@ -662,7 +662,7 @@
       "legacyUi": 1
     },
     "src/home/new-this-week/new-this-week.tsx": {
-      "tailwindClasses": 67,
+      "tailwindClasses": 68,
       "legacyUi": 1
     },
     "src/home/on-now/on-now.tsx": {
