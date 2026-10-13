@@ -26,9 +26,9 @@ type PairDeviceProps = {
 const SignInFirst = ({ code }: { code: string }) => {
   const here = `/pair${code ? `?code=${encodeURIComponent(code)}` : ""}`;
   return (
-    <div className="mx-auto max-w-lg px-6 py-16 text-center">
-      <h1 className="font-semibold text-3xl">Add a device</h1>
-      <p className="mt-3 text-lg text-muted-foreground leading-relaxed">
+    <div className="mx-auto max-w-focused px-6 py-16 text-center">
+      <h1 className="font-semibold text-2xl">Add a device</h1>
+      <p className="mt-3 text-md text-muted-foreground leading-relaxed">
         Sign in first, then we'll bring you straight back here to finish adding your device.
       </p>
       {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
@@ -98,9 +98,9 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
   if (!user) return <SignInFirst code={initialCode ?? ""} />;
 
   return (
-    <div className="mx-auto max-w-lg px-6 py-16">
-      <h1 className="font-semibold text-3xl">Add a device</h1>
-      <p className="mt-3 text-lg text-muted-foreground leading-relaxed">
+    <div className="mx-auto max-w-focused px-6 py-16">
+      <h1 className="font-semibold text-2xl">Add a device</h1>
+      <p className="mt-3 text-md text-muted-foreground leading-relaxed">
         Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
       </p>
 
@@ -133,19 +133,19 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
             const failure = classifyApproveFailure(approve.error);
             if (failure === "invalid-code")
               return (
-                <p className="mt-4 text-center text-destructive text-lg">
+                <p className="mt-4 text-center text-destructive text-md">
                   That code is wrong or has expired. Codes last ten minutes — check the screen and try again.
                 </p>
               );
             if (failure === "rate-limited")
               return (
-                <p className="mt-4 text-center text-caution text-lg">
+                <p className="mt-4 text-center text-caution text-md">
                   Too many pairing codes tried. Wait a moment and try again.
                 </p>
               );
             return (
               <div className="mt-4 text-center">
-                <p className="text-caution text-lg">
+                <p className="text-caution text-md">
                   Couldn't reach Loomarr. Check your connection and try again.
                 </p>
                 <Button className="mt-3" onClick={retry} type="button" variant="secondary">
@@ -158,7 +158,7 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
 
       {approved ? (
         <div className="mt-8 rounded-lg border border-border p-5 text-center">
-          <p className="font-medium text-lg">{approved} is ready</p>
+          <p className="font-medium text-md">{approved} is ready</p>
           <p className="mt-1 text-muted-foreground leading-relaxed">
             It should start playing in a few seconds. You can remove it any time from Settings → Access and
             devices.

@@ -95,7 +95,7 @@ const ChannelDrawer = ({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Find a channel or show…"
           aria-label="Find a channel or show"
-          className="w-full rounded-lg border border-border-control bg-static-950 px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-signal"
+          className="w-full rounded-lg border border-border-control bg-static-950 px-3 py-2 text-foreground text-sm outline-none placeholder:text-muted-foreground focus:border-signal"
         />
       </div>
       <div className="flex-1 overflow-y-auto p-2.5">
@@ -168,12 +168,10 @@ const DrawerRow = ({
         )}
       >
         <span className="flex items-center gap-[9px] pr-7">
-          <span
-            className={cn("w-[26px] font-mono text-[13px]", tuned ? "text-signal" : "text-muted-foreground")}
-          >
+          <span className={cn("w-[26px] font-mono text-sm", tuned ? "text-signal" : "text-muted-foreground")}>
             {channelNumber(channel.number)}
           </span>
-          <span className={cn("min-w-0 flex-1 truncate font-semibold text-[13px]", tuned && "text-signal")}>
+          <span className={cn("min-w-0 flex-1 truncate font-semibold text-sm", tuned && "text-signal")}>
             {channel.name}
           </span>
           {tuned && (
@@ -219,7 +217,7 @@ const DrawerRow = ({
           favourite ? "text-signal" : "text-muted-foreground",
         )}
       >
-        <span aria-hidden className="text-[13px] leading-none">
+        <span aria-hidden className="text-sm leading-none">
           {favourite ? "★" : "☆"}
         </span>
       </button>

@@ -9,9 +9,9 @@ import { useAuth } from "@/auth/use-auth";
 import { RequestCard } from "@/components/loomarr/ai/request-card";
 import { EmptyState } from "@/components/loomarr/feedback/empty-state";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { ListGroup, ListRow } from "@/components/ui/list-row";
+import { REQUEST_ROW_TONE } from "@/queue/request-row-tone";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 import { ApprovalQueue } from "@/suggest/approval-queue";
 
@@ -34,6 +34,8 @@ const TabEmpty = ({ title, description }: { title: string; description: string }
   );
 };
 
+// A failed request in Needs you stays a decision card: it carries its reason and the one way to
+// fix it, and the viewer has to act on it (#1817 Q11).
 const cardFor = (
   { journey, status }: RequestEntry,
   extras?: { action?: React.ReactNode; hint?: string | undefined },
@@ -52,35 +54,103 @@ const cardFor = (
   </li>
 );
 
+// The row's trailing link, quiet like Home's "View channel →".
+const ROW_LINK =
+  "shrink-0 rounded-sm text-sm text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+// The date reads relative, like the rest of the app; the full date shows on hover and the `<time>`
+// carries it machine-readable.
+const When = ({ at, verb }: { at: string; verb: string }) => (
+  <time dateTime={at} title={new Date(at).toLocaleString()}>
+    {verb} {formatRelative(at)}
+  </time>
+);
+
+// Requests › In progress and Done: each request is a row you scan (#1817 Q11), the same shape as
+// Home's Your requests. The sub line reads status · date · the sentence behind the status.
+//
+// Every row reaches the request's detail. A finished request that became a channel has a second
+// destination, the channel itself, so its title is the detail link and the one trailing slot goes
+// to the channel. ⚠ The trailing links name their row ("Open Westerns", "Open channel for Westerns"):
+// a list of identical "Open" links is a list a screen reader cannot tell apart.
+const rowFor = ({ journey, status }: RequestEntry) => {
+  const title = journey.intent.description;
+  const channel = status.tab === "done" ? journey.channel : undefined;
+  return (
+    <ListRow
+      key={journey.jobId}
+      tone={REQUEST_ROW_TONE[status.tone]}
+      title={
+        channel ? (
+          <Link
+            to="/requests/$jobId"
+            params={{ jobId: journey.jobId }}
+            className="rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {title}
+          </Link>
+        ) : (
+          title
+        )
+      }
+      sub={
+        <>
+          <span>{status.line}</span> · <When at={journey.createdAt} verb="Requested" />
+          {status.detail && ` · ${status.detail}`}
+        </>
+      }
+      action={
+        channel ? (
+          <Link
+            to="/channels/$id"
+            params={{ id: channel.id }}
+            aria-label={`Open channel for ${title}`}
+            className={ROW_LINK}
+          >
+            Open channel <span aria-hidden="true">→</span>
+          </Link>
+        ) : (
+          <Link
+            to="/requests/$jobId"
+            params={{ jobId: journey.jobId }}
+            aria-label={`Open ${title}`}
+            className={ROW_LINK}
+          >
+            Open <span aria-hidden="true">→</span>
+          </Link>
+        )
+      }
+    />
+  );
+};
+
 // Decided filler pulls, for the Done tab (#1430): the server KEEPS a pull once an admin approves
 // or dismisses it — exactly so History can answer what was agreed to — but no screen ever asked
-// for anything but the pending ones. There is no pull detail route, so this renders inline rather
-// than through RequestCard's link-to-detail: that card always links to `/requests/$jobId`, and a
-// pull id is not a job id.
+// for anything but the pending ones. There is no pull detail route (a pull id is not a job id), so
+// its row has no link.
 const pullDecisionLine = (status: PullDTO["status"]): { line: string; tone: "lock" | "onair" } =>
   status === "approved" ? { line: "Downloaded", tone: "lock" } : { line: "Declined", tone: "onair" };
 
-const pullCardFor = (pull: PullDTO) => {
+const pullRowFor = (pull: PullDTO) => {
   const { line, tone } = pullDecisionLine(pull.status);
   return (
-    <li key={pull.id}>
-      <Card className="flex flex-col gap-1.5 p-4">
-        <p className="font-medium">{pull.title}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={tone}>{line}</Badge>
+    <ListRow
+      key={pull.id}
+      tone={REQUEST_ROW_TONE[tone]}
+      title={pull.title}
+      sub={
+        <>
+          <span>{line}</span>
           {pull.decidedAt && (
-            <time
-              dateTime={pull.decidedAt}
-              title={new Date(pull.decidedAt).toLocaleString()}
-              className="text-muted-foreground text-xs"
-            >
-              Decided {formatRelative(pull.decidedAt)}
-            </time>
+            <>
+              {" · "}
+              <When at={pull.decidedAt} verb="Decided" />
+            </>
           )}
-        </div>
-        {pull.note && <p className="text-muted-foreground text-sm">{pull.note}</p>}
-      </Card>
-    </li>
+          {pull.note && ` · ${pull.note}`}
+        </>
+      }
+    />
   );
 };
 
@@ -116,25 +186,16 @@ const RequestList = ({ tab }: { tab: "in-progress" | "done" }) => {
       />
     );
   }
+  // A finished request links to the channel it became; its titles are part of that channel,
+  // which is why there is no separate "ready" list.
   return (
-    <ul className="flex max-w-3xl flex-col gap-3">
-      {entries.map((e) =>
-        // A finished request links to the channel it became; its titles are part of that channel,
-        // which is why there is no separate "ready" list.
-        cardFor(e, {
-          action: tab === "done" && e.journey.channel && (
-            <Link
-              to="/channels/$id"
-              params={{ id: e.journey.channel.id }}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Open channel
-            </Link>
-          ),
-        }),
-      )}
-      {decidedPulls.map(pullCardFor)}
-    </ul>
+    <ListGroup
+      aria-label={tab === "done" ? "Finished requests" : "Requests in progress"}
+      className="mx-auto w-full max-w-reading"
+    >
+      {entries.map(rowFor)}
+      {decidedPulls.map(pullRowFor)}
+    </ListGroup>
   );
 };
 
@@ -160,7 +221,7 @@ const NeedsYouList = () => {
     );
   }
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-reading flex-col gap-6">
       {showApprovals && (
         <section aria-labelledby="needs-approvals" className="flex flex-col gap-3">
           <h2 id="needs-approvals" className="font-semibold text-lg">

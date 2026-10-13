@@ -51,13 +51,42 @@ describe("Requests tabs", () => {
     expect(await screen.findByText("Couldn't get 1 title")).toBeInTheDocument();
   });
 
-  it("gives a finished request a link to its channel", async () => {
+  // #1817 Q11: a finished request is a row with two destinations, its detail (the title) and the
+  // channel it became (the one trailing link).
+  it("gives a finished request a link to its channel and keeps its detail link", async () => {
     stub({ me: MEMBER, journeys: [journey("j-done", { channel: { id: "ch-9", name: "Cartoons" } })] });
     renderAt("/requests/done");
-    expect(await screen.findByRole("link", { name: "Open channel" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Open channel for Request j-done" })).toHaveAttribute(
       "href",
       "/channels/ch-9",
     );
+    expect(screen.getByRole("link", { name: "Request j-done" })).toHaveAttribute("href", "/requests/j-done");
+  });
+
+  // #1817 Q11: In progress is one list of rows, not a stack of cards. Each row keeps its status and
+  // a link to its detail, named for its own request so a screen reader can tell the links apart.
+  it("lists in-progress requests as rows, each with its status and its own detail link", async () => {
+    stub({
+      me: MEMBER,
+      journeys: [
+        journey("j-gen", { milestone: "generating" }),
+        journey("j-wait", { milestone: "awaiting_approval" }),
+      ],
+    });
+    renderAt("/requests/in-progress");
+
+    const list = await screen.findByRole("list", { name: "Requests in progress" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    rows.forEach((row, i) => {
+      const id = ["j-gen", "j-wait"][i];
+      expect(within(row).getByRole("link", { name: `Open Request ${id}` })).toHaveAttribute(
+        "href",
+        `/requests/${id}`,
+      );
+      expect(within(row).getByText(/^Requested /)).toBeInTheDocument();
+    });
+    expect(within(list).getByText("Waiting for approval")).toBeInTheDocument();
   });
 
   // Deleting a channel is deliberate: it is Done with a short badge, not something the viewer must fix.

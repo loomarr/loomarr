@@ -226,7 +226,7 @@ const ChannelSuggestPanel = ({
       {run.failed && !proposal && (
         <div
           role="alert"
-          className="mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
+          className="mx-auto flex w-full max-w-form flex-col gap-3 rounded-lg border border-border bg-muted/35 p-4"
         >
           <div>
             <h3 className="font-medium">{failureCopy?.title ?? "Something went wrong"}</h3>

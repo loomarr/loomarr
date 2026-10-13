@@ -2,13 +2,12 @@ import * as titlesApi from "@loomarr/api/endpoints/titles";
 import type { TitleDTO } from "@loomarr/api/models/titleDTO";
 import { TitleDTOState } from "@loomarr/api/models/titleDTOState";
 import { unwrap } from "@loomarr/api/unwrap";
-import type { RequestStatus } from "@loomarr/core/requests";
 import { useQueries } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { ListGroup, ListRow, type ListRowProps } from "@/components/ui/list-row";
 import { SectionHeader, SectionHeaderAction } from "@/components/ui/section-header";
-import type { StatusTone } from "@/components/ui/status-dot";
+import { REQUEST_ROW_TONE } from "@/queue/request-row-tone";
 import { type RequestEntry, useRequests } from "@/queue/use-requests";
 
 const IN_FLIGHT = [TitleDTOState.downloading, TitleDTOState.requested, TitleDTOState.wanted] as const;
@@ -62,14 +61,6 @@ const OnTheWay = () => {
   );
 };
 
-// The Requests page's badge tones, as the mock's row dots.
-const ROW_TONE: Record<RequestStatus["tone"], StatusTone> = {
-  suggest: "attention",
-  lock: "ok",
-  onair: "error",
-  caution: "progress",
-};
-
 const requestAction = ({ journey, status }: RequestEntry) => {
   if (status.tab === "needs-you") {
     return (
@@ -104,7 +95,7 @@ const YourRequests = () => {
       {shown.map((entry) => (
         <ListRow
           key={entry.journey.jobId}
-          tone={ROW_TONE[entry.status.tone]}
+          tone={REQUEST_ROW_TONE[entry.status.tone]}
           title={entry.journey.intent.description}
           sub={entry.status.detail ? `${entry.status.line}: ${entry.status.detail}` : entry.status.line}
           action={requestAction(entry)}

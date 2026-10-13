@@ -29,7 +29,7 @@ const SectionHeaderAction = ({ className, render, children, icon, ...props }: Se
     props: mergeProps<"button">(
       {
         className: cn(
-          "cursor-pointer border-none bg-transparent p-0 text-[13px] text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "cursor-pointer border-none bg-transparent p-0 text-sm text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           icon != null && "flex items-center gap-1.5",
           className,
         ),
