@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loomarr Filler — normal vs exception, clip geometry, return paths — design review</title>
+<style>
+  /* Tokens: web/packages/tokens/generated/theme.css (static-*, signal, lock, caution, onair-300, tune). */
+  :root { color-scheme: dark; font-family: Geist, system-ui, sans-serif; color: #E7EAF0; background: #08090B;
+    --s950:#0B0C0E; --s900:#131519; --s800:#1B1E24; --s700:#2A2E37; --s500:#5A6170; --s400:#8B93A3; --s100:#E7EAF0;
+    --signal:#FFB020; --lock:#3DD68C; --caution:#F5D90A; --onair:#E5484D; --onair300:#E85A5F; --tune:#4CC9E8; --suggest:#DC5BAC; --control:#666970; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  button, select, a, input { font: inherit; color: inherit; }
+  a { text-decoration: none; }
+  button, a, select, label { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  code { font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; }
+
+  .review { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 24px; border-bottom: 1px solid var(--s700); background: var(--s900); position: sticky; top: 0; z-index: 60; }
+  .review strong { flex-basis: 100%; }
+  .review label { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+  .review select { min-height: 36px; background: var(--s800); border: 1px solid var(--control); border-radius: 6px; padding: 4px 8px; }
+  .review-note { font-size: 13px; color: var(--s400); margin: 12px auto; max-width: 1040px; padding: 0 16px; line-height: 1.5; }
+  .review-note.flag { color: var(--suggest); }
+
+  #frame-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 16px auto 8px; padding: 0 16px; }
+  #frame { width: 100%; max-width: 1040px; border: 1px solid var(--s700); border-radius: 8px; background: var(--s950); overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  #frame.phone { max-width: 390px; height: 844px; border-radius: 28px; box-shadow: 0 0 0 6px var(--s900); }
+  #scroll { flex: 1; min-height: 0; overflow: auto; }
+  .frame-label { font-size: 12px; color: var(--s400); font-family: 'Geist Mono', ui-monospace, monospace; }
+
+  /* PageHeader: px-6 py-4, border-b, h1 text-xl semibold, description text-sm muted max-w-3xl */
+  .ph { padding: 16px 24px; border-bottom: 1px solid var(--s700); }
+  .ph h1 { font-size: 20px; line-height: 28px; margin: 0; font-weight: 600; }
+  .ph .desc { margin: 4px 0 0; font-size: 14px; color: var(--s400); max-width: 768px; line-height: 1.45; }
+  .watch { margin: 8px 0 0; display: flex; align-items: center; gap: 8px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: var(--s400); }
+  .watch .dot { width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+  @media (prefers-reduced-motion: no-preference) { .pulse { animation: pulse 2s ease-in-out infinite; } }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .body { padding: 24px; display: flex; flex-direction: column; gap: 24px; }
+  /* Draft: phone gutter 16px, the approved phone-web-nav page gutter */
+  #frame.phone.draft .ph { padding: 14px 16px; }
+  #frame.phone.draft .body { padding: 16px; gap: 20px; }
+
+  /* NavTabs underline variant */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--s700); }
+  .tab { padding: 9px 12px; font-size: 14px; color: var(--s400); border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; border-top: 0; border-left: 0; border-right: 0; display: inline-flex; gap: 6px; align-items: center; }
+  .tab[aria-current] { color: var(--s100); font-weight: 500; border-bottom-color: var(--signal); }
+  .tab .count { border-radius: 999px; padding: 1px 7px; font-size: 11px; font-family: 'Geist Mono', ui-monospace, monospace; background: var(--s800); color: var(--s400); }
+
+  h2 { margin: 0; font-size: 18px; line-height: 26px; font-weight: 600; }
+  h2.xl { font-size: 20px; } h2.xxl { font-size: 24px; line-height: 32px; }
+  h3 { margin: 0; font-size: 16px; font-weight: 600; }
+  p { margin: 0; line-height: 1.5; }
+  .muted { color: var(--s400); } .sm { font-size: 14px; } .xs { font-size: 12px; } .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  .card { background: var(--s900); border: 1px solid var(--s700); border-radius: 8px; }
+  .p4 { padding: 16px; } .p5 { padding: 20px; } .p3 { padding: 12px; }
+  .row { display: flex; align-items: center; gap: 12px; } .wrap { flex-wrap: wrap; } .grow { flex: 1; min-width: 0; } .start { align-items: flex-start; }
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+
+  /* Badge: mono uppercase 11px, radius 4, 15% tint */
+  .badge { display: inline-flex; align-items: center; border-radius: 4px; padding: 2px 6px; font: 500 11px/1.4 'Geist Mono', ui-monospace, monospace; letter-spacing: .025em; text-transform: uppercase; white-space: nowrap; background: var(--s800); color: var(--s400); }
+  .badge.signal { background: rgba(255,176,32,.15); color: var(--signal); }
+  .badge.lock { background: rgba(61,214,140,.15); color: var(--lock); }
+  .badge.caution { background: rgba(245,217,10,.15); color: var(--caution); }
+  .badge.onair { background: rgba(229,72,77,.15); color: var(--onair300); }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 6px; font-size: 14px; font-weight: 500; border: 1px solid var(--signal); background: var(--signal); color: var(--s950); white-space: nowrap; }
+  .btn.sm { min-height: 32px; padding: 0 10px; font-size: 13px; }
+  .btn.outline { background: transparent; border-color: var(--control); color: var(--s100); }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--s100); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .backlink { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--s400); background: none; border: 0; padding: 0; }
+  .backlink:hover { color: var(--s100); }
+  .sdot { width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0; }
+
+  .delta { border: 1px dashed rgba(220,91,172,.55); border-radius: 8px; position: relative; }
+  .delta-tag { position: absolute; top: -9px; right: 10px; background: var(--s950); color: var(--suggest); font: 500 10.5px/1.4 'Geist Mono', ui-monospace, monospace; padding: 0 6px; text-transform: uppercase; letter-spacing: .03em; }
+  .flagline { font-size: 12px; color: var(--suggest); border-top: 1px dashed rgba(220,91,172,.4); padding-top: 8px; margin-top: 10px; }
+  .b11 { color: var(--tune); }
+
+  /* Coverage grid: repeat(auto-fill,minmax(320px,1fr)) */
+  .covgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  #frame.phone .covgrid { grid-template-columns: 1fr; }
+  .stats { display: flex; flex-wrap: wrap; gap: 16px 32px; border: 1px solid var(--s700); border-radius: 8px; padding: 16px; }
+  .stat .cap { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--s400); }
+  .stat .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; display: block; }
+  .stat .v.warn { color: var(--caution); }
+
+  /* Library filters: grid-cols-2 at phone, flex-wrap at sm+ */
+  .filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 16px; }
+  #frame.phone .filters { display: grid; grid-template-columns: 1fr 1fr; padding: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+  .field.search { flex: 1; min-width: 192px; max-width: 448px; }
+  #frame.phone .field.search { grid-column: span 2; min-width: 0; max-width: none; }
+  .input, .selectbox { min-height: 36px; border: 1px solid var(--control); border-radius: 6px; background: var(--s950); padding: 6px 10px; font-size: 14px; color: var(--s400); }
+  .views { margin-left: auto; display: flex; gap: 4px; }
+  .views .btn[aria-checked="true"] { background: var(--signal); color: var(--s950); border-color: var(--signal); }
+  .views .btn[aria-checked="false"] { background: transparent; color: var(--s100); border-color: var(--control); }
+  #frame.phone .views .lbl { display: none; }
+
+  /* ClipCard: Card p-3 gap-2.5; frame -mx-3 -mt-3 aspect-video; grid 1 / sm:2 / lg:3 */
+  .cgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  #frame.phone .cgrid { grid-template-columns: 1fr; }
+  #frame.phone .cgrid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .clip { padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+  .clip .frame { margin: -12px -12px 0; aspect-ratio: 16/9; position: relative; overflow: hidden; border-radius: 7px 7px 0 0; }
+  .clip .ov { position: absolute; background: rgba(19,21,25,.8); color: var(--s100); border-radius: 4px; padding: 2px 6px; font: 10px/1.4 'Geist Mono', ui-monospace, monospace; }
+  .clip .ov.dur { right: 6px; bottom: 6px; } .clip .ov.q { right: 6px; top: 6px; }
+  .clip .chk { position: absolute; left: 6px; top: 6px; width: 16px; height: 16px; accent-color: var(--signal); }
+  .clip .name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: none; border: 0; padding: 0; text-align: left; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .clip.compact { padding: 8px; gap: 6px; }
+  .clip.compact .frame { margin: -8px -8px 0; }
+  .clip.compact .name { font-size: 13px; }
+  /* ClipRow: grid auto 54px 1fr auto (phone) / lg 8 columns */
+  .list { border: 1px solid var(--s700); border-radius: 8px; overflow: hidden; }
+  .crow { display: grid; grid-template-columns: auto 54px 1fr 88px 60px 84px auto 190px; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--s700); font-size: 14px; }
+  .crow:last-child { border-bottom: 0; }
+  #frame.phone .crow { grid-template-columns: auto 54px 1fr auto; }
+  #frame.phone .crow .lg, #frame.phone .crow .md { display: none; }
+  .crow .th { width: 54px; height: 30px; border-radius: 3px; overflow: hidden; position: relative; }
+  .crow .c { font: 12px 'Geist Mono', ui-monospace, monospace; color: var(--s400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Manage hub */
+  .hub { border: 1px solid var(--s700); border-radius: 8px; background: var(--s900); overflow: hidden; }
+  .hub li { list-style: none; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--s700); }
+  .hub li:last-child { border-bottom: 0; }
+  .hub ul { margin: 0; padding: 0; }
+  .act { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--s700); }
+  .act:last-child { border-bottom: 0; }
+
+  /* Incoming rows */
+  .srows { border: 1px solid var(--s700); border-radius: 8px; }
+  .srow { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 8px 12px; border-bottom: 1px solid var(--s700); }
+  .srow:last-child { border-bottom: 0; }
+  .srow .th { width: 64px; height: 48px; border-radius: 4px; overflow: hidden; flex-shrink: 0; position: relative; }
+
+  /* Sources */
+  .switch { width: 34px; height: 20px; border-radius: 999px; background: var(--s700); position: relative; flex-shrink: 0; }
+  .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 999px; background: var(--s400); }
+  .switch.on { background: var(--signal); } .switch.on::after { left: 17px; background: var(--s950); }
+  .srcrow { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid rgba(42,46,55,.5); }
+  .srcrow:last-child { border-bottom: 0; }
+  .srcbtn { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px; border-radius: 6px; }
+  #frame.phone .srcbtn .grow { flex-basis: 100%; }
+
+  .setgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #frame.phone .setgrid { grid-template-columns: 1fr; }
+  .setlink { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid var(--s700); border-radius: 8px; background: var(--s900); }
+  .axgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+  #frame.phone .axgrid { grid-template-columns: 1fr; }
+
+  /* Sheets: right sheet (desktop) */
+  .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); display: flex; justify-content: flex-end; z-index: 30; }
+  .sheet { width: min(420px, 100%); height: 100%; background: var(--s900); border-left: 1px solid var(--s700); overflow: auto; }
+  .sheet header { padding: 20px 24px 12px; border-bottom: 1px solid var(--s700); display: flex; gap: 12px; }
+
+  /* Phone bottom bar: TabBar (design-system), 49pt row + 20px safe area; Filler is overflow so no tab lit */
+  footer.bar { display: none; flex-shrink: 0; background: var(--s950); border-top: 1px solid var(--s700); padding-bottom: 20px; }
+  #frame.phone footer.bar { display: flex; }
+  .bt { flex: 1; min-height: 49px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding-top: 7px; color: var(--s400); background: none; border: 0; position: relative; }
+  .bt .g { font-size: 18px; line-height: 1; } .bt .l { font-size: 10px; line-height: 13px; }
+
+  .ruler { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--suggest); pointer-events: none; z-index: 20; }
+  .ruler span { position: absolute; right: 6px; top: -16px; font: 10px 'Geist Mono', ui-monospace, monospace; color: var(--suggest); background: var(--s950); padding: 0 4px; }
+
+  table.paths { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.paths th, table.paths td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--s700); vertical-align: top; }
+  table.paths th { color: var(--s400); font-weight: 500; }
+  .fix { color: var(--suggest); }
+</style>
+
+<div class="review" role="region" aria-label="Review controls">
+  <strong>Filler — normal vs exception hierarchy · library clip geometry · management return paths · design draft (#1817, Refs #1659)</strong>
+  <label>Variant <select id="variant"><option value="built">Built today (main @ 1d8b8b717)</option><option value="draft" selected>Draft</option></select></label>
+  <label>Role <select id="role"><option value="admin">Admin</option><option value="member">Member</option></select></label>
+  <label>State
+    <select id="state">
+      <option value="normal">Normal — working on its own</option>
+      <option value="attention">Attention — clips need a choice</option>
+      <option value="failure">Failure — retryable problems + catalog paused</option>
+      <option value="empty">Empty — no playable filler yet</option>
+      <option value="unconfigured">Unconfigured — no filler folder</option>
+      <option value="loading">Loading</option>
+      <option value="error">Error — readiness failed</option>
+    </select>
+  </label>
+  <label>Screen
+    <select id="screen">
+      <option value="overview">Overview /filler</option>
+      <option value="library">Library /filler/library</option>
+      <option value="manage">Manage /filler/manage</option>
+      <option value="incoming">Incoming /filler/incoming</option>
+      <option value="sources">Sources /filler/sources</option>
+      <option value="taxonomy">Tags /filler/taxonomy</option>
+      <option value="settings">Settings /filler/settings</option>
+      <option value="split">Split review /filler/splits/$id</option>
+      <option value="paths">Return-path map (all pages)</option>
+    </select>
+  </label>
+  <label>Library view <select id="view"><option value="grid">Grid</option><option value="list">List</option></select></label>
+  <label>Phone grid (draft) <select id="pgrid"><option value="two">A — 2-up compact (recommended)</option><option value="list">B — list rows by default</option></select></label>
+  <label>Frame <select id="frame-size"><option value="desktop">Desktop (1040)</option><option value="phone">Phone 390×844</option></select></label>
+</div>
+<p class="review-note">Proposal for maintainer review — no production component, route or API contract changes. Every fixture is invented (no real titles, brands, hostnames or people); thumbnails are code-drawn from tokens; nothing here calls a server. <strong>Built today</strong> reproduces the merged code (sources cited in <code>project/evidence/filler-hierarchy-2026-10-13.md</code>); <strong>Draft</strong> shows only the deltas, each outlined in a pink dashed box tagged "draft". <span class="b11">Cyan</span> text marks behaviour that depends on beta.11 filler scope.</p>
+
+<div id="frame-wrap">
+  <div id="frame">
+    <div id="scroll"><div id="page"></div></div>
+    <footer class="bar" aria-label="Phone navigation">
+      <button class="bt" type="button"><span class="g" aria-hidden="true">⌂</span><span class="l">Home</span></button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">▶</span><span class="l">Watch</span></button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">▦</span><span class="l">Guide</span></button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">✉</span><span class="l">Requests</span></button>
+      <button class="bt" type="button"><span class="g" aria-hidden="true">⋯</span><span class="l">More</span></button>
+    </footer>
+    <div id="overlay"></div>
+  </div>
+  <span class="frame-label" id="frame-label"></span>
+</div>
+<p class="review-note" id="status" role="status" aria-live="polite"></p>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const S = { variant: 'draft', role: 'admin', state: 'normal', screen: 'overview', view: 'grid', pgrid: 'two', frame: 'desktop', diagOpen: false, sheet: null, splitFrom: 'incoming', selected: new Set() };
+const isDraft = () => S.variant === 'draft';
+const isAdmin = () => S.role === 'admin';
+const isPhone = () => S.frame === 'phone';
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const plural = (n, w) => `${n.toLocaleString()} ${n === 1 ? w : w + 's'}`;
+const say = (msg) => { $('status').textContent = msg; };
+const delta = (html, tag = 'draft') => isDraft() ? `<div class="delta"><span class="delta-tag">${tag}</span>${html}</div>` : html;
+
+// ---- Invented fixtures, shaped like the generated DTOs (FillerWatchOutputBody, FillerReadinessDTO, ClipDTO …) ----
+const CHANNELS = {
+  normal:    [['4', 'Night Owl Theatre', 'exact', 15600000, 212, 9, 31], ['7', 'Saturday Rerun Club', 'exact', 11880000, 164, 7, 22], ['12', 'Weather Desk', 'widened', 3480000, 41, 3, 6]],
+  attention: [['4', 'Night Owl Theatre', 'exact', 15600000, 212, 9, 31], ['7', 'Saturday Rerun Club', 'widened', 6900000, 88, 5, 12], ['12', 'Weather Desk', 'audience', 1500000, 18, 2, 3]],
+  failure:   [['12', 'Weather Desk', 'bumper_card', 0, 0, 0, 0], ['7', 'Saturday Rerun Club', 'widened', 6900000, 88, 5, 12], ['4', 'Night Owl Theatre', 'exact', 15600000, 212, 9, 31]],
+  empty:     [['4', 'Night Owl Theatre', 'bumper_card', 0, 0, 0, 0], ['7', 'Saturday Rerun Club', 'bumper_card', 0, 0, 0, 0]],
+};
+const WATCH = {
+  normal:    { health: 'healthy', sourcesOn: 3, sourcesTotal: 4, clips: 1284, held: 0, checked: '12m ago' },
+  attention: { health: 'attention', sourcesOn: 3, sourcesTotal: 4, clips: 1284, held: 3, checked: '12m ago' },
+  failure:   { health: 'attention', sourcesOn: 2, sourcesTotal: 4, clips: 1500, held: 0, checked: '3h ago' },
+  empty:     { health: 'attention', sourcesOn: 0, sourcesTotal: 1, clips: 0, held: 0, checked: null },
+  unconfigured: { health: 'unconfigured', sourcesOn: 0, sourcesTotal: 0, clips: 0, held: 0, checked: null },
+};
+// readinessAction() copy, verbatim from filler-overview.tsx, keyed by nextAction.
+const ACTION = {
+  review_incoming: { title: 'A few clips need your help', description: '3 clips need a choice before preparation can continue.', label: 'Review clips', to: 'incoming' },
+  retry_failed_work: { title: 'Some filler can be retried', description: '2 items hit a recoverable processing problem.', label: 'Open diagnostics', to: 'manage' },
+  add_filler: { title: 'Add filler to get started', description: 'No playable filler is available yet. Add a source or drop in your own clips.', label: 'Open sources', to: 'sources' },
+};
+const NEXT = { normal: null, attention: 'review_incoming', failure: 'retry_failed_work', empty: 'add_filler' };
+const ADMIN_ONLY = { incoming: 'library', sources: 'library', settings: 'manage' }; // route beforeLoad redirects for members
+const HUE = [28, 196, 152, 330, 48, 210, 12, 270, 96];
+const CLIPS = [
+  { n: 'Fizzwell Soda — summer jingle', b: 'Fizzwell', d: 30000, q: '480p', k: 'Commercial', e: 1990, a: 'Family', c: 'Drinks', plays: '4 airings · last 2h ago' },
+  { n: 'Northbay Motors — weekend sale', b: 'Northbay Motors', d: 30000, q: '480p', k: 'Commercial', e: 1987, a: 'General', c: 'Cars', plays: '2 airings · last yesterday' },
+  { n: 'Late-night station ident (owl)', b: '', d: 10000, q: '720p', k: 'Station ID', e: 0, a: '', c: '', plays: '11 airings · last 40m ago' },
+  { n: 'Crunchwell Oat Clusters — cartoon mascot spot with a very long descriptive title', b: 'Crunchwell', d: 15000, q: '480p', k: 'Commercial', e: 1994, a: 'Kids', c: 'Breakfast', plays: 'Never aired' },
+  { n: 'Harborlight Savings — "rainy day"', b: 'Harborlight Savings', d: 60000, q: '360p', k: 'Commercial', e: 1983, a: 'General', c: 'Banking', plays: '1 airing · last 3d ago' },
+  { n: 'Coming up next bumper', b: '', d: 8000, q: '1080p', k: 'Bumper', e: 0, a: '', c: '', plays: '27 airings · last 5m ago' },
+  { n: 'Tidewater Paint — color wheel', b: 'Tidewater Paint', d: 30000, q: '', k: 'Commercial', e: 0, a: '', c: '', plays: 'Never aired', untagged: true },
+  { n: 'Saturday-morning block opener', b: '', d: 20000, q: '480p', k: 'Interstitial', e: 1996, a: 'Kids', c: '', plays: '6 airings · last 4d ago' },
+  { n: 'Glimmer Toothpaste — dentist chair', b: 'Glimmer', d: 30000, q: '480p', k: 'Commercial', e: 1991, a: 'Family', c: 'Health', plays: '3 airings · last 1d ago' },
+];
+const dur = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `${s}s`; const m = Math.floor(s / 60), r = s % 60; return r ? `${m}m ${r}s` : `${m}m`; };
+const hours = (ms) => { const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000); return h ? `${h}h ${m}m` : `${m}m`; };
+const thumb = (i) => `<span aria-hidden="true" style="position:absolute;inset:0;background:linear-gradient(135deg,hsl(${HUE[i % 9]} 45% 32%),hsl(${(HUE[i % 9] + 40) % 360} 35% 14%));"></span><span aria-hidden="true" style="position:absolute;left:10%;bottom:14%;width:38%;height:22%;border-radius:3px;background:rgba(231,234,240,.18)"></span>`;
+
+// ---------------- Page header + tabs ----------------
+function header() {
+  const w = WATCH[S.state] || WATCH.normal;
+  const dot = { healthy: 'var(--lock)', attention: 'var(--caution)', unconfigured: 'var(--s500)' }[w.health];
+  const sr = { healthy: 'Watching your sources', attention: 'Sources need attention', unconfigured: 'No sources set up yet' }[w.health];
+  const line = [`${w.sourcesOn} of ${w.sourcesTotal} sources on`, plural(w.clips, 'clip'), ...(w.held ? [`${w.held} need you`] : []), ...(w.checked ? [`checked ${w.checked}`] : [])].join(' · ');
+  const showWatch = !['unconfigured', 'loading'].includes(S.state);
+  return `<header class="ph"><h1>Filler</h1><p class="desc">Loomarr finds and prepares commercials, bumpers, and station IDs. Each channel picks what fits from the shared library.</p>
+    ${showWatch ? `<p class="watch"><span class="dot ${w.health === 'healthy' ? 'pulse' : ''}" style="background:${dot}" aria-hidden="true"></span><span>${esc(line)}</span><span style="position:absolute;left:-9999px">${sr}</span></p>` : ''}</header>`;
+}
+function tabs() {
+  const w = WATCH[S.state] || WATCH.normal;
+  const active = ['overview', 'library'].includes(S.screen) ? S.screen : 'manage';
+  const t = (id, label, count) => `<a class="tab" href="#" data-go="${id}" ${active === id ? 'aria-current="page"' : ''}>${label}${count != null ? ` <span class="count">${count.toLocaleString()}</span>` : ''}</a>`;
+  return `<nav class="tabs" aria-label="Filler sections">${t('overview', 'Overview')}${t('library', 'Library', w.clips)}${t('manage', 'Manage')}</nav>`;
+}
+// Draft return link: FillerSettingsIndex's existing "← Manage" link (filler-settings.tsx:129) repeated on every Manage child.
+function backToManage() {
+  if (!isDraft()) return '';
+  return delta(`<div style="padding:8px 10px"><button class="backlink" data-go="manage"><span aria-hidden="true">←</span> Manage</button></div>`);
+}
+
+// ---------------- Overview ----------------
+function statusCard() {
+  const key = NEXT[S.state];
+  const a = key ? ACTION[key] : null;
+  const ready = !a;
+  if (!isDraft()) {
+    // filler-overview.tsx:158-183 — ready: border-signal/35 + signal badge; not ready: border-caution/40 + caution badge.
+    return `<div class="card p5" style="border-color:${ready ? 'rgba(255,176,32,.35)' : 'rgba(245,217,10,.4)'}">
+      <div class="row start wrap" style="gap:16px"><div class="grow">
+        <span class="badge ${ready ? 'signal' : 'caution'}">${ready ? 'Working automatically' : 'Action recommended'}</span>
+        <h2 class="xl" style="margin-top:12px">${a ? a.title : 'Filler is working on its own'}</h2>
+        <p class="sm muted" style="margin-top:4px;max-width:768px">${a ? a.description : 'Loomarr is preparing clips automatically. Nothing needs your attention.'}</p></div>
+        ${a ? `<button class="btn" data-go="${a.to}" data-from="overview-action">${a.label}</button>` : ''}</div></div>`;
+  }
+  if (ready) {
+    // Draft: the normal state goes quiet — no tinted border, lock dot agreeing with the watch line's green.
+    return delta(`<div class="card p4"><div class="row" style="gap:10px"><span class="sdot" style="background:var(--lock);width:8px;height:8px" aria-hidden="true"></span>
+      <div class="grow"><p style="font-weight:600">Filler is working on its own</p><p class="sm muted">Loomarr is preparing clips automatically. Nothing needs your attention.</p></div></div></div>`, 'draft · quiet normal');
+  }
+  const memberLine = !isAdmin() ? `<p class="sm muted" style="margin-top:8px">An admin can sort this out from Filler › Manage.</p>` : '';
+  const target = key === 'retry_failed_work' ? 'manage#diagnostics' : a.to;
+  return delta(`<div class="card p5" style="border-color:rgba(245,217,10,.4);background:rgba(245,217,10,.04)">
+      <div class="row start wrap" style="gap:16px"><div class="grow">
+        <span class="badge caution">Action recommended</span>
+        <h2 class="xl" style="margin-top:12px">${a.title}</h2>
+        <p class="sm muted" style="margin-top:4px;max-width:768px">${a.description}</p>${memberLine}</div>
+        ${isAdmin() ? `<button class="btn" data-go="${target}" data-from="overview-action">${a.label}</button>` : ''}</div></div>`, 'draft · one loud card');
+}
+function overview() {
+  if (S.state === 'loading') return `<div class="card" style="padding:24px" aria-live="polite"><p style="font-weight:500">Checking filler health…</p><p class="sm muted" style="margin-top:4px">Finding out what's ready and what's on the way.</p></div>`;
+  if (S.state === 'error') return errorState();
+  // COVERAGE_BADGE, filler-overview.tsx:130-136 — tones already corrected on main, so Built and Draft agree.
+  const COV = { exact: ['Good match', 'lock'], widened: ['Years loosened', 'caution'], audience: ['Audience only', 'caution'], bumper_card: ['Bumpers only', 'onair'] };
+  const ch = CHANNELS[S.state] || [];
+  const cards = ch.map(([num, name, level, ms, total, cats, brands]) => `<div class="card p4"><div class="row start" style="justify-content:space-between">
+      <div class="grow"><a href="#" data-go="channel" style="font-weight:500">${num} · ${name}</a>
+      <p class="sm muted" style="margin-top:4px">${level === 'bumper_card' ? 'Only a bumper card' : `${hours(ms)} playable · ${plural(total, 'clip')}`}</p></div>
+      <span class="badge ${COV[level][1]}">${COV[level][0]}</span></div>
+      <p class="xs muted" style="margin-top:12px">${cats} ${cats === 1 ? 'category' : 'categories'} · ${plural(brands, 'brand')}</p></div>`).join('');
+  return `${statusCard()}
+    <section aria-labelledby="cov-h"><div class="row wrap" style="justify-content:space-between;align-items:flex-end;margin-bottom:12px">
+      <div><h2 id="cov-h">Channel coverage</h2><p class="sm muted">See how much filler each channel has ready to play.</p></div>
+      <button class="btn sm outline" data-go="library">Browse library</button></div>
+      ${ch.length ? `<div class="covgrid">${cards}</div>` : `<div class="card p4 sm muted">No live channels need filler coverage yet.</div>`}
+      ${S.state === 'attention' && isDraft() ? `<p class="xs b11" style="margin-top:8px">Coverage only reports. Acting on a thin channel (coverage-driven acquisition, #749) is beta.11; the "Browse library" button is the only action today.</p>` : ''}
+    </section>`;
+}
+function errorState() {
+  return `<div class="card p4" role="alert" style="border-color:rgba(229,72,77,.4)"><p style="font-weight:500">Something went wrong</p><p class="sm muted" style="margin-top:4px">The filler status could not be loaded.</p><button class="btn sm outline" style="margin-top:12px" data-act="noop">Try again</button></div>`;
+}
+
+// ---------------- Library ----------------
+function poolHealth() {
+  const st = S.state;
+  const ch = CHANNELS[st] || [];
+  const covered = ch.filter((c) => c[2] === 'exact').length, card = ch.filter((c) => c[2] === 'bumper_card').length, loose = ch.length - covered - card;
+  const w = WATCH[st];
+  const note = card ? `${plural(card, 'channel')} ${card === 1 ? 'has' : 'have'} nothing to play` : loose ? `${plural(loose, 'channel')} ${loose === 1 ? 'falls' : 'fall'} back to a looser match` : 'every channel matches exactly';
+  const weakest = ch[0] && ch[0][2] !== 'exact' ? ch.slice().sort((a, b) => ['bumper_card', 'audience', 'widened', 'exact'].indexOf(a[2]) - ['bumper_card', 'audience', 'widened', 'exact'].indexOf(b[2]))[0] : null;
+  const lvl = { exact: 'exact match', widened: 'same decade', audience: 'audience only', bumper_card: 'no commercials' };
+  return `<section class="stats" aria-label="Catalog health">
+    <div class="stat"><span class="cap">Clips</span><span class="v">${w.clips}</span><span class="xs muted">${st === 'normal' ? 'ready to browse' : w.clips ? '1 commercial could use details' : 'no clips yet'}</span></div>
+    <div class="stat"><span class="cap">Fits a break</span><span class="v">${w.clips ? Math.round(w.clips * 0.82) : 0}</span><span class="xs muted">of ${plural(w.clips ? Math.round(w.clips * 0.9) : 0, 'break clip')}</span></div>
+    ${ch.length ? `<div class="stat"><span class="cap">Channels covered</span><span class="v ${card ? 'warn' : ''}">${covered}/${ch.length}</span><span class="xs muted">${note}</span></div>` : ''}
+    ${weakest ? `<div class="stat"><span class="cap">Weakest</span><span class="v warn">${weakest[1]}</span><span class="xs muted">breaks fall back to ${lvl[weakest[2]]}</span></div>` : ''}
+  </section>`;
+}
+function readyChip(c) {
+  // Built: every playable clip wears an amber "READY" chip (clip-card.tsx:287-289). Draft: absence means ready.
+  if (isDraft()) return '';
+  return `<span class="badge signal">Ready</span>`;
+}
+function clipCard(c, i, compact) {
+  const sel = S.selected.has(i);
+  const chips = compact ? '' : `<div class="chips">${readyChip(c)}${[c.k, c.e ? (c.e % 10 ? String(c.e) : c.e + 's') : '', c.a, c.c].filter(Boolean).map((x) => `<span class="badge">${esc(x)}</span>`).join('')}${isDraft() && c.untagged ? `<span class="badge caution">Needs details</span>` : ''}</div>`;
+  return `<article class="card clip ${compact ? 'compact' : ''}" style="${sel ? 'box-shadow:0 0 0 1px var(--signal)' : ''}">
+    <div class="frame">${thumb(i)}<span class="ov dur">${dur(c.d)}</span>${c.q && !compact ? `<span class="ov q" role="img" aria-label="Resolution ${c.q}">${c.q}</span>` : ''}
+      ${isAdmin() ? `<input type="checkbox" class="chk" aria-label="Select ${esc(c.n)}" data-sel="${i}" ${sel ? 'checked' : ''}>` : ''}</div>
+    <button class="name" data-sheet="clip:${i}" title="${esc(c.n)}" aria-label="View details for ${esc(c.n)}">${esc(c.n)}</button>
+    ${c.b && !compact ? `<p class="xs muted nm">${esc(c.b)}</p>` : ''}
+    ${chips}
+    ${compact ? (isDraft() && c.untagged ? `<span class="badge caution">Needs details</span>` : '') : `<p class="xs muted">${c.plays}</p>`}
+  </article>`;
+}
+function clipRow(c, i) {
+  return `<div class="crow">${isAdmin() ? `<input type="checkbox" aria-label="Select ${esc(c.n)}" data-sel="${i}" ${S.selected.has(i) ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--signal)">` : '<span></span>'}
+    <button class="th" data-sheet="clip:${i}" aria-label="Preview ${esc(c.n)}" style="border:0;padding:0">${thumb(i)}</button>
+    <div style="min-width:0"><button class="name nm" data-sheet="clip:${i}" style="display:block;width:100%;background:none;border:0;padding:0;text-align:left">${esc(c.n)}</button>${c.b ? `<p class="xs muted nm">${esc(c.b)}</p>` : ''}${isDraft() && c.untagged && isPhone() ? `<span class="badge caution" style="margin-top:2px">Needs details</span>` : ''}</div>
+    <span class="c md">${c.k === 'Unclassified' ? '' : c.k}</span><span class="c md">${c.e ? (c.e % 10 ? c.e : c.e + 's') : '—'}</span><span class="c lg">${c.a || '—'}</span>
+    <span class="c">${dur(c.d)}</span><span class="c lg" style="font-size:11px">${c.plays}</span></div>`;
+}
+function library() {
+  if (S.state === 'loading') return `<p class="sm muted">Loading clips…</p>`;
+  const st = S.state;
+  const w = WATCH[st];
+  const paused = st === 'failure' ? `<div class="card p4 row wrap" style="border-color:rgba(245,217,10,.4);background:rgba(245,217,10,.05)"><div class="grow"><p class="sm" style="font-weight:500">Automatic fetching is paused</p><p class="sm muted" style="margin-top:2px">1,500 of 1,500 catalog clips are in use. You can still add clips yourself. Remove clips you no longer want or raise this limit to restart automatic downloads.</p></div>${isAdmin() ? `<button class="btn sm outline" data-go="settings:storage">Review limits</button>` : ''}</div>` : '';
+  const phoneDraft = isPhone() && isDraft();
+  const effView = phoneDraft && S.view === 'grid' && S.pgrid === 'list' ? 'list' : S.view;
+  // Draft phone: stats + filters collapse to one line so the first clip lands above the fold.
+  const health = phoneDraft
+    ? delta(`<div class="row wrap" style="padding:10px 12px;gap:8px"><span class="sm grow">${w.clips.toLocaleString()} clips · ${(CHANNELS[st] || []).filter((c) => c[2] === 'exact').length}/${(CHANNELS[st] || []).length} channels covered</span><button class="btn sm outline" data-act="noop">Details</button></div>`, 'draft · stats fold')
+    : poolHealth();
+  const filters = phoneDraft
+    ? delta(`<div class="row" style="padding:10px 12px;gap:8px"><div class="input grow">Clip name</div><button class="btn sm outline" data-act="noop">Filters</button>
+        <div class="views" role="radiogroup" aria-label="Clip view">${['grid', 'list'].map((v) => `<button class="btn sm" role="radio" aria-checked="${effView === v}" data-view="${v}" aria-label="${v === 'grid' ? 'Grid' : 'List'}">${v === 'grid' ? '▦' : '☰'}</button>`).join('')}</div></div>`, 'draft · filters fold')
+    : `<div class="card filters"><div class="field search"><label>Search</label><div class="input">Clip name</div></div>
+      <div class="field"><label>Kind</label><div class="selectbox">Any ▾</div></div><div class="field"><label>Audience</label><div class="selectbox">Any ▾</div></div>
+      <button class="btn sm outline" data-act="noop" title="Commercials missing era, audience, or category">Untagged only</button>
+      <div class="views" role="radiogroup" aria-label="Clip view">${['grid', 'list'].map((v) => `<button class="btn sm" role="radio" aria-checked="${S.view === v}" data-view="${v}" aria-label="${v === 'grid' ? 'Grid' : 'List'}">${v === 'grid' ? '▦' : '☰'}<span class="lbl">${v === 'grid' ? 'Grid' : 'List'}</span></button>`).join('')}</div></div>`;
+  let clips;
+  if (st === 'empty' || st === 'unconfigured') {
+    clips = `<div class="card" style="padding:32px;text-align:center"><p style="font-weight:600">No clips yet</p><p class="sm muted" style="margin-top:6px">Add a source or use your own files. Loomarr prepares clips automatically and adds them here when they are ready.</p>${isAdmin() ? `<button class="btn sm" style="margin-top:14px" data-go="sources">Open sources</button>` : ''}</div>`;
+  } else {
+    const list = CLIPS;
+    const sel = S.selected.size ? `<div class="card row wrap p3" style="border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.05)"><span class="mono xs" style="color:var(--signal)">${plural(S.selected.size, 'clip')} selected</span>${isPhone() ? '' : '<div class="selectbox">Era ▾</div><div class="selectbox">Audience ▾</div>'}<button class="btn sm outline" data-act="noop" title="Stop using these clips. The files stay in your folder.">Remove from catalog</button><button class="btn sm ghost" style="margin-left:auto" data-act="clear">Clear</button></div>` : '';
+    const count = `<div class="row"><p class="sm muted">Showing 1–60 of ${w.clips.toLocaleString()}</p>${isAdmin() ? `<button class="btn sm ghost" data-act="selall">Select this page</button>` : ''}</div>`;
+    const body = effView === 'list'
+      ? `<div class="list">${list.map(clipRow).join('')}</div>`
+      : `<div class="cgrid ${phoneDraft ? 'two' : ''}">${list.map((c, i) => clipCard(c, i, phoneDraft)).join('')}</div>`;
+    const pager = `<nav aria-label="Catalog pages" class="row" style="justify-content:space-between"><button class="btn sm outline" disabled>Previous</button><p class="sm muted">Page 1 of ${Math.ceil(w.clips / 60)}</p><button class="btn sm outline">Next</button></nav>`;
+    clips = sel + count + (phoneDraft && effView === 'grid' ? delta(body, 'draft · 2-up compact') : body) + pager;
+  }
+  return `${health}${paused}${filters}${clips}`;
+}
+
+// ---------------- Manage hub + Problems ----------------
+function manage() {
+  const st = S.state, w = WATCH[st] || WATCH.normal;
+  const problems = st === 'failure' ? 2 : 0;
+  const untagged = st === 'normal' ? 0 : st === 'empty' ? 0 : 1;
+  const tone = { ok: 'var(--lock)', warn: 'var(--caution)', off: 'var(--s500)', notice: 'var(--signal)' };
+  const rows = [
+    ...(isAdmin() ? [
+      { t: 'Sources', s: `${w.sourcesOn} of ${w.sourcesTotal} on`, tone: w.sourcesOn ? 'ok' : 'off', go: 'sources' },
+      { t: 'Incoming', s: w.held ? `${plural(w.held, 'clip')} ${w.held === 1 ? 'needs' : 'need'} a choice` : `Nothing needs you · ${st === 'normal' ? '4 clips' : '0 clips'} preparing`, tone: w.held ? 'warn' : 'ok', go: 'incoming' },
+    ] : []),
+    { t: 'Tags', s: `Product, format, season and audience · ${untagged ? `${plural(untagged, 'clip')} not tagged yet` : 'every clip tagged'}`, tone: untagged ? 'warn' : 'ok', go: 'taxonomy' },
+    { t: 'Settings', s: 'Folders, downloads, storage and matching defaults', tone: 'off', go: isAdmin() ? 'settings' : null },
+    ...(isAdmin() ? [{ t: 'Problems', s: problems ? `${plural(problems, 'item')} can be tried again` : 'Nothing to try again', tone: problems ? (isDraft() ? 'warn' : 'notice') : 'ok', go: 'diag', draftTone: problems > 0 }] : []),
+  ];
+  const hub = `<section class="hub" aria-label="Filler tools"><ul>${rows.map((r) => `<li><span class="sdot" style="background:${tone[r.tone]}" aria-hidden="true"></span>
+      <div class="grow"><p class="sm" style="font-weight:500">${r.t}${r.draftTone && isDraft() ? ' <span class="fix xs">(draft: caution, was amber "notice")</span>' : ''}</p><p class="xs muted" style="margin-top:2px">${r.s}</p></div>
+      ${r.go ? `<button class="btn sm outline" data-go="${r.go}" aria-label="Open ${r.t}">Open</button>` : ''}</li>`).join('')}</ul></section>`;
+  // activityPresentation (filler-manage.tsx:32-42): admits are amber `signal`. Draft: routine admits go neutral; only caution kinds keep a tint.
+  const admit = isDraft() ? '' : 'signal';
+  const acts = st === 'empty' ? `<div class="card p4 sm muted">Nothing has happened yet.</div>` : `<div class="list">${[[admit, 'Added automatically', '9f2c41d0aa7e', '4m ago'], ['', 'Skipped automatically', '0b77e2c3d915', '1h ago'], [st === 'attention' ? 'caution' : admit, st === 'attention' ? 'Needs a decision' : 'Added after review', '5ad0c8e14b2f', '2h ago']].map(([v, l, h, t]) => `<div class="act"><span class="badge ${v}">${l}</span><span class="grow mono xs muted nm">Clip ${h}…</span><span class="xs muted">${t}</span></div>`).join('')}</div>`;
+  const diag = !isAdmin() ? '' : `<div class="card" id="diagnostics" style="overflow:hidden"><div class="row wrap p4"><div class="grow"><h2>Needs attention</h2><p class="sm muted">See what stopped and how to get it moving again.</p></div>
+      <span class="badge ${problems ? 'caution' : ''}">${plural(problems, 'current issue')}</span><button class="btn sm ghost" data-act="diag">${S.diagOpen ? 'Hide' : 'Show'} issues ${S.diagOpen ? '▴' : '▾'}</button></div>
+      ${S.diagOpen ? `<div class="p4 stack" style="border-top:1px solid var(--s700)">${problems ? [
+        ['This clip couldn’t be processed', 'The work that already finished won’t be lost.', 'Ready to retry', 'caution', 'Try again', '3c19ab70e2'],
+        ['Check this clip', 'Loomarr couldn’t read this file reliably. Open it and make sure it plays correctly.', 'Check required', 'caution', 'Open clip', 'e8d1f40b6c'],
+      ].map(([t, d, b, v, a, h]) => `<article class="card p4 row start wrap" style="background:var(--s950)"><div class="grow"><div class="row wrap" style="gap:8px"><p class="sm" style="font-weight:500">${t}</p><span class="badge ${v}">${b}</span></div><p class="sm muted" style="margin-top:4px">${d}</p><p class="xs muted" style="margin-top:4px">Clip ${h}…</p><button class="btn sm ${a === 'Open clip' ? 'outline' : ''}" style="margin-top:12px" data-act="noop">${a}</button></div><span class="xs muted">${t.startsWith('This') ? '25m ago' : '2h ago'}</span></article>`).join('') : `<p class="sm muted">Everything is working. Nothing needs your attention.</p>`}</div>` : ''}</div>`;
+  return `${hub}<section><h2>Recent activity</h2><p class="sm muted" style="margin-bottom:12px">See what Loomarr added, skipped, or changed.</p>${acts}</section>${diag}`;
+}
+
+// ---------------- Incoming ----------------
+function incoming() {
+  const st = S.state;
+  const back = backToManage();
+  if (st === 'empty') return `${back}<section><h2 class="xxl">Nothing on the way</h2><div class="card" style="padding:32px;text-align:center;margin-top:12px"><p style="font-weight:600">Incoming is clear</p><p class="sm muted" style="margin-top:6px">New clips will appear here after you add a source.</p><button class="btn sm" style="margin-top:14px" data-go="sources">Add a source</button></div></section>`;
+  const srow = (n, from, d, label, i) => `<button class="srow" data-sheet="inc:${i}" style="width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left"><span class="th">${thumb(i)}</span><span class="grow"><span class="sm" style="display:block;font-weight:500">${n}</span><span class="xs muted">${from} · ${d}</span></span><span class="xs muted">${label}</span></button>`;
+  const preparing = st === 'normal' || st === 'failure' ? `<section class="stack"><div><h3>Getting clips ready</h3><p class="sm muted">You can leave this page. Work continues on its own.</p></div><div class="srows">${srow('Brightway Batteries — bunny drummer', 'Your files', '30s', 'Checking sound', 1)}${srow('Evening news teaser', 'Archive.org', '15s', 'Waiting to start', 5)}</div></section>` : '';
+  const help = st === 'attention' ? `<section class="stack"><div><h3>Needs your help</h3><p class="sm muted">Only choices Loomarr can’t safely make for you appear here.</p></div>
+      <div class="card p4 stack"><div class="row xs muted" style="justify-content:space-between"><span>1 of 3</span><span>One choice at a time</span></div>
+      <div class="row wrap"><div class="grow"><p class="sm" style="font-weight:500">Saturday tape — reel 2</p><p class="sm muted" style="margin-top:4px">Loomarr found 14 possible clips in this recording. Check the cuts before they're added.</p></div><button class="btn sm" data-go="split" data-from="incoming">Review cuts</button></div>
+      <div class="row" style="justify-content:flex-end;border-top:1px solid var(--s700);padding-top:12px"><button class="btn sm ghost" disabled>Previous</button><button class="btn sm outline">Next</button></div></div></section>` : '';
+  const ready = `<section class="stack"><div class="row wrap" style="justify-content:space-between;align-items:flex-end"><div><h3>Ready</h3><p class="sm muted">Added in the last 24 hours. These clips stay in your Library. <a href="#" data-go="settings:incoming" style="text-decoration:underline">Change</a></p></div><button class="btn sm outline" data-go="library">Open Library</button></div>
+      <div class="srows">${srow('Fizzwell Soda — summer jingle', 'Archive.org', '30s', 'Ready', 0)}${srow('Coming up next bumper', 'Your files', '8s', 'Ready', 5)}</div></section>`;
+  const summary = preparing ? ['2 clips are getting ready', 'Loomarr is taking care of these in the background.'] : help ? ['3 clips need your help', 'Loomarr needs one choice from you before it can continue.'] : ['2 clips added to your Library', 'These clips are ready whenever a channel needs them.'];
+  return `${back}<section class="stack" style="gap:28px"><div><h2 class="xxl">${summary[0]}</h2><p class="sm muted" style="margin-top:4px">${summary[1]}</p></div>${preparing}${help}${ready}</section>`;
+}
+
+// ---------------- Sources ----------------
+function sources() {
+  const st = S.state;
+  const storage = st === 'failure'
+    ? `<p class="sm" style="margin-top:4px">412 GB used for filler · 9.6 GB free on this drive</p><p class="xs muted" style="margin-top:4px">New filler is paused so this drive keeps 10 GB free.</p>`
+    : `<p class="sm" style="margin-top:4px">38 GB used for filler · 1.2 TB free on this drive</p><p class="xs muted" style="margin-top:4px">Automatic downloads will pause before this drive has less than 10 GB free.</p>`;
+  const src = (on, name, detail, status, badge) => `<li class="srcrow">${on === null ? '' : `<span class="switch ${on ? 'on' : ''}" role="switch" aria-checked="${on}" aria-label="Use ${name}"></span>`}<button class="srcbtn" data-sheet="src:${esc(name)}" style="background:none;border:0;text-align:left" aria-label="Manage ${esc(name)}"><span class="grow"><span class="row wrap" style="gap:8px"><span class="sm nm" style="font-weight:500">${name}</span>${badge || ''}</span><span class="xs muted nm" style="display:block;margin-top:2px">${detail}</span></span><span class="xs muted" style="white-space:nowrap">${status}</span><span aria-hidden="true" class="muted">›</span></button></li>`;
+  const empty = st === 'empty';
+  return `${backToManage()}
+    <section class="card p4"><div class="row start wrap"><div class="grow"><h2 class="sm" style="font-size:14px;font-weight:500">Storage</h2>${storage}</div><button class="btn sm ghost" data-go="settings:storage">Storage options</button></div></section>
+    <div class="row start wrap"><div class="grow"><h2 style="font-size:14px">Where filler comes from</h2><p class="sm muted" style="margin-top:4px;max-width:576px">Add sources once and Loomarr checks them for you. Turning one off does not remove clips already added.</p></div><span class="xs muted">${empty ? '0 of 1 ready' : '3 of 4 ready'}</span></div>
+    <section style="border-top:1px solid rgba(42,46,55,.6);padding-top:20px"><div class="row start"><div class="grow"><h3>Your files</h3><p class="sm muted" style="margin-top:4px">Folders and media-server libraries you already manage.</p></div></div>
+      <ul style="padding:0;margin:8px 0 0">${src(null, 'Drop folder', empty ? 'Choose a folder for files you add yourself.' : '/srv/filler/drop', empty ? '0 clips' : '212 clips · checked 12m ago')}${empty ? '' : src(true, 'Old Station Tapes', 'Media server library', '640 clips · checked 1h ago')}</ul></section>
+    ${empty ? '' : `<section style="border-top:1px solid rgba(42,46,55,.6);padding-top:20px"><div class="row start wrap"><div class="grow"><h3>Archive.org</h3><p class="sm muted" style="margin-top:4px">Public collections of commercials, bumpers, and other broadcast material.</p></div><span class="xs muted">2 sources</span><span class="switch on" role="switch" aria-checked="true" aria-label="Use Archive.org"></span></div>
+      <ul style="padding:0;margin:12px 0 0">${src(true, 'regional-ads-1980s', '1980s regional television commercials', st === 'failure' ? '310 ready · 4 being checked' : '310 clips · checked 3h ago', st === 'failure' ? '<span class="badge caution">Needs attention</span>' : '')}${src(false, 'test-pattern-idents', 'Paused. Existing clips stay in your library.', 'Off')}</ul>
+      <p class="xs b11" style="margin-top:10px">${isDraft() ? 'Source checks and automatic downloads exist today. Loomarr-proposed downloads ("Requested by Loomarr" pulls) have no producer since #1846; any pending ones are legacy rows in Requests, and coverage-driven acquisition (#749) is beta.11. This draft adds no pull surface here.' : ''}</p></section>`}`;
+}
+
+// ---------------- Taxonomy (abbreviated) ----------------
+function taxonomy() {
+  const st = S.state;
+  const all = st === 'normal';
+  return `${backToManage()}
+    <p class="xs muted">Abbreviated: the vocabulary editor (taxonomy-tab.tsx) is unchanged by this draft and not redrawn.</p>
+    <div class="card p4"><p style="font-weight:500">What belongs here</p><p class="sm muted" style="margin-top:4px">Classification describes what a clip contains. Kind is the closed playout role; format and presentation are optional browsing details. Era, audience, and grounded brand remain separate facts too.</p>
+      ${all ? `<p class="sm" style="margin-top:8px;color:var(--lock)">Every playable clip has at least one taxonomy tag.</p>` : `<a href="#" data-go="library" class="sm" style="margin-top:8px;display:inline-flex;color:var(--signal)">Review 1 unclassified clip</a>`}</div>
+    <section><h2>Classification coverage</h2><p class="sm muted" style="margin-top:4px">These are independent signals. Missing presentation, seasonal, or audience cues can be perfectly normal.</p>
+      <div class="axgrid" style="margin-top:12px">${['Products & topics', 'Format', 'Presentation', 'Seasonal', 'Audience cues'].map((l, i) => `<div class="card p4"><h3 style="font-size:15px;font-weight:500">${l}</h3><div style="margin-top:12px;border-top:1px solid var(--s700);padding-top:12px" class="sm"><p><b>${all || i > 1 ? '1,284' : '1,283'}</b> of 1,284 playable clips</p>${all || i > 1 ? `<p class="xs" style="margin-top:4px;color:var(--lock)">All playable clips have this signal.</p>` : `<a href="#" data-go="library" class="xs" style="margin-top:4px;display:inline-flex;color:var(--signal)">Browse 1 without this signal</a>`}</div></div>`).join('')}</div></section>`;
+}
+
+// ---------------- Settings ----------------
+function settings() {
+  const sec = (S.screen.split(':')[1]) || null;
+  const items = [['downloads', 'Automatic downloads', 'Choose how often sources are checked and how many clips they add.', 'e'], ['folders', 'Clip folders', 'Choose where clips live and how dropped files enter Loomarr.', 'e'], ['storage', 'Storage limits', 'Stop automatic downloads before clips fill this drive.', 'e'], ['details', 'Clip details', 'Choose how Loomarr fills in missing names, dates, and locations.', 'e'], ['incoming', 'Incoming history', 'Choose how long ready clips remain visible in Incoming.', 'e'], ['breaks', 'Break assembly', 'Choose the usual length and number of clips in a commercial break.', 'e'], ['review', 'Clip review', 'Choose which automatic checks can identify and split incoming clips.', 'e'], ['eligibility', 'Clip eligibility and sound', 'Choose which clips may play, how often they repeat, and their sound level.', 'e'], ['limits', 'Processing limits', 'Limit how much clip preparation Loomarr performs in one pass.', 'a'], ['tools', 'Processing tools', 'Set executable and model paths for unusual installations.', 'a']];
+  if (sec) {
+    const it = items.find((x) => x[0] === sec) || items[0];
+    return `<div class="card p4 row wrap" style="justify-content:space-between;align-items:flex-end"><div><button class="backlink" data-go="settings"><span aria-hidden="true">←</span> All filler settings</button><p class="xs muted" style="margin-top:8px">Jump straight to another task.</p></div><div class="selectbox" style="min-width:${isPhone() ? '100%' : '256px'}">${it[1]} ▾</div></div>
+      <div class="card p4"><h2 style="font-size:16px">${it[1]}</h2><p class="sm muted" style="margin-top:4px">${it[2]}</p><p class="xs muted" style="margin-top:12px">(Section fields unchanged by this draft; not redrawn.)</p></div>`;
+  }
+  const grp = (g, label, d) => `<section><h3 style="font-size:16px;font-weight:500">${label}</h3><p class="sm muted" style="margin:2px 0 12px">${d}</p><div class="setgrid">${items.filter((x) => x[3] === g).map((x) => `<a href="#" class="setlink" data-go="settings:${x[0]}"><span class="grow"><span class="sm" style="display:block;font-weight:500">${x[1]}</span><span class="xs muted">${x[2]}</span></span><span class="muted" aria-hidden="true">→</span></a>`).join('')}</div></section>`;
+  // Built: the "← Manage" link already exists here (filler-settings.tsx:129-135) — it is the pattern the draft reuses elsewhere.
+  return `<div><button class="backlink" data-go="manage"><span aria-hidden="true">←</span> Manage</button><h2 class="xl" style="margin-top:12px">Filler settings</h2><p class="sm muted" style="margin-top:4px">Change how Loomarr finds, prepares, stores, and plays short clips.</p></div>
+    ${grp('e', 'Everyday choices', 'The settings most people are likely to change.')}${grp('a', 'Advanced tuning', 'Processing capacity and tools for unusual installations.')}`;
+}
+
+// ---------------- Split review (sibling route — no Filler header or tabs) ----------------
+function split() {
+  if (!isAdmin()) return `<div class="card" style="padding:32px;text-align:center"><p style="font-weight:600">Admins only</p><p class="sm muted" style="margin-top:6px">Reviewing compilation splits decides what enters the catalog, so it's an admin action. Ask an admin to review this proposal.</p></div>`;
+  const backTo = isDraft() ? S.splitFrom : 'library';
+  const backLabel = backTo === 'incoming' ? 'Incoming' : 'Library';
+  const crumb = isDraft() ? delta(`<div style="padding:8px 10px"><button class="backlink" data-go="${backTo}"><span aria-hidden="true">←</span> ${backLabel}</button></div>`, 'draft · returns to origin') : '';
+  return `${crumb}<div><h1 style="font-size:20px;margin:0">Review clips</h1><p class="sm muted" style="margin-top:4px;max-width:672px">Loomarr found these clips in <b style="color:#C9CED8">Saturday tape — reel 2</b>. Preview anything that needs a closer look, then keep the clips you want. The original recording stays available if you need it later.</p></div>
+    <div class="list">${['Fizzwell Soda — summer jingle', 'Coming up next bumper', 'Unnamed segment 3'].map((n, i) => `<div class="crow" style="grid-template-columns:auto 54px 1fr auto"><input type="checkbox" checked aria-label="Keep ${n}" style="width:16px;height:16px;accent-color:var(--signal)"><span class="th">${thumb(i + 2)}</span><span class="nm">${n}</span><span class="c">${['0:00–0:30', '0:30–0:38', '0:38–1:08'][i]}</span></div>`).join('')}</div>
+    <p class="xs muted">Abbreviated: the cut editor (split-review-editor.tsx) is unchanged and not redrawn.</p>
+    <div class="row" style="justify-content:space-between"><button class="btn sm outline" data-go="${backTo}" data-from="split-back">Back</button><button class="btn sm" data-go="library" data-from="split-keep">Keep clips</button></div>`;
+}
+
+// ---------------- Return-path map ----------------
+function paths() {
+  const rows = [
+    ['Overview /filler', 'tab', 'Tabs', 'Tabs (unchanged)'],
+    ['Library /filler/library', 'tab', 'Tabs; filters persist in URL', 'Tabs (unchanged)'],
+    ['Library › compilation segments (?parent=)', 'in-page', '"Back to top-level catalog" button', 'unchanged'],
+    ['Library › clip details sheet', 'sheet', 'Close / swipe right; focus returns to the card', 'unchanged'],
+    ['Manage /filler/manage', 'tab', 'Tabs', 'Tabs (unchanged)'],
+    ['Manage › Problems (#diagnostics)', 'in-page', 'Disclosure; Overview\'s "Open diagnostics" links to /filler/manage <em>without</em> #diagnostics, so the panel arrives closed', '<span class="fix">Overview action deep-links /filler/manage#diagnostics (panel opens)</span>'],
+    ['Incoming /filler/incoming (admin)', 'child of Manage', 'Manage tab lit; no back link', '<span class="fix">"← Manage" link, the Settings-index pattern</span>'],
+    ['Sources /filler/sources (admin)', 'child of Manage', 'Manage tab lit; no back link', '<span class="fix">"← Manage" link</span>'],
+    ['Sources › source sheet /filler/sources/$id', 'sheet', 'Close → /filler/sources (replace)', 'unchanged'],
+    ['Tags /filler/taxonomy', 'child of Manage', 'Manage tab lit; no back link', '<span class="fix">"← Manage" link</span>'],
+    ['Settings /filler/settings (admin)', 'child of Manage', '"← Manage" link (filler-settings.tsx:129)', 'unchanged — the pattern reused'],
+    ['Settings › section /filler/settings/$section', 'grandchild', '"← All filler settings" + task switcher', 'unchanged'],
+    ['Split review /filler/splits/$id (admin)', 'sibling route, no Filler header', 'Back → /filler/library always (also when entered from Incoming); Keep → Library; Recheck → Incoming', '<span class="fix">Back returns to where review was opened (Incoming or Library) — needs an origin; open question 4</span>'],
+    ['Overview › channel coverage card', 'leaves Filler', '→ /channels/$id/filler; browser Back only', 'unchanged; open question 6'],
+    ['Member → Incoming / Sources / Settings', 'redirect', 'Redirected to Library / Library / Manage; Overview still shows admin-only action buttons that bounce', '<span class="fix">Member sees the state, no button, "An admin can sort this out…"</span>'],
+  ];
+  return `<section><h2>Every Filler page and how it returns to its parent</h2><p class="sm muted" style="margin:4px 0 12px">Built column is read from the route files and components on main; Draft column lists only changes.</p>
+    <div style="overflow-x:auto"><table class="paths"><thead><tr><th>Page</th><th>Relationship</th><th>Built today</th><th>Draft</th></tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+}
+
+// ---------------- Sheets ----------------
+function sheet() {
+  if (!S.sheet) return '';
+  const [kind, id] = S.sheet.split(':');
+  let title, desc, body;
+  if (kind === 'clip') { const c = CLIPS[+id]; title = esc(c.n); desc = 'Ready'; body = `<div style="aspect-ratio:16/9;position:relative;border-radius:6px;overflow:hidden">${thumb(+id)}</div><p class="sm muted">${dur(c.d)} · ${c.k}${c.b ? ' · ' + esc(c.b) : ''}</p><p class="xs muted">${c.plays}</p>`; }
+  else if (kind === 'inc') { title = 'Incoming clip'; desc = 'Checking sound'; body = `<p class="sm muted">Preparation summary and processing details (unchanged).</p>`; }
+  else { title = esc(id); desc = 'Archive.org collection'; body = `<p style="font-weight:500">Ready</p><p class="sm muted">310 clips · checked 3h ago</p>`; }
+  return `<div class="scrim" data-act="close"><aside class="sheet" role="dialog" aria-label="${title}" onclick="event.stopPropagation()"><header><div class="grow"><p style="font-weight:600">${title}</p><p class="sm muted">${desc}</p></div><button class="btn sm ghost" data-act="close" aria-label="Close">✕</button></header><div class="stack" style="padding:24px">${body}</div></aside></div>`;
+}
+
+// ---------------- Render ----------------
+function render() {
+  const f = $('frame');
+  f.className = `${isPhone() ? 'phone' : ''} ${isDraft() ? 'draft' : ''}`;
+  $('frame-label').textContent = `${isPhone() ? '390 × 844 · bottom bar (Filler lives under More, so no tab is lit)' : 'desktop · content area beside the 224px rail (rail not drawn)'} · ${S.variant} · ${S.role}`;
+  let html = '';
+  const scr = S.screen.split(':')[0];
+  if (scr === 'split') {
+    html = `<div class="body">${split()}</div>`;
+  } else if (scr === 'paths') {
+    html = `<div class="body">${paths()}</div>`;
+  } else if (S.state === 'unconfigured' && scr !== 'settings') {
+    html = header() + `<div class="body"><div class="card" style="padding:32px;text-align:center"><p style="font-weight:600">No filler folder configured</p><p class="sm muted" style="margin-top:6px">Choose a folder for commercials, bumpers, and station IDs. Loomarr indexes it for scheduling; point Tunarr at the same folder so it can play the clips.</p>${isAdmin() ? `<button class="btn sm" style="margin-top:14px" data-go="settings:folders">Choose clip folders</button>` : ''}</div></div>`;
+  } else {
+    const fn = { overview, library, manage, incoming, sources, taxonomy, settings }[scr];
+    html = header() + `<div class="body">${tabs()}${fn()}</div>`;
+  }
+  $('page').innerHTML = html;
+  $('overlay').innerHTML = sheet();
+  if (isPhone() && scr === 'library') {
+    // Fold ruler: 844 − 49 bar − 20 safe area = 775px of scrollable viewport.
+    const r = document.createElement('div'); r.className = 'ruler'; r.style.top = '775px'; r.innerHTML = '<span>fold (bar + safe area)</span>';
+    $('page').style.position = 'relative'; $('page').appendChild(r);
+  }
+  if (S.screen === 'manage' && S.diagOpen) { const d = document.getElementById('diagnostics'); if (d && S._scrollDiag) { d.scrollIntoView({ block: 'start' }); S._scrollDiag = false; } }
+  ['variant', 'role', 'state', 'view', 'pgrid'].forEach((k) => { $(k).value = S[k]; });
+  $('frame-size').value = S.frame;
+  $('screen').value = scr === 'settings' ? 'settings' : scr;
+}
+
+function go(target, from) {
+  let [scr, sec] = target.split(':');
+  let hash = '';
+  if (scr.includes('#')) [scr, hash] = scr.split('#');
+  if (scr === 'channel') { say('Leaves Filler for /channels/$id/filler. Return is browser Back only (open question 6).'); return; }
+  if (scr === 'diag') { S.screen = 'manage'; S.diagOpen = true; S._scrollDiag = true; render(); say('Problems opens the Needs attention panel on this page (built).'); return; }
+  if (!isAdmin() && ADMIN_ONLY[scr]) {
+    const to = ADMIN_ONLY[scr];
+    S.screen = to; render();
+    say(`Member: /filler/${scr} redirected to /filler/${to} by the route's beforeLoad (built). ${from === 'overview-action' ? 'The Overview offered this button to a member — draft removes it.' : ''}`);
+    return;
+  }
+  if (scr === 'split') S.splitFrom = from || 'incoming';
+  S.screen = sec ? `${scr}:${sec}` : scr;
+  if (scr === 'manage') { S.diagOpen = hash === 'diagnostics'; S._scrollDiag = S.diagOpen; }
+  render();
+  const url = scr === 'overview' ? '/filler' : scr === 'split' ? '/filler/splits/(id)' : `/filler/${scr}${sec ? '/' + sec : ''}${hash ? '#' + hash : ''}`;
+  let note = `Navigated to ${url}.`;
+  if (from === 'overview-action' && scr === 'manage' && !hash) note += ' Built: the action lands on Manage with the Needs attention panel CLOSED — the admin must find "Problems" and press Open.';
+  if (from === 'split-back' && !isDraft()) note += ' Built: Back always goes to Library, even though this review was opened from Incoming.';
+  say(note);
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-go],[data-act],[data-view],[data-sheet],[data-sel]');
+  if (!t) return;
+  if (t.dataset.sel !== undefined) { const i = +t.dataset.sel; S.selected.has(i) ? S.selected.delete(i) : S.selected.add(i); render(); return; }
+  e.preventDefault();
+  if (t.dataset.go) return go(t.dataset.go, t.dataset.from);
+  if (t.dataset.view) { S.view = t.dataset.view; render(); return; }
+  if (t.dataset.sheet) { S.sheet = t.dataset.sheet; render(); say('Details open in a right-hand sheet; closing returns focus to the trigger (built).'); return; }
+  const a = t.dataset.act;
+  if (a === 'close') { S.sheet = null; render(); }
+  if (a === 'diag') { S.diagOpen = !S.diagOpen; render(); }
+  if (a === 'clear') { S.selected.clear(); render(); }
+  if (a === 'selall') { CLIPS.forEach((_, i) => S.selected.add(i)); render(); }
+  if (a === 'noop') say('Not wired in the prototype.');
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.sheet) { S.sheet = null; render(); } });
+['variant', 'role', 'state', 'view', 'pgrid'].forEach((k) => $(k).addEventListener('change', (e) => { S[k] = e.target.value; S.selected.clear(); render(); }));
+$('screen').addEventListener('change', (e) => { S.screen = e.target.value; S.diagOpen = false; S.sheet = null; if (S.screen === 'split') S.splitFrom = 'incoming'; render(); });
+$('frame-size').addEventListener('change', (e) => { S.frame = e.target.value; render(); });
+render();
+say('Switch Variant to compare Built today with the Draft. Try State = Failure, then the Overview action; then Screen = Return-path map.');
+</script>
+</html>
