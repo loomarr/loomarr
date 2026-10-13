@@ -55,6 +55,7 @@
       },
       "ios": {
         "buildFromSource": [
+          "expo-modules-core",
           "expo-video"
         ],
         "exclude": [
