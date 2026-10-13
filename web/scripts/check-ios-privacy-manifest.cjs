@@ -10,7 +10,7 @@ const USER_DEFAULTS = "NSPrivacyAccessedAPICategoryUserDefaults";
 const USER_DEFAULTS_REASON = "CA92.1";
 
 const fail = (problem) => {
-  console.error("ios-testflight: IPA privacy manifest " + problem);
+  console.error("apple-testflight: IPA privacy manifest " + problem);
   process.exit(1);
 };
 

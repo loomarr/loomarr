@@ -1,13 +1,19 @@
-name: iPhone TestFlight beta
+name: Apple TestFlight betas
 
-# A push to main that changes the iPhone app uploads it; the plan job decides with the same
-# classifier CI uses for the Apple mobile gate, so a push that changes no iPhone input uploads
-# nothing. A dispatch rebuilds main on demand: a dry run (upload unset) or a re-upload.
+# A push to main uploads each Apple app it changes: the iPhone app and the Apple TV app are separate
+# App Store Connect records. The plan job decides with the same classifier CI uses for the Apple
+# mobile and Apple TV gates, so a push that changes neither app uploads nothing. A dispatch rebuilds
+# one app from main on demand: a dry run (upload unset) or a re-upload.
 on:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
+      app:
+        description: The Apple app to build
+        required: true
+        type: choice
+        options: [iphone, apple-tv]
       version:
         description: Loomarr release version, e.g. 0.2.0-beta.9
         required: true
@@ -21,15 +27,15 @@ on:
 permissions:
   contents: read
 
-# The workflow file name is part of the build-number contract: github.run_number counts runs of
-# this workflow, so renaming or recreating it can restart the numbering and collide with uploads.
+# App Store Connect picks each build number (web/scripts/asc-next-build-number.mjs); this
+# workflow's run number is only a floor under it.
 jobs:
   plan:
-    name: Decide whether this run releases the iPhone app
+    name: Decide which Apple apps this run releases
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
-      release: ${{ steps.plan.outputs.release }}
+      apps: ${{ steps.plan.outputs.apps }}
       upload: ${{ steps.plan.outputs.upload }}
       version: ${{ steps.plan.outputs.version }}
     steps:
@@ -43,25 +49,33 @@ jobs:
         id: plan
         env:
           EVENT_NAME: ${{ github.event_name }}
-        run: ./web/scripts/build-ios-testflight.sh plan "$EVENT_NAME" "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"
+        run: ./web/scripts/build-apple-testflight.sh plan "$EVENT_NAME" "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"
 
   release:
-    name: Archive, verify, and optionally upload the iPhone beta
+    name: Archive, verify, and optionally upload the ${{ matrix.app }} beta
     needs: plan
-    if: github.ref == 'refs/heads/main' && needs.plan.outputs.release == 'true'
-    # Serialized so two runs never pick the same build number. Only releasing runs queue here, so a
-    # push that changes no iPhone input cannot replace a pending release; a newer pending release
-    # does replace an older one, and it builds a later main that contains the older change.
+    if: github.ref == 'refs/heads/main' && needs.plan.outputs.apps != '[]'
+    # One job per app the plan names; one app's failure leaves the other's upload alone.
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.apps) }}
+    # Serialized per app so two runs never pick the same build number. Only releasing runs queue
+    # here, so a push that changes no input of an app cannot replace its pending release; a newer
+    # pending release does replace an older one, and it builds a later main that contains the
+    # older change.
     concurrency:
-      group: ios-testflight-release
+      group: apple-testflight-release-${{ matrix.app }}
       cancel-in-progress: false
-    # Same image as ci-apple-mobile.yml; the script fails closed on another Xcode major.
+    # Same image as ci-apple-mobile.yml and ci-apple-tv.yml; the script fails closed on another
+    # Xcode major.
     runs-on: xcode-27
     timeout-minutes: 90
     environment: ios-testflight
     env:
-      LOOMARR_IOS_BUILD_NUMBER: ${{ github.run_number }}
-      LOOMARR_IOS_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/ios-testflight
+      LOOMARR_APPLE_APP: ${{ matrix.app }}
+      LOOMARR_APPLE_BUILD_NUMBER: ${{ github.run_number }}
+      LOOMARR_APPLE_OUTPUT_DIR: ${{ github.workspace }}/.artifacts/testflight
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -85,7 +99,8 @@ jobs:
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
           ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
-        run: ./web/scripts/build-ios-testflight.sh prepare-credentials
+          ASC_APPLE_TV_APP_ID: ${{ vars.ASC_APPLE_TV_APP_ID }}
+        run: ./web/scripts/build-apple-testflight.sh "$LOOMARR_APPLE_APP" prepare-credentials
 
       - name: Archive, export, and verify the IPA
         env:
@@ -93,15 +108,15 @@ jobs:
           LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
           RELEASE_VERSION: ${{ needs.plan.outputs.version }}
-        run: ./web/scripts/build-ios-testflight.sh build "$RELEASE_VERSION"
+        run: ./web/scripts/build-apple-testflight.sh "$LOOMARR_APPLE_APP" build "$RELEASE_VERSION"
 
       - name: Retain the verified IPA and evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: loomarr-ios-${{ needs.plan.outputs.version }}-${{ github.run_number }}
+          name: loomarr-${{ matrix.app }}-${{ needs.plan.outputs.version }}-${{ github.run_number }}
           path: |
-            ${{ env.LOOMARR_IOS_OUTPUT_DIR }}/loomarr-ios-*.ipa
-            ${{ env.LOOMARR_IOS_OUTPUT_DIR }}/loomarr-ios-*.json
+            ${{ env.LOOMARR_APPLE_OUTPUT_DIR }}/loomarr-*.ipa
+            ${{ env.LOOMARR_APPLE_OUTPUT_DIR }}/loomarr-*.json
           if-no-files-found: error
           retention-days: 30
 
@@ -110,7 +125,8 @@ jobs:
           LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
           LOOMARR_ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
-        run: ./web/scripts/build-ios-testflight.sh validate
+          LOOMARR_ASC_APPLE_TV_APP_ID: ${{ vars.ASC_APPLE_TV_APP_ID }}
+        run: ./web/scripts/build-apple-testflight.sh "$LOOMARR_APPLE_APP" validate
 
       - name: Upload to TestFlight
         if: needs.plan.outputs.upload == 'true'
@@ -118,7 +134,8 @@ jobs:
           LOOMARR_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           LOOMARR_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
           LOOMARR_ASC_APPLE_APP_ID: ${{ vars.ASC_APPLE_APP_ID }}
-        run: ./web/scripts/build-ios-testflight.sh upload
+          LOOMARR_ASC_APPLE_TV_APP_ID: ${{ vars.ASC_APPLE_TV_APP_ID }}
+        run: ./web/scripts/build-apple-testflight.sh "$LOOMARR_APPLE_APP" upload
 
       - name: Remove credential files
         if: always()

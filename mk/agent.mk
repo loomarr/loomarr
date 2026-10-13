@@ -75,7 +75,7 @@ release-verify: ## verify release, CI acquisition, Android, and publication poli
 	@./web/scripts/test-apple-client-cache-test.sh
 	@./web/scripts/validate-apple-compilation-cache-test.sh
 	@./scripts/check-release-docs-gate.sh --self-test
-	@./web/scripts/build-ios-testflight.test.sh
+	@./web/scripts/build-apple-testflight.test.sh
 	@./web/scripts/check-ios-pods-binaries.test.sh
 	@./web/scripts/build-shield-play.test.sh
 	@$(GO) test ./internal/releaseverify

@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const { appleVersionFields } = createRequire(import.meta.url)("../app.config.cjs");
 
 const autolinkedNativeModules = async (platform) => {
   const autolinking = fileURLToPath(
@@ -32,9 +30,9 @@ const expoConfig = async (environment) => {
 
 const releaseEnvironment = (overrides) => ({
   ...process.env,
-  LOOMARR_IOS_RELEASE_CHANNEL: "testflight",
-  LOOMARR_IOS_VERSION: "0.2.0-beta.9",
-  LOOMARR_IOS_BUILD_NUMBER: "7",
+  LOOMARR_APPLE_RELEASE_CHANNEL: "testflight",
+  LOOMARR_APPLE_VERSION: "0.2.0-beta.9",
+  LOOMARR_APPLE_BUILD_NUMBER: "7",
   ...overrides,
 });
 
@@ -49,9 +47,9 @@ test("uses a prototype application identity", async () => {
 
 test("keeps the permanent identity unreachable outside the TestFlight build", async () => {
   const environment = { ...process.env };
-  delete environment.LOOMARR_IOS_RELEASE_CHANNEL;
-  delete environment.LOOMARR_IOS_VERSION;
-  delete environment.LOOMARR_IOS_BUILD_NUMBER;
+  delete environment.LOOMARR_APPLE_RELEASE_CHANNEL;
+  delete environment.LOOMARR_APPLE_VERSION;
+  delete environment.LOOMARR_APPLE_BUILD_NUMBER;
   const config = await expoConfig(environment);
 
   assert.equal(config.name, "Loomarr Mobile Prototype");
@@ -64,9 +62,9 @@ test("keeps the permanent identity unreachable outside the TestFlight build", as
 
 test("lets every build browse the local network for a server", async () => {
   const environment = { ...process.env };
-  delete environment.LOOMARR_IOS_RELEASE_CHANNEL;
-  delete environment.LOOMARR_IOS_VERSION;
-  delete environment.LOOMARR_IOS_BUILD_NUMBER;
+  delete environment.LOOMARR_APPLE_RELEASE_CHANNEL;
+  delete environment.LOOMARR_APPLE_VERSION;
+  delete environment.LOOMARR_APPLE_BUILD_NUMBER;
 
   for (const config of [await expoConfig(environment), await expoConfig(releaseEnvironment())]) {
     // Without NSBonjourServices iOS refuses the browse; without the description, the prompt.
@@ -119,33 +117,29 @@ test("resolves the TestFlight channel to the permanent iPhone identity", async (
   assert.match(config.android.package, /\.prototype$/);
 });
 
-test("maps release versions onto Apple's version grammar", () => {
-  assert.deepEqual(appleVersionFields("v0.2.0", "12"), { version: "0.2.0", buildNumber: "12" });
-  assert.deepEqual(appleVersionFields("1.10.3-rc.2", "300"), { version: "1.10.3", buildNumber: "300" });
-  // CFBundleShortVersionString is exactly three integers; the build is the CI run number, so a
-  // single positive integer without leading zeros.
-  assert.throws(() => appleVersionFields("0.2.0.1", "1"), /must be x\.y\.z/);
-  assert.throws(() => appleVersionFields("0.2.0", "007"), /positive integer/);
-  assert.throws(() => appleVersionFields("0.2.0", "1.2"), /positive integer/);
-});
-
 test("fails closed when a TestFlight build has an invalid channel or version metadata", async () => {
   await assert.rejects(
-    expoConfig(releaseEnvironment({ LOOMARR_IOS_RELEASE_CHANNEL: "appstore" })),
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_RELEASE_CHANNEL: "appstore" })),
     /channel must be testflight/,
   );
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_VERSION: "" })), /must be x\.y\.z/);
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_VERSION: "beta" })), /must be x\.y\.z/);
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_VERSION: "0.2" })), /must be x\.y\.z/);
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_BUILD_NUMBER: "" })), /positive integer/);
+  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_APPLE_VERSION: "" })), /must be x\.y\.z/);
+  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_APPLE_VERSION: "beta" })), /must be x\.y\.z/);
+  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_APPLE_VERSION: "0.2" })), /must be x\.y\.z/);
   await assert.rejects(
-    expoConfig(releaseEnvironment({ LOOMARR_IOS_BUILD_NUMBER: "seven" })),
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "" })),
     /positive integer/,
   );
-  await assert.rejects(expoConfig(releaseEnvironment({ LOOMARR_IOS_BUILD_NUMBER: "0" })), /positive integer/);
   await assert.rejects(
-    expoConfig(releaseEnvironment({ LOOMARR_IOS_RELEASE_CHANNEL: "" })),
-    /requires LOOMARR_IOS_RELEASE_CHANNEL/,
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "seven" })),
+    /positive integer/,
+  );
+  await assert.rejects(
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_BUILD_NUMBER: "0" })),
+    /positive integer/,
+  );
+  await assert.rejects(
+    expoConfig(releaseEnvironment({ LOOMARR_APPLE_RELEASE_CHANNEL: "" })),
+    /requires LOOMARR_APPLE_RELEASE_CHANNEL/,
   );
 });
 

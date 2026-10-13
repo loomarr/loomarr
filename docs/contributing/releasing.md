@@ -130,39 +130,52 @@ Release body (including its links to the third-party source releases named in
 commit. The tag-specific header remains the place to state limitations
 that cannot be derived from pull requests.
 
-## iPhone TestFlight
+## Apple TestFlight
 
-The **iPhone TestFlight beta** workflow (`.github/workflows/ios-testflight.yml`) builds the
-permanent-identity iPhone app (`media.loomarr.mobile`, [ADR 0042](../design/decisions/0042-iphone-permanent-app-identity.md)),
-verifies the IPA, and uploads it. It runs only on `main` and uses the `ios-testflight` environment,
-whose deployment branch policy releases the secrets only to `main`. It never runs for a pull request
-or a merge group.
+The **Apple TestFlight betas** workflow (`.github/workflows/apple-testflight.yml`) builds, verifies,
+and uploads the two permanent-identity Apple apps. Each is its own App Store Connect record:
 
-Every push to `main` that changes the iPhone app uploads a build with no manual step. A secretless
-`plan` job decides, using the classifier CI uses for the Apple mobile gate
-(`scripts/ci-impact.sh`, `apple_mobile`), so a push that changes no iPhone input uploads nothing.
-As in CI, a push whose diff cannot be established counts as a change. The pushed build's version
-is the newest `v*` tag reachable from the commit (`0.2.0-beta.8` until `v0.2.0-beta.9` is tagged);
-TestFlight shows only its `x.y.z`. Release runs queue one at a time. A newer pending one replaces an
-older one, and it builds a later `main` that already contains the older change.
+| App | `app` | Record | Bundle ID | Platform | Variable |
+| --- | --- | --- | --- | --- | --- |
+| iPhone ([ADR 0042](../design/decisions/0042-iphone-permanent-app-identity.md)) | `iphone` | Loomarr | `media.loomarr.mobile` | `iphoneos` | `ASC_APPLE_APP_ID` |
+| Apple TV | `apple-tv` | Loomarr TV | `media.loomarr.tv` | `appletvos` | `ASC_APPLE_TV_APP_ID` |
+
+It runs only on `main` and uses the `ios-testflight` environment, whose deployment branch policy
+releases the secrets only to `main`. It never runs for a pull request or a merge group.
+
+Every push to `main` that changes an Apple app uploads a build of that app with no manual step. A
+secretless `plan` job decides, using the classifier CI uses for the Apple mobile and Apple TV gates
+(`scripts/ci-impact.sh`, `apple_mobile` and `apple_tv`), so a push that changes neither app uploads
+nothing, and a push that changes both uploads both. As in CI, a push whose diff cannot be established
+counts as a change to both. The pushed build's version is the newest `v*` tag reachable from the
+commit (`0.2.0-beta.8` until `v0.2.0-beta.9` is tagged); TestFlight shows only its `x.y.z`.
+
+The `release` job runs once per planned app, from a matrix over the plan's list. One app's failure
+does not cancel the other's upload. Release runs of one app queue one at a time. A newer pending one
+replaces an older one, and it builds a later `main` that already contains the older change.
+
+One script, `web/scripts/build-apple-testflight.sh <app>`, archives, exports, verifies, validates,
+and uploads either app; its table of what differs between them (Expo package, bundle ID, Xcode
+scheme, destination, platform, and record variable) is the only per-app code. Both app configs take
+the release identity from `web/scripts/apple-testflight-config.cjs`.
 
 The environment has no required reviewer (a maintainer decision): the reviewed, merge-queue-tested
-merge is the review. `release-verify` pins the triggers, inputs, both jobs, the environment, and
-every script step's command, environment, and condition
-(`internal/releaseverify/ios_testflight_workflow.go`).
+merge is the review. `release-verify` pins the triggers, inputs, both jobs, the matrix, the
+environment, and every script step's command, environment, and condition
+(`internal/releaseverify/apple_testflight_workflow.go`).
 
 ### One-time Apple setup
 
 1. Enrol in the Apple Developer Program and note the 10-character **Team ID**.
-2. Register the App ID `media.loomarr.mobile`. Automatic signing can register it, but doing it first
-   removes one failure mode.
-3. Create the App Store Connect app record by hand (name, language, bundle ID, SKU). Note its numeric
+2. Register each app's App ID (`media.loomarr.mobile`, `media.loomarr.tv`). Automatic signing can
+   register it, but doing it first removes one failure mode.
+3. Create each App Store Connect app record by hand (name, language, bundle ID, SKU). Note its numeric
    **Apple ID**; App Store Connect cannot create the record from the workflow.
 4. Create a **Team** API key (Users and Access, Integrations; Admin only). An individual key cannot use
    provisioning endpoints. Download the `.p8` once. Apple's cloud signing then holds the distribution
    certificate, so the workflow needs no certificate, profile, or keychain. If a role below Admin cannot
-   cloud-sign, use Admin.
-5. Add internal testers in TestFlight.
+   cloud-sign, use Admin. One key serves both records.
+5. Add internal testers in TestFlight, in a group on each record.
 
 ### Repository setup
 
@@ -175,41 +188,49 @@ reviewer. Then set:
 | `ASC_API_KEY_ID` | secret | the key's 10-character ID |
 | `ASC_API_ISSUER_ID` | secret | the issuer UUID |
 | `APPLE_TEAM_ID` | variable | the Team ID |
-| `ASC_APPLE_APP_ID` | variable | the app record's numeric Apple ID |
+| `ASC_APPLE_APP_ID` | variable | the iPhone record's numeric Apple ID |
+| `ASC_APPLE_TV_APP_ID` | variable | the Apple TV record's numeric Apple ID |
 
 The credentials step, which runs after dependency installation and before the archive, fails with a
-message naming every missing value.
+message naming every value its app is missing. An app needs only its own record's variable.
 
 ### Dispatch
 
 ```sh
-gh workflow run ios-testflight.yml --repo loomarr/loomarr --ref main -f version=0.2.0-beta.9
-gh workflow run ios-testflight.yml --repo loomarr/loomarr --ref main -f version=0.2.0-beta.9 -f upload=true
+gh workflow run apple-testflight.yml --repo loomarr/loomarr --ref main -f app=apple-tv -f version=0.2.0-beta.9
+gh workflow run apple-testflight.yml --repo loomarr/loomarr --ref main -f app=iphone -f version=0.2.0-beta.9 -f upload=true
 ```
 
-Dispatch for a dry run or a re-upload; it rebuilds the current `main` with the version you name. With
-`upload` unset (the default) it signs, exports, verifies, and runs `altool --validate-app` without
-uploading, and it logs `xcodebuild -version` and `sw_vers`. Each upload needs a new run: the build number is
-`github.run_number`, which a re-run keeps, so Apple rejects a second upload of the same run. Keep the
-workflow file name stable, because renaming it can restart `run_number`.
+Dispatch for a dry run or a re-upload of one app; it rebuilds the current `main` with the version you
+name. With `upload` unset (the default) it signs, exports, verifies, and runs `altool --validate-app`
+without uploading, and it logs `xcodebuild -version` and `sw_vers`. App Store Connect picks the build
+number: one past the highest build the record already holds (`web/scripts/asc-next-build-number.mjs`),
+with `github.run_number` only as a floor, so a re-run or an upload made elsewhere never collides.
 
 The version is `x.y.z` with an optional suffix. Every prerelease of `0.2.0` shares the `0.2.0` TestFlight
 version, and the build number orders them.
 
 ### What verification checks
 
-`web/scripts/build-ios-testflight.sh build` opens the exported IPA and fails unless:
+`web/scripts/build-apple-testflight.sh <app> build` opens the exported IPA and fails unless:
 
-- the bundle ID is `media.loomarr.mobile`, and `CFBundleShortVersionString` and `CFBundleVersion` match
-  the requested version and build number;
-- `ITSAppUsesNonExemptEncryption` is `false` and `NSLocalNetworkUsageDescription` is present;
+- the bundle ID is the app's, and `CFBundleShortVersionString` and `CFBundleVersion` match the
+  requested version and build number;
+- `ITSAppUsesNonExemptEncryption` is `false`, and for the iPhone `NSLocalNetworkUsageDescription` is
+  present (the Apple TV app does not browse the local network: its LAN discovery pod is iPhone-only),
+  and for the Apple TV the compiled home-screen icon and both Top Shelf images are declared;
 - `PrivacyInfo.xcprivacy` is at the app bundle root, has `NSPrivacyTracking` false or absent and no
   tracking domains, declares `UserDefaults` with reason `CA92.1`, and every accessed-API entry has a
   category, at least one reason, and appears once (the entry count is not pinned; see
   [Privacy manifest](#privacy-manifest)). Every declared category and its reasons are printed in the
   log and written to the evidence JSON;
-- the platform is `iphoneos`, every Mach-O in the app bundle (executable, frameworks, dylibs, and
-  plug-ins) is `arm64` only and not built for a simulator, and `codesign` verifies.
+- the platform is the app's (`iphoneos` or `appletvos`), every Mach-O in the app bundle (executable,
+  frameworks, dylibs, and plug-ins) is `arm64` only and not built for a simulator, and `codesign`
+  verifies.
+
+The Apple TV home-screen icon and Top Shelf images come from `make brand-assets`, which draws them
+from the brand contract at the exact sizes tvOS requires; `@react-native-tvos/config-tv` builds the
+asset catalog from them (`appleTVImages` in `web/apps/tv/app.json`).
 
 It writes the IPA's SHA-256 and the Xcode version next to the IPA, and the workflow keeps both as an
 artifact for 30 days. `validate` and `upload` re-check the IPA against that SHA-256 and refuse any
@@ -220,12 +241,13 @@ script names it and does not retry; wait for the `xcode-27` image to ship a GM X
 
 ### Privacy manifest
 
-The audit of the autolinked iOS pods found `UserDefaults` in `expo-system-ui`, which persists the root
-view colour there. `expo-system-ui` ships its own `ios/PrivacyInfo.xcprivacy` declaring it, and the app
+The audit of the autolinked iPhone pods found `UserDefaults` in `expo-system-ui`, which persists the
+root view colour there. The Apple TV app's pods are a subset of the iPhone app's, so the same audit
+and the same app-level declaration cover both apps. `expo-system-ui` ships its own `ios/PrivacyInfo.xcprivacy` declaring it, and the app
 declares `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1` at app level as well.
 `react-native-tvos`, `expo-constants`, and `expo-file-system` also carry their own manifests,
 `expo-modules-core` reads only a file size, and the other pods use no required-reason API. Repeat the
-audit when the iOS pod set changes.
+audit when either app's Apple pod set changes.
 
 The shipped app manifest has more entries than the one the app declares. React Native's pod install
 (`add_aggregated_privacy_manifest` in `react-native/scripts/cocoapods/privacy_manifest_utils.rb`) merges
