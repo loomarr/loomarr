@@ -295,7 +295,27 @@ type previewCycleOutput struct {
 		Slots      []CycleSlotDTO   `json:"slots" doc:"The leading slots of the resolved cycle, in play order (capped)"`
 		Excluded   ExcludedDTO      `json:"excluded" doc:"What the hard filters REFUSED and why — the answer to \"why isn't X on my channel\" (§4)"`
 		Trace      ScheduleTraceDTO `json:"trace" doc:"Bounded scheduler-owned reasons emitted by the exact computation that produced slots"`
+		// HolidayEpisodes answers the seasonal control's "what will this do" (§6 "Holiday
+		// episodes"): counted by the scheduler, never by the page.
+		HolidayEpisodes []HolidayEpisodesDTO `json:"holidayEpisodes" doc:"Per selected holiday, open or soonest first: the lineup's holiday episodes and how the channel's holiday strength rotates them. Empty unless the channel uses the built-in seasonal rotation."`
 	}
+}
+
+// HolidayEpisodesDTO is one selected holiday's episode feature on a channel (§6).
+type HolidayEpisodesDTO struct {
+	Holiday   string `json:"holiday" doc:"Built-in holiday id (the rule vocabulary's holiday:<id> token, without the prefix)"`
+	Episodes  int    `json:"episodes" doc:"Holiday episodes found in this channel's series; a multi-part story counts once"`
+	PerDay    int    `json:"perDay" doc:"How many air on an ordinary day of the holiday window at the channel's strength"`
+	EveryDays int    `json:"everyDays" doc:"The soonest any one of them airs again, in days"`
+	Active    bool   `json:"active" doc:"The holiday's window is open at the previewed instant"`
+}
+
+func holidayEpisodesToDTO(in []schedule.HolidayEpisodes) []HolidayEpisodesDTO {
+	out := make([]HolidayEpisodesDTO, 0, len(in))
+	for _, h := range in {
+		out = append(out, HolidayEpisodesDTO{Holiday: h.Holiday, Episodes: h.Episodes, PerDay: h.PerDay, EveryDays: h.EveryDays, Active: h.Active})
+	}
+	return out
 }
 
 // cyclePreviewSlotCap bounds how many slots the preview returns — enough to see intermixing,
@@ -343,6 +363,7 @@ func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput)
 	out.Body.Slots = cycleSlotsToDTO(cycle.Slots, cyclePreviewSlotCap)
 	out.Body.Excluded = excludedToDTO(cycle.Excluded)
 	out.Body.Trace = scheduleTraceToDTO(cycle.Trace)
+	out.Body.HolidayEpisodes = holidayEpisodesToDTO(cycle.HolidayEpisodes)
 	return out, nil
 }
 

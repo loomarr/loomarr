@@ -218,14 +218,24 @@ func matchingHolidayEpisodes(episodes []ResolvedProgram, selectedHolidays map[st
 }
 
 func episodeMatchesHoliday(episode ResolvedProgram, selected map[string]bool) bool {
-	haystack := strings.Join(append([]string{episode.Title, episode.Overview}, episode.Tags...), " ")
-	for _, holiday := range builtinCalendar {
-		if len(selected) > 0 && !selected[holiday.id] {
-			continue
-		}
-		if holidayvocab.MatchesEvidence(holiday.id, haystack) {
+	for _, id := range episodeHolidays(episode) {
+		if len(selected) == 0 || selected[id] {
 			return true
 		}
 	}
 	return false
+}
+
+// episodeHolidays lists the built-in holidays an episode's own evidence (title, overview,
+// tags) is about. It is the one episode matcher: Exclusive mode filters on it and the auto-mode
+// holiday-episode feature (seasonal_boost.go) rotates on it.
+func episodeHolidays(episode ResolvedProgram) []string {
+	haystack := strings.Join(append([]string{episode.Title, episode.Overview}, episode.Tags...), " ")
+	var ids []string
+	for _, holiday := range builtinCalendar {
+		if holidayvocab.MatchesEvidence(holiday.id, haystack) {
+			ids = append(ids, holiday.id)
+		}
+	}
+	return ids
 }

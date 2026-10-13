@@ -15,6 +15,8 @@ import (
 // minute. `at` reaches the arrangement by exactly these routes — pickRule (rules), the seasonal
 // pass and exclusive-episode pass (activeHolidays), and windowIndex — so this is the complete
 // list. ⚠ When ComputeDesiredAt reads the clock a new way, it belongs here in the same change.
+// The holiday-episode feature (featureHolidayEpisodes) reads the calendar only for the days the
+// arranged rolling window covers, which the window index already names, so it adds nothing here.
 //
 // The holiday set is hashed regardless of seasonal mode: over-splitting on a channel with
 // seasonality off costs one extra cache entry per holiday window, and under-splitting would serve
