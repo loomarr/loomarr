@@ -184,8 +184,9 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
 
 const Index = () => {
   // Discovery browses only while the connect screen is in the foreground (design "Finding a server").
+  // Android phones keep manual entry until their Bonjour path pairs to the public URL as well.
   const [appForeground, setAppForeground] = useState(AppState.currentState === "active");
-  const discovery = useMemo(createNativeServerDiscovery, []);
+  const discovery = useMemo(() => (Platform.OS === "ios" ? createNativeServerDiscovery() : undefined), []);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       setAppForeground(state === "active");

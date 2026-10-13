@@ -75,14 +75,15 @@ test("lets every build browse the local network for a server", async () => {
   }
 });
 
-test("autolinks LAN discovery into both phone apps and browses only in the foreground", async () => {
+test("autolinks LAN discovery into the iPhone app and browses only in the foreground", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.dependencies["@loomarr/lan-discovery-native"], "workspace:*");
   assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/lan-discovery-native"));
-  assert.ok((await autolinkedNativeModules("android")).has("@loomarr/lan-discovery-native"));
+  // Android's Bonjour path still reports a resolved LAN address, which would not work off Wi-Fi.
+  assert.equal((await autolinkedNativeModules("android")).has("@loomarr/lan-discovery-native"), false);
 
   const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
-  assert.match(shell, /useMemo\(createNativeServerDiscovery, \[\]\)/);
+  assert.match(shell, /Platform\.OS === "ios" \? createNativeServerDiscovery\(\) : undefined/);
   assert.match(shell, /setAppForeground\(state === "active"\)/);
   assert.match(shell, /discovery=\{discovery\}\s*discoveryForeground=\{appForeground\}/);
 });

@@ -47,6 +47,7 @@
           "expo-video"
         ],
         "exclude": [
+          "@loomarr/lan-discovery-native",
           "react-native-reanimated",
           "react-native-worklets"
         ]

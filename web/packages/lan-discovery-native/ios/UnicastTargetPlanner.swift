@@ -22,16 +22,16 @@ enum UnicastTargetPlanner {
       let prefix = max(subnet.prefix, 24)
       // A host route (or a malformed prefix) has no neighbour to probe.
       if prefix >= 32 { continue }
-      let mask = mask(prefix)
+      let networkMask = mask(prefix)
       let first: UInt32
       let last: UInt32
       if prefix == 31 {
         // RFC 3021: both addresses are usable on a point-to-point /31.
-        first = subnet.local & mask
-        last = subnet.local | ~mask
+        first = subnet.local & networkMask
+        last = subnet.local | ~networkMask
       } else {
-        first = (subnet.local & mask) + 1
-        last = (subnet.local | ~mask) - 1
+        first = (subnet.local & networkMask) + 1
+        last = (subnet.local | ~networkMask) - 1
       }
       var candidate = first
       while candidate <= last, targets.count < maxTargets {

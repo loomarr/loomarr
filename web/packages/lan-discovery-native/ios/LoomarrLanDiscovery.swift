@@ -2,9 +2,11 @@ import Foundation
 import Network
 import React
 
-/// iPhone half of design "Finding a server": a Bonjour browse of `_loomarr._tcp` plus two bounded
-/// unicast sweeps of the device's own /24 for the UDP responder. iOS sends no broadcast: that needs
-/// the multicast entitlement Apple must approve, while browse and unicast need only Local Network.
+/// iPhone half of design "Finding a server": two bounded unicast sweeps of the device's own /24 for
+/// the UDP responder, plus a Bonjour browse of `_loomarr._tcp` whose hosts are probed the same way.
+/// Only a responder's reply is reported, because it carries the server's public URL: a phone paired
+/// to a LAN address would stop working off Wi-Fi. iOS sends no broadcast: that needs the multicast
+/// entitlement Apple must approve, while browse and unicast need only Local Network.
 @objc(LoomarrLanDiscovery)
 final class LoomarrLanDiscovery: RCTEventEmitter {
   private static let serviceType = "_loomarr._tcp"
@@ -20,8 +22,12 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
   private var hasListeners = false
   private var browser: NWBrowser?
   private var resolving: [ObjectIdentifier: NWConnection] = [:]
+  // Bonjour hosts the sweep worker probes next; guarded by `lock`.
+  private var pendingHosts: [UInt32] = []
+  private var bonjourHosts = Set<UInt32>()
 
-  override static func requiresMainQueueSetup() -> Bool { false }
+  // An optional RCTBridgeModule requirement RCTEventEmitter does not implement, so not an override.
+  @objc static func requiresMainQueueSetup() -> Bool { false }
 
   override func supportedEvents() -> [String]! {
     ["loomarrDiscoveryFound", "loomarrDiscoveryLost", "loomarrDiscoveryError"]
@@ -58,7 +64,25 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
     lock.lock()
     defer { lock.unlock() }
     generation += 1
+    pendingHosts.removeAll()
+    bonjourHosts.removeAll()
     return generation
+  }
+
+  private func queueProbe(_ host: UInt32, _ active: Int) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard generation == active, bonjourHosts.insert(host).inserted else { return }
+    pendingHosts.append(host)
+  }
+
+  private func takeProbes(_ active: Int) -> (pending: [UInt32], known: Set<UInt32>) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard generation == active else { return ([], []) }
+    let pending = pendingHosts
+    pendingHosts.removeAll()
+    return (pending, bonjourHosts)
   }
 
   private func isActive(_ active: Int) -> Bool {
@@ -73,8 +97,7 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
     guard isActive(active) else { return }
     let parameters = NWParameters()
     parameters.includePeerToPeer = false
-    let browser = NWBrowser(
-      for: .bonjourWithTXTRecord(type: Self.serviceType, domain: nil), using: parameters)
+    let browser = NWBrowser(for: .bonjour(type: Self.serviceType, domain: nil), using: parameters)
     // A denied Local Network permission or a failed browse leaves the unicast sweep running, as a
     // failed NsdManager start does on Android; the 30 s visit then ends in manual entry.
     browser.browseResultsChangedHandler = { [weak self] _, changes in
@@ -85,11 +108,8 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
           self.resolve(result, active)
         case let .changed(_, result, _):
           self.resolve(result, active)
-        case let .removed(result):
-          if case let .service(name, _, _, _) = result.endpoint {
-            self.emit("loomarrDiscoveryLost", ["id": name])
-          }
         default:
+          // A vanished service needs no event: what was listed came from its responder's reply.
           break
         }
       }
@@ -98,17 +118,11 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
     browser.start(queue: queue)
   }
 
-  /// NWBrowser reports a service name only. A short TCP connection resolves it to the address the
-  /// server listens on; IPv4 is required because a link-local IPv6 URL is useless to the shell.
+  /// NWBrowser reports a service name only, and the DNS-SD record carries no URL. A short TCP
+  /// connection resolves the service to its IPv4 host, whose UDP responder is then asked for the
+  /// URL the server advertises; the resolved address itself is never reported.
   private func resolve(_ result: NWBrowser.Result, _ active: Int) {
-    guard case let .service(name, _, _, _) = result.endpoint else { return }
-    var scheme = "http"
-    var serviceProtocol = ""
-    if case let .bonjour(record) = result.metadata {
-      scheme = record["scheme"] ?? scheme
-      serviceProtocol = record["protocol"] ?? ""
-    }
-    guard scheme == "http" || scheme == "https" else { return }
+    guard case .service = result.endpoint else { return }
     let parameters = NWParameters.tcp
     if let ip = parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
       ip.version = .v4
@@ -120,16 +134,10 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
       guard let self, let connection else { return }
       switch state {
       case .ready:
-        if self.isActive(active),
-          case let .hostPort(host, port)? = connection.currentPath?.remoteEndpoint,
-          let address = Self.urlHost(host)
+        if case let .hostPort(.ipv4(address), _)? = connection.currentPath?.remoteEndpoint,
+          address.rawValue.count == 4
         {
-          self.emit(
-            "loomarrDiscoveryFound",
-            [
-              "id": name, "name": name, "protocol": serviceProtocol,
-              "url": "\(scheme)://\(address):\(port.rawValue)",
-            ])
+          self.queueProbe(address.rawValue.reduce(0) { $0 << 8 | UInt32($1) }, active)
         }
         connection.cancel()
       case .waiting, .failed:
@@ -141,19 +149,6 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
       }
     }
     connection.start(queue: queue)
-  }
-
-  private static func urlHost(_ host: NWEndpoint.Host) -> String? {
-    switch host {
-    case let .ipv4(address):
-      return "\(address)".split(separator: "%").first.map(String.init)
-    case let .ipv6(address):
-      return "[\("\(address)".split(separator: "%").first ?? "")]"
-    case let .name(name, _):
-      return name.isEmpty ? nil : name
-    @unknown default:
-      return nil
-    }
   }
 
   // MARK: Unicast sweep
@@ -170,12 +165,16 @@ final class LoomarrLanDiscovery: RCTEventEmitter {
     var buffer = [UInt8](repeating: 0, count: 1025)
     while isActive(active) {
       let now = Int64(Date().timeIntervalSince1970 * 1000)
+      let bonjour = takeProbes(active)
+      for host in bonjour.pending { Self.sendProbe(socketFD, to: host) }
       if retry.isDue(now) {
-        let targets = UnicastTargetPlanner.targets(Self.localSubnets())
+        var targets = UnicastTargetPlanner.targets(Self.localSubnets())
         if targets.isEmpty {
           // Do not spend either sweep before the device has a LAN address.
           retry.unavailable(now)
         } else {
+          // A Bonjour host outside the own /24 is asked again with each sweep, in case UDP dropped it.
+          targets += bonjour.known.subtracting(targets).sorted()
           UnicastSweep.send(
             targets,
             packetGapMs: Self.packetGapMs,

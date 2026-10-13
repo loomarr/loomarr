@@ -128,6 +128,80 @@ describe("TV pairing offer", () => {
     expect(markup).not.toContain("EXPO_PUBLIC_LOOMARR_URL");
   });
 
+  // Maintainer requirement (2026-10-13, #1816): a phone paired on the home network keeps working off
+  // Wi-Fi, so the credential holds the URL the server advertised, never an address discovery saw.
+  it("pairs a discovered server and stores exactly its advertised public URL", async () => {
+    const advertisedUrl = "https://loomarr.example.test";
+    const createTransport = vi.fn(() => ({
+      poll: vi.fn(async () => ({
+        body: { deviceName: "iPhone Loomarr", token: "device-token" },
+        status: "paired" as const,
+      })),
+      start: vi.fn(async () => ({
+        body: {
+          deviceCode: "device-code",
+          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+          interval: 1,
+          userCode: "WMQJ-QVFJ",
+        },
+        serverDate: new Date().toUTCString(),
+      })),
+    }));
+    const write = vi.fn(async () => undefined);
+    const session = new PairingSession({
+      createTransport,
+      deviceName: "iPhone Loomarr",
+      sleep: async () => undefined,
+      store: { clear: vi.fn(async () => undefined), read: vi.fn(async () => undefined), write },
+    });
+    await session.initialize(undefined);
+    const discoverySnapshot = {
+      servers: [{ id: "udp:media-box", name: "Loomarr", url: advertisedUrl }],
+      status: "searching" as const,
+    };
+    const discovery: ServerDiscovery = {
+      snapshot: () => discoverySnapshot,
+      start: vi.fn(),
+      stop: vi.fn(),
+      subscribe: () => () => undefined,
+    };
+    const container = createTestContainer();
+    const root = createRoot(container);
+    act(() =>
+      root.render(
+        <LoomarrProvider theme="dark">
+          <PairingShell
+            allowServerEntry
+            density="touch"
+            discovery={discovery}
+            discoveryForeground
+            renderPaired={() => null}
+            session={session}
+          />
+        </LoomarrProvider>,
+      ),
+    );
+    const choice = Array.from(
+      (
+        container as unknown as {
+          querySelectorAll(selector: string): ArrayLike<{ click(): void; textContent: string | null }>;
+        }
+      ).querySelectorAll('[role="button"], button'),
+    ).find((candidate) => candidate.textContent?.includes("Connect to Loomarr"));
+    if (!choice) throw new Error("missing discovered server choice");
+
+    await act(async () => choice.click());
+    await vi.waitFor(() => expect(session.snapshot().status).toBe("paired"));
+
+    expect(createTransport).toHaveBeenCalledWith(advertisedUrl);
+    expect(write).toHaveBeenCalledWith({
+      deviceName: "iPhone Loomarr",
+      serverUrl: advertisedUrl,
+      token: "device-token",
+    });
+    act(() => root.unmount());
+  });
+
   it("names the device by its density on the server-choice screen", async () => {
     const session = new PairingSession({
       createTransport: vi.fn(),
