@@ -37,17 +37,20 @@ const SuggestedEraAdmin: Story = { args: { clip: suggestedEraClip, onOpen: noop 
 const SplitAction: Story = { args: { clip: taggedClip, onOpen: noop, onSplit: noop } };
 const SplitPending: Story = { args: { clip: taggedClip, onSplit: noop, splitPending: true } };
 
+// The framed clip under an invented name: these stories are new, and the repo is public.
+const framedClip = { ...thumbnailedClip, name: "Fizzwell Soda — summer jingle", brand: "Fizzwell" };
+
 // Ready is the default and wears no chip (#1908); a clip that isn't ready names its state.
-const Preparing: Story = { args: { clip: { ...thumbnailedClip, held: true }, onOpen: noop } };
+const Preparing: Story = { args: { clip: { ...framedClip, held: true }, onOpen: noop } };
 
 // The phone library's 2-up card, at its 172px column: frame, duration, name and the exception
 // chip only. The select target is the 24px label around the checkbox.
 const Compact: Story = {
-  args: { clip: thumbnailedClip, onOpen: noop, onToggleSelect: noop, compact: true },
+  args: { clip: framedClip, onOpen: noop, onToggleSelect: noop, compact: true },
   decorators: [widthFrame(172)],
 };
 const CompactPreparing: Story = {
-  args: { clip: { ...thumbnailedClip, held: true }, onOpen: noop, compact: true },
+  args: { clip: { ...framedClip, held: true }, onOpen: noop, compact: true },
   decorators: [widthFrame(172)],
 };
 
