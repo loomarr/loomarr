@@ -45,6 +45,12 @@ const NAV_PATHS = [
   "/wizard",
   // Web's phone bottom bar (#1785) navigates here for Watch; `$id` is a literal param segment.
   "/channels/$id/watch",
+  // Channel management (#1817 item 3, decision X2): these highlight the rail's Guide entry, not
+  // Watch, so the highlight-transfer tests need them routable too.
+  "/channels/$id/info",
+  "/channels/$id/programming",
+  "/channels/$id/filler",
+  "/channels/$id/danger",
 ] as const;
 
 // Mounts `content` inside a minimal in-memory TanStack Router covering the AppShell nav,

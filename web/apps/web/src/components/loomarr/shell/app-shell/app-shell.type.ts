@@ -23,6 +23,19 @@ interface NavItem {
   // and the member nav needs different names for the same routes.
 }
 
+/**
+ * The rail's Watch entry (#1817 item 3, decision X2): a channel id, not a `NavTo` literal, since
+ * its target moves with `watchChannelId`. Kept out of `NavItem`/`NavTo` rather than widening
+ * either — `badges` stays keyed by the stable literal routes, and this is the one item neither
+ * list owns statically (inserted into both ADMIN_NAV and MEMBER_NAV only once a channel exists).
+ */
+interface WatchNavItem {
+  to: "/channels/$id/watch";
+  channelId: string;
+  label: "Watch";
+  icon: ComponentType<{ className?: string }>;
+}
+
 interface AppShellProps {
   children: ReactNode;
   isAdmin?: boolean;
@@ -34,11 +47,12 @@ interface AppShellProps {
   onOpenCommand?: () => void;
   onLogout?: () => void;
   /**
-   * The phone-width bottom bar's Watch target (#1785, decision X2): undefined hides Watch's slot
-   * entirely. Unused above `md`, where the desktop nav has no Watch entry either (no mini-player,
-   * decision X3; see the redesign map's Shell section).
+   * Watch's target (#1785/#1817 item 3, decision X2): the shared `watchChannelId` selector's
+   * result — the caller's last-tuned channel, or the lowest-numbered playable one before anyone
+   * has tuned. `undefined` hides Watch's slot entirely, in both the desktop rail and
+   * PhoneBottomBar — the same prop drives both shells so neither computes its own fallback.
    */
   watchChannelId?: string;
 }
 
-export type { AppShellProps, NavItem, NavTo };
+export type { AppShellProps, NavItem, NavTo, WatchNavItem };
