@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({
   callbacks: new Map(),
   listeners: new Map(),
+  platform: { OS: "android" },
   removers: new Map(),
   start: vi.fn(),
   stop: vi.fn(),
@@ -19,7 +20,7 @@ vi.mock("react-native", () => ({
     }
   },
   NativeModules: { LoomarrLanDiscovery: { start: native.start, stop: native.stop } },
-  Platform: { OS: "android" },
+  Platform: native.platform,
 }));
 
 import { createNativeServerDiscovery } from "../index.ts";
@@ -92,7 +93,7 @@ describe("native LAN server discovery", () => {
       id: "ipv6",
       name: "Upstairs",
       protocol: "1",
-      url: "https://[fe80::1]:8443",
+      url: "https://[fd12:3456::1]:8443",
     });
     emit("loomarrDiscoveryFound", {
       id: "ipv4",
@@ -121,7 +122,7 @@ describe("native LAN server discovery", () => {
 
     expect(discovery.snapshot().servers).toEqual([
       { id: "ipv4", name: "Den", url: "http://192.168.1.21:8080" },
-      { id: "ipv6", name: "Upstairs", url: "https://[fe80::1]:8443" },
+      { id: "ipv6", name: "Upstairs", url: "https://[fd12:3456::1]:8443" },
     ]);
     expect(changes).toHaveBeenCalledTimes(4);
 
@@ -199,5 +200,81 @@ describe("native LAN server discovery", () => {
     expect(discovery.snapshot()).toMatchObject({ status: "unavailable", servers: [] });
     expect(discovery.snapshot().error).toContain("enter the address manually");
     expect(changes).toHaveBeenCalledTimes(2);
+  });
+
+  it("never offers a responder's loopback or link-local URL", () => {
+    const discovery = createNativeServerDiscovery();
+    discovery.start();
+    // A dev backend on another machine answers with its own loopback (seen 2026-10-13).
+    for (const [id, url] of [
+      ["lane", "http://localhost:18420"],
+      ["lane-v4", "http://127.0.0.1:18420"],
+      ["sub", "http://app.localhost:8080"],
+      ["unspecified", "http://0.0.0.0:8080"],
+      ["auto-ip", "http://169.254.10.20:8080"],
+      ["v6-loopback", "http://[::1]:8080"],
+      ["v6-link-local", "http://[fe80::1%25en0]:8080"],
+      ["v6-mapped", "http://[::ffff:127.0.0.1]:8080"],
+      ["userinfo", "http://user@localhost:8080"],
+    ]) {
+      emit("loomarrDiscoveryFound", { id, name: id, protocol: "1", url });
+    }
+    expect(discovery.snapshot().servers).toEqual([]);
+
+    emit("loomarrDiscoveryFound", {
+      id: "household",
+      name: "Loomarr",
+      protocol: "1",
+      url: "http://192.168.0.10:8080",
+    });
+    emit("loomarrDiscoveryFound", {
+      id: "named",
+      name: "Media",
+      protocol: "1",
+      url: "https://media.example.test",
+    });
+    expect(discovery.snapshot().servers).toEqual([
+      { id: "household", name: "Loomarr", url: "http://192.168.0.10:8080" },
+      { id: "named", name: "Media", url: "https://media.example.test" },
+    ]);
+  });
+
+  it("browses on iOS through the same native module and events", async () => {
+    native.platform.OS = "ios";
+    try {
+      vi.resetModules();
+      const { createNativeServerDiscovery: createIosDiscovery } = await import("../index.ts");
+      const discovery = createIosDiscovery();
+      expect(discovery.snapshot().status).toBe("idle");
+
+      discovery.start();
+      expect(native.start).toHaveBeenCalledTimes(1);
+      emit("loomarrDiscoveryFound", {
+        id: "server",
+        name: "Loomarr",
+        protocol: "1",
+        url: "http://192.168.0.10:8080",
+      });
+      expect(discovery.snapshot()).toMatchObject({
+        status: "searching",
+        servers: [{ id: "server", name: "Loomarr", url: "http://192.168.0.10:8080" }],
+      });
+    } finally {
+      native.platform.OS = "android";
+    }
+  });
+
+  it("reports discovery unavailable where no native module is linked", async () => {
+    native.platform.OS = "web";
+    try {
+      vi.resetModules();
+      const { createNativeServerDiscovery: createWebDiscovery } = await import("../index.ts");
+      const discovery = createWebDiscovery();
+      discovery.start();
+      expect(native.start).not.toHaveBeenCalled();
+      expect(discovery.snapshot()).toMatchObject({ status: "unavailable", servers: [] });
+    } finally {
+      native.platform.OS = "android";
+    }
   });
 });

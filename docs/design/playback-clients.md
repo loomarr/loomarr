@@ -154,7 +154,17 @@ the user's home-screen ordering.
 `_loomarr._tcp.local.` over DNS-SD. Because Docker bridge networking does not carry multicast DNS,
 the container install also answers UDP port `51029`: the exact datagram `LOOMARR_DISCOVER/1` gets a
 unicast JSON reply (`protocol: 1`, instance id, name, `server.public_url`). The client broadcasts and
-also sweeps at most its own `/24`, twice, 5 ms apart per packet. Neither transport carries a
+also sweeps at most its own `/24`, twice, 5 ms apart per packet. The iPhone does the same without
+the broadcast: sending UDP broadcast or multicast needs Apple's approved
+`com.apple.developer.networking.multicast` entitlement, while a Bonjour browse (`NWBrowser`, the
+service listed in `NSBonjourServices`) and the unicast sweep need only the Local Network permission
+every build declares. The DNS-SD record carries no URL, so the iPhone uses Bonjour only to find a
+host: it resolves the service to its IPv4 address and asks that host's responder, and lists only
+the reply's `server.public_url`. A phone that paired to the LAN address it resolved would stop
+working off Wi-Fi. Android still lists a Bonjour hit as its resolved address, so the Android phone
+does not use discovery until it adopts the same probe (#1894). Clients drop a reply whose URL names a loopback or
+link-local host (`localhost`, `127.0.0.0/8`, `169.254.0.0/16`, `::1`, `fe80::/10`): a responder
+configured with `http://localhost:<port>` is unreachable from any other device. Neither transport carries a
 credential or pairing state; the responder stays silent while `server.public_url` is empty, and a
 discovery failure never blocks readiness. The client browses only while the connection screen is in
 the foreground, for at most thirty seconds per visit, then leaves manual entry. Discovery grants no

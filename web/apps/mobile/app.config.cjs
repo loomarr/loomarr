@@ -55,11 +55,8 @@ const iosReleaseConfig = (config, environment = process.env) => {
         // stops App Store Connect asking the export-compliance question on every upload.
         usesNonExemptEncryption: false,
       },
-      infoPlist: {
-        ...config.ios?.infoPlist,
-        // Pairing accepts any http(s) server URL, so a LAN server is a direct local-network connection.
-        NSLocalNetworkUsageDescription: "Loomarr connects to your Loomarr server on your home network.",
-      },
+      // The Local Network keys (NSBonjourServices, NSLocalNetworkUsageDescription) live in app.json:
+      // every build browses for a server, so development builds need the same prompt.
       privacyManifests: {
         ...config.ios?.privacyManifests,
         NSPrivacyAccessedAPITypes: [

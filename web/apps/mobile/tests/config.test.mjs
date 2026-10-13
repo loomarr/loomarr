@@ -59,8 +59,33 @@ test("keeps the permanent identity unreachable outside the TestFlight build", as
   assert.match(config.android.package, /\.prototype$/);
   // The release-only compliance settings never reach development builds.
   assert.equal(config.ios.config, undefined);
-  assert.equal(config.ios.infoPlist, undefined);
   assert.equal(config.ios.privacyManifests, undefined);
+});
+
+test("lets every build browse the local network for a server", async () => {
+  const environment = { ...process.env };
+  delete environment.LOOMARR_IOS_RELEASE_CHANNEL;
+  delete environment.LOOMARR_IOS_VERSION;
+  delete environment.LOOMARR_IOS_BUILD_NUMBER;
+
+  for (const config of [await expoConfig(environment), await expoConfig(releaseEnvironment())]) {
+    // Without NSBonjourServices iOS refuses the browse; without the description, the prompt.
+    assert.deepEqual(config.ios.infoPlist.NSBonjourServices, ["_loomarr._tcp"]);
+    assert.match(config.ios.infoPlist.NSLocalNetworkUsageDescription, /home network/);
+  }
+});
+
+test("autolinks LAN discovery into the iPhone app and browses only in the foreground", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(manifest.dependencies["@loomarr/lan-discovery-native"], "workspace:*");
+  assert.ok((await autolinkedNativeModules("ios")).has("@loomarr/lan-discovery-native"));
+  // Android's Bonjour path still reports a resolved LAN address, which would not work off Wi-Fi.
+  assert.equal((await autolinkedNativeModules("android")).has("@loomarr/lan-discovery-native"), false);
+
+  const shell = await readFile(new URL("../app/index.tsx", import.meta.url), "utf8");
+  assert.match(shell, /Platform\.OS === "ios" \? createNativeServerDiscovery\(\) : undefined/);
+  assert.match(shell, /setAppForeground\(state === "active"\)/);
+  assert.match(shell, /discovery=\{discovery\}\s*discoveryForeground=\{appForeground\}/);
 });
 
 test("resolves the TestFlight channel to the permanent iPhone identity", async () => {
@@ -78,6 +103,7 @@ test("resolves the TestFlight channel to the permanent iPhone identity", async (
   // network prompt has no explanation, and required-reason API use is undeclared.
   assert.equal(config.ios.config.usesNonExemptEncryption, false);
   assert.match(config.ios.infoPlist.NSLocalNetworkUsageDescription, /home network/);
+  assert.deepEqual(config.ios.infoPlist.NSBonjourServices, ["_loomarr._tcp"]);
   assert.deepEqual(config.ios.privacyManifests.NSPrivacyAccessedAPITypes, [
     {
       NSPrivacyAccessedAPIType: "NSPrivacyAccessedAPICategoryUserDefaults",
