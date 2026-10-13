@@ -31,10 +31,10 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
+          key: go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.14.0-${{ hashFiles('go.sum', 'Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
-            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-${{ hashFiles('go.sum', 'Cargo.lock') }}-
-            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.13.2-
+            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.14.0-${{ hashFiles('go.sum', 'Cargo.lock') }}-
+            go-contracts-${{ runner.os }}-${{ steps.epoch.outputs.week }}-v2.14.0-
       # On a cache miss this job's module cache is empty, and `release-verify` runs
       # TestGoImpactSelector, whose scripts/go-impact.sh shells out to `go list ./...` over the
       # whole repo — the one call in this job that needs the FULL module graph at once. Download

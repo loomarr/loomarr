@@ -43,9 +43,32 @@ const StrictCeiling: Story = {
   args: { policy: { audience: { ceiling: "TV-Y" } } },
 };
 
+// Per-axis dates an era cannot express: the dates field shows the per-axis editor.
 const DisjointProgrammingDates: Story = {
   args: { policy: disjointProgrammingDatesPolicy },
 };
 
+// Every field a channel override: each badge reads Channel override and each Reset is live.
+const AllOverridden: Story = {
+  args: {
+    policy: {
+      ordering: "sequential",
+      audience: { ceiling: "TV-PG", unrated: "exclude" },
+      scope: { dates: eraDates({ from: 1990, to: 1999 }), runtimeMax: 90 * 60 },
+      separation: { movieNoRepeat: "168h", episodeNoRepeat: "24h", seriesMinGap: "2h", blockMax: 2 },
+    },
+  },
+};
+
+// The operator opened the per-axis editor from an era: the era fills all three axes, and
+// "Use a single era" is offered because going back loses nothing.
+const SeparateWindows: Story = {
+  args: { policy: populated, show: "scope" },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByRole("button", { name: "Use separate date windows" }));
+    await canvas.findByRole("button", { name: "Use a single era" });
+  },
+};
+
 export default meta;
-export { DisjointProgrammingDates, Empty, Populated, StrictCeiling };
+export { AllOverridden, DisjointProgrammingDates, Empty, Populated, SeparateWindows, StrictCeiling };
