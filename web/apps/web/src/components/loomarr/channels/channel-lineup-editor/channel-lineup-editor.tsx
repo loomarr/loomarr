@@ -116,7 +116,8 @@ const SortableLineupRow = ({
   // what decides it is the column the editor sits in, not the viewport) the row becomes a grid:
   // grip, title and remove on top, the seasons under the title, then the feedback controls. The
   // DOM order is untouched, so Tab still runs grip → seasons → feedback → remove; only the remove
-  // button is placed out of order, beside the title. From `@md` up the wrappers below dissolve
+  // button is placed explicitly (top right, beside the title), and everything else auto-places
+  // around it, row by row. From `@md` up the wrappers below dissolve
   // (`contents`) or turn back into the one flex line this row always was.
   return (
     <li
@@ -133,19 +134,19 @@ const SortableLineupRow = ({
         {...listeners}
         disabled={disabled}
         aria-label={`Reorder ${entry.name}`}
-        className="col-start-1 row-start-1 flex size-7 shrink-0 cursor-grab items-center justify-center rounded text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded text-static-400 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
       >
         <GripVertical className="size-4" aria-hidden />
       </button>
 
       <div className="@md:block contents @md:min-w-0 @md:flex-1">
-        <div className="col-start-2 row-start-1 flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="truncate font-medium text-sm">{entry.name}</span>
           {entry.year ? <span className="font-mono text-static-400 text-xs">{entry.year}</span> : null}
           <LineupStateBadge state={entry.state} status={entry.downloadStatus} />
         </div>
         {isSeries && onSeasonChange && (
-          <div className="col-span-2 col-start-2 @md:mt-1.5 flex flex-wrap items-center gap-1.5">
+          <div className="col-[2/-1] @md:mt-1.5 flex flex-wrap items-center gap-1.5">
             <span className="text-muted-foreground text-xs">Seasons</span>
             {/* The two bounds wrap as one, never "1" on one line and "– latest" on the next. */}
             <span className="flex items-center gap-1.5">
@@ -159,7 +160,7 @@ const SortableLineupRow = ({
         )}
       </div>
 
-      {feedback && <div className="col-span-2 col-start-2 @md:contents">{feedback}</div>}
+      {feedback && <div className="col-[2/-1] @md:contents">{feedback}</div>}
 
       <Tooltip>
         <TooltipTrigger
