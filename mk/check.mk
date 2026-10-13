@@ -74,7 +74,7 @@ tags-verify: ## the Makefile's TAGS list matches every //go:build tag in the tre
 # the tree — one of those WOULD be dropped by this flag, silently creating the blind spot this
 # change exists to close. Re-check before adding a negated tag.
 lint: ## golangci-lint v2 (run via `go run` so no global install needed)
-	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run --build-tags '$(TAGS_CSV)' $(PKG)
+	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --build-tags '$(TAGS_CSV)' $(PKG)
 
 .PHONY: deadcode
 deadcode: ## functions no ./cmd binary reaches, per package (report only; not a PR gate)
