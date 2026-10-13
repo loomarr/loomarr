@@ -4,7 +4,7 @@ import type {
   ServerDiscoverySnapshot,
 } from "@loomarr/core/server-discovery";
 import { NativeEventEmitter, NativeModules, Platform } from "react-native";
-import { isReachableServerUrl } from "./reachable-server-url";
+import { isReachableServerUrl } from "../reachable-server-url";
 
 type NativeDiscoveryModule = {
   addListener(event: string): void;
