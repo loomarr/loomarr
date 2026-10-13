@@ -25,10 +25,14 @@ class BreadcrumbTrail {
   }
 }
 
-const requestUrl = (input: Parameters<typeof globalThis.fetch>[0]) =>
+// Spelled out rather than `Parameters<typeof fetch>[0]`: React Native's fetch types omit URL, the
+// DOM's include it, and this module type-checks under both.
+type FetchInput = string | URL | Request;
+
+const requestUrl = (input: FetchInput) =>
   typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 
-const requestMethod = (input: Parameters<typeof globalThis.fetch>[0], init: RequestInit | undefined) =>
+const requestMethod = (input: FetchInput, init: RequestInit | undefined) =>
   (init?.method ?? (typeof input === "object" && "method" in input ? input.method : "GET")).toUpperCase();
 
 /**
