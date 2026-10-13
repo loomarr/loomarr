@@ -9,7 +9,9 @@ today / Draft, the channel (three invented channels in three eras), the state (n
 uploaded, server can't draw it), 4 corners / 3 × 3 position control, and desktop / 390 px. A second
 screen shows every look on three frames beside a feasibility table. A link can open a state directly,
 for example `watermark.html#screen=looks&ch=mm` or `#frame=phone&tall=1&look=lockup&scene=box`.
-Every fixture is invented and the pictures are shapes in token colours.
+Every fixture is invented and the pictures are shapes in token colours. A third screen, "Round 2",
+holds the holiday versions, the motifs at real size, the AI prompt and the feasibility table; a link such
+as `watermark.html#screen=holiday` or `#ch=mm&today=2026-10-31&sug=0` opens it directly.
 
 ## Why
 
@@ -134,6 +136,162 @@ receives numeric x and y. The mock shows 3 × 3 behind the "Position control" sw
 - **A blurred backdrop** behind the glass look: the blend is a plain alpha mix that never reads the
   picture.
 
+## Round 2: holiday versions, "design it for me", TMDB signals
+
+Maintainer, 2026-10-13: "for the watermark, we should have some holiday rep as well and also use TMDB
+or AI to help design it." The mock gains a **Holiday touches** field, a **Suggest a design** button
+with a result card, a **Colours from this lineup** option in Colour, an opt-in **network logo** field
+(marked new work), and a third screen, "Round 2", with holiday versions of three looks, every picture at
+real size, the AI prompt and its validation, and a feasibility table. Review-bar controls: *Pretend today
+is*, *AI set up / not set up*, *Lineup colours snapped / as sampled*.
+
+Hard constraints kept: every version is one still PNG with straight alpha from `render.go`; no
+animation or live text; **no image generation**, because the maintainer rejected AI-rendered art and the
+LLM providers (`internal/llm`, `Provider.Chat`) are text-only. Fixtures stay invented: posters are colour
+swatches, the network is "Kite TV" and its mark is a drawn kite.
+
+### F. Holiday versions
+
+**Where the bug is resolved.** `packager_hls.go:583`: once per item, at Open, with the encoder and output
+size (`it.Watermark(ctx, host.Encoder, out.Width, out.Height)`); the packager source builds the closure
+in `watermarkFor` (`playoutpackager.go:28`) for library programmes only, so breaks, bumpers, IDs and
+filler never carry it. `channelWatermarks.For` (`internal/app/watermark.go:120`) then reads the channel
+and builds the cache key `source|height|size|opacity|renderVersion`. **There is no date input today**, so
+the key cannot change by itself on Oct 1.
+
+**A date input fits, and the right one already exists.** `playout.Airing.StartedAt` is documented as the
+authoritative wall-clock boundary, "stable across retries and mid-program tune-ins" (`timeline.go:26`).
+Change `WatermarkFor` to `func(ctx, enc, w, h, at time.Time)`, pass `airing.StartedAt` from
+`watermarkFor`, and have `For` resolve the holiday from `at` and the channel's `policy.seasonal`. The
+holiday id and motif id join the key (`…|hol:halloween:pumpkin`) and `renderVersion` bumps once, so
+existing cached bugs stay valid. Using the airing start, not `time.Now()`, means a retried Open or a
+tune-in mid-programme gets the same bug as the first open, and the swap lands exactly on a programme
+boundary: a programme already airing keeps its logo until it ends (at most one longest-programme late).
+Nothing re-resolves mid-item, so there is no mid-picture switch and no flicker.
+
+**Reuse of the calendar.** `schedule.builtinCalendar` (`seasonal.go:33`) is unexported; expose one
+`ActiveHolidayAt(t, selected []string) string` beside `activeHolidays` so the bug can never disagree with
+what the scheduler boosts. Selection follows the channel's own `policy.seasonal` (`mode`, `holidays`;
+empty = all). A channel with seasonal mode "off" gets no holiday logo and the field says why.
+
+**A date-boundary question to confirm in the build, unverified.** The windows are built in UTC
+(`fixedWindow` uses `time.UTC`) and `holidayActive` compares instants. If the scheduler passes an
+instant, the window turns over at 00:00 UTC: for a household in US Eastern the Halloween logo would start
+at 8 pm on Sep 30 and stop at 8 pm on Oct 31, losing trick-or-treat night. I did not run it. See
+question 14.
+
+| Cost | Per item | Notes |
+| --- | --- | --- |
+| Renderer | Motif is a small path set drawn in the existing 8× supersample, composed beside the look | Eight motifs: pumpkin, bat, ghost, snowflake, holly, heart, firework, leaf. Each is 1–3 flat shapes in tokens or white; holes (pumpkin face, ghost eyes, leaf vein) are alpha holes. Not measured; the mock draws them in SVG |
+| Cache | One more PNG per (channel, size, look, holiday) | At most five holidays per channel, rendered on first use under the existing `render` mutex, a few ms each (not measured) |
+| Jobs / LLM | None | No scheduled job: the first item after Oct 1 pays one render |
+| Pipeline | Unchanged GPU path | Coloured motifs need the colour work in section C (BT.709 on the CUDA path, coloured self-check); white-only motifs (bat, ghost) do not. A white-silhouette fallback of every motif is the safe degrade |
+
+**What the real-size tiles show.** Each motif was drawn at its true pixel height: 65 px bug at 1080p
+(motif 55 px), 29 px at 480p (motif 24 px). All eight read as a distinct shape at 55 px on the dark tile.
+At 24 px (480p) the solid shapes (pumpkin, snowflake, heart, holly, leaf) are still recognisable; the
+firework's thin rays are the weakest, so the mock thickens them, and a build should keep every stroke
+at 8+ units of 100. **At the approved default 40% opacity on a bright frame, every coloured motif and
+plate washes out** (the round-1 white-text finding, again), the firework and leaf worst. Recommendation: holiday versions keep the user's
+opacity, but the preview shows this, and the build should not silently raise it. Question 12 asks.
+
+A first draft put the motif as a corner sticker on the Number badge; in the same colour it disappeared
+into the badge. The mock now puts every motif beside the look (a 6-unit gap), as the Round 2 screen shows.
+
+### G. "Suggest a design" (AI, closed vocabulary)
+
+**What it is.** One stateless call on a button press, never on the airtime path. Proposed endpoint
+`POST /v1/channels/{id}/watermark/suggestion` (admin), returning `{look, color, size, corner, callsign,
+motifs{holidayId: motifId}, reason, source: "ai"|"rules"}`. Apply writes ordinary `policy.watermark`
+fields through the same autosave PATCH; nothing is stored for the suggestion itself, so there is no new
+table or job. The existing `CallsignProposer` seam (`watermark.go`, one small call after channel
+creation, deliberately unwired) generalises to a `DesignProposer`.
+
+**Prompt shape** (short, one list per field, JSON answer; weak-model friendly per the
+"optimize for weak models" rule):
+
+```
+Design a TV channel logo. Answer with JSON only.
+Channel: Saturday Cartoons (channel 7)
+Years: 1980s
+Genres: Animation, Family
+Titles: Gummi Rangers; Captain Comet; Pixel Pals; Robo Bakery; Moon Patrol
+Choose every value from its list. Do not make up values.
+look: plate|text|outline|small-plate|tint|twotone|badge|lockup|stripe
+color: era|lineup|signal|tune|lock|onair|suggest|caution
+size: small|standard|large
+corner: top-left|top-right|bottom-left|bottom-right
+callsign: up to 12 letters or digits, or ""
+halloween: pumpkin|bat|ghost
+reason: at most 8 words
+{"look":"","color":"","size":"","corner":"","callsign":"","halloween":"","reason":""}
+```
+
+About 250–400 prompt tokens, 60–120 out. `ChatOptions{JSONMode: true, Temperature: ~0.3, MaxTokens: 160,
+ReasoningEffort: "none"}`, no tools, 12 s timeout, one attempt (Try again is the retry). The holiday keys
+list only holidays the channel honours that have more than one motif. Glass and 3 × 3 positions are
+omitted from the lists (open questions 1 and 3).
+
+**Validation, per field, never all-or-nothing:** a value outside its list is dropped and filled from the
+rules; `lineup` without posters falls back to `era`; the callsign is upper-cased, filtered to letters,
+digits, space, `&` and `-`, cut to 12, and blank means auto; the reason keeps its first 8 words; any
+extra key is ignored, so a model cannot ask for a hex colour, font, image or an unlisted corner. A
+non-JSON answer, timeout, provider error, or no provider configured returns the rules version with
+`source: "rules"` and no error toast.
+
+**Offline rules (the deterministic version):** Colour plate when the channel has a date window, else
+Text; colour "Match the era"; Standard; top right; derived callsign (`deriveCallsign`); the default motif
+of each included holiday. Same inputs, same output, unit-testable, free. It is also what a new channel
+gets at creation (question 15).
+
+**Budget.** One call per click; a household clicks a handful of times in a channel's life. Local models
+answer in about a second warm (the suggester notes ~9 s cold-load, ~0.5 s warm for an 8B). Hosted
+providers send the channel name, decade, genres and up to five titles: the mock says so in one line on
+the card ("Sent to your AI: …"), and the data class is the same as the lineup suggester's.
+
+### H. Lineup palette from TMDB posters
+
+**No new TMDB call.** Posters are already adopted into the image service (`PosterURL` comment: "the
+caller ADOPTS this URL", `internal/tmdb/tmdb.go:807`), and each image record keeps `DominantHex`
+(`internal/images/image.go:173`). That field is a single **average** colour for skeleton tinting: the
+average of a red-and-blue poster is a muddy purple, so it is not a palette. A hue sampler (decode at most
+8 small cached poster thumbnails, histogram by hue) is the new work, a few ms each at about 100 px.
+
+**Snapped to tokens or raw: recommend snapped to the six app colours, by hue only.** Tokens fix
+brightness, so the lineup decides *which* hue; the mock's `snapToken` does this and the *Lineup colours*
+review control shows both. Reasons: (1) raw colours are usually dull and mid-tone, and a coloured plate
+has to stay legible on bright and dark frames at 40%; (2) the coloured self-check (section C) can
+verify the six known colours per host, but cannot pre-verify an arbitrary RGB, so raw colour would
+bypass the safety gate; (3) arbitrary hues bleed unpredictably in 4:2:0; (4) it keeps the app's look.
+Cost of snapping: two quite different lineups can land on the same token (Midnight Movies' navy and teal
+posters both go to cyan); the card shows the three chosen colours, so the household sees what it got.
+
+**Stored as a snapshot on Apply**, not recomputed live: choosing "Colours from this lineup" saves up to
+three token names in the policy (`color: "lineup"` plus the resolved list), so a library change never
+recolours a channel unprompted. A "Refresh colours" action would re-run the sampler (question 17).
+
+### I. Network logo (new work, opt-in)
+
+Not wired today: `source()` carries the comment "The automatic TMDB network logo … is not wired yet".
+Needed: TMDB `GET /tv/{id}` already returns `networks[].logo_path` and `/movie/{id}` returns
+`production_companies`; `internal/tmdb` resolves network *names* (`resolveNetwork`,
+`loadNetworkIdentities`) but never reads a logo. Per channel: the network that carries a majority
+(proposed ≥ 50%) of the lineup's series; films have studios, not one network, so the field is disabled
+with a sentence (Midnight Movies in the mock); a mixed lineup is disabled (Cozy Mysteries). The logo is
+fetched once, adopted into the image service like a poster, then rendered through the existing
+`RenderImage` path an upload uses (keeps its own colours). Cost: one TMDB request per series, cached,
+none per programme. Order: your own upload > network logo (if on) > generated look. **Network logos
+are third-party trademarks, so it is off by default and per channel**; holiday touches pause while it is
+on (the logo airs unchanged). Colour logos take the same colour-pipeline check as section C.
+
+### J. What the mock shows vs not
+
+Shows: the controls, the consequence lines ("From Oct 1 to Oct 31 this channel shows the Halloween
+logo"), the holiday on the three frames for Halloween and Christmas (and Thanksgiving, New Year,
+Valentine's Day via the *Show as* row), three looks × two holidays, eight motifs at real size, the
+AI result card with the offline version beside it, and a set-up-AI-off state. Does not show: any real
+render, a real LLM answer, a real poster, or timing.
+
 ## Gaps this does not cover
 
 - The mock does not exercise a real `watermark.png`; the looks are SVG stand-ins drawn to match the
@@ -173,8 +331,56 @@ receives numeric x and y. The mock shows 3 × 3 behind the "Position control" sw
 10. **Autosave.** The mock follows the Programming fields (one PATCH of `policy.watermark`, #1895).
     Recommendation: same, with the consequence lines as the only confirmation.
 
+Round 2 (holiday, AI, TMDB), continuing the numbering:
+
+11. **Holiday touches default.** On or off for a channel that has never touched it?
+    Recommendation: **on**, whenever the channel's seasonal mode is not "Ignore holidays" (the seasonal
+    default is Auto), and no field at all when it is. A household that asked for spooky October evenings
+    gets the matching logo without finding a setting; the switch is one click to turn off, and the
+    consequence line says what it does.
+12. **Holiday logo on a bright picture.** At the default 40% every coloured motif and plate washes out on a
+    bright frame (section F). Recommendation: the holiday version keeps the channel's opacity (no silent
+    raise); say so in review, and let question 5's answer decide for both.
+13. **Which holidays at launch, and is the picture a choice?** Recommendation: build all five calendar
+    holidays on one mechanism with one default picture each (pumpkin, leaf, holly, firework, heart), and
+    offer a choice only where there are two or three (Halloween: pumpkin, bat, ghost; Christmas: holly,
+    snowflake), as the mock does. Halloween and Christmas are the two the household asked about; the
+    rest cost one small shape each.
+14. **Holiday dates and time zone.** The calendar windows are UTC dates; if the seasonal code compares
+    instants, a US Eastern household's Halloween ends at 8 pm on Oct 31. Recommendation: evaluate the
+    window in the household's configured time zone for both the scheduler and the logo, and add one
+    shared `ActiveHolidayAt` so they cannot disagree. I did not run it; confirm before building.
+15. **When does a suggestion run?** Recommendation: **only on a click**. A new channel gets the rules
+    design immediately (no call, nothing sent anywhere); the AI is the "Suggest a design" button.
+    Automatic calls at creation cost a model turn per channel, send data to a hosted provider
+    unprompted, and replace a design the household never asked to change.
+16. **Does the lineup palette replace "Match the era" as the default colour?** Recommendation: **no**.
+    The era colour is stable and works for an empty or new lineup; a lineup-derived default would
+    recolour a channel when its library changes. Lineup colours is an opt-in swatch and one of the AI's
+    answers.
+17. **Lineup palette: snapshot or live?** Recommendation: snapshot the (at most three) colour names when
+    the household picks it or applies a suggestion, with a "Refresh colours" action. No job, no TMDB call,
+    no surprise recolour.
+18. **Lineup colours: snapped to the six app colours, or raw?** Recommendation: snapped by hue only
+    (section H). Raw colours are duller, cannot be verified by the coloured self-check, and bleed in
+    4:2:0. The mock's *Lineup colours* control shows both so you can look.
+19. **Network logo: build it at all, and when?** Recommendation: last, after holiday versions and the
+    colour check ship. Off by default, per channel, only when one network carries at least half the
+    lineup's series, never for a film channel; it is a third-party trademark and the repo is public, so
+    no logo asset is bundled or committed (it is fetched at runtime from TMDB). Say if you would rather
+    not offer it.
+20. **Holiday touches with an uploaded image or a network logo.** Recommendation: the image or logo airs
+    unchanged and the field says "paused", as the mock shows. Compositing a motif onto a household's own
+    artwork is more surprising than useful.
+21. **Sending lineup facts to a hosted AI.** "Suggest a design" sends the channel name, decade, genres and
+    up to five titles. Recommendation: allowed for any configured provider, with the one-line "Sent to
+    your AI" note on the card and nothing stored; no separate setting. Say so if you want it limited to
+    local providers.
+
 ## Gates
 
-Docs and prototype only. No Go, TypeScript or generated file changed. The mock was screenshotted at
-1100 px and 390 px (headless Chromium, no Playwright suite) in: normal, own image uploaded, server can't
-draw it, 4:3 frame, and the looks screen.
+Docs and prototype only. No Go, TypeScript or generated file changed. The mock was screenshotted in
+headless Chromium (no Playwright suite) at 390 px and 1440 px: the channel section (normal, with a
+suggestion open, AI off, a channel that ignores holidays, a film channel with no network logo, a
+different "today"), the looks screen and the Round 2 screen. In-page JavaScript raised no console errors.
+No renderer, LLM, TMDB or timing was run; every claim about cost is read from code, not measured.
