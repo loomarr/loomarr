@@ -163,6 +163,8 @@ func mutateNonIdentity(c Candidate, field string) Candidate {
 		c.Cast = append([]string{"MUTATED"}, c.Cast...)
 	case "Creators":
 		c.Creators = append([]string{"MUTATED"}, c.Creators...)
+	case "SizeBytes":
+		c.SizeBytes += 1 << 30
 	default:
 		panic("unknown non-identity field: " + field)
 	}
@@ -176,7 +178,7 @@ func TestProp_DedupeKey_InvariantUnderNonIdentityMutation(t *testing.T) {
 	rng := rand.New(rand.NewSource(propSeed))
 	nonIdentityFields := []string{
 		"Genres", "Overview", "OfficialRating",
-		"InLibrary", "Source", "Year", "LibraryItemID", "Networks", "Cast", "Creators",
+		"InLibrary", "Source", "Year", "LibraryItemID", "Networks", "Cast", "Creators", "SizeBytes",
 	}
 	const iters = 4000
 	for i := 0; i < iters; i++ {

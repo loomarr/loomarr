@@ -30,10 +30,45 @@ type SearchResult struct {
 	// the input to ChannelPolicy audience enforcement (programming-design §4).
 	// Display/enforcement metadata only — never identity.
 	OfficialRating string
+	// SizeBytes is the primary media source's file size, exact from the media server.
+	// Zero is unavailable (a series has no source of its own), never an empty file.
+	SizeBytes int64
+}
+
+// primarySize is the slice of an /Items entry that answers "how big is this title's file".
+// Emby's top-level Size is MediaSources[0].Size; Jellyfin has no such field, so it is asked
+// for MediaSources and the first source answers. The first source is the server's default
+// version, the one playback resolves.
+type primarySize struct {
+	Size         int64 `json:"Size"`
+	MediaSources []struct {
+		Size int64 `json:"Size"`
+	} `json:"MediaSources"`
+}
+
+func (p primarySize) bytes() int64 {
+	if p.Size > 0 {
+		return p.Size
+	}
+	if len(p.MediaSources) > 0 && p.MediaSources[0].Size > 0 {
+		return p.MediaSources[0].Size
+	}
+	return 0
+}
+
+// sizeField is the Fields token that makes the server return primarySize. Emby's Size costs
+// ~7 bytes per item; MediaSources carries every stream (measured ~5 KB per movie), so it is
+// requested only where nothing lighter exists.
+func (f Flavor) sizeField() string {
+	if f == Jellyfin {
+		return "MediaSources"
+	}
+	return "Size"
 }
 
 // searchItem mirrors the slice of an /Items entry we read for search.
 type searchItem struct {
+	primarySize
 	ID             string   `json:"Id"`
 	Name           string   `json:"Name"`
 	ProductionYear int      `json:"ProductionYear"`
@@ -74,7 +109,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 	q.Set("IncludeItemTypes", "Movie,Series")
 	q.Set("SearchTerm", term)
 	q.Set("Limit", strconv.Itoa(limit))
-	q.Set("Fields", "ProviderIds,ProductionYear,Genres,Overview,OfficialRating,RunTimeTicks")
+	q.Set("Fields", "ProviderIds,ProductionYear,Genres,Overview,OfficialRating,RunTimeTicks,"+c.flavor().sizeField())
 
 	req, err := c.newRequest(ctx, http.MethodGet, "/Items?"+q.Encode(), nil)
 	if err != nil {
@@ -100,6 +135,7 @@ func (c *Client) Search(ctx context.Context, term string, limit int) ([]SearchRe
 			Overview:       it.Overview,
 			RuntimeMinutes: runtimeMinutes(it.RunTimeTicks),
 			OfficialRating: it.OfficialRating,
+			SizeBytes:      it.bytes(),
 		})
 	}
 	return results, nil

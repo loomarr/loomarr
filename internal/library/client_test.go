@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -28,6 +29,28 @@ func TestLookupPresent(t *testing.T) {
 	}
 	if id == "" {
 		t.Error("present lookup returned empty item id")
+	}
+}
+
+// LookupDetail carries the primary source size on the same presence request, so a
+// discovered-then-owned title reaches the approval summary with its size (#1817).
+func TestLookupDetailParsesPrimarySourceSize(t *testing.T) {
+	var gotFields string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotFields = r.URL.Query().Get("Fields")
+		_, _ = w.Write([]byte(`{"Items":[{"Id":"lib-1","Name":"Them!","Type":"Movie","Size":63546611800}]}`))
+	}))
+	defer srv.Close()
+
+	got, present, err := New(Emby, srv.URL, "tok", "dev-1").LookupDetail(context.Background(), TMDB, "11071", Movie)
+	if err != nil || !present {
+		t.Fatalf("LookupDetail = present %v, err %v", present, err)
+	}
+	if !strings.Contains(","+gotFields+",", ",Size,") {
+		t.Errorf("Fields = %q, must request Size", gotFields)
+	}
+	if got.SizeBytes != 63546611800 {
+		t.Errorf("SizeBytes = %d, want 63546611800", got.SizeBytes)
 	}
 }
 

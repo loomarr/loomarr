@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/loomarr/loomarr/internal/catalog"
+	"github.com/loomarr/loomarr/internal/library"
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
@@ -64,6 +65,16 @@ func (c *Corpus) Discoveries() []DiscoveryRequest {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]DiscoveryRequest(nil), c.discoveries...)
+}
+
+// Library is a deterministic library-scope searcher returning fixed rows, for
+// asserting how the catalog maps fields the pinned media-server fixture lacks.
+type Library struct {
+	Results []library.SearchResult
+}
+
+func (l *Library) Search(context.Context, string, int) ([]library.SearchResult, error) {
+	return append([]library.SearchResult(nil), l.Results...), nil
 }
 
 // Presence is a deterministic library-ownership adapter.

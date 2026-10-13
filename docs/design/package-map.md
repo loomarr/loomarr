@@ -21,13 +21,13 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | --- | ---: | --- |
 | `catalog` | 7 | `library`, `provision` |
 | `contact` | 5 | — |
-| `diagnostics` | 7 | — |
-| `filler` | 7 | `diagnostics`, `fillerstructure`, `llm`, `taxonomy` |
+| `diagnostics` | 7 | `storagegovernor` |
+| `filler` | 7 | `diagnostics`, `fillerstructure`, `llm`, `storagegovernor`, `taxonomy` |
 | `fillerstructure` | 5 | — |
 | `httpx` | 9 | `metrics` |
 | `inventory` | 5 | — |
 | `invitation` | 6 | `contact` |
-| `library` | 10 | `filler`, `httpx`, `inventory`, `metrics` |
+| `library` | 11 | `filler`, `httpx`, `inventory`, `metrics` |
 | `llm` | 8 | `httpx`, `metrics` |
 | `metrics` | 8 | `provision` |
 | `notifications` | 5 | `httpx` |
@@ -37,8 +37,9 @@ Packages imported by 5 or more others, and their dependencies within the spine. 
 | `recovery` | 5 | — |
 | `schedule` | 19 | `inventory`, `provision` |
 | `scheduler` | 6 | `store` |
+| `storagegovernor` | 6 | — |
 | `store` | 15 | `contact`, `diagnostics`, `inventory`, `invitation`, `notifications`, `provision`, `quality`, `recovery`, `schedule`, `taxonomy` |
-| `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `store` |
+| `suggest` | 8 | `catalog`, `llm`, `provision`, `quality`, `schedule`, `storagegovernor`, `store` |
 | `taxonomy` | 5 | — |
 
 ## Every package, by layer
@@ -101,7 +102,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Validates the repository's release publication policy.
 - **`secretprotection`** · 3 importers
   Encrypts database-backed secrets with installation-key-wrapped data keys and supports safe key rotation and replacement.
-- **`storagegovernor`** · 4 importers
+- **`storagegovernor`** · 6 importers
   Owns host-capacity policy and atomic reservations for Loomarr-managed writes.
 - **`taxonomy`** · 5 importers
   Clip tag vocabulary (§10 V45a): a forest of taxa on independent AXES (product / format / seasonal / audience-cue / presentation), the graph that turns a leaf tag like `beer` into its rollups (`alcohol`, `drinks`), and the resolve-or-drop grounding that keeps a model's output on the vocabulary.
@@ -219,7 +220,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Persists the filler pipeline's own state: the remote source registry, the pull approvals and the acquisition runs and artifacts they start, the hosted-inference accounting and the ledgers layered over it (spoken safety, structure assessment, structure windows) (§10).
 - **`fillerstructurewindowopenrouter`** · 1 importer · → `filler`, `fillerstructure`, `fillerstructurewindow`, `httpx`, `openroutercatalog`, `openroutermedia`
   Adapts the bounded OpenRouter media transport to one complete planned-window assessment call.
-- **`library`** · 10 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
+- **`library`** · 11 importers · → `episodeevidence`, `filler`, `httpx`, `inventory`, `metrics`
   Library port (design §6, §2 boundaries): a shared Emby/Jellyfin adapter.
 
 ### Layer 9
@@ -247,7 +248,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
   Prepares an isolated agent worktree for UI development.
 - **`moviecollections`** · 4 importers · → `catalog`, `provision`
   Resolves authoritative TMDB movie-collection rosters for a bounded set of provisioned movie Keys.
-- **`testkit/catalogfixture`** · → `catalog`, `provision`
+- **`testkit/catalogfixture`** · → `catalog`, `library`, `provision`
   Shared no-network adapters for catalog tests.
 - **`tunarr`** · 3 importers · → `httpx`, `metrics`, `schedule`, `setup`
   Programmer boundary (design §6/§9): the port the scheduler drives to make a Loomarr channel real, plus its only v1 implementation, a thin hand-written Tunarr client (§6: "hand-write a thin client against only the endpoints we use" — not codegen against Tunarr's churny pre-1.0 spec).
@@ -265,7 +266,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 12
 
-- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `provision`, `quality`, `reference`, `schedule`, `store`, `textmatch`, `tmdb`
+- **`suggest`** · 8 importers · → `catalog`, `holidayvocab`, `llm`, `moviecollections`, `provision`, `quality`, `reference`, `schedule`, `storagegovernor`, `store`, `textmatch`, `tmdb`
   Suggester (design §8): it turns a channel intent into a grounded proposal (a lineup from the library + an acquisition list of missing titles).
 
 ### Layer 13
@@ -285,7 +286,7 @@ No internal dependencies. These are the vocabulary the rest agrees on.
 
 ### Layer 14
 
-- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
+- **`api`** · 1 importer · → `activity`, `auth`, `binder`, `buildinfo`, `channels`, `contact`, `diagnostics`, `events`, `filler`, `filleradmission`, `fillerdecision`, `fillerenrichment`, `fillerresearch`, `fillerstore`, `holidayvocab`, `ideas`, `images`, `installationlocation`, `invitation`, `metrics`, `notifications`, `playout`, `proposaloutlook`, `proposalworkflow`, `provision`, `quality`, `recovery`, `schedule`, `storagegovernor`, `store`, `suggest`, `taxonomy`, `viewing`, `web`
   Wires Loomarr's inbound HTTP surface (§7).
 
 ### Layer 15
