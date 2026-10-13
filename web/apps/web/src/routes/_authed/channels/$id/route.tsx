@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth/use-auth";
 import { ChannelIdentityField } from "@/channels/channel-identity-field";
+import { useChannelPolicySave } from "@/channels/use-channel-policy-save";
 import type { OnAirState } from "@/components/loomarr/channels/on-air-indicator";
 import { ErrorState } from "@/components/loomarr/feedback/error-state";
 import { NavTabs } from "@/components/ui/nav-tabs";
@@ -145,6 +146,10 @@ const ChannelDetailLayout = () => {
   // Live update: a background reconcile (this edit, the sweep, a title landing) emits a
   // `channel` frame — refresh so the page reflects it with no manual action.
   useLoomarrEventListener({ onChannel: () => invalidate() });
+
+  // Policy edits save through their own serial queue (#1895): two quick edits used to race on
+  // the channel revision and the second was lost. The sections render its pending policy.
+  const policySave = useChannelPolicySave(id, invalidate);
 
   // Edits save seamlessly, then auto-reconcile server-side. A light toast confirms; the
   // edit is the trigger, never a separate "apply"/"rebuild" step.
@@ -301,17 +306,17 @@ const ChannelDetailLayout = () => {
           <ChannelDetailProvider
             value={{
               id,
-              channel: ch,
+              channel: policySave.pending ? { ...ch, policy: policySave.pending } : ch,
               isAdmin,
               air,
               ready,
               total,
               invalidate,
-              saving: update.isPending,
+              saving: update.isPending || policySave.isSaving,
               deleting: del.isPending,
               update: (data) => update.mutate({ id, data: { ...data, revision: ch.revision } }),
               updateAsync: (data) => update.mutateAsync({ id, data: { ...data, revision: ch.revision } }),
-              savePolicy: (policy) => update.mutate({ id, data: { revision: ch.revision, policy } }),
+              savePolicy: policySave.save,
               saveLogo,
               onDelete: ({ purge }) => del.mutate({ id, params: { purge } }),
             }}
