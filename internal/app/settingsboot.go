@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -350,7 +351,7 @@ type secretStoreAdapter struct {
 
 func (a secretStoreAdapter) Get(ctx context.Context, k string) (string, bool, error) {
 	v, err := a.st.GetSetting(ctx, k)
-	if err == store.ErrNotFound {
+	if errors.Is(err, store.ErrNotFound) {
 		return "", false, nil
 	}
 	if err != nil {

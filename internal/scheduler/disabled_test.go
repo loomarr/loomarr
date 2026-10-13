@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -129,7 +130,7 @@ func TestDisabledJob_TriggerIsRefused(t *testing.T) {
 	s := New(st, reg, nil, clk.now, testLog())
 	ctx := context.Background()
 
-	if err := s.Trigger(ctx, "backup"); err != ErrJobDisabled {
+	if err := s.Trigger(ctx, "backup"); !errors.Is(err, ErrJobDisabled) {
 		t.Fatalf("Trigger of a disabled job = %v, want ErrJobDisabled", err)
 	}
 	// The refusal must not have marked it due as a side effect.
@@ -152,7 +153,7 @@ func TestDisabledJob_UnknownStillReportsUnknown(t *testing.T) {
 	var ran atomic.Int64
 	s := New(st, NewRegistry().Add(disabledJob(&ran)), nil, clk.now, testLog())
 
-	if err := s.Trigger(context.Background(), "nope"); err != ErrUnknownJob {
+	if err := s.Trigger(context.Background(), "nope"); !errors.Is(err, ErrUnknownJob) {
 		t.Errorf("Trigger of an unregistered job = %v, want ErrUnknownJob", err)
 	}
 }

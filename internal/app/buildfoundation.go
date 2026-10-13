@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -88,7 +89,7 @@ func buildFoundation(
 		}, time.Now)
 		if st == nil {
 			result.startup.Complete("database", diagnostics.StartupFailed, "no store configured", "/settings/system/database", "")
-		} else if _, err := st.GetSetting(context.Background(), "healthcheck_probe"); err != nil && err != store.ErrNotFound {
+		} else if _, err := st.GetSetting(context.Background(), "healthcheck_probe"); err != nil && !errors.Is(err, store.ErrNotFound) {
 			result.startup.Complete("database", diagnostics.StartupFailed, "store unreachable", "/settings/system/database", "")
 		} else {
 			result.startup.Complete("database", diagnostics.StartupPassed, "ready", "", "")

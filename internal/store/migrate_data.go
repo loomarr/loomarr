@@ -594,6 +594,9 @@ func describe(ctx context.Context, db rowQueryer, table string) ([]string, []*sq
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
 	return names, types, nil
 }
 

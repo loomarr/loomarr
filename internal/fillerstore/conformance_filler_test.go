@@ -174,7 +174,7 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 		got.Network != "Fox" || got.Station != "WNYW" || got.AirDate != "1992-04-03" || got.GeoEvidence == "" {
 		t.Errorf("geography round-trip mismatch: %+v", got.Clip)
 	}
-	if _, err := s.GetClip(ctx, "nope"); err != ErrNotFound {
+	if _, err := s.GetClip(ctx, "nope"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetClip(missing) = %v, want ErrNotFound", err)
 	}
 
@@ -235,7 +235,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 		t.Error("clip should be Tagged() after update")
 	}
 	// Tagging a missing clip → ErrNotFound.
-	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", 0, false, now); err != ErrNotFound {
+	if err := s.UpdateClipClassification(ctx, "gone", 1990, "kids", 0, false, now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateClipClassification(missing) = %v, want ErrNotFound", err)
 	}
 
@@ -283,7 +283,7 @@ func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	if n != 1 {
 		t.Errorf("prune removed %d, want 1", n)
 	}
-	if _, err := s.GetClip(ctx, "u1"); err != ErrNotFound {
+	if _, err := s.GetClip(ctx, "u1"); !errors.Is(err, ErrNotFound) {
 		t.Error("pruned clip still present")
 	}
 	if _, err := s.GetClip(ctx, "keep"); err != nil {
@@ -586,7 +586,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// GetClip is hash-keyed.
-	if _, err := s.GetClip(ctx, c.Path); err != ErrNotFound {
+	if _, err := s.GetClip(ctx, c.Path); !errors.Is(err, ErrNotFound) {
 		t.Errorf("GetClip(path) = %v, want ErrNotFound — GetClip is keyed WHERE hash = ?", err)
 	}
 	if _, err := s.GetClip(ctx, c.Hash); err != nil {
@@ -594,7 +594,7 @@ func testClipKeyIsHashNotPath(t *testing.T, newStore NewStoreFunc) {
 	}
 
 	// UpdateClipClassification is hash-keyed, and its ErrNotFound is fatal to the tagging job.
-	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", 0, true, now); err != ErrNotFound {
+	if err := s.UpdateClipClassification(ctx, c.Path, 1994, "kids", 0, true, now); !errors.Is(err, ErrNotFound) {
 		t.Errorf("UpdateClipClassification(path) = %v, want ErrNotFound — the tagger must pass the hash", err)
 	}
 	if err := s.UpdateClipClassification(ctx, c.Hash, 1994, "kids", 0, true, now); err != nil {

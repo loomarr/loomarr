@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -38,7 +39,7 @@ func (s *sqlStore) createPasswordRecovery(ctx context.Context, value recovery.Re
 	err = tx.QueryRowContext(ctx, s.ph(`SELECT 1 FROM users
 		WHERE id = ? AND disabled = ? AND media_server_linked = ? AND password_hash <> ''`),
 		value.UserID, false, false).Scan(&eligible)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
@@ -134,7 +135,7 @@ func (s *sqlStore) AddPasswordRecoveryGrant(
 	var expiresAt int64
 	err = tx.QueryRowContext(ctx, s.ph(`SELECT expires_at FROM password_recoveries
 		WHERE id = ? AND status = 'pending' AND expires_at > ?`), recoveryID, epoch(at)).Scan(&expiresAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
@@ -220,7 +221,7 @@ func (s *sqlStore) RedeemPasswordRecovery(
 	value, err := scanPasswordRecovery(tx.QueryRowContext(ctx, s.ph(query),
 		grantHash, epoch(at), epoch(at), false, false))
 	if err != nil {
-		if err == ErrNotFound {
+		if errors.Is(err, ErrNotFound) {
 			return recovery.Record{}, ErrNotFound
 		}
 		return recovery.Record{}, fmt.Errorf("redeem password recovery: load grant: %w", err)
@@ -302,7 +303,7 @@ func scanPasswordRecovery(sc scannable) (recovery.Record, error) {
 	var status string
 	var createdAt, expiresAt, terminalAt int64
 	err := sc.Scan(&value.ID, &value.UserID, &status, &createdAt, &expiresAt, &terminalAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return recovery.Record{}, ErrNotFound
 	}
 	if err != nil {
@@ -321,7 +322,7 @@ func scanPasswordRecoveryGrant(sc scannable) (recovery.Grant, error) {
 	var value recovery.Grant
 	var createdAt, expiresAt, consumedAt, revokedAt int64
 	err := sc.Scan(&value.TokenHash, &value.RecoveryID, &createdAt, &expiresAt, &consumedAt, &revokedAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return recovery.Grant{}, ErrNotFound
 	}
 	if err != nil {
