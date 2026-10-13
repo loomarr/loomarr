@@ -697,7 +697,7 @@ components:
         ok:
           type: boolean
         retryable:
-          description: True when the failure was a server or upstream fault, so retrying this id can succeed. Absent for a permanent refusal (not found, already decided, not set up)
+          description: True when the failure was a server or upstream fault, so retrying this id may succeed. Absent for a permanent refusal (not found, already decided, not set up)
           type: boolean
         status:
           description: The HTTP status approving this id alone would have answered; absent on success
@@ -765,7 +765,7 @@ components:
         ok:
           type: boolean
         retryable:
-          description: True when the failure was a server or upstream fault, so retrying this id can succeed. Absent for a permanent refusal (not found, already handled, invalid, not set up)
+          description: True when the failure was a server or upstream fault, so retrying this id may succeed. Absent for a permanent refusal (not found, already handled, invalid, not set up)
           type: boolean
         status:
           description: The HTTP status approving this id alone would have answered; absent on success

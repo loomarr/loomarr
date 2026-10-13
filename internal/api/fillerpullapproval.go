@@ -167,7 +167,7 @@ type bulkApproveFillerPullResult struct {
 	Error    string `json:"error,omitempty" doc:"Why this one did not approve (already handled, not found, …)"`
 	// Status and Retryable come from bulkFailure, the classification bulk-approve-proposals uses.
 	Status    int  `json:"status,omitempty" doc:"The HTTP status approving this id alone would have answered; absent on success"`
-	Retryable bool `json:"retryable,omitempty" doc:"True when the failure was a server or upstream fault, so retrying this id can succeed. Absent for a permanent refusal (not found, already decided, not set up)"`
+	Retryable bool `json:"retryable,omitempty" doc:"True when the failure was a server or upstream fault, so retrying this id may succeed. Absent for a permanent refusal (not found, already decided, not set up)"`
 }
 
 type bulkApproveFillerPullOutput struct {

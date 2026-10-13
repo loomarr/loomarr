@@ -1553,8 +1553,8 @@ func TestBulkApprove_PermanentFailuresAreNotRetryable(t *testing.T) {
 	}
 }
 
-// A server fault is worth retrying: here no approval coordinator is wired, so approving fails
-// with a plain error, which is a 500.
+// An unclassified server fault is offered a retry. Here no approval coordinator is wired, so
+// approving fails with a plain error, which is a 500, the same as any unexpected store fault.
 func TestBulkApprove_ServerFaultIsRetryable(t *testing.T) {
 	harness := newAPIHarness(t)
 	seedProposal(t, harness.Store, "p1")

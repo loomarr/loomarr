@@ -474,17 +474,19 @@ type bulkApproveResult struct {
 	ChannelID string `json:"channelId,omitempty"`
 	Error     string `json:"error,omitempty" doc:"Why this one did not approve (already handled, not found, …)"`
 	Status    int    `json:"status,omitempty" doc:"The HTTP status approving this id alone would have answered; absent on success"`
-	Retryable bool   `json:"retryable,omitempty" doc:"True when the failure was a server or upstream fault, so retrying this id can succeed. Absent for a permanent refusal (not found, already handled, invalid, not set up)"`
+	Retryable bool   `json:"retryable,omitempty" doc:"True when the failure was a server or upstream fault, so retrying this id may succeed. Absent for a permanent refusal (not found, already handled, invalid, not set up)"`
 }
 
 // bulkFailure classifies one id's approval error for either bulk approve endpoint (Refs
 // #1876). The SERVER decides retryability from the status the single-approve handler raised,
 // so no client keeps its own status rule or guesses from the message text.
 //
-// A 5xx is a server or upstream fault that a retry can clear (a store read, a download that
+// A 5xx is a server or upstream fault that a retry may clear (a store read, a download that
 // couldn't start), except 501: this install can't do it at all. Every 4xx is the item's own
 // state, which a retry repeats. An error carrying no status is an unexpected fault, so it is a
-// 500, as huma would answer it.
+// 500, as huma would answer it. It counts as retryable even though some such faults, like a
+// missing approver, persist: the server can't tell them apart, and a refused retry costs less
+// than a stuck item with nothing to press.
 func bulkFailure(err error) (status int, retryable bool) {
 	status = statusFromError(err, http.StatusInternalServerError)
 	return status, status >= http.StatusInternalServerError && status != http.StatusNotImplemented
