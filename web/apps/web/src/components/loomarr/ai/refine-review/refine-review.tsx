@@ -1,9 +1,12 @@
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { DateScope } from "@loomarr/api/models/dateScope";
 import type { ProposalItem } from "@loomarr/api/models/proposalItem";
+import type { Range } from "@loomarr/api/models/range";
 import { Check, Download, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { eraOf } from "@/lib/era-dates";
+import { datesMode } from "@/lib/policy-overrides";
 import { cn } from "@/lib/utils";
 import { friendlyTitleRationale } from "@/suggest/suggestion-language";
 import type { CurrentLineupItem, RefineReviewProps } from "./refine-review.type";
@@ -24,8 +27,23 @@ const orderingLabel = (o?: string): string =>
   o ??
   "Inherit";
 
-const eraLabel = (era?: { from?: number; to?: number }): string =>
-  !era || (!era.from && !era.to) ? "Any" : `${era.from ?? "…"}–${era.to ?? "…"}`;
+const rangeLabel = (range?: Range): string =>
+  !range || (!range.from && !range.to) ? "Any" : `${range.from ?? "…"}–${range.to ?? "…"}`;
+
+const DATE_AXES = [
+  ["Movie release", "movieRelease"],
+  ["Series premiere", "seriesPremiere"],
+  ["Episode airing", "seriesAiring"],
+] as const;
+
+// The one stored date scope (#1883), read the way the editor shows it: an era when the dates are
+// era-shaped or empty, otherwise each constrained axis and its ranges.
+const datesLabel = (dates?: DateScope): string =>
+  datesMode(dates) === "era"
+    ? rangeLabel(eraOf(dates))
+    : DATE_AXES.filter(([, axis]) => dates?.[axis]?.length)
+        .map(([label, axis]) => `${label} ${(dates?.[axis] ?? []).map(rangeLabel).join(", ")}`)
+        .join(" · ");
 
 const seasonalLabel = (m?: string): string =>
   ({ "": "Auto", auto: "Auto", off: "Off", exclusive: "Exclusive" })[m ?? ""] ?? m ?? "Auto";
@@ -47,7 +65,14 @@ const policyDeltas = (current?: ChannelPolicy, proposed?: ChannelPolicy): Policy
   const add = (label: string, path: string, from: string, to: string) => {
     if (from !== to) out.push({ label, from, to, pinned: pinned.has(path) });
   };
-  add("Era", "scope", eraLabel(eraOf(current.scope?.dates)), eraLabel(eraOf(proposed.scope?.dates)));
+  // Labelled like the editor's field: Era while both sides are era-shaped, otherwise dates.
+  const eraRow = datesMode(current.scope?.dates) === "era" && datesMode(proposed.scope?.dates) === "era";
+  add(
+    eraRow ? "Era" : "Programming dates",
+    "scope",
+    datesLabel(current.scope?.dates),
+    datesLabel(proposed.scope?.dates),
+  );
   add(
     "Audience ceiling",
     "audience",

@@ -1,7 +1,7 @@
 import type { ChannelPolicy } from "@loomarr/api";
 import { render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui";
 import { eraDates } from "@/lib/era-dates";
@@ -143,5 +143,54 @@ describe("ChannelAutoCurate", () => {
 
     expect(screen.getByLabelText(OPT_IN)).toBeDisabled();
     expect(screen.getByText(/made by hand/)).toBeInTheDocument();
+  });
+
+  // The opt-in's source badge (#1817 item 4): its default is a plain unticked box, so it offers
+  // no Reset until there is something to reset.
+  it("badges the unticked default without a Reset", () => {
+    render(<ChannelAutoCurate policy={POPULATED} onChange={vi.fn()} />);
+    expect(screen.getByText("Default: off")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Reset to default/ })).not.toBeInTheDocument();
+  });
+
+  it("resets the opt-in by removing the object, thresholds and all", async () => {
+    const onChange = vi.fn();
+    render(
+      <ChannelAutoCurate
+        policy={{ ...POPULATED, autoCurate: { minScorePct: 70, maxTitles: 5 } }}
+        onChange={onChange}
+      />,
+    );
+    expect(screen.getByText("Opted in")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: `Reset to default (${OPT_IN})` }));
+    expect(onChange).toHaveBeenCalledWith(POPULATED);
+  });
+
+  // Both thresholds are 0 = inherit on the wire, so a reset sends 0, never undefined.
+  it.each([
+    ["Quality bar", "minScorePct"],
+    ["Title cap", "maxTitles"],
+  ] as const)("resets the %s override to 0 and clears its box", async (label, field) => {
+    const onChange = vi.fn();
+    const Harness = () => {
+      const [policy, setPolicy] = useState<ChannelPolicy>({
+        ...POPULATED,
+        autoCurate: { minScorePct: 70, maxTitles: 5 },
+      });
+      return (
+        <ChannelAutoCurate
+          policy={policy}
+          onChange={(next) => {
+            onChange(next);
+            setPolicy(next);
+          }}
+        />
+      );
+    };
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: `Reset to default (${label})` }));
+    expect(onChange.mock.lastCall?.[0].autoCurate[field]).toBe(0);
+    expect(screen.getByLabelText(label)).toHaveValue(null);
+    expect(screen.getByRole("button", { name: `Reset to default (${label})` })).toBeDisabled();
   });
 });
