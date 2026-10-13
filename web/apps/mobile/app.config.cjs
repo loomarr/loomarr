@@ -31,6 +31,10 @@ const iosReleaseConfig = (config, environment = process.env) => {
   if (channel !== "testflight") {
     throw new Error("iPhone release channel must be testflight");
   }
+  // The crash-report proof trigger (src/crash-reports.ts) is bundled only when this is set.
+  if (environment.EXPO_PUBLIC_LOOMARR_CRASH_TEST) {
+    throw new Error("iPhone release builds must not set EXPO_PUBLIC_LOOMARR_CRASH_TEST");
+  }
 
   const { version, buildNumber } = appleVersionFields(
     environment.LOOMARR_IOS_VERSION,

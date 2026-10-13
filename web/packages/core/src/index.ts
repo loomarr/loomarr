@@ -5,6 +5,7 @@ export * from "./anchor";
 export * from "./client-diagnostics";
 export * from "./clip-thumb";
 export * from "./contracts";
+export * from "./crash-reports";
 export * from "./events";
 export * from "./format";
 export * from "./guide";

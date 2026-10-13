@@ -167,6 +167,13 @@ classify() {
       select_gate expo_android_tv
       select_gate android
       ;;
+    web/packages/crash-reports-native/*)
+      # Phone apps only; the pod links into iOS, and the Android phone bundles its JavaScript.
+      known=true
+      select_gate clients
+      select_gate apple_mobile
+      select_gate expo_android_mobile
+      ;;
     web/packages/design-system/*|web/packages/ui/*|web/packages/ui-tv/*)
       known=true
       select_gate clients
