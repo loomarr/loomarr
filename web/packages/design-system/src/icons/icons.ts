@@ -3,6 +3,7 @@ import BookOpen from "lucide-react-native/icons/book-open";
 import Check from "lucide-react-native/icons/check";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import Clapperboard from "lucide-react-native/icons/clapperboard";
@@ -32,6 +33,8 @@ const icons = {
   channelUp: ChevronUp,
   channels: Tv,
   close: X,
+  // The trailing mark of a phone list row that opens or connects to something.
+  disclosure: ChevronRight,
   // Web's phone-width bottom bar (#1785, #1659 Shell nav) — the admin/member destinations
   // the sidebar already names with lucide-react glyphs, so the bar reads as the same product.
   filler: Clapperboard,

@@ -29,7 +29,7 @@ const SignInFirst = ({ code }: { code: string }) => {
     <div className="mx-auto max-w-lg px-6 py-16 text-center">
       <h1 className="font-semibold text-3xl">Add a device</h1>
       <p className="mt-3 text-lg text-muted-foreground leading-relaxed">
-        Sign in first, then we'll bring you straight back here to finish adding your TV.
+        Sign in first, then we'll bring you straight back here to finish adding your device.
       </p>
       {code ? <p className="mt-6 font-mono text-2xl tracking-[0.3em]">{code}</p> : null}
       <Button
@@ -101,7 +101,7 @@ const PairDevice = ({ initialCode }: PairDeviceProps) => {
     <div className="mx-auto max-w-lg px-6 py-16">
       <h1 className="font-semibold text-3xl">Add a device</h1>
       <p className="mt-3 text-lg text-muted-foreground leading-relaxed">
-        Your TV or streaming box is showing a short code. Enter it here and it signs in as you.
+        Your TV, streaming box or phone is showing a short code. Enter it here and it signs in as you.
       </p>
 
       <form className="mt-8 space-y-4" onSubmit={submit}>
