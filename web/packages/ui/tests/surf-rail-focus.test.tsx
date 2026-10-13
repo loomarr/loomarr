@@ -72,6 +72,11 @@ describe("TV surf rail focus (#1887)", () => {
   const row = () =>
     host.querySelector(`[aria-label^="recent, channel ${channel?.channelNumber},"]`) as RailNode;
   const card = () => row().firstElementChild as RailNode;
+  // The channel number is the card's data-mono text: its padded digits.
+  const number = () =>
+    Array.from(host.querySelectorAll(".font_data")).find(
+      (node) => node.textContent === channel?.channelNumber.padStart(2, "0"),
+    ) as RailNode;
   const button = (label: string) =>
     Array.from(host.querySelectorAll('[role="button"]')).find((node) =>
       node.textContent?.startsWith(label),
@@ -79,6 +84,8 @@ describe("TV surf rail focus (#1887)", () => {
 
   it("draws the selected card as the one amber while the list has focus", () => {
     expect(amberCard(card())).toBe(true);
+    expect(card().className).toMatch(/\b_btw-3px\b/);
+    expect(number().className).toMatch(/\b_col-actionPrima/);
     expect(ambers(host)).toEqual([card()]);
   });
 
@@ -89,8 +96,11 @@ describe("TV surf rail focus (#1887)", () => {
     act(() => wait.focus());
 
     expect(amberCard(card())).toBe(false);
-    // Tamagui shortens a long token in its class name (`_btc-borderDeco…`).
+    // At rest: a hairline, not the 3px focus border, and a muted number. Tamagui shortens a long
+    // token in its class name (`_btc-borderDeco…`).
     expect(card().className).toMatch(/\b_btc-borderDeco/);
+    expect(card().className).toMatch(/\b_btw-1px\b/);
+    expect(number().className).toMatch(/\b_col-contentMute/);
     // Still the selection OK returns to: the programme line and progress stay.
     expect(card().textContent).toBe(expanded);
     expect(ambers(host)).toEqual([wait]);

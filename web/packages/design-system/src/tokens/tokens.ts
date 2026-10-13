@@ -100,7 +100,7 @@ const semanticThemes = {
       decorative: "#D2D6DE",
       control: "#747C8B",
       // The light theme's own neutral step: its focus surface is amber-tinted, so the airing block
-      // takes the decorative grey one step below `elevated`.
+      // takes the control border and the decorative grey (`#D2D6DE`) one step below `elevated`.
       airing: "#747C8B",
     },
     state: {
