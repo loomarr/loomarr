@@ -80,7 +80,7 @@ const NewThisWeek = ({ titles, channels, since, viewerName, timeZone }: NewThisW
       {titles.length > 0 && (
         // Two columns at phone width; one below 284px of content width — the geometry table's rule,
         // as a container query so it holds whatever chrome shares the viewport.
-        <div className="grid grid-cols-2 items-start gap-3 @max-[284px]:grid-cols-1 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid @max-[284px]:grid-cols-1 grid-cols-2 items-start gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {titles.slice(0, POSTERS).map((t) => (
             <div key={t.key} className="flex min-w-0 flex-col gap-1.5">
               <div
