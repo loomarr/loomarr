@@ -5,61 +5,85 @@ import { eraDates } from "@/lib/era-dates";
 import { RefineReview } from "./refine-review";
 import type { CurrentLineupItem } from "./refine-review.type";
 
-const heat: ProposalItem = { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true };
-const pointBreak: ProposalItem = {
-  name: "Point Break",
+const cartographer: ProposalItem = {
+  name: "The Velvet Cartographer",
+  year: 1995,
+  mediaType: "movie",
+  tmdbId: 90000949,
+  inLibrary: true,
+};
+const satelliteChoir: ProposalItem = {
+  name: "The Seventh Satellite Choir",
   year: 1991,
   mediaType: "movie",
-  tmdbId: 9426,
+  tmdbId: 90009426,
   inLibrary: true,
 };
-const predator: ProposalItem = {
-  name: "Predator",
+const marigold: ProposalItem = {
+  name: "Marigold Protocol",
   year: 1987,
   mediaType: "movie",
-  tmdbId: 106,
+  tmdbId: 90000106,
   inLibrary: true,
 };
-const conAir: ProposalItem = { name: "Con Air", year: 1997, mediaType: "movie", inLibrary: false };
+const pelicanPoint: ProposalItem = {
+  name: "Pelican Point Motel",
+  year: 1997,
+  mediaType: "movie",
+  inLibrary: false,
+};
 
-const currentHeat: CurrentLineupItem = { name: "Heat", year: 1995, key: "movie:tmdb:949" };
-const currentPointBreak: CurrentLineupItem = { name: "Point Break", year: 1991, key: "movie:tmdb:9426" };
+const currentCartographer: CurrentLineupItem = {
+  name: "The Velvet Cartographer",
+  year: 1995,
+  key: "movie:tmdb:90000949",
+};
+const currentSatelliteChoir: CurrentLineupItem = {
+  name: "The Seventh Satellite Choir",
+  year: 1991,
+  key: "movie:tmdb:90009426",
+};
 
 describe("RefineReview", () => {
   it("classifies kept/added/removed by key", () => {
     render(
       <RefineReview
-        proposed={[heat, predator]}
-        current={[currentHeat, currentPointBreak]}
+        proposed={[cartographer, marigold]}
+        current={[currentCartographer, currentSatelliteChoir]}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
     );
 
-    // Heat is on both sides → kept.
+    // The Velvet Cartographer is on both sides → kept.
     expect(screen.getByText("Keeping · 1")).toBeInTheDocument();
-    expect(screen.getByText("Heat")).toBeInTheDocument();
+    expect(screen.getByText("The Velvet Cartographer")).toBeInTheDocument();
 
-    // Predator is new → added.
+    // Marigold Protocol is new → added.
     expect(screen.getByText("Adding · 1")).toBeInTheDocument();
-    expect(screen.getByText("Predator")).toBeInTheDocument();
+    expect(screen.getByText("Marigold Protocol")).toBeInTheDocument();
 
-    // Point Break dropped off the proposed lineup → removed.
+    // The Seventh Satellite Choir dropped off the proposed lineup → removed.
     expect(screen.getByText("Removing · 1")).toBeInTheDocument();
-    expect(screen.getByText("Point Break")).toBeInTheDocument();
+    expect(screen.getByText("The Seventh Satellite Choir")).toBeInTheDocument();
   });
 
   it("falls back to name+year matching when neither side has a usable id", () => {
     // No tmdbId/tvdbId on the proposed item and no key on the current row — the only
-    // case where the fallback should even engage; heat/pointBreak (both real tmdbIds)
+    // case where the fallback should even engage; cartographer/satelliteChoir (both keyed by tmdbId)
     // must never coincidentally collide with an unkeyed current row of the same name.
-    // Predator (a real, keyed add) rides along so this scenario isn't indistinguishable
+    // Marigold Protocol (a keyed add) rides along so this scenario isn't indistinguishable
     // from "no changes" — it's the Keeping section specifically under test here.
-    const unidentified: ProposalItem = { name: "Heat", year: 1995, mediaType: "movie", inLibrary: true };
+    const unidentified: ProposalItem = {
+      name: "The Velvet Cartographer",
+      year: 1995,
+      mediaType: "movie",
+      inLibrary: true,
+    };
     render(
       <RefineReview
-        proposed={[unidentified, predator]}
-        current={[{ name: "Heat", year: 1995 }]}
+        proposed={[unidentified, marigold]}
+        current={[{ name: "The Velvet Cartographer", year: 1995 }]}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
@@ -72,22 +96,22 @@ describe("RefineReview", () => {
   it("renders acquisitions under Adding with the downloading note, distinct from library adds", () => {
     render(
       <RefineReview
-        proposed={[heat]}
-        acquisitions={[conAir]}
-        current={[currentHeat]}
+        proposed={[cartographer]}
+        acquisitions={[pelicanPoint]}
+        current={[currentCartographer]}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
     );
     expect(screen.getByText("Adding (needs downloading) · 1")).toBeInTheDocument();
-    expect(screen.getByText("Con Air")).toBeInTheDocument();
+    expect(screen.getByText("Pelican Point Motel")).toBeInTheDocument();
   });
 
   it("shows the no-changes state and hides Apply when nothing differs", () => {
     render(
       <RefineReview
-        proposed={[heat, pointBreak]}
-        current={[currentHeat, currentPointBreak]}
+        proposed={[cartographer, satelliteChoir]}
+        current={[currentCartographer, currentSatelliteChoir]}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
@@ -98,19 +122,21 @@ describe("RefineReview", () => {
   });
 
   it("treats an empty current lineup as everything being added", () => {
-    render(<RefineReview proposed={[heat, predator]} current={[]} onApply={vi.fn()} onDiscard={vi.fn()} />);
+    render(
+      <RefineReview proposed={[cartographer, marigold]} current={[]} onApply={vi.fn()} onDiscard={vi.fn()} />,
+    );
     expect(screen.getByText("Adding · 2")).toBeInTheDocument();
     expect(screen.queryByText(/keeping/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/removing/i)).not.toBeInTheDocument();
   });
 
   it("shows a programming-policy delta chip for an unpinned field the refine changes", () => {
-    // Lineup unchanged (Heat kept), but the refine changes the era — that policy change used
+    // Lineup unchanged (The Velvet Cartographer kept), but the refine changes the era — that policy change used
     // to apply invisibly (the P3 data-loss bug); the chip is the visible half of the fix.
     render(
       <RefineReview
-        proposed={[heat]}
-        current={[currentHeat]}
+        proposed={[cartographer]}
+        current={[currentCartographer]}
         currentPolicy={{ scope: { dates: eraDates({ from: 1980, to: 1989 }) } }}
         proposedPolicy={{ scope: { dates: eraDates({ from: 1990, to: 1999 }) } }}
         onApply={vi.fn()}
@@ -129,8 +155,8 @@ describe("RefineReview", () => {
   it("summarises per-axis programming dates rather than calling them Any", () => {
     render(
       <RefineReview
-        proposed={[heat]}
-        current={[currentHeat]}
+        proposed={[cartographer]}
+        current={[currentCartographer]}
         currentPolicy={{ scope: { dates: eraDates({ from: 1980, to: 1989 }) } }}
         proposedPolicy={{
           scope: {
@@ -155,28 +181,31 @@ describe("RefineReview", () => {
 
   // V19: the model's why-it-fits was already on ProposalItem and already rendered by
   // ProposalReview — the refine diff built its rows from the same items and dropped it
-  // one function before render. "Adding: Predator" with no reason is the refine asking
+  // one function before render. "Adding: Marigold Protocol" with no reason is the refine asking
   // for trust it hasn't earned.
   it("shows the model's reason on an added title", () => {
-    const withReason: ProposalItem = { ...predator, rationale: "Same era, same energy as Heat." };
+    const withReason: ProposalItem = {
+      ...marigold,
+      rationale: "Same era, same energy as The Velvet Cartographer.",
+    };
     render(
       <RefineReview
-        proposed={[heat, withReason]}
-        current={[currentHeat]}
+        proposed={[cartographer, withReason]}
+        current={[currentCartographer]}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
     );
-    expect(screen.getByText("Same era, same energy as Heat.")).toBeInTheDocument();
+    expect(screen.getByText("Same era, same energy as The Velvet Cartographer.")).toBeInTheDocument();
   });
 
   it("shows the reason on an acquisition too", () => {
-    const withReason: ProposalItem = { ...conAir, rationale: "Fills the late-block slot." };
+    const withReason: ProposalItem = { ...pelicanPoint, rationale: "Fills the late-block slot." };
     render(
       <RefineReview
-        proposed={[heat]}
+        proposed={[cartographer]}
         acquisitions={[withReason]}
-        current={[currentHeat]}
+        current={[currentCartographer]}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
@@ -190,8 +219,8 @@ describe("RefineReview", () => {
     // guards against a future refactor rendering a stale reason on the wrong row.
     render(
       <RefineReview
-        proposed={[heat]}
-        current={[currentHeat, currentPointBreak]}
+        proposed={[cartographer]}
+        current={[currentCartographer, currentSatelliteChoir]}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
       />,
@@ -207,8 +236,8 @@ describe("RefineReview", () => {
     // the ONLY thing that can produce a delta is separation.
     render(
       <RefineReview
-        proposed={[heat]}
-        current={[currentHeat]}
+        proposed={[cartographer]}
+        current={[currentCartographer]}
         currentPolicy={{ separation: { movieNoRepeat: "168h" } } as ChannelPolicy}
         proposedPolicy={{ separation: { movieNoRepeat: "24h" } } as ChannelPolicy}
         onApply={vi.fn()}
@@ -226,8 +255,8 @@ describe("RefineReview", () => {
     // strings would show a phantom diff on every refine that touched nothing.
     render(
       <RefineReview
-        proposed={[heat]}
-        current={[currentHeat]}
+        proposed={[cartographer]}
+        current={[currentCartographer]}
         currentPolicy={{ separation: { movieNoRepeat: "168h" } } as ChannelPolicy}
         proposedPolicy={{ separation: { movieNoRepeat: "168h0m0s" } } as ChannelPolicy}
         onApply={vi.fn()}
@@ -240,8 +269,8 @@ describe("RefineReview", () => {
   it("marks a pinned field as kept — the refine cannot overwrite an operator's setting", () => {
     render(
       <RefineReview
-        proposed={[heat]}
-        current={[currentHeat]}
+        proposed={[cartographer]}
+        current={[currentCartographer]}
         currentPolicy={{ scope: { dates: eraDates({ from: 1980, to: 1989 }) }, operatorSet: ["scope"] }}
         proposedPolicy={{ scope: { dates: eraDates({ from: 1990, to: 1999 }) } }}
         onApply={vi.fn()}
@@ -256,8 +285,8 @@ describe("RefineReview", () => {
     const onDiscard = vi.fn();
     render(
       <RefineReview
-        proposed={[heat, predator]}
-        current={[currentHeat]}
+        proposed={[cartographer, marigold]}
+        current={[currentCartographer]}
         onApply={onApply}
         onDiscard={onDiscard}
       />,
@@ -271,8 +300,8 @@ describe("RefineReview", () => {
   it("disables both actions while busy", () => {
     render(
       <RefineReview
-        proposed={[heat, predator]}
-        current={[currentHeat]}
+        proposed={[cartographer, marigold]}
+        current={[currentCartographer]}
         onApply={vi.fn()}
         onDiscard={vi.fn()}
         busy

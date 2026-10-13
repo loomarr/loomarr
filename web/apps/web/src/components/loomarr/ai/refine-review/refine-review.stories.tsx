@@ -4,13 +4,31 @@ import { RefineReview } from "./refine-review";
 
 const noop = () => {};
 
-const heat = { name: "Heat", year: 1995, mediaType: "movie", tmdbId: 949, inLibrary: true };
-const pointBreak = { name: "Point Break", year: 1991, mediaType: "movie", tmdbId: 9426, inLibrary: true };
-const predator = { name: "Predator", year: 1987, mediaType: "movie", tmdbId: 106, inLibrary: true };
-const conAir = { name: "Con Air", year: 1997, mediaType: "movie", inLibrary: false };
+const cartographer = {
+  name: "The Velvet Cartographer",
+  year: 1995,
+  mediaType: "movie",
+  tmdbId: 90000949,
+  inLibrary: true,
+};
+const satelliteChoir = {
+  name: "The Seventh Satellite Choir",
+  year: 1991,
+  mediaType: "movie",
+  tmdbId: 90009426,
+  inLibrary: true,
+};
+const marigold = {
+  name: "Marigold Protocol",
+  year: 1987,
+  mediaType: "movie",
+  tmdbId: 90000106,
+  inLibrary: true,
+};
+const pelicanPoint = { name: "Pelican Point Motel", year: 1997, mediaType: "movie", inLibrary: false };
 
-const currentHeat = { name: "Heat", year: 1995, key: "movie:tmdb:949" };
-const currentPointBreak = { name: "Point Break", year: 1991, key: "movie:tmdb:9426" };
+const currentCartographer = { name: "The Velvet Cartographer", year: 1995, key: "movie:tmdb:90000949" };
+const currentSatelliteChoir = { name: "The Seventh Satellite Choir", year: 1991, key: "movie:tmdb:90009426" };
 
 // RefineReview — the diff a "Refine with AI" run lands on (§7 refine): kept/added/
 // removed by provisioning key, acquisitions called out as needing a download, and the
@@ -27,9 +45,9 @@ type Story = StoryObj<typeof meta>;
 // The common case: some kept, a new pick, one dropped, and a missing title to acquire.
 const WithChanges: Story = {
   args: {
-    proposed: [heat, predator],
-    acquisitions: [conAir],
-    current: [currentHeat, currentPointBreak],
+    proposed: [cartographer, marigold],
+    acquisitions: [pelicanPoint],
+    current: [currentCartographer, currentSatelliteChoir],
   },
 };
 
@@ -37,8 +55,8 @@ const WithChanges: Story = {
 // disappears rather than approve a no-op.
 const NoChanges: Story = {
   args: {
-    proposed: [heat, pointBreak],
-    current: [currentHeat, currentPointBreak],
+    proposed: [cartographer, satelliteChoir],
+    current: [currentCartographer, currentSatelliteChoir],
   },
 };
 
@@ -46,7 +64,7 @@ const NoChanges: Story = {
 // (not "diff unavailable"), so everything proposed reads as Adding.
 const EmptyChannel: Story = {
   args: {
-    proposed: [heat, pointBreak],
+    proposed: [cartographer, satelliteChoir],
     current: [],
   },
 };
