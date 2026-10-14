@@ -20,8 +20,8 @@ const makeWrapper = () => {
 };
 
 const proposal: Proposal = {
-  intent: { description: "add more Schwarzenegger" },
-  lineup: [{ name: "Predator", year: 1987, mediaType: "movie", tmdbId: 106, inLibrary: true }],
+  intent: { description: "add more Juno Castellan" },
+  lineup: [{ name: "Marigold Protocol", year: 1987, mediaType: "movie", tmdbId: 90000106, inLibrary: true }],
   acquisitions: [],
   alternates: [],
   scores: {
@@ -130,13 +130,13 @@ describe("RefinePanel", () => {
 
     // Landed: the diff shows the new pick, with Apply available.
     const applyButton = await screen.findByRole("button", { name: /apply changes/i });
-    expect(screen.getByText("Predator")).toBeInTheDocument();
+    expect(screen.getByText("Marigold Protocol")).toBeInTheDocument();
 
     await userEvent.click(applyButton);
 
     await waitFor(() => expect(onApplied).toHaveBeenCalledOnce());
     // Applying returns the card to an empty input.
-    expect(screen.queryByText("Predator")).not.toBeInTheDocument();
+    expect(screen.queryByText("Marigold Protocol")).not.toBeInTheDocument();
     expect(screen.getByLabelText(CHANGE)).toHaveValue("");
   });
 
@@ -152,7 +152,7 @@ describe("RefinePanel", () => {
     await screen.findByRole("button", { name: /apply changes/i });
     await userEvent.click(screen.getByRole("button", { name: /discard/i }));
 
-    expect(screen.queryByText("Predator")).not.toBeInTheDocument();
+    expect(screen.queryByText("Marigold Protocol")).not.toBeInTheDocument();
     expect(screen.getByLabelText(CHANGE)).toHaveValue("");
   });
 

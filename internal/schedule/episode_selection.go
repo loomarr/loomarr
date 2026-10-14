@@ -218,14 +218,21 @@ func matchingHolidayEpisodes(episodes []ResolvedProgram, selectedHolidays map[st
 }
 
 func episodeMatchesHoliday(episode ResolvedProgram, selected map[string]bool) bool {
-	haystack := strings.Join(append([]string{episode.Title, episode.Overview}, episode.Tags...), " ")
+	evidence := episodeEvidence(episode)
 	for _, holiday := range builtinCalendar {
 		if len(selected) > 0 && !selected[holiday.id] {
 			continue
 		}
-		if holidayvocab.MatchesEvidence(holiday.id, haystack) {
+		if holidayvocab.Judge(holiday.id, evidence).Fits() {
 			return true
 		}
 	}
 	return false
+}
+
+// episodeEvidence is what the §6 holiday judgment knows about one episode. Episodes carry no
+// genres; the air date and the episode's own title stand in for them.
+func episodeEvidence(episode ResolvedProgram) holidayvocab.Evidence {
+	return holidayvocab.Evidence{Title: episode.Title, Text: []string{episode.Overview}, Keywords: episode.Tags,
+		Episode: true, AirDate: episode.AirDate}
 }

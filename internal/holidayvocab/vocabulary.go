@@ -1,44 +1,94 @@
-// Package holidayvocab owns Loomarr's immutable built-in holiday identities and aliases.
+// Package holidayvocab owns Loomarr's immutable built-in holiday identities and the judgment of
+// whether a title or episode is about one (programming-design §6).
 package holidayvocab
 
 import (
-	"slices"
+	"strings"
+	"time"
 
 	"github.com/loomarr/loomarr/internal/textmatch"
 )
 
 type definition struct {
-	id              string
-	label           string
-	intentAliases   []string
-	evidenceAliases []string
+	id            string
+	label         string
+	intentAliases []string
+	// nameAliases name the holiday itself. Any one, outside its look-alikes, is proof.
+	nameAliases []string
+	// lookAlikes are phrases that contain a name alias without naming the holiday.
+	lookAlikes []string
+	// moodAliases fit the holiday's mood. One counts only when the genres corroborate it.
+	moodAliases []string
+	// moodGenres corroborates a mood alias: any one inner set fully present in the genres.
+	moodGenres [][]string
+	// airWindow is the broadcast window for the year's holiday: a TV episode that first aired
+	// inside it was scheduled for the holiday. end may fall in the next year.
+	airWindow func(year int) (start, end time.Time)
 }
+
+// dateWindow builds an inclusive month/day window; an end before the start wraps into next year.
+func dateWindow(startMonth time.Month, startDay int, endMonth time.Month, endDay int) func(int) (time.Time, time.Time) {
+	return func(year int) (time.Time, time.Time) {
+		start := time.Date(year, startMonth, startDay, 0, 0, 0, 0, time.UTC)
+		end := time.Date(year, endMonth, endDay, 0, 0, 0, 0, time.UTC)
+		if end.Before(start) {
+			end = end.AddDate(1, 0, 0)
+		}
+		return start, end
+	}
+}
+
+// thanksgivingWeek is the week leading up to the fourth Thursday of November, through its Sunday.
+func thanksgivingWeek(year int) (time.Time, time.Time) {
+	first := time.Date(year, time.November, 1, 0, 0, 0, 0, time.UTC)
+	thursday := first.AddDate(0, 0, (int(time.Thursday)-int(first.Weekday())+7)%7+21)
+	return thursday.AddDate(0, 0, -7), thursday.AddDate(0, 0, 3)
+}
+
+var familyFantasy = func() [][]string {
+	var out [][]string
+	for _, family := range []string{"family", "children", "kids", "animation"} {
+		out = append(out, []string{family, "fantasy"})
+	}
+	return out
+}()
 
 var builtins = [...]definition{
 	{
 		id: "halloween", label: "Halloween",
-		intentAliases:   []string{"halloween"},
-		evidenceAliases: []string{"halloween", "spooky", "haunted", "ghost", "witch", "horror"},
+		intentAliases: []string{"halloween"},
+		nameAliases:   []string{"halloween"},
+		moodAliases:   []string{"spooky", "haunted", "ghost", "ghosts", "witch", "witches", "horror", "terror"},
+		moodGenres:    append([][]string{{"horror"}}, familyFantasy...),
+		airWindow:     dateWindow(time.October, 15, time.November, 7),
 	},
 	{
 		id: "thanksgiving", label: "Thanksgiving",
-		intentAliases:   []string{"thanksgiving", "turkey day"},
-		evidenceAliases: []string{"thanksgiving", "turkey day"},
+		intentAliases: []string{"thanksgiving", "turkey day"},
+		nameAliases:   []string{"thanksgiving", "turkey day"},
+		airWindow:     thanksgivingWeek,
 	},
 	{
 		id: "christmas", label: "Christmas",
-		intentAliases:   []string{"christmas", "xmas", "santa", "noel", "yuletide"},
-		evidenceAliases: []string{"christmas", "xmas", "santa", "santa claus", "noel", "yuletide"},
+		intentAliases: []string{"christmas", "xmas", "santa", "noel", "yuletide"},
+		nameAliases:   []string{"christmas", "xmas", "santa", "noel", "yuletide"},
+		// A character's pet name and a city are not Christmas proof.
+		lookAlikes: []string{"santa's little helper", "santa clarita", "santa monica", "santa barbara", "santa fe", "santa cruz",
+			"santa ana", "santa rosa", "santa maria", "santa catalina"},
+		airWindow: dateWindow(time.December, 1, time.January, 2),
 	},
 	{
 		id: "newyear", label: "New Year",
-		intentAliases:   []string{"new year's", "new years", "new year", "nye", "hogmanay"},
-		evidenceAliases: []string{"new year's", "new years", "new year", "nye", "hogmanay"},
+		intentAliases: []string{"new year's", "new years", "new year", "nye", "hogmanay"},
+		nameAliases:   []string{"new year's", "new years", "new year", "nye", "hogmanay"},
+		lookAlikes:    []string{"bill nye"},
+		airWindow:     dateWindow(time.December, 26, time.January, 7),
 	},
 	{
 		id: "valentines", label: "Valentine's Day",
-		intentAliases:   []string{"valentine's", "valentines", "valentine"},
-		evidenceAliases: []string{"valentine's", "valentines", "valentine"},
+		intentAliases: []string{"valentine's", "valentines", "valentine"},
+		nameAliases:   []string{"valentine's", "valentines", "valentine"},
+		airWindow:     dateWindow(time.February, 7, time.February, 21),
 	},
 }
 
@@ -71,27 +121,149 @@ func MatchIntent(text string) []string {
 	return out
 }
 
-// EvidenceAliases returns a copy of the thematic aliases for one built-in id.
-func EvidenceAliases(id string) []string {
-	for _, builtin := range builtins {
-		if builtin.id == id {
-			return slices.Clone(builtin.evidenceAliases)
-		}
-	}
-	return nil
+// Verdict is the closed answer to "is this about the holiday?".
+type Verdict string
+
+const (
+	// VerdictAbout: the holiday is the subject or setting. Only this benches or boosts.
+	VerdictAbout Verdict = "about"
+	// VerdictAdjacent: it fits the holiday's mood without being about it.
+	VerdictAdjacent Verdict = "adjacent"
+	VerdictNot      Verdict = "not"
+)
+
+// Reason says which evidence decided a verdict, for clients to word.
+type Reason string
+
+const (
+	ReasonNameInTitle   Reason = "name_in_title"    // "Halloween in the title"
+	ReasonNameInText    Reason = "name_in_text"     // "mentions Halloween"
+	ReasonHolidayTag    Reason = "holiday_keyword"  // "Halloween keyword"
+	ReasonMoodWithGenre Reason = "mood_and_genre"   // "a ghost story and a horror film"
+	ReasonMoodAiredNear Reason = "mood_and_airdate" // "a spooky episode first shown at Halloween"
+	ReasonMoodInEpisode Reason = "mood_in_episode"  // "a spooky episode title"
+	ReasonNone          Reason = ""
+)
+
+// Evidence is what is known about one title or episode. Text holds free prose (an overview);
+// Keywords holds curated tags (TMDB keywords, media-server tags).
+type Evidence struct {
+	Title    string
+	Text     []string
+	Keywords []string
+	Genres   []string
+	// Episode marks a TV episode: its title describes that one episode, unlike a film title.
+	Episode bool
+	// AirDate is an episode's original air date (zero = unknown).
+	AirDate time.Time
 }
 
-// MatchesEvidence applies the shared holiday vocabulary to a complete metadata
-// field set. A character's pet name and a generic holiday are not Christmas proof.
-func MatchesEvidence(id, text string) bool {
-	for _, alias := range EvidenceAliases(id) {
-		if id == "christmas" && alias == "santa" {
-			if textmatch.ContainsPhraseOutside(text, alias, "Santa's Little Helper") {
-				return true
-			}
-			continue
+// Judgment is one floor verdict with its reason and the alias that decided it.
+type Judgment struct {
+	Verdict Verdict
+	Reason  Reason
+	Cue     string
+}
+
+// Fits reports whether the judgment admits a title to the holiday's own programming.
+func (j Judgment) Fits() bool { return j.Verdict == VerdictAbout || j.Verdict == VerdictAdjacent }
+
+// Judge is the deterministic floor (§6): a name alias anywhere is about the holiday. An episode
+// that first aired in the holiday's broadcast window with a mood alias in its title or overview is
+// about it; a mood alias in an episode's title alone is adjacent. Otherwise a mood alias in the
+// title or keywords is adjacent only when the genres corroborate it; nothing else counts. An air
+// date alone is never evidence: plenty of ordinary episodes air in late October.
+// An unknown id is never about anything.
+func Judge(id string, ev Evidence) Judgment {
+	d, ok := lookup(id)
+	if !ok {
+		return Judgment{Verdict: VerdictNot}
+	}
+	if cue := d.nameIn(ev.Title); cue != "" {
+		return Judgment{Verdict: VerdictAbout, Reason: ReasonNameInTitle, Cue: cue}
+	}
+	for _, kw := range ev.Keywords {
+		if cue := d.nameIn(kw); cue != "" {
+			return Judgment{Verdict: VerdictAbout, Reason: ReasonHolidayTag, Cue: cue}
 		}
-		if textmatch.ContainsPhrase(text, alias) {
+	}
+	for _, text := range ev.Text {
+		if cue := d.nameIn(text); cue != "" {
+			return Judgment{Verdict: VerdictAbout, Reason: ReasonNameInText, Cue: cue}
+		}
+	}
+	if ev.Episode {
+		if d.airedInWindow(ev.AirDate) {
+			if cue := d.moodIn(append([]string{ev.Title}, ev.Text...)...); cue != "" {
+				return Judgment{Verdict: VerdictAbout, Reason: ReasonMoodAiredNear, Cue: cue}
+			}
+		}
+		if cue := d.moodIn(ev.Title); cue != "" {
+			return Judgment{Verdict: VerdictAdjacent, Reason: ReasonMoodInEpisode, Cue: cue}
+		}
+	}
+	if !d.genresCorroborate(ev.Genres) {
+		return Judgment{Verdict: VerdictNot}
+	}
+	if cue := d.moodIn(append([]string{ev.Title}, ev.Keywords...)...); cue != "" {
+		return Judgment{Verdict: VerdictAdjacent, Reason: ReasonMoodWithGenre, Cue: cue}
+	}
+	return Judgment{Verdict: VerdictNot}
+}
+
+func (d definition) moodIn(fields ...string) string {
+	for _, field := range fields {
+		for _, alias := range d.moodAliases {
+			if textmatch.ContainsPhrase(field, alias) {
+				return alias
+			}
+		}
+	}
+	return ""
+}
+
+// airedInWindow checks this year's and last year's window, since some wrap into January.
+func (d definition) airedInWindow(aired time.Time) bool {
+	if aired.IsZero() || d.airWindow == nil {
+		return false
+	}
+	day := time.Date(aired.Year(), aired.Month(), aired.Day(), 0, 0, 0, 0, time.UTC)
+	for _, year := range []int{day.Year() - 1, day.Year()} {
+		start, end := d.airWindow(year)
+		if !day.Before(start) && !day.After(end) {
+			return true
+		}
+	}
+	return false
+}
+
+func lookup(id string) (definition, bool) {
+	for _, builtin := range builtins {
+		if builtin.id == id {
+			return builtin, true
+		}
+	}
+	return definition{}, false
+}
+
+func (d definition) nameIn(text string) string {
+	for _, alias := range d.nameAliases {
+		if textmatch.ContainsPhraseOutside(text, alias, d.lookAlikes...) {
+			return alias
+		}
+	}
+	return ""
+}
+
+// genresCorroborate matches genre words, so a TV library's "Sci-Fi & Fantasy" carries "fantasy".
+func (d definition) genresCorroborate(genres []string) bool {
+	joined := strings.Join(genres, " | ")
+	for _, set := range d.moodGenres {
+		all := true
+		for _, g := range set {
+			all = all && textmatch.ContainsPhrase(joined, g)
+		}
+		if all {
 			return true
 		}
 	}

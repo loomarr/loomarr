@@ -41,7 +41,7 @@ describe("IntentForm", () => {
           tone: "high-energy",
           runtimeTargetMin: 180,
           maxAcquisitions: 10,
-          mustInclude: ["Heat"],
+          mustInclude: ["The Velvet Cartographer"],
           mustExclude: ["Clowns"],
         }}
         onSubmit={onSubmit}
@@ -57,7 +57,7 @@ describe("IntentForm", () => {
         tone: "high-energy",
         runtimeTargetMin: 180,
         maxAcquisitions: 10,
-        mustInclude: ["Heat"],
+        mustInclude: ["The Velvet Cartographer"],
         mustExclude: ["Clowns"],
       }),
     );
@@ -68,14 +68,16 @@ describe("IntentForm", () => {
     render(<IntentForm onSubmit={onSubmit} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "90s action movies" } });
     openConstraints();
-    fireEvent.change(screen.getByLabelText(/must include/i), { target: { value: "Point Break, Heat" } });
-    fireEvent.change(screen.getByLabelText(/must exclude/i), { target: { value: "Con Air" } });
+    fireEvent.change(screen.getByLabelText(/must include/i), {
+      target: { value: "The Seventh Satellite Choir, The Velvet Cartographer" },
+    });
+    fireEvent.change(screen.getByLabelText(/must exclude/i), { target: { value: "Pelican Point Motel" } });
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        mustInclude: ["Point Break", "Heat"],
-        mustExclude: ["Con Air"],
+        mustInclude: ["The Seventh Satellite Choir", "The Velvet Cartographer"],
+        mustExclude: ["Pelican Point Motel"],
       }),
     );
   });
@@ -102,10 +104,14 @@ describe("IntentForm", () => {
     render(<IntentForm onSubmit={onSubmit} />);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "90s action movies" } });
     openConstraints();
-    fireEvent.change(screen.getByLabelText(/must include/i), { target: { value: " Heat , , ,Predator " } });
+    fireEvent.change(screen.getByLabelText(/must include/i), {
+      target: { value: " The Velvet Cartographer , , ,Marigold Protocol " },
+    });
     fireEvent.click(screen.getByRole("button", { name: /suggest/i }));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ mustInclude: ["Heat", "Predator"] }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ mustInclude: ["The Velvet Cartographer", "Marigold Protocol"] }),
+    );
   });
 
   it("still carries the four original constraints", () => {

@@ -204,8 +204,8 @@ func TestComputeDesiredHolidaySelectionUsesEpisodeEvidenceAndKeepsPartsTogether(
 func TestComputeDesiredHolidaySelectionMatchesWholeEpisodeTerms(t *testing.T) {
 	key := provision.Key("series:tmdb:456")
 	episodes := []schedule.ResolvedProgram{
-		{LibraryItemID: "near-match", Title: "The Ghostwriter", DurationMs: 1, Season: 1, Episode: 1},
-		{LibraryItemID: "match", Title: "A Ghost Story", DurationMs: 1, Season: 1, Episode: 2},
+		{LibraryItemID: "near-match", Title: "The Halloweeners", DurationMs: 1, Season: 1, Episode: 1},
+		{LibraryItemID: "match", Title: "A Halloween Story", DurationMs: 1, Season: 1, Episode: 2},
 		{LibraryItemID: "ordinary", Title: "The New Neighbor", DurationMs: 1, Season: 1, Episode: 3},
 	}
 	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
@@ -223,6 +223,69 @@ func TestComputeDesiredHolidaySelectionMatchesWholeEpisodeTerms(t *testing.T) {
 	}
 	if want := []string{"match"}; !slices.Equal(ids, want) {
 		t.Fatalf("whole-term holiday matches = %v, want %v", ids, want)
+	}
+}
+
+// A ghost in an ordinary episode's overview is not Halloween (§6 floor); the annual special that
+// names the holiday is, even when its title only says "Terror".
+func TestComputeDesiredHolidaySelectionNeedsTheHolidayNotAMoodWord(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "ghost", Title: "Grandpa's Attic", Overview: "Lisa is sure a ghost lives upstairs.", DurationMs: 1, Season: 3, Episode: 1},
+		{LibraryItemID: "special", Title: "Treetop of Terror II", Overview: "The annual Halloween special: three spooky tales.", DurationMs: 1, Season: 3, Episode: 7},
+		{LibraryItemID: "haunted-tag", Title: "Night Moves", Tags: []string{"haunted"}, DurationMs: 1, Season: 3, Episode: 9},
+	}
+	october := time.Date(2026, time.October, 20, 20, 0, 0, 0, time.UTC)
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series", EpisodeSelection: schedule.EpisodeSelection{
+			Mode: schedule.EpisodeHoliday, Holidays: []string{"halloween"},
+		},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, october)
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() && !slices.Contains(ids, slot.LibraryItemID) {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	if want := []string{"special"}; !slices.Equal(ids, want) {
+		t.Fatalf("Halloween episodes = %v, want only the episode that names the holiday", ids)
+	}
+}
+
+// An Animation/Comedy sitcom's annual anthology never says "Halloween" and has no tags: its
+// premiere dates and episode titles are the evidence (§6). An ordinary episode that aired in late
+// October, or one whose overview mentions a ghost, is not a Halloween episode.
+func TestComputeDesiredHolidaySelectionFindsAnthologyByAirDateAndTitle(t *testing.T) {
+	key := provision.Key("series:tmdb:456")
+	aired := func(month time.Month, day, year int) time.Time {
+		return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	}
+	episodes := []schedule.ResolvedProgram{
+		{LibraryItemID: "terror-1", Title: "Treetop of Terror", Overview: "Three tales of a cursed doll.", AirDate: aired(time.October, 25, 1990), DurationMs: 1, Season: 2, Episode: 3},
+		{LibraryItemID: "ordinary-oct", Title: "The New Neighbor", Overview: "Dad buys a boat.", AirDate: aired(time.October, 28, 1991), DurationMs: 1, Season: 3, Episode: 5},
+		{LibraryItemID: "terror-2", Title: "Treetop of Terror II", Overview: "A wish goes wrong.", AirDate: aired(time.November, 2, 1991), DurationMs: 1, Season: 3, Episode: 7},
+		{LibraryItemID: "ghost-spring", Title: "Grandpa's Attic", Overview: "Lisa is sure a ghost lives upstairs.", AirDate: aired(time.April, 8, 1992), DurationMs: 1, Season: 3, Episode: 20},
+		{LibraryItemID: "terror-undated", Title: "Treetop of Terror III", Overview: "Three more tales.", DurationMs: 1, Season: 4, Episode: 5},
+	}
+	october := time.Date(2026, time.October, 20, 20, 0, 0, 0, time.UTC)
+	got := schedule.ComputeDesiredAt(seqChannel(), []schedule.LineupEntry{{
+		Key: key, Title: "Series", Genres: []string{"Animation", "Comedy"}, EpisodeSelection: schedule.EpisodeSelection{
+			Mode: schedule.EpisodeHoliday, Holidays: []string{"halloween"},
+		},
+	}}, newSeriesAvail(map[string][]schedule.ResolvedProgram{string(key): episodes}), schedule.PodFill,
+		schedule.ChannelPolicy{}, october)
+
+	var ids []string
+	for _, slot := range got.Slots {
+		if slot.IsProgram() && !slices.Contains(ids, slot.LibraryItemID) {
+			ids = append(ids, slot.LibraryItemID)
+		}
+	}
+	slices.Sort(ids)
+	if want := []string{"terror-1", "terror-2", "terror-undated"}; !slices.Equal(ids, want) {
+		t.Fatalf("Halloween episodes = %v, want the three anthology episodes only", ids)
 	}
 }
 

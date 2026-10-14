@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/loomarr/loomarr/internal/testkit"
@@ -14,7 +15,7 @@ func TestListEpisodesCarriesProductionYear(t *testing.T) {
 	c, ms := newClient(t, Emby)
 	ms.SetEpisodeItems(testkit.EpisodeStub{
 		LibraryItemID: "episode-1", Name: "Homer at the Bat", RunTimeMs: 1_320_000,
-		Season: 3, Episode: 17, ProductionYear: 1992, OfficialRating: "TV-PG",
+		Season: 3, Episode: 17, ProductionYear: 1992, PremiereDate: "1992-02-20T00:00:00.0000000Z", OfficialRating: "TV-PG",
 		CommunityRating: 9.1, Overview: "Springfield plays ball at Christmas", Tags: []string{"holiday", "baseball"},
 	})
 
@@ -29,11 +30,15 @@ func TestListEpisodesCarriesProductionYear(t *testing.T) {
 	if got.ProductionYear != 1992 || got.Season != 3 || got.Episode != 17 {
 		t.Fatalf("episode metadata = %+v, want S03E17 from 1992", got)
 	}
+	if want := time.Date(1992, time.February, 20, 0, 0, 0, 0, time.UTC); !got.AirDate.Equal(want) {
+		t.Fatalf("AirDate = %v, want %v (holiday judgment reads the original air date)", got.AirDate, want)
+	}
 	if got.CommunityRating != 9.1 || got.Overview == "" || len(got.Tags) != 2 {
 		t.Fatalf("episode editorial evidence = %+v, want rating, overview, and tags", got)
 	}
 	requests := ms.Requests()
-	if len(requests) == 0 || !strings.Contains(requests[len(requests)-1].RawQuery, "CommunityRating") {
+	if len(requests) == 0 || !strings.Contains(requests[len(requests)-1].RawQuery, "CommunityRating") ||
+		!strings.Contains(requests[len(requests)-1].RawQuery, "PremiereDate") {
 		t.Fatalf("episode request did not ask for editorial evidence: %+v", requests)
 	}
 }
