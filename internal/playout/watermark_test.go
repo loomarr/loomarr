@@ -92,7 +92,8 @@ func TestBuildItem_WatermarkIsAGPUOverlay(t *testing.T) {
 			switch host.Family {
 			case FamilyNVENC:
 				wantAll(t, hostName+"/"+srcName, g,
-					"movie=filename=/data/watermarks/ch1-abc.png,format=yuva420p,hwupload_cuda[wm]",
+					// The explicit BT.709 conversion (#1659): a coloured bug's hue survives.
+					"movie=filename=/data/watermarks/ch1-abc.png,format=rgba,scale=out_color_matrix=bt709:out_range=tv,format=yuva420p,hwupload_cuda[wm]",
 					"[main][wm]overlay_cuda=x=", "scale_cuda=w=1920:h=1080:format=yuv420p:passthrough=0,fps=25,")
 				main, _, _ := strings.Cut(g, "[main]")
 				if !strings.Contains(main, "format=yuv420p") || strings.HasSuffix(strings.Split(main, "pad_cuda")[0], "format=nv12,") {

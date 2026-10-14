@@ -125,6 +125,21 @@ func civilNoon(now time.Time, zone *time.Location) time.Time {
 	return time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
 }
 
+// ActiveHolidayAt is the calendar holiday a channel honours at t, or "": the holiday the scheduler
+// boosts, through the same calendar, selection and channel-local evaluation (zone = the channel's
+// wall clock, nil = UTC), so the on-screen logo's holiday version (WatermarkHoliday) flips at the
+// same local instant as the programming. A channel whose seasonal mode is off (Ignore holidays)
+// honours none.
+func ActiveHolidayAt(t time.Time, seasonal SeasonalPolicy, zone *time.Location) string {
+	if seasonal.Mode == SeasonalOff {
+		return ""
+	}
+	if active := activeHolidays(t, zone, seasonal.Holidays); len(active) > 0 {
+		return active[0].id
+	}
+	return ""
+}
+
 // activeHolidays returns the calendar holidays whose window contains `now`'s date on zone's wall
 // clock, limited to the channel's selected subset (empty subset = all built-in holidays).
 func activeHolidays(now time.Time, zone *time.Location, selected []string) []holiday {

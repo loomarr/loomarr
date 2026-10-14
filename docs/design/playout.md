@@ -183,8 +183,8 @@ part resumes at its cut through the packager item's `Seek`.
 mapped from VAAPI, #1613) and hidden during filler, bumpers and IDs. The programme's frames never go
 through a CPU filter for it. Software,
 generic, VideoToolbox and HDR10 premium outputs never draw it, the programme still airs, and the
-pipeline says why in `Fallbacks`. `policy.watermark` holds `{enabled, corner, opacity, look, size,
-margin, image, callsign}`, and a nil field means the default (on, top-right). A nil opacity or look
+pipeline says why in `Fallbacks`. `policy.watermark` holds `{enabled, corner, opacity, look, color,
+holiday, motifs, size, margin, image, callsign}`, and a nil field means the default (on, top-right). A nil opacity or look
 means the install setting, `playout.watermark_opacity_pct` (default 40%) or `playout.watermark_look`
 (default `text`), both on Settings → Playback (#1617) and read per programme item, so a change
 re-renders the bugs from each channel's next programme. The generated callsign bug has four looks:
@@ -200,6 +200,45 @@ the overlay adds at most 10 ms per frame to the bug-off encode (the household Ar
 drew a correct bug at 1.25x realtime, #1595). If it fails, including on a VAAPI host without an
 OpenCL runtime, the watermark is off on that host and a `watermark.disabled` Diagnostics event says
 so.
+
+**On-screen logo designs (#1659).** The household-facing name is "On-screen logo" (the two
+Settings → Playback labels say so). The approved design (`project/prototypes/watermark.html`,
+answers recorded in `project/evidence/watermark-2026-10-13.md`) adds six looks to the four:
+`tint` (Colour plate), `twotone` (Number + name), `badge` (Number badge), `lockup` (Number | name,
+white), `glass` (frosted plate, white, gradient alpha) and `stripe` (Era stripe). They are drawn by
+`internal/watermark` (`RenderDesign`) from the mock's own geometry, supersampled and reduced, and are
+still one still PNG with straight alpha. A number look on a channel without a number draws the
+callsign instead (Colour plate, or Text for Number | name). A built look with no holiday picture is
+byte-identical to before and keeps its cache key. Colours come only from the design tokens:
+`policy.watermark.color` is `era` (the default) or one of `amber`, `cyan`, `green`, `red`, `pink`,
+`yellow`, and only the four coloured looks use it. `era` reads the decade the channel's date scope
+centres on (the earliest `from` to the latest `to`): the 1970s are yellow/amber/red, the 1980s
+red/amber/cyan, the 1990s cyan/pink/green, and every other decade, or no bounded window, is amber
+(the stripe amber/cyan/green). That table lives in one place, `watermark.EraPalette`.
+
+**Holiday versions.** While a calendar holiday is on, a generated logo carries a small picture to
+its left: Halloween a pumpkin, bat or ghost; Thanksgiving a leaf; Christmas holly or a snowflake;
+New Year a firework; Valentine's Day a heart (`policy.watermark.motifs` picks where there is a
+choice; the first is the default). With colour `era`, the coloured looks take the holiday's colours
+too; a fixed colour stays. `policy.watermark.holiday` false turns it off; omitted is on, except that
+a channel whose seasonal mode is off (Ignore holidays) never shows one and a channel limited to some
+holidays shows only those. An uploaded image airs unchanged (no holiday version). The holiday comes
+from `schedule.ActiveHolidayAt`, the scheduler's own calendar and selection, so the logo cannot
+disagree with the programming; it is evaluated at the airing's start (`Airing.StartedAt`), so a
+retried open or a mid-programme tune-in gets the same logo and the version changes only at the next
+programme. The holiday version keeps the channel's opacity. The calendar windows are still UTC
+dates; channel-local dates (#1930) replace `ActiveHolidayAt`'s body and both callers follow.
+
+**Colour on the GPU.** A coloured bug needs the right RGB→YUV matrix: the NVENC graph converts the
+bug with `scale=out_color_matrix=bt709:out_range=tv` (as the VAAPI kernel path already did), and
+declares the main BT.709 limited range (`conformColour`, metadata only, the same declaration the
+graph ends with) before `overlay_cuda`, which negotiates one colourspace for both inputs. Measured
+on an RTX 3080 Ti with ffmpeg n9.0.2: the previous graph blended the coloured test bug at luma 158
+where BT.709 is 168.2 (the BT.601 shift); this one passes. The self-check runs a second, coloured
+test bug (the token green, whose BT.601 and BT.709 luma differ by ~9 coded levels at the check
+alpha) through the same assertions; if the white check passes and the coloured one fails, coloured
+looks and holiday pictures air in white on that host (`watermark.colour_disabled` in Diagnostics,
+logged once), never without a logo.
 
 **Admission is one ledger.** See "Admission is one measured ledger" below.
 

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode"
 
 	_ "golang.org/x/image/webp" // custom watermark uploads may be WebP
@@ -39,7 +40,10 @@ type channelWatermarks struct {
 	gpu     func() playout.GPUFilters
 	dir     string
 	// install is the live install-wide opacity and look (watermarkInstall), read on every For.
-	install  func() schedule.WatermarkInstall
+	install func() schedule.WatermarkInstall
+	// zone is the channels' wall clock (guide.timezone, the engine's ResolveWindowZone), so a
+	// holiday version flips at the same local instant as the schedule's holiday. nil = UTC.
+	zone     func() *time.Location
 	channels interface {
 		GetChannel(context.Context, string) (store.Channel, error)
 	}
@@ -74,7 +78,9 @@ func (c *channelWatermarks) blendKernel() string {
 	return c.kernel
 }
 
-type watermarkGate struct{ works atomic.Bool }
+// watermarkGate is an encoder's self-check verdict: works draws the bug at all, colour draws the
+// coloured looks in colour (otherwise they air in white, #1659 Q2).
+type watermarkGate struct{ works, colour atomic.Bool }
 
 // newChannelWatermarks builds the service before the channel packager that asks it for bugs. The
 // image service is built later and bound with withOriginals. Rendered bugs are derived files, kept
@@ -87,6 +93,7 @@ func newChannelWatermarks(rootCtx context.Context, st store.Store, set resolved,
 		gpu:      playout.GPUFiltersFor(ffmpeg),
 		dir:      filepath.Join(filepath.Dir(filepath.Clean(set.str("images.dir"))), "watermarks"),
 		install:  watermarkInstall(set),
+		zone:     windowZone(func() string { return set.str("guide.timezone") }, log),
 		channels: st, log: log, lifetime: rootCtx,
 	}
 	if events != nil {
@@ -113,12 +120,23 @@ func (c *channelWatermarks) withOriginals(imgs *images.Service) {
 	}
 }
 
+// wallClock is the zone holiday versions are dated in; unbound (tests), UTC.
+func (c *channelWatermarks) wallClock() *time.Location {
+	if c.zone == nil {
+		return nil
+	}
+	return c.zone()
+}
+
 // renderVersion changes every cached bug when the renderer's output changes.
 const renderVersion = "1"
 
-// For is the channel packager's resolver: the channel's rendered bug for this output, or nil.
-func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playout.Encoder, width, height int) *playout.Watermark {
-	if !c.gate(enc).works.Load() {
+// For is the channel packager's resolver: the channel's rendered bug for this output, or nil. at is
+// the airing's start (playout.Airing.StartedAt), which picks the holiday version: stable across a
+// retried open and a mid-programme tune-in, so the version changes only at a programme boundary.
+func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playout.Encoder, width, height int, at time.Time) *playout.Watermark {
+	gate := c.gate(enc)
+	if !gate.works.Load() {
 		return nil
 	}
 	ch, err := c.channels.GetChannel(ctx, channelID)
@@ -130,7 +148,9 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 		return nil
 	}
 	look := watermark.Look{Size: res.Size, Opacity: res.Opacity, Shadow: true}
-	key, render := c.source(ctx, ch, res)
+	holiday, motif := schedule.WatermarkHoliday(ch.Policy.Watermark, res, ch.Policy.Seasonal, at, c.wallClock())
+	key, render := c.source(ctx, ch, res, bugDesign{holiday: holiday, motif: watermark.Motif(motif),
+		decade: schedule.WatermarkEraDecade(ch.Policy.Scope), white: !gate.colour.Load()})
 	straight, w, h, err := c.cached(fmt.Sprintf("%s|%d|%g|%g|%s", key, height, look.Size, look.Opacity, renderVersion),
 		func() (watermark.Bug, error) {
 			mask, err := render()
@@ -149,10 +169,35 @@ func (c *channelWatermarks) For(ctx context.Context, channelID string, enc playo
 
 type bugRenderer func(frameHeight int, look watermark.Look) (watermark.Bug, error)
 
-// source picks the bug's image: a custom upload (its own shape; the look does not apply), else the
-// generated callsign bug in the resolved look. The automatic TMDB network logo (between the two in
-// the maintainer's order) is not wired yet.
-func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res schedule.ResolvedWatermark) (string, func() (bugRenderer, error)) {
+// bugDesign is what a generated bug takes beyond the policy: the holiday version at the airing's
+// start, the channel's era, and whether the host draws colour.
+type bugDesign struct {
+	holiday string
+	motif   watermark.Motif
+	decade  int
+	white   bool
+}
+
+// colours is the design's fill and palette (#1659 Q8): "era" is the holiday's colours while one is
+// on, else the era's (amber without one); a named colour fills the look, and the Era stripe keeps
+// the era or holiday palette beside it.
+func (b bugDesign) colours(color string) (watermark.Colour, watermark.Palette) {
+	pal := watermark.EraPalette(b.decade)
+	fill := pal[0]
+	if h, ok := watermark.HolidayLooks[b.holiday]; ok {
+		fill, pal = h.Colour, h.Palette
+	}
+	if color != schedule.WatermarkDefaultColor {
+		fill = watermark.Colour(color)
+	}
+	return fill, pal
+}
+
+// source picks the bug's image: a custom upload (its own shape; the look does not apply, and no
+// holiday version), else the generated callsign bug in the resolved look, colour and holiday
+// version. The automatic TMDB network logo (between the two in the maintainer's order) is not
+// wired yet.
+func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res schedule.ResolvedWatermark, design bugDesign) (string, func() (bugRenderer, error)) {
 	if res.Image != "" && c.originals != nil {
 		return "image:" + res.Image, func() (bugRenderer, error) {
 			path, err := c.originals.Original(ctx, res.Image)
@@ -176,14 +221,22 @@ func (c *channelWatermarks) source(ctx context.Context, ch store.Channel, res sc
 		call = deriveCallsign(ch.Name, ch.Number)
 	}
 	style := watermark.Style(res.Look)
-	return "callsign:" + res.Look + ":" + call, func() (bugRenderer, error) {
-		mask, err := watermark.CallsignMask(call, style)
-		if err != nil {
-			return nil, err
-		}
-		return func(h int, look watermark.Look) (watermark.Bug, error) {
-			return watermark.Render(mask, h, style.Adjust(look)), nil
-		}, nil
+	fill, pal := design.colours(res.Color)
+	d := watermark.Design{Style: style, Callsign: call, Number: ch.Number, Colour: fill, Palette: pal,
+		Motif: design.motif, White: design.white}
+	// The key names only what the look draws, so a built look with no holiday keeps its cached bug.
+	key := "callsign:" + res.Look + ":" + call
+	if style.Coloured() {
+		key += fmt.Sprintf("|%s:%s:%s:%s:%s:white=%t", fill, pal[0], pal[1], pal[2], res.Color, design.white)
+	}
+	if style == watermark.StyleTwotone || style == watermark.StyleBadge || style == watermark.StyleLockup {
+		key += fmt.Sprintf("|n%d", ch.Number)
+	}
+	if design.motif != "" {
+		key += fmt.Sprintf("|hol:%s:%s:white=%t", design.holiday, design.motif, design.white)
+	}
+	return key, func() (bugRenderer, error) {
+		return func(h int, look watermark.Look) (watermark.Bug, error) { return watermark.RenderDesign(d, h, look) }, nil
 	}
 }
 
@@ -315,14 +368,22 @@ func (c *channelWatermarks) check(enc playout.Encoder, g *watermarkGate) {
 	dir := filepath.Join(c.dir, "check-"+string(enc))
 	r := playout.WatermarkCheck(c.lifetime, c.ffmpeg(), host, dir)
 	_ = os.RemoveAll(dir)
+	g.colour.Store(r.Colour)
 	g.works.Store(r.Works)
 	level, name, msg := diagnostics.LevelInfo, "watermark.overlay_verified", "Channel watermark GPU overlay verified on "+string(enc)
-	if !r.Works {
+	switch {
+	case r.Works && !r.Colour:
+		// Logged once, here: the gate keeps the verdict, so every later bug is simply white.
+		level, name = diagnostics.LevelWarn, "watermark.colour_disabled"
+		msg = "Coloured on-screen logos air in white on this host (" + string(enc) + "): " + r.ColourDetail +
+			". The white logo passed its picture check, so every programme still carries one."
+		c.log.Warn("watermark: coloured looks air in white on this host", "encoder", enc, "reason", r.ColourDetail)
+	case !r.Works:
 		level, name = diagnostics.LevelWarn, "watermark.disabled"
 		msg = "Channel watermarks are off on this host (" + string(enc) + "): " + r.Detail +
 			". Watermarks are drawn only by a GPU overlay that passes its picture check, never on the CPU."
 		c.log.Warn("watermark: disabled on this host", "encoder", enc, "reason", r.Detail)
-	} else {
+	default:
 		c.log.Info("watermark: GPU overlay verified", "encoder", enc, "detail", r.Detail)
 	}
 	// A Diagnostics event, not a startup check: the check runs when an encoder first airs a
