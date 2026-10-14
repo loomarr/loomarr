@@ -87,12 +87,14 @@ export type {
   HintProps,
   MenuItem,
   MenuListProps,
+  RadioGroupProps,
+  RadioItemProps,
   SelectControlProps,
   SelectOption,
   TabOption,
   TabsProps,
 } from "./src/selection";
-export { Hint, MenuList, SelectControl, Tabs } from "./src/selection";
+export { Hint, MenuList, RadioGroup, RadioItem, SelectControl, Tabs } from "./src/selection";
 export type { BottomSheetProps } from "./src/sheet";
 export { BottomSheet } from "./src/sheet";
 export type { AnalogSnowProps } from "./src/snow";

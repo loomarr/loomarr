@@ -66,13 +66,15 @@ const render = (over: Partial<OnScreenLogoSectionProps> = {}) => {
   const container = doc.createElement("div");
   doc.body.append(container);
   const root = createRoot(container);
-  act(() => {
-    root.render(
-      <LoomarrProvider theme="dark">
-        <OnScreenLogoSection {...props} />
-      </LoomarrProvider>,
-    );
-  });
+  const rerender = (next: Partial<OnScreenLogoSectionProps>) =>
+    act(() => {
+      root.render(
+        <LoomarrProvider theme="dark">
+          <OnScreenLogoSection {...props} {...next} />
+        </LoomarrProvider>,
+      );
+    });
+  rerender({});
   const radio = (name: string) => {
     const hit = Array.from(container.querySelectorAll('[role="radio"]')).find(
       (n) => n.getAttribute("aria-label") === name,
@@ -80,10 +82,36 @@ const render = (over: Partial<OnScreenLogoSectionProps> = {}) => {
     if (!hit) throw new Error(`missing radio: ${name}`);
     return hit;
   };
-  return { container, props, radio, unmount: () => act(() => root.unmount()) };
+  return { container, props, radio, rerender, unmount: () => act(() => root.unmount()) };
 };
 
 describe("OnScreenLogoSection", () => {
+  it("re-syncs the name box when the saved name is reset, and a blur then saves nothing", () => {
+    const { container, props, rerender } = render({ policy: { callsign: "WXYZ" } });
+    const input = () =>
+      container.querySelectorAll('[aria-label="Name on the logo"]')[0] as unknown as {
+        dispatchEvent(e: unknown): void;
+        value: string;
+      };
+    expect(input().value).toBe("WXYZ");
+    rerender({ policy: {} });
+    expect(input().value).toBe("");
+    act(() => input().dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
+    expect(props.onChange).not.toHaveBeenCalled();
+  });
+
+  it("is one tab stop per group and the arrow keys move the style choice", () => {
+    const { container, props, radio } = render({ policy: { look: "text" } });
+    const stops = (name: string) =>
+      Array.from(
+        container.querySelectorAll(`[role="radiogroup"][aria-label="${name}"] [role="radio"]`),
+      ).filter((n) => n.getAttribute("tabindex") === "0");
+    expect(stops("Position")).toHaveLength(1);
+    const first = radio("Top left") as unknown as { dispatchEvent(e: unknown): void };
+    act(() => first.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" })));
+    expect(props.onChange).toHaveBeenCalledWith({ corner: "top-right" });
+  });
+
   it("saves one field at a time and marks inherited fields Default", () => {
     const { container, props, radio, unmount } = render();
     expect(container.textContent).toContain("On-screen logo");

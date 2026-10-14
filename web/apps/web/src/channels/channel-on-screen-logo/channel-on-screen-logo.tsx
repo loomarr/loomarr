@@ -5,10 +5,12 @@ import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
 import type { PreviewChannelWatermarkHoliday } from "@loomarr/api/models/previewChannelWatermarkHoliday";
 import type { PreviewChannelWatermarkPicture } from "@loomarr/api/models/previewChannelWatermarkPicture";
 import type { WatermarkPolicy } from "@loomarr/api/models/watermarkPolicy";
+import { toProblem } from "@loomarr/api/mutator";
 import { unwrap } from "@loomarr/api/unwrap";
 import { type OnScreenLogoPolicy, type OnScreenLogoPreviewRequest, OnScreenLogoSection } from "@loomarr/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
+import { toast } from "sonner";
 import { useSettingsEntries } from "@/settings/use-settings-entries";
 
 // The Channel info tab's On-screen logo section (#1659), wired to the backend: every choice is one
@@ -68,9 +70,21 @@ const ChannelOnScreenLogo = ({ channel, onOpenProgramming, savePolicy }: Channel
 
   const save = (next: WatermarkPolicy) => savePolicy({ ...policy, watermark: next });
 
+  // The upload takes a while; edits made meanwhile are in the page's pending policy. Patch only
+  // `image` onto the latest watermark, not the one captured when the upload began.
+  const latest = useRef(watermark);
+  latest.current = watermark;
+  const latestPolicy = useRef(policy);
+  latestPolicy.current = policy;
   const upload = async (file: File) => {
-    const res = unwrap(await channelsApi.uploadChannelWatermark(channel.id, { file }));
-    if (res?.image) save({ ...watermark, image: res.image });
+    try {
+      const res = unwrap(await channelsApi.uploadChannelWatermark(channel.id, { file }));
+      if (res?.image) {
+        savePolicy({ ...latestPolicy.current, watermark: { ...latest.current, image: res.image } });
+      }
+    } catch (e) {
+      toast.error(toProblem(e).title ?? "Couldn't upload the logo");
+    }
   };
 
   // Until the options arrive the section would read "ignores holidays"; wait rather than mislead.

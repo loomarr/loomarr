@@ -5,6 +5,8 @@ import {
   Field,
   FieldHint,
   LogoScene,
+  RadioGroup,
+  RadioItem,
   SelectControl,
   Surface,
   Text,
@@ -327,17 +329,15 @@ interface PickProps<V extends string> {
 // A row of selectable cards (style thumbnails, scene buttons, "Show as"): one radio group.
 // With `columns`, the cards sit in a fixed grid of equal tiles (the mock's .looks grid).
 const Pick = <V extends string>({ columns, label, lead, onPick, options, value }: PickProps<V>) => {
-  const card = (o: PickProps<V>["options"][number]) => {
-    const checked = o.value === value;
-    return (
-      <Pressable
-        accessibilityLabel={o.label}
-        accessibilityRole="radio"
-        aria-checked={checked}
-        key={o.value}
-        onPress={() => onPick(o.value)}
-        style={columns ? { flex: 1, minWidth: 0 } : undefined}
-      >
+  const values = options.map((o) => o.value);
+  const card = (o: PickProps<V>["options"][number]) => (
+    <RadioItem
+      key={o.value}
+      label={o.label}
+      style={columns ? { flex: 1, minWidth: 0 } : undefined}
+      value={o.value}
+    >
+      {({ checked }) => (
         <Surface
           alignItems={columns ? "stretch" : "center"}
           backgroundColor={checked ? "$surfaceFocus" : "$surfaceRaised"}
@@ -357,15 +357,22 @@ const Pick = <V extends string>({ columns, label, lead, onPick, options, value }
           )}
           <Text textRole="cardLabel">{o.label}</Text>
         </Surface>
-      </Pressable>
-    );
-  };
+      )}
+    </RadioItem>
+  );
   if (!columns) {
     return (
-      <Surface alignItems="center" aria-label={label} role="radiogroup" {...group}>
+      <RadioGroup
+        alignItems="center"
+        label={label}
+        onValueChange={(v) => onPick(v as V)}
+        value={value}
+        values={values}
+        {...group}
+      >
         {lead}
         {options.map(card)}
-      </Surface>
+      </RadioGroup>
     );
   }
   // Rows of `columns` equal cells; the last row keeps empty cells so its tiles stay the same width.
@@ -373,7 +380,14 @@ const Pick = <V extends string>({ columns, label, lead, onPick, options, value }
     options.slice(i * columns, (i + 1) * columns),
   );
   return (
-    <Surface aria-label={label} borderWidth={0} gap={8} role="radiogroup">
+    <RadioGroup
+      borderWidth={0}
+      gap={8}
+      label={label}
+      onValueChange={(v) => onPick(v as V)}
+      value={value}
+      values={values}
+    >
       {rows.map((r) => (
         <View key={r[0]?.value} style={{ flexDirection: "row", gap: 8 }}>
           {r.map(card)}
@@ -383,7 +397,7 @@ const Pick = <V extends string>({ columns, label, lead, onPick, options, value }
           ))}
         </View>
       ))}
-    </Surface>
+    </RadioGroup>
   );
 };
 
@@ -513,6 +527,9 @@ const OnScreenLogoSection = ({
   const [view, setView] = useState<string | null | undefined>(undefined);
   const [open, setOpen] = useState<"size" | "margin" | "opacity" | null>(null);
   const [callsign, setCallsign] = useState(p.callsign ?? "");
+  // The box is a draft of the saved name: follow it when it changes underneath (Reset to default,
+  // a save that was reverted), or the next blur would write the stale draft back.
+  useEffect(() => setCallsign(p.callsign ?? ""), [p.callsign]);
 
   const enabled = p.enabled !== false;
   const lookValue = p.look ?? defaults.look;
@@ -600,18 +617,16 @@ const OnScreenLogoSection = ({
         onReset={reset("color")}
         overridden={p.color !== undefined}
       >
-        <Surface aria-label="Colour" role="radiogroup" {...group}>
-          {COLORS.map((c) => {
-            const checked = (p.color ?? "era") === c.value;
-            return (
-              <Pressable
-                accessibilityLabel={c.label}
-                accessibilityRole="radio"
-                aria-checked={checked}
-                disabled={!colorOn}
-                key={c.value}
-                onPress={() => onChange({ color: c.value })}
-              >
+        <RadioGroup
+          label="Colour"
+          onValueChange={(v) => onChange({ color: v as LogoColor })}
+          value={p.color ?? "era"}
+          values={COLORS.map((c) => c.value)}
+          {...group}
+        >
+          {COLORS.map((c) => (
+            <RadioItem disabled={!colorOn} key={c.value} label={c.label} ringRadius={16} value={c.value}>
+              {({ checked }) => (
                 <Surface
                   backgroundColor={c.swatch}
                   borderColor={checked ? "$actionPrimary" : "$borderControl"}
@@ -620,10 +635,10 @@ const OnScreenLogoSection = ({
                   height={32}
                   width={32}
                 />
-              </Pressable>
-            );
-          })}
-        </Surface>
+              )}
+            </RadioItem>
+          ))}
+        </RadioGroup>
       </Row>
       <Row
         field="callsign"
@@ -709,17 +724,17 @@ const OnScreenLogoSection = ({
                       </Badge>
                     ) : null}
                     {h.pictures.length > 1 ? (
-                      <Surface aria-label={`Picture for ${h.name}`} role="radiogroup" {...group} gap={6}>
-                        {h.pictures.map((m) => {
-                          const checked = m.id === h.picture;
-                          return (
-                            <Pressable
-                              accessibilityLabel={`${m.name} for ${h.name}`}
-                              accessibilityRole="radio"
-                              aria-checked={checked}
-                              key={m.id}
-                              onPress={() => onChange({ motifs: { ...p.motifs, [h.id]: m.id } })}
-                            >
+                      <RadioGroup
+                        label={`Picture for ${h.name}`}
+                        onValueChange={(id) => onChange({ motifs: { ...p.motifs, [h.id]: id } })}
+                        value={h.picture}
+                        values={h.pictures.map((m) => m.id)}
+                        {...group}
+                        gap={6}
+                      >
+                        {h.pictures.map((m) => (
+                          <RadioItem key={m.id} label={`${m.name} for ${h.name}`} value={m.id}>
+                            {({ checked }) => (
                               <Surface
                                 alignItems="center"
                                 backgroundColor={checked ? "$surfaceFocus" : "transparent"}
@@ -738,10 +753,10 @@ const OnScreenLogoSection = ({
                                 />
                                 <Text textRole="cardLabel">{m.name}</Text>
                               </Surface>
-                            </Pressable>
-                          );
-                        })}
-                      </Surface>
+                            )}
+                          </RadioItem>
+                        ))}
+                      </RadioGroup>
                     ) : (
                       <View style={{ ...row, gap: 6 }}>
                         <MotifIcon src={previewSrc({ holiday: h.id, motifOnly: true })} />
@@ -772,18 +787,19 @@ const OnScreenLogoSection = ({
         onReset={reset("corner")}
         overridden={p.corner !== undefined}
       >
-        <Surface aria-label="Position" role="radiogroup" {...group} gap={6} width={118}>
-          {CORNERS.map((c) => {
-            const checked = corner === c.value;
-            return (
-              <Pressable
-                accessibilityLabel={c.label}
-                accessibilityRole="radio"
-                aria-checked={checked}
-                key={c.value}
-                onPress={() => onChange({ corner: c.value })}
-              >
-                {/* The mock's .cell: 56 × 40, the chosen one tinted with a 16 px marker inside. */}
+        <RadioGroup
+          label="Position"
+          onValueChange={(v) => onChange({ corner: v as LogoCorner })}
+          value={corner}
+          values={CORNERS.map((c) => c.value)}
+          {...group}
+          gap={6}
+          width={118}
+        >
+          {CORNERS.map((c) => (
+            <RadioItem key={c.value} label={c.label} value={c.value}>
+              {({ checked }) => (
+                // The mock's .cell: 56 × 40, the chosen one tinted with a 16 px marker inside.
                 <Surface
                   alignItems="center"
                   backgroundColor={checked ? "$surfaceFocus" : "transparent"}
@@ -798,10 +814,10 @@ const OnScreenLogoSection = ({
                     <Surface backgroundColor="$actionPrimary" borderRadius={3} height={14} width={14} />
                   ) : null}
                 </Surface>
-              </Pressable>
-            );
-          })}
-        </Surface>
+              )}
+            </RadioItem>
+          ))}
+        </RadioGroup>
       </Row>
       <Row
         field="size"
