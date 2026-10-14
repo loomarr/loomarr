@@ -168,7 +168,7 @@ func ResolveWatermark(p *WatermarkPolicy, install WatermarkInstall) ResolvedWate
 
 // WatermarkEraDecade is the decade a channel's era sits in (1980 for the 1980s), the key
 // of "Match the era" (watermark.EraPalette), or 0 when the channel has no era. The era is the one the
-// Programming tab shows (DateScope.Era: the same single range on all three axes), so what airs and
+// Programming tab shows (the date scope's era range: the same single range on all three axes), so what airs and
 // what the page says cannot disagree; any other date scope, an open-ended range or one spanning
 // decades has none (amber).
 func WatermarkEraDecade(scope ScopePolicy) int {

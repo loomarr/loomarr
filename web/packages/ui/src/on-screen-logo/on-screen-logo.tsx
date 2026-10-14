@@ -319,6 +319,8 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
 
 interface PickProps<V extends string> {
   columns?: number;
+  /** Paused: real disabled radios. Only the picture dims; the names keep full contrast. */
+  disabled?: boolean;
   label: string;
   /** Shown first in the row, before the cards (the mock's inline "Show as"). */
   lead?: ReactNode;
@@ -329,10 +331,11 @@ interface PickProps<V extends string> {
 
 // A row of selectable cards (style thumbnails, scene buttons, "Show as"): one radio group.
 // With `columns`, the cards sit in a fixed grid of equal tiles (the mock's .looks grid).
-const Pick = <V extends string>({ columns, label, lead, onPick, options, value }: PickProps<V>) => {
+const Pick = <V extends string>({ columns, disabled, label, lead, onPick, options, value }: PickProps<V>) => {
   const values = options.map((o) => o.value);
   const card = (o: PickProps<V>["options"][number]) => (
     <RadioItem
+      disabled={disabled}
       key={o.value}
       label={o.label}
       style={columns ? { flex: 1, minWidth: 0 } : undefined}
@@ -352,10 +355,10 @@ const Pick = <V extends string>({ columns, label, lead, onPick, options, value }
         >
           {columns ? (
             // The mock's .thumb: a dark gradient box that holds the bug, name left-aligned below.
-            <View style={thumb}>{o.visual}</View>
-          ) : (
-            o.visual
-          )}
+            <View style={{ ...thumb, opacity: disabled ? 0.55 : 1 }}>{o.visual}</View>
+          ) : o.visual ? (
+            <View style={{ opacity: disabled ? 0.55 : 1 }}>{o.visual}</View>
+          ) : null}
           <Text textRole="cardLabel">{o.label}</Text>
         </Surface>
       )}
@@ -580,12 +583,12 @@ const OnScreenLogoSection = ({
         help="How the logo Loomarr draws from this channel looks. Pick one and watch the preview. A logo you upload keeps its own shape."
         hint={img ? "Your own image is in use, so styles are paused." : `${look.label}: ${look.help}`}
         label="Style"
-        off={!enabled || img}
         onReset={reset("look")}
         overridden={p.look !== undefined}
       >
         <Pick
           columns={phone ? 2 : 3}
+          disabled={!enabled || img}
           label="Style"
           onPick={(v) => onChange({ look: v })}
           options={LOOKS.map((l) => ({
