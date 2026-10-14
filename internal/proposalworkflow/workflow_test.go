@@ -62,14 +62,14 @@ func TestJourneyTraceClonesDoNotAliasRepositoryEvidence(t *testing.T) {
 	t.Parallel()
 
 	trace := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:603"}}}
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000603"}}}
 	proposal := &ProposalRef{Proposal: suggest.Proposal{Trace: trace}}
 	failure := &Failure{Trace: trace}
 	proposalClone := cloneProposal(proposal)
 	failureClone := cloneFailure(failure)
 	proposalClone.Proposal.Trace.Candidates[0].Key = "mutated-proposal"
 	failureClone.Trace.Candidates[0].Key = "mutated-failure"
-	if proposal.Proposal.Trace.Candidates[0].Key != "movie:tmdb:603" || failure.Trace.Candidates[0].Key != "movie:tmdb:603" {
+	if proposal.Proposal.Trace.Candidates[0].Key != "movie:tmdb:90000603" || failure.Trace.Candidates[0].Key != "movie:tmdb:90000603" {
 		t.Fatalf("caller mutation changed repository evidence: proposal=%+v failure=%+v", proposal, failure)
 	}
 }
@@ -81,8 +81,8 @@ func TestSafeFailureMapsKnownTerminalEvidenceAndRemovesPrivateTrace(t *testing.T
 		Version: suggest.DecisionTraceVersion, SurfacedTotal: 1, RecordedTotal: 1,
 		Terminal: suggest.TerminalMalformedExhausted,
 		Candidates: []suggest.DecisionCandidate{{
-			Key: "movie:tmdb:603", Name: "private-library-title", Ownership: "library",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:603"}, Disposition: suggest.DispositionSelected, Reason: "selected",
+			Key: "movie:tmdb:90000603", Name: "private-library-title", Ownership: "library",
+			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected",
 		}},
 	}
 	failure := safeFailure(FailureBudgetExhausted, privateTrace)

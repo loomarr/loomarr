@@ -13,18 +13,18 @@ import (
 
 func TestApprovalAdditionAdapterOwnsLibraryPresenceAtTheGate(t *testing.T) {
 	presence := &catalogfixture.Presence{Hits: map[int]catalog.Presence{
-		672: {LibraryItemID: "library-672", OfficialRating: "PG", Genres: []string{"Fantasy"}, SizeBytes: 4_200_000_000},
+		90000672: {LibraryItemID: "library-90000672", OfficialRating: "PG", Genres: []string{"Fantasy"}, SizeBytes: 4_200_000_000},
 	}}
 	adapter := approvalAdditionAdapter{presence: func() catalog.LibraryPresence { return presence }}
 
 	owned, isOwned, err := adapter.ResolveApprovalAddition(context.Background(), suggest.ProposalItem{
-		MediaType: provision.Movie, TMDBID: 672, Name: "Owned", InLibrary: false, OfficialRating: "G",
+		MediaType: provision.Movie, TMDBID: 90000672, Name: "Owned", InLibrary: false, OfficialRating: "G",
 		SizeBytes: 1, SizeConfidence: storagegovernor.SizeEstimated,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isOwned || !owned.InLibrary || owned.LibraryItemID != "library-672" || owned.OfficialRating != "PG" || len(owned.Genres) != 1 {
+	if !isOwned || !owned.InLibrary || owned.LibraryItemID != "library-90000672" || owned.OfficialRating != "PG" || len(owned.Genres) != 1 {
 		t.Fatalf("owned addition = %+v, %v; want authoritative Library metadata", owned, isOwned)
 	}
 	if owned.SizeBytes != 4_200_000_000 || owned.SizeConfidence != storagegovernor.SizeExact {
@@ -32,7 +32,7 @@ func TestApprovalAdditionAdapterOwnsLibraryPresenceAtTheGate(t *testing.T) {
 	}
 
 	missing, isOwned, err := adapter.ResolveApprovalAddition(context.Background(), suggest.ProposalItem{
-		MediaType: provision.Movie, TMDBID: 673, Name: "Missing", InLibrary: true,
+		MediaType: provision.Movie, TMDBID: 90000673, Name: "Missing", InLibrary: true,
 		LibraryItemID: "forged-id", OfficialRating: "G", SizeBytes: 9, SizeConfidence: storagegovernor.SizeExact,
 	})
 	if err != nil {

@@ -135,8 +135,8 @@ func newSplitAdapter(t *testing.T, bus *events.Bus, withSplitter bool) (fillerSe
 			t.Fatal(err)
 		}
 		tools := splitFakeTools{chapters: []filler.Chapter{
-			{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
-			{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
+			{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
+			{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 		}}
 		n := 0
 		a.splitter = filler.NewSplitter(fillerSplitStoreAdapter{st: st}, tools, nil, drop,
@@ -397,7 +397,7 @@ func TestSplit_ReportsOverTheBusAndPersistsTheProposal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.Segments) != 2 || p.Segments[0].Name != "McDonald's" {
+	if len(p.Segments) != 2 || p.Segments[0].Name != "Burger Barn" {
 		t.Errorf("persisted proposal = %+v", p.Segments)
 	}
 	operation, err := st.GetInteractiveOperation(context.Background(), jobID)
@@ -445,8 +445,8 @@ func TestConfirmSplit_WritesEverySegmentWithRecoverableConditioningLineage(t *te
 
 	n := 0
 	sp := filler.NewSplitter(fillerSplitStoreAdapter{st: st}, splitFakeTools{chapters: []filler.Chapter{
-		{StartMs: 0, EndMs: 30_000, Title: "McDonald's"},
-		{StartMs: 30_000, EndMs: 61_000, Title: "Lego"},
+		{StartMs: 0, EndMs: 30_000, Title: "Burger Barn"},
+		{StartMs: 30_000, EndMs: 61_000, Title: "Brickle"},
 	}}, nil, drop, func() time.Duration { return 10 * time.Second },
 		func() string { n++; return fmt.Sprintf("sp_%d", n) }, time.Now, nil)
 

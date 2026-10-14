@@ -33,9 +33,9 @@ func TestEventEmitterPublishesToBus(t *testing.T) {
 	emit := &eventEmitter{bus: bus}
 
 	ev := provision.DomainEvent{
-		Key:   provision.Key("movie:tmdb:603"),
+		Key:   provision.Key("movie:tmdb:90000603"),
 		State: provision.Available,
-		Title: provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"},
+		Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"},
 	}
 	emit.Emit(context.Background(), ev)
 
@@ -52,8 +52,8 @@ func TestEventEmitterPublishesToBus(t *testing.T) {
 		if !ok {
 			t.Fatalf("payload type = %T, want api.TitleEvent", got.Payload)
 		}
-		if payload.Key != "movie:tmdb:603" || payload.State != "available" || payload.Name != "The Matrix" {
-			t.Errorf("payload = %+v, want key/state/name for The Matrix available", payload)
+		if payload.Key != "movie:tmdb:90000603" || payload.State != "available" || payload.Name != "Marigold Protocol" {
+			t.Errorf("payload = %+v, want key/state/name for Marigold Protocol available", payload)
 		}
 	default:
 		t.Fatal("no event published to the bus — #11 seam still open (nothing reached the subscriber)")

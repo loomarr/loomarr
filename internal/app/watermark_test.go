@@ -240,7 +240,7 @@ func TestDeriveCallsign(t *testing.T) {
 	for name, want := range map[string]string{
 		"Saturday Cartoons":                  "SC",
 		"Retro Cartoons":                     "RC",
-		"TGIF Sitcoms":                       "TGIF",
+		"QFUN Sitcoms":                       "QFUN",
 		"80s Horror":                         "80s",
 		"The Sci-Fi Vault":                   "SV",
 		"A Midnight Movies":                  "MM",

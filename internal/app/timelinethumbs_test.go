@@ -48,14 +48,14 @@ const imgBase = "https://image.tmdb.org/t/p/original"
 func newTimelineTMDB(t *testing.T) *tmdb.Client {
 	t.Helper()
 	mock := tmdbTimelineStub(t,
-		map[string]string{"/movie/603": "/matrix-wide.jpg"},
-		// Episode stills, keyed by the TMDB series id (456 direct; 789 reached via the tvdb bridge).
+		map[string]string{"/movie/90000603": "/marigold-wide.jpg"},
+		// Episode stills, keyed by the TMDB series id (90000456 direct; 90000789 reached via the tvdb bridge).
 		map[string]string{
-			"/tv/456/season/1/episode/6": "/lisa.jpg",
-			"/tv/789/season/2/episode/1": "/bart.jpg",
+			"/tv/90000456/season/1/episode/6": "/pip.jpg",
+			"/tv/90000789/season/2/episode/1": "/dot.jpg",
 		},
-		// The TVDB→TMDB bridge: tvdb 71663 → tmdb series 789.
-		map[string]int{"/find/71663": 789},
+		// The TVDB→TMDB bridge: tvdb 90071663 → tmdb series 90000789.
+		map[string]int{"/find/90071663": 90000789},
 	)
 	t.Cleanup(mock.Close)
 	return tmdb.NewWithBase(mock.URL, "key")
@@ -78,9 +78,9 @@ func TestTimelineThumbResolver(t *testing.T) {
 	// A fetched row per source URL the resolver should arrive at. The hashes are arbitrary but
 	// must be valid sha256 hex, since that is what a rendition URL is allowed to contain.
 	seeded := map[string]string{
-		imgBase + "/lisa.jpg":        strings.Repeat("a", 64),
-		imgBase + "/matrix-wide.jpg": strings.Repeat("b", 64),
-		imgBase + "/bart.jpg":        strings.Repeat("c", 64),
+		imgBase + "/pip.jpg":           strings.Repeat("a", 64),
+		imgBase + "/marigold-wide.jpg": strings.Repeat("b", 64),
+		imgBase + "/dot.jpg":           strings.Repeat("c", 64),
 	}
 	for src, hash := range seeded {
 		if err := st.PutImage(ctx, images.Image{
@@ -100,14 +100,14 @@ func TestTimelineThumbResolver(t *testing.T) {
 		season, episode int
 		wantHash        string
 	}{
-		{"tmdb series → episode still", "series:tmdb:456", 1, 6, seeded[imgBase+"/lisa.jpg"]},
-		{"movie → backdrop", "movie:tmdb:603", 0, 0, seeded[imgBase+"/matrix-wide.jpg"]},
+		{"tmdb series → episode still", "series:tmdb:90000456", 1, 6, seeded[imgBase+"/pip.jpg"]},
+		{"movie → backdrop", "movie:tmdb:90000603", 0, 0, seeded[imgBase+"/marigold-wide.jpg"]},
 		// A series episode TMDB doesn't have (404) → "", not an error.
-		{"series with no still", "series:tmdb:456", 9, 9, ""},
+		{"series with no still", "series:tmdb:90000456", 9, 9, ""},
 		// The COMMON case (§3 series prefer a TVDB key): bridge TVDB→TMDB, then the episode still.
-		{"tvdb series → bridged episode still", "series:tvdb:71663", 2, 1, seeded[imgBase+"/bart.jpg"]},
+		{"tvdb series → bridged episode still", "series:tvdb:90071663", 2, 1, seeded[imgBase+"/dot.jpg"]},
 		// A TVDB series TMDB has no match for → "" (no error).
-		{"tvdb series with no TMDB match", "series:tvdb:2000", 1, 1, ""},
+		{"tvdb series with no TMDB match", "series:tvdb:90002000", 1, 1, ""},
 		{"empty key", "", 0, 0, ""},
 		{"malformed key", "not-a-key", 0, 0, ""},
 	}
@@ -151,7 +151,7 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 	t.Parallel()
 	st := newMemImageStore()
 	contentHash := strings.Repeat("d", 64)
-	src := imgBase + "/lisa.jpg"
+	src := imgBase + "/pip.jpg"
 	fetch := &timelineFetchStub{warm: map[string]images.Image{
 		src: {
 			Hash: contentHash, SourceURL: src, Role: images.RoleBackdrop,
@@ -163,7 +163,7 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 		fetch: fetch,
 	}
 
-	url, hash, err := r.resolve(context.Background(), "series:tmdb:456", 1, 6)
+	url, hash, err := r.resolve(context.Background(), "series:tmdb:90000456", 1, 6)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestTimelineThumbWarmsAColdImageBeforeReturning(t *testing.T) {
 func TestTimelineThumbWithoutImageServiceEmitsNothing(t *testing.T) {
 	t.Parallel()
 	r := timelineThumbResolver{tmdb: newTimelineTMDB(t)}
-	if url, hash, err := r.resolve(context.Background(), "series:tmdb:456", 1, 6); err != nil || url != "" || hash != "" {
+	if url, hash, err := r.resolve(context.Background(), "series:tmdb:90000456", 1, 6); err != nil || url != "" || hash != "" {
 		t.Errorf("ThumbFor with no image service = (%q, %q), want empty — never a third-party URL", url, hash)
 	}
 }
