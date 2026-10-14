@@ -297,7 +297,7 @@ func sameDesign(t *testing.T, path string, d watermark.Design) {
 func TestChannelWatermarks_HolidayVersionFollowsTheAiringStart(t *testing.T) {
 	ch := store.Channel{Channel: schedule.Channel{Name: "Saturday Cartoons", Number: 7}}
 	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "tint", Motifs: map[string]string{"halloween": "ghost"}}
-	ch.Policy.Scope.Dates = &schedule.DateScope{SeriesAiring: []schedule.Range{{From: 1980, To: 1989}}}
+	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
 	c := testWatermarks(t, ch, true)
 	colour(c)
 	sep30 := time.Date(2026, time.September, 30, 23, 30, 0, 0, time.UTC)
@@ -310,6 +310,16 @@ func TestChannelWatermarks_HolidayVersionFollowsTheAiringStart(t *testing.T) {
 	h := watermark.HolidayLooks["halloween"]
 	sameDesign(t, spooky.Straight, watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
 		Colour: h.Colour, Palette: h.Palette, Motif: watermark.MotifGhost})
+
+	// A fixed colour gives way to the holiday's too: the holiday version is one design (the mock's holOpts).
+	fixed := ch
+	fixed.Policy.Watermark = &schedule.WatermarkPolicy{Look: "tint", Color: "cyan", Motifs: map[string]string{"halloween": "ghost"}}
+	if wm := colour(testWatermarks(t, fixed, true)).For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct1); wm == nil {
+		t.Fatal("no bug")
+	} else {
+		sameDesign(t, wm.Straight, watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
+			Colour: h.Colour, Palette: h.Palette, Motif: watermark.MotifGhost})
+	}
 
 	ignore := ch
 	ignore.Policy.Seasonal = schedule.SeasonalPolicy{Mode: schedule.SeasonalOff}
