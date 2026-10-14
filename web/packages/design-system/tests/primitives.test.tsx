@@ -109,9 +109,43 @@ describe("Badge", () => {
     );
     expect(markup).toContain(">Signal locked<");
   });
+
+  // An override is neutral (#1909 Q5): a foreground label and a control hairline, no amber, and
+  // the hairline comes out of the padding so it is as tall as Default.
+  it("draws the square override tone neutral with a hairline at Default's height", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Badge shape="square" tone="override">
+          Channel override
+        </Badge>
+      </LoomarrProvider>,
+    );
+    expect(markup).toContain("border-top-color:var(--borderControl)");
+    expect(markup).toContain("color:var(--contentPrimary)");
+    expect(markup).toMatch(/padding-top:1px/);
+    expect(markup).not.toMatch(/_(col|backgroundColor|btc)-actionPrim/);
+  });
 });
 
 describe("Text", () => {
+  it("sets a strong label at 600 without changing the role's size", () => {
+    const strong = renderToStaticMarkup(
+      <LoomarrProvider>
+        <Text strong textRole="cardLabel">
+          Chosen
+        </Text>
+        <Text as="span" strong textRole="cardLabel">
+          Chosen
+        </Text>
+      </LoomarrProvider>,
+    );
+    // Tamagui's own Text takes an atomic class; the `as` host takes inline style.
+    expect(strong).toMatch(/class="[^"]*_fw-600/);
+    expect(strong).not.toMatch(/class="[^"]*_fw-500/);
+    expect(strong).toMatch(/<span[^>]*font-weight:600/);
+    expect(strong).toMatch(/<span[^>]*font-size:13px/);
+  });
+
   it("renders a given host element on web and resolves the colour inline", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>

@@ -35,7 +35,10 @@ describe("DiagnosticsPage", () => {
     expect(screen.getByRole("button", { name: "Logs" })).toHaveClass("cursor-pointer");
     expect(screen.getByRole("button", { name: "Current Health" })).toHaveClass("cursor-pointer");
     const processes = screen.getByRole("button", { name: "Media processes" });
-    expect(processes).toHaveClass("cursor-pointer", "bg-signal-tint-15", "text-signal");
+    // The current view is neutral (#1909 Q1): amber is focus or the primary action.
+    expect(processes).toHaveAttribute("aria-current", "page");
+    expect(processes).toHaveClass("cursor-pointer", "bg-static-800", "text-foreground");
+    expect(processes.className).not.toMatch(/signal/);
 
     await userEvent.click(screen.getByRole("button", { name: "Logs" }));
     expect(onSearchChange).toHaveBeenCalledWith({ ...search, view: "logs", processId: undefined });

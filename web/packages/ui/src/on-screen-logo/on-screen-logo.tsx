@@ -291,7 +291,7 @@ const Row = ({ children, field, help, hint, label, off, onReset, overridden }: R
         </View>
         {onReset ? (
           <View style={row}>
-            <Badge shape="square" tone={overridden ? "signal" : "neutral"}>
+            <Badge shape="square" tone={overridden ? "override" : "neutral"}>
               {overridden ? "Channel override" : "Default"}
             </Badge>
             {/* The mock's .link: 12 px underlined text, no button box, so the header stays one row. */}
@@ -332,6 +332,8 @@ interface PickProps<V extends string> {
 
 // A row of selectable cards (style thumbnails, scene buttons, "Show as"): one radio group.
 // With `columns`, the cards sit in a fixed grid of equal tiles (the mock's .looks grid).
+// Every choice on this panel is neutral-pressed when chosen (#1909, #1983): the focus fill, a
+// foreground border and a 600 label. Amber is RadioItem's focus ring, drawn outside the border.
 const Pick = <V extends string>({ columns, disabled, label, lead, onPick, options, value }: PickProps<V>) => {
   const values = options.map((o) => o.value);
   const card = (o: PickProps<V>["options"][number]) => (
@@ -346,7 +348,7 @@ const Pick = <V extends string>({ columns, disabled, label, lead, onPick, option
         <Surface
           alignItems={columns ? "stretch" : "center"}
           backgroundColor={checked ? "$surfaceFocus" : "$surfaceRaised"}
-          borderColor={checked ? "$actionPrimary" : "$borderControl"}
+          borderColor={checked ? "$contentPrimary" : "$borderControl"}
           borderRadius="$control"
           borderWidth={checked ? 2 : 1}
           flexGrow={columns ? 1 : undefined}
@@ -360,7 +362,9 @@ const Pick = <V extends string>({ columns, disabled, label, lead, onPick, option
           ) : o.visual ? (
             <View style={{ opacity: disabled ? 0.55 : 1 }}>{o.visual}</View>
           ) : null}
-          <Text textRole="cardLabel">{o.label}</Text>
+          <Text strong={checked} textRole="cardLabel">
+            {o.label}
+          </Text>
         </Surface>
       )}
     </RadioItem>
@@ -636,9 +640,9 @@ const OnScreenLogoSection = ({
               {({ checked }) => (
                 <Surface
                   backgroundColor={c.swatch}
-                  borderColor={checked ? "$actionPrimary" : "$borderControl"}
+                  borderColor={checked ? "$contentPrimary" : "$borderControl"}
                   borderRadius="$round"
-                  borderWidth={checked ? 3 : 1}
+                  borderWidth={checked ? 2 : 1}
                   height={32}
                   width={32}
                 />
@@ -744,20 +748,24 @@ const OnScreenLogoSection = ({
                               <Surface
                                 alignItems="center"
                                 backgroundColor={checked ? "$surfaceFocus" : "transparent"}
-                                borderColor={checked ? "$actionPrimary" : "$borderControl"}
+                                borderColor={checked ? "$contentPrimary" : "$borderControl"}
                                 borderRadius="$control"
-                                borderWidth={1}
+                                // The 2px border takes its extra pixel from the padding, so the chip
+                                // keeps its size when chosen.
+                                borderWidth={checked ? 2 : 1}
                                 flexDirection="row"
                                 gap={6}
                                 minHeight={36}
-                                paddingLeft={6}
-                                paddingRight={10}
-                                paddingVertical={4}
+                                paddingLeft={checked ? 5 : 6}
+                                paddingRight={checked ? 9 : 10}
+                                paddingVertical={checked ? 3 : 4}
                               >
                                 <MotifIcon
                                   src={previewSrc({ holiday: h.id, motifOnly: true, picture: m.id })}
                                 />
-                                <Text textRole="cardLabel">{m.name}</Text>
+                                <Text strong={checked} textRole="cardLabel">
+                                  {m.name}
+                                </Text>
                               </Surface>
                             )}
                           </RadioItem>
@@ -805,19 +813,19 @@ const OnScreenLogoSection = ({
           {CORNERS.map((c) => (
             <RadioItem key={c.value} label={c.label} value={c.value}>
               {({ checked }) => (
-                // The mock's .cell: 56 × 40, the chosen one tinted with a 16 px marker inside.
+                // The mock's .cell: 56 × 40, the chosen one tinted with a 14 px foreground marker inside.
                 <Surface
                   alignItems="center"
                   backgroundColor={checked ? "$surfaceFocus" : "transparent"}
-                  borderColor={checked ? "$actionPrimary" : "$borderControl"}
+                  borderColor={checked ? "$contentPrimary" : "$borderControl"}
                   borderRadius="$control"
-                  borderWidth={1}
+                  borderWidth={checked ? 2 : 1}
                   height={40}
                   justifyContent="center"
                   width={56}
                 >
                   {checked ? (
-                    <Surface backgroundColor="$actionPrimary" borderRadius={3} height={14} width={14} />
+                    <Surface backgroundColor="$contentPrimary" borderRadius={3} height={14} width={14} />
                   ) : null}
                 </Surface>
               )}

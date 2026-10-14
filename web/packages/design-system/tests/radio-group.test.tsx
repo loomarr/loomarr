@@ -68,7 +68,8 @@ describe("RadioGroup", () => {
 
   it("draws a focus ring only while an item has focus", () => {
     act(() => root.render(<Harness initial="a" />));
-    const ring = () => host.querySelectorAll('[style*="position: absolute"]').length;
+    // The ring is drawn in the $actionFocus token, which Tamagui names in its atomic class.
+    const ring = () => host.querySelectorAll('[class*="_btc-actionFocu"]').length;
     const before = ring();
     act(() => radios()[0]?.focus());
     expect(ring()).toBeGreaterThan(before);

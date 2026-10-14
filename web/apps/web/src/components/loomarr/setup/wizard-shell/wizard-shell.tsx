@@ -13,7 +13,9 @@ import type { WizardShellProps, WizardStepStatus } from "./wizard-shell.type";
 // steps render neutral, never red (§6): an optional step you passed on is not a failure.
 const MARKER: Record<WizardStepStatus, string> = {
   done: "border-lock bg-lock-tint-15 text-lock",
-  current: "border-signal bg-signal-tint-15 text-signal",
+  // Where you are is neutral (#1909 Q1): its row already takes the elevated fill, so the marker is
+  // a foreground ring and number. Amber is focus or the primary action.
+  current: "border-foreground font-semibold text-foreground",
   pending: "border-border text-static-400",
   skipped: "border-border text-static-400",
 };
@@ -113,7 +115,7 @@ const WizardShell = ({
                           className={cn(
                             "w-full cursor-pointer rounded px-2 py-1 text-left text-sm transition-colors",
                             active
-                              ? "font-medium text-signal"
+                              ? "font-semibold text-foreground"
                               : "text-muted-foreground hover:text-foreground",
                           )}
                         >

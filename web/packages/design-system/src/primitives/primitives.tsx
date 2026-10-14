@@ -155,6 +155,8 @@ type TextProps = Omit<
   halo?: boolean;
   /** Uppercase with wide tracking — the section-label voice ("POD · 1:10", a shouted Caption). */
   shout?: boolean;
+  /** The role's size at weight 600: a checked or selected choice's label (neutral-pressed, #1909). */
+  strong?: boolean;
   textRole: TextRole;
   tone?: TextTone;
   /** Letter spacing in em, for tracked-out mono readouts ("CH 7" at 0.16, "TUNING IN" at 0.24). Overrides the role's own. */
@@ -225,9 +227,20 @@ const roleTracking = (textRole: TextRole, size: number) =>
           ? size * 0.04
           : 0;
 
-const Text = ({ as, density = "pointer", halo, shout, textRole, tone, tracking, ...props }: TextProps) => {
+const Text = ({
+  as,
+  density = "pointer",
+  halo,
+  shout,
+  strong,
+  textRole,
+  tone,
+  tracking,
+  ...props
+}: TextProps) => {
   const theme = useTheme();
-  const value = typography[density][textRole];
+  const role = typography[density][textRole];
+  const value = strong ? { ...role, weight: "600" as const } : role;
   const colorToken = tone
     ? textTones[tone]
     : mutedRoles.has(textRole)
@@ -307,6 +320,7 @@ type BadgeTone =
   | "lock"
   | "neutral"
   | "onair"
+  | "override"
   | "signal"
   | "success"
   | "suggest"
@@ -334,6 +348,12 @@ const badgeTone = {
     borderColor: "$actionDisabled",
     color: "$contentSecondary",
   },
+  // A channel override or Custom value (#1909 Q5): neutral with a foreground label.
+  override: {
+    backgroundColor: "$surfaceElevated",
+    borderColor: "$borderControl",
+    color: "$contentPrimary",
+  },
   success: {
     backgroundColor: "$stateSuccessSurface",
     borderColor: "$stateSuccess",
@@ -352,6 +372,13 @@ const squareBadgeTone = (theme: ReturnType<typeof useTheme>) =>
   ({
     // The only square tone with a flat, non-tinted background — the legacy ledger's "neutral".
     neutral: { backgroundColor: theme.surfaceElevated.val, color: theme.contentSecondary.val },
+    // A channel override or Custom value (#1909 Q5): neutral, with a foreground label and a control
+    // hairline. The word carries the meaning; amber stays for focus and the primary action.
+    override: {
+      backgroundColor: "$surfaceElevated",
+      borderColor: "$borderControl",
+      color: "$contentPrimary",
+    },
     tune: { backgroundColor: withAlpha(theme.stateInfo.val, 0.15), color: theme.stateInfo.val },
     lock: { backgroundColor: withAlpha(theme.stateSuccess.val, 0.15), color: theme.stateSuccess.val },
     caution: { backgroundColor: withAlpha(theme.stateWarning.val, 0.15), color: theme.stateWarning.val },
@@ -369,17 +396,22 @@ const Badge = ({ children, density = "pointer", shape = "pill", tone = "neutral"
 
   if (shape === "square") {
     const squareTones = squareBadgeTone(theme);
-    const colors = tone in squareTones ? squareTones[tone as keyof typeof squareTones] : squareTones.neutral;
+    const colors: { backgroundColor: string; borderColor?: string; color: string } =
+      tone in squareTones ? squareTones[tone as keyof typeof squareTones] : squareTones.neutral;
+    // A hairline takes its 1px from the padding, so an override badge is no taller than Default.
+    const hairline = colors.borderColor ? 1 : 0;
     return (
       <View
         {...props}
         alignItems="center"
         alignSelf="flex-start"
         backgroundColor={colors.backgroundColor}
+        borderColor={colors.borderColor}
         borderRadius={4}
+        borderWidth={hairline}
         flexShrink={0}
-        paddingHorizontal={6}
-        paddingVertical={2}
+        paddingHorizontal={6 - hairline}
+        paddingVertical={2 - hairline}
       >
         <TamaguiText
           color={colors.color}

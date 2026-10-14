@@ -57,6 +57,10 @@ describe("ModelPicker", () => {
       />,
     );
     expect(screen.getByRole("button", { name: /in use/i })).toBeDisabled();
+    // The model in use is neutral (#1909 Q2): an elevated row, never an amber border.
+    const row = screen.getByRole("listitem");
+    expect(row).toHaveClass("bg-static-800");
+    expect(row.className).not.toMatch(/signal/);
   });
 
   it("renders the percent the BE computed, not one derived from bytes", () => {

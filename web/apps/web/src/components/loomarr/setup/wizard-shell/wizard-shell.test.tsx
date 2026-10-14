@@ -28,6 +28,9 @@ describe("WizardShell", () => {
     renderShell();
     const current = screen.getByRole("listitem", { current: "step" });
     expect(current).toHaveTextContent("Connections");
+    // Where you are is neutral (#1909 Q1): a foreground marker, no amber anywhere on the step.
+    expect(current.querySelector(".border-foreground")).toHaveTextContent("2");
+    expect(current.innerHTML).not.toMatch(/signal/);
     expect(screen.getByRole("heading", { name: "Connect your services" })).toBeInTheDocument();
     expect(screen.getByText("step body")).toBeInTheDocument();
   });

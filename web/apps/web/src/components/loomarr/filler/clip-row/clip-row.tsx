@@ -23,7 +23,8 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
       // characters wide, which is unreadable rather than dense.
       "md:grid-cols-[auto_54px_1fr_88px_60px_auto]",
       "lg:grid-cols-[auto_54px_1fr_88px_60px_84px_auto_190px]",
-      selected && "bg-signal/5",
+      // Selection is neutral (#1909): amber is for focus and the primary action.
+      selected && "bg-static-800",
       className,
     )}
   >
