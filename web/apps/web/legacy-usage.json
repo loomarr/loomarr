@@ -2,7 +2,7 @@
   "note": "Web legacy-usage ledger (#970 step 5), maintained by web/scripts/check-legacy-usage.mjs. Counts may only fall: `pnpm legacy:update` shrinks them. Never raise one to pass the check.",
   "files": {
     "src/channels/channel-drawer/channel-drawer.tsx": {
-      "tailwindClasses": 160
+      "tailwindClasses": 152
     },
     "src/channels/channel-identity-field/channel-identity-field.tsx": {
       "tailwindClasses": 30,
