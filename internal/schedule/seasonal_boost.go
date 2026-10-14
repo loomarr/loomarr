@@ -2,8 +2,12 @@ package schedule
 
 import (
 	"cmp"
+	"fmt"
+	"hash/fnv"
+	"maps"
 	"math"
 	"slices"
+	"sync"
 	"time"
 )
 
@@ -438,183 +442,220 @@ func (p *holidayPlanner) features(w int64) []holidayAt {
 	return out
 }
 
-// seasonTile is an in-season window's ordinary episodes. The season's first window starts where
-// windowSlice would; each later window continues exactly where the one before stopped, skipping
-// the pool and leaving room for its features, so consecutive windows never share an episode and
-// the season's first seam matches seasonality off. No walk passes where windowSlice starts the
-// next window; what that cap leaves short is filled from half a lap away (farFill), so the
-// season's last seam only skips. ok is false out of season (use windowSlice).
-func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
-	if !p.enabled() || len(p.pooled(w)) == 0 {
-		return nil, false
+// tile is window w's ordinary episodes, given the dealer's tile for it. In season, and for the
+// horizon of windows after a season, it is the season simulation's tile (§6 "Where it runs"):
+// every pick there is decided against what actually aired, never against ring positions, which
+// under per-pass reshuffle drift from it (#1939). Every other window airs the dealer's tile.
+func (p *holidayPlanner) tile(w int64, dealt []Slot) []Slot {
+	if !p.enabled() || p.ring.stride == 0 {
+		return dealt
 	}
-	budget := p.window.Milliseconds()
-	var progAt []int
-	var total int64
-	for i, s := range p.deck {
-		if s.IsProgram() {
-			progAt = append(progAt, i)
-			total += s.DurationMs
-		}
-	}
-	if len(progAt) == 0 || total <= budget {
+	if programRuntime(p.deck) <= p.window.Milliseconds() {
 		// The deck fits one window: every window airs all of it (that window's deal) but the pool.
 		pooled := p.pooled(w)
-		for _, s := range p.ring.tile(w) {
+		if len(pooled) == 0 {
+			return dealt
+		}
+		var tile []Slot
+		for _, s := range dealt {
 			if !pooled[unitKey(s)] {
 				tile = append(tile, s)
 			}
 		}
-		return tile, true
+		return tile
 	}
-	anchor := w
-	for back := int64(seasonLookback / p.window); anchor > w-back && len(p.pooled(anchor-1)) > 0; anchor-- {
+	h := p.horizon()
+	last := w // the latest in-season window at or before w
+	for ; last >= w-h && len(p.pooled(last)) == 0; last-- {
 	}
-	stride := p.ring.stride
-	nProg := int64(len(progAt))
-	// u counts programs passed along the dealt ring, unrolled: windowSliceDealt starts window v at
-	// v*stride, so a walk that never passes (v+1)*stride never reaches the next window's
-	// out-of-season start, and the season's last seam can only skip.
-	u := anchor * stride
-	prev := p.ring.tile(anchor - 1)
-	// aired is each unit's last airing in programmes aired, the season's first at 0: skipping the
-	// pool shortens the ring between two airings, so the walk defers a unit that rested less than
-	// the dealer's spacing and the top-up covers it. Before the season the ring is what aired.
+	if last < w-h {
+		return dealt
+	}
+	// The anchor and the end are the same for every window of the season, so each window reads
+	// the same simulation: two seasons closer than the horizon are one.
+	back := int64(seasonLookback / p.window)
+	anchor, end := last, last+h
+	for v := last - 1; v >= anchor-h-1 && v > w-back; v-- {
+		if len(p.pooled(v)) > 0 {
+			anchor = v
+		}
+	}
+	for v := last + 1; v <= end && v < w+back; v++ {
+		if len(p.pooled(v)) > 0 {
+			end = v + h
+		}
+	}
+	return slices.Clone(p.simulate(anchor, end)[w]) // the run is shared: never hand out its slices
+}
+
+// horizon is how many windows after a season the simulation still runs: twice the windows the
+// repeat spacing spans and one, so what the season aired late rests its spacing before a
+// dealer-only window can deal it again, and the trades it causes settle before the hand-off.
+func (p *holidayPlanner) horizon() int64 {
+	return 2 * ((p.spacingProgrammes()+p.ring.stride-1)/p.ring.stride + 1)
+}
+
+// simulate runs windows anchor..end in order and returns each one's tile (before arrange). It
+// keeps airedAt, each unit's last airing as an index over every programme aired (features
+// included), seeded with the dealer's arranged windows before the anchor: each window takes its
+// dealer tile less the pool and anything that rested less than the spacing, keeps what fits
+// beside its features (what is cut is owed), and tops up a short tile (topUp). One run serves the
+// whole season, and is shared across calls (seasonRuns).
+func (p *holidayPlanner) simulate(anchor, end int64) map[int64][]Slot {
+	key, shared := p.runKey(anchor, end)
+	if shared {
+		if run, ok := seasonRuns.get(key); ok {
+			return run
+		}
+	}
 	spacing := p.spacingProgrammes()
-	aired := map[string]int64{}
-	for q := u - spacing; q < u; q++ {
-		aired[unitKey(p.ring.at(q))] = q - u
-	}
+	stride := p.ring.stride
+	airedAt := map[string]int64{}
 	var a int64
-	for v := anchor; v <= w; v++ {
+	record := func(arranged []Slot) map[string]bool {
+		aired := map[string]bool{}
+		for _, s := range arranged {
+			if s.IsProgram() {
+				airedAt[unitKey(s)], aired[unitKey(s)] = a, true
+				a++
+			}
+		}
+		return aired
+	}
+	var prev map[string]bool
+	for v := anchor - (spacing+stride-1)/stride - 1; v < anchor; v++ {
+		prev = record(p.arrange(p.ring.tile(v), v))
+	}
+	run := map[int64][]Slot{}
+	var owed []Slot // dealt in season but cut for the features, in deal order
+	owing := map[string]bool{}
+	for v := anchor; v <= end; v++ {
 		pooled := p.pooled(v)
-		need := budget
+		need := p.window.Milliseconds()
 		for _, f := range p.features(v) {
 			need -= f.unit.DurationMs
 		}
-		tile = tile[:0:0]
-		taken := map[string]bool{} // a walk that crosses into the next pass meets its units again
-		var acc int64
-		lap := u + nProg
-		for acc < need && u < min((v+1)*stride, lap) {
-			s := p.ring.at(u)
-			u++
-			key := unitKey(s)
-			if last, ok := aired[key]; pooled[key] || taken[key] || ok && a-last < spacing {
-				continue
-			}
-			taken[key] = true
+		var tile, later []Slot
+		taken := map[string]bool{}
+		var acc, n int64
+		keep := func(s Slot) {
+			taken[unitKey(s)] = true
 			acc += s.DurationMs
 			tile = append(tile, s)
-			aired[key] = a
-			a++
+			n++
 		}
-		walked := len(tile)
-		tile = p.farFill(tile, prev, u, min((v+2)*stride, u+nProg), nProg, need-acc, pooled, aired, a)
-		// The features air among the tile: counting them last understates every distance, never overstates it.
-		a += int64(len(tile)-walked) + int64(len(p.features(v)))
-		prev = tile
-	}
-	return tile, true
-}
-
-// tradeFeatured keeps an out-of-season window from re-airing what the season just featured. The
-// dealt tile deals the pool at its ring positions, so the first window after the season, or the day
-// after a holiday date, could air an episode the evening before featured. A unit featured within
-// `spacing` (the dealer's repeat spacing) before window w opens is traded for ordinary runtime from
-// half a lap away (farFill). Features themselves are never dropped: the holiday date airs its plan.
-func (p *holidayPlanner) tradeFeatured(tile []Slot, w int64, spacing time.Duration) []Slot {
-	if !p.enabled() || p.ring.stride == 0 || p.ring.nProg == 0 {
-		return tile
-	}
-	opening := windowOpening(w, p.window, p.loc)
-	since := opening.Add(-spacing)
-	recent := map[string]bool{}
-	for v := w - 1; windowOpening(v, p.window, p.loc).Add(p.window).After(since); v-- {
-		for _, f := range p.features(v) {
-			if !f.at.Before(since) {
-				recent[unitKey(f.unit)] = true
+		for _, s := range p.ring.tile(v) {
+			if !s.IsProgram() {
+				tile = append(tile, s)
+				continue
+			}
+			key := unitKey(s)
+			if pooled[key] || taken[key] {
+				continue
+			}
+			if last, ok := airedAt[key]; ok && a+n-last < spacing {
+				later = append(later, s) // too soon here; it may have rested by the window's end
+				continue
+			}
+			if acc >= need {
+				if !owing[key] {
+					owed, owing[key] = append(owed, s), true
+				}
+				continue
+			}
+			keep(s)
+		}
+		// A deal that is too soon where it falls airs later in the window once it has rested: the
+		// dealer's own spacing works the same way, by order.
+		for _, s := range later {
+			if acc < need && !taken[unitKey(s)] && a+n-airedAt[unitKey(s)] >= spacing && p.restsBeyond(unitKey(s), v, end, spacing) {
+				keep(s)
 			}
 		}
-	}
-	if len(recent) == 0 {
-		return tile
-	}
-	var kept []Slot
-	var short int64
-	for _, s := range tile {
-		if s.IsProgram() && recent[unitKey(s)] {
-			short += s.DurationMs
-			continue
+		if acc < need {
+			tile = p.topUp(tile, taken, need-acc, v, end, a+n, spacing, prev, pooled, owed, airedAt)
 		}
-		kept = append(kept, s)
+		run[v] = tile
+		prev = record(p.arrange(tile, v))
+		owed = slices.DeleteFunc(owed, func(s Slot) bool { return prev[unitKey(s)] })
+		for k := range prev {
+			delete(owing, k)
+		}
 	}
-	if short == 0 {
-		return tile
+	if shared {
+		seasonRuns.put(key, run)
 	}
-	stride := p.ring.stride
-	return p.farFill(kept, p.ring.tile(w-1), (w+1)*stride, (w+2)*stride, p.ring.nProg, short, recent, nil, 0)
+	return run
 }
 
-// farFill tops a capped tile up with `short` of ordinary runtime, an in-season re-air that is
-// unavoidable when the pool is walked past faster than it is featured. Each candidate is scored by
-// its real distance in programmes from where it would air to the unit's airings in the passes
-// around u (dealtRing.airings) and to its earlier top-ups this season (moved, which farFill extends
-// with its picks): under per-pass reshuffle the unit half a lap away may air anywhere in the next
-// pass, so half a lap alone promises nothing. It skips the pool and the tile, and prefers, in order:
-// a unit outside the window before (prev) and what the next window's walk can reach (ring
-// positions u up to next), so neighbouring windows share nothing when the deck allows it; a unit at
-// least the dealer's repeat spacing from every airing; then the farthest. Candidates are scanned
-// from half a lap ahead outward (nProg/2, then -1, +1, -2, …), and a pick behind the far point airs
-// beside the tile's walk episode half a lap behind it (placeFar), which on one fixed deck keeps it
-// about half a cycle from its last airing and its next even when the next window opens with it.
-func (p *holidayPlanner) farFill(tile, prev []Slot, u, next, nProg, short int64, pooled map[string]bool, aired map[string]int64, a int64) []Slot {
-	if short <= 0 {
-		return tile
+// restsBeyond reports whether a unit aired at the end of window v rests the spacing before its next
+// deal past the simulation's last window, which only the dealer airs. A deal inside the simulation
+// is checked there, against what aired.
+func (p *holidayPlanner) restsBeyond(key string, v, end, spacing int64) bool {
+	from := (v + 1) * p.ring.stride
+	for _, q := range p.ring.airings(key, from) {
+		if q >= (end+1)*p.ring.stride && q-from < spacing {
+			return false
+		}
 	}
-	taken, near := map[string]bool{}, map[string]bool{}
-	for _, s := range tile {
-		taken[unitKey(s)] = true
-	}
-	for _, s := range prev {
-		near[unitKey(s)] = true
-	}
-	for n := u; n < next; n++ {
-		near[unitKey(p.ring.at(n))] = true
+	return true
+}
+
+// topUp fills a short tile with `short` of ordinary runtime, unavoidable when a window's features
+// air fewer pool episodes than its deal held, or when the deal re-airs what rested too little. at
+// is the index the first top-up would air at (a later one airs later still, so its past distance is
+// understated, never overstated). Owed units go first, then any ordinary unit of the pass, and the
+// order of preference is: not aired by the window before nor dealt to the next; at least the
+// spacing from its last airing (airedAt) and its next dealt airing (the ring: past the horizon only
+// the dealer airs it); owed; the farthest from both.
+func (p *holidayPlanner) topUp(tile []Slot, taken map[string]bool, short, v, end, at, spacing int64, prev, pooled map[string]bool, owed []Slot, airedAt map[string]int64) []Slot {
+	stride := p.ring.stride
+	next := map[string]bool{}
+	for u := (v + 1) * stride; u < (v+2)*stride; u++ {
+		next[unitKey(p.ring.at(u))] = true
 	}
 	type candidate struct {
-		s        Slot
-		at, dist int64 // at: placeFar's offset from u; dist: to the unit's nearest other airing
-		near     bool
+		s          Slot
+		dist       int64
+		near, owed bool
+		tier       int // 0: rested both ways; 1: rested since, and its next deal is simulated; 2: neither
 	}
 	var cands []candidate
-	for d := int64(0); d < nProg; d++ {
-		ahead := nProg/2 + (d+1)/2*(1-2*(d%2)) // nProg/2, then -1, +1, -2, +2, …
-		s := p.ring.at(u + ahead)
+	pass, _ := p.ring.locate(v * stride)
+	from, simulated := (v+1)*stride, (end+1)*stride
+	for i, s := range append(slices.Clone(owed), p.ring.pass(pass)...) {
 		key := unitKey(s)
-		if pooled[key] || taken[key] {
+		if pooled[key] || taken[key] || slices.ContainsFunc(p.f.unitHolidays(s), p.f.selected) {
 			continue
 		}
-		taken[key] = true // under reshuffle a lap's offsets span two passes, so a unit can recur
-		c := candidate{s: s, at: ahead - nProg/2, dist: math.MaxInt64, near: near[key]}
-		last, seen := aired[key]
-		if seen {
-			c.dist = a - last
+		taken[key] = true // owed units recur in the pass
+		past, future, dealt := int64(math.MaxInt64), int64(math.MaxInt64), int64(math.MaxInt64)
+		if last, ok := airedAt[key]; ok {
+			past = at - last
 		}
-		for _, q := range p.ring.airings(key, u) {
-			if aired == nil || q >= u {
-				c.dist = min(c.dist, absMs(q-(u+min(c.at, 0))))
+		for _, q := range p.ring.airings(key, from) {
+			if q >= from {
+				future, dealt = min(future, q-from), min(dealt, q)
 			}
+		}
+		c := candidate{s: s, dist: min(past, future), near: prev[key] || next[key], owed: i < len(owed), tier: 2}
+		switch {
+		case past >= spacing && future >= spacing:
+			c.tier = 0
+		case past >= spacing && dealt < simulated:
+			// Too soon for its next deal, which the simulation will skip: a skip, not a repeat.
+			c.tier = 1
 		}
 		cands = append(cands, c)
 	}
-	spacing := p.spacingProgrammes()
 	slices.SortStableFunc(cands, func(a, b candidate) int {
-		if a.near != b.near {
+		switch {
+		case a.tier != b.tier:
+			return cmp.Compare(a.tier, b.tier)
+		case a.near != b.near:
 			return cmpBool(a.near, b.near)
-		}
-		if qa, qb := a.dist >= spacing, b.dist >= spacing; qa != qb {
-			return cmpBool(qb, qa)
+		case a.owed != b.owed:
+			return cmpBool(b.owed, a.owed)
 		}
 		return cmp.Compare(b.dist, a.dist)
 	})
@@ -623,21 +664,85 @@ func (p *holidayPlanner) farFill(tile, prev []Slot, u, next, nProg, short int64,
 			break
 		}
 		short -= c.s.DurationMs
-		tile = placeFar(tile, c.s, p.ring, u, c.at)
-		if aired != nil {
-			aired[unitKey(c.s)] = a
-			a++
-		}
+		tile = append(tile, c.s)
 	}
 	return tile
 }
 
-// spacingProgrammes is the dealer's repeat spacing in programmes of the deck's mean runtime.
+// spacingProgrammes is the rest the simulation gives an ordinary unit, in programmes: the dealer's
+// repeat spacing in programmes of the deck's mean runtime when it deals every pass afresh. One fixed
+// deck has no dealer spacing; its bound is half the deck less its holiday episodes (§6).
 func (p *holidayPlanner) spacingProgrammes() int64 {
+	if !p.ring.d.reshuffle {
+		holiday := 0
+		for _, s := range p.ring.pass(0) {
+			if slices.ContainsFunc(p.f.unitHolidays(s), p.f.selected) {
+				holiday++
+			}
+		}
+		return max(p.ring.nProg/2-int64(holiday), 1)
+	}
 	if p.meanMs <= 0 {
 		return 0
 	}
 	return int64(math.Ceil(float64(p.ring.d.spacing.Milliseconds()) / p.meanMs))
+}
+
+// maxSeasonRuns bounds the season simulations remembered: a few seasons of a few channels' lineups.
+const maxSeasonRuns = 32
+
+// seasonRuns memoises season simulations by everything one reads (runKey), like the deal chain,
+// so a guide request that computes a window at a time simulates the season once. An edited
+// lineup or policy lands on a new key, and the old run ages out.
+var seasonRuns = &runMemo{runs: map[uint64]map[int64][]Slot{}}
+
+type runMemo struct {
+	mu    sync.Mutex
+	runs  map[uint64]map[int64][]Slot
+	order []uint64 // oldest first
+}
+
+func (m *runMemo) get(key uint64) (map[int64][]Slot, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	run, ok := m.runs[key]
+	if ok {
+		i := slices.Index(m.order, key) // a hit is a use: it goes to the back
+		m.order = append(slices.Delete(m.order, i, i+1), key)
+	}
+	return run, ok
+}
+
+func (m *runMemo) put(key uint64, run map[int64][]Slot) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.runs[key]; ok {
+		return
+	}
+	if len(m.order) >= maxSeasonRuns {
+		delete(m.runs, m.order[0])
+		m.order = m.order[1:]
+	}
+	m.runs[key] = run
+	m.order = append(m.order, key)
+}
+
+// runKey hashes what a simulation of windows anchor..end reads: the dealer's inputs (dealerKey),
+// the ring's origin, the window, zone and break density, and the holiday evidence. A pool with
+// airing history deals differently by it, so it is not shared.
+func (p *holidayPlanner) runKey(anchor, end int64) (uint64, bool) {
+	if len(p.ring.d.rp.LastAired) > 0 {
+		return 0, false
+	}
+	h := fnv.New64a()
+	_, _ = fmt.Fprintf(h, "%d|%d|%d|%s|%g|%d|%d|", dealerKey(p.ring.d), p.ring.origin, p.window, p.loc, p.breakFactor, anchor, end)
+	for _, id := range slices.Sorted(maps.Keys(p.f.matches)) {
+		_, _ = fmt.Fprintf(h, "%s=%v\x00", id, p.f.matches[id])
+	}
+	for _, g := range slices.Sorted(maps.Keys(p.f.expand)) {
+		_, _ = fmt.Fprintf(h, "%s=%v\x00", g, p.f.expand[g])
+	}
+	return h.Sum64(), true
 }
 
 // cmpBool orders false before true.
@@ -649,22 +754,6 @@ func cmpBool(a, b bool) int {
 		return 1
 	}
 	return -1
-}
-
-// placeFar inserts s into tile right after the tile's walk episode at ring position u+at (at < 0
-// is behind the walk's end), stepping back past episodes the tile skipped; at its end when at is
-// not behind the walk, and at its start when the walk never reached u+at.
-func placeFar(tile []Slot, s Slot, ring *dealtRing, u, at int64) []Slot {
-	if at >= 0 {
-		return append(tile, s)
-	}
-	for b := at; b >= at-int64(len(tile)); b-- {
-		key := unitKey(ring.at(u + b))
-		if i := slices.IndexFunc(tile, func(t Slot) bool { return t.IsProgram() && unitKey(t) == key }); i >= 0 {
-			return slices.Insert(tile, i+1, s)
-		}
-	}
-	return slices.Insert(tile, 0, s)
 }
 
 // arrange times window w's tile around its features. A feature airs as soon as the clock reaches

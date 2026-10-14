@@ -367,38 +367,37 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     so a 6-hour, 12-hour, daily or 3-day window airs the same day the same way, and never twice.
     The pool is the deck's holiday episodes for that date's active selected holidays, in deck
     order. The deck order never changes.
-  - **Where it runs: the in-season tile.** A window is *in season* when any date it touches has a
-    non-empty pool. Its tile leaves every pooled episode out, and it is not cut by `windowSlice`.
-    The season's first window starts where `windowSlice` would start it. Each later window
-    continues the deck exactly where the window before it stopped. It takes ordinary episodes
-    until their runtime meets the window less its features' runtime. Consecutive windows
-    share no episode when the deck holds about three windows; on a shorter deck they must share
-    some, and the guarantee is the spacing below. The season's first seam is the same as with seasonality
-    off. No window's walk passes the point where `windowSlice` would start the next window
-    (counted in programmes from the deck head). The walk passes pool episodes it does not air,
-    so a window that features fewer of them than it passes reaches that point before its
-    airtime is full. The rest of its airtime is filled with ordinary episodes from the far side of
-    the deck: starting half the deck ahead, skipping the pool, the window's own episodes and,
-    while anything else is left, the window before and what the next window's walk can reach.
-    When nothing else is left (a deck shorter than about three windows), the fill searches
-    outward from that far point and airs each episode beside the window's own episode half a
-    deck behind it, so it is about half a deck from its last airing and its next, never back to
-    back with the next window's opening.
-    At the season's end, the first window out of season goes back to `windowSlice`'s position,
-    which the last window in season never passed, so the seam only skips episodes, never repeats
-    one. The walk follows the channel's dealt ring of passes (`dealtRing`), the same ring the
-    out-of-season tiles are cut from, so a shuffled channel's season meets a reshuffled pass where
-    its neighbours do. The out-of-season tile deals the pool at its ring positions, so the first
-    window after the season, and the day after a holiday date, trade away any unit the season
-    featured within the dealer's repeat spacing (`tradeFeatured`); the holiday date itself keeps
-    its whole plan. The spacing promised depends on the ordering: *In order* airs one fixed deck,
-    so the half-deck bound below holds; *Shuffled* and *Syndication* deal every pass afresh, so
-    their promise is the dealer's repeat spacing (two windows and a unit, §3.1). The cost is in season: a far-side episode aired about half a deck ago and airs again
-    about half a deck on. On a small deck (or a pool walked past much faster than it is featured)
-    an ordinary episode can therefore re-air about half a deck (less the pool) apart, and no
-    sooner. That is the most spacing the deck allows: between two `windowSlice` starts there are
-    fewer ordinary episodes than the window has airtime, so the shortfall must repeat something,
-    and half a deck is the furthest any episode is from both its last and next airing. A deck that fits one window airs
+  - **Where it runs: the season simulation (#1939).** A window is *in season* when any date it
+    touches has a non-empty pool. In-season windows, and the first out-of-season windows after
+    one (the *horizon*: twice the windows the repeat spacing spans, plus one), are not cut
+    independently. They are **simulated in order** from the season's *anchor*: its first in-season
+    window, found by walking back over in-season windows and gaps no longer than the horizon, at
+    most 120 days. Two seasons closer than the horizon are one simulation. Every other window is
+    the dealer's tile (`windowSliceDealt`), untouched.
+    The simulation keeps `airedAt`, each unit's last airing as a programme index that counts the
+    features. Before the anchor it holds the dealer's tiles, arranged, covering at least the
+    repeat spacing. For each window in turn:
+    1. Take the dealer's tile for the window. Drop the pool, and any unit that would air sooner
+       than the spacing after its last airing. A deck that fits one window drops only the pool.
+    2. Keep units in deal order until their runtime meets the window less its features' runtime.
+       Units cut here are *owed*.
+    3. Top up a short tile with ordinary episodes. Owed units go first, in deal order. Then any
+       ordinary unit of the pass. The preferences, in order: not aired by the window before and
+       not dealt to the next; at least the spacing from its last actual airing and from its next
+       dealt airing; the farthest from both.
+    4. Arrange the window around its features, and record every programme's index in `airedAt`.
+    Every decision reads what actually aired, never a ring position. A feature is decided by its
+    day's plan. Its airing enters `airedAt`, so the windows after the season (and after a holiday
+    date) trade away a unit the season just featured, like any recent airing. The holiday date
+    itself keeps its whole plan. The spacing promised is the dealer's repeat spacing for
+    *Shuffled* and *Syndication* (two windows and a unit, §3.1). For *In order*, the dealer has
+    none, so the simulation uses half the deck less its holiday episodes.
+    One simulation serves the season. It is memoised by the dealer's inputs (seed, window,
+    policy, collapsed slots), the ring origin, zone, holiday evidence, break density and the
+    anchor and end windows, in a small LRU like the deal chain. A guide request therefore
+    simulates once per season per lineup, and an edit lands on a new key. A pool with airing
+    history is not shared. One run costs O(windows × deck): each top-up scans the pass once.
+    A deck that fits one window airs
     whole, minus the pool, every window. Recency (`tradeRecent`, #1694)
     then guards the tile as it does any tile. The pass is a pure function of (deck, window index,
     zone, policy): it is idempotent within a window, there is no mid-window reshuffle

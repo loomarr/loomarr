@@ -447,6 +447,23 @@ func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
 	}
 }
 
+// #1939: on a reshuffled 6-hour channel the first window out of Halloween (Nov 1 00:00) re-aired
+// ep-026 from Halloween night's last window, because the trade read ring positions, not airings.
+func TestHolidayEpisodes_SeasonEndNeverReairsHalloweenNight(t *testing.T) {
+	ch := channelWithWindow(6*time.Hour, nil)
+	avail := seriesLike(80, halloweenSpecials(4)...)
+	for _, order := range []schedule.OrderingMode{schedule.OrderShuffle, schedule.OrderSyndication} {
+		policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthHeavy})
+		policy.Ordering = order
+		night := ids(arrange(t, ch, avail, policy, day(time.October, 31, 18)))
+		for _, a := range arrange(t, ch, avail, policy, day(time.November, 1, 0)) {
+			if !isHoliday(a.id) && night[a.id] {
+				t.Fatalf("%s: Nov 1 00:00 re-airs %s from Halloween night", order, a.id)
+			}
+		}
+	}
+}
+
 // BenchmarkHolidayPlanner_ShuffledSeason prices one in-season window of a 400-episode shuffled
 // deck: the planner replays the season from its anchor and tops every window up from the far side
 // of the ring (farFill), so this is the regime #1939's real-distance pick has to keep cheap.

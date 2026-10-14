@@ -377,14 +377,7 @@ func chainFor(d *deckDealer) *dealChain {
 	if len(d.rp.LastAired) > 0 {
 		return newDealChain()
 	}
-	h := fnv.New64a()
-	rp := d.rp
-	rp.LastAired = nil
-	_, _ = fmt.Fprintf(h, "%d|%d|%+v|", d.seed, d.window, rp)
-	for _, s := range d.slots {
-		_, _ = fmt.Fprintf(h, "%v\x00", s)
-	}
-	key := h.Sum64()
+	key := dealerKey(d)
 
 	chainsMu.Lock()
 	defer chainsMu.Unlock()
@@ -402,6 +395,19 @@ func chainFor(d *deckDealer) *dealChain {
 	chains[key] = c
 	chainLRU = append(chainLRU, key)
 	return c
+}
+
+// dealerKey hashes everything a deal reads but the airing history: the seed, the window, the policy
+// and the slots. The deal chain and the season simulation (seasonal_boost.go) share pools by it.
+func dealerKey(d *deckDealer) uint64 {
+	h := fnv.New64a()
+	rp := d.rp
+	rp.LastAired = nil
+	_, _ = fmt.Fprintf(h, "%d|%d|%+v|", d.seed, d.window, rp)
+	for _, s := range d.slots {
+		_, _ = fmt.Fprintf(h, "%v\x00", s)
+	}
+	return h.Sum64()
 }
 
 func newDealChain() *dealChain { return &dealChain{decks: map[int64][]Slot{}, furthest: -1} }
