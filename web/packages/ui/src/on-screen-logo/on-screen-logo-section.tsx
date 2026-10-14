@@ -12,9 +12,10 @@ import {
   Text,
   Toggle,
   typography,
+  useWindowWidth,
 } from "@loomarr/design-system";
 import { type ReactNode, useEffect, useState } from "react";
-import { Image, Platform, Pressable, useWindowDimensions, View } from "react-native";
+import { Image, Platform, Pressable, View } from "react-native";
 
 // ON-SCREEN LOGO — the channel page's per-channel logo section (#1659; approved mock
 // project/prototypes/watermark.html, "Channel page → Channel info"). Presentational: the app
@@ -519,7 +520,9 @@ const OnScreenLogoSection = ({
   policy: p,
   previewSrc,
 }: OnScreenLogoSectionProps) => {
-  const { width } = useWindowDimensions();
+  // Not useWindowDimensions() from react-native: a component body that calls a react-native import
+  // makes Storybook's docgen parse the package's Flow source and fail the build.
+  const width = useWindowWidth();
   const phone = width < 720;
   const [scene, setScene] = useState<Scene>("bright");
   const [zoom, setZoom] = useState(true);
