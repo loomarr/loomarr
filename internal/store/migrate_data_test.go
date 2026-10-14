@@ -39,7 +39,7 @@ func seedForMigration(t *testing.T, s Store) {
 	for i := 0; i < 7; i++ {
 		title := provision.Title{
 			MediaType: provision.Movie,
-			TMDBID:    900000 + i,
+			TMDBID:    90_900_000 + i,
 			Name:      "Migrated Movie " + string(rune('A'+i)),
 			Year:      1990 + i,
 		}

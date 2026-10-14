@@ -192,7 +192,7 @@ func TestLegacySeriesEpisodeEvidenceIsSanitizedBeforeScheduling(t *testing.T) {
 	lineup := schedule.ComputeDesiredAt(
 		schedule.Channel{ID: "ch", Strategy: schedule.Sequential},
 		[]schedule.LineupEntry{{
-			Key: "series:tmdb:456", Title: "Series",
+			Key: "series:tmdb:90000456", Title: "Series",
 			EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
 		}},
 		cachedEpisodeAvailability(got.Episodes), schedule.PodFill, schedule.ChannelPolicy{}, time.Time{},

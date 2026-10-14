@@ -42,7 +42,7 @@ func twoEpisodes() []schedule.ResolvedProgram {
 // availability (a restart, a different request) reads the store instead of the media server.
 func TestResolveEpisodesPersistsWhatItEnumerated(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedSeries(t, st, key, "show-1")
 
 	calls := 0
@@ -77,7 +77,7 @@ func TestResolveEpisodesPersistsWhatItEnumerated(t *testing.T) {
 // path for a 4-show channel.
 func TestResolveEpisodesServesFromTheStoreWithoutTheLibrary(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedSeries(t, st, key, "show-1")
 
 	// Pre-populate exactly as a previous request (or the refresh job) would have.
@@ -108,7 +108,7 @@ func TestResolveEpisodesServesFromTheStoreWithoutTheLibrary(t *testing.T) {
 // one case nobody would think to check.
 func TestResolveEpisodesTreatsACachedEmptyListAsAnAnswer(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedSeries(t, st, key, "show-empty")
 
 	if err := st.UpsertSeriesEpisodes(context.Background(), store.SeriesEpisodes{
@@ -136,7 +136,7 @@ func TestResolveEpisodesTreatsACachedEmptyListAsAnAnswer(t *testing.T) {
 // cache has not been built yet still gets its episodes, just at the old cost.
 func TestResolveEpisodesFallsBackToTheLibraryOnAColdCache(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedSeries(t, st, key, "show-cold")
 
 	eps := func(_ context.Context, _ string) ([]schedule.ResolvedProgram, error) {
@@ -155,7 +155,7 @@ func TestResolveEpisodesFallsBackToTheLibraryOnAColdCache(t *testing.T) {
 // never presents its stale editorial evidence as a highlights/holiday subset.
 func TestAgedEpisodeCacheFailurePreservesHolidayScopeAndHighlightFallback(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedSeries(t, st, key, "show-1")
 	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
 	episodes := make([]schedule.ResolvedProgram, 0, 8)
@@ -214,7 +214,7 @@ func TestAgedEpisodeCacheFailurePreservesHolidayScopeAndHighlightFallback(t *tes
 
 func TestAgedEmptyEpisodeCacheFailureIsUnavailable(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedSeries(t, st, key, "show-empty")
 	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
 	if err := st.UpsertSeriesEpisodes(context.Background(), store.SeriesEpisodes{
@@ -234,7 +234,7 @@ func TestAgedEmptyEpisodeCacheFailureIsUnavailable(t *testing.T) {
 
 func TestAgedEpisodeCacheRefreshesAndRestoresEditorialSelection(t *testing.T) {
 	st := availTestStore(t)
-	key := provision.Key("series:tvdb:71663")
+	key := provision.Key("series:tvdb:90071663")
 	seedSeries(t, st, key, "show-1")
 	now := time.Date(2026, time.August, 28, 12, 0, 0, 0, time.UTC)
 	if err := st.UpsertSeriesEpisodes(context.Background(), store.SeriesEpisodes{

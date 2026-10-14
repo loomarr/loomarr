@@ -73,6 +73,9 @@ var migratedTitles = []string{
 	"Swiffer", "Aqua Globes", "Walgreens", "WKRP", "Smokey Bear", "Jersey Mike", "Turbo Teen",
 	"Highway Patrol", "Sega Genesis", "TMNT", "Capri Sun", "La Llave", "TV Puls", "NatWest", "Rumbelows",
 	"KCPQ", "WNYW", "WAGA", "Sony", "Lego", "NFL", "CBC",
+	// The channels, store and reconcile tests (slice 13). "Bluey" is left out: it is a kids-signal
+	// keyword in the product's own list (suggest/intent_policy.go), pinned on purpose by a migrated test.
+	"Fight Club", "Darkwing Duck", "CBS",
 	// The app, requester, provision and proposalworkflow tests (slice 15). Titles that are ordinary
 	// words or names ("Them!", "Akira", "Running Man", "Puma") are left out: they would match
 	// ordinary prose.
@@ -209,6 +212,8 @@ var migratedGo = []string{
 	"internal/playout/", "internal/recurate/", "internal/schedule/",
 	// The filler, fillerenrichment and fillerstore tests (slice 12).
 	"internal/filler/", "internal/fillerenrichment/", "internal/fillerstore/",
+	// The channels, store and reconcile tests (slice 13).
+	"internal/channels/", "internal/reconcile/", "internal/store/",
 	// The app, requester, provision and proposalworkflow tests (slice 15).
 	"internal/app/", "internal/proposalworkflow/", "internal/provision/", "internal/requester/",
 }

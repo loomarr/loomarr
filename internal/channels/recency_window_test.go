@@ -67,7 +67,7 @@ func films(n int, runtime time.Duration) ([]schedule.LineupEntry, runtimeAvail) 
 	avail := runtimeAvail{movies: map[provision.Key]schedule.ResolvedProgram{}}
 	var entries []schedule.LineupEntry
 	for i := 1; i <= n; i++ {
-		k := provision.Key(fmt.Sprintf("movie:tmdb:%d", 100+i))
+		k := provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_100+i))
 		avail.movies[k] = schedule.ResolvedProgram{LibraryItemID: fmt.Sprintf("film-%d", i), DurationMs: runtime.Milliseconds()}
 		entries = append(entries, schedule.LineupEntry{Key: k, Title: fmt.Sprintf("Film %d", i), DurationMs: runtime.Milliseconds()})
 	}
@@ -197,7 +197,7 @@ func TestReconcile_FittingDeckIgnoresHistoryAndReshufflesPerWindow(t *testing.T)
 func TestReconcile_AiringHistoryIsPerEpisode(t *testing.T) {
 	avail := runtimeAvail{series: map[provision.Key][]schedule.ResolvedProgram{}}
 	var entries []schedule.LineupEntry
-	for s, key := range []provision.Key{"series:tvdb:501", "series:tvdb:502"} {
+	for s, key := range []provision.Key{"series:tvdb:90000501", "series:tvdb:90000502"} {
 		for ep := 1; ep <= 60; ep++ {
 			avail.series[key] = append(avail.series[key], schedule.ResolvedProgram{
 				LibraryItemID: fmt.Sprintf("show%d-e%d", s+1, ep), DurationMs: (30 * time.Minute).Milliseconds(),
@@ -217,7 +217,7 @@ func TestReconcile_AiringHistoryIsPerEpisode(t *testing.T) {
 		return programIDs(reconcileDesired(t, e, st, "pe").Desired)
 	}
 	air := func(st store.Store, id string, at time.Time) {
-		if err := st.RecordAiring(context.Background(), "pe", "series:tvdb:501", id, at, at); err != nil {
+		if err := st.RecordAiring(context.Background(), "pe", "series:tvdb:90000501", id, at, at); err != nil {
 			t.Fatal(err)
 		}
 	}

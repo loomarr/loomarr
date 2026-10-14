@@ -93,10 +93,10 @@ func (n *recordingChannelNotifier) ChannelChanged(_ string, previousStatus, stat
 func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	notifier := &recordingChannelNotifier{}
 	e := newEngine(st, tun, avail, nil).WithNotifier(notifier)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	// First reconcile: creates the Tunarr channel + pushes the lineup.
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
@@ -141,10 +141,10 @@ func TestReconcile_CreatesThenIdempotent(t *testing.T) {
 // A nil Programmer is intentional — any accidental Tunarr call panics and fails this test.
 func TestReconcile_InternalMaterializesWithoutProgrammer(t *testing.T) {
 	st := newStore(t)
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	e := newEngineForBackend(st, nil, avail, nil,
 		func() string { return schedule.PlayoutBackendInternal })
-	seedChannel(t, st, "internal", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "internal", 5, entry("movie:tmdb:90000001", "A"))
 
 	if err := e.Reconcile(context.Background(), "internal"); err != nil {
 		t.Fatal(err)
@@ -172,9 +172,9 @@ func TestReconcile_InternalMaterializesWithoutProgrammer(t *testing.T) {
 func TestReconcilePublishesOutcomeToGenerationMetrics(t *testing.T) {
 	st := newStore(t)
 	recorder := metrics.New(metrics.Options{})
-	engine := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+	engine := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil,
 		func() string { return schedule.PlayoutBackendInternal }).WithMetrics(recorder)
-	seedChannel(t, st, "private-channel-id", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "private-channel-id", 5, entry("movie:tmdb:90000001", "A"))
 
 	if err := engine.Reconcile(t.Context(), "private-channel-id"); err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func TestReconcileRecordsOnlyFirstLiveProposalSchedulingJourney(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	seedChannel(t, st, "quality-channel", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "quality-channel", 5, entry("movie:tmdb:90000001", "A"))
 	ch, err := st.GetChannel(t.Context(), "quality-channel")
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestReconcileRecordsOnlyFirstLiveProposalSchedulingJourney(t *testing.T) {
 	}
 
 	sink := &testkit.QualityRecorder{}
-	engine := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+	engine := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil,
 		func() string { return schedule.PlayoutBackendInternal }).
 		WithQualityRecorder(quality.NewSchedulingRecorder(sink, testkit.Logger()))
 	if err := engine.Reconcile(t.Context(), "quality-channel"); err != nil {
@@ -243,7 +243,7 @@ func TestReconcileRecordsFailureThenRecoveryBeforeFirstLive(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	seedChannel(t, st, "recovering-channel", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "recovering-channel", 5, entry("movie:tmdb:90000001", "A"))
 	ch, err := st.GetChannel(t.Context(), "recovering-channel")
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +255,7 @@ func TestReconcileRecordsFailureThenRecoveryBeforeFirstLive(t *testing.T) {
 
 	fail := true
 	sink := &testkit.QualityRecorder{}
-	engine := channels.New(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, nil, channels.Config{
+	engine := channels.New(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil, channels.Config{
 		ReconcileTTL: 10 * time.Minute,
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
 			if fail {
@@ -289,7 +289,7 @@ func TestReconcileDoesNotCallEmptyOrAlreadyLiveSchedulingQuality(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	seedChannel(t, st, "empty-quality-channel", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "empty-quality-channel", 5, entry("movie:tmdb:90000001", "A"))
 	ch, err := st.GetChannel(t.Context(), "empty-quality-channel")
 	if err != nil {
 		t.Fatal(err)
@@ -318,11 +318,11 @@ func TestReconcileDoesNotCallEmptyOrAlreadyLiveSchedulingQuality(t *testing.T) {
 func TestReconcile_PreservesFirstLivePlayoutAnchor(t *testing.T) {
 	st := newStore(t)
 	clock := time.Unix(1_800_000_000, 0).UTC()
-	e := channels.New(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, nil, channels.Config{
+	e := channels.New(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil, channels.Config{
 		ReconcileTTL:                 10 * time.Minute,
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
 	}, func() time.Time { return clock }, testkit.Logger())
-	seedChannel(t, st, "anchored", 15, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "anchored", 15, entry("movie:tmdb:90000001", "A"))
 
 	if err := e.Reconcile(context.Background(), "anchored"); err != nil {
 		t.Fatal(err)
@@ -341,9 +341,9 @@ func TestReconcile_PreservesFirstLivePlayoutAnchor(t *testing.T) {
 func TestReconcile_InternalFirstMaterializationRescansTunerOnce(t *testing.T) {
 	st := newStore(t)
 	guide := &fakeGuide{}
-	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, guide,
+	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, guide,
 		func() string { return schedule.PlayoutBackendInternal })
-	seedChannel(t, st, "internal-guide", 6, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "internal-guide", 6, entry("movie:tmdb:90000001", "A"))
 
 	if err := e.Reconcile(context.Background(), "internal-guide"); err != nil {
 		t.Fatal(err)
@@ -365,13 +365,13 @@ func TestReconcile_InternalFirstMaterializationRescansTunerOnce(t *testing.T) {
 func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 	st := newStore(t)
 	guide := &fakeGuide{}
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	e := newEngineForBackend(st, nil, avail, guide,
 		func() string { return schedule.PlayoutBackendInternal })
 	playout := &testkit.Playout{}
 	e.WithScheduleInvalidator(playout)
 	seedChannel(t, st, "internal-change", 7,
-		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
 		t.Fatal(err)
@@ -379,7 +379,7 @@ func TestReconcile_InternalDesiredChangeRefreshesGuide(t *testing.T) {
 	guide.pokes, guide.rescans = 0, 0
 	stopsAfterMaterialization := len(playout.StoppedChannels())
 
-	avail["movie:tmdb:2"] = "lib-2"
+	avail["movie:tmdb:90000002"] = "lib-2"
 	if err := e.Reconcile(context.Background(), "internal-change"); err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestReconcile_InternalEmptyBecomesPlayableRescansTuner(t *testing.T) {
 	avail := mapAvail{}
 	e := newEngineForBackend(st, nil, avail, guide,
 		func() string { return schedule.PlayoutBackendInternal })
-	seedChannel(t, st, "internal-empty", 8, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "internal-empty", 8, entry("movie:tmdb:90000001", "A"))
 
 	ch, err := st.GetChannel(context.Background(), "internal-empty")
 	if err != nil {
@@ -436,9 +436,9 @@ func TestReconcile_InternalEmptyBecomesPlayableRescansTuner(t *testing.T) {
 	}
 
 	// The title lands without a channel PATCH, so the row is still Empty rather than Building.
-	avail["movie:tmdb:1"] = "lib-1"
+	avail["movie:tmdb:90000001"] = "lib-1"
 	e.OnAvailability(context.Background(), provision.DomainEvent{
-		Key: "movie:tmdb:1", State: provision.Available,
+		Key: "movie:tmdb:90000001", State: provision.Available,
 	})
 
 	ch, err = st.GetChannel(context.Background(), "internal-empty")
@@ -469,9 +469,9 @@ func TestReconcile_InternalEmptyBecomesPlayableRescansTuner(t *testing.T) {
 func TestReconcile_InternalLiveBecomesEmptyRescansTuner(t *testing.T) {
 	st := newStore(t)
 	guide := &fakeGuide{}
-	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, guide,
+	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, guide,
 		func() string { return schedule.PlayoutBackendInternal })
-	seedChannel(t, st, "internal-live", 9, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "internal-live", 9, entry("movie:tmdb:90000001", "A"))
 
 	if err := e.Reconcile(context.Background(), "internal-live"); err != nil {
 		t.Fatal(err)
@@ -519,9 +519,9 @@ func TestReconcile_PlayoutBackendPrecedence(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			st := newStore(t)
 			tun := tunarrtest.NewTunarr()
-			e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+			e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil,
 				func() string { return tt.global })
-			seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+			seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"))
 			ch, err := st.GetChannel(context.Background(), "c1")
 			if err != nil {
 				t.Fatal(err)
@@ -548,9 +548,9 @@ func TestReconcile_BackendSwitchPreservesTunarrProjection(t *testing.T) {
 	tun := tunarrtest.NewTunarr()
 	guide := &fakeGuide{}
 	backend := "tunarr"
-	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, guide,
+	e := newEngineForBackend(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, guide,
 		func() string { return backend })
-	seedChannel(t, st, "switch", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "switch", 5, entry("movie:tmdb:90000001", "A"))
 
 	if err := e.Reconcile(context.Background(), "switch"); err != nil {
 		t.Fatal(err)
@@ -610,13 +610,13 @@ func TestReconcile_BackendSwitchPreservesTunarrProjection(t *testing.T) {
 func TestReconcile_ReadsLiveCooldownSetting(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	now := time.Unix(1_800_000_000, 0).UTC()
 	cooldown := 10 * time.Minute
 	e := channels.New(st, tun, avail, nil, channels.Config{
 		ResolveReconcileTTL: func() time.Duration { return cooldown },
 	}, func() time.Time { return now }, testkit.Logger())
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"))
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)
@@ -645,9 +645,9 @@ func TestReconcile_ChannelIDCheckpointedBeforeLineupPush(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
 	tun.SetLineupErr = context.DeadlineExceeded // simulate the big-library resolve timeout
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	e := newEngine(st, tun, avail, nil)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"))
 
 	// First reconcile: the channel IS created in Tunarr, but the lineup push fails →
 	// the reconcile returns an error.
@@ -690,8 +690,8 @@ func TestReconcile_CheckpointPersistsAutoRenumberBeforeLineupFailure(t *testing.
 	tun := tunarrtest.NewTunarr()
 	tun.SeedForeignChannel(5, "Do not touch")
 	tun.SetLineupErr = context.DeadlineExceeded
-	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
-	seedChannel(t, st, "c-renumber-checkpoint", 5, entry("movie:tmdb:1", "A"))
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil)
+	seedChannel(t, st, "c-renumber-checkpoint", 5, entry("movie:tmdb:90000001", "A"))
 
 	if err := e.Reconcile(context.Background(), "c-renumber-checkpoint"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("first reconcile = %v, want lineup failure", err)
@@ -727,9 +727,9 @@ func TestReconcile_CheckpointPersistsAutoRenumberBeforeLineupFailure(t *testing.
 func TestReconcile_ReloadsAfterConcurrentChannelEdit(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
-	seedChannel(t, st, "c-race", 15, entry("movie:tmdb:1", "Old"))
+	seedChannel(t, st, "c-race", 15, entry("movie:tmdb:90000001", "Old"))
 
 	setLineupStarted := make(chan struct{})
 	allowSetLineup := make(chan struct{})
@@ -752,7 +752,7 @@ func TestReconcile_ReloadsAfterConcurrentChannelEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	edited.Name = "Operator edit"
-	edited.Lineup = []schedule.LineupEntry{entry("movie:tmdb:2", "New")}
+	edited.Lineup = []schedule.LineupEntry{entry("movie:tmdb:90000002", "New")}
 	if _, err := st.SaveChannel(context.Background(), edited); err != nil {
 		t.Fatal(err)
 	}
@@ -765,7 +765,7 @@ func TestReconcile_ReloadsAfterConcurrentChannelEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Name != "Operator edit" || len(got.Lineup) != 1 || got.Lineup[0].Key != "movie:tmdb:2" {
+	if got.Name != "Operator edit" || len(got.Lineup) != 1 || got.Lineup[0].Key != "movie:tmdb:90000002" {
 		t.Fatalf("concurrent operator edit was lost: name=%q lineup=%+v", got.Name, got.Lineup)
 	}
 	if len(got.Desired) != 1 || got.Desired[0].LibraryItemID != "lib-2" {
@@ -788,11 +788,11 @@ func TestReconcile_BackendSwitchDuringRetryDoesNotLeakTunarrEffects(t *testing.T
 	tun := tunarrtest.NewTunarr()
 	guide := &fakeGuide{}
 	avail := mapAvail{
-		"movie:tmdb:1": "lib-1",
-		"movie:tmdb:2": "lib-2",
+		"movie:tmdb:90000001": "lib-1",
+		"movie:tmdb:90000002": "lib-2",
 	}
 	e := newEngineForBackend(st, tun, avail, guide, func() string { return "tunarr" })
-	seedChannel(t, st, "backend-race", 15, entry("movie:tmdb:1", "Initial"))
+	seedChannel(t, st, "backend-race", 15, entry("movie:tmdb:90000001", "Initial"))
 	if err := e.Reconcile(context.Background(), "backend-race"); err != nil {
 		t.Fatal(err)
 	}
@@ -803,7 +803,7 @@ func TestReconcile_BackendSwitchDuringRetryDoesNotLeakTunarrEffects(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch.Lineup = []schedule.LineupEntry{entry("movie:tmdb:2", "Stale projection")}
+	ch.Lineup = []schedule.LineupEntry{entry("movie:tmdb:90000002", "Stale projection")}
 	if _, err := st.SaveChannel(context.Background(), ch); err != nil {
 		t.Fatal(err)
 	}
@@ -830,7 +830,7 @@ func TestReconcile_BackendSwitchDuringRetryDoesNotLeakTunarrEffects(t *testing.T
 	latest.Policy.Playout = &schedule.PlayoutPolicy{Backend: schedule.PlayoutBackendInternal}
 	// Return to the last COMMITTED desired lineup. The winning internal retry therefore
 	// has no local guide change; any poke can only have leaked from the stale Tunarr push.
-	latest.Lineup = []schedule.LineupEntry{entry("movie:tmdb:1", "Initial")}
+	latest.Lineup = []schedule.LineupEntry{entry("movie:tmdb:90000001", "Initial")}
 	if _, err := st.SaveChannel(context.Background(), latest); err != nil {
 		t.Fatal(err)
 	}
@@ -858,9 +858,9 @@ func TestReconcile_BackendSwitchDuringRetryDoesNotLeakTunarrEffects(t *testing.T
 func TestReconcile_CheckpointPreservesAnEditDuringRemoteCreate(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
-	seedChannel(t, st, "c-checkpoint-race", 16, entry("movie:tmdb:1", "Old"))
+	seedChannel(t, st, "c-checkpoint-race", 16, entry("movie:tmdb:90000001", "Old"))
 
 	ensureStarted := make(chan struct{})
 	allowEnsure := make(chan struct{})
@@ -881,7 +881,7 @@ func TestReconcile_CheckpointPreservesAnEditDuringRemoteCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	edited.Name = "Edited during create"
-	edited.Lineup = []schedule.LineupEntry{entry("movie:tmdb:2", "New")}
+	edited.Lineup = []schedule.LineupEntry{entry("movie:tmdb:90000002", "New")}
 	if _, err := st.SaveChannel(context.Background(), edited); err != nil {
 		t.Fatal(err)
 	}
@@ -900,7 +900,7 @@ func TestReconcile_CheckpointPreservesAnEditDuringRemoteCreate(t *testing.T) {
 	if tun.Pushes != 1 {
 		t.Fatalf("stale plan reached Tunarr before restart: pushes=%d, want only the fresh push", tun.Pushes)
 	}
-	if got.TunarrID == "" || got.Name != "Edited during create" || got.Lineup[0].Key != "movie:tmdb:2" {
+	if got.TunarrID == "" || got.Name != "Edited during create" || got.Lineup[0].Key != "movie:tmdb:90000002" {
 		t.Fatalf("checkpoint did not preserve both identity and edit: %+v", got)
 	}
 	actual, ok, err := tun.GetChannel(context.Background(), got.TunarrID)
@@ -921,10 +921,10 @@ func TestReconcile_RemovesRemoteCreateThatLosesCrossEngineAttachRace(t *testing.
 		t.Run(name, func(t *testing.T) {
 			st := newStore(t)
 			tun := tunarrtest.NewTunarr()
-			avail := mapAvail{"movie:tmdb:1": "lib-1"}
+			avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 			firstEngine := newEngine(st, tun, avail, nil)
 			secondEngine := newEngine(st, tun, avail, nil)
-			seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+			seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"))
 
 			if recreate {
 				if err := firstEngine.Reconcile(context.Background(), "c1"); err != nil {
@@ -998,8 +998,8 @@ func TestReconcile_RemovesRemoteCreateThatLosesCrossEngineAttachRace(t *testing.
 func TestPurge_DoesNotDeleteAConcurrentlyEditedChannel(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
-	seedChannel(t, st, "c-purge-race", 17, entry("movie:tmdb:1", "A"))
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil)
+	seedChannel(t, st, "c-purge-race", 17, entry("movie:tmdb:90000001", "A"))
 	if err := e.Reconcile(context.Background(), "c-purge-race"); err != nil {
 		t.Fatal(err)
 	}
@@ -1039,7 +1039,7 @@ func TestPurge_DoesNotDeleteAConcurrentlyEditedChannel(t *testing.T) {
 
 func TestPurge_InternalHistoricalTunarrIDFailsClosedWithoutProgrammer(t *testing.T) {
 	st := newStore(t)
-	seedChannel(t, st, "internal-purge", 18, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "internal-purge", 18, entry("movie:tmdb:90000001", "A"))
 	ch, err := st.GetChannel(context.Background(), "internal-purge")
 	if err != nil {
 		t.Fatal(err)
@@ -1064,8 +1064,8 @@ func TestPurge_RescansTunerAfterHardDelete(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
 	guide := &fakeGuide{}
-	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, guide)
-	seedChannel(t, st, "purge-rescan", 19, entry("movie:tmdb:1", "A"))
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, guide)
+	seedChannel(t, st, "purge-rescan", 19, entry("movie:tmdb:90000001", "A"))
 	if err := e.Reconcile(context.Background(), "purge-rescan"); err != nil {
 		t.Fatal(err)
 	}
@@ -1096,14 +1096,14 @@ func (f fakeRatings) Rating(_ context.Context, k provision.Key) (string, bool, e
 func TestReconcile_HealsUnratedEntryFromLibrary(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	// The library rates it TV-Y7 — within the channel's kids ceiling.
 	e := newEngine(st, tun, avail, nil).
-		WithRatings(fakeRatings{"movie:tmdb:1": "TV-Y7"})
+		WithRatings(fakeRatings{"movie:tmdb:90000001": "TV-Y7"})
 
 	// A channel whose approved entry has NO rating, under a TV-Y7 audience ceiling.
 	ch := store.Channel{Lineup: []schedule.LineupEntry{
-		{Key: "movie:tmdb:1", Title: "Kids Pick", DurationMs: 3600000}, // OfficialRating unset
+		{Key: "movie:tmdb:90000001", Title: "Kids Pick", DurationMs: 3600000}, // OfficialRating unset
 	}}
 	ch.ID, ch.Number, ch.Strategy, ch.Status = "cheal", 7, schedule.Sequential, schedule.StatusBuilding
 	ch.Policy = schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-Y7"}}}
@@ -1145,18 +1145,18 @@ func (c *countingBoxSets) BoxSets(_ context.Context, k provision.Key) ([]string,
 func TestReconcile_StampsBoxSetMembership(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
-	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:1": {"star-trek"}}}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
+	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:90000001": {"juniper-vale"}}}
 	e := newEngine(st, tun, avail, nil).WithBoxSets(res)
 
-	seedChannel(t, st, "cbs", 8, entry("movie:tmdb:1", "A"))
-	if err := e.Reconcile(context.Background(), "cbs"); err != nil {
+	seedChannel(t, st, "box-sets", 8, entry("movie:tmdb:90000001", "A"))
+	if err := e.Reconcile(context.Background(), "box-sets"); err != nil {
 		t.Fatal(err)
 	}
 
-	got, _ := st.GetChannel(context.Background(), "cbs")
-	if ids := got.Lineup[0].BoxSetIDs; len(ids) != 1 || ids[0] != "star-trek" {
-		t.Errorf("BoxSetIDs = %v, want [star-trek] (stamped from the library + persisted)", ids)
+	got, _ := st.GetChannel(context.Background(), "box-sets")
+	if ids := got.Lineup[0].BoxSetIDs; len(ids) != 1 || ids[0] != "juniper-vale" {
+		t.Errorf("BoxSetIDs = %v, want [juniper-vale] (stamped from the library + persisted)", ids)
 	}
 	if !got.Lineup[0].BoxSetsResolved {
 		t.Error("BoxSetsResolved = false after a successful stamp — the entry will be re-fetched forever")
@@ -1171,11 +1171,11 @@ func TestReconcile_StampsBoxSetMembership(t *testing.T) {
 func TestReconcile_BoxSetHealIsOneTimeEvenForNonMembers(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	res := &countingBoxSets{sets: map[provision.Key][]string{}} // in no collection at all
 	e := newEngine(st, tun, avail, nil).WithBoxSets(res)
 
-	seedChannel(t, st, "cbs2", 9, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "cbs2", 9, entry("movie:tmdb:90000001", "A"))
 	for i := range 2 {
 		if err := e.Reconcile(context.Background(), "cbs2"); err != nil {
 			t.Fatalf("pass %d: %v", i+1, err)
@@ -1197,9 +1197,9 @@ func TestReconcile_BoxSetHealIsOneTimeEvenForNonMembers(t *testing.T) {
 func TestReconcile_BackfillOnAvailabilityEvent(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1"} // #2 not yet available
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"} // #2 not yet available
 	e := newEngine(st, tun, avail, nil)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)
@@ -1212,9 +1212,9 @@ func TestReconcile_BackfillOnAvailabilityEvent(t *testing.T) {
 	pushesBefore := tun.Pushes
 
 	// #2 lands. Emit the availability event.
-	avail["movie:tmdb:2"] = "lib-2"
+	avail["movie:tmdb:90000002"] = "lib-2"
 	e.OnAvailability(context.Background(), provision.DomainEvent{
-		Key: "movie:tmdb:2", State: provision.Available,
+		Key: "movie:tmdb:90000002", State: provision.Available,
 	})
 
 	ch, _ = st.GetChannel(context.Background(), "c1")
@@ -1235,9 +1235,9 @@ func TestReconcile_BackfillOnAvailabilityEvent(t *testing.T) {
 func TestSweep_RecoversFromLostEvent(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	e := newEngine(st, tun, avail, nil)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)
@@ -1245,7 +1245,7 @@ func TestSweep_RecoversFromLostEvent(t *testing.T) {
 
 	// #2 lands, but we DO NOT emit the event (simulate a crash between event and
 	// re-push, or a cross-replica in-memory event that never arrives).
-	avail["movie:tmdb:2"] = "lib-2"
+	avail["movie:tmdb:90000002"] = "lib-2"
 
 	// The reconcile set a future ReconcileDeadline; wind the clock past it so the
 	// sweep claims the channel.
@@ -1267,9 +1267,9 @@ func TestSweep_RecoversFromLostEvent(t *testing.T) {
 // claim and materialize one on an install with no Programmer at all.
 func TestSweep_MaterializesInternalChannelWithoutProgrammer(t *testing.T) {
 	st := newStore(t)
-	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:1": "lib-1"}, nil,
+	e := newEngineForBackend(st, nil, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil,
 		func() string { return schedule.PlayoutBackendInternal })
-	seedChannel(t, st, "internal-sweep", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "internal-sweep", 5, entry("movie:tmdb:90000001", "A"))
 
 	now := time.Unix(1_800_000_000, 0).UTC()
 	r := channels.NewRunner(e, st, time.Minute, 5*time.Minute, 50,
@@ -1291,15 +1291,15 @@ func TestSweep_MaterializesInternalChannelWithoutProgrammer(t *testing.T) {
 func TestSweep_FlagsDriftWhenProgramVanishes(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	e := newEngine(st, tun, avail, nil)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)
 	}
 
 	// #2 is deleted/re-id'd in the library.
-	delete(avail, "movie:tmdb:2")
+	delete(avail, "movie:tmdb:90000002")
 
 	now := time.Unix(1_800_000_000, 0).Add(20 * time.Minute)
 	r := channels.NewRunner(e, st, time.Minute, 5*time.Minute, 50,
@@ -1322,10 +1322,10 @@ func TestSweep_FlagsDriftWhenProgramVanishes(t *testing.T) {
 func TestReconcile_RescansTunerOnCreate(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	guide := &fakeGuide{}
 	e := newEngine(st, tun, avail, guide)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"))
 
 	_ = e.Reconcile(context.Background(), "c1") // create
 	if guide.rescans != 1 {
@@ -1348,7 +1348,7 @@ func TestReconcile_SkipsPausedAndDetachedWithoutMutation(t *testing.T) {
 	for _, status := range []schedule.ChannelStatus{schedule.StatusPaused, schedule.StatusDetached} {
 		t.Run(string(status), func(t *testing.T) {
 			st := newStore(t)
-			seedChannel(t, st, "inactive", 5, entry("movie:tmdb:1", "A"))
+			seedChannel(t, st, "inactive", 5, entry("movie:tmdb:90000001", "A"))
 			ch, err := st.GetChannel(context.Background(), "inactive")
 			if err != nil {
 				t.Fatal(err)
@@ -1386,7 +1386,7 @@ func TestReconcile_SkipsPausedAndDetachedWithoutMutation(t *testing.T) {
 
 func TestReconcileReadsDurableBackendOnceAndFailsClosed(t *testing.T) {
 	st := newStore(t)
-	seedChannel(t, st, "active", 5, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "active", 5, entry("movie:tmdb:90000001", "A"))
 	before, err := st.GetChannel(context.Background(), "active")
 	if err != nil {
 		t.Fatal(err)
@@ -1394,7 +1394,7 @@ func TestReconcileReadsDurableBackendOnceAndFailsClosed(t *testing.T) {
 	want := errors.New("checkpoint unavailable")
 	reads := 0
 	tun := tunarrtest.NewTunarr()
-	e := channels.New(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil, channels.Config{
+	e := channels.New(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil, channels.Config{
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) {
 			reads++
 			return "", want
@@ -1422,8 +1422,8 @@ func TestReconcile_GuidePokeFailureIsNonFatal(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
 	guide := &fakeGuide{err: errPoke}
-	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, guide)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"))
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, guide)
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"))
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatalf("guide poke failure must not fail the reconcile: %v", err)
@@ -1475,7 +1475,7 @@ func TestReconcile_EmptyDeckIsNotLive(t *testing.T) {
 	tun := tunarrtest.NewTunarr()
 	// Entries exist on the lineup, but NOTHING is available, so no slot survives.
 	e := newEngine(st, tun, mapAvail{}, nil)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)

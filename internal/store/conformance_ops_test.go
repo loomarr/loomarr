@@ -536,9 +536,9 @@ func testCounts(t *testing.T, newStore NewStoreFunc) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 
 	// Titles across three states: two requested, one available.
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:20", provision.Requested, time.Time{}))
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:21", provision.Requested, time.Time{}))
-	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:22", provision.Available, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000020", provision.Requested, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000021", provision.Requested, time.Time{}))
+	_ = s.UpsertTitle(ctx, sampleRecord("movie:tmdb:90000022", provision.Available, time.Time{}))
 
 	titles, err := s.CountTitlesByState(ctx)
 	if err != nil {
@@ -661,7 +661,7 @@ func testActivityFeed(t *testing.T, newStore func(t *testing.T) Store) {
 	}{
 		{"oldest — CH 12 reconciled", ActivityInfo, 90 * time.Minute},
 		{"middle — Seerr timed out, retrying", ActivityWarn, 60 * time.Minute},
-		{"newest — Darkwing Duck landed", ActivityInfo, 30 * time.Minute},
+		{"newest — Gadget Goats Go! landed", ActivityInfo, 30 * time.Minute},
 	} {
 		if err := st.RecordActivity(ctx, Activity{
 			At: base.Add(-tc.age).Unix(), Kind: ActivityKindTitle, Level: tc.level,

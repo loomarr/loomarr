@@ -33,8 +33,8 @@ func newQueueStore(t *testing.T) store.Store {
 // progress is persisted on the record.
 func TestQueuePoll_PromotesAndPersistsProgress(t *testing.T) {
 	st := newQueueStore(t)
-	key := provision.Key("movie:tmdb:603")
-	put(t, st, key, provision.Requested, 603, now.Add(48*time.Hour))
+	key := provision.Key("movie:tmdb:90000603")
+	put(t, st, key, provision.Requested, 90000603, now.Add(48*time.Hour))
 
 	fq := &fakeQueue{items: []requester.QueueItem{
 		{Key: key, Grabbed: true, Progress: 0.5, ETAText: "00:05:00", Status: "downloading"},
@@ -65,8 +65,8 @@ func TestQueuePoll_PromotesAndPersistsProgress(t *testing.T) {
 // A title NOT in the queue is left untouched (still requested, no progress).
 func TestQueuePoll_IgnoresUngrabbed(t *testing.T) {
 	st := newQueueStore(t)
-	key := provision.Key("movie:tmdb:603")
-	put(t, st, key, provision.Requested, 603, now.Add(48*time.Hour))
+	key := provision.Key("movie:tmdb:90000603")
+	put(t, st, key, provision.Requested, 90000603, now.Add(48*time.Hour))
 
 	fq := &fakeQueue{items: []requester.QueueItem{{Key: key, Grabbed: false}}}
 	p := NewQueuePoll(st, fq, &captureEmitter{}, 12*time.Hour, func() time.Time { return now }, slog.New(slog.DiscardHandler))
@@ -87,8 +87,8 @@ func TestQueuePoll_IgnoresUngrabbed(t *testing.T) {
 // An already-downloading title keeps downloading (no needless re-Grab) but its progress updates.
 func TestQueuePoll_UpdatesProgressWhenAlreadyDownloading(t *testing.T) {
 	st := newQueueStore(t)
-	key := provision.Key("movie:tmdb:603")
-	put(t, st, key, provision.Downloading, 603, now.Add(12*time.Hour))
+	key := provision.Key("movie:tmdb:90000603")
+	put(t, st, key, provision.Downloading, 90000603, now.Add(12*time.Hour))
 
 	fq := &fakeQueue{items: []requester.QueueItem{
 		{Key: key, Grabbed: true, Progress: 0.9, Status: "downloading"},
@@ -107,10 +107,10 @@ func TestQueuePoll_UpdatesProgressWhenAlreadyDownloading(t *testing.T) {
 // A downloading series' episode counts ride the same targeted write as its progress (#1667).
 func TestQueuePoll_PersistsSeriesEpisodeCounts(t *testing.T) {
 	st := newQueueStore(t)
-	key := provision.Key("series:tvdb:90001")
+	key := provision.Key("series:tvdb:90090001")
 	if err := st.UpsertTitle(context.Background(), provision.Record{
 		Key: key, State: provision.Downloading, Deadline: now.Add(12 * time.Hour),
-		Title: provision.Title{MediaType: provision.Series, TVDBID: 90001},
+		Title: provision.Title{MediaType: provision.Series, TVDBID: 90090001},
 	}); err != nil {
 		t.Fatal(err)
 	}
