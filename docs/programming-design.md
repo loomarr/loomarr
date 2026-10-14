@@ -373,7 +373,15 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     independently. They are **simulated in order** from the season's *anchor*: its first in-season
     window, found by walking back over in-season windows and gaps no longer than the horizon, at
     most 120 days. Two seasons closer than the horizon are one simulation. Every other window is
-    the dealer's tile (`windowSliceDealt`), untouched.
+    the dealer's tile (`windowSliceDealt`), with one correction (the *hand-off*, `handOff`). A
+    window can air otherwise than its deal: the season's tile, or an evening that defers an
+    off-season holiday episode and so brings the units behind it forward. The dealer repaired
+    each seam against the deal before it, so the next window is repaired again against what
+    really aired, and so is a window whose own evening reorders it. That repair reads back over
+    every window the repeat spacing spans, not only the window before. A 12-hour spacing on a
+    6-hour window reaches two windows back. Reading one window let an evening that deferred two
+    holiday episodes bring a unit to 32 programmes from its airing two windows earlier, against
+    33 promised (#1960). Which channels hit it depended on their deal origin.
     The simulation keeps `airedAt`, each unit's last airing as a programme index that counts the
     features. Before the anchor it holds the dealer's tiles, arranged, covering at least the
     repeat spacing. For each window in turn:
@@ -442,9 +450,12 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     channel-local evening band. If the clock reaches it inside the band, it is deferred to the
     first moment outside the band. If the window ends inside the band (a short window), the
     deferred episodes move, as one run, to just before that band. They go at the latest point
-    where each still starts before 17:00. Whatever does not fit before the band airs in place:
-    this happens in a window wholly inside 17:00–23:00, or one with less time before the band
-    than the run needs. Holidays the channel has deselected are ordinary episodes.
+    where each still starts before 17:00. Whatever does not fit before the band airs in the band:
+    this happens in a window with less time before the band than the run needs, and those
+    episodes air at the window's end. A window wholly inside 17:00–23:00 has nowhere to defer
+    to, so its holiday episodes keep their place in the tile. Moving them to its end kept them in
+    the band and only brought the units behind them forward, past a seam repair that had held
+    one back (#1960). Holidays the channel has deselected are ordinary episodes.
   - **Holiday windows are channel-local dates.** Whether a holiday is active, for the title-level
     boost and bench, the `exclusive` pass, this feature and the cycle-cache clock signature, is
     decided by the channel's date on the guide time zone. It is not decided by the UTC instant,

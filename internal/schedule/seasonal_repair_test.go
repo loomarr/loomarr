@@ -3,6 +3,7 @@ package schedule_test
 import (
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -406,50 +407,95 @@ func newYearSpecials(n int) []special {
 // capped where windowSlice starts the next window, and the airtime it cannot fill comes from half
 // a lap away: a seam only skips, and an in-season re-air is about half a cycle from either airing.
 func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
-	for _, seam := range []struct {
-		name     string
-		at       time.Time
-		specials func(int) []special
-	}{
-		{"Halloween's end", day(time.November, 1, 0), halloweenSpecials},
-		{"first day after Halloween", day(time.November, 2, 0), halloweenSpecials},
-		{"New Year's end", time.Date(2027, time.January, 3, 0, 0, 0, 0, time.UTC), newYearSpecials},
-		// #1930 review B1: mid-season, a deck under about two windows re-aired an episode back to back.
-		{"mid-season", day(time.October, 16, 0), halloweenSpecials},
-	} {
-		for _, pool := range []struct {
-			ordinary int
-			window   time.Duration
-		}{{9, time.Hour}, {80, 6 * time.Hour}, {80, 12 * time.Hour}, {80, 24 * time.Hour}, {30, 24 * time.Hour}, {400, 24 * time.Hour}} {
-			specials := max(3, pool.ordinary/20)
-			avail := seriesLike(pool.ordinary, seam.specials(specials)...)
-			// Consecutive windows share nothing when the deck holds the window before, this one and
-			// the next; on a shorter deck they must share, and spacing is the guarantee.
-			disjoint := time.Duration(pool.ordinary+specials)*episodeMs*time.Millisecond >= 3*pool.window
-			// The spacing guaranteed depends on the ordering (§6 "Holiday episodes"). In order airs
-			// one fixed deck, so an episode aired again sooner than half the deck less its pool (the
-			// in-season minimum on a small deck) is a seam repeat. Shuffled and syndication deal every
-			// pass afresh, so the fixed deck's geometry is gone and the guarantee is the dealer's
-			// repeat spacing.
+	for _, seam := range seamCases[:4] {
+		for _, pool := range seamPools {
 			for _, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
-				spacing := (pool.ordinary+specials)/2 - specials
-				if time.Duration(pool.ordinary+specials)*episodeMs*time.Millisecond < pool.window {
-					// A deck that fits its window loops all day, so the loop, not the deck, sets where
-					// the window closes: the guarantee across the seam is the dealer's, never back to back.
-					spacing = 2
-				} else if order != schedule.OrderSequential {
-					spacing = repeatSpacingProgrammes(pool.ordinary+specials, pool.window)
-				}
-				for _, strength := range []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy} {
-					policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: strength})
-					policy.Ordering = order
+				for _, strength := range holidayStrengths {
 					t.Run(fmt.Sprintf("%s/%d episodes/%s window/%s/%s", seam.name, pool.ordinary, pool.window, order, strength), func(t *testing.T) {
-						assertSeamOnlySkips(t, channelWithWindow(pool.window, nil), avail, policy, seam.at, spacing, disjoint)
+						assertSeamGuarantee(t, channelWithWindow(pool.window, nil), seam, pool, order, strength)
 					})
 				}
 			}
 		}
 	}
+}
+
+// #1960: TestHolidayEpisodes_SeasonEndOnlySkips held only because of where its channel counts
+// passes from. A channel's passes start at its creation (its DealOrigin), so which evening a
+// pass seam lands on, and how far a season's end falls into a pass, differs per household. Over
+// the 365 origins of a year, 15 broke the spacing at Halloween's end on an 80-episode deck in a
+// 6-hour window, the worst re-airing an episode 31 programmes later against 33 promised. This
+// samples origins, seeds, orderings and strengths, and asserts the guarantee at every seam,
+// including a date far from any season, where only the evening reorders a window.
+func TestHolidayEpisodes_SeamSpacingHoldsForEveryDealOrigin(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1960, 1676))
+	year := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+	for range 100 {
+		ch := channelWithWindow(0, nil)
+		ch.DealOrigin = year.AddDate(0, 0, rng.IntN(365))
+		ch.Shuffle.Seed = []int64{42, 7, 1960, 0}[rng.IntN(4)] // 0 derives the seed from the channel id
+		order := []schedule.OrderingMode{schedule.OrderShuffle, schedule.OrderSyndication}[rng.IntN(2)]
+		strength := holidayStrengths[rng.IntN(len(holidayStrengths))]
+		seam, pool := seamCases[rng.IntN(len(seamCases))], seamPools[rng.IntN(len(seamPools))]
+		t.Run(fmt.Sprintf("origin %s/seed %d/%s/%d episodes/%s window/%s/%s",
+			ch.DealOrigin.Format(time.DateOnly), ch.Shuffle.Seed, seam.name, pool.ordinary, pool.window, order, strength), func(t *testing.T) {
+			t.Parallel()
+			ch.DefaultWindow = pool.window
+			assertSeamGuarantee(t, ch, seam, pool, order, strength)
+		})
+	}
+}
+
+var holidayStrengths = []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy}
+
+type seamCase struct {
+	name     string
+	at       time.Time
+	specials func(int) []special
+}
+
+// seamCases are the seams the seam tests walk the two days either side of: two season ends, the
+// day after one, the middle of a season, and a date far from any season.
+var seamCases = []seamCase{
+	{"Halloween's end", day(time.November, 1, 0), halloweenSpecials},
+	{"first day after Halloween", day(time.November, 2, 0), halloweenSpecials},
+	{"New Year's end", time.Date(2027, time.January, 3, 0, 0, 0, 0, time.UTC), newYearSpecials},
+	// #1930 review B1: mid-season, a deck under about two windows re-aired an episode back to back.
+	{"mid-season", day(time.October, 16, 0), halloweenSpecials},
+	// #1960: out of season an evening defers the holiday episodes it is dealt, which brings the
+	// units behind them forward, so a pass seam on any evening is a seam the planner reorders.
+	{"out of season", day(time.March, 10, 0), halloweenSpecials},
+}
+
+type seamPool struct {
+	ordinary int
+	window   time.Duration
+}
+
+var seamPools = []seamPool{{9, time.Hour}, {80, 6 * time.Hour}, {80, 12 * time.Hour}, {80, 24 * time.Hour}, {30, 24 * time.Hour}, {400, 24 * time.Hour}}
+
+// assertSeamGuarantee walks the seam on ch (whose window is pool's) and asserts what the ordering
+// guarantees there (§6 "Holiday episodes"). Consecutive windows share nothing when the deck holds
+// the window before, this one and the next; on a shorter deck they must share, and spacing is the
+// guarantee. In order airs one fixed deck, so an episode aired again sooner than half the deck less
+// its pool (the in-season minimum on a small deck) is a seam repeat. Shuffled and syndication deal
+// every pass afresh, so the fixed deck's geometry is gone and the guarantee is the dealer's repeat
+// spacing. A deck that fits its window loops all day, so the loop, not the deck, sets where the
+// window closes: the guarantee across the seam is the dealer's, never back to back.
+func assertSeamGuarantee(t *testing.T, ch schedule.Channel, seam seamCase, pool seamPool, order schedule.OrderingMode, strength schedule.HolidayStrength) {
+	t.Helper()
+	specials := max(3, pool.ordinary/20)
+	deck := time.Duration(pool.ordinary+specials) * episodeMs * time.Millisecond
+	spacing := (pool.ordinary+specials)/2 - specials
+	switch {
+	case deck < pool.window:
+		spacing = 2
+	case order != schedule.OrderSequential:
+		spacing = repeatSpacingProgrammes(pool.ordinary+specials, pool.window)
+	}
+	policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: strength})
+	policy.Ordering = order
+	assertSeamOnlySkips(t, ch, seriesLike(pool.ordinary, seam.specials(specials)...), policy, seam.at, spacing, deck >= 3*pool.window)
 }
 
 // #1939: on a reshuffled 6-hour channel the first window out of Halloween (Nov 1 00:00) re-aired
