@@ -257,6 +257,7 @@ const SWITCH_REASONS: ReadonlySet<PlayerSnapshot["tuneReason"]> = new Set([
 ]);
 
 const TvWatchingSurface = ({
+  channelDigits = true,
   chromeVisible = true,
   controlsActivityKey = 0,
   controlsVisible = true,
@@ -469,7 +470,9 @@ const TvWatchingSurface = ({
                     </Text>
                   ) : null}
                   <Text density="tv" marginLeft={24} textRole="metadata" tone="muted">
-                    ▲▼ tune · ◀ channels · 0–9 jump · OK guide
+                    {channelDigits
+                      ? "▲▼ tune · ◀ channels · 0–9 jump · OK guide"
+                      : "▲▼ tune · ◀ channels · OK guide"}
                   </Text>
                 </Surface>
                 {snapshot.status === "paused" || recoverableFailure ? (
