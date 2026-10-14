@@ -259,12 +259,10 @@ var migratedGo = []string{
 	"internal/eval/runner_accounting_test.go",
 }
 
-// pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
-// This list may only SHRINK: a listed file that is already clean fails (delete its line).
-var pendingGo = []string{
-	"internal/api/channelideas_test.go",
-	"internal/api/proposaljourneys_test.go",
-}
+// pendingGo are the files under migratedGo not yet migrated. It is empty: #1917 moved the last
+// two (internal/api's channelideas_test.go and proposaljourneys_test.go). This list may only
+// SHRINK: a listed file that is already clean fails (delete its line).
+var pendingGo = []string{}
 
 // realDataGo are Go tests that exercise real external data on purpose, so #1592 never migrates
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its

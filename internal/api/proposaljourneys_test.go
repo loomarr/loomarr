@@ -26,7 +26,7 @@ func TestProposalJourneyEndpointReturnsAuthoritativeProjection(t *testing.T) {
 		Attempts: []proposalworkflow.Attempt{{
 			Version: proposalworkflow.WorkflowVersion1, Number: 1, Status: proposalworkflow.AttemptSucceeded,
 		}},
-		Proposal: &proposalworkflow.ProposalRef{ID: "proposal-1", Status: proposalworkflow.ProposalSubmitted, Proposal: suggest.Proposal{Trace: suggest.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:1", Ownership: "library", Disposition: "selected", Reason: "selected"}}}}},
+		Proposal: &proposalworkflow.ProposalRef{ID: "proposal-1", Status: proposalworkflow.ProposalSubmitted, Proposal: suggest.Proposal{Trace: suggest.DecisionTrace{Version: 1, SurfacedTotal: 1, RecordedTotal: 1, Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000001", Ownership: "library", Disposition: "selected", Reason: "selected"}}}}},
 		Actions:  []proposalworkflow.Action{proposalworkflow.ActionReview},
 	}}
 	srv := proposalJourneyServer(t, workflow)
@@ -154,8 +154,8 @@ func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing
 
 	private := suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true,
 		Terminal: suggest.TerminalProviderFailure,
-		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:603", Name: "private-candidate", Ownership: "library",
-			Rank: suggest.RankTuple{TieKey: "movie:tmdb:603"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
+		Candidates: []suggest.DecisionCandidate{{Key: "movie:tmdb:90000603", Name: "private-candidate", Ownership: "library",
+			Rank: suggest.RankTuple{TieKey: "movie:tmdb:90000603"}, Disposition: suggest.DispositionSelected, Reason: "selected"}}}
 	if err := suggest.ValidateDecisionTrace(private); err != nil {
 		t.Fatalf("private trace must be valid: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestProposalJourneyFailureProjectionDoesNotSerializePrivateTrace(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(encoded) == "" || containsAny(string(encoded), "private-candidate", "movie:tmdb:603", "library") {
+	if string(encoded) == "" || containsAny(string(encoded), "private-candidate", "movie:tmdb:90000603", "library") {
 		t.Fatalf("failure response leaked private trace: %s", encoded)
 	}
 	current, ok := body["failure"].(map[string]any)
@@ -327,8 +327,8 @@ func TestProposalJourneyCarriesLiveProgressWhileGenerating(t *testing.T) {
 	t.Parallel()
 	started := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
 	progress := &fakeProgress{ok: true, snap: suggest.ProgressSnapshot{
-		Stage: suggest.StageChoosing, Terms: []string{"speed"}, Target: 8, StartedAt: started,
-		Picks: []suggest.ProgressPick{{Key: "movie:tmdb:100", MediaType: "movie", Name: "Speed", Year: 1994, TMDBID: 100, InLibrary: false}},
+		Stage: suggest.StageChoosing, Terms: []string{"engines"}, Target: 8, StartedAt: started,
+		Picks: []suggest.ProgressPick{{Key: "movie:tmdb:90000100", MediaType: "movie", Name: "Quiet Engines", Year: 1994, TMDBID: 90000100, InLibrary: false}},
 	}}
 	wf := &fakeProposalWorkflow{journey: proposalworkflow.Journey{
 		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1", Milestone: proposalworkflow.MilestoneGenerating,
@@ -338,8 +338,8 @@ func TestProposalJourneyCarriesLiveProgressWhileGenerating(t *testing.T) {
 		t.Fatalf("progress read for %q, want job-1", progress.got)
 	}
 	p := body.Progress
-	if p == nil || p.Stage != "choosing" || p.Target != 8 || len(p.Terms) != 1 || p.Terms[0] != "speed" ||
-		len(p.Picks) != 1 || p.Picks[0].Name != "Speed" || p.Picks[0].Year != 1994 || !p.StartedAt.Equal(started) {
+	if p == nil || p.Stage != "choosing" || p.Target != 8 || len(p.Terms) != 1 || p.Terms[0] != "engines" ||
+		len(p.Picks) != 1 || p.Picks[0].Name != "Quiet Engines" || p.Picks[0].Year != 1994 || !p.StartedAt.Equal(started) {
 		t.Fatalf("progress = %+v", p)
 	}
 }
@@ -366,7 +366,7 @@ func TestProposalJourneyOmitsProgressOutsideGenerating(t *testing.T) {
 // The Requests page lists journeys, and its In progress card shows the same stage line.
 func TestProposalJourneyListCarriesLiveProgressToo(t *testing.T) {
 	t.Parallel()
-	progress := &fakeProgress{ok: true, snap: suggest.ProgressSnapshot{Stage: suggest.StageSearching, Terms: []string{"speed"}, Target: 8}}
+	progress := &fakeProgress{ok: true, snap: suggest.ProgressSnapshot{Stage: suggest.StageSearching, Terms: []string{"engines"}, Target: 8}}
 	wf := &fakeProposalWorkflow{journeys: []proposalworkflow.Journey{{
 		Version: proposalworkflow.WorkflowVersion1, JobID: "job-1", Milestone: proposalworkflow.MilestoneGenerating,
 	}}}
