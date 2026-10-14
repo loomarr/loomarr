@@ -25,6 +25,8 @@
       }
     },
     "plugins": [
+      "../../scripts/with-loomarr-ios-network.cjs",
+      "../../scripts/with-loomarr-android-network.cjs",
       "expo-router",
       [
         "expo-splash-screen",

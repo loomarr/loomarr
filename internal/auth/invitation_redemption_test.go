@@ -42,7 +42,7 @@ func TestInvitationRedemption_LocalCreatesArgon2idUserAndSession(t *testing.T) {
 	if err != nil || preview.ID != invited.ID || preview.Username != invited.Username || preview.Role != invited.Role {
 		t.Fatalf("Preview = %+v, %v", preview, err)
 	}
-	if _, err := st.GetUser(ctx, "local-user"); err != store.ErrNotFound {
+	if _, err := st.GetUser(ctx, "local-user"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("preview admitted user: %v", err)
 	}
 

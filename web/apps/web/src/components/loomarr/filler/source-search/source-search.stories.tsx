@@ -54,7 +54,7 @@ const CappedPage: Story = {
 };
 
 const Queued: Story = {
-  args: { queueStatus: { "kelloggs-bran-flakes": "running" } },
+  args: { queueStatus: { "crunchlings-1989": "running" } },
 };
 
 const SearchFailed: Story = {

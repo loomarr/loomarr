@@ -77,6 +77,17 @@ test.describe("idle-surface motion", () => {
 
     const layer = page.locator("#storybook-root [aria-hidden]").first();
     await expect(layer).toBeVisible();
+    // The snow tile arrives after the first frame; until it does there is no grain to move, and
+    // its arrival alone would read as "changed".
+    await expect(layer).not.toHaveAttribute("data-snow-pending");
+    // …and it fades in, which also changes frames; sample only once that transition has finished.
+    await expect
+      .poll(() =>
+        layer.evaluate((el) =>
+          (el.firstElementChild as Element).getAnimations().some((a) => a instanceof CSSTransition),
+        ),
+      )
+      .toBe(false);
 
     // Frame-to-frame difference, not a snapshot: the grain is deliberately random, so the
     // only stable assertion is that it CHANGES.

@@ -245,6 +245,8 @@ set -euo pipefail
 [[ "$NODE_ENV" == production ]]
 [[ "$RCT_NO_LAUNCH_PACKAGER" == 1 ]]
 [[ "$REACT_NATIVE_NODE_MODULES_DIR" == */apps/mobile/node_modules ]]
+# A real install vendors React Native's prebuilt core; the binaries guard reads this tree.
+mkdir -p Pods/React-Core-prebuilt/React.xcframework
 printf 'pod_install\n' >> "$APPLE_CACHE_TEST_ROOT/command-order"
 STUB
 

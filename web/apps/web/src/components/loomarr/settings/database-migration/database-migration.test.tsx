@@ -1,4 +1,5 @@
 import type { DatabaseStatus } from "@loomarr/api";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -14,20 +15,23 @@ const status = (over: Partial<DatabaseStatus> = {}): DatabaseStatus => ({
   ...over,
 });
 
+// LoomarrProvider as main.tsx mounts it: the field hints are design-system FieldHints.
 const Harness = (over: Partial<DatabaseMigrationProps> = {}) => (
-  <DatabaseMigration
-    status={status()}
-    step={null}
-    onStepChange={vi.fn()}
-    dsn=""
-    onDsnChange={vi.fn()}
-    checks={[]}
-    preflightPassed={false}
-    onPreflight={vi.fn()}
-    onBackup={vi.fn()}
-    onMigrate={vi.fn()}
-    {...over}
-  />
+  <LoomarrProvider theme="dark">
+    <DatabaseMigration
+      status={status()}
+      step={null}
+      onStepChange={vi.fn()}
+      dsn=""
+      onDsnChange={vi.fn()}
+      checks={[]}
+      preflightPassed={false}
+      onPreflight={vi.fn()}
+      onBackup={vi.fn()}
+      onMigrate={vi.fn()}
+      {...over}
+    />
+  </LoomarrProvider>
 );
 
 describe("DatabaseMigration", () => {

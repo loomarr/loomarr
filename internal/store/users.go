@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -116,7 +117,7 @@ func (s *sqlStore) CreateUserUnlessInvited(ctx context.Context, u User, now time
 		if err == nil {
 			return ErrInvitationIdentityConflict
 		}
-		if err != sql.ErrNoRows {
+		if !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("create user: check reservation: %w", err)
 		}
 		var hash any
@@ -195,7 +196,7 @@ func (s *sqlStore) GetSession(ctx context.Context, tokenHash string, now time.Ti
 	row := s.db.QueryRowContext(ctx, s.ph(
 		`SELECT `+sessionColumns+` FROM sessions WHERE token_hash = ? AND expires_at > ?`), tokenHash, epoch(now))
 	sess, err := scanSession(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
 	return sess, err
@@ -320,7 +321,7 @@ func scanUser(sc scannable) (User, error) {
 	var hash sql.NullString
 	var created, updated int64
 	err := sc.Scan(&u.ID, &u.Name, &role, &u.Disabled, &u.Quota, &u.AutoApprove, &u.MediaServerLinked, &hash, &created, &updated)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
 	if err != nil {

@@ -170,6 +170,13 @@ discovery failure never blocks readiness. The client browses only while the conn
 the foreground, for at most thirty seconds per visit, then leaves manual entry. Discovery grants no
 trust: the viewer picks a server and completes the revocable device-code pairing.
 
+**Plain HTTP.** A server may be plain `http://`, often under a local DNS name such as `loomarr.lan`
+or `loomarr.home.arpa`, which neither platform's default treats as local. Every client permits it.
+Android opts the application into cleartext (`with-loomarr-android-network.cjs`). iOS and tvOS
+replace App Transport Security with `NSAllowsArbitraryLoads` alone (`with-loomarr-ios-network.cjs`),
+because Apple ignores that key while `NSAllowsLocalNetworking` is also present. A credential sent
+over plain HTTP is only as private as the network; HTTPS stays the recommended setup.
+
 **Changing servers.** A catalog failure offers **Retry** and **Change server**; the saved credential
 stays until a new pairing atomically replaces it. **Disconnect device** revokes remotely first; if
 the server is unreachable, **Forget locally** is a separate, explicit action that says the old server

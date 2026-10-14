@@ -16,7 +16,7 @@ type NativeDiscoveryModule = {
 type NativeServer = DiscoveredServer & { protocol: string };
 const nativeModule = NativeModules.LoomarrLanDiscovery as NativeDiscoveryModule | undefined;
 const discoveryTimeoutMs = 30_000;
-// The Apple TV app does not link the iOS module, so tvOS still reports discovery as unavailable.
+// Platform.OS is "ios" on tvOS too, where the same native module is linked.
 const supportedPlatform = Platform.OS === "android" || Platform.OS === "ios";
 
 const createNativeServerDiscovery = (): ServerDiscovery => {

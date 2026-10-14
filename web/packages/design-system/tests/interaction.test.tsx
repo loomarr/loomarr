@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { Action, ChoiceGroup, Field, LoomarrProvider, Toggle } from "../index";
+import { Action, ChoiceGroup, Field, FieldHint, LoomarrProvider, semanticColors, Toggle } from "../index";
 
 describe("shared interaction controls", () => {
   it("publishes selected and disabled action state without corrupting its label", () => {
@@ -68,5 +68,41 @@ describe("shared interaction controls", () => {
     expect(markup).toContain('role="checkbox"');
     expect(markup).toContain('aria-label="Select Noir for bulk approve"');
     expect(markup).not.toContain(">Select Noir for bulk approve<");
+  });
+
+  // A hint sits under a browser <input>, which points at it by id; it must be a real paragraph
+  // carrying that id, or the field's accessible description silently resolves to nothing.
+  it("renders a field hint as a describable paragraph in the Web forms' help measure", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <FieldHint className="mt-1" id="dsn-doc">
+          Use require across the internet.
+        </FieldHint>
+      </LoomarrProvider>,
+    );
+
+    const hint = markup.match(/<p [^>]*>/)?.[0] ?? "";
+    expect(hint).toContain('id="dsn-doc"');
+    expect(hint).toContain('class="mt-1"');
+    expect(hint).not.toContain("role=");
+    expect(hint).toContain(`color:${semanticColors.content.secondary}`);
+    expect(hint).toContain("font-size:12px");
+    expect(hint).toContain("font-weight:400");
+    expect(hint).toContain("line-height:16px");
+  });
+
+  it("announces a validation hint in the danger colour", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <FieldHint id="url-error" role="alert" tone="error">
+          Enter a full URL.
+        </FieldHint>
+      </LoomarrProvider>,
+    );
+
+    const hint = markup.match(/<p [^>]*>/)?.[0] ?? "";
+    expect(hint).toContain('role="alert"');
+    expect(hint).toContain('id="url-error"');
+    expect(hint).toContain(`color:${semanticColors.state.danger}`);
   });
 });

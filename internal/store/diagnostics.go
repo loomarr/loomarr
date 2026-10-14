@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -251,7 +252,7 @@ func (s *sqlStore) GetDiagnosticProcessRun(ctx context.Context, id string) (diag
 		FROM diagnostic_process_runs WHERE id = ?`), id)
 	run, err := scanDiagnosticProcessRun(row)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return diagnostics.ProcessRun{}, ErrNotFound
 		}
 		return diagnostics.ProcessRun{}, fmt.Errorf("get diagnostic process run %s: %w", id, err)
@@ -263,7 +264,7 @@ func (s *sqlStore) GetDiagnosticProcessRun(ctx context.Context, id string) (diag
 // of the domain package while preserving GetDiagnosticProcessRun for store callers and conformance.
 func (s *sqlStore) FindDiagnosticProcessRun(ctx context.Context, id string) (diagnostics.ProcessRun, bool, error) {
 	run, err := s.GetDiagnosticProcessRun(ctx, id)
-	if err == ErrNotFound {
+	if errors.Is(err, ErrNotFound) {
 		return diagnostics.ProcessRun{}, false, nil
 	}
 	if err != nil {

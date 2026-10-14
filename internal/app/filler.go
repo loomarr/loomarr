@@ -93,7 +93,7 @@ func (a fillerStoreAdapter) UpsertClip(ctx context.Context, c filler.StoreClip) 
 }
 func (a fillerStoreAdapter) GetClip(ctx context.Context, id string) (filler.StoreClip, bool, error) {
 	c, err := a.st.GetClip(ctx, id)
-	if err == store.ErrNotFound {
+	if errors.Is(err, store.ErrNotFound) {
 		return filler.StoreClip{}, false, nil
 	}
 	if err != nil {

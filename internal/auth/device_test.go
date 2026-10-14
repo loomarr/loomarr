@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func TestDevicePairingRoundTrip(t *testing.T) {
 	}
 
 	// While pending, the device must be told to keep waiting — not that its code is wrong.
-	if _, _, err := mgr.Redeem(t.Context(), deviceCode); err != ErrPairingNotApproved {
+	if _, _, err := mgr.Redeem(t.Context(), deviceCode); !errors.Is(err, ErrPairingNotApproved) {
 		t.Fatalf("Redeem before approval = %v, want ErrPairingNotApproved", err)
 	}
 

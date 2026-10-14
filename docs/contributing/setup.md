@@ -22,7 +22,7 @@ with `ERR_UNKNOWN_BUILTIN_MODULE`.
 Go 1.27's native macOS toolchain requires macOS 13 or newer. Older macOS releases can still build
 the Linux container through Docker, but they cannot run the supported native contributor toolchain.
 
-Everything else — golangci-lint, actionlint, Air — runs via `go run` at a pinned version, so
+Everything else — golangci-lint, govulncheck, actionlint, Air — runs via `go run` at a pinned version, so
 there's nothing to install globally.
 
 ## macOS with Homebrew

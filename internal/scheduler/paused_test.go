@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -147,7 +148,7 @@ func TestPaused_DisabledJobRefuses(t *testing.T) {
 	var ran atomic.Int64
 	s := New(st, NewRegistry().Add(disabledJob(&ran)), nil, clk.now, testLog())
 
-	if err := s.SetPaused(context.Background(), "backup", true); err != ErrJobDisabled {
+	if err := s.SetPaused(context.Background(), "backup", true); !errors.Is(err, ErrJobDisabled) {
 		t.Errorf("SetPaused on a disabled job = %v, want ErrJobDisabled", err)
 	}
 }
@@ -160,7 +161,7 @@ func TestPaused_UnknownJobRefuses(t *testing.T) {
 	var ran atomic.Int64
 	s := New(st, NewRegistry().Add(pausableJob(&ran)), nil, clk.now, testLog())
 
-	if err := s.SetPaused(context.Background(), "nope", true); err != ErrUnknownJob {
+	if err := s.SetPaused(context.Background(), "nope", true); !errors.Is(err, ErrUnknownJob) {
 		t.Errorf("SetPaused on an unknown job = %v, want ErrUnknownJob", err)
 	}
 }

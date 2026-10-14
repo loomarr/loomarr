@@ -92,6 +92,12 @@ for (const story of stories) {
     await page.evaluate(async () => {
       await document.fonts.ready;
     });
+    // TvStatic's snow is a tile rendered after the first frame (the content paints first), so a
+    // shown snow layer is still `data-snow-pending` for a moment after mount — the same race as
+    // fonts. An idle layer hidden by reduced motion never renders one, so only visible ones count.
+    await page.waitForFunction(() =>
+      Array.from(document.querySelectorAll("[data-snow-pending]")).every((el) => !el.checkVisibility()),
+    );
 
     // Kill animations/transitions/caret OUTRIGHT — reduced-motion only fast-forwards
     // (`duration: 0.001ms`), which leaves an infinite spinner frozen at a random frame

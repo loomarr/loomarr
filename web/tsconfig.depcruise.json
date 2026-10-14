@@ -1,0 +1,12 @@
+{
+  // Resolution-only config for dependency-cruiser (.dependency-cruiser.cjs), which reads one
+  // tsconfig for the whole workspace. It carries every app's path alias so `@/...` imports
+  // resolve to files the rules can check; it compiles nothing.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./apps/web/src/*"]
+    }
+  },
+  "files": []
+}

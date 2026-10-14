@@ -53,6 +53,16 @@
     },
     {
       "customType": "regex",
+      "description": "Update the pinned Go vulnerability scanner",
+      "managerFilePatterns": ["/^mk/check\\.mk$/"],
+      "matchStrings": [
+        "(?<depName>golang\\.org/x/vuln)/cmd/govulncheck@(?<currentValue>v\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "go",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "description": "Update pinned npm command-line tools",
       "managerFilePatterns": ["/^Dockerfile$/", "/^mk/docs\\.mk$/", "/^\\.github/workflows/ci-docs\\.yml$/"],
       "matchStrings": [

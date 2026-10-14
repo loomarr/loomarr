@@ -252,6 +252,7 @@ else
       REACT_NATIVE_NODE_MODULES_DIR="${REACT_NATIVE_MODULES_DIR}" pod install
   )
 fi
+"${WEB_ROOT}/scripts/check-ios-pods-binaries.sh" "${APP_DIR}/ios/Pods"
 record_phase_timing cocoapods_install "$cocoapods_started_at"
 
 xcrun simctl bootstatus "${simulator_id}" -b
