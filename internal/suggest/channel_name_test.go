@@ -2,6 +2,7 @@ package suggest
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/loomarr/loomarr/internal/catalog"
@@ -15,12 +16,13 @@ func TestBuildProposalKeepsFixedChannelName(t *testing.T) {
 		"movie:tmdb:910001": {MediaType: provision.Movie, TMDBID: 910001, Name: "The Lantern Keeper", InLibrary: true},
 	}
 	for _, tc := range []struct {
-		name, fixed, want string
+		name, fixed, model, want string
 	}{
-		{"fixed name kept", "Cozy Mystery Nights", "Cozy Mystery Nights"},
-		{"fixed name trimmed", "  Cozy Mystery Nights ", "Cozy Mystery Nights"},
-		{"no fixed name uses the model's", "", "Rainy Village Mysteries"},
-		{"blank fixed name uses the model's", "   ", "Rainy Village Mysteries"},
+		{"fixed name kept", "Cozy Mystery Nights", "Rainy Village Mysteries", "Cozy Mystery Nights"},
+		{"fixed name trimmed", "  Cozy Mystery Nights ", "Rainy Village Mysteries", "Cozy Mystery Nights"},
+		{"fixed name kept when the model names nothing", "Cozy Mystery Nights", "", "Cozy Mystery Nights"},
+		{"no fixed name uses the model's", "", "Rainy Village Mysteries", "Rainy Village Mysteries"},
+		{"blank fixed name uses the model's", "   ", "Rainy Village Mysteries", "Rainy Village Mysteries"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			intent := Intent{Description: "cozy mysteries", ChannelName: tc.fixed}
@@ -28,7 +30,7 @@ func TestBuildProposalKeepsFixedChannelName(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, err := parsePicks(`{"channelName":"Rainy Village Mysteries","picks":[{"key":"movie:tmdb:910001","mediaType":"movie","name":"The Lantern Keeper"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`)
+			out, err := parsePicks(fmt.Sprintf(`{"channelName":%q,"picks":[{"key":"movie:tmdb:910001","mediaType":"movie","name":"The Lantern Keeper"}],"dateMeaning":{"kind":"none","anchors":[],"axes":[]}}`, tc.model))
 			if err != nil {
 				t.Fatal(err)
 			}
