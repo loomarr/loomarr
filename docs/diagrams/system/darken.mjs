@@ -14,7 +14,7 @@ export const DARK = {
   "#E7EAF0": "#1B1E24", // surface.elevated
   "#F7F8FA": "#0B0C0E", // surface.canvas
   "#FFFFFF": "#131519", // surface.raised
-  "#FFF3D6": "#282010", // surface.focus -> signal 12% over canvas
+  "#FFF3D6": "#282010", // signal tint (brand) -> signal 12% over canvas
   "#795000": "#FFB020", // action.primary
   "#DAE8EB": "#1C3038", // stateSurface.info
   "#08657A": "#4CC9E8", // state.info
