@@ -10,20 +10,20 @@ import (
 
 func TestNamedBlockLabelPreservesAmbiguityAndNetworkRoles(t *testing.T) {
 	for _, tc := range []struct{ description, refinement, want string }{
-		{"TGIF", "", "TGIF"},
-		{"TGIF, with Full House, Family Matters, and Step by Step. Keep the sitcoms that actually aired in ABC's 1990s Friday-night block; play episodes from the 1990s in episode order.", "", "TGIF"},
-		{"TGIF: Full House and Family Matters", "", "TGIF"},
-		{"TGIF; include Family Matters", "", "TGIF"},
-		{"TGIF with Family Matters and Step by Step.", "", "TGIF"},
+		{"QFUN", "", "QFUN"},
+		{"QFUN, with Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues. Keep the sitcoms that actually aired in ZBN's 1990s Friday-night block; play episodes from the 1990s in episode order.", "", "QFUN"},
+		{"QFUN: Grand Oak Hotel and Crumb Street Bakery", "", "QFUN"},
+		{"QFUN; include Crumb Street Bakery", "", "QFUN"},
+		{"QFUN with Crumb Street Bakery and Bowling Alley Blues.", "", "QFUN"},
 		{"Friday-night block", "", ""},
-		{"ABC, network shows", "", ""},
-		{"TGIF, with Full House", "Toonami block", ""},
+		{"ZBN, network shows", "", ""},
+		{"QFUN, with Grand Oak Hotel", "Moonbeam block", ""},
 
-		{"a TGIF block", "", "TGIF"},
-		{"Make me a channel like ABC's TGIF Friday-night block from the 1990s.", "", "TGIF"},
-		{"TGIF block", "Toonami block", ""},
-		{"ABC network shows, not TGIF", "", ""},
-		{"ABC network", "", ""},
+		{"a QFUN block", "", "QFUN"},
+		{"Make me a channel like ZBN's QFUN Friday-night block from the 1990s.", "", "QFUN"},
+		{"QFUN block", "Moonbeam block", ""},
+		{"ZBN network shows, not QFUN", "", ""},
+		{"ZBN network", "", ""},
 		{"1990s comedy collection", "", ""},
 		{"Friday Club block", "", "Friday Club"},
 	} {
@@ -43,10 +43,10 @@ func TestReferenceHypothesesOnlyReorderSourceMembers(t *testing.T) {
 }
 
 func TestReferencePrefetchPrioritizesDirectlyNamedSourceMembers(t *testing.T) {
-	intent := Intent{Description: "TGIF, with Full House, Family Matters, and Step by Step."}
-	titles := []string{"Camp Wilder", "Boy Meets World", "Hangin' with Mr. Cooper", "Sister, Sister", "Sabrina the Teenage Witch", "Clueless", "Teen Angel", "You Wish", "Full House", "Family Matters", "Step by Step"}
-	got := prioritizedReferenceTitles(intent, titles, []string{"Camp Wilder", "Boy Meets World"})
-	want := []string{"Full House", "Family Matters", "Step by Step", "Camp Wilder", "Boy Meets World", "Hangin' with Mr. Cooper", "Sister, Sister", "Sabrina the Teenage Witch", "Clueless", "Teen Angel", "You Wish"}
+	intent := Intent{Description: "QFUN, with Grand Oak Hotel, Crumb Street Bakery, and Bowling Alley Blues."}
+	titles := []string{"Camp Thistle", "Kid Meets Kite", "Hangin' with Mr. Hobb", "Twice, Twice", "Penny the Pocket Witch", "Pinwheel Summer", "Halo Kid", "Wishbone Way", "Grand Oak Hotel", "Crumb Street Bakery", "Bowling Alley Blues"}
+	got := prioritizedReferenceTitles(intent, titles, []string{"Camp Thistle", "Kid Meets Kite"})
+	want := []string{"Grand Oak Hotel", "Crumb Street Bakery", "Bowling Alley Blues", "Camp Thistle", "Kid Meets Kite", "Hangin' with Mr. Hobb", "Twice, Twice", "Penny the Pocket Witch", "Pinwheel Summer", "Halo Kid", "Wishbone Way"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("titles=%v, want directly named members before model hints", got)
 	}
@@ -54,9 +54,9 @@ func TestReferencePrefetchPrioritizesDirectlyNamedSourceMembers(t *testing.T) {
 
 func TestReferenceCandidatePoolKeepsLibraryAndStrongExternalMembersVisible(t *testing.T) {
 	got := prioritizeReferenceCandidatePool([]catalog.Candidate{
-		{MediaType: provision.Series, TMDBID: 1, Name: "Obscure external", VoteCount: 5},
-		{MediaType: provision.Series, TMDBID: 2, Name: "Owned classic", InLibrary: true},
-		{MediaType: provision.Series, TMDBID: 3, Name: "Defining external", VoteCount: 5000},
+		{MediaType: provision.Series, TMDBID: 90000001, Name: "Obscure external", VoteCount: 5},
+		{MediaType: provision.Series, TMDBID: 90000002, Name: "Owned classic", InLibrary: true},
+		{MediaType: provision.Series, TMDBID: 90000003, Name: "Defining external", VoteCount: 5000},
 	})
 	want := []string{"Owned classic", "Defining external", "Obscure external"}
 	if names := []string{got[0].Name, got[1].Name, got[2].Name}; !reflect.DeepEqual(names, want) {
@@ -67,8 +67,8 @@ func TestReferenceCandidatePoolKeepsLibraryAndStrongExternalMembersVisible(t *te
 func TestNamedSourceContractInvalidatesPriorSuccessfulProposal(t *testing.T) {
 	// Frozen reference-source-v3 identity, before broader roster inspection and
 	// source media-type preservation changed the named-source result.
-	const prior = "da78510e8dea8ac714a496c924d9289b0ef1f560a4fadcc682258384bb970286"
-	if IntentHash(Intent{Description: "TGIF"}) == prior {
+	const prior = "07aca99b45d7b6ea7fbe07bebda7f5aea73623230ac25ec0c33b7a31f4066607"
+	if IntentHash(Intent{Description: "QFUN"}) == prior {
 		t.Fatal("source contract reused the prior proposal cache identity")
 	}
 }

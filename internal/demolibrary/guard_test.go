@@ -44,6 +44,10 @@ var migratedTitles = []string{
 	"South Park", "King of the Hill", "Indiana Jones", "Next Generation", "Deep Space Nine", "Campbell",
 	"McDonald", "Tootsie", "HP Sauce", "Fanta", "Hopper", "Ronin", "Full House", "Family Matters",
 	"Bob's Burgers", "Last Action Hero", "Killing Game", "Moaning Lisa", "Bart the Genius", "In Flames",
+	// The suggest date-execution and reference/network tests (slice 7).
+	"TGIF", "Frasier", "Modern Marvels", "Roosevelts", "History Channel", "Discovery Channel", "Toonami",
+	"Sabrina the Teenage Witch", "Boy Meets World", "Camp Wilder", "Mr. Cooper", "Teen Angel", "Iron Man",
+	"MCU",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -104,6 +108,18 @@ var migratedGo = []string{
 	"internal/suggest/worker_test.go",
 	"internal/tmdb/network_epoch_test.go",
 	"internal/tmdb/tmdb_test.go",
+	// The suggest date-execution candidate's callers and the reference/network internals (slice 7).
+	"internal/suggest/cache_prefix_test.go",
+	"internal/suggest/date_execution_test.go",
+	"internal/suggest/date_source_order_test.go",
+	"internal/suggest/date_tool_retirement_test.go",
+	"internal/suggest/finalization_state_test.go",
+	"internal/suggest/lean_final_test.go",
+	"internal/suggest/network_epoch_internal_test.go",
+	"internal/suggest/network_epoch_test.go",
+	"internal/suggest/query_expansion_regression_test.go",
+	"internal/suggest/reference_discovery_internal_test.go",
+	"internal/suggest/reference_discovery_test.go",
 }
 
 // pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
@@ -117,6 +133,7 @@ var pendingGo = []string{
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its
 // reason; a file listed here must exist.
 var realDataGo = map[string]string{
+	"internal/eval/schedule_live_test.go":        "queries live data on purpose",
 	"internal/suggest/live_latency_test.go":      "drives a real LLM, whose world knowledge of real titles is what it measures",
 	"internal/suggest/live_named_titles_test.go": "drives a real LLM on requests that name real titles",
 	"internal/tmdb/fixture_test.go":              "parses a live-captured TMDB response (testkit/fixtures), real ids and all",

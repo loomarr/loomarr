@@ -40,7 +40,7 @@ describe("suggestion presentation language", () => {
   it("hides machine identifiers when no human title was resolved", () => {
     expect(friendlyCandidateName("series:tmdb:90003921")).toBe("Unidentified title");
     expect(friendlyCandidateName("movie:tvdb:90000123")).toBe("Unidentified title");
-    expect(friendlyCandidateName("Boy Meets World")).toBe("Boy Meets World");
+    expect(friendlyCandidateName("Kid Meets Kite")).toBe("Kid Meets Kite");
     expect(friendlyCandidateName(undefined)).toBe("Unidentified title");
   });
 });
