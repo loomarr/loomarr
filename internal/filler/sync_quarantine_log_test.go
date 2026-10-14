@@ -17,10 +17,10 @@ func TestSyncerWarnQuarantined_RepeatsOnlyWhenTheReasonChanges(t *testing.T) {
 		slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
 
 	for pass := 0; pass < 10; pass++ {
-		s.warnQuarantined("ads/coke.mp4", errors.New("provenance mismatch"))
+		s.warnQuarantined("ads/sparkra.mp4", errors.New("provenance mismatch"))
 	}
-	s.warnQuarantined("ads/coke.mp4", errors.New("source master missing"))
-	s.warnQuarantined("ads/pepsi.mp4", errors.New("provenance mismatch"))
+	s.warnQuarantined("ads/sparkra.mp4", errors.New("source master missing"))
+	s.warnQuarantined("ads/fizzbolt.mp4", errors.New("provenance mismatch"))
 
 	if got := strings.Count(buf.String(), "level=WARN"); got != 3 {
 		t.Fatalf("WARNs = %d, want 3 (first, changed reason, other file)\n%s", got, buf.String())

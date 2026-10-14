@@ -74,7 +74,7 @@ func TestLanguageRejects_SilenceIsNeverGroundsForRejection(t *testing.T) {
 }
 
 // The sampled window. A normal commercial is inspected in full: live evidence from a 30-second
-// Spanish Jersey Mike's spot showed that nearby ten-second cuts alternated between English and
+// Spanish sandwich-chain spot showed that nearby ten-second cuts alternated between English and
 // Spanish while its complete speech was correctly classified as Spanish.
 func TestLanguageSpan(t *testing.T) {
 	t.Run("takes all of a normal spot", func(t *testing.T) {
