@@ -500,57 +500,24 @@ var seamPools = []seamPool{{9, time.Hour}, {80, 6 * time.Hour}, {80, 12 * time.H
 // its pool (the in-season minimum on a small deck) is a seam repeat. Shuffled and syndication deal
 // every pass afresh, so the fixed deck's geometry is gone and the guarantee is the dealer's repeat
 // spacing. A deck that fits its window loops all day, so the loop, not the deck, sets where the
-// window closes: the guarantee across the seam is the dealer's, never back to back.
-//
-// What holiday episodes promise is to keep the dealer's spacing, so on a shuffled seam an episode
-// the dealer itself airs sooner than its spacing at that origin is excused down to the dealer's
-// own gap for it, and no further. On a pool one to six windows wide the dealer does, every
-// chainBound passes: the walk's anchor is repaired against the pass before it as dealt
-// (passes.go), and the window that crosses it re-airs what closed the window before. That is the
-// dealer's defect, measured with holiday episodes off, and not this one's.
+// window closes: the guarantee across the seam is the dealer's, never back to back. Holiday
+// episodes promise to keep the dealer's spacing, and the dealer keeps it at every seam, its chain's
+// anchors included (#1965), so it is asserted outright.
 func assertSeamGuarantee(t *testing.T, ch schedule.Channel, seam seamCase, pool seamPool, order schedule.OrderingMode, strength schedule.HolidayStrength) {
 	t.Helper()
 	specials := max(3, pool.ordinary/20)
 	avail := seriesLike(pool.ordinary, seam.specials(specials)...)
 	deck := time.Duration(pool.ordinary+specials) * episodeMs * time.Millisecond
 	spacing := (pool.ordinary+specials)/2 - specials
-	var excused map[string]int
 	switch {
 	case deck < pool.window:
 		spacing = 2
 	case order != schedule.OrderSequential:
 		spacing = repeatSpacingProgrammes(pool.ordinary+specials, pool.window)
-		dealer := seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff})
-		dealer.Ordering = order
-		excused = closestRepeats(t, ch, avail, dealer, seam.at, spacing)
 	}
 	policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: strength})
 	policy.Ordering = order
-	assertSeamOnlySkips(t, ch, avail, policy, seam.at, spacing, deck >= 3*pool.window, excused)
-}
-
-// closestRepeats is, for each ordinary episode that airs twice sooner than `spacing` programmes
-// over the two days either side of seam, the fewest programmes between its airings, as playout
-// airs them.
-func closestRepeats(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, seam time.Time, spacing int) map[string]int {
-	t.Helper()
-	at, closest := map[string]int{}, map[string]int{}
-	n := 0
-	for open := seam.Add(-48 * time.Hour); open.Before(seam.Add(48 * time.Hour)); open = open.Add(ch.DefaultWindow) {
-		for _, a := range airedLooped(t, ch, avail, policy, open) {
-			n++
-			if isHoliday(a.id) {
-				continue
-			}
-			if k, ok := at[a.id]; ok && n-k < spacing {
-				if c, seen := closest[a.id]; !seen || n-k < c {
-					closest[a.id] = n - k
-				}
-			}
-			at[a.id] = n
-		}
-	}
-	return closest
+	assertSeamOnlySkips(t, ch, avail, policy, seam.at, spacing, deck >= 3*pool.window)
 }
 
 // #1939: on a reshuffled 6-hour channel the first window out of Halloween (Nov 1 00:00) re-aired
@@ -619,8 +586,8 @@ func repeatSpacingProgrammes(n int, window time.Duration) int {
 
 // assertSeamOnlySkips walks the windows of the two days either side of seam: none is empty, none
 // re-airs an ordinary episode from the window before (when disjoint), and no ordinary episode airs
-// twice within `spacing` programmes, but for one `excused` down to the gap it names.
-func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, seam time.Time, spacing int, disjoint bool, excused map[string]int) {
+// twice within `spacing` programmes.
+func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, seam time.Time, spacing int, disjoint bool) {
 	t.Helper()
 	last := map[string]airing{}
 	at := map[string]int{}
@@ -640,13 +607,9 @@ func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture
 			if disjoint && before[a.id] {
 				t.Fatalf("the window opening %s re-airs %s from the window before", open.Format(time.Stamp), a.id)
 			}
-			want := spacing
-			if gap, ok := excused[a.id]; ok {
-				want = gap // the dealer airs it this soon unaided
-			}
-			if k, ok := at[a.id]; ok && n-k < want {
+			if k, ok := at[a.id]; ok && n-k < spacing {
 				t.Fatalf("%s airs at %s and again %d programmes later at %s, want at least %d apart",
-					a.id, last[a.id].start.Format(time.Stamp), n-k, a.start.Format(time.Stamp), want)
+					a.id, last[a.id].start.Format(time.Stamp), n-k, a.start.Format(time.Stamp), spacing)
 			}
 			last[a.id], at[a.id] = a, n
 		}

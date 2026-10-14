@@ -35,15 +35,18 @@ import (
 //   - Chained: a pool of one to six windows, whose spacing is raised to two windows and a unit (see
 //     repeatSpacing), pushes units into the tail, so each seam needs the repaired deck before it and
 //     the walk runs from an anchor (dealChain). It is bounded by chainBudget.
+//   - Pinned: a pool whose slack (its runtime beyond the spacing) is shorter than its shortest unit
+//     can only hold every unit back to its old place, so every pass replays pass 0, exactly.
 //
-// chainBudget is the most slot-deals (passes x pool size) one walk may cost. At ~100 us a slot-deal
-// (BenchmarkDealChain: a 6-year-old channel with a 60-episode pool walks in ~0.2 s) that is the
-// worst a homelab box pays, cold, once per process and pool. A walk starts at the latest multiple of
-// chainBound(n) passes at or before the wanted pass, so the answer stays a pure function of
-// (inputs, pass) however old the channel is. This is the ONLY place the seam guarantee relaxes: the
-// first pass after an anchor is repaired against its predecessor as dealt rather than as aired,
-// which can miss a unit the earlier repairs displaced. A pool of 27 films meets it every 64 passes,
-// and a pool in the tail-stable regime never does.
+// chainBudget is the most slot-deals (passes x pool size) one walk's segment may cost. At ~100 us a
+// slot-deal (BenchmarkDealChain: a 6-year-old channel with a 60-episode pool walks in ~0.25 s) that
+// is the worst a homelab box pays, cold, once per process and pool. A walk's anchor is the latest
+// multiple of chainBound(n) passes at or before the wanted pass, so the answer stays a pure function
+// of (inputs, pass) however old the channel is. The anchor's predecessor is the last pass of the
+// segment before, so the walk deals warmUpPasses passes ahead of the anchor to reach it: a walk
+// from any start forgets it within that, so the anchor is repaired against the deck that aired
+// (#1965; it used to be repaired against its predecessor as dealt, and the window crossing it
+// re-aired what closed the window before, an episode back to back on 80 a day).
 const (
 	chainBudget = 2048
 	// checkpointEvery is how often a walk keeps the deck it reached, so asking for an earlier pass
@@ -116,7 +119,9 @@ type deckDealer struct {
 	reshuffle bool          // false: every pass is the pass-0 deck (sequential keeps its order)
 	whole     bool          // the whole catalog fits one window, so a window is a pass (see deck)
 	stable    bool          // tail-stable: see the regimes above
+	pinned    bool          // every pass replays pass 0: see the regimes above
 	bound     int64         // passes between anchors of a chained walk
+	warmUp    int64         // passes a chained walk deals before its anchor (see warmUpPasses)
 	chain     *dealChain    // shared across calls; nil unless reshuffling
 	bases     map[int64]dealt
 }
@@ -137,19 +142,51 @@ func newDeckDealer(slots []Slot, rp ResolvedPolicy, seed int64, window time.Dura
 	}
 	var programs int
 	var runtime, longest int64
+	shortest := int64(-1)
 	for _, s := range slots {
 		if s.IsProgram() {
 			programs++
 			runtime += s.DurationMs
 			longest = max(longest, s.DurationMs)
+			if shortest < 0 || s.DurationMs < shortest {
+				shortest = s.DurationMs
+			}
 		}
 	}
 	d.whole = window > 0 && runtime > 0 && runtime <= window.Milliseconds()
 	d.spacing = d.repeatSpacing()
 	d.stable = !d.whole && 3*d.spacing.Milliseconds()+2*longest <= runtime
+	d.pinned = !d.whole && runtime-d.spacing.Milliseconds() < shortest
 	d.bound = chainBound(programs)
+	d.warmUp = d.warmUpPasses(runtime)
 	d.chain = chainFor(d)
 	return d
+}
+
+// warmUpPasses is how many passes before its anchor a chained walk starts dealing, so that the
+// anchor is repaired against the deck that really aired before it (#1965).
+//
+// A walk started from a pass as dealt forgets that start: a unit is held back to where it started
+// in the pass before less the slack (the seam's runtime beyond the spacing), so a unit the start
+// placed differently from the walk before it airs about one slack earlier each pass, until it
+// leaves the tail the next seam reads and both walks deal the same deck from there on. That takes
+// about spacing/slack passes: measured 2 to 13 on the pools the seam tests use (BenchmarkDealChain's
+// shapes, 80 episodes in 6 to 24 h windows, 27 films a day), and 67 on a pool within half an hour
+// of pinned (68 22-minute episodes a day). The warm-up is twice that and six passes more, and
+// TestDealChain_AnchorSeamIsExact checks it reaches the deck the walk from pass 0 deals. A cold
+// walk therefore deals up to chainBound plus this many passes. A pool with no slack worth a unit
+// is pinned instead, and never walked.
+func (d *deckDealer) warmUpPasses(runtime int64) int64 {
+	seam := runtime
+	if d.whole {
+		seam = d.window.Milliseconds() // the deck loops until the window closes (see repair)
+	}
+	spacing := d.spacing.Milliseconds()
+	slack := seam - spacing
+	if d.pinned || slack <= 0 {
+		return 0
+	}
+	return min(2*((spacing+slack-1)/slack)+6, maxChainBound)
 }
 
 // deal is the seeded, unrepaired deal of one pass.
@@ -186,6 +223,8 @@ func (d *deckDealer) deck(pass int64) []Slot {
 		return d.base(0).deck
 	case pass <= 0: // pass 0 has no predecessor, and before the channel existed nothing aired
 		return d.base(pass).deck
+	case d.pinned:
+		return d.base(0).deck
 	}
 	return d.chain.deckAt(d, pass)
 }
@@ -458,9 +497,9 @@ func (c *dealChain) deckAt(d *deckDealer, pass int64) []Slot {
 		case 0:
 			cur = d.base(0).deck
 		default:
-			// The segment's first pass: its predecessor is a different segment, so repair against it as
-			// dealt (the regimes' doc says why this is the one imperfect seam).
-			cur = d.repair(d.deal(anchor-1).deck, d.deal(anchor).deck)
+			// The segment's first pass: its predecessor is the last of a different segment, so walk up
+			// to it from a warm-up start (warmUpPasses says why that reaches the deck that aired).
+			cur = d.repair(d.warmedUp(anchor), d.deal(anchor).deck)
 		}
 		c.decks[anchor] = cur
 	}
@@ -478,6 +517,22 @@ func (c *dealChain) deckAt(d *deckDealer, pass int64) []Slot {
 			delete(c.decks, c.furthest)
 		}
 		c.decks[pass], c.furthest = cur, pass
+	}
+	return cur
+}
+
+// warmedUp is the deck of the pass before `anchor`, walked from warmUp passes before the anchor as
+// dealt, or from pass 0 when that is nearer: the deck the walk before the anchor reached.
+func (d *deckDealer) warmedUp(anchor int64) []Slot {
+	from := anchor - max(d.warmUp, 1)
+	var cur []Slot
+	if from <= 0 {
+		from, cur = 0, d.base(0).deck
+	} else {
+		cur = d.deal(from).deck
+	}
+	for p := from + 1; p < anchor; p++ {
+		cur = d.repair(cur, d.deal(p).deck)
 	}
 	return cur
 }
