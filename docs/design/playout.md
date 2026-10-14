@@ -226,8 +226,10 @@ holidays shows only those. An uploaded image airs unchanged (no holiday version)
 from `schedule.ActiveHolidayAt`, the scheduler's own calendar and selection, so the logo cannot
 disagree with the programming; it is evaluated at the airing's start (`Airing.StartedAt`), so a
 retried open or a mid-programme tune-in gets the same logo and the version changes only at the next
-programme. The holiday version keeps the channel's opacity. The calendar windows are still UTC
-dates; channel-local dates (#1930) replace `ActiveHolidayAt`'s body and both callers follow.
+programme. The holiday version keeps the channel's opacity. Holiday windows are whole dates on the
+channel's wall clock (`guide.timezone`, the same zone the schedule reads, #1930), so the logo flips
+at the same local instant as the programming: on a US/Eastern channel 9 pm on Oct 31 is still
+Halloween. The section's holiday rows (`HonouredHolidays`) use the same zone.
 
 **The channel page's On-screen logo section.** It reads two endpoints and holds no copy of the
 calendar. `GET /v1/channels/{id}/watermark/options` returns the holidays this channel honours (empty

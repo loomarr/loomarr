@@ -342,6 +342,46 @@ func TestChannelWatermarks_HolidayVersionFollowsTheAiringStart(t *testing.T) {
 	}
 }
 
+// CHANNEL-LOCAL HOLIDAYS (#1930, #1659): the holiday version flips at the same local instant as the
+// schedule's holiday. On a US/Eastern channel 9 pm on Oct 31 is still Halloween (UTC would have ended
+// it at 8 pm), and 9 pm on Sep 30 is not yet (UTC would have started it); the section's rows agree.
+func TestChannelWatermarks_HolidayVersionIsChannelLocal(t *testing.T) {
+	eastern, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := store.Channel{Channel: schedule.Channel{ID: "ch", Name: "Saturday Cartoons", Number: 7}}
+	ch.Policy.Watermark = &schedule.WatermarkPolicy{Look: "tint", Motifs: map[string]string{"halloween": "ghost"}}
+	ch.Policy.Scope.Dates = schedule.EraDates(schedule.Range{From: 1980, To: 1989})
+	c := colour(testWatermarks(t, ch, true))
+	c.zone = func() *time.Location { return eastern }
+	oct31Night := time.Date(2026, time.October, 31, 21, 0, 0, 0, eastern) // Nov 1 01:00 UTC
+	sep30Night := time.Date(2026, time.September, 30, 21, 0, 0, 0, eastern)
+	h := watermark.HolidayLooks["halloween"]
+	spooky := watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
+		Colour: h.Colour, Palette: h.Palette, Motif: watermark.MotifGhost}
+	plain := watermark.Design{Style: watermark.StyleTint, Callsign: "SC", Number: 7,
+		Colour: watermark.Red, Palette: watermark.EraPalette(1980)}
+
+	if got := schedule.ActiveHolidayAt(oct31Night, ch.Policy.Seasonal, eastern); got != "halloween" {
+		t.Fatalf("the schedule's holiday at Oct 31 9 pm Eastern = %q, want halloween", got)
+	}
+	sameDesign(t, c.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct31Night).Straight, spooky)
+	sameDesign(t, c.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, sep30Night).Straight, plain)
+
+	opts, err := c.Options(t.Context(), "ch", oct31Night)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(opts.Holidays) == 0 || opts.Holidays[0].ID != "halloween" || !opts.Holidays[0].Active || opts.Holidays[0].End != "2026-10-31" {
+		t.Fatalf("holidays at Oct 31 9 pm Eastern = %+v, want this year's Halloween in effect", opts.Holidays)
+	}
+
+	// The same instant in UTC is Nov 1: proof the zone, not the instant, decides.
+	utc := colour(testWatermarks(t, ch, true))
+	sameDesign(t, utc.For(t.Context(), "ch", playout.EncoderNVENC, 1920, 1080, oct31Night).Straight, plain)
+}
+
 // colour marks the test service's encoder as passing the coloured self-check.
 func colour(c *channelWatermarks) *channelWatermarks {
 	c.gates[playout.EncoderNVENC].colour.Store(true)

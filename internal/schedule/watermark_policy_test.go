@@ -135,7 +135,7 @@ func TestHonouredHolidays(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("all, Mar 1 = %v, want %v", got, want)
 	}
-	if got := ids(HonouredHolidays(day(time.January, 1), SeasonalPolicy{Holidays: []string{"NewYear"}}, nil));!slices.Equal(got, []string{"newyear 2025-12-27..2026-01-02"}) {
+	if got := ids(HonouredHolidays(day(time.January, 1), SeasonalPolicy{Holidays: []string{"NewYear"}}, nil)); !slices.Equal(got, []string{"newyear 2025-12-27..2026-01-02"}) {
 		t.Fatalf("subset, Jan 1 = %v, want the window on now", got)
 	}
 	if got := HonouredHolidays(day(time.October, 13), SeasonalPolicy{Mode: SeasonalOff}, nil); got != nil {

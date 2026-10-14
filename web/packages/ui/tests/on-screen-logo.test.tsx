@@ -20,6 +20,11 @@ const doc = (
     document: { body: { append(n: unknown): void }; createElement(t: string): Root };
   }
 ).document;
+type EventCtor = new (type: string, init: { bubbles: boolean; key?: string }) => unknown;
+const { FocusEvent, KeyboardEvent } = globalThis as unknown as {
+  FocusEvent: EventCtor;
+  KeyboardEvent: EventCtor;
+};
 
 const render = (over: Partial<OnScreenLogoSectionProps> = {}) => {
   const props: OnScreenLogoSectionProps = {
