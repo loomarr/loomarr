@@ -121,13 +121,14 @@ func Build(in Input) []Idea {
 	return kept
 }
 
-// holidayIdea gathers the titles about a holiday. It matches the title, never the genre, for the
-// reason the scheduler's seasonal detection does (schedule.isSeasonal): a horror film is not about
-// Halloween. Titles already on a channel are kept, since a seasonal channel is its own lineup.
+// holidayIdea gathers the titles that fit a holiday (programming-design §6): about it, or in its
+// mood with the genres to back the word up. A genre alone never counts (a horror film is not about
+// Halloween), and neither does a bare mood word (Ghost World is a comedy). Titles already on a
+// channel are kept, since a seasonal channel is its own lineup.
 func holidayIdea(h Holiday, library []Item) Idea {
 	var matched []Item
 	for _, it := range library {
-		if holidayvocab.MatchesEvidence(h.ID, strings.ToLower(it.Name)) {
+		if holidayvocab.Judge(h.ID, holidayvocab.Evidence{Title: it.Name, Genres: it.Genres}).Fits() {
 			matched = append(matched, it)
 		}
 	}

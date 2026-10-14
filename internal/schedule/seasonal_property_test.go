@@ -25,7 +25,7 @@ var seasonalVocab = []struct {
 	seasonal bool // matches SOME built-in holiday keyword
 }{
 	{"Halloween Spooktacular", true},     // halloween
-	{"A Haunted Ghost Story", true},      // halloween
+	{"A Haunted Ghost Story", false},     // a mood word without a corroborating genre
 	{"Turkey Day Feast", true},           // thanksgiving
 	{"A Christmas Carol", true},          // christmas
 	{"Santa's Big Night", true},          // christmas

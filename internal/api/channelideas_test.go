@@ -162,7 +162,7 @@ func TestChannelIdeasFromLibraryAndCalendar(t *testing.T) {
 	}
 	for i := 20; i <= 22; i++ {
 		lib.items = append(lib.items, ideas.Item{Keys: []provision.Key{provision.Key(fmt.Sprintf("movie:tmdb:%d", i))},
-			MediaType: provision.Movie, Name: fmt.Sprintf("Haunted night %d", i)})
+			MediaType: provision.Movie, Name: fmt.Sprintf("Haunted night %d", i), Genres: []string{"Horror"}})
 	}
 	now := time.Date(2026, time.September, 28, 12, 0, 0, 0, time.UTC)
 	h := newIdeasHarness(t, lib, now)

@@ -71,6 +71,24 @@ describe("native playback diagnostics", () => {
     expect(reporter.flush).toHaveBeenCalledOnce();
   });
 
+  it("codes a refused start by its HTTP status, not the server's sentence", () => {
+    const reporter = { flush: vi.fn(async () => undefined), record: vi.fn() };
+    const diagnostics = createNativePlaybackDiagnostics(reporter, "native-1");
+
+    diagnostics.playerError({
+      attempt: 1,
+      channelId: "seven",
+      elapsedMs: 2_200,
+      error: "Loomarr couldn't start this channel's in-app stream.",
+      fatal: true,
+      status: 502,
+    });
+
+    expect(reporter.record).toHaveBeenCalledWith(
+      expect.objectContaining({ errorCode: "http_502.a1.t2s", fatal: true }),
+    );
+  });
+
   it("rejects an unbounded client-authored playback session identity", () => {
     const reporter = { flush: vi.fn(async () => undefined), record: vi.fn() };
     expect(() => createNativePlaybackDiagnostics(reporter, "")).toThrow("1-128 characters");
