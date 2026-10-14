@@ -123,6 +123,10 @@ describe("ChannelSeasonalFields", () => {
     );
     expect(view.container.textContent).toContain("9 Halloween episodes found: 3 a day.");
     expect(view.container.textContent).toContain("between 5 and 11 pm");
+    // A shuffled channel keeps one in the evening when moving it would repeat an episode too soon (#1960).
+    expect(view.container.textContent).toContain(
+      "Out of season they move out of the evening, unless that would bring an episode back too soon.",
+    );
     await view.unmount();
 
     const anytime = await mount(baseProps({ favourEvenings: false }));
