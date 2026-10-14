@@ -9,7 +9,7 @@ export {
   TvFocusRegistry,
 } from "./src/focus-registry";
 export type { TvFavouriteToggle } from "./src/favourite-navigation";
-export { isTvLongSelect, tvFavouriteToggle } from "./src/favourite-navigation";
+export { isTvLongSelect, tvFavouriteToggle, tvPressIsLongSelectRelease } from "./src/favourite-navigation";
 export type {
   TvGuideActivation,
   TvGuideFilterOption,

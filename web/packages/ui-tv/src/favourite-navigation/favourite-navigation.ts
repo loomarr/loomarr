@@ -8,10 +8,25 @@ import type { TvFavouriteToggle } from "./favourite-navigation.type";
 const isTvLongSelect = (eventType: string, eventKeyAction?: number): boolean =>
   eventType === "longSelect" && eventKeyAction !== 0;
 
+/**
+ * How long after a long press the focused row's own press-release is still that same hold's. tvOS sends
+ * longSelect once the hold is recognised, then the row's onPress when the finger lifts, so the hold
+ * would also tune the channel it just starred; measured on the Apple TV simulator at ~0.7 s after the
+ * toggle for a 1.5 s hold. Generous, because a longer hold only delays the release.
+ */
+const tvLongSelectReleaseWindowMs = 5_000;
+
+/**
+ * Whether a row's press is the release of a long-press that already starred it, so it must not tune.
+ * `armedAtMs` is when the last longSelect event arrived, whatever its key action.
+ */
+const tvPressIsLongSelectRelease = (armedAtMs: number | undefined, nowMs: number): boolean =>
+  armedAtMs !== undefined && nowMs - armedAtMs <= tvLongSelectReleaseWindowMs;
+
 /** What a long-press on `channelId` asks for: the opposite of where the channel is now. */
 const tvFavouriteToggle = (channelId: string, favouriteIds: readonly string[]): TvFavouriteToggle => ({
   channelId,
   starred: !favouriteIds.includes(channelId),
 });
 
-export { isTvLongSelect, tvFavouriteToggle };
+export { isTvLongSelect, tvFavouriteToggle, tvPressIsLongSelectRelease };

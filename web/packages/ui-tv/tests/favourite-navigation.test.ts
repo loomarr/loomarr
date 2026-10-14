@@ -4,6 +4,7 @@ import {
   isTvLongSelect,
   tvFavouriteToggle,
   tvGuideFavouriteChannel,
+  tvPressIsLongSelectRelease,
   tvSurfFavouriteChannel,
 } from "../index";
 
@@ -20,6 +21,20 @@ describe("TV long-press Select", () => {
     for (const eventType of ["select", "up", "down", "left", "right", "menu", "longPlayPause", "7"]) {
       expect(isTvLongSelect(eventType, 1)).toBe(false);
     }
+  });
+});
+
+describe("the press that ends a long-press", () => {
+  // Measured on the Apple TV simulator, 1.5 s hold on a Guide row: longSelect (the toggle) first, then
+  // the row's own onPress ~0.7 s later. Only the toggle may happen.
+  it("is not a tune, once", () => {
+    expect(tvPressIsLongSelectRelease(10_000, 10_700)).toBe(true);
+    expect(tvPressIsLongSelectRelease(10_000, 14_900)).toBe(true);
+  });
+
+  it("lets a short press tune when no hold came before it, or a long time ago", () => {
+    expect(tvPressIsLongSelectRelease(undefined, 10_700)).toBe(false);
+    expect(tvPressIsLongSelectRelease(10_000, 15_100)).toBe(false);
   });
 });
 

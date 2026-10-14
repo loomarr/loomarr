@@ -38,6 +38,7 @@ import {
   type TvWatchingRemoteIntent,
   type TvWatchingRemoteState,
   tvFavouriteToggle,
+  tvPressIsLongSelectRelease,
   tvGuideFavouriteChannel,
   tvGuideRowWindow,
   tvGuideTimeEdge,
@@ -240,7 +241,19 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
     },
     [myChannels, snapshot.catalog],
   );
+  // tvOS also delivers the held row's own press when the finger lifts; it is not a tune request.
+  const longSelectAtMs = useRef<number | undefined>(undefined);
+  const tuneFromList = (channelId: string) => {
+    if (tvPressIsLongSelectRelease(longSelectAtMs.current, Date.now())) {
+      longSelectAtMs.current = undefined;
+      return;
+    }
+    void controller.tuneChannel(channelId);
+    showControlsForActivity();
+    setActive("watching");
+  };
   useTVEventHandler(({ eventKeyAction, eventType }) => {
+    if (active !== "watching" && eventType === "longSelect") longSelectAtMs.current = Date.now();
     if (active === "watching" || !isTvLongSelect(eventType, eventKeyAction)) return;
     const guideSelection = guide.getSnapshot().selection;
     const channelId =
@@ -331,11 +344,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               focusRegistry={guideFocusRegistry}
               myChannels={myChannelsSnapshot}
               onTimeEdge={(side) => void tvGuideTimeEdge(guide, guideFocusRegistry, side, Date.now())}
-              onTune={(channelId) => {
-                void controller.tuneChannel(channelId);
-                showControlsForActivity();
-                setActive("watching");
-              }}
+              onTune={tuneFromList}
               preferredChannelId={snapshot.channel?.id}
               renderArtwork={(airing) => {
                 const uri = airing.source.thumbImage?.src ?? airing.source.thumbUrl;
@@ -373,11 +382,7 @@ const TvShell = ({ credential, session }: { credential: PairingCredential; sessi
               focusRegistry={surfFocusRegistry}
               onDisconnect={() => session.disconnect()}
               onForget={() => session.forgetServer()}
-              onTune={(channelId) => {
-                void controller.tuneChannel(channelId);
-                showControlsForActivity();
-                setActive("watching");
-              }}
+              onTune={tuneFromList}
               playableChannelIds={snapshot.catalog.map(({ id }) => id)}
               recentChannelIds={snapshot.recentChannelIds}
               renderArtwork={(channel) =>
