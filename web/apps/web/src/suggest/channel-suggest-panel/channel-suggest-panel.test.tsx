@@ -272,7 +272,13 @@ describe("ChannelSuggestPanel", () => {
     server.use(
       getSearchMockHandler({
         candidates: [
-          { name: "The Velvet Cartographer", year: 1995, mediaType: "movie", tmdbId: 90000949, inLibrary: true },
+          {
+            name: "The Velvet Cartographer",
+            year: 1995,
+            mediaType: "movie",
+            tmdbId: 90000949,
+            inLibrary: true,
+          },
         ],
       }),
     );
@@ -563,7 +569,9 @@ describe("ChannelSuggestPanel", () => {
       ...PROPOSAL,
       proposal: {
         ...PROPOSAL.proposal,
-        acquisitions: [{ mediaType: "movie", tmdbId: 90001701, name: "Pelican Point Motel", year: 1997, inLibrary: false }],
+        acquisitions: [
+          { mediaType: "movie", tmdbId: 90001701, name: "Pelican Point Motel", year: 1997, inLibrary: false },
+        ],
       },
     };
     const { approvals } = stubSuggest({ proposals: [editable] });
@@ -583,15 +591,21 @@ describe("ChannelSuggestPanel", () => {
       id: "p-2",
       proposal: {
         ...PROPOSAL.proposal,
-        acquisitions: [{ mediaType: "movie", tmdbId: 90000603, name: "Parallax Garden", year: 1999, inLibrary: false }],
-        alternates: [{ mediaType: "movie", tmdbId: 90000754, name: "Lemon Tree Heist", year: 1997, inLibrary: false }],
+        acquisitions: [
+          { mediaType: "movie", tmdbId: 90000603, name: "Parallax Garden", year: 1999, inLibrary: false },
+        ],
+        alternates: [
+          { mediaType: "movie", tmdbId: 90000754, name: "Lemon Tree Heist", year: 1997, inLibrary: false },
+        ],
       },
     };
     window.sessionStorage.setItem(
       "loomarr.proposalReviewEdit.job-1",
       JSON.stringify({
         drop: ["movie:tmdb:90000754"],
-        add: [{ mediaType: "movie", tmdbId: 90000603, name: "Parallax Garden", year: 1999, inLibrary: false }],
+        add: [
+          { mediaType: "movie", tmdbId: 90000603, name: "Parallax Garden", year: 1999, inLibrary: false },
+        ],
       }),
     );
     runOverride = failedRun({

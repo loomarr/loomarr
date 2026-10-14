@@ -154,7 +154,13 @@ describe("requestStatus while generating", () => {
     stage: "choosing" as const,
     terms: ["engines"],
     picks: [
-      { key: "movie:tmdb:90000100", mediaType: "movie" as const, name: "Quiet Engines", year: 1994, inLibrary: false },
+      {
+        key: "movie:tmdb:90000100",
+        mediaType: "movie" as const,
+        name: "Quiet Engines",
+        year: 1994,
+        inLibrary: false,
+      },
     ],
     target: 8,
     startedAt: "2026-09-25T12:00:00Z",

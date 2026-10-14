@@ -42,7 +42,9 @@ describe("Requests tabs", () => {
     stub({
       me: MEMBER,
       journeys: [
-        approved("j-x", "live", [{ mediaType: "movie", name: "Gave Up", tmdbId: 90000007, inLibrary: false }]),
+        approved("j-x", "live", [
+          { mediaType: "movie", name: "Gave Up", tmdbId: 90000007, inLibrary: false },
+        ]),
       ],
       titles: { unavailable: [title("Gave Up", "unavailable", { tmdbId: 90000007 })] },
     });

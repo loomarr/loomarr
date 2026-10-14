@@ -220,7 +220,9 @@ describe("channel saves", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Couldn't save the channel"));
     expect(patches).toHaveLength(1);
     expect(stored.lineup).toEqual([velvet, choir]);
-    expect(await screen.findByRole("button", { name: "Remove The Seventh Satellite Choir" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Remove The Seventh Satellite Choir" }),
+    ).toBeInTheDocument();
   });
 
   it("surfaces a number collision on the field instead of retrying it as a stale edit", async () => {

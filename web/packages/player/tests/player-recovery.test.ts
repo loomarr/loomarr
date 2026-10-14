@@ -9,7 +9,9 @@ import {
 import { createPlayUrlSourcePort } from "@loomarr/player/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const channels: PlayerChannel[] = [{ id: "kettle-kids", inAppPlayable: true, name: "Kettle Kids", number: 7 }];
+const channels: PlayerChannel[] = [
+  { id: "kettle-kids", inAppPlayable: true, name: "Kettle Kids", number: 7 },
+];
 const backoffMs = [1_000, 3_000, 7_000];
 
 const mintedSource = (): PlayerSourcePort => ({
@@ -264,7 +266,8 @@ describe("a start the paired server refuses (#1455)", () => {
     // Held before the start request went out, not after the refusal came back.
     expect(masterRequests("lunar-lemmings")).toHaveLength(1);
     const startIndex = request.mock.calls.findIndex(
-      ([input]) => String(input).includes("/lunar-lemmings/master.m3u8") && !String(input).includes("mode=warm"),
+      ([input]) =>
+        String(input).includes("/lunar-lemmings/master.m3u8") && !String(input).includes("mode=warm"),
     );
     expect(vi.mocked(transport.pause).mock.invocationCallOrder[0]).toBeLessThan(
       request.mock.invocationCallOrder[startIndex] ?? 0,

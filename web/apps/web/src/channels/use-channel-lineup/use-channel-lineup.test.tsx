@@ -88,7 +88,9 @@ describe("useChannelLineup", () => {
     });
 
     act(() => {
-      expect(result.current.add({ key: velvet.key, name: "The Velvet Cartographer (dupe)", year: 1995 })).toBe(false);
+      expect(
+        result.current.add({ key: velvet.key, name: "The Velvet Cartographer (dupe)", year: 1995 }),
+      ).toBe(false);
     });
 
     expect(patches).toHaveLength(0);

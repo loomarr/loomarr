@@ -80,7 +80,9 @@ test("a failed builder journey preserves the complete intent through authorized 
   await page.getByRole("button", { name: "Add details" }).click();
   await expect(page.getByLabel("Era")).toHaveValue("1990s");
   await expect(page.getByLabel("Target length (minutes)")).toHaveValue("180");
-  await expect(page.getByLabel("Must include")).toHaveValue("The Velvet Cartographer, The Seventh Satellite Choir");
+  await expect(page.getByLabel("Must include")).toHaveValue(
+    "The Velvet Cartographer, The Seventh Satellite Choir",
+  );
   await expect(page.getByLabel("Must exclude")).toHaveValue("clowns");
 
   await page.getByRole("button", { name: "Suggest a lineup" }).click();

@@ -390,12 +390,30 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                 { name: "Quiet Engines", year: 1994, mediaType: "movie", tmdbId: 90001637, inLibrary: false },
               ]
             : [
-                { name: "Scarlet Undertow", year: 1995, mediaType: "movie", tmdbId: 90008963, inLibrary: false },
-                { name: "Skyward Cabinet", year: 1997, mediaType: "movie", tmdbId: 90009772, inLibrary: false },
+                {
+                  name: "Scarlet Undertow",
+                  year: 1995,
+                  mediaType: "movie",
+                  tmdbId: 90008963,
+                  inLibrary: false,
+                },
+                {
+                  name: "Skyward Cabinet",
+                  year: 1997,
+                  mediaType: "movie",
+                  tmdbId: 90009772,
+                  inLibrary: false,
+                },
               ]
           : [
               { name: "Parallax Garden", year: 1999, mediaType: "movie", tmdbId: 90000603, inLibrary: false },
-              { name: "Pelican Point Motel", year: 1997, mediaType: "movie", tmdbId: 90001701, inLibrary: false },
+              {
+                name: "Pelican Point Motel",
+                year: 1997,
+                mediaType: "movie",
+                tmdbId: 90001701,
+                inLibrary: false,
+              },
             ];
         const replacementAlternates = expansion
           ? expansionNumber === 1
@@ -409,7 +427,15 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   inLibrary: false,
                 },
               ]
-          : [{ name: "Lemon Tree Heist", year: 1997, mediaType: "movie", tmdbId: 90000754, inLibrary: false }];
+          : [
+              {
+                name: "Lemon Tree Heist",
+                year: 1997,
+                mediaType: "movie",
+                tmdbId: 90000754,
+                inLibrary: false,
+              },
+            ];
         return json(route, {
           version: 1,
           jobId,
@@ -449,7 +475,13 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
                   : "Friday Night Action",
               rationale: "A focused night of high-energy 90s action movies.",
               lineup: [
-                { name: "The Velvet Cartographer", year: 1995, mediaType: "movie", tmdbId: 90000949, inLibrary: true },
+                {
+                  name: "The Velvet Cartographer",
+                  year: 1995,
+                  mediaType: "movie",
+                  tmdbId: 90000949,
+                  inLibrary: true,
+                },
                 {
                   name: "The Seventh Satellite Choir",
                   year: 1991,
@@ -473,7 +505,15 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
               alternates:
                 displayedRevision > 0
                   ? replacementAlternates
-                  : [{ name: "Lemon Tree Heist", year: 1997, mediaType: "movie", tmdbId: 90000754, inLibrary: false }],
+                  : [
+                      {
+                        name: "Lemon Tree Heist",
+                        year: 1997,
+                        mediaType: "movie",
+                        tmdbId: 90000754,
+                        inLibrary: false,
+                      },
+                    ],
               scores: {
                 version: 1,
                 themeFit: 1,
@@ -517,7 +557,9 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
     }
     if (path === "/v1/search" && method === "GET") {
       return json(route, {
-        candidates: [{ name: "Parallax Garden", year: 1999, mediaType: "movie", tmdbId: 90000603, inLibrary: false }],
+        candidates: [
+          { name: "Parallax Garden", year: 1999, mediaType: "movie", tmdbId: 90000603, inLibrary: false },
+        ],
       });
     }
     if (path === "/v1/movie-collections" && method === "GET") {

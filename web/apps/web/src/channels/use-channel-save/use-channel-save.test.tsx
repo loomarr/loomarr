@@ -288,7 +288,11 @@ describe("useChannelSave", () => {
   });
 
   it("on a 409 rebases a lineup edit onto the other writer's lineup", async () => {
-    const choir: LineupEntryDTO = { key: "movie:tmdb:90009426", name: "The Seventh Satellite Choir", year: 1991 };
+    const choir: LineupEntryDTO = {
+      key: "movie:tmdb:90009426",
+      name: "The Seventh Satellite Choir",
+      year: 1991,
+    };
     const marigold: LineupEntryDTO = { key: "movie:tmdb:90000106", name: "Marigold Protocol", year: 1987 };
     // The page read [Velvet, Choir]; another writer has since added Marigold.
     const stored: Stored = { revision: 2, policy: {}, lineup: [velvet, choir, marigold] };

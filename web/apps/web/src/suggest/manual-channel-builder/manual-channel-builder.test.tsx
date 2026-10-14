@@ -96,7 +96,13 @@ describe("ManualChannelBuilder", () => {
     server.use(
       getSearchMockHandler({
         candidates: [
-          { name: "The Velvet Cartographer", year: 1995, mediaType: "movie", tmdbId: 90000949, inLibrary: true },
+          {
+            name: "The Velvet Cartographer",
+            year: 1995,
+            mediaType: "movie",
+            tmdbId: 90000949,
+            inLibrary: true,
+          },
         ],
       }),
     );

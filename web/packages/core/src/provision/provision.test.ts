@@ -6,7 +6,9 @@ import { provisionKey } from "./provision";
 // mismatch surfacing as an approval edit that silently fails to drop a title.
 describe("provisionKey", () => {
   it("prefers TVDB for a series", () => {
-    expect(provisionKey({ mediaType: "series", tvdbId: 90071663, tmdbId: 90000456 })).toBe("series:tvdb:90071663");
+    expect(provisionKey({ mediaType: "series", tvdbId: 90071663, tmdbId: 90000456 })).toBe(
+      "series:tvdb:90071663",
+    );
   });
 
   it("falls back to TMDB for a series with no TVDB id", () => {
