@@ -293,8 +293,10 @@ const ClipCard = ({
             onClick={onOpen}
             aria-label={`View details for ${clip.name}`}
             title={clip.name}
+            // `-my-0.5 py-0.5`: a 24 px tap area for a 20 px line, drawn where it was (#1785). The
+            // shared `data-touch-target` box can't be used here: `truncate` clips it.
             className={cn(
-              "min-w-0 flex-1 truncate rounded-sm text-left font-medium hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "-my-0.5 min-w-0 flex-1 truncate rounded-sm py-0.5 text-left font-medium hover:text-signal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               compact ? "text-[13px]" : "text-sm",
             )}
           >

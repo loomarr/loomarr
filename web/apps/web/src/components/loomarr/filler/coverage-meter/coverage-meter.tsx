@@ -197,6 +197,8 @@ const CoverageMeter = ({ coverage, className }: CoverageMeterProps) => {
             to="/filler"
             className="text-signal text-xs underline-offset-2 hover:underline"
             data-testid="find-clips"
+            // One line of 12 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
+            data-touch-target
           >
             Propose a pull →
           </Link>

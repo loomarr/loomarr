@@ -106,6 +106,29 @@
   }
 }
 
+/* A touch target at least 24 px square on a touch screen, drawn exactly as before (#1785, WCAG
+ * 2.5.8). A control marked `data-touch-target` gets an invisible box centred on it, as wide and
+ * tall as the control or 24 px, whichever is more, which takes the taps. A mouse keeps the drawn box.
+ *
+ * In `@layer base` like the rule above, so a control's own `absolute` or `after:` utilities still
+ * win over the `relative` and `::after` set here. */
+@layer base {
+  @media (pointer: coarse) {
+    [data-touch-target] {
+      position: relative;
+    }
+    [data-touch-target]::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 24px);
+      height: max(100%, 24px);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+
 body {
   margin: 0;
   background-color: var(--color-background);

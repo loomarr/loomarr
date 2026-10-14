@@ -37,6 +37,8 @@ const FieldHelp = ({ children, label, describedById, className }: FieldHelpProps
             type="button"
             aria-label={`About ${label}`}
             aria-describedby={descriptionId}
+            // A 16 px glyph: a touch screen gets the 24 px tap area (styles.css, #1785).
+            data-touch-target
             className={cn(
               "inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full text-static-400 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               className,

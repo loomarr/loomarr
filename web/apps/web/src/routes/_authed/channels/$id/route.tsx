@@ -204,7 +204,7 @@ const ChannelDetailLayout = () => {
       {/* The web mock's header (#1659): back, the channel's icon (its monogram ident when it has
           none, N8), the name over an air line, and CH n at the right. The back link gets a 24 px
           target; the mock's 16 px glyph alone is under the minimum. */}
-      <header className="flex items-center gap-3 border-border border-b px-4 py-4 sm:px-6">
+      <header className="flex flex-wrap items-center gap-3 border-border border-b px-4 py-4 sm:px-6">
         <Link
           to="/guide"
           aria-label="Back to channels"
@@ -219,9 +219,11 @@ const ChannelDetailLayout = () => {
         ) : (
           <ChannelIdent name={ch.name} number={ch.number} size={48} />
         )}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-          {/* On a phone the name takes the whole row and the number wraps under it (#1785). */}
-          <div className="flex min-w-0 basis-full flex-col gap-0.5 sm:basis-auto">
+        {/* On a phone this wrapper steps aside (`contents`): CH n joins the back link and icon on
+            the first row, and the name, an input for an admin, takes a full-width row under them,
+            so a long name fits instead of being cut inside its field (#1785). */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 max-sm:contents">
+          <div className="flex min-w-0 basis-full flex-col gap-0.5 max-sm:order-last sm:basis-auto">
             {/* Admins still rename and renumber here with Save/Cancel per field, until the
                 maintainer's click-to-edit mock lands; everyone else sees the mock's text. */}
             {isAdmin ? (

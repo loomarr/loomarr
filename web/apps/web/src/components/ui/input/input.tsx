@@ -85,4 +85,38 @@ const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLI
 );
 Input.displayName = "Input";
 
-export { Input };
+// GrowingTextarea — the text field as a textarea that grows to fit its value, for a one-line value
+// that must stay whole where the field is too narrow for it: the channel name on a phone (#1785).
+// Same look as Input (its classes and styles, so a caller's `className` reads the same), wrapping
+// instead of scrolling the value out of sight. It is one line of content: the caller keeps
+// newlines out (Enter, paste) as it would for an input.
+const GrowingTextarea = ({
+  className,
+  style,
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => {
+  const ref = React.useRef<HTMLTextAreaElement>(null);
+  const fit = React.useCallback(() => {
+    const field = ref.current;
+    if (!field) return;
+    // Collapse first so a shorter value can shrink it, then grow to the content and its border.
+    field.style.height = "auto";
+    field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
+  }, []);
+  React.useLayoutEffect(fit, [fit, props.value]);
+  React.useEffect(() => {
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [fit]);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      className={cn(baseClasses, className)}
+      style={{ ...baseStyle, overflow: "hidden", resize: "none", ...style }}
+      {...props}
+    />
+  );
+};
+
+export { GrowingTextarea, Input };

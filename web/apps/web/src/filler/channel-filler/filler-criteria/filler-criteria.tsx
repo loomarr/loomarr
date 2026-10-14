@@ -336,6 +336,8 @@ const FillerCriteria = ({
             <button
               type="button"
               className="text-signal underline-offset-2 hover:underline disabled:opacity-50"
+              // Inline 12 px text: a touch screen gets the 24 px tap area (styles.css, #1785).
+              data-touch-target
               disabled={disabled}
               onClick={() =>
                 onChange({
