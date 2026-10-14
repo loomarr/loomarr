@@ -73,6 +73,10 @@ var migratedTitles = []string{
 	"Swiffer", "Aqua Globes", "Walgreens", "WKRP", "Smokey Bear", "Jersey Mike", "Turbo Teen",
 	"Highway Patrol", "Sega Genesis", "TMNT", "Capri Sun", "La Llave", "TV Puls", "NatWest", "Rumbelows",
 	"KCPQ", "WNYW", "WAGA", "Sony", "Lego", "NFL", "CBC",
+	// The app, requester, provision and proposalworkflow tests (slice 15). Titles that are ordinary
+	// words or names ("Them!", "Akira", "Running Man", "Puma") are left out: they would match
+	// ordinary prose.
+	"Greene King", "Calpol", "Lethal Weapon", "Empire Strikes Back",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -156,8 +160,6 @@ var migratedTests = []string{
 var migratedGo = []string{
 	"internal/api/", "internal/testkit/",
 	// The mock TMDB catalogue's consumers (slice 6).
-	"internal/app/adapters_tmdb_test.go",
-	"internal/app/iconadapter_test.go",
 	"internal/suggest/suggester_progress_test.go",
 	"internal/suggest/suggester_test.go",
 	"internal/suggest/worker_callsite_test.go",
@@ -207,6 +209,8 @@ var migratedGo = []string{
 	"internal/playout/", "internal/recurate/", "internal/schedule/",
 	// The filler, fillerenrichment and fillerstore tests (slice 12).
 	"internal/filler/", "internal/fillerenrichment/", "internal/fillerstore/",
+	// The app, requester, provision and proposalworkflow tests (slice 15).
+	"internal/app/", "internal/proposalworkflow/", "internal/provision/", "internal/requester/",
 }
 
 // pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
@@ -220,12 +224,15 @@ var pendingGo = []string{
 // them and migratedGo skips them even when a slice adds their whole package. Each carries its
 // reason; a file listed here must exist.
 var realDataGo = map[string]string{
-	"internal/eval/schedule_live_test.go":             "queries live data on purpose",
-	"internal/fillerenrichment/deterministic_test.go": "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
-	"internal/suggest/live_latency_test.go":           "drives a real LLM, whose world knowledge of real titles is what it measures",
-	"internal/suggest/live_named_titles_test.go":      "drives a real LLM on requests that name real titles",
-	"internal/tmdb/exists_contract_test.go":           "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
-	"internal/tmdb/fixture_test.go":                   "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
+	"internal/app/fillerenrichment_deterministic_test.go": "pins the production brand dictionary in fillerenrichment's deterministic.go end to end, whose phrases are real brands",
+	"internal/eval/schedule_live_test.go":                 "queries live data on purpose",
+	"internal/fillerenrichment/deterministic_test.go":     "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
+	"internal/provision/webhook_parity_test.go":           "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",
+	"internal/requester/seerr_contract_test.go":           "pins the live-captured Seerr 201 body (testkit/fixtures), real id",
+	"internal/suggest/live_latency_test.go":               "drives a real LLM, whose world knowledge of real titles is what it measures",
+	"internal/suggest/live_named_titles_test.go":          "drives a real LLM on requests that name real titles",
+	"internal/tmdb/exists_contract_test.go":               "pins the live-captured /movie/603 response (testkit/fixtures), real id and title",
+	"internal/tmdb/fixture_test.go":                       "parses a live-captured TMDB response (testkit/fixtures), real ids and all",
 }
 
 // realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field or a JSON
