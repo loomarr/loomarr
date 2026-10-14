@@ -413,19 +413,24 @@ func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
 		{"Halloween's end", day(time.November, 1, 0), halloweenSpecials},
 		{"first day after Halloween", day(time.November, 2, 0), halloweenSpecials},
 		{"New Year's end", time.Date(2027, time.January, 3, 0, 0, 0, 0, time.UTC), newYearSpecials},
+		// #1930 review B1: mid-season, a deck under about two windows re-aired an episode back to back.
+		{"mid-season", day(time.October, 16, 0), halloweenSpecials},
 	} {
 		for _, pool := range []struct {
 			ordinary int
 			window   time.Duration
-		}{{9, time.Hour}, {80, 6 * time.Hour}, {400, 24 * time.Hour}} {
+		}{{9, time.Hour}, {80, 6 * time.Hour}, {80, 12 * time.Hour}, {80, 24 * time.Hour}, {30, 24 * time.Hour}, {400, 24 * time.Hour}} {
 			specials := max(3, pool.ordinary/20)
 			avail := seriesLike(pool.ordinary, seam.specials(specials)...)
 			// An episode aired again sooner than half the deck less its pool (the in-season
 			// minimum on a small deck) is a seam repeat; out of season the gap is a whole deck.
 			spacing := (pool.ordinary+specials)/2 - specials
+			// Consecutive windows share nothing when the deck holds the window before, this one and
+			// the next; on a shorter deck they must share, and spacing is the guarantee.
+			disjoint := time.Duration(pool.ordinary+specials)*episodeMs*time.Millisecond >= 3*pool.window
 			for _, strength := range []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy} {
 				t.Run(fmt.Sprintf("%s/%d episodes/%s window/%s", seam.name, pool.ordinary, pool.window, strength), func(t *testing.T) {
-					assertSeamOnlySkips(t, channelWithWindow(pool.window, nil), avail, seasonalPolicy(schedule.SeasonalPolicy{Strength: strength}), seam.at, spacing)
+					assertSeamOnlySkips(t, channelWithWindow(pool.window, nil), avail, seasonalPolicy(schedule.SeasonalPolicy{Strength: strength}), seam.at, spacing, disjoint)
 				})
 			}
 		}
@@ -433,9 +438,9 @@ func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
 }
 
 // assertSeamOnlySkips walks the windows of the two days either side of seam: none is empty, none
-// re-airs an ordinary episode from the window before, and no ordinary episode airs twice within
-// `spacing` programmes.
-func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, seam time.Time, spacing int) {
+// re-airs an ordinary episode from the window before (when disjoint), and no ordinary episode airs
+// twice within `spacing` programmes.
+func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, seam time.Time, spacing int, disjoint bool) {
 	t.Helper()
 	last := map[string]airing{}
 	at := map[string]int{}
@@ -451,7 +456,7 @@ func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture
 			if isHoliday(a.id) {
 				continue
 			}
-			if before[a.id] {
+			if disjoint && before[a.id] {
 				t.Fatalf("the window opening %s re-airs %s from the window before", open.Format(time.Stamp), a.id)
 			}
 			if k, ok := at[a.id]; ok && n-k < spacing {

@@ -372,21 +372,26 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     The season's first window starts where `windowSlice` would start it. Each later window
     continues the deck exactly where the window before it stopped. It takes ordinary episodes
     until their runtime meets the window less its features' runtime. Consecutive windows
-    therefore never share an episode. The season's first seam is the same as with seasonality
+    share no episode when the deck holds about three windows; on a shorter deck they must share
+    some, and the guarantee is the spacing below. The season's first seam is the same as with seasonality
     off. No window's walk passes the point where `windowSlice` would start the next window
     (counted in programmes from the deck head). The walk passes pool episodes it does not air,
     so a window that features fewer of them than it passes reaches that point before its
     airtime is full. The rest of its airtime is filled with ordinary episodes from the far side of
     the deck: starting half the deck ahead, skipping the pool, the window's own episodes and,
     while anything else is left, the window before and what the next window's walk can reach.
+    When nothing else is left (a deck shorter than about three windows), the fill searches
+    outward from that far point and airs each episode beside the window's own episode half a
+    deck behind it, so it is about half a deck from its last airing and its next, never back to
+    back with the next window's opening.
     At the season's end, the first window out of season goes back to `windowSlice`'s position,
     which the last window in season never passed, so the seam only skips episodes, never repeats
     one. The cost is in season: a far-side episode aired about half a deck ago and airs again
     about half a deck on. On a small deck (or a pool walked past much faster than it is featured)
-    an ordinary episode can therefore re-air about half a cycle apart. That is the minimum: between
-    two `windowSlice` starts there are fewer ordinary episodes than the window has airtime, so
-    the shortfall must repeat something, and half a deck is the furthest any episode is from both
-    its last and next airing. A deck that fits one window airs
+    an ordinary episode can therefore re-air about half a deck (less the pool) apart, and no
+    sooner. That is the most spacing the deck allows: between two `windowSlice` starts there are
+    fewer ordinary episodes than the window has airtime, so the shortfall must repeat something,
+    and half a deck is the furthest any episode is from both its last and next airing. A deck that fits one window airs
     whole, minus the pool, every window. Recency (`tradeRecent`, #1694)
     then guards the tile as it does any tile. The pass is a pure function of (deck, window index,
     zone, policy): it is idempotent within a window, there is no mid-window reshuffle

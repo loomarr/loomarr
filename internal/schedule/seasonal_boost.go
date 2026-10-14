@@ -505,7 +505,7 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 // on, so an in-season re-air, unavoidable when the pool is walked past faster than it is
 // featured, is as far from both airings as the deck allows. It skips the pool and the tile, and,
 // while anything else is left, the window before (prev) and what the next window's walk can reach
-// (ring positions u up to next), so on a small deck neighbouring windows still share nothing.
+// (ring positions u up to next), so neighbouring windows share nothing when the deck allows it.
 func (p *holidayPlanner) farFill(tile, prev []Slot, ring func(int64) int, u, next, nProg, short int64, pooled map[string]bool) []Slot {
 	if short <= 0 {
 		return tile
@@ -520,17 +520,44 @@ func (p *holidayPlanner) farFill(tile, prev []Slot, ring func(int64) int, u, nex
 	for n := u; n < next; n++ {
 		near[unitKey(p.deck[ring(n)])] = true
 	}
-	for _, avoid := range []map[string]bool{near, {}} {
-		for k := int64(0); k < nProg && short > 0; k++ {
-			s := p.deck[ring(u+nProg/2+k)]
-			if key := unitKey(s); !pooled[key] && !taken[key] && !avoid[key] {
-				taken[key] = true
-				short -= s.DurationMs
-				tile = append(tile, s)
-			}
+	for k := int64(0); k < nProg && short > 0; k++ {
+		s := p.deck[ring(u+nProg/2+k)]
+		if key := unitKey(s); !pooled[key] && !taken[key] && !near[key] {
+			taken[key] = true
+			short -= s.DurationMs
+			tile = append(tile, s)
+		}
+	}
+	// Everything left is near (a deck under about three windows): neighbouring windows must share
+	// something. From the far point outward, each pick airs beside the tile's walk episode half a
+	// lap behind it, so it is about half a cycle from its last airing and its next, even when the
+	// next window's walk opens with it.
+	for d := int64(0); d < nProg && short > 0; d++ {
+		ahead := nProg/2 + (d+1)/2*(1-2*(d%2)) // nProg/2, then -1, +1, -2, +2, …
+		s := p.deck[ring(u+ahead)]
+		if key := unitKey(s); !pooled[key] && !taken[key] {
+			taken[key] = true
+			short -= s.DurationMs
+			tile = placeFar(tile, s, p.deck, ring, u, ahead-nProg/2)
 		}
 	}
 	return tile
+}
+
+// placeFar inserts s into tile right after the tile's walk episode at ring position u+at (at < 0
+// is behind the walk's end), stepping back past episodes the tile skipped; at its end when at is
+// not behind the walk, and at its start when the walk never reached u+at.
+func placeFar(tile []Slot, s Slot, deck []Slot, ring func(int64) int, u, at int64) []Slot {
+	if at >= 0 {
+		return append(tile, s)
+	}
+	for b := at; b >= at-int64(len(tile)); b-- {
+		key := unitKey(deck[ring(u+b)])
+		if i := slices.IndexFunc(tile, func(t Slot) bool { return t.IsProgram() && unitKey(t) == key }); i >= 0 {
+			return slices.Insert(tile, i+1, s)
+		}
+	}
+	return slices.Insert(tile, 0, s)
 }
 
 // arrange times window w's tile around its features. A feature airs as soon as the clock reaches
