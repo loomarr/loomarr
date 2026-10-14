@@ -18,10 +18,10 @@ func TestRecentlyAdded_QueryAndParse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotQuery = r.URL.Query()
 		_, _ = w.Write([]byte(`{"Items":[
-			{"Id":"lib-1","Name":"The Matrix","Type":"Movie","ProductionYear":1999,
-			 "ProviderIds":{"Tmdb":"603"}},
-			{"Id":"lib-2","Name":"Breaking Bad","Type":"Series","ProductionYear":2008,
-			 "ProviderIds":{"Tvdb":"81189"}}
+			{"Id":"lib-1","Name":"Marigold Protocol","Type":"Movie","ProductionYear":1999,
+			 "ProviderIds":{"Tmdb":"90000603"}},
+			{"Id":"lib-2","Name":"Copperline Foundry","Type":"Series","ProductionYear":2008,
+			 "ProviderIds":{"Tvdb":"90081189"}}
 		],"TotalRecordCount":2}`))
 	}))
 	defer srv.Close()
@@ -44,10 +44,10 @@ func TestRecentlyAdded_QueryAndParse(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("got %d results, want 2", len(got))
 	}
-	if got[0].TMDBID != 603 || got[0].MediaType != Movie || got[0].LibraryItemID != "lib-1" {
+	if got[0].TMDBID != 90000603 || got[0].MediaType != Movie || got[0].LibraryItemID != "lib-1" {
 		t.Errorf("movie result = %+v", got[0])
 	}
-	if got[1].TVDBID != 81189 || got[1].MediaType != Series {
+	if got[1].TVDBID != 90081189 || got[1].MediaType != Series {
 		t.Errorf("series result = %+v", got[1])
 	}
 }
@@ -57,7 +57,7 @@ func TestAllItems_NoDateBound(t *testing.T) {
 	var hadMDS bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, hadMDS = r.URL.Query()["MinDateLastSaved"]
-		_, _ = w.Write([]byte(`{"Items":[{"Id":"x","Name":"n","Type":"Movie","ProviderIds":{"Tmdb":"1"}}],"TotalRecordCount":1}`))
+		_, _ = w.Write([]byte(`{"Items":[{"Id":"x","Name":"n","Type":"Movie","ProviderIds":{"Tmdb":"90000001"}}],"TotalRecordCount":1}`))
 	}))
 	defer srv.Close()
 
@@ -69,7 +69,7 @@ func TestAllItems_NoDateBound(t *testing.T) {
 	if hadMDS {
 		t.Error("AllItems must not send MinDateLastSaved")
 	}
-	if len(got) != 1 || got[0].TMDBID != 1 {
+	if len(got) != 1 || got[0].TMDBID != 90000001 {
 		t.Errorf("got %+v", got)
 	}
 }

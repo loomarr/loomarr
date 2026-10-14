@@ -20,10 +20,10 @@ func TestScanAvailability_NoWebhook(t *testing.T) {
 	admin := h.asAdmin()
 
 	// A title Loomarr requested and is waiting on — nothing has confirmed it yet.
-	key := provision.Key("movie:tmdb:603")
+	key := provision.Key("movie:tmdb:90000603")
 	if err := h.store.UpsertTitle(context.Background(), provision.Record{
 		Key: key, State: provision.Requested, Deadline: time.Now().Add(24 * time.Hour),
-		Title: provision.Title{MediaType: provision.Movie, TMDBID: 603},
+		Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000603},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestScanAvailability_NoWebhook(t *testing.T) {
 	// The media server now reports it present (an import landed) — discoverable ONLY via the
 	// bulk scan, never via a webhook to Loomarr.
 	h.ms.SetSearchItems(
-		testkit.SearchStub{LibraryItemID: "lib-603", Name: "The Matrix", Type: "Movie", TMDBID: 603},
+		testkit.SearchStub{LibraryItemID: "lib-603", Name: "Marigold Protocol", Type: "Movie", TMDBID: 90000603},
 	)
 
 	// Run the scan on demand through the admin jobs API — the same path the scheduler drives.

@@ -24,14 +24,14 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "plain episodic intent",
-			intent: Intent{Description: "Simpsons episodes"},
+			intent: Intent{Description: "Mudpuddles episodes"},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
 			},
 		},
 		{
 			name:   "sequential intent",
-			intent: Intent{Description: "Simpsons from the beginning"},
+			intent: Intent{Description: "Mudpuddles from the beginning"},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeComplete},
 				sequential:       true,
@@ -39,7 +39,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "curated intent",
-			intent: Intent{Description: "classic Simpsons"},
+			intent: Intent{Description: "classic Mudpuddles"},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 				curated:          true,
@@ -47,7 +47,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "curated intent with negated binge",
-			intent: Intent{Description: "Classic Simpsons: the best episodes, not a full binge."},
+			intent: Intent{Description: "Classic Mudpuddles: the best episodes, not a full binge."},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 				curated:          true,
@@ -55,7 +55,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "named holiday intent",
-			intent: Intent{Description: "Christmas Simpsons episodes"},
+			intent: Intent{Description: "Christmas Mudpuddles episodes"},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}},
 				seasonal:         schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}},
@@ -81,7 +81,7 @@ func TestDeriveIntentPolicy(t *testing.T) {
 		},
 		{
 			name:   "negative holiday constraint",
-			intent: Intent{Description: "classic Simpsons", MustExclude: []string{"holiday episodes"}},
+			intent: Intent{Description: "classic Mudpuddles", MustExclude: []string{"holiday episodes"}},
 			want: deterministicIntentPolicy{
 				episodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHighlights},
 				curated:          true,

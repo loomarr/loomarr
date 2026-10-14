@@ -38,7 +38,7 @@ func TestDatabaseLifecycleFreshPostgresStartsFromComposeProfile(t *testing.T) {
 	assertLifecycleBackend(t, baseURL, "postgres")
 
 	response := lifecycleRequest(t, http.MethodPost, baseURL+"/v1/titles",
-		[]byte(`{"mediaType":"movie","tmdbId":7001}`))
+		[]byte(`{"mediaType":"movie","tmdbId":90007001}`))
 	decodeLifecycleResponse(t, response, http.StatusOK, &struct{}{})
 	restartCtx, cancelRestart := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelRestart()
@@ -49,7 +49,7 @@ func TestDatabaseLifecycleFreshPostgresStartsFromComposeProfile(t *testing.T) {
 		t.Fatalf("fresh Postgres deployment did not recover after restart: %v", err)
 	}
 	assertLifecycleBackend(t, baseURL, "postgres")
-	assertLifecycleTitle(t, baseURL, 7001)
+	assertLifecycleTitle(t, baseURL, 90007001)
 }
 
 // TestDatabaseLifecycleMigratesSQLiteAndRestartsOnPostgres drives the supported
@@ -83,7 +83,7 @@ func TestDatabaseLifecycleMigratesSQLiteAndRestartsOnPostgres(t *testing.T) {
 	// Seed through the same admin API an operator uses. This is intentionally not a
 	// direct INSERT: the lifecycle test must prove an application-owned record survives.
 	response = lifecycleRequest(t, http.MethodPost, baseURL+"/v1/titles",
-		[]byte(`{"mediaType":"movie","tmdbId":4242}`))
+		[]byte(`{"mediaType":"movie","tmdbId":90004242}`))
 	if response.StatusCode != http.StatusOK {
 		defer func() { _ = response.Body.Close() }()
 		t.Fatalf("seed source title = %d, want 200", response.StatusCode)
@@ -129,10 +129,10 @@ func TestDatabaseLifecycleMigratesSQLiteAndRestartsOnPostgres(t *testing.T) {
 	if me.Name != "lifecycle-owner" || me.Role != "admin" {
 		t.Fatalf("migrated session resolved to %+v, want lifecycle-owner admin", me)
 	}
-	assertLifecycleTitle(t, baseURL, 4242)
+	assertLifecycleTitle(t, baseURL, 90004242)
 
 	response = lifecycleRequest(t, http.MethodPost, baseURL+"/v1/titles",
-		[]byte(`{"mediaType":"movie","tmdbId":4343}`))
+		[]byte(`{"mediaType":"movie","tmdbId":90004343}`))
 	decodeLifecycleResponse(t, response, http.StatusOK, &struct{}{})
 
 	restartCtx, cancelRestart := context.WithTimeout(context.Background(), time.Minute)
@@ -144,7 +144,7 @@ func TestDatabaseLifecycleMigratesSQLiteAndRestartsOnPostgres(t *testing.T) {
 		t.Fatalf("migrated Loomarr did not recover after container restart: %v", err)
 	}
 	assertLifecycleBackend(t, baseURL, "postgres")
-	assertLifecycleTitle(t, baseURL, 4343)
+	assertLifecycleTitle(t, baseURL, 90004343)
 
 	stopCtx, cancelStop := context.WithTimeout(context.Background(), 30*time.Second)
 	if out, err := compose(stopCtx, "stop", "loomarr"); err != nil {
@@ -171,8 +171,8 @@ func TestDatabaseLifecycleMigratesSQLiteAndRestartsOnPostgres(t *testing.T) {
 	if err := awaitDatabaseBackend(baseURL, "sqlite", 60*time.Second); err != nil {
 		t.Fatalf("rollback did not restart on SQLite: %v", err)
 	}
-	assertLifecycleTitle(t, baseURL, 4242)
-	assertLifecycleTitleMissing(t, baseURL, 4343)
+	assertLifecycleTitle(t, baseURL, 90004242)
+	assertLifecycleTitleMissing(t, baseURL, 90004343)
 	response = lifecycleCookieRequest(t, http.MethodGet, baseURL+"/v1/auth/me", nil, adminSession)
 	decodeLifecycleResponse(t, response, http.StatusOK, &struct{}{})
 }
@@ -249,7 +249,7 @@ func TestDatabaseLifecycleInterruptedMigrationRecoversSQLiteAndRetries(t *testin
 	}
 	assertLifecycleTitle(t, baseURL, 99_999)
 	response = lifecycleRequest(t, http.MethodPost, baseURL+"/v1/titles",
-		[]byte(`{"mediaType":"movie","tmdbId":200001}`))
+		[]byte(`{"mediaType":"movie","tmdbId":90200001}`))
 	decodeLifecycleResponse(t, response, http.StatusOK, &struct{}{})
 
 	resetCtx, cancelReset := context.WithTimeout(context.Background(), 30*time.Second)
@@ -302,7 +302,7 @@ func TestDatabaseLifecycleFailedTargetRecheckStaysOnSQLite(t *testing.T) {
 	assertLifecycleBackend(t, baseURL, "sqlite")
 
 	response := lifecycleRequest(t, http.MethodPost, baseURL+"/v1/titles",
-		[]byte(`{"mediaType":"movie","tmdbId":5150}`))
+		[]byte(`{"mediaType":"movie","tmdbId":90005150}`))
 	decodeLifecycleResponse(t, response, http.StatusOK, &struct{}{})
 
 	target := "postgres://loomarr:loomarr@postgres:5432/loomarr?sslmode=disable"
@@ -327,11 +327,11 @@ func TestDatabaseLifecycleFailedTargetRecheckStaysOnSQLite(t *testing.T) {
 	if !strings.Contains(strings.ToLower(failure), "target is empty") {
 		t.Fatalf("migration failure = %q, want target-is-empty explanation", failure)
 	}
-	assertLifecycleTitle(t, baseURL, 5150)
+	assertLifecycleTitle(t, baseURL, 90005150)
 	response = lifecycleRequest(t, http.MethodPost, baseURL+"/v1/titles",
-		[]byte(`{"mediaType":"movie","tmdbId":5151}`))
+		[]byte(`{"mediaType":"movie","tmdbId":90005151}`))
 	decodeLifecycleResponse(t, response, http.StatusOK, &struct{}{})
-	assertLifecycleTitle(t, baseURL, 5151)
+	assertLifecycleTitle(t, baseURL, 90005151)
 }
 
 // TestDatabaseLifecycleDrainsInflightWritesBeforeCopy defines the concurrent
@@ -367,7 +367,7 @@ func TestDatabaseLifecycleDrainsInflightWritesBeforeCopy(t *testing.T) {
 		t.Fatalf("open in-flight write connection: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
-	writeBody := []byte(`{"mediaType":"movie","tmdbId":6262}`)
+	writeBody := []byte(`{"mediaType":"movie","tmdbId":90006262}`)
 	split := len(writeBody) / 2
 	headers := fmt.Sprintf("POST /v1/titles HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer lifecycle-test-token\r\nX-Loomarr-Csrf: 1\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", len(writeBody))
 	if _, err := conn.Write(append([]byte(headers), writeBody[:split]...)); err != nil {
@@ -398,7 +398,7 @@ func TestDatabaseLifecycleDrainsInflightWritesBeforeCopy(t *testing.T) {
 	if err := awaitDatabaseBackend(baseURL, "postgres", 90*time.Second); err != nil {
 		t.Fatalf("drained migration did not restart on Postgres: %v", err)
 	}
-	assertLifecycleTitle(t, baseURL, 6262)
+	assertLifecycleTitle(t, baseURL, 90006262)
 }
 
 func repositoryRoot(t *testing.T) string {
@@ -612,7 +612,8 @@ func seedLargeSQLiteFixture(t *testing.T, databasePath string, titles int) strin
 		_ = tx.Rollback()
 		t.Fatalf("prepare SQLite fixture seed: %v", err)
 	}
-	for id := 0; id < titles; id++ {
+	for i := range titles {
+		id := 90_000_000 + i // above every real TMDB id (#1592)
 		key := fmt.Sprintf("movie:tmdb:%d", id)
 		title := fmt.Sprintf(`{"mediaType":"movie","tmdbId":%d,"name":"Lifecycle fixture %d"}`, id, id)
 		if _, err := stmt.Exec(key, title); err != nil {
