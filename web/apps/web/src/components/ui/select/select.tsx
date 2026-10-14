@@ -75,7 +75,8 @@ const SelectItem = ({ className, children, ...props }: SelectItemProps) => (
   >
     <span className="absolute right-2 flex size-3.5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <Check className="size-4 text-signal" />
+        {/* The chosen option is a selection, so its mark is foreground, not amber (#1909). */}
+        <Check className="size-4 text-foreground" />
       </SelectPrimitive.ItemIndicator>
     </span>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
