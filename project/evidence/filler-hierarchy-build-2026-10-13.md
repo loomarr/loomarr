@@ -53,6 +53,19 @@ repo's `@playwright/test` Chromium as admin (dev login) and as a created member,
 | Incoming / Sources / Tags "← Manage" → `/filler/manage` | ✓ ✓ ✓ | ✓ ✓ ✓ |
 | Horizontal overflow, console/page errors | none | none |
 
+`needsDetails`, re-checked on the same lane after the merge with main (media jobs paused): the API
+marks the two untagged commercials `needsDetails: true` and the station id `false`, and
+`?untagged=true` returns the same two. In the browser:
+
+| Check | Desktop | 390 |
+| --- | --- | --- |
+| "Needs details" chips, grid | 2 (the two commercials) | 2 |
+| "Needs details" chips, list | 0 (tag columns show) | 2 (under the name) |
+| On the station id | none | none |
+| READY chips, overflow, console/page errors | none | none |
+
+Screenshots: `admin-{desktop,phone}-library-{grid,list}-needs-details.png`.
+
 The diagnostics panel is open and in view on arrival (top at 657/800 and 636/844). With no
 diagnostics on this seed the page is too short to scroll it to the top; the scroller sits at its
 maximum.
