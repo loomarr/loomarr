@@ -557,7 +557,7 @@ func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
 	srv, fs := harness.Server, harness.Suggest
 	body := `{"description":"90s action movies","era":"1990s","tone":"high-energy",
 	          "runtimeTargetMin":180,"maxAcquisitions":7,
-	          "mustInclude":["Quiet Engines"],"mustExclude":["Cats"]}`
+	          "mustInclude":["Quiet Engines"],"mustExclude":["Pepperpot Summer"]}`
 
 	if resp := do(t, srv, http.MethodPost, "/v1/proposals", adminToken, body); resp.StatusCode != http.StatusOK {
 		t.Fatalf("submit → %d, want 200", resp.StatusCode)
@@ -576,8 +576,8 @@ func TestSubmit_CarriesTheWholeIntent(t *testing.T) {
 	if len(got.MustInclude) != 1 || got.MustInclude[0] != "Quiet Engines" {
 		t.Errorf("mustInclude = %v, want [Quiet Engines]", got.MustInclude)
 	}
-	if len(got.MustExclude) != 1 || got.MustExclude[0] != "Cats" {
-		t.Errorf("mustExclude = %v, want [Cats]", got.MustExclude)
+	if len(got.MustExclude) != 1 || got.MustExclude[0] != "Pepperpot Summer" {
+		t.Errorf("mustExclude = %v, want [Pepperpot Summer]", got.MustExclude)
 	}
 }
 

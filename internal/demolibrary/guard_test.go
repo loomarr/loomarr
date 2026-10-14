@@ -41,7 +41,8 @@ var migratedTitles = []string{
 	// The Go API tests and testkit (slice 5).
 	"Heat", "Predator", "The Rock", "Breaking Bad", "Harry Potter", "South Park", "King of the Hill",
 	"Indiana Jones", "Next Generation", "Deep Space Nine", "Campbell", "McDonald", "Tootsie", "HP Sauce",
-	"Fanta", "Hopper",
+	"Fanta", "Hopper", "Ronin", "Full House", "Family Matters", "Bob's Burgers", "Last Action Hero",
+	"Killing Game", "Moaning Lisa", "Bart the Genius", "In Flames",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
