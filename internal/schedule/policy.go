@@ -580,6 +580,11 @@ type SeasonalPolicy struct {
 	Mode      SeasonalMode `json:"mode,omitempty"`      // off | auto | exclusive; "" = auto
 	Holidays  []string     `json:"holidays,omitempty"`  // subset of the built-in calendar ids
 	OffSeason OffSeason    `json:"offSeason,omitempty"` // exclusive-mode fallback; "" = loop
+	// Strength and Placement shape the auto-mode feature of holiday EPISODES inside an
+	// ordinary series (§6 "Holiday episodes"). Both are "" = default enums, never a zero value
+	// that means something different from unset.
+	Strength  HolidayStrength  `json:"strength,omitempty"`  // light | featured | heavy; "" = featured
+	Placement HolidayPlacement `json:"placement,omitempty"` // evenings | anytime; "" = evenings
 }
 
 // AppliedRelaxation records one step the relaxation ladder took (§7), surfaced in
@@ -664,6 +669,42 @@ const (
 func (o OffSeason) valid() bool {
 	switch o {
 	case OffSeasonDefault, OffSeasonLoop, OffSeasonDark:
+		return true
+	}
+	return false
+}
+
+// HolidayStrength is how many holiday episodes of a series an auto-mode channel features per
+// day of an active holiday window (§6 "Holiday episodes").
+type HolidayStrength string
+
+const (
+	HolidayStrengthDefault  HolidayStrength = ""         // resolves to featured
+	HolidayStrengthLight    HolidayStrength = "light"    // about one a day
+	HolidayStrengthFeatured HolidayStrength = "featured" // a few a day
+	HolidayStrengthHeavy    HolidayStrength = "heavy"    // as many as the spacing allows
+)
+
+func (s HolidayStrength) valid() bool {
+	switch s {
+	case HolidayStrengthDefault, HolidayStrengthLight, HolidayStrengthFeatured, HolidayStrengthHeavy:
+		return true
+	}
+	return false
+}
+
+// HolidayPlacement is when in the day featured holiday episodes air (§6 "Holiday episodes").
+type HolidayPlacement string
+
+const (
+	HolidayPlacementDefault  HolidayPlacement = ""         // resolves to evenings
+	HolidayPlacementEvenings HolidayPlacement = "evenings" // 17:00–23:00 channel-local
+	HolidayPlacementAnytime  HolidayPlacement = "anytime"  // spread across the day
+)
+
+func (p HolidayPlacement) valid() bool {
+	switch p {
+	case HolidayPlacementDefault, HolidayPlacementEvenings, HolidayPlacementAnytime:
 		return true
 	}
 	return false
@@ -777,6 +818,7 @@ const (
 	defaultOrdering        = OrderSyndication
 	defaultSeasonalMode    = SeasonalAuto
 	defaultOffSeason       = OffSeasonLoop
+	defaultHolidayStrength = HolidayStrengthFeatured
 )
 
 // ResolvedPolicy is the fully-populated form enforcement consumes: every default
@@ -812,6 +854,8 @@ type ResolvedSeasonal struct {
 	Mode      SeasonalMode
 	Holidays  []string
 	OffSeason OffSeason
+	Strength  HolidayStrength // never "": light | featured | heavy
+	Evenings  bool            // featured holiday episodes air in the evening band
 }
 
 // Resolved fills every default and applies the single-series auto-relax (§2).
@@ -847,6 +891,10 @@ func (p ChannelPolicy) Resolved(strategy Strategy, singleSeries bool) ResolvedPo
 	if off == OffSeasonDefault {
 		off = defaultOffSeason
 	}
+	strength := p.Seasonal.Strength
+	if strength == HolidayStrengthDefault {
+		strength = defaultHolidayStrength
+	}
 
 	return ResolvedPolicy{
 		Scope:    p.Scope,
@@ -854,7 +902,10 @@ func (p ChannelPolicy) Resolved(strategy Strategy, singleSeries bool) ResolvedPo
 		Unrated:  resolveUnrated(p.Audience),
 		Sep:      sep,
 		Ordering: ordering,
-		Seasonal: ResolvedSeasonal{Mode: mode, Holidays: p.Seasonal.Holidays, OffSeason: off},
+		Seasonal: ResolvedSeasonal{
+			Mode: mode, Holidays: p.Seasonal.Holidays, OffSeason: off,
+			Strength: strength, Evenings: p.Seasonal.Placement != HolidayPlacementAnytime,
+		},
 	}
 }
 
@@ -928,6 +979,12 @@ func (p ChannelPolicy) Validate() error {
 	}
 	if !p.Seasonal.OffSeason.valid() {
 		return fmt.Errorf("channel policy: unknown offSeason %q", p.Seasonal.OffSeason)
+	}
+	if !p.Seasonal.Strength.valid() {
+		return fmt.Errorf("channel policy: unknown holiday strength %q", p.Seasonal.Strength)
+	}
+	if !p.Seasonal.Placement.valid() {
+		return fmt.Errorf("channel policy: unknown holiday placement %q", p.Seasonal.Placement)
 	}
 	if err := p.Filler.validate(); err != nil {
 		return fmt.Errorf("channel policy: %w", err)

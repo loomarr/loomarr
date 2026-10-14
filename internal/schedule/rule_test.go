@@ -101,7 +101,7 @@ func TestHolidayRuleMatchesActiveHolidays(t *testing.T) {
 	if !inHoliday("christmas", dec20) {
 		t.Error("christmas rule should match Dec 20")
 	}
-	active := activeHolidays(dec20, []string{"christmas"})
+	active := activeHolidays(dec20, nil, []string{"christmas"})
 	if len(active) != 1 || active[0].id != "christmas" {
 		t.Errorf("seasonal should have christmas active on Dec 20, got %v", active)
 	}
@@ -109,7 +109,7 @@ func TestHolidayRuleMatchesActiveHolidays(t *testing.T) {
 	if inHoliday("christmas", jul14) {
 		t.Error("christmas rule must not match Jul 14")
 	}
-	if len(activeHolidays(jul14, []string{"christmas"})) != 0 {
+	if len(activeHolidays(jul14, nil, []string{"christmas"})) != 0 {
 		t.Error("seasonal should have no christmas active on Jul 14")
 	}
 }
