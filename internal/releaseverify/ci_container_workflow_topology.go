@@ -51,13 +51,15 @@ func workflowTopologyAuthorityEntries() map[string]workflowTopologyAuthority {
 			"store-postgres": 0, "frontend": 0, "clients": 0, "apple-mobile": 0, "apple-tv": 0, "apple-cache-validation": 0, "expo-android-mobile": 0,
 			"playwright": 0, "tuner": 0, "image": 0, "docs": 0, "android": 0, "playout-bench": 0, "ci-ok": 3,
 		}},
-		"deadcode.yml":         {jobs: map[string]int{"report": 3}},
-		"go-maintenance.yml":   {jobs: map[string]int{"vulnerabilities": 3}},
-		"image-benchmark.yml":  {jobs: map[string]int{"benchmark": 6}},
-		"pages.yml":            {jobs: map[string]int{"build": 5, "deploy": 1}},
-		"release-notes.yml":    {jobs: map[string]int{"publish-notes": 5}},
-		"release.yml":          {jobs: map[string]int{"build": 7, "publish": 9}},
-		"rust-maintenance.yml": {jobs: map[string]int{"supply-chain": 5, "fuzz": 5}},
+		"deadcode.yml":                {jobs: map[string]int{"report": 3}},
+		"go-maintenance.yml":          {jobs: map[string]int{"vulnerabilities": 3}},
+		"image-benchmark.yml":         {jobs: map[string]int{"benchmark": 6}},
+		"pages.yml":                   {jobs: map[string]int{"build": 5, "deploy": 1}},
+		"release-notes.yml":           {jobs: map[string]int{"publish-notes": 5}},
+		"release.yml":                 {jobs: map[string]int{"build": 7, "publish": 9}},
+		"rust-maintenance.yml":        {jobs: map[string]int{"supply-chain": 5, "fuzz": 5}},
+		"visual-baselines.yml":        {jobs: map[string]int{"resolve": 1, "render": 1, "commit": 4, "ci": 1}},
+		"visual-baselines-render.yml": {jobs: map[string]int{"render": 10}},
 	}
 }
 
