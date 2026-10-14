@@ -447,6 +447,21 @@ func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
 	}
 }
 
+// BenchmarkHolidayPlanner_ShuffledSeason prices one in-season window of a 400-episode shuffled
+// deck: the planner replays the season from its anchor and tops every window up from the far side
+// of the ring (farFill), so this is the regime #1939's real-distance pick has to keep cheap.
+func BenchmarkHolidayPlanner_ShuffledSeason(b *testing.B) {
+	ch := channelWithWindow(24*time.Hour, nil)
+	avail := seriesLike(400, halloweenSpecials(20)...)
+	policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
+	policy.Ordering = schedule.OrderShuffle
+	at := day(time.October, 30, 0)
+	lineup := []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}}
+	for b.Loop() {
+		schedule.ComputeDesiredAt(ch, lineup, avail, schedule.PodFill, policy, at)
+	}
+}
+
 // repeatSpacingProgrammes is the dealer's repeat spacing (repeatSpacing in passes.go) for a deck of
 // n 22-minute episodes under the default seven-day episode separation, in whole programmes: a third
 // of the pool less two units, or two windows and a unit as far as the pool allows and never less

@@ -556,11 +556,12 @@ type dealtRing struct {
 	origin int64 // window index of the channel's DealOrigin
 	stride int64 // programmes per window, as windowSliceDealt counts them
 	nProg  int64
-	progs  map[int64][]Slot // pass → its deck's programmes, in order
+	progs  map[int64][]Slot           // pass → its deck's programmes, in order
+	index  map[int64]map[string]int64 // pass → unit → its programme in progs
 }
 
 func newDealtRing(d *deckDealer, window time.Duration, origin int64) *dealtRing {
-	r := &dealtRing{d: d, window: window, origin: origin, progs: map[int64][]Slot{}}
+	r := &dealtRing{d: d, window: window, origin: origin, progs: map[int64][]Slot{}, index: map[int64]map[string]int64{}}
 	first := d.deck(0)
 	for _, s := range first {
 		if s.IsProgram() {
@@ -581,23 +582,59 @@ func (r *dealtRing) tile(w int64) []Slot {
 
 // at is programme u of the ring, where window w starts at u = w*stride.
 func (r *dealtRing) at(u int64) Slot {
+	pass, k := r.locate(u)
+	return r.pass(pass)[k]
+}
+
+// airings are the ring positions where the unit keyed key airs in the pass holding u and the
+// passes either side: under per-pass reshuffle a unit sits anywhere in each pass, so this, not an
+// offset along one deck, is how far an airing near u is from its others.
+func (r *dealtRing) airings(key string, u int64) []int64 {
+	at, _ := r.locate(u)
+	var out []int64
+	for pass := at - 1; pass <= at+1; pass++ {
+		r.pass(pass)
+		if k, ok := r.index[r.dealt(pass)][key]; ok {
+			out = append(out, r.origin*r.stride+pass*r.nProg+k)
+		}
+	}
+	return out
+}
+
+// locate splits ring position u into its pass and its programme within that pass.
+func (r *dealtRing) locate(u int64) (pass, k int64) {
 	rel := u - r.origin*r.stride
-	pass, k := rel/r.nProg, rel%r.nProg
+	pass, k = rel/r.nProg, rel%r.nProg
 	if k < 0 {
 		pass, k = pass-1, k+r.nProg
 	}
+	return pass, k
+}
+
+// dealt is the deck pass airs: its own deal under reshuffle, pass 0's otherwise.
+func (r *dealtRing) dealt(pass int64) int64 {
 	if !r.d.reshuffle {
-		pass = 0
+		return 0
 	}
+	return pass
+}
+
+// pass is pass's programmes in order, indexed by unit (a multi-part unit by its first part).
+func (r *dealtRing) pass(pass int64) []Slot {
+	pass = r.dealt(pass)
 	progs, ok := r.progs[pass]
 	if !ok {
 		// Held here: the chain keeps only checkpoints, so asking it again for an earlier pass walks.
+		index := map[string]int64{}
 		for _, s := range r.d.deck(pass) {
 			if s.IsProgram() {
+				if _, seen := index[unitKey(s)]; !seen {
+					index[unitKey(s)] = int64(len(progs))
+				}
 				progs = append(progs, s)
 			}
 		}
-		r.progs[pass] = progs
+		r.progs[pass], r.index[pass] = progs, index
 	}
-	return progs[k]
+	return progs
 }
