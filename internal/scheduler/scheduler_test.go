@@ -298,7 +298,7 @@ func TestTriggerRunsOffCycle(t *testing.T) {
 	s.tick(ctx) // Trigger set next_run=now → now due
 	waitFor(t, func() bool { return ran.Load() == 1 })
 
-	if err := s.Trigger(ctx, "nope"); err != ErrUnknownJob {
+	if err := s.Trigger(ctx, "nope"); !errors.Is(err, ErrUnknownJob) {
 		t.Errorf("trigger unknown = %v, want ErrUnknownJob", err)
 	}
 }

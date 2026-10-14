@@ -7,6 +7,8 @@ interface DeviceDisconnectActionProps {
   density: Density;
   onDisconnect: () => Promise<void> | void;
   onForget?: () => Promise<void> | void;
+  /** The action took focus: the surf rail draws its selected channel at rest (#1887). */
+  onFocus?: () => void;
   preferredFocus?: boolean;
   serverName?: string;
 }
@@ -15,6 +17,7 @@ const DeviceDisconnectAction = ({
   density,
   onDisconnect,
   onForget,
+  onFocus,
   preferredFocus = false,
   serverName,
 }: DeviceDisconnectActionProps) => {
@@ -52,6 +55,7 @@ const DeviceDisconnectAction = ({
       <Action
         density={density}
         hasTVPreferredFocus={preferredFocus}
+        onFocus={onFocus}
         onPress={() => setConfirming(true)}
         tone="secondary"
       >

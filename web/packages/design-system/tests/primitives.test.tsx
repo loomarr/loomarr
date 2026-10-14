@@ -35,6 +35,27 @@ describe("StatusDot", () => {
 });
 
 describe("ProgressTrack", () => {
+  // react-native-web flattens the fill's style to inline rgba().
+  const fill = (markup: string) => markup.match(/background-color:(rgba\([^)]*\));[^"]*width:40%/)?.[1];
+
+  it("fills elapsed airing time in foreground by default, never amber (#1909 Q3)", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <ProgressTrack percent={40} />
+      </LoomarrProvider>,
+    );
+    expect(fill(markup)).toBe("rgba(231,234,240,1.00)");
+  });
+
+  it("fills a download with tune", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <ProgressTrack percent={40} tone="tune" />
+      </LoomarrProvider>,
+    );
+    expect(fill(markup)).toBe("rgba(76,201,232,1.00)");
+  });
+
   it("stays decorative with no label, as every current caller expects", () => {
     const markup = renderToStaticMarkup(
       <LoomarrProvider>
@@ -126,4 +147,24 @@ describe("Text", () => {
     // carries `text-transform:uppercase` for other components whether or not this Text has it.
     expect(markup.slice(markup.lastIndexOf("<span"))).toMatch(/class="[^"]*\b_tt-uppercase\b/);
   });
+
+  // Amber means focus or the primary action (#1909 Q4): a number role is foreground at rest, and a
+  // display numeral asks for amber by name.
+  it.each(["channelNumber", "code", "cardChannelNumber", "guideNumber"] as const)(
+    "draws %s in foreground unless a display numeral opts in",
+    (textRole) => {
+      const element = (tone?: "signal") => {
+        const markup = renderToStaticMarkup(
+          <LoomarrProvider>
+            <Text textRole={textRole} tone={tone}>
+              07
+            </Text>
+          </LoomarrProvider>,
+        );
+        return markup.slice(markup.lastIndexOf("<span"));
+      };
+      expect(element()).toMatch(/class="[^"]*\b_col-contentPrim/);
+      expect(element("signal")).toMatch(/class="[^"]*\b_col-actionPrima/);
+    },
+  );
 });

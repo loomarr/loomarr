@@ -165,7 +165,7 @@ func TestImport_AdminCreatesAllowlist(t *testing.T) {
 	if _, err := st.GetUser(context.Background(), memberID); err != nil {
 		t.Errorf("imported user should have a row: %v", err)
 	}
-	if _, err := st.GetUser(context.Background(), adminID); err != store.ErrNotFound {
+	if _, err := st.GetUser(context.Background(), adminID); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("un-imported user must have NO row: %v", err)
 	}
 }

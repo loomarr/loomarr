@@ -66,6 +66,9 @@ func TestDiagnosticRetainedBytesIsNotAFullScan(t *testing.T) {
 		}
 		plan = append(plan, detail)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	joined := strings.Join(plan, "\n")
 	for _, table := range []string{"diagnostic_events", "diagnostic_process_runs"} {
 		if strings.Contains(joined, table) {
@@ -193,6 +196,9 @@ func explainPlan(t *testing.T, st Store, query string, args ...any) string {
 		}
 		plan = append(plan, detail)
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 	return strings.Join(plan, "\n")
 }
 
@@ -211,6 +217,9 @@ func sqliteIndexes(t *testing.T, st Store) map[string]string {
 			t.Fatal(err)
 		}
 		out[name] = ddl
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	return out
 }

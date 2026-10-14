@@ -270,11 +270,11 @@ const review = (state: Partial<ReviewState>, reviewWaiting?: WorkshopProps["revi
   args: { review: state, reviewWaiting, screen: "review" },
 });
 const rowsOut = [
-  { id: "approval-grace", ok: true, title: "Black-and-white thrillers" },
-  { id: "approval-katherine", ok: true, title: "Mountain documentaries" },
+  { id: "approval-greta", ok: true, title: "Black-and-white thrillers" },
+  { id: "approval-kira", ok: true, title: "Mountain documentaries" },
   {
     error: "Already decided by another admin",
-    id: "approval-mary",
+    id: "approval-maren",
     ok: false,
     title: "Overnight jazz and rain sounds",
   },
@@ -284,7 +284,7 @@ const AdminChannelRequestsOnly: Story = review({}, { fillerPulls: false });
 const AdminFillerDownloadsOnly: Story = review({}, { approvals: false });
 const AdminSelectingRequests: Story = review({ selecting: { filler: false, requests: true } });
 const AdminBulkRequests: Story = review({
-  selected: { filler: [], requests: ["approval-grace", "approval-katherine"] },
+  selected: { filler: [], requests: ["approval-greta", "approval-kira"] },
   selecting: { filler: false, requests: true },
   sheet: { group: "requests", kind: "bulk" },
 });
@@ -296,7 +296,7 @@ const AdminBulkFiller: Story = review({
 // Both groups in Select, one tick in each. The docked sheet is for the group ticked last and counts only
 // that group; here it is Channel requests, the checked row in view, so the sheet and the list agree.
 const AdminBothGroupsSelecting: Story = review({
-  selected: { filler: ["pull-stingers"], requests: ["approval-grace"] },
+  selected: { filler: ["pull-stingers"], requests: ["approval-greta"] },
   selecting: { filler: true, requests: true },
   sheet: { group: "requests", kind: "bulk" },
 });
@@ -321,9 +321,9 @@ const AdminFillerPartialFailure: Story = review({
     ],
   },
 });
-const AdminDenySheet: Story = review({ sheet: { group: "requests", id: "approval-grace", kind: "deny" } });
+const AdminDenySheet: Story = review({ sheet: { group: "requests", id: "approval-greta", kind: "deny" } });
 const AdminDismissSheet: Story = review({ sheet: { group: "filler", id: "pull-bumpers", kind: "deny" } });
-const AdminEditSheet: Story = review({ sheet: { id: "approval-grace", kind: "edit" } });
+const AdminEditSheet: Story = review({ sheet: { id: "approval-greta", kind: "edit" } });
 const AdminLightGroups: Story = { ...review({}), globals: { theme: "light" } };
 
 // One request, in each place it can stand.

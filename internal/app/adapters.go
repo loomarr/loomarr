@@ -105,7 +105,7 @@ func (a jobsAdapter) List(ctx context.Context) ([]api.JobView, error) {
 
 func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryView, error) {
 	history, err := a.s.History(ctx, name)
-	if err == scheduler.ErrUnknownJob {
+	if errors.Is(err, scheduler.ErrUnknownJob) {
 		return api.JobHistoryView{}, api.ErrJobNotFound
 	}
 	if err != nil {
@@ -130,10 +130,10 @@ func (a jobsAdapter) History(ctx context.Context, name string) (api.JobHistoryVi
 }
 
 func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) error {
-	switch err := a.s.SetPaused(ctx, name, paused); err {
-	case scheduler.ErrUnknownJob:
+	switch err := a.s.SetPaused(ctx, name, paused); {
+	case errors.Is(err, scheduler.ErrUnknownJob):
 		return api.ErrJobNotFound
-	case scheduler.ErrJobDisabled:
+	case errors.Is(err, scheduler.ErrJobDisabled):
 		return api.ErrJobDisabled
 	default:
 		return err
@@ -142,9 +142,9 @@ func (a jobsAdapter) SetPaused(ctx context.Context, name string, paused bool) er
 
 func (a jobsAdapter) Trigger(ctx context.Context, name string) error {
 	switch err := a.s.Trigger(ctx, name); {
-	case err == scheduler.ErrUnknownJob:
+	case errors.Is(err, scheduler.ErrUnknownJob):
 		return api.ErrJobNotFound
-	case err == scheduler.ErrJobDisabled:
+	case errors.Is(err, scheduler.ErrJobDisabled):
 		return api.ErrJobDisabled
 	case err != nil:
 		return err

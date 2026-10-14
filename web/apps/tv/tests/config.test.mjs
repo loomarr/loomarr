@@ -18,6 +18,8 @@ test("keeps the TV proof isolated from the shipping application", async () => {
   );
   assert.equal(tvPlugin?.[1].androidTVRequired, true);
   assert.ok(config.expo.plugins.includes("../../scripts/with-memory-safe-android-build.cjs"));
+  // A server under a local DNS name may be plain HTTP on Apple TV too, as it already is on Android TV.
+  assert.ok(config.expo.plugins.includes("../../scripts/with-loomarr-ios-network.cjs"));
   assert.equal(config.expo.name, "Loomarr TV Prototype");
   assert.equal(config.expo.slug, "loomarr-tv-prototype");
   assert.match(config.expo.ios.bundleIdentifier, /\.prototype$/);
@@ -179,8 +181,16 @@ test("ships DNS-SD plus bounded broadcast and unicast LAN discovery without rest
   );
 
   assert.equal(manifest.dependencies["@loomarr/lan-discovery-native"], "workspace:*");
-  // The module's iOS pod is iPhone-only; tvOS keeps reporting discovery unavailable.
-  assert.deepEqual(manifest.expo.autolinking.ios.exclude, ["@loomarr/lan-discovery-native"]);
+  // Apple TV links the same Bonjour pod as the iPhone (#1500 audit #9), so tvOS discovers servers too.
+  assert.equal(manifest.expo.autolinking.ios, undefined);
+  const podspec = await readFile(
+    new URL("../../../packages/lan-discovery-native/LoomarrLanDiscovery.podspec", import.meta.url),
+    "utf8",
+  );
+  assert.match(podspec, /s\.platforms\s+= min_supported_versions/);
+  const config = JSON.parse(await readFile(new URL("../app.json", import.meta.url), "utf8"));
+  assert.deepEqual(config.expo.ios.infoPlist.NSBonjourServices, ["_loomarr._tcp"]);
+  assert.ok(config.expo.ios.infoPlist.NSLocalNetworkUsageDescription);
   assert.match(adapter, /NativeModules\.LoomarrLanDiscovery/);
   assert.match(nativeModule, /NsdManager/);
   assert.match(nativeModule, /_loomarr\._tcp\./);
@@ -285,6 +295,23 @@ test("routes the native remote through TV adapters and preserves platform-home B
   assert.match(appSource, /controller\.tuneNumber\(intent\.digits\)/);
   assert.match(appSource, /numberEntry=\{tvNumberEntryPresentation\(remoteState, snapshot\.catalog\)\}/);
   assert.match(appSource, /if \(!destination\) return false/);
+  // tvOS routes Menu to BackHandler only while the menu key is enabled: on wherever Back has a
+  // destination, off at the roots so Menu goes Home there (#1500 audit #1).
+  assert.match(
+    appSource,
+    /TVEventControl\.enableTVMenuKey\(\);\s*return \(\) => TVEventControl\.disableTVMenuKey\(\)/,
+  );
+  assert.match(appSource, /useTvMenuKey\(clientBackDestination\(active\) !== null\)/);
+  assert.match(appSource, /useTvMenuKey\(pairingBackAvailable\(pairingState\)\)/);
+});
+
+test("offers digit entry only on a remote with number keys", async () => {
+  const appSource = await readFile(new URL("../src/app.tsx", import.meta.url), "utf8");
+
+  // The Siri Remote has no digits (#1500 audit #3): no "0–9 jump" hint, no channel-number wait.
+  assert.match(appSource, /const remoteHasDigits = !Platform\.isTVOS/);
+  assert.match(appSource, /channelDigits=\{remoteHasDigits\}/);
+  assert.match(appSource, /autoTune=\{\s*remoteHasDigits\s*\?/);
 });
 
 test("restarts Watching inactivity only for handled remote and tune activity", async () => {

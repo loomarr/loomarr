@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 # Cross-compile the cgo-free binary on the BUILD platform for the TARGET arch —
 # far faster than compiling under QEMU emulation, and correct because the static
 # pure-Go build has no arch-specific C toolchain to satisfy.
-FROM --platform=$BUILDPLATFORM golang:1.27-bookworm@sha256:ded31c68586d2e49e760acc2e65a884b23d032e9bbbed0ae0c55abd3fcaf4452 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS build
 ARG TARGETARCH
 WORKDIR /src
 # Cache modules first.

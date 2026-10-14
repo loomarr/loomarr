@@ -12,7 +12,8 @@ import {
   Surface,
   Text,
 } from "@loomarr/design-system";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { BackHandler } from "react-native";
 
 import type { ApprovalBrowser, PairingShellProps } from "./pairing-shell.type";
 import { PhoneApproval } from "./phone-approval";
@@ -21,6 +22,14 @@ import { ServerRow } from "./server-row";
 const emptyDiscovery: ServerDiscoverySnapshot = { servers: [], status: "unavailable" };
 const subscribeToNothing = () => () => undefined;
 const readEmptyDiscovery = () => emptyDiscovery;
+
+/**
+ * Whether Back leaves this pairing screen for server choice: the code screen and a failed connection
+ * both offer "another server". The other screens are a root, where Back leaves the app. An Apple TV
+ * hands its Menu key to the app only while this holds, so Menu still goes Home from server choice.
+ */
+const pairingBackAvailable = (state: PairingState) =>
+  state.status === "awaiting-approval" || state.status === "failed";
 
 const PairingShell = ({
   allowServerEntry = false,
@@ -65,6 +74,19 @@ const PairingShell = ({
     discovery.start();
     return () => discovery.stop();
   }, [discovery, discoveryForeground, state.status]);
+  const chooseAnotherServer = useCallback(() => {
+    setManualEntry(false);
+    session.chooseServer();
+  }, [session]);
+  const backAvailable = pairingBackAvailable(state);
+  useEffect(() => {
+    if (!backAvailable) return undefined;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      chooseAnotherServer();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [backAvailable, chooseAnotherServer]);
 
   if (state.status === "paired") return renderPaired(state);
   const content = pairingContent(
@@ -77,6 +99,7 @@ const PairingShell = ({
     discovery ? discoveryState : undefined,
     manualEntry,
     setManualEntry,
+    chooseAnotherServer,
     approvalBrowser,
   );
   const awaitingApproval = state.status === "awaiting-approval";
@@ -114,6 +137,7 @@ const pairingContent = (
   discovery: ServerDiscoverySnapshot | undefined,
   manualEntry: boolean,
   setManualEntry: (value: boolean) => void,
+  chooseAnotherServer: () => void,
   approvalBrowser: ApprovalBrowser | undefined,
 ) => {
   if (state.status === "loading")
@@ -154,7 +178,14 @@ const pairingContent = (
           </Text>
         ) : null}
         {discovery?.error ? (
-          <Text accessibilityLiveRegion="polite" density={density} textRole="metadata" tone="warning">
+          // On TV, amber is reserved for focus and the primary action (#1909 Q0); the notice offers
+          // manual entry right below it, so it reads as information, not a warning.
+          <Text
+            accessibilityLiveRegion="polite"
+            density={density}
+            textRole="metadata"
+            tone={density === "tv" ? undefined : "warning"}
+          >
             {discovery.error}
           </Text>
         ) : null}
@@ -206,10 +237,7 @@ const pairingContent = (
           browserName={approvalBrowser.name}
           countdownLabel={countdownLabel}
           onApprove={() => approvalBrowser.open(state.verificationUriComplete)}
-          onChooseServer={() => {
-            setManualEntry(false);
-            session.chooseServer();
-          }}
+          onChooseServer={chooseAnotherServer}
           state={state}
           urgent={urgent}
         />
@@ -283,6 +311,8 @@ const pairingContent = (
                 density={density}
                 selectable
                 textRole={density === "tv" ? "code" : "channelNumber"}
+                // A display numeral, the brand moment that keeps amber (#1909 Q4).
+                tone="signal"
               >
                 {state.userCode}
               </Text>
@@ -324,6 +354,9 @@ const pairingContent = (
           >
             Get a new code
           </Action>
+          <Action density={density} onPress={chooseAnotherServer} tone="secondary">
+            Use a different server
+          </Action>
         </Surface>
       </>
     );
@@ -354,14 +387,7 @@ const pairingContent = (
         <Action density={density} onPress={() => void session.pair(state.serverUrl ?? serverUrl)}>
           Try again
         </Action>
-        <Action
-          density={density}
-          onPress={() => {
-            setManualEntry(false);
-            session.chooseServer();
-          }}
-          tone="secondary"
-        >
+        <Action density={density} onPress={chooseAnotherServer} tone="secondary">
           Choose another server
         </Action>
       </>
@@ -369,4 +395,4 @@ const pairingContent = (
   return null;
 };
 
-export { PairingShell };
+export { PairingShell, pairingBackAvailable };

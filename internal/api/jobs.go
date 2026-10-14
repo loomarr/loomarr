@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -119,10 +120,10 @@ func (s *Server) jobsPause(ctx context.Context, in *jobsPauseInput) (*struct{}, 
 		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
 	if err := s.jobs.SetPaused(ctx, in.Name, in.Body.Paused); err != nil {
-		if err == ErrJobNotFound {
+		if errors.Is(err, ErrJobNotFound) {
 			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
 		}
-		if err == ErrJobDisabled {
+		if errors.Is(err, ErrJobDisabled) {
 			return nil, huma.Error409Conflict("This job can't run on this backend, so it can't be paused or resumed.")
 		}
 		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't change the job",
@@ -151,7 +152,7 @@ func (s *Server) jobsHistory(ctx context.Context, in *jobsHistoryInput) (*jobsHi
 	}
 	history, err := s.jobs.History(ctx, in.Name)
 	if err != nil {
-		if err == ErrJobNotFound {
+		if errors.Is(err, ErrJobNotFound) {
 			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
 		}
 		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't load job history",
@@ -182,10 +183,10 @@ func (s *Server) jobsRun(ctx context.Context, in *jobsRunInput) (*struct{}, erro
 		return nil, errNotImplemented("Scheduler unavailable", "The job scheduler isn't running (no store configured).")
 	}
 	if err := s.jobs.Trigger(ctx, in.Name); err != nil {
-		if err == ErrJobNotFound {
+		if errors.Is(err, ErrJobNotFound) {
 			return nil, errNotFound("Job not found", "There's no scheduled job with that name.")
 		}
-		if err == ErrJobDisabled {
+		if errors.Is(err, ErrJobDisabled) {
 			return nil, huma.Error409Conflict("This job isn't available on this backend, so it can't be run.")
 		}
 		return nil, apiErrWithCause(http.StatusBadGateway, "Couldn't run the job", "Loomarr couldn't trigger that job. Try again in a moment.", err)
