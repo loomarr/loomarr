@@ -31,8 +31,8 @@ describe.each(Object.entries(semanticThemes))("%s theme", (_name, theme) => {
   // the amber focus border once the remote lands on it. Amber is focus, never selection (#1953).
   it("keeps the selected fill neutral, legible and bordered", () => {
     const fill = theme.surface.focus;
-    const [red, green, blue] = [1, 3, 5].map((offset) => Number.parseInt(fill.slice(offset, offset + 2), 16));
-    expect(Math.max(red, green, blue) - Math.min(red, green, blue)).toBeLessThanOrEqual(16);
+    const channels = [1, 3, 5].map((offset) => Number.parseInt(fill.slice(offset, offset + 2), 16));
+    expect(Math.max(...channels) - Math.min(...channels)).toBeLessThanOrEqual(16);
     expect(fill).not.toBe(theme.surface.elevated);
 
     expect(contrast(theme.content.primary, fill)).toBeGreaterThanOrEqual(4.5);
