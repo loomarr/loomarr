@@ -486,12 +486,12 @@ func TestReconcileChannelRequiresAdmin(t *testing.T) {
 func TestCyclePreview_RendersSlotsAndAttribution(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, chSvc := harness.Server, harness.Channels
-	mkChannel(t, srv, "c1", "Trek", 5)
+	mkChannel(t, srv, "c1", "Cold Relay", 5)
 	chSvc.cycleSlots = []schedule.Slot{
-		{Kind: schedule.SlotProgram, Title: "Encounter at Farpoint", Key: "tv:655", PartIndex: 0},
+		{Kind: schedule.SlotProgram, Title: "Pilot Signal", Key: "tv:90000655", PartIndex: 0},
 		{Kind: schedule.SlotFiller}, // a break gap
-		{Kind: schedule.SlotProgram, Title: "The Killing Game (1)", Key: "tv:74", PartIndex: 1},
-		{Kind: schedule.SlotPending, Title: "Not yet aired", Key: "tv:99"},
+		{Kind: schedule.SlotProgram, Title: "The Lantern Ledger (1)", Key: "tv:90000074", PartIndex: 1},
+		{Kind: schedule.SlotPending, Title: "Not yet aired", Key: "tv:90000099"},
 	}
 	chSvc.cycleActive = schedule.ActiveRuleAttribution{ID: "r1", Label: "Weekends · Marathon", Priority: 20, Matched: true}
 	chSvc.cycleWindow = 24 * time.Hour
@@ -533,7 +533,7 @@ func TestCyclePreview_RendersSlotsAndAttribution(t *testing.T) {
 	if len(body.Slots) != 4 {
 		t.Fatalf("slots = %d, want 4", len(body.Slots))
 	}
-	if body.Slots[0].Kind != "program" || body.Slots[0].Title != "Encounter at Farpoint" {
+	if body.Slots[0].Kind != "program" || body.Slots[0].Title != "Pilot Signal" {
 		t.Errorf("slot[0] = %+v, want the program", body.Slots[0])
 	}
 	if body.Slots[1].Kind != "break" || body.Slots[1].Title != "" {
@@ -550,12 +550,12 @@ func TestCyclePreview_RendersSlotsAndAttribution(t *testing.T) {
 func TestCyclePreviews_ProjectTheSchedulerTraceWithoutReconstructingIt(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, chSvc := harness.Server, harness.Channels
-	mkChannel(t, srv, "c1", "Trek", 5)
+	mkChannel(t, srv, "c1", "Cold Relay", 5)
 	chSvc.cycleTrace = schedule.ScheduleTrace{
 		Version: 1, Ordering: schedule.OrderShuffle, Seed: 42, WindowMs: 86_400_000,
 		WindowIndex: 7, FactTotal: 2, RecordedTotal: 1, Truncated: true,
 		Facts: []schedule.ScheduleFact{{Stage: schedule.StageAvailability, Outcome: schedule.OutcomePending,
-			Reason: schedule.ReasonUnavailablePodFill, Key: "movie:tmdb:1", Title: "Waiting"}},
+			Reason: schedule.ReasonUnavailablePodFill, Key: "movie:tmdb:90000001", Title: "Waiting"}},
 	}
 
 	for _, tc := range []struct {
@@ -597,7 +597,7 @@ func TestCyclePreviews_ProjectTheSchedulerTraceWithoutReconstructingIt(t *testin
 func TestCyclePreview_BasePolicyWhenNoRuleMatches(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, chSvc := harness.Server, harness.Channels
-	mkChannel(t, srv, "c1", "Trek", 5)
+	mkChannel(t, srv, "c1", "Cold Relay", 5)
 	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy", Matched: false}
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle", adminToken, "")
@@ -628,7 +628,7 @@ func TestCyclePreview_BasePolicyWhenNoRuleMatches(t *testing.T) {
 func TestCyclePreview_VisibleToAnyAuthenticatedUser(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv := harness.Server
-	mkChannel(t, srv, "c1", "Trek", 5)
+	mkChannel(t, srv, "c1", "Cold Relay", 5)
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle", memberToken, ""); resp.StatusCode != http.StatusOK {
 		t.Errorf("member cycle preview → %d, want 200 (read-only)", resp.StatusCode)
 	}
@@ -638,7 +638,7 @@ func TestCyclePreview_VisibleToAnyAuthenticatedUser(t *testing.T) {
 func TestCyclePreview_BadTimeIs400(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv := harness.Server
-	mkChannel(t, srv, "c1", "Trek", 5)
+	mkChannel(t, srv, "c1", "Cold Relay", 5)
 	if resp := do(t, srv, http.MethodGet, "/v1/channels/c1/cycle?at=saturday-9am", adminToken, ""); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("bad at → %d, want 400", resp.StatusCode)
 	}
@@ -661,11 +661,11 @@ func TestCyclePreview_UnknownChannelIs404(t *testing.T) {
 func TestProgrammingPreview_PassesDraftToEngine(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, chSvc := harness.Server, harness.Channels
-	mkChannel(t, srv, "c1", "Trek", 5)
-	chSvc.cycleSlots = []schedule.Slot{{Kind: schedule.SlotProgram, Title: "Encounter at Farpoint", Key: "series:tvdb:655"}}
+	mkChannel(t, srv, "c1", "Cold Relay", 5)
+	chSvc.cycleSlots = []schedule.Slot{{Kind: schedule.SlotProgram, Title: "Pilot Signal", Key: "series:tvdb:90000655"}}
 	chSvc.cycleActive = schedule.ActiveRuleAttribution{Label: "Base policy"}
 
-	body := `{"lineup":[{"key":"series:tvdb:655","name":"TNG"}],"policy":{"ordering":"shuffle"}}`
+	body := `{"lineup":[{"key":"series:tvdb:90000655","name":"Cold Relay: Second Watch"}],"policy":{"ordering":"shuffle"}}`
 	resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, body)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("preview → %d, want 200", resp.StatusCode)
@@ -682,10 +682,10 @@ func TestProgrammingPreview_PassesDraftToEngine(t *testing.T) {
 	if chSvc.draftPolicy == nil || chSvc.draftPolicy.Ordering != "shuffle" {
 		t.Errorf("draft policy not passed to the engine: %+v", chSvc.draftPolicy)
 	}
-	if len(chSvc.draftLineup) != 1 || chSvc.draftLineup[0].Key != "series:tvdb:655" {
+	if len(chSvc.draftLineup) != 1 || chSvc.draftLineup[0].Key != "series:tvdb:90000655" {
 		t.Errorf("draft lineup not passed to the engine: %+v", chSvc.draftLineup)
 	}
-	if len(out.Slots) != 1 || out.Slots[0].Title != "Encounter at Farpoint" {
+	if len(out.Slots) != 1 || out.Slots[0].Title != "Pilot Signal" {
 		t.Errorf("slots = %+v, want the previewed program", out.Slots)
 	}
 	if out.Pods.Entries == nil {
@@ -705,11 +705,11 @@ func TestProgrammingPreview_RendersWhatTheHardFiltersRefused(t *testing.T) {
 	chSvc.cycleExcluded = schedule.ExclusionReport{
 		OverCeiling: 2, Unrated: 1,
 		Items: []schedule.ExcludedItem{
-			{Key: "series:tmdb:2190", Title: "South Park", Reason: "over_ceiling"},
+			{Key: "series:tmdb:90002190", Title: "Cul-de-Sac Capers", Reason: "over_ceiling"},
 			// A per-episode refusal: same series key as its parent would carry, distinguished
 			// only by the title. This is why `title` is the label to render and `key` is not.
-			{Key: "series:tmdb:2122", Title: "King of the Hill S04E06 — Wings of the Dope", Reason: "over_ceiling"},
-			{Key: "movie:tmdb:9", Title: "Unrated Short", Reason: "unrated"},
+			{Key: "series:tmdb:90002122", Title: "Hank & Delphine S04E06 — Pigeon Post", Reason: "over_ceiling"},
+			{Key: "movie:tmdb:90000009", Title: "Unrated Short", Reason: "unrated"},
 		},
 	}
 
@@ -739,8 +739,8 @@ func TestProgrammingPreview_RendersWhatTheHardFiltersRefused(t *testing.T) {
 	}
 	// The reason has to survive per item: "2 over ceiling" is a count, and the operator's actual
 	// question is WHICH ones, so an items array that lost its reasons answers nothing.
-	if out.Excluded.Items[0].Title != "South Park" || out.Excluded.Items[0].Reason != "over_ceiling" {
-		t.Errorf("item[0] = %+v, want South Park/over_ceiling", out.Excluded.Items[0])
+	if out.Excluded.Items[0].Title != "Cul-de-Sac Capers" || out.Excluded.Items[0].Reason != "over_ceiling" {
+		t.Errorf("item[0] = %+v, want Cul-de-Sac Capers/over_ceiling", out.Excluded.Items[0])
 	}
 	if !strings.Contains(out.Excluded.Items[1].Title, "S04E06") {
 		t.Errorf("item[1] = %+v, want the refused EPISODE named", out.Excluded.Items[1])
@@ -775,7 +775,7 @@ func TestProgrammingPreview_EmptyExclusionReportIsAnArray(t *testing.T) {
 func TestProgrammingPreview_InvalidPolicyIs422(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv := harness.Server
-	mkChannel(t, srv, "c1", "Trek", 5)
+	mkChannel(t, srv, "c1", "Cold Relay", 5)
 	body := `{"policy":{"audience":{"ceiling":"TV-BOGUS"}}}`
 	if resp := do(t, srv, http.MethodPost, "/v1/channels/c1/programming/preview", adminToken, body); resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("bad ceiling → %d, want 422", resp.StatusCode)
@@ -962,8 +962,8 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 	}
 	ch := store.Channel{
 		Lineup: []schedule.LineupEntry{
-			{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999},
-			{Key: "movie:tmdb:165", Title: "Terminator 2", Year: 1991},
+			{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999},
+			{Key: "movie:tmdb:90000165", Title: "Iron Lullaby", Year: 1991},
 		},
 	}
 	ch.ID, ch.IntentRef, ch.Name, ch.Number = "c1", "job-orig", "90s Action", 42
@@ -995,7 +995,7 @@ func TestRefineChannel_ReQueuesIntentRefJobWithLineupContext(t *testing.T) {
 	if fs.last.Description != "90s action" {
 		t.Errorf("refine intent kept original description? got %q, want '90s action'", fs.last.Description)
 	}
-	if len(fs.last.CurrentLineup) != 2 || fs.last.CurrentLineup[0].Name != "The Matrix" {
+	if len(fs.last.CurrentLineup) != 2 || fs.last.CurrentLineup[0].Name != "Marigold Protocol" {
 		t.Errorf("refine intent CurrentLineup = %+v, want the 2 seeded titles", fs.last.CurrentLineup)
 	}
 }
@@ -1046,7 +1046,7 @@ func TestUpdateChannel_OrdinaryEditPreservesSettledStatusAndIsDueForRetry(t *tes
 	before := chSvc.reconciles
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:1","name":"Heat"}]}`))
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:90000001","name":"Midnight at the Mapleton"}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("patch → %d, want 200", resp.StatusCode)
 	}
@@ -1556,21 +1556,21 @@ func TestUpdateChannel_LineupReorder(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st, chSvc := harness.Server, harness.Store, harness.Channels
 	seedChannelWithLineup(t, st, "c1",
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999},
-		schedule.LineupEntry{Key: "movie:tmdb:165", Title: "Terminator 2", Year: 1991},
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999},
+		schedule.LineupEntry{Key: "movie:tmdb:90000165", Title: "Iron Lullaby", Year: 1991},
 	)
 	before := chSvc.reconciles
 
 	// Swap the order.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:165","name":"Terminator 2","year":1991},`+
-			`{"key":"movie:tmdb:603","name":"The Matrix","year":1999}]}`))
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:90000165","name":"Iron Lullaby","year":1991},`+
+			`{"key":"movie:tmdb:90000603","name":"Marigold Protocol","year":1999}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reorder → %d, want 200", resp.StatusCode)
 	}
 	ch, _ := st.GetChannel(context.Background(), "c1")
 	got := keysOf(ch.Lineup)
-	want := []string{"movie:tmdb:165", "movie:tmdb:603"}
+	want := []string{"movie:tmdb:90000165", "movie:tmdb:90000603"}
 	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("lineup order after reorder = %v, want %v", got, want)
 	}
@@ -1585,20 +1585,20 @@ func TestUpdateChannel_LineupAddAndRemove(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999},
-		schedule.LineupEntry{Key: "movie:tmdb:165", Title: "Terminator 2", Year: 1991},
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999},
+		schedule.LineupEntry{Key: "movie:tmdb:90000165", Title: "Iron Lullaby", Year: 1991},
 	)
 
-	// Keep The Matrix, drop Terminator 2, add Predator (not in this store — a pending add).
+	// Keep Marigold Protocol, drop Iron Lullaby, add Emberfall Canyon (not in this store — a pending add).
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
-			`{"key":"movie:tmdb:106","name":"Predator","year":1987}]}`))
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:90000603","name":"Marigold Protocol","year":1999},`+
+			`{"key":"movie:tmdb:90000106","name":"Emberfall Canyon","year":1987}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("add/remove → %d, want 200", resp.StatusCode)
 	}
 	ch, _ := st.GetChannel(context.Background(), "c1")
 	got := keysOf(ch.Lineup)
-	want := []string{"movie:tmdb:603", "movie:tmdb:106"}
+	want := []string{"movie:tmdb:90000603", "movie:tmdb:90000106"}
 	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("lineup after add/remove = %v, want %v", got, want)
 	}
@@ -1610,7 +1610,7 @@ func TestUpdateChannel_LineupClearVsOmit(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999})
 
 	// Omitting lineup leaves it untouched (renames only).
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
@@ -1641,7 +1641,7 @@ func TestUpdateChannel_LineupMalformedKey422(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999})
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
 		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"not-a-real-key","name":"Junk"}]}`))
@@ -1650,7 +1650,7 @@ func TestUpdateChannel_LineupMalformedKey422(t *testing.T) {
 	}
 	// The rejection left the original lineup intact (no partial write).
 	ch, _ := st.GetChannel(context.Background(), "c1")
-	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != provision.Key("movie:tmdb:603") {
+	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != provision.Key("movie:tmdb:90000603") {
 		t.Errorf("a rejected edit changed the lineup: %v", keysOf(ch.Lineup))
 	}
 }
@@ -1664,23 +1664,23 @@ func TestUpdateChannel_LineupPreservesRichFieldsByKey(t *testing.T) {
 	// A series scoped to seasons 1–3 with a rating + runtime the DTO can't carry.
 	seedChannelWithLineup(t, st, "c1",
 		schedule.LineupEntry{
-			Key: "series:tvdb:81189", Title: "Breaking Bad", Year: 2008,
+			Key: "series:tvdb:90081189", Title: "Copperline Foundry", Year: 2008,
 			SeasonMin: 1, SeasonMax: 3, OfficialRating: "TV-MA", RuntimeSec: 2880,
 		},
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999})
 
 	// Reorder (series now second) using ONLY the lossy DTO fields — season/rating/runtime
 	// are not in the payload.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix","year":1999},`+
-			`{"key":"series:tvdb:81189","name":"Breaking Bad","year":2008}]}`))
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:90000603","name":"Marigold Protocol","year":1999},`+
+			`{"key":"series:tvdb:90081189","name":"Copperline Foundry","year":2008}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("reorder → %d, want 200", resp.StatusCode)
 	}
 	ch, _ := st.GetChannel(context.Background(), "c1")
 	var bb *schedule.LineupEntry
 	for i := range ch.Lineup {
-		if ch.Lineup[i].Key == provision.Key("series:tvdb:81189") {
+		if ch.Lineup[i].Key == provision.Key("series:tvdb:90081189") {
 			bb = &ch.Lineup[i]
 		}
 	}
@@ -1705,11 +1705,11 @@ func TestUpdateChannel_LineupRejectsDuplicateKey(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999})
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"The Matrix"},`+
-			`{"key":"movie:tmdb:603","name":"The Matrix again"}]}`))
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:90000603","name":"Marigold Protocol"},`+
+			`{"key":"movie:tmdb:90000603","name":"Marigold Protocol again"}]}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("duplicate key → %d, want 422", resp.StatusCode)
 	}
@@ -1724,18 +1724,18 @@ func TestUpdateChannel_LineupTrimsKeys(t *testing.T) {
 
 	// A padded key must validate (trimmed) and land canonicalized.
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"  movie:tmdb:603  ","name":"The Matrix"}]}`))
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"  movie:tmdb:90000603  ","name":"Marigold Protocol"}]}`))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("padded key → %d, want 200", resp.StatusCode)
 	}
 	ch, _ := st.GetChannel(context.Background(), "c1")
-	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != provision.Key("movie:tmdb:603") {
+	if len(ch.Lineup) != 1 || ch.Lineup[0].Key != provision.Key("movie:tmdb:90000603") {
 		t.Errorf("padded key not trimmed to canonical form: %v", keysOf(ch.Lineup))
 	}
 
 	// The same key padded differently in two entries is still one key → duplicate → 422.
 	resp = do(t, srv, http.MethodPatch, "/v1/channels/c1", adminToken,
-		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:603","name":"a"},{"key":" movie:tmdb:603 ","name":"b"}]}`))
+		channelPatchBody(t, st, "c1", `{"lineup":[{"key":"movie:tmdb:90000603","name":"a"},{"key":" movie:tmdb:90000603 ","name":"b"}]}`))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("whitespace-disguised duplicate → %d, want 422", resp.StatusCode)
 	}
@@ -1746,7 +1746,7 @@ func TestUpdateChannel_LineupRequiresAdmin(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
 	seedChannelWithLineup(t, st, "c1",
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix", Year: 1999})
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol", Year: 1999})
 
 	resp := do(t, srv, http.MethodPatch, "/v1/channels/c1", "",
 		`{"lineup":[]}`)
@@ -1768,17 +1768,17 @@ func TestGetChannel_LineupEntryStateFromRecords(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	seed("movie:tmdb:603", provision.Available)    // in the library → available
-	seed("movie:tmdb:165", provision.Wanted)       // enqueued → acquiring
-	seed("movie:tmdb:9426", provision.Downloading) // grabbed → acquiring
-	seed("movie:tmdb:11", provision.Unavailable)   // gave up → unavailable
-	// movie:tmdb:106 has NO record → pending.
+	seed("movie:tmdb:90000603", provision.Available)   // in the library → available
+	seed("movie:tmdb:90000165", provision.Wanted)      // enqueued → acquiring
+	seed("movie:tmdb:90009426", provision.Downloading) // grabbed → acquiring
+	seed("movie:tmdb:90000011", provision.Unavailable) // gave up → unavailable
+	// movie:tmdb:90000106 has NO record → pending.
 	seedChannelWithLineup(t, st, "c1",
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix"},
-		schedule.LineupEntry{Key: "movie:tmdb:165", Title: "Terminator 2"},
-		schedule.LineupEntry{Key: "movie:tmdb:9426", Title: "Point Break"},
-		schedule.LineupEntry{Key: "movie:tmdb:11", Title: "Star Wars"},
-		schedule.LineupEntry{Key: "movie:tmdb:106", Title: "Predator"},
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol"},
+		schedule.LineupEntry{Key: "movie:tmdb:90000165", Title: "Iron Lullaby"},
+		schedule.LineupEntry{Key: "movie:tmdb:90009426", Title: "Lemon Tree Heist"},
+		schedule.LineupEntry{Key: "movie:tmdb:90000011", Title: "Beacon of the Hollow Moon"},
+		schedule.LineupEntry{Key: "movie:tmdb:90000106", Title: "Emberfall Canyon"},
 	)
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels/c1", adminToken, "")
@@ -1799,11 +1799,11 @@ func TestGetChannel_LineupEntryStateFromRecords(t *testing.T) {
 		got[e.Key] = e.State
 	}
 	want := map[string]string{
-		"movie:tmdb:603":  "available",
-		"movie:tmdb:165":  "acquiring",
-		"movie:tmdb:9426": "acquiring",
-		"movie:tmdb:11":   "unavailable",
-		"movie:tmdb:106":  "pending", // no record — the manual-add case
+		"movie:tmdb:90000603": "available",
+		"movie:tmdb:90000165": "acquiring",
+		"movie:tmdb:90009426": "acquiring",
+		"movie:tmdb:90000011": "unavailable",
+		"movie:tmdb:90000106": "pending", // no record — the manual-add case
 	}
 	for key, wantState := range want {
 		if got[key] != wantState {
@@ -1818,11 +1818,11 @@ func TestListChannels_OmitsLineupEntryState(t *testing.T) {
 	harness := newChannelsHarness(t)
 	srv, st := harness.Server, harness.Store
 	if err := st.UpsertTitle(context.Background(),
-		provision.Record{Key: "movie:tmdb:603", State: provision.Available}); err != nil {
+		provision.Record{Key: "movie:tmdb:90000603", State: provision.Available}); err != nil {
 		t.Fatal(err)
 	}
 	seedChannelWithLineup(t, st, "c1",
-		schedule.LineupEntry{Key: "movie:tmdb:603", Title: "The Matrix"})
+		schedule.LineupEntry{Key: "movie:tmdb:90000603", Title: "Marigold Protocol"})
 
 	resp := do(t, srv, http.MethodGet, "/v1/channels", adminToken, "")
 	if resp.StatusCode != http.StatusOK {

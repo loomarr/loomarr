@@ -127,7 +127,7 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	fp.pod = filler.Pod{
 		Entries: []filler.PodEntry{
 			{Hash: "h1", TunarrProgramID: "p1", Name: "Bumper", Kind: filler.Bumper, DurationMs: 5000},
-			{Hash: "h2", TunarrProgramID: "p2", Name: "Frosted Flakes", Kind: filler.Commercial, DurationMs: 30000},
+			{Hash: "h2", TunarrProgramID: "p2", Name: "Crunchlings", Kind: filler.Commercial, DurationMs: 30000},
 		},
 		TotalMs:    35000,
 		MatchLevel: filler.MatchExact,
@@ -156,7 +156,7 @@ func TestPreviewPods_RendersPoolAndMatchLevel(t *testing.T) {
 	}
 	// Play order is meaningful: a pod is bookended by bumpers (§10 pod structure), so
 	// the API must not reorder what the assembler produced.
-	if body.Entries[0].Name != "Bumper" || body.Entries[1].Name != "Frosted Flakes" {
+	if body.Entries[0].Name != "Bumper" || body.Entries[1].Name != "Crunchlings" {
 		t.Errorf("play order not preserved: %+v", body.Entries)
 	}
 	if body.Entries[1].TunarrProgramID != "p2" {

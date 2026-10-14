@@ -15,8 +15,8 @@ func TestOnTheWayEpisodeCountsOverHTTP(t *testing.T) {
 	t.Parallel()
 	h := newAPIHarness(t)
 	ctx := context.Background()
-	series := provision.Title{MediaType: provision.Series, TVDBID: 90001, Name: "A sitcom"}
-	movie := provision.Title{MediaType: provision.Movie, TMDBID: 90002, Name: "A film"}
+	series := provision.Title{MediaType: provision.Series, TVDBID: 90090001, Name: "A sitcom"}
+	movie := provision.Title{MediaType: provision.Movie, TMDBID: 90090002, Name: "A film"}
 	for _, tt := range []provision.Title{series, movie} {
 		key, _ := tt.Key()
 		if err := h.Store.UpsertTitle(ctx, provision.Record{Key: key, Title: tt, State: provision.Downloading}); err != nil {

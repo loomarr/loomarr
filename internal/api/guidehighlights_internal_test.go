@@ -26,7 +26,7 @@ func lineup(series string, script ...string) []playout.Broadcast {
 		case "F":
 			b.Kind = schedule.SlotFiller
 		case "M":
-			b.Kind, b.Title, b.Key = schedule.SlotProgram, "A film", "movie:tmdb:1"
+			b.Kind, b.Title, b.Key = schedule.SlotProgram, "A film", "movie:tmdb:90000001"
 		default:
 			name := series
 			if rest, ok := strings.CutPrefix(s, "X:"); ok {

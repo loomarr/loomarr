@@ -28,8 +28,8 @@ func TestNewThisWeekOverHTTP(t *testing.T) {
 		key, _ := t.Key()
 		return provision.Record{Key: key, Title: t, State: state, AvailableAt: arrived}
 	}
-	arrived, older := title(1, provision.Available, days(1)), title(2, provision.Available, days(10))
-	picked, inFlight := title(3, provision.Available, time.Time{}), title(4, provision.Downloading, time.Time{})
+	arrived, older := title(90000001, provision.Available, days(1)), title(90000002, provision.Available, days(10))
+	picked, inFlight := title(90000003, provision.Available, time.Time{}), title(90000004, provision.Downloading, time.Time{})
 	for _, r := range []provision.Record{arrived, older, picked, inFlight} {
 		if err := h.Store.UpsertTitle(ctx, r); err != nil {
 			t.Fatal(err)
@@ -79,7 +79,7 @@ func TestNewThisWeekOverHTTP(t *testing.T) {
 	}
 	// Only the arrival in the window; the in-library pick never arrived. A detached channel no longer
 	// plays it.
-	if want := "movie:tmdb:1 available 24h0m0s on [ch-new#2 ch-old#4]"; strings.Join(got, " | ") != want {
+	if want := "movie:tmdb:90000001 available 24h0m0s on [ch-new#2 ch-old#4]"; strings.Join(got, " | ") != want {
 		t.Fatalf("new this week =\n %s\nwant\n %s", strings.Join(got, " | "), want)
 	}
 

@@ -251,7 +251,7 @@ func TestDeviceRoleFollowsApproversCurrentRole(t *testing.T) {
 	t.Parallel()
 	h := newDeviceHarness(t, nil)
 	srv := h.Server
-	seedProposalWithTMDB(t, h.Store, "p1", 101, "Heat")
+	seedProposalWithTMDB(t, h.Store, "p1", 90000101, "Midnight at the Mapleton")
 	seedProposalWithTMDB(t, h.Store, "p2", 102, "Ronin")
 	boss := login(t, srv, "boss", "pw")
 	kid := login(t, srv, "kid", "pw")
@@ -285,7 +285,7 @@ func TestDisabledApproversDeviceIsRejected(t *testing.T) {
 	t.Parallel()
 	h := newDeviceHarness(t, nil)
 	srv := h.Server
-	seedProposalWithTMDB(t, h.Store, "p1", 101, "Heat")
+	seedProposalWithTMDB(t, h.Store, "p1", 90000101, "Midnight at the Mapleton")
 	seedProposalWithTMDB(t, h.Store, "p2", 102, "Ronin")
 	boss := login(t, srv, "boss", "pw")
 	kid := login(t, srv, "kid", "pw")

@@ -35,7 +35,7 @@ func newInvitationHarness(t *testing.T, config invitationHarnessConfig) *invitat
 		service := invitation.NewService(
 			defaults.Store,
 			testkit.LibraryAccountResolver{Accounts: map[string]invitation.LibraryAccount{
-				"library-42": {ID: "library-42", Name: "Grace Hopper"},
+				"library-42": {ID: "library-42", Name: "Adela Hale"},
 			}},
 			func() string { return "invitation-1" },
 			func() (string, error) { return bearer, nil },
