@@ -157,3 +157,25 @@ func TestComputeDesired_CycleSummaryCountsSeriesByIdentityNotTitle(t *testing.T)
 		t.Fatalf("Cycle = %+v, want 2 series / 2 episodes", got)
 	}
 }
+
+// A holiday feature is an EXTRA AIRING of an episode already in the deck, not an extra catalogue
+// unit: the cycle summary must read the same whether the holiday window is open (the planner
+// times those episodes into the evenings) or closed, and match the deck with the feature off.
+func TestComputeDesired_CycleSummaryDoesNotCountHolidayFeaturesTwice(t *testing.T) {
+	entries := []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}}
+	avail := simpsonsLike(9) // 200 ordinary episodes + 9 holiday episodes, one series
+
+	cycleAt := func(policy schedule.ChannelPolicy, at time.Time) schedule.CycleSummary {
+		return schedule.ComputeDesiredAt(simpsonsChannel(), entries, avail, schedule.PodFill, policy, at).Cycle
+	}
+	inSeason := cycleAt(seasonalPolicy(schedule.SeasonalPolicy{}), day(time.October, 13, 9))
+	closed := cycleAt(seasonalPolicy(schedule.SeasonalPolicy{}), day(time.March, 3, 9))
+	want := schedule.CycleSummary{Episodes: 209, Series: 1, RuntimeMs: 209 * episodeMs}
+
+	if inSeason != want {
+		t.Fatalf("in season Cycle = %+v, want %+v", inSeason, want)
+	}
+	if closed != want {
+		t.Fatalf("out of season Cycle = %+v, want %+v", closed, want)
+	}
+}
