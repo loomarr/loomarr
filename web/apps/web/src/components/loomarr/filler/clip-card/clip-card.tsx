@@ -267,6 +267,12 @@ const ClipFrame = ({
   );
 };
 
+// The one exception a READY clip can carry (#1817): a commercial missing a match tag. Only the
+// server's `needsDetails` drives it — the same predicate as the "Untagged only" filter — so the
+// chip and the filter can never disagree about a clip.
+const NeedsDetailsChip = ({ clip }: { clip: Pick<ClipCardProps["clip"], "needsDetails"> }) =>
+  clip.needsDetails ? <Badge variant="caution">Needs details</Badge> : null;
+
 const ClipCard = ({
   clip,
   onOpen,
@@ -282,6 +288,8 @@ const ClipCard = ({
   // its state.
   const exception = clip.held ? "Preparing" : clip.isComposite ? "Recording" : undefined;
   const exceptionChip = exception ? <Badge variant="neutral">{exception}</Badge> : null;
+  // One exception per clip: a clip still preparing or a recording is not yet the thing to tag.
+  const needsDetailsChip = exception ? null : <NeedsDetailsChip clip={clip} />;
   return (
     <Card
       className={cn(
@@ -334,7 +342,9 @@ const ClipCard = ({
         ) : null}
       </div>
       {compact ? (
-        exceptionChip && <div className="flex">{exceptionChip}</div>
+        (exceptionChip || clip.needsDetails) && (
+          <div className="flex">{exceptionChip ?? needsDetailsChip}</div>
+        )
       ) : (
         <>
           {clip.brand ? <p className="truncate text-muted-foreground text-xs">{clip.brand}</p> : null}
@@ -349,6 +359,7 @@ const ClipCard = ({
                 {clip.quality}
               </Badge>
             ) : null}
+            {needsDetailsChip}
           </div>
           <p className="text-muted-foreground text-xs">{playsLine(clip)}</p>
         </>
@@ -369,4 +380,4 @@ const ClipCard = ({
   );
 };
 
-export { AUDIENCE_LABEL, ClipCard, KIND_LABEL, playsLine, SelectCheckbox };
+export { AUDIENCE_LABEL, ClipCard, KIND_LABEL, NeedsDetailsChip, playsLine, SelectCheckbox };

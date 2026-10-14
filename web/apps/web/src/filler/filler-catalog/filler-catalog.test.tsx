@@ -22,6 +22,7 @@ const clip: ClipDTO = {
   playsCounted: true,
   aiTagged: false,
   tagged: true,
+  needsDetails: false,
   suggestedEra: 0,
 };
 

@@ -314,6 +314,10 @@ type ClipDTO struct {
 	PlaysCounted bool   `json:"playsCounted" doc:"False when this install cannot observe airings (Tunarr-backed playout) — render as 'not counted', not as 0"`
 	AITagged     bool   `json:"aiTagged"`
 	Tagged       bool   `json:"tagged" doc:"Whether the clip has all match tags (era+audience+category)"`
+	// NeedsDetails is the server's verdict, so the Library's caution chip and its "Untagged only"
+	// filter cannot disagree: both come from clipcatalog.Clip.NeedsDetails. A client must not
+	// re-derive it from kind + tagged.
+	NeedsDetails bool `json:"needsDetails" doc:"A commercial missing a match tag (era, audience or category) — the same clips the untagged filter selects. Render the 'Needs details' exception from this field; do not re-derive it."`
 	// SuggestedEra is an AI-proposed era the validator refused to persist (§10 era
 	// grounding, V34): the year appears nowhere in the clip's text signals, so it is a
 	// question for the operator, not a tag. Confirming = PATCHing era (clears this);
@@ -501,7 +505,7 @@ func clipToDTO(c store.Clip, playsCounted bool, img func(string) *ImageDTO) Clip
 		Network: c.Network, Station: c.Station, AirDate: c.AirDate, GeoEvidence: c.GeoEvidence,
 		DurationMs: c.DurationMs, Source: c.Source, Quality: c.Quality,
 		PlayCount: c.PlayCount, PlaysCounted: playsCounted,
-		AITagged: c.AITagged, Tagged: c.Tagged(), SuggestedEra: c.SuggestedEra,
+		AITagged: c.AITagged, Tagged: c.Tagged(), NeedsDetails: c.NeedsDetails(), SuggestedEra: c.SuggestedEra,
 		IsComposite: c.IsComposite, ParentHash: c.ParentHash,
 		Brand: c.Brand, Confidence: c.Confidence, Held: c.Held, Language: c.Language,
 		VisionTagged: c.VisionTagged, License: c.License,

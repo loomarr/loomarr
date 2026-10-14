@@ -327,6 +327,7 @@ describe("ChannelFiller", () => {
           kind: "commercial",
           durationMs: 30000,
           tagged: true,
+          needsDetails: false,
           aiTagged: false,
           playCount: 0,
           playsCounted: true,
@@ -378,6 +379,7 @@ describe("ChannelFiller", () => {
         durationMs: 30000,
         aiTagged: false,
         tagged: true,
+        needsDetails: false,
         playCount: 0,
         playsCounted: true,
       };

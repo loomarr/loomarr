@@ -212,6 +212,7 @@ const stubReachable = () => {
           // mounts on a clip it is deliberately not offered for.
           isComposite: true,
           tagged: false,
+          needsDetails: true,
           aiTagged: false,
           playCount: 0,
           playsCounted: true,
@@ -223,6 +224,7 @@ const stubReachable = () => {
           durationMs: 30000,
           isComposite: false,
           tagged: true,
+          needsDetails: false,
           aiTagged: false,
           playCount: 0,
           playsCounted: true,

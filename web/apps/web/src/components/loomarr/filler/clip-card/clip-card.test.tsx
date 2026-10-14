@@ -11,6 +11,7 @@ const base: ClipDTO = {
   audience: "kids",
   category: "food",
   tagged: true,
+  needsDetails: false,
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
@@ -74,6 +75,24 @@ describe("ClipCard", () => {
   ] as const)("names a clip that is not ready: %s", (label, over) => {
     render(<ClipCard clip={{ ...base, ...over }} onOpen={() => {}} />);
     expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  // The chip reads the server's needsDetails alone, never kind + tagged: a commercial the server
+  // calls complete gets no chip even with tags missing on this client copy, and vice versa.
+  it.each([false, true])("shows Needs details exactly when the server says so (compact: %s)", (compact) => {
+    const { rerender } = render(
+      <ClipCard clip={{ ...base, tagged: false, needsDetails: false }} onOpen={() => {}} compact={compact} />,
+    );
+    expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
+    rerender(<ClipCard clip={{ ...base, needsDetails: true }} onOpen={() => {}} compact={compact} />);
+    expect(screen.getByText("Needs details")).toBeInTheDocument();
+  });
+
+  // One exception per clip: a clip still preparing is not yet the thing to tag.
+  it("lets Preparing stand alone on a held clip that also needs details", () => {
+    render(<ClipCard clip={{ ...base, held: true, needsDetails: true }} onOpen={() => {}} />);
+    expect(screen.getByText("Preparing")).toBeInTheDocument();
+    expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
   });
 
   // The phone library's 2-up card: frame, duration, name, and an exception chip only.

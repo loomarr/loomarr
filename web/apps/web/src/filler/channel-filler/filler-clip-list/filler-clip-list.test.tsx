@@ -30,6 +30,7 @@ const clip: ClipDTO = {
   kind: "commercial",
   durationMs: 30000,
   tagged: true,
+  needsDetails: false,
   aiTagged: false,
   playCount: 0,
   playsCounted: true,

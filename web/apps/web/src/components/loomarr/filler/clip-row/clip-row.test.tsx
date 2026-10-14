@@ -11,6 +11,7 @@ const base: ClipDTO = {
   audience: "kids",
   category: "food",
   tagged: true,
+  needsDetails: false,
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
@@ -33,6 +34,14 @@ describe("ClipRow", () => {
     // Two columns, both unset — a blank would be indistinguishable from a column that
     // failed to render.
     expect(screen.getAllByText("—")).toHaveLength(2);
+  });
+
+  // Below `md` the tag columns are gone, so the phone row carries the server's verdict itself.
+  it("names a commercial that needs details on the phone row, and only from the server field", () => {
+    const { rerender } = render(<ClipRow clip={{ ...base, tagged: false }} />);
+    expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
+    rerender(<ClipRow clip={{ ...base, needsDetails: true }} />);
+    expect(screen.getByText("Needs details").parentElement).toHaveClass("md:hidden");
   });
 
   // WCAG 2.2, 2.5.8: the 16px checkbox sits in a 24px label that takes the tap.

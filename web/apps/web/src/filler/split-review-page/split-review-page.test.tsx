@@ -123,6 +123,7 @@ const stubSplit = (me: MeBody = ADMIN, language = "en") => {
     playsCounted: true,
     aiTagged: false,
     tagged: false,
+    needsDetails: true,
     suggestedEra: 0,
     isComposite: true,
   };

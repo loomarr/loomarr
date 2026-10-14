@@ -11,6 +11,7 @@ const clip: ClipDTO = {
   durationMs: 30000,
   aiTagged: false,
   tagged: false,
+  needsDetails: true,
   playCount: 0,
   playsCounted: true,
 };

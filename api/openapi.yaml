@@ -2106,6 +2106,9 @@ components:
           description: Prepared playback file facts; included only for an exact single-clip detail read
         name:
           type: string
+        needsDetails:
+          description: A commercial missing a match tag (era, audience or category) — the same clips the untagged filter selects. Render the 'Needs details' exception from this field; do not re-derive it.
+          type: boolean
         network:
           type: string
         parentHash:
@@ -2159,6 +2162,7 @@ components:
         - playsCounted
         - aiTagged
         - tagged
+        - needsDetails
       type: object
     ClipEnrichmentDTO:
       additionalProperties: false

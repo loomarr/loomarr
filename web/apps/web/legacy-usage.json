@@ -209,7 +209,7 @@
       "legacyUi": 1
     },
     "src/components/loomarr/filler/clip-row/clip-row.tsx": {
-      "tailwindClasses": 64,
+      "tailwindClasses": 67,
       "legacyUi": 1
     },
     "src/components/loomarr/filler/coverage-meter/coverage-meter.tsx": {
