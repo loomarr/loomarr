@@ -84,6 +84,9 @@ var migratedTitles = []string{
 	// left out: it would match ordinary prose.
 	"Wizarding World", "Crimson Tide", "Air Force One", "True Lies", "Enemy of the State", "Animaniacs",
 	"Gargoyles", "Warner Bros",
+	// The eval and filler-research tests (slice 16). "Saw" is left out: it would match ordinary
+	// prose.
+	"Pulp Fiction", "Buddy Foster",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -240,6 +243,20 @@ var migratedGo = []string{
 	"internal/channels/", "internal/reconcile/", "internal/store/",
 	// The app, requester, provision and proposalworkflow tests (slice 15).
 	"internal/app/", "internal/proposalworkflow/", "internal/provision/", "internal/requester/",
+	// The filler-research tests and the eval tests with hand-written fixtures (slice 16). The rest
+	// of internal/eval pins its frozen corpora: the certification_* tests use invented names with
+	// synthetic ids that sha256-chained testdata freezes below ProviderIDBase, and the realDataGo
+	// files below exercise real titles on purpose.
+	"internal/fillerresearch/",
+	"internal/eval/budget_attribution_test.go",
+	"internal/eval/corpus_behavior_test.go",
+	"internal/eval/corpus_contract_test.go",
+	"internal/eval/date_scope_test.go",
+	"internal/eval/date_typed_refusal_test.go",
+	"internal/eval/judge_evidence_test.go",
+	"internal/eval/openrouter_certification_test.go",
+	"internal/eval/release_latency_test.go",
+	"internal/eval/runner_accounting_test.go",
 }
 
 // pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
@@ -254,6 +271,11 @@ var pendingGo = []string{
 // reason; a file listed here must exist.
 var realDataGo = map[string]string{
 	"internal/app/fillerenrichment_deterministic_test.go": "pins the production brand dictionary in fillerenrichment's deterministic.go end to end, whose phrases are real brands",
+	"internal/eval/corpus_live_test.go":                   "pins corpus.go, the live corpus of real channel intents run against a real LLM, library and TMDB",
+	"internal/eval/mood_review_test.go":                   "pins the frozen mood-review packet, private map and real-model submissions (testdata), real ids",
+	"internal/eval/query_expansion_test.go":               "pins the query-expansion corpus (testdata), whose real network-era titles the model must recognise",
+	"internal/eval/query_pilot_test.go":                   "pins the query-pilot corpus (testdata), whose real network and era titles the model must recognise",
+	"internal/eval/release_gate_test.go":                  "pins the release-gate corpus (testdata), whose real franchises, people and titles the model must recognise",
 	"internal/eval/schedule_live_test.go":                 "queries live data on purpose",
 	"internal/fillerenrichment/deterministic_test.go":     "pins the production brand dictionary in deterministic.go, whose phrases are real brands",
 	"internal/provision/webhook_parity_test.go":           "pins the live-captured Radarr import webhook (testkit/fixtures), real id and title",

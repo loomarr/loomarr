@@ -17,7 +17,7 @@ func TestWikidataRetrievesCanonicalEntityEvidence(t *testing.T) {
 			t.Fatalf("user agent = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"search":[{"id":"Q154950","label":"Tootsie Pop","description":"brand of candy"},{"id":"javascript:bad","label":"Bad","description":"unsafe"}]}`))
+		_, _ = w.Write([]byte(`{"search":[{"id":"Q90154950","label":"Twirlpop","description":"brand of candy"},{"id":"javascript:bad","label":"Bad","description":"unsafe"}]}`))
 	}))
 	defer server.Close()
 	provider, err := NewWikidata(WikidataConfig{Client: server.Client(), UserAgent: "Loomarr test",
@@ -25,14 +25,14 @@ func TestWikidataRetrievesCanonicalEntityEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packet, err := provider.Retrieve(t.Context(), Lookup{Title: "Tootsie Pop Classic Commercial"})
+	packet, err := provider.Retrieve(t.Context(), Lookup{Title: "Twirlpop Classic Commercial"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if action != "wbsearchentities" || search != "Tootsie Pop" || language != "en" || resultType != "item" || limit != "3" {
+	if action != "wbsearchentities" || search != "Twirlpop" || language != "en" || resultType != "item" || limit != "3" {
 		t.Fatalf("action=%q search=%q language=%q type=%q limit=%q", action, search, language, resultType, limit)
 	}
-	if len(packet.Citations) != 1 || packet.Citations[0].URL != "https://www.wikidata.org/wiki/Q154950" ||
+	if len(packet.Citations) != 1 || packet.Citations[0].URL != "https://www.wikidata.org/wiki/Q90154950" ||
 		!strings.Contains(packet.Citations[0].Extract, "brand of candy") {
 		t.Fatalf("packet = %+v", packet)
 	}

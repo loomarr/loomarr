@@ -14,7 +14,7 @@ type runnerRepository struct {
 
 func (r *runnerRepository) ListCandidates(_ context.Context, _, _, adapter, version string, _ int) ([]Candidate, error) {
 	r.adapter, r.version = adapter, version
-	return []Candidate{{ClipHash: "hash", Name: "Tootsie Pop Classic Commercial", SourceID: "archive:classic", InputRevision: 1}}, nil
+	return []Candidate{{ClipHash: "hash", Name: "Twirlpop Classic Commercial", SourceID: "archive:classic", InputRevision: 1}}, nil
 }
 
 func (r *runnerRepository) SaveReport(_ context.Context, report Report) error {

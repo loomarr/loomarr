@@ -187,7 +187,7 @@ func TestCertificationIdentitiesFromEnvKeepsJudgeProviderIndependentWhenModelFal
 		t.Fatalf("judge provider builder identity = %q", provider.Name())
 	}
 	card := NewRunner(scriptedGenerator{proposal: suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix",
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}}, RunnerConfig{Generator: generator, Judge: judge}).Run(context.Background(), []Case{{Name: "identity"}})
 	if card.Generator != generator || card.Judge != judge {
 		t.Fatalf("scorecard env identities = generator %+v judge %+v", card.Generator, card.Judge)

@@ -82,7 +82,7 @@ func dateScopeRunner(proposal suggest.Proposal, err error) *Runner {
 
 func dateScopeProposal(dates *schedule.DateScope) suggest.Proposal {
 	return suggest.Proposal{
-		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"}},
+		Lineup: []suggest.ProposalItem{{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"}},
 		Policy: schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Scope: schedule.ScopePolicy{
 			Dates: dates,
 		}}},

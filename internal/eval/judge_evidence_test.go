@@ -18,8 +18,8 @@ import (
 func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
 	proposal := suggest.Proposal{
 		Lineup: []suggest.ProposalItem{{
-			MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 1999,
-			InLibrary: true, LibraryItemID: "library-matrix", Source: "library-search",
+			MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Year: 1999,
+			InLibrary: true, LibraryItemID: "library-marigold", Source: "library-search",
 			Rationale: "Grounded cyberpunk anchor", Confidence: 0.93,
 			Genres: []string{"Action", "Science Fiction"}, OfficialRating: "R",
 		}},
@@ -48,7 +48,7 @@ func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
 			return fmt.Errorf("ownership sets = %d/%d", len(observed.Lineup), len(observed.Acquisitions))
 		}
 		title := observed.Lineup[0]
-		if title.Key != "movie:tmdb:603" || title.Name != "The Matrix" || title.Year != 1999 ||
+		if title.Key != "movie:tmdb:90000603" || title.Name != "Marigold Protocol" || title.Year != 1999 ||
 			title.Ownership != JudgeOwnershipLibrary || title.Source != "library-search" ||
 			title.Rationale != "Grounded cyberpunk anchor" || title.Confidence == nil || *title.Confidence != 0.93 ||
 			!slices.Equal(title.Genres, []string{"Action", "Science Fiction"}) || title.Rating != "R" {
@@ -93,21 +93,21 @@ func TestRunnerSendsGroundedPolicyAndStructuralEvidenceToJudge(t *testing.T) {
 func TestRunnerKeepsAcquisitionOwnershipDistinctAtJudge(t *testing.T) {
 	proposal := suggest.Proposal{
 		Lineup: []suggest.ProposalItem{{
-			MediaType: provision.Movie, TMDBID: 603, Name: "Library title", InLibrary: true,
+			MediaType: provision.Movie, TMDBID: 90000603, Name: "Library title", InLibrary: true,
 		}},
 		Acquisitions: []suggest.ProposalItem{{
-			MediaType: provision.Movie, TMDBID: 550, Name: "Acquisition title", InLibrary: false,
+			MediaType: provision.Movie, TMDBID: 90000550, Name: "Acquisition title", InLibrary: false,
 		}},
 	}
 	judge := newSemanticRecordingJudge(func(observed JudgeEvidence) error {
 		if len(observed.Lineup) != 1 || len(observed.Acquisitions) != 1 {
 			return fmt.Errorf("ownership sets = %d/%d", len(observed.Lineup), len(observed.Acquisitions))
 		}
-		if lineup := observed.Lineup[0]; lineup.Key != "movie:tmdb:603" ||
+		if lineup := observed.Lineup[0]; lineup.Key != "movie:tmdb:90000603" ||
 			lineup.Name != "Library title" || lineup.Ownership != JudgeOwnershipLibrary {
 			return fmt.Errorf("lineup ownership changed: %+v", lineup)
 		}
-		if acquisition := observed.Acquisitions[0]; acquisition.Key != "movie:tmdb:550" ||
+		if acquisition := observed.Acquisitions[0]; acquisition.Key != "movie:tmdb:90000550" ||
 			acquisition.Name != "Acquisition title" || acquisition.Ownership != JudgeOwnershipAcquisition {
 			return fmt.Errorf("acquisition ownership changed: %+v", acquisition)
 		}
@@ -127,7 +127,7 @@ func TestRunnerKeepsAcquisitionOwnershipDistinctAtJudge(t *testing.T) {
 
 func TestRunnerGivesJudgeScheduleMaterializerEvidenceNotProposalTitles(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Series, TMDBID: 456, LibraryItemID: "series-simpsons",
+		MediaType: provision.Series, TMDBID: 90000456, LibraryItemID: "series-mudpuddles",
 		Name: "PROPOSAL TITLE IS NOT SCHEDULE EVIDENCE", InLibrary: true,
 	}}}
 	judge := newSemanticRecordingJudge(func(observed JudgeEvidence) error {
@@ -138,8 +138,8 @@ func TestRunnerGivesJudgeScheduleMaterializerEvidenceNotProposalTitles(t *testin
 			return fmt.Errorf("scheduled sample size = %d", len(observed.ScheduledPrograms))
 		}
 		program := observed.ScheduledPrograms[0]
-		if program.Identity != "series:tmdb:456:s01e01" ||
-			program.Title != "Simpsons Roasting on an Open Fire" || program.Title == proposal.Lineup[0].Name ||
+		if program.Identity != "series:tmdb:90000456:s01e01" ||
+			program.Title != "Pip's Frosty Fireside" || program.Title == proposal.Lineup[0].Name ||
 			program.Season != 1 || program.Episode != 1 || program.Year != 1989 || program.Rating != "TV-PG" ||
 			program.CommunityRating != 8.1 || program.Overview != "The family has a difficult Christmas." ||
 			!slices.Equal(program.Tags, []string{"christmas", "holiday"}) {
@@ -149,9 +149,9 @@ func TestRunnerGivesJudgeScheduleMaterializerEvidenceNotProposalTitles(t *testin
 	})
 	runner := NewRunner(scriptedGenerator{proposal: proposal}, RunnerConfig{}).
 		WithMaterializer(NewFixtureScheduleMaterializer(map[provision.Key]FixtureTitle{
-			"series:tmdb:456": {
-				LibraryItemID: "series-simpsons", Episodes: []schedule.ResolvedProgram{{
-					LibraryItemID: "episode-s01e01", Title: "Simpsons Roasting on an Open Fire",
+			"series:tmdb:90000456": {
+				LibraryItemID: "series-mudpuddles", Episodes: []schedule.ResolvedProgram{{
+					LibraryItemID: "episode-s01e01", Title: "Pip's Frosty Fireside",
 					DurationMs: 23 * 60 * 1000, Season: 1, Episode: 1, Year: 1989,
 					OfficialRating: "TV-PG", CommunityRating: 8.1,
 					Overview: "The family has a difficult Christmas.", Tags: []string{"christmas", "holiday"},
@@ -165,7 +165,7 @@ func TestRunnerGivesJudgeScheduleMaterializerEvidenceNotProposalTitles(t *testin
 		Intent:                   Intent{Description: "science-fiction movies"},
 		JudgeRubric:              "Judge the programs that will actually air",
 		MinJudgeScore:            0.8,
-		RequireScheduledPrograms: []string{"series:tmdb:456:s01e01"},
+		RequireScheduledPrograms: []string{"series:tmdb:90000456:s01e01"},
 	}})
 	if !card.Certified || judge.CallCount() != 1 {
 		t.Fatalf("Runner.Run failed: results=%+v judge calls=%d errors=%v",
@@ -178,19 +178,19 @@ func TestRunnerBoundsEveryNamedJudgeEvidenceDimension(t *testing.T) {
 	acquisitions := make([]suggest.ProposalItem, JudgeMaxTitlesPerOwnership+1)
 	fixtures := make(map[provision.Key]FixtureTitle, len(lineup))
 	for i := range lineup {
-		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", 1000+i))
-		lineup[i] = suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 1000 + i,
+		key := provision.Key(fmt.Sprintf("movie:tmdb:%d", 90001000+i))
+		lineup[i] = suggest.ProposalItem{MediaType: provision.Movie, TMDBID: 90001000 + i,
 			Name: fmt.Sprintf("lineup-%02d", i), InLibrary: true, LibraryItemID: fmt.Sprintf("library-%02d", i)}
 		fixtures[key] = FixtureTitle{LibraryItemID: fmt.Sprintf("library-%02d", i), DurationMs: 90 * 60 * 1000}
 		acquisitions[i] = suggest.ProposalItem{
-			MediaType: provision.Movie, TMDBID: 2000 + i,
+			MediaType: provision.Movie, TMDBID: 90002000 + i,
 			Name: fmt.Sprintf("acquisition-%02d", i),
 		}
 	}
 	lineup[0].MediaType = provision.Series
-	lineup[0].TMDBID = 456
+	lineup[0].TMDBID = 90000456
 	lineup[0].LibraryItemID = "series-library"
-	delete(fixtures, "movie:tmdb:1000")
+	delete(fixtures, "movie:tmdb:90001000")
 	episodes := make([]schedule.ResolvedProgram, JudgeMaxScheduledPrograms+1)
 	for i := range episodes {
 		episodes[i] = schedule.ResolvedProgram{
@@ -199,7 +199,7 @@ func TestRunnerBoundsEveryNamedJudgeEvidenceDimension(t *testing.T) {
 		}
 	}
 	episodes[JudgeMaxScheduledPrograms].Title = "SCHEDULE_BEYOND_CAP"
-	fixtures["series:tmdb:456"] = FixtureTitle{LibraryItemID: "series-library", Episodes: episodes}
+	fixtures["series:tmdb:90000456"] = FixtureTitle{LibraryItemID: "series-library", Episodes: episodes}
 	lineup[JudgeMaxTitlesPerOwnership].Name = "LINEUP_BEYOND_CAP"
 	acquisitions[JudgeMaxTitlesPerOwnership].Name = "ACQUISITION_BEYOND_CAP"
 	lineup[0].Rationale = strings.Repeat("x", JudgeMaxTextRunes) + "TEXT_BEYOND_CAP"
@@ -240,7 +240,7 @@ func TestRunnerBoundsEveryNamedJudgeEvidenceDimension(t *testing.T) {
 			return fmt.Errorf("policy cap changed: %v", observed.Policy.Scope.Collections)
 		}
 		lastProgram := observed.ScheduledPrograms[len(observed.ScheduledPrograms)-1]
-		if lastProgram.Identity != "series:tmdb:456:s01e24" || lastProgram.Title != "episode-24" {
+		if lastProgram.Identity != "series:tmdb:90000456:s01e24" || lastProgram.Title != "episode-24" {
 			return fmt.Errorf("schedule prefix changed: %+v", lastProgram)
 		}
 		for _, title := range append(slices.Clone(observed.Lineup), observed.Acquisitions...) {
@@ -261,7 +261,7 @@ func TestRunnerBoundsEveryNamedJudgeEvidenceDimension(t *testing.T) {
 		Run(context.Background(), []Case{{
 			Name: "bounded_evidence", Intent: Intent{Description: "bounded evidence"},
 			JudgeRubric: "Use the bounded facts", MinJudgeScore: 0.8,
-			RequireScheduledPrograms: []string{"series:tmdb:456:s01e01"},
+			RequireScheduledPrograms: []string{"series:tmdb:90000456:s01e01"},
 		}})
 	if !card.Certified || judge.CallCount() != 1 {
 		t.Fatalf("judge did not observe every bounded evidence prefix: result=%+v calls=%d errors=%v",
@@ -271,7 +271,7 @@ func TestRunnerBoundsEveryNamedJudgeEvidenceDimension(t *testing.T) {
 
 func TestRunnerFailsOnWrongTypedJudgeEvidenceWithoutRenderer(t *testing.T) {
 	proposal := suggest.Proposal{Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", Year: 2000,
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", Year: 2000,
 	}}}
 	judge := newSemanticRecordingJudge(func(evidence JudgeEvidence) error {
 		if len(evidence.Lineup) != 1 || evidence.Lineup[0].Year != 1999 {
@@ -296,7 +296,7 @@ func TestRunnerFailsOnWrongTypedJudgeEvidenceWithoutRenderer(t *testing.T) {
 func TestJudgeEvidenceCarriesBoundedProposalTraceAndRejectsMismatch(t *testing.T) {
 	candidates := make([]suggest.DecisionCandidate, 65)
 	for i := range candidates {
-		candidates[i] = suggest.DecisionCandidate{Key: fmt.Sprintf("movie:tmdb:%d", i+1), Ownership: "library", Rank: suggest.RankTuple{TieKey: fmt.Sprintf("movie:tmdb:%d", i+1)}, Disposition: suggest.DispositionNotSelected, Reason: suggest.ReasonNotSelected}
+		candidates[i] = suggest.DecisionCandidate{Key: fmt.Sprintf("movie:tmdb:%d", 90000001+i), Ownership: "library", Rank: suggest.RankTuple{TieKey: fmt.Sprintf("movie:tmdb:%d", 90000001+i)}, Disposition: suggest.DispositionNotSelected, Reason: suggest.ReasonNotSelected}
 	}
 	proposal := suggest.Proposal{Trace: suggest.DecisionTrace{Version: suggest.DecisionTraceVersion, SurfacedTotal: 65, RecordedTotal: 65, Truncated: true, Candidates: candidates}}
 	evidence, err := NewJudgeEvidence(Case{Intent: Intent{Description: "x"}}, proposal, Observation{}, nil)
@@ -316,7 +316,7 @@ func TestModelJudgeRejectsTraceMismatchBeforeCallingProvider(t *testing.T) {
 	provider := testkit.NewLLM(testkit.FinalResponse(`{"overall":1,"relevance":1,"serendipity":1,"reason":"should not run"}`))
 	evidence := JudgeEvidence{
 		Rubric:        "grounded evidence only",
-		Lineup:        []JudgeTitleEvidence{{Key: "movie:tmdb:603", Name: "The Matrix", Ownership: JudgeOwnershipLibrary}},
+		Lineup:        []JudgeTitleEvidence{{Key: "movie:tmdb:90000603", Name: "Marigold Protocol", Ownership: JudgeOwnershipLibrary}},
 		DecisionTrace: suggest.DecisionTrace{Version: suggest.DecisionTraceVersion + 1},
 	}
 	if _, err := (modelJudge{provider: provider}).Score(context.Background(), evidence); err == nil {

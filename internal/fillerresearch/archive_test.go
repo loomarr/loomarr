@@ -16,15 +16,15 @@ func TestArchiveRetrievesBoundedItemMetadata(t *testing.T) {
 			t.Errorf("User-Agent = %q", got)
 		}
 		query := r.URL.Query()
-		if query.Get("q") != `mediatype:movies AND (title:"Tootsie Pop Classic Commercial" OR description:"Tootsie Pop Classic Commercial" OR title:"Tootsie Pop" OR description:"Tootsie Pop")` ||
+		if query.Get("q") != `mediatype:movies AND (title:"Twirlpop Classic Commercial" OR description:"Twirlpop Classic Commercial" OR title:"Twirlpop" OR description:"Twirlpop")` ||
 			query.Get("rows") != "3" || query.Get("output") != "json" || len(query["fl[]"]) != 7 {
 			t.Errorf("query = %v", query)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"response":{"docs":[
-			{"identifier":"tootsie-pop-ad","title":"Tootsie Pop commercial","description":["Animated television advertisement","Campaign collection"],"year":1970,"creator":"Agency","subject":["Candy","Advertising"]},
+			{"identifier":"twirlpop-ad","title":"Twirlpop commercial","description":["Animated television advertisement","Campaign collection"],"year":1970,"creator":"Agency","subject":["Candy","Advertising"]},
 			{"identifier":"bad/path","title":"Bad","description":"Ignored"},
-			{"identifier":"tootsie-two","title":["Alternate title"],"date":"1971-01-01","description":"Second item"}
+			{"identifier":"twirlpop-two","title":["Alternate title"],"date":"1971-01-01","description":"Second item"}
 		]}}`)
 	}))
 	t.Cleanup(server.Close)
@@ -34,14 +34,14 @@ func TestArchiveRetrievesBoundedItemMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packet, err := retriever.Retrieve(t.Context(), Lookup{Title: "Tootsie Pop Classic Commercial"})
+	packet, err := retriever.Retrieve(t.Context(), Lookup{Title: "Twirlpop Classic Commercial"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if packet.Query != "Tootsie Pop Classic Commercial" || packet.RetrievedAt != at || len(packet.Citations) != 2 {
+	if packet.Query != "Twirlpop Classic Commercial" || packet.RetrievedAt != at || len(packet.Citations) != 2 {
 		t.Fatalf("packet = %+v", packet)
 	}
-	if packet.Citations[0].URL != "https://archive.org/details/tootsie-pop-ad" ||
+	if packet.Citations[0].URL != "https://archive.org/details/twirlpop-ad" ||
 		!strings.Contains(packet.Citations[0].Extract, "Year: 1970") ||
 		!strings.Contains(packet.Citations[0].Extract, "Subject: Candy; Advertising") {
 		t.Fatalf("citation = %+v", packet.Citations[0])
