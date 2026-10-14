@@ -61,7 +61,7 @@ func channelWithWindow(w time.Duration, zone *time.Location) schedule.Channel {
 }
 
 func isHoliday(id string) bool {
-	return strings.HasPrefix(id, "thoh-") || strings.HasPrefix(id, "xmas-") || strings.HasPrefix(id, "turkey-")
+	return strings.HasPrefix(id, "thoh-") || strings.HasPrefix(id, "xmas-") || strings.HasPrefix(id, "turkey-") || strings.HasPrefix(id, "newyr-")
 }
 
 // airedOn groups the airings of every window touching [from, to) by channel-local civil date.
@@ -140,7 +140,9 @@ func TestHolidayEpisodes_ConsecutiveWindowsShareNothing(t *testing.T) {
 		ch := channelWithWindow(w, nil)
 		at := schedule.WindowStart(day(time.October, 2, 0), w, nil)
 		prev := ids(arrange(t, ch, tc.avail, light, at))
-		for at = at.Add(w); at.Before(day(time.October, 25, 0)); at = at.Add(w) {
+		// Through the season's end (#1930 re-review N2): the first windows out of season share
+		// nothing with the last in season either.
+		for at = at.Add(w); at.Before(day(time.November, 5, 0)); at = at.Add(w) {
 			cur := arrange(t, ch, tc.avail, light, at)
 			for _, a := range cur {
 				if prev[a.id] {
@@ -386,5 +388,78 @@ func TestHolidayEpisodes_MarathonLongerThanTheWindowNeverEmpties(t *testing.T) {
 	}
 	if n < 60 {
 		t.Fatalf("an 80-episode marathon on a daily window airs %d holiday episodes (%d slots), want the day full", n, len(got))
+	}
+}
+
+func newYearSpecials(n int) []special {
+	var out []special
+	for i := range n {
+		out = append(out, special{fmt.Sprintf("newyr-%02d", i), fmt.Sprintf("Countdown story %d", i+1), "The family's New Year's Eve special."})
+	}
+	return out
+}
+
+// #1930 re-review N2: in season the walk passes more of the pool than it features, so it runs
+// ahead of windowSlice; the first window out of season went back to windowSlice's position and
+// re-aired the episodes the season's last window had just aired, minutes apart. The walk is now
+// capped where windowSlice starts the next window, and the airtime it cannot fill comes from half
+// a lap away: a seam only skips, and an in-season re-air is about half a cycle from either airing.
+func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
+	for _, seam := range []struct {
+		name     string
+		at       time.Time
+		specials func(int) []special
+	}{
+		{"Halloween's end", day(time.November, 1, 0), halloweenSpecials},
+		{"first day after Halloween", day(time.November, 2, 0), halloweenSpecials},
+		{"New Year's end", time.Date(2027, time.January, 3, 0, 0, 0, 0, time.UTC), newYearSpecials},
+	} {
+		for _, pool := range []struct {
+			ordinary int
+			window   time.Duration
+		}{{9, time.Hour}, {80, 6 * time.Hour}, {400, 24 * time.Hour}} {
+			specials := max(3, pool.ordinary/20)
+			avail := seriesLike(pool.ordinary, seam.specials(specials)...)
+			// An episode aired again sooner than half the deck less its pool (the in-season
+			// minimum on a small deck) is a seam repeat; out of season the gap is a whole deck.
+			spacing := (pool.ordinary+specials)/2 - specials
+			for _, strength := range []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy} {
+				t.Run(fmt.Sprintf("%s/%d episodes/%s window/%s", seam.name, pool.ordinary, pool.window, strength), func(t *testing.T) {
+					assertSeamOnlySkips(t, channelWithWindow(pool.window, nil), avail, seasonalPolicy(schedule.SeasonalPolicy{Strength: strength}), seam.at, spacing)
+				})
+			}
+		}
+	}
+}
+
+// assertSeamOnlySkips walks the windows of the two days either side of seam: none is empty, none
+// re-airs an ordinary episode from the window before, and no ordinary episode airs twice within
+// `spacing` programmes.
+func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, seam time.Time, spacing int) {
+	t.Helper()
+	last := map[string]airing{}
+	at := map[string]int{}
+	var before map[string]bool
+	n := 0
+	for open := seam.Add(-48 * time.Hour); open.Before(seam.Add(48 * time.Hour)); open = open.Add(ch.DefaultWindow) {
+		got := arrange(t, ch, avail, policy, open)
+		if len(got) == 0 {
+			t.Fatalf("the window opening %s airs nothing", open.Format(time.Stamp))
+		}
+		for _, a := range got {
+			n++
+			if isHoliday(a.id) {
+				continue
+			}
+			if before[a.id] {
+				t.Fatalf("the window opening %s re-airs %s from the window before", open.Format(time.Stamp), a.id)
+			}
+			if k, ok := at[a.id]; ok && n-k < spacing {
+				t.Fatalf("%s airs at %s and again %d programmes later at %s, want at least %d apart",
+					a.id, last[a.id].start.Format(time.Stamp), n-k, a.start.Format(time.Stamp), spacing)
+			}
+			last[a.id], at[a.id] = a, n
+		}
+		before = ids(got)
 	}
 }

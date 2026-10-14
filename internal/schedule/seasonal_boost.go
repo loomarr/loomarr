@@ -437,7 +437,9 @@ func (p *holidayPlanner) features(w int64) []holidayAt {
 // seasonTile is an in-season window's ordinary episodes. The season's first window starts where
 // windowSlice would; each later window continues exactly where the one before stopped, skipping
 // the pool and leaving room for its features, so consecutive windows never share an episode and
-// the season's first seam matches seasonality off. ok is false out of season (use windowSlice).
+// the season's first seam matches seasonality off. No walk passes where windowSlice starts the
+// next window; what that cap leaves short is filled from half a lap away (farFill), so the
+// season's last seam only skips. ok is false out of season (use windowSlice).
 func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 	if !p.enabled() || len(p.pooled(w)) == 0 {
 		return nil, false
@@ -464,9 +466,14 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 	anchor := w
 	for back := int64(seasonLookback / p.window); anchor > w-back && len(p.pooled(anchor-1)) > 0; anchor-- {
 	}
-	stride := max(programsPerWindow(p.deck, budget), 1)
+	stride := int64(max(programsPerWindow(p.deck, budget), 1))
 	nProg := int64(len(progAt))
-	pos := progAt[((anchor*int64(stride))%nProg+nProg)%nProg]
+	ring := func(u int64) int { return progAt[(u%nProg+nProg)%nProg] }
+	// u counts programs passed since the deck head, unrolled: windowSlice starts window v at
+	// v*stride, so a walk that never passes (v+1)*stride never reaches the next window's
+	// out-of-season start, and the season's last seam can only skip.
+	u := anchor * stride
+	prev := windowSlice(p.deck, p.window, anchor-1)
 	for v := anchor; v <= w; v++ {
 		pooled := p.pooled(v)
 		need := budget
@@ -475,10 +482,11 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 		}
 		tile = tile[:0:0]
 		var acc int64
-		for n := 0; n < len(p.deck) && acc < need; n++ {
+		lap := u + nProg
+		for pos := ring(u); acc < need && u < min((v+1)*stride, lap); pos = (pos + 1) % len(p.deck) {
 			s := p.deck[pos]
-			pos = (pos + 1) % len(p.deck)
 			if s.IsProgram() {
+				u++
 				if pooled[unitKey(s)] {
 					continue
 				}
@@ -486,8 +494,43 @@ func (p *holidayPlanner) seasonTile(w int64) (tile []Slot, ok bool) {
 			}
 			tile = append(tile, s)
 		}
+		tile = p.farFill(tile, prev, ring, u, min((v+2)*stride, u+nProg), nProg, need-acc, pooled)
+		prev = tile
 	}
 	return tile, true
+}
+
+// farFill tops a capped tile up with `short` of ordinary runtime from the far side of the ring,
+// half a lap from u: those episodes aired about half a cycle ago and air again about half a cycle
+// on, so an in-season re-air, unavoidable when the pool is walked past faster than it is
+// featured, is as far from both airings as the deck allows. It skips the pool and the tile, and,
+// while anything else is left, the window before (prev) and what the next window's walk can reach
+// (ring positions u up to next), so on a small deck neighbouring windows still share nothing.
+func (p *holidayPlanner) farFill(tile, prev []Slot, ring func(int64) int, u, next, nProg, short int64, pooled map[string]bool) []Slot {
+	if short <= 0 {
+		return tile
+	}
+	taken, near := map[string]bool{}, map[string]bool{}
+	for _, s := range tile {
+		taken[unitKey(s)] = true
+	}
+	for _, s := range prev {
+		near[unitKey(s)] = true
+	}
+	for n := u; n < next; n++ {
+		near[unitKey(p.deck[ring(n)])] = true
+	}
+	for _, avoid := range []map[string]bool{near, {}} {
+		for k := int64(0); k < nProg && short > 0; k++ {
+			s := p.deck[ring(u+nProg/2+k)]
+			if key := unitKey(s); !pooled[key] && !taken[key] && !avoid[key] {
+				taken[key] = true
+				short -= s.DurationMs
+				tile = append(tile, s)
+			}
+		}
+	}
+	return tile
 }
 
 // arrange times window w's tile around its features. A feature airs as soon as the clock reaches
