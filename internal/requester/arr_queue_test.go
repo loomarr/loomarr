@@ -20,7 +20,7 @@ func TestArr_QueueStatus_ReportsProgress(t *testing.T) {
 	a := arrFor("movie", stub.server.URL, "", "")
 
 	items, err := a.QueueStatus(context.Background(), []provision.Title{
-		{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"},
+		{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +49,7 @@ func TestArr_QueueStatus_NotGrabbedWhenAbsent(t *testing.T) {
 	a := arrFor("movie", stub.server.URL, "", "")
 
 	items, err := a.QueueStatus(context.Background(), []provision.Title{
-		{MediaType: provision.Movie, TMDBID: 603, Name: "M"},
+		{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +70,7 @@ func TestArr_QueueStatus_SurfacesWarning(t *testing.T) {
 	a := arrFor("movie", stub.server.URL, "", "")
 
 	items, err := a.QueueStatus(context.Background(), []provision.Title{
-		{MediaType: provision.Movie, TMDBID: 603, Name: "M"},
+		{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestArr_QueueStatus_SeriesEpisodeCounts(t *testing.T) {
 	a := arrFor("series", stub.server.URL, "", "")
 
 	items, err := a.QueueStatus(context.Background(), []provision.Title{
-		{MediaType: provision.Series, TVDBID: 90001, Name: "A sitcom"},
+		{MediaType: provision.Series, TVDBID: 90090001, Name: "A sitcom"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +112,7 @@ func TestArr_QueueStatus_SeriesCountsMissingKeepProgress(t *testing.T) {
 	a := arrFor("series", stub.server.URL, "", "")
 
 	items, err := a.QueueStatus(context.Background(), []provision.Title{
-		{MediaType: provision.Series, TVDBID: 90001, Name: "A sitcom"},
+		{MediaType: provision.Series, TVDBID: 90090001, Name: "A sitcom"},
 	})
 	if err != nil {
 		t.Fatal(err)

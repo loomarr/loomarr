@@ -126,8 +126,8 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 			Strategy: schedule.Sequential, Status: schedule.StatusBuilding,
 		},
 		Lineup: []schedule.LineupEntry{
-			{Key: provision.Key("movie:tmdb:1"), Title: "One", DurationMs: time.Hour.Milliseconds()},
-			{Key: provision.Key("movie:tmdb:2"), Title: "Two", DurationMs: time.Hour.Milliseconds()},
+			{Key: provision.Key("movie:tmdb:90000001"), Title: "One", DurationMs: time.Hour.Milliseconds()},
+			{Key: provision.Key("movie:tmdb:90000002"), Title: "Two", DurationMs: time.Hour.Milliseconds()},
 		},
 		Policy: schedule.ChannelPolicy{OperatorPolicy: schedule.OperatorPolicy{
 			Filler: &schedule.FillerSelection{Categories: []string{"alcohol"}},
@@ -140,8 +140,8 @@ func TestTaxonomyEditor_CommittedLineageChangeReconcilesTheRealChannelPool(t *te
 		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, slog.New(slog.DiscardHandler))
 	engine := channels.New(st, nil, taxonomyAvailability{
-		provision.Key("movie:tmdb:1"): "lib-1",
-		provision.Key("movie:tmdb:2"): "lib-2",
+		provision.Key("movie:tmdb:90000001"): "lib-1",
+		provision.Key("movie:tmdb:90000002"): "lib-2",
 	}, nil, channels.Config{
 		ReconcileTTL: 10 * time.Minute, BreaksPerHour: 30,
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) {

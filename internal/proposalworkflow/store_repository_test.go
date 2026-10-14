@@ -38,8 +38,8 @@ func TestStoreWorkflowSubmissionCacheKeepsCallerLifecycleFresh(t *testing.T) {
 		t.Fatalf("Claim = %+v, %v", work, err)
 	}
 	grounded := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "library")}
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
+	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "library")}
 	if _, err := workflow.Complete(ctx, work[0], grounded); err != nil {
 		t.Fatal(err)
 	}
@@ -105,8 +105,8 @@ func TestStoreWorkflowRecordsAGroundedProposalAwaitingApproval(t *testing.T) {
 
 	intent := suggest.Intent{Description: "Every comedy title in your library that no channel plays yet, on one channel."}
 	proposal := suggest.Proposal{ChannelName: "Comedy Movies", FromIdea: "genre:comedy", Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Movie, TMDBID: 1, Name: "Comedy One", Year: 1994, InLibrary: true},
-		{MediaType: provision.Series, TVDBID: 2, Name: "Sitcom Two", Year: 1996, InLibrary: true},
+		{MediaType: provision.Movie, TMDBID: 90000001, Name: "Comedy One", Year: 1994, InLibrary: true},
+		{MediaType: provision.Series, TVDBID: 90000002, Name: "Sitcom Two", Year: 1996, InLibrary: true},
 	}}
 	recorded, err := workflow.Record(ctx, intent, proposal, "member-1")
 	if err != nil {
@@ -180,8 +180,8 @@ func TestStoreWorkflowRecoversCrashAndRejectsLateAttemptResult(t *testing.T) {
 	}
 
 	proposal := suggest.Proposal{Intent: intent, Lineup: []suggest.ProposalItem{{
-		MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix", InLibrary: true,
-	}}, Trace: selectedDecisionTrace("movie:tmdb:603", "The Matrix", "library")}
+		MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol", InLibrary: true,
+	}}, Trace: selectedDecisionTrace("movie:tmdb:90000603", "Marigold Protocol", "library")}
 	if _, err := workflow.Complete(ctx, first[0], proposal); !errors.Is(err, ErrStaleAttempt) {
 		t.Fatalf("late Attempt completion = %v, want ErrStaleAttempt", err)
 	}

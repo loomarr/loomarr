@@ -26,7 +26,7 @@ type arrStub struct {
 	queueLeft   float64        //
 	queueStatus string         // queue record status ("downloading"/"warning"/…)
 	queueTime   string         // queue record timeleft
-	profileName string         // name of the single quality profile (id 7)
+	profileName string         // name of the single quality profile (id 90000007)
 	lookupTerm  string         // the last lookup ?term= (proves tmdb/tvdb routing)
 	// seriesStats is GET /api/v3/series/{id}'s statistics by series id (Sonarr only); a
 	// missing id answers 404.
@@ -35,16 +35,16 @@ type arrStub struct {
 
 func newArrStub(t *testing.T, kind string) *arrStub {
 	t.Helper()
-	s := &arrStub{addStatus: http.StatusCreated, lookupID: 42, profileName: "HD-1080p"}
+	s := &arrStub{addStatus: http.StatusCreated, lookupID: 90000042, profileName: "HD-1080p"}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v3/"+kind+"/lookup", func(w http.ResponseWriter, r *http.Request) {
 		s.lookupTerm = r.URL.Query().Get("term")
 		// One match, carrying the arr's internal id (0 until added; we expose lookupID so
 		// queue correlation works in the Cancel test).
-		_ = json.NewEncoder(w).Encode([]map[string]any{{"title": "The Matrix", "id": s.lookupID}})
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"title": "Marigold Protocol", "id": s.lookupID}})
 	})
 	mux.HandleFunc("/api/v3/qualityprofile", func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 7, "name": s.profileName}})
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"id": 90000007, "name": s.profileName}})
 	})
 	mux.HandleFunc("/api/v3/rootfolder", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode([]map[string]any{{"path": "/data/media"}})
@@ -53,7 +53,7 @@ func newArrStub(t *testing.T, kind string) *arrStub {
 		if r.Method == http.MethodPost {
 			_ = json.NewDecoder(r.Body).Decode(&s.addBody)
 			w.WriteHeader(s.addStatus)
-			_, _ = w.Write([]byte(`{"id":42}`))
+			_, _ = w.Write([]byte(`{"id":90000042}`))
 		}
 	})
 	if kind == "series" {
@@ -123,16 +123,16 @@ func TestArr_RequestMovie_LooksUpAndAdds(t *testing.T) {
 	stub := newArrStub(t, "movie")
 	a := arrFor("movie", stub.server.URL, "", "")
 
-	err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "The Matrix"})
+	err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "Marigold Protocol"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stub.addBody == nil {
 		t.Fatal("no add POST recorded")
 	}
-	// Auto-picked profile (id 7) + root, monitored, with a search trigger.
-	if qp, _ := toInt(stub.addBody["qualityProfileId"]); qp != 7 {
-		t.Errorf("qualityProfileId = %v, want 7", stub.addBody["qualityProfileId"])
+	// Auto-picked profile (id 90000007) + root, monitored, with a search trigger.
+	if qp, _ := toInt(stub.addBody["qualityProfileId"]); qp != 90000007 {
+		t.Errorf("qualityProfileId = %v, want 90000007", stub.addBody["qualityProfileId"])
 	}
 	if stub.addBody["rootFolderPath"] != "/data/media" {
 		t.Errorf("rootFolderPath = %v", stub.addBody["rootFolderPath"])
@@ -147,15 +147,15 @@ func TestArr_RequestSeries_RoutesToSonarrByTVDB(t *testing.T) {
 	a := arrFor("series", stub.server.URL, "", "")
 
 	// TVDB present + TMDB present: Sonarr must look up by tvdb (its native id), not tmdb.
-	err := a.Request(context.Background(), provision.Title{MediaType: provision.Series, TVDBID: 81189, TMDBID: 999, Name: "Breaking Bad"})
+	err := a.Request(context.Background(), provision.Title{MediaType: provision.Series, TVDBID: 90081189, TMDBID: 90000999, Name: "Copperline Foundry"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stub.addBody == nil {
 		t.Fatal("series add not recorded (should route to Sonarr)")
 	}
-	if stub.lookupTerm != "tvdb:81189" {
-		t.Errorf("lookup term = %q, want tvdb:81189", stub.lookupTerm)
+	if stub.lookupTerm != "tvdb:90081189" {
+		t.Errorf("lookup term = %q, want tvdb:90081189", stub.lookupTerm)
 	}
 }
 
@@ -164,7 +164,7 @@ func TestArr_RequestMovie_AlreadyAddedIsSuccess(t *testing.T) {
 		stub := newArrStub(t, "movie")
 		stub.addStatus = code
 		a := arrFor("movie", stub.server.URL, "", "")
-		if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "M"}); err != nil {
+		if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}); err != nil {
 			t.Errorf("add status %d should be success (already added), got %v", code, err)
 		}
 	}
@@ -174,7 +174,7 @@ func TestArr_RequestMovie_ServerErrorFails(t *testing.T) {
 	stub := newArrStub(t, "movie")
 	stub.addStatus = http.StatusInternalServerError
 	a := arrFor("movie", stub.server.URL, "", "")
-	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "M"}); err == nil {
+	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}); err == nil {
 		t.Error("500 on add should fail (record stays wanted for retry)")
 	}
 }
@@ -183,18 +183,18 @@ func TestArr_QualityProfileOverride_ByName(t *testing.T) {
 	stub := newArrStub(t, "movie")
 	stub.profileName = "4K-UHD"
 	a := arrFor("movie", stub.server.URL, "4K-UHD", "")
-	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "M"}); err != nil {
+	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}); err != nil {
 		t.Fatal(err)
 	}
-	if qp, _ := toInt(stub.addBody["qualityProfileId"]); qp != 7 {
-		t.Errorf("name override should resolve to id 7, got %v", stub.addBody["qualityProfileId"])
+	if qp, _ := toInt(stub.addBody["qualityProfileId"]); qp != 90000007 {
+		t.Errorf("name override should resolve to id 90000007, got %v", stub.addBody["qualityProfileId"])
 	}
 }
 
 func TestArr_RootFolderOverride(t *testing.T) {
 	stub := newArrStub(t, "movie")
 	a := arrFor("movie", stub.server.URL, "", "/custom/movies")
-	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "M"}); err != nil {
+	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}); err != nil {
 		t.Fatal(err)
 	}
 	if stub.addBody["rootFolderPath"] != "/custom/movies" {
@@ -204,12 +204,12 @@ func TestArr_RootFolderOverride(t *testing.T) {
 
 func TestArr_Cancel_DeletesQueueRecord(t *testing.T) {
 	stub := newArrStub(t, "movie")
-	stub.lookupID = 42   // the movie's arr id
-	stub.queueForID = 42 // a queue record for that movie…
-	stub.queueRecID = 99 // …with queue id 99
+	stub.lookupID = 90000042   // the movie's arr id
+	stub.queueForID = 90000042 // a queue record for that movie…
+	stub.queueRecID = 99       // …with queue id 99
 	a := arrFor("movie", stub.server.URL, "", "")
 
-	if err := a.Cancel(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "M"}); err != nil {
+	if err := a.Cancel(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}); err != nil {
 		t.Fatal(err)
 	}
 	if stub.deletedID != 99 {
@@ -219,11 +219,11 @@ func TestArr_Cancel_DeletesQueueRecord(t *testing.T) {
 
 func TestArr_Cancel_NoQueueRecordIsNoop(t *testing.T) {
 	stub := newArrStub(t, "movie")
-	stub.lookupID = 42
+	stub.lookupID = 90000042
 	stub.queueForID = 1 // a different movie is queued; ours isn't
 	stub.queueRecID = 5
 	a := arrFor("movie", stub.server.URL, "", "")
-	if err := a.Cancel(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 603, Name: "M"}); err != nil {
+	if err := a.Cancel(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000603, Name: "M"}); err != nil {
 		t.Fatal(err)
 	}
 	if stub.deletedID != 0 {
@@ -251,7 +251,7 @@ func TestArr_UnconfiguredArrForMediaTypeFails(t *testing.T) {
 		Sonarr: func() (string, string) { return "http://sonarr", "k" },
 		Radarr: func() (string, string) { return "", "" },
 	})
-	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 1, Name: "M"}); err == nil {
+	if err := a.Request(context.Background(), provision.Title{MediaType: provision.Movie, TMDBID: 90000001, Name: "M"}); err == nil {
 		t.Error("movie with no Radarr should fail")
 	}
 }
