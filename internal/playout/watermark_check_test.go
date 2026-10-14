@@ -112,6 +112,37 @@ func TestBugChroma_SeesAColourCast(t *testing.T) {
 	}
 }
 
+// The coloured target (#1659 Q2): a bug converted with BT.709 passes, the same bug converted with
+// ffmpeg's unstated BT.601 default (the CUDA path before its explicit step) fails on luma or chroma,
+// and so does a white bug where a coloured one was expected.
+func TestColourTarget_SeesTheWrongMatrix(t *testing.T) {
+	if checkWhite.y != 235 || checkWhite.u != 128 || checkWhite.v != 128 {
+		t.Fatalf("white target %+v, want 235/128/128", checkWhite)
+	}
+	bug := Rect{X: 1680, Y: 54, W: 64, H: 64}
+	bg := [3]byte{120, 128, 128}
+	blend := func(c byte, v float64) byte { return byte(math.Round(checkAlpha*v + (1-checkAlpha)*float64(c))) }
+	r, g, b := float64(checkColour.rgb.R)/255, float64(checkColour.rgb.G)/255, float64(checkColour.rgb.B)/255
+	y601 := 0.299*r + 0.587*g + 0.114*b
+	bt601 := [3]float64{16 + 219*y601, 128 + 224*(b-y601)/1.772, 128 + 224*(r-y601)/1.402}
+	off := yuvFrame(bg, bg, Rect{})
+	passes := func(t3 [3]float64) bool {
+		in := [3]byte{blend(bg[0], t3[0]), blend(bg[1], t3[1]), blend(bg[2], t3[2])}
+		on := yuvFrame(bg, in, bug)
+		m := compareBugTo(off[:checkWidth*checkHeight], on[:checkWidth*checkHeight], checkWidth, bug, checkColour.y)
+		return math.Abs(m.bugLuma-m.bugWant) <= bugTolerance && bugChromaOf(off, on, bug, checkColour) == nil
+	}
+	if !passes([3]float64{checkColour.y, checkColour.u, checkColour.v}) {
+		t.Fatal("a correct BT.709 coloured blend fails")
+	}
+	if passes(bt601) {
+		t.Error("a BT.601-converted coloured bug passes")
+	}
+	if passes([3]float64{235, 128, 128}) {
+		t.Error("a white bug passes the coloured target")
+	}
+}
+
 func TestSameParameterSets(t *testing.T) {
 	sps := []byte{0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27, 0xe5, 0x80}
 	sps1088 := []byte{0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x04, 0x4f, 0xcb, 0x80}
