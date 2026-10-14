@@ -29,7 +29,7 @@ const idleController = () => {
   const calls: string[] = [];
   const transport: PlayerTransport = {
     dispose: vi.fn(),
-    goLive: vi.fn(),
+    goLive: vi.fn(() => void calls.push("goLive")),
     pause: vi.fn(() => void calls.push("pause")),
     play: vi.fn(() => void calls.push("play")),
     replace: vi.fn(async (source) => void calls.push(`replace:${source.uri}`)),
@@ -57,6 +57,7 @@ const playingOnA = async () => {
   expect(idle.controller.getSnapshot()).toMatchObject({ channel: { id: "a" }, status: "playing" });
   // Tuning drives the transport itself; only what the shell does from here on is under test.
   idle.calls.length = 0;
+  vi.mocked(idle.transport.goLive).mockClear();
   vi.mocked(idle.transport.play).mockClear();
   vi.mocked(idle.transport.pause).mockClear();
   return idle;
@@ -84,7 +85,7 @@ const mountShell = async (initial: PlayerController) => {
 };
 
 describe("shell pause", () => {
-  it("pauses the picture on leaving Watching and resumes the same channel on return", async () => {
+  it("pauses the picture on leaving Watching and resumes the same channel at live on return", async () => {
     const { controller, transport } = await playingOnA();
     const shell = await mountShell(controller);
     expect(transport.pause).not.toHaveBeenCalled();
@@ -92,10 +93,12 @@ describe("shell pause", () => {
     await shell.render(controller, false);
     expect(transport.pause).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot()).toMatchObject({ channel: { id: "a" }, status: "paused" });
-    expect(transport.play).not.toHaveBeenCalled();
+    expect(transport.goLive).not.toHaveBeenCalled();
 
+    // Leaving Watching keeps you live: a plain play would resume where the shell paused, behind live.
     await shell.render(controller, true);
-    expect(transport.play).toHaveBeenCalledTimes(1);
+    expect(transport.goLive).toHaveBeenCalledTimes(1);
+    expect(transport.play).not.toHaveBeenCalled();
     await shell.unmount();
   });
 
@@ -110,7 +113,7 @@ describe("shell pause", () => {
     expect(controller.getSnapshot()).toMatchObject({ channel: { id: "a" }, status: "paused" });
 
     await shell.render(controller, watching("watching"));
-    expect(transport.play).toHaveBeenCalledTimes(1);
+    expect(transport.goLive).toHaveBeenCalledTimes(1);
     await shell.unmount();
   });
 
@@ -132,19 +135,19 @@ describe("shell pause", () => {
 
   it("forgetting for another channel leaves nothing to resume, even if the snapshot still reads A paused", () => {
     // A controller whose snapshot has not yet moved to B: only forget stops A from being resumed.
-    const play = vi.fn();
+    const goLive = vi.fn();
     let status: "paused" | "playing" = "playing";
     const shellPause = createShellPause({
       getSnapshot: () => ({ channel: channels[0], status }) as ReturnType<PlayerController["getSnapshot"]>,
+      goLive,
       pause: () => {
         status = "paused";
       },
-      play,
     });
     shellPause.leave();
     shellPause.forget("b");
     shellPause.enter();
-    expect(play).not.toHaveBeenCalled();
+    expect(goLive).not.toHaveBeenCalled();
   });
 
   it("resumes the paused channel when the Guide tunes it again", async () => {
@@ -157,8 +160,8 @@ describe("shell pause", () => {
     await act(async () => controller.tuneChannel("a"));
     await shell.render(controller, true);
 
-    expect(calls).toEqual(["pause", "play"]);
-    expect(transport.play).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(["pause", "goLive"]);
+    expect(transport.goLive).toHaveBeenCalledTimes(1);
     await shell.unmount();
   });
 
@@ -197,9 +200,9 @@ describe("shell pause", () => {
     shellPause.leave();
     shellPause.enter();
 
-    expect(transport.play).toHaveBeenCalledTimes(1);
+    expect(transport.goLive).toHaveBeenCalledTimes(1);
     shellPause.enter();
-    expect(transport.play).toHaveBeenCalledTimes(1);
+    expect(transport.goLive).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a stream the viewer paused themselves alone", async () => {
@@ -210,6 +213,38 @@ describe("shell pause", () => {
     shellPause.leave();
     shellPause.enter();
 
+    expect(transport.goLive).not.toHaveBeenCalled();
     expect(transport.play).not.toHaveBeenCalled();
+  });
+
+  // iPhone simulator, killed tunnel: the stall failed, the viewer opened Requests and came back to a
+  // black picture under "Paused · 1:37 behind" and Go Live, because leaving had paused the failure away.
+  it("keeps a stall failure and its Retry across leaving Watching and coming back", async () => {
+    vi.useFakeTimers();
+    try {
+      const { controller, listeners, transport } = await playingOnA();
+      const attemptId = controller.getSnapshot().attemptId as number;
+      // The native transport reports its own pause back, as it does on the phone.
+      vi.mocked(transport.pause).mockImplementation(() => {
+        for (const listener of listeners) listener({ attemptId, type: "paused" });
+      });
+      for (const listener of listeners) listener({ attemptId, type: "stalled" });
+      await vi.advanceTimersByTimeAsync(20_000);
+      const failed = { error: "Lost the connection to the server.", status: "failed" };
+      expect(controller.getSnapshot()).toMatchObject(failed);
+      const shell = await mountShell(controller);
+
+      await shell.render(controller, false);
+      // The dead player stops rather than play on unseen if the stream comes back by itself.
+      expect(transport.pause).toHaveBeenCalledTimes(1);
+      expect(controller.getSnapshot()).toMatchObject(failed);
+
+      await shell.render(controller, true);
+      expect(transport.goLive).not.toHaveBeenCalled();
+      expect(controller.getSnapshot()).toMatchObject(failed);
+      await shell.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

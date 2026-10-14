@@ -118,6 +118,7 @@ const WatchingScreen = ({ client }: { client: PairedClient }) => {
             onPrevious={() => previousId && void controller.tuneChannel(previousId)}
             onToggleFavourite={() => channelId && void myChannels.setFavourite(channelId, !isFavourite)}
             onTune={(channelId) => void controller.tuneChannel(channelId)}
+            reconnecting={snapshot.status === "tuning" && snapshot.reconnecting !== undefined}
             schedule={panel.schedule}
           />
         </ScrollView>
@@ -136,7 +137,7 @@ const MobileShell = ({ credential, session }: { credential: PairingCredential; s
   // Requests loads with the app so an admin's tab badge counts before they open it.
   const requests = usePairedRequests({ credential, session });
   // The picture is only mounted on Watching, so a stream left running elsewhere would play unseen:
-  // pause when the viewer leaves Watching, and resume what the shell paused when they come back.
+  // pause when the viewer leaves Watching, and resume what the shell paused, at live, when they come back.
   const forgetShellPause = useShellPause(controller, active === "watching");
   // Watching a channel from outside it (a Guide pick, a finished request's Open channel).
   const watchChannel = (channelId: string) => {

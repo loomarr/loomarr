@@ -27,6 +27,8 @@ interface WatchingPanelProps {
   /** Star or unstar the tuned channel. Omit where the client can't write favourites: no star is drawn. */
   onToggleFavourite?: () => void;
   onTune: (channelId: string) => void;
+  /** The stream stalled and the player is rejoining it: the info block says "Reconnecting…". */
+  reconnecting?: boolean;
   schedule?: WatchingScheduleData;
 }
 

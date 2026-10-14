@@ -125,6 +125,11 @@ describe("WatchingPanel", () => {
     expect(html).toContain("Live");
   });
 
+  it("says Reconnecting… in the info block only while the stream is being rejoined", () => {
+    expect(markup({ reconnecting: true })).toContain("Reconnecting…");
+    expect(markup()).not.toContain("Reconnecting…");
+  });
+
   it("carries the four controls under the picture, then what's next and the favourites", () => {
     const html = markup();
     for (const label of ["Previous", "Channel −", "Pause", "Channel +"]) expect(html).toContain(label);

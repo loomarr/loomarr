@@ -2,10 +2,13 @@ import { useEffect, useMemo } from "react";
 
 import type { PlayerController } from "../player-controller";
 
-type ShellPauseController = Pick<PlayerController, "getSnapshot" | "pause" | "play">;
+type ShellPauseController = Pick<PlayerController, "getSnapshot" | "goLive" | "pause">;
 
 interface ShellPause {
-  /** The viewer returned to the picture: resumes only what the shell paused, if it is still paused. */
+  /**
+   * The viewer returned to the picture: resumes only what the shell paused, if it is still paused,
+   * and at the live edge, because leaving Watching is not a pause the viewer asked for.
+   */
   enter: () => void;
   /**
    * The viewer chose `targetChannelId` to watch: a different channel replaces the stream the shell paused,
@@ -30,7 +33,7 @@ const createShellPause = (controller: ShellPauseController): ShellPause => {
       pausedChannelId = undefined;
       if (!intent) return;
       const { channel, status } = controller.getSnapshot();
-      if (status === "paused" && channel?.id === intent) void controller.play();
+      if (status === "paused" && channel?.id === intent) void controller.goLive();
     },
     forget: (targetChannelId) => {
       if (pausedChannelId !== targetChannelId) pausedChannelId = undefined;
