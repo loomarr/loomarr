@@ -218,7 +218,9 @@ describe("ManualChannelBuilder resume banner", () => {
 
     await user.click(screen.getByRole("button", { name: "Try AI suggestions" }));
 
-    await waitFor(() => expect(onAiSubmitted).toHaveBeenCalledWith("job-manual-2", comedyIdea.pitch));
+    await waitFor(() =>
+      expect(onAiSubmitted).toHaveBeenCalledWith("job-manual-2", comedyIdea.pitch, "Comedy Movies"),
+    );
     expect(submitted).toEqual({
       name: "Comedy Movies",
       description: comedyIdea.pitch,

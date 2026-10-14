@@ -777,6 +777,9 @@ func IntentHash(i Intent) string {
 		// same channel. The current lineup is folded in via its keys (order-independent).
 		Refine     string
 		LineupKeys []string
+		// A fixed name lands verbatim on the proposal, so a cached one with another name must
+		// not answer for it. Omitted when empty, leaving unnamed hashes unchanged.
+		Name string `json:",omitempty"`
 	}{
 		AudienceConstraint: audienceConstraint,
 		NamedBlockLabel:    strings.ToLower(namedBlockLabel(i)),
@@ -790,6 +793,7 @@ func IntentHash(i Intent) string {
 		Include: normSlice(i.MustInclude), Exclude: normSlice(i.MustExclude),
 		Refine:     strings.ToLower(strings.TrimSpace(i.RefineText)),
 		LineupKeys: lineupKeys(i.CurrentLineup),
+		Name:       strings.TrimSpace(i.ChannelName),
 	}
 	blob, _ := json.Marshal(norm)
 	sum := sha256.Sum256(blob)

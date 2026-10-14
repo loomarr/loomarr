@@ -7,6 +7,7 @@ import type { SuggestionRun } from "../use-suggestion-run";
 interface PendingResume {
   jobId: string;
   description: string;
+  channelName: string;
 }
 
 // useAiResume carries a hand-built lineup into the AI path (#1817, the resume banner's
@@ -18,6 +19,10 @@ interface PendingResume {
 // manual lineup as the selection, and when the expansion's new proposal replaces it, that
 // selection is carried over and the AI titles arrive as optional additions. Revising before
 // the review existed would leave nothing to carry over.
+//
+// The name the person typed is kept the same way the picks are: the server names a revised
+// proposal itself, so the typed name goes in the revision as the Intent's fixed `channelName`,
+// which the server keeps over the model's. With no typed name, the model names the channel.
 const useAiResume = (
   run: SuggestionRun,
   edit: ApprovalEditDTO | undefined,
@@ -35,20 +40,22 @@ const useAiResume = (
     }
     if (!proposal || run.isRunning) return;
     setPending(undefined);
-    run.revise(
-      suggestionExpansionIntent(
+    const channelName = pending.channelName.trim();
+    run.revise({
+      ...suggestionExpansionIntent(
         proposal,
         edit,
         [...optionalSuggestions, ...(proposal.alternates ?? [])],
         pending.description,
       ),
-    );
+      ...(channelName ? { channelName } : {}),
+    });
   }, [pending, run, proposal, edit, optionalSuggestions]);
 
   return {
-    resumeWithAi: (jobId: string, description: string) => {
+    resumeWithAi: (jobId: string, description: string, channelName = "") => {
       run.resume(jobId);
-      setPending({ jobId, description });
+      setPending({ jobId, description, channelName });
     },
     resuming: pending !== undefined,
   };

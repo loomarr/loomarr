@@ -152,9 +152,9 @@ const ChannelSuggestPanel = ({
             setBuilding(false);
             run.resume(jobId);
           }}
-          onAiSubmitted={(jobId, description) => {
+          onAiSubmitted={(jobId, description, channelName) => {
             setBuilding(false);
-            resumeWithAi(jobId, description);
+            resumeWithAi(jobId, description, channelName);
           }}
           onDescribeWithAi={(description) => {
             setBuilding(false);

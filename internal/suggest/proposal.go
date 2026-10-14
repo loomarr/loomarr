@@ -29,6 +29,10 @@ type Intent struct {
 	MustInclude []string `json:"mustInclude,omitempty"`      // titles/terms to include
 	MustExclude []string `json:"mustExclude,omitempty"`      // titles/terms to exclude
 	MaxAcquire  int      `json:"maxAcquisitions,omitempty"`  // cap on acquisitions (§8 quota)
+	// ChannelName is a name the requester fixed (the manual builder's typed name when it hands
+	// over to AI, #1914). When set, the proposal keeps it instead of the model's; empty ⇒ the
+	// model names the channel.
+	ChannelName string `json:"channelName,omitempty"`
 	// Refine inputs (§7 refine): a free-text change ("add more Schwarzenegger, drop the
 	// slow ones") plus the channel's CURRENT lineup as context. The prompt renders these
 	// so the model reasons from what's already on the channel and returns a revised

@@ -118,7 +118,8 @@ const ManualChannelBuilder = ({
   };
   // The picks go through the same grounded submit as "Continue to review", so AI starts from
   // the recorded lineup rather than from a copy of it. AI is asked about the description the
-  // person wrote; the name stands in when there is none.
+  // person wrote; the name stands in when there is none. The typed name rides along so the
+  // revision keeps it rather than taking the model's.
   const tryAi = () => {
     const brief = description.trim() || name.trim();
     if (lineup.length === 0) {
@@ -126,7 +127,7 @@ const ManualChannelBuilder = ({
       return;
     }
     if (!canContinue) return;
-    submitLineup((jobId) => onAiSubmitted?.(jobId, brief));
+    submitLineup((jobId) => onAiSubmitted?.(jobId, brief, name.trim()));
   };
   const tryAiBlockedReason =
     lineup.length > 0 && name.trim() === "" ? "Name this channel to try AI suggestions." : undefined;

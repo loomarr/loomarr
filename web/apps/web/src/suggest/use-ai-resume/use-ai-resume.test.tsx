@@ -88,7 +88,10 @@ describe("useAiResume", () => {
     handlers = undefined;
   });
 
-  it("asks AI for more titles and keeps every hand-picked title in the lineup", async () => {
+  // Resumes the manual Job with AI, captures the one expansion revision, then lands the model's
+  // answer: new titles only, as the expansion prompt asks, named as the server names it (the
+  // revision's fixed name when it carries one, else the model's own).
+  const resumeAndExpand = async (channelName?: string) => {
     const journey = manualJourney();
     const revisions: Intent[] = [];
     server.use(
@@ -102,19 +105,15 @@ describe("useAiResume", () => {
         return { jobId: "job-manual" };
       }),
     );
-    const { result } = renderHook(useResumeHarness, { wrapper: makeWrapper() });
+    const hook = renderHook(useResumeHarness, { wrapper: makeWrapper() });
 
-    act(() => result.current.resumeWithAi("job-manual", "Moody mysteries for a rainy evening"));
+    act(() =>
+      hook.result.current.resumeWithAi("job-manual", "Moody mysteries for a rainy evening", channelName),
+    );
 
-    // One expansion revision, fired only after the manual review landed: the brief the person
-    // wrote, the picks as the kept lineup, and the dedicated option-expansion refinement.
     await waitFor(() => expect(revisions).toHaveLength(1));
     const [revision] = revisions;
-    expect(revision?.description).toBe("Moody mysteries for a rainy evening");
-    expect(revision?.currentLineup?.map((item) => item.key)).toEqual(picks.map(provisionKey));
-    expect(isSuggestionExpansion(revision?.refineText)).toBe(true);
 
-    // The model answers with new titles only, as the expansion prompt asks.
     journey.milestone = "awaiting_approval";
     journey.actions = ["review", "edit"];
     journey.proposal = {
@@ -122,7 +121,7 @@ describe("useAiResume", () => {
       status: "submitted",
       proposal: {
         intent: revision as Intent,
-        channelName: "Rainy Night Mysteries",
+        channelName: revision?.channelName || "Rainy Village Mysteries",
         lineup: offered,
         acquisitions: [],
         alternates: [],
@@ -133,7 +132,18 @@ describe("useAiResume", () => {
     await act(async () => {
       handlers?.onSuggestion?.({ jobId: "job-manual", phase: "done", round: 0 });
     });
-    await waitFor(() => expect(result.current.run.proposal?.id).toBe("proposal-expanded"));
+    await waitFor(() => expect(hook.result.current.run.proposal?.id).toBe("proposal-expanded"));
+    return { ...hook, revision, revisions };
+  };
+
+  it("asks AI for more titles and keeps every hand-picked title in the lineup", async () => {
+    const { result, revision, revisions } = await resumeAndExpand("Rainy Night Mysteries");
+
+    // One expansion revision, fired only after the manual review landed: the brief the person
+    // wrote, the picks as the kept lineup, and the dedicated option-expansion refinement.
+    expect(revision?.description).toBe("Moody mysteries for a rainy evening");
+    expect(revision?.currentLineup?.map((item) => item.key)).toEqual(picks.map(provisionKey));
+    expect(isSuggestionExpansion(revision?.refineText)).toBe(true);
 
     // No pick lost: both stay selected (carried as additions over the replacement), and the AI
     // titles arrive as optional suggestions rather than replacing them.
@@ -142,5 +152,20 @@ describe("useAiResume", () => {
     expect(result.current.optionalSuggestions.map(provisionKey)).toEqual(offered.map(provisionKey));
     expect(result.current.resuming).toBe(false);
     expect(revisions).toHaveLength(1);
+  });
+
+  it("keeps the typed channel name through the expansion", async () => {
+    const { result, revision } = await resumeAndExpand("  Rainy Night Mysteries ");
+
+    // The typed name is a fixed field of the revision, so the server keeps it over the model's.
+    expect(revision?.channelName).toBe("Rainy Night Mysteries");
+    expect(result.current.run.proposal?.proposal.channelName).toBe("Rainy Night Mysteries");
+  });
+
+  it("lets the AI name the channel when no name was typed", async () => {
+    const { result, revision } = await resumeAndExpand();
+
+    expect(revision).not.toHaveProperty("channelName");
+    expect(result.current.run.proposal?.proposal.channelName).toBe("Rainy Village Mysteries");
   });
 });
