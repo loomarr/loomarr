@@ -38,6 +38,13 @@ export type {
   ProgrammeIdentityProps,
 } from "./src/identity";
 export { ChannelIdentity, ProgrammeIdentity } from "./src/identity";
+export type {
+  OnScreenLogoHoliday,
+  OnScreenLogoPolicy,
+  OnScreenLogoPreviewRequest,
+  OnScreenLogoSectionProps,
+} from "./src/on-screen-logo";
+export { OnScreenLogoSection } from "./src/on-screen-logo";
 export type { ModalOverlayProps, OverlayAction, TransientOverlayProps } from "./src/overlay";
 export { ModalOverlay, TransientOverlay } from "./src/overlay";
 export type { ApprovalBrowser, PairingShellProps } from "./src/pairing-shell";
