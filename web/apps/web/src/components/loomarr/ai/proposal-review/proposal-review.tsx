@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   MAX_SUGGESTION_OPTIONS,
-  suggestionExpansionRequest,
+  selectedLineupContext,
+  suggestionExpansionIntent,
   suggestionIdentity,
 } from "@/suggest/suggestion-expansion";
 import { friendlyCandidateName, friendlyProposalRationale } from "@/suggest/suggestion-language";
@@ -45,34 +46,6 @@ const availabilitySummary = (selected: number, ready: number, missing: number) =
   if (missing === 0) return `${titles} · all in your library`;
   if (ready === 0) return `${titles} · ${missing} will be added`;
   return `${titles} · ${ready} in your library · ${missing} will be added`;
-};
-
-const selectedLineupContext = (
-  lineup: ProposalReviewProps["proposal"]["lineup"],
-  acquisitions: ProposalReviewProps["proposal"]["acquisitions"],
-  edit: ProposalReviewProps["edit"],
-) => {
-  const dropped = new Set(edit?.drop ?? []);
-  const selected = [
-    ...lineup.filter((item) => !dropped.has(provisionKey(item))),
-    ...acquisitions.filter((item) => !dropped.has(provisionKey(item))),
-    ...(edit?.add ?? []),
-  ];
-  const seen = new Set<string>();
-
-  return selected.flatMap((item) => {
-    const key = provisionKey(item);
-    const identity = key || `${item.mediaType}:${item.name.toLocaleLowerCase()}:${item.year ?? ""}`;
-    if (seen.has(identity)) return [];
-    seen.add(identity);
-    return [
-      {
-        name: item.name,
-        ...(item.year ? { year: item.year } : {}),
-        ...(key ? { key } : {}),
-      },
-    ];
-  });
 };
 
 const ProposalReview = ({
@@ -116,7 +89,7 @@ const ProposalReview = ({
     acquisitions.filter((item) => !dropped.has(provisionKey(item))).length +
     (edit?.add?.filter((item) => !item.inLibrary).length ?? 0);
   const selectedCount = selectedReady + selectedMissing;
-  const currentLineup = selectedLineupContext(lineup, acquisitions, edit);
+  const currentLineup = selectedLineupContext(proposal, edit);
   const {
     refineText: _previousRefinement,
     currentLineup: _previousLineup,
@@ -288,11 +261,9 @@ const ProposalReview = ({
           actionable && onRevise && suggestionIdentities.size < MAX_SUGGESTION_OPTIONS
             ? () => {
                 setFindingMore(true);
-                onRevise({
-                  ...requestIntent,
-                  currentLineup,
-                  refineText: suggestionExpansionRequest([...(optionalSuggestions ?? []), ...alternates]),
-                });
+                onRevise(
+                  suggestionExpansionIntent(proposal, edit, [...(optionalSuggestions ?? []), ...alternates]),
+                );
               }
             : undefined
         }

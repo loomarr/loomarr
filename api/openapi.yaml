@@ -5660,6 +5660,8 @@ components:
           items:
             $ref: "#/components/schemas/AdjacentContext"
           type: array
+        channelName:
+          type: string
         currentLineup:
           items:
             $ref: "#/components/schemas/LineupContext"
