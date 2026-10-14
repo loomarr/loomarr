@@ -48,6 +48,14 @@ var migratedTitles = []string{
 	"TGIF", "Frasier", "Modern Marvels", "Roosevelts", "History Channel", "Discovery Channel", "Toonami",
 	"Sabrina the Teenage Witch", "Boy Meets World", "Camp Wilder", "Mr. Cooper", "Teen Angel", "Iron Man",
 	"MCU",
+	// The remaining suggest tests (slice 8). Common words and phrases these titles share ("Big",
+	// "Speed", "step by step", "criterion") are left out: they would match ordinary prose.
+	"Gremlins", "Back to the Future", "Goonies", "Raiders of the Lost Ark", "Temple of Doom", "Last Crusade",
+	"Dial of Destiny", "Toy Story", "Castle in the Sky", "Shrunk the Kids", "Beetlejuice", "Ferris Bueller",
+	"Coming to America", "Teen Wolf", "Weekend at Bernie's", "Sister Act", "To Be or Not to Be",
+	"Lover Come Back", "Casablanca", "The Expanse", "Matrix Reloaded", "Matrix Revolutions", "Father Brown",
+	"with Children", "MST3K", "DS9", "Tom Hanks", "Meg Ryan", "Nora Ephron", "Keanu Reeves", "Wachowski",
+	"Tiffani Thiessen", "Jeff Franklin", "David Simon", "Idris Elba", "HBO", "PG Tips",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -120,6 +128,26 @@ var migratedGo = []string{
 	"internal/suggest/query_expansion_regression_test.go",
 	"internal/suggest/reference_discovery_internal_test.go",
 	"internal/suggest/reference_discovery_test.go",
+	// The remaining suggest tests (slice 8).
+	"internal/suggest/approval_size_test.go",
+	"internal/suggest/approve_test.go",
+	"internal/suggest/candidate_key_test.go",
+	"internal/suggest/channel_name_test.go",
+	"internal/suggest/date_retrieval_test.go",
+	"internal/suggest/diagnostic_test.go",
+	"internal/suggest/editorial_role_test.go",
+	"internal/suggest/example_fill_test.go",
+	"internal/suggest/failure_test.go",
+	"internal/suggest/named_example_titles_test.go",
+	"internal/suggest/parse_test.go",
+	"internal/suggest/policy_extract_test.go",
+	"internal/suggest/prepare_approval_test.go",
+	"internal/suggest/progress_stream_test.go",
+	"internal/suggest/proposal_size_internal_test.go",
+	"internal/suggest/ranker_test.go",
+	"internal/suggest/score_era_test.go",
+	"internal/suggest/score_intent_test.go",
+	"internal/suggest/tools_internal_test.go",
 }
 
 // pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).
