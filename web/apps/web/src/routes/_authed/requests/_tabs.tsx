@@ -76,7 +76,10 @@ const RequestsLayout = () => {
             id={`panel-${activeId}`}
             role="tabpanel"
             aria-labelledby={`tab-${activeId}`}
-            className="flex flex-1 flex-col gap-6 overflow-auto p-6"
+            // Rows as tall as their content (`auto-rows-max`), so the panel scrolls. A flex column,
+            // or plain auto rows, shrank an `overflow-hidden` list instead (its minimum height is
+            // 0), hiding its last rows with nothing to scroll (#1785, 320×640).
+            className="grid flex-1 auto-rows-max gap-6 overflow-auto p-6"
           >
             <Outlet />
           </div>

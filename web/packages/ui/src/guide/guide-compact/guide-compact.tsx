@@ -18,8 +18,10 @@ import type { GuideCompactProps } from "./guide-compact.type";
 // foot with Watch (5f's docked strip). Tapping a cell selects it; Watch tunes its channel.
 //
 // A row is the 44 pt target the decision asks for (48 tall, the cell drawn 3 px inside it); a
-// programme shorter than that is drawn as narrow as its time, its tap area widened to 44 pt with a
-// hit slop the dock's full title makes up for.
+// programme shorter than that is drawn as narrow as its time, its tap area widened to 44 pt, and
+// the dock's full title makes up for the short label. The widening is the Pressable's own box,
+// not a hitSlop: react-native-web ignores hitSlop, which left a one-minute break a 3 px target on
+// the web (#1785).
 
 const GUTTER = 16;
 const MIN_HIT = 44;
@@ -40,7 +42,7 @@ const selectionOf = (airing: GuideAiringLayout): GuideSelection => ({
 
 // How far a cell's tap area reaches past its drawn width to make 44 pt. A cell clipped by a window
 // edge grows toward the window, since nothing is past the edge to tap.
-const airingHitSlop = (airing: GuideAiringLayout, timelinePx: number) => {
+const airingHitReach = (airing: GuideAiringLayout, timelinePx: number) => {
   const missing = MIN_HIT - airing.widthRatio * timelinePx;
   if (missing <= 0) return undefined;
   const clippedStart = airing.startRatio <= 0;
@@ -103,8 +105,11 @@ const GuideCompact = ({
   const hitTimelinePx = timelineWidth || Math.max(0, windowWidth - 2 * GUTTER - NUMBER_COLUMN);
   const hourPx = (timelineWidth * hourMs) / span;
   const stride = hourPx <= 0 ? 1 : (LABEL_STRIDES.find((s) => s * hourPx >= LABEL_MIN_PX) ?? 6);
+  // An hour too close to the right edge for its label is not labelled: the label would wrap to
+  // "7 / PM" and be cut by the edge (#1785). With no width known yet, every hour is.
   const labelled = (t: number, index: number) =>
     index % stride === 0 &&
+    (hitTimelinePx === 0 || (1 - (t - layout.fromMs) / span) * hitTimelinePx >= LABEL_MIN_PX) &&
     (nowRatio === undefined ||
       Math.abs(((t - layout.fromMs) / span - nowRatio) * timelineWidth) >= BADGE_CLEAR_PX);
 
@@ -211,7 +216,9 @@ const GuideCompact = ({
                   {channel.airings.map((airing) => {
                     const selected = rowSelected && airing.scheduleBlockId === selection?.scheduleBlockId;
                     const label = guideAiringLabel(airing.source);
-                    const hitSlop = airingHitSlop(airing, hitTimelinePx);
+                    const reach = airingHitReach(airing, hitTimelinePx);
+                    const drawnLeft = airing.startRatio * hitTimelinePx;
+                    const drawnWidth = airing.widthRatio * hitTimelinePx;
                     return (
                       <Pressable
                         accessibilityLabel={`${channel.source.number} ${channel.source.name}, ${label}, ${formatGuideTimeRange(
@@ -222,7 +229,6 @@ const GuideCompact = ({
                         accessibilityRole="button"
                         accessibilityState={{ selected }}
                         aria-pressed={selected}
-                        hitSlop={hitSlop}
                         key={airing.scheduleBlockId}
                         onPress={() => {
                           setDismissedBlockId(undefined);
@@ -230,43 +236,60 @@ const GuideCompact = ({
                         }}
                         style={{
                           bottom: 0,
-                          left: `${airing.startRatio * 100}%`,
-                          paddingRight: 3,
-                          paddingVertical: 3,
+                          left: drawnLeft - (reach?.left ?? 0),
                           position: "absolute",
                           top: 0,
-                          width: `${airing.widthRatio * 100}%`,
-                          // Where tap areas overlap the selected cell wins, then a narrow one: a
-                          // wide neighbour keeps the middle of its own cell.
-                          zIndex: selected ? 2 : hitSlop ? 1 : 0,
+                          width: drawnWidth + (reach?.left ?? 0) + (reach?.right ?? 0),
+                          // Where tap areas overlap the selected cell wins, then the narrower one:
+                          // a wide neighbour keeps the middle of its own cell, and a one-minute
+                          // break between two short programmes still owns its own centre.
+                          zIndex: selected ? MIN_HIT + 1 : reach ? Math.ceil(MIN_HIT - drawnWidth) : 0,
                         }}
                       >
-                        <Surface
-                          backgroundColor={
-                            selected
-                              ? "$surfaceFocus"
-                              : airing.isOnNow
-                                ? "$surfaceElevated"
-                                : "$surfaceRaised"
-                          }
-                          // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
-                          borderColor={selected ? "$contentPrimary" : "$transparent"}
-                          borderRadius={4}
-                          borderWidth={2}
-                          flex={1}
-                          justifyContent="center"
-                          paddingHorizontal={6}
+                        {/* The cell is drawn at its own time, inside the wider tap area, and
+                            clipped there: a padded Surface is at least 16 px wide, and a one-minute
+                            break's painted over the start of the next title (#1785). The selected
+                            cell, drawn above its neighbours, keeps its focus box whole. */}
+                        <View
+                          pointerEvents="none"
+                          style={{
+                            bottom: 0,
+                            left: reach?.left ?? 0,
+                            overflow: selected ? "visible" : "hidden",
+                            paddingRight: 3,
+                            paddingVertical: 3,
+                            position: "absolute",
+                            top: 0,
+                            width: drawnWidth,
+                          }}
                         >
-                          <Text
-                            density={density}
-                            numberOfLines={1}
-                            textAlign="left"
-                            textRole="guideLabel"
-                            tone={selected || airing.isOnNow ? "primary" : "secondary"}
+                          <Surface
+                            backgroundColor={
+                              selected
+                                ? "$surfaceFocus"
+                                : airing.isOnNow
+                                  ? "$surfaceElevated"
+                                  : "$surfaceRaised"
+                            }
+                            // Pressed is neutral (#1909 Q2): amber is focus or the primary action.
+                            borderColor={selected ? "$contentPrimary" : "$transparent"}
+                            borderRadius={4}
+                            borderWidth={2}
+                            flex={1}
+                            justifyContent="center"
+                            paddingHorizontal={6}
                           >
-                            {label}
-                          </Text>
-                        </Surface>
+                            <Text
+                              density={density}
+                              numberOfLines={1}
+                              textAlign="left"
+                              textRole="guideLabel"
+                              tone={selected || airing.isOnNow ? "primary" : "secondary"}
+                            >
+                              {label}
+                            </Text>
+                          </Surface>
+                        </View>
                       </Pressable>
                     );
                   })}
