@@ -178,7 +178,7 @@ func testDiscoveryFeedback(t *testing.T, newStore NewStoreFunc) {
 			defer wg.Done()
 			errCh <- s.AppendDiscoveryFeedback(ctx, DiscoveryFeedback{ID: fmt.Sprintf("parallel-%d", i),
 				ActorID: "admin", Scope: FeedbackChannel, ScopeID: "channel-1",
-				Target: provision.Key(fmt.Sprintf("movie:tmdb:%d", 100+i)), Action: FeedbackLess,
+				Target: provision.Key(fmt.Sprintf("movie:tmdb:%d", 90_000_100+i)), Action: FeedbackLess,
 				CreatedAt: base.Add(2 * time.Second)})
 		}(i)
 	}

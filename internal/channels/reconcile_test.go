@@ -1146,17 +1146,17 @@ func TestReconcile_StampsBoxSetMembership(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
 	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
-	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:90000001": {"star-trek"}}}
+	res := &countingBoxSets{sets: map[provision.Key][]string{"movie:tmdb:90000001": {"juniper-vale"}}}
 	e := newEngine(st, tun, avail, nil).WithBoxSets(res)
 
-	seedChannel(t, st, "cbs", 8, entry("movie:tmdb:90000001", "A"))
-	if err := e.Reconcile(context.Background(), "cbs"); err != nil {
+	seedChannel(t, st, "box-sets", 8, entry("movie:tmdb:90000001", "A"))
+	if err := e.Reconcile(context.Background(), "box-sets"); err != nil {
 		t.Fatal(err)
 	}
 
-	got, _ := st.GetChannel(context.Background(), "cbs")
-	if ids := got.Lineup[0].BoxSetIDs; len(ids) != 1 || ids[0] != "star-trek" {
-		t.Errorf("BoxSetIDs = %v, want [star-trek] (stamped from the library + persisted)", ids)
+	got, _ := st.GetChannel(context.Background(), "box-sets")
+	if ids := got.Lineup[0].BoxSetIDs; len(ids) != 1 || ids[0] != "juniper-vale" {
+		t.Errorf("BoxSetIDs = %v, want [juniper-vale] (stamped from the library + persisted)", ids)
 	}
 	if !got.Lineup[0].BoxSetsResolved {
 		t.Error("BoxSetsResolved = false after a successful stamp — the entry will be re-fetched forever")

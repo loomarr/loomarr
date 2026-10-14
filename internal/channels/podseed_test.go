@@ -11,7 +11,7 @@ import (
 // an identical sequence — which real television does not do, and which `filler.Window` has
 // always documented against ("the seed derives from channel + window start").
 func TestPodSeedAt_DiffersPerBreak(t *testing.T) {
-	const ch = "ch_springfield"
+	const ch = "ch_puddleford"
 	seeds := map[int64]int64{}
 	// Six half-hourly breaks across an evening.
 	for i := int64(0); i < 6; i++ {
@@ -29,7 +29,7 @@ func TestPodSeedAt_DiffersPerBreak(t *testing.T) {
 // viewers tuning into one break mid-way would see different commercials — and the guide's
 // hover card would promise clips that are not the ones playing.
 func TestPodSeedAt_IsStableForTheSameBreak(t *testing.T) {
-	const ch, start = "ch_springfield", int64(1785000000000)
+	const ch, start = "ch_puddleford", int64(1785000000000)
 	first := channels.PodSeedAt(ch, start)
 	for i := 0; i < 50; i++ {
 		if got := channels.PodSeedAt(ch, start); got != first {
@@ -43,8 +43,8 @@ func TestPodSeedAt_IsStableForTheSameBreak(t *testing.T) {
 // the identical advert simultaneously.
 func TestPodSeedAt_DiffersPerChannelAtTheSameInstant(t *testing.T) {
 	const start = int64(1785000000000)
-	a := channels.PodSeedAt("ch_springfield", start)
-	b := channels.PodSeedAt("ch_startrek", start)
+	a := channels.PodSeedAt("ch_puddleford", start)
+	b := channels.PodSeedAt("ch_cold_relay", start)
 	if a == b {
 		t.Error("two channels breaking at the same moment share a seed — every channel would " +
 			"cut to the same advert at once")
@@ -55,12 +55,12 @@ func TestPodSeedAt_DiffersPerChannelAtTheSameInstant(t *testing.T) {
 // Tunarr (there is no break to seed from at attach time) and HasPool only asks whether
 // anything exists at all.
 func TestPodSeed_StillStableForTheChannelWidePool(t *testing.T) {
-	first := channels.PodSeed("ch_springfield")
-	if got := channels.PodSeed("ch_springfield"); got != first {
+	first := channels.PodSeed("ch_puddleford")
+	if got := channels.PodSeed("ch_puddleford"); got != first {
 		t.Fatal("the channel-wide seed is no longer stable; the Tunarr filler-list attach " +
 			"would stop being idempotent across reconciles")
 	}
-	if channels.PodSeed("ch_springfield") == channels.PodSeed("ch_startrek") {
+	if channels.PodSeed("ch_puddleford") == channels.PodSeed("ch_cold_relay") {
 		t.Error("two channels share the channel-wide pool seed")
 	}
 }
