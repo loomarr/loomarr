@@ -73,6 +73,10 @@ var migratedTitles = []string{
 	"Swiffer", "Aqua Globes", "Walgreens", "WKRP", "Smokey Bear", "Jersey Mike", "Turbo Teen",
 	"Highway Patrol", "Sega Genesis", "TMNT", "Capri Sun", "La Llave", "TV Puls", "NatWest", "Rumbelows",
 	"KCPQ", "WNYW", "WAGA", "Sony", "Lego", "NFL", "CBC",
+	// The web app, core and player tests, and the e2e mock backend (slice 14). "Speed" alone is
+	// left out: it would match ordinary prose.
+	"Wizarding World", "Crimson Tide", "Air Force One", "True Lies", "Enemy of the State", "Animaniacs",
+	"Gargoyles", "Warner Bros",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -100,11 +104,16 @@ var migrated = []string{
 	"web/apps/web/src/components/ui/card/card.stories.tsx",
 	"web/apps/web/src/components/ui/disclosure/disclosure.stories.tsx",
 	"web/apps/web/src/components/ui/label/label.stories.tsx",
+	// The layout and incoming stories and the e2e mock backend (slice 14).
+	"web/apps/web/src/design-system/layout.stories.tsx",
+	"web/apps/web/src/filler/incoming/incoming.stories.tsx",
+	"web/apps/web/tests/e2e/mock-backend.ts",
 }
 
-// migratedTests are the directories whose unit tests #1592 has moved onto the demo catalogue.
-// isFixture skips tests, so the migrated guard reads their *.test.* files from here; each entry
-// must hold at least one. Keep in step with the matching case in scripts/ci-impact.sh.
+// migratedTests are the directories whose unit tests and e2e specs #1592 has moved onto the demo
+// catalogue. isFixture skips tests, so the migrated guard reads their *.test.* and *.spec.* files
+// from here; each entry must hold at least one. Keep in step with the matching case in
+// scripts/ci-impact.sh.
 var migratedTests = []string{
 	"web/apps/web/src/components/loomarr/ai/approval-queue-item/",
 	"web/apps/web/src/components/loomarr/ai/episode-selection-label/",
@@ -146,6 +155,21 @@ var migratedTests = []string{
 	"web/apps/web/src/components/ui/video-player/",
 	"web/apps/web/src/lib/policy-overrides/",
 	"web/apps/web/src/queue/request-detail/",
+	// The rest of the web app's tests, its e2e specs, and the core and player packages (slice 14).
+	"web/apps/web/src/channels/use-channel-lineup/",
+	"web/apps/web/src/channels/use-channel-save/",
+	"web/apps/web/src/filler/channel-filler/",
+	"web/apps/web/src/filler/clip-details/",
+	"web/apps/web/src/filler/incoming/",
+	"web/apps/web/src/filler/sources-panel/",
+	"web/apps/web/src/queue/request-lists/",
+	"web/apps/web/src/suggest/channel-suggest-panel/",
+	"web/apps/web/src/suggest/manual-channel-builder/",
+	"web/apps/web/src/test/",
+	"web/apps/web/tests/e2e/",
+	"web/packages/core/src/",
+	"web/packages/core/tests/",
+	"web/packages/player/tests/",
 }
 
 // migratedGo are the Go trees and files #1592 has moved onto the demo catalogue: the API tests,
@@ -266,7 +290,6 @@ var legacyFixtures = []string{
 	"web/apps/web/src/components/ui/video-player/timeline-scrubber/timeline-scrubber.stories.tsx",
 	"web/apps/web/src/design-system/identity.stories.tsx",
 	"web/apps/web/src/design-system/overlay.stories.tsx",
-	"web/apps/web/tests/e2e/mock-backend.ts",
 	"web/native-stories/identity.stories.tsx",
 	"web/native-stories/overlay.stories.tsx",
 	"web/scripts/tv-emulator-fixture-server.mjs",
@@ -436,15 +459,16 @@ func fixtureFiles(t *testing.T, root string) []string {
 	return files
 }
 
-// migratedTestFiles lists the *.test.* files under migratedTests, repo-relative. An entry with
-// no test file fails, so a moved or renamed directory cannot leave the guard reading nothing.
+// migratedTestFiles lists the *.test.* and *.spec.* files under migratedTests, repo-relative. An
+// entry with no test file fails, so a moved or renamed directory cannot leave the guard reading
+// nothing.
 func migratedTestFiles(t *testing.T, root string) []string {
 	t.Helper()
 	var files []string
 	for _, dir := range migratedTests {
 		before := len(files)
 		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".test.") {
+			if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".test.") && !strings.Contains(d.Name(), ".spec.") {
 				return err
 			}
 			rel, _ := filepath.Rel(root, p)

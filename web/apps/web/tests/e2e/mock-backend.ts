@@ -666,7 +666,7 @@ const installMockBackend = async (page: Page, opts: MockOptions = {}): Promise<M
       if (found) found.status = "approved";
       // Only the not-in-library item becomes an acquisition — the in-library one is
       // already playable and never enters the provisioning loop (§8).
-      state.enqueued.push("series:tmdb:gargoyles");
+      state.enqueued.push("series:tmdb:90012345");
       return json(route, { channelId: "ch-new", enqueued: 1 });
     }
     if (path === "/v1/titles") {

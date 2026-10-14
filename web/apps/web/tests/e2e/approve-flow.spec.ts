@@ -37,7 +37,7 @@ test.describe("the approval gate", () => {
 
     await expect
       .poll(() => mock.state.enqueued, { message: "approving should enqueue the acquisition" })
-      .toEqual(["series:tmdb:gargoyles"]);
+      .toEqual(["series:tmdb:90012345"]);
     // This is the request-level control for recovery's negative case: the mock records the
     // actual approval mutation, not an inferred proposal status or a rendered button.
     expect(mock.state.approvalRequests).toEqual(["prop-1"]);

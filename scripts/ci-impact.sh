@@ -81,6 +81,15 @@ classify() {
     web/apps/web/src/components/ui/panel-row/*|web/apps/web/src/components/ui/sheet/*|web/apps/web/src/components/ui/video-player/*|web/apps/web/src/lib/policy-overrides/*|web/apps/web/src/queue/request-detail/*)
       [[ "$path" != *.test.* ]] || select_gate contracts
       ;;
+    web/apps/web/src/channels/use-channel-lineup/*|web/apps/web/src/channels/use-channel-save/*|web/apps/web/src/filler/channel-filler/*|web/apps/web/src/filler/clip-details/*|web/apps/web/src/filler/incoming/*|web/apps/web/src/filler/sources-panel/*|web/apps/web/src/queue/request-lists/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/src/suggest/channel-suggest-panel/*|web/apps/web/src/suggest/manual-channel-builder/*|web/apps/web/src/test/*|web/packages/core/src/*|web/packages/core/tests/*|web/packages/player/tests/*)
+      [[ "$path" != *.test.* ]] || select_gate contracts
+      ;;
+    web/apps/web/tests/e2e/*)
+      [[ "$path" != *.spec.ts ]] || select_gate contracts
+      ;;
   esac
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the

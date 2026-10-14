@@ -123,7 +123,7 @@ describe("Incoming", () => {
             total: 2,
           },
           recentlyReady: {
-            rows: [status({ clipHash: "ready-1", name: "Magna-Doodle commercial", statusLabel: "Ready" })],
+            rows: [status({ clipHash: "ready-1", name: "Sketchpad Doodler commercial", statusLabel: "Ready" })],
             total: 1,
           },
         }),
