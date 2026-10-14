@@ -17,8 +17,8 @@ func TestFillerEnrichmentBackfillCapturesExistingCatalogFactsOnce(t *testing.T) 
 	ctx := t.Context()
 	at := time.Unix(1_700_000_000, 0).UTC()
 	clip := store.Clip{Clip: filler.Clip{Hash: "existing", Path: "existing.mp4", Name: "Existing",
-		Kind: filler.Commercial, Era: 1999, Audience: filler.General, Brand: "HP Sauce",
-		GeographicScope: filler.GeographicNational, Country: "GB", Network: "Five", GeoEvidence: "operator"},
+		Kind: filler.Commercial, Era: 1999, Audience: filler.General, Brand: "Brambly Sauce",
+		GeographicScope: filler.GeographicNational, Country: "GB", Network: "Kestrel One", GeoEvidence: "operator"},
 		UpdatedAt: at, CreatedAt: at}
 	if err := opened.UpsertClip(ctx, clip); err != nil {
 		t.Fatal(err)
@@ -41,7 +41,7 @@ func TestFillerEnrichmentBackfillCapturesExistingCatalogFactsOnce(t *testing.T) 
 		byAxis[state.Axis] = state
 	}
 	if byAxis[fillerenrichment.AxisKind].Value.Text != "commercial" ||
-		byAxis[fillerenrichment.AxisEra].Value.Year != 1999 || byAxis[fillerenrichment.AxisBrand].Value.Text != "HP Sauce" ||
+		byAxis[fillerenrichment.AxisEra].Value.Year != 1999 || byAxis[fillerenrichment.AxisBrand].Value.Text != "Brambly Sauce" ||
 		byAxis[fillerenrichment.AxisGeography].Evidence.Kind != fillerenrichment.EvidenceOperator ||
 		len(byAxis[fillerenrichment.AxisProduct].Value.Tags) != 1 {
 		t.Fatalf("backfilled states = %+v", states)

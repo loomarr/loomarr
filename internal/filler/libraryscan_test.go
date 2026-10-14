@@ -43,7 +43,7 @@ func libraryOnDisk(t *testing.T, names ...string) (dir string, clips []LibraryCl
 // files a hand-dropped file. Copying them straight into the clip folder would be a second way in
 // — a divergent path where the hash, the dedupe and the sidecar could each be forgotten.
 func TestLibraryScan_CopiesIntoTheWatchFolderForIntake(t *testing.T) {
-	_, clips := libraryOnDisk(t, "Frosted Flakes 1993.mp4", "Station ID.mp4")
+	_, clips := libraryOnDisk(t, "Crunchlings 1993.mp4", "Station ID.mp4")
 	watch := filepath.Join(t.TempDir(), "watch")
 
 	s := NewLibraryScanner(&fakeLister{clips: clips}, nil)
@@ -59,7 +59,7 @@ func TestLibraryScan_CopiesIntoTheWatchFolderForIntake(t *testing.T) {
 	// literally in a text signal, and intake records the arrival name as `originalName` — so
 	// renaming to `lib-0001.mp4` on the way in would strip 1993 before intake ever saw it and
 	// the clip would be ungrounded on arrival.
-	if _, err := os.Stat(filepath.Join(watch, "Frosted Flakes 1993.mp4")); err != nil {
+	if _, err := os.Stat(filepath.Join(watch, "Crunchlings 1993.mp4")); err != nil {
 		t.Errorf("the original filename did not survive the copy: %v", err)
 	}
 }

@@ -45,7 +45,7 @@ func textStates(t *testing.T, forest *taxonomy.Forest, axes []Axis, signals Sign
 
 func TestTextGrounding_GroundsIndependentAxesAndLiteralBrand(t *testing.T) {
 	content := `{
-		"kind":"commercial","audience":"KIDS","brand":"tootsie pop","product":["sweets"],
+		"kind":"commercial","audience":"KIDS","brand":"twirlpop","product":["sweets"],
 		"format":["commercial"],"seasonal":["candy"],
 		"audienceCue":["kids-cue"],"presentation":["animated"],"confidence":99
 	}`
@@ -57,7 +57,7 @@ func TestTextGrounding_GroundsIndependentAxesAndLiteralBrand(t *testing.T) {
 	})
 	observedAt := time.Unix(500, 0).UTC()
 	states := textStates(t, forest, textAxes, Signals{
-		ClipHash: "tootsie", Title: "Tootsie Pop Classic Commercial", ObservedAt: observedAt,
+		ClipHash: "twirlpop", Title: "Twirlpop Classic Commercial", ObservedAt: observedAt,
 	}, content)
 	byAxis := make(map[Axis]State, len(states))
 	for _, state := range states {
@@ -66,7 +66,7 @@ func TestTextGrounding_GroundsIndependentAxesAndLiteralBrand(t *testing.T) {
 			t.Fatalf("uncapped model confidence on %s: %d", state.Axis, state.Evidence.Confidence)
 		}
 	}
-	if got := byAxis[AxisBrand]; got.Value.Text != "tootsie pop" || got.Evidence.Kind != EvidenceItem {
+	if got := byAxis[AxisBrand]; got.Value.Text != "twirlpop" || got.Evidence.Kind != EvidenceItem {
 		t.Fatalf("literal brand = %+v", got)
 	}
 	if got := byAxis[AxisProduct].Value.Tags; len(got) != 1 || got[0] != "candy" {
@@ -165,10 +165,10 @@ func TestTextGrounding_AcceptsSingleTaxonomyValueFromJSONModeProvider(t *testing
 }
 
 func TestGroundedBrandToleratesFilenamePunctuationOnly(t *testing.T) {
-	if !containsGroundedText("CampbellsSoupAdvert", "Campbell's") {
+	if !containsGroundedText("HearthpotsSoupAdvert", "Hearthpot's") {
 		t.Fatal("punctuation folding rejected a literal filename brand")
 	}
-	if containsGroundedText("CampbellsSoupAdvert", "Coca-Cola") {
+	if containsGroundedText("HearthpotsSoupAdvert", "Sparkra-Cola") {
 		t.Fatal("punctuation folding accepted a brand whose letters are absent")
 	}
 }

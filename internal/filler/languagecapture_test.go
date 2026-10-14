@@ -12,7 +12,7 @@ import (
 // `ggml-tiny.bin`), run with the exact arguments `WhisperLanguage.DetectLanguage` uses, over two
 // genuine clips:
 //
-//   - `lang_es.json` — a Spanish Coca-Cola advert from archive.org
+//   - `lang_es.json` — a Spanish soft-drink advert from archive.org
 //     (`spanishrevolution-ElmejoranunciodeCocaCola-1LE-AHD7l80`, declared `language: spanish` by
 //     the source), captured from 1s–11s by the original fixture procedure.
 //   - `lang_en.json` — a real catalog clip from the dev drop-folder, same span rule.

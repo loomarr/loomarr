@@ -45,7 +45,7 @@ func TestLicenseBeside(t *testing.T) {
 	// classic_tv_commercials). A sidecar without the key must read as unknown, not as an error
 	// and not as a default.
 	t.Run("a sidecar without a licence is unknown", func(t *testing.T) {
-		writeSidecar(t, dir, "clip", map[string]any{"title": "Frosted Flakes"})
+		writeSidecar(t, dir, "clip", map[string]any{"title": "Crunchlings"})
 		if got := licenseBeside(media); got != "" {
 			t.Errorf("got %q, want empty", got)
 		}
@@ -80,7 +80,7 @@ func TestLicenseBeside(t *testing.T) {
 func TestLicenseNeverReachesTheTaggerPrompt(t *testing.T) {
 	fsys := fstest.MapFS{
 		"a.info.json": {Data: []byte(`{
-			"title": "Frosted Flakes",
+			"title": "Crunchlings",
 			"description": "A tiger sells cereal.",
 			"license": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
 		}`)},
