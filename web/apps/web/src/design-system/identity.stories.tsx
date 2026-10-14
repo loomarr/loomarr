@@ -1,4 +1,5 @@
 import { type Density, Screen, Surface, Text } from "@loomarr/design-system";
+import { classicEpisode } from "@loomarr/fixtures";
 import {
   ChannelIdentity,
   type ChannelIdentityData,
@@ -11,18 +12,17 @@ type IdentityVariant = "long" | "minimal" | "missing-logo" | "representative";
 
 const representativeChannel: ChannelIdentityData = {
   channelLogoState: "ready",
-  channelName: "Classic Animation",
-  channelNumber: "07",
+  channelName: classicEpisode.channelName,
+  channelNumber: classicEpisode.channelNumber,
 };
 
 const representativeProgramme: ProgrammeIdentityData = {
-  badge: { label: "On now", tone: "live" },
-  description:
-    "A fast-talking stranger convinces Springfield to build a monorail with a suspicious windfall.",
-  episodeLabel: "S04E12",
-  seriesTitle: "The Simpsons",
-  timeLabel: "7:00–7:30 PM",
-  title: "Marge vs. the Monorail",
+  badge: classicEpisode.badge,
+  description: classicEpisode.description,
+  episodeLabel: classicEpisode.episodeLabel,
+  seriesTitle: classicEpisode.seriesTitle,
+  timeLabel: classicEpisode.timeLabel,
+  title: classicEpisode.title,
 };
 
 const Logo = () => (
@@ -54,7 +54,9 @@ const IdentityWorkshop = ({
     ...representativeChannel,
     channelLogoState: variant === "missing-logo" ? "missing" : "ready",
     channelName:
-      variant === "long" ? "Springfield Classic Animation and Community Television" : "Classic Animation",
+      variant === "long"
+        ? "Puddleford Classic Animation and Community Television"
+        : representativeChannel.channelName,
   };
   const programme: ProgrammeIdentityData =
     variant === "minimal"
@@ -63,7 +65,7 @@ const IdentityWorkshop = ({
           ...representativeProgramme,
           description:
             variant === "long"
-              ? "Springfield considers an ambitious transit proposal while the family investigates the stranger behind a promise that sounds much too good to be true."
+              ? "Puddleford welcomes a film crew to the kitchen while the family investigates the stranger behind a promise that sounds much too good to be true."
               : representativeProgramme.description,
           title:
             variant === "long"

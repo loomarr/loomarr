@@ -108,7 +108,7 @@ const guide = (requestedFromMs, requestedToMs) => {
           fillerStopMs <= fromMs
             ? laterAirings
             : [
-                airing("before-break", "Before the break", "The Simpsons", fromMs, fillerStartMs),
+                airing("before-break", "Before the break", "Kettle Kids", fromMs, fillerStartMs),
                 {
                   kind: "filler",
                   pod: {
@@ -133,7 +133,7 @@ const guide = (requestedFromMs, requestedToMs) => {
                   stopMs: fillerStopMs,
                   title: "",
                 },
-                airing("after-break", "After the break", "The Simpsons", fillerStopMs, toMs),
+                airing("after-break", "After the break", "Kettle Kids", fillerStopMs, toMs),
               ],
         channelId: "classic-animation",
         name: "Classic Animation",
@@ -142,7 +142,7 @@ const guide = (requestedFromMs, requestedToMs) => {
         status: "live",
       },
       {
-        airings: [airing("neutral-zone", "The Neutral Zone", "Star Trek")],
+        airings: [airing("quiet-frontier", "The Quiet Frontier", "Cold Relay")],
         channelId: "science-fiction",
         name: "Science Fiction",
         number: 120,

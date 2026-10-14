@@ -97,6 +97,9 @@ classify() {
     internal/releaseverify/*_test.go|research/*_test.go)
       select_gate contracts
       ;;
+    web/apps/web/tests/visual/*)
+      [[ "$path" != *.spec.ts ]] || select_gate contracts
+      ;;
   esac
 
   # knip (run by `make fe` for the web gate and by `make clients` for the clients gate) spans the

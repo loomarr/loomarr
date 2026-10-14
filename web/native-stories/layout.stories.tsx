@@ -18,7 +18,7 @@ const NativeLayoutWorkshop = ({ density = "touch" }: { density?: "touch" | "tv" 
                 NOW PLAYING
               </Text>
               <Text density={density} textRole="title">
-                Marge vs. the Monorail
+                The Monorail Pitch
               </Text>
             </Surface>
           }

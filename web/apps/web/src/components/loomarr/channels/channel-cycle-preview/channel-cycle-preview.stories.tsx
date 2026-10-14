@@ -77,11 +77,11 @@ const Matched: Story = {
       holidayEpisodes: [],
       cycle: emptyCycle,
       slots: [
-        { kind: "program", title: "Die Hard", key: "movie:tmdb:562", part: 0 },
+        { kind: "program", title: "Snowfall at Hollis Tower", key: "movie:tmdb:90000562", part: 0 },
         { kind: "break" },
-        { kind: "program", title: "Home Alone", key: "movie:tmdb:771", part: 0 },
-        { kind: "program", title: "Home Alone 2", key: "movie:tmdb:772", part: 2 },
-        { kind: "pending", title: "Elf", key: "movie:tmdb:10719" },
+        { kind: "program", title: "Snowbound Twins", key: "movie:tmdb:90000771", part: 0 },
+        { kind: "program", title: "Snowbound Twins 2", key: "movie:tmdb:90000772", part: 2 },
+        { kind: "pending", title: "Tinsel Apprentice", key: "movie:tmdb:90010719" },
       ],
     }),
   ],
@@ -89,15 +89,15 @@ const Matched: Story = {
 
 // A multi-show kids channel: series episodes render as "Show · SxxExx — Episode" (the show
 // name resolved from lineupKeys by the slot's key, the season/episode from the slot), so a
-// bare episode title like "Grandad" reads as "Bluey · S1E5 — Grandad". A movie in the mix
+// bare episode title like "Pebble Hunt" reads as "Snorkelsaurus · S1E5 — Pebble Hunt". A movie in the mix
 // (no season/episode, no lineup show name) shows just its title, proving the graceful mix.
 const SeriesEpisodes: Story = {
   args: {
     channelId: "ch-1",
     lineupKeys: [
-      { key: "series:tmdb:82728", title: "Bluey" },
-      { key: "series:tmdb:3022", title: "Rugrats" },
-      { key: "movie:tmdb:9297", title: "Shrek" },
+      { key: "series:tmdb:90082728", title: "Snorkelsaurus" },
+      { key: "series:tmdb:90003022", title: "Pram Patrol" },
+      { key: "movie:tmdb:90009297", title: "Marsh Giant" },
     ],
   },
   decorators: [
@@ -110,11 +110,11 @@ const SeriesEpisodes: Story = {
       holidayEpisodes: [],
       cycle: emptyCycle,
       slots: [
-        { kind: "program", title: "Grandad", key: "series:tmdb:82728", season: 1, episode: 5 },
-        { kind: "program", title: "The Sleepover", key: "series:tmdb:82728", season: 2, episode: 12 },
+        { kind: "program", title: "Pebble Hunt", key: "series:tmdb:90082728", season: 1, episode: 5 },
+        { kind: "program", title: "The Blanket Fort", key: "series:tmdb:90082728", season: 2, episode: 12 },
         { kind: "break" },
-        { kind: "program", title: "Chuckie's a Lefty", key: "series:tmdb:3022", season: 2, episode: 3 },
-        { kind: "program", title: "Shrek", key: "movie:tmdb:9297", part: 0 }, // movie → title only
+        { kind: "program", title: "Bibsy's a Lefty", key: "series:tmdb:90003022", season: 2, episode: 3 },
+        { kind: "program", title: "Marsh Giant", key: "movie:tmdb:90009297", part: 0 }, // movie → title only
       ],
     }),
   ],
@@ -132,9 +132,9 @@ const BasePolicy: Story = {
       holidayEpisodes: [],
       cycle: emptyCycle,
       slots: [
-        { kind: "program", title: "Predator", key: "movie:tmdb:106" },
+        { kind: "program", title: "Marigold Protocol", key: "movie:tmdb:90000106" },
         { kind: "break" },
-        { kind: "program", title: "Breaking Bad S1E1", key: "series:tvdb:81189" },
+        { kind: "program", title: "Copperline Foundry S1E1", key: "series:tvdb:90081189" },
       ],
     }),
   ],
@@ -149,7 +149,7 @@ const LongList: Story = {
   decorators: [
     withStubbedPreview({
       at: "2026-12-25T09:00:00Z",
-      activeRule: { id: "r1", label: "Weekend · TNG Marathon", priority: 60, matched: true },
+      activeRule: { id: "r1", label: "Weekend · Cold Relay Marathon", priority: 60, matched: true },
       windowMs: 0,
       excluded: nothingExcluded,
       trace: emptyTrace,
@@ -158,19 +158,19 @@ const LongList: Story = {
       slots: [
         ...Array.from({ length: 12 }, (_, i) => ({
           kind: "program" as const,
-          title: `The Next Generation S1E${i + 1}`,
-          key: `series:tvdb:655:1:${i + 1}`,
+          title: `Cold Relay S1E${i + 1}`,
+          key: `series:tvdb:90000655:1:${i + 1}`,
           part: 0,
         })),
         { kind: "break" as const },
         ...Array.from({ length: 12 }, (_, i) => ({
           kind: "program" as const,
-          title: `The Next Generation S2E${i + 1}`,
-          key: `series:tvdb:655:2:${i + 1}`,
+          title: `Cold Relay S2E${i + 1}`,
+          key: `series:tvdb:90000655:2:${i + 1}`,
           part: 0,
         })),
         { kind: "break" as const },
-        { kind: "pending" as const, title: "The Next Generation S3E1", key: "series:tvdb:655:3:1" },
+        { kind: "pending" as const, title: "Cold Relay S3E1", key: "series:tvdb:90000655:3:1" },
       ],
     }),
   ],
@@ -212,21 +212,21 @@ const ExcludedBySafety: Story = {
         unrated: 1,
         items: [
           {
-            key: "series:tmdb:1434",
-            title: "Futurama S2E4 — Xmas Story",
+            key: "series:tmdb:90001434",
+            title: "Lunar Lemmings S2E4 — Frosty Orbit",
             reason: ExcludedItemDTOReason.over_ceiling,
           },
-          { key: "movie:tmdb:680", title: "Pulp Fiction", reason: ExcludedItemDTOReason.over_ceiling },
-          { key: "movie:tmdb:99999", title: "Home Movie Reel", reason: ExcludedItemDTOReason.unrated },
+          { key: "movie:tmdb:90000680", title: "Brass Diner", reason: ExcludedItemDTOReason.over_ceiling },
+          { key: "movie:tmdb:90099999", title: "Home Movie Reel", reason: ExcludedItemDTOReason.unrated },
         ],
       },
       trace: emptyTrace,
       holidayEpisodes: [],
       cycle: emptyCycle,
       slots: [
-        { kind: "program", title: "Chuckie's a Lefty", key: "series:tmdb:3022", season: 2, episode: 3 },
+        { kind: "program", title: "Bibsy's a Lefty", key: "series:tmdb:90003022", season: 2, episode: 3 },
         { kind: "break" },
-        { kind: "program", title: "Dexter's Laboratory", key: "series:tmdb:1958", season: 1, episode: 1 },
+        { kind: "program", title: "Gizmo Garage", key: "series:tmdb:90001958", season: 1, episode: 1 },
       ],
     }),
   ],
@@ -244,17 +244,25 @@ const ExcludedByRules: Story = {
         overCeiling: 0,
         unrated: 0,
         items: [
-          { key: "movie:tmdb:105", title: "Back to the Future", reason: ExcludedItemDTOReason.out_of_scope },
-          { key: "movie:tmdb:771", title: "Home Alone", reason: ExcludedItemDTOReason.out_of_season },
+          {
+            key: "movie:tmdb:90000105",
+            title: "Back to the Lighthouse",
+            reason: ExcludedItemDTOReason.out_of_scope,
+          },
+          {
+            key: "movie:tmdb:90000771",
+            title: "Snowbound Twins",
+            reason: ExcludedItemDTOReason.out_of_season,
+          },
         ],
       },
       trace: emptyTrace,
       holidayEpisodes: [],
       cycle: emptyCycle,
       slots: [
-        { kind: "program", title: "Predator", key: "movie:tmdb:106" },
+        { kind: "program", title: "Marigold Protocol", key: "movie:tmdb:90000106" },
         { kind: "break" },
-        { kind: "program", title: "The Goonies", key: "movie:tmdb:9340" },
+        { kind: "program", title: "The Driftwood Gang", key: "movie:tmdb:90009340" },
       ],
     }),
   ],

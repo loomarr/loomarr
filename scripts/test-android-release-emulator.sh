@@ -331,7 +331,7 @@ wait_for_state "playback after manual pairing" '.playUrlChannels[-1] == "classic
 # advances the server clock, then refreshes the signed source and transient chrome without altering
 # that Guide timeline. This catches native HLS sources that play correctly while their on-air
 # identity freezes on the tune-time programme.
-wait_for_ui "programme before the filler break" "The Simpsons · Before the break"
+wait_for_ui "programme before the filler break" "Kettle Kids · Before the break"
 adb -s "${EMULATOR_SERIAL}" exec-out screencap -p >"${evidence_dir}/programme-before-filler.png"
 set_fixture_phase filler
 tune_fixture_channel

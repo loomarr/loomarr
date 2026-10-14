@@ -62,8 +62,8 @@ const Populated: Story = {
   args: {
     policy: POPULATED,
     lineupKeys: [
-      { key: "series:tvdb:81189", title: "Breaking Bad" },
-      { key: "movie:tmdb:106", title: "Predator" },
+      { key: "series:tvdb:90081189", title: "Copperline Foundry" },
+      { key: "movie:tmdb:90000106", title: "Marigold Protocol" },
     ],
   },
 };

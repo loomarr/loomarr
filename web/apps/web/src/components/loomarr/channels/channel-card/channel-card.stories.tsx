@@ -17,7 +17,7 @@ const Healthy: Story = {
     number: 42,
     name: "90s Action",
     onAir: "live",
-    nowNext: { now: { title: "Heat", until: "9:42 PM" }, next: { title: "Con Air" } },
+    nowNext: { now: { title: "Kiln", until: "9:42 PM" }, next: { title: "Ash Lane" } },
     health: "healthy",
   },
 };
@@ -27,7 +27,7 @@ const PendingSlots: Story = {
     number: 43,
     name: "Saturday Cartoons",
     onAir: "reconciling",
-    nowNext: { now: { title: "Filler" }, gap: true, next: { title: "Animaniacs" } },
+    nowNext: { now: { title: "Filler" }, gap: true, next: { title: "Kettle Kids" } },
     health: "pending-slots",
   },
 };
@@ -37,7 +37,7 @@ const Drift: Story = {
     number: 44,
     name: "Cozy Mysteries",
     onAir: "live",
-    nowNext: { now: { title: "Poirot", until: "10:15 PM" } },
+    nowNext: { now: { title: "The Quill Inspector", until: "10:15 PM" } },
     health: "drift",
   },
 };
@@ -58,7 +58,7 @@ const WithMenu: Story = {
     number: 42,
     name: "90s Action",
     onAir: "live",
-    nowNext: { now: { title: "Heat", until: "9:42 PM" }, next: { title: "Con Air" } },
+    nowNext: { now: { title: "Kiln", until: "9:42 PM" }, next: { title: "Ash Lane" } },
     health: "healthy",
     trailing: (
       <Button variant="ghost" size="icon" className="size-8" aria-label="Actions">

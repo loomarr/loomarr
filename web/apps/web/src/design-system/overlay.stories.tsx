@@ -1,4 +1,5 @@
 import { Action, type Density, Screen, Surface, Text } from "@loomarr/design-system";
+import { classicEpisode } from "@loomarr/fixtures";
 import { ModalOverlay, TransientOverlay } from "@loomarr/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
@@ -68,7 +69,7 @@ const OverlayWorkshop = ({
           actions={[{ label: "View Guide", onPress: () => undefined, tone: "secondary" }]}
           autoDismissMs={autoDismissMs}
           density={density}
-          description="The Simpsons · Marge vs. the Monorail · 7:00–7:30 PM"
+          description={`${classicEpisode.seriesTitle} · ${classicEpisode.title} · ${classicEpisode.timeLabel}`}
           eyebrow="07 · CLASSIC ANIMATION"
           onDismiss={() => setVisible(false)}
           placement={placement}
