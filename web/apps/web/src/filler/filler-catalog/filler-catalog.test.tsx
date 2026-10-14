@@ -1,5 +1,6 @@
 import type { ClipDTO } from "@loomarr/api";
 import { getListFillerMockHandler, getListTaxonomyMockHandler } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -26,12 +27,15 @@ const clip: ClipDTO = {
   suggestedEra: 0,
 };
 
+// LoomarrProvider as main.tsx mounts it: the clip select box and chip are @loomarr/ui.
 const Wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider
-    client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}
-  >
-    {children}
-  </QueryClientProvider>
+  <LoomarrProvider theme="dark">
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}
+    >
+      {children}
+    </QueryClientProvider>
+  </LoomarrProvider>
 );
 
 describe("FillerCatalog", () => {

@@ -1,7 +1,8 @@
 import { formatClipDuration } from "@loomarr/core/format";
+import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
-import { AUDIENCE_LABEL, KIND_LABEL, NeedsDetailsChip, playsLine, SelectCheckbox } from "../clip-card";
+import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
 import type { ClipRowProps } from "./clip-row.type";
 
 // ClipRow — the catalog's dense LIST view (V35b, the mock's `catListView`). The mock's column
@@ -27,7 +28,11 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
     )}
   >
     {onToggleSelect ? (
-      <SelectCheckbox clipName={clip.name} selected={selected} onToggle={onToggleSelect} />
+      <ClipSelect
+        clipName={clip.name}
+        selected={Boolean(selected)}
+        onSelectedChange={() => onToggleSelect()}
+      />
     ) : (
       // Holds the column so rows stay aligned for a member, who gets no checkbox.
       <span aria-hidden />
@@ -81,7 +86,7 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
           other way to say this commercial is missing one. */}
       {clip.needsDetails && !clip.held && !clip.isComposite ? (
         <div className="mt-0.5 flex md:hidden">
-          <NeedsDetailsChip clip={clip} />
+          <NeedsDetailsChip />
         </div>
       ) : null}
     </div>

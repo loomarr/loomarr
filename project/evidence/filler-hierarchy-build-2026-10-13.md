@@ -15,7 +15,7 @@ Build of [#1817](https://github.com/loomarr/loomarr/issues/1817) item 7 (parent
 | 4. Split-review Back via `from=` | `validateSplitReviewSearch` keeps only `incoming`/`library`; anything else falls back to Library. The crumb above the title and Back both use it. Incoming's server-built link is `/filler/splits/{id}?from=incoming`; Library's split navigation sends `from=library` | `split-review-page.tsx`, `routes/_authed/filler/splits/$proposalId.tsx`, `internal/api/fillerincoming.go`, `filler-catalog.tsx` |
 | 5. "← Manage" on Incoming, Sources, Tags | The Settings-index markup, rendered once by the Filler shell for those three tabs | `filler-page.tsx` |
 | 6. Return from the coverage card's channel page | Coverage card links `?from=filler`; the channel filler route validates it and shows "← Filler overview" | `filler-overview.tsx`, `routes/_authed/channels/$id/filler.tsx`, `channel-filler.tsx` |
-| 7. 24px select target | `SelectCheckbox`: the 16px checkbox inside a 24px label, shared by card and row | `clip-card.tsx`, `clip-row.tsx` |
+| 7. 24px select target | `ClipSelect` in `@loomarr/ui`: the design-system checkbox (a 24px box in a 40px-tall target), shared by card and row | `packages/ui/src/filler/clip-select`, `clip-card.tsx`, `clip-row.tsx` |
 | 8. Members: text, no admin buttons | "An admin can sort this out from Filler › Manage." and no action button | `filler-overview.tsx` |
 | Overview "Open diagnostics" | `retry_failed_work` and `retry_acquisition` link `/filler/manage#diagnostics`; Manage opens the panel and scrolls to it once the admin session resolves | `filler-overview.tsx`, `filler-manage.tsx` |
 | Draft 2: caution "Needs details" | Server-computed `ClipDTO.needsDetails` from one Go predicate shared with the store's untagged SQL; chip on card, compact card and phone row | `internal/clipcatalog/clip.go`, `internal/store/clips.go`, `internal/api/filler.go`, `clip-card.tsx`, `clip-row.tsx` |
@@ -25,7 +25,8 @@ The Draft's caution "Needs details" chip on an untagged commercial comes from a 
 client guess. `ClipDTO.needsDetails` is `clipcatalog.Clip.NeedsDetails` (a commercial missing era,
 audience or category). The store's `UntaggedOnly` SQL is the same rule with the kind bound to the
 same constant, and the store conformance test `ClipNeedsDetailsAgreesWithSQL` pins the two to the same
-clips. The card (full and compact) and the phone list row render the chip from the field alone. A
+clips. The card (full and compact) and the phone list row render the chip from the field alone; the
+chip is `NeedsDetailsChip` in `@loomarr/ui` (a square caution design-system Badge). A
 held clip ("Preparing") or a recording ("Recording") keeps its single exception chip instead, as the
 mock draws one exception per clip.
 
@@ -62,9 +63,12 @@ marks the two untagged commercials `needsDetails: true` and the station id `fals
 | "Needs details" chips, grid | 2 (the two commercials) | 2 |
 | "Needs details" chips, list | 0 (tag columns show) | 2 (under the name) |
 | On the station id | none | none |
+| `ClipSelect` box (grid and list) | 24×40, checks on click | 24×40, checks on click |
 | READY chips, overflow, console/page errors | none | none |
 
-Screenshots: `admin-{desktop,phone}-library-{grid,list}-needs-details.png`.
+Screenshots: `admin-{desktop,phone}-library-{grid,list}-needs-details.png`, each with the first clip
+selected. The checked box is the design-system checkbox's current amber fill; visual-rules PR 2
+moves it to neutral-pressed.
 
 The diagnostics panel is open and in view on arrival (top at 657/800 and 636/844). With no
 diagnostics on this seed the page is too short to scroll it to the top; the scroller sits at its
@@ -96,7 +100,7 @@ Screenshots: `filler-hierarchy-build-2026-10-13/{admin,member}-{desktop,phone}-*
 
 | File | Raise | Reason |
 | --- | --- | --- |
-| `clip-card.tsx` | tailwind 115→124 | compact variant (decision 3) + 24px select target (decision 7) |
+| `clip-card.tsx` | tailwind 115→116 | compact variant (decision 3); the select box and chip are `@loomarr/ui` |
 | `pool-health.tsx` | tailwind 21→33, legacyUi 1→2 | folded phone line + Details toggle (decision 3) |
 | `channel-filler.tsx` | tailwind 110→118 | "← Filler overview" return link (decision 6) |
 | `filler-catalog.tsx` | tailwind 150→159 | folded phone toolbar + 2-up grid (decision 3) |

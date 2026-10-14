@@ -1,11 +1,11 @@
 import type { ClipDTO } from "@loomarr/api/models/clipDTO";
 import { formatClipDuration, formatRelative } from "@loomarr/core/format";
+import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { Play, Scissors } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import type { ClipCardProps } from "./clip-card.type";
@@ -63,31 +63,6 @@ const playsLine = (clip: ClipDTO): string => {
   const airings = `${clip.playCount} ${clip.playCount === 1 ? "airing" : "airings"}`;
   return clip.lastPlayedAt ? `${airings} · last ${formatRelative(clip.lastPlayedAt)}` : airings;
 };
-
-// SelectCheckbox — a clip's bulk-select checkbox with a 24px hit area (WCAG 2.2, 2.5.8). The
-// checkbox keeps its 16px size so a grid of cards isn't dominated by controls; the label around
-// it is what takes the tap, and a label click toggles the input it wraps. Shared with the list row.
-const SelectCheckbox = ({
-  clipName,
-  selected,
-  onToggle,
-  className,
-}: {
-  clipName: string;
-  selected?: boolean | undefined;
-  onToggle: () => void;
-  className?: string;
-}) => (
-  // biome-ignore lint/a11y/noLabelWithoutControl: the Checkbox primitive renders the native input this label wraps; the linter only recognises a literal <input>.
-  <label className={cn("flex size-6 shrink-0 cursor-pointer items-center justify-center", className)}>
-    <Checkbox
-      checked={Boolean(selected)}
-      onChange={onToggle}
-      className="accent-signal"
-      aria-label={`Select ${clipName}`}
-    />
-  </label>
-);
 
 // ClipFrame — the thumbnail, its overlays, and the hover preview (V39).
 //
@@ -216,12 +191,13 @@ const ClipFrame = ({
         </span>
       )}
       {onToggleSelect && (
-        <SelectCheckbox
-          clipName={clip.name}
-          selected={selected}
-          onToggle={onToggleSelect}
-          className="absolute top-0.5 left-0.5 z-10"
-        />
+        <div className="absolute top-0.5 left-0.5 z-10">
+          <ClipSelect
+            clipName={clip.name}
+            selected={Boolean(selected)}
+            onSelectedChange={() => onToggleSelect()}
+          />
+        </div>
       )}
 
       {/* The play button — the mock's 58px amber disc (line 982 of the desktop prototype),
@@ -267,12 +243,6 @@ const ClipFrame = ({
   );
 };
 
-// The one exception a READY clip can carry (#1817): a commercial missing a match tag. Only the
-// server's `needsDetails` drives it — the same predicate as the "Untagged only" filter — so the
-// chip and the filter can never disagree about a clip.
-const NeedsDetailsChip = ({ clip }: { clip: Pick<ClipCardProps["clip"], "needsDetails"> }) =>
-  clip.needsDetails ? <Badge variant="caution">Needs details</Badge> : null;
-
 const ClipCard = ({
   clip,
   onOpen,
@@ -289,7 +259,8 @@ const ClipCard = ({
   const exception = clip.held ? "Preparing" : clip.isComposite ? "Recording" : undefined;
   const exceptionChip = exception ? <Badge variant="neutral">{exception}</Badge> : null;
   // One exception per clip: a clip still preparing or a recording is not yet the thing to tag.
-  const needsDetailsChip = exception ? null : <NeedsDetailsChip clip={clip} />;
+  // Only the server's `needsDetails`, never kind + tagged, so the chip agrees with the filter.
+  const needsDetailsChip = !exception && clip.needsDetails ? <NeedsDetailsChip /> : null;
   return (
     <Card
       className={cn(
@@ -310,11 +281,10 @@ const ClipCard = ({
       ) : null}
       <div className="flex items-start gap-2">
         {!clip.thumbImage && onToggleSelect ? (
-          <SelectCheckbox
+          <ClipSelect
             clipName={clip.name}
-            selected={selected}
-            onToggle={onToggleSelect}
-            className="-m-1"
+            selected={Boolean(selected)}
+            onSelectedChange={() => onToggleSelect()}
           />
         ) : null}
         {onOpen ? (
@@ -342,9 +312,7 @@ const ClipCard = ({
         ) : null}
       </div>
       {compact ? (
-        (exceptionChip || clip.needsDetails) && (
-          <div className="flex">{exceptionChip ?? needsDetailsChip}</div>
-        )
+        (exceptionChip || needsDetailsChip) && <div className="flex">{exceptionChip ?? needsDetailsChip}</div>
       ) : (
         <>
           {clip.brand ? <p className="truncate text-muted-foreground text-xs">{clip.brand}</p> : null}
@@ -380,4 +348,4 @@ const ClipCard = ({
   );
 };
 
-export { AUDIENCE_LABEL, ClipCard, KIND_LABEL, NeedsDetailsChip, playsLine, SelectCheckbox };
+export { AUDIENCE_LABEL, ClipCard, KIND_LABEL, playsLine };

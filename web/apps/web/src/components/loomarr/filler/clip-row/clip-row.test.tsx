@@ -1,7 +1,15 @@
 import type { ClipDTO } from "@loomarr/api";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ClipRow } from "./clip-row";
+
+// LoomarrProvider as main.tsx mounts it: the select box and the Needs details chip are @loomarr/ui.
+const Theme = ({ children }: { children: ReactNode }) => (
+  <LoomarrProvider theme="dark">{children}</LoomarrProvider>
+);
+const render = (ui: ReactNode) => rtlRender(ui, { wrapper: Theme });
 
 const base: ClipDTO = {
   name: "Sunny D — Dude!",
@@ -41,16 +49,15 @@ describe("ClipRow", () => {
     const { rerender } = render(<ClipRow clip={{ ...base, tagged: false }} />);
     expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
     rerender(<ClipRow clip={{ ...base, needsDetails: true }} />);
-    expect(screen.getByText("Needs details").parentElement).toHaveClass("md:hidden");
+    expect(screen.getByText("Needs details").closest(".md\\:hidden")).not.toBeNull();
   });
 
-  // WCAG 2.2, 2.5.8: the 16px checkbox sits in a 24px label that takes the tap.
-  it("gives the select checkbox a 24px target that toggles it", () => {
+  // The select box is @loomarr/ui's ClipSelect, whose 24px+ target (WCAG 2.2, 2.5.8) is pinned in
+  // that package's tests; here it is the row's select control and it toggles.
+  it("selects the clip from its select box", () => {
     const onToggleSelect = vi.fn();
     render(<ClipRow clip={base} onToggleSelect={onToggleSelect} />);
-    const target = screen.getByRole("checkbox", { name: `Select ${base.name}` }).closest("label");
-    expect(target).toHaveClass("size-6");
-    fireEvent.click(target as HTMLElement);
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${base.name}` }));
     expect(onToggleSelect).toHaveBeenCalledTimes(1);
   });
 

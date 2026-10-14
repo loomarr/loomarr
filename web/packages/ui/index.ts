@@ -7,6 +7,8 @@ export type { ClientShellProps } from "./src/client-shell";
 export { ClientShell } from "./src/client-shell";
 export type { DeviceDisconnectActionProps } from "./src/device-disconnect";
 export { DeviceDisconnectAction } from "./src/device-disconnect";
+export type { ClipSelectProps } from "./src/filler";
+export { ClipSelect, NeedsDetailsChip } from "./src/filler";
 export type { FocusableTargetHandle, FocusTargetRegistry } from "./src/focus-target";
 export type {
   GuideArtworkRenderer,

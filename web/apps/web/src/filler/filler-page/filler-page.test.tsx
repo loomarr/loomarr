@@ -8,6 +8,7 @@ import {
   getMeMockHandler,
   getSettingsListMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -134,8 +135,11 @@ const makeWrapper = () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // LoomarrProvider as main.tsx mounts it: the clip select box and chip are @loomarr/ui.
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    </LoomarrProvider>
   );
 };
 

@@ -197,8 +197,8 @@
       "legacyUi": 1
     },
     "src/components/loomarr/filler/clip-card/clip-card.tsx": {
-      "tailwindClasses": 124,
-      "legacyUi": 5
+      "tailwindClasses": 116,
+      "legacyUi": 4
     },
     "src/components/loomarr/filler/clip-player/clip-player.tsx": {
       "tailwindClasses": 26,
