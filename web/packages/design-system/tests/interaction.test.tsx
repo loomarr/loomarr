@@ -70,6 +70,31 @@ describe("shared interaction controls", () => {
     expect(markup).not.toContain(">Select Noir for bulk approve<");
   });
 
+  // `metadata` is a data (mono) role; option and toggle descriptions are prose, so they take the
+  // sans `hint` measure (12px/16px regular), never metadata's 500-weight 18px line.
+  it("sets option and toggle descriptions in the sans hint measure, not the mono metadata role", () => {
+    const markup = renderToStaticMarkup(
+      <LoomarrProvider>
+        <ChoiceGroup
+          label="Strength"
+          onValueChange={vi.fn()}
+          options={[{ description: "One episode a day.", label: "Light", value: "light" }]}
+          value="light"
+        />
+        <Toggle checked description="Spread across the day." label="Evenings" onCheckedChange={vi.fn()} />
+      </LoomarrProvider>,
+    );
+
+    for (const text of ["One episode a day.", "Spread across the day."]) {
+      const tag = markup.match(new RegExp(`<[^>]*>(?=${text.replace(".", "\\.")})`))?.[0] ?? "";
+      expect(tag).toContain("font_body");
+      expect(tag).not.toContain("font_data");
+      expect(tag).toContain("_fs-12px");
+      expect(tag).toContain("_fw-400");
+      expect(tag).toContain("_lh-16px");
+    }
+  });
+
   // A hint sits under a browser <input>, which points at it by id; it must be a real paragraph
   // carrying that id, or the field's accessible description silently resolves to nothing.
   it("renders a field hint as a describable paragraph in the Web forms' help measure", () => {

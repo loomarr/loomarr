@@ -60,7 +60,7 @@ export const Contended: Story = {
         {
           channelId: "ch_2986070a483d5cb0",
           number: 1,
-          name: "Springfield Classics",
+          name: "Cartoon Classics",
           target: "browser",
           viewers: 1,
           bufferedMs: -2_000,

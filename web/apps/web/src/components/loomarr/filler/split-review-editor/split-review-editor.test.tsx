@@ -44,7 +44,7 @@ const proposal: SplitReviewProposalDTO = {
       startMs: 61000,
       endMs: 150000,
       name: "Long block",
-      dupOf: "clip-gushers.mp4",
+      dupOf: "clip-gloopers.mp4",
       unsplittable: true,
       transcript: "[01:01] And now a word from our sponsor.",
       languageChecked: true,
@@ -151,7 +151,7 @@ describe("SplitReviewEditor", () => {
   it("renders the duplicate flag, the unsplittable marker, and the transcript behind a toggle", () => {
     renderEditor();
     const third = openClip(3);
-    expect(within(third).getByText(/already in your library: clip-gushers\.mp4/i)).toBeInTheDocument();
+    expect(within(third).getByText(/already in your library: clip-gloopers\.mp4/i)).toBeInTheDocument();
     expect(within(third).getByText(/may have missed a cut/i)).toBeInTheDocument();
     fireEvent.click(within(third).getByText(/^details$/i));
     expect(within(third).getByText(/word from our sponsor/)).toBeInTheDocument();
@@ -164,9 +164,9 @@ describe("SplitReviewEditor", () => {
           ...proposal,
           segments: [
             seg({
-              name: "Toys R Us commercial",
+              name: "Playstack Toys commercial",
               nameOrigin: "model-proposed",
-              nameEvidence: "TOYS R US — THE WORLD'S BIGGEST TOY STORE",
+              nameEvidence: "PLAYSTACK TOYS — THE BIGGEST TOY STORE IN TOWN",
             }),
           ],
         }}
@@ -180,7 +180,7 @@ describe("SplitReviewEditor", () => {
     expect(detailText.closest("details")).not.toHaveAttribute("open");
     fireEvent.click(within(row).getByText(/^details$/i));
     expect(detailText.closest("details")).toHaveAttribute("open");
-    expect(detailText).toHaveTextContent(/TOYS R US — THE WORLD'S BIGGEST TOY STORE/);
+    expect(detailText).toHaveTextContent(/PLAYSTACK TOYS — THE BIGGEST TOY STORE IN TOWN/);
   });
 
   it("explains the automatic hold and shows the boundary evidence", () => {
@@ -215,7 +215,7 @@ describe("SplitReviewEditor", () => {
   it("confirms the edited cut list — names and mm:ss times parsed back to ms", () => {
     const { onConfirm } = renderEditor();
     const first = openClip(1);
-    fireEvent.change(within(first).getByLabelText("Name"), { target: { value: "Sunny D" } });
+    fireEvent.change(within(first).getByLabelText("Name"), { target: { value: "Fizzbolt" } });
     fireEvent.change(within(first).getByLabelText("Start (mm:ss)"), { target: { value: "0:02" } });
     fireEvent.change(within(first).getByLabelText("End (mm:ss)"), { target: { value: "0:32" } });
 
@@ -223,7 +223,7 @@ describe("SplitReviewEditor", () => {
     expect(payload).toHaveLength(3);
     expect(payload[0]).toMatchObject({
       index: 0,
-      name: "Sunny D",
+      name: "Fizzbolt",
       nameOrigin: "operator-edited",
       startMs: 2000,
       endMs: 32000,
@@ -239,9 +239,9 @@ describe("SplitReviewEditor", () => {
           ...proposal,
           segments: [
             seg({
-              name: "Toys R Us commercial",
+              name: "Playstack Toys commercial",
               nameOrigin: "model-proposed",
-              nameEvidence: "TOYS R US",
+              nameEvidence: "PLAYSTACK TOYS",
             }),
           ],
         }}
@@ -253,7 +253,7 @@ describe("SplitReviewEditor", () => {
     fireEvent.change(screen.getByLabelText("Start (mm:ss)"), { target: { value: "0:02" } });
 
     const payload = confirmed(onConfirm);
-    expect(payload[0]).toMatchObject({ name: "Toys R Us commercial", nameOrigin: "operator-edited" });
+    expect(payload[0]).toMatchObject({ name: "Playstack Toys commercial", nameOrigin: "operator-edited" });
     expect(payload[0]?.nameEvidence).toBeUndefined();
   });
 

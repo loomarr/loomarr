@@ -12,6 +12,7 @@ import {
   getFillerReadinessMockHandler,
   getFillerWatchMockHandler,
   getGetChannelMockHandler,
+  getGetChannelWatermarkOptionsMockHandler,
   getGetCurrentHealthMockHandler,
   getGuideHighlightsMockHandler,
   getHouseholdViewingMockHandler,
@@ -43,7 +44,7 @@ import {
   getSystemServicesMockHandler,
   getSystemVersionMockHandler,
 } from "@loomarr/api/msw";
-import type { RequestHandler } from "msw";
+import { HttpResponse, http, type RequestHandler } from "msw";
 import { channel } from "../fixtures/channels";
 
 // appHandlers — the shared baseline for tests that mount the REAL route tree.
@@ -245,6 +246,20 @@ const appHandlers = (): RequestHandler[] => [
   }),
   getFillerDecisionActivityMockHandler({ rows: [], total: 0 }),
   getFillerDecisionDiagnosticsMockHandler({ rows: [], total: 0 }),
+  // The Channel info page's On-screen logo section. Options are the backend's holiday/era list; the
+  // preview is a picture, not JSON, so it has no generated handler — an empty PNG that the header
+  // calls undrawable keeps the section on its "nothing to draw" state.
+  getGetChannelWatermarkOptionsMockHandler({
+    autoCallsign: "SC",
+    era: "1980s",
+    eraPalette: ["red", "amber", "cyan"],
+    holidays: [],
+  }),
+  http.get("*/v1/channels/:id/watermark/preview", () =>
+    HttpResponse.arrayBuffer(new ArrayBuffer(8), {
+      headers: { "Content-Type": "image/png", "X-Loomarr-Watermark-Drawable": "false" },
+    }),
+  ),
 ];
 
 export { appHandlers };

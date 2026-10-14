@@ -514,7 +514,7 @@ func TestRegistry_WatermarkLook(t *testing.T) {
 	for _, o := range s.Enum {
 		values = append(values, o.Value)
 	}
-	if !slices.Equal(values, []string{"plate", "text", "outline", "small-plate"}) {
+	if !slices.Equal(values, []string{"plate", "text", "outline", "small-plate", "tint", "twotone", "badge", "lockup", "glass", "stripe"}) {
 		t.Errorf("options %v", values)
 	}
 	if _, err := s.parse("fancy"); err == nil {

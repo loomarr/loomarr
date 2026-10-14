@@ -11553,12 +11553,109 @@ components:
         - what
         - how
       type: object
+    WatermarkHolidayOption:
+      additionalProperties: false
+      properties:
+        active:
+          description: "The holiday is in effect today for this channel: its logo shows the holiday version"
+          type: boolean
+        end:
+          description: Last day of that window, inclusive
+          format: date
+          type: string
+        id:
+          examples:
+            - halloween
+          type: string
+        name:
+          examples:
+            - Halloween
+          type: string
+        picture:
+          description: "The picture this channel shows for the holiday: its choice, else the default"
+          type: string
+        pictures:
+          description: The holiday's pictures, the default first; one means there is no choice
+          items:
+            $ref: "#/components/schemas/WatermarkPicture"
+          type: array
+        start:
+          description: First day of the holiday's window that is on today or comes next
+          format: date
+          type: string
+      required:
+        - id
+        - name
+        - start
+        - end
+        - active
+        - picture
+        - pictures
+      type: object
+    WatermarkOptions:
+      additionalProperties: false
+      properties:
+        $schema:
+          description: A URL to the JSON Schema for this object.
+          examples:
+            - https://example.com/v1/schemas/WatermarkOptions.json
+          format: uri
+          readOnly: true
+          type: string
+        autoCallsign:
+          description: Text the logo shows when the name is left blank, derived from the channel name
+          type: string
+        era:
+          description: The channel's decade from its Programming era, such as 1980s; empty when it has none
+          type: string
+        eraPalette:
+          description: The colours "Match the era" uses, in order (amber, cyan, green without an era)
+          items:
+            type: string
+          type: array
+        holidays:
+          description: The holidays this channel honours, in calendar order; empty when it ignores holidays
+          items:
+            $ref: "#/components/schemas/WatermarkHolidayOption"
+          type: array
+      required:
+        - autoCallsign
+        - era
+        - eraPalette
+        - holidays
+      type: object
+    WatermarkPicture:
+      additionalProperties: false
+      properties:
+        id:
+          examples:
+            - pumpkin
+          type: string
+        name:
+          examples:
+            - Pumpkin
+          type: string
+      required:
+        - id
+        - name
+      type: object
     WatermarkPolicy:
       additionalProperties: false
       properties:
         callsign:
           description: Text of the generated Plate bug; omitted derives it from the channel name
           maxLength: 12
+          type: string
+        color:
+          description: "Colour of the coloured looks: era (colours from the channel's decade, amber without one) or a fixed colour; omitted is era"
+          enum:
+            - era
+            - amber
+            - cyan
+            - green
+            - red
+            - pink
+            - yellow
           type: string
         corner:
           description: Corner of the active picture; omitted is top-right
@@ -11571,16 +11668,25 @@ components:
         enabled:
           description: false turns the bug off; omitted is on (the default)
           type: boolean
+        holiday:
+          description: false turns the holiday version off; omitted is on unless the channel ignores holidays (seasonal mode off)
+          type: boolean
         image:
           description: Custom bug image hash (upload with role watermark); omitted is automatic
           type: string
         look:
-          description: "Style of the generated callsign bug: plate, text (the Plate's letters, no plate), outline (hollow letters) or small-plate (75% size, no shadow); omitted is the install setting playout.watermark_look (default text)"
+          description: "Style of the generated callsign bug: plate, text (the Plate's letters, no plate), outline (hollow letters), small-plate (75% size, no shadow), tint (colour plate), twotone (number + name), badge (number badge), lockup (number | name, white), glass (frosted plate) or stripe (era stripe); omitted is the install setting playout.watermark_look (default text)"
           enum:
             - plate
             - text
             - outline
             - small-plate
+            - tint
+            - twotone
+            - badge
+            - lockup
+            - glass
+            - stripe
           type: string
         margin:
           description: Inset from the picture edges as a share of the frame width and height, 0-0.2; omitted is 0.05
@@ -11588,6 +11694,11 @@ components:
           maximum: 0.2
           minimum: 0
           type: number
+        motifs:
+          additionalProperties:
+            type: string
+          description: "Holiday picture per holiday, where there is a choice: halloween is pumpkin, bat or ghost; christmas is holly or snowflake; an omitted holiday is the first"
+          type: object
         opacity:
           description: Bug opacity, 0.1-1; omitted is the install setting playout.watermark_opacity_pct (default 40%)
           format: double
@@ -12724,6 +12835,139 @@ paths:
                 $ref: "#/components/schemas/ErrorModel"
           description: Error
       summary: Upload a custom channel watermark
+      tags:
+        - channels
+  /v1/channels/{id}/watermark/options:
+    get:
+      description: "Admin only. The name the logo shows when none is set, the channel's era and its colours, and the holidays the logo follows: each one's dates, whether it is in effect today and its pictures."
+      operationId: get-channel-watermark-options
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatermarkOptions"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: On-screen logo options for a channel
+      tags:
+        - channels
+  /v1/channels/{id}/watermark/preview:
+    get:
+      description: "Admin only. The PNG the playout renderer would overlay for this channel on a 1080-line frame: its saved policy.watermark with the query's look, colour and size, in the named holiday's version. The `X-Loomarr-Watermark-Drawable` header is false while this server cannot overlay a logo. An unknown value, or a picture that is not one of the named holiday's own, is refused with 422."
+      operationId: preview-channel-watermark
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            examples:
+              - ch_abc123
+            type: string
+        - description: Style to draw; omitted is the channel's
+          explode: false
+          in: query
+          name: look
+          schema:
+            description: Style to draw; omitted is the channel's
+            enum:
+              - plate
+              - text
+              - outline
+              - small-plate
+              - tint
+              - twotone
+              - badge
+              - lockup
+              - glass
+              - stripe
+            type: string
+        - description: Colour to draw; omitted is the channel's
+          explode: false
+          in: query
+          name: color
+          schema:
+            description: Colour to draw; omitted is the channel's
+            enum:
+              - era
+              - amber
+              - cyan
+              - green
+              - red
+              - pink
+              - yellow
+            type: string
+        - description: Holiday version to draw; omitted is the everyday logo
+          explode: false
+          in: query
+          name: holiday
+          schema:
+            description: Holiday version to draw; omitted is the everyday logo
+            enum:
+              - halloween
+              - thanksgiving
+              - christmas
+              - newyear
+              - valentines
+            type: string
+        - description: Bug height as a share of the frame height; omitted (0) is the channel's
+          explode: false
+          in: query
+          name: size
+          schema:
+            description: Bug height as a share of the frame height; omitted (0) is the channel's
+            format: double
+            maximum: 0.15
+            minimum: 0
+            type: number
+        - description: The holiday's picture to draw, one of its own; omitted is the channel's
+          explode: false
+          in: query
+          name: picture
+          schema:
+            description: The holiday's picture to draw, one of its own; omitted is the channel's
+            enum:
+              - pumpkin
+              - bat
+              - ghost
+              - leaf
+              - holly
+              - snowflake
+              - firework
+              - heart
+            type: string
+        - description: Draw only the holiday's picture, as a small square PNG; needs holiday
+          explode: false
+          in: query
+          name: motifOnly
+          schema:
+            description: Draw only the holiday's picture, as a small square PNG; needs holiday
+            type: boolean
+      responses:
+        "200":
+          content:
+            image/png: {}
+          description: The bug PNG
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ErrorModel"
+          description: Error
+      summary: Preview the channel's on-screen logo
       tags:
         - channels
   /v1/diagnostics/client-crashes:

@@ -1,52 +1,66 @@
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { HolidayEpisodesDTO } from "@loomarr/api/models/holidayEpisodesDTO";
+import { ChannelSeasonalFields, type SeasonalMode, type SeasonalStrength } from "@loomarr/ui";
 import { isOverridden, resetField } from "@/lib/policy-overrides";
-import { cn } from "@/lib/utils";
-import { FieldHelp } from "../../feedback";
 import { PolicyFieldSource } from "../policy-field-source";
 import type { ChannelSeasonalProps } from "./channel-seasonal.type";
 
 // ChannelSeasonal — holiday-aware programming (programming-design.md §6, schedule.SeasonalPolicy).
 //
-// ORPHANED until now: the scheduler has always benched out-of-season titles and boosted
-// in-season ones, and the only way to set any of it was an LLM refine — a channel's operator
-// could see the effect and never choose it. The audit filed this as "needs design work first"
-// on the premise that the holiday picker required TMDB keyword lookups; reading the code, it
-// does not. `builtinCalendar` (schedule/seasonal.go) is a FIXED list, and its ids already
-// reach the frontend through the rule vocabulary, so this is a checkbox list over a closed set.
-
-// Both enums use the `"" = default` sentinel. The explicit `auto` and `loop` wire values resolve
-// identically to their defaults, so the interface deliberately collapses each pair into one
-// choice. Storage provenance is not a user decision.
-const MODE_OPTIONS: { value: string; label: string }[] = [
-  { value: "default", label: "Use built-in seasonal rotation" },
-  { value: "off", label: "Ignore holidays" },
-  { value: "exclusive", label: "Holiday-only channel" },
-];
-
-const OFF_SEASON_OPTIONS: { value: string; label: string }[] = [
-  { value: "default", label: "Keep regular programming" },
-  { value: "dark", label: "Go dark" },
-];
-
-// What each mode does, in the operator's words. Shown under the select because "exclusive"
-// vs "auto" is not self-evident and the difference is what the channel plays in December.
-const MODE_HINT: Record<string, string> = {
-  default:
-    "Uses Loomarr's built-in holiday calendar. In-season titles play more often; other seasonal titles wait for their window.",
-  off: "Holidays are ignored. Nothing is boosted or benched.",
-  exclusive: "The channel IS the holiday: only in-season titles play during the window.",
-};
+// The screen is `ChannelSeasonalFields` in @loomarr/ui; this file only maps the channel policy onto
+// it. The scheduler has always benched out-of-season titles and boosted in-season ones; the
+// operator now chooses it. `builtinCalendar` (schedule/seasonal.go) is a FIXED list whose ids
+// already reach the frontend through the rule vocabulary, so the holiday picker is a checkbox
+// list over a closed set.
 
 // The holiday tokens the BE publishes, as `holiday:<id>` entries in the rule vocabulary's
 // `when` list. Stripping the prefix yields the id `policy.seasonal.holidays` stores.
 const HOLIDAY_PREFIX = "holiday:";
 
-const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSeasonalProps) => {
+// The backend's count for the holiday that is on now, or the next one (it sends them soonest
+// first). Plain words: what the chosen strength will actually do with this lineup.
+//
+// The backend also says when the chosen strength is held back (`capped`) and which other
+// strengths would play identically (`sameAs`); this only words them, it never counts.
+const STRENGTH_LABEL: Record<string, string> = { light: "Light", featured: "Featured", heavy: "Heavy" };
+const STRENGTH_ORDER = ["light", "featured", "heavy"];
+
+const joinNames = (names: string[]): string =>
+  names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+const consequence = (h: HolidayEpisodesDTO, label: string, strength: string): string => {
+  const when = h.active ? `${label} is on now` : `Next up: ${label}`;
+  if (h.episodes === 0) return `${when}. No ${label} episodes found in this lineup.`;
+  const found = `${h.episodes} ${label} ${h.episodes === 1 ? "episode" : "episodes"} found`;
+  const rate =
+    h.perDay === 1 && h.everyDays > 1 && h.episodes === 1
+      ? `it airs every ${h.everyDays} days`
+      : `${h.perDay} a day, each back about every ${h.everyDays} days`;
+  const line = `${when}. ${found}: ${rate}.`;
+  if (h.sameAs.length > 0) {
+    const same = [strength, ...h.sameAs]
+      .sort((a, b) => STRENGTH_ORDER.indexOf(a) - STRENGTH_ORDER.indexOf(b))
+      .map((s) => STRENGTH_LABEL[s] ?? s);
+    return `${line} At this pool size ${joinNames(same)} play the same.`;
+  }
+  if (h.capped) {
+    return `${line} That is fewer than ${STRENGTH_LABEL[strength] ?? strength} asks for: there are not enough episodes, or a holiday never takes more than a quarter of the day.`;
+  }
+  return line;
+};
+
+// Every enum collapses the `"" = default` sentinel and its explicit twin (`auto`, `featured`,
+// `loop`) into one choice; writing `default` stores the sentinel.
+const stored = <T extends string>(value: T) => (value === "default" ? "" : value);
+
+const ChannelSeasonal = ({ policy, onChange, vocabulary, holidayEpisodes }: ChannelSeasonalProps) => {
   const seasonal = policy.seasonal;
-  const mode = !seasonal?.mode || seasonal.mode === "auto" ? "default" : seasonal.mode;
+  const mode: SeasonalMode =
+    !seasonal?.mode || seasonal.mode === "auto" ? "default" : (seasonal.mode as SeasonalMode);
   const selected = seasonal?.holidays ?? [];
+  const strength: SeasonalStrength =
+    !seasonal?.strength || seasonal.strength === "featured"
+      ? "default"
+      : (seasonal.strength as SeasonalStrength);
 
   const holidays = (vocabulary.when ?? [])
     .filter((w) => w.token.startsWith(HOLIDAY_PREFIX))
@@ -57,6 +71,12 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
   // checkbox contract. Once one is unchecked, materialize the remaining subset.
   const effectiveSelected = selected.length === 0 ? holidays.map((h) => h.id) : selected;
 
+  const upcoming = holidayEpisodes?.[0];
+  const upcomingLabel = upcoming && holidays.find((h) => h.id === upcoming.holiday)?.label;
+
+  const setSeasonal = (patch: NonNullable<typeof seasonal>) =>
+    onChange({ ...policy, seasonal: { ...seasonal, ...patch } });
+
   const toggleHoliday = (id: string, on: boolean) => {
     // Keep the stored order stable (vocabulary order), so a save does not reshuffle the list
     // and make an unrelated diff look like a change.
@@ -64,108 +84,38 @@ const ChannelSeasonal = ({ policy, onChange, vocabulary, className }: ChannelSea
       .filter((h) => (h.id === id ? on : effectiveSelected.includes(h.id)))
       .map((h) => h.id);
     // Preserve the compact canonical wire form: all checked = empty subset = all built-ins.
-    const stored = next.length === holidays.length ? [] : next;
-    onChange({
-      ...policy,
-      seasonal: { ...seasonal, holidays: stored },
-    });
+    setSeasonal({ holidays: next.length === holidays.length ? [] : next });
   };
 
   return (
-    <div className={cn("flex flex-col gap-4", className)}>
-      <div className="flex flex-col gap-1.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <Label htmlFor="policy-seasonal-mode">Seasonal behavior</Label>
-            <FieldHelp label="Seasonal behavior">
-              How this channel reacts to the calendar. Loomarr matches titles to a built-in holiday list; pick
-              which holidays below.
-            </FieldHelp>
-          </div>
-          {/* The mode is the defaultable field; the holiday subset and off-season fallback below
-              refine it and keep what they hold. */}
-          <PolicyFieldSource
-            overridden={isOverridden(policy, "seasonalMode")}
-            onReset={() => onChange(resetField(policy, "seasonalMode"))}
-            label="Seasonal behavior"
-          />
-        </div>
-        <Select
-          value={mode}
-          onValueChange={(v) =>
-            onChange({ ...policy, seasonal: { ...seasonal, mode: v === "default" ? "" : v } })
-          }
-        >
-          <SelectTrigger id="policy-seasonal-mode" className="w-full max-w-64">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MODE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-muted-foreground text-sm">{MODE_HINT[mode]}</p>
-      </div>
-
-      {/* Hidden when holidays are ignored: the list would set a value nothing reads. */}
-      {mode !== "off" && (
-        <fieldset className="flex flex-col gap-2">
-          <legend className="pb-1 text-muted-foreground text-xs">Included holidays</legend>
-          <div className="flex flex-wrap gap-x-5 gap-y-2">
-            {holidays.map((h) => (
-              <div key={h.id} className="flex items-center gap-2">
-                <Checkbox
-                  id={`policy-holiday-${h.id}`}
-                  checked={effectiveSelected.includes(h.id)}
-                  onChange={(e) => toggleHoliday(h.id, e.target.checked)}
-                />
-                <Label htmlFor={`policy-holiday-${h.id}`} className="font-normal">
-                  {h.label}
-                </Label>
-              </div>
-            ))}
-          </div>
-          {selected.length === 0 && (
-            <p className="text-muted-foreground text-xs">All built-in holidays are included.</p>
-          )}
-        </fieldset>
-      )}
-
-      {/* Off-season fallback is read ONLY in exclusive mode (schedule/seasonal.go:154, inside
-          `case SeasonalExclusive`), so it appears only there — offering it under `auto` would
-          be a setting the engine never consults. */}
-      {mode === "exclusive" && (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-1.5">
-            <Label htmlFor="policy-seasonal-offseason">Out of season</Label>
-            <FieldHelp label="Out of season">What a holiday channel does the rest of the year.</FieldHelp>
-          </div>
-          <Select
-            value={!seasonal?.offSeason || seasonal.offSeason === "loop" ? "default" : seasonal.offSeason}
-            onValueChange={(v) =>
-              onChange({
-                ...policy,
-                seasonal: { ...seasonal, offSeason: v === "default" ? "" : v },
-              })
-            }
-          >
-            <SelectTrigger id="policy-seasonal-offseason" className="w-full max-w-64">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {OFF_SEASON_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-    </div>
+    <ChannelSeasonalFields
+      allHolidaysIncluded={selected.length === 0}
+      favourEvenings={seasonal?.placement !== "anytime"}
+      holidays={holidays}
+      includedHolidayIds={effectiveSelected}
+      mode={mode}
+      modeSource={
+        // The mode is the defaultable field; the holiday subset and off-season fallback refine
+        // it and keep what they hold.
+        <PolicyFieldSource
+          label="Seasonal behavior"
+          onReset={() => onChange(resetField(policy, "seasonalMode"))}
+          overridden={isOverridden(policy, "seasonalMode")}
+        />
+      }
+      offSeason={!seasonal?.offSeason || seasonal.offSeason === "loop" ? "default" : "dark"}
+      onFavourEveningsChange={(favour) => setSeasonal({ placement: favour ? "" : "anytime" })}
+      onHolidayToggle={toggleHoliday}
+      onModeChange={(next) => setSeasonal({ mode: stored(next) })}
+      onOffSeasonChange={(next) => setSeasonal({ offSeason: stored(next) })}
+      onStrengthChange={(next) => setSeasonal({ strength: stored(next) })}
+      strength={strength}
+      strengthConsequence={
+        upcoming && upcomingLabel
+          ? consequence(upcoming, upcomingLabel, strength === "default" ? "featured" : strength)
+          : undefined
+      }
+    />
   );
 };
 

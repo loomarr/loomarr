@@ -88,7 +88,9 @@ const semanticThemes = {
       chrome: "rgba(255, 255, 255, 0.78)",
       entry: "rgba(255, 255, 255, 0.82)",
       identity: "rgba(255, 255, 255, 0.72)",
-      focus: "#FFF3D6",
+      // Selection is neutral (#1909, #1953): one grey step past `elevated`, a secondary action's
+      // resting fill, as dark's focus is one step past its own. The same step as `stateSurface.airing`.
+      focus: "#D2D6DE",
     },
     content: {
       primary: "#17191D",
@@ -99,8 +101,8 @@ const semanticThemes = {
     border: {
       decorative: "#D2D6DE",
       control: "#747C8B",
-      // The light theme's own neutral step: its focus surface is amber-tinted, so the airing block
-      // takes the control border and the decorative grey (`#D2D6DE`) one step below `elevated`.
+      // As in dark: the airing block takes the control border and the focus surface (`#D2D6DE`),
+      // one grey step below `elevated`.
       airing: "#747C8B",
     },
     state: {

@@ -332,6 +332,17 @@ func TestWindowGrid_TurnsAtLocalMidnightAcrossDST(t *testing.T) {
 	}
 }
 
+// windowSlice is windowSliceDealt over one fixed deck, every pass that deck: what an ordering that
+// does not reshuffle airs. It keeps a ROTATING ~window-of-runtime slice of the deck, advancing its
+// start by the window index and WRAPPING the catalog (§6.5), so over a full cycle every program
+// airs. window <= 0 ⇒ the whole deck; a deck that fits one window is returned whole; at least one
+// program always airs.
+func windowSlice(slots []Slot, window time.Duration, index int64) []Slot {
+	d := &deckDealer{bases: map[int64]dealt{0: {deck: slots}}}
+	out, _ := windowSliceDealt(d, window, index)
+	return out
+}
+
 func TestWindowSlice(t *testing.T) {
 	prog := func(id string, ms int64) Slot { return Slot{Kind: SlotProgram, Key: provision.Key(id), DurationMs: ms} }
 	hour := int64(60 * 60 * 1000)

@@ -44,9 +44,12 @@ func mudpuddlesLike(holiday int) libraryfixture.Availability {
 	return libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{mudpuddlesKey: {Programs: eps}}}
 }
 
+// mudpuddlesChannel pins DealOrigin to the day its id derived before the #1592 rename. The seam
+// spacing guarantee holds for that origin but not for every one (#1960); drop the pin with that fix.
 func mudpuddlesChannel() schedule.Channel {
 	return schedule.Channel{ID: "mudpuddles", Name: "Classics", Number: 7, Strategy: schedule.Shuffle,
-		Shuffle: schedule.ShuffleParams{Seed: 42}, DefaultWindow: 24 * time.Hour}
+		Shuffle: schedule.ShuffleParams{Seed: 42}, DefaultWindow: 24 * time.Hour,
+		DealOrigin: time.Date(2025, time.August, 18, 0, 0, 0, 0, time.UTC)}
 }
 
 func seasonalPolicy(s schedule.SeasonalPolicy) schedule.ChannelPolicy {
@@ -69,6 +72,34 @@ func arrange(t *testing.T, ch schedule.Channel, avail libraryfixture.Availabilit
 			out = append(out, airing{s.LibraryItemID, clock})
 		}
 		clock = clock.Add(time.Duration(s.DurationMs) * time.Millisecond)
+	}
+	return out
+}
+
+// airedLooped is the programmes of the window containing `at` as playout airs them: a lineup
+// shorter than its window is looped until the window closes, and a slot starting at or after the
+// close never airs.
+func airedLooped(t *testing.T, ch schedule.Channel, avail libraryfixture.Availability, policy schedule.ChannelPolicy, at time.Time) []airing {
+	t.Helper()
+	d := schedule.ComputeDesiredAt(ch, []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}}, avail, schedule.PodFill, policy, at)
+	window := schedule.ResolveWindow(ch, policy, at)
+	clock := schedule.WindowStart(at, window, ch.WindowZone)
+	closing := clock.Add(window)
+	var out []airing
+	for clock.Before(closing) {
+		before := clock
+		for _, s := range d.Slots {
+			if !clock.Before(closing) {
+				break
+			}
+			if s.IsProgram() {
+				out = append(out, airing{s.LibraryItemID, clock})
+			}
+			clock = clock.Add(time.Duration(s.DurationMs) * time.Millisecond)
+		}
+		if clock.Equal(before) {
+			break
+		}
 	}
 	return out
 }

@@ -5,10 +5,10 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 
 const Example = () => (
   <Sheet swipeDirection="right">
-    <SheetTrigger>Manage Ada</SheetTrigger>
+    <SheetTrigger>Manage Adela</SheetTrigger>
     <SheetContent>
       <SheetHeader>
-        <SheetTitle>Ada Lovelace</SheetTitle>
+        <SheetTitle>Adela Hale</SheetTitle>
         <SheetDescription>Manage access and sessions.</SheetDescription>
       </SheetHeader>
       <button type="button">Detail action</button>
@@ -19,10 +19,10 @@ const Example = () => (
 describe("Sheet", () => {
   it("opens as a named modal and closes on Escape", async () => {
     render(<Example />);
-    const trigger = screen.getByRole("button", { name: "Manage Ada" });
+    const trigger = screen.getByRole("button", { name: "Manage Adela" });
     await userEvent.click(trigger);
 
-    const sheet = await screen.findByRole("dialog", { name: "Ada Lovelace" });
+    const sheet = await screen.findByRole("dialog", { name: "Adela Hale" });
     expect(sheet).toHaveAccessibleDescription("Manage access and sessions.");
     expect(sheet).toHaveFocus();
 
@@ -33,7 +33,7 @@ describe("Sheet", () => {
 
   it("closes from its injected close control", async () => {
     render(<Example />);
-    await userEvent.click(screen.getByRole("button", { name: "Manage Ada" }));
+    await userEvent.click(screen.getByRole("button", { name: "Manage Adela" }));
     await userEvent.click(await screen.findByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
