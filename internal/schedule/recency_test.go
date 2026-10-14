@@ -1,21 +1,24 @@
 package schedule
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/loomarr/loomarr/internal/provision"
 )
 
-func recSlot(id, title string, dur int64) Slot {
-	return Slot{Kind: SlotProgram, Key: provision.Key("movie:tmdb:" + id), LibraryItemID: "lib-" + id, Title: title, DurationMs: dur}
+// recSlot is film n: library item lib-n, provider id 90,000,000+n (#1592).
+func recSlot(n, title string, dur int64) Slot {
+	id, _ := strconv.Atoi(n)
+	return Slot{Kind: SlotProgram, Key: provision.Key("movie:tmdb:" + strconv.Itoa(90_000_000+id)), LibraryItemID: "lib-" + n, Title: title, DurationMs: dur}
 }
 
 // Recency is per UNIT (#1674): one aired episode moves back, its unaired siblings keep their
 // seeded places. Keyed by series, the one airing sent the whole show behind everything else.
 func TestByRecency_IsPerEpisodeNotPerSeries(t *testing.T) {
 	ep := func(id string) Slot {
-		return Slot{Kind: SlotProgram, Key: "series:tvdb:7", LibraryItemID: id, Title: id, DurationMs: 1000}
+		return Slot{Kind: SlotProgram, Key: "series:tvdb:90000007", LibraryItemID: id, Title: id, DurationMs: 1000}
 	}
 	slots := []Slot{ep("s-e1"), ep("s-e2"), recSlot("9", "Film", 1000), ep("s-e3")}
 	got := byRecency(slots, map[string]time.Time{"s-e1": time.Now().Add(-time.Hour)})

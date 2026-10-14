@@ -22,11 +22,11 @@ var epoch = time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
 // A channel is a WALL CLOCK, not a playlist that starts when someone watches. Someone tuning
 // in 40 minutes into a 60-minute show must land 40 minutes in.
 func TestAiringAt_MidProgramTuneInLandsAtTheRightOffset(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), prog("Emberfall Canyon", "b", 30)}
 
 	got := AiringAt(slots, epoch, epoch.Add(40*time.Minute))
 	if got.LibraryItemID != "a" {
-		t.Fatalf("at +40m expected Heat, got %q", got.Title)
+		t.Fatalf("at +40m expected Midnight at the Mapleton, got %q", got.Title)
 	}
 	if got.Offset != 40*time.Minute {
 		t.Errorf("offset = %v, want 40m — a joiner must not restart the show", got.Offset)
@@ -43,7 +43,7 @@ func TestAiringAt_MidProgramTuneInLandsAtTheRightOffset(t *testing.T) {
 // the same item at the same offset. One encode serves N viewers, so if this were unstable the
 // viewers would be watching different things through one pipe.
 func TestAiringAt_IsStableForTheSameInstant(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), breakGap(), prog("Emberfall Canyon", "b", 30)}
 	at := epoch.Add(73 * time.Minute)
 
 	first := AiringAt(slots, epoch, at)
@@ -56,24 +56,24 @@ func TestAiringAt_IsStableForTheSameInstant(t *testing.T) {
 
 // The cycle repeats — that is what makes a channel continuous without an infinite lineup.
 func TestAiringAt_CycleRepeats(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), prog("Emberfall Canyon", "b", 30)}
 
-	// 90m cycle. At +95m we are 5m into the second pass, i.e. Heat again.
+	// 90m cycle. At +95m we are 5m into the second pass, i.e. Midnight at the Mapleton again.
 	got := AiringAt(slots, epoch, epoch.Add(95*time.Minute))
 	if got.LibraryItemID != "a" || got.Offset != 5*time.Minute {
-		t.Errorf("at +95m want Heat @5m, got %q @%v", got.Title, got.Offset)
+		t.Errorf("at +95m want Midnight at the Mapleton @5m, got %q @%v", got.Title, got.Offset)
 	}
 	// And a channel running for weeks stays correct.
 	got = AiringAt(slots, epoch, epoch.Add(3*7*24*time.Hour+10*time.Minute))
 	if got.LibraryItemID != "a" || got.Offset != 10*time.Minute {
-		t.Errorf("after three weeks want Heat @10m, got %q @%v", got.Title, got.Offset)
+		t.Errorf("after three weeks want Midnight at the Mapleton @10m, got %q @%v", got.Title, got.Offset)
 	}
 }
 
 // Break gaps occupy real time. A channel with breaks must not have them collapse to zero, or
 // every program after the first airs at the wrong wall-clock.
 func TestAiringAt_BreakGapsOccupyTime(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), breakGap(), prog("Emberfall Canyon", "b", 30)}
 
 	// 60m program, then the break.
 	got := AiringAt(slots, epoch, epoch.Add(60*time.Minute+5*time.Second))
@@ -83,7 +83,7 @@ func TestAiringAt_BreakGapsOccupyTime(t *testing.T) {
 	// The second program starts AFTER the gap, not at +60m.
 	got = AiringAt(slots, epoch, epoch.Add(60*time.Minute+fillerSlotDuration+time.Second))
 	if got.LibraryItemID != "b" {
-		t.Errorf("after the gap expected Predator, got %q", got.Title)
+		t.Errorf("after the gap expected Emberfall Canyon, got %q", got.Title)
 	}
 }
 
@@ -91,8 +91,8 @@ func TestAiringAt_BreakGapsOccupyTime(t *testing.T) {
 // cycle; treating it as some default would air silence for a made-up length. It is skipped.
 func TestAiringAt_PendingSlotsAreNotAirable(t *testing.T) {
 	slots := []schedule.Slot{
-		{Kind: schedule.SlotPending, Title: "Con Air"}, // DurationMs 0
-		prog("Heat", "a", 60),
+		{Kind: schedule.SlotPending, Title: "Smoke over Calloway"}, // DurationMs 0
+		prog("Midnight at the Mapleton", "a", 60),
 	}
 	got := AiringAt(slots, epoch, epoch)
 	if got.LibraryItemID != "a" {
@@ -122,7 +122,7 @@ func TestAiringAt_NothingAirableReportsFlex(t *testing.T) {
 // A clock that moves backwards (NTP correction, DST) must wrap rather than go negative — a
 // negative offset would seek before the start of the file.
 func TestAiringAt_ClockBeforeEpochDoesNotGoNegative(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60)}
 	got := AiringAt(slots, epoch, epoch.Add(-30*time.Minute))
 	if got.Offset < 0 {
 		t.Errorf("negative offset %v would seek before the file start", got.Offset)
@@ -152,10 +152,10 @@ func TestAiring_PlayableRejectsUnstreamableSlots(t *testing.T) {
 // --- BroadcastsBetween: the guide's view of the same timeline ---
 
 // THE PROPERTY THE WHOLE DESIGN RESTS ON: the guide and the encoder must agree. If they used
-// separate arithmetic they would eventually diverge, and the symptom — "the guide says Heat but
-// Predator is playing" — is the kind of bug nobody can reproduce on demand.
+// separate arithmetic they would eventually diverge, and the symptom — "the guide says Midnight at
+// the Mapleton but Emberfall Canyon is playing" — is the kind of bug nobody can reproduce on demand.
 func TestBroadcastsBetween_AgreesWithAiringAt(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), breakGap(), prog("Emberfall Canyon", "b", 30)}
 
 	// Sample the window at many instants; whatever AiringAt says is on must be the programme
 	// the guide shows covering that moment.
@@ -225,14 +225,14 @@ func TestBroadcastClipToPreservesScheduleBlockIdentity(t *testing.T) {
 // server draws the current programme from its actual beginning; a clipped start renders as a
 // show that appears to begin the moment you opened the guide.
 func TestBroadcastsBetween_InProgressProgrammeKeepsItsRealStart(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), prog("Emberfall Canyon", "b", 30)}
 
-	// Ask from 40 minutes in — Heat started at the epoch and runs to +60m.
+	// Ask from 40 minutes in — Midnight at the Mapleton started at the epoch and runs to +60m.
 	got := BroadcastsBetween(slots, epoch, epoch.Add(40*time.Minute), epoch.Add(90*time.Minute))
 	if len(got) == 0 {
 		t.Fatal("no programmes")
 	}
-	if got[0].Title != "Heat" {
+	if got[0].Title != "Midnight at the Mapleton" {
 		t.Fatalf("first programme = %q, want the one in progress", got[0].Title)
 	}
 	if !got[0].Start.Equal(epoch) {
@@ -247,7 +247,7 @@ func TestBroadcastsBetween_InProgressProgrammeKeepsItsRealStart(t *testing.T) {
 // The window is covered CONTIGUOUSLY — no gaps between programmes, or the guide shows holes the
 // channel does not actually have.
 func TestBroadcastsBetween_CoversTheWindowWithoutGaps(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), breakGap(), prog("Emberfall Canyon", "b", 30)}
 	got := BroadcastsBetween(slots, epoch, epoch, epoch.Add(6*time.Hour))
 
 	if len(got) < 2 {
@@ -267,7 +267,7 @@ func TestBroadcastsBetween_CoversTheWindowWithoutGaps(t *testing.T) {
 
 // The cycle repeats, so a long window replays the lineup rather than running out.
 func TestBroadcastsBetween_RepeatsTheCycle(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), prog("Emberfall Canyon", "b", 30)}
 	got := BroadcastsBetween(slots, epoch, epoch, epoch.Add(5*time.Hour))
 
 	// 90m cycle over 5h ⇒ at least 6 programmes.
@@ -278,7 +278,7 @@ func TestBroadcastsBetween_RepeatsTheCycle(t *testing.T) {
 	for _, b := range got {
 		titles[b.Title]++
 	}
-	if titles["Heat"] < 3 || titles["Predator"] < 3 {
+	if titles["Midnight at the Mapleton"] < 3 || titles["Emberfall Canyon"] < 3 {
 		t.Errorf("cycle did not repeat evenly: %v", titles)
 	}
 }
@@ -287,7 +287,7 @@ func TestBroadcastsBetween_RepeatsTheCycle(t *testing.T) {
 // Loomarr's own time-grid shows them — filtering here would make this useless to one caller.
 // The decision belongs to the renderer.
 func TestBroadcastsBetween_IncludesFillerForTheCallerToDecide(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), breakGap(), prog("Emberfall Canyon", "b", 30)}
 	got := BroadcastsBetween(slots, epoch, epoch, epoch.Add(2*time.Hour))
 
 	var sawFiller bool
@@ -315,7 +315,7 @@ func TestBroadcastsBetween_NothingAirableIsEmpty(t *testing.T) {
 
 // A backwards or zero window is not an error, just empty — a media server may ask for anything.
 func TestBroadcastsBetween_InvalidWindowIsEmpty(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60)}
 	if got := BroadcastsBetween(slots, epoch, epoch.Add(time.Hour), epoch); len(got) != 0 {
 		t.Errorf("backwards window returned %d programmes", len(got))
 	}
@@ -352,8 +352,8 @@ func pendingSlot(title string) schedule.Slot {
 // would shift and the ENCODER would be the one that is wrong — the guide would look right while
 // playout aired silence for a made-up length.
 func TestBroadcastsWithPending_DoesNotMoveAirableProgrammes(t *testing.T) {
-	without := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30)}
-	with := []schedule.Slot{prog("Heat", "a", 60), pendingSlot("Dune 2"), prog("Predator", "b", 30)}
+	without := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), prog("Emberfall Canyon", "b", 30)}
+	with := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), pendingSlot("Saltwind 2"), prog("Emberfall Canyon", "b", 30)}
 
 	base := BroadcastsBetween(without, epoch, epoch, epoch.Add(6*time.Hour))
 	got := BroadcastsWithPending(with, epoch, epoch, epoch.Add(6*time.Hour))
@@ -378,7 +378,7 @@ func TestBroadcastsWithPending_DoesNotMoveAirableProgrammes(t *testing.T) {
 // THE GATE'S REQUIREMENT: a pending slot and a filler pod must be DISTINGUISHABLE. The old
 // `gap bool` collapsed both to one value, so a UI could not draw them differently.
 func TestBroadcastsWithPending_PendingAndFillerAreDistinguishable(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), breakGap(), pendingSlot("Dune 2"), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), breakGap(), pendingSlot("Saltwind 2"), prog("Emberfall Canyon", "b", 30)}
 	got := BroadcastsWithPending(slots, epoch, epoch, epoch.Add(2*time.Hour))
 
 	var sawFiller, sawPending bool
@@ -391,7 +391,7 @@ func TestBroadcastsWithPending_PendingAndFillerAreDistinguishable(t *testing.T) 
 			if !b.Nominal {
 				t.Error("a pending block must be marked Nominal — its times are invented")
 			}
-			if b.Title != "Dune 2" {
+			if b.Title != "Saltwind 2" {
 				t.Errorf("pending title = %q, want the awaited title", b.Title)
 			}
 		}
@@ -405,7 +405,7 @@ func TestBroadcastsWithPending_PendingAndFillerAreDistinguishable(t *testing.T) 
 // The pending marker sits where the content WILL land (§9 backfills in place), so it must be
 // anchored to the programme it precedes rather than floating anywhere in the window.
 func TestBroadcastsWithPending_AnchoredToTheFollowingProgramme(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), pendingSlot("Dune 2"), prog("Predator", "b", 30)}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), pendingSlot("Saltwind 2"), prog("Emberfall Canyon", "b", 30)}
 	got := BroadcastsWithPending(slots, epoch, epoch, epoch.Add(90*time.Minute))
 
 	var pend, next Broadcast
@@ -421,7 +421,7 @@ func TestBroadcastsWithPending_AnchoredToTheFollowingProgramme(t *testing.T) {
 	if pend.Title == "" {
 		t.Fatal("no pending block emitted")
 	}
-	if next.Title != "Predator" {
+	if next.Title != "Emberfall Canyon" {
 		t.Fatalf("pending precedes %q, want the programme it backfills before", next.Title)
 	}
 	if !pend.Stop.Equal(next.Start) {
@@ -436,7 +436,7 @@ func TestBroadcastsWithPending_AnchoredToTheFollowingProgramme(t *testing.T) {
 // A lineup with NOTHING airable has no timeline to anchor to, so there is nowhere to place a
 // pending marker. Empty is the honest answer, not a floating block at an invented time.
 func TestBroadcastsWithPending_NothingAirableIsEmpty(t *testing.T) {
-	slots := []schedule.Slot{pendingSlot("Dune 2"), pendingSlot("Tron 3")}
+	slots := []schedule.Slot{pendingSlot("Saltwind 2"), pendingSlot("Glass Orchard 3")}
 	if got := BroadcastsWithPending(slots, epoch, epoch, epoch.Add(6*time.Hour)); len(got) != 0 {
 		t.Errorf("got %d blocks from a lineup where nothing airs", len(got))
 	}
@@ -445,7 +445,7 @@ func TestBroadcastsWithPending_NothingAirableIsEmpty(t *testing.T) {
 // A pending slot at the END of the lineup precedes the FIRST programme of the next cycle pass —
 // the cycle repeats, so "the slot after the last one" is slot zero, not nothing.
 func TestBroadcastsWithPending_TrailingPendingWrapsToTheNextPass(t *testing.T) {
-	slots := []schedule.Slot{prog("Heat", "a", 60), prog("Predator", "b", 30), pendingSlot("Dune 2")}
+	slots := []schedule.Slot{prog("Midnight at the Mapleton", "a", 60), prog("Emberfall Canyon", "b", 30), pendingSlot("Saltwind 2")}
 	got := BroadcastsWithPending(slots, epoch, epoch, epoch.Add(4*time.Hour))
 
 	for i, b := range got {
@@ -455,8 +455,8 @@ func TestBroadcastsWithPending_TrailingPendingWrapsToTheNextPass(t *testing.T) {
 		if i+1 >= len(got) {
 			t.Fatal("pending block emitted with nothing following it")
 		}
-		if got[i+1].Title != "Heat" {
-			t.Errorf("trailing pending precedes %q, want Heat (the next pass's first programme)",
+		if got[i+1].Title != "Midnight at the Mapleton" {
+			t.Errorf("trailing pending precedes %q, want Midnight at the Mapleton (the next pass's first programme)",
 				got[i+1].Title)
 		}
 		return
@@ -467,7 +467,7 @@ func TestBroadcastsWithPending_TrailingPendingWrapsToTheNextPass(t *testing.T) {
 // Nominal blocks must never reach a media server's EPG: their times are invented, so a listing
 // would promise a programme at a moment it will never air.
 func TestAdvertisable_RejectsNominalBlocks(t *testing.T) {
-	b := Broadcast{Kind: schedule.SlotProgram, Title: "Dune 2", Nominal: true}
+	b := Broadcast{Kind: schedule.SlotProgram, Title: "Saltwind 2", Nominal: true}
 	if advertisable(b) {
 		t.Error("a nominal block was advertisable — XMLTV would promise an airing that never happens")
 	}

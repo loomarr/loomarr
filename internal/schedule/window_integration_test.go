@@ -37,7 +37,7 @@ func itoa(i int) string {
 
 func windowChannel() schedule.Channel {
 	return schedule.Channel{
-		ID: "st", Name: "Trek", Number: 7,
+		ID: "st", Name: "Relay", Number: 7,
 		Strategy: schedule.Shuffle, Shuffle: schedule.ShuffleParams{Seed: 99},
 		DefaultWindow: 6 * time.Hour,
 	}
@@ -56,9 +56,9 @@ func slotKeysDigest(d schedule.DesiredLineup) string {
 // exact same slots and pushes NOTHING to Tunarr. The window index folds into the deck seed;
 // it must be constant across a window.
 func TestComputeDesiredAt_IdempotentWithinWindow(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("series:tvdb:100", "Trek")}
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000100", "Cold Relay")}
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tvdb:100": manyEpisodes(48),
+		"series:tvdb:90000100": manyEpisodes(48),
 	})
 
 	base := time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC)
@@ -74,9 +74,9 @@ func TestComputeDesiredAt_IdempotentWithinWindow(t *testing.T) {
 // programs, NOT all 48. (The exact count depends on break interleaving, so assert it's a
 // manageable horizon well under the full run — the original "800 episodes" complaint.)
 func TestComputeDesiredAt_WindowTruncates(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("series:tvdb:100", "Trek")}
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000100", "Cold Relay")}
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tvdb:100": manyEpisodes(48),
+		"series:tvdb:90000100": manyEpisodes(48),
 	})
 	now := time.Date(2026, 7, 23, 3, 0, 0, 0, time.UTC)
 
@@ -94,9 +94,9 @@ func TestComputeDesiredAt_WindowTruncates(t *testing.T) {
 // forever. EligibleKeys stays the SAME (the library supplies the same series either way),
 // which is what keeps the boundary crossing from reading as drift.
 func TestComputeDesiredAt_WindowBoundaryAdvancesButStaysEligible(t *testing.T) {
-	entries := []schedule.LineupEntry{entry("series:tvdb:100", "Trek")}
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000100", "Cold Relay")}
 	avail := newSeriesAvail(map[string][]schedule.ResolvedProgram{
-		"series:tvdb:100": manyEpisodes(48),
+		"series:tvdb:90000100": manyEpisodes(48),
 	})
 	base := time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC)
 
@@ -104,7 +104,7 @@ func TestComputeDesiredAt_WindowBoundaryAdvancesButStaysEligible(t *testing.T) {
 	next := schedule.ComputeDesiredAt(windowChannel(), entries, avail, schedule.PodFill, schedule.ChannelPolicy{}, base.Add(7*time.Hour)) // next 6h window
 
 	// The series key stays eligible across the boundary (no false drift).
-	seriesKey := provision.Key("series:tvdb:100")
+	seriesKey := provision.Key("series:tvdb:90000100")
 	if !cur.EligibleKeys[seriesKey] || !next.EligibleKeys[seriesKey] {
 		t.Fatal("series should stay eligible across a window boundary")
 	}
@@ -127,7 +127,7 @@ func TestComputeDesiredAt_MoviePoolRotatesThroughWholeCatalog(t *testing.T) {
 	avail := durAvail{}
 	var entries []schedule.LineupEntry
 	for i := 0; i < nFilms; i++ {
-		key := provision.Key("movie:tmdb:" + itoa(1000+i))
+		key := provision.Key("movie:tmdb:" + itoa(90_001_000+i))
 		avail[key] = struct {
 			id  string
 			dur int64
@@ -169,7 +169,7 @@ func TestComputeDesiredAt_WatchedChannelNeverReairsYesterdayWhileOthersWait(t *t
 	avail := durAvail{}
 	var entries []schedule.LineupEntry
 	for i := 0; i < nFilms; i++ {
-		key := provision.Key("movie:tmdb:" + itoa(3000+i))
+		key := provision.Key("movie:tmdb:" + itoa(90_003_000+i))
 		avail[key] = struct {
 			id  string
 			dur int64
@@ -227,7 +227,7 @@ func TestComputeDesiredAt_PartlyWatchedShuffleStillRotatesUnseenFilms(t *testing
 	avail := durAvail{}
 	var entries []schedule.LineupEntry
 	for i := 0; i < nFilms; i++ {
-		key := provision.Key("movie:tmdb:" + itoa(4000+i))
+		key := provision.Key("movie:tmdb:" + itoa(90_004_000+i))
 		avail[key] = struct {
 			id  string
 			dur int64
@@ -281,7 +281,7 @@ func TestComputeDesiredAt_PartlyWatchedShuffleStillRotatesUnseenFilms(t *testing
 func TestComputeDesiredAt_EditedLineupDoesNotReairYesterday(t *testing.T) {
 	avail := durAvail{}
 	film := func(i int) schedule.LineupEntry {
-		key := provision.Key("movie:tmdb:" + itoa(5000+i))
+		key := provision.Key("movie:tmdb:" + itoa(90_005_000+i))
 		avail[key] = struct {
 			id  string
 			dur int64
@@ -335,7 +335,7 @@ func TestComputeDesiredAt_MovieWindowIsBounded(t *testing.T) {
 	avail := durAvail{}
 	var entries []schedule.LineupEntry
 	for i := 0; i < 15; i++ {
-		key := provision.Key("movie:tmdb:" + itoa(2000+i))
+		key := provision.Key("movie:tmdb:" + itoa(90_002_000+i))
 		avail[key] = struct {
 			id  string
 			dur int64

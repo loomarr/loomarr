@@ -191,7 +191,7 @@ func TestOrderingMode_AirsInOrder(t *testing.T) {
 // ActiveRuleAt is the exported attribution window onto pickRule (§8.1): it must name the
 // SAME rule pickRule selects, and report base-policy (matched:false) when nothing matches.
 func TestActiveRuleAt_Attribution(t *testing.T) {
-	weekend := SchedulingRule{ID: "w", Label: "Weekend TNG marathon", Priority: 10, When: WhenPredicate{Weekend: true}}
+	weekend := SchedulingRule{ID: "w", Label: "Weekend Cold Relay marathon", Priority: 10, When: WhenPredicate{Weekend: true}}
 	holiday := SchedulingRule{ID: "h", Label: "Spooky Season", Priority: 20, When: WhenPredicate{Holiday: "halloween"}}
 	rules := []SchedulingRule{weekend, holiday}
 
@@ -203,7 +203,7 @@ func TestActiveRuleAt_Attribution(t *testing.T) {
 	})
 	t.Run("weekend matches → attributed to the weekend rule with its label", func(t *testing.T) {
 		a := ActiveRuleAt(rules, satNoon)
-		if !a.Matched || a.ID != "w" || a.Label != "Weekend TNG marathon" || a.Priority != 10 {
+		if !a.Matched || a.ID != "w" || a.Label != "Weekend Cold Relay marathon" || a.Priority != 10 {
 			t.Fatalf("got %+v, want the weekend rule", a)
 		}
 	})

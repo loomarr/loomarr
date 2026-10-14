@@ -11,8 +11,8 @@ import (
 )
 
 func TestSeasonalExclusiveResolvesHolidaySeriesBeforeFiltering(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
-	entries := []schedule.LineupEntry{{Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}
+	key := provision.Key("series:tmdb:90000456")
+	entries := []schedule.LineupEntry{{Key: key, Title: "The Mudpuddles", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}
 	avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{key: {Programs: []schedule.ResolvedProgram{
 		{LibraryItemID: "ordinary", Title: "An ordinary Tuesday", Season: 1, Episode: 1, DurationMs: 60000},
 		{LibraryItemID: "christmas", Title: "A Christmas celebration", Season: 1, Episode: 2, DurationMs: 60000},
@@ -27,7 +27,7 @@ func TestSeasonalExclusiveResolvesHolidaySeriesBeforeFiltering(t *testing.T) {
 }
 
 func TestSeasonalExclusiveEpisodeEvidenceAndCalendar(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	base := []schedule.ResolvedProgram{
 		{LibraryItemID: "ordinary", Title: "Ordinary Tuesday", Season: 1, Episode: 1, DurationMs: 60000, OfficialRating: "TV-PG"},
 		{LibraryItemID: "christmas", Title: "Christmas celebration", Season: 1, Episode: 2, DurationMs: 60000, OfficialRating: "TV-PG"},
@@ -79,7 +79,7 @@ func TestSeasonalExclusiveEpisodeEvidenceAndCalendar(t *testing.T) {
 }
 
 func TestSeasonalExclusiveKeepsSupportedMultipartUnit(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	entries := []schedule.LineupEntry{{Key: key, Title: "A regular series"}}
 	avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{key: {Programs: []schedule.ResolvedProgram{
 		{LibraryItemID: "part-one", Title: "A winter visit (1)", Overview: "A Christmas gathering", Season: 1, Episode: 1, DurationMs: 60000},
@@ -102,7 +102,7 @@ func TestSeasonalExclusiveKeepsSupportedMultipartUnit(t *testing.T) {
 }
 
 func TestSeasonalExclusiveHolidaySeriesTitleIsNotEpisodeEvidence(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
+	key := provision.Key("series:tmdb:90000456")
 	entries := []schedule.LineupEntry{{Key: key, Title: "Christmas stories", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}
 	avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{key: {Programs: []schedule.ResolvedProgram{
 		{LibraryItemID: "ordinary", Title: "An ordinary Tuesday", Season: 1, Episode: 1, DurationMs: 60000},
@@ -118,8 +118,8 @@ func TestSeasonalExclusiveHolidaySeriesTitleIsNotEpisodeEvidence(t *testing.T) {
 }
 
 func TestHolidaySelectionUnavailableEvidenceCannotPopulateOffSeasonLoop(t *testing.T) {
-	key := provision.Key("series:tmdb:456")
-	entries := []schedule.LineupEntry{{Key: key, Title: "The Simpsons", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}
+	key := provision.Key("series:tmdb:90000456")
+	entries := []schedule.LineupEntry{{Key: key, Title: "The Mudpuddles", EpisodeSelection: schedule.EpisodeSelection{Mode: schedule.EpisodeHoliday, Holidays: []string{"christmas"}}}}
 	for _, at := range []time.Time{dec20, jul14, time.Time{}} {
 		for _, unavailable := range []bool{false, true} {
 			avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{key: {Programs: []schedule.ResolvedProgram{{LibraryItemID: "christmas", Title: "A Christmas celebration", Season: 1, Episode: 1, DurationMs: 60000}}, EditorialUnavailable: unavailable}}}

@@ -108,9 +108,9 @@ func TestInterleaveBreaksSplitsLongProgrammesAtFades(t *testing.T) {
 		"ep":   fades(10),           // a half-hour episode is never split
 	}}
 	slots := []Slot{
-		{Kind: SlotProgram, Key: "movie:tmdb:1", LibraryItemID: "film", Title: "Film", DurationMs: 60 * minute},
-		{Kind: SlotProgram, Key: "series:tvdb:2", LibraryItemID: "ep", Title: "Ep", DurationMs: 22 * minute},
-		{Kind: SlotProgram, Key: "movie:tmdb:3", LibraryItemID: "unmeasured", Title: "Other", DurationMs: 90 * minute},
+		{Kind: SlotProgram, Key: "movie:tmdb:90000001", LibraryItemID: "film", Title: "Film", DurationMs: 60 * minute},
+		{Kind: SlotProgram, Key: "series:tvdb:90000002", LibraryItemID: "ep", Title: "Ep", DurationMs: 22 * minute},
+		{Kind: SlotProgram, Key: "movie:tmdb:90000003", LibraryItemID: "unmeasured", Title: "Other", DurationMs: 90 * minute},
 	}
 	got := interleaveBreaks(ch, slots)
 	type row struct {
