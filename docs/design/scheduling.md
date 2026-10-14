@@ -173,11 +173,16 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   substitutes for another. A clip's eligibility change wakes only the affected channels, through the
   same `SelectionForChannel` and `FitForChannel` predicates coverage, preview and playout use;
   the sweep remains the crash-safe retry.
-- **Density.** `FILLER_BREAK_DURATION` defaults to 30 s (`policy.breakDuration` per channel,
+- **Density.** `FILLER_BREAK_DURATION` defaults to 2 minutes (#1670: 30 s breaks felt too short;
+  `policy.breakDuration` per channel,
   minimum 30 s because Tunarr clamps smaller flex gaps). `policy.breaksPerHour = 0` is the only off
   switch. On internal playout the break length is a ceiling: a break slot is capped at its pod's
   playable duration, so the programme resumes when the clips end. `FILLER_POD_MAX` yields to break
-  length when more clips are needed.
+  length when more clips are needed. **The break is a hard budget:** the intro bumper, the ads and
+  the return bumper together never exceed it, because the slot is cut at exactly the break length
+  and anything past it is lost. Assembly reserves the return bumper's real length before it places
+  an ad, then fills what is left with whole clips: a shorter clip or station ID takes the remainder
+  and an ad is never cut to fit. Time, not count, bounds the pod.
 - **Placement** walks program durations and inserts a break after the program that crosses each
   `60 / breaksPerHour` minute threshold. Breaks are inserted only when a filler pool exists; with
   none, programmes play back to back and the next reconcile re-inserts breaks once clips land.
@@ -186,11 +191,19 @@ A break is an **ad pod**: intro bumper, 2–4 matched commercials, return bumper
   Internal playout writes it when the channel encoder resolves the clip, keyed by scheduled start, so
   tune-ins and rebuilds cannot inflate it; preview and reconcile never write it. Assembly reads a
   snapshot cut off before the break starts and ranks within each rung: never aired, then least
-  recently aired outside `filler.cooldown_seconds`. A clip inside its cooldown ranks behind every
-  rested clip on any rung, so the ladder widens before a clip repeats, and cooldown relaxes only when
-  the whole ladder is resting. Cooldown never causes dead air. Pins come first and may repeat. On
-  Tunarr channels Tunarr owns rotation; Loomarr writes `fillerRepeatCooldown` to the channel and
-  leaves the list cooldown at zero.
+  recently aired outside the channel's commercial spacing. A clip inside its spacing ranks behind
+  every rested clip on any rung, so the ladder widens era before a clip repeats, and spacing relaxes
+  only when the whole ladder is resting (the pod records `CooldownRelaxed`). Spacing never causes
+  dead air. Pins come first and may repeat. **Spacing is per channel (#1670):**
+  `policy.commercialSpacing` ("Repeat spacing · same commercial" in the channel's Filler section);
+  nil inherits `filler.cooldown_seconds`, which defaults to 4 hours, and a present `0` lets a clip
+  repeat in any later break. On Tunarr channels Tunarr owns rotation; Loomarr writes the channel's
+  effective spacing as `fillerRepeatCooldown` and leaves the list cooldown at zero. Tunarr makes a
+  clip unavailable for the whole cooldown and Loomarr's list is a pod's worth of clips, so the value
+  is capped at the time the channel takes to air half the list (breaks per hour × break length against
+  the list's runtime). A longer spacing would leave every clip cooling and Tunarr would fall back to
+  flex. A larger list earns a longer spacing. Loomarr's own playout ranks by recency instead, so it
+  honours the full spacing and relaxes it only when the whole ladder is resting.
 - **Fallback ladder:** exact era → era widened by a decade → any audience-appropriate clip → clips
   with an ungrounded audience → the channel's bumper card. Never dead air. A pod fills from the
   tightest rung first and tops up from the rungs below it, so a small exact rung leads the break

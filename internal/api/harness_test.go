@@ -75,24 +75,24 @@ func TestAPIHarnessOwnsDefaultsIsolationAndCleanup(t *testing.T) {
 	t.Run("first", func(t *testing.T) {
 		first = newAPIHarness(t)
 		if got := first.Do(http.MethodPost, "/v1/titles", memberToken,
-			`{"mediaType":"movie","tmdbId":41}`).StatusCode; got != http.StatusForbidden {
+			`{"mediaType":"movie","tmdbId":90000041}`).StatusCode; got != http.StatusForbidden {
 			t.Fatalf("member mutation = %d, want 403", got)
 		}
 		if got := first.Do(http.MethodPost, "/v1/titles", adminToken,
-			`{"mediaType":"movie","tmdbId":42}`).StatusCode; got != http.StatusOK {
+			`{"mediaType":"movie","tmdbId":90000042}`).StatusCode; got != http.StatusOK {
 			t.Fatalf("admin mutation = %d, want 200", got)
 		}
 	})
 
-	if _, err := first.Server.Client().Get(first.Server.URL + "/v1/titles/movie:tmdb:42"); err == nil {
+	if _, err := first.Server.Client().Get(first.Server.URL + "/v1/titles/movie:tmdb:90000042"); err == nil {
 		t.Fatal("server remained reachable after the owning test completed")
 	}
-	if _, err := first.Store.GetTitle(context.Background(), "movie:tmdb:42"); err == nil {
+	if _, err := first.Store.GetTitle(context.Background(), "movie:tmdb:90000042"); err == nil {
 		t.Fatal("store remained open after the owning test completed")
 	}
 
 	second := newAPIHarness(t)
-	if got := second.Do(http.MethodGet, "/v1/titles/movie:tmdb:42", adminToken, "").StatusCode; got != http.StatusNotFound {
+	if got := second.Do(http.MethodGet, "/v1/titles/movie:tmdb:90000042", adminToken, "").StatusCode; got != http.StatusNotFound {
 		t.Fatalf("second harness observed first harness state: status %d, want 404", got)
 	}
 }

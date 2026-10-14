@@ -1129,8 +1129,8 @@ func declared() []Setting {
 		},
 		{
 			Key: "filler.break_duration", Label: "Length of each break", EnvVar: "FILLER_BREAK_DURATION", Group: GroupFiller,
-			Kind: KindDuration, Default: "30s", Validate: breakDuration,
-			Doc: "How long each commercial break lasts by default — short, with the commercials rotated so recently shown ones wait their turn. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
+			Kind: KindDuration, Default: "2m", Validate: breakDuration,
+			Doc: "How long each commercial break lasts by default, with the commercials rotated so recently shown ones wait their turn. Channels can choose their own length. Use breaks per program hour to turn breaks off.",
 		},
 		{
 			Key: "filler.pod_max", Label: "Clips per break", EnvVar: "FILLER_POD_MAX", Group: GroupFiller,
@@ -1138,9 +1138,9 @@ func declared() []Setting {
 			Doc: "Preferred clip count per break. Loomarr automatically exceeds it when shorter clips need more slots to fill the requested break length.",
 		},
 		{
-			Key: "filler.cooldown_seconds", Label: "Repeat cooldown (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
-			Kind: KindInt, Default: 1800, Advanced: true, Validate: nonNegativeWholeNumber,
-			Doc: "Preferred seconds before the same commercial airs again. Loomarr relaxes this predictably when a small pool would otherwise leave a break empty.",
+			Key: "filler.cooldown_seconds", Label: "Repeat spacing · same commercial (seconds)", EnvVar: "FILLER_COOLDOWN_SECONDS", Group: GroupFiller,
+			Kind: KindInt, Default: 14400, Advanced: true, Validate: nonNegativeWholeNumber,
+			Doc: "Default seconds before the same commercial airs again on a channel (14400 is 4 hours). Loomarr first reaches for commercials from a nearby era, and repeats one sooner only when that would otherwise leave a break short. Each channel can choose its own spacing.",
 		},
 		// ⚠ Default 0 = OFF, and that is the whole safety property of this knob (V17c).
 		// `00014_clips_quality` shipped with quality as display-only and warned that a

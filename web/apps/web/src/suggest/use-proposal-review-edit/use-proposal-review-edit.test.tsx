@@ -8,11 +8,11 @@ describe("useProposalReviewEdit", () => {
   it("restores pending title choices for the same proposal job", () => {
     window.sessionStorage.setItem(
       "loomarr.proposalReviewEdit.job-1",
-      JSON.stringify({ drop: ["movie:tmdb:949"], note: "Keep the lighter picks" }),
+      JSON.stringify({ drop: ["movie:tmdb:90000949"], note: "Keep the lighter picks" }),
     );
     const { result } = renderHook(() => useProposalReviewEdit("job-1"));
     expect(result.current[0]).toEqual({
-      drop: ["movie:tmdb:949"],
+      drop: ["movie:tmdb:90000949"],
       note: "Keep the lighter picks",
     });
   });
@@ -21,13 +21,13 @@ describe("useProposalReviewEdit", () => {
     const { result, rerender } = renderHook(({ jobId }) => useProposalReviewEdit(jobId), {
       initialProps: { jobId: "job-1" as string | undefined },
     });
-    act(() => result.current[1]({ drop: ["movie:tmdb:949"] }));
-    expect(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1")).toContain("tmdb:949");
+    act(() => result.current[1]({ drop: ["movie:tmdb:90000949"] }));
+    expect(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1")).toContain("tmdb:90000949");
 
     rerender({ jobId: "job-2" });
     await waitFor(() => expect(result.current[0]).toBeUndefined());
     act(() => result.current[1]({ note: "Second request" }));
-    expect(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1")).toContain("tmdb:949");
+    expect(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-1")).toContain("tmdb:90000949");
     expect(window.sessionStorage.getItem("loomarr.proposalReviewEdit.job-2")).toContain("Second request");
 
     act(() => result.current[1](undefined));

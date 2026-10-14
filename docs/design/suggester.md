@@ -15,6 +15,9 @@ more suggestions, and a ChannelPolicy. How a Proposal is executed, approved and 
 An Intent is a natural-language description plus optional constraints (era, runtime target, tone,
 must-include and exclude). A **refine** adds a free-text change and the channel's current lineup as
 context; the lineup is context only, and every new pick is grounded exactly as in a fresh request.
+An Intent may also carry a **channel name** the requester fixed, for example the name typed in the
+manual builder before it hands over to AI. When it is set, the proposal keeps it and the model's
+name is discarded. When it is empty, the model names the channel.
 
 Ambient context is an explicit input, never hidden nondeterminism. Today a daypart or weather
 condition counts only when the request says it. If Loomarr ever supplies them automatically, the

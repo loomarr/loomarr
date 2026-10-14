@@ -1417,7 +1417,7 @@ components:
         autoCurate:
           $ref: "#/components/schemas/AutoCurate"
         breakDuration:
-          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          description: "Length of each commercial break as a Go-duration string, e.g. \"2m\" or \"5m\"; at least 30s. Omitted means the install setting filler.break_duration (default 2m). There is no off value: breaksPerHour 0 turns breaks off"
           examples:
             - 168h
             - 24h
@@ -1425,6 +1425,12 @@ components:
         breaksPerHour:
           format: int64
           type: integer
+        commercialSpacing:
+          description: "How long the same commercial rests before this channel airs it again, as a Go-duration string, e.g. \"4h\". Omitted means the install setting filler.cooldown_seconds (default 4h). \"0s\" means no spacing: a commercial may repeat in any later break. Spacing never empties a break"
+          examples:
+            - 168h
+            - 24h
+          type: string
         filler:
           $ref: "#/components/schemas/FillerSelection"
         midRoll:
@@ -2420,6 +2426,9 @@ components:
           items:
             $ref: "#/components/schemas/CoverageCriterionDTO"
           type: array
+        geography:
+          $ref: "#/components/schemas/CoverageGeographyDTO"
+          description: "The location every counted clip must be from: the channel's own, else the installation's. An empty country means no location limit."
         level:
           description: The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card.
           enum:
@@ -2442,6 +2451,20 @@ components:
         - criteria
         - level
         - total
+        - geography
+      type: object
+    CoverageGeographyDTO:
+      additionalProperties: false
+      properties:
+        country:
+          description: ISO 3166-1 alpha-2 country code, or empty for no location limit
+          type: string
+        market:
+          description: Local market inside that country, or empty for the whole country
+          type: string
+      required:
+        - country
+        - market
       type: object
     CoverageRungDTO:
       additionalProperties: false
@@ -5054,6 +5077,44 @@ components:
         - state
         - checks
       type: object
+    HolidayEpisodesDTO:
+      additionalProperties: false
+      properties:
+        active:
+          description: The holiday's window is open on the channel's date at the previewed instant
+          type: boolean
+        capped:
+          description: "The number of holiday episodes or the quarter-of-the-day limit holds the strength back: fewer a day than it asks for, or not every day"
+          type: boolean
+        episodes:
+          description: Holiday episodes found in this channel's series; a multi-part story counts once
+          format: int64
+          type: integer
+        everyDays:
+          description: The soonest any one of them airs again, in days
+          format: int64
+          type: integer
+        holiday:
+          description: Built-in holiday id (the rule vocabulary's holiday:<id> token, without the prefix)
+          type: string
+        perDay:
+          description: How many air on an ordinary day of the holiday window at the channel's strength
+          format: int64
+          type: integer
+        sameAs:
+          description: The other holiday strengths (light, featured, heavy) that would rotate these episodes exactly the same way, so choosing one changes nothing
+          items:
+            type: string
+          type: array
+      required:
+        - holiday
+        - episodes
+        - perDay
+        - everyDays
+        - active
+        - capped
+        - sameAs
+      type: object
     HostedModelView:
       additionalProperties: false
       properties:
@@ -5599,6 +5660,8 @@ components:
           items:
             $ref: "#/components/schemas/AdjacentContext"
           type: array
+        channelName:
+          type: string
         currentLineup:
           items:
             $ref: "#/components/schemas/LineupContext"
@@ -7524,6 +7587,11 @@ components:
         excluded:
           $ref: "#/components/schemas/ExcludedDTO"
           description: What the hard filters REFUSED and why — the answer to "why isn't X on my channel" (§4)
+        holidayEpisodes:
+          description: "Per selected holiday, open or soonest first: the lineup's holiday episodes and how the channel's holiday strength rotates them. Empty unless the channel uses the built-in seasonal rotation."
+          items:
+            $ref: "#/components/schemas/HolidayEpisodesDTO"
+          type: array
         slots:
           description: The leading slots of the resolved cycle, in play order (capped)
           items:
@@ -7543,6 +7611,7 @@ components:
         - slots
         - excluded
         - trace
+        - holidayEpisodes
       type: object
     PreviewDraftPodsInputBody:
       additionalProperties: false
@@ -7555,7 +7624,7 @@ components:
           readOnly: true
           type: string
         breakDuration:
-          description: A Go-duration string, e.g. "168h" (7 days) or "24h". Empty/omitted means no limit.
+          description: Unsaved break length as a Go-duration string, e.g. "2m"; at least 30s. Omitted means the install setting filler.break_duration (default 2m)
           examples:
             - 168h
             - 24h
@@ -9329,6 +9398,10 @@ components:
         mode:
           type: string
         offSeason:
+          type: string
+        placement:
+          type: string
+        strength:
           type: string
       type: object
     SecretRegenerateOutputBody:

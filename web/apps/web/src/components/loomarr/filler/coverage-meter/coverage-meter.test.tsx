@@ -30,10 +30,13 @@ const HEALTHY: CoverageDTO["criteria"] = [
   { criterion: "quality", clips: 9 },
 ];
 
+const NO_LIMIT: CoverageDTO["geography"] = { country: "", market: "" };
+
 const full: CoverageDTO = {
   level: "exact",
   total: 9,
   criteria: HEALTHY,
+  geography: NO_LIMIT,
   rungs: [
     { level: "exact", clips: 4 },
     { level: "widened", clips: 5 },
@@ -82,6 +85,7 @@ describe("CoverageMeter", () => {
           level: "exact",
           total: 9,
           criteria: HEALTHY,
+          geography: NO_LIMIT,
           rungs: [
             { level: "exact", clips: 4 },
             { level: "audience", clips: 9 },
@@ -97,7 +101,9 @@ describe("CoverageMeter", () => {
   // still-loading, and the one state an operator most needs named.
   it("says plainly when nothing in the catalog fits", async () => {
     renderMeter(
-      <CoverageMeter coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY }} />,
+      <CoverageMeter
+        coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY, geography: NO_LIMIT }}
+      />,
     );
     expect(await screen.findByText("No commercials")).toBeInTheDocument();
     expect(screen.getByText("No eligible commercials for this channel.")).toBeInTheDocument();
@@ -113,7 +119,13 @@ describe("CoverageMeter", () => {
     renderMeter(
       <CoverageMeter
         // Cast, because the whole point is a value outside the generated union.
-        coverage={{ level: "sideways" as CoverageDTO["level"], total: 2, rungs: [], criteria: HEALTHY }}
+        coverage={{
+          level: "sideways" as CoverageDTO["level"],
+          total: 2,
+          rungs: [],
+          criteria: HEALTHY,
+          geography: NO_LIMIT,
+        }}
       />,
     );
     expect(await screen.findByText("Coverage unavailable")).toBeInTheDocument();
@@ -128,6 +140,7 @@ describe("CoverageMeter", () => {
           level: "exact",
           total: 3,
           criteria: HEALTHY,
+          geography: NO_LIMIT,
           rungs: [{ level: "sideways" as CoverageDTO["level"], clips: 3 }],
         }}
       />,
@@ -150,7 +163,13 @@ describe("CoverageMeter", () => {
     // Widened: matched material ran out, which is the fixable condition.
     const widened = renderMeter(
       <CoverageMeter
-        coverage={{ level: "widened", total: 6, rungs: [{ level: "widened", clips: 2 }], criteria: HEALTHY }}
+        coverage={{
+          level: "widened",
+          total: 6,
+          rungs: [{ level: "widened", clips: 2 }],
+          criteria: HEALTHY,
+          geography: NO_LIMIT,
+        }}
       />,
     );
     expect(await screen.findByTestId("find-clips")).toBeInTheDocument();
@@ -158,7 +177,9 @@ describe("CoverageMeter", () => {
 
     // And the worst case obviously offers it.
     renderMeter(
-      <CoverageMeter coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY }} />,
+      <CoverageMeter
+        coverage={{ level: "bumper_card", total: 0, rungs: [], criteria: HEALTHY, geography: NO_LIMIT }}
+      />,
     );
     expect(await screen.findByTestId("find-clips")).toBeInTheDocument();
   });
@@ -168,7 +189,13 @@ describe("CoverageMeter", () => {
   it("stays quiet on a healthy channel even with few clips", async () => {
     renderMeter(
       <CoverageMeter
-        coverage={{ level: "exact", total: 3, rungs: [{ level: "exact", clips: 3 }], criteria: HEALTHY }}
+        coverage={{
+          level: "exact",
+          total: 3,
+          rungs: [{ level: "exact", clips: 3 }],
+          criteria: HEALTHY,
+          geography: NO_LIMIT,
+        }}
       />,
     );
     await screen.findByText("Exact match");
@@ -178,7 +205,13 @@ describe("CoverageMeter", () => {
   it("uses the singular for one clip", async () => {
     renderMeter(
       <CoverageMeter
-        coverage={{ level: "exact", total: 1, rungs: [{ level: "exact", clips: 1 }], criteria: HEALTHY }}
+        coverage={{
+          level: "exact",
+          total: 1,
+          rungs: [{ level: "exact", clips: 1 }],
+          criteria: HEALTHY,
+          geography: NO_LIMIT,
+        }}
       />,
     );
     expect(await screen.findByText("1 eligible commercial")).toBeInTheDocument();
@@ -197,6 +230,7 @@ describe("CoverageMeter", () => {
           level: "bumper_card",
           total: 0,
           rungs: [],
+          geography: NO_LIMIT,
           // ⚠ Distinct counts on purpose: with three settings sharing 214 the assertion below
           // matched three nodes and threw. Duplicates also make the fixture read as if the
           // criteria were correlated, which is the one thing they are specifically not.
@@ -226,6 +260,7 @@ describe("CoverageMeter", () => {
           level: "bumper_card",
           total: 0,
           rungs: [],
+          geography: NO_LIMIT,
           criteria: [
             { criterion: "era", clips: 0 },
             { criterion: "audience", clips: 0 },
@@ -253,7 +288,13 @@ describe("CoverageMeter", () => {
   it("shows no breakdown when the channel is thin but no setting is empty", async () => {
     renderMeter(
       <CoverageMeter
-        coverage={{ level: "widened", total: 6, rungs: [{ level: "widened", clips: 6 }], criteria: HEALTHY }}
+        coverage={{
+          level: "widened",
+          total: 6,
+          rungs: [{ level: "widened", clips: 6 }],
+          criteria: HEALTHY,
+          geography: NO_LIMIT,
+        }}
       />,
     );
     await screen.findByText("Widened the era");

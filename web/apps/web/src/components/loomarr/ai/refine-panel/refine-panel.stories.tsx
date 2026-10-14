@@ -29,10 +29,16 @@ class StoryEventSource {
 }
 
 const proposal: Proposal = {
-  intent: { description: "add more Schwarzenegger" },
+  intent: { description: "add more Juno Castellan" },
   lineup: [
-    { name: "Heat", year: 1995, mediaType: "movie" as const, tmdbId: 949, inLibrary: true },
-    { name: "Predator", year: 1987, mediaType: "movie" as const, tmdbId: 106, inLibrary: true },
+    {
+      name: "The Velvet Cartographer",
+      year: 1995,
+      mediaType: "movie" as const,
+      tmdbId: 90000949,
+      inLibrary: true,
+    },
+    { name: "Marigold Protocol", year: 1987, mediaType: "movie" as const, tmdbId: 90000106, inLibrary: true },
   ],
   acquisitions: [],
   alternates: [],
@@ -130,8 +136,8 @@ const meta = {
     channelId: "ch-1",
     channelName: "90s Action",
     current: [
-      { name: "Heat", year: 1995, key: "movie:tmdb:949" },
-      { name: "Point Break", year: 1991, key: "movie:tmdb:9426" },
+      { name: "The Velvet Cartographer", year: 1995, key: "movie:tmdb:90000949" },
+      { name: "The Seventh Satellite Choir", year: 1991, key: "movie:tmdb:90009426" },
     ],
   },
   // widthFrame only (visual). Each story below brings its OWN fetch/EventSource stub so

@@ -37,7 +37,13 @@ var migratedTitles = []string{
 	"Bart the Mother", "Lisa Gets an A", "Kidney Trouble", "Radioactive Man", "Milhouse", "Homediddly",
 	"Treehouse of Horror", "Neutral Zone", "Best of Both Worlds", "First Contact", "TNG", "Michael Mann",
 	"Ada Lovelace", "Lovelace", "Grace Hopper", "Katherine Johnson", "Alan Turing", "Mary Jackson",
-	"Dorothy Vaughan", "Margaret Hamilton", "IaEBrNaHfUs", "saturday-morning-cartoons-v-110",
+	"Dorothy Vaughan", "Margaret Hamilton", "IaEBrNaHfUs", "saturday-morning-cartoons-v-110", "Heat",
+	"Predator", "The Rock", "Breaking Bad", "Harry Potter", "Philosopher's Stone", "Chamber of Secrets",
+	"Prisoner of Azkaban", "Goblet of Fire", "Schwarzenegger", "Great Indian Family",
+	// The Go API tests and testkit (slice 5).
+	"South Park", "King of the Hill", "Indiana Jones", "Next Generation", "Deep Space Nine", "Campbell",
+	"McDonald", "Tootsie", "HP Sauce", "Fanta", "Hopper", "Ronin", "Full House", "Family Matters",
+	"Bob's Burgers", "Last Action Hero", "Killing Game", "Moaning Lisa", "Bart the Genius", "In Flames",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -49,6 +55,50 @@ var migrated = []string{
 	"web/apps/web/src/design-system/programme-card.stories.tsx",
 	"web/apps/web/src/design-system/surf-rail.stories.tsx",
 	"web/native-stories/guide-surface.stories.tsx",
+	// The AI proposal stories.
+	"web/apps/web/src/components/loomarr/ai/proposal-edit/",
+	"web/apps/web/src/components/loomarr/ai/refine-panel/",
+	"web/apps/web/src/components/loomarr/ai/refine-review/",
+	"web/apps/web/src/components/loomarr/feedback/generation-progress/",
+}
+
+// migratedTests are the directories whose unit tests #1592 has moved onto the demo catalogue.
+// isFixture skips tests, so the migrated guard reads their *.test.* files from here; each entry
+// must hold at least one. Keep in step with the matching case in scripts/ci-impact.sh.
+var migratedTests = []string{
+	"web/apps/web/src/components/loomarr/ai/approval-queue-item/",
+	"web/apps/web/src/components/loomarr/ai/episode-selection-label/",
+	"web/apps/web/src/components/loomarr/ai/proposal-edit/",
+	"web/apps/web/src/components/loomarr/ai/proposal-review/",
+	"web/apps/web/src/components/loomarr/ai/refine-panel/",
+	"web/apps/web/src/components/loomarr/ai/refine-review/",
+	"web/apps/web/src/components/loomarr/feedback/generation-progress/",
+	"web/apps/web/src/discovery-feedback/",
+	"web/apps/web/src/suggest/approval-queue/",
+	"web/apps/web/src/suggest/intent-form/",
+	"web/apps/web/src/suggest/live-proposal-outlook/",
+	"web/apps/web/src/suggest/movie-collection-choices/",
+	"web/apps/web/src/suggest/suggestion-expansion/",
+	"web/apps/web/src/suggest/suggestion-language/",
+	"web/apps/web/src/suggest/use-channel-refine/",
+	"web/apps/web/src/suggest/use-proposal-review-edit/",
+	"web/apps/web/src/suggest/use-suggestion-run/",
+}
+
+// migratedGo are the Go trees #1592 has moved onto the demo catalogue: the API tests and the
+// shared testkit. Their *_test.go files, and every .go file of the testkit, are scanned like a
+// migrated fixture. The API's own route examples are not tests and are not scanned yet. Captured
+// provider responses under internal/testkit/fixtures stay out of scope, as they do for isFixture.
+var migratedGo = []string{"internal/api/", "internal/testkit/"}
+
+// pendingGo are the files under migratedGo not yet migrated: two an open PR owns (#1917), and the
+// mock TMDB catalogue, whose fixed titles and ids the suggest, catalog and tmdb tests assert on, so
+// it moves with them. This list may only SHRINK: a listed file that is already clean fails (delete
+// its line).
+var pendingGo = []string{
+	"internal/api/channelideas_test.go",
+	"internal/api/proposaljourneys_test.go",
+	"internal/testkit/tmdb.go",
 }
 
 // realProviderID matches a TMDB/TVDB reference in source: a provisioning key, a Go field, a JSON
@@ -64,9 +114,6 @@ var guarded = []string{"cmd/seed", "cmd/demo-library", "internal/demolibrary"}
 // then this list may only SHRINK: a new file with a real title fails, and so does a listed file
 // that is already clean (delete its line).
 var legacyFixtures = []string{
-	"web/apps/web/src/components/loomarr/ai/proposal-edit/proposal-edit.stories.tsx",
-	"web/apps/web/src/components/loomarr/ai/refine-panel/refine-panel.stories.tsx",
-	"web/apps/web/src/components/loomarr/ai/refine-review/refine-review.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-breaks/channel-breaks.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-card/channel-card.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/channel-collections-scope.stories.tsx",
@@ -76,7 +123,6 @@ var legacyFixtures = []string{
 	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/channel-rules-editor.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/channel-series-scope/channel-series-scope.stories.tsx",
 	"web/apps/web/src/components/loomarr/channels/now-next-strip/now-next-strip.stories.tsx",
-	"web/apps/web/src/components/loomarr/feedback/generation-progress/generation-progress.stories.tsx",
 	"web/apps/web/src/components/loomarr/filler/segment-filmstrip/segment-filmstrip.stories.tsx",
 	"web/apps/web/src/components/ui/caption/caption.stories.tsx",
 	"web/apps/web/src/components/ui/video-player/timeline-scrubber/timeline-scrubber.stories.tsx",
@@ -158,7 +204,7 @@ func TestGuardCatchesRealTitlesAndIDs(t *testing.T) {
 		}
 	}
 	strict := denylistRE(migratedTitles)
-	for _, bad := range []string{`name: "Sunny D — Dude!"`, `series: "Star Trek: TNG"`, `approvedByName: "Ada Lovelace"`} {
+	for _, bad := range []string{`name: "Sunny D — Dude!"`, `series: "Star Trek: TNG"`, `approvedByName: "Ada Lovelace"`, `title: "Harry Potter and the Goblet of Fire"`, `Name: "King of the Hill"`} {
 		if !strict.MatchString(bad) {
 			t.Errorf("migrated-path guard missed a real reference in %q", bad)
 		}
@@ -236,6 +282,82 @@ func fixtureFiles(t *testing.T, root string) []string {
 	return files
 }
 
+// migratedTestFiles lists the *.test.* files under migratedTests, repo-relative. An entry with
+// no test file fails, so a moved or renamed directory cannot leave the guard reading nothing.
+func migratedTestFiles(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
+	for _, dir := range migratedTests {
+		before := len(files)
+		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".test.") {
+				return err
+			}
+			rel, _ := filepath.Rel(root, p)
+			files = append(files, filepath.ToSlash(rel))
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(files) == before {
+			t.Errorf("migratedTests lists %s, which holds no *.test.* file", dir)
+		}
+	}
+	return files
+}
+
+// migratedGoFiles lists the Go files under migratedGo the guard scans, repo-relative.
+func migratedGoFiles(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
+	for _, dir := range migratedGo {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(root, p)
+			if rel = filepath.ToSlash(rel); d.IsDir() && rel == "internal/testkit/fixtures" {
+				return filepath.SkipDir
+			}
+			if !d.IsDir() && (strings.HasSuffix(rel, "_test.go") || strings.HasPrefix(rel, "internal/testkit/") && strings.HasSuffix(rel, ".go")) {
+				files = append(files, rel)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return files
+}
+
+func TestMigratedGoTestsStayInvented(t *testing.T) {
+	root := repoRoot(t)
+	strict := denylistRE(migratedTitles)
+	files := migratedGoFiles(t, root)
+	if len(files) == 0 {
+		t.Fatalf("no Go file under %q; the guard is scanning nothing", migratedGo)
+	}
+	var dirty []string
+	for _, rel := range files {
+		text := mustRead(t, filepath.Join(root, rel))
+		hits := append(realHits(text), strict.FindAllString(text, -1)...)
+		if len(hits) == 0 {
+			continue
+		}
+		dirty = append(dirty, rel)
+		if !slices.Contains(pendingGo, rel) {
+			t.Errorf("%s was moved onto the demo catalogue (#1592) but carries real titles, people or ids %q", rel, hits)
+		}
+	}
+	for _, rel := range pendingGo {
+		if !slices.Contains(dirty, rel) {
+			t.Errorf("%s no longer carries real titles; delete it from pendingGo", rel)
+		}
+	}
+}
+
 func TestSeedsCarryNoRealTitles(t *testing.T) {
 	root := repoRoot(t)
 	for _, rel := range seedFiles(t, root) {
@@ -252,7 +374,8 @@ func TestSeedsCarryNoRealTitles(t *testing.T) {
 // classifier must select that job for every file the guard scans, Go and web alike.
 func TestCIRunsTheGuardWheneverAScannedFileChanges(t *testing.T) {
 	root := repoRoot(t)
-	for _, rel := range append(seedFiles(t, root), fixtureFiles(t, root)...) {
+	scanned := slices.Concat(seedFiles(t, root), fixtureFiles(t, root), migratedTestFiles(t, root), migratedGoFiles(t, root))
+	for _, rel := range scanned {
 		cmd := exec.Command("./scripts/ci-impact.sh", rel)
 		cmd.Dir = root
 		out, err := cmd.Output()
@@ -289,12 +412,16 @@ func TestFixturesCarryNoNewRealTitles(t *testing.T) {
 func TestMigratedFixturesStayInvented(t *testing.T) {
 	root := repoRoot(t)
 	strict := denylistRE(migratedTitles)
-	scanned := 0
+	var files []string
 	for _, rel := range fixtureFiles(t, root) {
-		if !slices.ContainsFunc(migrated, func(prefix string) bool { return strings.HasPrefix(rel, prefix) }) {
-			continue
+		if slices.ContainsFunc(migrated, func(prefix string) bool { return strings.HasPrefix(rel, prefix) }) {
+			files = append(files, rel)
 		}
-		scanned++
+	}
+	if len(files) == 0 {
+		t.Fatalf("no fixture file matched the migrated paths %q; the guard is scanning nothing", migrated)
+	}
+	for _, rel := range append(files, migratedTestFiles(t, root)...) {
 		if slices.Contains(legacyFixtures, rel) {
 			t.Errorf("%s is migrated (#1592) but still listed in legacyFixtures", rel)
 		}
@@ -302,9 +429,6 @@ func TestMigratedFixturesStayInvented(t *testing.T) {
 		if hits := append(realHits(text), strict.FindAllString(text, -1)...); len(hits) != 0 {
 			t.Errorf("%s was moved onto the demo catalogue (#1592) but carries real titles, people or ids %q", rel, hits)
 		}
-	}
-	if scanned == 0 {
-		t.Fatalf("no fixture file matched the migrated paths %q; the guard is scanning nothing", migrated)
 	}
 }
 

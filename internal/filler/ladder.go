@@ -72,8 +72,9 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //   - COOLDOWN BEFORE RUNG: a clip resting inside its cooldown ranks behind every rested
 //     clip on any rung. Cooldown relaxes only when the whole ladder is resting, which is the
 //     "never leave a break empty" promise the setting makes, and nothing looser.
-//   - Fills up to w.PodMax clips within w.GapMs, reserving `bumperBudgetMs` for the
-//     intro/return bumpers the caller appends.
+//   - Fills up to w.PodMax clips within w.GapMs, which the caller has already reduced by the
+//     intro/return bumpers it places. A clip that does not fit whole is skipped for a shorter
+//     one; an ad is never cut to fit.
 //
 // ⚠ #1684: this took ONLY the tightest pool with an un-used clip. `used` is per break, so that
 // pool was never exhausted and the ladder never widened: a channel whose exact rung held one
@@ -92,12 +93,9 @@ func candidatePools(catalog []Clip, w Window, policy Policy) []pool {
 //     by Path (the identity) before any pick so catalog input order can't leak into output.
 //   - Returns ("", nil) when no pool has eligible clips; Assemble then uses the bumper card.
 func fillCommercials(pools []pool, w Window, policy Policy, used map[string]bool, rng *rand.Rand) (MatchLevel, []Clip) {
-	// Reserve a little of the gap for the intro+return bumpers the caller adds.
-	const bumperBudgetMs = 12000 // ~two 6s bumpers
-	budget := w.GapMs - bumperBudgetMs
-	if budget < 0 {
-		budget = w.GapMs
-	}
+	// w.GapMs is already net of the intro and return bumpers: Assemble subtracts their real
+	// lengths before it calls here, so the ads below fill exactly what the break has left.
+	budget := w.GapMs
 	podMax := w.PodMax
 	if podMax <= 0 {
 		podMax = 4

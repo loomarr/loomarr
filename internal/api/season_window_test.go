@@ -13,7 +13,7 @@ import (
 // enforced the window).
 func TestChannelToDTO_SurfacesSeasonWindow(t *testing.T) {
 	ch := store.Channel{Lineup: []schedule.LineupEntry{
-		{Key: provision.Key("series:tvdb:71663"), Title: "The Simpsons", SeasonMin: 1, SeasonMax: 10},
+		{Key: provision.Key("series:tvdb:90071663"), Title: "Kettle Kids", SeasonMin: 1, SeasonMax: 10},
 	}}
 	dto := channelToDTO(ch, nil, nil)
 	if len(dto.Lineup) != 1 {
@@ -29,13 +29,13 @@ func TestChannelToDTO_SurfacesSeasonWindow(t *testing.T) {
 // SET it when the edit provides one.
 func TestMergeLineupEdit_SeasonWindowPreserveAndSet(t *testing.T) {
 	current := []schedule.LineupEntry{
-		{Key: provision.Key("series:tvdb:71663"), Title: "The Simpsons", SeasonMin: 1, SeasonMax: 10},
-		{Key: provision.Key("series:tmdb:615"), Title: "Futurama"},
+		{Key: provision.Key("series:tvdb:90071663"), Title: "Kettle Kids", SeasonMin: 1, SeasonMax: 10},
+		{Key: provision.Key("series:tmdb:90000615"), Title: "Lunar Lemmings"},
 	}
-	// Edit omits the window on Simpsons (preserve) and sets one on Futurama.
+	// Edit omits the window on Kettle Kids (preserve) and sets one on Lunar Lemmings.
 	edit := []LineupEntryDTO{
-		{Key: "series:tvdb:71663", Name: "The Simpsons"},
-		{Key: "series:tmdb:615", Name: "Futurama", SeasonMin: 1, SeasonMax: 5},
+		{Key: "series:tvdb:90071663", Name: "Kettle Kids"},
+		{Key: "series:tmdb:90000615", Name: "Lunar Lemmings", SeasonMin: 1, SeasonMax: 5},
 	}
 	out, err := mergeLineupEdit(current, edit)
 	if err != nil {
@@ -45,10 +45,10 @@ func TestMergeLineupEdit_SeasonWindowPreserveAndSet(t *testing.T) {
 	for _, e := range out {
 		byKey[e.Key] = e
 	}
-	if s := byKey["series:tvdb:71663"]; s.SeasonMin != 1 || s.SeasonMax != 10 {
-		t.Errorf("omitted edit WIPED the Simpsons window: got [%d,%d], want [1,10] preserved", s.SeasonMin, s.SeasonMax)
+	if s := byKey["series:tvdb:90071663"]; s.SeasonMin != 1 || s.SeasonMax != 10 {
+		t.Errorf("omitted edit WIPED the Kettle Kids window: got [%d,%d], want [1,10] preserved", s.SeasonMin, s.SeasonMax)
 	}
-	if f := byKey["series:tmdb:615"]; f.SeasonMin != 1 || f.SeasonMax != 5 {
-		t.Errorf("edit did not SET the Futurama window: got [%d,%d], want [1,5]", f.SeasonMin, f.SeasonMax)
+	if f := byKey["series:tmdb:90000615"]; f.SeasonMin != 1 || f.SeasonMax != 5 {
+		t.Errorf("edit did not SET the Lunar Lemmings window: got [%d,%d], want [1,5]", f.SeasonMin, f.SeasonMax)
 	}
 }

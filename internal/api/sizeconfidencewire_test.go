@@ -52,7 +52,7 @@ func TestSizeConfidenceIsOneNamedSchema(t *testing.T) {
 	for value, valid := range map[string]bool{"exact": true, "estimated": true, "unknown": false} {
 		var res huma.ValidateResult
 		huma.Validate(registry, item, huma.NewPathBuffer([]byte{}, 0), huma.ModeWriteToServer, map[string]any{
-			"mediaType": "movie", "tmdbId": 603.0, "name": "The Matrix", "inLibrary": true,
+			"mediaType": "movie", "tmdbId": 90000603.0, "name": "Marigold Protocol", "inLibrary": true,
 			"sizeBytes": 21914038799.0, "sizeConfidence": value,
 		}, &res)
 		if got := len(res.Errors) == 0; got != valid {

@@ -41,7 +41,7 @@ func TestEnsureFillerList_ConsumesPinnedEnumerateFixture(t *testing.T) {
 	defer srv.Close()
 
 	c := tunarr.New(srv.URL, "cfg")
-	if err := c.EnsureFillerList(context.Background(), "tunarr-ch-1", nil); err != nil {
+	if err := c.EnsureFillerList(context.Background(), "tunarr-ch-1", nil, tunarr.FillerListPolicy{}); err != nil {
 		t.Fatalf("EnsureFillerList over the pinned empty [] capture must be a no-op, got: %v", err)
 	}
 	if !hitEnumerate {
@@ -89,7 +89,7 @@ func TestFillerListPrograms_PinnedShapeReadThroughAdapter(t *testing.T) {
 
 	c := tunarr.New(srv.URL, "cfg")
 	// Empty desired set + an existing matching list → detach path (DELETE + clear).
-	if err := c.EnsureFillerList(context.Background(), "ch-x", nil); err != nil {
+	if err := c.EnsureFillerList(context.Background(), "ch-x", nil, tunarr.FillerListPolicy{}); err != nil {
 		t.Fatalf("EnsureFillerList detach over pinned shapes: %v", err)
 	}
 	if !deleted {

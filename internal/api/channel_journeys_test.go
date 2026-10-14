@@ -208,7 +208,7 @@ func TestReferenceChannelAcquisitionJourney(t *testing.T) {
 				}
 			}
 			requester := &testkit.Requester{}
-			lookup := libraryfixture.NewLookup(map[string]libraryfixture.LookupResult{"91001": {ItemID: "signal", Present: arrives}})
+			lookup := libraryfixture.NewLookup(map[string]libraryfixture.LookupResult{"90091001": {ItemID: "signal", Present: arrives}})
 			rc := reconcile.New(st, requester, lookup, nil, reconcile.Config{RequestTTL: time.Hour}, func() time.Time { return now }, log)
 			if count, err := rc.Tick(ctx); err != nil || count != 1 {
 				t.Fatalf("request tick: %d, %v", count, err)

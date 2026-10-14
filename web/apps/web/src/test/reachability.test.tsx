@@ -258,6 +258,7 @@ const stubReachable = () => {
       at: "2026-07-25T20:00:00Z",
       windowMs: 3_600_000,
       slots: [],
+      holidayEpisodes: [],
       activeRule: { id: "r-1", label: "Default", matched: true, priority: 0 },
       excluded: { overCeiling: 0, unrated: 0, items: [] },
       trace: {
@@ -277,6 +278,7 @@ const stubReachable = () => {
       level: "exact",
       total: 4,
       rungs: [{ level: "exact", clips: 4 }],
+      geography: { country: "", market: "" },
       // The per-setting breakdown (V51f). Nothing at zero: this suite is about REACHING screens,
       // not diagnosing a catalog, so the meter should render its ordinary healthy shape.
       criteria: [
@@ -341,7 +343,7 @@ const stubReachable = () => {
       totalMs: 0,
       matchLevel: "exact",
       // The draft preview answers with its own coverage since V51f — same selection, one response.
-      coverage: { level: "exact", total: 0, rungs: [], criteria: [] },
+      coverage: { level: "exact", total: 0, rungs: [], criteria: [], geography: { country: "", market: "" } },
     }),
     // The watch route's audio/subtitle picker (V46) — channel-level tracks, media-derived.
     getChannelTracksMockHandler({ audio: [], subtitles: [] }),

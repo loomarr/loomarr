@@ -16,7 +16,7 @@ func newConfiguredSearchHandler(
 ) (http.Handler, *testkit.SearchService[api.SearchRequest, api.SearchCandidate]) {
 	t.Helper()
 	search := &testkit.SearchService[api.SearchRequest, api.SearchCandidate]{Results: []api.SearchCandidate{{
-		MediaType: "movie", TMDBID: 603, Name: "The Matrix",
+		MediaType: "movie", TMDBID: 90000603, Name: "Marigold Protocol",
 	}}}
 	log := slog.New(slog.DiscardHandler)
 	handler := api.Router(log, api.Options{
@@ -49,15 +49,15 @@ func TestSearchScopesFollowLiveConfiguration(t *testing.T) {
 		wantCode  int
 		wantScope string
 	}{
-		{name: "library configured", path: "/v1/search?q=matrix&scope=library", cfg: libraryConfig(), wantCode: http.StatusOK, wantScope: "library"},
-		{name: "library missing", path: "/v1/search?q=matrix&scope=library", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusNotImplemented},
-		{name: "tmdb configured", path: "/v1/search?q=matrix&scope=tmdb", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "tmdb"},
-		{name: "tmdb missing", path: "/v1/search?q=matrix&scope=tmdb", cfg: libraryConfig(), wantCode: http.StatusNotImplemented},
-		{name: "all with both", path: "/v1/search?q=matrix&scope=all", cfg: libraryConfig("tmdb.api_key", "key"), wantCode: http.StatusOK, wantScope: "all"},
-		{name: "all narrows to library", path: "/v1/search?q=matrix&scope=all", cfg: libraryConfig(), wantCode: http.StatusOK, wantScope: "library"},
-		{name: "library triple incomplete", path: "/v1/search?q=matrix&scope=library", cfg: map[string]string{"library.flavor": "jellyfin", "library.url": "http://library"}, wantCode: http.StatusNotImplemented},
-		{name: "default narrows to tmdb", path: "/v1/search?q=matrix", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "tmdb"},
-		{name: "neither configured", path: "/v1/search?q=matrix", cfg: map[string]string{}, wantCode: http.StatusNotImplemented},
+		{name: "library configured", path: "/v1/search?q=marigold&scope=library", cfg: libraryConfig(), wantCode: http.StatusOK, wantScope: "library"},
+		{name: "library missing", path: "/v1/search?q=marigold&scope=library", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusNotImplemented},
+		{name: "tmdb configured", path: "/v1/search?q=marigold&scope=tmdb", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "tmdb"},
+		{name: "tmdb missing", path: "/v1/search?q=marigold&scope=tmdb", cfg: libraryConfig(), wantCode: http.StatusNotImplemented},
+		{name: "all with both", path: "/v1/search?q=marigold&scope=all", cfg: libraryConfig("tmdb.api_key", "key"), wantCode: http.StatusOK, wantScope: "all"},
+		{name: "all narrows to library", path: "/v1/search?q=marigold&scope=all", cfg: libraryConfig(), wantCode: http.StatusOK, wantScope: "library"},
+		{name: "library triple incomplete", path: "/v1/search?q=marigold&scope=library", cfg: map[string]string{"library.flavor": "jellyfin", "library.url": "http://library"}, wantCode: http.StatusNotImplemented},
+		{name: "default narrows to tmdb", path: "/v1/search?q=marigold", cfg: map[string]string{"tmdb.api_key": "key"}, wantCode: http.StatusOK, wantScope: "tmdb"},
+		{name: "neither configured", path: "/v1/search?q=marigold", cfg: map[string]string{}, wantCode: http.StatusNotImplemented},
 	}
 
 	for _, tt := range tests {
@@ -95,13 +95,13 @@ func TestSearchConfigurationHotApplies(t *testing.T) {
 	cfg := map[string]string{}
 	handler, search := newConfiguredSearchHandler(t, cfg)
 
-	resp := searchRequest(handler, "/v1/search?q=matrix")
+	resp := searchRequest(handler, "/v1/search?q=marigold")
 	if resp.Code != http.StatusNotImplemented {
 		t.Fatalf("unconfigured search = %d, want 501", resp.Code)
 	}
 
 	cfg["tmdb.api_key"] = "key"
-	resp = searchRequest(handler, "/v1/search?q=matrix")
+	resp = searchRequest(handler, "/v1/search?q=marigold")
 	if resp.Code != http.StatusOK {
 		t.Fatalf("search after setting TMDB key = %d, want 200", resp.Code)
 	}
@@ -110,7 +110,7 @@ func TestSearchConfigurationHotApplies(t *testing.T) {
 	for key, value := range libraryConfig() {
 		cfg[key] = value
 	}
-	resp = searchRequest(handler, "/v1/search?q=matrix")
+	resp = searchRequest(handler, "/v1/search?q=marigold")
 	if resp.Code != http.StatusOK {
 		t.Fatalf("search after switching to library = %d, want 200", resp.Code)
 	}
@@ -166,12 +166,12 @@ func TestSearchStructuredDiscoveryPreservesPeopleArguments(t *testing.T) {
 func TestSearchTitleModeAllowsMediaTypeNarrowing(t *testing.T) {
 	handler, search := newConfiguredSearchHandler(t, map[string]string{"tmdb.api_key": "key"})
 
-	resp := searchRequest(handler, "/v1/search?q=Alien&scope=tmdb&media_type=movie")
+	resp := searchRequest(handler, "/v1/search?q=Ashgrove&scope=tmdb&media_type=movie")
 	if resp.Code != http.StatusOK {
 		t.Fatalf("title search status = %d, want 200: %s", resp.Code, resp.Body.String())
 	}
 	request := search.Requests()[0]
-	if request.Query != "Alien" || request.MediaType != "movie" || request.Discovery != nil {
+	if request.Query != "Ashgrove" || request.MediaType != "movie" || request.Discovery != nil {
 		t.Fatalf("title search request = %+v", request)
 	}
 }

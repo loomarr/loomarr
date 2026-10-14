@@ -46,10 +46,34 @@ const Streaming: Story = {
     elapsedSeconds: 12,
     progress: run({
       picks: [
-        { key: "movie:tmdb:100", mediaType: "movie", name: "Speed", year: 1994, inLibrary: false },
-        { key: "movie:tmdb:603", mediaType: "movie", name: "The Matrix", year: 1999, inLibrary: true },
-        { key: "series:tmdb:1396", mediaType: "series", name: "Breaking Bad", year: 2008, inLibrary: true },
-        { key: "movie:tmdb:101", mediaType: "movie", name: "The Rock", year: 1996, inLibrary: false },
+        {
+          key: "movie:tmdb:90000100",
+          mediaType: "movie",
+          name: "Quiet Engines",
+          year: 1994,
+          inLibrary: false,
+        },
+        {
+          key: "movie:tmdb:90000603",
+          mediaType: "movie",
+          name: "Parallax Garden",
+          year: 1999,
+          inLibrary: true,
+        },
+        {
+          key: "series:tmdb:90001396",
+          mediaType: "series",
+          name: "Copperline Foundry",
+          year: 2008,
+          inLibrary: true,
+        },
+        {
+          key: "movie:tmdb:90000101",
+          mediaType: "movie",
+          name: "Iron Lullaby",
+          year: 1996,
+          inLibrary: false,
+        },
       ],
     }),
   },
@@ -62,7 +86,15 @@ const Building: Story = {
     elapsedSeconds: 31,
     progress: run({
       stage: "building",
-      picks: [{ key: "movie:tmdb:100", mediaType: "movie", name: "Speed", year: 1994, inLibrary: false }],
+      picks: [
+        {
+          key: "movie:tmdb:90000100",
+          mediaType: "movie",
+          name: "Quiet Engines",
+          year: 1994,
+          inLibrary: false,
+        },
+      ],
     }),
   },
 };

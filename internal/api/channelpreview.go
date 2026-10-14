@@ -143,6 +143,14 @@ type CoverageDTO struct {
 	Criteria []CoverageCriterionDTO `json:"criteria" doc:"Per-setting counts, each measured independently, so a zero identifies the setting to change."`
 	Level    string                 `json:"level" enum:"exact,widened,audience,bumper_card" doc:"The rung a break would actually be filled from — the tightest non-empty one. bumper_card means nothing matches and breaks run on the embedded card."`
 	Total    int                    `json:"total" doc:"Distinct eligible clips across the widest rung. NOT a sum of the rungs — they nest, so adding them counts one clip up to three times."`
+	// Geography is the location boundary those clips were limited to, so the page can name it.
+	Geography CoverageGeographyDTO `json:"geography" doc:"The location every counted clip must be from: the channel's own, else the installation's. An empty country means no location limit."`
+}
+
+// CoverageGeographyDTO is the resolved hard location boundary a coverage answer applied.
+type CoverageGeographyDTO struct {
+	Country string `json:"country" doc:"ISO 3166-1 alpha-2 country code, or empty for no location limit"`
+	Market  string `json:"market" doc:"Local market inside that country, or empty for the whole country"`
 }
 
 type channelCoverageOutput struct {
@@ -198,6 +206,9 @@ func coverageDTO(report filler.CoverageReport) CoverageDTO {
 		Criteria: criteria,
 		Level:    string(report.Level),
 		Total:    report.Total,
+		Geography: CoverageGeographyDTO{
+			Country: report.Geography.Country, Market: report.Geography.Market,
+		},
 	}
 }
 
@@ -295,7 +306,34 @@ type previewCycleOutput struct {
 		Slots      []CycleSlotDTO   `json:"slots" doc:"The leading slots of the resolved cycle, in play order (capped)"`
 		Excluded   ExcludedDTO      `json:"excluded" doc:"What the hard filters REFUSED and why — the answer to \"why isn't X on my channel\" (§4)"`
 		Trace      ScheduleTraceDTO `json:"trace" doc:"Bounded scheduler-owned reasons emitted by the exact computation that produced slots"`
+		// HolidayEpisodes answers the seasonal control's "what will this do" (§6 "Holiday
+		// episodes"): counted by the scheduler, never by the page.
+		HolidayEpisodes []HolidayEpisodesDTO `json:"holidayEpisodes" doc:"Per selected holiday, open or soonest first: the lineup's holiday episodes and how the channel's holiday strength rotates them. Empty unless the channel uses the built-in seasonal rotation."`
 	}
+}
+
+// HolidayEpisodesDTO is one selected holiday's episode feature on a channel (§6).
+type HolidayEpisodesDTO struct {
+	Holiday   string   `json:"holiday" doc:"Built-in holiday id (the rule vocabulary's holiday:<id> token, without the prefix)"`
+	Episodes  int      `json:"episodes" doc:"Holiday episodes found in this channel's series; a multi-part story counts once"`
+	PerDay    int      `json:"perDay" doc:"How many air on an ordinary day of the holiday window at the channel's strength"`
+	EveryDays int      `json:"everyDays" doc:"The soonest any one of them airs again, in days"`
+	Active    bool     `json:"active" doc:"The holiday's window is open on the channel's date at the previewed instant"`
+	Capped    bool     `json:"capped" doc:"The number of holiday episodes or the quarter-of-the-day limit holds the strength back: fewer a day than it asks for, or not every day"`
+	SameAs    []string `json:"sameAs" doc:"The other holiday strengths (light, featured, heavy) that would rotate these episodes exactly the same way, so choosing one changes nothing"`
+}
+
+func holidayEpisodesToDTO(in []schedule.HolidayEpisodes) []HolidayEpisodesDTO {
+	out := make([]HolidayEpisodesDTO, 0, len(in))
+	for _, h := range in {
+		sameAs := make([]string, 0, len(h.SameAs))
+		for _, s := range h.SameAs {
+			sameAs = append(sameAs, string(s))
+		}
+		out = append(out, HolidayEpisodesDTO{Holiday: h.Holiday, Episodes: h.Episodes, PerDay: h.PerDay, EveryDays: h.EveryDays,
+			Active: h.Active, Capped: h.Capped, SameAs: sameAs})
+	}
+	return out
 }
 
 // cyclePreviewSlotCap bounds how many slots the preview returns — enough to see intermixing,
@@ -343,6 +381,7 @@ func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput)
 	out.Body.Slots = cycleSlotsToDTO(cycle.Slots, cyclePreviewSlotCap)
 	out.Body.Excluded = excludedToDTO(cycle.Excluded)
 	out.Body.Trace = scheduleTraceToDTO(cycle.Trace)
+	out.Body.HolidayEpisodes = holidayEpisodesToDTO(cycle.HolidayEpisodes)
 	return out, nil
 }
 
@@ -415,7 +454,7 @@ type previewDraftPodsInput struct {
 		Filler schedule.FillerSelection `json:"filler"`
 		// BreakDuration is the unsaved per-channel override. Nil inherits the live global
 		// setting; zero is invalid because breaks_per_hour owns the off switch.
-		BreakDuration *schedule.Duration `json:"breakDuration,omitempty"`
+		BreakDuration *schedule.Duration `json:"breakDuration,omitempty" doc:"Unsaved break length as a Go-duration string, e.g. \"2m\"; at least 30s. Omitted means the install setting filler.break_duration (default 2m)"`
 	}
 }
 

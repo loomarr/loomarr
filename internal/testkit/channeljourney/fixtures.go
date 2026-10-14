@@ -37,61 +37,62 @@ func episode(id, title string, season, number, year int) schedule.ResolvedProgra
 // Cases returns fresh fixtures so mutations in one negative test cannot change
 // another test's truth. Episode titles/metadata are synthetic, not historical claims.
 func Cases() []Case {
-	// These member identities and the lexical-neighbor negative are reused from
-	// TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers (#968/#1022).
+	// These member identities and the lexical-neighbor negative mirror the shape of
+	// TestSuggest_NamedCollectionAdmitsOnlyEnumeratedCatalogMembers (#968/#1022), with
+	// invented demo-catalogue titles (#1592).
 	named := suggest.Proposal{Intent: suggest.Intent{
 		Description: "a named Friday-night family sitcom collection",
-		MustInclude: []string{"Full House", "Family Matters", "Step by Step"},
+		MustInclude: []string{"Bowling Alley Blues", "Crumb Street Bakery", "Grand Oak Hotel"},
 	}, Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Series, TVDBID: 762, Name: "Full House", Year: 1987, InLibrary: true, LibraryItemID: "full-house"},
-		{MediaType: provision.Series, TVDBID: 767, Name: "Family Matters", Year: 1989, InLibrary: true, LibraryItemID: "family-matters"},
-		{MediaType: provision.Series, TVDBID: 760, Name: "Step by Step", Year: 1991, InLibrary: true, LibraryItemID: "step-by-step"},
+		{MediaType: provision.Series, TVDBID: 90000762, Name: "Bowling Alley Blues", Year: 1987, InLibrary: true, LibraryItemID: "bowling-alley-blues"},
+		{MediaType: provision.Series, TVDBID: 90000767, Name: "Crumb Street Bakery", Year: 1989, InLibrary: true, LibraryItemID: "crumb-street-bakery"},
+		{MediaType: provision.Series, TVDBID: 90000760, Name: "Grand Oak Hotel", Year: 1991, InLibrary: true, LibraryItemID: "grand-oak-hotel"},
 	}}
 	named.Policy.Scope.Dates = &schedule.DateScope{SeriesAiring: []schedule.Range{{From: 1990, To: 1999}}}
 	named.Policy.Ordering = schedule.OrderSequential
 	genre := suggest.Proposal{Intent: suggest.Intent{Description: "nineties science fiction movies"}, Lineup: []suggest.ProposalItem{
-		movie(91001, "Synthetic Signal", "signal", 1992, "PG"),
-		movie(91002, "Synthetic Orbit", "orbit", 1998, "PG"),
-		movie(91003, "Synthetic Later", "later", 2003, "PG"),
+		movie(90091001, "Synthetic Signal", "signal", 1992, "PG"),
+		movie(90091002, "Synthetic Orbit", "orbit", 1998, "PG"),
+		movie(90091003, "Synthetic Later", "later", 2003, "PG"),
 	}}
 	for i := range genre.Lineup {
 		genre.Lineup[i].Genres = []string{"Science Fiction"}
 	}
-	otherGenre := movie(91004, "Synthetic Romance", "romance", 1995, "PG")
+	otherGenre := movie(90091004, "Synthetic Romance", "romance", 1995, "PG")
 	otherGenre.Genres = []string{"Romance"}
 	genre.Lineup = append(genre.Lineup, otherGenre)
 	genre.Policy.Scope.Genres.Include = []string{"Science Fiction"}
 	genre.Policy.Scope.Dates = &schedule.DateScope{MovieRelease: []schedule.Range{{From: 1990, To: 1999}}}
 	genre.Policy.Ordering = schedule.OrderSequential
 	family := suggest.Proposal{Intent: suggest.Intent{Description: "family movie night"}, Lineup: []suggest.ProposalItem{
-		movie(92001, "Synthetic Family", "family", 2000, "G"),
-		movie(92002, "Synthetic Unclassified", "unclassified", 2000, ""),
-		movie(92003, "Synthetic Mature", "mature", 2000, "R"),
+		movie(90092001, "Synthetic Family", "family", 2000, "G"),
+		movie(90092002, "Synthetic Unclassified", "unclassified", 2000, ""),
+		movie(90092003, "Synthetic Mature", "mature", 2000, "R"),
 	}}
 	family.Policy.Audience = schedule.AudiencePolicy{Ceiling: "TV-PG", Unrated: "exclude"}
-	classic := suggest.Proposal{Intent: suggest.Intent{Description: "The Simpsons seasons one through two in episode order"}, Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true, LibraryItemID: "simpsons", SeasonMin: 1, SeasonMax: 2},
+	classic := suggest.Proposal{Intent: suggest.Intent{Description: "Kettle Kids seasons one through two in episode order"}, Lineup: []suggest.ProposalItem{
+		{MediaType: provision.Series, TMDBID: 90000456, Name: "Kettle Kids", InLibrary: true, LibraryItemID: "kettle-kids", SeasonMin: 1, SeasonMax: 2},
 	}}
 	classic.Policy.Ordering = schedule.OrderSequential
-	seasonal := suggest.Proposal{Intent: suggest.Intent{Description: "Christmas episodes of The Simpsons already in my library"}, Lineup: []suggest.ProposalItem{
-		{MediaType: provision.Series, TMDBID: 456, Name: "The Simpsons", InLibrary: true, LibraryItemID: "simpsons"},
+	seasonal := suggest.Proposal{Intent: suggest.Intent{Description: "Christmas episodes of Kettle Kids already in my library"}, Lineup: []suggest.ProposalItem{
+		{MediaType: provision.Series, TMDBID: 90000456, Name: "Kettle Kids", InLibrary: true, LibraryItemID: "kettle-kids"},
 	}}
 	seasonal.Policy.Ordering = schedule.OrderSequential
 	seasonal.Policy.Seasonal = schedule.SeasonalPolicy{Mode: schedule.SeasonalExclusive, Holidays: []string{"christmas"}, OffSeason: schedule.OffSeasonDark}
 	return []Case{
 		{Name: "named_block", Proposal: named, Episodes: map[string][]schedule.ResolvedProgram{
-			"full-house":     {episode("full-house-1989", "Synthetic earlier episode", 1, 1, 1989), episode("full-house-1991", "Synthetic member episode", 2, 1, 1991)},
-			"family-matters": {episode("family-matters-1992", "Synthetic member episode", 3, 1, 1992)},
-			"step-by-step":   {episode("step-by-step-1993", "Synthetic member episode", 3, 1, 1993)},
-		}, Want: []string{"full-house-1991", "family-matters-1992", "step-by-step-1993"}, Forbidden: []string{"full-house-1989", "neighbor"}},
+			"bowling-alley-blues": {episode("bowling-alley-blues-1989", "Synthetic earlier episode", 1, 1, 1989), episode("bowling-alley-blues-1991", "Synthetic member episode", 2, 1, 1991)},
+			"crumb-street-bakery": {episode("crumb-street-bakery-1992", "Synthetic member episode", 3, 1, 1992)},
+			"grand-oak-hotel":     {episode("grand-oak-hotel-1993", "Synthetic member episode", 3, 1, 1993)},
+		}, Want: []string{"bowling-alley-blues-1991", "crumb-street-bakery-1992", "grand-oak-hotel-1993"}, Forbidden: []string{"bowling-alley-blues-1989", "neighbor"}},
 		{Name: "genre_era_movies", Proposal: genre, Want: []string{"signal", "orbit"}, Forbidden: []string{"later", "romance"}},
 		{Name: "family", Proposal: family, Want: []string{"family"}, Forbidden: []string{"unclassified", "mature"}},
 		{Name: "single_show", Proposal: classic, Episodes: map[string][]schedule.ResolvedProgram{
 			// Library's EpisodeResolver supplies season/episode order.
-			"simpsons": {episode("classic-s01e01", "Synthetic first", 1, 1, 1990), episode("classic-s02e02", "Synthetic second", 2, 2, 1991), episode("classic-s12e01", "Synthetic late", 12, 1, 2000)},
+			"kettle-kids": {episode("classic-s01e01", "Synthetic first", 1, 1, 1990), episode("classic-s02e02", "Synthetic second", 2, 2, 1991), episode("classic-s12e01", "Synthetic late", 12, 1, 2000)},
 		}, Want: []string{"classic-s01e01", "classic-s02e02"}, Forbidden: []string{"classic-s12e01"}},
 		{Name: "seasonal", Proposal: seasonal, Episodes: map[string][]schedule.ResolvedProgram{
-			"simpsons": {episode("christmas", "Synthetic Christmas celebration", 2, 2, 1991), episode("ordinary", "Synthetic ordinary Tuesday", 2, 1, 1991)},
+			"kettle-kids": {episode("christmas", "Synthetic Christmas celebration", 2, 2, 1991), episode("ordinary", "Synthetic ordinary Tuesday", 2, 1, 1991)},
 		}, Want: []string{"christmas"}, Forbidden: []string{"ordinary"}},
 	}
 }
