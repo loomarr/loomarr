@@ -340,10 +340,10 @@ func TestBroadcastToNowNext_UsesTheSeriesTitleForAnEpisode(t *testing.T) {
 	t.Parallel()
 	b := playout.Broadcast{
 		Kind:        schedule.SlotProgram,
-		Title:       "Bart the Genius",
-		SeriesTitle: "The Simpsons",
+		Title:       "Pip the Inventor",
+		SeriesTitle: "The Mudpuddles",
 	}
-	if got := broadcastToNowNext(b).Title; got != "The Simpsons" {
+	if got := broadcastToNowNext(b).Title; got != "The Mudpuddles" {
 		t.Errorf("title = %q, want the series name", got)
 	}
 }
@@ -353,10 +353,10 @@ func TestBroadcastToNowNext_UsesTheSeriesTitleForAnEpisode(t *testing.T) {
 func TestTMDBIDFromKey(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"movie:tmdb:603":    "603",
-		"series:tvdb:71663": "",
-		"":                  "",
-		"movie:tmdb":        "",
+		"movie:tmdb:90000603":  "90000603",
+		"series:tvdb:90071663": "",
+		"":                     "",
+		"movie:tmdb":           "",
 	}
 	for key, want := range cases {
 		if got := tmdbIDFromKey(provision.Key(key)); got != want {

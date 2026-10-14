@@ -20,12 +20,12 @@ func newClient(t *testing.T, flavor Flavor) (*Client, *testkit.MediaServer) {
 // Lookup returns present + item id for a title in the library (pinned fixture).
 func TestLookupPresent(t *testing.T) {
 	c, _ := newClient(t, Emby)
-	id, present, err := c.Lookup(context.Background(), TMDB, "16153", Movie)
+	id, present, err := c.Lookup(context.Background(), TMDB, "90016153", Movie)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !present {
-		t.Fatal("expected present for tmdb.16153 (pinned present fixture)")
+		t.Fatal("expected present for tmdb.90016153 (pinned present fixture)")
 	}
 	if id == "" {
 		t.Error("present lookup returned empty item id")
@@ -38,11 +38,11 @@ func TestLookupDetailParsesPrimarySourceSize(t *testing.T) {
 	var gotFields string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotFields = r.URL.Query().Get("Fields")
-		_, _ = w.Write([]byte(`{"Items":[{"Id":"lib-1","Name":"Them!","Type":"Movie","Size":63546611800}]}`))
+		_, _ = w.Write([]byte(`{"Items":[{"Id":"lib-1","Name":"Thirteen Kites","Type":"Movie","Size":63546611800}]}`))
 	}))
 	defer srv.Close()
 
-	got, present, err := New(Emby, srv.URL, "tok", "dev-1").LookupDetail(context.Background(), TMDB, "11071", Movie)
+	got, present, err := New(Emby, srv.URL, "tok", "dev-1").LookupDetail(context.Background(), TMDB, "90011071", Movie)
 	if err != nil || !present {
 		t.Fatalf("LookupDetail = present %v, err %v", present, err)
 	}
@@ -70,7 +70,7 @@ func TestLookupAbsent(t *testing.T) {
 func TestFlavorTokenHeaders(t *testing.T) {
 	t.Run("emby", func(t *testing.T) {
 		c, ms := newClient(t, Emby)
-		_, _, _ = c.Lookup(context.Background(), TMDB, "16153", Movie)
+		_, _, _ = c.Lookup(context.Background(), TMDB, "90016153", Movie)
 		if ms.LastEmbyToken != ms.AdminToken {
 			t.Errorf("Emby X-Emby-Token = %q, want %q", ms.LastEmbyToken, ms.AdminToken)
 		}
@@ -80,7 +80,7 @@ func TestFlavorTokenHeaders(t *testing.T) {
 	})
 	t.Run("jellyfin", func(t *testing.T) {
 		c, ms := newClient(t, Jellyfin)
-		_, _, _ = c.Lookup(context.Background(), TMDB, "16153", Movie)
+		_, _, _ = c.Lookup(context.Background(), TMDB, "90016153", Movie)
 		if !strings.HasPrefix(ms.LastAuthHeader, "MediaBrowser ") {
 			t.Errorf("Jellyfin Authorization = %q, want MediaBrowser scheme", ms.LastAuthHeader)
 		}

@@ -34,7 +34,7 @@ func (d *windowDecks) CyclePreview(_ context.Context, _ string, at time.Time) (
 	for ep := 1; ep <= 3; ep++ {
 		id := fmt.Sprintf("%s-e%d", opened.Format("15h"), ep)
 		slots = append(slots, schedule.Slot{
-			Kind: schedule.SlotProgram, Key: provision.Key("series:tvdb:1"), Title: id, LibraryItemID: id,
+			Kind: schedule.SlotProgram, Key: provision.Key("series:tvdb:90000001"), Title: id, LibraryItemID: id,
 			DurationMs: (22 * time.Minute).Milliseconds(),
 		})
 	}
