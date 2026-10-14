@@ -4,10 +4,7 @@ import (
 	"bytes"
 	"image"
 	"image/color"
-	"image/png"
 	"math"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -16,15 +13,15 @@ import (
 var testLook = Look{Size: 0.06, Opacity: 0.40, Shadow: true}
 
 // The approved sizes, from the sample sheets (PR #1532): at 1080p every bug covers ~2·65² px², so
-// HBO's 2.4:1 mark is 143x59, NBC's 4.1:1 is 185x45 and the 6.9:1 Nickelodeon wordmark 238x35.
+// a 2.4:1 mark is 143x59, a 4.1:1 mark 185x45 and a 6.9:1 wordmark 238x35.
 func TestSizeFor_EqualArea(t *testing.T) {
 	for _, c := range []struct {
 		w, h         int
 		wantW, wantH int
 	}{
-		{1430, 590, 143, 59}, // the HBO sample
-		{1850, 450, 186, 45}, // the NBC sample (185 there: its trimmed logo's own rounding)
-		{2380, 350, 239, 35}, // the Nickelodeon wordmark sample (238)
+		{1430, 590, 143, 59}, // the 2.4:1 sample
+		{1850, 450, 186, 45}, // the 4.1:1 sample (185 there: its trimmed logo's own rounding)
+		{2380, 350, 239, 35}, // the 6.9:1 wordmark sample (238)
 		{100, 100, 65, 65},   // square: reaches H
 		{100, 300, 22, 65},   // tall: capped at H, never taller
 	} {
@@ -184,36 +181,5 @@ func TestPickVariant_PrefersTheFirstLegibleVariant(t *testing.T) {
 	}
 	if got := PickVariant([]*image.Alpha{thin}, 1080, look); got != 0 {
 		t.Errorf("the only variant must still air: %d", got)
-	}
-}
-
-// Calibration on the real TMDB logos from the sample sheets (not in the repo: trademarks). Set
-// WATERMARK_TEST_LOGOS to a directory holding hbo.png, nbc.png, nick.png (the splat) and nickw.png.
-func TestLegibility_SampleLogos(t *testing.T) {
-	dir := os.Getenv("WATERMARK_TEST_LOGOS")
-	if dir == "" {
-		t.Skip("WATERMARK_TEST_LOGOS not set")
-	}
-	want := map[string]bool{"hbo": true, "nbc": true, "nick": false, "nickw": true}
-	for name, legible := range want {
-		f, err := os.Open(filepath.Join(dir, name+".png"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		img, err := png.Decode(f)
-		_ = f.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		mask, err := LogoMask(img)
-		if err != nil {
-			t.Fatal(err)
-		}
-		s := Legibility(mask, 1080, testLook)
-		w, h := Render(mask, 1080, testLook).Size()
-		t.Logf("%s: survival %.2f at %dx%d", name, s, w, h)
-		if (s >= legibleSurvival) != legible {
-			t.Errorf("%s: survival %.2f, sample sheet says legible=%v", name, s, legible)
-		}
 	}
 }

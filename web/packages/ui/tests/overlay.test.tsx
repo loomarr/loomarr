@@ -10,7 +10,7 @@ describe("shared overlay composition", () => {
       <LoomarrProvider insets={{ bottom: 20, left: 4, right: 6, top: 8 }}>
         <TransientOverlay
           density="touch"
-          description="The Simpsons · Marge vs. the Monorail"
+          description="Kettle Kids · The Monorail Pitch"
           onDismiss={vi.fn()}
           reducedMotion
           title="Now playing"
@@ -20,7 +20,7 @@ describe("shared overlay composition", () => {
     );
 
     expect(markup).toContain("Now playing");
-    expect(markup).toContain("The Simpsons · Marge vs. the Monorail");
+    expect(markup).toContain("Kettle Kids · The Monorail Pitch");
     expect(markup).toContain("left:0");
     expect(markup).toContain("right:0");
     expect(markup).toContain("bottom:0");

@@ -128,7 +128,7 @@ describe("Surf data", () => {
               {
                 kind: "program",
                 scheduleBlockId: "programme-before",
-                series: "The Simpsons",
+                series: "Kettle Kids",
                 startMs: 1_000,
                 stopMs: 3_000,
                 title: "Before the break",
@@ -165,7 +165,7 @@ describe("Surf data", () => {
               {
                 kind: "program",
                 scheduleBlockId: "programme-after",
-                series: "The Simpsons",
+                series: "Kettle Kids",
                 startMs: 5_000,
                 stopMs: 7_000,
                 title: "After the break",
@@ -186,11 +186,11 @@ describe("Surf data", () => {
 
     expect(watchingScheduleFromGuide(transitionLayout, "seven", 2_500)).toMatchObject({
       next: { title: "Commercials" },
-      now: { progressPercent: 75, title: "The Simpsons · Before the break" },
+      now: { progressPercent: 75, title: "Kettle Kids · Before the break" },
     });
     const fillerSchedule = watchingScheduleFromGuide(transitionLayout, "seven", 3_500);
     expect(fillerSchedule).toMatchObject({
-      next: { title: "The Simpsons · After the break" },
+      next: { title: "Kettle Kids · After the break" },
       now: {
         facts: ["First Brand"],
         progressPercent: 25,
@@ -203,7 +203,7 @@ describe("Surf data", () => {
       now: { facts: ["Second Brand"], title: "Commercials · Second sponsor spot" },
     });
     expect(watchingScheduleFromGuide(transitionLayout, "seven", 5_000)).toMatchObject({
-      now: { progressPercent: 0, title: "The Simpsons · After the break" },
+      now: { progressPercent: 0, title: "Kettle Kids · After the break" },
     });
   });
 

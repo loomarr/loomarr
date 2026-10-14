@@ -10,14 +10,14 @@ describe("ActivityFeed", () => {
     render(
       <ActivityFeed
         now={NOW}
-        entries={[{ id: "a1", at: ago(3), kind: "title", level: "info", text: "Darkwing Duck landed" }]}
+        entries={[{ id: "a1", at: ago(3), kind: "title", level: "info", text: "Gadget Goats Go! landed" }]}
       />,
     );
 
     // ⚠ The TEXT is rendered as stored, never re-templated: a feed row is a historical
     // record, and re-rendering it against current data would let last week's entry change
     // its wording when a channel is renamed.
-    expect(screen.getByText("Darkwing Duck landed")).toBeInTheDocument();
+    expect(screen.getByText("Gadget Goats Go! landed")).toBeInTheDocument();
     expect(screen.getByText("3m ago")).toBeInTheDocument();
   });
 

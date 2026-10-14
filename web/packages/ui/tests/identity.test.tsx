@@ -25,20 +25,20 @@ describe("shared channel and programme identity", () => {
         <ProgrammeIdentity
           programme={{
             badge: { label: "On now", tone: "live" },
-            description: "A classic Springfield episode.",
+            description: "A classic Puddleford episode.",
             episodeLabel: "S04E12",
-            seriesTitle: "The Simpsons",
+            seriesTitle: "Kettle Kids",
             timeLabel: "7:00–7:30 PM",
-            title: "Marge vs. the Monorail",
+            title: "The Monorail Pitch",
           }}
         />
       </LoomarrProvider>,
     );
 
-    expect(markup).toContain("The Simpsons");
-    expect(markup).toContain("Marge vs. the Monorail");
+    expect(markup).toContain("Kettle Kids");
+    expect(markup).toContain("The Monorail Pitch");
     expect(markup).toContain("7:00–7:30 PM · S04E12");
-    expect(markup).toContain("A classic Springfield episode.");
+    expect(markup).toContain("A classic Puddleford episode.");
     expect(markup).toContain("On now");
   });
 });

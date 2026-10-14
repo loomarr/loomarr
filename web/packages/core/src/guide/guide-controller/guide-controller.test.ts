@@ -19,7 +19,7 @@ const guide = (channelId = "seven"): GuideOutputBody => ({
           scheduleBlockId: `airing-${channelId}-two`,
           startMs: 4_000,
           stopMs: 5_000,
-          title: "Fallout Boy",
+          title: "Comet Cadet",
         },
       ],
       channelId,

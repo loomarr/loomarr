@@ -18,8 +18,8 @@ func TestInvitationRedemption_LocalCreatesArgon2idUserAndSession(t *testing.T) {
 	ctx := context.Background()
 	at := time.Date(2030, 3, 17, 12, 0, 0, 0, time.UTC)
 	invited := invitation.Invitation{
-		ID: "invitation-local", Kind: invitation.KindLocal, Username: "Grace Hopper",
-		IdentityKey: invitation.NormalizeLocalIdentity("Grace Hopper"), Role: invitation.RoleAdmin,
+		ID: "invitation-local", Kind: invitation.KindLocal, Username: "Greta Finch",
+		IdentityKey: invitation.NormalizeLocalIdentity("Greta Finch"), Role: invitation.RoleAdmin,
 		Status: invitation.StatusPending, CreatedAt: at, ExpiresAt: at.Add(invitation.Expiry),
 	}
 	if err := st.CreateInvitation(ctx, invited, nil); err != nil {
