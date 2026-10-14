@@ -475,7 +475,9 @@ func tradeRecent(deck, slice []Slot, lastAired map[string]time.Time, since time.
 			continue
 		}
 		inSlice[s.LibraryItemID] = true
-		if at, ok := lastAired[s.LibraryItemID]; ok && at.After(since) {
+		// At `since` itself counts: the first programme of a window airs at its opening, so on an
+		// always-on channel yesterday's opening film is recorded at exactly this instant.
+		if at, ok := lastAired[s.LibraryItemID]; ok && !at.Before(since) {
 			recorded = append(recorded, i)
 		}
 	}

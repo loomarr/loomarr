@@ -2,6 +2,7 @@ package schedule_test
 
 import (
 	"fmt"
+	"hash/fnv"
 	"testing"
 	"time"
 
@@ -34,7 +35,11 @@ func TestComputeDesiredAt_TraceComesFromTheDecisionSeams(t *testing.T) {
 	if got.Trace.Version != schedule.ScheduleTraceVersion {
 		t.Fatalf("trace version = %d, want %d", got.Trace.Version, schedule.ScheduleTraceVersion)
 	}
-	if got.Trace.Ordering != schedule.OrderSequential || got.Trace.Seed != 0 {
+	// A channel that stores no seed shuffles under one derived from its id: the FNV-1a hash of it
+	// (#1676), so the trace records that seed, not 0. Sequential never reads it.
+	idHash := fnv.New64a()
+	_, _ = idHash.Write([]byte(policyChannel().ID))
+	if got.Trace.Ordering != schedule.OrderSequential || got.Trace.Seed != int64(idHash.Sum64()) {
 		t.Fatalf("trace ordering metadata = %+v", got.Trace)
 	}
 	checks := []struct {

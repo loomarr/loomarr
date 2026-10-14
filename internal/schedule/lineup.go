@@ -279,7 +279,7 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// that is what placement receives. Empty ⇒ ordering is unchanged from pre-§3.1.
 	rp.LastAired = ch.LastAired
 	window := resolveWindow(rule.Window, policy.Window, ch.DefaultWindow)
-	seed := ch.Shuffle.Seed
+	seed := channelSeed(ch)
 	// The window being arranged is the one `now` falls in, unless the caller names it: while the
 	// programme that crossed a boundary is still airing (#1675 carry-over), reconcile keeps
 	// arranging the window that programme belongs to.
@@ -373,18 +373,34 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	// every other unit off its tile, so a slice overran into the next window's tile and re-aired
 	// films nobody watched (the history never records those); syndication shuffled the sorted
 	// deck, so each new record dealt a different deck. Recency instead guards the slice: see
-	// tradeRecent. A deck that fits one window has no tiles (it airs whole every window), so
-	// recency still orders it; with no window or no history, ordering is as before.
+	// tradeRecent.
+	//
+	// A deck that fits one window has no tiles and nothing to guard: it airs every unit every window,
+	// so recency could only choose the order, and oldest-aired-first IS yesterday's order, a replay
+	// that survives every window once anyone watches (#1676). It is dealt afresh per window instead
+	// (passes.go), and the history must not feed that deal: the window's order is fixed when it
+	// opens and must not move as viewing is recorded (#1674). With no window or no history, ordering
+	// is as before.
 	history := rp.LastAired
-	guardSlice := (rp.Ordering == OrderShuffle || rp.Ordering == OrderSyndication) && len(history) > 0 && window > 0 &&
-		programRuntime(collapsed) > window.Milliseconds()
-	if guardSlice {
+	shuffled := rp.Ordering == OrderShuffle || rp.Ordering == OrderSyndication
+	dealtAfresh := shuffled && len(history) > 0 && window > 0 && programRuntime(collapsed) > 0
+	guardSlice := dealtAfresh && programRuntime(collapsed) > window.Milliseconds()
+	if dealtAfresh {
 		rp.LastAired = nil
 	}
 
 	// Policy-aware ordering + separation (§3/§5), then the relaxation ladder (§7)
 	// records any windows it had to loosen to fill the cycle.
-	ordered, applied := slotWithRelaxation(collapsed, rp, seed)
+	//
+	// The catalog is dealt afresh each time the window wraps it (#1676): a shuffled or
+	// syndicated channel's next pass is a different permutation, not a replay of this one.
+	// The ring is walked from the channel's DealOrigin, so a pass number is the channel's age in
+	// passes rather than a count from 1970: that is what lets each pass be repaired against the
+	// deck that really aired before it (passes.go).
+	dealer := newDeckDealer(collapsed, rp, seed, window)
+	dealtTile, pass := windowSliceDealt(dealer, window, windowIdx-windowIndex(dealOriginOf(ch), window, ch.WindowZone))
+	ordered := dealer.deck(pass)
+	applied := dealer.applied(pass)
 
 	// Breaks: the active rule may suppress them (a marathon runs uninterrupted, §6.5).
 	brk := ch
@@ -405,9 +421,11 @@ func ComputeDesiredAt(ch Channel, entries []LineupEntry, avail Availability, pen
 	holidays := newHolidayPlanner(ordered, holidayFeature{seasonal: rp.Seasonal, matches: holidayMatches, expand: expand},
 		window, ch.WindowZone, breakFactor(brk))
 	orderedAll := append([]Slot(nil), ordered...)
+	// In season the planner walks the deck of the pass the window starts in; out of season the
+	// tile runs across dealt passes (windowSliceDealt).
 	tile, inSeason := holidays.seasonTile(windowIdx)
 	if !inSeason {
-		tile = windowSlice(ordered, window, windowIdx)
+		tile = dealtTile
 	}
 	if guardSlice {
 		since := windowOpening(windowIdx-1, window, ch.WindowZone)
@@ -549,56 +567,10 @@ func NextWindowStart(at time.Time, window time.Duration, zone *time.Location) ti
 // with no programs, or whose total runtime fits in one window, is returned whole (nothing to
 // rotate). Always yields ≥1 program so a channel is never dark.
 func windowSlice(slots []Slot, window time.Duration, index int64) []Slot {
-	if window <= 0 || len(slots) == 0 {
-		return slots
-	}
-	// Index the program positions; a deck that is all-pending/filler has nothing to window.
-	progAt := make([]int, 0, len(slots))
-	var total int64
-	for i, s := range slots {
-		if s.IsProgram() {
-			progAt = append(progAt, i)
-			total += s.DurationMs
-		}
-	}
-	nProg := len(progAt)
-	if nProg == 0 {
-		return slots
-	}
-	// If the whole catalog fits in one window (runtime <= budget), there's nothing to rotate:
-	// air it all every window. (A zero-runtime deck — durations unknown — also lands here and
-	// plays whole rather than looping a meaningless prefix.)
-	budget := window.Milliseconds()
-	if total <= budget || total == 0 {
-		return slots
-	}
-	// How many programs one window's runtime holds, starting from the deck head — the stride
-	// each window advances so consecutive windows TILE the catalog (window 1 continues where
-	// window 0 left off) rather than slide (which would re-air most of the same films). Floor
-	// 1 so a channel whose single next program exceeds the window still advances one per window.
-	stride := programsPerWindow(slots, budget)
-	if stride < 1 {
-		stride = 1
-	}
-	// Rotate the START by index*stride programs, wrapping the ring of program positions.
-	start := int(((index*int64(stride))%int64(nProg) + int64(nProg)) % int64(nProg)) // non-negative modulo
-	startSlot := progAt[start]
-
-	// Walk forward from startSlot, wrapping past the end, accumulating program runtime until
-	// the budget is met — collecting the (possibly wrapped) contiguous slice of slots. We keep
-	// non-program slots that fall between kept programs so pending/break placeholders ride along.
-	out := make([]Slot, 0, len(slots))
-	var acc int64
-	for count := 0; count < len(slots); count++ {
-		i := (startSlot + count) % len(slots)
-		out = append(out, slots[i])
-		if slots[i].IsProgram() {
-			acc += slots[i].DurationMs
-			if acc >= budget {
-				break
-			}
-		}
-	}
+	// A fixed deck: every pass is this deck, which is what windowSliceDealt does for an ordering
+	// that does not reshuffle (see passes.go for the walk itself).
+	d := &deckDealer{bases: map[int64]dealt{0: {deck: slots}}}
+	out, _ := windowSliceDealt(d, window, index)
 	return out
 }
 
