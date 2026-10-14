@@ -926,12 +926,16 @@ func cmpBool(a, b bool) int {
 // outside its spacing then re-aired inside it. So an episode is deferred only when every unit it
 // brings forward still rests the dealer's spacing from its last airing (or no less than its deal
 // gave it), and the episode still rests it before its own next one (costsSpacing); otherwise it
-// airs in place, as it does when the window closes before the band does. Arrange never moves an ordinary unit later on such a channel, so a unit's
-// last airing is never later than its dealt one, and checking against the deal is exact.
+// airs in place, as it does when the window closes before the band does.
+//
+// The check reads the windows around as dealt, without arranging them. Away from a season that is
+// exact: on such a channel arrange moves only a deferred episode later, and the episode leaves
+// room for what its next window can bring its next airing forward. Near a season the simulation
+// and the hand-off air other tiles, and check what really aired.
 //
 // In order, the dealer promises no spacing: an episode the window cannot defer past the band is
-// moved, with any others, to just before the band (beforeBand). Only a window wholly inside the
-// band airs it there.
+// moved, with any others, to just before the band (beforeBand); what does not fit there airs at
+// the window's end.
 func (p *holidayPlanner) arrange(tile []Slot, w int64) []Slot {
 	if !p.enabled() {
 		return tile
@@ -1038,8 +1042,10 @@ func (p *holidayPlanner) costsSpacing(tile, out []Slot, w int64, pooled map[stri
 		if !moved(s) || !offSeason(s) || inPlace[key] || airs.first(key) <= dealt.first(key) {
 			continue
 		}
-		if was, ok := p.nextGap(key, w, dealt); ok {
-			if now, _ := p.nextGap(key, w, airs); now < min(spacing, was) {
+		// Its next window can bring its next airing forward a slot for each off-season episode it
+		// defers from ahead of it, so the episode leaves room for those too.
+		if was, v, next, ok := p.nextGap(key, w, dealt); ok {
+			if now, _, _, _ := p.nextGap(key, w, airs); now-p.deferrableAhead(v, next, offSeason) < min(spacing, was) {
 				return key
 			}
 		}
@@ -1098,8 +1104,8 @@ func (p *holidayPlanner) airedIn(arranged []Slot, w int64) windowAirings {
 	return out
 }
 
-// dealtIn is window v airing its deal unmoved. Out of season arrange never moves an ordinary unit
-// later on a reshuffled channel, so a unit's real airing there is never later than this.
+// dealtIn is window v airing its deal unmoved. Away from a season, arrange moves only a deferred
+// episode later on a reshuffled channel, so any other unit's real airing there is never later.
 func (p *holidayPlanner) dealtIn(v int64) windowAirings {
 	if got, ok := p.dealtAt[v]; ok {
 		return got
@@ -1130,25 +1136,45 @@ func (p *holidayPlanner) lastGap(key string, w int64, in windowAirings) (int64, 
 }
 
 // nextGap is how many programmes key's next dealt airing, in the windows after, comes after its
-// last airing in window w (as `in` airs it), within the spacing's reach.
-func (p *holidayPlanner) nextGap(key string, w int64, in windowAirings) (int64, bool) {
+// last airing in window w (as `in` airs it), within the spacing's reach, and the window and
+// programme index of that airing.
+func (p *holidayPlanner) nextGap(key string, w int64, in windowAirings) (gap, v, next int64, ok bool) {
 	at := in.at[key]
-	gap := in.n - at[len(at)-1]
-	for v := w + 1; v <= w+p.spacingWindows(); v++ {
+	gap = in.n - at[len(at)-1]
+	for v = w + 1; v <= w+p.spacingWindows(); v++ {
 		d := p.dealtIn(v)
-		if next := d.at[key]; len(next) > 0 {
-			return gap + next[0], true
+		if at := d.at[key]; len(at) > 0 {
+			return gap + at[0], v, at[0], true
 		}
 		gap += d.n
 	}
-	return 0, false
+	return 0, 0, 0, false
+}
+
+// deferrableAhead is how many off-season episodes window v deals ahead of its programme `next`:
+// the most slots deferring them can bring that programme forward.
+func (p *holidayPlanner) deferrableAhead(v, next int64, offSeason func(Slot) bool) int64 {
+	var n, i int64
+	for _, s := range p.ring.tile(v) {
+		if !s.IsProgram() {
+			continue
+		}
+		if i >= next {
+			break
+		}
+		if offSeason(s) {
+			n++
+		}
+		i++
+	}
+	return n
 }
 
 // beforeBand inserts the units the window could not air outside the evening, as one run, just
 // before the band the window ends in: at the last position where every one of them still starts
 // before 17:00. What does not fit before the band (a window wholly inside it has no room at all)
-// airs in place. An out-of-season unit after the insertion joins the run, since the insertion
-// would push it into the band.
+// airs at the window's end. An out-of-season unit after the insertion joins the run, since the
+// insertion would push it into the band.
 func (p *holidayPlanner) beforeBand(out, deferred []Slot, opening time.Time, offSeason func(Slot) bool) []Slot {
 	if len(deferred) == 0 {
 		return out

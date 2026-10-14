@@ -260,7 +260,7 @@ func TestHolidayEpisodes_OutOfSeasonShuffledLeavesTheEveningWhereSpacingAllows(t
 		at := day(time.March, d, 9)
 		all := arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), evenings, at)
 		if got, dealt := len(holidayAirings(all)), len(holidayAirings(arrange(t, mudpuddlesChannel(), mudpuddlesLike(30), off, at))); got != dealt {
-			t.Fatalf("Nov %d: %d holiday episodes air where the deck deals %d", d, got, dealt)
+			t.Fatalf("Mar %d: %d holiday episodes air where the deck deals %d", d, got, dealt)
 		}
 		inEveningCount := func(as []airing) (n int) {
 			for _, a := range holidayAirings(as) {
