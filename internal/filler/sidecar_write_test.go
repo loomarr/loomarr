@@ -28,18 +28,18 @@ func sidecarOf(t *testing.T, media string) map[string]any {
 // The operator would never see it happen.
 func TestWriteSidecarTags_PreservesFieldsWeDoNotUnderstand(t *testing.T) {
 	dir := t.TempDir()
-	media := filepath.Join(dir, "coke.mp4")
+	media := filepath.Join(dir, "sparkra.mp4")
 	if err := os.WriteFile(media, []byte("video"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	original := `{
-	  "title": "Coke 1985",
+	  "title": "Sparkra 1985",
 	  "description": "A commercial",
 	  "view_count": 4210,
 	  "formats": [{"format_id": "22", "ext": "mp4"}],
 	  "chapters": [{"start_time": 0, "title": "intro"}]
 	}`
-	if err := os.WriteFile(filepath.Join(dir, "coke.info.json"), []byte(original), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "sparkra.info.json"), []byte(original), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,14 +82,14 @@ func TestWriteSidecarTags_RoundTrips(t *testing.T) {
 
 func TestReadSourceMetadataFS_SeparatesUploadDateFromBroadcastSignals(t *testing.T) {
 	dir := t.TempDir()
-	raw := `{"id":"hp-ad","title":"HP Sauce Advert","description":"Broadcast 1999 on Five.","webpage_url":"https://archive.org/details/hp-ad","upload_date":"20250107","loomarr":{"originalName":"hp-sauce.mp4","sourceId":"classic"}}`
-	if err := os.WriteFile(filepath.Join(dir, "hp.info.json"), []byte(raw), 0o600); err != nil {
+	raw := `{"id":"brambly-ad","title":"Brambly Sauce Advert","description":"Broadcast 1999 on Kestrel One.","webpage_url":"https://archive.org/details/brambly-ad","upload_date":"20250107","loomarr":{"originalName":"brambly-sauce.mp4","sourceId":"classic"}}`
+	if err := os.WriteFile(filepath.Join(dir, "brambly.info.json"), []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, ok := filler.ReadSourceMetadataFS(os.DirFS(dir), "hp.mp4")
-	if !ok || got.Title != "HP Sauce Advert" || got.UploadDate != "20250107" ||
-		got.ItemID != "hp-ad" || got.WebpageURL != "https://archive.org/details/hp-ad" ||
-		got.OriginalName != "hp-sauce.mp4" || got.SourceID != "classic" {
+	got, ok := filler.ReadSourceMetadataFS(os.DirFS(dir), "brambly.mp4")
+	if !ok || got.Title != "Brambly Sauce Advert" || got.UploadDate != "20250107" ||
+		got.ItemID != "brambly-ad" || got.WebpageURL != "https://archive.org/details/brambly-ad" ||
+		got.OriginalName != "brambly-sauce.mp4" || got.SourceID != "classic" {
 		t.Fatalf("ReadSourceMetadataFS = %+v, %v", got, ok)
 	}
 }
@@ -113,7 +113,7 @@ func TestSidecarFetchedMarkForAcquisition_CarriesRunAndSource(t *testing.T) {
 // "metadata travels with the clip" rule originalName/normalizedLufs already follow.
 func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
 	dir := t.TempDir()
-	media := filepath.Join(dir, "coke.mp4")
+	media := filepath.Join(dir, "sparkra.mp4")
 	if err := os.WriteFile(media, []byte("video"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -123,10 +123,10 @@ func TestWriteSidecarTags_RoundTripsBrandAndTranscript(t *testing.T) {
 		Era:             1985,
 		Audience:        "general",
 		Category:        "general",
-		Brand:           "Coca-Cola",
-		Transcript:      "Have a Coke and a smile — the real thing.",
-		GeographicScope: "local", Country: "US", Market: "New York", Network: "Fox",
-		Station: "WNYW", AirDate: "1985-05-06", GeoEvidence: "operator",
+		Brand:           "Sparkra-Cola",
+		Transcript:      "Have a Sparkra and a smile — the bright thing.",
+		GeographicScope: "local", Country: "US", Market: "New York", Network: "Kestrel One",
+		Station: "WKTL", AirDate: "1985-05-06", GeoEvidence: "operator",
 	}
 	if err := filler.WriteSidecarTags(media, want, false); err != nil {
 		t.Fatal(err)

@@ -41,7 +41,7 @@ func writeFile(t *testing.T, dir, rel string) {
 // so a differing separator would silently change pod contents rather than failing).
 func TestScanDir_IdentityIsTheRelativePath(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, dir, "1994/toys-transformers.mp4")
+	writeFile(t, dir, "1994/toys-robo-rabbits.mp4")
 	writeFile(t, dir, "station-id.mp4")
 
 	clips, _, err := filler.ScanDir(context.Background(), dir, fakeProbe(30000))
@@ -52,7 +52,7 @@ func TestScanDir_IdentityIsTheRelativePath(t *testing.T) {
 	for _, c := range clips {
 		got[c.Path] = true
 	}
-	for _, want := range []string{"1994/toys-transformers.mp4", "station-id.mp4"} {
+	for _, want := range []string{"1994/toys-robo-rabbits.mp4", "station-id.mp4"} {
 		if !got[want] {
 			t.Errorf("missing %q; got %v", want, got)
 		}
@@ -69,14 +69,14 @@ func TestScanDir_IdentityIsTheRelativePath(t *testing.T) {
 
 // ⚠ THE display-vs-grounding split (§10 V44, live-found): the Archive downloader files a clip as
 // "<archive-id> - <title>.mp4" to dodge id collisions, so `originalName` reads
-// "CampbellsSoupAdvert - Campbell's Soup Advert" — which the guide showed verbatim. The scan must
+// "HearthpotsSoupAdvert - Hearthpot's Soup Advert" — which the guide showed verbatim. The scan must
 // prefer the sidecar's clean `title` for the DISPLAY name, while still reading the era off the
 // filename (the clean title has no year). This pins both halves: nice name, era still grounds.
 func TestScanDir_PrefersSidecarTitleForDisplayButGroundsEraFromFilename(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "ab/cd/hash.mp4")
 	// A sidecar with a clean title AND a mangled originalName that carries the year 1993.
-	sidecar := `{"title":"Campbell's Soup Advert","loomarr":{"originalName":"CampbellsSoupAdvert - Campbell's Soup Advert 1993.mp4"}}`
+	sidecar := `{"title":"Hearthpot's Soup Advert","loomarr":{"originalName":"HearthpotsSoupAdvert - Hearthpot's Soup Advert 1993.mp4"}}`
 	if err := os.WriteFile(filepath.Join(dir, "ab/cd/hash.info.json"), []byte(sidecar), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestScanDir_PrefersSidecarTitleForDisplayButGroundsEraFromFilename(t *testi
 		t.Fatalf("got %d clips, want 1", len(clips))
 	}
 	c := clips[0]
-	if c.Name != "Campbell's Soup Advert" {
+	if c.Name != "Hearthpot's Soup Advert" {
 		t.Errorf("display Name = %q, want the clean sidecar title, not the doubled filename", c.Name)
 	}
 	// ⚠ The load-bearing half: era must still ground off the filename's 1993, even though the clean
@@ -104,7 +104,7 @@ func TestScanDir_PrefersSidecarTitleForDisplayButGroundsEraFromFilename(t *testi
 func TestScanDir_ShowsDerivedNameButGroundsEraFromOriginalName(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "ab/cd/hash.mp4")
-	sidecar := `{"loomarr":{"originalName":"spot 1993.mp4","displayName":"“Real stories of the highway patrol”","nameSource":"transcript"}}`
+	sidecar := `{"loomarr":{"originalName":"spot 1993.mp4","displayName":"“True tales of the canyon patrol”","nameSource":"transcript"}}`
 	if err := os.WriteFile(filepath.Join(dir, "ab/cd/hash.info.json"), []byte(sidecar), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestScanDir_ShowsDerivedNameButGroundsEraFromOriginalName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(clips) != 1 || clips[0].Name != "“Real stories of the highway patrol”" || clips[0].Era != 1993 {
+	if len(clips) != 1 || clips[0].Name != "“True tales of the canyon patrol”" || clips[0].Era != 1993 {
 		t.Fatalf("clips = %+v, want the derived display name and the filename's 1993", clips)
 	}
 }
