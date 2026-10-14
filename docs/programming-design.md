@@ -235,8 +235,8 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 ## 5. Ordering modes ("feels like TV")
 
 - `sequential` — S1E1 onward, loops at the end (binge/marathon channels).
-- `shuffle` — seeded random, separation-constrained.
-- `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility).
+- `shuffle` — seeded random, separation-constrained. **The seed is the channel's own.** A channel that stores none (every binder-made channel stores `0`) derives it from its id (FNV-1a), stable for the channel's life and needing no migration, so two channels over the same pool deal different decks. It reshuffles each pass, exactly as `syndication` does (below and §6.5).
+- `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility). The deck index is the **pass** of the rolling window around the catalog (§6.5), counted from the channel's creation.
 - **Omitted `ordering` inherits the channel's `Strategy`.** A channel created without an explicit policy ordering keeps its existing `sequential`/`shuffle` behavior — the syndication default applies only when a policy explicitly requests it (or a template ships it). This keeps policy adoption non-breaking for existing channels.
 - **One operator knob, one canonical precedence ladder.** Ordering resolves in exactly this order: **per-rule `How.Ordering` (within that rule's active window, §6.5) > `policy.ordering` > `Channel.Strategy` (the create-time stored default)**. `policy.ordering` is *the* operator-facing knob (edited in Programming → How it's ordered); `Channel.Strategy` is the default the binder seeds and is consulted only on inherit — it is **not** a second editable field (design.md §9). A rule's `How` overrides only for the slots that rule governs; outside any rule window, the base `policy.ordering` applies. This is the single ladder that makes "three ways to express ordering" read as one.
 - **Rerun curation and narrative order are different promises.** A channel whose lineup is several series (a "Star Trek" franchise channel) defaults to `syndication` so the shows intermix instead of playing one to completion. A clearly curated single-series intent (`classic Simpsons`, `best episodes`, favorites, highlights, reruns) also resolves to `syndication`: its eligible season window is a pool to curate into a deterministic no-repeat deck, not an instruction to start at S1E1. Explicit chronological, start-to-finish, binge, or marathon language forces `sequential`, even when the model proposed shuffle or syndication. One series plus movies is not inferred as either case. This episodic rule does **not** loosen the movie-franchise floor above: films sharing a TMDB collection remain one atomic, in-release-order block even when the surrounding channel is shuffled or syndicated. The prompt guides the model, and `groundPolicy` enforces both deterministic outcomes so a small model cannot turn a rerun request into a box-set binge or a binge into a mixed deck.
@@ -518,6 +518,37 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   sentinel; a `marathon` rule sets it — no rotation, plays everything). A pool smaller than one
   window airs whole every window (nothing to rotate, nothing starved). The slice is floored to
   at least one program so a channel is never dark.
+  **Passes: a shuffled or syndicated catalog is dealt afresh each time the window wraps it
+  (#1676).** One trip of the window around the catalog is a *pass*; pass `p` is dealt under
+  `seed XOR p` (the seed is the channel's own, §5), so a pass is a new permutation, not a replay of
+  the one before, and still a pure function of its inputs. `sequential` keeps one deck for every
+  pass — its order is the promise. Passes are numbered from the channel's **origin**
+  (`created_at`, else its playout anchor, else a stable value derived from the channel id), not from
+  1970, so a channel's pass number is its age in passes: a few hundred in a year, never thousands.
+  The seam between two passes is **repaired**: every unit airs at least a *repeat spacing* after it
+  last aired — the episode/film no-repeat window, capped at a third of the pool's runtime (a pool
+  shorter than the spacing can never honour it; §7 owns that shortfall) and never less than two
+  windows while the pool can hold them, because windows do not start where passes do and a unit
+  near the end of one pass would otherwise land in the very next day. A unit not yet allowed is held
+  back and goes out the moment the deck reaches its release time. A repair moves a unit at most
+  `2·spacing + 2·longest unit` into the deck. **When that stops short of the tail the next seam reads
+  (any pool holding three spacings, and any pool that fits one window), the repaired tail is the
+  dealt tail**, so a pass needs only its own deal and its predecessor's: exact, at any age. A pool of
+  one to six windows (spacing raised to two windows) is pushed into that tail, so each pass is
+  repaired against the deck that **really aired**, walked pass by pass (memoised per
+  pool/policy/seed/window; a lineup edit is a different pool, so it restarts the walk). A deal costs
+  5–22 ms for a multi-series pool, so **the walk is bounded in deals**: at most `2048 / pool size`
+  passes (16 to 2048, a multiple of 16), starting at the latest multiple of that bound at or before
+  the wanted pass; a 6-year-old channel with a 60-episode pool walks in ~0.13 s cold, once per
+  process. The pass that starts a walk is repaired against its predecessor *as dealt* rather than as
+  aired. That is the only place the seam guarantee can relax, and only for chained pools (a pool of
+  27 films meets it every 64 passes; measured, the short seam is ~5% under the spacing).
+  **A catalog that fits inside one window has no ring to wrap**, so it used to air the same deck in
+  the same order every window; there the **window is the pass**, dealt afresh and repaired against
+  the previous window like any other seam. Recency does not order such a deck: it airs every unit
+  every window, so oldest-aired-first is just yesterday's order, a replay that survived every
+  window once anyone watched (#1676, reversing #1694's "recency still orders a fitting deck"). The
+  window's order is fixed when it opens and does not move as viewing is recorded (#1674).
 - **Authorship is hybrid (§8 boundary intact).** The **LLM proposes a starter rule set**
   from intent ("Star Trek with weekend TNG marathons and Christmas episodes") — from the
   closed preset vocabulary, grounded + clamped (unknown tokens dropped, window clamped to
