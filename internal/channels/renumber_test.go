@@ -28,14 +28,14 @@ func TestReconcile_MovesAroundANumberTunarrAlreadyUses(t *testing.T) {
 	// earlier install leaves behind.
 	tun.SeedForeignChannel(1, "Someone else's channel")
 
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	e := newEngine(st, tun, avail, nil)
 
 	ch := store.Channel{Lineup: []schedule.LineupEntry{
-		{Key: provision.Key("movie:tmdb:1"), Title: "A", DurationMs: 3600000},
+		{Key: provision.Key("movie:tmdb:90000001"), Title: "A", DurationMs: 3600000},
 	}}
 	ch.ID = "c1"
-	ch.Name = "Springfield Classics"
+	ch.Name = "Puddleford Classics"
 	ch.Number = 1 // collides
 	ch.Strategy = schedule.Sequential
 	ch.Status = schedule.StatusBuilding
@@ -96,8 +96,8 @@ func TestReconcile_AutoRenumberAlsoAvoidsLocalOnlyChannels(t *testing.T) {
 	tun := tunarrtest.NewTunarr()
 	tun.SeedForeignChannel(1, "Remote occupant")
 	seedChannel(t, st, "local-only", 2)
-	seedChannel(t, st, "target", 1, entry("movie:tmdb:1", "A"))
-	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
+	seedChannel(t, st, "target", 1, entry("movie:tmdb:90000001", "A"))
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil)
 
 	if err := e.Reconcile(context.Background(), "target"); err != nil {
 		t.Fatal(err)
@@ -118,8 +118,8 @@ func TestReconcile_CleansUpWhenLocalNumberIsClaimedAfterRemotePlan(t *testing.T)
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
 	tun.SeedForeignChannel(1, "Remote occupant")
-	seedChannel(t, st, "target", 1, entry("movie:tmdb:1", "A"))
-	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
+	seedChannel(t, st, "target", 1, entry("movie:tmdb:90000001", "A"))
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil)
 
 	var once sync.Once
 	tun.BeforeEnsureChannel = func(spec tunarr.ChannelSpec) {
@@ -148,9 +148,9 @@ func TestReconcile_KeepsItsNumberWhenTunarrHasNothingThere(t *testing.T) {
 	tun := tunarrtest.NewTunarr()
 	tun.SeedForeignChannel(7, "Unrelated")
 
-	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil)
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil)
 	ch := store.Channel{Lineup: []schedule.LineupEntry{
-		{Key: provision.Key("movie:tmdb:1"), Title: "A", DurationMs: 3600000},
+		{Key: provision.Key("movie:tmdb:90000001"), Title: "A", DurationMs: 3600000},
 	}}
 	ch.ID = "c1"
 	ch.Name = "Mine"

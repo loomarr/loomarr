@@ -17,7 +17,7 @@ func testDiscoveryFeedbackMissingChannel(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	for _, action := range []FeedbackAction{FeedbackNever, FeedbackClear} {
 		feedback := DiscoveryFeedback{ID: "missing-" + string(action), ActorID: "admin",
-			Scope: FeedbackChannel, ScopeID: "missing-channel", Target: provision.Key("movie:tmdb:603"),
+			Scope: FeedbackChannel, ScopeID: "missing-channel", Target: provision.Key("movie:tmdb:90000603"),
 			Action: action, CreatedAt: time.Unix(1_700_000_000, 0).UTC()}
 		if err := s.AppendDiscoveryFeedback(ctx, feedback); !errors.Is(err, ErrNotFound) {
 			t.Errorf("append %s for missing channel = %v, want ErrNotFound", action, err)
@@ -43,7 +43,7 @@ func testDiscoveryFeedbackHardDelete(t *testing.T, newStore NewStoreFunc) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := provision.Key("movie:tmdb:603")
+	target := provision.Key("movie:tmdb:90000603")
 	for _, feedback := range []DiscoveryFeedback{
 		{ID: "delete-channel", ActorID: "admin", Scope: FeedbackChannel, ScopeID: channel.ID,
 			Target: target, Action: FeedbackNever, CreatedAt: time.Unix(1_700_000_000, 0).UTC()},
@@ -97,7 +97,7 @@ func testDiscoveryFeedbackDeleteRace(t *testing.T, newStore NewStoreFunc) {
 	go func() {
 		<-start
 		appendResult <- s.AppendDiscoveryFeedback(ctx, DiscoveryFeedback{ID: "racing-append", ActorID: "admin",
-			Scope: FeedbackChannel, ScopeID: channel.ID, Target: provision.Key("movie:tmdb:603"),
+			Scope: FeedbackChannel, ScopeID: channel.ID, Target: provision.Key("movie:tmdb:90000603"),
 			Action: FeedbackLess, CreatedAt: time.Unix(1_700_000_000, 0).UTC()})
 	}()
 	go func() {
@@ -134,7 +134,7 @@ func testDiscoveryFeedbackDetachedChannel(t *testing.T, newStore NewStoreFunc) {
 		t.Fatal(err)
 	}
 	feedback := DiscoveryFeedback{ID: "detached-event", ActorID: "admin", Scope: FeedbackChannel,
-		ScopeID: channel.ID, Target: provision.Key("movie:tmdb:603"), Action: FeedbackSurprise,
+		ScopeID: channel.ID, Target: provision.Key("movie:tmdb:90000603"), Action: FeedbackSurprise,
 		CreatedAt: time.Unix(1_700_000_000, 0).UTC()}
 	if err := s.AppendDiscoveryFeedback(ctx, feedback); err != nil {
 		t.Fatalf("append detached-channel feedback: %v", err)
@@ -153,7 +153,7 @@ func testDiscoveryFeedback(t *testing.T, newStore NewStoreFunc) {
 	ctx := context.Background()
 	base := time.Unix(1_700_000_000, 0).UTC()
 	first := DiscoveryFeedback{ID: "f-1", ActorID: "admin", Scope: FeedbackHousehold,
-		Target: provision.Key("movie:tmdb:603"), Action: FeedbackKeep, Reason: "family favorite", CreatedAt: base}
+		Target: provision.Key("movie:tmdb:90000603"), Action: FeedbackKeep, Reason: "family favorite", CreatedAt: base}
 	if err := s.AppendDiscoveryFeedback(ctx, first); err != nil {
 		t.Fatal(err)
 	}

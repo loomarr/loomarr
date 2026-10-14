@@ -26,7 +26,7 @@ func TestStaleProgramCount(t *testing.T) {
 		return m
 	}
 
-	prev := []schedule.Slot{prog("movie:tmdb:1"), prog("movie:tmdb:2"), prog("movie:tmdb:3")}
+	prev := []schedule.Slot{prog("movie:tmdb:90000001"), prog("movie:tmdb:90000002"), prog("movie:tmdb:90000003")}
 
 	cases := []struct {
 		name     string
@@ -35,16 +35,16 @@ func TestStaleProgramCount(t *testing.T) {
 		want     int
 	}{
 		// All prev keys still eligible ⇒ no drift, regardless of what's aired.
-		{"none vanished", prev, eligible("movie:tmdb:1", "movie:tmdb:2", "movie:tmdb:3"), 0},
+		{"none vanished", prev, eligible("movie:tmdb:90000001", "movie:tmdb:90000002", "movie:tmdb:90000003"), 0},
 		// A key genuinely gone from the library (not in eligible) ⇒ drift.
-		{"one vanished", prev, eligible("movie:tmdb:1", "movie:tmdb:2"), 1},
-		{"two vanished", prev, eligible("movie:tmdb:1"), 2},
+		{"one vanished", prev, eligible("movie:tmdb:90000001", "movie:tmdb:90000002"), 1},
+		{"two vanished", prev, eligible("movie:tmdb:90000001"), 2},
 		// THE FIX: a rule / window / seasonal bench rotated keys out of the AIRED
 		// deck, but they're still eligible (library has them) ⇒ NOT drift. Even though
-		// only movie:tmdb:1 would air this window, all three remain eligible.
-		{"rule/window rotation is not drift", prev, eligible("movie:tmdb:1", "movie:tmdb:2", "movie:tmdb:3"), 0},
+		// only movie:tmdb:90000001 would air this window, all three remain eligible.
+		{"rule/window rotation is not drift", prev, eligible("movie:tmdb:90000001", "movie:tmdb:90000002", "movie:tmdb:90000003"), 0},
 		// First reconcile: empty prev can't drift.
-		{"first reconcile can't drift", nil, eligible("movie:tmdb:1"), 0},
+		{"first reconcile can't drift", nil, eligible("movie:tmdb:90000001"), 0},
 		// A nil eligible set (policy-free literal in a test / defensive) ⇒ treat prev as
 		// still-eligible (no spurious drift); production always populates EligibleKeys.
 		{"nil eligible is not drift", prev, nil, 0},

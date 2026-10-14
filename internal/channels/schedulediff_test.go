@@ -67,8 +67,8 @@ func savedChannel(t testing.TB, st store.Store) store.Channel {
 // noise here would make every real change unreadable.
 func TestScheduleDiff_IdenticalDraftChangesNothing(t *testing.T) {
 	e, st, _ := diffEngine(t,
-		film("movie:tmdb:1", "Alpha", "PG"), film("movie:tmdb:2", "Bravo", "PG"),
-		film("movie:tmdb:3", "Charlie", "PG"), film("movie:tmdb:4", "Delta", "PG"))
+		film("movie:tmdb:90000001", "Alpha", "PG"), film("movie:tmdb:90000002", "Bravo", "PG"),
+		film("movie:tmdb:90000003", "Charlie", "PG"), film("movie:tmdb:90000004", "Delta", "PG"))
 	saved := savedChannel(t, st)
 	policy := saved.Policy
 
@@ -100,9 +100,9 @@ func TestScheduleDiff_IdenticalDraftChangesNothing(t *testing.T) {
 // 20:00 the draft airs what the saved channel airs, so nothing there may be reported.
 func TestScheduleDiff_RuleDraftChangesOnlyItsWindow(t *testing.T) {
 	e, st, _ := diffEngine(t,
-		film("movie:tmdb:1", "Alpha", "PG", "Comedy"), film("movie:tmdb:2", "Bravo", "PG", "Comedy"),
-		film("movie:tmdb:3", "Charlie", "PG", "Comedy"), film("movie:tmdb:4", "Delta", "PG", "Comedy"),
-		film("movie:tmdb:5", "Fright", "PG", "Horror"), film("movie:tmdb:6", "Ghoul", "PG", "Horror"))
+		film("movie:tmdb:90000001", "Alpha", "PG", "Comedy"), film("movie:tmdb:90000002", "Bravo", "PG", "Comedy"),
+		film("movie:tmdb:90000003", "Charlie", "PG", "Comedy"), film("movie:tmdb:90000004", "Delta", "PG", "Comedy"),
+		film("movie:tmdb:90000005", "Fright", "PG", "Horror"), film("movie:tmdb:90000006", "Ghoul", "PG", "Horror"))
 	draft := savedChannel(t, st).Policy
 	draft.Rules = []schedule.SchedulingRule{{
 		ID: "sun", Label: "Sunday horror", Priority: 10,
@@ -146,8 +146,8 @@ func TestScheduleDiff_RuleDraftChangesOnlyItsWindow(t *testing.T) {
 // the rows that change name it on the before side.
 func TestScheduleDiff_PolicyShrinkingThePoolReportsBeforeAndAfter(t *testing.T) {
 	e, st, _ := diffEngine(t,
-		film("movie:tmdb:1", "Alpha", "PG"), film("movie:tmdb:2", "Gore", "R"),
-		film("movie:tmdb:3", "Charlie", "PG"), film("movie:tmdb:4", "Delta", "PG"))
+		film("movie:tmdb:90000001", "Alpha", "PG"), film("movie:tmdb:90000002", "Gore", "R"),
+		film("movie:tmdb:90000003", "Charlie", "PG"), film("movie:tmdb:90000004", "Delta", "PG"))
 	draft := savedChannel(t, st).Policy
 	draft.Audience.Ceiling = "PG"
 
@@ -186,7 +186,7 @@ func TestScheduleDiff_PolicyShrinkingThePoolReportsBeforeAndAfter(t *testing.T) 
 // The horizon defaults to the channel's schedule window and is capped, so one request cannot
 // forecast a month of arrangements.
 func TestScheduleDiff_HorizonDefaultsToTheWindowAndIsCapped(t *testing.T) {
-	e, _, _ := diffEngine(t, film("movie:tmdb:1", "Alpha", "PG"), film("movie:tmdb:2", "Bravo", "PG"))
+	e, _, _ := diffEngine(t, film("movie:tmdb:90000001", "Alpha", "PG"), film("movie:tmdb:90000002", "Bravo", "PG"))
 
 	diff, err := e.ScheduleDiffDraft(context.Background(), "c1", sundayNoon, 0, nil, nil)
 	if err != nil {
@@ -209,7 +209,7 @@ func TestScheduleDiff_HorizonDefaultsToTheWindowAndIsCapped(t *testing.T) {
 // pushed. A zero `from` resolves to the engine clock, never to a second wall-clock read.
 func TestScheduleDiff_IsDeterministicAndReadOnly(t *testing.T) {
 	e, st, tun := diffEngine(t,
-		film("movie:tmdb:1", "Alpha", "PG"), film("movie:tmdb:2", "Gore", "R"), film("movie:tmdb:3", "Charlie", "PG"))
+		film("movie:tmdb:90000001", "Alpha", "PG"), film("movie:tmdb:90000002", "Gore", "R"), film("movie:tmdb:90000003", "Charlie", "PG"))
 	before := savedChannel(t, st)
 	draft := before.Policy
 	draft.Audience.Ceiling = "PG"
@@ -244,8 +244,8 @@ func TestScheduleDiff_ForecastHonoursTheCarryOverTail(t *testing.T) {
 	ctx := context.Background()
 	st := testkit.MigratedSQLiteStore(t)
 	entries := []schedule.LineupEntry{
-		film("movie:tmdb:1", "Alpha", "PG"), film("movie:tmdb:2", "Bravo", "PG"),
-		film("movie:tmdb:3", "Charlie", "PG"), film("movie:tmdb:4", "Delta", "PG"), film("movie:tmdb:5", "Echo", "PG"),
+		film("movie:tmdb:90000001", "Alpha", "PG"), film("movie:tmdb:90000002", "Bravo", "PG"),
+		film("movie:tmdb:90000003", "Charlie", "PG"), film("movie:tmdb:90000004", "Delta", "PG"), film("movie:tmdb:90000005", "Echo", "PG"),
 	}
 	avail := mapAvail{}
 	for _, e := range entries {
@@ -305,8 +305,8 @@ func TestScheduleDiff_ForecastHonoursTheCarryOverTail(t *testing.T) {
 // is active: the same instant written with another offset gives the same change list.
 func TestScheduleDiff_CallerOffsetDoesNotMoveRuleHours(t *testing.T) {
 	e, st, _ := diffEngine(t,
-		film("movie:tmdb:1", "Alpha", "PG", "Comedy"), film("movie:tmdb:2", "Bravo", "PG", "Comedy"),
-		film("movie:tmdb:5", "Fright", "PG", "Horror"))
+		film("movie:tmdb:90000001", "Alpha", "PG", "Comedy"), film("movie:tmdb:90000002", "Bravo", "PG", "Comedy"),
+		film("movie:tmdb:90000005", "Fright", "PG", "Horror"))
 	draft := savedChannel(t, st).Policy
 	draft.Rules = []schedule.SchedulingRule{{
 		ID: "sun", Priority: 10, When: schedule.WhenPredicate{Days: []time.Weekday{time.Sunday}, HourFrom: 18, HourTo: 20},
@@ -333,7 +333,7 @@ func TestScheduleDiff_CallerOffsetDoesNotMoveRuleHours(t *testing.T) {
 }
 
 func TestScheduleDiff_UnknownChannelIsNotFound(t *testing.T) {
-	e, _, _ := diffEngine(t, film("movie:tmdb:1", "Alpha", "PG"))
+	e, _, _ := diffEngine(t, film("movie:tmdb:90000001", "Alpha", "PG"))
 	if _, err := e.ScheduleDiffDraft(context.Background(), "nope", sundayNoon, time.Hour, nil, nil); err == nil {
 		t.Fatal("unknown channel returned no error")
 	}
@@ -348,7 +348,7 @@ func BenchmarkScheduleDiff_SevenDays(b *testing.B) {
 		if i%5 == 0 {
 			genre = "Horror"
 		}
-		entries = append(entries, film("movie:tmdb:"+strconv.Itoa(i+1), "Film "+strconv.Itoa(i+1), "PG", genre))
+		entries = append(entries, film("movie:tmdb:"+strconv.Itoa(90_000_001+i), "Film "+strconv.Itoa(i+1), "PG", genre))
 	}
 	e, st, _ := diffEngine(b, entries...)
 	draft := savedChannel(b, st).Policy

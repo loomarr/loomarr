@@ -8,8 +8,8 @@ import (
 )
 
 func TestEffectiveDiscoveryFeedbackResolvesReplacementOverrideAndFallback(t *testing.T) {
-	target := provision.Key("movie:tmdb:603")
-	other := provision.Key("series:tvdb:71663")
+	target := provision.Key("movie:tmdb:90000603")
+	other := provision.Key("series:tvdb:90071663")
 	household := []DiscoveryFeedback{
 		{ID: "house-new", Scope: FeedbackHousehold, Target: target, Action: FeedbackKeep},
 		{ID: "house-old", Scope: FeedbackHousehold, Target: target, Action: FeedbackLess},

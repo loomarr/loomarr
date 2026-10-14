@@ -46,7 +46,7 @@ func TestReconcile_MidRollSplitsAtMeasuredFadesUnlessSwitchedOff(t *testing.T) {
 			st := newStore(t)
 			var asked int
 			fades := fixedFades{"lib-1": {{AtMs: 15 * 60_000, Confidence: 1}, {AtMs: 30 * 60_000, Confidence: 1}, {AtMs: 44 * 60_000, Confidence: 1}}}
-			e := channels.New(st, tunarrtest.NewTunarr(), hourAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}, nil, channels.Config{
+			e := channels.New(st, tunarrtest.NewTunarr(), hourAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}, nil, channels.Config{
 				ReconcileTTL: 10 * time.Minute, BreaksPerHour: 4,
 				ResolvePlayoutBackendContext: func(context.Context) (string, error) { return tc.backend, nil },
 				NaturalBreaks: func(context.Context) schedule.NaturalBreakSource {
@@ -55,7 +55,7 @@ func TestReconcile_MidRollSplitsAtMeasuredFadesUnlessSwitchedOff(t *testing.T) {
 				},
 			}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).
 				WithPods(&fakePods{ids: []string{"clip"}, duration: 30_000})
-			ch := store.Channel{Lineup: []schedule.LineupEntry{entry("movie:tmdb:1", "Film"), entry("movie:tmdb:2", "Other")}}
+			ch := store.Channel{Lineup: []schedule.LineupEntry{entry("movie:tmdb:90000001", "Film"), entry("movie:tmdb:90000002", "Other")}}
 			ch.ID, ch.Name, ch.Number, ch.Strategy, ch.Status = "mid", "Mid", 7, schedule.Sequential, schedule.StatusBuilding
 			ch.Policy.MidRoll = tc.midRoll
 			if _, err := st.SaveChannel(context.Background(), ch); err != nil {
@@ -99,12 +99,12 @@ func TestReconcile_MidRollNeverReSplitsAProgrammeOnAir(t *testing.T) {
 	st := newStore(t)
 	now := time.Unix(1_800_000_000, 0).UTC()
 	source := &swappableFades{} // nothing measured yet
-	e := channels.New(st, nil, hourAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}, nil, channels.Config{
+	e := channels.New(st, nil, hourAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}, nil, channels.Config{
 		ReconcileTTL: 10 * time.Minute, BreaksPerHour: 4,
 		ResolvePlayoutBackendContext: func(context.Context) (string, error) { return schedule.PlayoutBackendInternal, nil },
 		NaturalBreaks:                func(context.Context) schedule.NaturalBreakSource { return source },
 	}, func() time.Time { return now }, testkit.Logger()).WithPods(&fakePods{ids: []string{"clip"}, duration: 30_000})
-	seedChannel(t, st, "on-air", 8, entry("movie:tmdb:1", "First"), entry("movie:tmdb:2", "Second"))
+	seedChannel(t, st, "on-air", 8, entry("movie:tmdb:90000001", "First"), entry("movie:tmdb:90000002", "Second"))
 	if err := e.Reconcile(context.Background(), "on-air"); err != nil {
 		t.Fatal(err)
 	}

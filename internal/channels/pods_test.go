@@ -85,10 +85,10 @@ func (f *fakePods) BuildFillerList(_ context.Context, channelID string, seed int
 func TestReconcile_PodsBuildAndAttachFillerList(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	avail := mapAvail{"movie:tmdb:1": "lib-1"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1"}
 	pods := &fakePods{ids: []string{"clip-a", "clip-b"}}
 	e := newEngine(st, tun, avail, nil).WithPods(pods)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)
@@ -126,11 +126,11 @@ func TestReconcile_UnclassifiedClipCannotProjectCommercialBreak(t *testing.T) {
 		return filler.Policy{PodMax: 4, BreakDurationMs: 30_000}
 	}, testkit.Logger())
 	e := newEngine(st, tun, mapAvail{
-		"movie:tmdb:1": "lib-1",
-		"movie:tmdb:2": "lib-2",
+		"movie:tmdb:90000001": "lib-1",
+		"movie:tmdb:90000002": "lib-2",
 	}, nil).WithPods(pods)
 	seedChannel(t, st, "unclassified", 5,
-		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(t.Context(), "unclassified"); err != nil {
 		t.Fatal(err)
@@ -152,10 +152,10 @@ func TestReconcile_UnclassifiedClipCannotProjectCommercialBreak(t *testing.T) {
 func TestReconcileFillerChange_TargetsOnlyCompatibleChannels(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
-	seedChannel(t, st, "fits", 5, entry("movie:tmdb:1", "A"))
-	seedChannel(t, st, "does-not-fit", 6, entry("movie:tmdb:1", "A"))
+	seedChannel(t, st, "fits", 5, entry("movie:tmdb:90000001", "A"))
+	seedChannel(t, st, "does-not-fit", 6, entry("movie:tmdb:90000001", "A"))
 	pods := &fakePods{ids: []string{"clip-a"}, fitChannels: map[string]bool{"fits": true}}
-	e := newEngine(st, tun, mapAvail{"movie:tmdb:1": "lib-1"}, nil).WithPods(pods)
+	e := newEngine(st, tun, mapAvail{"movie:tmdb:90000001": "lib-1"}, nil).WithPods(pods)
 
 	if err := e.ReconcileFillerChange(context.Background(), []filler.Clip{{Hash: "clip-a", Kind: filler.Commercial}}); err != nil {
 		t.Fatal(err)
@@ -174,7 +174,7 @@ func TestReconcileFillerChange_TargetsOnlyCompatibleChannels(t *testing.T) {
 // must ask HasPool and persist the break gaps without ever building a Tunarr filler-list.
 func TestReconcile_InternalUsesBackendIndependentFillerPool(t *testing.T) {
 	st := newStore(t)
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	pods := &fakePods{ids: []string{"local-clip"}}
 	e := channels.New(st, nil, avail, nil, channels.Config{
 		ReconcileTTL:  10 * time.Minute,
@@ -184,7 +184,7 @@ func TestReconcile_InternalUsesBackendIndependentFillerPool(t *testing.T) {
 		},
 	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).WithPods(pods)
 	seedChannel(t, st, "internal-pods", 5,
-		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "internal-pods"); err != nil {
 		t.Fatal(err)
@@ -212,7 +212,7 @@ func TestReconcile_InternalUsesBackendIndependentFillerPool(t *testing.T) {
 
 func TestReconcile_InternalBreakEndsWhenItsPodIsExhausted(t *testing.T) {
 	st := newStore(t)
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	pods := &fakePods{ids: []string{"commercial-a", "commercial-b"}, duration: 40_000}
 	e := channels.New(st, nil, avail, nil, channels.Config{
 		ReconcileTTL:  10 * time.Minute,
@@ -223,7 +223,7 @@ func TestReconcile_InternalBreakEndsWhenItsPodIsExhausted(t *testing.T) {
 		},
 	}, func() time.Time { return time.Unix(1_800_000_000, 0).UTC() }, testkit.Logger()).WithPods(pods)
 	seedChannel(t, st, "underfilled", 5,
-		entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+		entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "underfilled"); err != nil {
 		t.Fatal(err)
@@ -267,7 +267,7 @@ func TestReconcile_FillerListIdempotent(t *testing.T) {
 	tun := tunarrtest.NewTunarr()
 	pods := &fakePods{ids: []string{"clip-a", "clip-b"}}
 	e := newEngine(st, tun, mapAvail{}, nil).WithPods(pods)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000002", "B"))
 
 	_ = e.Reconcile(context.Background(), "c1")
 	firstWrites := tun.FillerWrites
@@ -288,7 +288,7 @@ func TestReconcile_EmptyCatalogNoFillerList(t *testing.T) {
 	tun := tunarrtest.NewTunarr()
 	pods := &fakePods{} // ids nil → ok=false
 	e := newEngine(st, tun, mapAvail{}, nil).WithPods(pods)
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)
@@ -320,10 +320,10 @@ func TestReconcile_NoBreaksWhenNoFillerPool(t *testing.T) {
 	seed := func() (store.Store, *tunarrtest.Tunarr) {
 		st := newStore(t)
 		tun := tunarrtest.NewTunarr()
-		seedChannel(t, st, "c1", 5, entry("movie:tmdb:1", "A"), entry("movie:tmdb:2", "B"))
+		seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000001", "A"), entry("movie:tmdb:90000002", "B"))
 		return st, tun
 	}
-	avail := mapAvail{"movie:tmdb:1": "lib-1", "movie:tmdb:2": "lib-2"}
+	avail := mapAvail{"movie:tmdb:90000001": "lib-1", "movie:tmdb:90000002": "lib-2"}
 	breaks := func(st store.Store, tun *tunarrtest.Tunarr, pods *fakePods) *channels.Engine {
 		e := channels.New(st, tun, avail, nil,
 			channels.Config{ReconcileTTL: 10 * time.Minute, BreaksPerHour: 30}, // 30/hr → a break between hour-scale gaps
@@ -381,7 +381,7 @@ func TestReconcile_NoPodFillerLeavesFlex(t *testing.T) {
 	st := newStore(t)
 	tun := tunarrtest.NewTunarr()
 	e := newEngine(st, tun, mapAvail{}, nil) // no .WithPods
-	seedChannel(t, st, "c1", 5, entry("movie:tmdb:2", "B"))
+	seedChannel(t, st, "c1", 5, entry("movie:tmdb:90000002", "B"))
 
 	if err := e.Reconcile(context.Background(), "c1"); err != nil {
 		t.Fatal(err)

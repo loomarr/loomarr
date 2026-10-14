@@ -67,7 +67,7 @@ func put(t *testing.T, st store.Store, key provision.Key, state provision.State,
 // A due `wanted` title gets resubmitted; success → requested.
 func TestRetryWantedSuccess(t *testing.T) {
 	rc, st, req, _ := setup(t)
-	put(t, st, "movie:tmdb:1", provision.Wanted, 1, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000001", provision.Wanted, 90000001,now.Add(-time.Hour))
 
 	n, err := rc.Tick(context.Background())
 	if err != nil || n != 1 {
@@ -76,7 +76,7 @@ func TestRetryWantedSuccess(t *testing.T) {
 	if req.RequestCount() != 1 {
 		t.Errorf("expected one resubmit, got %d", req.RequestCount())
 	}
-	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:1")
+	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:90000001")
 	if rec.State != provision.Requested {
 		t.Errorf("wanted+success → %s, want requested", rec.State)
 	}
@@ -89,12 +89,12 @@ func TestRetryWantedSuccess(t *testing.T) {
 func TestRetryWantedFailureStaysWanted(t *testing.T) {
 	rc, st, req, _ := setup(t)
 	req.RequestErr = errors.New("seerr down")
-	put(t, st, "movie:tmdb:2", provision.Wanted, 2, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000002", provision.Wanted, 90000002, now.Add(-time.Hour))
 
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:2")
+	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:90000002")
 	if rec.State != provision.Wanted {
 		t.Errorf("failed resubmit → %s, want wanted", rec.State)
 	}
@@ -107,13 +107,13 @@ func TestRetryWantedFailureStaysWanted(t *testing.T) {
 // available (even though no Import webhook arrived).
 func TestMissedWebhookRecheckToAvailable(t *testing.T) {
 	rc, st, _, ms := setup(t)
-	ms.PresentTMDB = "16153" // library confirms this title
-	put(t, st, "movie:tmdb:16153", provision.Requested, 16153, now.Add(-time.Hour))
+	ms.PresentTMDB = "90016153" // library confirms this title
+	put(t, st, "movie:tmdb:90016153", provision.Requested, 90016153, now.Add(-time.Hour))
 
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:16153")
+	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:90016153")
 	if rec.State != provision.Available {
 		t.Errorf("missed-webhook re-check with library present → %s, want available", rec.State)
 	}
@@ -126,12 +126,12 @@ func TestMissedWebhookRecheckToAvailable(t *testing.T) {
 // unavailable + best-effort Cancel.
 func TestDeadlineGiveUp(t *testing.T) {
 	rc, st, req, _ := setup(t)
-	put(t, st, "movie:tmdb:404", provision.Downloading, 404, now.Add(-time.Hour)) // library absent for 404
+	put(t, st, "movie:tmdb:90000404", provision.Downloading, 90000404, now.Add(-time.Hour)) // library absent for 90000404
 
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:404")
+	rec, _ := st.GetTitle(context.Background(), "movie:tmdb:90000404")
 	if rec.State != provision.Unavailable {
 		t.Errorf("past-deadline unconfirmed → %s, want unavailable", rec.State)
 	}
@@ -147,20 +147,20 @@ func TestReconcilerRecordsTerminalAcquisitionQualityAfterCommit(t *testing.T) {
 
 	requestedAt := now.Add(-2 * time.Hour)
 	available := provision.Record{
-		Key: "movie:tmdb:16153", State: provision.Requested, RequestedAt: requestedAt,
-		Deadline: now.Add(-time.Hour), Title: provision.Title{MediaType: provision.Movie, TMDBID: 16153},
+		Key: "movie:tmdb:90016153", State: provision.Requested, RequestedAt: requestedAt,
+		Deadline: now.Add(-time.Hour), Title: provision.Title{MediaType: provision.Movie, TMDBID: 90016153},
 	}
 	if err := st.UpsertTitle(t.Context(), available); err != nil {
 		t.Fatal(err)
 	}
-	ms.PresentTMDB = "16153"
+	ms.PresentTMDB = "90016153"
 	if _, err := rc.Tick(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 
 	failed := provision.Record{
-		Key: "movie:tmdb:404", State: provision.Downloading, RequestedAt: requestedAt,
-		Deadline: now.Add(-time.Hour), Title: provision.Title{MediaType: provision.Movie, TMDBID: 404},
+		Key: "movie:tmdb:90000404", State: provision.Downloading, RequestedAt: requestedAt,
+		Deadline: now.Add(-time.Hour), Title: provision.Title{MediaType: provision.Movie, TMDBID: 90000404},
 	}
 	if err := st.UpsertTitle(t.Context(), failed); err != nil {
 		t.Fatal(err)
@@ -199,8 +199,8 @@ func TestTickSnapshotsLibraryOnceAcrossClaimedBatch(t *testing.T) {
 		}
 		return rotated
 	}, nil, Config{Batch: 50, Lease: 2 * time.Minute}, func() time.Time { return now }, slog.New(slog.DiscardHandler))
-	put(t, st, "movie:tmdb:101", provision.Requested, 101, now.Add(-time.Hour))
-	put(t, st, "movie:tmdb:202", provision.Requested, 202, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000101", provision.Requested, 90000101, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000202", provision.Requested, 90000202, now.Add(-time.Hour))
 
 	if count, err := rc.Tick(context.Background()); err != nil || count != 2 {
 		t.Fatalf("Tick = %d, %v; want 2, nil", count, err)
@@ -225,7 +225,7 @@ func TestReconcilerEmitsTerminalEvents(t *testing.T) {
 	rc, st, ms, emit := setupWithEmitter(t)
 
 	// A wanted retry is non-terminal (→ requested) → no availability event.
-	put(t, st, "movie:tmdb:1", provision.Wanted, 1, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000001", provision.Wanted, 90000001,now.Add(-time.Hour))
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -234,35 +234,35 @@ func TestReconcilerEmitsTerminalEvents(t *testing.T) {
 	}
 
 	// Missed-webhook re-check confirms the library → available (terminal → event).
-	ms.PresentTMDB = "16153"
-	put(t, st, "movie:tmdb:16153", provision.Requested, 16153, now.Add(-time.Hour))
+	ms.PresentTMDB = "90016153"
+	put(t, st, "movie:tmdb:90016153", provision.Requested, 90016153, now.Add(-time.Hour))
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(emit.events) != 1 {
 		t.Fatalf("missed-webhook confirm emitted %d events, want 1 (available)", len(emit.events))
 	}
-	if ev := emit.events[0]; ev.State != provision.Available || ev.Key != "movie:tmdb:16153" {
-		t.Errorf("emitted %v, want {movie:tmdb:16153, available}", ev)
+	if ev := emit.events[0]; ev.State != provision.Available || ev.Key != "movie:tmdb:90016153" {
+		t.Errorf("emitted %v, want {movie:tmdb:90016153, available}", ev)
 	}
 
 	// Deadline give-up on an unconfirmed title → unavailable (terminal → event).
-	put(t, st, "movie:tmdb:404", provision.Downloading, 404, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000404", provision.Downloading, 90000404, now.Add(-time.Hour))
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if len(emit.events) != 2 {
 		t.Fatalf("after give-up: %d events total, want 2 (available + unavailable)", len(emit.events))
 	}
-	if ev := emit.events[1]; ev.State != provision.Unavailable || ev.Key != "movie:tmdb:404" {
-		t.Errorf("emitted %v, want {movie:tmdb:404, unavailable}", ev)
+	if ev := emit.events[1]; ev.State != provision.Unavailable || ev.Key != "movie:tmdb:90000404" {
+		t.Errorf("emitted %v, want {movie:tmdb:90000404, unavailable}", ev)
 	}
 }
 
 // A not-yet-due title isn't claimed, so the reconciler leaves it alone.
 func TestNotDueUntouched(t *testing.T) {
 	rc, st, req, _ := setup(t)
-	put(t, st, "movie:tmdb:5", provision.Requested, 5, now.Add(time.Hour)) // future deadline
+	put(t, st, "movie:tmdb:90000005", provision.Requested, 90000005,now.Add(time.Hour)) // future deadline
 
 	n, _ := rc.Tick(context.Background())
 	if n != 0 {
@@ -276,8 +276,8 @@ func TestNotDueUntouched(t *testing.T) {
 // Terminal titles are never claimed even if their (stale) deadline is past.
 func TestTerminalNotClaimed(t *testing.T) {
 	rc, st, _, _ := setup(t)
-	put(t, st, "movie:tmdb:6", provision.Available, 6, now.Add(-time.Hour))
-	put(t, st, "movie:tmdb:7", provision.Unavailable, 7, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000006", provision.Available, 90000006, now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000007", provision.Unavailable, 90000007, now.Add(-time.Hour))
 
 	n, _ := rc.Tick(context.Background())
 	if n != 0 {
