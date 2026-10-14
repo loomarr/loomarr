@@ -238,7 +238,9 @@ its name, dates and an "In effect now" badge, then its picture chips (a small pi
 holiday with one picture shows it inline, with no choice), and the chosen picture is written to
 `policy.watermark.motifs`. `GET /v1/channels/{id}/watermark/preview` returns the PNG that airs for a
 given look, holiday and picture (query parameters, all optional), and carries the host's overlay state in
-`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. With
+`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. It
+refuses with 422, rather than drawing a default, a look, colour, holiday or picture it does not know
+and a picture that is not one of the named holiday's own. With
 `motifOnly=1` (and a holiday) it returns that holiday's picture alone as a 48 px square, drawn by the
 same renderer in the same colours (white on a host without colour); the chips use it. Every thumbnail,
 chip and preview frame is that PNG, never a client-side imitation, so what the section shows is what

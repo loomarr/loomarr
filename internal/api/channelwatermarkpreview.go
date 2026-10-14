@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -43,19 +44,30 @@ type watermarkPreviewInput struct {
 // from one request: "false" while no encoder's self-check has passed.
 const watermarkDrawableHeader = "X-Loomarr-Watermark-Drawable"
 
+// registerWatermarkPreview serves the preview PNG. Input is refused, never defaulted: an unknown
+// look, colour, holiday or picture fails huma's enum validation (422), a size outside 0-0.15 fails
+// its range (422), and a picture that is not one of the named holiday's own is refused here (422).
 func (s *Server) registerWatermarkPreview(api huma.API) {
 	rawInputOp(api, huma.Operation{
 		OperationID: "preview-channel-watermark", Method: http.MethodGet, Path: "/v1/channels/{id}/watermark/preview",
 		Summary: "Preview the channel's on-screen logo",
 		Description: "Admin only. The PNG the playout renderer would overlay for this channel on a 1080-line frame: " +
 			"its saved policy.watermark with the query's look, colour and size, in the named holiday's version. " +
-			"The `" + watermarkDrawableHeader + "` header is false while this server cannot overlay a logo.",
+			"The `" + watermarkDrawableHeader + "` header is false while this server cannot overlay a logo. " +
+			"An unknown value, or a picture that is not one of the named holiday's own, is refused with 422.",
 		Tags: []string{"channels"},
 		Responses: map[string]*huma.Response{"200": {Description: "The bug PNG",
 			Content: map[string]*huma.MediaType{"image/png": {}}}},
 	}, RoleAdmin, func(w http.ResponseWriter, r *http.Request, in *watermarkPreviewInput) {
 		if s.watermarkPreview == nil {
 			s.writeProblem(w, r, http.StatusNotImplemented, "Preview unavailable", "This server has no logo renderer.")
+			return
+		}
+		// A picture is one of its holiday's own: a pair that does not match is refused rather than
+		// drawn as the holiday's default, which would show the household a picture they did not ask for.
+		if in.Picture != "" && !slices.Contains(schedule.WatermarkMotifs[in.Holiday], in.Picture) {
+			s.writeProblem(w, r, http.StatusUnprocessableEntity, "Picture not in holiday",
+				"The picture must be one of the named holiday's own; name the holiday it belongs to.")
 			return
 		}
 		var (
@@ -94,6 +106,8 @@ func (s *Server) registerWatermarkPreview(api huma.API) {
 			return
 		}
 		w.Header().Set("Content-Type", "image/png")
+		// nosniff keeps a browser from re-interpreting the bytes as anything but the PNG declared.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		if !in.MotifOnly {
 			w.Header().Set(watermarkDrawableHeader, strconv.FormatBool(drawable))

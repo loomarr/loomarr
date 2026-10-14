@@ -93,6 +93,9 @@ func TestWatermarkPreviewRoute(t *testing.T) {
 	if res.Header.Get("X-Loomarr-Watermark-Drawable") != "false" {
 		t.Fatalf("drawable header = %q, want false", res.Header.Get("X-Loomarr-Watermark-Drawable"))
 	}
+	if res.Header.Get("X-Content-Type-Options") != "nosniff" {
+		t.Error("missing nosniff — a browser could re-interpret the bytes")
+	}
 	if wm.gotChange.Look != "tint" || wm.gotChange.Color != "pink" || wm.gotChange.Size == nil || *wm.gotChange.Size != 0.09 || wm.gotHoliday != "halloween" ||
 		wm.gotChange.Motifs["halloween"] != "bat" {
 		t.Fatalf("renderer asked for %+v holiday %q", wm.gotChange, wm.gotHoliday)
@@ -128,6 +131,38 @@ func TestWatermarkPreviewRoute_MotifOnly(t *testing.T) {
 	}
 	if res := getAs(t, srv, adminToken, "/v1/channels/nope/watermark/preview?motifOnly=1&holiday=halloween"); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown channel motif = %d, want 404", res.StatusCode)
+	}
+}
+
+// The preview refuses what it cannot draw as asked, rather than drawing a default: an unknown look,
+// colour, holiday or picture, an out-of-range size, and a picture that is not the holiday's own (or
+// has no holiday) are all 422, and the renderer is never asked.
+func TestWatermarkPreviewRoute_RefusesBadInput(t *testing.T) {
+	png := filepath.Join(t.TempDir(), "bug.png")
+	if err := os.WriteFile(png, []byte("\x89PNG fake"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wm := &fakeWatermarks{png: png}
+	srv := newWatermarkServer(t, wm, time.Now())
+
+	for _, q := range []string{
+		"look=neon", "color=mauve", "holiday=easter", "picture=dragon", "size=0.5",
+		"holiday=halloween&picture=heart",
+		"holiday=christmas&picture=pumpkin&motifOnly=1",
+		"picture=bat",
+		"motifOnly=1&holiday=valentines&picture=bat",
+	} {
+		res := getAs(t, srv, adminToken, "/v1/channels/ch-1/watermark/preview?"+q)
+		if res.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("preview?%s = %d, want 422", q, res.StatusCode)
+		}
+	}
+	if wm.gotC != "" || wm.gotMotif != ([2]string{}) {
+		t.Fatalf("renderer was asked despite refused input: channel %q motif %v", wm.gotC, wm.gotMotif)
+	}
+	// The holiday's own picture still draws.
+	if res := getAs(t, srv, adminToken, "/v1/channels/ch-1/watermark/preview?holiday=christmas&picture=snowflake"); res.StatusCode != http.StatusOK {
+		t.Fatalf("matching holiday and picture = %d, want 200", res.StatusCode)
 	}
 }
 

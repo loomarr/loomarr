@@ -12867,7 +12867,7 @@ paths:
         - channels
   /v1/channels/{id}/watermark/preview:
     get:
-      description: "Admin only. The PNG the playout renderer would overlay for this channel on a 1080-line frame: its saved policy.watermark with the query's look, colour and size, in the named holiday's version. The `X-Loomarr-Watermark-Drawable` header is false while this server cannot overlay a logo."
+      description: "Admin only. The PNG the playout renderer would overlay for this channel on a 1080-line frame: its saved policy.watermark with the query's look, colour and size, in the named holiday's version. The `X-Loomarr-Watermark-Drawable` header is false while this server cannot overlay a logo. An unknown value, or a picture that is not one of the named holiday's own, is refused with 422."
       operationId: preview-channel-watermark
       parameters:
         - in: path
