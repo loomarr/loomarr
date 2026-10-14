@@ -212,6 +212,15 @@ func coverageDTO(report filler.CoverageReport) CoverageDTO {
 	}
 }
 
+// CycleSummaryDTO sizes one full pass through the channel's deck, before the rolling-window
+// slice, so the editor can say what a play-order choice means for THIS channel.
+type CycleSummaryDTO struct {
+	Episodes  int   `json:"episodes" doc:"Episodes in one full pass"`
+	Movies    int   `json:"movies" doc:"Movies in one full pass"`
+	Series    int   `json:"series" doc:"Distinct shows the episodes belong to"`
+	RuntimeMs int64 `json:"runtimeMs" format:"int64" doc:"Programme runtime of one full pass in ms, without commercial breaks"`
+}
+
 // CycleSlotDTO is one slot of the previewed cycle (§8.1): what airs, in play order. A
 // program carries its title + provisioning key + series identity + multi-part index; a break
 // gap is `kind:"break"` (Tunarr owns the clip that fills it — the preview shows the gap).
@@ -309,6 +318,7 @@ type previewCycleOutput struct {
 		// HolidayEpisodes answers the seasonal control's "what will this do" (§6 "Holiday
 		// episodes"): counted by the scheduler, never by the page.
 		HolidayEpisodes []HolidayEpisodesDTO `json:"holidayEpisodes" doc:"Per selected holiday, open or soonest first: the lineup's holiday episodes and how the channel's holiday strength rotates them. Empty unless the channel uses the built-in seasonal rotation."`
+		Cycle           CycleSummaryDTO      `json:"cycle" doc:"Size of one full pass through the deck, before the rolling-window slice"`
 	}
 }
 
@@ -382,6 +392,10 @@ func (s *Server) previewChannelCycle(ctx context.Context, in *previewCycleInput)
 	out.Body.Excluded = excludedToDTO(cycle.Excluded)
 	out.Body.Trace = scheduleTraceToDTO(cycle.Trace)
 	out.Body.HolidayEpisodes = holidayEpisodesToDTO(cycle.HolidayEpisodes)
+	out.Body.Cycle = CycleSummaryDTO{
+		Episodes: cycle.Cycle.Episodes, Movies: cycle.Cycle.Movies,
+		Series: cycle.Cycle.Series, RuntimeMs: cycle.Cycle.RuntimeMs,
+	}
 	return out, nil
 }
 

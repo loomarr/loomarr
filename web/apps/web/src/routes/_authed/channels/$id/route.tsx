@@ -141,6 +141,9 @@ const ChannelDetailLayout = () => {
     // a reconcile that changes the break — including an applied filler edit — wouldn't
     // refresh it without this. The Filler section reads the saved break here.
     void queryClient.invalidateQueries({ queryKey: channelsApi.getPreviewChannelPodsQueryKey(id) });
+    // The saved cycle preview also sizes one pass for the Programming page's play-order line, so
+    // a changed lineup, scope or order must refresh it too.
+    void queryClient.invalidateQueries({ queryKey: channelsApi.getPreviewChannelCycleQueryKey(id) });
   };
 
   // Live update: a background reconcile (this edit, the sweep, a title landing) emits a

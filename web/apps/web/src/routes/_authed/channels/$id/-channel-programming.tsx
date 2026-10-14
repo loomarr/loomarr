@@ -107,6 +107,12 @@ const ChannelProgramming = ({
   const guide = channelsApi.useChannelGuide(defaultGuideWindow(nowMs), { query: { retry: false } });
   const guideTimeZone = unwrap(guide.data)?.timezone;
 
+  // One full pass through this channel's titles, so Play order can say what its choice means
+  // here. Same saved preview the cycle section below reads, so the two cannot disagree.
+  const cycleQuery = channelsApi.usePreviewChannelCycle(channelId, undefined, { query: { retry: false } });
+  const cycleBody = unwrap(cycleQuery.data);
+  const cycle = cycleBody ? { ...cycleBody.cycle, ordering: cycleBody.trace.ordering } : undefined;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -146,7 +152,13 @@ const ChannelProgramming = ({
       </Block>
 
       <Block title="How it's ordered" hint="The order and spacing programs play in.">
-        <ChannelPolicyFields policy={policy} onChange={onPolicyChange} show="ordering" strategy={strategy} />
+        <ChannelPolicyFields
+          policy={policy}
+          onChange={onPolicyChange}
+          show="ordering"
+          strategy={strategy}
+          cycle={cycle}
+        />
       </Block>
 
       <Block
