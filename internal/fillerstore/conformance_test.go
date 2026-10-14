@@ -21,6 +21,7 @@ func RunConformance(t *testing.T, newStore NewStoreFunc) {
 	t.Run("Filler", func(t *testing.T) {
 		t.Run("ClipRoundTripAndFilters", func(t *testing.T) { testClipFilters(t, newStore) })
 		t.Run("ClipTagsAndPrune", func(t *testing.T) { testClipTagsAndPrune(t, newStore) })
+		t.Run("ClipNeedsDetailsAgreesWithSQL", func(t *testing.T) { testClipNeedsDetailsAgreesWithSQL(t, newStore) })
 		t.Run("ClipNameSearch", func(t *testing.T) { testClipNameSearch(t, newStore) })
 		t.Run("ClipPlayCounters", func(t *testing.T) { testClipPlayCounters(t, newStore) })
 		t.Run("ClipExposureRotation", func(t *testing.T) { testClipExposureRotation(t, newStore) })

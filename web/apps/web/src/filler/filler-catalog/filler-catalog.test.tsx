@@ -1,10 +1,11 @@
 import type { ClipDTO } from "@loomarr/api";
 import { getListFillerMockHandler, getListTaxonomyMockHandler } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerCatalog } from "./filler-catalog";
@@ -22,15 +23,19 @@ const clip: ClipDTO = {
   playsCounted: true,
   aiTagged: false,
   tagged: true,
+  needsDetails: false,
   suggestedEra: 0,
 };
 
+// LoomarrProvider as main.tsx mounts it: the clip select box and chip are @loomarr/ui.
 const Wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider
-    client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}
-  >
-    {children}
-  </QueryClientProvider>
+  <LoomarrProvider theme="dark">
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}
+    >
+      {children}
+    </QueryClientProvider>
+  </LoomarrProvider>
 );
 
 describe("FillerCatalog", () => {
@@ -184,5 +189,77 @@ describe("FillerCatalog", () => {
     expect(queries.some((query) => new URLSearchParams(query).get("hashes") === "child")).toBe(true);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  // The phone library (#1908): below the tablet breakpoint the grid is 2-up compact cards and the
+  // toolbar folds to search + Filters + the view toggle.
+  describe("at phone width", () => {
+    // matchMedia answers the tablet query `(min-width: 48rem)`; false is a phone.
+    const stubWidth = (tablet: boolean) =>
+      vi.stubGlobal("matchMedia", () => ({
+        matches: tablet,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }));
+    afterEach(() => vi.unstubAllGlobals());
+
+    const showCatalog = async () => {
+      server.use(
+        getListFillerMockHandler({
+          clips: [clip, { ...clip, hash: "second", name: "Second spot" }],
+          total: 2,
+        }),
+        getListTaxonomyMockHandler({
+          taxa: [],
+          totalClips: 2,
+          taggedClips: 2,
+          unclassifiedClips: 0,
+          axisCoverage: [],
+        }),
+      );
+      render(<RouterHarness initialPath="/filler/library" content={<FillerCatalog isAdmin />} />, {
+        wrapper: Wrapper,
+      });
+      return screen.findByRole("button", { name: "View details for Local soda commercial" });
+    };
+
+    it("lays clips out 2-up as compact cards", async () => {
+      stubWidth(false);
+      const name = await showCatalog();
+      const grid = name.closest(".grid") as HTMLElement;
+      expect(grid).toHaveClass("grid-cols-2");
+      expect(grid).not.toHaveClass("lg:grid-cols-3");
+      // Compact: the kind/era chips and the aired line move to the details sheet.
+      expect(within(grid).queryByText("Commercial")).not.toBeInTheDocument();
+      expect(within(grid).queryByText("Never aired")).not.toBeInTheDocument();
+    });
+
+    it("keeps the full cards and three columns on a wide screen", async () => {
+      stubWidth(true);
+      const name = await showCatalog();
+      const grid = name.closest(".grid") as HTMLElement;
+      expect(grid).toHaveClass("lg:grid-cols-3");
+      expect(within(grid).getAllByText("Commercial")).toHaveLength(2);
+    });
+
+    it("folds the filters behind a Filters button", async () => {
+      stubWidth(false);
+      await showCatalog();
+      expect(screen.getByRole("textbox", { name: "Search" })).toBeInTheDocument();
+      expect(screen.getByRole("radiogroup", { name: "Clip view" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Untagged only" })).not.toBeInTheDocument();
+      const filters = screen.getByRole("button", { name: "Filters" });
+      expect(filters).toHaveAttribute("aria-expanded", "false");
+      await userEvent.click(filters);
+      expect(filters).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("button", { name: "Untagged only" })).toBeInTheDocument();
+    });
+
+    it("shows every filter with no Filters button on a wide screen", async () => {
+      stubWidth(true);
+      await showCatalog();
+      expect(screen.getByRole("button", { name: "Untagged only" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Filters" })).not.toBeInTheDocument();
+    });
   });
 });

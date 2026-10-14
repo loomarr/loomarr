@@ -5,12 +5,14 @@ import {
   ClientNavigation,
   ClientPlatformProof,
   ClientShell,
+  ClipSelect,
   clientBackDestination,
   DeviceDisconnectAction,
   GuideExperience,
   GuideJourney,
   GuideSurface,
   ModalOverlay,
+  NeedsDetailsChip,
   PairingShell,
   ProgrammeCard,
   ProgrammeIdentity,
@@ -26,6 +28,8 @@ describe("ui public interface", () => {
   it("exports the shared scaffold surface", () => {
     expect(ClientPlatformProof).toBeTypeOf("function");
     expect(ClientShell).toBeTypeOf("function");
+    expect(ClipSelect).toBeTypeOf("function");
+    expect(NeedsDetailsChip).toBeTypeOf("function");
     expect(DeviceDisconnectAction).toBeTypeOf("function");
     expect(PairingShell).toBeTypeOf("function");
     expect(pairingBackAvailable).toBeTypeOf("function");

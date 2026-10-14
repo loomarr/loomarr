@@ -213,6 +213,60 @@ func testClipFilters(t *testing.T, newStore NewStoreFunc) {
 	}
 }
 
+// testClipNeedsDetailsAgreesWithSQL pins the store's UntaggedOnly SQL to clipcatalog's Go
+// NeedsDetails predicate, which feeds ClipDTO.needsDetails. If they drift, the Library's
+// "Needs details" chip and its "Untagged only" filter disagree about the same clip.
+//
+// The verdict is taken from the STORED rows, so a column that does not round-trip cannot make the
+// Go side agree by accident.
+func testClipNeedsDetailsAgreesWithSQL(t *testing.T, newStore NewStoreFunc) {
+	s := newStore(t)
+	ctx := context.Background()
+	fixtures := []Clip{
+		sampleClip("full", "full.mp4", filler.Commercial, 1991, filler.Kids, "toys"),
+		sampleClip("no-era", "no-era.mp4", filler.Commercial, 0, filler.Kids, "toys"),
+		sampleClip("no-aud", "no-aud.mp4", filler.Commercial, 1991, "", "toys"),
+		sampleClip("no-cat", "no-cat.mp4", filler.Commercial, 1991, filler.Kids, ""),
+		sampleClip("bare", "bare.mp4", filler.Commercial, 0, "", ""),
+		sampleClip("bumper", "bumper.mp4", filler.Bumper, 0, "", ""),
+		sampleClip("station", "station.mp4", filler.StationID, 0, "", ""),
+		sampleClip("psa", "psa.mp4", filler.PSA, 1991, "", ""),
+	}
+	for _, c := range fixtures {
+		if err := s.UpsertClip(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err := s.ListClips(ctx, ClipFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != len(fixtures) {
+		t.Fatalf("stored %d clips, want %d", len(stored), len(fixtures))
+	}
+	want := map[string]bool{}
+	for _, c := range stored {
+		if c.NeedsDetails() {
+			want[c.Hash] = true
+		}
+	}
+	// Not vacuous: four commercials miss a tag, and no non-commercial ever needs details.
+	if len(want) != 4 || want["full"] || want["bumper"] || want["station"] || want["psa"] {
+		t.Fatalf("Go NeedsDetails = %v, want exactly no-era, no-aud, no-cat, bare", want)
+	}
+	untagged, err := s.ListClips(ctx, ClipFilter{UntaggedOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, c := range untagged {
+		got[c.Hash] = true
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("UntaggedOnly SQL selected %v, Go NeedsDetails selected %v — the predicates have drifted", got, want)
+	}
+}
+
 func testClipTagsAndPrune(t *testing.T, newStore NewStoreFunc) {
 	s := newStore(t)
 	ctx := context.Background()

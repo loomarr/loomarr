@@ -1,5 +1,6 @@
 import type { PoolDTO } from "@loomarr/api";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { PoolHealth } from "./pool-health";
 
@@ -13,6 +14,46 @@ const pool = (over: Partial<PoolDTO> = {}): PoolDTO => ({
 });
 
 describe("PoolHealth", () => {
+  // The phone library (#1908): one line, with Details to open the full stats.
+  it("folds to one line with the stats behind Details", async () => {
+    render(
+      <PoolHealth
+        folded
+        pool={pool({
+          clips: 1284,
+          channels: [
+            {
+              channelId: "a",
+              name: "Night Owl Theatre",
+              number: 4,
+              level: "exact",
+              total: 9,
+              durationMs: 1,
+              categories: 1,
+              brands: 1,
+            },
+            {
+              channelId: "b",
+              name: "Weather Desk",
+              number: 12,
+              level: "widened",
+              total: 3,
+              durationMs: 1,
+              categories: 1,
+              brands: 1,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText("1,284 clips · 1/2 channels covered")).toBeInTheDocument();
+    expect(screen.queryByText("Fits a break")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.getByText("Fits a break")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Hide details" }));
+    expect(screen.queryByText("Fits a break")).not.toBeInTheDocument();
+  });
+
   // ⚠ The number that surprises people. A catalog of compilations reads as healthy by clip count
   // and can fill nothing, so "fits a break" is shown against the commercial count rather than
   // left for the operator to work out.

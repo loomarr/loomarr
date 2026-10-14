@@ -1,5 +1,5 @@
 import { formatClipDuration } from "@loomarr/core/format";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ClipSelect, NeedsDetailsChip } from "@loomarr/ui";
 import { Image } from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import { AUDIENCE_LABEL, KIND_LABEL, playsLine } from "../clip-card";
@@ -28,11 +28,10 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
     )}
   >
     {onToggleSelect ? (
-      <Checkbox
-        checked={Boolean(selected)}
-        onChange={onToggleSelect}
-        className="size-4 accent-signal"
-        aria-label={`Select ${clip.name}`}
+      <ClipSelect
+        clipName={clip.name}
+        selected={Boolean(selected)}
+        onSelectedChange={() => onToggleSelect()}
       />
     ) : (
       // Holds the column so rows stay aligned for a member, who gets no checkbox.
@@ -82,6 +81,13 @@ const ClipRow = ({ clip, selected, onToggleSelect, onOpen, className }: ClipRowP
         <p className="truncate text-muted-foreground text-xs" title={`Brand: ${clip.brand}`}>
           {clip.brand}
         </p>
+      ) : null}
+      {/* Phone only, as the mock draws it: below `md` the tag columns are gone, so the row has no
+          other way to say this commercial is missing one. */}
+      {clip.needsDetails && !clip.held && !clip.isComposite ? (
+        <div className="mt-0.5 flex md:hidden">
+          <NeedsDetailsChip />
+        </div>
       ) : null}
     </div>
 

@@ -287,6 +287,19 @@ func (c Clip) Tagged() bool {
 	return c.Era > 0 && c.Audience != "" && c.Category != ""
 }
 
+// NeedsDetails reports whether a clip is a commercial missing a match tag — the AI-tagging job's
+// work list and the Library's caution "Needs details" chip (§10).
+//
+// ⚠ Commercial-only on purpose: bumpers, station ids and PSAs serve their bookend role without
+// era/audience/category, so an untagged one is complete, not an exception.
+//
+// ⚠ THE predicate. The store's UntaggedOnly SQL (`needsDetailsWhere` in internal/store/clips.go)
+// is this rule in SQL, and a conformance test over both backends pins that the two select the same
+// clips. Change one, change the other in the same commit.
+func (c Clip) NeedsDetails() bool {
+	return c.Kind == Commercial && !c.Tagged()
+}
+
 // EffectivePlacement returns an explicitly committed placement when present. A zero Placement on
 // an in-memory/domain value derives the natural placement of a known role; persisted rows use the
 // explicit not_playable default until terminal readiness commits otherwise.

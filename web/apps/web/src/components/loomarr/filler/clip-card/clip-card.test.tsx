@@ -1,7 +1,15 @@
 import type { ClipDTO } from "@loomarr/api";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ClipCard } from "./clip-card";
+
+// LoomarrProvider as main.tsx mounts it: the select box and the Needs details chip are @loomarr/ui.
+const Theme = ({ children }: { children: ReactNode }) => (
+  <LoomarrProvider theme="dark">{children}</LoomarrProvider>
+);
+const render = (ui: ReactNode) => rtlRender(ui, { wrapper: Theme });
 
 const base: ClipDTO = {
   name: "Sunny D — Dude!",
@@ -11,6 +19,7 @@ const base: ClipDTO = {
   audience: "kids",
   category: "food",
   tagged: true,
+  needsDetails: false,
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
@@ -45,14 +54,13 @@ describe("ClipCard", () => {
     expect(screen.getByText("30s")).toBeInTheDocument();
   });
 
-  it("keeps missing optional details quiet for a Ready clip", () => {
+  it("keeps missing optional details quiet for a ready clip", () => {
     render(
       <ClipCard
         clip={{ ...base, kind: "unclassified", tagged: false, era: undefined, audience: undefined }}
         onOpen={() => {}}
       />,
     );
-    expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.queryByText(/Untagged|Geography unknown|Unclassified/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /tag clip|use in a channel/i })).not.toBeInTheDocument();
   });
@@ -60,8 +68,60 @@ describe("ClipCard", () => {
   // confirm-tags affordance for an AI-suggested clip remains — that IS the useful action.
   it("does not turn automatic metadata into a confirmation chore", () => {
     render(<ClipCard clip={{ ...base, tagged: false, aiTagged: true }} onOpen={() => {}} />);
-    expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /confirm tags/i })).not.toBeInTheDocument();
+  });
+
+  // Ready is the default and wears no chip (#1908); only a clip that is not ready names its state.
+  it("puts no Ready chip on a ready clip", () => {
+    render(<ClipCard clip={base} onOpen={() => {}} />);
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["Preparing", { held: true }],
+    ["Recording", { isComposite: true }],
+  ] as const)("names a clip that is not ready: %s", (label, over) => {
+    render(<ClipCard clip={{ ...base, ...over }} onOpen={() => {}} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  // The chip reads the server's needsDetails alone, never kind + tagged: a commercial the server
+  // calls complete gets no chip even with tags missing on this client copy, and vice versa.
+  it.each([false, true])("shows Needs details exactly when the server says so (compact: %s)", (compact) => {
+    const { rerender } = render(
+      <ClipCard clip={{ ...base, tagged: false, needsDetails: false }} onOpen={() => {}} compact={compact} />,
+    );
+    expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
+    rerender(<ClipCard clip={{ ...base, needsDetails: true }} onOpen={() => {}} compact={compact} />);
+    expect(screen.getByText("Needs details")).toBeInTheDocument();
+  });
+
+  // One exception per clip: a clip still preparing is not yet the thing to tag.
+  it("lets Preparing stand alone on a held clip that also needs details", () => {
+    render(<ClipCard clip={{ ...base, held: true, needsDetails: true }} onOpen={() => {}} />);
+    expect(screen.getByText("Preparing")).toBeInTheDocument();
+    expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
+  });
+
+  // The phone library's 2-up card: frame, duration, name, and an exception chip only.
+  it("keeps the compact card to its name, duration and exception chip", () => {
+    render(<ClipCard clip={{ ...base, held: true, brand: "Fizzwell" }} onOpen={() => {}} compact />);
+    expect(screen.getByRole("button", { name: `View details for ${base.name}` })).toBeInTheDocument();
+    expect(screen.getByText("30s")).toBeInTheDocument();
+    expect(screen.getByText("Preparing")).toBeInTheDocument();
+    expect(screen.queryByText("Commercial")).not.toBeInTheDocument();
+    expect(screen.queryByText("1990s")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fizzwell")).not.toBeInTheDocument();
+    expect(screen.queryByText(/aired|Airings/)).not.toBeInTheDocument();
+  });
+
+  // The select box is @loomarr/ui's ClipSelect, whose 24px+ target (WCAG 2.2, 2.5.8) is pinned in
+  // that package's tests; here it is the card's one select control and it toggles.
+  it("selects the clip from its select box", () => {
+    const onToggleSelect = vi.fn();
+    render(<ClipCard clip={base} onToggleSelect={onToggleSelect} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${base.name}` }));
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
   });
   // A tagged clip must still be editable. §10's likely tagging error is a trailer scanned
   // as a commercial — it arrives with era/audience/category filled in, so it counts as

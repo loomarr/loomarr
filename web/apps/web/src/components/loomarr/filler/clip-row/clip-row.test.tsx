@@ -1,7 +1,15 @@
 import type { ClipDTO } from "@loomarr/api";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { LoomarrProvider } from "@loomarr/design-system";
+import { fireEvent, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ClipRow } from "./clip-row";
+
+// LoomarrProvider as main.tsx mounts it: the select box and the Needs details chip are @loomarr/ui.
+const Theme = ({ children }: { children: ReactNode }) => (
+  <LoomarrProvider theme="dark">{children}</LoomarrProvider>
+);
+const render = (ui: ReactNode) => rtlRender(ui, { wrapper: Theme });
 
 const base: ClipDTO = {
   name: "Sunny D — Dude!",
@@ -11,6 +19,7 @@ const base: ClipDTO = {
   audience: "kids",
   category: "food",
   tagged: true,
+  needsDetails: false,
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
@@ -33,6 +42,23 @@ describe("ClipRow", () => {
     // Two columns, both unset — a blank would be indistinguishable from a column that
     // failed to render.
     expect(screen.getAllByText("—")).toHaveLength(2);
+  });
+
+  // Below `md` the tag columns are gone, so the phone row carries the server's verdict itself.
+  it("names a commercial that needs details on the phone row, and only from the server field", () => {
+    const { rerender } = render(<ClipRow clip={{ ...base, tagged: false }} />);
+    expect(screen.queryByText("Needs details")).not.toBeInTheDocument();
+    rerender(<ClipRow clip={{ ...base, needsDetails: true }} />);
+    expect(screen.getByText("Needs details").closest(".md\\:hidden")).not.toBeNull();
+  });
+
+  // The select box is @loomarr/ui's ClipSelect, whose 24px+ target (WCAG 2.2, 2.5.8) is pinned in
+  // that package's tests; here it is the row's select control and it toggles.
+  it("selects the clip from its select box", () => {
+    const onToggleSelect = vi.fn();
+    render(<ClipRow clip={base} onToggleSelect={onToggleSelect} />);
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${base.name}` }));
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
   });
 
   it("selects only when a handler is passed, so a member gets no dead control", () => {

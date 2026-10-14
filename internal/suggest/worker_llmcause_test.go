@@ -78,7 +78,7 @@ func TestWorker_LLMFailureCauseReachesLastError(t *testing.T) {
 			if tc.durable {
 				svc = svc.WithDurableWorkflow(proposalworkflow.New(st, func() string { return "wf-1" }, time.Now))
 			}
-			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Simpsons episodes"}, "alice")
+			jobID, err := svc.Submit(context.Background(), suggest.Intent{Description: "Classic Kettle Kids episodes"}, "alice")
 			if err != nil {
 				t.Fatal(err)
 			}

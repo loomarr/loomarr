@@ -1,15 +1,16 @@
 import type { FillerReadinessDTO } from "@loomarr/api";
-import { getFillerReadinessMockHandler } from "@loomarr/api/msw";
+import { getFillerReadinessMockHandler, getMeMockHandler } from "@loomarr/api/msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { readiness } from "@/test/fixtures/filler";
+import { me } from "@/test/fixtures/users";
 import { server } from "@/test/msw/server";
 import { RouterHarness } from "@/test/story-utils";
 import { FillerOverview, readinessAction } from "./filler-overview";
 
-const show = (coverage: FillerReadinessDTO = readiness()) => {
-  server.use(getFillerReadinessMockHandler(coverage));
+const show = (coverage: FillerReadinessDTO = readiness(), role: "admin" | "member" = "admin") => {
+  server.use(getFillerReadinessMockHandler(coverage), getMeMockHandler(me({ role })));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <RouterHarness
@@ -70,12 +71,68 @@ describe("FillerOverview", () => {
     expect(readinessAction(readiness())).toBeUndefined();
   });
 
-  it("renders the server-owned healthy answer without inventing an action", async () => {
+  it("renders the server-owned healthy answer quietly, without inventing an action", async () => {
     show();
     expect(await screen.findByText("Filler is working on its own")).toBeInTheDocument();
-    expect(screen.getByText("Working automatically")).toBeInTheDocument();
+    // Normal is quiet (#1908): no badge at all, amber or otherwise.
+    expect(screen.queryByText("Working automatically")).not.toBeInTheDocument();
+    expect(screen.queryByText("Action recommended")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /diagnostics|review clips/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/admission|admitted|readiness projection/i)).not.toBeInTheDocument();
+  });
+
+  it.each(["retry_acquisition", "retry_failed_work"] as const)(
+    "deep-links %s to the diagnostics panel, which opens on that hash",
+    async (nextAction) => {
+      show(readiness({ ready: false, nextAction, actionCount: 2 }));
+      expect(await screen.findByRole("link", { name: "Open diagnostics" })).toHaveAttribute(
+        "href",
+        "/filler/manage#diagnostics",
+      );
+    },
+  );
+
+  it("shows a member the state and who can act on it, with no admin-only button", async () => {
+    show(readiness({ ready: false, nextAction: "review_incoming", actionCount: 3 }), "member");
+    expect(await screen.findByText("A few clips need your help")).toBeInTheDocument();
+    expect(screen.getByText("Action recommended")).toBeInTheDocument();
+    expect(screen.getByText("An admin can sort this out from Filler › Manage.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Review clips" })).not.toBeInTheDocument();
+  });
+
+  it("gives an admin the action and no member line", async () => {
+    show(readiness({ ready: false, nextAction: "review_incoming", actionCount: 3 }));
+    expect(await screen.findByRole("link", { name: "Review clips" })).toBeInTheDocument();
+    expect(screen.queryByText(/An admin can sort this out/)).not.toBeInTheDocument();
+  });
+
+  it("marks a coverage card's channel link so the channel filler page can offer a way back", async () => {
+    show(
+      readiness({
+        pool: {
+          clips: 25,
+          breakBody: 20,
+          eligible: 18,
+          untagged: 0,
+          channels: [
+            {
+              channelId: "ch-42",
+              name: "Saturday Mornings",
+              number: 42,
+              level: "exact",
+              total: 12,
+              durationMs: 360_000,
+              categories: 3,
+              brands: 7,
+            },
+          ],
+        },
+      }),
+    );
+    expect(await screen.findByRole("link", { name: "42 · Saturday Mornings" })).toHaveAttribute(
+      "href",
+      "/channels/ch-42/filler?from=filler",
+    );
   });
 
   it("uses workspace readiness rather than a healthy admission subset", async () => {
@@ -100,7 +157,10 @@ describe("FillerOverview", () => {
   it("routes operational recovery to diagnostics, never the review queue", async () => {
     show(readiness({ ready: false, nextAction: "retry_failed_work", actionCount: 2 }));
     expect(await screen.findByText("Some filler can be retried")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open diagnostics" })).toHaveAttribute("href", "/filler/manage");
+    expect(screen.getByRole("link", { name: "Open diagnostics" })).toHaveAttribute(
+      "href",
+      "/filler/manage#diagnostics",
+    );
   });
 
   it("keeps channel coverage separate from admission health", async () => {

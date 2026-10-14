@@ -19,6 +19,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLoomarrEventListener } from "@/events/events-provider";
+import { usePhoneWidth } from "@/lib/use-phone-width";
+import { cn } from "@/lib/utils";
 import { ClipDetails } from "../clip-details";
 import { ClipDetailsEditor } from "../clip-details-editor";
 import { ConfirmSplitDialog } from "../confirm-split-dialog";
@@ -257,6 +259,43 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
     const nextView = VIEWS[next];
     if (nextView) chooseView(nextView.id);
   };
+  // A phone gets the folded toolbar and the 2-up compact grid (#1817, decided on #1908). It's a
+  // render decision, not just an arrangement: the compact card drops its chips and aired line.
+  const phone = usePhoneWidth();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Grid ⇄ list (V35b, the mock's `catViews`). ⚠ A radiogroup, not two toggle buttons: these are
+  // two states of ONE setting, and a pair of independent buttons announces neither which is
+  // active nor that they are alternatives. On a wide screen it sits at the far end of the
+  // toolbar, as the mock draws it; on a phone it follows the Filters button, icons only.
+  const viewToggle = (
+    <div
+      className={cn("ml-auto flex gap-1", !phone && "order-last")}
+      role="radiogroup"
+      aria-label="Clip view"
+    >
+      {VIEWS.map((v, index) => (
+        <Button
+          key={v.id}
+          ref={(node) => {
+            viewRefs.current[index] = node;
+          }}
+          variant={view === v.id ? "default" : "outline"}
+          size="sm"
+          role="radio"
+          aria-label={v.label}
+          aria-checked={view === v.id}
+          tabIndex={view === v.id ? 0 : -1}
+          title={v.title}
+          onClick={() => chooseView(v.id)}
+          onKeyDown={(event) => onViewKeyDown(event, index)}
+        >
+          <v.icon className="size-4" aria-hidden />
+          {phone ? null : <span>{v.label}</span>}
+        </Button>
+      ))}
+    </div>
+  );
 
   const [inspecting, setInspecting] = useState<string>();
   const [editing, setEditing] = useState(false);
@@ -458,7 +497,11 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       if (!e.jobId || e.jobId !== splitJob?.jobId) return;
       if (e.status === "success" && e.proposalId) {
         setSplitJob(undefined);
-        void navigate({ to: "/filler/splits/$proposalId", params: { proposalId: e.proposalId } });
+        void navigate({
+          to: "/filler/splits/$proposalId",
+          params: { proposalId: e.proposalId },
+          search: { from: "library" },
+        });
       } else if (e.status === "error") {
         setSplitJob((prev) => (prev ? { ...prev, status: "error", error: e.error } : prev));
       }
@@ -497,6 +540,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
       {...(isAdmin ? { onToggleSelect: () => toggleSelected(clip.hash) } : {})}
       selected={selected.has(clip.hash)}
       onOpen={() => openDetails(clip.hash)}
+      compact={phone}
     />
   );
   const renderComposite = (clip: ClipDTO) => (
@@ -624,13 +668,19 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               it or how to produce it again. Per-source outcomes belong on the Sources row that
               did the work. */}
 
-      <Card className="grid grid-cols-2 items-end gap-3 p-3 sm:flex sm:flex-wrap sm:p-4">
+      {/* On a phone the toolbar folds to one line — search, Filters, and the view toggle — so the
+          first clips land above the fold (#1817, decided on #1908). Filters opens the rest. */}
+      <Card
+        className={cn("flex flex-wrap", phone ? "items-center gap-2 px-3 py-2.5" : "items-end gap-3 p-4")}
+      >
         {/* ⚠ Capped. `flex-1` alone stretched a clip-name box to ~900px on a 1440
                 viewport — a text field far wider than anything typed into it, which reads
                 as a layout bug rather than a generous input. It still grows on narrow
                 screens (min-w-48) and stops being silly on wide ones. */}
-        <div className="col-span-2 min-w-0 flex-1 sm:min-w-48 sm:max-w-md">
-          <Label htmlFor="clip-search">Search</Label>
+        <div className={cn("min-w-0 flex-1", !phone && "min-w-48 max-w-md")}>
+          <Label htmlFor="clip-search" className={cn(phone && "sr-only")}>
+            Search
+          </Label>
           <Input
             id="clip-search"
             value={q}
@@ -638,83 +688,78 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
             onChange={(e) => setFilters({ q: e.target.value || undefined })}
           />
         </div>
-        <div>
-          <Label htmlFor="clip-kind">Kind</Label>
-          {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
-          <Select
-            value={kind || "any"}
-            onValueChange={(v) => setFilters({ kind: v === "any" ? undefined : v })}
+        {phone ? (
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={filtersOpen}
+            aria-controls="clip-filters"
+            onClick={() => setFiltersOpen((open) => !open)}
           >
-            <SelectTrigger id="clip-kind">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">Any</SelectItem>
-              <SelectItem value="unclassified">Unclassified</SelectItem>
-              <SelectItem value="commercial">Commercial</SelectItem>
-              <SelectItem value="bumper">Bumper</SelectItem>
-              <SelectItem value="station_id">Station ID</SelectItem>
-              <SelectItem value="psa">PSA</SelectItem>
-              <SelectItem value="trailer">Trailer</SelectItem>
-              <SelectItem value="interstitial">Interstitial</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="clip-audience">Audience</Label>
-          <Select
-            value={audience || "any"}
-            onValueChange={(v) => setFilters({ audience: v === "any" ? undefined : v })}
+            Filters
+          </Button>
+        ) : null}
+        {viewToggle}
+        {!phone || filtersOpen ? (
+          <div
+            id="clip-filters"
+            className={cn(
+              "flex items-end gap-3",
+              phone ? "order-last grid basis-full grid-cols-2" : "contents",
+            )}
           >
-            <SelectTrigger id="clip-audience">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="any">Any</SelectItem>
-              <SelectItem value="kids">Kids</SelectItem>
-              <SelectItem value="family">Family</SelectItem>
-              <SelectItem value="general">General</SelectItem>
-              <SelectItem value="late_night">Late night</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Button
-          variant={untagged ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilters({ untagged: untagged ? undefined : true })}
-          // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
-          // without era/audience, so they are never counted as needing work (§10).
-          title="Commercials missing era, audience, or category"
-        >
-          Untagged only
-        </Button>
-
-        {/* Grid ⇄ list (V35b, the mock's `catViews`). ⚠ A radiogroup, not two toggle
-                buttons: these are two states of ONE setting, and a pair of independent
-                buttons announces neither which is active nor that they are alternatives.
-                `ml-auto` puts it at the far end of the toolbar, as the mock draws it. */}
-        <div className="ml-auto flex gap-1" role="radiogroup" aria-label="Clip view">
-          {VIEWS.map((v, index) => (
+            <div>
+              <Label htmlFor="clip-kind">Kind</Label>
+              {/* "any" sentinel ↔ "" (Radix forbids an empty value) — the no-filter default. */}
+              <Select
+                value={kind || "any"}
+                onValueChange={(v) => setFilters({ kind: v === "any" ? undefined : v })}
+              >
+                <SelectTrigger id="clip-kind">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="unclassified">Unclassified</SelectItem>
+                  <SelectItem value="commercial">Commercial</SelectItem>
+                  <SelectItem value="bumper">Bumper</SelectItem>
+                  <SelectItem value="station_id">Station ID</SelectItem>
+                  <SelectItem value="psa">PSA</SelectItem>
+                  <SelectItem value="trailer">Trailer</SelectItem>
+                  <SelectItem value="interstitial">Interstitial</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="clip-audience">Audience</Label>
+              <Select
+                value={audience || "any"}
+                onValueChange={(v) => setFilters({ audience: v === "any" ? undefined : v })}
+              >
+                <SelectTrigger id="clip-audience">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Any</SelectItem>
+                  <SelectItem value="kids">Kids</SelectItem>
+                  <SelectItem value="family">Family</SelectItem>
+                  <SelectItem value="general">General</SelectItem>
+                  <SelectItem value="late_night">Late night</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button
-              key={v.id}
-              ref={(node) => {
-                viewRefs.current[index] = node;
-              }}
-              variant={view === v.id ? "default" : "outline"}
+              variant={untagged ? "default" : "outline"}
               size="sm"
-              role="radio"
-              aria-label={v.label}
-              aria-checked={view === v.id}
-              tabIndex={view === v.id ? 0 : -1}
-              title={v.title}
-              onClick={() => chooseView(v.id)}
-              onKeyDown={(event) => onViewKeyDown(event, index)}
+              onClick={() => setFilters({ untagged: untagged ? undefined : true })}
+              // "Untagged" means a COMMERCIAL missing a match tag — bumpers do their job
+              // without era/audience, so they are never counted as needing work (§10).
+              title="Commercials missing era, audience, or category"
             >
-              <v.icon className="size-4" aria-hidden />
-              <span className="hidden sm:inline">{v.label}</span>
+              Untagged only
             </Button>
-          ))}
-        </div>
+          </div>
+        ) : null}
       </Card>
 
       {rows === undefined ? (
@@ -786,7 +831,7 @@ const FillerCatalog = ({ isAdmin }: FillerCatalogProps) => {
               {rows.map((clip) => (clip.isComposite ? renderComposite(clip) : renderCatalogRow(clip)))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className={cn("grid", phone ? "grid-cols-2 gap-2.5" : "grid-cols-2 gap-3 lg:grid-cols-3")}>
               {rows.map((clip) =>
                 clip.isComposite ? (
                   <div key={clip.hash} className="col-span-full">

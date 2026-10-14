@@ -17,6 +17,7 @@ import {
   getSyncFillerMockHandler,
   getTagFillerClipMockHandler,
 } from "@loomarr/api/msw";
+import { LoomarrProvider } from "@loomarr/design-system";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, createRouter, RouterProvider } from "@tanstack/react-router";
 import { act, render, screen, within } from "@testing-library/react";
@@ -47,6 +48,7 @@ const clip = (over: Partial<ClipDTO> = {}): ClipDTO => ({
   tags: ["cereal", "food"],
   assertedTags: ["cereal"],
   tagged: true,
+  needsDetails: false,
   aiTagged: false,
   playCount: 0,
   playsCounted: true,
@@ -230,11 +232,14 @@ const renderAt = (path: string) => {
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [path] }),
   });
+  // LoomarrProvider as main.tsx mounts it: the Library's select box and chip are @loomarr/ui.
   render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <Toaster />
-    </QueryClientProvider>,
+    <LoomarrProvider theme="dark">
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+        <Toaster />
+      </QueryClientProvider>
+    </LoomarrProvider>,
   );
   return router;
 };
