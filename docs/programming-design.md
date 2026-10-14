@@ -530,7 +530,9 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   shorter than the spacing can never honour it; §7 owns that shortfall) — with floors that win over
   that cap, none longer than the pool itself. **The true guarantee:** a unit never airs twice in a
   row (the spacing is at least two longest units); a pool wider than a window rests every unit more
-  than a window (a window and a unit at least, two windows once the pool is three windows wide), so a
+  than a window (a window and a unit at least, two windows and a unit once the pool is three windows
+  wide, since a window's last programme runs past its close and two consecutive windows span up to
+  two windows and a unit), so a
   unit never airs twice in one window and the next window starts exactly where this one stopped. A
   shorter rest would let a unit from the end of one pass land in the same window again: the window
   skips it and reads past its stride, and the next window re-airs what it pulled in (27 one-hour films

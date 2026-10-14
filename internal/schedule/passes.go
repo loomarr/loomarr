@@ -32,7 +32,7 @@ import (
 //     Every pool wider than a window and large enough to hold three spacings is here. A pool that
 //     fits one window never is: it loops inside the window, so the tail the next seam reads can be
 //     any part of the deck, repaired or not.
-//   - Chained: a pool of one to six windows, whose spacing is raised to two windows (see
+//   - Chained: a pool of one to six windows, whose spacing is raised to two windows and a unit (see
 //     repeatSpacing), pushes units into the tail, so each seam needs the repaired deck before it and
 //     the walk runs from an anchor (dealChain). It is bounded by chainBudget.
 //
@@ -200,8 +200,11 @@ func (d *deckDealer) deck(pass int64) []Slot {
 //     spacing near the pool's runtime would pin every unit to its old place, a replay not a reshuffle.
 //   - Two longest units at least, so a unit never airs twice in a row across a seam: a pool that
 //     fits one window loops inside it, and the cap above leaves a pool of five or fewer nothing.
-//   - For a pool wider than a window, two windows as far as the pool allows (it must keep one
-//     window free), and never less than a window and a unit. Windows do not start where passes do,
+//   - For a pool wider than a window, two windows and a unit as far as the pool allows (it must keep
+//     one window free), and never less than a window and a unit. A window airs a stride of
+//     programmes, its last one running past the close, so two consecutive windows span up to two
+//     windows and a unit: two windows flat let a unit open one window and close the next (#1676,
+//     a 24 h window of 22-minute episodes). Windows do not start where passes do,
 //     so a unit airing near the end of one pass can land in the very next window of the following
 //     one (#1694), or, rested less than a window, in the same window twice; the window would skip
 //     it, read past its stride, and the next window would air those units again. This floor is
@@ -237,7 +240,7 @@ func (d *deckDealer) repeatSpacing() time.Duration {
 		floor = 2 * unit
 	}
 	if !d.whole {
-		floor = max(floor, min(2*d.window, pool-d.window), d.window+unit)
+		floor = max(floor, min(2*d.window+unit, pool-d.window), d.window+unit)
 	}
 	return max(spacing, min(floor, pool))
 }
