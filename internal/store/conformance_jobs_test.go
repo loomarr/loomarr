@@ -1138,7 +1138,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	}); !errors.Is(err, ErrProposalNotSubmitted) {
 		t.Fatalf("approve denied proposal = %v, want ErrProposalNotSubmitted", err)
 	}
-	if _, err := s.GetTitle(ctx, "movie:tmdb:90000099");!errors.Is(err, ErrNotFound) {
+	if _, err := s.GetTitle(ctx, "movie:tmdb:90000099"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("losing approval inserted a title: %v", err)
 	}
 	if _, err := s.GetChannel(ctx, "ch-denied"); !errors.Is(err, ErrNotFound) {
@@ -1165,7 +1165,7 @@ func testProposalApprovalAtomic(t *testing.T, newStore NewStoreFunc) {
 	if got, err := s.GetProposal(ctx, invalid.ID); err != nil || got.Status != "submitted" {
 		t.Errorf("invalid approval changed proposal = (%+v, %v)", got, err)
 	}
-	if _, err := s.GetTitle(ctx, "movie:tmdb:90000404");!errors.Is(err, ErrNotFound) {
+	if _, err := s.GetTitle(ctx, "movie:tmdb:90000404"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("invalid approval inserted title: %v", err)
 	}
 	if _, err := s.GetChannel(ctx, "ch-invalid"); !errors.Is(err, ErrNotFound) {

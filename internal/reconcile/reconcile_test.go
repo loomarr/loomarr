@@ -67,7 +67,7 @@ func put(t *testing.T, st store.Store, key provision.Key, state provision.State,
 // A due `wanted` title gets resubmitted; success → requested.
 func TestRetryWantedSuccess(t *testing.T) {
 	rc, st, req, _ := setup(t)
-	put(t, st, "movie:tmdb:90000001", provision.Wanted, 90000001,now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000001", provision.Wanted, 90000001, now.Add(-time.Hour))
 
 	n, err := rc.Tick(context.Background())
 	if err != nil || n != 1 {
@@ -225,7 +225,7 @@ func TestReconcilerEmitsTerminalEvents(t *testing.T) {
 	rc, st, ms, emit := setupWithEmitter(t)
 
 	// A wanted retry is non-terminal (→ requested) → no availability event.
-	put(t, st, "movie:tmdb:90000001", provision.Wanted, 90000001,now.Add(-time.Hour))
+	put(t, st, "movie:tmdb:90000001", provision.Wanted, 90000001, now.Add(-time.Hour))
 	if _, err := rc.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestReconcilerEmitsTerminalEvents(t *testing.T) {
 // A not-yet-due title isn't claimed, so the reconciler leaves it alone.
 func TestNotDueUntouched(t *testing.T) {
 	rc, st, req, _ := setup(t)
-	put(t, st, "movie:tmdb:90000005", provision.Requested, 90000005,now.Add(time.Hour)) // future deadline
+	put(t, st, "movie:tmdb:90000005", provision.Requested, 90000005, now.Add(time.Hour)) // future deadline
 
 	n, _ := rc.Tick(context.Background())
 	if n != 0 {
