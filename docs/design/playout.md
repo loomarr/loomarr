@@ -229,6 +229,19 @@ retried open or a mid-programme tune-in gets the same logo and the version chang
 programme. The holiday version keeps the channel's opacity. The calendar windows are still UTC
 dates; channel-local dates (#1930) replace `ActiveHolidayAt`'s body and both callers follow.
 
+**The channel page's On-screen logo section.** It reads two endpoints and holds no copy of the
+calendar. `GET /v1/channels/{id}/watermark/options` returns the holidays this channel honours (empty
+when its seasonal mode is Ignore holidays; only the chosen ones when limited), each with its date
+window, whether it is in effect today, and its pictures (the first is the default), plus the era label
+and the auto name the logo would carry. The section draws one row per holiday from that list: the
+picture cards sit under the holiday's name and dates, and the chosen picture is written to
+`policy.watermark.motifs`. `GET /v1/channels/{id}/watermark/preview` returns the PNG that airs for a
+given look, holiday and picture (query parameters, all optional), and carries the host's overlay state in
+`X-Loomarr-Watermark-Drawable` so the page can say plainly when the server cannot draw a logo. Every
+thumbnail and preview frame is that PNG, never a client-side imitation, so what the section shows is
+what airs. The frame sizes the logo from the PNG's own height over 1080 (`Image.getSize`, which works on
+web and native; `onLoad` carries no source size on web).
+
 **Colour on the GPU.** A coloured bug needs the right RGB→YUV matrix: the NVENC graph converts the
 bug with `scale=out_color_matrix=bt709:out_range=tv` (as the VAAPI kernel path already did), and
 declares the main BT.709 limited range (`conformColour`, metadata only, the same declaration the

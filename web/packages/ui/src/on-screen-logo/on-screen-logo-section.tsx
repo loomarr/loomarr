@@ -9,7 +9,7 @@ import {
   Text,
   Toggle,
 } from "@loomarr/design-system";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Image, Pressable, useWindowDimensions, View } from "react-native";
 
 // ON-SCREEN LOGO — the channel page's per-channel logo section (#1659; approved mock
@@ -339,6 +339,19 @@ interface FrameProps {
 const Frame = ({ corner, enabled, margin, opacity, scene, src, zoom }: FrameProps) => {
   const [dims, setDims] = useState<{ height: number; width: number } | null>(null);
   const [v, h] = corner.split("-");
+  // Image.getSize works on web and native; the Image onLoad event carries no source size on web.
+  useEffect(() => {
+    if (!enabled) return;
+    let current = true;
+    Image.getSize(
+      src,
+      (width, height) => current && setDims({ height, width }),
+      () => current && setDims(null),
+    );
+    return () => {
+      current = false;
+    };
+  }, [enabled, src]);
   const share = dims ? (dims.height / 1080) * (zoom ? 2 : 1) : 0;
   const inset = `${margin * 100}%`;
   return (
@@ -363,10 +376,6 @@ const Frame = ({ corner, enabled, margin, opacity, scene, src, zoom }: FrameProp
         {enabled ? (
           <Image
             accessibilityIgnoresInvertColors
-            onLoad={(e) => {
-              const s = e.nativeEvent.source;
-              if (s?.height) setDims({ height: s.height, width: s.width });
-            }}
             source={{ uri: src }}
             style={{
               aspectRatio: dims ? dims.width / dims.height : 3,
@@ -752,7 +761,7 @@ const OnScreenLogoSection = ({
   );
 
   const what = enabled
-    ? `${img ? "Your image" : holShown ? `${look.label} with a ${holShown.name} ${(holShown.pictures.find((m) => m.id === holShown.picture)?.name ?? "").toLowerCase()}` : look.label},${corner.replace("-", " ")}, ${labelOf(OPACITIES, opacity).toLowerCase()}.`
+    ? `${img ? "Your image" : holShown ? `${look.label} with a ${holShown.name} ${(holShown.pictures.find((m) => m.id === holShown.picture)?.name ?? "").toLowerCase()}` : look.label}, ${corner.replace("-", " ")}, ${labelOf(OPACITIES, opacity).toLowerCase()}.`
     : "No logo on this channel.";
   const preview = (
     <View style={{ gap: 12, width: phone ? "100%" : 420 }} testID="logo-preview">
