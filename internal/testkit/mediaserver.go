@@ -132,6 +132,7 @@ type EpisodeStub struct {
 	OmitEpisode     bool
 	EpisodeEnd      int
 	ProductionYear  int
+	PremiereDate    string // the server's wire form, e.g. "1990-10-25T00:00:00.0000000Z"; "" omits it
 	OfficialRating  string
 	CommunityRating float64
 	Overview        string
@@ -556,6 +557,9 @@ func (ms *MediaServer) episodeItems() []map[string]any {
 		}
 		if e.EpisodeEnd > 0 {
 			item["IndexNumberEnd"] = e.EpisodeEnd
+		}
+		if e.PremiereDate != "" {
+			item["PremiereDate"] = e.PremiereDate
 		}
 		items = append(items, item)
 	}

@@ -52,21 +52,18 @@ const pairedNativeImageSource = (
 
 const LIVE_DVR_HORIZON_SECONDS = 15 * 60;
 
-/** Matches the HTTP status ExoPlayer/AVPlayer embed in their own error prose (e.g. "Response code: 502"). */
+/** Matches the HTTP status ExoPlayer embeds in its own error prose (e.g. "Response code: 502"). */
 const NATIVE_5XX_STATUS = /\b5\d{2}\b/;
 
 /**
  * Whether a native player error reported before this attempt's first frame is a server-refused
- * start, rather than a mid-stream drop.
+ * request, rather than a mid-stream drop.
  *
- * The manifest endpoint IS the tune on the server (internal/api/playout.go: tuneRaw → playout.Tune,
- * near the HLS path), so re-fetching it from JS to read its problem body — as a first draft of this
- * fix did — starts a second tune of a channel that just failed: the viewer waits out the server's
- * full startup timeout a second time before the error even appears, and a probe that happens to
- * land while the server is mid-recovery would leave an encoder session running for no viewer. The
- * fix stays read-only: it only inspects the status code ExoPlayer/AVPlayer already embedded in the
- * error they delivered, no network call. The server's specific reason (§1455's problem `detail`)
- * is not reachable this way — see the start-failure module's module doc for what would be needed.
+ * The source port's `start` already read the master's answer from JS, so a refused start, with
+ * the server's reason, never reaches the player. This covers what the player itself fetches after
+ * that (a variant playlist, or a warmed source opened directly). It only reads the status ExoPlayer
+ * puts in its message; AVPlayer puts none there ("resource unavailable"), and the transport never
+ * re-requests a playlist to find out, because the manifest request is itself a tune.
  */
 const isNativeStartFailure = (message: string): boolean => NATIVE_5XX_STATUS.test(message);
 

@@ -186,3 +186,45 @@ func TestSeasonal_TitleStillBenchesWithinAHorrorGenre(t *testing.T) {
 		t.Error("a horror title that is not about a holiday must keep airing")
 	}
 }
+
+// A false bench silently removes programming, so only a title ABOUT a holiday benches (§6). An
+// action film with "Ghost" in its title airs all year on an ordinary channel, and so does a
+// witch film that fits Halloween's mood without being about it.
+func TestSeasonal_MoodWordNeverBenches(t *testing.T) {
+	entries := []schedule.LineupEntry{
+		ratedEntry("movie:tmdb:1", "Agent Zero: Ghost Directive", "", 2011, "Action", "Thriller"),
+		ratedEntry("movie:tmdb:2", "The Hollow Witch", "", 2015, "Horror"),
+		ratedEntry("movie:tmdb:3", "Halloween Returns", "", 1978, "Horror"),
+	}
+	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto}}}
+
+	jul := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, jul14))
+	for _, k := range []provision.Key{"movie:tmdb:1", "movie:tmdb:2"} {
+		if !hasKey(jul, k) {
+			t.Errorf("%s benched in July on a mood word", k)
+		}
+	}
+	if hasKey(jul, "movie:tmdb:3") {
+		t.Error("a title named for Halloween must still bench in July")
+	}
+}
+
+// An exclusive Halloween channel in October keeps titles that fit the mood with corroborating
+// genres, and drops a bare mood word.
+func TestSeasonal_ExclusiveAdmitsAdjacentNotBareMood(t *testing.T) {
+	entries := []schedule.LineupEntry{
+		ratedEntry("movie:tmdb:1", "Ghost Mall", "", 2001, "Comedy", "Drama"),
+		ratedEntry("movie:tmdb:2", "The Hollow Witch", "", 2015, "Horror"),
+		ratedEntry("movie:tmdb:3", "Halloween Returns", "", 1978, "Horror"),
+	}
+	avail := mapAvail{"movie:tmdb:1": "l1", "movie:tmdb:2": "l2", "movie:tmdb:3": "l3"}
+	p := schedule.ChannelPolicy{ProposalPolicy: schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{
+		Mode: schedule.SeasonalExclusive, Holidays: []string{"halloween"}, OffSeason: schedule.OffSeasonDark,
+	}}}
+
+	oct := programKeys(schedule.ComputeDesiredAt(seasonalChannel(), entries, avail, schedule.PodFill, p, oct15))
+	if hasKey(oct, "movie:tmdb:1") || !hasKey(oct, "movie:tmdb:2") || !hasKey(oct, "movie:tmdb:3") {
+		t.Errorf("exclusive Halloween in October = %v, want the witch film and the Halloween film only", oct)
+	}
+}

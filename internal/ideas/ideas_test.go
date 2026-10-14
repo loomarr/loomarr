@@ -85,14 +85,17 @@ func TestBuild_DecadeIdea(t *testing.T) {
 	}
 }
 
-// A holiday ahead makes an idea from titles ABOUT it (matched by title, like the scheduler's
-// seasonal detection, never by genre), whether or not they already air somewhere.
+// A holiday ahead makes an idea from titles that fit it (§6 floor: the holiday's name, or a mood
+// word the genres back up — never a genre or a mood word alone), whether or not they already air.
 func TestBuild_HolidayAheadMatchesTitlesNotGenres(t *testing.T) {
 	lib := []ideas.Item{
 		movie(1, "A Halloween Party", 2001),
-		movie(2, "The Haunted Manor", 2003),
-		series(3, "Spooky Tales", 1999),
-		movie(4, "Quiet Evening", 2005, "Horror"), // horror genre, not about the holiday
+		movie(2, "The Haunted Manor", 2003, "Horror"),
+		series(3, "Spooky Tales", 1999, "Animation", "Fantasy"),
+		movie(4, "Quiet Evening", 2005, "Horror"),                   // horror genre, not about the holiday
+		movie(5, "Ghost Mall", 2001, "Comedy", "Drama"),             // a mood word alone
+		movie(6, "Agent Zero: Ghost Directive", 2011, "Action"),     // a mood word alone
+		movie(7, "Phantom Heart Ghost", 1990, "Fantasy", "Romance"), // fantasy without a family genre
 	}
 	start := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, time.November, 1, 0, 0, 0, 0, time.UTC).Add(-time.Nanosecond)
@@ -109,7 +112,23 @@ func TestBuild_HolidayAheadMatchesTitlesNotGenres(t *testing.T) {
 		t.Errorf("reason = %+v, want the holiday and its window", idea.Reason)
 	}
 	if idea.Reason.Count != 3 || idea.Movies != 2 || idea.Series != 1 {
-		t.Errorf("holiday idea = %+v, want 3 titles (2 films, 1 series), the horror-genre film excluded", idea)
+		t.Errorf("holiday idea = %+v, want 3 titles (2 films, 1 series), the horror-genre film and bare ghost titles excluded", idea)
+	}
+}
+
+// With no model to judge, the floor alone decides; too few fitting titles means no holiday idea.
+func TestBuild_HolidayIdeaNeedsMinimumFittingTitles(t *testing.T) {
+	lib := []ideas.Item{
+		movie(1, "A Halloween Party", 2001),
+		movie(2, "Ghost Mall", 2001, "Comedy"),
+		movie(3, "Ghost Directive", 2011, "Action"),
+		movie(4, "The Hollow Witch", 2015, "Horror"),
+	}
+	start := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	got := ideas.Build(ideas.Input{Library: lib, Now: now,
+		Holidays: []ideas.Holiday{{ID: "halloween", Start: start, End: start.AddDate(0, 1, 0)}}})
+	if _, ok := byID(got)["holiday:halloween"]; ok {
+		t.Fatalf("ideas = %+v, want no Halloween idea from two fitting titles", got)
 	}
 }
 

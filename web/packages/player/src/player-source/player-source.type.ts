@@ -34,6 +34,13 @@ interface PlayerSourcePort {
     signal: AbortSignal,
   ) => Promise<PlayerSource>;
   /**
+   * Starts a minted source's stream on the server and returns the source the player should open.
+   * Rejects with `StartFailure` when the server refused the start and said why, so the viewer sees
+   * that reason instead of the player's own error. Optional: without it the player's first request
+   * starts the stream.
+   */
+  start?: (source: PlayerSource, signal: AbortSignal) => Promise<PlayerSource>;
+  /**
    * Speculatively starts a channel's stream on the server without playing it, so a later tune finds
    * it running, and returns the exact signed source the real tune should reuse. Optional: a source
    * that cannot warm is simply never pre-warmed. A refusal (no capacity) is a miss, not an error:

@@ -111,4 +111,9 @@ export type {
   WatchingScheduleData,
   WatchingSurfaceProps,
 } from "./src/watching-surface";
-export { WatchingPanel, WatchingSurface, watchingPanelFromGuide } from "./src/watching-surface";
+export {
+  WatchingPanel,
+  WatchingSurface,
+  watchingPanelFromGuide,
+  watchingScheduleTimeMs,
+} from "./src/watching-surface";

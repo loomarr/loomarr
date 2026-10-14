@@ -1,1 +1,1 @@
-export { warmSource } from "./warm-source";
+export { variantUris, warmSource } from "./warm-source";
