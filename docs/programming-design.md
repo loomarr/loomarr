@@ -235,8 +235,8 @@ The one heuristic where an error is a *harm*, not an aesthetic bug — so it fai
 ## 5. Ordering modes ("feels like TV")
 
 - `sequential` — S1E1 onward, loops at the end (binge/marathon channels).
-- `shuffle` — seeded random, separation-constrained.
-- `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility).
+- `shuffle` — seeded random, separation-constrained. **The seed is the channel's own.** A channel that stores none (every binder-made channel stores `0`) derives it from its id (FNV-1a), stable for the channel's life and needing no migration, so two channels over the same pool deal different decks. It reshuffles each pass, exactly as `syndication` does (below and §6.5).
+- `syndication` (default for TV) — random **without repeats until the eligible pool exhausts**, then reshuffle (a "deck deal"): the authentic weekday-rerun texture, and it makes `episodeNoRepeat` nearly free because the deck *is* a no-repeat structure. Each deck reshuffles under `seed XOR deckIndex` so successive decks differ yet every deck is deterministic for a given channel seed (the §7-mandated reproducibility). The deck index is the **pass** of the rolling window around the catalog (§6.5), counted from the channel's creation.
 - **Omitted `ordering` inherits the channel's `Strategy`.** A channel created without an explicit policy ordering keeps its existing `sequential`/`shuffle` behavior — the syndication default applies only when a policy explicitly requests it (or a template ships it). This keeps policy adoption non-breaking for existing channels.
 - **One operator knob, one canonical precedence ladder.** Ordering resolves in exactly this order: **per-rule `How.Ordering` (within that rule's active window, §6.5) > `policy.ordering` > `Channel.Strategy` (the create-time stored default)**. `policy.ordering` is *the* operator-facing knob (edited in Programming → How it's ordered); `Channel.Strategy` is the default the binder seeds and is consulted only on inherit — it is **not** a second editable field (design.md §9). A rule's `How` overrides only for the slots that rule governs; outside any rule window, the base `policy.ordering` applies. This is the single ladder that makes "three ways to express ordering" read as one.
 - **Rerun curation and narrative order are different promises.** A channel whose lineup is several series (a "Star Trek" franchise channel) defaults to `syndication` so the shows intermix instead of playing one to completion. A clearly curated single-series intent (`classic Simpsons`, `best episodes`, favorites, highlights, reruns) also resolves to `syndication`: its eligible season window is a pool to curate into a deterministic no-repeat deck, not an instruction to start at S1E1. Explicit chronological, start-to-finish, binge, or marathon language forces `sequential`, even when the model proposed shuffle or syndication. One series plus movies is not inferred as either case. This episodic rule does **not** loosen the movie-franchise floor above: films sharing a TMDB collection remain one atomic, in-release-order block even when the surrounding channel is shuffled or syndicated. The prompt guides the model, and `groundPolicy` enforces both deterministic outcomes so a small model cannot turn a rerun request into a box-set binge or a binge into a mixed deck.
@@ -367,31 +367,41 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     so a 6-hour, 12-hour, daily or 3-day window airs the same day the same way, and never twice.
     The pool is the deck's holiday episodes for that date's active selected holidays, in deck
     order. The deck order never changes.
-  - **Where it runs: the in-season tile.** A window is *in season* when any date it touches has a
-    non-empty pool. Its tile leaves every pooled episode out, and it is not cut by `windowSlice`.
-    The season's first window starts where `windowSlice` would start it. Each later window
-    continues the deck exactly where the window before it stopped. It takes ordinary episodes
-    until their runtime meets the window less its features' runtime. Consecutive windows
-    share no episode when the deck holds about three windows; on a shorter deck they must share
-    some, and the guarantee is the spacing below. The season's first seam is the same as with seasonality
-    off. No window's walk passes the point where `windowSlice` would start the next window
-    (counted in programmes from the deck head). The walk passes pool episodes it does not air,
-    so a window that features fewer of them than it passes reaches that point before its
-    airtime is full. The rest of its airtime is filled with ordinary episodes from the far side of
-    the deck: starting half the deck ahead, skipping the pool, the window's own episodes and,
-    while anything else is left, the window before and what the next window's walk can reach.
-    When nothing else is left (a deck shorter than about three windows), the fill searches
-    outward from that far point and airs each episode beside the window's own episode half a
-    deck behind it, so it is about half a deck from its last airing and its next, never back to
-    back with the next window's opening.
-    At the season's end, the first window out of season goes back to `windowSlice`'s position,
-    which the last window in season never passed, so the seam only skips episodes, never repeats
-    one. The cost is in season: a far-side episode aired about half a deck ago and airs again
-    about half a deck on. On a small deck (or a pool walked past much faster than it is featured)
-    an ordinary episode can therefore re-air about half a deck (less the pool) apart, and no
-    sooner. That is the most spacing the deck allows: between two `windowSlice` starts there are
-    fewer ordinary episodes than the window has airtime, so the shortfall must repeat something,
-    and half a deck is the furthest any episode is from both its last and next airing. A deck that fits one window airs
+  - **Where it runs: the season simulation (#1939).** A window is *in season* when any date it
+    touches has a non-empty pool. In-season windows, and the first out-of-season windows after
+    one (the *horizon*: twice the windows the repeat spacing spans, plus one), are not cut
+    independently. They are **simulated in order** from the season's *anchor*: its first in-season
+    window, found by walking back over in-season windows and gaps no longer than the horizon, at
+    most 120 days. Two seasons closer than the horizon are one simulation. Every other window is
+    the dealer's tile (`windowSliceDealt`), untouched.
+    The simulation keeps `airedAt`, each unit's last airing as a programme index that counts the
+    features. Before the anchor it holds the dealer's tiles, arranged, covering at least the
+    repeat spacing. For each window in turn:
+    1. Take the dealer's tile for the window. Drop the pool, and any unit that would air sooner
+       than the spacing after its last airing. A deck that fits one window drops only the pool.
+    2. Keep units in deal order until their runtime meets the window less its features' runtime.
+       Units cut here are *owed*.
+    3. Top up a short tile with ordinary episodes. Owed units go first, in deal order. Then any
+       ordinary unit of the pass. The preferences, in order: not aired by the window before and
+       not dealt to the next; at least the spacing from its last actual airing and from its next
+       dealt airing; the farthest from both.
+    4. Arrange the window around its features, and check each unit where it really airs: an
+       off-season holiday episode leaving the evening pulls the units after it earlier than
+       their place in the tile. A unit now sooner than the spacing is dropped for the window and
+       the tile topped up again without it (step 3); each pass drops one unit, so it ends.
+    5. Record every programme's index in `airedAt`.
+    Every decision reads what actually aired, never a ring position. A feature is decided by its
+    day's plan. Its airing enters `airedAt`, so the windows after the season (and after a holiday
+    date) trade away a unit the season just featured, like any recent airing. The holiday date
+    itself keeps its whole plan. The spacing promised is the dealer's repeat spacing for
+    *Shuffled* and *Syndication* (two windows and a unit, §3.1). For *In order*, the dealer has
+    none, so the simulation uses half the deck less its holiday episodes.
+    One simulation serves the season. It is memoised by the dealer's inputs (seed, window,
+    policy, collapsed slots), the ring origin, zone, holiday evidence, break density and the
+    anchor and end windows, in a small LRU like the deal chain. A guide request therefore
+    simulates once per season per lineup, and an edit lands on a new key. A pool with airing
+    history is not shared. One run costs O(windows × deck): each top-up scans the pass once.
+    A deck that fits one window airs
     whole, minus the pool, every window. Recency (`tradeRecent`, #1694)
     then guards the tile as it does any tile. The pass is a pure function of (deck, window index,
     zone, policy): it is idempotent within a window, there is no mid-window reshuffle
@@ -445,6 +455,15 @@ Two symmetric behaviors, because knowing what October wants implies knowing what
     and `sameAs` (the other strengths that rotate the pool identically; a pool of 5 makes Featured
     the same as Heavy, and a pool of 1–2 makes all three the same). The channel page can then say
     what a strength will do, and when a choice changes nothing, without counting anything itself.
+  - **Where the operator sets it.** The channel's Programming tab (`ChannelSeasonal`, built on
+    `ChannelSeasonalFields` in `@loomarr/ui`) offers **Holiday strength** (Light / Featured /
+    Heavy, each choice carrying its own plain-language consequence) and **Favour evenings** only
+    while the mode is the built-in rotation; `exclusive` and `off` keep their meaning and show
+    neither. Under Holiday strength one line restates the preview's `holidayEpisodes` for the
+    holiday that is on, or next: the episodes found and the resulting per-day count and spacing.
+    When `sameAs` is non-empty or `capped` is true the line says so plainly ("at this pool size
+    Featured and Heavy play the same"). The line is the backend's numbers, never a client-side
+    estimate.
 - **`mode: "exclusive"`:** the channel *is* the holiday (a December Hallmark-style channel): only in-window seasonal content airs; out of window the channel runs its `offSeason` fallback (loop scope without seasonal filter, or go dark — policy field, default loop).
 - **`mode: "off"`:** no detection, no bench — for channels where a Halloween Simpsons episode in March is fine.
 - Evaluation uses the reconcile instant's date on the guide time zone (`guide.timezone`, the clock
@@ -518,6 +537,49 @@ oracle green *by construction* — the mechanism is untouched; only the calendar
   sentinel; a `marathon` rule sets it — no rotation, plays everything). A pool smaller than one
   window airs whole every window (nothing to rotate, nothing starved). The slice is floored to
   at least one program so a channel is never dark.
+  **Passes: a shuffled or syndicated catalog is dealt afresh each time the window wraps it
+  (#1676).** One trip of the window around the catalog is a *pass*; pass `p` is dealt under
+  `seed XOR p` (the seed is the channel's own, §5), so a pass is a new permutation, not a replay of
+  the one before, and still a pure function of its inputs. `sequential` keeps one deck for every
+  pass — its order is the promise. Passes are numbered from the channel's **origin**
+  (`created_at`, else its playout anchor, else a stable value derived from the channel id), not from
+  1970, so a channel's pass number is its age in passes: a few hundred in a year, never thousands.
+  The seam between two passes is **repaired**: every unit airs at least a *repeat spacing* after it
+  last aired — the episode/film no-repeat window, capped at a third of the pool's runtime (a pool
+  shorter than the spacing can never honour it; §7 owns that shortfall) — with floors that win over
+  that cap, none longer than the pool itself. **The true guarantee:** a unit never airs twice in a
+  row (the spacing is at least two longest units); a pool wider than a window rests every unit more
+  than a window (a window and a unit at least, two windows and a unit once the pool is three windows
+  wide, since a window's last programme runs past its close and two consecutive windows span up to
+  two windows and a unit), so a
+  unit never airs twice in one window and the next window starts exactly where this one stopped. A
+  shorter rest would let a unit from the end of one pass land in the same window again: the window
+  skips it and reads past its stride, and the next window re-airs what it pulled in (27 one-hour films
+  in a 24 h window re-aired units 2–3 h apart). A pool barely wider than a window (under a window and
+  a unit of slack) is pinned close to its old order: that is the price of never repeating inside a
+  window. A unit not yet allowed is held
+  back and goes out the moment the deck reaches its release time. A repair moves a unit at most
+  `2·spacing + 2·longest unit` into the deck. **When that stops short of the tail the next seam reads
+  (a pool wider than a window holding three spacings), the repaired tail is the
+  dealt tail**, so a pass needs only its own deal and its predecessor's: exact, at any age. A pool of
+  one to six windows (spacing raised to a window or two) is pushed into that tail, so each pass is
+  repaired against the deck that **really aired**, walked pass by pass (memoised per
+  pool/policy/seed/window; a lineup edit is a different pool, so it restarts the walk). A deal costs
+  5–22 ms for a multi-series pool, so **the walk is bounded in deals**: at most `2048 / pool size`
+  passes (16 to 2048, a multiple of 16), starting at the latest multiple of that bound at or before
+  the wanted pass; a 6-year-old channel with a 60-episode pool walks in ~0.13 s cold, once per
+  process. The pass that starts a walk is repaired against its predecessor *as dealt* rather than as
+  aired. That is the only place the seam guarantee can relax, and only for chained pools (a pool of
+  27 films meets it every 64 passes; measured, the short seam is ~5% under the spacing).
+  **A catalog that fits inside one window has no ring to wrap**, so it used to air the same deck in
+  the same order every window; there the **window is the pass**, dealt afresh and repaired against
+  the previous window **as it aired**: playout loops the deck until the window closes
+  (`elapsed % total`), so the units that closed it are wherever the loop stopped, not the deck's end,
+  and the seam is repaired against that looped tail. Since any part of the deck can be that tail,
+  such a pool is always walked pass by pass. Recency does not order such a deck: it airs every unit
+  every window, so oldest-aired-first is just yesterday's order, a replay that survived every
+  window once anyone watched (#1676, reversing #1694's "recency still orders a fitting deck"). The
+  window's order is fixed when it opens and does not move as viewing is recorded (#1674).
 - **Authorship is hybrid (§8 boundary intact).** The **LLM proposes a starter rule set**
   from intent ("Star Trek with weekend TNG marathons and Christmas episodes") — from the
   closed preset vocabulary, grounded + clamped (unknown tokens dropped, window clamped to

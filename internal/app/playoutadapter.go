@@ -743,7 +743,7 @@ const maxGuideSegments = 8
 //
 // # Why this exists
 //
-// The scheduler ROTATES: windowSlice advances its start by the window index, so day 0 airs one
+// The scheduler ROTATES: windowSliceDealt advances its start by the window index, so day 0 airs one
 // slice of the deck and day 1 continues where it left off (§6.5, "over a full cycle every program
 // airs"). Reconciliation commits that rotation into Desired at the new window; AiringNow reads the
 // accepted value. A multi-day guide still has to forecast the later windows: resolving ONE cycle

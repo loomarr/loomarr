@@ -1,4 +1,5 @@
 import type { ChannelPolicy } from "@loomarr/api/models/channelPolicy";
+import type { HolidayEpisodesDTO } from "@loomarr/api/models/holidayEpisodesDTO";
 import type { Vocabulary } from "@loomarr/api/models/vocabulary";
 
 interface ChannelSeasonalProps {
@@ -10,7 +11,9 @@ interface ChannelSeasonalProps {
   // through `LowerWhen` → `knownHoliday` → `builtinCalendar`, so a holiday the engine does not
   // know cannot appear in this picker, and one it adds appears without a frontend change.
   vocabulary: Vocabulary;
-  className?: string;
+  // The saved cycle preview's holiday-episode summary (§6 "Holiday episodes"), soonest holiday
+  // first. The consequence line under Holiday strength reads the first; absent while it loads.
+  holidayEpisodes?: HolidayEpisodesDTO[];
 }
 
 export type { ChannelSeasonalProps };

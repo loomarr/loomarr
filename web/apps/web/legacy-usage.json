@@ -121,10 +121,6 @@
       "tailwindClasses": 64,
       "legacyUi": 3
     },
-    "src/components/loomarr/channels/channel-seasonal/channel-seasonal.tsx": {
-      "tailwindClasses": 42,
-      "legacyUi": 3
-    },
     "src/components/loomarr/channels/channel-series-scope/channel-series-scope.tsx": {
       "tailwindClasses": 30,
       "legacyUi": 2

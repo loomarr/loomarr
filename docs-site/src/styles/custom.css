@@ -45,7 +45,7 @@
 }
 
 :root[data-theme="light"] {
-  --sl-color-accent-low: #fff3d6; /* surface.focus */
+  --sl-color-accent-low: #fff3d6; /* signal tint (brand) */
   --sl-color-accent: #795000; /* action.primary */
   --sl-color-accent-high: #5c3d00;
   --sl-color-white: #17191d; /* content.primary */

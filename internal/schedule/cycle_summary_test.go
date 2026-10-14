@@ -24,17 +24,17 @@ func TestComputeDesired_CycleSummarySizesTheWholeDeck(t *testing.T) {
 		movies: map[provision.Key]struct {
 			id  string
 			dur int64
-		}{"movie:tmdb:1": {id: "lib-m", dur: 100 * min}},
+		}{"movie:tmdb:90000001": {id: "lib-m", dur: 100 * min}},
 		episodes: map[provision.Key][]schedule.ResolvedProgram{
-			"series:tvdb:1": eps(10, 20*min),
-			"series:tvdb:2": eps(4, 30*min),
+			"series:tvdb:90000001": eps(10, 20*min),
+			"series:tvdb:90000002": eps(4, 30*min),
 		},
 	}
 	entries := []schedule.LineupEntry{
-		entry("series:tvdb:1", "Show One"),
-		entry("series:tvdb:2", "Show Two"),
-		entry("movie:tmdb:1", "A Movie"),
-		entry("movie:tmdb:9", "Not Yet Available"), // pending: cannot air, so not counted
+		entry("series:tvdb:90000001", "Show One"),
+		entry("series:tvdb:90000002", "Show Two"),
+		entry("movie:tmdb:90000001", "A Movie"),
+		entry("movie:tmdb:90000009", "Not Yet Available"), // pending: cannot air, so not counted
 	}
 
 	// A one-hour window slices the deck to a handful of programmes; the summary must not.
@@ -75,12 +75,12 @@ func TestComputeDesired_CycleSummaryCountsOnlyWhatCanAir(t *testing.T) {
 
 	t.Run("audience ceiling leaves over-ceiling films out", func(t *testing.T) {
 		entries := []schedule.LineupEntry{
-			ratedEntry("movie:tmdb:1", "Fine", "TV-14", 1994),
-			ratedEntry("movie:tmdb:2", "Too Adult", "R", 1994),
-			ratedEntry("movie:tmdb:3", "Also Too Adult", "R", 1995),
+			ratedEntry("movie:tmdb:90000001", "Fine", "TV-14", 1994),
+			ratedEntry("movie:tmdb:90000002", "Too Adult", "R", 1994),
+			ratedEntry("movie:tmdb:90000003", "Also Too Adult", "R", 1995),
 		}
 		p := policy(schedule.ProposalPolicy{Audience: schedule.AudiencePolicy{Ceiling: "TV-14"}})
-		got := compute(entries, movies("movie:tmdb:1", "movie:tmdb:2", "movie:tmdb:3"), p, time.Time{})
+		got := compute(entries, movies("movie:tmdb:90000001", "movie:tmdb:90000002", "movie:tmdb:90000003"), p, time.Time{})
 		if want := (schedule.CycleSummary{Movies: 1, RuntimeMs: 90 * min}); got != want {
 			t.Fatalf("Cycle = %+v, want %+v", got, want)
 		}
@@ -92,8 +92,8 @@ func TestComputeDesired_CycleSummaryCountsOnlyWhatCanAir(t *testing.T) {
 			eps = append(eps, schedule.ResolvedProgram{LibraryItemID: "e", Title: "ep", DurationMs: 20 * min, Season: s, Episode: 1})
 			eps = append(eps, schedule.ResolvedProgram{LibraryItemID: "e", Title: "ep", DurationMs: 20 * min, Season: s, Episode: 2})
 		}
-		avail := seriesAvail{episodes: map[provision.Key][]schedule.ResolvedProgram{"series:tvdb:1": eps}}
-		e := entry("series:tvdb:1", "Long Runner")
+		avail := seriesAvail{episodes: map[provision.Key][]schedule.ResolvedProgram{"series:tvdb:90000001": eps}}
+		e := entry("series:tvdb:90000001", "Long Runner")
 		e.SeasonMin, e.SeasonMax = 1, 10
 		got := compute([]schedule.LineupEntry{e}, avail, schedule.ChannelPolicy{}, time.Time{})
 		if want := (schedule.CycleSummary{Episodes: 20, Series: 1, RuntimeMs: 20 * 20 * min}); got != want {
@@ -103,12 +103,12 @@ func TestComputeDesired_CycleSummaryCountsOnlyWhatCanAir(t *testing.T) {
 
 	t.Run("era scope leaves out-of-era films", func(t *testing.T) {
 		entries := []schedule.LineupEntry{
-			ratedEntry("movie:tmdb:1", "Nineties", "", 1994),
-			ratedEntry("movie:tmdb:2", "Eighties", "", 1984),
-			ratedEntry("movie:tmdb:3", "Aughts", "", 2004),
+			ratedEntry("movie:tmdb:90000001", "Nineties", "", 1994),
+			ratedEntry("movie:tmdb:90000002", "Eighties", "", 1984),
+			ratedEntry("movie:tmdb:90000003", "Aughts", "", 2004),
 		}
 		p := policy(schedule.ProposalPolicy{Scope: schedule.ScopePolicy{Dates: schedule.EraDates(schedule.Range{From: 1990, To: 1999})}})
-		got := compute(entries, movies("movie:tmdb:1", "movie:tmdb:2", "movie:tmdb:3"), p, time.Time{})
+		got := compute(entries, movies("movie:tmdb:90000001", "movie:tmdb:90000002", "movie:tmdb:90000003"), p, time.Time{})
 		if want := (schedule.CycleSummary{Movies: 1, RuntimeMs: 90 * min}); got != want {
 			t.Fatalf("Cycle = %+v, want %+v", got, want)
 		}
@@ -116,11 +116,11 @@ func TestComputeDesired_CycleSummaryCountsOnlyWhatCanAir(t *testing.T) {
 
 	t.Run("out-of-season title is benched", func(t *testing.T) {
 		entries := []schedule.LineupEntry{
-			ratedEntry("movie:tmdb:1", "Christmas Carol", "", 1994),
-			ratedEntry("movie:tmdb:2", "Regular Show", "", 1994),
+			ratedEntry("movie:tmdb:90000001", "Christmas Carol", "", 1994),
+			ratedEntry("movie:tmdb:90000002", "Weekday Show", "", 1994),
 		}
 		p := policy(schedule.ProposalPolicy{Seasonal: schedule.SeasonalPolicy{Mode: schedule.SeasonalAuto}})
-		avail := movies("movie:tmdb:1", "movie:tmdb:2")
+		avail := movies("movie:tmdb:90000001", "movie:tmdb:90000002")
 		if got, want := compute(entries, avail, p, jul14), (schedule.CycleSummary{Movies: 1, RuntimeMs: 90 * min}); got != want {
 			t.Fatalf("July Cycle = %+v, want %+v", got, want)
 		}
@@ -134,8 +134,8 @@ func TestComputeDesired_CycleSummaryCountsOnlyWhatCanAir(t *testing.T) {
 			{LibraryItemID: "b1", Title: "Big Day (1)", DurationMs: 20 * min, Season: 1, Episode: 2},
 			{LibraryItemID: "b2", Title: "Big Day (2)", DurationMs: 20 * min, Season: 1, Episode: 3},
 		}
-		avail := seriesAvail{episodes: map[provision.Key][]schedule.ResolvedProgram{"series:tvdb:1": eps}}
-		got := compute([]schedule.LineupEntry{entry("series:tvdb:1", "Show")}, avail, schedule.ChannelPolicy{}, time.Time{})
+		avail := seriesAvail{episodes: map[provision.Key][]schedule.ResolvedProgram{"series:tvdb:90000001": eps}}
+		got := compute([]schedule.LineupEntry{entry("series:tvdb:90000001", "Show")}, avail, schedule.ChannelPolicy{}, time.Time{})
 		if want := (schedule.CycleSummary{Episodes: 3, Series: 1, RuntimeMs: 60 * min}); got != want {
 			t.Fatalf("Cycle = %+v, want %+v", got, want)
 		}
@@ -149,9 +149,9 @@ func TestComputeDesired_CycleSummaryCountsSeriesByIdentityNotTitle(t *testing.T)
 		return []schedule.ResolvedProgram{{LibraryItemID: id, Title: "ep", DurationMs: 20 * min, Season: 1, Episode: 1}}
 	}
 	avail := seriesAvail{episodes: map[provision.Key][]schedule.ResolvedProgram{
-		"series:tvdb:1": ep("a"), "series:tvdb:2": ep("b"),
+		"series:tvdb:90000001": ep("a"), "series:tvdb:90000002": ep("b"),
 	}}
-	entries := []schedule.LineupEntry{entry("series:tvdb:1", "Battlestar Galactica"), entry("series:tvdb:2", "Battlestar Galactica")}
+	entries := []schedule.LineupEntry{entry("series:tvdb:90000001", "Ferrocene Station"), entry("series:tvdb:90000002", "Ferrocene Station")}
 	got := schedule.ComputeDesired(seqChannel(), entries, avail, schedule.PodFill).Cycle
 	if got.Series != 2 || got.Episodes != 2 {
 		t.Fatalf("Cycle = %+v, want 2 series / 2 episodes", got)
@@ -162,11 +162,11 @@ func TestComputeDesired_CycleSummaryCountsSeriesByIdentityNotTitle(t *testing.T)
 // unit: the cycle summary must read the same whether the holiday window is open (the planner
 // times those episodes into the evenings) or closed, and match the deck with the feature off.
 func TestComputeDesired_CycleSummaryDoesNotCountHolidayFeaturesTwice(t *testing.T) {
-	entries := []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}}
-	avail := simpsonsLike(9) // 200 ordinary episodes + 9 holiday episodes, one series
+	entries := []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}}
+	avail := mudpuddlesLike(9) // 200 ordinary episodes + 9 holiday episodes, one series
 
 	cycleAt := func(policy schedule.ChannelPolicy, at time.Time) schedule.CycleSummary {
-		return schedule.ComputeDesiredAt(simpsonsChannel(), entries, avail, schedule.PodFill, policy, at).Cycle
+		return schedule.ComputeDesiredAt(mudpuddlesChannel(), entries, avail, schedule.PodFill, policy, at).Cycle
 	}
 	inSeason := cycleAt(seasonalPolicy(schedule.SeasonalPolicy{}), day(time.October, 13, 9))
 	closed := cycleAt(seasonalPolicy(schedule.SeasonalPolicy{}), day(time.March, 3, 9))

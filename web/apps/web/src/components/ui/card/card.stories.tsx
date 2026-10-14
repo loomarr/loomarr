@@ -15,7 +15,7 @@ const Default: Story = {
   render: () => (
     <Card className="w-80">
       <CardHeader>
-        <CardTitle>Springfield Classics</CardTitle>
+        <CardTitle>Cartoon Classics</CardTitle>
       </CardHeader>
       <CardContent>
         <p className="text-muted-foreground text-sm">

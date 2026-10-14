@@ -9,13 +9,13 @@ describe("ChannelCard", () => {
         number={42}
         name="90s Action"
         onAir="live"
-        nowNext={{ now: { title: "Heat" }, next: { title: "Con Air" } }}
+        nowNext={{ now: { title: "The Velvet Cartographer" }, next: { title: "Pelican Point Motel" } }}
       />,
     );
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("90s Action")).toBeInTheDocument();
     expect(screen.getByText("Managed by Loomarr")).toBeInTheDocument();
-    expect(screen.getByText("Heat")).toBeInTheDocument();
+    expect(screen.getByText("The Velvet Cartographer")).toBeInTheDocument();
     expect(screen.getByText("On air")).toBeInTheDocument();
   });
 

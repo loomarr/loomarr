@@ -1,9 +1,12 @@
 import { View } from "@tamagui/core";
 import type { ReactNode } from "react";
+import { Pressable } from "react-native";
 
+import { Icon } from "../icon";
+import { icons } from "../icons";
 import { Action, ChoiceGroup } from "../interaction";
 import { Surface, Text } from "../primitives";
-import type { Density } from "../tokens";
+import { type Density, semanticRadius, semanticSpace, semanticTargets } from "../tokens";
 
 type TabOption<Value extends string> = {
   disabled?: boolean;
@@ -93,6 +96,11 @@ type SelectOption<Value extends string> = {
 interface SelectControlProps<Value extends string> {
   density?: Density;
   disabled?: boolean;
+  /**
+   * `field` draws the closed control as a full-width form box with a chevron (the web forms'
+   * select), for a row that already prints its own label: the label is then announced, not shown.
+   */
+  appearance?: "button" | "field";
   label: string;
   onOpenChange: (open: boolean) => void;
   onValueChange: (value: Value) => void;
@@ -102,6 +110,7 @@ interface SelectControlProps<Value extends string> {
 }
 
 const SelectControl = <Value extends string>({
+  appearance = "button",
   density = "pointer",
   disabled = false,
   label,
@@ -114,20 +123,53 @@ const SelectControl = <Value extends string>({
   const selected = options.find((option) => option.value === value);
   return (
     <View gap="$inline" width="100%">
-      <Text density={density} textRole="label">
-        {label}
-      </Text>
-      <Action
-        accessibilityLabel={`${label}, ${selected?.label ?? "No selection"}`}
-        accessibilityRole="button"
-        aria-expanded={open}
-        density={density}
-        disabled={disabled}
-        onPress={() => onOpenChange(!open)}
-        tone="secondary"
-      >
-        {selected?.label ?? "Choose an option"}
-      </Action>
+      {appearance === "field" ? (
+        <Pressable
+          accessibilityLabel={`${label}, ${selected?.label ?? "No selection"}`}
+          accessibilityRole="button"
+          aria-expanded={open}
+          disabled={disabled}
+          onPress={() => onOpenChange(!open)}
+        >
+          <Surface
+            alignItems="center"
+            backgroundColor="$surfaceCanvas"
+            borderColor="$borderControl"
+            borderRadius={semanticRadius.control}
+            borderWidth={1}
+            flexDirection="row"
+            gap="$inline"
+            minHeight={semanticTargets[density]}
+            opacity={disabled ? 0.62 : 1}
+            paddingHorizontal={semanticSpace.control}
+          >
+            <View flex={1} minWidth={0}>
+              {/* Left, like a form field: the web Pressable's button would otherwise centre it. */}
+              <Text density={density} numberOfLines={1} textAlign="left" textRole="compact" tone="primary">
+                {selected?.label ?? "Choose an option"}
+              </Text>
+            </View>
+            <Icon decorative glyph={icons.channelDown} size="compact" tone="secondary" />
+          </Surface>
+        </Pressable>
+      ) : (
+        <>
+          <Text density={density} textRole="label">
+            {label}
+          </Text>
+          <Action
+            accessibilityLabel={`${label}, ${selected?.label ?? "No selection"}`}
+            accessibilityRole="button"
+            aria-expanded={open}
+            density={density}
+            disabled={disabled}
+            onPress={() => onOpenChange(!open)}
+            tone="secondary"
+          >
+            {selected?.label ?? "Choose an option"}
+          </Action>
+        </>
+      )}
       {open ? (
         <Surface padding="$control">
           <ChoiceGroup

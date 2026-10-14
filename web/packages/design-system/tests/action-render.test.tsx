@@ -101,6 +101,26 @@ describe("Action selected vs focused (#1887)", () => {
     },
   );
 
+  // The light focus fill was a pale amber cream, so selection read amber (#1953).
+  it("marks a selected light action with a neutral grey fill, and amber only once it has focus", () => {
+    act(() => {
+      root.render(
+        <LoomarrProvider theme="light">
+          <Action selected tone="secondary">
+            1.2 s
+          </Action>
+        </LoomarrProvider>,
+      );
+    });
+
+    expect(button().style.backgroundColor).toBe("rgb(210, 214, 222)");
+    expect(button().style.borderTopColor).toBe("rgb(23, 25, 29)");
+
+    act(() => button().focus());
+    expect(button().style.backgroundColor).toBe("rgb(210, 214, 222)");
+    expect(button().style.borderTopColor).toBe("rgb(138, 87, 0)");
+  });
+
   it("sets a selected tv label at 600 over its 400 neighbours", () => {
     // The label is Tamagui Text, so its weight arrives as an atomic `_fw-*` class on the span.
     const weight = (selected: boolean) =>

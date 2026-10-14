@@ -2,6 +2,7 @@ package schedule_test
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func seriesLike(ordinary int, specials ...special) libraryfixture.Availability {
 	k := 0
 	for i := range ordinary {
 		eps = append(eps, schedule.ResolvedProgram{
-			LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Bart's day %d", i),
+			LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Pip's day %d", i),
 			Season: i/20 + 1, Episode: i%20 + 1, DurationMs: episodeMs,
 		})
 		for ; k < len(specials) && k*ordinary/len(specials) <= i; k++ {
@@ -51,11 +52,11 @@ func seriesLike(ordinary int, specials ...special) libraryfixture.Availability {
 				Season: i/20 + 1, Episode: 40 + k, DurationMs: episodeMs})
 		}
 	}
-	return libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{simpsonsKey: {Programs: eps}}}
+	return libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{mudpuddlesKey: {Programs: eps}}}
 }
 
 func channelWithWindow(w time.Duration, zone *time.Location) schedule.Channel {
-	ch := simpsonsChannel()
+	ch := mudpuddlesChannel()
 	ch.DefaultWindow, ch.WindowZone = w, zone
 	return ch
 }
@@ -107,7 +108,7 @@ func assertNoRepeatInADay(t *testing.T, label string, byDay map[string][]airing)
 func TestHolidayEpisodes_SubDayWindowsNeverRepeatInADay(t *testing.T) {
 	for _, w := range []time.Duration{12 * time.Hour, 6 * time.Hour} {
 		for _, placement := range []schedule.HolidayPlacement{schedule.HolidayPlacementAnytime, schedule.HolidayPlacementEvenings} {
-			byDay := airedOn(t, channelWithWindow(w, nil), simpsonsLike(9), seasonalPolicy(schedule.SeasonalPolicy{Placement: placement}),
+			byDay := airedOn(t, channelWithWindow(w, nil), mudpuddlesLike(9), seasonalPolicy(schedule.SeasonalPolicy{Placement: placement}),
 				day(time.October, 13, 0), day(time.October, 14, 0))
 			assertNoRepeatInADay(t, fmt.Sprintf("%s window, %s", w, placement), byDay)
 			if n := len(holidayAirings(byDay["2026-10-13"])); n != 3 {
@@ -120,7 +121,7 @@ func TestHolidayEpisodes_SubDayWindowsNeverRepeatInADay(t *testing.T) {
 func halloweenSpecials(n int) []special {
 	var out []special
 	for i := range n {
-		out = append(out, special{fmt.Sprintf("thoh-%02d", i), fmt.Sprintf("Treehouse of Horror %d", i+1), "The family's annual Halloween special."})
+		out = append(out, special{fmt.Sprintf("thoh-%02d", i), fmt.Sprintf("Puddlehouse of Horror %d", i+1), "The family's annual Halloween special."})
 	}
 	return out
 }
@@ -133,7 +134,7 @@ func TestHolidayEpisodes_ConsecutiveWindowsShareNothing(t *testing.T) {
 		window time.Duration
 		avail  libraryfixture.Availability
 	}{
-		{24 * time.Hour, simpsonsLike(40)},
+		{24 * time.Hour, mudpuddlesLike(40)},
 		{72 * time.Hour, seriesLike(600, halloweenSpecials(40)...)},
 	} {
 		w := tc.window
@@ -164,8 +165,8 @@ func TestHolidayEpisodes_OutOfSeasonShortWindowsNeverBench(t *testing.T) {
 	off := seasonalPolicy(schedule.SeasonalPolicy{Mode: schedule.SeasonalOff})
 	dealt := 0
 	for at := schedule.WindowStart(day(time.November, 5, 0), ch.DefaultWindow, nil); at.Before(day(time.November, 21, 0)); at = at.Add(ch.DefaultWindow) {
-		all := arrange(t, ch, simpsonsLike(30), evenings, at)
-		got, want := holidayAirings(all), holidayAirings(arrange(t, ch, simpsonsLike(30), off, at))
+		all := arrange(t, ch, mudpuddlesLike(30), evenings, at)
+		got, want := holidayAirings(all), holidayAirings(arrange(t, ch, mudpuddlesLike(30), off, at))
 		dealt += len(want)
 		if len(got) != len(want) {
 			t.Fatalf("window opening %s: %d holiday episodes air where the deck deals %d", at.Format(time.Stamp), len(got), len(want))
@@ -199,7 +200,7 @@ func TestHolidayEpisodes_OutOfSeasonEveningIsChannelLocal(t *testing.T) {
 	ch := channelWithWindow(24*time.Hour, ny)
 	seen := 0
 	for d := 2; d <= 12; d++ {
-		for _, a := range holidayAirings(arrange(t, ch, simpsonsLike(30), seasonalPolicy(schedule.SeasonalPolicy{}), time.Date(2026, 11, d, 9, 0, 0, 0, ny))) {
+		for _, a := range holidayAirings(arrange(t, ch, mudpuddlesLike(30), seasonalPolicy(schedule.SeasonalPolicy{}), time.Date(2026, 11, d, 9, 0, 0, 0, ny))) {
 			seen++
 			if inEvening(a, ny) {
 				t.Fatalf("Nov %d: out-of-season %s airs at %s New York time, in the evening", d, a.id, a.start.In(ny).Format(time.Kitchen))
@@ -246,7 +247,7 @@ func TestHolidayEpisodes_HolidayDateNeighboursShareNothing(t *testing.T) {
 
 // Heavy's holiday night is a marathon: the whole pool back to back in the evening.
 func TestHolidayEpisodes_HeavyHolidayNightIsBackToBack(t *testing.T) {
-	got := arrange(t, simpsonsChannel(), simpsonsLike(9), seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthHeavy}), day(time.October, 31, 9))
+	got := arrange(t, mudpuddlesChannel(), mudpuddlesLike(9), seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthHeavy}), day(time.October, 31, 9))
 	first, run := -1, 0
 	for i, a := range got {
 		if strings.HasPrefix(a.id, "thoh-") {
@@ -268,7 +269,7 @@ func TestHolidayEpisodes_HeavyHolidayNightIsBackToBack(t *testing.T) {
 func TestHolidayEpisodes_TwoPartStoryStaysWhole(t *testing.T) {
 	var eps []schedule.ResolvedProgram
 	for i := range 200 {
-		eps = append(eps, schedule.ResolvedProgram{LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Bart's day %d", i),
+		eps = append(eps, schedule.ResolvedProgram{LibraryItemID: fmt.Sprintf("ep-%03d", i), Title: fmt.Sprintf("Pip's day %d", i),
 			Season: i/20 + 1, Episode: i%20 + 1, DurationMs: episodeMs})
 	}
 	for k := range 4 {
@@ -278,10 +279,10 @@ func TestHolidayEpisodes_TwoPartStoryStaysWhole(t *testing.T) {
 	eps = append(eps,
 		schedule.ResolvedProgram{LibraryItemID: "xmas-carol-1", Title: "A Carol (1)", Overview: "A Christmas Eve ghost story.", Season: 20, Episode: 10, DurationMs: episodeMs},
 		schedule.ResolvedProgram{LibraryItemID: "xmas-carol-2", Title: "A Carol (2)", Overview: "The ghosts return.", Season: 20, Episode: 11, DurationMs: episodeMs})
-	avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{simpsonsKey: {Programs: eps}}}
+	avail := libraryfixture.Availability{Series: map[provision.Key]schedule.EpisodeResolution{mudpuddlesKey: {Programs: eps}}}
 	aired := 0
 	for d := 1; d <= 25; d++ {
-		got := arrange(t, simpsonsChannel(), avail, seasonalPolicy(schedule.SeasonalPolicy{}), day(time.December, d, 9))
+		got := arrange(t, mudpuddlesChannel(), avail, seasonalPolicy(schedule.SeasonalPolicy{}), day(time.December, d, 9))
 		for i, a := range got {
 			if a.id == "xmas-carol-1" {
 				aired++
@@ -309,7 +310,7 @@ func TestHolidayEpisodes_DSTDayArrangesCleanly(t *testing.T) {
 	policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthLight})
 	var prev map[string]bool
 	for d := 23; d <= 27; d++ {
-		got := arrange(t, ch, simpsonsLike(40), policy, time.Date(2026, 10, d, 9, 0, 0, 0, london))
+		got := arrange(t, ch, mudpuddlesLike(40), policy, time.Date(2026, 10, d, 9, 0, 0, 0, london))
 		for _, a := range got {
 			if prev[a.id] {
 				t.Fatalf("Oct %d (London): %s re-aired from the day before", d, a.id)
@@ -329,8 +330,8 @@ func TestHolidayEpisodes_HolidayWindowIsChannelLocal(t *testing.T) {
 		t.Skip("no tzdata")
 	}
 	ch := channelWithWindow(24*time.Hour, ny)
-	d := schedule.ComputeDesiredAt(ch, []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}},
-		simpsonsLike(9), schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{}), time.Date(2026, 10, 31, 21, 0, 0, 0, ny))
+	d := schedule.ComputeDesiredAt(ch, []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}},
+		mudpuddlesLike(9), schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{}), time.Date(2026, 10, 31, 21, 0, 0, 0, ny))
 	if len(d.HolidayEpisodes) == 0 || d.HolidayEpisodes[0].Holiday != "halloween" || !d.HolidayEpisodes[0].Active {
 		t.Fatalf("9 pm New York on Oct 31: summary %+v, want Halloween active", d.HolidayEpisodes)
 	}
@@ -340,8 +341,8 @@ func TestHolidayEpisodes_HolidayWindowIsChannelLocal(t *testing.T) {
 func TestHolidayEpisodes_SummaryNamesIdenticalStrengths(t *testing.T) {
 	summary := func(pool int, s schedule.HolidayStrength) schedule.HolidayEpisodes {
 		t.Helper()
-		d := schedule.ComputeDesiredAt(simpsonsChannel(), []schedule.LineupEntry{{Key: simpsonsKey, Title: "The Simpsons"}},
-			simpsonsLike(pool), schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{Strength: s}), day(time.October, 13, 9))
+		d := schedule.ComputeDesiredAt(mudpuddlesChannel(), []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}},
+			mudpuddlesLike(pool), schedule.PodFill, seasonalPolicy(schedule.SeasonalPolicy{Strength: s}), day(time.October, 13, 9))
 		if len(d.HolidayEpisodes) == 0 || d.HolidayEpisodes[0].Holiday != "halloween" {
 			t.Fatalf("pool %d: no Halloween summary", pool)
 		}
@@ -368,18 +369,18 @@ func TestHolidayEpisodes_MarathonLongerThanTheWindowNeverEmpties(t *testing.T) {
 	for _, w := range []time.Duration{time.Hour, 2 * time.Hour} {
 		ch := channelWithWindow(w, nil)
 		for at := day(time.October, 31, 0); at.Before(day(time.November, 1, 0)); at = at.Add(w) {
-			if len(arrange(t, ch, simpsonsLike(9), heavy, at)) == 0 {
+			if len(arrange(t, ch, mudpuddlesLike(9), heavy, at)) == 0 {
 				t.Fatalf("%s window at %s arranges nothing", w, at.Format(time.Kitchen))
 			}
 		}
-		byDay := airedOn(t, ch, simpsonsLike(9), heavy, day(time.October, 31, 0), day(time.November, 1, 0))
+		byDay := airedOn(t, ch, mudpuddlesLike(9), heavy, day(time.October, 31, 0), day(time.November, 1, 0))
 		assertNoRepeatInADay(t, fmt.Sprintf("%s window", w), byDay)
 		if n := len(holidayAirings(byDay["2026-10-31"])); n != 9 {
 			t.Fatalf("%s window: the marathon aired %d of 9", w, n)
 		}
 	}
 	// A pool longer than the whole day fills the date with holiday episodes, back to back.
-	got := arrange(t, simpsonsChannel(), seriesLike(400, halloweenSpecials(80)...), heavy, day(time.October, 31, 9))
+	got := arrange(t, mudpuddlesChannel(), seriesLike(400, halloweenSpecials(80)...), heavy, day(time.October, 31, 9))
 	var n int
 	for _, a := range got {
 		if isHoliday(a.id) {
@@ -422,19 +423,81 @@ func TestHolidayEpisodes_SeasonEndOnlySkips(t *testing.T) {
 		}{{9, time.Hour}, {80, 6 * time.Hour}, {80, 12 * time.Hour}, {80, 24 * time.Hour}, {30, 24 * time.Hour}, {400, 24 * time.Hour}} {
 			specials := max(3, pool.ordinary/20)
 			avail := seriesLike(pool.ordinary, seam.specials(specials)...)
-			// An episode aired again sooner than half the deck less its pool (the in-season
-			// minimum on a small deck) is a seam repeat; out of season the gap is a whole deck.
-			spacing := (pool.ordinary+specials)/2 - specials
 			// Consecutive windows share nothing when the deck holds the window before, this one and
 			// the next; on a shorter deck they must share, and spacing is the guarantee.
 			disjoint := time.Duration(pool.ordinary+specials)*episodeMs*time.Millisecond >= 3*pool.window
-			for _, strength := range []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy} {
-				t.Run(fmt.Sprintf("%s/%d episodes/%s window/%s", seam.name, pool.ordinary, pool.window, strength), func(t *testing.T) {
-					assertSeamOnlySkips(t, channelWithWindow(pool.window, nil), avail, seasonalPolicy(schedule.SeasonalPolicy{Strength: strength}), seam.at, spacing, disjoint)
-				})
+			// The spacing guaranteed depends on the ordering (§6 "Holiday episodes"). In order airs
+			// one fixed deck, so an episode aired again sooner than half the deck less its pool (the
+			// in-season minimum on a small deck) is a seam repeat. Shuffled and syndication deal every
+			// pass afresh, so the fixed deck's geometry is gone and the guarantee is the dealer's
+			// repeat spacing.
+			for _, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
+				spacing := (pool.ordinary+specials)/2 - specials
+				if time.Duration(pool.ordinary+specials)*episodeMs*time.Millisecond < pool.window {
+					// A deck that fits its window loops all day, so the loop, not the deck, sets where
+					// the window closes: the guarantee across the seam is the dealer's, never back to back.
+					spacing = 2
+				} else if order != schedule.OrderSequential {
+					spacing = repeatSpacingProgrammes(pool.ordinary+specials, pool.window)
+				}
+				for _, strength := range []schedule.HolidayStrength{schedule.HolidayStrengthLight, schedule.HolidayStrengthFeatured, schedule.HolidayStrengthHeavy} {
+					policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: strength})
+					policy.Ordering = order
+					t.Run(fmt.Sprintf("%s/%d episodes/%s window/%s/%s", seam.name, pool.ordinary, pool.window, order, strength), func(t *testing.T) {
+						assertSeamOnlySkips(t, channelWithWindow(pool.window, nil), avail, policy, seam.at, spacing, disjoint)
+					})
+				}
 			}
 		}
 	}
+}
+
+// #1939: on a reshuffled 6-hour channel the first window out of Halloween (Nov 1 00:00) re-aired
+// ep-026 from Halloween night's last window, because the trade read ring positions, not airings.
+func TestHolidayEpisodes_SeasonEndNeverReairsHalloweenNight(t *testing.T) {
+	ch := channelWithWindow(6*time.Hour, nil)
+	avail := seriesLike(80, halloweenSpecials(4)...)
+	for _, order := range []schedule.OrderingMode{schedule.OrderShuffle, schedule.OrderSyndication} {
+		policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthHeavy})
+		policy.Ordering = order
+		night := ids(arrange(t, ch, avail, policy, day(time.October, 31, 18)))
+		for _, a := range arrange(t, ch, avail, policy, day(time.November, 1, 0)) {
+			if !isHoliday(a.id) && night[a.id] {
+				t.Fatalf("%s: Nov 1 00:00 re-airs %s from Halloween night", order, a.id)
+			}
+		}
+	}
+}
+
+// BenchmarkHolidayPlanner_ShuffledSeason prices one in-season window of a 400-episode shuffled
+// deck: the planner replays the season from its anchor and tops every window up with the
+// most-rested units of the pass (topUp), so this is the regime #1939's real-distance pick has to
+// keep cheap.
+func BenchmarkHolidayPlanner_ShuffledSeason(b *testing.B) {
+	ch := channelWithWindow(24*time.Hour, nil)
+	avail := seriesLike(400, halloweenSpecials(20)...)
+	policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
+	policy.Ordering = schedule.OrderShuffle
+	at := day(time.October, 30, 0)
+	lineup := []schedule.LineupEntry{{Key: mudpuddlesKey, Title: "The Mudpuddles"}}
+	for b.Loop() {
+		schedule.ComputeDesiredAt(ch, lineup, avail, schedule.PodFill, policy, at)
+	}
+}
+
+// repeatSpacingProgrammes is the dealer's repeat spacing (repeatSpacing in passes.go) for a deck of
+// n 22-minute episodes under the default seven-day episode separation, in whole programmes: a third
+// of the pool less two units, or two windows and a unit as far as the pool allows and never less
+// than a window and a unit, the floors winning.
+func repeatSpacingProgrammes(n int, window time.Duration) int {
+	unit := time.Duration(episodeMs) * time.Millisecond
+	pool := time.Duration(n) * unit
+	spacing := (pool - 2*unit) / 3
+	floor := 2 * unit
+	if pool > window {
+		floor = max(floor, min(2*window+unit, pool-window), window+unit)
+	}
+	return int(max(spacing, min(floor, pool)) / unit)
 }
 
 // assertSeamOnlySkips walks the windows of the two days either side of seam: none is empty, none
@@ -451,7 +514,8 @@ func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture
 		if len(got) == 0 {
 			t.Fatalf("the window opening %s airs nothing", open.Format(time.Stamp))
 		}
-		for _, a := range got {
+		// Spacing is measured on what airs: a deck shorter than its window loops (#1939).
+		for _, a := range airedLooped(t, ch, avail, policy, open) {
 			n++
 			if isHoliday(a.id) {
 				continue
@@ -466,5 +530,128 @@ func assertSeamOnlySkips(t *testing.T, ch schedule.Channel, avail libraryfixture
 			last[a.id], at[a.id] = a, n
 		}
 		before = ids(got)
+	}
+}
+
+// #1939 final review: in season, (A) a pool barely wider than its window had its repeat spacing
+// capped at the whole pool, so every unit was too soon, the Thanksgiving window aired one episode
+// and playout looped it all day; (B) a deck that fits its window had its seam repaired before the
+// holiday episodes changed where its loop stopped, so a unit closed one window and opened the
+// next. Walked Oct 1 → Jan 10 as playout airs it (looped): every window airs most of its budget
+// and no unit airs twice in a row, in a window or across a seam.
+func TestHolidayEpisodes_InSeasonWindowsFillAndNeverRepeatBackToBack(t *testing.T) {
+	walkHolidaySeasons(t, false)
+}
+
+// The same walk with the viewing history fed back, as production always has it after the first
+// day: each window's guard trades out what aired too recently, and that must not bring a unit back
+// to back where the walk without history does not (#1939). On a pool wider than its window the walk
+// opens a day after the channel aired otherwise (its lineup was edited): what that day aired is on
+// record, and the guard must keep it out of the first window.
+func TestHolidayEpisodes_InSeasonWindowsNeverRepeatBackToBackWithHistory(t *testing.T) {
+	walkHolidaySeasons(t, true)
+}
+
+// walkHolidaySeasons airs Oct 1 → Jan 10 window by window, looped as playout airs it, and counts the
+// episodes that air twice in a row.
+func walkHolidaySeasons(t *testing.T, withHistory bool) {
+	specials := func(n int) []special {
+		return append(append(halloweenSpecials(n), thanksgivingSpecials(n)...), christmasSpecials(n)...)
+	}
+	for _, tc := range []struct {
+		name     string
+		episodes int // ordinary and holiday, 22 minutes each
+		window   time.Duration
+		// The back-to-backs allowed per order (sequential, shuffle, syndication), without and with
+		// the history. Only five 22-minute episodes in a six-hour window loop more than three times
+		// a window, so in sequence its seam repeats every window (257, as on main).
+		maxRepeats, maxRepeatsWithHistory [3]int
+		// With the history, how many of the first window's ordinary episodes the day before aired.
+		recent int
+	}{
+		{"pool 1.0 windows", 66, 24 * time.Hour, [3]int{}, [3]int{}, 0},
+		{"pool 1.05 windows", 69, 24 * time.Hour, [3]int{}, [3]int{}, 0},
+		{"pool 1.2 windows", 79, 24 * time.Hour, [3]int{}, [3]int{}, 8},
+		{"pool 1.5 windows", 99, 24 * time.Hour, [3]int{}, [3]int{}, 20},
+		{"fitting 5", 5, 6 * time.Hour, [3]int{257, 0, 0}, [3]int{257, 0, 0}, 0},
+		{"fitting 10", 10, 12 * time.Hour, [3]int{}, [3]int{}, 0},
+		{"fitting 15", 15, 24 * time.Hour, [3]int{}, [3]int{}, 0},
+		{"fitting 10", 10, 6 * time.Hour, [3]int{}, [3]int{}, 0},
+	} {
+		perHoliday := max(1, tc.episodes/25)
+		avail := seriesLike(tc.episodes-3*perHoliday, specials(perHoliday)...)
+		for o, order := range []schedule.OrderingMode{schedule.OrderSequential, schedule.OrderShuffle, schedule.OrderSyndication} {
+			policy := seasonalPolicy(schedule.SeasonalPolicy{Strength: schedule.HolidayStrengthFeatured})
+			policy.Ordering = order
+			t.Run(fmt.Sprintf("%s/%v/%s", tc.name, tc.window, order), func(t *testing.T) {
+				ch := channelWithWindow(tc.window, nil)
+				maxRepeats := tc.maxRepeats[o]
+				recent := map[string]bool{} // aired the day before the walk opens, on record
+				if withHistory {
+					maxRepeats = tc.maxRepeatsWithHistory[o]
+					// The guard trades a shuffled deal's slice; it does not reorder a sequence.
+					if order != schedule.OrderSequential && tc.recent > 0 {
+						ch.WindowOpened = day(time.October, 1, 0)
+						// The guard trades only for a unit on record as aired longer ago: the rest of
+						// the series aired the week before.
+						ch.LastAired = map[string]time.Time{}
+						for i := range tc.episodes - 3*perHoliday {
+							ch.LastAired[fmt.Sprintf("ep-%03d", i)] = ch.WindowOpened.AddDate(0, 0, -7)
+						}
+						at := ch.WindowOpened.Add(-tc.window)
+						for _, a := range arrange(t, ch, avail, policy, ch.WindowOpened) {
+							if len(recent) < tc.recent && !isHoliday(a.id) {
+								recent[a.id], ch.LastAired[a.id] = true, at
+								at = at.Add(episodeMs * time.Millisecond)
+							}
+						}
+					}
+				}
+				var prev, first string
+				repeats := 0
+				for open := day(time.October, 1, 0); open.Before(time.Date(2027, time.January, 10, 0, 0, 0, 0, time.UTC)); open = open.Add(tc.window) {
+					ch.WindowOpened = open
+					if len(recent) > 0 && open.Equal(day(time.October, 1, 0)) {
+						for _, a := range airedLooped(t, ch, avail, policy, open) {
+							if recent[a.id] {
+								t.Fatalf("%s aired the day before and airs again at %s", a.id, a.start.Format(time.Stamp))
+							}
+						}
+					}
+					if got := arrange(t, ch, avail, policy, open); tc.episodes*episodeMs < int(tc.window.Milliseconds()) {
+						// A deck that fits its window airs all of it but the pool every window.
+						if len(got) < 2 {
+							t.Fatalf("the window opening %s airs %d programmes", open.Format(time.Stamp), len(got))
+						}
+					} else if aired := len(got) * episodeMs; aired < int(tc.window.Milliseconds())*3/4 {
+						t.Fatalf("the window opening %s airs %v of its %v", open.Format(time.Stamp), time.Duration(aired)*time.Millisecond, tc.window)
+					}
+					var aired map[string]time.Time // what has aired, by unit, once this window has
+					if withHistory {
+						aired = maps.Clone(ch.LastAired)
+						if aired == nil {
+							aired = map[string]time.Time{}
+						}
+					}
+					for _, a := range airedLooped(t, ch, avail, policy, open) {
+						if a.id == prev {
+							if repeats++; first == "" {
+								first = fmt.Sprintf("%s at %s", a.id, a.start.Format(time.Stamp))
+							}
+						}
+						prev = a.id
+						if aired != nil {
+							aired[a.id] = a.start
+						}
+					}
+					if withHistory {
+						ch.LastAired = aired
+					}
+				}
+				if repeats > maxRepeats {
+					t.Fatalf("%d episodes air twice in a row (first %s), want at most %d", repeats, first, maxRepeats)
+				}
+			})
+		}
 	}
 }

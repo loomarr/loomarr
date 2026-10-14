@@ -5,14 +5,14 @@ import { InvitationDialog } from "./invitation-dialog";
 
 const expiresAt = Date.UTC(2030, 0, 8, 12);
 const invitation: InvitationBody = {
-  id: "invitation-dorothy",
+  id: "invitation-delia",
   kind: "local",
-  username: "Dorothy",
+  username: "Delia",
   role: "member",
   status: "pending",
   createdAt: Date.UTC(2030, 0, 1, 12),
   expiresAt,
-  contactAddress: { email: "dorothy@example.com", provenance: "admin", status: "pending" },
+  contactAddress: { email: "delia@example.com", provenance: "admin", status: "pending" },
 };
 const deterministicGrant = {
   url: "https://loomarr.example/join#grant=storybook-only-deterministic-grant",
@@ -24,8 +24,8 @@ const meta = {
   component: InvitationDialog,
   args: {
     candidates: [
-      { id: "library-ada", name: "Ada Lovelace", imported: false, disabled: false, isAdmin: true },
-      { id: "library-grace", name: "Grace Hopper", imported: true, disabled: false, isAdmin: false },
+      { id: "library-adela", name: "Adela Hale", imported: false, disabled: false, isAdmin: true },
+      { id: "library-greta", name: "Greta Finch", imported: true, disabled: false, isAdmin: false },
     ],
     defaultOpen: true,
     libraryAvailable: true,

@@ -45,8 +45,13 @@ import (
 // WatermarkCheckResult is the self-check's verdict and what it measured.
 type WatermarkCheckResult struct {
 	Works bool
+	// Colour is whether a coloured bug blends right too (#1659): the same assertions against a
+	// coloured test bug's BT.709 Y, U and V. Without it, coloured looks air in white.
+	Colour bool
 	// Detail is why the check failed, or the measurements when it passed.
 	Detail string
+	// ColourDetail is why the coloured check failed.
+	ColourDetail string
 }
 
 const (
@@ -93,12 +98,9 @@ func WatermarkCheck(ctx context.Context, ffmpeg string, host HostProfile, dir st
 	fail := func(format string, a ...any) WatermarkCheckResult {
 		return WatermarkCheckResult{Detail: fmt.Sprintf(format, a...)}
 	}
-	wm, err := writeCheckBug(dir)
-	if err != nil {
-		return fail("write test bug: %v", err)
-	}
 	host.Overlay = true
-	var details []string
+	var details, colourDetails []string
+	colour := true
 	for _, class := range checkClasses(host) {
 		src, err := class.make(ctx, ffmpeg, dir)
 		if err != nil {
@@ -108,13 +110,32 @@ func WatermarkCheck(ctx context.Context, ffmpeg string, host HostProfile, dir st
 			}
 			return fail("%s source: %v", class.name, err)
 		}
-		d, err := checkClass(ctx, ffmpeg, host, class.facts, src, wm, filepath.Join(dir, class.name))
-		if err != nil {
-			return fail("%s: %v", class.name, err)
+		for _, target := range []checkTarget{checkWhite, checkColour} {
+			if target == checkColour && !colour {
+				continue
+			}
+			wm, err := writeCheckBugOf(dir, target)
+			if err != nil {
+				return fail("write test bug: %v", err)
+			}
+			d, err := checkClass(ctx, ffmpeg, host, class.facts, src, wm, target, filepath.Join(dir, class.name+"-"+target.name))
+			switch {
+			case err != nil && target == checkWhite:
+				return fail("%s: %v", class.name, err)
+			case err != nil:
+				// A coloured miss keeps the bug, in white (#1659 Q2): the programme still carries a logo.
+				colour = false
+				colourDetails = append(colourDetails, class.name+": "+err.Error())
+			case target == checkWhite:
+				details = append(details, class.name+": "+d)
+			}
 		}
-		details = append(details, class.name+": "+d)
 	}
-	return WatermarkCheckResult{Works: true, Detail: strings.Join(details, "; ")}
+	r := WatermarkCheckResult{Works: true, Colour: colour, Detail: strings.Join(details, "; ")}
+	if !colour {
+		r.ColourDetail = strings.Join(colourDetails, "; ")
+	}
+	return r
 }
 
 type checkSource struct {
@@ -167,7 +188,7 @@ func synthWatermarkClip(ctx context.Context, ffmpeg, out string, args ...string)
 }
 
 // checkClass encodes src bug-off and bug-on through the production graph and compares them.
-func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts MediaFormat, src string, wm *Watermark, prefix string) (string, error) {
+func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts MediaFormat, src string, wm *Watermark, target checkTarget, prefix string) (string, error) {
 	out := OutputProfile{Width: checkWidth, Height: checkHeight, FPS: checkFPS, Quality: outputQuality,
 		TargetKbps: outputTargetKbps, MaxKbps: outputMaxKbps, GOPSeconds: outputGOPSeconds, AudioKbps: 128}
 	// encode runs the graph over checkFrames and returns its wall time, which overlaySpeed compares.
@@ -221,7 +242,7 @@ func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts Medi
 	x, y := wm.position(facts, out)
 	bug := Rect{X: x, Y: y, W: wm.Width, H: wm.Height}
 	luma := checkWidth * checkHeight
-	m := compareBug(offYUV[:luma], onYUV[:luma], checkWidth, bug)
+	m := compareBugTo(offYUV[:luma], onYUV[:luma], checkWidth, bug, target.y)
 	switch {
 	case m.pictureMean < 16.5:
 		return "", fmt.Errorf("the bug-off picture is black (YAVG %.1f): the fixture or the graph is broken", m.pictureMean)
@@ -229,9 +250,9 @@ func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts Medi
 		return "", fmt.Errorf("the overlay lost the programme picture: outside the bug, mean |ΔY| %.1f vs bug-off (YAVG on %.1f, off %.1f)",
 			m.pictureDiff, m.onMean, m.pictureMean)
 	case math.Abs(m.bugLuma-m.bugWant) > bugTolerance:
-		return "", fmt.Errorf("the bug is wrong: luma %.1f where a 65%% white blend is %.1f (background %.1f)", m.bugLuma, m.bugWant, m.bugBackground)
+		return "", fmt.Errorf("the bug is wrong: luma %.1f where a 65%% %s blend is %.1f (background %.1f)", m.bugLuma, target.name, m.bugWant, m.bugBackground)
 	}
-	if err := bugChroma(offYUV, onYUV, bug); err != nil {
+	if err := bugChromaOf(offYUV, onYUV, bug, target); err != nil {
 		return "", err
 	}
 	if err := overlaySpeed(offTook, onTook, checkFrames); err != nil {
@@ -241,19 +262,50 @@ func checkClass(ctx context.Context, ffmpeg string, host HostProfile, facts Medi
 		m.pictureDiff, m.bugLuma, m.bugWant, m.bugBackground, checkFrames, onTook.Round(time.Millisecond), offTook.Round(time.Millisecond)), nil
 }
 
+// checkTarget is a test bug's colour: its sRGB value and the coded BT.709 limited-range Y, U and V a
+// correct overlay blends toward.
+type checkTarget struct {
+	name    string
+	rgb     color.NRGBA
+	y, u, v float64
+}
+
+// bt709Target is the target for an sRGB colour (Rec. ITU-R BT.709 luma, limited range).
+func bt709Target(name string, c color.NRGBA) checkTarget {
+	r, g, b := float64(c.R)/255, float64(c.G)/255, float64(c.B)/255
+	y := 0.2126*r + 0.7152*g + 0.0722*b
+	return checkTarget{name: name, rgb: c, y: 16 + 219*y, u: 128 + 224*(b-y)/1.8556, v: 128 + 224*(r-y)/1.5748}
+}
+
+var (
+	checkWhite = bt709Target("white", color.NRGBA{255, 255, 255, 255})
+	// checkColour is the coloured target (#1659): the token green (lock, #3DD68C), whose BT.601 and
+	// BT.709 luma differ by ~16 full-range levels (~9 coded at the check alpha, past bugTolerance),
+	// so a bug converted with an unstated matrix fails it.
+	checkColour = bt709Target("green", color.NRGBA{0x3D, 0xD6, 0x8C, 255})
+)
+
 // writeCheckBug writes the test bug, a white square at the check alpha (straight).
-func writeCheckBug(dir string) (*Watermark, error) {
+func writeCheckBug(dir string) (*Watermark, error) { return writeCheckBugOf(dir, checkWhite) }
+
+// writeCheckBugOf writes a test bug of the target's colour.
+func writeCheckBugOf(dir string, target checkTarget) (*Watermark, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	a := uint8(math.Round(checkAlpha * 255))
+	c := target.rgb
+	c.A = uint8(math.Round(checkAlpha * 255))
 	img := image.NewNRGBA(image.Rect(0, 0, checkBug, checkBug))
 	for y := 0; y < checkBug; y++ {
 		for x := 0; x < checkBug; x++ {
-			img.SetNRGBA(x, y, color.NRGBA{255, 255, 255, a})
+			img.SetNRGBA(x, y, c)
 		}
 	}
-	wm := &Watermark{Straight: filepath.Join(dir, "bug.png"),
+	name := "bug.png"
+	if target != checkWhite {
+		name = "bug-" + target.name + ".png"
+	}
+	wm := &Watermark{Straight: filepath.Join(dir, name),
 		Width: checkBug, Height: checkBug, Corner: CornerTopRight, MarginX: 96, MarginY: 54}
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
@@ -299,6 +351,11 @@ type bugMeasure struct {
 // compareBug measures the programme outside the bug (with a guard band for chroma and coding
 // bleed) and the bug's interior against the expected straight-alpha blend of limited-range white.
 func compareBug(off, on []byte, width int, bug Rect) bugMeasure {
+	return compareBugTo(off, on, width, bug, checkWhite.y)
+}
+
+// compareBugTo is compareBug for a test bug of coded luma bugY.
+func compareBugTo(off, on []byte, width int, bug Rect, bugY float64) bugMeasure {
 	const guard, inset = 8, 6
 	var m bugMeasure
 	var nOut, nIn float64
@@ -313,7 +370,7 @@ func compareBug(off, on []byte, width int, bug Rect) bugMeasure {
 		case inBug:
 			m.bugLuma += b
 			m.bugBackground += o
-			m.bugWant += checkAlpha*235 + (1-checkAlpha)*o
+			m.bugWant += checkAlpha*bugY + (1-checkAlpha)*o
 			nIn++
 		case !inGuard:
 			m.pictureDiff += math.Abs(o - b)
@@ -333,21 +390,25 @@ func compareBug(off, on []byte, width int, bug Rect) bugMeasure {
 // bugChroma checks the bug's colour in two decoded yuv420p frames: inside the bug, U and V are the
 // white bug's neutral 128 blended at the check alpha over the bug-off chroma. The luma assertion
 // cannot see a cast: stock overlay_opencl over NV12 got luma exact and pulled V toward 0 (#1595).
-func bugChroma(off, on []byte, bug Rect) error {
+func bugChroma(off, on []byte, bug Rect) error { return bugChromaOf(off, on, bug, checkWhite) }
+
+// bugChromaOf is bugChroma for the target's U and V.
+func bugChromaOf(off, on []byte, bug Rect, target checkTarget) error {
 	const inset = 4 // chroma samples in from the bug's edge, past the 2x2 alpha blending and coding bleed
 	cw, ch := checkWidth/2, checkHeight/2
 	for p, name := range []string{"U", "V"} {
+		bugC := []float64{target.u, target.v}[p]
 		base := checkWidth*checkHeight + p*cw*ch
 		var got, want, n float64
 		for y := bug.Y/2 + inset; y < (bug.Y+bug.H)/2-inset; y++ {
 			for x := bug.X/2 + inset; x < (bug.X+bug.W)/2-inset; x++ {
 				got += float64(on[base+y*cw+x])
-				want += checkAlpha*128 + (1-checkAlpha)*float64(off[base+y*cw+x])
+				want += checkAlpha*bugC + (1-checkAlpha)*float64(off[base+y*cw+x])
 				n++
 			}
 		}
 		if got, want = got/n, want/n; math.Abs(got-want) > bugTolerance {
-			return fmt.Errorf("the bug's colour is wrong: %s %.1f where a white blend is %.1f", name, got, want)
+			return fmt.Errorf("the bug's colour is wrong: %s %.1f where a %s blend is %.1f", name, got, target.name, want)
 		}
 	}
 	return nil

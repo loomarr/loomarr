@@ -13,7 +13,7 @@ import (
 )
 
 // rotatingCycle mimics the real scheduler: it returns a DIFFERENT arrangement per rolling window,
-// the way windowSlice advances its start by the window index (§6.5). Records the instants it was
+// the way windowSliceDealt advances its start by the window index (§6.5). Records the instants it was
 // asked about so a test can assert the guide re-resolved at each boundary.
 type rotatingCycle struct {
 	mu                sync.Mutex

@@ -125,6 +125,47 @@ func civilNoon(now time.Time, zone *time.Location) time.Time {
 	return time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
 }
 
+// HonouredHolidays lists the built-in holidays a channel honours, in calendar order, each with its
+// window that is on at `now` or comes next (#1659 W2c, the On-screen logo's holiday rows). A channel
+// whose seasonal mode is off (Ignore holidays) honours none; a chosen subset limits the list. Like
+// activeHolidays it dates `now` on zone's wall clock (nil = UTC), so a row is on exactly while
+// ActiveHolidayAt names it.
+func HonouredHolidays(now time.Time, seasonal SeasonalPolicy, zone *time.Location) []HolidayWindow {
+	if seasonal.Mode == SeasonalOff {
+		return nil
+	}
+	now = civilNoon(now, zone)
+	sel := lowerSet(seasonal.Holidays)
+	var out []HolidayWindow
+	for _, h := range builtinCalendar {
+		if _, ok := sel[h.id]; len(sel) > 0 && !ok {
+			continue
+		}
+		for _, y := range []int{now.Year() - 1, now.Year(), now.Year() + 1} {
+			if start, end := h.window(y); !end.Before(now) {
+				out = append(out, HolidayWindow{ID: h.id, Start: start, End: end})
+				break
+			}
+		}
+	}
+	return out
+}
+
+// ActiveHolidayAt is the calendar holiday a channel honours at t, or "": the holiday the scheduler
+// boosts, through the same calendar, selection and channel-local evaluation (zone = the channel's
+// wall clock, nil = UTC), so the on-screen logo's holiday version (WatermarkHoliday) flips at the
+// same local instant as the programming. A channel whose seasonal mode is off (Ignore holidays)
+// honours none.
+func ActiveHolidayAt(t time.Time, seasonal SeasonalPolicy, zone *time.Location) string {
+	if seasonal.Mode == SeasonalOff {
+		return ""
+	}
+	if active := activeHolidays(t, zone, seasonal.Holidays); len(active) > 0 {
+		return active[0].id
+	}
+	return ""
+}
+
 // activeHolidays returns the calendar holidays whose window contains `now`'s date on zone's wall
 // clock, limited to the channel's selected subset (empty subset = all built-in holidays).
 func activeHolidays(now time.Time, zone *time.Location, selected []string) []holiday {

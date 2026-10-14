@@ -4,32 +4,32 @@ import { widthFrame } from "@/test/story-utils";
 import { InvitationRoster } from "./invitation-roster";
 
 const base = {
-  id: "invitation-ada",
+  id: "invitation-adela",
   kind: "local",
-  username: "Ada",
+  username: "Adela",
   role: "member",
   status: "pending",
   createdAt: Date.UTC(2030, 0, 1),
   expiresAt: Date.UTC(2030, 0, 8),
-  contactAddress: { email: "ada@example.com", status: "pending", provenance: "admin" },
+  contactAddress: { email: "adela@example.com", status: "pending", provenance: "admin" },
 } satisfies InvitationBody;
 
 const invitations: InvitationBody[] = [
   { ...base, emailDelivery: { status: "queued", attemptNumber: 1, updatedAt: Date.UTC(2030, 0, 1) } },
   {
     ...base,
-    id: "invitation-grace",
+    id: "invitation-greta",
     kind: "library",
     username: undefined,
-    libraryUserId: "library-grace",
-    displayName: "Grace Hopper",
+    libraryUserId: "library-greta",
+    displayName: "Greta Finch",
     role: "admin",
     emailDelivery: { status: "delivered", attemptNumber: 1, updatedAt: Date.UTC(2030, 0, 2) },
   },
   {
     ...base,
-    id: "invitation-dorothy",
-    username: "Dorothy",
+    id: "invitation-delia",
+    username: "Delia",
     emailDelivery: {
       status: "failed",
       outcome: "recipient_rejected",

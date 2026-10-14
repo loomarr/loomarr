@@ -572,7 +572,7 @@ describe("ChannelPolicyFields defaults and overrides", () => {
 // numbers below mirror a real channel: 226 half-hour-ish episodes loop in about 3½ days.
 describe("ChannelPolicyFields · play order consequence", () => {
   const HOUR = 3_600_000;
-  const SIMPSONS = { episodes: 226, movies: 0, series: 1, runtimeMs: 83 * HOUR };
+  const ONE_SERIES = { episodes: 226, movies: 0, series: 1, runtimeMs: 83 * HOUR };
   const MOVIES = { episodes: 0, movies: 40, series: 0, runtimeMs: 72 * HOUR };
   const MIXED = { episodes: 120, movies: 0, series: 3, runtimeMs: 60 * HOUR };
 
@@ -580,14 +580,14 @@ describe("ChannelPolicyFields · play order consequence", () => {
     render(<ChannelPolicyFields policy={policy} onChange={vi.fn()} show="ordering" cycle={cycle} />);
 
   it("In order: names the episodes, start to finish, and how often it starts over", () => {
-    renderOrder({ ordering: "sequential" }, SIMPSONS);
+    renderOrder({ ordering: "sequential" }, ONE_SERIES);
     expect(
       screen.getByText("226 episodes, start to finish, then it starts over — about every 3½ days."),
     ).toBeInTheDocument();
   });
 
   it("Shuffled: says the order is a random mix, not episode order", () => {
-    renderOrder({ ordering: "shuffle" }, SIMPSONS);
+    renderOrder({ ordering: "shuffle" }, ONE_SERIES);
     expect(
       screen.getByText(
         "226 episodes, in a random mix instead of episode order. One full pass is about 3½ days.",
@@ -596,7 +596,7 @@ describe("ChannelPolicyFields · play order consequence", () => {
   });
 
   it("Syndication: explains the deck instead of leaving the jargon bare", () => {
-    renderOrder({ ordering: "syndication" }, SIMPSONS);
+    renderOrder({ ordering: "syndication" }, ONE_SERIES);
     expect(
       screen.getByText(/dealt like a deck of cards: everything plays once before anything repeats/),
     ).toBeInTheDocument();
@@ -614,7 +614,7 @@ describe("ChannelPolicyFields · play order consequence", () => {
   });
 
   it("follows the order the scheduler resolved when the channel uses its own strategy", () => {
-    renderOrder({}, { ...SIMPSONS, ordering: "shuffle" });
+    renderOrder({}, { ...ONE_SERIES, ordering: "shuffle" });
     expect(screen.getByText(/^226 episodes, in a random mix/)).toBeInTheDocument();
   });
 
@@ -624,7 +624,7 @@ describe("ChannelPolicyFields · play order consequence", () => {
   });
 
   it("links the consequence to the control for assistive tech", () => {
-    renderOrder({ ordering: "sequential" }, SIMPSONS);
+    renderOrder({ ordering: "sequential" }, ONE_SERIES);
     const line = screen.getByText(/226 episodes, start to finish/);
     expect(screen.getByRole("combobox", { name: /Play order/ })).toHaveAttribute("aria-describedby", line.id);
   });

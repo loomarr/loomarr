@@ -71,8 +71,8 @@ func TestLowerWhat(t *testing.T) {
 		}
 	})
 	t.Run("series:<key> → series scope", func(t *testing.T) {
-		s, _, ok := LowerWhat("series:series:tvdb:71470")
-		if !ok || len(s.Series) != 1 || string(s.Series[0]) != "series:tvdb:71470" {
+		s, _, ok := LowerWhat("series:series:tvdb:90071470")
+		if !ok || len(s.Series) != 1 || string(s.Series[0]) != "series:tvdb:90071470" {
 			t.Errorf("series scope wrong: %+v ok=%v", s, ok)
 		}
 	})

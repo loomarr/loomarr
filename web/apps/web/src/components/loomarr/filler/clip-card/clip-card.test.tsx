@@ -12,7 +12,7 @@ const Theme = ({ children }: { children: ReactNode }) => (
 const render = (ui: ReactNode) => rtlRender(ui, { wrapper: Theme });
 
 const base: ClipDTO = {
-  name: "Sunny D — Dude!",
+  name: "Fizzbolt — Dude!",
   kind: "commercial",
   durationMs: 30000,
   era: 1990,
@@ -130,7 +130,7 @@ describe("ClipCard", () => {
   it("opens inspection for already-tagged clips", () => {
     const onOpen = vi.fn();
     render(<ClipCard clip={base} onOpen={onOpen} />);
-    fireEvent.click(screen.getByRole("button", { name: "View details for Sunny D — Dude!" }));
+    fireEvent.click(screen.getByRole("button", { name: "View details for Fizzbolt — Dude!" }));
     expect(onOpen).toHaveBeenCalledOnce();
   });
   // ⚠ The important half of V17b. A placeholder for every frameless clip would be the wrong
@@ -160,10 +160,10 @@ describe("ClipCard", () => {
   // would have a screen reader announce the same clip twice.
   it("leaves the frame's alt empty because the name is already announced", () => {
     const { container } = render(
-      <ClipCard clip={{ ...base, name: "Frosted Flakes", thumbImage: framedImage }} />,
+      <ClipCard clip={{ ...base, name: "Crunchlings", thumbImage: framedImage }} />,
     );
     expect(container.querySelector("img")).toHaveAttribute("alt", "");
-    expect(screen.getByText("Frosted Flakes")).toBeInTheDocument();
+    expect(screen.getByText("Crunchlings")).toBeInTheDocument();
   });
 
   // §10 era grounding (V34): an ungrounded AI year renders as a QUESTION, never as a tag —
@@ -266,9 +266,9 @@ describe("ClipCard", () => {
     // screen reader's element list and unusable by voice control ("click play" — which one?).
     it("names the play button after the clip", () => {
       const onPlay = vi.fn();
-      render(<ClipCard clip={{ ...framed, name: "Frosted Flakes" }} onOpen={onPlay} />);
+      render(<ClipCard clip={{ ...framed, name: "Crunchlings" }} onOpen={onPlay} />);
 
-      fireEvent.click(screen.getByRole("button", { name: "Preview Frosted Flakes" }));
+      fireEvent.click(screen.getByRole("button", { name: "Preview Crunchlings" }));
       expect(onPlay).toHaveBeenCalledOnce();
     });
 
@@ -336,7 +336,7 @@ describe("ClipCard", () => {
     it("opens a frameless clip through its title without another action row", () => {
       const onOpen = vi.fn();
       render(<ClipCard clip={{ ...base, thumbImage: undefined }} onOpen={onOpen} />);
-      fireEvent.click(screen.getByRole("button", { name: "View details for Sunny D — Dude!" }));
+      fireEvent.click(screen.getByRole("button", { name: "View details for Fizzbolt — Dude!" }));
       expect(onOpen).toHaveBeenCalledOnce();
       expect(screen.queryByRole("button", { name: /preview/i })).not.toBeInTheDocument();
     });

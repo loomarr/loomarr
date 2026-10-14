@@ -15,50 +15,50 @@ func movieEntry(key string, year, collectionID int) LineupEntry {
 // order; a collection with <2 present films isn't grouped; series never group.
 func TestAssignFranchiseGroups(t *testing.T) {
 	entries := []LineupEntry{
-		// Indiana Jones (collection 84), deliberately out of release order + interleaved.
-		movieEntry("movie:tmdb:87", 1984, 84),                                  // Temple of Doom
-		movieEntry("movie:tmdb:210577", 2001, 0),                               // a standalone
-		movieEntry("movie:tmdb:85", 1981, 84),                                  // Raiders (FIRST film, no shared title)
-		movieEntry("movie:tmdb:89", 1989, 84),                                  // Last Crusade
-		movieEntry("movie:tmdb:999", 1990, 555),                                // lone film of another franchise
-		LineupEntry{Key: "series:tvdb:1", Title: "A Series", CollectionID: 84}, // series ignored
+		// The Juniper Vale films (collection 84), deliberately out of release order + interleaved.
+		movieEntry("movie:tmdb:90000087", 1984, 84),                                   // The Ash Temple
+		movieEntry("movie:tmdb:90210577", 2001, 0),                                    // a standalone
+		movieEntry("movie:tmdb:90000085", 1981, 84),                                   // Brass Idol (FIRST film, no shared title)
+		movieEntry("movie:tmdb:90000089", 1989, 84),                                   // Final Pilgrimage
+		movieEntry("movie:tmdb:90000999", 1990, 555),                                  // lone film of another franchise
+		LineupEntry{Key: "series:tvdb:90000001", Title: "A Series", CollectionID: 84}, // series ignored
 	}
 	tags := assignFranchiseGroups(entries)
 
-	// The three Indy films share one group, indexed by release year (Raiders 1 → Temple 2 → Crusade 3).
-	g := tags["movie:tmdb:85"]
+	// The three Vale films share one group, indexed by release year (Idol 1 → Temple 2 → Pilgrimage 3).
+	g := tags["movie:tmdb:90000085"]
 	if g.group == "" {
-		t.Fatal("Raiders should be in a franchise group")
+		t.Fatal("Brass Idol should be in a franchise group")
 	}
-	if tags["movie:tmdb:87"].group != g.group || tags["movie:tmdb:89"].group != g.group {
-		t.Error("all three Indy films must share one group")
+	if tags["movie:tmdb:90000087"].group != g.group || tags["movie:tmdb:90000089"].group != g.group {
+		t.Error("all three Vale films must share one group")
 	}
-	if tags["movie:tmdb:85"].index != 1 || tags["movie:tmdb:87"].index != 2 || tags["movie:tmdb:89"].index != 3 {
-		t.Errorf("release order wrong: Raiders=%d Temple=%d Crusade=%d",
-			tags["movie:tmdb:85"].index, tags["movie:tmdb:87"].index, tags["movie:tmdb:89"].index)
+	if tags["movie:tmdb:90000085"].index != 1 || tags["movie:tmdb:90000087"].index != 2 || tags["movie:tmdb:90000089"].index != 3 {
+		t.Errorf("release order wrong: Idol=%d Temple=%d Pilgrimage=%d",
+			tags["movie:tmdb:90000085"].index, tags["movie:tmdb:90000087"].index, tags["movie:tmdb:90000089"].index)
 	}
 	// A standalone, a lone-franchise film, and a series are NOT grouped.
-	if _, ok := tags["movie:tmdb:210577"]; ok {
+	if _, ok := tags["movie:tmdb:90210577"]; ok {
 		t.Error("standalone must not group")
 	}
-	if _, ok := tags["movie:tmdb:999"]; ok {
+	if _, ok := tags["movie:tmdb:90000999"]; ok {
 		t.Error("a lone film of a franchise must not group (nothing to keep it with)")
 	}
-	if _, ok := tags["series:tvdb:1"]; ok {
+	if _, ok := tags["series:tvdb:90000001"]; ok {
 		t.Error("a series must never franchise-group")
 	}
 }
 
 // The end-to-end guarantee: a franchise stays adjacent + in release order through the
 // shuffle deck (collapse/expand), never split by an unrelated film — the exact bug reported
-// (Temple → Crusade → [Top Gun] → Raiders).
+// (Temple → Pilgrimage → [an unrelated film] → Idol).
 func TestFranchiseStaysTogetherUnderShuffle(t *testing.T) {
 	entries := []LineupEntry{
-		movieEntry("movie:tmdb:85", 1981, 84), // Raiders
-		movieEntry("movie:tmdb:87", 1984, 84), // Temple
-		movieEntry("movie:tmdb:89", 1989, 84), // Crusade
-		movieEntry("movie:tmdb:t1", 1986, 0),  // Top Gun (standalone)
-		movieEntry("movie:tmdb:t2", 1989, 0),  // Batman (standalone)
+		movieEntry("movie:tmdb:90000085", 1981, 84), // Brass Idol
+		movieEntry("movie:tmdb:90000087", 1984, 84), // The Ash Temple
+		movieEntry("movie:tmdb:90000089", 1989, 84), // Final Pilgrimage
+		movieEntry("movie:tmdb:t1", 1986, 0),        // Skylark Academy (standalone)
+		movieEntry("movie:tmdb:t2", 1989, 0),        // The Night Warden (standalone)
 	}
 	tags := assignFranchiseGroups(entries)
 	// Build movie slots carrying the franchise tags (as resolveEntry would).
@@ -75,14 +75,14 @@ func TestFranchiseStaysTogetherUnderShuffle(t *testing.T) {
 		collapsed, expand := collapseGroups(slots)
 		ordered, _ := slotWithRelaxation(collapsed, rp, seed)
 		ordered = expandGroups(ordered, expand)
-		// Find the three Indy films; they must be at consecutive positions, in release order.
+		// Find the three Vale films; they must be at consecutive positions, in release order.
 		pos := map[string]int{}
 		for i, s := range ordered {
 			pos[string(s.Key)] = i
 		}
-		r, tm, c := pos["movie:tmdb:85"], pos["movie:tmdb:87"], pos["movie:tmdb:89"]
+		r, tm, c := pos["movie:tmdb:90000085"], pos["movie:tmdb:90000087"], pos["movie:tmdb:90000089"]
 		if tm != r+1 || c != r+2 {
-			t.Fatalf("seed %d: franchise split/out-of-order: Raiders=%d Temple=%d Crusade=%d", seed, r, tm, c)
+			t.Fatalf("seed %d: franchise split/out-of-order: Idol=%d Temple=%d Pilgrimage=%d", seed, r, tm, c)
 		}
 	}
 }
@@ -92,9 +92,9 @@ func TestFranchiseStaysTogetherUnderShuffle(t *testing.T) {
 // whole or excluded whole, at every window offset. Guards the plan Risk #2 for the window.
 func TestFranchiseNeverSplitByWindowSeam(t *testing.T) {
 	entries := []LineupEntry{
-		movieEntry("movie:tmdb:85", 1981, 84), // Raiders  ┐
-		movieEntry("movie:tmdb:87", 1984, 84), // Temple   │ Indy franchise (collection 84)
-		movieEntry("movie:tmdb:89", 1989, 84), // Crusade  ┘
+		movieEntry("movie:tmdb:90000085", 1981, 84), // Idol        ┐
+		movieEntry("movie:tmdb:90000087", 1984, 84), // Temple      │ Vale franchise (collection 84)
+		movieEntry("movie:tmdb:90000089", 1989, 84), // Pilgrimage  ┘
 		movieEntry("movie:tmdb:s1", 1986, 0),
 		movieEntry("movie:tmdb:s2", 1988, 0),
 		movieEntry("movie:tmdb:s3", 1987, 0),
@@ -111,20 +111,20 @@ func TestFranchiseNeverSplitByWindowSeam(t *testing.T) {
 	rp := ChannelPolicy{ProposalPolicy: ProposalPolicy{Ordering: OrderSyndication}}.Resolved(Sequential, false)
 	collapsed, expand := collapseGroups(slots)
 	ordered, _ := slotWithRelaxation(collapsed, rp, 7)
-	indy := map[string]bool{"movie:tmdb:85": true, "movie:tmdb:87": true, "movie:tmdb:89": true}
+	vale := map[string]bool{"movie:tmdb:90000085": true, "movie:tmdb:90000087": true, "movie:tmdb:90000089": true}
 	// At every window offset (5h window, so the franchise's 6h block straddles a seam if split),
-	// the Indy films appear either ALL or NONE — never a lone member orphaned by truncation.
+	// the Vale films appear either ALL or NONE — never a lone member orphaned by truncation.
 	for idx := int64(0); idx < int64(len(entries))+2; idx++ {
 		sliced := windowSlice(ordered, 5*time.Hour, idx)
 		sliced = expandGroups(sliced, expand)
 		n := 0
 		for _, s := range sliced {
-			if indy[string(s.Key)] {
+			if vale[string(s.Key)] {
 				n++
 			}
 		}
 		if n != 0 && n != 3 {
-			t.Fatalf("index %d: franchise split by the window seam — %d/3 Indy films present", idx, n)
+			t.Fatalf("index %d: franchise split by the window seam — %d/3 Vale films present", idx, n)
 		}
 	}
 }
@@ -136,17 +136,17 @@ func TestPartMarker(t *testing.T) {
 		wantPart int
 		wantOK   bool
 	}{
-		{"All Good Things... (2)", "All Good Things...", 2, true},
-		{"Encounter at Farpoint (1)", "Encounter at Farpoint", 1, true},
-		{"The Best of Both Worlds, Part 1", "The Best of Both Worlds,", 1, true},
-		{"Chain of Command Part II", "Chain of Command", 2, true},
-		{"Unification Pt. 2", "Unification", 2, true},
-		{"Time's Arrow (10)", "Time's Arrow", 10, true},
+		{"All Quiet Things... (2)", "All Quiet Things...", 2, true},
+		{"Encounter at Gullpoint (1)", "Encounter at Gullpoint", 1, true},
+		{"The Best of Both Harbors, Part 1", "The Best of Both Harbors,", 1, true},
+		{"Line of Relay Part II", "Line of Relay", 2, true},
+		{"Convergence Pt. 2", "Convergence", 2, true},
+		{"Tide's Turn (10)", "Tide's Turn", 10, true},
 		// Not part markers:
-		{"The Inner Light", "", 0, false},
-		{"Cause and Effect", "", 0, false},
-		{"Ship in a Bottle (Reprise)", "", 0, false}, // non-numeric parenthetical
-		{"Part of the Journey", "", 0, false},        // "part" not a trailing marker
+		{"The Quiet Beacon", "", 0, false},
+		{"Ebb and Flow", "", 0, false},
+		{"Moon in a Jar (Reprise)", "", 0, false}, // non-numeric parenthetical
+		{"Part of the Journey", "", 0, false},     // "part" not a trailing marker
 	}
 	for _, c := range cases {
 		t.Run(c.title, func(t *testing.T) {
@@ -168,12 +168,12 @@ func rp(title string, season, ep, epEnd int) ResolvedProgram {
 
 func TestAssignPartGroups_TitleSuffix(t *testing.T) {
 	progs := []ResolvedProgram{
-		rp("The Inner Light", 5, 25, 0),
-		rp("Time's Arrow (1)", 5, 26, 0),
-		rp("Time's Arrow (2)", 6, 1, 0), // note: (2) is next season's opener — still consecutive by our list order
-		rp("Realm of Fear", 6, 2, 0),
+		rp("The Quiet Beacon", 5, 25, 0),
+		rp("Tide's Turn (1)", 5, 26, 0),
+		rp("Tide's Turn (2)", 6, 1, 0), // note: (2) is next season's opener — still consecutive by our list order
+		rp("Hall of Echoes", 6, 2, 0),
 	}
-	assignPartGroups("series:tvdb:71470", progs)
+	assignPartGroups("series:tvdb:90071470", progs)
 
 	// The standalone episodes get no group.
 	if progs[0].PartGroup != "" || progs[3].PartGroup != "" {
@@ -188,11 +188,11 @@ func TestAssignPartGroups_TitleSuffix(t *testing.T) {
 
 func TestAssignPartGroups_SameSeasonConsecutive(t *testing.T) {
 	progs := []ResolvedProgram{
-		rp("Chain of Command (1)", 6, 10, 0),
-		rp("Chain of Command (2)", 6, 11, 0),
-		rp("Ship in a Bottle", 6, 12, 0),
+		rp("Line of Relay (1)", 6, 10, 0),
+		rp("Line of Relay (2)", 6, 11, 0),
+		rp("Moon in a Jar", 6, 12, 0),
 	}
-	assignPartGroups("series:tvdb:71470", progs)
+	assignPartGroups("series:tvdb:90071470", progs)
 
 	if progs[0].PartGroup == "" || progs[0].PartGroup != progs[1].PartGroup {
 		t.Fatalf("the two parts should share one group: %q vs %q", progs[0].PartGroup, progs[1].PartGroup)
@@ -209,11 +209,11 @@ func TestAssignPartGroups_NonConsecutiveRejected(t *testing.T) {
 	// Same base + part markers but NOT consecutive episodes → not grouped (guards against
 	// unrelated "Part 1" episodes elsewhere in a season).
 	progs := []ResolvedProgram{
-		rp("Trials and Tribble-ations (1)", 5, 6, 0),
+		rp("Rivets and Revelations (1)", 5, 6, 0),
 		rp("Something Else", 5, 7, 0),
-		rp("Trials and Tribble-ations (2)", 5, 8, 0),
+		rp("Rivets and Revelations (2)", 5, 8, 0),
 	}
-	assignPartGroups("series:tvdb:72073", progs)
+	assignPartGroups("series:tvdb:90072073", progs)
 	for i, p := range progs {
 		if p.PartGroup != "" {
 			t.Errorf("non-consecutive parts must not group (idx %d got %q)", i, p.PartGroup)
@@ -223,8 +223,8 @@ func TestAssignPartGroups_NonConsecutiveRejected(t *testing.T) {
 
 func TestAssignPartGroups_IndexNumberEnd(t *testing.T) {
 	// A single file spanning episodes 25–26 (IndexNumberEnd) is tagged atomic on its own.
-	progs := []ResolvedProgram{rp("The Menagerie", 1, 25, 26)}
-	assignPartGroups("series:tvdb:77526", progs)
+	progs := []ResolvedProgram{rp("The Orrery", 1, 25, 26)}
+	assignPartGroups("series:tvdb:90077526", progs)
 	if progs[0].PartGroup == "" || progs[0].PartIndex != 1 {
 		t.Errorf("single-file span should be tagged: group=%q idx=%d", progs[0].PartGroup, progs[0].PartIndex)
 	}
@@ -256,18 +256,18 @@ func TestCollapseExpand_RoundTripAndAtomicDuration(t *testing.T) {
 // The end-to-end guarantee: even with a shuffle strategy + a tight rolling window, a
 // two-parter stays adjacent + in-order and is never split by the window.
 func TestComputeDesired_MultiPartStaysTogether(t *testing.T) {
-	// A same-season consecutive two-parter ("Gambit") plus standalones, so the shuffle has
+	// A same-season consecutive two-parter ("Wager") plus standalones, so the shuffle has
 	// room to scatter the parts if it could — but collapse/expand keep them atomic.
 	seriesEps := []ResolvedProgram{
 		rp("Standalone 1", 6, 1, 0),
-		rp("Gambit (1)", 7, 4, 0),
-		rp("Gambit (2)", 7, 5, 0),
+		rp("Wager (1)", 7, 4, 0),
+		rp("Wager (2)", 7, 5, 0),
 		rp("Standalone 2", 7, 6, 0),
 	}
-	assignPartGroups("series:tvdb:71470", seriesEps)
+	assignPartGroups("series:tvdb:90071470", seriesEps)
 	slots := make([]Slot, 0, len(seriesEps))
 	for _, e := range seriesEps {
-		slots = append(slots, Slot{Kind: SlotProgram, Key: "series:tvdb:71470", LibraryItemID: e.LibraryItemID, Title: e.Title, DurationMs: e.DurationMs, PartGroup: e.PartGroup, PartIndex: e.PartIndex})
+		slots = append(slots, Slot{Kind: SlotProgram, Key: "series:tvdb:90071470", LibraryItemID: e.LibraryItemID, Title: e.Title, DurationMs: e.DurationMs, PartGroup: e.PartGroup, PartIndex: e.PartIndex})
 	}
 
 	// Run collapse → shuffle deck → expand over many seeds; parts must always be adjacent + ordered.
@@ -276,7 +276,7 @@ func TestComputeDesired_MultiPartStaysTogether(t *testing.T) {
 		collapsed, expand := collapseGroups(slots)
 		ordered, _ := slotWithRelaxation(collapsed, rp2, seed)
 		ordered = expandGroups(ordered, expand)
-		assertPartsAdjacent(t, ordered, "Gambit (1)", "Gambit (2)", seed)
+		assertPartsAdjacent(t, ordered, "Wager (1)", "Wager (2)", seed)
 	}
 }
 
@@ -332,18 +332,18 @@ func assertPartsAdjacent(t *testing.T, slots []Slot, p1, p2 string, seed int64) 
 // Episodes are always contiguous (assignPartGroups tags within one entry's expansion), which is
 // why every other test here builds its group adjacent and why this survived. FRANCHISES are not:
 // assignFranchiseGroups tags films by TMDB collection across separate lineup entries, ordered by
-// the operator. Raiders at 1, Temple of Doom at 6, Last Crusade at 5 is the normal case.
+// the operator. Brass Idol at 1, The Ash Temple at 6, Final Pilgrimage at 5 is the normal case.
 //
 // Live symptom on a 25-movie channel: 88 airings a week from 11 distinct titles (three ~13x
 // each), while 14 films never aired at all — the duplicated franchise expansions consumed the
 // window and evicted the standalones.
 func TestCollapseExpand_ScatteredGroupCollapsesOnce(t *testing.T) {
 	slots := []Slot{
-		{Kind: SlotProgram, Key: "raiders", Title: "Raiders", DurationMs: 1000, PartGroup: "c84", PartIndex: 1},
-		{Kind: SlotProgram, Key: "diehard", Title: "Die Hard", DurationMs: 1000},
-		{Kind: SlotProgram, Key: "temple", Title: "Temple of Doom", DurationMs: 1000, PartGroup: "c84", PartIndex: 2},
-		{Kind: SlotProgram, Key: "terminator", Title: "Terminator", DurationMs: 1000},
-		{Kind: SlotProgram, Key: "crusade", Title: "Last Crusade", DurationMs: 1000, PartGroup: "c84", PartIndex: 3},
+		{Kind: SlotProgram, Key: "idol", Title: "Brass Idol", DurationMs: 1000, PartGroup: "c84", PartIndex: 1},
+		{Kind: SlotProgram, Key: "tower", Title: "Tower Forty", DurationMs: 1000},
+		{Kind: SlotProgram, Key: "temple", Title: "The Ash Temple", DurationMs: 1000, PartGroup: "c84", PartIndex: 2},
+		{Kind: SlotProgram, Key: "lullaby", Title: "Iron Lullaby", DurationMs: 1000},
+		{Kind: SlotProgram, Key: "pilgrimage", Title: "Final Pilgrimage", DurationMs: 1000, PartGroup: "c84", PartIndex: 3},
 	}
 
 	collapsed, expand := collapseGroups(slots)
@@ -351,7 +351,7 @@ func TestCollapseExpand_ScatteredGroupCollapsesOnce(t *testing.T) {
 	// ONE super-slot for the franchise, at the position of its first member, carrying the
 	// group's whole runtime so the window treats it as one indivisible unit.
 	if len(collapsed) != 3 {
-		t.Fatalf("collapsed len = %d, want 3 (franchise, Die Hard, Terminator): %v", len(collapsed), titles(collapsed))
+		t.Fatalf("collapsed len = %d, want 3 (franchise, Tower Forty, Iron Lullaby): %v", len(collapsed), titles(collapsed))
 	}
 	if collapsed[0].PartGroup != "c84" || collapsed[0].DurationMs != 3000 {
 		t.Errorf("super-slot = group %q dur %d, want c84/3000", collapsed[0].PartGroup, collapsed[0].DurationMs)
@@ -369,7 +369,7 @@ func TestCollapseExpand_ScatteredGroupCollapsesOnce(t *testing.T) {
 	}
 	// The standalones between the scattered members must survive — they were the ones being
 	// evicted when the franchise expanded three times.
-	for _, want := range []string{"Die Hard", "Terminator"} {
+	for _, want := range []string{"Tower Forty", "Iron Lullaby"} {
 		if seen[want] != 1 {
 			t.Errorf("%q missing from the cycle (evicted by a duplicated franchise expansion)", want)
 		}
@@ -384,10 +384,10 @@ func TestCollapseExpand_ScatteredGroupCollapsesOnce(t *testing.T) {
 // airs wherever it was".
 func TestCollapseExpand_ScatteredGroupStillAirsTogetherInOrder(t *testing.T) {
 	slots := []Slot{
-		{Kind: SlotProgram, Key: "crusade", Title: "Last Crusade", DurationMs: 1000, PartGroup: "c84", PartIndex: 3},
-		{Kind: SlotProgram, Key: "diehard", Title: "Die Hard", DurationMs: 1000},
-		{Kind: SlotProgram, Key: "raiders", Title: "Raiders", DurationMs: 1000, PartGroup: "c84", PartIndex: 1},
-		{Kind: SlotProgram, Key: "temple", Title: "Temple of Doom", DurationMs: 1000, PartGroup: "c84", PartIndex: 2},
+		{Kind: SlotProgram, Key: "pilgrimage", Title: "Final Pilgrimage", DurationMs: 1000, PartGroup: "c84", PartIndex: 3},
+		{Kind: SlotProgram, Key: "tower", Title: "Tower Forty", DurationMs: 1000},
+		{Kind: SlotProgram, Key: "idol", Title: "Brass Idol", DurationMs: 1000, PartGroup: "c84", PartIndex: 1},
+		{Kind: SlotProgram, Key: "temple", Title: "The Ash Temple", DurationMs: 1000, PartGroup: "c84", PartIndex: 2},
 	}
 
 	out := expandGroups(collapseGroups(slots))
@@ -395,7 +395,7 @@ func TestCollapseExpand_ScatteredGroupStillAirsTogetherInOrder(t *testing.T) {
 	got := titles(out)
 	// The group lands where its FIRST-ENCOUNTERED member was (position 0 here), in PartIndex
 	// order regardless of the order they appeared in the deck.
-	want := []string{"Raiders", "Temple of Doom", "Last Crusade", "Die Hard"}
+	want := []string{"Brass Idol", "The Ash Temple", "Final Pilgrimage", "Tower Forty"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}

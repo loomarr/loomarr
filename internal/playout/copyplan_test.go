@@ -13,7 +13,7 @@ func TestPlanCopy(t *testing.T) {
 		wantAudio bool // CopyAudio
 	}{
 		{"h264+aac to baseline: full direct play", MediaFormat{VideoCodec: "h264", AudioCodec: "aac"}, PlanBaseline, true, true},
-		// The real Simpsons case: h264 video + EAC3 audio to a baseline client. COPY the video (the
+		// The real cartoon-library case: h264 video + EAC3 audio to a baseline client. COPY the video (the
 		// win), transcode only the audio. This is the whole point of the per-stream model.
 		{"h264+eac3 to baseline: copy video, transcode audio", MediaFormat{VideoCodec: "h264", AudioCodec: "eac3"}, PlanBaseline, true, false},
 		// A full (tuner) plan tolerates EAC3 → both copy.

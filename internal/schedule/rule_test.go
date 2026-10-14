@@ -191,7 +191,7 @@ func TestOrderingMode_AirsInOrder(t *testing.T) {
 // ActiveRuleAt is the exported attribution window onto pickRule (§8.1): it must name the
 // SAME rule pickRule selects, and report base-policy (matched:false) when nothing matches.
 func TestActiveRuleAt_Attribution(t *testing.T) {
-	weekend := SchedulingRule{ID: "w", Label: "Weekend TNG marathon", Priority: 10, When: WhenPredicate{Weekend: true}}
+	weekend := SchedulingRule{ID: "w", Label: "Weekend Cold Relay marathon", Priority: 10, When: WhenPredicate{Weekend: true}}
 	holiday := SchedulingRule{ID: "h", Label: "Spooky Season", Priority: 20, When: WhenPredicate{Holiday: "halloween"}}
 	rules := []SchedulingRule{weekend, holiday}
 
@@ -203,7 +203,7 @@ func TestActiveRuleAt_Attribution(t *testing.T) {
 	})
 	t.Run("weekend matches → attributed to the weekend rule with its label", func(t *testing.T) {
 		a := ActiveRuleAt(rules, satNoon)
-		if !a.Matched || a.ID != "w" || a.Label != "Weekend TNG marathon" || a.Priority != 10 {
+		if !a.Matched || a.ID != "w" || a.Label != "Weekend Cold Relay marathon" || a.Priority != 10 {
 			t.Fatalf("got %+v, want the weekend rule", a)
 		}
 	})
@@ -330,6 +330,17 @@ func TestWindowGrid_TurnsAtLocalMidnightAcrossDST(t *testing.T) {
 			t.Errorf("%s: index did not advance by exactly one across the day", tc.name)
 		}
 	}
+}
+
+// windowSlice is windowSliceDealt over one fixed deck, every pass that deck: what an ordering that
+// does not reshuffle airs. It keeps a ROTATING ~window-of-runtime slice of the deck, advancing its
+// start by the window index and WRAPPING the catalog (§6.5), so over a full cycle every program
+// airs. window <= 0 ⇒ the whole deck; a deck that fits one window is returned whole; at least one
+// program always airs.
+func windowSlice(slots []Slot, window time.Duration, index int64) []Slot {
+	d := &deckDealer{bases: map[int64]dealt{0: {deck: slots}}}
+	out, _ := windowSliceDealt(d, window, index)
+	return out
 }
 
 func TestWindowSlice(t *testing.T) {

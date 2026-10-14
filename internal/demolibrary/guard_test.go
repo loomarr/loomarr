@@ -59,6 +59,14 @@ var migratedTitles = []string{
 	// The integration, tmdb, catalog, binder and library tests (slice 9). "Terminator" and "Raiders"
 	// alone are left out: they would match ordinary prose.
 	"RoboCop", "Homer at the Bat", "Zero Theorem", "Space Odyssey", "70s Show",
+	// The web component tests and stories (slice 10). "Elf", "Voyager" and "Criterion" alone are
+	// left out: they would match ordinary prose.
+	"Home Alone", "Rugrats", "Coca-Cola", "Pepsi", "Toys R Us",
+	// The schedule, playout and recurate tests (slice 11). Episode titles that are ordinary phrases
+	// ("Chain of Command", "Ship in a Bottle", "The Inner Light", "Night Moves") are left out.
+	"Battlestar Galactica", "Mad Max", "Marge vs. the Monorail", "Wings of the Dope", "Dog of Death",
+	"Canine Mutiny", "Halloween of Horror", "Life on the Fast Lane", "Farpoint", "Tribble", "Realm of Fear",
+	"Truffaut", "Jules & Jim", "Top Goon", "Halloweeners",
 }
 
 // migrated are the paths (prefixes) #1592 has moved onto the demo catalogue. They must be free of
@@ -75,6 +83,17 @@ var migrated = []string{
 	"web/apps/web/src/components/loomarr/ai/refine-panel/",
 	"web/apps/web/src/components/loomarr/ai/refine-review/",
 	"web/apps/web/src/components/loomarr/feedback/generation-progress/",
+	// The web component stories (slice 10). Their directories' other stories are still legacy.
+	"web/apps/web/src/components/loomarr/channels/channel-icon-field/channel-icon-field.stories.tsx",
+	"web/apps/web/src/components/loomarr/dashboard/playout-panel/playout-panel.stories.tsx",
+	"web/apps/web/src/components/loomarr/people/import-dialog/import-dialog.stories.tsx",
+	"web/apps/web/src/components/loomarr/people/invitation-dialog/invitation-dialog.stories.tsx",
+	"web/apps/web/src/components/loomarr/people/invitation-join/invitation-join.stories.tsx",
+	"web/apps/web/src/components/loomarr/people/invitation-roster/invitation-roster.stories.tsx",
+	"web/apps/web/src/components/loomarr/shell/app-shell/app-shell.stories.tsx",
+	"web/apps/web/src/components/ui/card/card.stories.tsx",
+	"web/apps/web/src/components/ui/disclosure/disclosure.stories.tsx",
+	"web/apps/web/src/components/ui/label/label.stories.tsx",
 }
 
 // migratedTests are the directories whose unit tests #1592 has moved onto the demo catalogue.
@@ -98,6 +117,29 @@ var migratedTests = []string{
 	"web/apps/web/src/suggest/use-channel-refine/",
 	"web/apps/web/src/suggest/use-proposal-review-edit/",
 	"web/apps/web/src/suggest/use-suggestion-run/",
+	// The web component tests, policy overrides and request detail (slice 10).
+	"web/apps/web/src/components/loomarr/channels/channel-card/",
+	"web/apps/web/src/components/loomarr/channels/channel-collections-scope/",
+	"web/apps/web/src/components/loomarr/channels/channel-cycle-preview/",
+	"web/apps/web/src/components/loomarr/channels/channel-ident/",
+	"web/apps/web/src/components/loomarr/channels/channel-lineup-editor/",
+	"web/apps/web/src/components/loomarr/channels/channel-policy-fields/",
+	"web/apps/web/src/components/loomarr/channels/channel-rules-editor/",
+	"web/apps/web/src/components/loomarr/channels/channel-series-scope/",
+	"web/apps/web/src/components/loomarr/channels/now-next-strip/",
+	"web/apps/web/src/components/loomarr/filler/clip-card/",
+	"web/apps/web/src/components/loomarr/filler/clip-player/",
+	"web/apps/web/src/components/loomarr/filler/clip-row/",
+	"web/apps/web/src/components/loomarr/filler/pod-timeline/",
+	"web/apps/web/src/components/loomarr/filler/split-review-editor/",
+	"web/apps/web/src/components/loomarr/people/import-dialog/",
+	"web/apps/web/src/components/loomarr/people/invitation-join/",
+	"web/apps/web/src/components/loomarr/shell/search-command/",
+	"web/apps/web/src/components/ui/panel-row/",
+	"web/apps/web/src/components/ui/sheet/",
+	"web/apps/web/src/components/ui/video-player/",
+	"web/apps/web/src/lib/policy-overrides/",
+	"web/apps/web/src/queue/request-detail/",
 }
 
 // migratedGo are the Go trees and files #1592 has moved onto the demo catalogue: the API tests,
@@ -155,6 +197,8 @@ var migratedGo = []string{
 	"internal/suggest/intent_policy_test.go",
 	"internal/suggest/scopenarrows_test.go",
 	"internal/suggest/worker_cache_internal_test.go",
+	// The schedule, playout and recurate tests (slice 11).
+	"internal/playout/", "internal/recurate/", "internal/schedule/",
 }
 
 // pendingGo are the files under migratedGo not yet migrated, both owned by an open PR (#1917).

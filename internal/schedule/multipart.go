@@ -128,7 +128,7 @@ func atoiSafe(s string) int {
 // DurationMs is the group's total runtime and whose Key/PartGroup identify it; the group's
 // real slots (in PartIndex order) are stashed in `expand` keyed by PartGroup. Standalone
 // slots (PartGroup "") pass through untouched. The ordering engine then permutes super-
-// slots without seeing — or being able to split — a group's internals, and windowSlice
+// slots without seeing — or being able to split — a group's internals, and windowSliceDealt
 // counts a group's full runtime as one indivisible unit (a group is never split by the
 // rotating window seam because slicing runs on the collapsed deck). Order-preserving: a group collapses
 // at the position of its first part.
